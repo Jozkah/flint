@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "Arduvaz",
+    "vermilion": "Zincifre",
+    "ink": "Mürekkep",
+    "moss": "Yosun",
+    "slate": "Arduvaz mavisi",
+    "violet": "Menekşe"
+  },
+  "fontSizeNames": {
+    "small": "Küçük",
+    "medium": "Orta",
+    "large": "Büyük",
+    "extraLarge": "Çok büyük"
+  },
+  "unknownSize": "Bilinmeyen boyut",
+  "official": "Resmi",
+  "configuration": "Yapılandırma",
+  "modelCombobox": {
+    "refresh": "Modelleri yenile",
+    "placeholder": "Bir model yazın veya seçin..."
+  },
+  "hubTasks": {
+    "moreAria": "Göz atmanın diğer yolları",
+    "more": "Daha fazla",
+    "all": "Tümü",
+    "chat": "Sohbet",
+    "coding": "Kodlama",
+    "reasoning": "Akıl yürütme",
+    "vision": "Görü",
+    "small": "Küçük ve hızlı",
+    "tools": "Araç kullanımı",
+    "multilingual": "Çok dilli",
+    "speech": "Konuşma",
+    "embeddings": "Embedding",
+    "summaries": "Özetler",
+    "translation": "Çeviri"
+  },
+  "tokenSpeed": {
+    "aria": "Bu mesajın token kullanımı",
+    "tooltip": "Token kullanımı",
+    "generation": "Üretim",
+    "reading": "Okuma",
+    "draftAccepted": "Taslak kabul edildi",
+    "tokens": "Token",
+    "memoryInRequest": "Bu istekteki bellek",
+    "memoriesSent": "Gönderilen anılar",
+    "withheld": "Çeliştiği için alıkonuldu: {{ids}}",
+    "perSec": "{{n}} token/sn",
+    "count": "{{n}} token"
+  },
+  "serverHost": {
+    "edit": "Sunucu ana makinesini düzenle"
+  },
+  "extensions": {
+    "plugins": "Eklentiler",
+    "global": "Genel",
+    "workspace": "Çalışma alanı",
+    "toggle": "{{name}} aç/kapat",
+    "enable": "Etkinleştir",
+    "disable": "Devre dışı bırak",
+    "workspaceOnly": "Yalnızca çalışma alanı",
+    "globalAll": "Genel (tüm çalışma alanları)",
+    "enabledToast": "{{name}} etkinleştirildi",
+    "disabledToast": "{{name}} devre dışı bırakıldı"
+  },
+  "scope": "Kapsam",
+  "localApi": {
+    "starting": "Sunucu başlatılıyor...",
+    "startingDesc": "Sunucu {{port}} bağlantı noktasında başlatılmaya çalışılıyor",
+    "status": "Sunucu Durumu",
+    "runningDesc": "Sunucu şu anda çalışıyor.",
+    "stoppedDesc": "Sunucu durduruldu.",
+    "running": "Çalışıyor",
+    "stopped": "Durduruldu"
+  },
+  "toolOutputAlt": "Araç çıktısı",
+  "memory": {
+    "exportFilter": "Flint bellek dışa aktarımı",
+    "why": "Flint bunu neden hatırlıyor",
+    "writtenBy": "Yazan",
+    "created": "Oluşturulma",
+    "updated": "Güncellenme",
+    "fromConversation": "Kaynak sohbet",
+    "fromMessage": "Kaynak mesaj",
+    "projectIdentity": "Proje kimliği",
+    "replaces": "Değiştirdiği",
+    "redacted": "Karartıldı",
+    "expires": "Sona erme",
+    "version": "Sürüm",
+    "source": "Kaynak",
+    "importedFrom": "Şuradan içe aktarıldı",
+    "originally": "Aslında",
+    "fromRun": "Kaynak çalıştırma",
+    "savedInProject": "Kaydedildiği proje",
+    "contentHash": "İçerik karması",
+    "earlierVersions": "Önceki sürümler",
+    "usedIn": "Kullanıldığı yer",
+    "notRecorded": "kaydedilmedi",
+    "deletedSince": "(sonradan silindi)",
+    "yes": "evet",
+    "no": "hayır",
+    "versionUnknown": "bilinmiyor (sürümler tutulmadan önce kaydedildi)",
+    "unknown": "bilinmiyor",
+    "importedExport": "dışa aktarım {{id}} ({{scope}}, {{when}})",
+    "createdWhen": "oluşturulma: {{when}}",
+    "conversationId": "sohbet {{id}}",
+    "runId": "çalıştırma {{id}}",
+    "turnId": "tur {{id}}",
+    "snapshotId": "anlık görüntü {{id}}",
+    "noRequests": "henüz kayıtlı istek yok"
+  }
+}

@@ -23,6 +23,8 @@ import {
   MCPSettings,
   DEFAULT_MCP_SETTINGS,
 } from '@/hooks/useMCPServers'
+import { IdleShutdownInput } from '@/containers/IdleShutdownInput'
+import { ServerToolTimeoutInput } from '@/containers/ServerToolTimeoutInput'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
@@ -432,8 +434,10 @@ function MCPServersDesktop() {
       return
     }
 
-    const numericValue = Number(rawValue)
-    if (!Number.isNaN(numericValue)) {
+    // Same rule as the per-server field: whole seconds, at least 1. A 0 or
+    // negative entry is ignored and the field keeps the stored value.
+    const numericValue = Math.floor(Number(rawValue))
+    if (Number.isFinite(numericValue) && numericValue >= 1) {
       updateSettings({ toolCallTimeoutSeconds: numericValue })
     }
   }
@@ -507,8 +511,29 @@ function MCPServersDesktop() {
       const wasActive = !!mcpServers[editingKey]?.active
       // If server name changed, rename it while preserving position
       if (editingKey !== name) {
-        await toggleServer(editingKey, false)
+        // Stopped without a save of the old name: a save still in flight
+        // could land after the rename and bring the old entry back.
+        if (wasActive) {
+          await serviceHub
+            .mcp()
+            .deactivateMCPServer(editingKey)
+            .catch((error) => console.error('Error deactivating server:', error))
+        }
+        // One backend step moves the stored entry, secrets included, to the
+        // new name and drops the old one; only then is the edited (masked)
+        // config saved and started under the new name, so its hidden values
+        // are restored from the moved entry (BUG-081).
+        try {
+          await serviceHub.mcp().renameMCPServer(editingKey, name)
+        } catch (error) {
+          setErrorMessage({
+            message: error instanceof Error ? error.message : String(error),
+            subtitle: t('mcp-servers:checkParams'),
+          })
+          return
+        }
         renameServer(editingKey, name, { ...config, active: wasActive })
+        await syncServers()
         if (wasActive) await toggleServer(name, true, config)
         // Grants never follow a rename: the approval was for the old name,
         // and its OAuth tokens may belong to an endpoint the edit changed.
@@ -758,6 +783,28 @@ function MCPServersDesktop() {
     }
   }
 
+  // Per-server tool call timeout; empty falls back to the global setting.
+  const setServerToolTimeout = async (
+    serverKey: string,
+    config: MCPServerConfig,
+    seconds: number | undefined
+  ) => {
+    const next = { ...config }
+    if (seconds !== undefined) {
+      next.toolCallTimeoutSeconds = seconds
+    } else {
+      delete next.toolCallTimeoutSeconds
+    }
+    editServer(serverKey, next)
+    syncServers()
+    if (config.active) {
+      await Promise.resolve(
+        serviceHub.mcp().activateMCPServer(serverKey, next, { start: false })
+      ).catch(() => {})
+      refreshConnectedServers()
+    }
+  }
+
   const toggleServer = (
     serverKey: string,
     active: boolean,
@@ -919,6 +966,8 @@ function MCPServersDesktop() {
   const settingsRows = (
     <>
       <CardItem
+        // Several of these descriptions carry warnings: shown in full.
+        wrapDescription
         anchor="settings-mcp-servers-allow-permissions"
         title={t('mcp-servers:allowPermissions')}
         description={t('mcp-servers:allowPermissionsDesc')}
@@ -932,6 +981,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-tool-call-timeout"
         title={t('mcp-servers:runtimeSettings.toolCallTimeout')}
         description={t('mcp-servers:runtimeSettings.toolCallTimeoutDesc')}
@@ -950,6 +1000,22 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
+        anchor="settings-mcp-servers-idle-shutdown"
+        title={t('mcp-servers:runtimeSettings.idleShutdown')}
+        description={t('mcp-servers:runtimeSettings.idleShutdownDesc')}
+        actions={
+          <IdleShutdownInput
+            minutes={settings.idleShutdownMinutes ?? 15}
+            onCommit={(minutes) => updateSettings({ idleShutdownMinutes: minutes })}
+            onBlur={() => {
+              void syncServers()
+            }}
+          />
+        }
+      />
+      <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-max-tool-output"
         title={t('mcp-servers:runtimeSettings.maxToolOutputChars')}
         description={t('mcp-servers:runtimeSettings.maxToolOutputCharsDesc')}
@@ -968,6 +1034,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-smart-tool-routing"
         title={t('mcp-servers:runtimeSettings.smartToolRouting')}
         description={t('mcp-servers:runtimeSettings.smartToolRoutingDesc')}
@@ -993,6 +1060,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-lightweight-router"
         title={t('mcp-servers:runtimeSettings.useLightweightRouterModel')}
         description={t(
@@ -1020,6 +1088,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-generate-descriptions"
         title={t('mcp-servers:describe.settingTitle')}
         description={t('mcp-servers:describe.settingDesc')}
@@ -1035,6 +1104,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-router-model"
         title={t('mcp-servers:runtimeSettings.routerModel')}
         description={t('mcp-servers:runtimeSettings.routerModelDesc')}
@@ -1112,7 +1182,7 @@ function MCPServersDesktop() {
                     alt="Flint"
                     className="size-3 object-contain"
                   />
-                  <span>Official</span>
+                  <span>{t('uiLeftovers:official')}</span>
                 </Chip>
               )}
             </span>
@@ -1224,8 +1294,7 @@ function MCPServersDesktop() {
                   {config.official && (
                     <div className="mt-2 pt-2 text-xs text-muted-foreground">
                       <p className="mb-1">
-                        Requires Jan Browser Extension to be installed in your
-                        Chrome-based browser.
+                        {t('mcp-servers:browserExtension.requires')}
                       </p>
                       <a
                         href="https://chromewebstore.google.com/detail/jan-browser-mcp/mkciifcjehgnpaigoiaakdgabbpfppal"
@@ -1233,7 +1302,7 @@ function MCPServersDesktop() {
                         rel="noopener noreferrer"
                         className="text-acc-text underline-offset-4 hover:underline"
                       >
-                        Install Extension →
+                        {t('mcp-servers:browserExtension.install')}
                       </a>
                     </div>
                   )}
@@ -1280,6 +1349,17 @@ function MCPServersDesktop() {
                   }
                 />
                 <span>{t('mcp-servers:lifecycle.startWithFlint')}</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <span>{t('mcp-servers:lifecycle.toolTimeout')}</span>
+                <ServerToolTimeoutInput
+                  seconds={config.toolCallTimeoutSeconds}
+                  placeholder={String(settings.toolCallTimeoutSeconds)}
+                  ariaLabel={t('mcp-servers:lifecycle.toolTimeout')}
+                  onCommit={(seconds) =>
+                    void setServerToolTimeout(key, config, seconds)
+                  }
+                />
               </label>
               {snapshot.connected ? (
                 <button
@@ -1427,7 +1507,7 @@ function MCPServersDesktop() {
           <Chip mono className="h-5 shrink-0 uppercase">
             {config.type || 'stdio'}
           </Chip>
-          {config.official && <Chip className="h-5 shrink-0">Official</Chip>}
+          {config.official && <Chip className="h-5 shrink-0">{t('uiLeftovers:official')}</Chip>}
         </span>
         <span className="hidden min-w-0 shrink-0 text-xs @min-[40rem]:block">
           <McpServerStatus

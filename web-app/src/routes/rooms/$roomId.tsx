@@ -129,7 +129,7 @@ export function RoomView({ roomId }: { roomId: string }) {
         time, switched by the tabs above; the conversation fills the height so
         its composer stays at the bottom, and the controls scroll on their own.
       */}
-      <div className="px-1 pt-3 @5xl/room:hidden">
+      <div className="px-1 pt-2 @5xl/room:hidden">
         <Segmented
           aria-label={t('rooms:page.panes')}
           value={pane}
@@ -142,7 +142,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       </div>
       <div
         className={cn(
-          'grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-4 px-1 py-3 @5xl/room:grid-cols-[minmax(0,1fr)_370px] @5xl/room:overflow-hidden @5xl/room:py-4',
+          'grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-4 px-1 py-2 @5xl/room:grid-cols-[minmax(0,1fr)_370px] @5xl/room:overflow-hidden @5xl/room:py-4',
           pane === 'controls' ? 'overflow-y-auto' : 'overflow-hidden'
         )}
       >
@@ -165,12 +165,30 @@ export function RoomView({ roomId }: { roomId: string }) {
               the body only bounds its height and pins the composer beneath it. */}
           <FrameBody className="min-h-0 overflow-hidden">
             <RoomUsageBar room={room} />
-            <RoomTranscript room={room} journal={state.journal} liveTurn={state.liveTurn} />
-            {/* A subagent a participant started: its approvals have no tool card
-                to sit under, and its rows are the same Tasks panel as elsewhere. */}
-            <CoworkChildApprovals sessionId={room.id} />
-            <ChatTasks threadId={room.id} />
-            <RoomComposer room={room} />
+            <RoomTranscript
+              room={room}
+              journal={state.journal}
+              liveTurn={state.liveTurn}
+              liveTurns={state.liveTurns}
+            />
+            {/*
+              The dock: prompts, tasks and the composer. It never takes more
+              than the share the conversation can spare (the transcript keeps
+              at least 45% of the frame); past that its cards scroll on their
+              own above the composer, which always stays in view.
+            */}
+            <div data-testid="room-dock" className="flex max-h-[55%] min-h-0 shrink-0 flex-col">
+              <div
+                data-testid="room-dock-cards"
+                className="relative z-20 flex min-h-0 shrink flex-col gap-2 overflow-y-auto px-3 pb-1 empty:hidden [scrollbar-width:thin] has-[>*]:pt-2"
+              >
+                {/* A subagent a participant started: its approvals have no tool card
+                    to sit under, and its rows are the same Tasks panel as elsewhere. */}
+                <CoworkChildApprovals sessionId={room.id} compact />
+                <ChatTasks threadId={room.id} />
+              </div>
+              <RoomComposer room={room} />
+            </div>
           </FrameBody>
         </Frame>
         <aside

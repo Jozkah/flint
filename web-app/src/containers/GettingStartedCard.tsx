@@ -9,7 +9,10 @@ import { useThreads } from '@/hooks/useThreads'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { hasUsableProvider } from '@/lib/providerReadiness'
 import { cn } from '@/lib/utils'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { usePrompt } from '@/hooks/usePrompt'
 import {
+  checklistStatus,
   guideSteps,
   isObservedStep,
   isStepDone,
@@ -17,6 +20,8 @@ import {
 } from '@/lib/onboarding'
 import { TermHint } from '@/containers/TermHint'
 import { ModelSetupCard } from '@/containers/ModelSetupCard'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 /**
  * The home screen's guide card, and for returning users a way back into their
@@ -28,14 +33,31 @@ import { ModelSetupCard } from '@/containers/ModelSetupCard'
 export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const navTrimmed = useInterfaceSettings((s) => s.hiddenNavItems.length > 0)
   const guide = useOnboardingGuide()
   const providers = useModelProvider((s) => s.providers)
-  const threads = useThreads((s) => s.threads)
+  // The count only: a title change must not re-render the card.
+  const threadCount = useThreads((s) => Object.keys(s.threads).length)
 
-  const threadList = Object.values(threads ?? {})
+  const projectCount = useCoworkSessions(
+    (s) => s.sessions.filter((session) => session.folder).length
+  )
+
   const signals = {
     hasUsableModel: hasUsableProvider(providers),
-    threadCount: threadList.length,
+    threadCount,
+    projectCount,
+  }
+
+  // Fills the composer; the user sends it. Nothing is sent on their behalf,
+  // and text the user already typed is never overwritten.
+  const trySampleQuestion = () => {
+    if (!usePrompt.getState().prompt.trim()) {
+      usePrompt.getState().setPrompt(t('onboarding:sample.question'))
+    }
+    document
+      .querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')
+      ?.focus()
   }
 
   if (guide.status === 'in-progress') {
@@ -84,6 +106,82 @@ export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
               ))}
             </ol>
           )}
+          {!allDone && current === 'first-task' && (
+            <div className="px-0.5 pt-1 pb-1">
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="guide-sample-question"
+                onClick={trySampleQuestion}
+              >
+                {t('onboarding:sample.button')}
+              </Button>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t('onboarding:sample.hint')}
+              </p>
+            </div>
+          )}
+          {!allDone && intentKey === 'project' && (
+            <p
+              data-testid="guide-approvals-note"
+              className="px-0.5 pt-1 text-xs leading-relaxed text-muted-foreground"
+            >
+              {t('onboarding:approvalsNote')}
+            </p>
+          )}
+          {!allDone && (
+            <ul
+              aria-label={t('onboarding:checklist.label')}
+              data-testid="guide-checklist"
+              className="flex flex-wrap gap-x-4 gap-y-1 px-0.5 pt-2 text-xs text-muted-foreground"
+            >
+              {checklistStatus(guide, signals).map(({ id, done }) => (
+                <li
+                  key={id}
+                  data-done={done || undefined}
+                  className={cn('flex items-center gap-1.5', done && 'text-success')}
+                >
+                  {done ? (
+                    <Check className="size-3.5" aria-hidden />
+                  ) : (
+                    <span
+                      className="size-3.5 rounded-full border border-border-strong"
+                      aria-hidden
+                    />
+                  )}
+                  {t(`onboarding:checklist.${id}`)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!allDone && (
+            <div
+              data-testid="guide-sidebar-note"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5 pt-2 text-xs text-muted-foreground"
+            >
+              <span className="min-w-0 flex-1">
+                <b className="font-medium text-foreground">
+                  {t('onboarding:sidebar.title')}
+                </b>{' '}
+                {navTrimmed
+                  ? t('onboarding:sidebar.bodyMinimal')
+                  : t('onboarding:sidebar.body')}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="guide-customize-sidebar"
+                onClick={() => {
+                  useSettingsSearch
+                    .getState()
+                    .requestTarget('settings-appearance-sidebar-items')
+                  navigate({ to: route.settings.interface })
+                }}
+              >
+                {t('onboarding:sidebar.customize')}
+              </Button>
+            </div>
+          )}
           {!allDone && current === 'choose-model' && (
             <div className="px-0.5 pt-1 pb-2">
               <ModelSetupCard />
@@ -99,14 +197,27 @@ export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
 }
 
 /** "Continue your last conversation: ..." -- nothing when there is none. */
+function newestThreadId(
+  threads: Record<string, { id: string; updated?: number }> | undefined
+): string | undefined {
+  let best: { id: string; updated?: number } | undefined
+  for (const th of Object.values(threads ?? {})) {
+    if (!best || (th.updated ?? 0) > (best.updated ?? 0)) best = th
+  }
+  return best?.id
+}
+
 export function ResumeRecentLink({ className }: { className?: string }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const threads = useThreads((s) => s.threads)
-  const recent = Object.values(threads ?? {}).sort(
-    (a, b) => (b.updated ?? 0) - (a.updated ?? 0)
-  )[0]
-  if (!recent) return null
+  // The newest chat's id and title, as primitives, so other chats changing
+  // never re-render the link.
+  const recentId = useThreads((s) => newestThreadId(s.threads))
+  const recentTitle = useThreads((s) =>
+    recentId ? s.threads[recentId]?.title : undefined
+  )
+  if (!recentId) return null
+  const recent = { id: recentId, title: recentTitle }
   return (
     <div className={cn('text-center', className)}>
       <button

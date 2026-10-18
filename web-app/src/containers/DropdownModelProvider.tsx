@@ -13,6 +13,14 @@ import {
   getModelDisplayName,
   isLocalProvider,
 } from '@/lib/utils'
+import {
+  disambiguateModels,
+  middleTruncate,
+  modelNameTail,
+  type Disambiguation,
+} from '@/lib/modelDisplayName'
+import { MiddleText } from '@/components/ui/middle-text'
+import { contextLengthOf, effectiveContextLength } from '@/lib/engineModels'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import Capabilities from './Capabilities'
 import { ArrowUpDown, Search, Settings, X } from 'lucide-react'
@@ -186,11 +194,17 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     updateProvider,
   } = useModelProvider()
   const [displayModel, setDisplayModel] = useState<string>('')
-  const { updateCurrentThreadModel, updateThreadModel, threads } = useThreads()
+  const updateCurrentThreadModel = useThreads((s) => s.updateCurrentThreadModel)
+  const updateThreadModel = useThreads((s) => s.updateThreadModel)
   // In a split conversation each pane shows, and changes, its own thread's
   // model only. No pane moves the global picker, which new chats and a
   // conversation shown on its own read.
   const pane = useConversationPane()
+  // Only the pane's own thread model: a title change elsewhere must not
+  // re-render every picker.
+  const paneThreadModelRaw = useThreads((s) =>
+    pane?.isSplit ? s.threads[pane.threadId]?.model : undefined
+  )
   const inSplitPane = Boolean(pane?.isSplit)
   // A caller that passes `onModelChange` keeps the choice itself (Cowork
   // records it on its session). Such a picker shows and changes that caller's
@@ -199,9 +213,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const ownsSelection = Boolean(onModelChange)
   const drivesGlobalSelection =
     !ownsSelection && !pane?.isSplit
-  const paneThreadModel = pane?.isSplit
-    ? threads?.[pane.threadId]?.model
-    : undefined
+  const paneThreadModel = paneThreadModelRaw
   const { selectedProvider, selectedModel } = useMemo(
     () =>
       inSplitPane || ownsSelection
@@ -257,6 +269,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
 
   // Helper function to check if a model exists in providers
   const checkModelExists = useCallback(
@@ -270,12 +283,15 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   )
 
   // Helper function to get context size from model settings
+  // The window the model runs with: its own, else the provider's Default
+  // context size (C043), else the engine's 8192 cap.
   const getContextSize = useCallback((): number => {
-    if (!selectedModel?.settings?.ctx_len?.controller_props?.value) {
-      return 8192 // Default context size
-    }
-    return selectedModel.settings.ctx_len.controller_props.value as number
-  }, [selectedModel?.settings?.ctx_len?.controller_props?.value])
+    if (!selectedModel) return 8192
+    return (
+      effectiveContextLength(selectedModel, getProviderByName(selectedProvider)) ??
+      8192
+    )
+  }, [selectedModel, selectedProvider, getProviderByName])
 
   // Function to check if a llamacpp model has vision capabilities and update model capabilities
   const checkAndUpdateModelVisionCapability = useCallback(
@@ -536,6 +552,30 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     return new Set([...seen].filter(([, n]) => n > 1).map(([id]) => id))
   }, [searchableItems])
 
+  // Models of one provider that read alike in a list (two quants, two
+  // fine-tunes sharing a long prefix) get a short label from what differs.
+  const disambiguation = useMemo(() => {
+    const merged = new Map<string, Disambiguation>()
+    const byProvider = new Map<string, SearchableModel[]>()
+    searchableItems.forEach((item) =>
+      byProvider.set(item.provider.provider, [
+        ...(byProvider.get(item.provider.provider) ?? []),
+        item,
+      ])
+    )
+    byProvider.forEach((items) => {
+      disambiguateModels(
+        items.map((item) => ({
+          key: item.value,
+          name: getModelDisplayName(item.model),
+          fileName: item.model.id,
+          contextLength: contextLengthOf(item.model),
+        }))
+      ).forEach((v, k) => merged.set(k, v))
+    })
+    return merged
+  }, [searchableItems])
+
   // What to call each remote: its title, plus its host when another provider
   // has the same title (two endpoints of one vendor, two local proxies).
   const remoteLabel = useCallback(
@@ -760,9 +800,56 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     ]
   )
 
+  /**
+   * Keyboard use of the open picker: arrows move between the search box and
+   * the model rows, Home/End jump to the first/last row, Enter in the search
+   * box picks the first match, and typing on a row goes back to the search box.
+   */
+  const onPickerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing) return
+    const rows = Array.from(
+      pickerRef.current?.querySelectorAll<HTMLElement>('[data-model-row]') ?? []
+    )
+    const input = searchInputRef.current
+    const onInput = event.target === input
+    const at = rows.indexOf(event.target as HTMLElement)
+    const focusRow = (i: number) => {
+      const row = rows[i]
+      if (!row) return
+      event.preventDefault()
+      row.focus()
+      row.scrollIntoView?.({ block: 'nearest' })
+    }
+    if (event.key === 'ArrowDown' && (onInput || at !== -1)) {
+      focusRow(onInput ? 0 : Math.min(at + 1, rows.length - 1))
+    } else if (event.key === 'ArrowUp' && at !== -1) {
+      if (at === 0) {
+        event.preventDefault()
+        input?.focus()
+      } else focusRow(at - 1)
+    } else if (event.key === 'Home' && at !== -1) {
+      focusRow(0)
+    } else if (event.key === 'End' && at !== -1) {
+      focusRow(rows.length - 1)
+    } else if (event.key === 'Enter' && onInput && rows.length > 0) {
+      event.preventDefault()
+      rows[0].click()
+    } else if (
+      at !== -1 &&
+      event.key.length === 1 &&
+      event.key !== ' ' &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      input?.focus()
+    }
+  }
+
   /** Rows are selectable with Enter or Space, not only with a pointer. */
   const selectableRow = (item: SearchableModel, isSelected: boolean) => ({
     role: 'button' as const,
+    'data-model-row': '',
     tabIndex: 0,
     'aria-pressed': isSelected,
     onClick: () => handleSelect(item),
@@ -789,6 +876,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       selectedProvider === item.provider.provider
     const capabilities = item.model.capabilities || []
     const modelName = getModelDisplayName(item.model)
+    const disambiguator = disambiguation.get(item.value)
     const offline = modelIsOffline(item)
     // A single list has no provider header, so the row carries the provider.
     // So does any row that could be mistaken for another remote's copy of the
@@ -806,6 +894,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       <div
         key={`${list}-${item.value}`}
         {...selectableRow(item, isSelected)}
+        aria-label={secondary ? `${modelName}, ${secondary}` : modelName}
         className={cn(
           'group/mrow flex min-h-9 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-[background-color,transform] duration-150 motion-safe:animate-mi-in motion-safe:active:scale-[.985]',
           'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
@@ -822,7 +911,19 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           <TooltipTrigger asChild>
             <div className="min-w-0 flex-1">
               <span className="flex items-center text-[13px] font-medium text-foreground">
-                <span className="truncate">{modelName}</span>
+                <MiddleText
+                  text={modelName}
+                  tail={modelNameTail(modelName)}
+                  data-testid="model-row-name"
+                />
+                {disambiguator && (
+                  <span
+                    className="ml-1.5 shrink-0 rounded bg-muted px-1 font-mono text-[10.5px] font-normal text-muted-foreground"
+                    data-testid="model-disambiguator"
+                  >
+                    {disambiguator.label}
+                  </span>
+                )}
                 {offline && (
                   <OfflineBadge
                     label={t('common:modelOffline.badge')}
@@ -837,7 +938,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                     list === 'flat' ? 'text-[11px]' : 'font-mono text-[11px]'
                   )}
                 >
-                  {secondary}
+                  {middleTruncate(secondary, 44)}
                 </span>
               )}
             </div>
@@ -914,7 +1015,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                       !selectedModel?.id && unavailableModel ? '' : undefined
                     }
                   >
-                    {displayModel}
+                    <MiddleText
+                      text={displayModel}
+                      tail={modelNameTail(displayModel)}
+                    />
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>{displayModel}</TooltipContent>
@@ -956,17 +1060,23 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
 
       <PopoverContent
         className={cn(
-          // Use auto width to fit long model names; keep a sensible minimum.
+          // Width rule: the popover matches the pill it opens from. A pill
+          // narrower than 280px (a short name under the composer) gets the
+          // 280px floor so rows stay readable; never wider than the viewport.
           // Cap height so the popover never overflows the viewport even when
           // it cannot flip to the other side.
-          'w-[360px] max-w-[calc(100vw-24px)] max-h-[calc(100vh-16px)] p-1.5',
+          'w-[max(280px,var(--radix-popover-trigger-width))] max-w-[calc(100vw-24px)] max-h-[calc(100vh-16px)] p-1.5',
           searchValue.length === 0 && 'h-[26rem]'
         )}
         align="end"
         side="bottom"
         avoidCollisions
       >
-        <div className="flex flex-col size-full">
+        <div
+          ref={pickerRef}
+          className="flex flex-col size-full"
+          onKeyDown={onPickerKeyDown}
+        >
           {/* Search input */}
           <div className="flex items-center gap-2 border-b border-dashed border-border px-2 pt-1.5 pb-2">
             <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />

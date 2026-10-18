@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "Břidlicová",
+    "vermilion": "Rumělková",
+    "ink": "Inkoustová",
+    "moss": "Mechová",
+    "slate": "Břidlicově modrá",
+    "violet": "Fialová"
+  },
+  "fontSizeNames": {
+    "small": "Malé",
+    "medium": "Střední",
+    "large": "Velké",
+    "extraLarge": "Extra velké"
+  },
+  "unknownSize": "Neznámá velikost",
+  "official": "Oficiální",
+  "configuration": "Konfigurace",
+  "modelCombobox": {
+    "refresh": "Obnovit modely",
+    "placeholder": "Zadejte nebo vyberte model..."
+  },
+  "hubTasks": {
+    "moreAria": "Další způsoby procházení",
+    "more": "Více",
+    "all": "Vše",
+    "chat": "Chat",
+    "coding": "Programování",
+    "reasoning": "Uvažování",
+    "vision": "Vidění",
+    "small": "Malé a rychlé",
+    "tools": "Používání nástrojů",
+    "multilingual": "Vícejazyčné",
+    "speech": "Řeč",
+    "embeddings": "Embeddingy",
+    "summaries": "Shrnutí",
+    "translation": "Překlad"
+  },
+  "tokenSpeed": {
+    "aria": "Využití tokenů této zprávy",
+    "tooltip": "Využití tokenů",
+    "generation": "Generování",
+    "reading": "Čtení",
+    "draftAccepted": "Návrh přijat",
+    "tokens": "Tokeny",
+    "memoryInRequest": "Paměť v tomto požadavku",
+    "memoriesSent": "Odeslané vzpomínky",
+    "withheld": "Zadrženo kvůli rozporu: {{ids}}",
+    "perSec": "{{n}} tokenů/s",
+    "count": "{{n}} tokenů"
+  },
+  "serverHost": {
+    "edit": "Upravit hostitele serveru"
+  },
+  "extensions": {
+    "plugins": "Pluginy",
+    "global": "Globální",
+    "workspace": "Pracovní prostor",
+    "toggle": "Přepnout {{name}}",
+    "enable": "Povolit",
+    "disable": "Zakázat",
+    "workspaceOnly": "Pouze pracovní prostor",
+    "globalAll": "Globální (všechny pracovní prostory)",
+    "enabledToast": "{{name}} povoleno",
+    "disabledToast": "{{name}} zakázáno"
+  },
+  "scope": "Rozsah",
+  "localApi": {
+    "starting": "Spouští se server...",
+    "startingDesc": "Pokus o spuštění serveru na portu {{port}}",
+    "status": "Stav serveru",
+    "runningDesc": "Server právě běží.",
+    "stoppedDesc": "Server je zastaven.",
+    "running": "Běží",
+    "stopped": "Zastaveno"
+  },
+  "toolOutputAlt": "Výstup nástroje",
+  "memory": {
+    "exportFilter": "Export paměti Flintu",
+    "why": "Proč si to Flint pamatuje",
+    "writtenBy": "Autor",
+    "created": "Vytvořeno",
+    "updated": "Aktualizováno",
+    "fromConversation": "Z konverzace",
+    "fromMessage": "Ze zprávy",
+    "projectIdentity": "Identita projektu",
+    "replaces": "Nahrazuje",
+    "redacted": "Začerněno",
+    "expires": "Vyprší",
+    "version": "Verze",
+    "source": "Zdroj",
+    "importedFrom": "Importováno z",
+    "originally": "Původně",
+    "fromRun": "Z běhu",
+    "savedInProject": "Uloženo v projektu",
+    "contentHash": "Hash obsahu",
+    "earlierVersions": "Starší verze",
+    "usedIn": "Použito v",
+    "notRecorded": "nezaznamenáno",
+    "deletedSince": "(od té doby smazáno)",
+    "yes": "ano",
+    "no": "ne",
+    "versionUnknown": "neznámá (uloženo dříve, než se verze evidovaly)",
+    "unknown": "neznámý",
+    "importedExport": "export {{id}} ({{scope}}, {{when}})",
+    "createdWhen": "vytvořeno {{when}}",
+    "conversationId": "konverzace {{id}}",
+    "runId": "běh {{id}}",
+    "turnId": "tah {{id}}",
+    "snapshotId": "snímek {{id}}",
+    "noRequests": "zatím žádný zaznamenaný požadavek"
+  }
+}

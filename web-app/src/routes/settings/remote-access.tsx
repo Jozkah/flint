@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { route } from '@/constants/routes'
 import { SettingsPageBody, SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { RemoteAccessSettings } from '@/containers/RemoteAccessSettings'
@@ -6,7 +7,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.remote_access as any)({
-  component: RemoteAccess,
+  component: desktopOnlyRoute(RemoteAccess, 'remote:title'),
 })
 
 /** Remote access: use Flint on this computer from a paired phone. */

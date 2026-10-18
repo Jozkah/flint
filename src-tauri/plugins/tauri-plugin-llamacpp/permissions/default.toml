@@ -23,6 +23,14 @@ permissions = [
     "allow-force-stop-engine",
     "allow-engine-slots-idle",
     "allow-erase-thread-slot-state",
+    "allow-engine-addon-status",
+    "allow-engine-addon-check",
+    "allow-engine-addon-download",
+    "allow-engine-addon-cancel",
+    "allow-engine-addon-install-file",
+    "allow-engine-addon-remove",
+    "allow-engine-addon-verify",
+    "allow-engine-addon-restart-pending",
 
     # GGUF
     "allow-read-gguf-metadata",

@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Domyślny asystent",
   "defaultAssistantDesc": "Używany przy rozpoczynaniu nowego czatu",
   "allAssistants": "Wszyscy asystenci",
-  "lastUsed": "Ostatnio używany"
+  "lastUsed": "Ostatnio używany",
+  "starterDescriptions": {
+    "jan": "Flint to asystent na komputer, który przemyśla złożone zadania i wykonuje je za Ciebie przy użyciu narzędzi.",
+    "quartz": "Precyzyjny specjalista od badań i analiz: dowody, porównania, obliczenia i wnioski gotowe do decyzji.",
+    "coal": "Praktyczny inżynier oprogramowania do debugowania, implementacji, refaktoryzacji, testów i przeglądów kodu.",
+    "blaze": "Kreatywny specjalista od produktu i tekstu: odważne koncepcje, nazwy, pomysły UX, teksty i dopracowane efekty.",
+    "redstone": "Specjalista od systemów i automatyzacji: powtarzalne procesy, integracje, operacje i niezawodne wykonanie wieloetapowe.",
+    "book-and-quill": "Gawędziarz, który pisze i kontynuuje historie z żywymi scenami i spójnymi postaciami.",
+    "compass": "Tłumacz, który wiernie przekłada teksty między językami i wskazuje trudne sformułowania.",
+    "emerald": "Pomocnik od pieniędzy: budżet, pojęcia i kompromisy. Edukacyjnie, nie licencjonowane doradztwo finansowe.",
+    "book": "Korepetytor, który uczy krok po kroku i sprawdza zrozumienie krótkimi pytaniami."
+  }
 }

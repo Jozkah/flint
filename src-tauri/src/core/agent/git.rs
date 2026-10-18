@@ -19,8 +19,8 @@
 //!
 //! Snapshots are kept OUT of the user's branch, HEAD, and index: we stage into a
 //! throwaway index file (`GIT_INDEX_FILE`) and build commit objects with
-//! `commit-tree`, reachable only from a hidden `refs/jan/agent/snapshots/<id>`
-//! ref. The user's `git status`, current branch, and staged changes are never
+//! `commit-tree`, reachable only from a hidden `refs/flint/agent/snapshots/<id>`
+//! ref (older builds wrote `refs/jan/...`; dropping a thread removes both). The user's `git status`, current branch, and staged changes are never
 //! touched. Shelling out keeps us free of a libgit2 dependency.
 
 use std::path::{Path, PathBuf};
@@ -249,6 +249,11 @@ fn snapshot_index(repo: &Path, thread_id: &str) -> PathBuf {
 /// Hidden ref that keeps a thread's snapshot chain reachable across GC. One ref
 /// per thread; each snapshot parents the previous, so the whole chain is live.
 pub(crate) fn snapshot_ref(thread_id: &str) -> String {
+    format!("refs/flint/agent/snapshots/{thread_id}")
+}
+
+/// The name older builds used; dropped alongside the current one.
+fn legacy_snapshot_ref(thread_id: &str) -> String {
     format!("refs/jan/agent/snapshots/{thread_id}")
 }
 
@@ -789,12 +794,11 @@ pub(crate) fn restore_worktree(
 /// Idempotent: a ref that is already gone is success, because the caller's
 /// intent — that nothing keeps this chain alive — is already satisfied.
 pub(crate) fn drop_ref(repo: &Path, thread_id: &str) -> Result<(), String> {
-    let name = snapshot_ref(thread_id);
-    match run(repo, None, &["update-ref", "-d", &name]) {
-        Ok(_) => Ok(()),
-        // `update-ref -d` on a missing ref is not a failure worth surfacing.
-        Err(_) => Ok(()),
+    // `update-ref -d` on a missing ref is not a failure worth surfacing.
+    for name in [snapshot_ref(thread_id), legacy_snapshot_ref(thread_id)] {
+        let _ = run(repo, None, &["update-ref", "-d", &name]);
     }
+    Ok(())
 }
 
 /// Restore the working tree to snapshot `target`, discarding changes made after
@@ -1507,6 +1511,68 @@ pub fn pr_for_commit(project: &Path, sha: &str) -> Option<(u64, String)> {
         return None;
     }
     Some((first.get("number")?.as_u64()?, url.to_string()))
+}
+
+// ---- checkpoint integrity ------------------------------------------------
+//
+// A checkpoint is named by its commit's sha, which is a hash of the commit's
+// own content. These read an object back and hash what came out, so a
+// checkpoint whose object was damaged, truncated or swapped under its name is
+// found before anything is restored from it. `checkpoint::verify` uses them.
+
+/// The repository's shared git directory (where objects and refs live, and
+/// where a linked worktree shares them), absolute.
+pub(crate) fn common_git_dir(repo: &Path) -> Result<PathBuf, String> {
+    let out = run(repo, None, &["rev-parse", "--git-common-dir"])?;
+    let dir = PathBuf::from(out);
+    Ok(if dir.is_absolute() { dir } else { repo.join(dir) })
+}
+
+/// The type git reports for `id` (`commit`, `tree`, ...), or why it has none.
+pub(crate) fn object_kind(repo: &Path, id: &str) -> Result<String, String> {
+    run(repo, None, &["cat-file", "-t", id])
+}
+
+/// The tree a commit points at.
+pub(crate) fn tree_of(repo: &Path, commit: &str) -> Result<String, String> {
+    run(repo, None, &["rev-parse", "--verify", &format!("{commit}^{{tree}}")])
+}
+
+/// The id git computes for the content of `id` read back from the object
+/// database. Equal to `id` for an object that is intact.
+pub(crate) fn rehash_object(repo: &Path, kind: &str, id: &str) -> Result<String, String> {
+    let raw = git_read_raw(repo, &["cat-file", kind, id])?;
+    run_with_input(repo, &["hash-object", "-t", kind, "--stdin"], &raw)
+}
+
+fn run_with_input(repo: &Path, args: &[&str], input: &[u8]) -> Result<String, String> {
+    exec(repo, None, args, Some(input)).map(|out| out.trim().to_string())
+}
+
+/// Blobs that `tree` names and the object database does not hold. Submodule
+/// entries are commits in another repository and are not looked for.
+pub(crate) fn absent_blobs(repo: &Path, tree: &str) -> Result<Vec<String>, String> {
+    let listing = run_untrimmed(repo, None, &["ls-tree", "-r", "-z", tree])?;
+    let mut ids = String::new();
+    for entry in listing.split('\0').filter(|e| !e.is_empty()) {
+        // "<mode> <type> <sha>\t<path>"
+        let Some((meta, _path)) = entry.split_once('\t') else { continue };
+        let mut parts = meta.split(' ');
+        let (_mode, kind, id) = (parts.next(), parts.next(), parts.next());
+        if let (Some("blob"), Some(id)) = (kind, id) {
+            ids.push_str(id);
+            ids.push('\n');
+        }
+    }
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let checked = exec(repo, None, &["cat-file", "--batch-check"], Some(ids.as_bytes()))?;
+    Ok(checked
+        .lines()
+        .filter_map(|l| l.strip_suffix(" missing"))
+        .map(str::to_string)
+        .collect())
 }
 
 /// Pure-parser tests for the review-panel plumbing. These need neither git nor

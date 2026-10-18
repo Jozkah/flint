@@ -51,6 +51,15 @@ if has_token hip || has_token rocm; then
   echo "engine toolchain: hipcc and rocwmma found"
 fi
 
+if has_token sycl; then
+  command -v icpx >/dev/null 2>&1 && command -v icx >/dev/null 2>&1 || {
+    echo "error: JAN_ENGINE_VARIANT=$VARIANT needs the Intel oneAPI DPC++ compilers (icx, icpx) on PATH" >&2
+    echo "       (source /opt/intel/oneapi/setvars.sh first)" >&2
+    exit 1
+  }
+  echo "engine toolchain: icx and icpx found (SYCL is build plumbing only, unverified on Intel hardware)"
+fi
+
 command -v cmake >/dev/null 2>&1 || {
   echo "error: building the engine needs cmake on PATH" >&2
   exit 1

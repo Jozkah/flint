@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { loadRunEndings, useCoworkRun } from '@/hooks/useCoworkRun'
+
+describe('a run ending kept across a reload', () => {
+  it('saves a failed run so its notice is still there after a reload', () => {
+    useCoworkRun.setState({ runs: {}, outcomes: {} })
+    const store = useCoworkRun.getState()
+    store.startRun('a', 'run-a')
+    store.finishRun('a', 'run-a', { stoppedBy: 'error', errorText: 'Incorrect API key' })
+    expect(loadRunEndings().a).toEqual({ stoppedBy: 'error', errorText: 'Incorrect API key' })
+    // A new run clears it.
+    useCoworkRun.getState().startRun('a', 'run-b')
+    expect(loadRunEndings().a).toBeUndefined()
+  })
+})
 
 /**
  * janhq/jan#8905. Every piece of a Cowork run's state belongs to the session

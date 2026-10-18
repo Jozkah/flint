@@ -9,7 +9,9 @@
       "title": "Flint dokončuje úkoly ve vašem prohlížeči",
       "description": "Nainstalujte rozšíření pro přístup Jana k prohlížeči",
       "getExtension": "Získat rozšíření"
-    }
+    },
+    "requires": "Vyžaduje rozšíření prohlížeče nainstalované ve vašem prohlížeči založeném na Chromu.",
+    "install": "Nainstalovat rozšíření →"
   },
   "serverName": "Název serveru",
   "enterServerName": "Zadejte název serveru",
@@ -174,7 +176,9 @@
     "selectRouterModelPlaceholder": "Vyberte model pro směrování…",
     "routerModelSearchPlaceholder": "Hledat modely…",
     "routerModelEmptyList": "Nejsou dostupné žádné lehké modely. Přidejte menší model nebo nastavte klíče API v části Modely.",
-    "routerModelEmptySearch": "Žádné shody pro „{{query}}“."
+    "routerModelEmptySearch": "Žádné shody pro „{{query}}“.",
+    "idleShutdown": "Zastavit nečinné servery po (minutách)",
+    "idleShutdownDesc": "Server MCP bez volání nástrojů po tuto dobu se zastaví, aby uvolnil paměť, a při příští potřebě se znovu spustí. Servery nastavené ke spuštění s Flintem zůstávají běžet. Hodnota 0 je nikdy nezastaví."
   },
   "auth": {
     "label": "Ověření:",
@@ -265,7 +269,8 @@
   "lifecycle": {
     "startWithFlint": "Spouštět s Flintem",
     "start": "Spustit",
-    "stop": "Zastavit"
+    "stop": "Zastavit",
+    "toolTimeout": "Časový limit nástroje (s)"
   },
   "cwd": "Pracovní adresář",
   "cwdPlaceholder": "Volitelné, např. C:\\tools\\my-server",

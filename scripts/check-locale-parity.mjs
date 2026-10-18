@@ -45,6 +45,27 @@ const BASE = 'en'
 const PLURAL = /_(zero|one|two|few|many|other)$/
 const PLACEHOLDER = /\{\{\s*([\w.]+)\s*(?:,[^}]*)?\}\}/g
 const SHOWN = 12
+/** Locales whose plural forms are checked category by category (one/few/many/other). */
+export const PLURAL_CHECKED = ['ru', 'pl', 'cs']
+
+/**
+ * Plural keys of `english` (a flat map) that lack a form `locale` needs, as
+ * `key (missing: few, many)`. A bare key stands in for `_one` and `_other`,
+ * the way i18next falls back to it.
+ */
+export function missingPluralForms(locale, english, theirs) {
+  const categories = new Intl.PluralRules(locale).resolvedOptions().pluralCategories
+  const bases = new Set([...english.keys()].filter((k) => PLURAL.test(k)).map((k) => k.replace(PLURAL, '')))
+  const out = []
+  for (const base of bases) {
+    if (![...theirs.keys()].some((k) => k === base || k.replace(PLURAL, '') === base)) continue
+    const missing = categories.filter(
+      (c) => !theirs.has(`${base}_${c}`) && !((c === 'one' || c === 'other') && theirs.has(base))
+    )
+    if (missing.length) out.push(`${base} (missing: ${missing.join(', ')})`)
+  }
+  return out
+}
 
 /** `a.b.c` -> string, for every string leaf of a parsed JSON file. */
 export function flatten(value, prefix = '', out = new Map()) {
@@ -148,7 +169,14 @@ export function checkLocales(root = DEFAULT_ROOT, options = {}) {
         continue
       }
       const english = base.get(ns)
-      const theirs = byBaseKey(flatten(parsed.data))
+      const theirFlat = flatten(parsed.data)
+      const theirs = byBaseKey(theirFlat)
+
+      if (PLURAL_CHECKED.includes(locale)) {
+        const englishFlat = flatten(readJson(join(baseDir, `${ns}.json`)).data ?? {})
+        const forms = missingPluralForms(locale, englishFlat, theirFlat)
+        if (forms.length) errors.push(`${file}: ${forms.length} plural key(s) missing a form: ${list(forms)}`)
+      }
 
       const missing = [...english.keys()].filter((k) => !theirs.has(k))
       if (missing.length) (lenient ? warnings : errors).push(`${file}: ${missing.length} missing key(s): ${list(missing)}`)

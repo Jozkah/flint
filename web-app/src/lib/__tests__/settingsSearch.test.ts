@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// The desktop registry; the browser variant is settingsSearch.browser.test.ts.
+vi.mock('@/lib/platform/utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/platform/utils')>()),
+  isPlatformTauri: () => true,
+}))
 import {
   SETTINGS_PAGES,
   SETTINGS_ITEMS,
   buildSettingsIndex,
+  providerSettingAnchor,
   searchSettings,
   WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
   type ProviderForIndex,
@@ -143,6 +150,9 @@ describe('buildSettingsIndex', () => {
     expect(setting.title).toBe('API Key')
     expect(setting.route).toBe(route.settings.providers)
     expect(setting.params).toEqual({ providerName: 'openai' })
+    // Opening it scrolls to and highlights the row on the provider page.
+    expect(setting.anchor).toBe(providerSettingAnchor('openai', 'api-key'))
+    expect(setting.anchor).toBe('provider-setting-openai-api-key')
   })
 
   it('finds a provider by name once it is indexed', () => {
@@ -419,7 +429,10 @@ describe('structural coverage of the settings surface', () => {
       )!
       const file = ROUTE_FILES[pageId]
       if (!file) continue
-      const source = sourceFor(file)
+      // Cards a page mounts from `containers/` carry their own anchors.
+      const source = [file, ...(CARD_FILES[pageId] ?? [])]
+        .map(sourceFor)
+        .join('\n')
       // Written literally in either quoting style — a page that renders its
       // rows from a schema maps the anchors in a plain object — or referenced
       // through the exported constant that keeps the two ends in step.
@@ -435,6 +448,16 @@ describe('structural coverage of the settings surface', () => {
     }
   })
 })
+
+/** Cards a page mounts from their own files, whose anchors live there. */
+const CARD_FILES: Record<string, string[]> = {
+  general: ['containers/StartupItems.tsx'],
+  permissions: [
+    'containers/TrustedFoldersCard.tsx',
+    'containers/ApprovalRulesCard.tsx',
+  ],
+  'agent-tools': ['containers/CompactionPolicySettings.tsx'],
+}
 
 /** Where each page's source lives, relative to `web-app/src`. */
 const ROUTE_FILES: Record<string, string> = {
@@ -452,3 +475,41 @@ const ROUTE_FILES: Record<string, string> = {
   'mcp-servers': 'routes/settings/mcp-servers.tsx',
   'claude-code': 'routes/settings/claude-code.tsx',
 }
+
+describe('cards added by the merged features are searchable', () => {
+  const byId = (id: string) => SETTINGS_ITEMS.find((i) => i.id === id)
+
+  it.each([
+    ['settings-permissions-trusted-folders', 'permissions'],
+    ['settings-permissions-approval-rules', 'permissions'],
+    ['settings-permissions-deferred-approvals', 'permissions'],
+    ['settings-agent-tools-compaction', 'agent-tools'],
+    ['settings-mcp-servers-idle-shutdown', 'mcp-servers'],
+    ['settings-appearance-sidebar-items', 'appearance'],
+    ['settings-general-spell-check', 'general'],
+  ])('%s is indexed on its own page', (id, pageId) => {
+    const entry = byId(id)
+    expect(entry, id).toBeDefined()
+    expect(entry!.anchor).toBe(id)
+    expect(entry!.route).toBe(SETTINGS_PAGES.find((p) => p.id === pageId)!.route)
+  })
+
+  it('finds the per-server tool timeout, on the MCP page without an anchor', () => {
+    const entry = byId('settings-mcp-servers-server-tool-timeout')
+    expect(entry?.anchor).toBeUndefined()
+    expect(entry?.anchorNote).toBeTruthy()
+    expect(entry?.route).toBe(route.settings.mcp_servers)
+  })
+})
+
+describe('live-test search misses', () => {
+  const ids = SETTINGS_ITEMS.map((i) => i.id)
+  it.each([
+    'settings-general-start-with-computer',
+    'settings-local-api-server-default-model',
+    'settings-memory-use-saved',
+    'settings-permissions-auto-approve-limit',
+  ])('indexes %s', (id) => {
+    expect(ids).toContain(id)
+  })
+})

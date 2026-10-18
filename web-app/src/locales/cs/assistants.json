@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Výchozí asistent",
   "defaultAssistantDesc": "Použije se při zahájení nového chatu",
   "allAssistants": "Všichni asistenti",
-  "lastUsed": "Naposledy použito"
+  "lastUsed": "Naposledy použito",
+  "starterDescriptions": {
+    "jan": "Flint je asistent pro počítač, který promyslí složité úkoly a pomocí nástrojů je za vás dokončí.",
+    "quartz": "Precizní specialista na výzkum a analýzu: důkazy, srovnání, výpočty a závěry připravené k rozhodnutí.",
+    "coal": "Praktický softwarový inženýr pro ladění, implementaci, refaktoring, testy a revize kódu.",
+    "blaze": "Kreativní specialista na produkt a psaní: odvážné koncepty, názvy, nápady na UX, texty a vyladěné výstupy.",
+    "redstone": "Specialista na systémy a automatizaci: opakovatelné postupy, integrace, provoz a spolehlivé vícekrokové provedení.",
+    "book-and-quill": "Vypravěč, který píše a pokračuje v příbězích s živými scénami a konzistentními postavami.",
+    "compass": "Překladatel, který věrně převádí texty mezi jazyky a upozorní na záludné formulace.",
+    "emerald": "Pomocník s penězi: rozpočet, pojmy a kompromisy. Vzdělávací, nejde o licencované finanční poradenství.",
+    "book": "Doučovatel, který vysvětluje krok za krokem a ověřuje porozumění krátkými otázkami."
+  }
 }

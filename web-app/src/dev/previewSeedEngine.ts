@@ -40,6 +40,12 @@ const CTX: Record<string, number> = {
 }
 
 const SIZES: Record<string, number> = {
+  'Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-IQ4_XS': 15 * 1024 ** 3,
+  'Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-Q4_K_M': 17 * 1024 ** 3,
+  'Qwen3.8-27B-TTURBO-Fable-C-Fusion-709-IQ4_NL': 16 * 1024 ** 3,
+  'LFM2.5-2.6B-Q3.8-TBrilliance-NEO-MAX-Q3_K_M': 3 * 1024 ** 3,
+  'LFM2.5-2.6B-Q3.8-TBrilliance-BF16': 5 * 1024 ** 3,
+  'Cydonia-24B-v4.3-absolute-heresy.i1-Q4_1': 14 * 1024 ** 3,
   'qwen3-8b-instruct': 8.4 * GB,
   'gemma-3-12b-it-Q5_K_M': 8.9 * GB,
   'llama-3.1-8b': 7.9 * GB,
@@ -386,6 +392,12 @@ const MARKET = [
 ]
 const PROJECTS = [{ id: 'weather', folder: 'C:\\Projects\\acme-weather', name: 'acme-weather' }]
 
+/** Folders the preview's trust banner has been answered for. */
+const previewTrusted = new Set<string>([
+  'C:/Users/you/code/flint-app',
+  'C:/Users/you/work/client-site',
+])
+
 function previewInvoke(
   command: string,
   args?: Record<string, unknown>
@@ -423,6 +435,73 @@ function previewInvoke(
           ref: null,
         }))
       )
+    case 'agent_approval_rules_list': {
+      const sec = Math.floor(Date.now() / 1000)
+      return ok([
+        {
+          id: 'rule-1',
+          project: 'C:\\Users\\dev\\projects\\acme-weather\\services\\forecast-cache',
+          tool: 'bash',
+          kind: 'command',
+          scope: { type: 'command_prefix', prefix: 'git commit' },
+          createdAt: sec - 3600,
+        },
+        {
+          id: 'rule-2',
+          project: 'acme-weather',
+          tool: 'write',
+          kind: 'file',
+          scope: { type: 'folder', dir: 'C:\\Projects\\acme-weather\\docs' },
+          createdAt: sec - 86_400,
+        },
+      ])
+    }
+    case 'agent_deferred_list': {
+      const sec = Math.floor(Date.now() / 1000)
+      return ok([
+        {
+          id: 'def-1',
+          project: 'acme-weather',
+          session: 'nightly-release',
+          tool: 'bash',
+          kind: 'command',
+          summary: 'gh pr create --title "fix(forecast): key the cache by UTC date" --base main',
+          argsDigest: 'd1',
+          status: 'pending',
+          createdAt: sec - 3600,
+          expiresAt: sec + 5 * 86_400,
+          answeredAt: null,
+        },
+        {
+          id: 'def-2',
+          project: 'acme-weather',
+          session: '',
+          tool: 'write',
+          kind: 'file',
+          summary: 'write C:\\Projects\\acme-weather\\CHANGELOG.md',
+          argsDigest: 'd2',
+          status: 'expired',
+          createdAt: sec - 9 * 86_400,
+          expiresAt: sec - 2 * 86_400,
+          answeredAt: null,
+        },
+      ])
+    }
+    case 'folder_trust_list':
+      return ok([...previewTrusted])
+    case 'folder_trust_status':
+    case 'folder_trust_grant':
+    case 'folder_trust_revoke': {
+      // A folder that carries its own hooks, trusted for good once granted.
+      const folder = String(args?.folder ?? '')
+      if (command === 'folder_trust_grant') previewTrusted.add(folder)
+      if (command === 'folder_trust_revoke') previewTrusted.delete(folder)
+      return ok({
+        folder,
+        trusted: previewTrusted.has(folder),
+        carries: { hooks: true, subagents: false },
+      })
+    }
     case 'agent_skill_list':
       return ok(
         args?.store
@@ -553,6 +632,10 @@ const ENGINE_EXTENSIONS = [
 ]
 
 function seedExtensions() {
+  // The manager lives on window.core, which ExtensionProvider sets up when the
+  // app mounts. Before that there is nothing to seed (the later seedPreview
+  // passes do it); asking for it now threw an unhandled rejection.
+  if (!(window as unknown as { core?: object }).core) return
   void import('@/lib/extension').then(({ ExtensionManager }) => {
     const map = (
       ExtensionManager.getInstance() as unknown as {

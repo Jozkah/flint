@@ -248,6 +248,16 @@ pub async fn activate_mcp_server<R: Runtime>(
     // (an @mention, an import), as before.
     start: Option<bool>,
 ) -> Result<(), String> {
+    // The webview holds the masked view of the config (`get_mcp_configs`):
+    // put the stored secrets back before the config is stored or launched.
+    let mut config = config;
+    let mut path = get_jan_data_folder_path(app.clone());
+    path.push("mcp_config.json");
+    super::redact::restore_server_config(
+        &name,
+        &mut config,
+        &read_disk_servers(&path).unwrap_or_default(),
+    )?;
     let servers: SharedMcpServers = state.mcp_servers.clone();
     let running = servers.lock().await.contains_key(&name);
     let registered = state.mcp_active_servers.lock().await.get(&name).cloned();
@@ -911,6 +921,9 @@ pub async fn call_tool<R: Runtime>(
 
     // Iterate through servers and find the one that contains the tool
     for (srv_name, service) in servers_to_check.iter() {
+        // Idle shutdown never stops a server while this call is in flight,
+        // including while its tools are being listed.
+        let _in_flight = state.mcp_lazy.begin_call(srv_name);
         let tools = match timeout(list_timeout, service.list_all_tools()).await {
             Ok(Ok(tools)) => tools,
             Err(_) => {
@@ -936,8 +949,6 @@ pub async fn call_tool<R: Runtime>(
         }
 
         log::info!("Found tool {tool_name} in server {srv_name}");
-        // Idle shutdown never stops a server while this call is in flight.
-        let _in_flight = state.mcp_lazy.begin_call(srv_name);
 
         // AH-041. Checked here, against the server the tool was actually found
         // on -- not against `server_name`, which the request may not have set
@@ -986,32 +997,47 @@ pub async fn call_tool<R: Runtime>(
         if let Some(args) = arguments.clone() {
             params = params.with_arguments(args);
         }
-        let tool_call = service.call_tool(params);
+        // The timeout rides on the request, so a stuck call is cancelled on the
+        // server too, and a server that keeps timing out is stopped below.
+        let call_timeout = super::stall::server_timeout(active_configs.get(srv_name), timeout_duration);
+        // A user cancel reaches the server as notifications/cancelled, like a timeout.
+        let has_token = cancellation_token.is_some();
+        let cancel_signal = async move {
+            if has_token {
+                let _ = cancel_rx.await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        };
+        let tool_call =
+            super::stall::call_tool_until(service, params, call_timeout, cancel_signal);
+        let timed_out_message = format!(
+            "Tool call '{tool_name}' timed out after {} seconds",
+            call_timeout.as_secs()
+        );
+        let to_message = |failure: super::stall::CallFailure| match failure {
+            super::stall::CallFailure::TimedOut => timed_out_message.clone(),
+            super::stall::CallFailure::Cancelled => format!("Tool call '{tool_name}' was cancelled"),
+            super::stall::CallFailure::Other(e) => e,
+        };
 
-        // Race between timeout, tool call, and cancellation
-        let result = if cancellation_token.is_some() {
-            tokio::select! {
-                result = timeout(timeout_duration, tool_call) => {
-                    match result {
-                        Ok(call_result) => call_result.map_err(|e| e.to_string()),
-                        Err(_) => Err(format!(
-                            "Tool call '{tool_name}' timed out after {} seconds",
-                            timeout_duration.as_secs()
-                        )),
-                    }
-                }
-                _ = cancel_rx => {
-                    Err(format!("Tool call '{tool_name}' was cancelled"))
-                }
-            }
+        let outcome = tool_call.await;
+        let stop_stalled = super::stall::note_outcome(srv_name, &outcome);
+        let result = outcome.map_err(to_message);
+        let result = if stop_stalled {
+            log::warn!(
+                "MCP server {srv_name} timed out {} calls in a row; stopping it (restarts on next use)",
+                super::stall::STALL_STOP_THRESHOLD
+            );
+            let _ =
+                super::helpers::stop_running_mcp_server(&app, srv_name, active_configs.get(srv_name))
+                    .await;
+            super::helpers::emit_mcp_update_event(&app, srv_name);
+            result.map_err(|e| {
+                format!("{e}. The server was stopped after repeated timeouts and starts again on its next use.")
+            })
         } else {
-            match timeout(timeout_duration, tool_call).await {
-                Ok(call_result) => call_result.map_err(|e| e.to_string()),
-                Err(_) => Err(format!(
-                    "Tool call '{tool_name}' timed out after {} seconds",
-                    timeout_duration.as_secs()
-                )),
-            }
+            result
         };
 
         // Signal reconnect if the tool call itself hit a transport error
@@ -1264,10 +1290,12 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
         *settings_guard = settings.clone();
     }
 
-    // #118: remember the server list the desktop now believes is on disk.
-    remember_desktop_view(&path, config_value.get("mcpServers"));
+    // The renderer only sees masked secrets; the disk copy stays real. #118:
+    // remember the (masked) server list the desktop now believes is on disk.
+    let for_renderer = super::redact::redact_mcp_config(&config_value);
+    remember_desktop_view(&path, for_renderer.get("mcpServers"));
 
-    serde_json::to_string_pretty(&config_value)
+    serde_json::to_string_pretty(&for_renderer)
         .map_err(|e| format!("Failed to serialize MCP config: {e}"))
 }
 
@@ -1298,7 +1326,7 @@ fn remember_desktop_view(path: &Path, servers: Option<&Value>) {
 /// disk version, including being absent because another writer removed it;
 /// a server the desktop added, edited or removed takes the desktop's version;
 /// a server only on disk (added elsewhere) is kept.
-fn merge_mcp_servers(
+pub(super) fn merge_mcp_servers(
     base: &Map<String, Value>,
     ours: &Map<String, Value>,
     disk: &Map<String, Value>,
@@ -1508,8 +1536,27 @@ pub async fn save_mcp_configs<R: Runtime>(
         let merged = merge_mcp_servers(&base, &ours, &disk);
         config_object.insert("mcpServers".to_string(), Value::Object(merged));
     }
+    // A value that came back as the mask is not a new secret: put the stored
+    // one back so a save never overwrites a real secret with the mask.
+    if let Some(disk) = read_disk_servers(&path) {
+        super::redact::restore_masked_secrets(&mut config_value, &disk);
+    }
+    // Never store the placeholder as a secret (a renamed key, or a server
+    // with nothing stored to restore from): drop it so the user re-enters it.
+    // That includes a secret whose server now points at another endpoint
+    // (type/url/command/args changed): it is never carried along.
+    let dropped = super::redact::strip_unrestored_masks(&mut config_value);
+    for entry in &dropped {
+        log::warn!("save mcp configs: dropped hidden value with no stored secret: {entry}");
+    }
+    if !dropped.is_empty() {
+        let _ = app.emit("mcp-secrets-need-reentry", json!({ "entries": dropped }));
+    }
     // The desktop's belief is its own payload; the next save diffs against it.
-    remember_desktop_view(&path, Some(&Value::Object(ours)));
+    remember_desktop_view(
+        &path,
+        Some(&Value::Object(super::redact::redact_mcp_servers(&ours))),
+    );
 
     let serialized = serde_json::to_string_pretty(&config_value)
         .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
@@ -1522,6 +1569,102 @@ pub async fn save_mcp_configs<R: Runtime>(
     }
 
     Ok(())
+}
+
+/// Rename `old` to `new` in a server list, keeping its stored config (real
+/// secrets included) and its place. Refuses a missing `old` or a taken `new`.
+pub(super) fn rename_in_servers(servers: &Map<String, Value>, old: &str, new: &str) -> Result<Map<String, Value>, String> {
+    let new = new.trim();
+    if new.is_empty() {
+        return Err("the new server name is empty".to_string());
+    }
+    if !servers.contains_key(old) {
+        return Err(format!("no MCP server named \"{old}\""));
+    }
+    if old != new && servers.contains_key(new) {
+        return Err(format!("an MCP server named \"{new}\" already exists"));
+    }
+    Ok(servers
+        .iter()
+        .map(|(name, value)| (if name == old { new.to_string() } else { name.clone() }, value.clone()))
+        .collect())
+}
+
+/// Rename a server on disk in one step (BUG-081): the stored config moves to
+/// the new name with its secrets, and the old entry is gone. The desktop's
+/// merge base moves with it, so the next save is not read as "the old server
+/// was changed elsewhere" (which kept it as a duplicate).
+#[tauri::command]
+pub async fn rename_mcp_server<R: Runtime>(
+    app: AppHandle<R>,
+    old_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    let mut path = get_jan_data_folder_path(app.clone());
+    path.push("mcp_config.json");
+    let text = fs::read_to_string(&path).map_err(|e| format!("could not read the MCP config: {e}"))?;
+    let mut config: Value = serde_json::from_str(&text).map_err(|e| format!("the MCP config is not valid JSON: {e}"))?;
+    let servers = config
+        .get("mcpServers")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let renamed = rename_in_servers(&servers, &old_name, &new_name)?;
+    config["mcpServers"] = Value::Object(renamed);
+    let serialized =
+        serde_json::to_string_pretty(&config).map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
+    write_file_atomically(&path, serialized.as_bytes())?;
+    if let Ok(mut views) = desktop_views().lock() {
+        if let Some(view) = views.get(&path).cloned() {
+            if let Ok(moved) = rename_in_servers(&view, &old_name, &new_name) {
+                views.insert(path.clone(), moved);
+            }
+        }
+    }
+    log::info!("renamed MCP server {old_name:?} to {new_name:?}");
+    Ok(())
+}
+
+#[cfg(test)]
+mod rename_tests {
+    use super::{merge_mcp_servers, rename_in_servers};
+    use crate::core::mcp::redact::{redact_mcp_servers, restore_masked_secrets, restore_server_config};
+    use serde_json::{json, Map, Value};
+
+    fn map(v: Value) -> Map<String, Value> {
+        v.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn a_rename_keeps_the_secret_and_leaves_no_duplicate() {
+        let disk = map(json!({"dtest": {"command": "node", "env": {"D_SECRET": "real"}}, "other": {"command": "x"}}));
+        let base = redact_mcp_servers(&disk);
+        // The rename lands on disk and in the merge base in one step.
+        let disk = rename_in_servers(&disk, "dtest", "dtest2").unwrap();
+        let base = rename_in_servers(&base, "dtest", "dtest2").unwrap();
+        assert!(!disk.contains_key("dtest"));
+        assert_eq!(disk["dtest2"]["env"]["D_SECRET"], "real");
+        // The renderer then saves its list, with the secret still masked.
+        let ours = base.clone();
+        let merged = merge_mcp_servers(&base, &ours, &disk);
+        let mut payload = json!({"mcpServers": merged});
+        restore_masked_secrets(&mut payload, &disk);
+        let saved = payload["mcpServers"].as_object().unwrap();
+        assert_eq!(saved.len(), 2, "no duplicate: {saved:?}");
+        assert_eq!(saved["dtest2"]["env"]["D_SECRET"], "real");
+        // And starting it under the new name finds the stored secret.
+        let mut launch = base["dtest2"].clone();
+        restore_server_config("dtest2", &mut launch, &disk).unwrap();
+        assert_eq!(launch["env"]["D_SECRET"], "real");
+    }
+
+    #[test]
+    fn a_rename_onto_a_taken_or_missing_name_is_refused() {
+        let disk = map(json!({"a": {}, "b": {}}));
+        assert!(rename_in_servers(&disk, "a", "b").is_err());
+        assert!(rename_in_servers(&disk, "zz", "c").is_err());
+        assert!(rename_in_servers(&disk, "a", "  ").is_err());
+    }
 }
 
 #[cfg(test)]

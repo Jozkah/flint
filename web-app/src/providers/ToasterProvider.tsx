@@ -2,18 +2,33 @@ import { Toaster } from '@/components/ui/sonner'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useEffect, useState } from 'react'
+import { useLocation } from '@tanstack/react-router'
 import { useWebPreview } from '@/hooks/useWebPreview'
-import { getToastOffsetAvoidingPane } from '@/utils/toastPlacement'
+import { useDialogOpen } from '@/hooks/useDialogOpen'
+import {
+  NARROW_TOAST_PX,
+  composerClearanceFor,
+  getDialogToastPlacement,
+  getNarrowToastPlacement,
+  getToastOffsetAvoidingPane,
+} from '@/utils/toastPlacement'
+import { notifyToasterMounted } from '@/lib/settingsRecoveryNotice'
+import { installToastDedupe } from '@/lib/toastDedupe'
 
-/** Below the 52px top header on phones, so a toast never sits over the composer. */
-const PHONE_OFFSET = { top: '60px' }
+installToastDedupe()
 
 export function ToasterProvider() {
   const notificationPosition = useInterfaceSettings(
     (s) => s.notificationPosition
   )
-  const isPhone = useMediaQuery('(max-width: 767px)')
+  const isPhone = useMediaQuery(`(max-width: ${NARROW_TOAST_PX}px)`)
 
+  // A toast raised before this mounted is shown again now.
+  useEffect(() => {
+    notifyToasterMounted()
+  }, [])
+
+  const pathname = useLocation({ select: (l) => l.pathname })
   const open = useWebPreview((s) => s.open)
   const surface = useWebPreview((s) => s.surface)
   const paneRect = useWebPreview((s) => s.paneRect)
@@ -32,8 +47,19 @@ export function ToasterProvider() {
   const offset = getToastOffsetAvoidingPane(
     notificationPosition,
     open && paneRect ? { surface, rect: paneRect } : null,
-    viewport
+    viewport,
+    composerClearanceFor(pathname)
   )
+
+  // A modal's header and close button sit where a top toast lands.
+  const dialogOpen = useDialogOpen()
+  const dialogPlacement = dialogOpen
+    ? getDialogToastPlacement(viewport.width)
+    : null
+  // Phones: full width, bottom-center, above the composer. Never at the top,
+  // where the header's controls are.
+  const phonePlacement = isPhone ? getNarrowToastPlacement() : null
+  const placement = dialogPlacement ?? phonePlacement
 
   return (
     <Toaster
@@ -41,10 +67,19 @@ export function ToasterProvider() {
       // of them name an endpoint, a status and what to do about it, and until
       // now the only way to clear one was to wait for it to time out.
       closeButton
-      position={isPhone ? 'top-center' : notificationPosition}
-      offset={isPhone ? PHONE_OFFSET : offset}
-      mobileOffset={PHONE_OFFSET}
-      visibleToasts={5}
+      position={placement?.position ?? notificationPosition}
+      offset={placement?.offset ?? offset}
+      mobileOffset={
+        placement?.mobileOffset ?? getNarrowToastPlacement().mobileOffset
+      }
+      // Three at most; older ones wait until one is dismissed. Sonner pauses
+      // the auto-dismiss timer while the pointer is over the stack.
+      visibleToasts={3}
+      duration={5000}
+      // Stacked toasts sit one under another with a gap; sonner's collapsed
+      // pile lays them over each other until hovered.
+      expand
+      gap={8}
       toastOptions={{
         style: {
           padding: '0.75rem',

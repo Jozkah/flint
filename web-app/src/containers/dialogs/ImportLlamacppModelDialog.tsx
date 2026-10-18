@@ -1,3 +1,4 @@
+import { MiddleText } from '@/components/ui/middle-text'
 import {
   Dialog,
   DialogContent,
@@ -8,9 +9,10 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { findSiblingMmproj } from '@/lib/siblingMmproj'
+import { findSiblingMmproj, firstGgufShard } from '@/lib/siblingMmproj'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { normalizeAppError } from '@/utils/appError'
 import {
@@ -27,10 +29,12 @@ import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   groupBySource,
+  modelsOutsideFolder,
   scanLocalModels,
   type ScannedModel,
 } from '@/lib/localModelScan'
 import { formatBytes } from '@/lib/utils'
+import { useModelLibrary } from '@/hooks/useModelLibrary'
 
 type DetectedModalities = { vision: boolean; audio: boolean }
 
@@ -62,7 +66,7 @@ const MODEL_ID_RE = /^[a-zA-Z0-9/_.-]+$/
  * `-` and any other character outside `[a-zA-Z0-9/_.-]` is dropped.
  */
 function toModelId(name: string): string {
-  return name.replace(/\s/g, '-').replace(/[^a-zA-Z0-9/_.-]/g, '')
+  return name.replace(/[\s:]/g, '-').replace(/[^a-zA-Z0-9/_.-]/g, '')
 }
 
 type TokenizerInfo = {
@@ -177,6 +181,9 @@ export const ImportLlamacppModelDialog = ({
   const [modelFile, setModelFile] = useState<string | null>(null)
   const [mmProjFile, setMmProjFile] = useState<string | null>(null)
   const [modelName, setModelName] = useState('')
+  // The name the file was chosen under (a scan entry such as `qwen3:8b`). An
+  // Ollama blob is called `sha256-<hex>` on disk, which says nothing to a user.
+  const chosenNameRef = useRef('')
   const [validationError, setValidationError] = useState<string | null>(null)
   const [isValidating, setIsValidating] = useState(false)
   const [mmprojValidationError, setMmprojValidationError] = useState<
@@ -222,7 +229,14 @@ export const ImportLlamacppModelDialog = ({
 
               // Sanitize the file name: a raw name with spaces or other
               // characters would pass here and then fail the backend's id check.
-              setModelName(toModelId(await serviceHub.path().basename(filePath)))
+              setModelName(
+                chosenNameRef.current ||
+                  // Without the extension: the id a folder scan gives the
+                  // same file, so one model is not two ids (T7-119).
+                  toModelId(
+                    (await serviceHub.path().basename(filePath)).replace(/\.gguf$/i, '')
+                  )
+              )
               setModelTokenizerInfo(
                 extractTokenizerInfo(result.metadata.metadata)
               )
@@ -372,9 +386,18 @@ export const ImportLlamacppModelDialog = ({
 
   // Use a model file chosen by path, whether picked in a dialog or found by the
   // scan. The temporary name is replaced by the one in the file's metadata.
-  const chooseModelFile = async (path: string, displayName: string) => {
+  const chooseModelFile = async (
+    picked: string,
+    pickedName: string,
+    keepName = false
+  ) => {
+    // Shard 2 of a split model stands for the whole model: use shard 1.
+    const path = firstGgufShard(picked)
+    const displayName =
+      path === picked ? pickedName : (path.split('/').pop() ?? pickedName).replace(/\.gguf$/i, '')
     setModelFile(path)
     setModelName(toModelId(displayName))
+    chosenNameRef.current = keepName ? toModelId(displayName) : ''
     await validateModelFile(path)
     // A projector next to the model is the one it was published with.
     if (!mmProjFile) {
@@ -395,12 +418,28 @@ export const ImportLlamacppModelDialog = ({
     | { status: 'failed'; message: string }
   >({ status: 'idle' })
 
-  const runScan = async () => {
+  const { t } = useTranslation()
+  const modelFolders = useModelLibrary((s) => s.folders)
+  const addModelFolder = useModelLibrary((s) => s.addFolder)
+  const removeModelFolder = useModelLibrary((s) => s.removeFolder)
+
+  const runScan = async (folders: string[] = modelFolders) => {
     setScanState({ status: 'scanning' })
     try {
-      setScanState({ status: 'done', models: await scanLocalModels() })
+      setScanState({ status: 'done', models: await scanLocalModels(folders) })
     } catch (error) {
       setScanState({ status: 'failed', message: normalizeAppError(error) })
+    }
+  }
+
+  const handleAddFolder = async () => {
+    const picked = await serviceHub.dialog().open({
+      multiple: false,
+      directory: true,
+    })
+    if (picked && typeof picked === 'string') {
+      addModelFolder(picked)
+      await runScan([...new Set([...modelFolders, picked])])
     }
   }
 
@@ -429,33 +468,33 @@ export const ImportLlamacppModelDialog = ({
 
   const handleImport = async () => {
     if (!modelFile) {
-      toast.error('Please select a model file')
+      toast.error(t('sweep:llamaImport.selectFile'))
       return
     }
 
     if (isMultimodal && !mmProjFile) {
-      toast.error('Please select both model and MMPROJ files for multimodal models')
+      toast.error(t('sweep:llamaImport.selectBoth'))
       return
     }
 
     if (isDraftModel && !draftFile) {
-      toast.error('Please select a draft model file')
+      toast.error(t('sweep:llamaImport.selectDraft'))
       return
     }
 
     if (!modelName) {
-      toast.error('Unable to determine model name from file')
+      toast.error(t('sweep:llamaImport.nameUnknown'))
       return
     }
 
     // Check if model already exists
     const modelExists = provider.models.some(
-      (model) => model.name === modelName
+      (model) => model.id === modelName || model.name === modelName
     )
 
     if (modelExists) {
-      toast.error('Model already exists', {
-        description: `${modelName} already imported`,
+      toast.error(t('sweep:modelImport.exists'), {
+        description: t('sweep:modelImport.alreadyImported', { name: modelName }),
       })
       return
     }
@@ -475,8 +514,8 @@ export const ImportLlamacppModelDialog = ({
         isDraftModel && draftFile ? draftFile : undefined
       )
 
-      toast.success('Model imported successfully', {
-        description: `${modelName} has been imported`,
+      toast.success(t('sweep:modelImport.success'), {
+        description: t('sweep:modelImport.hasBeenImported', { name: modelName }),
       })
 
       // Reset form and close dialog
@@ -485,7 +524,7 @@ export const ImportLlamacppModelDialog = ({
       onSuccess?.(modelName)
     } catch (error) {
       console.error('Import model error:', error)
-      toast.error('Failed to import model', {
+      toast.error(t('sweep:modelImport.failed'), {
         description:
           normalizeAppError(error),
       })
@@ -495,6 +534,7 @@ export const ImportLlamacppModelDialog = ({
   }
 
   const resetForm = () => {
+    chosenNameRef.current = ''
     setModelFile(null)
     setMmProjFile(null)
     setModelName('')
@@ -531,13 +571,10 @@ export const ImportLlamacppModelDialog = ({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Import Model
+            {t('sweep:modelImport.import')}
           </DialogTitle>
           <DialogDescription>
-            Import a GGUF model file to add it to your collection. Enable
-            multimodal support to attach an mmproj for image or audio input,
-            or draft model support for speculative decoding. Embedding models
-            are detected automatically.
+            {t('sweep:llamaImport.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -730,7 +767,7 @@ export const ImportLlamacppModelDialog = ({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={runScan}
+                    onClick={() => void runScan()}
                     disabled={importing || scanState.status === 'scanning'}
                   >
                     {scanState.status === 'scanning' ? (
@@ -742,9 +779,45 @@ export const ImportLlamacppModelDialog = ({
                     Find models already on this computer
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    Looks in LM Studio, Ollama, the Hugging Face cache,
-                    llama.cpp and GPT4All. Nothing is copied until you import.
+                    {t('providers:importScanHint')}
                   </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleAddFolder()}
+                      disabled={importing || scanState.status === 'scanning'}
+                    >
+                      {t('providers:importAddFolder')}
+                    </Button>
+                    {modelFolders.map((folder) => (
+                      <span
+                        key={folder}
+                        className="inline-flex max-w-full items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground"
+                      >
+                        <span className="break-all">{folder}</span>
+                        <button
+                          type="button"
+                          aria-label={t('providers:importRemoveFolder', { folder })}
+                          onClick={() => {
+                            removeModelFolder(folder)
+                            setScanState((s) =>
+                              s.status === 'done'
+                                ? {
+                                    status: 'done',
+                                    models: modelsOutsideFolder(s.models, folder),
+                                  }
+                                : s
+                            )
+                          }}
+                          className="hover:text-foreground"
+                        >
+                          <span aria-hidden>×</span>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
                   {scanState.status === 'failed' && (
                     <p className="text-sm text-destructive">
                       {scanState.message}
@@ -764,24 +837,35 @@ export const ImportLlamacppModelDialog = ({
                             <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
                               {group.source}
                             </p>
-                            {group.models.map((found) => (
-                              <button
-                                key={found.path}
-                                type="button"
-                                onClick={() =>
-                                  void chooseModelFile(found.path, found.name)
-                                }
-                                disabled={importing}
-                                className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                              >
-                                <span className="min-w-0 break-all">
-                                  {found.name}
-                                </span>
-                                <span className="shrink-0 text-xs text-muted-foreground">
-                                  {formatBytes(found.size_bytes)}
-                                </span>
-                              </button>
-                            ))}
+                            {group.models.map((found) => {
+                              // Already a model here: importing it again only
+                              // fails with "already exists" (T7-118).
+                              const imported = (provider?.models ?? []).some(
+                                (m) => m.id === toModelId(found.name)
+                              )
+                              return (
+                                <button
+                                  key={found.path}
+                                  type="button"
+                                  onClick={() =>
+                                    void chooseModelFile(found.path, found.name, true)
+                                  }
+                                  disabled={importing || imported}
+                                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
+                                >
+                                  <MiddleText
+                                    text={found.name}
+                                    tail={16}
+                                    title={found.path}
+                                    className="flex-1"
+                                  />
+                                  <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                                    {imported && <span>{t('providers:imported')}</span>}
+                                    {formatBytes(found.size_bytes)}
+                                  </span>
+                                </button>
+                              )
+                            })}
                           </div>
                         ))}
                       </div>
@@ -1018,7 +1102,7 @@ export const ImportLlamacppModelDialog = ({
             }
           >
             {importing && <LoaderCircle className="size-4 motion-safe:animate-spin" />}
-            {importing ? 'Importing...' : 'Import Model'}
+            {importing ? t('sweep:modelImport.importing') : t('sweep:modelImport.import')}
           </Button>
         </div>
       </DialogContent>

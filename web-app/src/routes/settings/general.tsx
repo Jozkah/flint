@@ -29,7 +29,13 @@ import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { FlintServerSettings } from '@/containers/FlintServerSettings'
 import { RemoteRunnerCard } from '@/containers/RemoteRunnerCard'
-import { isPlatformAndroid, isPlatformIOS } from '@/lib/platform/utils'
+import { StartupItems } from '@/containers/StartupItems'
+import {
+  isPlatformAndroid,
+  isPlatformIOS,
+  isPlatformTauri,
+  isServedByFlint,
+} from '@/lib/platform/utils'
 import { useHardware } from '@/hooks/useHardware'
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
 import ReplyLanguageSwitcher from '@/containers/ReplyLanguageSwitcher'
@@ -40,6 +46,11 @@ import {
   parseChatGptExport,
 } from '@/lib/chatgptImport'
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
+
+/** Column of each group: General, Data folder, Backup, Advanced, Other, phone server, runner. */
+const GENERAL_LAYOUT = [0, 0, 1, 0, 1, 0, 0] as const
+/** Without the desktop-only Backup group the right column is short, so Advanced moves over. */
+const GENERAL_LAYOUT_NO_BACKUP = [0, 0, 1, 1, 1, 0, 0] as const
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.general as any)({
@@ -277,7 +288,11 @@ function General() {
       <SettingsPageBody
         title={t('common:general')}
         description={t('settings:pageDesc.general')}
-        layout={[0, 1, 1, 1, 0, 0]}
+        // The big groups (General, Data folder, Advanced) read down the left.
+        // Groups that exist only on desktop or a server keep their slot, so a
+        // missing one never shifts the others. Narrow windows read in source
+        // order.
+        layout={IS_TAURI ? GENERAL_LAYOUT : GENERAL_LAYOUT_NO_BACKUP}
       >
 
         {/* General */}
@@ -290,7 +305,7 @@ function General() {
               </span>
             }
           />
-          <BuildUpdateItem />
+          {isPlatformTauri() && <BuildUpdateItem />}
           <CardItem
             anchor="settings-general-language"
             title={t('common:language')}
@@ -329,194 +344,196 @@ function General() {
         </Card>
 
         {/* Data folder - Desktop only */}
-        <Card title={t('common:dataFolder')}>
-          <CardItem
-            anchor="settings-general-migrate-from-jan"
-            title="Migrate from JAN"
-            description="Bring data from an existing JAN installation into Flint — copy, reuse in place, move, or start fresh."
-            actions={
-              <Button
-                variant="outline"
-                data-testid="open-migration-assistant"
-                onClick={() => openMigrationAssistant()}
-              >
-                Open migration assistant
-              </Button>
-            }
-          />
-          <CardItem
-            anchor="settings-general-import-chatgpt"
-            title={t('settings:general.importChatGpt')}
-            description={t('settings:general.importChatGptDesc')}
-            actions={
-              <>
-                <input
-                  ref={chatGptFileInput}
-                  type="file"
-                  accept=".json,application/json"
-                  className="hidden"
-                  data-testid="import-chatgpt-file"
-                  onChange={(e) => {
-                    void handleImportChatGpt(e.target.files?.[0])
-                    e.target.value = ''
-                  }}
-                />
+        {isPlatformTauri() && (
+          <Card title={t('common:dataFolder')}>
+            <CardItem
+              anchor="settings-general-migrate-from-jan"
+              title={t('settings:general.migrateJan.title')}
+              description={t('settings:general.migrateJan.desc')}
+              actions={
                 <Button
                   variant="outline"
-                  onClick={() => chatGptFileInput.current?.click()}
+                  data-testid="open-migration-assistant"
+                  onClick={() => openMigrationAssistant()}
                 >
-                  {t('settings:general.importChatGptAction')}
+                  {t('settings:general.migrateJan.open')}
                 </Button>
-              </>
-            }
-          />
-          <CardItem
-            anchor="settings-general-data-folder"
-            title={t('settings:dataFolder.appData', {
-              ns: 'settings',
-            })}
-            column
-            description={
-              <>
-                {t('settings:dataFolder.appDataDesc', {
-                  ns: 'settings',
-                })}
-                {unavailableDataFolder && (
-                  <p role="alert" className="text-xs text-destructive mt-1">
-                    {t('settings:dataFolder.unavailable', {
-                      path: unavailableDataFolder,
-                    })}
-                  </p>
-                )}
-              </>
-            }
-            actions={
-              <>
-                <span className="flex h-8 min-w-0 flex-1 items-center gap-1 overflow-hidden rounded-lg border-[0.8px] border-border bg-muted py-0 pr-1 pl-2.5 pointer-coarse:h-11">
-                  <span
-                    data-testid="app-data-folder-path"
-                    title={janDataFolder}
-                    className="min-w-0 flex-1 truncate font-mono text-xs text-fg-2"
-                  >
-                    {janDataFolder}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      janDataFolder && copyToClipboard(janDataFolder)
-                    }
-                    className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
-                    title={
-                      isCopied
-                        ? t('settings:general.copied')
-                        : t('settings:general.copyPath')
-                    }
-                    aria-label={
-                      isCopied
-                        ? t('settings:general.copied')
-                        : t('settings:general.copyPath')
-                    }
-                  >
-                    {isCopied ? (
-                      <CopyCheck size={14} className="text-success" aria-hidden />
-                    ) : (
-                      <Copy size={14} aria-hidden />
-                    )}
-                  </button>
-                </span>
-                <Button
-                  variant="outline"
-                  className="pointer-coarse:h-11"
-                  title={t('settings:dataFolder.appData')}
-                  onClick={handleDataFolderChange}
-                >
-                    <Icon name="x-folder" size={14} />
-                    <span>{t('settings:general.changeLocation')}</span>
-                </Button>
-                {selectedNewPath && (
-                  <ChangeDataFolderLocation
-                    currentPath={janDataFolder || ''}
-                    newPath={selectedNewPath}
-                    onConfirm={confirmDataFolderChange}
-                    open={isDialogOpen}
-                    onOpenChange={(open) => {
-                      setIsDialogOpen(open)
-                      if (!open) {
-                        setSelectedNewPath(null)
-                      }
+              }
+            />
+            <CardItem
+              anchor="settings-general-import-chatgpt"
+              title={t('settings:general.importChatGpt')}
+              description={t('settings:general.importChatGptDesc')}
+              actions={
+                <>
+                  <input
+                    ref={chatGptFileInput}
+                    type="file"
+                    accept=".json,application/json"
+                    className="hidden"
+                    data-testid="import-chatgpt-file"
+                    onChange={(e) => {
+                      void handleImportChatGpt(e.target.files?.[0])
+                      e.target.value = ''
                     }}
-                  >
-                    <div />
-                  </ChangeDataFolderLocation>
-                )}
-              </>
-            }
-          />
-          <CardItem
-            title={t('settings:dataFolder.appLogs', {
-              ns: 'settings',
-            })}
-            description={t('settings:dataFolder.appLogsDesc')}
-            className="items-start"
-            actions={
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  className="pointer-coarse:h-11"
-                  onClick={async () => {
-                    if (janDataFolder) {
-                      try {
-                        const logsPath = await serviceHub.path().join(
-                          janDataFolder,
-                          'logs'
-                        )
-                        await serviceHub.opener().openPath(logsPath)
-                      } catch (error) {
-                        console.error(
-                          'Failed to reveal logs folder:',
-                          error
-                        )
-                      }
-                    }
-                  }}
-                  title={t('settings:general.revealLogs')}
-                >
-                  <Icon name="x-folder" size={14} />
-                  <span>{openFileTitle()}</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleOpenLogs}
-                  title={t('settings:dataFolder.appLogs')}
-                >
-                  <Icon name="sb-file" size={14} />
-                  <span>{t('settings:general.openLogs')}</span>
-                </Button>
-                {IS_TAURI && (
+                  />
                   <Button
                     variant="outline"
-                    onClick={handleExportLogs}
-                    title={t('settings:general.exportLogsDesc')}
+                    onClick={() => chatGptFileInput.current?.click()}
                   >
-                    <span>{t('settings:general.exportLogs')}</span>
+                    {t('settings:general.importChatGptAction')}
                   </Button>
-                )}
-              </div>
-            }
-          />
-        </Card>
+                </>
+              }
+            />
+            <CardItem
+              anchor="settings-general-data-folder"
+              title={t('settings:dataFolder.appData', {
+                ns: 'settings',
+              })}
+              column
+              description={
+                <>
+                  {t('settings:dataFolder.appDataDesc', {
+                    ns: 'settings',
+                  })}
+                  {unavailableDataFolder && (
+                    <p role="alert" className="text-xs text-destructive mt-1">
+                      {t('settings:dataFolder.unavailable', {
+                        path: unavailableDataFolder,
+                      })}
+                    </p>
+                  )}
+                </>
+              }
+              actions={
+                <>
+                  <span className="flex h-8 min-w-0 flex-1 items-center gap-1 overflow-hidden rounded-lg border-[0.8px] border-border bg-muted py-0 pr-1 pl-2.5 pointer-coarse:h-11">
+                    <span
+                      data-testid="app-data-folder-path"
+                      title={janDataFolder}
+                      className="min-w-0 flex-1 truncate font-mono text-xs text-fg-2"
+                    >
+                      {janDataFolder}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        janDataFolder && copyToClipboard(janDataFolder)
+                      }
+                      className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+                      title={
+                        isCopied
+                          ? t('settings:general.copied')
+                          : t('settings:general.copyPath')
+                      }
+                      aria-label={
+                        isCopied
+                          ? t('settings:general.copied')
+                          : t('settings:general.copyPath')
+                      }
+                    >
+                      {isCopied ? (
+                        <CopyCheck size={14} className="text-success" aria-hidden />
+                      ) : (
+                        <Copy size={14} aria-hidden />
+                      )}
+                    </button>
+                  </span>
+                  <Button
+                    variant="outline"
+                    className="pointer-coarse:h-11"
+                    title={t('settings:dataFolder.appData')}
+                    onClick={handleDataFolderChange}
+                  >
+                      <Icon name="x-folder" size={14} />
+                      <span>{t('settings:general.changeLocation')}</span>
+                  </Button>
+                  {selectedNewPath && (
+                    <ChangeDataFolderLocation
+                      currentPath={janDataFolder || ''}
+                      newPath={selectedNewPath}
+                      onConfirm={confirmDataFolderChange}
+                      open={isDialogOpen}
+                      onOpenChange={(open) => {
+                        setIsDialogOpen(open)
+                        if (!open) {
+                          setSelectedNewPath(null)
+                        }
+                      }}
+                    >
+                      <div />
+                    </ChangeDataFolderLocation>
+                  )}
+                </>
+              }
+            />
+            <CardItem
+              title={t('settings:dataFolder.appLogs', {
+                ns: 'settings',
+              })}
+              description={t('settings:dataFolder.appLogsDesc')}
+              className="items-start"
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="pointer-coarse:h-11"
+                    onClick={async () => {
+                      if (janDataFolder) {
+                        try {
+                          const logsPath = await serviceHub.path().join(
+                            janDataFolder,
+                            'logs'
+                          )
+                          await serviceHub.opener().openPath(logsPath)
+                        } catch (error) {
+                          console.error(
+                            'Failed to reveal logs folder:',
+                            error
+                          )
+                        }
+                      }
+                    }}
+                    title={t('settings:general.revealLogs')}
+                  >
+                    <Icon name="x-folder" size={14} />
+                    <span>{openFileTitle()}</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleOpenLogs}
+                    title={t('settings:dataFolder.appLogs')}
+                  >
+                    <Icon name="sb-file" size={14} />
+                    <span>{t('settings:general.openLogs')}</span>
+                  </Button>
+                  {IS_TAURI && (
+                    <Button
+                      variant="outline"
+                      onClick={handleExportLogs}
+                      title={t('settings:general.exportLogsDesc')}
+                    >
+                      <span>{t('settings:general.exportLogs')}</span>
+                    </Button>
+                  )}
+                </div>
+              }
+            />
+          </Card>
+        )}
 
         {IS_TAURI && <SettingsBackupCard />}
 
         {/* Advanced - Desktop only */}
-        <Card title="Advanced">
+        <Card title={t('settings:general.advanced')}>
           {IS_TAURI && (
             <CardItem
               title="Flint CLI"
               description={
                 cliInstalled && cliPath
-                  ? `Installed at ${cliPath} — use flint from your terminal to serve models.`
-                  : 'Use flint from your terminal to serve models without opening the app.'
+                  ? t('settings:general.cli.installedDesc', { path: cliPath })
+                  : t('settings:general.cli.desc')
               }
               actions={
                 cliInstalled ? (
@@ -525,7 +542,9 @@ function General() {
                     onClick={handleUninstallCli}
                     disabled={isCliLoading || cliInstalled === null}
                   >
-                    {isCliLoading ? 'Uninstalling…' : 'Uninstall'}
+                    {isCliLoading
+                      ? t('settings:general.cli.uninstalling')
+                      : t('settings:general.cli.uninstall')}
                   </Button>
                 ) : (
                   <Button
@@ -533,7 +552,9 @@ function General() {
                     onClick={handleInstallCli}
                     disabled={isCliLoading || cliInstalled === null}
                   >
-                    {isCliLoading ? 'Installing…' : 'Install'}
+                    {isCliLoading
+                      ? t('settings:general.cli.installing')
+                      : t('settings:general.cli.install')}
                   </Button>
                 )
               }
@@ -548,11 +569,18 @@ function General() {
               ns: 'settings',
             })}
             actions={
-              <FactoryResetDialog onReset={resetApp}>
-                <Button variant="destructive">
-                  {t('common:reset')}
-                </Button>
-              </FactoryResetDialog>
+              // Resetting wipes the desktop app's data; a browser cannot.
+              isServedByFlint() ? (
+                <span className="text-xs text-muted-foreground" data-testid="factory-reset-desktop-only">
+                  {t('permissions:desktopOnly')}
+                </span>
+              ) : (
+                <FactoryResetDialog onReset={resetApp}>
+                  <Button variant="destructive">
+                    {t('common:reset')}
+                  </Button>
+                </FactoryResetDialog>
+              )
             }
           />
         </Card>
@@ -571,6 +599,9 @@ function General() {
                 />
               }
             />
+          )}
+          {IS_TAURI && !isPlatformAndroid() && !isPlatformIOS() && (
+            <StartupItems />
           )}
           {IS_TAURI && (
             <CardItem
@@ -607,9 +638,18 @@ function General() {
             title={t('settings:others.spellCheck', {
               ns: 'settings',
             })}
-            description={t('settings:others.spellCheckDesc', {
-              ns: 'settings',
-            })}
+            description={
+              <span className="flex flex-col gap-1">
+                <span>
+                  {t('settings:others.spellCheckDesc', {
+                    ns: 'settings',
+                  })}
+                </span>
+                <span className="text-subtle-foreground">
+                  {t('settings:others.spellCheckHint')}
+                </span>
+              </span>
+            }
             actions={
               <Switch
                 checked={spellCheckChatInput}
@@ -707,7 +747,7 @@ function General() {
                     }
                   }}
                 >
-                  Verify
+                  {t('settings:general.verify')}
                 </Button>
               </div>
             }
@@ -720,18 +760,6 @@ function General() {
         {/* A page served by flint serve: can this server run agents? */}
         <RemoteRunnerCard />
 
-        {/* Credits */}
-        <Card title={t('settings:general.credits')}>
-          <CardItem
-            align="start"
-            description={
-              <div className="text-muted-foreground -mt-2">
-                <p>{t('settings:general.creditsDesc1')}</p>
-                <p className="mt-2">{t('settings:general.creditsDesc2')}</p>
-              </div>
-            }
-          />
-        </Card>
       </SettingsPageBody>
     </div>
   )

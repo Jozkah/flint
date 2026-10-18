@@ -27,6 +27,14 @@ const base = {
 
 const down = { 'https://api.example.com': { reason: 'x', at: 0 } }
 
+describe('a provider with no endpoint', () => {
+  it('is misconfigured, not local, so the hide filter drops it', () => {
+    expect(
+      modelAvailability({ ...base, isLocal: true, baseUrl: '', endpointMissing: true })
+    ).toBe('misconfigured')
+  })
+})
+
 describe('local models', () => {
   it('are ready when on disk but not loaded', () => {
     expect(

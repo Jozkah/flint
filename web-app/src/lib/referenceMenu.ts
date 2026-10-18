@@ -13,8 +13,10 @@
 import type { FilePickerEntry } from '@/types/path-reference'
 import type { ReferenceAlias } from '@/lib/referenceAliases'
 import { typedReference, type TypedReferenceKind } from '@/lib/path-references'
+import { rankConversations } from '@/lib/chatMentionMenu'
+import { isMentionKind, type ConversationEntry } from '@/lib/chatMentions'
 
-export type ReferenceKind = 'file' | 'directory' | TypedReferenceKind
+export type ReferenceKind = 'file' | 'directory' | 'prompt' | TypedReferenceKind
 
 export type ReferenceEntry = {
   kind: ReferenceKind
@@ -25,6 +27,16 @@ export type ReferenceEntry = {
   /** A second line: a path, a description, what an alias names. */
   detail?: string
   extension?: string
+  /** Set on a chat, Cowork session or room: what the richer row shows. */
+  conversation?: {
+    id: string
+    updated: number
+    messageCount?: number
+    preview?: string
+    /** Tells apart two rows with one title. */
+    label?: string
+    live?: boolean
+  }
 }
 
 export type NamedSource = { name: string; description?: string }
@@ -33,20 +45,36 @@ export type NamedSource = { name: string; description?: string }
 export const optionId = (listId: string, index: number) =>
   `${listId}-option-${index}`
 
+/** A library prompt the menu may offer. `id` is what is inserted. */
+export type PromptSource = { id: string; name: string; detail?: string }
+
 export type ReferenceSources = {
   files: FilePickerEntry[]
   skills: NamedSource[]
   agents: NamedSource[]
   aliases: ReferenceAlias[]
+  /** The prompt library. Absent where there is none. */
+  prompts?: PromptSource[]
+  /** Chats, Cowork sessions and rooms a mention may name. */
+  conversations?: ConversationEntry[]
+  /** The conversation being written in: it cannot mention itself. */
+  currentConversationId?: string
 }
+
+/** How many conversations the `@` menu adds as its last group. */
+const CHAT_GROUP_IN_AT = 8
 
 /** Ties go to the entry most likely meant: a name the user gave, then tools. */
 const KIND_ORDER: Record<ReferenceKind, number> = {
   alias: 0,
-  skill: 1,
-  agent: 2,
-  directory: 3,
-  file: 4,
+  prompt: 1,
+  skill: 2,
+  agent: 3,
+  directory: 4,
+  file: 5,
+  chat: 6,
+  session: 7,
+  room: 8,
 }
 
 function score(q: string, name: string, detail = ''): number {
@@ -69,16 +97,36 @@ function score(q: string, name: string, detail = ''): number {
 export function rankReferences(
   query: string,
   sources: ReferenceSources,
-  limit = 50
+  limit = 50,
+  /** `#` lists conversations only; `@` (the default) lists everything. */
+  trigger: '@' | '#' = '@'
 ): ReferenceEntry[] {
   let q = query.trim().toLowerCase()
   let only: ReferenceKind | null = null
-  const prefixed = /^(skill|agent|alias):(.*)$/.exec(q)
+  const prefixed = /^(skill|agent|alias|prompt|chat|session|room):(.*)$/.exec(q)
   if (prefixed) {
     only = prefixed[1] as ReferenceKind
     q = prefixed[2]
   }
+  // Conversations: the `@` menu's last group, or the whole `#` menu.
+  const wantsConversations = trigger === '#' || !only || isMentionKind(only)
+  const conversations = wantsConversations
+    ? rankConversations(q, sources.conversations ?? [], {
+        excludeId: sources.currentConversationId,
+        only: only && isMentionKind(only) ? only : undefined,
+        limit: trigger === '#' || only ? limit : CHAT_GROUP_IN_AT,
+      })
+    : []
+  if (trigger === '#') return conversations.slice(0, limit)
   const candidates: ReferenceEntry[] = [
+    ...(sources.prompts ?? []).map(
+      (prompt): ReferenceEntry => ({
+        kind: 'prompt',
+        token: `prompt:${prompt.id}`,
+        name: prompt.name,
+        detail: prompt.detail,
+      })
+    ),
     ...sources.aliases.map(
       (alias): ReferenceEntry => ({
         kind: 'alias',
@@ -113,13 +161,13 @@ export function rankReferences(
       })
     ),
   ]
-  return (
+  const ranked = (
     candidates
       .filter((entry) => !only || entry.kind === only)
       // A typed token must stay a typed token: a name the pattern cannot carry
       // would insert a reference that reads back as something else.
       .filter((entry) =>
-        entry.kind === 'file' || entry.kind === 'directory'
+        entry.kind === 'file' || entry.kind === 'directory' || entry.kind === 'prompt'
           ? true
           : typedReference(entry.token) !== null
       )
@@ -132,7 +180,8 @@ export function rankReferences(
           a.entry.name.length - b.entry.name.length ||
           a.entry.token.localeCompare(b.entry.token)
       )
-      .slice(0, limit)
+      .slice(0, Math.max(0, limit - conversations.length))
       .map(({ entry }) => entry)
   )
+  return [...ranked, ...conversations]
 }

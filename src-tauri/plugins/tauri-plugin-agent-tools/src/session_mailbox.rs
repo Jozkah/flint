@@ -272,6 +272,27 @@ pub struct MailEnvelope {
     pub origin: Origin,
 }
 
+impl MailEnvelope {
+    /// The envelope as a receiving model may read it: text in the sender's
+    /// words and name that imitates the harness or the chat protocol is
+    /// neutralized (see [`crate::control_tags`]), and the text says so in one
+    /// line when anything was. Applied where an envelope leaves for a model or
+    /// for the renderer that hands it to one, never to what is stored.
+    pub fn screened(mut self) -> Self {
+        let (name, in_name) = crate::control_tags::neutralize(&self.from.display_name);
+        let (text, in_text) = crate::control_tags::neutralize(&self.text);
+        let count = in_name + in_text;
+        self.from.display_name = name;
+        self.text = if count == 0 {
+            text
+        } else {
+            let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
+            format!("{text}{sep}{}", crate::control_tags::note(count))
+        };
+        self
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DeliveryStatus {
@@ -1540,6 +1561,7 @@ fn tool_error(err: &MailboxError) -> String {
 /// How a message is shown to a model: snake_case, and labelled untrusted on
 /// the message itself so the label survives being quoted on its own.
 fn envelope_for_model(e: &MailEnvelope) -> serde_json::Value {
+    let e = &e.clone().screened();
     serde_json::json!({
         "untrusted": true,
         "message_id": e.id,

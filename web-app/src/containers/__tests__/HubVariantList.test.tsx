@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 import { fireEvent, render, screen } from '@testing-library/react'
 import { HubVariantList } from '../HubVariantList'
 import type { HuggingFaceFileGroup } from '@/lib/huggingface'

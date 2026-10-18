@@ -1,6 +1,7 @@
+import { useSecondClock } from '@/lib/sharedClock'
 import { useAppState } from '@/hooks/useAppState'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
-import { Loader } from 'lucide-react'
+import { Hand, Loader } from 'lucide-react'
 import { useParams } from '@tanstack/react-router'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
@@ -70,12 +71,7 @@ function useFailedFor(failedAt: number | undefined, loading: boolean | undefined
 function usePhaseElapsed(key: string | undefined, active: boolean): number {
   const since = useRef<{ key?: string; at: number }>({ at: Date.now() })
   if (since.current.key !== key) since.current = { key, at: Date.now() }
-  const [, tick] = useState(0)
-  useEffect(() => {
-    if (!active) return
-    const id = setInterval(() => tick((n) => n + 1), 1000)
-    return () => clearInterval(id)
-  }, [active])
+  useSecondClock(active)
   return Date.now() - since.current.at
 }
 
@@ -83,8 +79,15 @@ export function PromptProgress({
   hideIdle = false,
   stateKey,
   status,
+  waitingLabel,
 }: {
   hideIdle?: boolean
+  /**
+   * The run is blocked on the user (an approval or a question): this label
+   * replaces the phase, and the clock stops instead of counting a wait that
+   * is not the model's.
+   */
+  waitingLabel?: string
   /**
    * What the run is doing (thinking, running a tool, ...). Replaces the
    * generic "Working…" with a named phase and how long it has lasted.
@@ -135,7 +138,11 @@ export function PromptProgress({
   // Nothing concrete to report (no model load, no prompt-reading progress).
   // Callers driving their own activity label (e.g. tool-call traces) pass
   // hideIdle to suppress the redundant generic "Working…" fallback.
-  const elapsed = usePhaseElapsed(status?.key, !!status)
+  const waiting = Boolean(waitingLabel) && !!status
+  const elapsed = usePhaseElapsed(
+    waiting ? `${status?.key}:waiting` : status?.key,
+    !!status && !waiting
+  )
   const loadedMs = useLoadedFor(loadingModel)
   const failedAt = useAppState((state) =>
     stateKey || !threadId ? undefined : state.modelLoadFailures?.[threadId]
@@ -173,7 +180,9 @@ export function PromptProgress({
       : 'Loading model…'
     : showReading
       ? `Reading: ${percentage}%`
-      : status
+      : waiting
+        ? waitingLabel!
+        : status
         ? status.label(elapsed)
         : 'Waiting for the model…'
 
@@ -193,9 +202,15 @@ export function PromptProgress({
       )}
     >
       <div className="flex items-center gap-2 text-sm">
-        <Loader className="animate-spin w-3.5 h-3.5 text-primary shrink-0" />
-        <span className="font-medium text-foreground">{label}</span>
-        {status && !loadingModel && !showReading && (
+        {waiting && !loadingModel && !showReading ? (
+          <Hand aria-hidden className="w-3.5 h-3.5 text-warning shrink-0" />
+        ) : (
+          <Loader className="animate-spin w-3.5 h-3.5 text-primary shrink-0" />
+        )}
+        <span className="font-medium text-foreground" data-testid="run-status-label">
+          {label}
+        </span>
+        {status && !waiting && !loadingModel && !showReading && (
           <span
             className="text-xs text-muted-foreground tabular-nums"
             data-testid="run-status-elapsed"

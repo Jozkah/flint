@@ -37,6 +37,26 @@ export interface GuideSignals {
   /** A provider with a chat model the user can send to. */
   hasUsableModel: boolean
   threadCount: number
+  /** Cowork sessions that have a project folder attached. */
+  projectCount?: number
+}
+
+export type ChecklistId = 'model-added' | 'first-chat' | 'first-project'
+
+/**
+ * The home checklist: three milestones, each observed from real state.
+ * Conversations that existed before the guide started do not count as the
+ * first chat; a missing project signal counts as no project.
+ */
+export function checklistStatus(
+  state: GuideState,
+  signals: GuideSignals
+): Array<{ id: ChecklistId; done: boolean }> {
+  return [
+    { id: 'model-added', done: signals.hasUsableModel },
+    { id: 'first-chat', done: signals.threadCount > state.threadCountAtStart },
+    { id: 'first-project', done: (signals.projectCount ?? 0) > 0 },
+  ]
 }
 
 /** Which steps each intention walks through, in order. */

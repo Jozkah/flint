@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { isServedByFlint } from '@/lib/platform/utils'
+import { DesktopOnlyPage } from '@/containers/DesktopOnlyPage'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -22,8 +24,10 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -34,6 +38,7 @@ import { HuggingFaceLogo } from '@/components/icons/HuggingFaceLogo'
 import { HubVariantList } from '@/containers/HubVariantList'
 import { HubTaskChips } from '@/containers/HubTaskChips'
 import { matchesTask, type HubTaskId } from '@/lib/hubTasks'
+import { formatShortDate } from '@/lib/localeDate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { StudioDiscover } from '@/containers/studio/StudioDiscover'
 import { cn } from '@/lib/utils'
@@ -80,7 +85,9 @@ import {
 import { Select } from '@/components/ui/select'
 
 export const Route = createFileRoute(route.hub.index as any)({
-  component: ModelDiscoverRoute,
+  // Everything here is the desktop app's; a browser gets one line instead.
+  component: () =>
+    isServedByFlint() ? <DesktopOnlyTitle /> : <ModelDiscoverRoute />,
 })
 
 type SortMode = 'downloads' | 'likes' | 'updated' | 'newest'
@@ -101,12 +108,12 @@ function formatCount(value: number): string {
   return String(value)
 }
 
-function fitLabel(verdict: FitVerdict): string {
-  if (verdict === 'fits') return 'Fits in memory'
-  if (verdict === 'fits-partial-offload') return 'Partial GPU offload'
-  if (verdict === 'tight') return 'Tight fit'
-  if (verdict === 'exceeds') return 'May exceed memory'
-  return 'Fit unknown'
+function fitLabel(verdict: FitVerdict, t: (key: string) => string): string {
+  if (verdict === 'fits') return t('sweep:hub.fitsInMemory')
+  if (verdict === 'fits-partial-offload') return t('sweep:hub.partialOffload')
+  if (verdict === 'tight') return t('sweep:hub.tightFit')
+  if (verdict === 'exceeds') return t('sweep:hub.mayExceed')
+  return t('sweep:hub.fitUnknown')
 }
 
 function fitTone(verdict: FitVerdict): 'ok' | 'warn' | 'err' | 'neutral' {
@@ -116,20 +123,11 @@ function fitTone(verdict: FitVerdict): 'ok' | 'warn' | 'err' | 'neutral' {
   return 'neutral'
 }
 
-function formatUpdated(value?: string | null): string | null {
-  const time = Date.parse(value ?? '')
-  if (Number.isNaN(time)) return null
-  return new Date(time).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
 const SELECT =
   'h-8 cursor-pointer rounded-lg border-[0.8px] border-border bg-card px-2 text-foreground transition-colors hover:border-border-strong'
 
 function ModelDiscoverRoute() {
+  const { t, i18n } = useTranslation()
   const spotlight = useSpotlight()
   const serviceHub = useServiceHub()
   const navigate = useNavigate()
@@ -138,6 +136,7 @@ function ModelDiscoverRoute() {
   const providers = useModelProvider((state) => state.providers)
   const parentRef = useRef<HTMLDivElement>(null)
 
+  const narrow = useMediaQuery('(max-width: 639px)')
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [models, setModels] = useState<HuggingFaceModel[]>([])
@@ -435,16 +434,14 @@ function ModelDiscoverRoute() {
                 <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
                   Hugging Face
                   <Chip tone="ok" dot className="tracking-normal normal-case">
-                    <ShieldCheck /> Private until you use it
+                    <ShieldCheck /> {t('sweep:hub.privateUntilUsed')}
                   </Chip>
                 </div>
                 <h1 className="mt-1 text-2xl leading-tight font-medium tracking-[-0.01em]">
-                  {source === 'studio' ? 'Discover image models' : 'Discover local models'}
+                  {source === 'studio' ? t('sweep:hub.discoverImage') : t('sweep:hub.discoverLocal')}
                 </h1>
                 <p className="mt-1 hidden max-w-2xl text-[13px] text-secondary-foreground [@media(min-height:700px)]:block">
-                  Search, compare and download models that run on this device.
-                  Hugging Face is contacted only while you use Discover or start
-                  a download.
+                  {t('sweep:hub.intro')}
                 </p>
               </div>
             </div>
@@ -456,17 +453,17 @@ function ModelDiscoverRoute() {
                 void serviceHub.opener().openUrl('https://huggingface.co/models')
               }
             >
-              Open Hugging Face <ExternalLink className="size-3.5" />
+              {t('sweep:hub.openHuggingFace')} <ExternalLink className="size-3.5" />
             </Button>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Segmented<'models' | 'studio'>
-              aria-label="What to look for"
+              aria-label={t('sweep:hub.whatToLookFor')}
               className="min-w-[260px]"
               options={[
-                { value: 'models', label: 'Chat models' },
-                { value: 'studio', label: 'Images' },
+                { value: 'models', label: t('sweep:hub.chatModels') },
+                { value: 'studio', label: t('sweep:hub.images') },
               ]}
               value={source}
               onValueChange={setSource}
@@ -480,14 +477,16 @@ function ModelDiscoverRoute() {
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search models, authors, or paste a Hugging Face URL…"
-              className="h-12 rounded-xl pr-10 pl-11 text-[14px] shadow-lift"
+              placeholder={t(
+                narrow ? 'sweep:hub.searchPlaceholderShort' : 'sweep:hub.searchPlaceholder'
+              )}
+              className="h-12 rounded-xl pr-10 pl-11 text-[14px] text-ellipsis shadow-lift"
               data-testid="hub-search"
             />
             {query && (
               <button
                 type="button"
-                aria-label="Clear search"
+                aria-label={t('sweep:hub.clearSearch')}
                 onClick={() => setQuery('')}
                 className="absolute top-1/2 right-3 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
               >
@@ -499,7 +498,8 @@ function ModelDiscoverRoute() {
           </div>
 
           {source === 'models' && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          // Phones: one row that scrolls sideways, not four rows of chips.
+          <div className="-mx-4 flex flex-nowrap items-center gap-2 overflow-x-auto px-4 pb-0.5 text-xs [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
             <HubTaskChips value={task} onChange={setTask} />
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             {IS_MACOS && (
@@ -509,7 +509,7 @@ function ModelDiscoverRoute() {
                   setFormat(event.target.value as HuggingFaceFormat)
                 }
                 className={SELECT}
-                aria-label="Format"
+                aria-label={t('sweep:hub.format')}
               >
                 <option value="all">GGUF + MLX</option>
                 <option value="gguf">GGUF</option>
@@ -520,10 +520,10 @@ function ModelDiscoverRoute() {
               value={params}
               onChange={(event) => setParams(event.target.value as ParamFilter)}
               className={SELECT}
-              aria-label="Parameter size"
+              aria-label={t('sweep:hub.parameterSize')}
             >
-              <option value="all">Any parameter size</option>
-              <option value="tiny">Under 3B</option>
+              <option value="all">{t('sweep:hub.anyParameterSize')}</option>
+              <option value="tiny">{t('sweep:hub.under3b')}</option>
               <option value="small">3B–8B</option>
               <option value="medium">8B–34B</option>
               <option value="large">34B+</option>
@@ -532,9 +532,9 @@ function ModelDiscoverRoute() {
               value={architecture}
               onChange={(event) => setArchitecture(event.target.value)}
               className={SELECT}
-              aria-label="Architecture"
+              aria-label={t('sweep:hub.architecture')}
             >
-              <option value="all">Any architecture</option>
+              <option value="all">{t('sweep:hub.anyArchitecture')}</option>
               {architectures.map((value) => (
                 <option key={value} value={value}>
                   {value}
@@ -549,20 +549,20 @@ function ModelDiscoverRoute() {
       {source === 'studio' ? (
         <StudioDiscover query={debouncedQuery} token={token} />
       ) : (
-      <main ref={parentRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <main ref={parentRef} className="-mr-3 min-h-0 flex-1 overflow-y-auto py-4 pr-8 pl-5">
         <div className="mx-auto w-full max-w-6xl">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span aria-live="polite">
               {loading
-                ? 'Searching Hugging Face…'
-                : `${visible.length} ${visible.length === 1 ? 'model' : 'models'}`}
+                ? t('sweep:hub.searching')
+                : t('sweep:hub.modelCount', { count: visible.length })}
               {filtersActive && (
                 <button
                   type="button"
                   onClick={clearFilters}
                   className="ml-2 cursor-pointer underline underline-offset-2 hover:text-foreground"
                 >
-                  Clear filters
+                  {t('sweep:hub.clearFilters')}
                 </button>
               )}
             </span>
@@ -572,35 +572,35 @@ function ModelDiscoverRoute() {
                   checked={downloadedOnly}
                   onCheckedChange={setDownloadedOnly}
                 />
-                Downloaded
+                {t('sweep:hub.downloaded')}
               </label>
               <label
                 className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-secondary-foreground"
-                title="Hide models whose best variant is larger than this machine's memory"
+                title={t('sweep:hub.fitsTitle')}
               >
                 <Switch
                   checked={fitsOnly}
                   onCheckedChange={setFitsOnly}
-                  aria-label="Only models that fit"
+                  aria-label={t('sweep:hub.onlyFit')}
                 />
-                Fits my hardware
+                {t('sweep:hub.fitsMyHardware')}
               </label>
               <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-secondary-foreground">
                 <Switch checked={includeGated} onCheckedChange={setIncludeGated} />
-                <LockKeyhole className="size-3.5" /> Gated
+                <LockKeyhole className="size-3.5" /> {t('sweep:hub.gated')}
               </label>
             <label className="inline-flex items-center gap-2">
-              Sort by
+              {t('sweep:hub.sortBy')}
               <Select
                 value={sort}
                 onChange={(event) => setSort(event.target.value as SortMode)}
                 className={SELECT}
-                aria-label="Sort"
+                aria-label={t('sweep:hub.sort')}
               >
-                <option value="downloads">Most downloaded</option>
-                <option value="likes">Most liked</option>
-                <option value="updated">Recently updated</option>
-                <option value="newest">Newest</option>
+                <option value="downloads">{t('sweep:hub.mostDownloaded')}</option>
+                <option value="likes">{t('sweep:hub.mostLiked')}</option>
+                <option value="updated">{t('sweep:hub.recentlyUpdated')}</option>
+                <option value="newest">{t('sweep:hub.newest')}</option>
               </Select>
             </label>
             </div>
@@ -633,12 +633,12 @@ function ModelDiscoverRoute() {
           {!loading && !error && visible.length === 0 && (
             <EmptyState
               icon={<Search />}
-              title="No matching models"
-              description="Try a broader search or remove one of the filters."
+              title={t('sweep:hub.noMatching')}
+              description={t('sweep:hub.noMatchingHint')}
               action={
                 filtersActive ? (
                   <Button variant="outline" size="sm" onClick={clearFilters}>
-                    Clear filters
+                    {t('sweep:hub.clearFilters')}
                   </Button>
                 ) : undefined
               }
@@ -683,7 +683,7 @@ function ModelDiscoverRoute() {
                 )
                 const [author, ...rest] = model.id.split('/')
                 const name = rest.join('/') || author
-                const updated = formatUpdated(model.lastModified)
+                const updated = formatShortDate(model.lastModified, i18n.language)
 
                 return (
                   <article
@@ -798,10 +798,10 @@ function ModelDiscoverRoute() {
                               size="sm"
                               onClick={() => void toggleExpanded(model.id)}
                               aria-expanded={opened}
-                              title={opened ? 'Hide variants' : 'Show variants'}
+                              title={opened ? t('sweep:hub.hideVariants') : t('sweep:hub.showVariants')}
                             >
                               <FileCode2 className="size-3.5" />
-                              {opened ? 'Hide variants' : 'Show variants'}
+                              {opened ? t('sweep:hub.hideVariants') : t('sweep:hub.showVariants')}
                               {opened ? (
                                 <ChevronUp className="size-3.5" />
                               ) : (
@@ -816,7 +816,7 @@ function ModelDiscoverRoute() {
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-muted/40 px-4 py-2 text-xs text-secondary-foreground">
                           <span className="inline-flex items-center gap-1.5 font-medium text-acc-text">
                             <Sparkles className="size-3.5" />{' '}
-                            {isMlx ? 'On this Mac' : 'Best for this device'}
+                            {isMlx ? t('sweep:hub.onThisMac') : t('sweep:hub.bestForDevice')}
                           </span>
                           <span className="font-mono">
                             {isMlx
@@ -834,7 +834,7 @@ function ModelDiscoverRoute() {
                             dot
                             title={fitBasis(recommendedFit)}
                           >
-                            {fitLabel(recommendedFit.verdict)}
+                            {fitLabel(recommendedFit.verdict, t)}
                           </Chip>
                         </div>
                       )}
@@ -844,11 +844,11 @@ function ModelDiscoverRoute() {
                           {loadingFiles[model.id] && variants.length === 0 ? (
                             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
                               <LoaderCircle className="size-4 animate-spin" />
-                              Loading variants…
+                              {t('sweep:hub.loadingVariants')}
                             </div>
                           ) : variants.length === 0 ? (
                             <p className="py-3 text-sm text-muted-foreground">
-                              No downloadable GGUF variants were found in this repository.
+                              {t('sweep:hub.noVariants')}
                             </p>
                           ) : (
                             <HubVariantList
@@ -892,7 +892,7 @@ function ModelDiscoverRoute() {
                                           dot
                                           title={fitBasis(fit)}
                                         >
-                                          {fitLabel(fit.verdict)}
+                                          {fitLabel(fit.verdict, t)}
                                         </Chip>
                                       </div>
                                       <div className="mt-1 text-[11.5px] text-muted-foreground">
@@ -926,4 +926,9 @@ function ModelDiscoverRoute() {
       )}
     </div>
   )
+}
+
+function DesktopOnlyTitle() {
+  const { t } = useTranslation()
+  return <DesktopOnlyPage title={t('common:shell.discover')} />
 }

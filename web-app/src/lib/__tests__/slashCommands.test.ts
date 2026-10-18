@@ -94,6 +94,15 @@ describe('buildSlashItems', () => {
     expect(resolveSlash('/docs:help', items)!.item.kind).toBe('command')
   })
 
+  it('tags a prompt-library entry as a prompt, not a built-in', () => {
+    const items = buildSlashItems([], [
+      { name: 'prompt:greet', description: 'Greet', promptId: 'p1', run: () => {} },
+      { name: 'help', description: 'Help', run: () => {} },
+    ])
+    expect(items.find((i) => i.trigger === 'prompt:greet')!.source).toBe('prompt')
+    expect(items.find((i) => i.trigger === 'help')!.source).toBe('builtin')
+  })
+
   it('keeps a standalone skill name over a plugin entry of the same name', () => {
     const items = buildSlashItems([skill('review'), command('review', 'gh')])
     expect(resolveSlash('/review', items)!.item.kind).toBe('skill')

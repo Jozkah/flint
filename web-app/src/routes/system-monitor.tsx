@@ -21,9 +21,11 @@ import { cn, formatMegaBytes } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toNumber } from '@/utils/number'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import { isServedByFlint } from '@/lib/platform/utils'
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { Chip } from '@/components/ui/chip'
+import { EngineAddonPanel } from '@/containers/EngineAddon'
 import {
   backendLabel,
   groupDevices,
@@ -143,10 +145,13 @@ function UsageLine({
   label,
   percent,
   color,
+  pending,
 }: {
   label: string
   percent: number
   color: string
+  /** Shown instead of the percent before the first sample. */
+  pending?: string
 }) {
   return (
     <div className="mt-4 flex items-center justify-between gap-2 text-[13px]">
@@ -154,7 +159,9 @@ function UsageLine({
         <span className="size-2.5 rounded-full" style={{ background: color }} aria-hidden />
         {label}
       </span>
-      <b className="font-semibold tabular-nums text-foreground">{percent.toFixed(2)}%</b>
+      <b className="font-semibold tabular-nums text-foreground">
+        {pending ?? `${percent.toFixed(2)}%`}
+      </b>
     </div>
   )
 }
@@ -794,10 +801,13 @@ function GpuBlock({
   return (
     <div className="flex min-w-0 flex-col gap-2.5 border-t border-dashed border-border pt-4 first:border-t-0 first:pt-0">
       <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {/* The name, then the backend chips on the same line: they stay put,
+            and visible but disabled, when the GPU is switched off. */}
+        <div className="flex min-w-0 items-center gap-2">
           <b className="min-w-0 truncate text-[14px] font-medium text-foreground" title={gpu.name}>
             {gpu.name}
           </b>
+          <span className="flex shrink-0 items-center gap-1.5">
           {group && group.devices.length > 1 ? (
             group.devices.map((device) => {
               const on = device.id === current?.id
@@ -806,9 +816,10 @@ function GpuBlock({
                   key={device.id}
                   type="button"
                   onClick={() => onSelect(device.id)}
+                  disabled={!activated}
                   title={t('settings:hardware.backendSelectDesc')}
                   className={cn(
-                    'inline-flex h-[22px] cursor-pointer items-center rounded-md border-[0.8px] px-2 font-mono text-xs transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden pointer-coarse:h-9',
+                    'inline-flex h-[22px] cursor-pointer items-center rounded-md border-[0.8px] px-2 font-mono text-xs transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:h-9',
                     on
                       ? 'border-blue-400/60 bg-blue-500/10 text-foreground'
                       : 'border-border text-muted-foreground hover:border-border-strong hover:text-foreground'
@@ -821,12 +832,11 @@ function GpuBlock({
           ) : (
             <Chip mono>{gpuBackendLabel(gpu)}</Chip>
           )}
+          </span>
         </div>
         {group && (
           <label className="flex shrink-0 items-center gap-2 text-xs text-secondary-foreground">
-            <span className="hidden sm:inline">
-              {activated ? t('settings:hardware.gpuEnabled') : t('settings:hardware.gpuDisabled')}
-            </span>
+            <span className="hidden sm:inline">{t('settings:hardware.gpuEnabled')}</span>
             <Switch
               checked={activated}
               onCheckedChange={onToggle}
@@ -844,7 +854,7 @@ function GpuBlock({
         <Stat label={t('system-monitor:vram')}>{formatMegaBytes(total)}</Stat>
         {hasUsage && (
           <>
-            <Stat label={t('system-monitor:usedRam')}>
+            <Stat label={t('system-monitor:vramUsed')}>
               {formatMegaBytes((total * percent) / 100)}
             </Stat>
             <Stat label={t('system-monitor:freeVram')}>
@@ -946,6 +956,10 @@ function SystemMonitorContent() {
       })
   }, [serviceHub])
 
+  // Until the first sample the store holds zeros: say so instead of 0.00%.
+  const [measured, setMeasured] = useState(
+    () => systemUsage.cpu > 0 || systemUsage.used_memory > 0
+  )
   const pollUsage = useCallback(() => {
     serviceHub
       .hardware()
@@ -953,6 +967,7 @@ function SystemMonitorContent() {
       .then((data) => {
         if (data) {
           updateSystemUsage(data)
+          setMeasured(true)
         }
       })
       .catch((error) => {
@@ -963,7 +978,10 @@ function SystemMonitorContent() {
   // Poll every 5 seconds while the page is visible; a hidden window costs
   // nothing and catches up as soon as it is shown again.
   useEffect(() => {
-    if (!pageHidden()) pollSnapshot()
+    if (!pageHidden()) {
+      pollUsage()
+      pollSnapshot()
+    }
     const intervalId = setInterval(() => {
       if (pageHidden()) return
       pollUsage()
@@ -980,6 +998,8 @@ function SystemMonitorContent() {
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [pollUsage, pollSnapshot])
+
+  const measuring = t('system-monitor:measuring')
 
   // Calculate RAM usage percentage
   const ramUsagePercentage = toNumber(systemUsage.used_memory / hardwareData.total_memory) * 100
@@ -1031,7 +1051,7 @@ function SystemMonitorContent() {
       <div
         className={cn(
           'min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 pb-8 [scrollbar-width:thin]',
-          inShell ? 'px-1' : 'px-4'
+          inShell ? '-mr-3 pr-4 pl-1' : 'px-4'
         )}
       >
         <div className="flex w-full min-w-0 flex-col gap-4">
@@ -1063,7 +1083,7 @@ function SystemMonitorContent() {
               icon={<Icon name="x-cpu" size={16} />}
               delay={60}
               className="xl:col-span-4"
-              badge={<Badge color={ACCENT.cpu} percent={systemUsage.cpu} label={t('system-monitor:cpu')}>{systemUsage.cpu.toFixed(2)}%</Badge>}
+              badge={<Badge color={ACCENT.cpu} percent={systemUsage.cpu} label={t('system-monitor:cpu')}>{measured ? `${systemUsage.cpu.toFixed(2)}%` : measuring}</Badge>}
             >
               <b
                 className="mb-3 block truncate text-[14px] font-medium text-foreground"
@@ -1089,6 +1109,7 @@ function SystemMonitorContent() {
                 label={t('system-monitor:currentUsage')}
                 percent={systemUsage.cpu}
                 color={ACCENT.cpu}
+                pending={measured ? undefined : measuring}
               />
               <AreaChart values={history.cpu ?? []} color={ACCENT.cpu} />
               {snapshot && snapshot.cpu.per_core.length > 1 && (
@@ -1101,7 +1122,7 @@ function SystemMonitorContent() {
               icon={<Icon name="x-disk" size={16} />}
               delay={120}
               className="xl:col-span-4"
-              badge={<Badge color={ACCENT.memory} percent={ramUsagePercentage} label={t('system-monitor:memory')}>{ramUsagePercentage.toFixed(2)}%</Badge>}
+              badge={<Badge color={ACCENT.memory} percent={ramUsagePercentage} label={t('system-monitor:memory')}>{measured ? `${ramUsagePercentage.toFixed(2)}%` : measuring}</Badge>}
             >
               <Stats>
                 <Stat label={t('system-monitor:totalRam')}>
@@ -1118,6 +1139,7 @@ function SystemMonitorContent() {
                 label={t('system-monitor:currentUsage')}
                 percent={ramUsagePercentage}
                 color={ACCENT.memory}
+                pending={measured ? undefined : measuring}
               />
               <AreaChart values={history.ram ?? []} color={ACCENT.memory} />
               {snapshot && snapshot.memory.swap_total > 0 && (
@@ -1152,10 +1174,18 @@ function SystemMonitorContent() {
                 }
               >
                 <div className="flex flex-col gap-4">
+                  {/* Which GPU runs models is the desktop engine's setting. */}
+                  {gpus.length > 0 && isServedByFlint() && (
+                    <p data-testid="gpu-desktop-only" className="text-xs text-muted-foreground">
+                      {t('permissions:desktopOnly')}
+                    </p>
+                  )}
                   {gpus.length > 0 ? (
                     gpus.map((gpu) => {
                       const { usage, total, percent } = gpuPercent(gpu)
-                      const group = groupForGpu(gpuGroups, gpu, gpus)
+                      const group = isServedByFlint()
+                        ? undefined
+                        : groupForGpu(gpuGroups, gpu, gpus)
                       return (
                         <GpuBlock
                           key={gpu.uuid}
@@ -1172,6 +1202,9 @@ function SystemMonitorContent() {
                     })
                   ) : (
                     <Empty>{t('system-monitor:noGpus')}</Empty>
+                  )}
+                  {inShell && gpus.length > 0 && (
+                    <EngineAddonPanel className="border-t border-dashed border-border pt-4" />
                   )}
                 </div>
               </Panel>

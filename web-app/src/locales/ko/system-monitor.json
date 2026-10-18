@@ -1,4 +1,5 @@
 {
+  "vramUsed": "사용 중인 VRAM",
   "title": "시스템 모니터",
   "cpuUsage": "CPU 사용량",
   "model": "모델",
@@ -71,5 +72,6 @@
   "processor": "프로세서",
   "graphics": "그래픽",
   "freeVram": "여유 VRAM",
-  "apiVersion": "API 버전"
+  "apiVersion": "API 버전",
+  "measuring": "측정 중…"
 }

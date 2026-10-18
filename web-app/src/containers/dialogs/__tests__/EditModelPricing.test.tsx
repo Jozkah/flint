@@ -118,5 +118,13 @@ describe('model price fields', () => {
     fireEvent.change(field('cache-write-cost'), { target: { value: '-1' } })
     expect(field('cache-write-cost')).toHaveAttribute('aria-invalid', 'true')
     expect(save()).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('providers:editModel.costInvalid')
+  })
+
+  it('refuses a negative input price', () => {
+    render(<DialogEditModel provider={provider} modelId="plain" />)
+    fireEvent.change(field('input-cost'), { target: { value: '-5' } })
+    expect(field('input-cost')).toHaveAttribute('aria-invalid', 'true')
+    expect(save()).toBeDisabled()
   })
 })

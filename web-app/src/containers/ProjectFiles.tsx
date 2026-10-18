@@ -8,6 +8,8 @@ import {
   Folder,
   Trash2,
   UploadIcon,
+  AlertCircle,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,7 +44,10 @@ import { ExtensionManager } from '@/lib/extension'
 import { Loader2, Paperclip } from 'lucide-react'
 import { useProjectUploads } from '@/stores/project-uploads-store'
 import { collectFilesFromDirectory } from '@/lib/directoryWalk'
+import { namedFilePaths } from '@/lib/fileDrop'
 import { buildProjectFileTree, type TreeNode } from '@/lib/projectFileTree'
+import { useNavigate } from '@tanstack/react-router'
+import { route } from '@/constants/routes'
 
 type ProjectFilesProps = {
   projectId: string
@@ -70,6 +75,11 @@ function extractRagErrorMessage(error: unknown): {
 
 type TFn = (key: string, opts?: Record<string, unknown>) => string
 
+/** Ingestion failed because no embedding model is installed to index the file. */
+export function isMissingEmbeddingModel(error: unknown): boolean {
+  return /no embedding model/i.test(extractRagErrorMessage(error).message)
+}
+
 function humanizeUploadError(
   t: TFn,
   error: unknown,
@@ -80,6 +90,10 @@ function humanizeUploadError(
     ? `"${fileName}"`
     : (t('common:toast.uploadFailed.subjectThisFile') ?? 'This file')
   const lower = message.toLowerCase()
+
+  if (isMissingEmbeddingModel(error)) {
+    return t('common:toast.uploadFailed.noEmbeddingModel', { subject })
+  }
 
   if (kind === 'parse' && lower.includes('pdf')) {
     if (
@@ -458,6 +472,15 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     (s) => s.completedTick[projectId] ?? 0,
   )
   const ingestFiles = useProjectUploads((s) => s.ingest)
+  const failures = useProjectUploads((s) => s.failures?.[projectId])
+  const dismissFailure = useProjectUploads((s) => s.dismissFailure)
+  const navigate = useNavigate()
+  const openEmbeddingSetup = useCallback(() => {
+    void navigate({
+      to: route.settings.providers,
+      params: { providerName: 'llamacpp' },
+    } as never)
+  }, [navigate])
   const uploading = !!uploadProgress
 
   const loadProjectFiles = useCallback(async () => {
@@ -583,13 +606,21 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
               t('common:toast.uploadFailed.title') ?? 'Failed to process file',
               {
                 description: humanizeUploadError(t, error, fileName),
+                ...(isMissingEmbeddingModel(error)
+                  ? {
+                      action: {
+                        label: t('common:projects.setUpEmbeddingModel'),
+                        onClick: openEmbeddingSetup,
+                      },
+                    }
+                  : {}),
               },
             )
           },
         },
       )
     },
-    [files, ingestFiles, maxFileSizeMB, projectId, serviceHub, t]
+    [files, ingestFiles, maxFileSizeMB, projectId, serviceHub, t, openEmbeddingSetup]
   )
 
   const handleUpload = async () => {
@@ -681,6 +712,34 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
       }
     }
 
+    // WebKitGTK may give no File objects (and Tauri's File has no `path`),
+    // but a file-manager drop names its files as URIs. Bare text paths are
+    // not taken: dragging `/home/me` out of a terminal is not an upload. A
+    // folder named this way is never walked without the user saying so.
+    if (paths.length === 0) {
+      // Bare text paths are not taken: dragging `/home/me` is not an upload.
+      const found = namedFilePaths(e.dataTransfer)
+      const named = found?.paths ?? []
+      const { fs } = await import('@janhq/core')
+      for (const p of named) {
+        const stat = await fs.fileStat(p).catch(() => undefined)
+        // Only GNOME's own drag type is trusted to attach by itself: a page
+        // can name any path in text a dragged link carries. Everything else is
+        // asked about, like a folder.
+        if (!stat?.isDirectory && found?.trusted) {
+          paths.push(p)
+          continue
+        }
+        const name = p.split(/[\\/]/).filter(Boolean).pop() || p
+        toast.info(t(stat?.isDirectory ? 'common:pastedPath.folder' : 'common:pastedPath.file', { name }), {
+          action: {
+            label: t('common:pastedPath.attach'),
+            onClick: () => void processFilePaths([p]),
+          },
+        })
+      }
+    }
+
     if (paths.length > 0) {
       await processFilePaths(paths)
     }
@@ -759,6 +818,41 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
             value={(uploadProgress.current / uploadProgress.total) * 100}
           />
         </div>
+      )}
+
+      {failures && failures.length > 0 && (
+        <ul className="mb-3 space-y-2">
+          {failures.map((f) => (
+            <li
+              key={f.fileName}
+              data-testid="project-file-failure"
+              className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-xs"
+            >
+              <AlertCircle className="size-4 shrink-0 text-destructive mt-0.5" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="font-medium truncate" title={f.fileName}>
+                  {f.fileName}
+                </p>
+                <p className="text-muted-foreground">
+                  {humanizeUploadError(t, f.error, f.fileName)}
+                </p>
+                {isMissingEmbeddingModel(f.error) && (
+                  <Button variant="outline" size="sm" onClick={openEmbeddingSetup}>
+                    {t('common:projects.setUpEmbeddingModel')}
+                  </Button>
+                )}
+              </div>
+              <button
+                type="button"
+                aria-label={t('common:dismiss')}
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => dismissFailure(projectId, f.fileName)}
+              >
+                <X className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
       {loading ? (

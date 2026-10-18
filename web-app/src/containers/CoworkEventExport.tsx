@@ -9,7 +9,9 @@
  * in it.
  */
 import { useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
+import { DetailsCard } from '@/containers/DetailsCard'
 import {
   cancelEventExport,
   exportEvents,
@@ -26,6 +28,7 @@ export function CoworkEventExport({
   sessionId: string | null | undefined
   pickFolder: () => Promise<string | null>
 }) {
+  const { t } = useTranslation()
   const [includeContent, setIncludeContent] = useState(false)
   const [running, setRunning] = useState<string | null>(null)
   const [exported, setExported] = useState<{ path: string; count: number; metadataOnly: boolean } | null>(null)
@@ -62,41 +65,41 @@ export function CoworkEventExport({
   }
 
   return (
-    <section
-      className="flex flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-card p-3 text-xs"
-      aria-label="Export this session's events"
+    <DetailsCard
+      aria-label={t('sweep:cowork.eventExportLabel')}
       data-testid="event-export"
+      title={t('sweep:cowork.sessionEvents')}
+      // The actions on the heading's row and the one option under it, as
+      // the design lays out the session events box.
+      actions={
+        <>
+          <Button size="sm" variant="ghost" className="-my-1" onClick={() => void inspect()} data-testid="event-inspect">
+            {t('sweep:cowork.inspectExport')}
+          </Button>
+          {running ? (
+            <Button size="sm" variant="outline" className="-my-1" onClick={() => void cancelEventExport(running)} data-testid="event-export-cancel">
+              {t('sweep:cowork.stopExport')}
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="-my-1" onClick={() => void run()} data-testid="event-export-run">
+              {t('sweep:cowork.exportEvents')}
+            </Button>
+          )}
+        </>
+      }
     >
-      {/* The actions on the heading's row and the one option under it, as
-          the design lays out the session events box. */}
-      <div className="flex flex-wrap items-center gap-1">
-        <p className="flex-1 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">Session events</p>
-        <Button size="sm" variant="ghost" onClick={() => void inspect()} data-testid="event-inspect">
-          Inspect an export
-        </Button>
-        {running ? (
-          <Button size="sm" variant="outline" onClick={() => void cancelEventExport(running)} data-testid="event-export-cancel">
-            Stop export
-          </Button>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => void run()} data-testid="event-export-run">
-            Export events
-          </Button>
-        )}
-      </div>
-      <label className="flex cursor-pointer items-start gap-3 pt-1">
+      <label className="flex cursor-pointer items-center gap-3">
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-medium text-foreground">
-            Include content: prompts, tool inputs and outputs, and file paths.
+          <span className="block text-[12.5px] leading-5 text-foreground">
+            {t('sweep:cowork.includeContent')}
           </span>
           {includeContent ? (
             <span className="block text-warning" data-testid="event-export-warning">
-              The export will hold what the model and tools saw. Secrets were
-              removed when the events were recorded; share it with care.
+              {t('sweep:cowork.exportWarning')}
             </span>
           ) : (
             <span className="block text-muted-foreground">
-              Off: kinds, order, times and statuses only.
+              {t('sweep:cowork.exportMetadataOnly')}
             </span>
           )}
         </span>
@@ -109,7 +112,7 @@ export function CoworkEventExport({
           checked={includeContent}
           onChange={(e) => setIncludeContent(e.target.checked)}
           data-testid="event-export-content"
-          className="relative mt-0.5 h-[18px] w-8 shrink-0 cursor-pointer appearance-none rounded-full bg-track outline-none transition-colors duration-200 ease-expo before:absolute before:top-0.5 before:left-0.5 before:size-3.5 before:rounded-full before:bg-white before:shadow-sm before:transition-transform before:duration-200 before:ease-expo checked:bg-primary checked:before:translate-x-3.5 focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:mt-0"
+          className="relative h-[18px] w-8 shrink-0 cursor-pointer appearance-none rounded-full bg-track outline-none transition-colors duration-200 ease-expo before:absolute before:top-0.5 before:left-0.5 before:size-3.5 before:rounded-full before:bg-white before:shadow-sm before:transition-transform before:duration-200 before:ease-expo checked:bg-primary checked:before:translate-x-3.5 focus-visible:ring-[3px] focus-visible:ring-ring/40"
         />
       </label>
       {exported ? (
@@ -139,6 +142,6 @@ export function CoworkEventExport({
           {error.message}
         </p>
       ) : null}
-    </section>
+    </DetailsCard>
   )
 }

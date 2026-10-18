@@ -311,7 +311,7 @@ vi.mock('@/constants/providers', () => ({
 }))
 
 vi.mock('@/constants/routes', () => ({
-  route: { hub: { index: '/hub' } },
+  route: { hub: { index: '/hub' }, settings: { providers: '/settings/providers' } },
 }))
 
 vi.mock('@/hooks/useModelProvider', () => {
@@ -342,6 +342,7 @@ vi.mock('zustand/shallow', () => ({
 
 // Import AFTER mocks
 import { Route } from '../$providerName'
+import { useModelLibrary } from '@/hooks/useModelLibrary'
 import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 
 const renderComponent = () => {
@@ -439,6 +440,92 @@ describe('ProviderDetail route', () => {
       expect(screen.getByText('providers:noModelFound')).toBeInTheDocument()
     })
 
+    it('keeps the model row responsive: container query, no forced min width', () => {
+      h.openaiProvider.models = [
+        {
+          id: 'm-1',
+          model: 'm-1',
+          name: 'm-1',
+          capabilities: ['completion'],
+          version: '1',
+        },
+      ] as never
+      renderComponent()
+      const row = screen.getByTestId('model-row-m-1')
+      // The two-line card layout kicks in from the table's own width, and
+      // the table never forces a horizontal scrollbar.
+      expect(row.className).toMatch(/@max-\[560px\]:flex/)
+      expect(row.className).toMatch(/@max-\[560px\]:flex-wrap/)
+      const tbox = row.closest('[data-slot="tbox"]') as HTMLElement
+      expect(tbox.className).toContain('@container')
+      expect(tbox.className).not.toMatch(/min-w-\[/)
+    })
+
+    it('keeps one grid cell per column when a model has no capabilities', () => {
+      // Without a cell for the capability icons every later column slid one
+      // place left: the status pill landed in the narrow context column and
+      // "Available" was cut off beside the Start button.
+      h.openaiProvider.models = [
+        { id: 'plain', model: 'plain', name: 'plain', capabilities: [], version: '1' },
+        {
+          id: 'smart',
+          model: 'smart',
+          name: 'smart',
+          capabilities: ['completion', 'tools'],
+          version: '1',
+        },
+      ] as never
+      renderComponent()
+      const plain = screen.getByTestId('model-row-plain')
+      const smart = screen.getByTestId('model-row-smart')
+      expect(plain.children.length).toBe(smart.children.length)
+      // mark, name, capabilities (an empty cell, not a missing one)
+      expect(plain.children[2]).toHaveAttribute('data-testid', 'model-capabilities-cell')
+      expect(plain.children[2].children.length).toBe(0)
+      expect(smart.children[2].children.length).toBe(1)
+      expect(plain.children[2].className).toMatch(/@max-\[560px\]:empty:hidden/)
+    })
+
+    it('keeps the local row seven cells wide with no capabilities, status in its own cell', () => {
+      h.params.providerName = 'llamacpp'
+      h.llamacppProvider.models = [
+        { id: 'bare', model: 'bare', name: 'bare', capabilities: [], version: '1' },
+      ] as never
+      renderComponent()
+      const row = screen.getByTestId('model-row-bare')
+      // The line-break span is display:none in the table, so it holds no column.
+      const cells = [...row.children].filter((c) => !c.className.includes('hidden h-0'))
+      // mark, name, capabilities, size, context, status, actions
+      expect(cells.length).toBe(7)
+      expect(cells[2]).toHaveAttribute('data-testid', 'model-capabilities-cell')
+      expect(cells[2].className).toMatch(/@max-\[880px\]:empty:hidden/)
+      expect(cells[5].querySelector('[data-testid^="model-status-"]')).not.toBeNull()
+      // C099: at 520px the pill was cut mid-word ("Available · not loade").
+      const pill = cells[5].querySelector('[data-testid^="model-status-"]')!
+      expect(pill.className).toMatch(/max-w-full/)
+      expect(pill.querySelector('.truncate')).not.toBeNull()
+    })
+
+    it('shows the quant as a chip and cuts the file name in the middle', () => {
+      h.params.providerName = 'llamacpp'
+      const id = 'Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-Extra-Long-Name-IQ4_XS'
+      h.llamacppProvider.models = [
+        { id, model: id, name: id, capabilities: [], version: '1' },
+      ] as never
+      renderComponent()
+      const row = screen.getByTestId(`model-row-${id}`)
+      expect(row.querySelector('[data-testid="model-quant-chip"]')).toHaveTextContent(
+        'IQ4_XS'
+      )
+      const line = row.querySelector('[data-testid="model-secondary-line"]')!
+      // full name for readers, then the head (CSS ellipsis) and the tail
+      // that always stays, drawn from attributes
+      expect(line.children.length).toBe(3)
+      expect(line.children[2]!.getAttribute('data-text')!.endsWith('IQ4_XS')).toBe(true)
+      expect(line.textContent!.endsWith('IQ4_XS')).toBe(true)
+      expect(line).toHaveAttribute('title', expect.stringContaining(id))
+    })
+
     describe('long remote model lists', () => {
       const many = (n: number) =>
         Array.from({ length: n }, (_, i) => ({
@@ -457,14 +544,71 @@ describe('ProviderDetail route', () => {
       it('pages a long list and filters it by name', () => {
         h.openaiProvider.models = many(120)
         renderComponent()
-        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(50)
+        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(12)
         fireEvent.click(screen.getByText('providers:showMoreModels'))
-        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(100)
+        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(24)
         fireEvent.change(screen.getByRole('textbox', { name: /filterModels/ }), {
           target: { value: 'model-11' },
         })
         // model-11, model-110 .. model-119
         expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(11)
+      })
+
+      it('says nothing matches, rather than "0 of 0", when the filter finds none', () => {
+        h.openaiProvider.models = many(120)
+        renderComponent()
+        fireEvent.change(screen.getByRole('textbox', { name: /filterModels/ }), {
+          target: { value: 'zzz-nothing' },
+        })
+        expect(screen.queryAllByTestId(/^edit-model-/)).toHaveLength(0)
+        expect(screen.getByTestId('models-no-match')).toHaveTextContent(
+          'providers:noModelsMatch'
+        )
+        expect(screen.queryByText(/providers:modelsShown/)).toBeNull()
+      })
+    })
+
+    describe('long local model lists', () => {
+      const local = (family: string, n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+          id: `${family}-${i}`,
+          model: `${family}-${i}`,
+          name: `${family}-${i}`,
+          capabilities: ['completion'],
+          version: '1',
+        }))
+
+      beforeEach(() => {
+        useModelLibrary.setState({
+          folders: [],
+          filterQuery: {},
+          expandedGroups: {},
+        })
+        h.params.providerName = 'llamacpp'
+        h.llamacppProvider.models = [...local('qwen', 13), ...local('llama', 12)]
+      })
+
+      it('groups 25 models by family, collapsed, and opens one on click', () => {
+        renderComponent()
+        expect(screen.queryAllByTestId(/^edit-(qwen|llama)-/)).toHaveLength(0)
+        expect(screen.getByText('qwen')).toBeInTheDocument()
+        expect(screen.getByText('llama')).toBeInTheDocument()
+        fireEvent.click(screen.getByText('llama'))
+        expect(screen.getAllByTestId(/^edit-(qwen|llama)-/)).toHaveLength(12)
+      })
+
+      it('filters the local list and keeps the query across a remount', () => {
+        const first = renderComponent()
+        fireEvent.change(screen.getByRole('textbox', { name: /filterModels/ }), {
+          target: { value: 'qwen-1' },
+        })
+        // qwen-1, qwen-10, qwen-11, qwen-12 (a query opens every group)
+        expect(screen.getAllByTestId(/^edit-(qwen|llama)-/)).toHaveLength(4)
+        first.unmount()
+        renderComponent()
+        expect(
+          screen.getByRole('textbox', { name: /filterModels/ })
+        ).toHaveValue('qwen-1')
       })
     })
 
@@ -532,6 +676,74 @@ describe('ProviderDetail route', () => {
       fireEvent.blur(primary)
       // updateProvider should not have been called from commit
       expect(h.updateProvider).not.toHaveBeenCalled()
+    })
+
+    it('shows the Azure api-version field and saves it into the provider settings', () => {
+      h.params.providerName = 'azure'
+      h.providerMap.azure = {
+        ...h.openaiProvider,
+        provider: 'azure',
+        settings: [
+          {
+            key: 'api-version',
+            title: 'API version',
+            description: '',
+            controller_type: 'input',
+            controller_props: { value: '' },
+          },
+        ],
+      }
+      renderComponent()
+      const field = screen.getByTestId('azure-api-version') as HTMLInputElement
+      fireEvent.change(field, { target: { value: '2024-10-21' } })
+      fireEvent.blur(field)
+      expect(h.providersSvc.updateSettings).toHaveBeenCalledWith(
+        'azure',
+        [expect.objectContaining({ key: 'api-version', controller_props: { value: '2024-10-21' } })]
+      )
+      expect(h.updateProvider).toHaveBeenCalledWith(
+        'azure',
+        expect.objectContaining({
+          settings: [expect.objectContaining({ key: 'api-version' })],
+        })
+      )
+      delete h.providerMap.azure
+    })
+
+    it('renders Azure api-version as one control that follows the stored value', () => {
+      h.params.providerName = 'azure'
+      h.providerMap.azure = {
+        ...h.openaiProvider,
+        provider: 'azure',
+        settings: [
+          {
+            key: 'api-version',
+            title: 'Azure API version row',
+            description: '',
+            controller_type: 'input',
+            controller_props: { value: '2024-10-21' },
+          },
+        ],
+      }
+      const view = renderComponent()
+      expect(screen.queryByText('Azure API version row')).not.toBeInTheDocument()
+      expect(screen.getAllByDisplayValue('2024-10-21')).toHaveLength(1)
+      // The stored value changes elsewhere: the draft follows it.
+      h.providerMap.azure = {
+        ...h.providerMap.azure,
+        settings: [
+          {
+            ...h.providerMap.azure.settings[0],
+            controller_props: { value: '2025-01-01' },
+          },
+        ],
+      }
+      const Component = Route.component as React.ComponentType
+      view.rerender(<Component />)
+      expect(
+        (screen.getByTestId('azure-api-version') as HTMLInputElement).value
+      ).toBe('2025-01-01')
+      delete h.providerMap.azure
     })
 
     it('toggles advanced mode and reveals key rows + add button', () => {
@@ -826,6 +1038,23 @@ describe('ProviderDetail route', () => {
       h.params.providerName = 'custom-llm'
     }
 
+    it('labels a LAN endpoint as on your network, not remote (T7-115)', () => {
+      setupCustomProvider()
+      h.providerMap['custom-llm'].base_url = 'http://192.168.1.20:8559/v1'
+      renderComponent()
+      expect(screen.getByTestId('provider-reach-note').textContent).toBe(
+        'engine:provider.networkNote'
+      )
+    })
+
+    it('labels a hosted endpoint as remote', () => {
+      setupCustomProvider()
+      renderComponent()
+      expect(screen.getByTestId('provider-reach-note').textContent).toBe(
+        'engine:provider.remoteNote'
+      )
+    })
+
     it('for a non-predefined provider, only the base-url dynamic control renders (api-key input is hidden)', () => {
       setupCustomProvider()
       renderComponent()
@@ -842,6 +1071,20 @@ describe('ProviderDetail route', () => {
         'custom-llm',
         expect.objectContaining({ base_url: 'new-value' })
       )
+    })
+
+    it('shows the engine settings localized, with an info tip and the per-model link', () => {
+      h.params.providerName = 'llamacpp'
+      renderComponent()
+      // The test translator echoes keys: the title came from engineSettings.
+      expect(screen.getByText('engineSettings:ctx_size.title')).toBeInTheDocument()
+      expect(screen.getByTestId('engine-setting-info-ctx_size')).toHaveAttribute(
+        'aria-label',
+        'engineSettings:_ui.moreInfo'
+      )
+      expect(
+        screen.getByText('engineSettings:_ui.perModelSettings').closest('a')
+      ).toHaveAttribute('href', '/settings/providers')
     })
 
     it('for llamacpp, a setting change stops only its models, once typing pauses', async () => {

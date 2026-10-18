@@ -1211,6 +1211,7 @@ async fn run_once(
                             tool_call_to_json(tc, args)
                         })
                         .collect();
+                    super::upstream::uniquify_tool_call_ids(&mut final_calls);
                 }
                 // A provider that streamed content but reported nothing at the
                 // end still needs the text captured above.
@@ -1843,6 +1844,68 @@ mod tests {
         // Deltas, not prefixes: concatenating them must rebuild the arguments
         // rather than repeating them.
         assert_eq!(args, r#"{"q":"x"}"#);
+        server.await.expect("server");
+    }
+
+    /// genai 0.7.0-beta.19 read only `delta.tool_calls[0]` of a non-final chunk, so
+    /// a provider that batches several calls into one SSE chunk lost all but the
+    /// first. The vendored crate (see `src-tauri/vendor/genai/FLINT-PATCH.md`)
+    /// handles every entry; this guards the patch from being dropped by a bump.
+    #[tokio::test]
+    async fn two_tool_calls_in_one_chunk_are_both_delivered() {
+        let (url, server) = serve(vec![Some(sse_response(&[
+            r#"{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"grep","arguments":"{\"q\":\"a\"}"}},{"index":1,"id":"call_b","type":"function","function":{"name":"read","arguments":"{\"p\":"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"\"b\"}"}}]}}]}"#,
+            r#"{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#,
+        ]))])
+        .await;
+
+        let (tx, mut rx) = sink();
+        let completion = run(&url, &[], &tx).await.expect("stream succeeds");
+        let calls = completion["choices"][0]["message"]["tool_calls"]
+            .as_array()
+            .expect("tool calls");
+        assert_eq!(calls.len(), 2, "no call lost: {calls:?}");
+        assert_eq!(calls[0]["id"], "call_a");
+        assert_eq!(calls[0]["function"]["arguments"], r#"{"q":"a"}"#);
+        assert_eq!(calls[1]["id"], "call_b");
+        assert_eq!(calls[1]["function"]["name"], "read");
+        assert_eq!(calls[1]["function"]["arguments"], r#"{"p":"b"}"#);
+
+        drop(tx);
+        let mut started = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            if let StreamEvent::ToolCallStarted { id, .. } = ev {
+                started.push(id);
+            }
+        }
+        assert_eq!(started, vec!["call_a".to_string(), "call_b".to_string()]);
+        server.await.expect("server");
+    }
+
+    /// Same defect on the finish chunk (Ollama-style): calls and finish_reason
+    /// arrive together, and only the first call was announced.
+    #[tokio::test]
+    async fn two_tool_calls_alongside_the_finish_reason_are_both_delivered() {
+        let (url, server) = serve(vec![Some(sse_response(&[
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"grep","arguments":"{}"}},{"index":1,"id":"call_b","function":{"name":"read","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#,
+        ]))])
+        .await;
+
+        let (tx, mut rx) = sink();
+        let completion = run(&url, &[], &tx).await.expect("stream succeeds");
+        let calls = completion["choices"][0]["message"]["tool_calls"]
+            .as_array()
+            .expect("tool calls");
+        assert_eq!(calls.len(), 2);
+        drop(tx);
+        let mut started = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            if let StreamEvent::ToolCallStarted { id, .. } = ev {
+                started.push(id);
+            }
+        }
+        assert_eq!(started, vec!["call_a".to_string(), "call_b".to_string()]);
         server.await.expect("server");
     }
 

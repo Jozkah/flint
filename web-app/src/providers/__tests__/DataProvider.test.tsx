@@ -123,7 +123,15 @@ vi.mock('@/lib/utils', async (importOriginal) => ({
   isDev: () => h.isDev(),
 }))
 
-vi.mock('@/lib/provider-api-keys', () => ({
+vi.mock('@/lib/bedrock', () => ({
+  getBedrockCredentialStatus: vi.fn().mockResolvedValue({
+    access_key_id: false,
+    secret_access_key: false,
+    session_token: false,
+  }),
+}))
+vi.mock('@/lib/provider-api-keys', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/provider-api-keys')>()),
   providerHasRemoteApiKeys: (p: unknown) => h.providerHasRemoteApiKeys(p),
   providerRemoteApiKeyChain: (p: unknown) => h.providerRemoteApiKeyChain(p),
 }))
@@ -204,6 +212,11 @@ vi.mock('@/hooks/useServiceHub', () => {
 
 // Import after mocks
 import { DataProvider } from '../DataProvider'
+import {
+  EXTENSIONS_LOADED_EVENT,
+  markExtensionsLoaded,
+  resetExtensionsLoaded,
+} from '@/lib/extensionEvents'
 
 const resetHubState = () => {
   hubState.getProviders.mockResolvedValue([])
@@ -350,6 +363,68 @@ describe('DataProvider', () => {
       expect(h.setServers).toHaveBeenCalledWith({})
       expect(h.setSettings).toHaveBeenCalledWith({ foo: 'bar' })
     })
+  })
+
+  it('re-reads assistants once extensions finish loading (slow first-launch seed)', async () => {
+    const seeded = Array.from({ length: 9 }, (_, i) => ({ id: `a${i}` }))
+    // The UI mounted mid-seed: first read sees only the default assistant.
+    hubState.getAssistants
+      .mockResolvedValueOnce([{ id: 'jan' }])
+      .mockResolvedValueOnce(seeded)
+
+    render(<DataProvider />)
+    await waitFor(() =>
+      expect(h.setAssistants).toHaveBeenCalledWith([{ id: 'jan' }])
+    )
+
+    act(() => {
+      window.dispatchEvent(new Event(EXTENSIONS_LOADED_EVENT))
+    })
+    await waitFor(() => expect(h.setAssistants).toHaveBeenLastCalledWith(seeded))
+  })
+
+  it('re-reads assistants when extensions finished loading before it subscribed', async () => {
+    const seeded = Array.from({ length: 9 }, (_, i) => ({ id: `a${i}` }))
+    markExtensionsLoaded()
+    hubState.getAssistants.mockResolvedValue(seeded)
+    render(<DataProvider />)
+    await waitFor(() => expect(h.setAssistants).toHaveBeenLastCalledWith(seeded))
+    expect(hubState.getAssistants.mock.calls.length).toBeGreaterThanOrEqual(2)
+    resetExtensionsLoaded()
+  })
+
+  it('a slow early read never overwrites the newer post-load read', async () => {
+    const seeded = Array.from({ length: 9 }, (_, i) => ({ id: `a${i}` }))
+    let releaseSlow!: (v: unknown) => void
+    hubState.getAssistants
+      .mockImplementationOnce(() => new Promise((r) => (releaseSlow = r)))
+      .mockResolvedValueOnce(seeded)
+    render(<DataProvider />)
+    await waitFor(() => expect(hubState.getAssistants).toHaveBeenCalledTimes(1))
+    act(() => {
+      window.dispatchEvent(new Event(EXTENSIONS_LOADED_EVENT))
+    })
+    await waitFor(() => expect(h.setAssistants).toHaveBeenCalledWith(seeded))
+    // The mount-time read finally lands with the partial list: ignored.
+    await act(async () => {
+      releaseSlow([{ id: 'jan' }])
+    })
+    expect(h.setAssistants).not.toHaveBeenCalledWith([{ id: 'jan' }])
+    expect(h.setAssistants).toHaveBeenLastCalledWith(seeded)
+  })
+
+  it('retries a failed assistants read instead of keeping the default', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const seeded = [{ id: 'jan' }, { id: 'b' }]
+    hubState.getAssistants
+      .mockRejectedValueOnce(new Error('fs stalled'))
+      .mockResolvedValueOnce(seeded)
+    render(<DataProvider />)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(h.setAssistants).toHaveBeenLastCalledWith(seeded)
+    vi.useRealTimers()
   })
 
   it('sets assistants to null when service returns empty array', async () => {

@@ -15,41 +15,69 @@ export interface I18nInstance {
   resources: TranslationResources
   namespaces: string[]
   defaultNS: string
-  changeLanguage: (lng: string) => void
+  /** Resolves once the language's strings are loaded and it is in use. */
+  changeLanguage: (lng: string) => Promise<void>
+  /** Resolves once the stored language's strings are loaded. */
+  ready: Promise<void>
   t: (key: string, options?: Record<string, unknown>) => string
 }
 
 // Global i18n instance
 let i18nInstance: I18nInstance
 
-// Dynamically load locale files
-const localeFiles = import.meta.glob('../locales/**/*.json', { eager: true })
+// English is the fallback language and is always bundled with the app. Every
+// other language is loaded on demand, when it is the stored language or the
+// person picks it: all 19 languages eager is ~650 JSON modules, which the dev
+// server serves one request each before the first screen, and which a built app
+// parses on every start for nothing.
+const englishFiles = import.meta.glob('../locales/en/*.json', { eager: true })
+const lazyLocaleFiles = import.meta.glob('../locales/*/*.json')
 
 const resources: TranslationResources = {}
 const namespaces: string[] = []
 
-// Process all locale files
-Object.entries(localeFiles).forEach(([path, module]) => {
+const LOCALE_PATH = /\.\.\/locales\/([^/]+)\/([^/]+)\.json/
+
+const addLocale = (path: string, module: unknown) => {
+  const match = path.match(LOCALE_PATH)
+  if (!match) return
   // Example path: '../locales/en/common.json' -> language: 'en', namespace: 'common'
-  const match = path.match(/\.\.\/locales\/([^/]+)\/([^/]+)\.json/)
+  const [, language, namespace] = match
+  if (!resources[language]) resources[language] = {}
+  if (!namespaces.includes(namespace)) namespaces.push(namespace)
+  resources[language][namespace] =
+    (module as { default: { [key: string]: string } }).default ||
+    (module as { [key: string]: string })
+}
 
-  if (match) {
-    const [, language, namespace] = match
+Object.entries(englishFiles).forEach(([path, module]) => addLocale(path, module))
 
-    // Initialize language object if it doesn't exist
-    if (!resources[language]) {
-      resources[language] = {}
-    }
+/** How one locale file is fetched; a seam so a test can make it fail. */
+export const languageLoader = {
+  load: (path: string): Promise<unknown> => lazyLocaleFiles[path](),
+}
 
-    // Add namespace to list if it's not already there
-    if (!namespaces.includes(namespace)) {
-      namespaces.push(namespace)
-    }
+const loading = new Map<string, Promise<void>>()
 
-    // Add namespace resources to language
-    resources[language][namespace] = (module as { default: { [key: string]: string } }).default || (module as { [key: string]: string })
+/** Load every namespace of a language (a no-op when it is already loaded). */
+export const ensureLanguage = (lng: string): Promise<void> => {
+  const prefix = `../locales/${lng}/`
+  const paths = Object.keys(lazyLocaleFiles).filter((p) => p.startsWith(prefix))
+  if (paths.length === 0 || resources[lng]) return Promise.resolve()
+  let pending = loading.get(lng)
+  if (!pending) {
+    pending = Promise.all(
+      paths.map((p) => languageLoader.load(p).then((m) => addLocale(p, m)))
+    ).then(() => undefined)
+    loading.set(lng, pending)
+    // A failed download must not stay cached, or every later attempt at this
+    // language would fail the same way until a reload.
+    pending.catch(() => {
+      if (loading.get(lng) === pending) loading.delete(lng)
+    })
   }
-})
+  return pending
+}
 
 // Get stored language preference
 const getStoredLanguage = (): string => {
@@ -97,12 +125,14 @@ const translate = (key: string, options: Record<string, unknown> = {}): string =
     } catch {
       form = options.count === 1 ? 'one' : 'other'
     }
-    // As i18next: the exact plural form, then the bare key, then `_other`.
-    return (
-      getNestedValue(table, `${translationKey}_${form}`) ??
-      getNestedValue(table, translationKey) ??
-      getNestedValue(table, `${translationKey}_other`)
-    )
+    // The exact plural form first. The bare key is the singular (en, ru, pl),
+    // so it only serves "one" ahead of `_other`; any other form that has no
+    // key of its own reads `_other` before the bare key (5 -> "5 событий").
+    const exact = getNestedValue(table, `${translationKey}_${form}`)
+    if (exact !== undefined) return exact
+    const bare = getNestedValue(table, translationKey)
+    const other = getNestedValue(table, `${translationKey}_other`)
+    return form === 'one' ? bare ?? other : other ?? bare
   }
 
   // Try to get translation from current language
@@ -136,19 +166,20 @@ const translate = (key: string, options: Record<string, unknown> = {}): string =
 }
 
 // Change language function
-const changeLanguage = (lng: string): void => {
-  if (i18nInstance && resources[lng]) {
-    i18nInstance.language = lng
-    
-    // Update localStorage
-    try {
-      const stored = localStorage.getItem(localStorageKey.settingGeneral)
-      const parsed = stored ? JSON.parse(stored) : { state: {} }
-      parsed.state.currentLanguage = lng
-      localStorage.setItem(localStorageKey.settingGeneral, JSON.stringify(parsed))
-    } catch (error) {
-      console.error('Failed to save language preference:', error)
-    }
+const changeLanguage = async (lng: string): Promise<void> => {
+  if (!i18nInstance) return
+  await ensureLanguage(lng)
+  if (!resources[lng]) return
+  i18nInstance.language = lng
+
+  // Update localStorage
+  try {
+    const stored = localStorage.getItem(localStorageKey.settingGeneral)
+    const parsed = stored ? JSON.parse(stored) : { state: {} }
+    parsed.state.currentLanguage = lng
+    localStorage.setItem(localStorageKey.settingGeneral, JSON.stringify(parsed))
+  } catch (error) {
+    console.error('Failed to save language preference:', error)
   }
 }
 
@@ -163,6 +194,7 @@ const initI18n = (): I18nInstance => {
     namespaces,
     defaultNS: 'common',
     changeLanguage,
+    ready: ensureLanguage(currentLanguage),
     t: translate,
   }
   
@@ -171,8 +203,7 @@ const initI18n = (): I18nInstance => {
 
 // Load translations function (for compatibility with reference implementation)
 export const loadTranslations = (): void => {
-  // Translations are already loaded via import.meta.glob
-  // This function exists for compatibility but doesn't need to do anything
+  // English is bundled; the others load on demand (see ensureLanguage).
   console.log('Translations loaded:', Object.keys(resources))
 }
 

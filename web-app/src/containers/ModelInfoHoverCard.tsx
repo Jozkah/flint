@@ -1,3 +1,4 @@
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   HoverCard,
   HoverCardContent,
@@ -76,6 +77,7 @@ export const ModelInfoHoverCard = ({
   defaultModelQuantizations,
   children,
 }: ModelInfoHoverCardProps) => {
+  const { t } = useTranslation()
   const hardwareData = useHardware((s) => s.hardwareData)
 
   const displayVariant = model.is_mlx
@@ -167,12 +169,12 @@ export const ModelInfoHoverCard = ({
               <div className="flex flex-wrap gap-2">
                 {model.tools && (
                   <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-muted text-fg-2 rounded-md">
-                    <span className="text-xs font-medium">Tools</span>
+                    <span className="text-xs font-medium">{t('common:tools')}</span>
                   </div>
                 )}
                 {(model.num_mmproj ?? 0) > 0 && (
                   <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-muted text-fg-2 rounded-md">
-                    <span className="text-xs font-medium">Vision</span>
+                    <span className="text-xs font-medium">{t('common:vision')}</span>
                   </div>
                 )}
               </div>

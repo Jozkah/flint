@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { cn } from '@/lib/utils'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 /**
  * Page title block for the engine pages (Models, Tools & MCP, Extensions,
@@ -59,7 +60,7 @@ export function EnginePage({
   className?: string
 }) {
   return (
-    <div className="h-full min-h-0 w-full min-w-0 overflow-x-hidden overflow-y-auto">
+    <div className="-mr-3 h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-3">
       <div
         data-testid={testId}
         className={cn(
@@ -126,9 +127,19 @@ export function KpiTile({
         </div>
         {chart && <div className="w-full">{chart}</div>}
         {sub && (
-          <div className="min-w-0 truncate text-xs text-muted-foreground">
-            {sub}
-          </div>
+          // Full width so a long caption (Russian, German) ends in an
+          // ellipsis inside the tile; the whole text is in the tooltip.
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                tabIndex={0}
+                className="w-full min-w-0 truncate rounded-sm text-xs text-muted-foreground outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40"
+              >
+                {sub}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>{sub}</TooltipContent>
+          </Tooltip>
         )}
       </FrameBody>
     </Frame>
@@ -228,23 +239,29 @@ export function TBox({
   children,
   className,
   columns,
+  stackOnPhone = false,
 }: {
   head?: ReactNode[]
   children: ReactNode
   className?: string
   /** `grid-template-columns` shared by the header and every row. */
   columns: string
+  /** Rows lay themselves out as cards on phones: the column header is hidden there. */
+  stackOnPhone?: boolean
 }) {
   return (
     <div
       data-slot="tbox"
-      className={cn('flex min-w-0 flex-col rounded-xl', className)}
+      className={cn('flex min-w-0 flex-col overflow-x-auto rounded-xl', className)}
       style={{ ['--tbox-cols' as string]: columns }}
     >
       {head && (
         <div
           aria-hidden
-          className="mb-1 grid grid-cols-[var(--tbox-cols)] items-center gap-3 rounded-lg bg-muted px-2 py-1.5 text-[11px] font-medium text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
+          className={cn(
+            'mb-1 grid grid-cols-[var(--tbox-cols)] items-center gap-3 rounded-lg bg-muted px-2 py-1.5 text-[11px] font-medium text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]',
+            stackOnPhone && 'max-sm:hidden'
+          )}
         >
           {head.map((h, i) => (
             <span key={i} className="min-w-0 truncate">

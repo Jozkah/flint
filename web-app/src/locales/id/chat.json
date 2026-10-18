@@ -9,7 +9,7 @@
     "suggestionsLabel": "Saran",
     "suggestions": {
       "explain": "Jelaskan pesan error ini",
-      "summarise": "Ringkas dokumen yang saya lampirkan",
+      "summarise": "Rangkum dokumen yang saya lampirkan",
       "draft": "Susun catatan rilis dari daftar perubahan",
       "compare": "Bandingkan dua pendekatan dan rekomendasikan satu"
     }
@@ -189,5 +189,26 @@
     "description": "{{count}} obrolan akan dihapus. Tindakan ini tidak dapat dibatalkan.",
     "descriptionArchive": "{{count}} obrolan akan dipindahkan ke Arsip. Anda dapat memulihkannya dari sana.",
     "done": "{{count}} obrolan dihapus"
-  }
+  },
+  "find": {
+    "placeholder": "Cari di obrolan",
+    "none": "Tidak ada yang cocok",
+    "previous": "Hasil sebelumnya",
+    "next": "Hasil berikutnya",
+    "close": "Tutup pencarian"
+  },
+  "continueSummary": {
+    "menu": "Lanjutkan di obrolan baru dari ringkasan",
+    "working": "Meringkas obrolan...",
+    "done": "Dilanjutkan di obrolan baru.",
+    "cancel": "Batal",
+    "errors": {
+      "no-chat": "Obrolan ini tidak dapat dilanjutkan.",
+      "empty": "Belum ada yang bisa diringkas.",
+      "no-model": "Pilih model untuk obrolan ini terlebih dahulu.",
+      "model-not-loaded": "Muat model obrolan ini terlebih dahulu. Model itulah yang menulis ringkasan.",
+      "summary-failed": "Ringkasan gagal ditulis. Tidak ada yang dibuat."
+    }
+  },
+  "stopToolCall": "Hentikan panggilan alat (Esc)"
 }

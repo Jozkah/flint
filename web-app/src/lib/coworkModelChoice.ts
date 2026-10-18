@@ -1,7 +1,16 @@
+import { canListProviderModels } from '@/lib/provider-api-keys'
+
 type PickerState<M extends { id: string }> = {
   selectedProvider: string
   selectedModel: M | null | undefined
-  providers: Array<{ provider: string; active?: boolean; models: M[] }>
+  providers: Array<{
+    provider: string
+    active?: boolean
+    models: M[]
+    base_url?: string
+    api_key?: string
+    api_key_fallbacks?: string[]
+  }>
 }
 
 export type CoworkModelChoice<M extends { id: string }> = {
@@ -20,6 +29,13 @@ export type CoworkModelChoice<M extends { id: string }> = {
    * the picker's model stands in for it.
    */
   save: boolean
+  /**
+   * The picker's provider when the session has no model of its own and the
+   * picker's stands in for it, but that provider is a remote one with no API
+   * key: sending would only fail with "Incorrect API key". Set instead of a
+   * choice, so the caller asks the person to pick a model.
+   */
+  needsKey?: string
 }
 
 function find<M extends { id: string }>(
@@ -63,6 +79,24 @@ export function resolveCoworkModel<M extends { id: string }>(
       }
     }
     return { choice: saved, model: null, unavailable: saved, save: false }
+  }
+  // No model of the session's own: the picker's stands in only when it can
+  // actually answer. A remote provider with no key is never used silently.
+  const pickerProvider = picker.providers.find(
+    (p) => p.provider === picker.selectedProvider
+  )
+  if (
+    pickerModel &&
+    pickerProvider?.base_url &&
+    !canListProviderModels(pickerProvider)
+  ) {
+    return {
+      choice: null,
+      model: null,
+      unavailable: null,
+      save: false,
+      needsKey: pickerProvider.provider,
+    }
   }
   return {
     choice: pickerChoice,

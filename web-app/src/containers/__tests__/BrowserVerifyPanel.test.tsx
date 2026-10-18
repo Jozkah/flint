@@ -81,6 +81,15 @@ describe('BrowserVerifyPanel', () => {
     expect(setBrowserPath).toHaveBeenCalledWith('/usr/bin/brave-browser')
   })
 
+  it('starts folded over a file and open when asked, and opens for a handed-over URL', async () => {
+    const { unmount } = render(<BrowserVerifyPanel sessionId="s1" detect={found} defaultOpen={false} />)
+    expect(screen.getByTestId('browser-verify')).not.toHaveAttribute('open')
+    unmount()
+    render(<BrowserVerifyPanel sessionId="s1" detect={found} />)
+    expect(screen.getByTestId('browser-verify')).toHaveAttribute('open')
+    expect(screen.getByLabelText('common:browserVerify.about')).toBeTruthy()
+  })
+
   it('will not run against a URL that is not on this machine', async () => {
     render(<BrowserVerifyPanel sessionId="s1" detect={found} />)
     fireEvent.change(screen.getByTestId('bv-url'), { target: { value: 'https://example.com' } })

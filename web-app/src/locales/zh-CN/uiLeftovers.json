@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "石板灰",
+    "vermilion": "朱红",
+    "ink": "墨蓝",
+    "moss": "苔绿",
+    "slate": "石板蓝",
+    "violet": "紫罗兰"
+  },
+  "fontSizeNames": {
+    "small": "小",
+    "medium": "中",
+    "large": "大",
+    "extraLarge": "特大"
+  },
+  "unknownSize": "大小未知",
+  "official": "官方",
+  "configuration": "配置",
+  "modelCombobox": {
+    "refresh": "刷新模型",
+    "placeholder": "输入或选择模型..."
+  },
+  "hubTasks": {
+    "moreAria": "更多浏览方式",
+    "more": "更多",
+    "all": "全部",
+    "chat": "聊天",
+    "coding": "编程",
+    "reasoning": "推理",
+    "vision": "视觉",
+    "small": "小而快",
+    "tools": "工具调用",
+    "multilingual": "多语言",
+    "speech": "语音",
+    "embeddings": "嵌入",
+    "summaries": "摘要",
+    "translation": "翻译"
+  },
+  "tokenSpeed": {
+    "aria": "此消息的 token 用量",
+    "tooltip": "token 用量",
+    "generation": "生成",
+    "reading": "读取",
+    "draftAccepted": "草稿已采纳",
+    "tokens": "Token",
+    "memoryInRequest": "此请求中的记忆",
+    "memoriesSent": "已发送的记忆",
+    "withheld": "因冲突而搁置:{{ids}}",
+    "perSec": "{{n}} token/秒",
+    "count": "{{n}} 个 token"
+  },
+  "serverHost": {
+    "edit": "编辑服务器主机"
+  },
+  "extensions": {
+    "plugins": "插件",
+    "global": "全局",
+    "workspace": "工作区",
+    "toggle": "切换 {{name}}",
+    "enable": "启用",
+    "disable": "停用",
+    "workspaceOnly": "仅工作区",
+    "globalAll": "全局(所有工作区)",
+    "enabledToast": "已启用 {{name}}",
+    "disabledToast": "已停用 {{name}}"
+  },
+  "scope": "范围",
+  "localApi": {
+    "starting": "正在启动服务器...",
+    "startingDesc": "正在尝试在端口 {{port}} 上启动服务器",
+    "status": "服务器状态",
+    "runningDesc": "服务器正在运行。",
+    "stoppedDesc": "服务器已停止。",
+    "running": "运行中",
+    "stopped": "已停止"
+  },
+  "toolOutputAlt": "工具输出",
+  "memory": {
+    "exportFilter": "Flint 记忆导出",
+    "why": "Flint 为什么记住这条",
+    "writtenBy": "写入者",
+    "created": "创建时间",
+    "updated": "更新时间",
+    "fromConversation": "来源对话",
+    "fromMessage": "来源消息",
+    "projectIdentity": "项目标识",
+    "replaces": "替换",
+    "redacted": "已脱敏",
+    "expires": "过期时间",
+    "version": "版本",
+    "source": "来源",
+    "importedFrom": "导入自",
+    "originally": "原始信息",
+    "fromRun": "来源运行",
+    "savedInProject": "保存到的项目",
+    "contentHash": "内容哈希",
+    "earlierVersions": "历史版本",
+    "usedIn": "使用于",
+    "notRecorded": "未记录",
+    "deletedSince": "(之后已删除)",
+    "yes": "是",
+    "no": "否",
+    "versionUnknown": "未知(保存时尚未记录版本)",
+    "unknown": "未知",
+    "importedExport": "导出 {{id}}({{scope}},{{when}})",
+    "createdWhen": "创建于 {{when}}",
+    "conversationId": "对话 {{id}}",
+    "runId": "运行 {{id}}",
+    "turnId": "轮次 {{id}}",
+    "snapshotId": "快照 {{id}}",
+    "noRequests": "尚无已记录的请求"
+  }
+}

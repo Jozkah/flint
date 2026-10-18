@@ -1,8 +1,11 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import { campaignApi } from '@/lib/campaignApi'
+import i18n from '@/i18n/setup'
+import { campaignApi, type SkippedRecord } from '@/lib/campaignApi'
 import type { Campaign } from '@/lib/campaignModel'
 import { errorText } from '@/lib/errorText'
+import { isPlatformTauri } from '@/lib/platform/utils'
+import { isServerTransport } from '@/lib/serverTransportFlag'
 
 /**
  * The campaigns the backend knows, kept fresh by polling the Rust commands
@@ -13,12 +16,23 @@ type CampaignsState = {
   campaigns: Campaign[]
   loaded: boolean
   error: string | null
+  /** No backend to ask: a plain browser tab, not the app or a Flint server. */
+  unavailable: 'desktop' | null
+  /** The app answered "no such command": it is older than this page. */
+  staleApp: boolean
+  /** Records the backend could not read; the rest of the list still loads. */
+  skipped: SkippedRecord[]
   refresh: () => Promise<void>
 }
 
 /** While anything is moving the board refreshes fast; otherwise it idles. */
 export const POLL_ACTIVE_MS = 3_000
 export const POLL_IDLE_MS = 15_000
+
+/** A backend that never answers must not leave the page loading forever. */
+export const LIST_TIMEOUT_MS = 20_000
+/** One more try after this pause, then the reason is shown. */
+export const RETRY_PAUSE_MS = 1_000
 
 const MOVING: ReadonlySet<string> = new Set([
   'approved',
@@ -28,7 +42,14 @@ const MOVING: ReadonlySet<string> = new Set([
   'interrupted',
 ])
 
-export function pollDelay(campaigns: readonly Campaign[]): number {
+/** A failed load is asked again soon, so a backend still starting up recovers by itself. */
+export const POLL_ERROR_MS = 5_000
+
+export function pollDelay(
+  campaigns: readonly Campaign[],
+  error: string | null = null
+): number {
+  if (error && campaigns.length === 0) return POLL_ERROR_MS
   return campaigns.some((c) => MOVING.has(c.status))
     ? POLL_ACTIVE_MS
     : POLL_IDLE_MS
@@ -57,16 +78,131 @@ export async function settleProposals(
   )
 }
 
+const hasBackend = () => isPlatformTauri() || isServerTransport()
+
+/** The command is not registered in this app (a build older than the page). */
+const isUnknownCommand = (message: string) =>
+  /\bagent_campaign_\w+\b.*\bnot (found|allowed)|command .*not found/i.test(message)
+
+function withTimeout<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(i18n.t('common:campaignList.timeout'))),
+      LIST_TIMEOUT_MS
+    )
+  })
+  return Promise.race([work, late]).finally(() => clearTimeout(timer))
+}
+
+/** Only objects shaped like a campaign reach the page; the rest are reported. */
+function splitCampaigns(listed: unknown[]): {
+  ok: Campaign[]
+  bad: SkippedRecord[]
+} {
+  const ok: Campaign[] = []
+  const bad: SkippedRecord[] = []
+  listed.forEach((item, i) => {
+    const c = item as Partial<Campaign> | null
+    if (c && typeof c === 'object' && typeof c.id === 'string' && Array.isArray(c.tasks)) {
+      ok.push(c as Campaign)
+    } else {
+      bad.push({
+        id: c && typeof c === 'object' && typeof c.id === 'string' ? c.id : `#${i + 1}`,
+        reason: i18n.t('common:campaignList.unreadableRecord'),
+      })
+    }
+  })
+  return { ok, bad }
+}
+
+/** False once the app turned out not to have `agent_campaign_list_with_skipped`. */
+let combinedListing = true
+
+/** For tests. */
+export function resetListMode(): void {
+  combinedListing = true
+}
+
+/**
+ * The campaign records and the skipped report. One backend call where the app
+ * has it (each call loads and reconciles every record on disk, and this runs
+ * every few seconds); an older app, or a Flint server, takes the two older
+ * commands instead.
+ */
+async function listOnce(): Promise<{ listed: unknown[]; skipped: SkippedRecord[] }> {
+  if (combinedListing && !isServerTransport()) {
+    try {
+      const both = await withTimeout(campaignApi.listWithSkipped())
+      if (!both || !Array.isArray(both.campaigns)) {
+        throw new Error('agent_campaign_list_with_skipped returned an unreadable reply')
+      }
+      return {
+        listed: both.campaigns,
+        skipped: Array.isArray(both.skipped) ? both.skipped : [],
+      }
+    } catch (e) {
+      if (!isUnknownCommand(errorText(e))) throw e
+      combinedListing = false
+    }
+  }
+  const listed: unknown = await withTimeout(campaignApi.list())
+  if (!Array.isArray(listed)) {
+    throw new Error(
+      `agent_campaign_list returned ${listed === null ? 'null' : typeof listed}, not a list`
+    )
+  }
+  // The skipped report is extra: failing to get it never hides the list.
+  const skipped = await campaignApi.skipped().catch(() => [])
+  return { listed, skipped: Array.isArray(skipped) ? skipped : [] }
+}
+
+// Which refresh is the newest; an older reply landing late must not win.
+let refreshSeq = 0
+
 export const useCampaignStore = create<CampaignsState>()((set) => ({
   campaigns: [],
   loaded: false,
   error: null,
+  unavailable: null,
+  staleApp: false,
+  skipped: [],
   refresh: async () => {
+    const seq = ++refreshSeq
+    if (!hasBackend()) {
+      set({ loaded: true, error: null, unavailable: 'desktop', staleApp: false })
+      return
+    }
     try {
-      const campaigns = await settleProposals(await campaignApi.list())
-      set({ campaigns, loaded: true, error: null })
+      let got: Awaited<ReturnType<typeof listOnce>>
+      try {
+        got = await listOnce()
+      } catch (first) {
+        console.error('[campaigns] list failed, retrying once:', first)
+        await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS))
+        got = await listOnce()
+      }
+      const { ok, bad } = splitCampaigns(got.listed)
+      const campaigns = await settleProposals(ok)
+      if (seq !== refreshSeq) return
+      set({
+        campaigns,
+        skipped: [...got.skipped, ...bad],
+        loaded: true,
+        error: null,
+        unavailable: null,
+        staleApp: false,
+      })
     } catch (e) {
-      set({ loaded: true, error: errorText(e) })
+      if (seq !== refreshSeq) return
+      console.error('[campaigns] could not load the list:', e)
+      const error = errorText(e)
+      set({
+        loaded: true,
+        error,
+        unavailable: null,
+        staleApp: isUnknownCommand(error),
+      })
     }
   },
 }))
@@ -80,10 +216,10 @@ let chain = 0
 
 const schedule = (id: number) => {
   if (subscribers === 0 || id !== chain) return
-  const { campaigns, refresh } = useCampaignStore.getState()
+  const { campaigns, error, refresh } = useCampaignStore.getState()
   timer = setTimeout(() => {
     void refresh().finally(() => schedule(id))
-  }, pollDelay(campaigns))
+  }, pollDelay(campaigns, error))
 }
 
 function start() {

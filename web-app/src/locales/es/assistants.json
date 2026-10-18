@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Asistente predeterminado",
   "defaultAssistantDesc": "Se usa al iniciar un nuevo chat",
   "allAssistants": "Todos los asistentes",
-  "lastUsed": "Último uso"
+  "lastUsed": "Último uso",
+  "starterDescriptions": {
+    "jan": "Flint es un asistente de escritorio que razona tareas complejas y usa herramientas para completarlas por ti.",
+    "quartz": "Un especialista preciso en investigación y análisis: evidencias, comparaciones, cálculos y conclusiones listas para decidir.",
+    "coal": "Un ingeniero de software práctico para depurar, implementar, refactorizar, probar y revisar código.",
+    "blaze": "Un especialista creativo en producto y escritura: conceptos audaces, nombres, ideas de UX, textos y resultados pulidos.",
+    "redstone": "Un especialista en sistemas y automatización: flujos repetibles, integraciones, operaciones y ejecución fiable en varios pasos.",
+    "book-and-quill": "Un narrador que escribe y continúa historias con escenas vívidas y personajes coherentes.",
+    "compass": "Un traductor que pasa textos de un idioma a otro con fidelidad y señala las expresiones difíciles.",
+    "emerald": "Una ayuda con el dinero: presupuestos, conceptos y compensaciones. Educativa, no asesoramiento financiero autorizado.",
+    "book": "Un tutor de estudio que enseña paso a paso y comprueba la comprensión con preguntas breves."
+  }
 }

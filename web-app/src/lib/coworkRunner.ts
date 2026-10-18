@@ -143,12 +143,23 @@ export type PendingToolCall = {
   invalid?: string
 }
 
+/** The message that carries harness hints (`ToolOutcome.note`) to the model. */
+export function harnessNote(notes: string[]): string {
+  return `Note from Flint (not typed by the user, and not part of any tool result or file): ${notes.join(' ')}`
+}
+
 export type ToolOutcome = {
   /** Sent to the model. */
   output: string
   isError?: boolean
   /** Display-only unified diff. Never reaches the model. */
   diff?: string
+  /**
+   * A harness hint for the model. Never part of `output`: it is sent as its
+   * own labelled note after the step's tool results, so the model cannot
+   * mistake it for what a file or command returned. Never displayed.
+   */
+  note?: string
   /**
    * Images the call returned for the model to see (`read` of an image file).
    * Reach the model as image parts, only when it can see; the text `output`
@@ -169,6 +180,12 @@ export type ToolOutcome = {
    * the model is simply not called again. Never reaches the model.
    */
   endsTurn?: boolean
+  /**
+   * The input the call actually ran with, when the user edited it before
+   * allowing it. The transcript and the model's copy of the call show this,
+   * not the model's original.
+   */
+  ranInput?: unknown
   /**
    * A subagent's whole answer when `output` is a shortened copy of it. Taken
    * by the dispatcher, which keeps it for `await_task` reads; never sent on.
@@ -823,7 +840,7 @@ export function assistantMessageFor(
     const part: any = {
       type: `tool-${call.toolName}`,
       toolCallId: call.toolCallId,
-      input: call.input,
+      input: outcome?.ranInput ?? call.input,
       state: outcome
         ? outcome.isError
           ? 'output-error'
@@ -863,7 +880,7 @@ export function turnsFor(
       content: '',
       callId: call.toolCallId,
       name: call.toolName,
-      args: call.input,
+      args: outcome?.ranInput ?? call.input,
       result: outcome?.output ?? '',
       isError: outcome?.isError,
       diff: outcome?.diff,
@@ -1508,6 +1525,11 @@ export async function runTurn(opts: {
         sessionTokens: spend.spent,
         stoppedBy: 'done',
       }
+    }
+    // Harness hints go after the tool results, labelled, never inside one.
+    const notes = [...outcomes.values()].flatMap((one) => (one.note ? [one.note] : []))
+    if (result.toolCalls.length > 0 && notes.length > 0) {
+      messages.push(nudge(harnessNote(notes)))
     }
     // No tool calls means the model answered rather than asked for more work.
     if (result.toolCalls.length === 0) {

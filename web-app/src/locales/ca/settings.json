@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Subagents",
-    "description": "Amb quin assistent, perfil de treball i model s'executen els subagents que inicia Flint. Sense una elecció aquí, un subagent hereta l'assistent i el perfil de treball del seu pare (els personatges llargs s'abreugen). Això mai canvia el que pot fer un subagent: les seves eines i aprovacions continuen sent les que permet l'execució.",
+    "description": "Amb quin assistent, perfil de treball i model s'executen els subagents que inicia Flint. Sense una elecció aquí, un subagent hereta l'assistent i el perfil de treball del seu pare (les instruccions llargues de l'assistent s'abreugen). Això mai canvia el que pot fer un subagent: les seves eines i aprovacions continuen sent les que permet l'execució.",
     "headlessNote": "Els assistents i els perfils de treball només s'apliquen a l'aplicació d'escriptori. Les execucions des de la línia d'ordres segueixen les opcions de model.",
     "defaultsTitle": "Per a tots els subagents",
     "defaultsDesc": "Cadascun hereta de l'execució que l'ha iniciat tret que triïs alguna cosa aquí.",
@@ -10,7 +10,7 @@
     "model": "Model",
     "inherit": "Hereta",
     "inheritDesc": "Usa el que usi l'execució que ha iniciat el subagent.",
-    "assistantDesc": "El personatge amb què treballa un subagent.",
+    "assistantDesc": "L'assistent amb què treballa un subagent.",
     "profileDesc": "Com enfoca la feina un subagent.",
     "modelDesc": "Executa els subagents amb un altre model, per exemple un de més ràpid per a estudis de només lectura.",
     "groupAssistants": "Assistents",
@@ -64,9 +64,6 @@
   "reportAnIssue": "Informa d’un problema",
   "reportAnIssueDesc": "Has trobat un error? Ajuda’ns enviant una incidència a GitHub.",
   "reportIssue": "Informa del problema",
-  "credits": "Crèdits",
-  "creditsDesc1": "👋 Flint el construeix amb ❤️ Jozkah.",
-  "creditsDesc2": "Agraïments especials a les nostres dependències de codi obert — especialment llama.cpp i Tauri — i a la nostra comunitat d’IA.",
   "appVersion": "Versió de l’app",
   "dataFolder": {
     "appData": "Dades de l’app",
@@ -81,7 +78,8 @@
     "enterKeyNewline": "Intro afegeix una línia nova",
     "enterKeyNewlineDesc": "Prémer Intro al quadre del xat afegeix una línia nova en lloc d'enviar. Envia amb el botó d'enviar o Ctrl/Cmd+Intro. Útil si escrius amb un mètode d'entrada (IME), on Intro confirma una conversió.",
     "resetFactory": "Restableix als valors d’origen",
-    "resetFactoryDesc": "Restaura l’aplicació a l’estat inicial, suprimint tots els models i l’historial de xats. Aquesta acció és irreversible i només es recomana si l’aplicació està malmesa."
+    "resetFactoryDesc": "Restaura l’aplicació a l’estat inicial, suprimint tots els models i l’historial de xats. Aquesta acció és irreversible i només es recomana si l’aplicació està malmesa.",
+    "spellCheckHint": "L'idioma de la correcció ortogràfica el tria el sistema, no Flint. Afegeix un idioma a la configuració d'idioma i teclat del sistema (Windows: Idioma i regió; macOS: Teclat > Entrada de text; Linux: instal·la un diccionari hunspell)."
   },
   "shortcuts": {
     "change": "Canvia",
@@ -123,7 +121,9 @@
     "nextPane": "Panell següent",
     "nextPaneDesc": "Passa al panell següent de la vista dividida.",
     "previousPane": "Panell anterior",
-    "previousPaneDesc": "Passa al panell anterior de la vista dividida."
+    "previousPaneDesc": "Passa al panell anterior de la vista dividida.",
+    "findInChat": "Cerca al xat",
+    "findInChatDesc": "Cerca a la conversa que es veu a la pantalla."
   },
   "interface": {
     "title": "Interfície",
@@ -141,8 +141,12 @@
     "showTokenSpeedDesc": "Mostra els tokens/s i el nombre de tokens a sota dels missatges de l'assistent. Desactivat, una icona compacta mostra els detalls en fer clic.",
     "coloredUserBubble": "Bombolla de missatge d'usuari amb color",
     "coloredUserBubbleDesc": "Usa el color d'èmfasi com a fons dels teus missatges. Desactivat, coincideixen amb els missatges de l'assistent amb text pla sobre un fons neutre.",
+    "renderUserMarkdown": "Mostra Markdown als meus missatges",
+    "renderUserMarkdownDesc": "Mostra negreta, llistes, encapçalaments i codi als missatges que envies. Desactivat, es mostren tal com els escrius.",
     "renderHtmlArtifacts": "Renderitza artefactes HTML i SVG",
     "renderHtmlArtifactsDesc": "Afegeix una pestanya de previsualització als blocs de codi HTML i SVG. L'HTML executa la pàgina generada pel model en un marc aïllat que executa els seus propis scripts però no pot accedir a Flint, als teus fitxers ni a la xarxa; l'SVG es renderitza estàticament amb els scripts desactivats. Desactivat per defecte.",
+    "wrapCodeLines": "Ajusta les línies llargues als blocs de codi",
+    "wrapCodeLinesDesc": "Passa les línies llargues a la fila següent, sagnades sota el codi, en lloc de desplaçar el bloc lateralment. El botó d'ajust de la capçalera d'un bloc de codi canvia aquesta mateixa opció.",
     "composerRailButtons": "Botons de sortida al compositor de Cowork",
     "composerRailButtonsDesc": "Mostra Previsualització, Codi, Canvis, Activitat i Cronologia sota el quadre de missatge de Cowork. Desactivat, un sol botó Sortida a la capçalera obre el tauler.",
     "autoGenerateTitle": "Genera automàticament el títol del xat",
@@ -178,12 +182,6 @@
     "resetCodeBlockSuccess": "S’ha restablert l’estil del bloc de codi",
     "resetCodeBlockSuccessDesc": "L’estil del bloc de codi s’ha restaurat al valor per defecte.",
     "transcriptView": "Vista de la transcripció",
-    "sidebarLayout": "Barra lateral",
-    "sidebarLayoutDesc": "Quant de la barra lateral esquerra es llista.",
-    "sidebarLayout_trimmed": "Reduïda",
-    "sidebarLayout_trimmedDesc": "Xat nou, Cowork, Descobreix i els teus xats. Sales, Biblioteca, Studio i les pàgines del motor es pleguen sota Més i Avançat.",
-    "sidebarLayout_extended": "Ampliada",
-    "sidebarLayout_extendedDesc": "Tot llistat alhora: Més i Avançat es mantenen oberts.",
     "transcriptViewDesc": "Quant de cada torn mostren Xat, Cowork i Sales. Les aprovacions, preguntes i errors sempre es mostren.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "La resposta i el que necessita la teva acció. Les crides d'eines es plegan en una fila de passos.",
@@ -384,6 +382,9 @@
     "usageWeek": "Per setmana",
     "usageWeekDesc": "Tokens, d'entrada més sortida, en els darrers 7 dies. Buit vol dir sense límit.",
     "usageNow": "Usat ara",
+    "usageNoLimitPlaceholder": "Sense límit",
+    "serverLog": "Registre del servidor",
+    "openInNewWindow": "Obre en una finestra nova",
     "usageNoLimit": "Sense límit definit",
     "usageResets": "L'ús més antic caduca d'aquí a {{wait}}",
     "startServer": "Inicia el servidor",
@@ -421,9 +422,15 @@
     "verboseLogsDesc": "Activa registres detallats del servidor per fer depuració.",
     "proxyTimeout": "Temps d’espera de la sol·licitud",
     "proxyTimeoutDesc": "Temps d’espera d’una resposta del model local, en segons.",
-    "defaultModel": "Model per defecte del servidor d'API local",
+    "defaultModel": "Model per defecte",
     "defaultModelDesc": "Model local que es carrega automàticament quan s'inicia el servidor.",
-    "defaultModelPlaceholder": "Selecciona un model local"
+    "defaultModelPlaceholder": "Selecciona un model local",
+    "noLocalModels": "No s'ha importat cap model local",
+    "usage5hAria": "Tokens per 5 hores",
+    "usageWeekAria": "Tokens per setmana",
+    "usageWindow": "Finestra",
+    "usageLimit": "Límit",
+    "usageUnsaved": "Canvis sense desar"
   },
   "privacy": {
     "analytics": "Analítica",
@@ -460,7 +467,7 @@
     "updateError": "No s’han pogut cercar actualitzacions",
     "appVersion": "Versió de l’app",
     "buildUpdate": "Cerca compilacions més noves",
-    "buildUpdateDesc": "Flint 0.9.0 és una compilació nocturna: es torna a compilar a partir del codi més recent i el número de versió continua igual. Activat, Flint pregunta a GitHub una vegada en iniciar (com a màxim dues vegades al dia) si existeix una compilació més nova. Desactivat per defecte; no s'envia res en cap dels dos casos, tret d'aquesta sol·licitud.",
+    "buildUpdateDesc": "Les compilacions nocturnes mantenen el mateix número de versió. Si s'activa, Flint pregunta a GitHub una vegada en iniciar (com a màxim dues vegades al dia) si hi ha una compilació més nova. Desactivat per defecte.",
     "buildCheckNow": "Comprova ara",
     "buildChecking": "Comprovant…",
     "buildNewer": "Hi ha una compilació més nova disponible. Torna-la a baixar de la pàgina de versions per actualitzar.",
@@ -518,9 +525,21 @@
     "reportAnIssue": "Informa d’un problema",
     "reportAnIssueDesc": "Has trobat un error? Ajuda’ns enviant una incidència a GitHub.",
     "reportIssue": "Informa del problema",
-    "credits": "Crèdits",
-    "creditsDesc1": "👋 Flint el construeix amb ❤️ Jozkah.",
-    "creditsDesc2": "Agraïments especials a les nostres dependències de codi obert — especialment llama.cpp i Tauri — i a la nostra comunitat d’IA."
+    "advanced": "Avançat",
+    "migrateJan": {
+      "title": "Migra des de JAN",
+      "desc": "Porta a Flint les dades d'una instal·lació existent de JAN: copia, reutilitza al mateix lloc, mou o comença de zero.",
+      "open": "Obre l'assistent de migració"
+    },
+    "verify": "Verifica",
+    "cli": {
+      "installedDesc": "Instal·lat a {{path}}: usa flint des del terminal per servir models.",
+      "desc": "Usa flint des del terminal per servir models sense obrir l'aplicació.",
+      "install": "Instal·la",
+      "installing": "S'està instal·lant…",
+      "uninstall": "Desinstal·la",
+      "uninstalling": "S'està desinstal·lant…"
+    }
   },
   "extensions": {
     "title": "Extensions"
@@ -614,7 +633,9 @@
     "summaryMaxTokens": "Longitud del resum",
     "summaryDescription": "El resum més llarg, en tokens.",
     "projectOverride": "(Un projecte ho substitueix.)",
-    "saveFailed": "No s'ha pogut desar la política de compactació"
+    "saveFailed": "No s'ha pogut desar la política de compactació",
+    "leanTools": "Eines lleugeres en models petits",
+    "leanToolsDescription": "Amb una finestra de context de 32K tokens o menys, deixa fora dels xats la llista de connectors, la cerca d'imatges i les eines de ginys, perquè la finestra contingui la conversa. La cerca web, MCP i les eines d'agent es mantenen."
   },
   "accent": {
     "title": "Color d'èmfasi",
@@ -670,11 +691,23 @@
     "completionSoundApproval": "Només quan cal aprovació",
     "completionSoundVolume": "Volum",
     "completionSoundPreview": "Reprodueix",
-    "increaseContrast": "Augmenta el contrast",
-    "increaseContrastDesc": "Fa el text més brillant perquè es llegeixi millor. Més blanc al tema fosc, més fosc al tema clar.",
     "reduceMotion": "Redueix el moviment",
     "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs.",
-    "completionSoundApproval": "Només quan cal aprovació"
+    "increaseContrast": "Augmenta el contrast",
+    "increaseContrastDesc": "Fa el text més brillant perquè es llegeixi millor. Més blanc al tema fosc, més fosc al tema clar.",
+    "performanceMode": "Mode de rendiment",
+    "performanceModeDesc": "El mode reduït desactiva el desenfocament, les ombres grans i les animacions en bucle, i actualitza el text en streaming amb menys freqüència, per a ordinadors més lents. Automàtic el tria quan aquest ordinador sembla lent.",
+    "performanceModeAuto": "Automàtic",
+    "performanceModeReduced": "Sempre reduït",
+    "performanceModeFull": "Complet",
+    "performanceModeNowReduced": "Ara: reduït ({{why}})",
+    "performanceModeNowFull": "Ara: complet",
+    "perfReasonCores": "{{n}} nuclis",
+    "perfReasonMemory": "{{n}} GB de memòria",
+    "perfReasonFrames": "fotogrames lents",
+    "perfReasonMotion": "el sistema redueix el moviment",
+    "perfReasonData": "estalvi de dades",
+    "perfReasonChosen": "triat aquí"
   },
   "pageDesc": {
     "general": "Idioma, carpeta de dades, registres i opcions de tota l'aplicació.",
@@ -1076,7 +1109,13 @@
       "updated": "Actualitzada {{when}}",
       "loading": "Carregant les campanyes",
       "loadFailed": "No s'han pogut carregar les campanyes.",
-      "retry": "Torna-ho a provar"
+      "skipped_one": "S'ha omès {{count}} registre de campanya il·legible. Els fitxers s'han deixat al seu lloc.",
+      "skipped_other": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
+      "skipped_many": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
+      "retry": "Torna-ho a provar",
+      "needsDesktop": "Les campanyes necessiten l'aplicació d'escriptori",
+      "needsDesktopHint": "Obre l'aplicació d'escriptori de Flint per veure i iniciar campanyes. Una pestanya del navegador no pot llegir-les.",
+      "staleApp": "Aquesta còpia de l'aplicació és més antiga que la pàgina. Tanca-la i torna-la a iniciar perquè agafi l'última versió."
     },
     "plan": {
       "edit": "Edita el pla",
@@ -1131,6 +1170,188 @@
     "skipped": "No restaurat: {{stores}}",
     "storeToolApproval": "aprovació automàtica d'eines",
     "storeMcpTrust": "confiança en servidors MCP",
-    "storeProxy": "servidor intermediari de xarxa"
+    "storeProxy": "servidor intermediari de xarxa",
+    "title": "Còpia de seguretat i sincronització",
+    "exported": "Configuració exportada",
+    "exportFailed": "No s'ha pogut exportar",
+    "importFailed": "No s'ha pogut importar",
+    "importedRestarting": "Configuració importada; es reinicia la finestra",
+    "exportTitle": "Exporta la configuració",
+    "exportDesc": "Desa les teves preferències en un fitxer JSON. Per sincronitzar entre equips, desa'l en una carpeta de Google Drive o Nextcloud i importa'l a l'altre equip. Els xats i l'estat propi de cada equip no s'hi inclouen.",
+    "includeSecrets": "Inclou proveïdors i claus d'API",
+    "secretsWarning": "El fitxer contindrà les teves claus d'API en text pla. Mantén-lo privat i no el posis en una carpeta compartida.",
+    "exportButton": "Exporta…",
+    "importTitle": "Importa la configuració",
+    "importDesc": "Substitueix les teves preferències per les d'un fitxer de còpia. Després la finestra es recarrega.",
+    "chooseFile": "Tria un fitxer…",
+    "pendingGroups": "Grups de configuració al fitxer: {{groups}}.",
+    "pendingKeys": "Proveïdors amb claus d'API: {{keys}}.",
+    "pendingExported": "Exportat el {{date}}.",
+    "pendingOverwrite": "Això sobreescriurà els valors actuals.",
+    "apply": "Importa i recarrega",
+    "cancel": "Cancel·la"
+  },
+  "startup": {
+    "title": "Inicia amb l'ordinador",
+    "on": "Activat. Flint s'inicia quan inicies la sessió, mitjançant {{platform}}.",
+    "off": "Desactivat. Flint només s'inicia quan l'obres. Activar-ho primer ho pregunta i mostra exactament què s'escriu.",
+    "minimized": "Inicia minimitzat",
+    "minimizedDesc": "S'inicia ocult i només es veu la icona de la safata; fes-hi clic per obrir la finestra.",
+    "confirmTitle": "Vols afegir Flint a {{platform}}?",
+    "confirmBody": "Això escriu exactament l'entrada de sota al teu compte d'usuari, i res més. No cal ser administrador.",
+    "confirmUndo": "Si desactives l'interruptor, aquesta entrada s'elimina.",
+    "confirm": "Afegeix l'entrada",
+    "failed": "No s'ha pogut canviar l'entrada d'inici"
+  },
+  "sidebarItems": {
+    "title": "Elements de la barra lateral",
+    "description": "Tria quins elements apareixen a la barra lateral esquerra. Amagar-ne un només n'elimina la drecera; la pàgina continua funcionant.",
+    "section": {
+      "workspace": "Espai de treball",
+      "cowork": "Cowork",
+      "more": "Més",
+      "header": "A dalt i a baix"
+    },
+    "showItem": "Mostra {{item}} a la barra lateral",
+    "hideItem": "Amaga {{item}} de la barra lateral",
+    "alwaysShown": "Sempre visible",
+    "showAll": "Mostra-ho tot",
+    "preview": "Vista prèvia",
+    "reachable": "Els elements amagats continuen accessibles des de la paleta d'ordres i des de Configuració.",
+    "presets": {
+      "label": "Predefinits",
+      "minimal": "Mínim",
+      "standard": "Estàndard",
+      "everything": "Tot"
+    }
+  },
+  "memoryPage": {
+    "useSaved": "Fes servir la memòria desada a les converses",
+    "useSavedDesc": "Quan això està desactivat, Flint no afegeix cap memòria desada a cap sol·licitud. Els teus records es conserven i els pots seguir gestionant aquí.",
+    "useFacts": "Fes servir els fets recordats a les sol·licituds",
+    "useFactsDesc": "Desactivar un àmbit n'atura l'enviament. No se suprimeix res; en tornar-lo a activar, es torna a fer servir.",
+    "scope": {
+      "chat": {
+        "tab": "Aquesta conversa",
+        "blurb": "Només es recorda dins de la conversa on es va desar.",
+        "recall": "Aquesta conversa",
+        "recallAria": "Fes servir els records d'aquesta conversa",
+        "newAria": "Nou record per a aquesta conversa",
+        "forgetAll": "Oblida-ho tot en aquesta conversa",
+        "clearBody": "Tot el que es recorda per a aquesta conversa deixa d'utilitzar-se i el seu text s'elimina d'aquest ordinador. Això no es pot desfer d'un sol pas."
+      },
+      "project": {
+        "tab": "Projecte",
+        "blurb": "Disponible per a totes les converses del projecte que triïs a sota, i per a cap altre projecte.",
+        "recall": "Aquest projecte",
+        "recallAria": "Fes servir els records d'aquest projecte",
+        "newAria": "Nou record per a aquest projecte",
+        "forgetAll": "Oblida-ho tot en aquest projecte",
+        "clearBody": "Tot el que es recorda per a aquest projecte deixa d'utilitzar-se i el seu text s'elimina d'aquest ordinador. Això no es pot desfer d'un sol pas."
+      },
+      "user": {
+        "tab": "Totes les converses",
+        "blurb": "Disponible a tot arreu. Reserva-ho per a coses que són certes en general.",
+        "recall": "Totes les converses",
+        "recallAria": "Fes servir els records compartits entre totes les converses",
+        "newAria": "Nou record per a totes les converses",
+        "forgetAll": "Oblida tot el que es comparteix entre converses",
+        "clearBody": "Tot el que es recorda a totes les converses deixa d'utilitzar-se i el seu text s'elimina d'aquest ordinador. Això no es pot desfer d'un sol pas."
+      }
+    },
+    "stored": {
+      "summary": "{{user}} entre xats · {{project}} · {{size}}",
+      "projectIn": "{{count}} a {{name}}",
+      "chooseProject": "tria un projecte per comptar-ne els records"
+    },
+    "listTitle": "Què recorda Flint",
+    "tabsAria": "Àmbit de la memòria",
+    "recallOff": "La memòria està desactivada per a aquest àmbit: es conserven, però no s'envien.",
+    "newPlaceholder": "Alguna cosa que Flint hauria de recordar",
+    "remember": "Recorda",
+    "export": "Exporta",
+    "import": "Importa",
+    "importReport": {
+      "summary": "Importats {{count}} de l'exportació",
+      "duplicates": "{{count}} ja recordats",
+      "refused": "{{count}} rebutjats"
+    },
+    "conversation": "Conversa",
+    "conversationAria": "Conversa de la qual es mostra la memòria",
+    "noConversations": "Encara no hi ha converses",
+    "kindChat": "Xat · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "substituït {{when}}",
+    "projectFolder": "Carpeta del projecte",
+    "projectFolderAria": "Projecte del qual es mostra la memòria",
+    "noProjectFolders": "Cap projecte adjuntat a cap sessió",
+    "chooseProject": "Tria un projecte",
+    "chooseProjectAbove": "Tria un projecte a dalt per veure i gestionar-ne els records.",
+    "searchAria": "Cerca als records",
+    "searchPlaceholder": "Cerca fets recordats",
+    "noMatch": "Res d'aquí coincideix amb la cerca.",
+    "empty": "Encara no hi ha res recordat aquí.",
+    "meta": {
+      "youSaved": "Ho has desat tu",
+      "inferred": "Deduït",
+      "pinned": "fixat",
+      "used_one": "utilitzat {{count}} vegada",
+      "used_other": "utilitzat {{count}} vegades",
+      "lastUsed": "darrer ús {{when}}",
+      "never": "mai"
+    },
+    "pin": "Fixa",
+    "unpin": "Deixa de fixar",
+    "pinAria": "Fixa el record",
+    "unpinAria": "Deixa de fixar el record",
+    "editAria": "Edita el record",
+    "forget": "Oblida",
+    "forgetAria": "Oblida el record",
+    "showing": "Es mostren {{from}}–{{to}} de {{total}}",
+    "previous": "Anterior",
+    "waitingTitle": "Esperant-te",
+    "waitingBody": "Res d'això s'està utilitzant encara. Una proposta sense resposta mai s'afegeix a una instrucció.",
+    "conflictsTitle": "Records que es contradiuen",
+    "conflictsBody": "Cap dels dos costats s'utilitza. Aquests fets recordats es contradiuen, així que Flint els deixa fora de totes les sol·licituds fins que en mantinguis un.",
+    "conflictAbout": "Sobre {{subject}}",
+    "keepThis": "Mantén aquest",
+    "keepAria": "Mantén «{{preview}}» i oblida l'altre",
+    "editTitle": "Edita el record",
+    "editBody": "Això s'utilitza en converses futures dins de l'àmbit al qual pertany.",
+    "contentAria": "Contingut del record",
+    "clearTitle": "Vols oblidar tots els records d'aquí?",
+    "clearConfirm": "Oblida-ho tot",
+    "toast": {
+      "kept": "S'ha mantingut un record",
+      "settleFailed": "No s'ha pogut resoldre aquest conflicte",
+      "forgotten": "Record oblidat",
+      "forgetFailed": "No s'ha pogut oblidar aquest record",
+      "changeFailed": "No s'ha pogut canviar aquest record",
+      "updated": "Record actualitzat",
+      "updateFailed": "No s'ha pogut actualitzar aquest record",
+      "settingsFailed": "No s'han pogut desar els paràmetres de memòria",
+      "recallFailed": "No s'ha pogut canviar la memòria",
+      "saved": "Record desat",
+      "saveFailed": "No s'ha pogut desar aquest record",
+      "forgotCount_one": "S'ha oblidat {{count}} record",
+      "forgotCount_other": "S'han oblidat {{count}} records",
+      "forgetManyFailed": "No s'han pogut oblidar aquests records",
+      "exportedCount_one": "S'ha exportat {{count}} record",
+      "exportedCount_other": "S'han exportat {{count}} records",
+      "exportFailed": "No s'han pogut exportar els records",
+      "importedCount_one": "S'ha importat {{count}} record",
+      "importedCount_other": "S'han importat {{count}} records",
+      "importFailed": "No s'han pogut importar els records"
+    },
+    "fileActionsAria": "Exporta o importa memòries",
+    "noMatchHint": "Revisa l'ortografia o esborra la cerca per veure-ho tot.",
+    "emptyHint": "Escriu-ne una a dalt, o deixa que Flint recordi mentre xateges.",
+    "footerCount_one": "1 memòria en aquest àmbit",
+    "footerCount_other": "{{count}} memòries en aquest àmbit"
+  },
+  "chatMentions": {
+    "title": "Mencions de converses",
+    "readAny": "Deixa que l'assistent llegeixi qualsevol conversa",
+    "readAnyDesc": "Desactivat per defecte. Normalment l'assistent només llegeix les converses que esmentes amb @ o #. Si s'activa, pot obrir qualsevol xat, sessió o sala d'aquest ordinador per l'id. El que llegeix es queda en aquest ordinador i es marca com a dades de referència."
   }
 }

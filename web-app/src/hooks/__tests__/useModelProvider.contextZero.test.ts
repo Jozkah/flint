@@ -90,7 +90,7 @@ describe('migrating a persisted context size that is not one', () => {
   })
 
   it.each([
-    ['a plain number', 8192, 8192],
+    ['a plain number', 4096, 4096],
     ['a numeric string', '32768', '32768'],
     ['a large window', 131072, 131072],
   ])('never overwrites %s', (_label, value, expected) => {

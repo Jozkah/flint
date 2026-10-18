@@ -40,7 +40,7 @@ describe('streamParticipantReply', () => {
       createModel,
       streamText: stream as never,
     })
-    expect(res).toEqual({ text: 'Hello', usage: { inputTokens: 3, outputTokens: 2 }, finishReason: 'stop' })
+    expect(res).toEqual({ text: 'Hello', usage: { inputTokens: 3, outputTokens: 2 }, finishReason: 'stop', reasoning: 'SECRET THOUGHTS' })
     expect(deltas).toEqual(['Hel', 'lo'])
     const args = stream.mock.calls[0][0]
     expect(args).not.toHaveProperty('tools')
@@ -325,5 +325,40 @@ describe('post-tool-batch report from a room turn', () => {
       throw new Error('hook blew up')
     })
     expect(res.text).toBe('ok')
+  })
+})
+
+describe('room tool budget and picker', () => {
+  it("ends the tool loop at the room's step budget", async () => {
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({
+        toolContext: { roomId: 'r', folder: '/w', extraFolders: [], access: 'full', budget: { maxSteps: 3 } } as never,
+      }),
+      { lookup, createModel: async () => ({}) as LanguageModel, streamText: stream as never }
+    )
+    const args = stream.mock.calls[0][0] as {
+      prepareStep?: (o: { stepNumber: number }) => { toolChoice?: string } | undefined
+    }
+    expect(args.prepareStep?.({ stepNumber: 1 })).toBeUndefined()
+    expect(args.prepareStep?.({ stepNumber: 2 })?.toolChoice).toBe('none')
+  })
+
+  it('leaves out the tools the user switched off', async () => {
+    const on = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({ toolContext: { roomId: 'r', folder: null, extraFolders: [], access: 'read' } as never }),
+      { lookup, createModel: async () => ({}) as LanguageModel, streamText: on as never }
+    )
+    expect(Object.keys((on.mock.calls[0][0] as { tools: object }).tools)).toContain('skill_read')
+    const off = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({
+        toolContext: { roomId: 'r', folder: null, extraFolders: [], access: 'read', disabledTools: ['skill_read'] } as never,
+      }),
+      { lookup, createModel: async () => ({}) as LanguageModel, streamText: off as never }
+    )
+    const tools = (off.mock.calls[0][0] as { tools?: object }).tools
+    expect(Object.keys(tools ?? {})).not.toContain('skill_read')
   })
 })

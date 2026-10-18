@@ -103,7 +103,18 @@ inject = "always"
 | `show_reasoning` | `false` | Unfold model reasoning (`<thinking>`) blocks in the transcript instead of folding them to a summary row. <kbd>Ctrl</kbd>+<kbd>O</kbd> still toggles a folded block |
 | `send_reasoning` | `true` | Resend a prior turn's reasoning to the model with the conversation. Set `false` for an upstream that rejects the field (e.g. Groq), or to keep chains of thought out of the context budget |
 | `worktree` | `false` | Run each session in its own git worktree under `~/.jan/worktrees`, on a `jan/agent/` branch, instead of editing this checkout. Overridden by `--worktree` / `--no-worktree`. See [Sessions](/docs/agent/sessions) |
+| `final_answer_on_limit` | `false` | Headless (`flint cli`) only; the desktop app does not read it. When a run reaches `--max-turns` while the model is still calling tools, make one more request with tool use withheld and return that reply (what was done, what is unfinished, what to do next) as the answer, with `stop_reason: turn_limit_exceeded`, instead of failing with exit `53`. Subagents always keep the turn-limit error |
+| `fast_path` | `false` | A run's trivial opening prompt (a greeting, a short factual question that names no file, project or tool) is first answered with a lean prompt and the minimal tool set. The guides, skill catalog and repository map are left out; the guidelines, your instructions and memory stay. If the model asks for a tool, that attempt is dropped before anything runs and the run restarts on the full path. Only the first message of a run qualifies |
+| `min_free_ram_mb` | unset | Before each turn, check free RAM. Below this many MB, wait up to 20 s for it to recover, then stop the run with a message to resume once memory is freed. Unset reads nothing |
+| `min_free_vram_mb` | unset | The same for free VRAM on the GPU with the most room. Unknown readings never block |
+| `final_checks` | none | Headless (`flint cli`) only; the desktop app does not read it. Checks a run must pass before it hands back a final answer: `{ file = "dist/report.md" }` must exist, `{ command = "cargo test", timeout_secs = 300 }` must exit 0 (default 120 s, at most 600 s). When one fails the model gets one retry turn carrying what failed; the checks then run again, and a second failure ends the run with the answer marked `[final checks did not pass after one retry: ...]` and a `final_checks` record on the completion. Files are looked up inside the project only. Commands run like a hook (same sandbox as `bash`) and only in a [trusted folder](/docs/agent/permissions); in an untrusted one they are reported as skipped, never as passed. An entry with neither or both of `file` and `command` refuses the run at startup |
 | `instructions_file` | `AGENT.md` | Markdown injected into the system prompt |
+
+### `[mcp]`
+
+`allow_commands` (stdio MCP servers may only start these programs) and `allow_hosts` (remote MCP servers may only
+reach these hosts, `*.example.com` for subdomains) are read **only from the global `agent.toml`**, because MCP servers
+are configured for the whole app. A project `agent.toml` that sets them is ignored, and Flint logs a warning saying so.
 
 ### `[provider]`
 
@@ -116,9 +127,32 @@ Desktop. Most projects don't need it. See [Providers](/docs/agent/providers#per-
 | --- | --- | --- |
 | `max_tokens` | model's context window (`128000` if unknown) | Token-spend ceiling for one run (new spend across all turns). Set `0` to disable the cap. Overridden per invocation by `--max-session-tokens`; `--max-turns` adds a turn cap. Defaults to the model's context window when it is known, else `128000` |
 | `max_usd` | unset | USD one run may spend before it stops. Priced from `prices.toml`; a model with no declared price is refused. Overridden per invocation by `--max-budget-usd` |
+| `pause_at_usd` | unset | USD at which a run pauses once and asks whether to continue. Allow goes on up to `max_usd` (if set); deny stops the run with `finish_reason: budget_exceeded`. A run with nobody to ask continues as if this were unset. Priced from `prices.toml` like `max_usd` |
 
 A bound on how far one run goes, distinct from the per-request context window. It bounds the run's
 marginal token spend (replayed context is not recharged each turn).
+
+### `[approvals]`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `defer` | `false` | When a run reaches a permission prompt that nobody can answer (a headless or scheduled run), record the question and end the run instead of denying the call. |
+| `defer_ttl_hours` | `24` | How long a deferred question stays answerable. The longest is a week. |
+
+A deferred question is kept with the run's session, the tool, and a digest of the exact arguments it was
+about. Answer it with `flint cli approvals allow <id>` or `flint cli approvals deny <id>` (or in
+Settings > Permissions), then resume the session: when the model proposes the same call again, the
+answer is applied to that call, once. Nothing is approved by default. A question that expired, was voided
+by a checkpoint restore, belongs to another session or project, or is about different arguments is
+refused, and the model is told so. `flint cli approvals list` shows what is waiting, and
+`flint cli approvals rules` / `revoke <id>` list and revoke the scoped rules below.
+
+"Allow always" on a file change or a shell command can be scoped: one folder, or one command prefix. The
+choice is saved as a rule for that project in the app's data folder (never in the repository), checked
+against the call it was chosen for, and honored only for calls inside that scope. A rule never overrides
+a denial, a `[[tool_rules]]` refusal, or a question Flint asks every time (a push, a destructive
+command, deleting a home folder). A command prefix covers one plain command that starts with exactly
+those words; a chained, piped, redirected or wrapped command is asked about again.
 
 ### `[tools]`
 
@@ -161,8 +195,68 @@ flint cli agent status   # where each contributor lands, and which were demoted
 
 Contributor ids: `assistant_instructions`, `guidelines`, `subagent_guide`, `skill_guide`,
 `web_tools_guide`, `memory_precedence`, `project_context`, `skills`, `project_tooling`,
-`memory_catalog`, `runtime_environment`, `remembered_memories`, `date`, `session_hooks`,
-`plan_addendum`, `eager_todo_addendum`, `tool_schemas`, `prompt_submit_hooks`, `todo_upkeep`.
+`repo_map`, `memory_catalog`, `runtime_environment`, `remembered_memories`, `date`,
+`session_hooks`, `plan_addendum`, `eager_todo_addendum`, `tool_schemas`, `prompt_submit_hooks`,
+`todo_upkeep`.
+
+### Repository map
+
+```toml
+[prompt]
+repo_map = true
+```
+
+Adds a **Repository map** block to the system prompt: the project's most relevant files, each with
+its top-level symbols (`src/store.rs: Store, load`), so a run starts oriented instead of exploring.
+It is sized to 2% of the context window, between 300 and 2000 tokens. Files are ranked by local
+signals only: changed per `git status`, recently modified, number of symbols, shallow paths, and
+names that match words in the first message of the run. `node_modules`, `target`, `dist`, `build`,
+`.git`, `vendor` and lockfiles are left out. The same project state and task give the same bytes.
+
+It is off by default because it changes the prompt, and a provider's cache restarts whenever the map
+does (a file changed, a new task). The block is left out when the project is not a git repository,
+there is no index to read, or the budget is too small. It is a `repo_map` contributor, so
+`prefix_allow` and `prefix_deny` place it like any other.
+
+### Prompt trimming
+
+```toml
+[prompt]
+trim = true
+```
+
+Runs the assembled system prompt through a deterministic trimmer, with no model call: whitespace is
+made canonical, a paragraph that repeats an earlier one is dropped (the first copy stays, so the
+cached prefix does not move), and a heading with nothing under it is dropped. Headings and fenced
+code are never deduplicated. The same prompt always trims to the same bytes, and trimming twice
+changes nothing. Off by default.
+
+### `[memory]`
+
+```toml
+[memory]
+ranked = true
+max_tokens = 400
+```
+
+Ranks remembered facts by relevance to the first message, recency and how often they have been used,
+instead of the precedence order alone, and caps the block at `max_tokens`. Filters (scope, expiry,
+conflicts, instructions that outrank a memory) run first and are unchanged; scope and pinning still
+come before the score. Off by default.
+
+### Code mode
+
+```toml
+[tools]
+code_mode = true
+```
+
+Offers a `code` tool: the model writes one short Rhai script that calls `read`, `ls`, `grep` and
+`find` and returns a combined result, instead of one round trip per call. The interpreter is
+embedded and has no file, process or network access of its own. Every inner call goes through the
+normal permission gate, `[tools]` rules and `[[tool_rules]]`; anything but those four tools is
+refused. A script is capped at 25 tool calls, 60 seconds, 200,000 operations and 24,000 characters of
+output. Off by default; top-level runs only.
 
 ### `[skills]`
 

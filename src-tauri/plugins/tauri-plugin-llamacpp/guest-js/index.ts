@@ -242,13 +242,15 @@ export async function isModelSupported(
   path: string,
   ctxSize?: number,
   cacheTypeK?: string,
-  cacheTypeV?: string
+  cacheTypeV?: string,
+  noKvOffload?: boolean
 ): Promise<'RED' | 'YELLOW' | 'GREEN'> {
   return await invoke('plugin:llamacpp|is_model_supported', {
     path,
     ctxSize,
     cacheTypeK,
     cacheTypeV,
+    noKvOffload,
   })
 }
 
@@ -258,3 +260,45 @@ export async function cleanupLlamaProcesses(): Promise<void> {
 }
 
 export * from './types'
+
+// ---------------------------------------------------------------------------
+// Engine add-ons (the NVIDIA CUDA pack, src/engine/addon.rs). The shapes are
+// declared by the caller (web-app/src/services/engineAddon.ts).
+
+/** Eligibility, installed add-ons and whether the engine needs a restart. */
+export async function engineAddonStatus<T = unknown>(): Promise<T> {
+  return await invoke('plugin:llamacpp|engine_addon_status')
+}
+
+/** Reads this release's published, signed pack manifest (no pack download). */
+export async function engineAddonCheck<T = unknown>(): Promise<T> {
+  return await invoke('plugin:llamacpp|engine_addon_check')
+}
+
+/** Downloads, verifies and installs this release's pack. User-initiated only. */
+export async function engineAddonDownload<T = unknown>(): Promise<T> {
+  return await invoke('plugin:llamacpp|engine_addon_download')
+}
+
+export async function engineAddonCancel(): Promise<void> {
+  return await invoke('plugin:llamacpp|engine_addon_cancel')
+}
+
+/** Installs a pack zip the user picked, with the same verification. */
+export async function engineAddonInstallFile<T = unknown>(path: string): Promise<T> {
+  return await invoke('plugin:llamacpp|engine_addon_install_file', { path })
+}
+
+export async function engineAddonRemove(): Promise<void> {
+  return await invoke('plugin:llamacpp|engine_addon_remove')
+}
+
+/** Rehashes the installed add-on; a damaged one is removed. */
+export async function engineAddonVerify(): Promise<boolean> {
+  return await invoke('plugin:llamacpp|engine_addon_verify')
+}
+
+/** The running engine started with a different add-on than is installed now. */
+export async function engineAddonRestartPending(): Promise<boolean> {
+  return await invoke('plugin:llamacpp|engine_addon_restart_pending')
+}

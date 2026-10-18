@@ -195,4 +195,37 @@ describe('RoomControls', () => {
     await userEvent.click(btn('Start'))
     expect(await screen.findByRole('alert')).toHaveTextContent('Disk full')
   })
+
+  describe('a compare room', () => {
+    it('lists who is answering, with no order, no Next and no chevrons', () => {
+      const fake = createFakeApi()
+      renderWithApi(
+        <RoomControls room={makeRoom({ mode: 'compare', status: 'running' })} />,
+        fake.api
+      )
+      expect(screen.getByText('Answering')).toBeInTheDocument()
+      expect(screen.queryByText('Up next')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Next speaker' })).not.toBeInTheDocument()
+      expect(screen.queryByText('Next')).not.toBeInTheDocument()
+      // Both models are shown, as plain labels rather than "let X speak next".
+      expect(screen.getAllByText('Alice').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Bob').length).toBeGreaterThan(0)
+      expect(screen.queryByRole('button', { name: /speak next/ })).not.toBeInTheDocument()
+      expect(document.querySelector('.lucide-chevron-right')).toBeNull()
+    })
+
+    it('says "Models", not "Answering", while nothing runs', () => {
+      const fake = createFakeApi()
+      renderWithApi(<RoomControls room={makeRoom({ mode: 'compare', status: 'draft' })} />, fake.api)
+      expect(screen.getByText('Models')).toBeInTheDocument()
+      expect(screen.queryByText('Answering')).not.toBeInTheDocument()
+    })
+
+    it('keeps the sequential queue for a round-robin room', () => {
+      const fake = createFakeApi()
+      renderWithApi(<RoomControls room={makeRoom({ status: 'running' })} />, fake.api)
+      expect(screen.getByText('Up next')).toBeInTheDocument()
+      expect(btn('Next speaker')).toBeInTheDocument()
+    })
+  })
 })

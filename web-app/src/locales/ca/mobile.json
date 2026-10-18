@@ -400,7 +400,8 @@
     "mode": {
       "roundRobin": "Per torns",
       "userSelected": "Tria tu",
-      "moderatorSelected": "Tria el moderador"
+      "moderatorSelected": "Tria el moderador",
+      "compare": "Compara models"
     },
     "untitled": "Sala sense títol",
     "menu": "Menú de la sala",

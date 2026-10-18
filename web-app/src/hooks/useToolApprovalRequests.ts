@@ -17,6 +17,17 @@ import {
 } from '@/hooks/useAutoApproveLimit'
 import { rememberCommand, repeatCommandKey } from '@/lib/repeatedCommand'
 import { similarToolCall } from '@/lib/similarToolCall'
+import { commandEditable } from '@/lib/commandEditable'
+import {
+  EVERYWHERE_CHOICE,
+  SCOPABLE_TOOLS,
+  addScopedRule,
+  approvalScopeOptions,
+  buildScopeChoice,
+  isAbsolutePath,
+  scopeFromChoiceId,
+  type ApprovalScopeWire,
+} from '@/lib/approvalScopes'
 
 /**
  * One structured choice a request asks for next to the allow/deny answer: the
@@ -99,6 +110,13 @@ export type ApprovalRequestContext = {
    * question cannot be answered afterwards.
    */
   signal?: AbortSignal
+  /**
+   * Asked when `signal` aborts: a label (e.g. `room paused`) keeps the card on
+   * screen, held, instead of withdrawing it. The run is still answered no at
+   * once; a held card can only be denied or expire (`expireHeld`), never
+   * allowed, so nothing stale is ever replayed.
+   */
+  holdOnAbort?: () => string | null
 }
 
 export type PendingApproval = {
@@ -141,8 +159,16 @@ export type PendingApproval = {
   choice?: ApprovalChoice
   /** The option the person selected so far; the default until they pick. */
   chosenId?: string
+  /**
+   * The form for "Always" on a file change or a command: the scopes the
+   * backend would accept for this call, and the folder it was asked about. Set
+   * once they arrive; a card without one answers "Always" as it always did.
+   */
+  scopeForm?: { root: string; options: ApprovalScopeWire[] }
   /** When the prompt was raised (ms since epoch), to tell a long wait. */
   requestedAt?: number
+  /** Set when the asking run was paused: shown, but it can no longer be allowed. */
+  held?: string
   resolve: (approved: boolean) => void
 }
 
@@ -169,6 +195,14 @@ type ToolApprovalRequestsState = {
   pending: Record<string, PendingApproval>
   queued: Record<string, PendingApproval[]>
   refusals: Record<string, ApprovalRefusal>
+  /** What the person typed with a deny, by call id, until the loop takes it. */
+  refusalReasons: Record<string, string>
+  /**
+   * A shell command the person rewrote before allowing it once, by call id,
+   * until the loop takes it. Only ever set for `bash`, only kept with
+   * `allow-once`, and never turned into a standing grant.
+   */
+  editedInputs: Record<string, { command: string }>
   approvedFingerprints: Record<string, string>
   answeredByPrompt: Record<string, true>
   bypassedCalls: Record<string, true>
@@ -185,8 +219,21 @@ type ToolApprovalRequestsState = {
   resolveApproval: (
     toolCallId: string,
     decision: ApprovalDecision,
-    requestId?: string
+    requestId?: string,
+    /** Why the person said no. Only kept with `deny`. */
+    reason?: string
   ) => void
+  /**
+   * Replace the command a pending `bash` request will run, if it is allowed
+   * once. A no-op for a stale request, another tool, or a blank command.
+   */
+  setEditedCommand: (
+    toolCallId: string,
+    requestId: string,
+    command: string
+  ) => void
+  /** The edited input once, for the call that was allowed. */
+  takeEditedInput: (toolCallId: string) => { command: string } | undefined
   /** Select an option of the request's `choice`. A no-op for a stale request. */
   chooseOption: (toolCallId: string, requestId: string, optionId: string) => void
   clearPendingForThread: (
@@ -194,9 +241,15 @@ type ToolApprovalRequestsState = {
     options?: { notify?: boolean }
   ) => void
   withdrawApproval: (requestId: string) => void
+  /** Keep a prompt whose run was paused on screen, held under `label`. */
+  holdApproval: (requestId: string, label: string) => void
+  /** Drop the held prompts of a thread (its run resumed or is gone). */
+  expireHeld: (threadId: string) => void
   /** Drop "Allow all temporarily" for a conversation that is gone. */
   forgetTemporaryGit: (threadId: string) => void
   takeRefusal: (toolCallId: string) => ApprovalRefusal | undefined
+  /** The reason given with a deny, once; the model is told it. */
+  takeRefusalReason: (toolCallId: string) => string | undefined
   takeApprovedFingerprint: (toolCallId: string) => string | undefined
 }
 
@@ -285,6 +338,17 @@ export function canTemporarilyAllowGit(
   return plan.remote === undefined || REMOTE_NAME.test(plan.remote)
 }
 
+/** Longest reason handed to the model; the Rust side caps the same way. */
+export const REFUSAL_REASON_MAX_CHARS = 500
+
+/** A typed reason as it is stored: control characters to spaces, trimmed, capped. */
+export function cleanRefusalReason(reason: string | undefined): string | undefined {
+  if (!reason) return undefined
+  // eslint-disable-next-line no-control-regex
+  const cleaned = reason.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
+  return cleaned ? Array.from(cleaned).slice(0, REFUSAL_REASON_MAX_CHARS).join('') : undefined
+}
+
 let nextRequest = 0
 const newRequestId = () => `req-${Date.now().toString(36)}-${++nextRequest}`
 
@@ -315,6 +379,14 @@ function remember<T>(
   return next
 }
 
+/** `map` without the given call ids; the same object when none was there. */
+function forget<T>(map: Record<string, T>, ids: string[]): Record<string, T> {
+  if (!ids.some((id) => id in map)) return map
+  const next = { ...map }
+  for (const id of ids) delete next[id]
+  return next
+}
+
 function without(
   s: Pick<ToolApprovalRequestsState, 'pending' | 'queued'>,
   entry: PendingApproval
@@ -338,6 +410,8 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     pending: {},
     queued: {},
     refusals: {},
+    refusalReasons: {},
+    editedInputs: {},
     approvedFingerprints: {},
     answeredByPrompt: {},
     bypassedCalls: {},
@@ -533,7 +607,11 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             resolve(approved)
           },
         }
-        const onAbort = () => get().withdrawApproval(entry.requestId)
+        const onAbort = () => {
+          const label = context?.holdOnAbort?.() ?? null
+          if (label) get().holdApproval(entry.requestId, label)
+          else get().withdrawApproval(entry.requestId)
+        }
         set((s) =>
           s.pending[toolCallId]
             ? {
@@ -545,6 +623,52 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : { pending: { ...s.pending, [toolCallId]: entry } }
         )
         signal?.addEventListener('abort', onAbort, { once: true })
+
+        // The form for "Always": the folders and command prefixes the backend
+        // would accept for this call. Asked after the card is up, so the prompt
+        // is never held back by it; a card answered before it arrives keeps the
+        // shape it had.
+        const scopeRoot = context?.workspaceLabel
+        if (
+          !serverName &&
+          !alwaysAsk &&
+          !context?.choice &&
+          SCOPABLE_TOOLS.has(toolName) &&
+          isAbsolutePath(scopeRoot)
+        ) {
+          void approvalScopeOptions(scopeRoot, toolName, context?.input).then(
+            (options) => {
+              const choice = buildScopeChoice(options, toolName)
+              if (!choice) return
+              const attach = (e: PendingApproval): PendingApproval =>
+                e.requestId === entry.requestId
+                  ? {
+                      ...e,
+                      choice,
+                      chosenId: choice.defaultId,
+                      scopeForm: { root: scopeRoot, options },
+                    }
+                  : e
+              set((s) => {
+                const head = s.pending[toolCallId]
+                const waiting = s.queued[toolCallId]
+                return {
+                  ...(head
+                    ? { pending: { ...s.pending, [toolCallId]: attach(head) } }
+                    : {}),
+                  ...(waiting
+                    ? {
+                        queued: {
+                          ...s.queued,
+                          [toolCallId]: waiting.map(attach),
+                        },
+                      }
+                    : {}),
+                }
+              })
+            }
+          )
+        }
       })
     },
 
@@ -566,8 +690,31 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       set((s) => ({
         ...without(s, entry),
         refusals: remember(s.refusals, [[entry.toolCallId, 'cancelled']]),
+        // A withdrawn prompt was never answered: an edit typed into it is void.
+        editedInputs: forget(s.editedInputs, [entry.toolCallId]),
       }))
       entry.resolve(false)
+    },
+
+    holdApproval: (requestId, label) => {
+      const entry = allApprovalRequests(get()).find((e) => e.requestId === requestId)
+      if (!entry || entry.held) return
+      const held = (e: PendingApproval): PendingApproval =>
+        e.requestId === requestId ? { ...e, held: label, resolve: () => {} } : e
+      set((s) => ({
+        pending: Object.fromEntries(Object.entries(s.pending).map(([k, e]) => [k, held(e)])),
+        queued: Object.fromEntries(Object.entries(s.queued).map(([k, l]) => [k, l.map(held)])),
+        refusals: remember(s.refusals, [[entry.toolCallId, 'cancelled']]),
+        editedInputs: forget(s.editedInputs, [entry.toolCallId]),
+      }))
+      // The run is gone: it hears no at once and unwinds.
+      entry.resolve(false)
+    },
+
+    expireHeld: (threadId) => {
+      for (const e of allApprovalRequests(get())) {
+        if (e.held && e.threadId === threadId) set((s) => without(s, e))
+      }
     },
 
     chooseOption: (toolCallId, requestId, optionId) => {
@@ -588,7 +735,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       })
     },
 
-    resolveApproval: (toolCallId, decision, requestId) => {
+    resolveApproval: (toolCallId, decision, requestId, reason) => {
       const head = get().pending[toolCallId]
       const entry =
         requestId === undefined
@@ -597,6 +744,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               (e) => e?.requestId === requestId
             )
       if (!entry) return
+      // A held card's run is gone: only a deny clears it, and nothing is
+      // granted or recorded for a run that can no longer use it.
+      if (entry.held) {
+        if (decision === 'deny') set((s) => without(s, entry))
+        return
+      }
+      const refusalReason =
+        decision === 'deny' ? cleanRefusalReason(reason) : undefined
       entry.onDecision?.(
         decision,
         entry.choice ? (entry.chosenId ?? entry.choice.defaultId) : undefined
@@ -611,7 +766,25 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           entry.threadIsEphemeral === true
         )
 
-      if (temporaryGit) {
+      if (entry.scopeForm && decision === 'allow-always' && !serverName) {
+        // "Always" with the form: as wide as the scope picked and no wider. The
+        // backend checks the scope against this very call before it keeps it.
+        const scope = scopeFromChoiceId(entry.chosenId, entry.scopeForm.options)
+        if (scope) {
+          void addScopedRule(
+            entry.scopeForm.root,
+            entry.toolName,
+            entry.input,
+            scope
+          ).catch((error) =>
+            toast.error(i18n.t('permissions:scopeForm.saveFailed'), {
+              description: errorText(error),
+            })
+          )
+        } else if (entry.chosenId === EVERYWHERE_CHOICE) {
+          approval.approveToolEverywhere(entry.toolName)
+        }
+      } else if (temporaryGit) {
         // Intentionally transient; persisted grants are not changed.
       } else if (!serverName && similarToolCall(entry.toolName, entry.input) &&
         decision === 'allow-thread' && !entry.threadIsEphemeral
@@ -656,12 +829,23 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           approval.approveToolEverywhere(entry.toolName)
         }
       }
+      // A command the person rewrote is theirs, not the model's: it is run
+      // once and is never remembered as "allowed once before".
+      const edited = get().editedInputs[toolCallId]
       const onceKey =
-        decision === 'allow-once'
+        decision === 'allow-once' && edited === undefined
           ? repeatCommandKey(entry.toolName, entry.input)
           : null
       set((s) => ({
         ...without(s, entry),
+        // An edit only counts with "Allow once"; any other answer drops it.
+        ...(decision !== 'allow-once' && s.editedInputs[toolCallId]
+          ? {
+              editedInputs: Object.fromEntries(
+                Object.entries(s.editedInputs).filter(([id]) => id !== toolCallId)
+              ),
+            }
+          : {}),
         ...(temporaryGit
           ? {
               temporaryGitThreads: remember(s.temporaryGitThreads, [
@@ -681,7 +865,16 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             }
           : {}),
         ...(decision === 'deny'
-          ? { refusals: remember(s.refusals, [[toolCallId, 'denied']]) }
+          ? {
+              refusals: remember(s.refusals, [[toolCallId, 'denied']]),
+              ...(refusalReason
+                ? {
+                    refusalReasons: remember(s.refusalReasons, [
+                      [toolCallId, refusalReason],
+                    ]),
+                  }
+                : {}),
+            }
           : {
               answeredByPrompt: remember(s.answeredByPrompt, [
                 [toolCallId, true as const],
@@ -720,6 +913,10 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         return {
           pending: next,
           queued: waiting,
+          editedInputs: forget(
+            s.editedInputs,
+            stranded.map((entry) => entry.toolCallId)
+          ),
           refusals: remember(
             s.refusals,
             stranded.map(
@@ -751,6 +948,48 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           const next = { ...s.refusals }
           delete next[toolCallId]
           return { refusals: next }
+        })
+      }
+      return why
+    },
+
+    setEditedCommand: (toolCallId, requestId, command) => {
+      const head = get().pending[toolCallId]
+      const entry = [head, ...(get().queued[toolCallId] ?? [])].find(
+        (e) => e?.requestId === requestId
+      )
+      if (!entry || !commandEditable(entry)) return
+      // eslint-disable-next-line no-control-regex
+      const edited = command.replace(/\u0000/g, '').trim()
+      set((s) => {
+        // Bounded like the refusals, in case a caller never takes its edit.
+        return {
+          editedInputs: edited
+            ? remember(s.editedInputs, [[toolCallId, { command: edited }]])
+            : forget(s.editedInputs, [toolCallId]),
+        }
+      })
+    },
+
+    takeEditedInput: (toolCallId) => {
+      const edited = get().editedInputs[toolCallId]
+      if (edited) {
+        set((s) => {
+          const next = { ...s.editedInputs }
+          delete next[toolCallId]
+          return { editedInputs: next }
+        })
+      }
+      return edited
+    },
+
+    takeRefusalReason: (toolCallId) => {
+      const why = get().refusalReasons[toolCallId]
+      if (why) {
+        set((s) => {
+          const next = { ...s.refusalReasons }
+          delete next[toolCallId]
+          return { refusalReasons: next }
         })
       }
       return why

@@ -73,6 +73,22 @@ describe('useTokensCount', () => {
     expect(result.current.tokenCount).toBe(15)
   })
 
+  // C012: a stopped reply has no usage record, and the local ring stayed at
+  // the figure from before it until the next completed request.
+  it('counts a stopped local reply that never got usage', async () => {
+    const messages = [
+      makeMessage({ metadata: { usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } } }),
+      makeMessage({
+        id: 'm2',
+        content: [{ type: 'text', text: { value: 'word '.repeat(200), annotations: [] } }] as never,
+        metadata: { stopped: true },
+      }),
+    ]
+    const { result } = renderHook(() => useTokensCount(messages))
+    await waitFor(() => expect(result.current.modelProps).toBeDefined())
+    expect(result.current.tokenCount).toBeGreaterThan(15 + 100)
+  })
+
   // Chat reload: the counter is rebuilt from what was persisted on the message.
   it('restores the cache breakdown from a persisted message', async () => {
     const persisted = JSON.parse(
@@ -211,6 +227,36 @@ describe('useTokensCount', () => {
     expect(result.current.percentage).toBeUndefined()
     expect(result.current.isNearLimit).toBe(false)
     expect(result.current.modelDisplayName).toBe('GPT X')
+  })
+
+  it("measures the surface's own remote model, not the global local one (C-006)", async () => {
+    // Global picker: a local model configured at 8192. The session: a remote
+    // custom model whose window nobody knows.
+    modelProviderState.selectedProvider = 'llamacpp'
+    modelProviderState.selectedModel = {
+      id: 'local-4b',
+      name: 'Local',
+      capabilities: [],
+      settings: { ctx_len: { controller_props: { value: 8192 } } },
+    }
+    mockGetModelProps.mockResolvedValue({ nCtx: 8192 })
+    const messages = [
+      makeMessage({ metadata: { usage: { inputTokens: 25_000, outputTokens: 237, totalTokens: 25_237 } } }),
+    ]
+    const { result } = renderHook(() =>
+      useTokensCount(messages, {
+        selection: {
+          selectedProvider: 'v100',
+          selectedModel: { id: 'qwen-coder', name: 'qwen-coder', capabilities: [] } as never,
+        },
+      })
+    )
+    await Promise.resolve()
+    expect(mockGetModelProps).not.toHaveBeenCalled()
+    expect(result.current.tokenCount).toBe(25_237)
+    expect(result.current.maxTokens).toBeUndefined()
+    expect(result.current.percentage).toBeUndefined()
+    expect(result.current.isNearLimit).toBe(false)
   })
 
   it('does not call llamacpp getModelProps for a remote provider', async () => {

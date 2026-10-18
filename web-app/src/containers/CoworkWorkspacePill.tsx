@@ -147,14 +147,22 @@ export function CoworkWorkspacePill({
           size={folderName ? 'xs' : 'icon-xs'}
           className={
             folderName
-              ? 'h-[30px] min-w-0 shrink gap-1.5 px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
+              ? // Never squeezed past a readable branch: the folder name gives way first.
+                'h-[30px] min-w-[2.125rem] shrink gap-1.5 overflow-hidden px-2.5 has-[[data-branch]]:min-w-[7.5rem] text-xs font-medium text-muted-foreground pointer-coarse:h-11'
               : 'size-[30px] shrink-0 text-muted-foreground pointer-coarse:size-11'
           }
           title={folderName && (shortName || chipText) ? folderName : undefined}
           data-collapsed={folderName && (shortName || chipText) ? 'true' : undefined}
           aria-label={
             folderName
-              ? t('common:workspace.a11yWithFolder', { folder: folderName })
+              ? t(
+                  primaryAccess === 'editable'
+                    ? 'common:workspace.a11yWithFolderEditable'
+                    : primaryAccess === 'worktree'
+                      ? 'common:workspace.a11yWithFolderWorktree'
+                      : 'common:workspace.a11yWithFolder',
+                  { folder: folderName }
+                )
               : t('common:workspace.a11yNoFolder')
           }
         >
@@ -169,14 +177,15 @@ export function CoworkWorkspacePill({
                   folder's name; with none the name stays until the chip is
                   an icon. */}
               {!chipText && !(shortName && gitBranch) && (
-                <span className="min-w-0 max-w-[120px] truncate text-secondary-foreground">
+                <span className="min-w-[3ch] max-w-[120px] shrink-[4] truncate text-secondary-foreground">
                   {folderName}
                 </span>
               )}
               {gitBranch && !chipText ? (
                 <span
                   aria-hidden
-                  className="max-w-[96px] truncate font-normal text-muted-foreground"
+                  data-branch
+                  className="min-w-[5ch] max-w-[96px] shrink truncate font-normal text-muted-foreground"
                 >
                   {shortName ? gitBranch : `· ${gitBranch}`}
                 </span>
@@ -406,7 +415,11 @@ export function CoworkWorkspacePill({
         ) : (
           <section className="p-2.5">
             <p className="text-xs text-muted-foreground">
-              {t('common:workspace.footnoteEmpty')}
+              {t(
+                access === 'review-only'
+                  ? 'common:workspace.footnoteEmpty'
+                  : 'common:workspace.footnoteEmptyEdit'
+              )}
             </p>
             <Button
               variant="surface"

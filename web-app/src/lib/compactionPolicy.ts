@@ -86,3 +86,26 @@ export function outputHeadroom(
 ): number {
   return Math.max(maxOutputTokens, effectiveReserve(maxContextTokens, policy))
 }
+
+/** Above this, a local model's reply is given its own cap, not more. */
+const LOCAL_REPLY_RESERVE = 2048
+const LOCAL_REPLY_FRACTION = 0.1
+
+/**
+ * Room kept free for the reply. A local or self-hosted model (llama.cpp, a
+ * server on this machine) keeps only what the user capped its reply at, or
+ * min(2048, 10% of the window): an 8K reserve on a 32K model threw away a
+ * quarter of the window. Hosted models keep `outputHeadroom` as before.
+ */
+export function replyReserve(
+  maxContextTokens: number,
+  maxOutputTokens: number | undefined,
+  policy: Pick<CompactionPolicy, 'reserveTokens'>,
+  local: boolean
+): number {
+  const userCap = maxOutputTokens && maxOutputTokens > 0 ? maxOutputTokens : undefined
+  if (local) {
+    return userCap ?? Math.min(LOCAL_REPLY_RESERVE, Math.floor(maxContextTokens * LOCAL_REPLY_FRACTION))
+  }
+  return outputHeadroom(maxContextTokens, userCap ?? 2048, policy)
+}

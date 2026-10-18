@@ -99,6 +99,10 @@ macro_rules! invoke_commands_with_extras {
         core::app::settings_store::settings_get,
         core::app::settings_store::settings_set,
         core::app::settings_store::settings_remove,
+        core::app::settings_store::take_settings_recovery_notice,
+        core::server::bedrock::bedrock_sign,
+        core::server::bedrock::bedrock_credential_status,
+        core::server::bedrock::bedrock_set_credential,
         core::server::provider_secrets::set_secret,
         core::server::provider_secrets::get_secret,
         // System commands
@@ -128,6 +132,11 @@ macro_rules! invoke_commands_with_extras {
         core::huggingface::set_download_speed_limit,
         // Agent commands
         core::agent::commands::agent_emergency_stop,
+        core::agent::trust_commands::folder_trust_status,
+        core::agent::trust_commands::folder_trust_grant,
+        core::agent::trust_commands::folder_trust_revoke,
+        core::agent::trust_commands::folder_trust_list,
+        core::agent::trust_commands::folder_trust_grandfather,
         core::agent::commands::get_compaction_policy,
         core::agent::commands::get_attribution_settings,
         core::agent::commands::set_attribution_settings,
@@ -261,6 +270,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_campaign_create,
         core::agent::commands::agent_campaign_get,
         core::agent::commands::agent_campaign_list,
+        core::agent::commands::agent_campaign_skipped,
+        core::agent::commands::agent_campaign_list_with_skipped,
         core::agent::commands::agent_campaign_transition,
         core::agent::commands::agent_campaign_task_settle,
         core::agent::commands::agent_campaign_cancel,
@@ -291,6 +302,14 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_checkpoint_preview_diff,
         core::agent::commands::agent_checkpoint_restore,
         core::agent::commands::agent_checkpoint_forget,
+        core::agent::commands::agent_approval_scope_options,
+        core::agent::commands::agent_approval_rule_check,
+        core::agent::commands::agent_approval_rule_add,
+        core::agent::commands::agent_approval_rules_list,
+        core::agent::commands::agent_approval_rule_revoke,
+        core::agent::commands::agent_deferred_list,
+        core::agent::commands::agent_deferred_answer,
+        core::agent::commands::agent_deferred_discard,
         core::agent::commands::agent_git_status,
         core::agent::commands::agent_git_file_diff,
         core::agent::commands::agent_git_head_file,
@@ -324,6 +343,7 @@ macro_rules! invoke_commands_with_extras {
         core::mcp::commands::restart_mcp_servers,
         core::mcp::commands::get_connected_servers,
         core::mcp::commands::save_mcp_configs,
+        core::mcp::commands::rename_mcp_server,
         core::mcp::commands::get_mcp_configs,
         core::mcp::commands::activate_mcp_server,
         core::mcp::commands::deactivate_mcp_server,
@@ -342,6 +362,7 @@ macro_rules! invoke_commands_with_extras {
         core::threads::commands::delete_thread,
         core::threads::commands::delete_thread_permanently,
         core::threads::commands::list_messages,
+        core::threads::commands::search_messages,
         core::threads::commands::create_message,
         core::threads::commands::modify_message,
         core::threads::commands::delete_message,
@@ -356,6 +377,15 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_delete,
         core::rooms::commands::room_delete_permanently,
         core::rooms::commands::room_clear_journal,
+        core::rooms::commands::room_workspace_ensure,
+        core::rooms::commands::room_workspace_changes,
+        core::rooms::commands::room_workspace_mark_turn,
+        core::rooms::commands::room_workspace_patch,
+        core::rooms::commands::room_workspace_reset,
+        core::rooms::commands::room_workspace_apply,
+        core::rooms::commands::room_workspace_apply_preview,
+        core::rooms::commands::room_workspace_undo_apply,
+        core::rooms::commands::room_workspace_remove,
         // Archive (delete moves here first)
         core::archive::commands::archive_list,
         core::archive::commands::archive_disk_usage,
@@ -378,6 +408,8 @@ macro_rules! invoke_commands_with_extras {
         core::schedule::commands::schedule_to_cron,
         core::schedule::commands::schedule_time_zones,
         core::schedule::commands::schedule_tools,
+        core::autostart::autostart_get,
+        core::autostart::autostart_set,
         core::schedule::commands::schedule_os_status,
         core::schedule::commands::schedule_os_enable,
         core::schedule::commands::schedule_os_disable,
@@ -818,6 +850,11 @@ pub fn build_app() -> tauri::App {
             // A marker left by the previous run means it did not shut down
             // cleanly; say so in the log, once, so a crash report has a lead.
             let data_folder = get_jan_data_folder_path(app.handle().clone());
+            // Engine add-ons (the CUDA pack) live in the data folder, so a test
+            // instance with its own folder never touches the user's.
+            if let Some(llama) = app.try_state::<std::sync::Arc<tauri_plugin_llamacpp::LlamacppState>>() {
+                let _ = llama.addon_root.set(data_folder.join("engine-addons"));
+            }
             tauri_plugin_agent_tools::tools::computer::set_active_exclusions(
                 tauri_plugin_agent_tools::tools::computer::load_exclusions(&data_folder),
             );
@@ -844,6 +881,15 @@ pub fn build_app() -> tauri::App {
             crash_notes.extend(stack_note);
             core::diffusion::register(app.handle());
             core::browser_verify::commands::install_activity_mirror(app.handle());
+            // Project folders the user trusted to run their own hooks and
+            // subagents are recorded beside the app's settings, and stay
+            // trusted.
+            tauri_plugin_agent_tools::folder_trust::set_store(
+                get_jan_data_folder_path(app.handle().clone()).join("trusted-folders.json"),
+            );
+            // A fresh install has nothing from before trust existed: close the
+            // one-time migration now so no folder attached later is grandfathered.
+            tauri_plugin_agent_tools::folder_trust::close_migration_if_fresh(&data_folder);
             // Toolchain folders the user let the Windows sandbox use are
             // recorded beside the app's settings.
             tauri_plugin_agent_tools::tools::toolchain_grants::set_store(
@@ -912,6 +958,10 @@ pub fn build_app() -> tauri::App {
             if let Err(e) = app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)
+                    // keyring logs three Debug lines per credential lookup
+                    // (~490 lines, 78 KB on one startup), all also emitted to
+                    // the webview.
+                    .level_for("keyring", log::LevelFilter::Info)
                     // The plugin defaults to a 40 KB cap and KeepOne, which
                     // deletes the previous app.log on each rotation. At Debug
                     // level startup alone crosses 40 KB in ~30s, so a model
@@ -960,11 +1010,27 @@ pub fn build_app() -> tauri::App {
             // The Windows window is created hidden and shown here, at the place
             // it was last left, so it never paints at the default spot and then
             // jumps. See core::window_state.
+            // Started by the OS startup entry with `--minimized`: the window
+            // stays hidden and the tray icon is the way back in.
+            let start_minimized =
+                core::autostart::launched_minimized(std::env::args());
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
-                core::window_state::restore_and_show(&window, &data_folder);
+                // Hide only when a tray icon exists to bring the window back;
+                // without one (creation failed, or a non-desktop build) the
+                // window would be unreachable, so show it normally.
+                #[cfg(feature = "desktop")]
+                let hide_to_tray = start_minimized && setup::ensure_tray_now(app.handle());
+                #[cfg(not(feature = "desktop"))]
+                let hide_to_tray = { let _ = start_minimized; false };
+                if hide_to_tray {
+                    let _ = window.hide();
+                } else {
+                    core::window_state::restore_and_show(&window, &data_folder);
+                }
                 core::window_state::install(&window, data_folder);
+                core::webview_paint::install_repaint_nudge(&window);
                 suppress_beforeunload_dialog(&window);
             }
             #[cfg(all(
@@ -973,7 +1039,18 @@ pub fn build_app() -> tauri::App {
             ))]
             if let Some(window) = app.get_webview_window("main") {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
-                core::window_state::restore_and_show(&window, &data_folder);
+                // Hide only when a tray icon exists to bring the window back;
+                // without one (creation failed, or a non-desktop build) the
+                // window would be unreachable, so show it normally.
+                #[cfg(feature = "desktop")]
+                let hide_to_tray = start_minimized && setup::ensure_tray_now(app.handle());
+                #[cfg(not(feature = "desktop"))]
+                let hide_to_tray = { let _ = start_minimized; false };
+                if hide_to_tray {
+                    let _ = window.hide();
+                } else {
+                    core::window_state::restore_and_show(&window, &data_folder);
+                }
                 core::window_state::install(&window, data_folder);
             }
             // Remote access: off unless the user turned it on; if so the

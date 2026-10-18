@@ -8,6 +8,7 @@ import { ShortcutAction } from '@/lib/shortcuts'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useAssistantSwitcher } from '@/hooks/useAssistantSwitcher'
 import { useMessageZoom } from '@/hooks/useMessageZoom'
+import { useConversationFind } from '@/hooks/useConversationFind'
 import { useKeybindings } from '@/hooks/useKeybindings'
 import { useCommandPalette } from '@/containers/CommandPalette'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
@@ -36,6 +37,7 @@ export function KeyboardShortcutsProvider() {
   const newProjectShortcut = specFor(ShortcutAction.NEW_PROJECT)
   const settingsShortcut = specFor(ShortcutAction.GO_TO_SETTINGS)
   const searchShortcut = specFor(ShortcutAction.SEARCH)
+  const findShortcut = specFor(ShortcutAction.FIND_IN_CHAT)
   const switchAssistantShortcut = specFor(ShortcutAction.SWITCH_ASSISTANT)
   const paletteShortcut = specFor(ShortcutAction.COMMAND_PALETTE)
   const splitShortcut = specFor(ShortcutAction.SPLIT_VIEW)
@@ -89,6 +91,14 @@ export function KeyboardShortcutsProvider() {
     ...searchShortcut,
     callback: () => {
       setSearchOpen(true)
+    },
+  })
+
+  // Find in chat: the bar over the conversation on screen
+  useKeyboardShortcut({
+    ...findShortcut,
+    callback: () => {
+      useConversationFind.getState().setOpen(true)
     },
   })
 

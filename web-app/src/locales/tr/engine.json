@@ -24,7 +24,8 @@
     "embeddingSub": "{{count}} gömme modeli",
     "addedSub": "Flint'e eklendi",
     "repliesToday": "Bugünkü yanıtlar",
-    "repliesSub": "{{count}} yanıt ölçüldü",
+    "repliesSub_one": "{{count}} yanıt ölçüldü",
+    "repliesSub_other": "{{count}} yanıt ölçüldü",
     "apiKeys": "API anahtarları",
     "fallbackSub": "{{count}} yedek anahtar",
     "noFallbackSub": "yedek anahtar yok",
@@ -34,7 +35,8 @@
     "title": "Şu an yüklü",
     "empty": "Hiçbir model yüklü değil",
     "emptyHint": "Aşağıdaki tablodan yerel bir model başlatın veya ona bir mesaj gönderin.",
-    "unload": "Boşalt"
+    "unload": "Boşalt",
+    "speedBar": "Ortalama hız, yüklü en hızlı modele göre"
   },
   "speed": {
     "title": "Üretim hızı",
@@ -66,7 +68,8 @@
     "loaded": "Yüklü",
     "ready": "Hazır",
     "noKey": "API anahtarı yok",
-    "keyless": "Anahtar gerekmez"
+    "keyless": "Anahtar gerekmez",
+    "noCredentials": "AWS kimlik bilgisi yok"
   },
   "installed": {
     "title": "Yüklü modeller",
@@ -106,7 +109,10 @@
     "connection": "Bağlantı",
     "engineSettings": "Motor ayarları",
     "memorySettings": "Bellek ve önbellek",
-    "danger": "Tehlikeli bölge"
+    "settingNotSaved": "\"{{setting}}\" kaydedilmedi",
+    "danger": "Tehlikeli bölge",
+    "networkNote": "Ağınızda · {{host}} adresine gönderilir",
+    "reachUnknownNote": "Bu sağlayıcının nerede çalıştığı denetleniyor"
   },
   "mcp": {
     "title": "Araçlar ve MCP",
@@ -125,7 +131,8 @@
     "kpiApprovedAll": "Tüm araç çağrılarına izin verilir",
     "tabServers": "Sunucular",
     "tabRouting": "Yönlendirme ve sınırlar",
-    "toolsCount": "{{count}} araç",
+    "toolsCount_one": "{{count}} araç",
+    "toolsCount_other": "{{count}} araç",
     "filterLabel": "Sunucuları göster",
     "filterAll": "Tümü",
     "filterOn": "Açık",
@@ -135,7 +142,7 @@
     "viewList": "Liste",
     "callsPerMin": "çağrı / dk",
     "window": "son {{count}} dk",
-    "needsExtension": "Jan Browser Extension gerektirir",
+    "needsExtension": "Tarayıcı uzantısı gerektirir",
     "moreActions": "{{serverName}} için diğer eylemler",
     "addTile": "MCP sunucusu ekle",
     "addTileHint": "STDIO, HTTP veya SSE"
@@ -179,5 +186,46 @@
     "kindAudio": "Ses",
     "kindVideo": "Video",
     "htmlPage": "HTML sayfası"
+  },
+  "addon": {
+    "offerTitle": "NVIDIA GPU'nda daha hızlı",
+    "offerBody": "Bu GPU'da yerel modeller CUDA motoruyla genellikle Vulkan'dan daha hızlı çalışır: çoğu zaman saniyede %10-70 daha fazla token, model VRAM'e tam sığmadığında daha da fazla. Yaklaşık {{size}} tek seferlik bir indirmedir.",
+    "download": "İndir",
+    "notNow": "Şimdi değil",
+    "dontRemind": "Bir daha hatırlatma",
+    "gettingTitle": "CUDA motoru alınıyor",
+    "downloading": "{{total}} içinden {{received}} indirildi",
+    "verifying": "İndirme kontrol ediliyor...",
+    "installing": "Kuruluyor...",
+    "vulkanMeanwhile": "Bu sırada Vulkan kullanılır. CUDA bir sonraki model yüklemesinde devreye girer.",
+    "cancel": "İptal",
+    "installedTitle": "CUDA motoru kuruldu",
+    "installedBody": "Bir sonraki model yüklemesinden itibaren kullanılacak.",
+    "ok": "Tamam",
+    "failedTitle": "CUDA motoru alınamadı",
+    "retry": "Tekrar dene",
+    "driverTitle": "NVIDIA sürücünü güncelle",
+    "driverBody": "Daha hızlı CUDA motorunu kullanmak için NVIDIA sürücünü güncelle. Kurulu: {{current}}, gereken: R{{min}} veya daha yenisi. O zamana kadar Vulkan kullanılır.",
+    "close": "Kapat",
+    "panelTitle": "Motor eklentileri",
+    "panelDesc": "Yalnızca sen istediğinde indirilen ek GPU motorları. Vulkan yedek olarak kalır.",
+    "cudaName": "NVIDIA CUDA motoru",
+    "inUse": "kullanımda",
+    "unavailableBuild": "Motor eklentileri bu sürümde kullanılamaz.",
+    "installedVersion": "Kurulu: {{version}}, {{size}}",
+    "repairNeeded": "Hasarlı, bu yüzden Vulkan kullanılıyor. Onarmak için yeniden indir.",
+    "notInstalledOffer": "Kurulu değil. Bu GPU'da genellikle Vulkan'dan hızlı (yaklaşık {{size}}).",
+    "repair": "Onar",
+    "remove": "Kaldır",
+    "installFile": "Dosyadan kur...",
+    "checkAgain": "Yeniden kontrol et",
+    "remindSetting": "Bir model yüklendiğinde CUDA motorunu öner",
+    "errors": {
+      "offline": "GitHub'a bağlantı yok. Daha sonra tekrar dene veya eklentiyi dosyadan kur.",
+      "notPublished": "Bu sürüm için henüz bir CUDA motoru yayımlanmadı.",
+      "diskSpace": "CUDA motoru için yeterli boş disk alanı yok.",
+      "verify": "İndirme doğrulamayı geçemedi ve kurulmadı.",
+      "mismatch": "Bu eklenti başka bir Flint sürümü için derlendi."
+    }
   }
 }

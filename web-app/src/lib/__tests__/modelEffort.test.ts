@@ -72,6 +72,15 @@ describe('which levels a provider actually honours', () => {
     })
   })
 
+  // C052: an XHigh chip on gemma-3-4b, a model that does not reason.
+  it('offers no effort for a local model that does not reason', () => {
+    expect(supportedEffortLevels('llamacpp', model('gemma-3-4b-it-Q4_K_M'))).toEqual([])
+    expect(supportedEffortLevels('llamacpp', reasoningModel('my-model', true))).toEqual(
+      EFFORT_LEVELS
+    )
+    expect(supportedEffortLevels('llamacpp', model('Qwen3-8B-Q4_K_M'))).toEqual(EFFORT_LEVELS)
+  })
+
   it('knows which models can be told not to think', () => {
     const can = (p: string, m: Model) => effortProfile(p, m).canDisable
     expect(can('llamacpp', model('qwen3'))).toBe(true)

@@ -9,7 +9,8 @@
     "plugin": "connector",
     "pluginNamed": "connector {{plugin}}",
     "skill": "habilitat",
-    "builtin": "integrada"
+    "builtin": "integrada",
+    "prompt": "consigna"
   },
   "scope": {
     "project": "projecte",

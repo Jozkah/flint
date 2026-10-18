@@ -183,6 +183,19 @@ describe('SystemMonitor route', () => {
     expect(screen.queryByText('system-monitor:gpu')).not.toBeInTheDocument()
   })
 
+  it('says it is measuring, not 0.00%, until the first sample arrives', async () => {
+    h.systemUsage = { cpu: 0, used_memory: 0, gpus: [] }
+    let resolve!: (v: unknown) => void
+    h.getSystemUsage.mockReturnValue(new Promise((r) => (resolve = r)))
+    renderComponent()
+    // The first sample is asked for at once, not after the 5 s poll.
+    expect(h.getSystemUsage).toHaveBeenCalled()
+    expect(screen.getAllByText('system-monitor:measuring').length).toBeGreaterThan(0)
+    expect(screen.queryByText('0.00%')).toBeNull()
+    resolve({ cpu: 12, used_memory: 3 })
+    await waitFor(() => expect(screen.queryByText('system-monitor:measuring')).toBeNull())
+  })
+
   it('polls getSystemUsage every 5s and calls updateSystemUsage', async () => {
     vi.useFakeTimers()
     h.getSystemUsage.mockResolvedValue({ cpu: 55, used_memory: 2 })

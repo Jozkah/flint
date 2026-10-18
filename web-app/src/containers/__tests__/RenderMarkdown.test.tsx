@@ -401,6 +401,15 @@ describe('RenderMarkdown', () => {
       expect(document.querySelector('.markdown')?.textContent).not.toContain('**')
     })
 
+    // C049: the helper space must not reach the page (or a copied selection).
+    it('leaves no U+200B in the rendered text', async () => {
+      render(
+        <RenderMarkdown content={'I went **home**. Then**,** slept'} isAnimating={false} />
+      )
+      await waitFor(() => expect(strong()).toBeTruthy())
+      expect(document.querySelector('.markdown')?.textContent).not.toContain('​')
+    })
+
     it('handles glued bold around CJK punctuation', async () => {
       render(<RenderMarkdown content={'中文**，**测试'} isAnimating={false} />)
       await waitFor(() => expect(strong()).toBeTruthy())
@@ -588,5 +597,20 @@ describe('RenderMarkdown inline HTML colors', () => {
   it('keeps user HTML literal', () => {
     render(<RenderMarkdown isUser content={'<span style="color:red">x</span>'} />)
     expect(document.querySelector('.markdown span[style]')).toBeNull()
+  })
+})
+
+describe('RenderMarkdown in a user bubble', () => {
+  afterEach(cleanup)
+  it('renders a summary seed list with bold labels', () => {
+    const seed =
+      'This chat continues an earlier one.\n\n**Key Facts:**\n\n- Capital of France: **Paris**\n- Capital of Japan: Tokyo\n\n**Decisions:** None.'
+    const { container } = render(<RenderMarkdown content={seed} isUser />)
+    const items = container.querySelectorAll('li')
+    expect(items.length).toBe(2)
+    expect(Array.from(container.querySelectorAll('[data-streamdown="strong"]')).map((s) => s.textContent)).toEqual(
+      expect.arrayContaining(['Key Facts:', 'Paris', 'Decisions:'])
+    )
+    expect(container.textContent).not.toContain('**')
   })
 })

@@ -12,6 +12,7 @@
  * restart; one can be abandoned, which rejects its proposal.
  */
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { PackageOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
@@ -41,6 +42,7 @@ function ImportRow({
   onChanged: () => void
   onApplied?: () => void
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const pending = view.state === 'pending'
   return (
@@ -95,7 +97,7 @@ function ImportRow({
           <CoworkProposalReview
             worktree={{ path: `bundle:${view.id}`, sourceRoot: view.destination }}
             session={session}
-            title="Imported bundle"
+            title={t('sweep:cowork.importedBundle')}
             propose={async () => ({ ok: true, proposal: view.proposal! })}
             applyWith={(approval) => applyImport(view, approval)}
             onApplied={() => {
@@ -120,6 +122,7 @@ export function CoworkBundleImport({
   pickFolder: () => Promise<string | null>
   onApplied?: () => void
 }) {
+  const { t } = useTranslation()
   const [imports, setImports] = useState<ImportView[]>([])
   const [running, setRunning] = useState<string | null>(null)
   const [error, setError] = useState<ImportFailure | null>(null)
@@ -162,7 +165,7 @@ export function CoworkBundleImport({
           data-testid="bundle-import"
         >
           <PackageOpen size={13} aria-hidden />
-          Import patch bundle
+          {t('sweep:cowork.importBundle')}
         </Button>
       </div>
     )
@@ -172,12 +175,12 @@ export function CoworkBundleImport({
     <section
       className="mx-3 mb-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] p-3 motion-safe:animate-rise-in"
       data-testid="bundle-imports"
-      aria-label="Imported patch bundles"
+      aria-label={t('sweep:cowork.importedBundles')}
     >
       <div className="flex items-center gap-2">
         <PackageOpen size={14} className="text-muted-foreground" />
         <p className="flex-1 text-[12.5px] font-medium text-foreground">
-          Patch bundles for this project
+          {t('sweep:cowork.projectBundles')}
         </p>
         {running ? (
           <Button
@@ -186,7 +189,7 @@ export function CoworkBundleImport({
             onClick={() => void cancelImport(running)}
             data-testid="bundle-import-cancel"
           >
-            Stop import
+            {t('sweep:cowork.stopImport')}
           </Button>
         ) : (
           <Button
@@ -195,7 +198,7 @@ export function CoworkBundleImport({
             onClick={() => void start()}
             data-testid="bundle-import"
           >
-            Import patch bundle
+            {t('sweep:cowork.importBundle')}
           </Button>
         )}
       </div>

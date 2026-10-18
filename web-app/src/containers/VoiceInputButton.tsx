@@ -91,12 +91,12 @@ export function VoiceInputButton({
   }
 
   const label = listening
-    ? 'Stop dictating'
+    ? t('common:voicePill.stop')
     : busy
-      ? 'Working…'
+      ? t('common:voicePill.working')
       : installed
-        ? 'Dictate'
-        : 'Set up voice input'
+        ? t('common:voicePill.dictate')
+        : t('common:voicePill.setup')
 
   return (
     <>
@@ -124,7 +124,7 @@ export function VoiceInputButton({
       <VoiceSetupDialog
         open={setupOpen}
         onOpenChange={setSetupOpen}
-        onReady={() => toast.success('Voice input is ready. Press the microphone to dictate.')}
+        onReady={() => toast.success(t('sweep:voice.ready'))}
       />
     </>
   )

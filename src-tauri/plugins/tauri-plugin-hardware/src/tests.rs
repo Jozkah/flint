@@ -26,6 +26,14 @@ fn test_system_usage() {
     println!("System Usage Info: {:?}", usage);
 }
 
+#[test]
+fn a_recent_sample_is_the_next_cpu_baseline() {
+    use std::time::Duration;
+    assert!(crate::needs_cpu_baseline(None), "first call takes its own baseline");
+    assert!(!crate::needs_cpu_baseline(Some(Duration::from_secs(5))), "a 5 s poller reuses the last sample");
+    assert!(crate::needs_cpu_baseline(Some(Duration::from_secs(60))), "a stale sample is not averaged over");
+}
+
 #[cfg(test)]
 mod cpu_tests {
     use super::*;

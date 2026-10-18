@@ -82,7 +82,7 @@ function SettingsSections() {
 export function SettingsWithSections({ children }: { children: ReactNode }) {
   const showSections = useHeaderSlot() !== null
   return (
-    <div className="flex h-full min-h-0 w-full gap-5 px-1">
+    <div className="flex h-full min-h-0 w-full gap-5 pl-1">
       {showSections && <SettingsSections />}
       <div className="h-full min-h-0 min-w-0 flex-1">{children}</div>
     </div>
@@ -128,13 +128,28 @@ export function SettingsColumns({
   )
 }
 
+type PlacedGroup = { child: ReactNode; col: 0 | 1 | 2; at: number }
+
+/** Runs of column groups, with each full-width group standing alone between them. */
+function segments(items: PlacedGroup[]) {
+  const out: { full: boolean; items: PlacedGroup[] }[] = []
+  for (const item of items) {
+    const full = item.col === 2
+    const last = out[out.length - 1]
+    if (!full && last && !last.full) last.items.push(item)
+    else out.push({ full, items: [item] })
+  }
+  return out
+}
+
 /**
  * The scrolling body of a settings page: the Sections frame on the left
  * (a compact section picker on narrow windows), then the page title with a
  * one-line description and the page's groups.
  *
  * `layout` places the groups in two columns by hand, one entry per group
- * (0 = left, 1 = right), the order the design reads them in. Without it,
+ * (0 = left, 1 = right, 2 = a full-width group that splits the columns into
+ * a row above and a row below), the order the design reads them in. Without it,
  * several groups flow into two columns balanced by height, and a single
  * group spans the page, as the design draws it. Below the two-column width every layout
  * collapses to one column in the groups' own order. `width="wide"` lets a
@@ -159,15 +174,15 @@ export function SettingsPageBody({
   /** Controls at the end of the title row. */
   actions?: ReactNode
   width?: 'read' | 'wide'
-  /** Column (0 or 1) of each group, in order. */
-  layout?: readonly (0 | 1)[]
+  /** Column (0 or 1) of each group, in order; 2 spans both columns. */
+  layout?: readonly (0 | 1 | 2)[]
 }) {
   // Outside the shell (tests, standalone windows) there is no section list,
   // and the router hooks it needs are not assumed to be there.
   const showSections = useHeaderSlot() !== null
   // Positions count empty slots (`{cond && <Card />}`), so a layout entry
   // stays with its group whether or not an earlier one is shown.
-  const items: { child: ReactNode; col: 0 | 1; at: number }[] = []
+  const items: { child: ReactNode; col: 0 | 1 | 2; at: number }[] = []
   Children.forEach(children, (child, at) => {
     if (child == null || typeof child === 'boolean') return
     items.push({ child, col: layout?.[at] ?? 0, at })
@@ -178,9 +193,9 @@ export function SettingsPageBody({
     // The Sections frame sits beside the scrolling column, not inside it:
     // inside, it slid up with the page before sticking (and scrolled away on
     // a short window). Only the page's own content scrolls.
-    <div className="flex h-full min-h-0 w-full gap-5 px-1">
+    <div className="flex h-full min-h-0 w-full gap-5 pl-1">
       {showSections && <SettingsSections />}
-      <div className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:thin]">
+      <div className="-mr-3 h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto pr-4 [scrollbar-width:thin]">
       <div className="flex min-w-0 items-start pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))]">
         <div
           data-testid={testId}
@@ -209,22 +224,36 @@ export function SettingsPageBody({
             </div>
           )}
           {placed ? (
-            <div className="flex min-w-0 flex-col gap-4 @min-[44rem]:grid @min-[44rem]:grid-cols-2 @min-[44rem]:items-start">
-              {([0, 1] as const).map((col) => (
-                <div
-                  key={col}
-                  className="contents @min-[44rem]:flex @min-[44rem]:min-w-0 @min-[44rem]:flex-col @min-[44rem]:gap-4"
-                >
-                  {items.map(({ child, col: c, at }) =>
-                    c === col ? (
-                      // One column on narrow windows reads in source order.
-                      <div key={at} className="min-w-0" style={{ order: at }}>
-                        {child}
+            <div className="flex min-w-0 flex-col gap-4">
+              {segments(items).map((seg, i) =>
+                seg.full ? (
+                  // A full-width group: one column at every width.
+                  <div key={`full-${i}`} className="min-w-0">
+                    {seg.items[0].child}
+                  </div>
+                ) : (
+                  <div
+                    key={`cols-${i}`}
+                    className="flex min-w-0 flex-col gap-4 @min-[44rem]:grid @min-[44rem]:grid-cols-2 @min-[44rem]:items-start"
+                  >
+                    {([0, 1] as const).map((col) => (
+                      <div
+                        key={col}
+                        className="contents @min-[44rem]:flex @min-[44rem]:min-w-0 @min-[44rem]:flex-col @min-[44rem]:gap-4"
+                      >
+                        {seg.items.map(({ child, col: c, at }) =>
+                          c === col ? (
+                            // One column on narrow windows reads in source order.
+                            <div key={at} className="min-w-0" style={{ order: at }}>
+                              {child}
+                            </div>
+                          ) : null
+                        )}
                       </div>
-                    ) : null
-                  )}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                )
+              )}
             </div>
           ) : (
             <div

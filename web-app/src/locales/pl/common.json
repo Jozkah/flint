@@ -7,7 +7,7 @@
     "rename": "Zmień nazwę",
     "deleteGroup": "Usuń grupę",
     "deleteTitle": "Usunąć {{name}}?",
-    "deleteBody": "Grupa zostanie usunięta. Jej elementy z niej wyjdą i nie zostaną usunięte.",
+    "deleteBody": "Grupa zostanie usunięta. Jej elementy z niej wyjdą i nie zostaną usunięte. Podfoldery przesuną się o jeden poziom wyżej.",
     "folders": "Foldery…",
     "foldersTitle": "Foldery grupy „{{name}}”",
     "foldersBodyHome": "Czaty rozpoczęte w tej grupie lub do niej przeniesione otrzymują te foldery, tylko do odczytu dla narzędzi czatu.",
@@ -53,7 +53,43 @@
     "chatFoldersBody": "Narzędzia czatu mogą czytać te foldery. Zapisy pozostają w jego własnej piaskownicy.",
     "chatFoldersEmpty": "Brak dołączonych folderów.",
     "addFolder": "Dodaj folder",
-    "chatFolderCount": "Foldery: {{count}}"
+    "chatFolderCount": "Foldery: {{count}}",
+    "newSubfolder": "Nowy podfolder",
+    "moveInto": "Przenieś do folderu",
+    "topLevel": "Najwyższy poziom",
+    "errors": {
+      "nameEmpty": "Nazwa grupy nie może być pusta",
+      "notFound": "Nie znaleziono grupy",
+      "tooDeep": "Grup nie można zagnieżdżać tak głęboko",
+      "intoItself": "Grupy nie można przenieść do niej samej"
+    },
+    "failed": {
+      "create": "Nie udało się utworzyć grupy",
+      "rename": "Nie udało się zmienić nazwy grupy",
+      "moveFolder": "Nie udało się przenieść folderu",
+      "saveState": "Nie udało się zapisać stanu grupy",
+      "reorder": "Nie udało się zmienić kolejności grup",
+      "moveItem": "Nie udało się przenieść elementu",
+      "delete": "Nie udało się usunąć grupy",
+      "saveFolders": "Nie udało się zapisać folderów grupy",
+      "updateContext": "Nie udało się zaktualizować kontekstu folderów",
+      "update": "Nie udało się zaktualizować grup",
+      "import": "Nie udało się zaimportować grup",
+      "unreadable": "{{failure}}: nie można odczytać zapisanych grup",
+      "restored": "{{failure}}. Przywrócono poprzednią kolejność."
+    },
+    "announce": {
+      "created": "Utworzono grupę {{name}}",
+      "collapsed": "Zwinięto {{name}}",
+      "expanded": "Rozwinięto {{name}}",
+      "reordered": "Przeniesiono {{name}} na pozycję {{position}} z {{total}}",
+      "movedToPosition": "Przeniesiono do {{name}}, pozycja {{position}}",
+      "movedToRecents": "Przeniesiono do Ostatnich",
+      "deleted": "Usunięto grupę {{name}}. Jej elementy przeniesiono do Ostatnich",
+      "ctxReplaced": "{{base}}. Kontekst folderów zastąpiono folderami grupy; dostęp nadal wymaga zatwierdzenia",
+      "ctxMerged": "{{base}}. Foldery grupy dodano do kontekstu folderów; dostęp nadal wymaga zatwierdzenia",
+      "foldersAdded": "{{base}}. Foldery elementu dodano do grupy"
+    }
   },
   "htmlArtifact": {
     "code": "Kod",
@@ -188,7 +224,7 @@
   "profile": "Profil",
   "reset": "Przywróć",
   "search": "Szukaj",
-  "searchThreads": "Szukaj wątków...",
+  "searchThreads": "Szukaj czatów...",
   "toNavigate": "aby nawigować",
   "toSelect": "aby wybrać",
   "toClose": "aby zamknąć",
@@ -214,6 +250,7 @@
   "preview": {
     "title": "Podgląd",
     "empty": "Otwórz wygenerowany artefakt, aby zobaczyć jego podgląd tutaj.",
+    "emptyHint": "Pliki utworzone przez Flinta w tej sesji otwierają się tutaj.",
     "loading": "Otwieranie…",
     "unsupported": "Flint nie może wyświetlić tego rodzaju pliku. Otwórz go, aby zobaczyć w innej aplikacji.",
     "outside": "Ten plik nie znajduje się już w przestrzeni roboczej sesji.",
@@ -280,7 +317,7 @@
     "searchThreads": "Szukaj rozmów",
     "toggleSidebar": "Przełącz panel boczny",
     "openCowork": "Otwórz Cowork",
-    "openArtifacts": "Otwórz artefakty",
+    "openArtifacts": "Otwórz: Biblioteka",
     "openSystemMonitor": "Otwórz monitor systemu",
     "openLogs": "Otwórz dzienniki aplikacji",
     "section": {
@@ -294,11 +331,18 @@
       "navigation": "Przejdź do",
       "settings": "Ustawienia",
       "threads": "Rozmowy"
-    }
+    },
+    "openItem": "Otwórz: {{item}}"
   },
   "searchGroup": {
+    "pages": "Strony",
+    "settings": "Ustawienia",
     "inProjects": "W projektach",
-    "conversations": "Rozmowy"
+    "conversations": "Rozmowy",
+    "messages": "W wiadomościach",
+    "work": "Pokoje i sesje",
+    "room": "Pokój",
+    "session": "Sesja Cowork"
   },
   "rail": {
     "label": "Panele Cowork",
@@ -379,6 +423,8 @@
     },
     "truncated": "Nie pokazano jeszcze {{count}} linii",
     "truncated_other": "Nie pokazano jeszcze {{count}} linii",
+    "truncated_few": "Nie pokazano jeszcze {{count}} linii",
+    "truncated_many": "Nie pokazano jeszcze {{count}} linii",
     "openFile": "Otwórz",
     "applyToFolder": "Zastosuj w folderze",
     "applyHint": "Skopiuj ten plik z piaskownicy sesji do {{folder}} jako {{path}}",
@@ -615,7 +661,8 @@
       "add": "Dodaj",
       "cancel": "Anuluj",
       "remove": "Usuń"
-    }
+    },
+    "ctxAutoFitHint": "Automatyczne dopasowanie jest włączone: zostaw puste, a samo wybierze kontekst, w razie potrzeby zmniejszając go, by zmieścił się w pamięci. Liczba wpisana tutaj jest używana bez zmian."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -658,6 +705,14 @@
     "showRawLibraries": "Pokaż nazwy brakujących bibliotek ({{count}})"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Utwórz projekt",
+      "editTitle": "Edytuj projekt",
+      "namePlaceholder": "Wpisz nazwę projektu...",
+      "alreadyExists": "Projekt „{{projectName}}” już istnieje",
+      "createSuccess": "Utworzono projekt „{{projectName}}”",
+      "updateSuccess": "Zaktualizowano projekt „{{projectName}}”"
+    },
     "title": "Projekty",
     "new": "Nowe Projekty",
     "addProject": "Dodaj Projekt",
@@ -753,7 +808,8 @@
     "pathNameNotice": "To nazywa kolekcję czatów; nie otwiera tego folderu.",
     "openCodeFolderInCowork": "Otwórz folder z kodem w Cowork",
     "openCodeFolder": "Otwórz folder z kodem",
-    "openCodeFolderDescription": "Wybierz folder na komputerze, w którym Flint ma pracować."
+    "openCodeFolderDescription": "Wybierz folder na komputerze, w którym Flint ma pracować.",
+    "setUpEmbeddingModel": "Skonfiguruj model embeddingów"
   },
   "attachmentsIngestion": {
     "title": "Wybierz sposób wczytania załączników",
@@ -885,7 +941,8 @@
       "unsupportedType": "Typ pliku „{{type}}” nie jest obsługiwany.",
       "ioError": "Nie udało się odczytać: {{subject}}: {{message}}",
       "parseGeneric": "Nie udało się przeanalizować: {{subject}}: {{message}}",
-      "fallback": "Nie udało się przetworzyć: {{subject}}."
+      "fallback": "Nie udało się przetworzyć: {{subject}}.",
+      "noEmbeddingModel": "{{subject}} nie został dodany: brak zainstalowanego modelu embeddingów do indeksowania. Skonfiguruj go w Llama.cpp i dodaj plik ponownie."
     },
     "fileDeleted": {
       "title": "Plik usunięty",
@@ -947,6 +1004,7 @@
     "missing": "Już niedostępny: {{model}}",
     "use": "Użyj tego modelu",
     "thisChat": "Ten czat",
+    "thisRoom": "Ten pokój",
     "thisSession": "Ta sesja"
   },
   "skillsUsedCount_one": "Użyto {{count}} umiejętności",
@@ -972,6 +1030,30 @@
   "artifactsCount_many": "{{count}} elementów",
   "previewMessageCount_one": "{{count}} wiadomość",
   "previewMessageCount_other": "{{count}} wiadomości",
+  "rowPreview": {
+    "status": {
+      "running": "Działa",
+      "waiting": "Wymaga Ciebie",
+      "idle": "Bezczynny",
+      "error": "Błąd"
+    },
+    "prState": {
+      "open": "Otwarty",
+      "draft": "Wersja robocza",
+      "merged": "Scalony",
+      "closed": "Zamknięty"
+    },
+    "pullRequests": "Pull requesty",
+    "morePrs_one": "+{{count}} więcej",
+    "morePrs_other": "+{{count}} więcej",
+    "morePrs_few": "+{{count}} więcej",
+    "morePrs_many": "+{{count}} więcej",
+    "noChecks": "Brak sprawdzeń",
+    "empty": "Nic tu jeszcze nie ma.",
+    "noMessages": "Brak wiadomości",
+    "summarizing": "Piszę podsumowanie…",
+    "openHint": "Otwórz"
+  },
   "previewMessageCount_few": "{{count}} wiadomości",
   "previewMessageCount_many": "{{count}} wiadomości",
   "artifactDetails": "Szczegóły elementu",
@@ -1017,7 +1099,10 @@
     "branchLabel": "Gałąź",
     "actionsLabel": "Akcje folderu",
     "copyPath": "Kopiuj ścieżkę",
-    "copied": "Skopiowano ścieżkę"
+    "copied": "Skopiowano ścieżkę",
+    "footnoteEmptyEdit": "Dołącz folder, aby agent mógł pracować nad twoim projektem.",
+    "a11yWithFolderEditable": "Folder projektu {{folder}}, dołączony do edycji. Zmień go lub odłącz.",
+    "a11yWithFolderWorktree": "Folder projektu {{folder}}, edytowany w osobnym worktree. Zmień go lub odłącz."
   },
   "coworkEmpty": {
     "title": "Nad czym pracujemy?",
@@ -1033,7 +1118,15 @@
       "first": "Wyjaśnij, jak zbudowany jest {{folder}}",
       "second": "Znajdź każde TODO w {{folder}} i pogrupuj je według obszaru",
       "third": "Napisz testy dla tej części {{folder}}, którą wskażę"
-    }
+    },
+    "vault": {
+      "badge": "Skarbiec Obsidian",
+      "hint": "Ten folder jest skarbcem Obsidian. Flint czyta go jak każdy folder z notatkami Markdown i pomija ustawienia .obsidian oraz .trash z Obsidiana.",
+      "add": "Dodaj mój skarbiec Obsidian",
+      "addHint": "Skarbiec Obsidian to zwykły folder. Wybierz go tak jak każdy inny folder."
+    },
+    "subtitleFolderEdit": "Daj Flintowi zadanie. Czyta i zmienia pliki w {{folder}} bezpośrednio, a dalej pracuje samodzielnie.",
+    "subtitleFolderWorktree": "Daj Flintowi zadanie. Pracuje w git worktree folderu {{folder}}, więc twój folder zmienia się dopiero po scaleniu."
   },
   "sandbox": {
     "noTerminal": "Brak terminala",
@@ -1207,7 +1300,8 @@
     "sensitiveRefused": "{{name}} wygląda na dane uwierzytelniające lub klucz, więc nie został otwarty",
     "binaryRefused": "{{name}} nie jest plikiem tekstowym, niezależnie od rozszerzenia",
     "chooseAgainAction": "Wybierz ponownie",
-    "externalGone": "Ten plik został otwarty spoza projektu, a ten dostęp nie przetrwał. Wybierz go ponownie, aby otworzyć."
+    "externalGone": "Ten plik został otwarty spoza projektu, a ten dostęp nie przetrwał. Wybierz go ponownie, aby otworzyć.",
+    "oneFolderAtATime": "Można dodać tylko jeden folder naraz. Nie dodano „{{name}}”."
   },
   "settingsSearch": {
     "label": "Szukaj w ustawieniach",
@@ -1218,7 +1312,9 @@
     "count_few": "{{count}} wyniki",
     "count_many": "{{count}} wyników",
     "empty": "Brak pasujących ustawień.",
-    "clear": "Wyczyść wyszukiwanie"
+    "clear": "Wyczyść wyszukiwanie",
+    "emptyHint": "Spróbuj innego słowa albo szukaj według działania: motyw, proxy, pamięć.",
+    "pageCrumb": "Strona"
   },
   "tasks": {
     "title": "Aktywność",
@@ -1412,7 +1508,14 @@
     "recommended": "Zalecane",
     "reset": "Przywróć globalne",
     "resetAll": "Przywróć globalne ustawienia domyślne",
-    "overridden": "Ustawione dla tego czatu"
+    "overridden": "Ustawione dla tego czatu",
+    "levels": {
+      "low": "Niski",
+      "medium": "Średni",
+      "high": "Wysoki",
+      "xhigh": "Bardzo wysoki",
+      "unlimited": "Bez limitu"
+    }
   },
   "modelOffline": {
     "badge": "Nieosiągalny",
@@ -1432,6 +1535,8 @@
     "failed": "niepowodzenie",
     "eventCount": "{{count}} zdarzenie",
     "eventCount_other": "{{count}} zdarzenia",
+    "eventCount_few": "{{count}} zdarzenia",
+    "eventCount_many": "{{count}} zdarzeń",
     "filter": {
       "all": "Wszystkie",
       "read": "Odczytane",
@@ -1889,6 +1994,8 @@
     "hideCompletedToolsDescription": "Ukrywa aktywność narzędzi zakończoną pomyślnie. Aktywność trwająca, nieudana, odrzucona, anulowana i nieaktualna jest zawsze pokazywana, a nic nie jest usuwane.",
     "hiddenCount": "Ukryto zakończone aktywności narzędzi: {{count}}",
     "hiddenCount_one": "Ukryto 1 zakończoną aktywność narzędzia",
+    "hiddenCount_few": "Ukryto zakończone aktywności narzędzi: {{count}}",
+    "hiddenCount_many": "Ukryto zakończone aktywności narzędzi: {{count}}",
     "showAgain": "Pokaż je ponownie",
     "showModelReceived": "Pokazuj „Co otrzymał model”",
     "showModelReceivedDescription": "Zapis żądania i liczba tokenów przy każdej turze. Jest zapisywany zawsze i dostępny w szczegółach sesji oraz na osi czasu."
@@ -2192,10 +2299,12 @@
   },
   "browserVerify": {
     "title": "Zweryfikuj w przeglądarce",
+    "about": "Jak to działa",
     "explain": "Otwiera Twoją lokalną aplikację w osobnym, tymczasowym profilu przeglądarki (nie w podglądzie Flint, bez ciasteczek), ograniczonym do źródła samej aplikacji. Żądania gdzie indziej są blokowane i wypisywane.",
     "url": "Adres URL lokalnej aplikacji",
     "notLocal": "Zweryfikować można tylko aplikację na tym komputerze (localhost, 127.0.0.1).",
-    "steps": "Kroki (opcjonalnie): open, click, type, expect, wait, screenshot — po jednym w wierszu",
+    "stepsLabel": "Kroki (opcjonalnie)",
+    "stepsHint": "Jeden na wiersz: open, click, type, expect, wait, screenshot",
     "run": "Zweryfikuj",
     "cancel": "Zatrzymaj",
     "using": "Używa: {{browser}}",
@@ -2571,12 +2680,17 @@
       "slots": "Sloty: {{count}}",
       "vision": "Obraz",
       "audio": "Dźwięk",
+      "fixedPrompt": "Wysyłane z każdym żądaniem: {{count}} tokenów (prompt systemowy i schematy narzędzi).",
       "tokenUsage": "Użycie tokenów",
       "tokenUsageSr": "Użycie tokenów {{value}}"
     }
   },
   "voicePill": {
-    "cancel": "Anuluj"
+    "cancel": "Anuluj",
+    "dictate": "Dyktuj",
+    "stop": "Zatrzymaj dyktowanie",
+    "working": "Przetwarzanie…",
+    "setup": "Skonfiguruj wprowadzanie głosowe"
   },
   "motionMedia": {
     "queued": "W kolejce",
@@ -2597,11 +2711,29 @@
     "previewLoading": "Wczytywanie podglądu…",
     "previewNone": "Podgląd niedostępny"
   },
+  "fileViewer": {
+    "openFull": "Otwórz pełny podgląd",
+    "loadMore": "Wczytaj więcej",
+    "showingFirst": "Wyświetlono pierwsze {{loaded}} z {{total}}",
+    "lines_one": "{{count}} wiersz",
+    "lines_few": "{{count}} wiersze",
+    "lines_many": "{{count}} wierszy",
+    "lines_other": "{{count}} wiersza",
+    "wrap": "Zawijaj wiersze",
+    "copy": "Kopiuj",
+    "copied": "Skopiowano",
+    "binary": "To wygląda na plik binarny, więc nie ma podglądu tekstu.",
+    "expandLine": "Pokaż cały wiersz",
+    "collapseLine": "Skróć wiersz",
+    "truncatedOnAdd": "Wyświetlono pierwsze {{shown}} z {{total}} (załącznik został przycięty przy dodawaniu)"
+  },
   "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików",
+  "sampler": {
+    "label": "Parametry próbkowania",
+    "notSupported": "Nieobsługiwane przez {{provider}}"
+  },
   "translate": {
     "title": "Tłumacz",
-    "usingModel": "Używa {{model}}",
-    "noModel": "Wybierz model w selektorze modeli",
     "from": "Tłumacz z",
     "to": "Tłumacz na",
     "detect": "Wykryj język",
@@ -2613,12 +2745,216 @@
     "copyFailed": "Nie udało się skopiować tłumaczenia",
     "failed": "Tłumaczenie nie powiodło się",
     "inputPlaceholder": "Tekst do przetłumaczenia",
-    "outputPlaceholder": "Tłumaczenie pojawi się tutaj"
+    "outputPlaceholder": "Tłumaczenie pojawi się tutaj",
+    "description": "Tłumacz tekst między językami wybranym modelem. Nic nie jest zapisywane.",
+    "sourceTitle": "Tekst źródłowy",
+    "targetTitle": "Tłumaczenie",
+    "paste": "Wklej ze schowka",
+    "pasteFailed": "Nie udało się odczytać schowka",
+    "clear": "Wyczyść",
+    "characters_one": "{{count}} znak",
+    "characters_few": "{{count}} znaki",
+    "characters_many": "{{count}} znaków",
+    "characters_other": "{{count}} znaku",
+    "translating": "Tłumaczę…",
+    "retry": "Spróbuj ponownie",
+    "shortcut": "Tłumacz (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Szukaj języków",
+    "noLanguages": "Brak pasującego języka",
+    "errorAuth": "Dostawca odrzucił Twój klucz API. Sprawdź go w ustawieniach dostawcy.",
+    "errorQuota": "Dostawca informuje, że wyczerpano limit lub przekroczono limit żądań. Poczekaj chwilę lub sprawdź swój plan.",
+    "errorModelNotFound": "Dostawca nie ma tego modelu. Wybierz inny model lub sprawdź ustawienia dostawcy.",
+    "errorNetwork": "Nie udało się połączyć z dostawcą. Sprawdź połączenie lub czy serwer działa.",
+    "errorEngine": "Silnik uruchamiający ten model jest niedostępny. Uruchom Flint ponownie i spróbuj jeszcze raz.",
+    "openProvider": "Otwórz ustawienia dostawcy",
+    "errorDetails": "Szczegóły",
+    "pasteHint": "Dostęp do schowka został zablokowany. Kliknij pole tekstowe i naciśnij {{keys}}.",
+    "swapNeedsSource": "Wybierz język źródłowy, aby zamienić"
   },
   "markdownImage": {
     "load": "Wczytaj obraz z {{host}}"
   },
   "messageSaveFailed": "Nie udało się zapisać wiadomości. Może zostać utracona po restarcie.",
   "threadSaveFailed": "Nie udało się zapisać zmiany w tym wątku. Została cofnięta.",
-  "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana"
+  "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana",
+  "settingsRecovered": {
+    "title": "Nie udało się odczytać pliku ustawień",
+    "withBackup": "Plik {{file}} był uszkodzony, więc Flint uruchomił się z ustawieniami domyślnymi. Uszkodzony plik zachowano jako {{backup}}.",
+    "noBackup": "Plik {{file}} był uszkodzony, więc Flint uruchomił się z ustawieniami domyślnymi. Nie udało się zapisać kopii uszkodzonego pliku."
+  },
+  "promptLibrary": {
+    "title": "Biblioteka promptów",
+    "description": "Prompty, których używasz wielokrotnie. Wpisz @ lub / w polu wiadomości, aby wstawić jeden z nich. Użyj {{name}} lub {{name:default}} dla części, które uzupełniasz za każdym razem.",
+    "manage": "Twoje prompty",
+    "add": "Dodaj prompt",
+    "editTitle": "Edytuj prompt",
+    "import": "Importuj",
+    "export": "Eksportuj",
+    "imported_one": "Dodano {{count}} prompt",
+    "imported_few": "Dodano {{count}} prompty",
+    "imported_many": "Dodano {{count}} promptów",
+    "imported_other": "Dodano {{count}} prompta",
+    "importedNone": "Nie znaleziono nowych promptów",
+    "search": "Szukaj promptów",
+    "empty": "Brak promptów.",
+    "edit": "Edytuj: {{name}}",
+    "delete": "Usuń: {{name}}",
+    "deleted": "Prompt usunięty",
+    "undo": "Cofnij",
+    "name": "Nazwa",
+    "folder": "Folder (opcjonalnie)",
+    "tags": "Tagi, oddzielone przecinkami",
+    "body": "Treść promptu",
+    "bodyHint": "Napisz prompt. Użyj {{topic}} lub {{tone:friendly}} dla pustych miejsc.",
+    "variables": "Pyta o: {{names}}",
+    "defaultValue": "Domyślnie: {{value}}",
+    "requiredField": "Wymagane",
+    "fillNeeded": "Aby wstawić, wypełnij: {{names}}",
+    "insert": "Wstaw",
+    "errors": {
+      "nameRequired": "Prompt wymaga nazwy",
+      "nameTooLong": "Ta nazwa jest za długa",
+      "bodyRequired": "Prompt wymaga treści",
+      "bodyTooLong": "Ten prompt jest za długi",
+      "gone": "Ten prompt już nie istnieje",
+      "invalidJson": "Ten plik nie jest prawidłowym JSON-em",
+      "noPrompts": "W tym pliku nie znaleziono promptów"
+    },
+    "noResults": "Żaden prompt nie pasuje do „{{query}}”.",
+    "clearSearch": "Wyczyść wyszukiwanie"
+  },
+  "memoryProposal": {
+    "title": "Zapamiętać to?",
+    "wouldApply": "Dotyczyłoby: {{where}}.",
+    "remember": "Zapamiętaj",
+    "discard": "Odrzuć",
+    "reviewBoth": "Sprawdź obie",
+    "saving": "Zapisywanie…",
+    "discarding": "Odrzucanie…",
+    "scope": {
+      "session": "ta rozmowa",
+      "project": "ten projekt",
+      "user": "wszędzie"
+    }
+  },
+  "picker": {
+    "filter": "Filtr",
+    "source": "Źródło",
+    "sourceAll": "Wszystkie",
+    "sourceLocal": "Lokalne",
+    "sourceCloud": "Chmura",
+    "capabilities": "Możliwości",
+    "cap": {
+      "vision": "Wizja",
+      "tools": "Narzędzia",
+      "reasoning": "Rozumowanie",
+      "embeddings": "Embeddingi"
+    },
+    "loadedNow": "Załadowane teraz",
+    "sort": "Sortuj",
+    "sortDefault": "Kolejność domyślna",
+    "sortName": "Nazwa (A–Z)",
+    "sortRecent": "Ostatnio używane",
+    "sortSize": "Rozmiar",
+    "clearFilters": "Wyczyść filtry",
+    "noMatch": "Żaden model nie pasuje",
+    "noMatchFilters": "Żaden model nie pasuje: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Czat",
+      "session": "Sesja",
+      "room": "Pokój"
+    },
+    "heading": "Rozmowy",
+    "empty": "Brak innych rozmów",
+    "noMatch": "Żadna rozmowa nie pasuje",
+    "messages": "Wiadomości: {{n}}",
+    "included": "Dołączono: {{title}} (wiadomości: {{n}}, ok. {{size}} znaków)",
+    "group": "Wspomniane rozmowy",
+    "summarize": "Podsumuj",
+    "summarizeHint": "Dołącz podsumowanie zamiast ostatnich wiadomości",
+    "remove": "Usuń wzmiankę o {{title}}",
+    "mentioned": "Wspomniano: {{title}}",
+    "open": "Otwórz {{title}}",
+    "status": {
+      "missing": "Nie znaleziono: {{title}}",
+      "self": "{{title}} to ta rozmowa, więc zostaje pominięta",
+      "over-cap": "{{title}} zostaje pominięta: najwyżej {{max}} rozmów na wiadomość"
+    },
+    "excerpt": "Fragment",
+    "summary": "Podsumowanie",
+    "modeGroup": "Co dołączyć z {{title}}",
+    "excerptHint": "Najnowsze wiadomości, około {{tokens}} tokenów",
+    "summaryHint": "Podsumowanie napisane przez model, najwyżej około {{tokens}} tokenów",
+    "needsModel": "Wczytaj model, aby zamiast tego dołączyć podsumowanie",
+    "totals_one": "{{count}} wiadomość · dołączono ~{{tokens}} tokenów",
+    "totals_few": "{{count}} wiadomości · dołączono ~{{tokens}} tokenów",
+    "totals_many": "{{count}} wiadomości · dołączono ~{{tokens}} tokenów",
+    "totals_other": "{{count}} wiadomości · dołączono ~{{tokens}} tokenów",
+    "readOnly": "Wysyłane jako cytowany kontekst tylko do odczytu. Model nie może zmienić tej rozmowy.",
+    "tooLarge": "To ponad jedna czwarta okna kontekstu modelu.",
+    "useSummary": "Użyj podsumowania",
+    "resolving": "Wyszukiwanie: {{title}}",
+    "chipStatus": {
+      "missing": "Nie znaleziono",
+      "self": "Ta rozmowa",
+      "over-cap": "Ponad limit"
+    },
+    "preview": {
+      "empty": "Jeszcze brak wiadomości",
+      "you": "Ty",
+      "assistant": "Asystent"
+    },
+    "messagesCount_one": "{{count}} wiadomość",
+    "messagesCount_few": "{{count}} wiadomości",
+    "messagesCount_many": "{{count}} wiadomości",
+    "messagesCount_other": "{{count}} wiadomości",
+    "compact_one": "{{count}} wzmianka · {{mode}}",
+    "compact_few": "{{count}} wzmianki · {{mode}}",
+    "compact_many": "{{count}} wzmianek · {{mode}}",
+    "compact_other": "{{count}} wzmianki · {{mode}}",
+    "mixed": "Mieszane"
+  },
+  "campaignList": {
+    "timeout": "Aplikacja nie odpowiedziała na czas.",
+    "unreadableRecord": "backend wysłał rekord, którego ta strona nie potrafi odczytać"
+  },
+  "composer": {
+    "messageLabel": "Wiadomość"
+  },
+  "routeLoading": {
+    "slow": "Otwieranie tej strony trwa dłużej niż zwykle.",
+    "reload": "Wczytaj ponownie",
+    "retry": "Spróbuj ponownie",
+    "failed": "Nie udało się otworzyć tej strony"
+  },
+  "replyCutOff": {
+    "withTokens": "Ucięto na limicie odpowiedzi ({{tokens}} tokenów)",
+    "plain": "Ucięto na limicie odpowiedzi"
+  },
+  "routeNotFound": {
+    "title": "Nie znaleziono strony",
+    "body": "Pod adresem {{path}} nie ma strony. Mogła zostać przeniesiona albo link jest nieaktualny.",
+    "home": "Przejdź do strony głównej",
+    "settings": "Otwórz ustawienia"
+  },
+  "waitingForYou": "Czeka na Ciebie",
+  "dnd": {
+    "anItem": "element",
+    "aGroup": "grupa",
+    "picked": "Podniesiono: {{item}}.",
+    "over": "{{item}} nad grupą {{group}}.",
+    "notOver": "{{item}} nie jest nad żadną grupą.",
+    "dropped": "Przeniesiono {{item}} do grupy {{group}}.",
+    "cancelled": "{{item}} odłożono z powrotem."
+  },
+  "searchEverything": "Szukaj czatów, pokojów, stron i ustawień…",
+  "noResultsFoundEverywhere": "Brak wyników w czatach, pokojach, sesjach Cowork, stronach i ustawieniach. Spróbuj innego słowa.",
+  "selectModelNoKey": "Dla tej sesji nie wybrano modelu, a {{provider}} nie ma klucza API. Najpierw wybierz model w menu modeli.",
+  "serverConnection": {
+    "offlineTitle": "Nie można połączyć się z serwerem Flint.",
+    "offlineBody": "Ponowne łączenie… To, co teraz zrobisz, może nie zostać zapisane, dopóki serwer nie wróci.",
+    "statusOffline": "Serwer niedostępny"
+  }
 }

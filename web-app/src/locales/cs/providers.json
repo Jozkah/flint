@@ -14,6 +14,7 @@
   "models": "Modely",
   "filterModels": "Filtrovat {{count}} modelů",
   "modelsShown": "Zobrazeno {{shown}} z {{total}}",
+  "noModelsMatch": "Žádný model neodpovídá „{{query}}“",
   "showMoreModels": "Zobrazit více",
   "backendInstalled": "Nainstalováno",
   "backendHistoryShow": "Zobrazit historii aktualizací",
@@ -38,6 +39,12 @@
   "importedTooltip": "Importováno z lokálního souboru. Odebrání z Flintu soubor na disku nesmaže.",
   "importModelSuccess": "Model {{provider}} byl úspěšně importován.",
   "importModelError": "Nepodařilo se importovat model:",
+
+  "importScanHint": "Hledá v LM Studiu, Ollamě, cache Hugging Face, llama.cpp a GPT4All. Nic se nekopíruje, dokud neimportujete.",
+
+  "importAddFolder": "Přidat složku s modely",
+
+  "importRemoveFolder": "Odebrat složku {{folder}}",
   "stop": "Zastavit",
   "start": "Spustit",
   "status": {
@@ -49,6 +56,10 @@
     "connected": "Připojeno"
   },
   "table": {
+    "contextAutoFit": "auto-fit",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "Velikost kontextu je prázdná, proto engine při načtení modelu přizpůsobil toto okno vaší paměti.",
+    "contextAutoTitle": "Velikost kontextu je prázdná: engine zvolí okno při načtení modelu.",
     "name": "Název",
     "file": "Soubor",
     "size": "Velikost",
@@ -122,6 +133,7 @@
     "cachedInputCost": "Cena vstupu z cache (USD za 1M tokenů)",
     "cacheWriteCost": "Cena zápisu do cache (USD za 1M tokenů)",
     "costHelp": "Nechte prázdné pro použití vestavěné ceny u známých modelů; lokální modely jsou zdarma. Prázdná cena vstupu z cache nebo zápisu do cache se účtuje cenou vstupu.",
+    "costInvalid": "Ceny musí být číslo 0 nebo vyšší. Vyprázdněte pole, abyste použili vestavěnou cenu.",
     "displayName": "Zobrazovaný název",
     "displayNamePlaceholder": "Zadejte zobrazovaný název",
     "displayNameHelp": "Zobrazuje se všude, kde je tento model uveden. Požadavky nadále používají původní identifikátor {{modelId}}.",
@@ -143,12 +155,17 @@
   "addProvider": "Přidat poskytovatele",
   "addOpenAIProvider": "Přidat OpenAI poskytovatele",
   "enterNameForProvider": "Zadejte název pro poskytovatele",
+  "apiVersion": {
+    "title": "Verze API",
+    "description": "Jen pro endpoint Azure ve stylu deployments (/openai/deployments/<name>), jehož URL nemá ?api-version=. Endpoint /openai/v1 žádnou nepotřebuje."
+  },
   "baseUrl": {
     "title": "Základní URL",
     "openaiDescription": "Použijte proxy nebo bránu, která mluví API OpenAI. Výchozí hodnota je https://api.openai.com/v1.",
     "azureDescription": "Váš koncový bod Azure OpenAI. Nahraďte YOUR-RESOURCE-NAME názvem svého prostředku Azure.",
     "litellmDescription": "Adresa vašeho proxy LiteLLM včetně /v1. Výchozí je http://localhost:4000/v1.",
-    "qwenDescription": "Váš koncový bod Model Studio. Klíč funguje jen v regionu, ve kterém byl vytvořen: použijte https://dashscope-intl.aliyuncs.com/compatible-mode/v1 pro Singapur nebo https://dashscope.aliyuncs.com/compatible-mode/v1 pro pevninskou Čínu."
+    "qwenDescription": "Váš koncový bod Model Studio. Klíč funguje jen v regionu, ve kterém byl vytvořen: použijte https://dashscope-intl.aliyuncs.com/compatible-mode/v1 pro Singapur nebo https://dashscope.aliyuncs.com/compatible-mode/v1 pro pevninskou Čínu.",
+    "bedrockDescription": "Runtime endpoint Amazon Bedrock vaší oblasti, například https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "Klíče API",
@@ -221,5 +238,18 @@
     "label": "Název poskytovatele",
     "cancel": "Zrušit",
     "save": "Uložit"
+  },
+  "bedrock": {
+    "title": "Přihlašovací údaje AWS",
+    "description": "Flint podepisuje každý požadavek na Amazon Bedrock vašimi klíči AWS. Jsou uloženy v klíčence operačního systému a už se nikdy nezobrazí. ID modelů přidejte ručně (například anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "ID přístupového klíče",
+    "secretAccessKey": "Tajný přístupový klíč",
+    "sessionToken": "Token relace (volitelné)",
+    "secretHint": "Vyžaduje uživatele nebo roli IAM s oprávněním volat bedrock:InvokeModel.",
+    "sessionTokenHint": "Jen pro dočasné přihlašovací údaje (STS nebo SSO).",
+    "saved": "Uloženo",
+    "remove": "Odebrat",
+    "replace": "Uloženo. Pro nahrazení pište.",
+    "enter": "Nenastaveno"
   }
 }

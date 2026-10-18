@@ -50,6 +50,7 @@ export type EventTag =
   | "turn_usage"
   | "done"
   | "error"
+  | "run_ended"
   | "permission_request"
   | "tool_request"
   | "tool_request_cancelled"
@@ -474,6 +475,14 @@ export interface ErrorEvent {
   "type": "error"
 }
 
+/** Why the run ended, as one typed value (see `end_reason`), emitted just before the terminal `Done`/`Error` so every surface says the same thing about the same ending. `reason` is one of `completed`, `user_stop`, `budget`, `turn_limit`, `refusal`, `error`, `lease_lost`; `label` is the sentence a desktop shows; `exit_code` is the status the CLI ends with. */
+export interface RunEndedEvent {
+  "reason": string
+  "label": string
+  "exit_code": number
+  "type": "run_ended"
+}
+
 /** The loop needs the user to approve a gated tool call. The client replies via the `agent_permission_respond` command referencing `request_id`. */
 export interface PermissionRequestEvent {
   "request_id": string
@@ -490,6 +499,10 @@ export interface PermissionRequestEvent {
   "offers_always": boolean
   /** Why this call is being asked about when a grant or auto-approval would otherwise have let it run: a destructive shell command, or the check-in after a long streak of auto-approved calls. `None` for an ordinary prompt. */
   "reason"?: string | null
+  /** The sha256 (hex) of the tool name and its arguments as canonical JSON (keys sorted), taken when this prompt was raised. The approved call runs only if its arguments still hash to this value; otherwise it is refused unrun. `None` for a prompt not about one tool call's arguments. */
+  "args_digest"?: string | null
+  /** The model's id for the tool call being asked about, so a client showing parallel calls of one tool ties the prompt to the right one. `None` for a prompt not about one tool call. */
+  "call_id"?: string | null
   "type": "permission_request"
 }
 
@@ -546,6 +559,7 @@ export type StreamEvent =
   | TurnUsageEvent
   | DoneEvent
   | ErrorEvent
+  | RunEndedEvent
   | PermissionRequestEvent
   | ToolRequestEvent
   | ToolRequestCancelledEvent
@@ -579,6 +593,7 @@ export interface EventByTag {
   "turn_usage": TurnUsageEvent
   "done": DoneEvent
   "error": ErrorEvent
+  "run_ended": RunEndedEvent
   "permission_request": PermissionRequestEvent
   "tool_request": ToolRequestEvent
   "tool_request_cancelled": ToolRequestCancelledEvent

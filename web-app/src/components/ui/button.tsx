@@ -21,7 +21,7 @@ const buttonVariants = cva(
         default:
           "overflow-hidden border border-primary bg-grad text-on-grad shadow-[inset_0_1px_0_rgba(255,255,255,.14)] hover:brightness-110 dark:border-white/80",
         destructive:
-          "border-[0.8px] border-transparent bg-destructive/12 text-destructive hover:bg-destructive/18",
+          "border-[0.8px] border-transparent bg-destructive/12 text-destructive-text hover:bg-destructive/18",
         outline:
           "border-[0.8px] border-border bg-card text-secondary-foreground hover:border-border-strong hover:bg-hover-btn hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:bg-hover-btn",
         surface:

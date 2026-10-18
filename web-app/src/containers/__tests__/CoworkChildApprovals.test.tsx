@@ -127,4 +127,20 @@ describe('CoworkChildApprovals', () => {
     })
     expect(screen.queryByTestId('child-approval')).toBeNull()
   })
+
+  it('lets a server prompt be refused with a reason the run is told', async () => {
+    render(<CoworkChildApprovals sessionId="s1" />)
+    let answer!: Promise<boolean>
+    act(() => {
+      answer = useToolApprovalRequests
+        .getState()
+        .requestApproval('perm-1', 'write', 's1', undefined, { preview: '+x', origin: 'server', alwaysAsk: true })
+    })
+    const card = await screen.findByTestId('child-approval')
+    await userEvent.click(within(card).getByTestId('approval-deny-reason-toggle'))
+    await userEvent.type(within(card).getByTestId('approval-deny-reason'), 'wrong file')
+    await userEvent.click(within(card).getByRole('button', { name: /^(deny|tools:toolApproval\.deny)$/i }))
+    expect(await answer).toBe(false)
+    expect(useToolApprovalRequests.getState().takeRefusalReason('perm-1')).toBe('wrong file')
+  })
 })

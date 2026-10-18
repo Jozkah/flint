@@ -22,6 +22,17 @@ function sse(blocks: string[]): ReadableStream<Uint8Array> {
 }
 
 describe('browser event bus', () => {
+  it('delivers emitTo to listeners in this page (one window in a browser)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, headers: new Headers() }))
+    const shim = (await import('@/lib/tauriEventShim')) as Record<string, unknown>
+    expect(typeof shim.emitTo).toBe('function')
+    const { listen } = await import('@/lib/tauriEventShim')
+    const seen: unknown[] = []
+    await listen<string>('to-main', (e) => seen.push(e.payload))
+    await (shim.emitTo as (t: string, e: string, p?: unknown) => Promise<void>)('main', 'to-main', 'x')
+    expect(seen).toEqual(['x'])
+  })
+
   it('delivers local emits to listeners and stops after unlisten', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, headers: new Headers() }))
     const { listen, emit } = await import('@/lib/tauriEventShim')

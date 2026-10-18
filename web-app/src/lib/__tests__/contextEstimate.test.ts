@@ -12,12 +12,28 @@ describe('context cap and calibration', () => {
   it('learns when an estimated 160k prompt actually used 240k tokens', () => {
     const counter = new ContextEstimate()
     counter.observe('model', 160_000, 240_000)
-    expect(counter.ratio('model')).toBeCloseTo(1.65)
-    expect(Math.floor(200_000 / counter.ratio('model'))).toBeLessThan(122_000)
+    // Bounded: no tokenizer is counted as more than 1.6x the heuristic.
+    expect(counter.ratio('model')).toBeCloseTo(1.6)
+    expect(Math.floor(200_000 / counter.ratio('model'))).toBeLessThan(126_000)
     // Other models do not inherit this tokenizer's ratio.
     expect(counter.ratio('other')).toBe(1)
+    // One low count does not undo a high one at once: the median of the recent ones decides.
     counter.observe('model', 160_000, 80_000)
-    expect(counter.ratio('model')).toBeCloseTo(1.65)
+    expect(counter.ratio('model')).toBeGreaterThanOrEqual(1)
+  })
+
+  it('recovers from one outlier instead of keeping the all-time maximum', () => {
+    const counter = new ContextEstimate()
+    counter.observe('model', 1000, 5000)
+    expect(counter.ratio('model')).toBeCloseTo(1.6)
+    for (let i = 0; i < 4; i++) counter.observe('model', 1000, 1000)
+    expect(counter.ratio('model')).toBeLessThanOrEqual(1.1)
+  })
+
+  it('never drops below 1 however low the server counts', () => {
+    const counter = new ContextEstimate()
+    for (let i = 0; i < 5; i++) counter.observe('model', 1000, 100)
+    expect(counter.ratio('model')).toBe(1)
   })
 
   it('ignores missing and invalid usage', () => {

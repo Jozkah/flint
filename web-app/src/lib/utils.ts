@@ -1,4 +1,5 @@
 import { providerDisplayName } from '@/lib/providerDisplayNames'
+import { predefinedProviders } from '@/constants/providers'
 import type { Node, Position } from 'unist'
 import type { Code, Paragraph, Parent, Text } from 'mdast'
 import { visit } from 'unist-util-visit'
@@ -177,9 +178,17 @@ export const getDefaultProviderTitle = (provider: string) => {
     case 'llmman':
       return 'llmman'
     default:
-      return provider.charAt(0).toUpperCase() + provider.slice(1)
+      // A built-in key is a lowercase id, so it is capitalized. A custom
+      // provider's key is the name the user typed: shown as typed (C034).
+      return BUILT_IN_PROVIDER_KEYS.has(provider)
+        ? provider.charAt(0).toUpperCase() + provider.slice(1)
+        : provider
   }
 }
+
+const BUILT_IN_PROVIDER_KEYS: ReadonlySet<string> = new Set(
+  predefinedProviders.map((p) => p.provider)
+)
 
 export function getReadableLanguageName(language: string): string {
   const languageMap: Record<string, string> = {

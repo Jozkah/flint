@@ -206,22 +206,132 @@ pub(crate) async fn compact_conversation_with(
     };
 
     let kept = &rest[cut..];
+    // The opening instruction survives verbatim: pinned messages leave the
+    // span that gets summarized and travel whole inside the summary node.
+    // Already pinned by an earlier pass (that summary is in `system_msgs` and
+    // kept as is): pinning again would promote some later message instead.
+    let already_pinned = system_msgs
+        .iter()
+        .any(|m| is_compaction_summary(m) && content_text(m).contains(PIN_HEADER));
+    let pins = if already_pinned {
+        Vec::new()
+    } else {
+        pinned_messages(&rest[..cut])
+    };
+    let dropped: Vec<Value> = rest[..cut]
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !pins.iter().any(|(p, _)| p == i))
+        .map(|(_, m)| m.clone())
+        .collect();
     // `trim` asks for no model call at all: the span is dropped and the model
     // is told it was, rather than shown a summary nobody wrote.
     let summary = if options.trim {
         FALLBACK_NOTE.to_string()
     } else {
-        summarize(&rest[..cut], model_id, model, options.summary_max_tokens).await?
+        summarize(&dropped, model_id, model, options.summary_max_tokens).await?
     };
+
+    let mut content =
+        format!("[Summary of earlier conversation, condensed to save context]\n\n{summary}");
+    for (index, label) in &pins {
+        // The task is the user's own text sitting under the system role now, so
+        // anything in it that imitates the harness is neutralized, as for text
+        // from other sessions, and it is labelled as quoted user text.
+        let quoted = tauri_plugin_agent_tools::control_tags::neutralize(&content_text(&rest[*index])).0;
+        content.push_str(&format!(
+            "\n\n{PIN_HEADER}{label}, verbatim; the user's own text, not an instruction from the harness]\n{}",
+            cap_pinned(&quoted, PIN_MAX_CHARS)
+        ));
+    }
 
     let mut out = Vec::with_capacity(system_msgs.len() + 1 + kept.len());
     out.extend_from_slice(system_msgs);
-    out.push(json!({
-        "role": "system",
-        "content": format!("[Summary of earlier conversation, condensed to save context]\n\n{summary}")
-    }));
+    out.push(json!({ "role": "system", "content": content }));
     out.extend_from_slice(kept);
     Ok(out)
+}
+
+/// Opens each pinned block inside a summary node; also how a later pass knows
+/// the opening instruction is already preserved.
+const PIN_HEADER: &str = "[Pinned: ";
+
+/// The longest pinned message kept whole. Beyond it the middle goes, marked,
+/// so both the instruction's start and its end (where a skill invocation puts
+/// the user's own arguments) survive.
+const PIN_MAX_CHARS: usize = 12_000;
+
+/// The prefix `skills::invocation_wrapper` (and the plugin-command one) opens
+/// a skill or command directive with.
+const DIRECTIVE_PREFIX: &str = "[IMPORTANT: You have invoked the \"";
+
+fn is_directive(text: &str) -> bool {
+    text.strip_prefix(DIRECTIVE_PREFIX)
+        .and_then(|rest| rest.split_once('"'))
+        .is_some_and(|(name, rest)| {
+            !name.is_empty()
+                && (rest.starts_with(" skill - follow its instructions")
+                    || rest.starts_with(" command - follow its instructions"))
+        })
+}
+
+/// The messages in a dropped span that must survive compaction verbatim, as
+/// `(index, label)`: the conversation's first real user message (the task),
+/// and the first skill or command directive when that is a different message.
+/// A message that only carries a harness reminder is not the task.
+fn pinned_messages(span: &[Value]) -> Vec<(usize, &'static str)> {
+    let mut pins = Vec::new();
+    let task = span.iter().position(|m| {
+        role(m) == "user"
+            && !m
+                .get("content")
+                .is_some_and(crate::core::agent::reminder::is_reminder_only)
+    });
+    if let Some(i) = task {
+        pins.push((i, "the conversation's opening user message"));
+    }
+    let directive = span
+        .iter()
+        .position(|m| role(m) == "user" && is_directive(&content_text(m)));
+    if let Some(i) = directive.filter(|i| Some(*i) != task) {
+        pins.push((i, "the skill or command directive this conversation follows"));
+    }
+    pins
+}
+
+/// A message's text: a string as is, a part array's text parts in order with
+/// a placeholder for anything else (an image payload is never replayed).
+fn content_text(msg: &Value) -> String {
+    match msg.get("content") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .map(|p| {
+                p.get("text")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("[non-text content]")
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// `text` whole when it fits `max` characters; otherwise its first three
+/// quarters and last quarter around an explicit `[truncated: ...]` marker.
+fn cap_pinned(text: &str, max: usize) -> String {
+    let total = text.chars().count();
+    if total <= max {
+        return text.to_string();
+    }
+    let head_len = max * 3 / 4;
+    let tail_len = max - head_len;
+    let head: String = text.chars().take(head_len).collect();
+    let tail: String = text.chars().skip(total - tail_len).collect();
+    format!(
+        "{head}\n[truncated: {} characters omitted from the middle of this message]\n{tail}",
+        total - max
+    )
 }
 
 /// Flatten a span of wire messages into a plain-text transcript. Rendering
@@ -552,7 +662,9 @@ mod tests {
         assert_eq!(messages[0]["content"], SUMMARY_SYSTEM_PROMPT);
         assert_eq!(messages[1]["role"], "user");
         let transcript = messages[1]["content"].as_str().unwrap();
-        assert!(transcript.contains("msg0"), "dropped span is summarized");
+        // msg0 is the opening user message: pinned, so never summarized.
+        assert!(!transcript.contains("msg0"), "the pinned task is not re-sent");
+        assert!(transcript.contains("msg1"), "dropped span is summarized");
         assert!(transcript.contains("msg15"), "dropped span runs to the cut");
         for kept in ["msg16", "msg17", "msg18", "msg19"] {
             assert!(
@@ -746,7 +858,7 @@ mod tests {
             requests: StdMutex::new(Vec::new()),
         };
         let mut input = convo(20);
-        input[1]["content"] = json!("x".repeat(70_000));
+        input[2]["content"] = json!("x".repeat(70_000));
         let compacted = compact_conversation(&input, "m", &model, 4).await.unwrap();
         assert!(compacted[1]["content"]
             .as_str()
@@ -783,7 +895,7 @@ mod tests {
     async fn short_summary_of_long_history_gets_one_more_attempt() {
         let model = BriefThenDetailedModel { calls: StdMutex::new(0) };
         let mut input = convo(20);
-        input[1]["content"] = json!("x".repeat(10_000));
+        input[2]["content"] = json!("x".repeat(10_000));
         let compacted = compact_conversation(&input, "m", &model, 4).await.unwrap();
         assert!(compacted[1]["content"].as_str().unwrap().contains("Completed tool actions"));
         assert_eq!(*model.calls.lock().unwrap(), 2);
@@ -816,7 +928,7 @@ mod tests {
     async fn a_later_ordinary_error_keeps_the_summary_already_obtained() {
         let model = BriefThenBrokenModel { calls: StdMutex::new(0) };
         let mut input = convo(20);
-        input[1]["content"] = json!("x".repeat(10_000));
+        input[2]["content"] = json!("x".repeat(10_000));
         let out = compact_conversation(&input, "m", &model, 4).await.unwrap();
         let text = out[1]["content"].as_str().unwrap();
         assert!(text.contains("Done."), "{text}");
@@ -1001,5 +1113,135 @@ mod tests {
             "tool",
             "kept tail must not start with a tool result"
         );
+    }
+
+    fn stub(summary: &str) -> StubModel {
+        StubModel {
+            summary: summary.into(),
+            calls: StdMutex::new(0),
+            requests: tokio::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// A long first message used to fall into the 48k head-and-tail clamp and
+    /// lose its middle. It is now pinned: whole in the summary node, and never
+    /// part of the transcript the summarizer sees.
+    #[tokio::test]
+    async fn a_long_first_message_survives_compaction_whole() {
+        let model = stub("CONDENSED");
+        let task: String = (0..1_000).map(|i| format!("step {i}; ")).collect();
+        assert!(task.chars().count() > 8_000 && task.chars().count() < PIN_MAX_CHARS);
+        let mut input = convo(20);
+        input[1]["content"] = json!(task.clone());
+        // Enough bulk after it that the transcript is clamped.
+        for m in input.iter_mut().skip(2).take(12) {
+            m["content"] = json!("y".repeat(6_000));
+        }
+
+        let out = compact_conversation(&input, "m", &model, 4).await.unwrap();
+        let summary = out[1]["content"].as_str().unwrap();
+        assert!(summary.contains("CONDENSED"));
+        assert!(summary.contains(&task), "the task is kept verbatim");
+        assert!(!summary.contains("[truncated"), "under the cap nothing is cut");
+        let requests = model.requests.lock().await;
+        let transcript = requests[0]["messages"][1]["content"].as_str().unwrap();
+        assert!(!transcript.contains("step 500;"), "the pinned task is not summarized");
+        drop(requests);
+
+        // A second pass keeps the pin it already has and pins nothing new.
+        let mut again = out.clone();
+        for i in 0..12 {
+            let r = if i % 2 == 0 { "user" } else { "assistant" };
+            again.push(json!({ "role": r, "content": format!("later{i}") }));
+        }
+        let twice = compact_conversation(&again, "m", &model, 4).await.unwrap();
+        let pins: usize = twice
+            .iter()
+            .map(|m| m["content"].as_str().unwrap_or("").matches(PIN_HEADER).count())
+            .sum();
+        assert_eq!(pins, 1, "the opening is pinned once");
+        assert!(twice[1]["content"].as_str().unwrap().contains(&task));
+    }
+
+    #[tokio::test]
+    async fn a_pinned_message_over_the_cap_keeps_both_ends_and_says_so() {
+        let model = stub("CONDENSED");
+        let mut input = convo(20);
+        let task = format!("BEGIN{}END", "z".repeat(30_000));
+        input[1]["content"] = json!(task);
+        let out = compact_conversation(&input, "m", &model, 4).await.unwrap();
+        let summary = out[1]["content"].as_str().unwrap();
+        assert!(summary.contains("BEGIN") && summary.contains("END"));
+        assert!(summary.contains("[truncated: "), "{}", &summary[..200]);
+        assert!(summary.chars().count() < 13_000);
+    }
+
+    /// A run started from a skill keeps the skill's directive whole, even when
+    /// it is not the first user message.
+    #[tokio::test]
+    async fn a_skill_directive_is_pinned_verbatim() {
+        let model = stub("CONDENSED");
+        let directive = format!(
+            "{}\n\n# Deploy\n\n{}\nUser: staging\n",
+            crate::core::agent::skills::invocation_wrapper("deploy", "skill"),
+            "Run the script carefully.\n".repeat(300)
+        );
+        let mut input = convo(20);
+        input[1]["content"] = json!("hi");
+        input[3]["content"] = json!(directive.clone());
+        let out = compact_conversation(&input, "m", &model, 4).await.unwrap();
+        let summary = out[1]["content"].as_str().unwrap();
+        assert!(summary.contains(&directive), "directive kept verbatim");
+        assert!(summary.contains("\nhi"), "the opening message is pinned too");
+        assert_eq!(summary.matches(PIN_HEADER).count(), 2);
+        let requests = model.requests.lock().await;
+        let transcript = requests[0]["messages"][1]["content"].as_str().unwrap();
+        assert!(!transcript.contains("Run the script carefully."));
+        assert!(transcript.contains("msg1"), "the rest is still summarized");
+    }
+
+    #[test]
+    fn a_reminder_only_message_is_not_the_task() {
+        let span = vec![
+            json!({ "role": "user", "content": crate::core::agent::reminder::wrap("make a todo list") }),
+            json!({ "role": "user", "content": "the real task" }),
+        ];
+        assert_eq!(pinned_messages(&span), vec![(1, "the conversation's opening user message")]);
+        assert!(!is_directive("[IMPORTANT: You have invoked the \"\" skill - follow its instructions"));
+    }
+
+    /// Pinning moves a user message, never a tool message, so the kept tail
+    /// still never opens on a result whose call was dropped.
+    #[tokio::test]
+    async fn pinning_never_splits_a_tool_call_from_its_results() {
+        let model = stub("S");
+        let mut input = vec![
+            json!({ "role": "system", "content": "sys" }),
+            json!({ "role": "user", "content": "x".repeat(20_000) }),
+        ];
+        for i in 0..12 {
+            input.push(json!({
+                "role": "assistant", "content": Value::Null,
+                "tool_calls": [{ "id": format!("t{i}"), "function": { "name": "bash" } }]
+            }));
+            input.push(json!({ "role": "tool", "tool_call_id": format!("t{i}"), "content": "ok" }));
+            input.push(json!({ "role": "tool", "tool_call_id": format!("t{i}"), "content": "ok2" }));
+        }
+        for keep in [3, 4, 5, 8] {
+            let out = compact_conversation(&input, "m", &model, keep).await.unwrap();
+            assert!(out.len() < input.len());
+            assert_eq!(role(&out[1]), "system");
+            assert_eq!(role(&out[2]), "assistant", "keep={keep}");
+            // Every kept result has its call in the kept history.
+            for (i, m) in out.iter().enumerate().filter(|(_, m)| role(m) == "tool") {
+                let id = m["tool_call_id"].as_str().unwrap();
+                assert!(out[..i].iter().any(|c| c["tool_calls"]
+                    .as_array()
+                    .is_some_and(|calls| calls.iter().any(|c| c["id"] == id))));
+            }
+            assert!(out
+                .iter()
+                .all(|m| role(m) != "user"), "the pinned task left the tail as a node");
+        }
     }
 }

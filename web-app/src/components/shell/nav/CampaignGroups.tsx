@@ -1,3 +1,4 @@
+import { useCloseDrawer } from '@/components/shell/nav-kit'
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight, Workflow } from 'lucide-react'
@@ -26,6 +27,7 @@ export function CampaignGroups({
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const closeDrawer = useCloseDrawer()
   // Only what the person changed; the default follows the campaign's state.
   const [toggled, setToggled] = useState<Record<string, boolean>>({})
   if (groups.length === 0) return null
@@ -66,12 +68,13 @@ export function CampaignGroups({
                 type="button"
                 title={`${group.title}: ${t('settings:campaigns.board.openBoard')}`}
                 aria-label={`${group.title}: ${t('settings:campaigns.board.openBoard')}`}
-                onClick={() =>
+                onClick={() => {
                   void navigate({
                     to: route.campaignDetail,
                     params: { campaignId: group.campaignId },
                   })
-                }
+                  closeDrawer()
+                }}
                 className="flex min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md px-1 py-1 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <span className="flex min-w-0 items-center gap-1.5">

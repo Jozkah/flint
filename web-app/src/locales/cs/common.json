@@ -7,7 +7,7 @@
     "rename": "Přejmenovat",
     "deleteGroup": "Smazat skupinu",
     "deleteTitle": "Smazat {{name}}?",
-    "deleteBody": "Skupina bude odstraněna. Její položky z ní vyjdou a nebudou smazány.",
+    "deleteBody": "Skupina bude odstraněna. Její položky z ní vyjdou a nebudou smazány. Podsložky se posunou o úroveň výš.",
     "folders": "Složky…",
     "foldersTitle": "Složky skupiny „{{name}}“",
     "foldersBodyHome": "Chaty zahájené v této skupině nebo do ní přesunuté dostanou tyto složky, pro nástroje chatu jen ke čtení.",
@@ -53,7 +53,43 @@
     "chatFoldersBody": "Nástroje chatu mohou tyto složky číst. Zápisy zůstávají ve vlastním sandboxu chatu.",
     "chatFoldersEmpty": "Nejsou připojeny žádné složky.",
     "addFolder": "Přidat složku",
-    "chatFolderCount": "Složky: {{count}}"
+    "chatFolderCount": "Složky: {{count}}",
+    "newSubfolder": "Nová podsložka",
+    "moveInto": "Přesunout do složky",
+    "topLevel": "Nejvyšší úroveň",
+    "errors": {
+      "nameEmpty": "Název skupiny nesmí být prázdný",
+      "notFound": "Skupina nebyla nalezena",
+      "tooDeep": "Skupiny nelze vnořit takto hluboko",
+      "intoItself": "Skupinu nelze přesunout do sebe samé"
+    },
+    "failed": {
+      "create": "Skupinu se nepodařilo vytvořit",
+      "rename": "Skupinu se nepodařilo přejmenovat",
+      "moveFolder": "Složku se nepodařilo přesunout",
+      "saveState": "Stav skupiny se nepodařilo uložit",
+      "reorder": "Skupiny se nepodařilo přeřadit",
+      "moveItem": "Položku se nepodařilo přesunout",
+      "delete": "Skupinu se nepodařilo smazat",
+      "saveFolders": "Složky skupiny se nepodařilo uložit",
+      "updateContext": "Kontext složek se nepodařilo aktualizovat",
+      "update": "Skupiny se nepodařilo aktualizovat",
+      "import": "Skupiny se nepodařilo importovat",
+      "unreadable": "{{failure}}: uložené skupiny se nepodařilo načíst",
+      "restored": "{{failure}}. Předchozí pořadí bylo obnoveno."
+    },
+    "announce": {
+      "created": "Skupina {{name}} vytvořena",
+      "collapsed": "{{name}} sbaleno",
+      "expanded": "{{name}} rozbaleno",
+      "reordered": "{{name}} přesunuto na pozici {{position}} z {{total}}",
+      "movedToPosition": "Přesunuto do {{name}}, pozice {{position}}",
+      "movedToRecents": "Přesunuto do Nedávné",
+      "deleted": "Skupina {{name}} smazána. Její položky byly přesunuty do Nedávné",
+      "ctxReplaced": "{{base}}. Kontext složek byl nahrazen složkami skupiny; přístup stále vyžaduje schválení",
+      "ctxMerged": "{{base}}. Složky skupiny byly přidány do kontextu složek; přístup stále vyžaduje schválení",
+      "foldersAdded": "{{base}}. Složky položky byly přidány do skupiny"
+    }
   },
   "htmlArtifact": {
     "code": "Kód",
@@ -188,7 +224,7 @@
   "profile": "Profil",
   "reset": "Obnovit",
   "search": "Hledat",
-  "searchThreads": "Hledat vlákna...",
+  "searchThreads": "Hledat chaty...",
   "toNavigate": "pro pohyb",
   "toSelect": "pro výběr",
   "toClose": "pro zavření",
@@ -214,6 +250,7 @@
   "preview": {
     "title": "Náhled",
     "empty": "Otevřete vygenerovaný artefakt a zobrazí se zde jeho náhled.",
+    "emptyHint": "Soubory, které Flint v této relaci vytvoří, se otevírají zde.",
     "loading": "Otevírání…",
     "unsupported": "Flint tento druh souboru zobrazit neumí. Otevřete ho v jiné aplikaci.",
     "outside": "Tento soubor už není v pracovním prostoru relace.",
@@ -280,7 +317,7 @@
     "searchThreads": "Hledat konverzace",
     "toggleSidebar": "Přepnout postranní panel",
     "openCowork": "Otevřít Cowork",
-    "openArtifacts": "Otevřít artefakty",
+    "openArtifacts": "Otevřít Knihovna",
     "openSystemMonitor": "Otevřít monitor systému",
     "openLogs": "Otevřít protokoly aplikace",
     "section": {
@@ -294,11 +331,18 @@
       "navigation": "Přejít na",
       "settings": "Nastavení",
       "threads": "Konverzace"
-    }
+    },
+    "openItem": "Otevřít {{item}}"
   },
   "searchGroup": {
+    "pages": "Stránky",
+    "settings": "Nastavení",
     "inProjects": "V projektech",
-    "conversations": "Konverzace"
+    "conversations": "Konverzace",
+    "messages": "Ve zprávách",
+    "work": "Místnosti a relace",
+    "room": "Místnost",
+    "session": "Relace Cowork"
   },
   "rail": {
     "label": "Panely Cowork",
@@ -617,7 +661,8 @@
       "add": "Přidat",
       "cancel": "Zrušit",
       "remove": "Odebrat"
-    }
+    },
+    "ctxAutoFitHint": "Automatické přizpůsobení je zapnuté: nechte pole prázdné a kontext zvolí samo, v případě potřeby ho zmenší, aby se vešel do paměti. Zadané číslo se použije beze změny."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -660,6 +705,14 @@
     "showRawLibraries": "Zobrazit názvy chybějících knihoven ({{count}})"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Vytvořit projekt",
+      "editTitle": "Upravit projekt",
+      "namePlaceholder": "Zadejte název projektu...",
+      "alreadyExists": "Projekt „{{projectName}}“ už existuje",
+      "createSuccess": "Projekt „{{projectName}}“ byl vytvořen",
+      "updateSuccess": "Projekt „{{projectName}}“ byl aktualizován"
+    },
     "title": "Projekty",
     "new": "Nové Projekty",
     "addProject": "Přidat projekt",
@@ -754,7 +807,8 @@
     "pathNameNotice": "Toto pojmenovává kolekci chatů; tuto složku neotevírá.",
     "openCodeFolderInCowork": "Otevřít složku s kódem v Cowork",
     "openCodeFolder": "Otevřít složku s kódem",
-    "openCodeFolderDescription": "Vyberte složku ve svém počítači, ve které má Flint pracovat."
+    "openCodeFolderDescription": "Vyberte složku ve svém počítači, ve které má Flint pracovat.",
+    "setUpEmbeddingModel": "Nastavit embedding model"
   },
   "attachmentsIngestion": {
     "title": "Zvolte, jak zpracovat přílohy",
@@ -886,7 +940,8 @@
       "unsupportedType": "Typ souboru „{{type}}“ není podporován.",
       "ioError": "Nepodařilo se přečíst {{subject}}: {{message}}",
       "parseGeneric": "{{subject}} se nepodařilo zpracovat: {{message}}",
-      "fallback": "Nepodařilo se zpracovat {{subject}}."
+      "fallback": "Nepodařilo se zpracovat {{subject}}.",
+      "noEmbeddingModel": "{{subject}} nebyl přidán: není nainstalován žádný embedding model, který by ho zaindexoval. Nastavte ho v Llama.cpp a soubor přidejte znovu."
     },
     "fileDeleted": {
       "title": "Soubor smazán",
@@ -948,6 +1003,7 @@
     "missing": "Už není dostupný: {{model}}",
     "use": "Použít tento model",
     "thisChat": "Tento chat",
+    "thisRoom": "Tato místnost",
     "thisSession": "Tato relace"
   },
   "skillsUsedCount_one": "Použita {{count}} dovednost",
@@ -975,6 +1031,30 @@
   "previewMessageCount_few": "{{count}} zprávy",
   "previewMessageCount_many": "{{count}} zprávy",
   "previewMessageCount_other": "{{count}} zpráv",
+  "rowPreview": {
+    "status": {
+      "running": "Běží",
+      "waiting": "Čeká na vás",
+      "idle": "Nečinné",
+      "error": "Chyba"
+    },
+    "prState": {
+      "open": "Otevřený",
+      "draft": "Koncept",
+      "merged": "Sloučený",
+      "closed": "Uzavřený"
+    },
+    "pullRequests": "Pull requesty",
+    "morePrs_one": "+{{count}} další",
+    "morePrs_other": "+{{count}} dalších",
+    "morePrs_few": "+{{count}} další",
+    "morePrs_many": "+{{count}} dalších",
+    "noChecks": "Žádné kontroly",
+    "empty": "Zatím tu nic není.",
+    "noMessages": "Zatím žádné zprávy",
+    "summarizing": "Píšu shrnutí…",
+    "openHint": "Otevřít"
+  },
   "artifactDetails": "Podrobnosti položky",
   "artifactBack": "Zpět do knihovny",
   "artifactClose": "Zavřít podrobnosti",
@@ -1018,7 +1098,10 @@
     "branchLabel": "Větev",
     "actionsLabel": "Akce se složkou",
     "copyPath": "Kopírovat cestu",
-    "copied": "Cesta zkopírována"
+    "copied": "Cesta zkopírována",
+    "footnoteEmptyEdit": "Připoj složku, aby agent mohl pracovat na tvém projektu.",
+    "a11yWithFolderEditable": "Složka projektu {{folder}}, připojená k úpravám. Změňte ji nebo ji odpojte.",
+    "a11yWithFolderWorktree": "Složka projektu {{folder}}, upravovaná přes samostatný worktree. Změňte ji nebo ji odpojte."
   },
   "coworkEmpty": {
     "title": "Na čem budeme pracovat?",
@@ -1034,7 +1117,15 @@
       "first": "Vysvětli, jak je {{folder}} poskládán",
       "second": "Najdi všechna TODO v {{folder}} a seskup je podle oblasti",
       "third": "Napiš testy pro tu část {{folder}}, na kterou ti ukážu"
-    }
+    },
+    "vault": {
+      "badge": "Trezor Obsidian",
+      "hint": "Tato složka je trezor Obsidian. Flint ji čte jako jakoukoli složku poznámek v Markdownu a vynechává nastavení .obsidian a složku .trash od Obsidianu.",
+      "add": "Přidat můj trezor Obsidian",
+      "addHint": "Trezor Obsidian je prostě složka. Vyberte ji jako jakoukoli jinou složku."
+    },
+    "subtitleFolderEdit": "Zadej Flintu úkol. Čte a mění soubory ve složce {{folder}} přímo a dál pracuje sám.",
+    "subtitleFolderWorktree": "Zadej Flintu úkol. Pracuje v git worktree složky {{folder}}, takže se tvoje složka změní jen při sloučení."
   },
   "sandbox": {
     "noTerminal": "Žádný terminál",
@@ -1208,7 +1299,8 @@
     "sensitiveRefused": "{{name}} vypadá jako přihlašovací údaje nebo klíč, proto nebyl otevřen",
     "binaryRefused": "{{name}} není textový soubor, ať už jeho přípona říká cokoli",
     "chooseAgainAction": "Vybrat znovu",
-    "externalGone": "Tento soubor byl otevřen zvenčí projektu a tento přístup nepřetrval. Vyberte ho znovu, abyste ho otevřeli."
+    "externalGone": "Tento soubor byl otevřen zvenčí projektu a tento přístup nepřetrval. Vyberte ho znovu, abyste ho otevřeli.",
+    "oneFolderAtATime": "Najednou lze přidat jen jednu složku. „{{name}}“ nebyla přidána."
   },
   "settingsSearch": {
     "label": "Hledat v nastavení",
@@ -1219,7 +1311,9 @@
     "count_many": "{{count}} výsledku",
     "count_other": "{{count}} výsledků",
     "empty": "Žádné odpovídající nastavení.",
-    "clear": "Vymazat hledání"
+    "clear": "Vymazat hledání",
+    "emptyHint": "Zkuste jiné slovo nebo hledejte podle účelu: motiv, proxy, paměť.",
+    "pageCrumb": "Stránka"
   },
   "tasks": {
     "title": "Aktivita",
@@ -1413,7 +1507,14 @@
     "recommended": "Doporučeno",
     "reset": "Obnovit globální hodnotu",
     "resetAll": "Obnovit globální výchozí hodnoty",
-    "overridden": "Nastaveno pro tento chat"
+    "overridden": "Nastaveno pro tento chat",
+    "levels": {
+      "low": "Nízká",
+      "medium": "Střední",
+      "high": "Vysoká",
+      "xhigh": "Velmi vysoká",
+      "unlimited": "Neomezená"
+    }
   },
   "modelOffline": {
     "badge": "Nedostupný",
@@ -1887,6 +1988,8 @@
     "hideCompletedToolsDescription": "Skryje aktivitu nástrojů, která skončila úspěšně. Běžící, neúspěšná, odmítnutá, zrušená a zastaralá aktivita se zobrazuje vždy a nic se nemaže.",
     "hiddenCount": "Skryté dokončené aktivity nástrojů: {{count}}",
     "hiddenCount_one": "1 dokončená aktivita nástroje skryta",
+    "hiddenCount_few": "Skryté dokončené aktivity nástrojů: {{count}}",
+    "hiddenCount_many": "Skryté dokončené aktivity nástrojů: {{count}}",
     "showAgain": "Zobrazit je znovu",
     "showModelReceived": "Zobrazit „Co model obdržel“",
     "showModelReceivedDescription": "Záznam požadavku a počtu tokenů u každého tahu. Zaznamenává se vždy a zůstává v podrobnostech relace a na časové ose."
@@ -2190,10 +2293,12 @@
   },
   "browserVerify": {
     "title": "Ověřit v prohlížeči",
+    "about": "Jak to funguje",
     "explain": "Otevře vaši místní aplikaci v samostatném dočasném profilu prohlížeče (ne v náhledu Flintu, bez cookies) omezeném na vlastní origin aplikace. Požadavky jinam jsou blokovány a vypsány.",
     "url": "Adresa URL místní aplikace",
     "notLocal": "Ověřit lze jen aplikaci na tomto počítači (localhost, 127.0.0.1).",
-    "steps": "Kroky (volitelné): open, click, type, expect, wait, screenshot — jeden na řádek",
+    "stepsLabel": "Kroky (volitelné)",
+    "stepsHint": "Jeden na řádek: open, click, type, expect, wait, screenshot",
     "run": "Ověřit",
     "cancel": "Zastavit",
     "using": "Používá se {{browser}}",
@@ -2569,12 +2674,17 @@
       "slots": "{{count}} slotů",
       "vision": "Vidění",
       "audio": "Zvuk",
+      "fixedPrompt": "Odesíláno s každým požadavkem: {{count}} tokenů (systémový prompt a schémata nástrojů).",
       "tokenUsage": "Využití tokenů",
       "tokenUsageSr": "Využití tokenů {{value}}"
     }
   },
   "voicePill": {
-    "cancel": "Zrušit"
+    "cancel": "Zrušit",
+    "dictate": "Diktovat",
+    "stop": "Zastavit diktování",
+    "working": "Pracuji…",
+    "setup": "Nastavit hlasový vstup"
   },
   "coworkRunSettings": {
     "label": "Nastavení běhu",
@@ -2600,11 +2710,29 @@
     "previewLoading": "Načítání náhledu…",
     "previewNone": "Náhled není k dispozici"
   },
+  "fileViewer": {
+    "openFull": "Otevřít celý náhled",
+    "loadMore": "Načíst další",
+    "showingFirst": "Zobrazeno prvních {{loaded}} z {{total}}",
+    "lines_one": "{{count}} řádek",
+    "lines_few": "{{count}} řádky",
+    "lines_many": "{{count}} řádku",
+    "lines_other": "{{count}} řádků",
+    "wrap": "Zalamovat řádky",
+    "copy": "Kopírovat",
+    "copied": "Zkopírováno",
+    "binary": "Vypadá to na binární soubor, proto není k dispozici textový náhled.",
+    "expandLine": "Zobrazit celý řádek",
+    "collapseLine": "Zkrátit řádek",
+    "truncatedOnAdd": "Zobrazeno prvních {{shown}} z {{total}} (příloha byla při přidání zkrácena)"
+  },
   "dropAttachFailed": "Přetažené soubory se nepodařilo připojit",
+  "sampler": {
+    "label": "Parametry vzorkování",
+    "notSupported": "Nepodporuje {{provider}}"
+  },
   "translate": {
     "title": "Překladač",
-    "usingModel": "Používá {{model}}",
-    "noModel": "Vyberte model ve výběru modelů",
     "from": "Přeložit z",
     "to": "Přeložit do",
     "detect": "Rozpoznat jazyk",
@@ -2616,12 +2744,216 @@
     "copyFailed": "Překlad se nepodařilo zkopírovat",
     "failed": "Překlad selhal",
     "inputPlaceholder": "Text k překladu",
-    "outputPlaceholder": "Překlad se zobrazí zde"
+    "outputPlaceholder": "Překlad se zobrazí zde",
+    "description": "Překládejte text mezi jazyky pomocí vybraného modelu. Nic se neukládá.",
+    "sourceTitle": "Zdrojový text",
+    "targetTitle": "Překlad",
+    "paste": "Vložit ze schránky",
+    "pasteFailed": "Schránku se nepodařilo přečíst",
+    "clear": "Vymazat",
+    "characters_one": "{{count}} znak",
+    "characters_few": "{{count}} znaky",
+    "characters_many": "{{count}} znaku",
+    "characters_other": "{{count}} znaků",
+    "translating": "Překládám…",
+    "retry": "Zkusit znovu",
+    "shortcut": "Přeložit (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Hledat jazyky",
+    "noLanguages": "Žádný odpovídající jazyk",
+    "errorAuth": "Poskytovatel odmítl váš klíč API. Zkontrolujte ho v nastavení poskytovatele.",
+    "errorQuota": "Poskytovatel hlásí, že vám došla kvóta nebo jste omezeni limitem požadavků. Chvíli počkejte nebo zkontrolujte svůj tarif.",
+    "errorModelNotFound": "Poskytovatel tento model nemá. Vyberte jiný model nebo zkontrolujte nastavení poskytovatele.",
+    "errorNetwork": "K poskytovateli se nepodařilo připojit. Zkontrolujte připojení nebo zda server běží.",
+    "errorEngine": "Engine, který tento model spouští, není k dispozici. Restartujte Flint a zkuste to znovu.",
+    "openProvider": "Otevřít nastavení poskytovatele",
+    "errorDetails": "Podrobnosti",
+    "pasteHint": "Přístup ke schránce byl zablokován. Klikněte do textového pole a stiskněte {{keys}}.",
+    "swapNeedsSource": "Pro prohození vyberte zdrojový jazyk"
   },
   "markdownImage": {
     "load": "Načíst obrázek z {{host}}"
   },
   "messageSaveFailed": "Zprávu se nepodařilo uložit. Po restartu může být ztracena.",
   "threadSaveFailed": "Změnu tohoto vlákna se nepodařilo uložit. Byla vrácena.",
-  "attachmentsProcessFailed": "Přílohy se nepodařilo připravit, zpráva proto nebyla odeslána"
+  "attachmentsProcessFailed": "Přílohy se nepodařilo připravit, zpráva proto nebyla odeslána",
+  "settingsRecovered": {
+    "title": "Soubor nastavení se nepodařilo přečíst",
+    "withBackup": "Soubor {{file}} byl poškozen, proto Flint spustil s výchozím nastavením. Poškozený soubor byl uložen jako {{backup}}.",
+    "noBackup": "Soubor {{file}} byl poškozen, proto Flint spustil s výchozím nastavením. Kopii poškozeného souboru se nepodařilo uložit."
+  },
+  "promptLibrary": {
+    "title": "Knihovna promptů",
+    "description": "Prompty, které znovu používáte. Napište v poli zprávy @ nebo / a vložte jeden. Pro části, které pokaždé vyplňujete, použijte {{name}} nebo {{name:default}}.",
+    "manage": "Vaše prompty",
+    "add": "Přidat prompt",
+    "editTitle": "Upravit prompt",
+    "import": "Importovat",
+    "export": "Exportovat",
+    "imported_one": "Přidán {{count}} prompt",
+    "imported_few": "Přidány {{count}} prompty",
+    "imported_many": "Přidáno {{count}} promptu",
+    "imported_other": "Přidáno promptů: {{count}}",
+    "importedNone": "Nebyly nalezeny žádné nové prompty",
+    "search": "Hledat prompty",
+    "empty": "Zatím žádné prompty.",
+    "edit": "Upravit {{name}}",
+    "delete": "Smazat {{name}}",
+    "deleted": "Prompt smazán",
+    "undo": "Zpět",
+    "name": "Název",
+    "folder": "Složka (volitelné)",
+    "tags": "Štítky, oddělené čárkami",
+    "body": "Text promptu",
+    "bodyHint": "Napište prompt. Pro prázdná místa použijte {{topic}} nebo {{tone:friendly}}.",
+    "variables": "Ptá se na: {{names}}",
+    "defaultValue": "Výchozí: {{value}}",
+    "requiredField": "Povinné",
+    "fillNeeded": "Pro vložení vyplňte: {{names}}",
+    "insert": "Vložit",
+    "errors": {
+      "nameRequired": "Prompt potřebuje název",
+      "nameTooLong": "Tento název je příliš dlouhý",
+      "bodyRequired": "Prompt potřebuje nějaký text",
+      "bodyTooLong": "Tento prompt je příliš dlouhý",
+      "gone": "Tento prompt už neexistuje",
+      "invalidJson": "Tento soubor není platný JSON",
+      "noPrompts": "V tomto souboru nebyly nalezeny žádné prompty"
+    },
+    "noResults": "Žádný prompt neodpovídá „{{query}}“.",
+    "clearSearch": "Vymazat hledání"
+  },
+  "memoryProposal": {
+    "title": "Zapamatovat si to?",
+    "wouldApply": "Platilo by pro: {{where}}.",
+    "remember": "Zapamatovat",
+    "discard": "Zahodit",
+    "reviewBoth": "Zkontrolovat obě",
+    "saving": "Ukládání…",
+    "discarding": "Zahazování…",
+    "scope": {
+      "session": "tato konverzace",
+      "project": "tento projekt",
+      "user": "všude"
+    }
+  },
+  "picker": {
+    "filter": "Filtr",
+    "source": "Zdroj",
+    "sourceAll": "Vše",
+    "sourceLocal": "Místní",
+    "sourceCloud": "Cloud",
+    "capabilities": "Schopnosti",
+    "cap": {
+      "vision": "Vidění",
+      "tools": "Nástroje",
+      "reasoning": "Uvažování",
+      "embeddings": "Embedding"
+    },
+    "loadedNow": "Právě načteno",
+    "sort": "Řazení",
+    "sortDefault": "Výchozí pořadí",
+    "sortName": "Název (A–Z)",
+    "sortRecent": "Nedávno použité",
+    "sortSize": "Velikost",
+    "clearFilters": "Zrušit filtry",
+    "noMatch": "Žádný model neodpovídá",
+    "noMatchFilters": "Žádný model neodpovídá: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Relace",
+      "room": "Místnost"
+    },
+    "heading": "Konverzace",
+    "empty": "Žádné další konverzace",
+    "noMatch": "Žádná konverzace neodpovídá",
+    "messages": "Zprávy: {{n}}",
+    "included": "Zahrnuto: {{title}} (zprávy: {{n}}, ~{{size}} znaků)",
+    "group": "Zmíněné konverzace",
+    "summarize": "Shrnout",
+    "summarizeHint": "Zahrnout shrnutí místo posledních zpráv",
+    "remove": "Odebrat zmínku o {{title}}",
+    "mentioned": "Zmíněno: {{title}}",
+    "open": "Otevřít {{title}}",
+    "status": {
+      "missing": "Nenalezeno: {{title}}",
+      "self": "{{title}} je tato konverzace, a proto se vynechá",
+      "over-cap": "{{title}} se vynechá: nejvýše {{max}} konverzací na zprávu"
+    },
+    "excerpt": "Výňatek",
+    "summary": "Shrnutí",
+    "modeGroup": "Co zahrnout z {{title}}",
+    "excerptHint": "Nejnovější zprávy, asi {{tokens}} tokenů",
+    "summaryHint": "Shrnutí napsané modelem, nejvýš asi {{tokens}} tokenů",
+    "needsModel": "Načtěte model, chcete-li místo toho zahrnout shrnutí",
+    "totals_one": "{{count}} zpráva · zahrnuto ~{{tokens}} tokenů",
+    "totals_few": "{{count}} zprávy · zahrnuto ~{{tokens}} tokenů",
+    "totals_many": "{{count}} zprávy · zahrnuto ~{{tokens}} tokenů",
+    "totals_other": "{{count}} zpráv · zahrnuto ~{{tokens}} tokenů",
+    "readOnly": "Odesílá se jako citovaný kontext jen pro čtení. Model tuto konverzaci nemůže změnit.",
+    "tooLarge": "To je víc než čtvrtina kontextového okna modelu.",
+    "useSummary": "Použít shrnutí",
+    "resolving": "Vyhledávání {{title}}",
+    "chipStatus": {
+      "missing": "Nenalezeno",
+      "self": "Tato konverzace",
+      "over-cap": "Nad limitem"
+    },
+    "preview": {
+      "empty": "Zatím žádné zprávy",
+      "you": "Vy",
+      "assistant": "Asistent"
+    },
+    "messagesCount_one": "{{count}} zpráva",
+    "messagesCount_few": "{{count}} zprávy",
+    "messagesCount_many": "{{count}} zprávy",
+    "messagesCount_other": "{{count}} zpráv",
+    "compact_one": "{{count}} zmínka · {{mode}}",
+    "compact_few": "{{count}} zmínky · {{mode}}",
+    "compact_many": "{{count}} zmínky · {{mode}}",
+    "compact_other": "{{count}} zmínek · {{mode}}",
+    "mixed": "Smíšené"
+  },
+  "campaignList": {
+    "timeout": "Aplikace neodpověděla včas.",
+    "unreadableRecord": "backend poslal záznam, který tato stránka neumí přečíst"
+  },
+  "composer": {
+    "messageLabel": "Zpráva"
+  },
+  "routeLoading": {
+    "slow": "Otevření této stránky trvá déle než obvykle.",
+    "reload": "Načíst znovu",
+    "retry": "Zkusit znovu",
+    "failed": "Tuto stránku nelze otevřít"
+  },
+  "replyCutOff": {
+    "withTokens": "Useknuto na limitu odpovědi ({{tokens}} tokenů)",
+    "plain": "Useknuto na limitu odpovědi"
+  },
+  "routeNotFound": {
+    "title": "Stránka nenalezena",
+    "body": "Na adrese {{path}} žádná stránka není. Mohla být přesunuta, nebo je odkaz zastaralý.",
+    "home": "Přejít domů",
+    "settings": "Otevřít nastavení"
+  },
+  "waitingForYou": "Čeká na vás",
+  "dnd": {
+    "anItem": "položka",
+    "aGroup": "skupina",
+    "picked": "Zvednuto: {{item}}.",
+    "over": "{{item}} je nad skupinou {{group}}.",
+    "notOver": "{{item}} není nad žádnou skupinou.",
+    "dropped": "{{item}} přesunuto do skupiny {{group}}.",
+    "cancelled": "{{item}} vráceno zpět."
+  },
+  "searchEverything": "Hledat chaty, místnosti, stránky a nastavení…",
+  "noResultsFoundEverywhere": "V chatech, místnostech, relacích Cowork, stránkách ani nastavení nic neodpovídá. Zkuste jiné slovo.",
+  "selectModelNoKey": "Pro tuto relaci není vybrán žádný model a {{provider}} nemá klíč API. Nejprve vyberte model v nabídce modelů.",
+  "serverConnection": {
+    "offlineTitle": "Server Flint není dostupný.",
+    "offlineBody": "Znovu se připojuje… Co teď uděláte, se nemusí uložit, dokud se server nevrátí.",
+    "statusOffline": "Server nedostupný"
+  }
 }

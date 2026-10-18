@@ -72,8 +72,30 @@
       "body": "Dùng mô hình được lưu trữ bằng tài khoản của riêng bạn."
     },
     "import": {
-      "title": "Nhập một tệp",
-      "body": "Thêm tệp mô hình mà bạn đã có."
+      "title": "Thêm tệp mô hình",
+      "body": "Chọn tệp .gguf, hoặc tìm các mô hình mà Ollama, LM Studio và các ứng dụng khác đã lưu trên máy tính này. Không có gì được tải xuống."
     }
+  },
+  "fit": {
+    "heading": "Chạy ở đây có tốt không?"
+  },
+  "sample": {
+    "button": "Thử một câu hỏi mẫu",
+    "hint": "Đặt một câu hỏi vào ô tin nhắn. Nhấn Enter để gửi, hoặc sửa trước.",
+    "question": "Trong ba câu, hãy giải thích mô hình ngôn ngữ là gì và nó không làm được gì."
+  },
+  "approvalsNote": "Khi Flint muốn thay đổi một tệp hoặc chạy một lệnh, nó sẽ dừng lại và hỏi trước. Yêu cầu hiện trong cuộc trò chuyện cùng với chính xác những gì nó sẽ làm, và bạn chọn Cho phép hoặc Từ chối. Không có gì chạy cho đến khi bạn trả lời.",
+  "checklist": {
+    "label": "Tiến độ",
+    "model-added": "Đã thêm mô hình",
+    "first-chat": "Cuộc trò chuyện đầu tiên",
+    "first-project": "Dự án đầu tiên"
+  },
+  "sidebar": {
+    "title": "Tùy chỉnh thanh bên theo ý bạn",
+    "body": "Ẩn những mục bạn không dùng. Bạn có thể đổi bất cứ lúc nào trong Cài đặt, mục Giao diện.",
+    "customize": "Tùy chỉnh thanh bên",
+    "close": "Xong",
+    "bodyMinimal": "Flint bắt đầu với thanh bên gọn. Mọi trang khác nằm trong bảng lệnh, hoặc thêm lại chúng tại đây."
   }
 }

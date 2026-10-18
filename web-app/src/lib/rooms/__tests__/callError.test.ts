@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toRoomCallError } from '../callError'
+import { toRoomCallError, turnToolAccess } from '../callError'
 
 describe('toRoomCallError: refusals for length', () => {
   it('is an overflow, carrying the window the server named', () => {
@@ -25,5 +25,20 @@ describe('toRoomCallError: refusals for length', () => {
 
   it('is not an overflow for an unrelated failure', () => {
     expect(toRoomCallError(new Error('bad gateway')).kind).toBe('provider')
+  })
+})
+
+describe('turnToolAccess', () => {
+  it('keeps the access a discussion room gave', () => {
+    for (const a of ['none', 'read', 'edit', 'full'] as const) {
+      expect(turnToolAccess({ mode: 'round-robin' }, a)).toBe(a)
+    }
+  })
+
+  it('makes writers read-only in compare mode, where answers run side by side in one folder', () => {
+    expect(turnToolAccess({ mode: 'compare' }, 'edit')).toBe('read')
+    expect(turnToolAccess({ mode: 'compare' }, 'full')).toBe('read')
+    expect(turnToolAccess({ mode: 'compare' }, 'read')).toBe('read')
+    expect(turnToolAccess({ mode: 'compare' }, 'none')).toBe('none')
   })
 })

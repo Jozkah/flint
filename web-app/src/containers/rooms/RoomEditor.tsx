@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Lock, Pencil, Plus, Settings2, Users } from 'lucide-react'
+import { ChevronDown, Info, Lock, Pencil, Plus, Settings2, Trash2, Users } from 'lucide-react'
 import type {
   ModeratorConfig,
   Participant,
@@ -8,13 +8,19 @@ import type {
   Room,
   RoomLimits,
   RoomModelRef,
+  RoomToolBudget,
   SpeakingMode,
   ToolAccess,
 } from '@/lib/rooms/types'
-import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
+import { ROOM_LIMIT_CEILINGS, compareRunOf, type CompareRun } from '@/lib/rooms/types'
 import { MAX_EXTRA_FOLDERS } from '@/lib/rooms/controller'
 import type { WorkProfileId } from '@/lib/workProfiles'
 import { ParticipantPersonaFields } from './ParticipantPersonaFields'
+import { ParticipantToolsField } from './ParticipantToolsField'
+import { knownWindowFor } from '@/lib/rooms/availability'
+import { noteIsolation, useIsolationNotes } from '@/lib/rooms/isolation'
+import { ROOM_TOOL_BUDGET_CEILINGS, resolveToolBudget } from '@/lib/rooms/toolBudget'
+import { folderTrustStatus, trustFolder } from '@/lib/folderTrust'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -46,13 +52,17 @@ import {
 import {
   DEFAULT_THINKING_BUDGET_LEVEL,
   THINKING_BUDGET_LEVELS,
+  thinkingBudgetLabel,
   type ThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
 import { effortLabel, isEffortLevel } from '@/lib/modelEffort'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
-const MODES: SpeakingMode[] = ['round-robin', 'user-selected', 'moderator-selected']
+const MODES: SpeakingMode[] = ['round-robin', 'user-selected', 'moderator-selected', 'compare']
+const COMPARE_RUNS: CompareRun[] = ['together', 'one-by-one']
+/** Providers that run on this machine, where two models at once compete for memory. */
+const LOCAL_PROVIDERS = ['llamacpp', 'mlx']
 
 export const LIMIT_KEYS: (keyof RoomLimits)[] = [
   'maxRounds',
@@ -129,6 +139,7 @@ type DraftParticipant = {
   reasoning?: ParticipantReasoning
   assistantId?: string
   workProfile?: WorkProfileId
+  disabledTools: string[]
   source: Participant
 }
 
@@ -143,6 +154,7 @@ const toDraftParticipant = (p: Participant): DraftParticipant => ({
   reasoning: p.reasoning,
   assistantId: p.assistantId,
   workProfile: p.workProfile,
+  disabledTools: p.disabledTools ?? [],
   source: p,
 })
 
@@ -200,14 +212,16 @@ function ParticipantReasoningField({
           <span className="text-[12.5px] font-medium">
             {t('rooms:editor.thinkingBudget')}
           </span>
+          {/* Wraps: five labels in a 360px panel must not be cut to "Unli…". */}
           <Segmented<ThinkingBudgetLevelKey>
             size="sm"
+            wrap
             aria-label={t('rooms:editor.thinkingBudget')}
             value={level ?? DEFAULT_THINKING_BUDGET_LEVEL}
             onValueChange={(next) => !disabled && set({ level: next })}
             options={THINKING_BUDGET_LEVELS.map((l) => ({
               value: l.key,
-              label: l.label,
+              label: thinkingBudgetLabel(l.key),
             }))}
           />
           <p className="text-xs text-muted-foreground">
@@ -222,6 +236,7 @@ function ParticipantReasoningField({
           </span>
           <Segmented<string>
             size="sm"
+            wrap
             aria-label={t('rooms:editor.reasoningEffort')}
             value={level && effortLevels.includes(level) ? level : 'default'}
             onValueChange={(next) =>
@@ -241,6 +256,16 @@ function ParticipantReasoningField({
         </div>
       )}
     </div>
+  )
+}
+
+/** One group of an opened participant card: a small heading over its fields. */
+function ParticipantSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col gap-2.5">
+      <h5 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h5>
+      {children}
+    </section>
   )
 }
 
@@ -310,20 +335,122 @@ const toolKey = (v: ToolAccess) =>
         ? 'rooms:editor.toolEdit'
         : 'rooms:editor.toolFull'
 
+type BudgetKey = 'maxToolCalls' | 'maxSteps' | 'toolTimeoutSec'
+const BUDGET_KEYS: BudgetKey[] = ['maxToolCalls', 'maxSteps', 'toolTimeoutSec']
+type BudgetDraft = Record<BudgetKey, string>
+const toBudgetDraft = (b: RoomToolBudget | undefined): BudgetDraft => ({
+  maxToolCalls: b?.maxToolCalls != null ? String(b.maxToolCalls) : '',
+  maxSteps: b?.maxSteps != null ? String(b.maxSteps) : '',
+  toolTimeoutSec: b?.toolTimeoutSec != null ? String(b.toolTimeoutSec) : '',
+})
+const budgetFromDraft = (d: BudgetDraft): RoomToolBudget | null => {
+  const out: RoomToolBudget = {}
+  for (const k of BUDGET_KEYS) {
+    const n = Number(d[k])
+    if (d[k].trim() !== '' && Number.isFinite(n)) out[k] = n
+  }
+  return Object.keys(out).length ? out : null
+}
+/** What an empty budget field means: steps depend on access, so both are named. */
+const budgetDefault = (k: BudgetKey): string =>
+  k === 'maxSteps'
+    ? `${resolveToolBudget(undefined, 'edit').maxSteps}/${resolveToolBudget(undefined, 'full').maxSteps}`
+    : String(resolveToolBudget(undefined, 'edit')[k])
+
+/**
+ * Compare rooms with two or more writers: whether each gets its own isolated
+ * workspace, or why not (the writers then only read).
+ */
+function useFolderTrusted(folder: string | null, wanted: boolean) {
+  const [trust, setTrust] = useState<boolean | null>(null)
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    if (!folder || !wanted) return
+    let live = true
+    void folderTrustStatus(folder).then((st) => {
+      if (live) setTrust(st ? st.trusted : null)
+    })
+    return () => {
+      live = false
+    }
+  }, [folder, wanted, tick])
+  return [trust, () => setTick((n) => n + 1)] as const
+}
+
+/**
+ * Compare rooms with a writer: whether writers get their own isolated
+ * workspace, or why not (they then only read). An untrusted folder can be
+ * trusted from here (R-040).
+ */
+function CompareIsolationNote({
+  roomId,
+  folder,
+  writers,
+  t,
+  testId = 'compare-isolation',
+}: {
+  roomId: string
+  folder: string | null
+  writers: number
+  t: ReturnType<typeof useTranslation>['t']
+  testId?: string
+}) {
+  const runNote = useIsolationNotes((s) => s.notes[roomId])
+  const [trust, recheck] = useFolderTrusted(folder, writers > 0)
+  const [trustError, setTrustError] = useState<string | null>(null)
+  if (!folder || writers < 1) return null
+  const untrusted = trust === false
+  const reason = untrusted ? t('rooms:editor.isolation.untrusted') : runNote
+  const grant = async () => {
+    setTrustError(null)
+    try {
+      await trustFolder(folder)
+      noteIsolation(roomId, null)
+      recheck()
+    } catch (e) {
+      setTrustError(e instanceof Error ? e.message : String(e))
+    }
+  }
+  return (
+    <div data-testid={testId} role="note" className="flex flex-col items-start gap-1.5">
+      <p className={cn('text-xs', reason ? 'text-warning' : 'text-muted-foreground')}>
+        {reason
+          ? t('rooms:editor.isolation.unavailable', { reason })
+          : t('rooms:editor.isolation.active')}
+      </p>
+      {untrusted && (
+        <Button type="button" size="xs" variant="outline" onClick={() => void grant()}>
+          {t('rooms:editor.isolation.trust')}
+        </Button>
+      )}
+      {trustError && <p className="text-xs text-destructive">{trustError}</p>}
+    </div>
+  )
+}
+
+/** How long after the last edit the editor saves by itself. */
+export const AUTOSAVE_MS = 700
+
 export function RoomEditor({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
   const serviceHub = useServiceHub()
   const { pendingAction, liveTurn } = useRoomsState()
   const providers = useModelProvider((s) => s.providers)
+  const lookup = useMemo(
+    () => (name: string) => providers.find((pr) => pr.provider === name),
+    [providers]
+  )
   const uid = useId()
   const locked = !isEditable(room.status)
 
   const [title, setTitle] = useState(room.title)
   const [objective, setObjective] = useState(room.objective)
   const [mode, setMode] = useState<SpeakingMode>(room.mode)
+  const [compareRun, setCompareRun] = useState<CompareRun>(compareRunOf(room))
   const [moderator, setModerator] = useState<ModeratorConfig>(room.moderator)
   const [limits, setLimits] = useState<LimitDraft>(() => toLimitDraft(room.limits))
+  const [budget, setBudget] = useState<BudgetDraft>(() => toBudgetDraft(room.toolBudget))
   const [participants, setParticipants] = useState<DraftParticipant[]>(() =>
     activeParticipants(room).map(toDraftParticipant)
   )
@@ -337,6 +464,11 @@ export function RoomEditor({ room }: { room: Room }) {
   // A room without enough participants opens straight onto the add form.
   const [addOpen, setAddOpen] = useState(() => activeParticipants(room).length < 2)
   const dirty = useRef(false)
+  // Every edit bumps this; a save clears `dirty` only when nothing changed
+  // while it was in flight.
+  const editGen = useRef(0)
+  // Edits save themselves shortly after the last change (R-041).
+  const [autosaveTick, setAutosaveTick] = useState(0)
 
   const [newName, setNewName] = useState('')
   const [newRole, setNewRole] = useState('')
@@ -352,8 +484,10 @@ export function RoomEditor({ room }: { room: Room }) {
       setTitle(room.title)
       setObjective(room.objective)
       setMode(room.mode)
+      setCompareRun(compareRunOf(room))
       setModerator(room.moderator)
       setLimits(toLimitDraft(room.limits))
+      setBudget(toBudgetDraft(room.toolBudget))
       setParticipants(fresh)
       return
     }
@@ -370,9 +504,15 @@ export function RoomEditor({ room }: { room: Room }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.id, room.rev])
 
-  const edit = <V,>(setter: (v: V) => void) => (v: V) => {
+  const markEdited = () => {
     dirty.current = true
+    editGen.current += 1
     setSaved(false)
+    setAutosaveTick((n) => n + 1)
+  }
+
+  const edit = <V,>(setter: (v: V) => void) => (v: V) => {
+    markEdited()
     setter(v)
   }
 
@@ -400,15 +540,17 @@ export function RoomEditor({ room }: { room: Room }) {
     })
 
   const updateParticipant = (id: string, patch: Partial<DraftParticipant>) => {
-    dirty.current = true
-    setSaved(false)
+    markEdited()
     setParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)))
   }
 
-  const save = async () => {
+  const save = async (auto = false) => {
+    if (auto && (!dirty.current || locked)) return
     setShowErrors(true)
     const keys = Object.keys(errors)
     if (keys.length > 0) {
+      // An autosave only shows the problems; it does not move the view.
+      if (auto) return
       // Bring every problem into view: open the participants that have one and
       // switch to the settings tab that holds the first settings error.
       const bad = participants.filter((p) => keys.some((k) => k.startsWith(`${p.id}:`)))
@@ -418,6 +560,7 @@ export function RoomEditor({ room }: { room: Room }) {
     }
     setSaving(true)
     setError(null)
+    const gen = editGen.current
     try {
       const nextParticipants = room.participants.map((p) => {
         const d = participants.find((x) => x.id === p.id)
@@ -434,6 +577,7 @@ export function RoomEditor({ room }: { room: Room }) {
           toolAccess: d.toolAccess,
           assistantId: d.assistantId ?? null,
           workProfile: d.workProfile ?? null,
+          disabledTools: d.disabledTools,
           pricing: parsePricing(d),
           // Only what the chosen model acts on is kept; `null` returns the
           // participant to the model's default.
@@ -449,11 +593,13 @@ export function RoomEditor({ room }: { room: Room }) {
         title: title.trim(),
         objective: objective.trim(),
         mode,
+        ...(mode === 'compare' ? { compareRun } : {}),
         moderator: { ...moderator, name: moderator.name.trim() },
         limits: limitsFromDraft(limits),
+        toolBudget: budgetFromDraft(budget),
         participants: nextParticipants,
       })
-      dirty.current = false
+      if (editGen.current === gen) dirty.current = false
       setShowErrors(false)
       setSaved(true)
     } catch (err) {
@@ -462,6 +608,32 @@ export function RoomEditor({ room }: { room: Room }) {
       setSaving(false)
     }
   }
+
+  // The latest save, for the timer and the unmount flush.
+  const saveRef = useRef(save)
+  saveRef.current = save
+  useEffect(() => {
+    if (autosaveTick === 0) return
+    const timer = setTimeout(() => void saveRef.current(true), AUTOSAVE_MS)
+    return () => clearTimeout(timer)
+  }, [autosaveTick])
+  // Leaving the editor (another room, another page) still saves the edit.
+  useEffect(
+    () => () => {
+      if (dirty.current) void saveRef.current(true)
+    },
+    []
+  )
+
+  const saveStatus = saving ? (
+    <span role="status" data-testid="room-save-status" className="text-xs text-muted-foreground">
+      {t('rooms:editor.saving')}
+    </span>
+  ) : saved ? (
+    <span role="status" data-testid="room-save-status" className="text-xs text-muted-foreground">
+      {t('rooms:editor.saved')}
+    </span>
+  ) : null
 
   const add = async () => {
     const errs: Errors = {}
@@ -570,6 +742,8 @@ export function RoomEditor({ room }: { room: Room }) {
           icon={<Users />}
           title={`${t('rooms:editor.participants')} · ${participants.length}`}
           actions={
+            <span className="flex items-center gap-2">
+            {saveStatus}
             <Button
               type="button"
               size="sm"
@@ -582,10 +756,11 @@ export function RoomEditor({ room }: { room: Room }) {
               <Plus aria-hidden />
               {t('rooms:editor.addShort')}
             </Button>
+            </span>
           }
         />
         <FrameBody className="gap-0 p-2">
-          <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-0.5">
+          <fieldset disabled={disabled} className="room-participants flex min-w-0 flex-col gap-0.5">
             {participants.length === 0 && (
               <p className="px-1.5 py-2 text-xs text-muted-foreground">
                 {t('rooms:editor.noParticipants')}
@@ -660,8 +835,11 @@ export function RoomEditor({ room }: { room: Room }) {
                     </span>
                   </summary>
 
-                  <div className="flex min-w-0 flex-col gap-3 px-2 pt-1 pb-3">
-                    <div className="grid gap-2 sm:grid-cols-2">
+                  {/* Three groups -- who, which model, what tools -- then a quiet
+                      footer. Columns follow the panel's own width (@container),
+                      not the window's, so a 360px side panel stays one column. */}
+                  <div className="@container flex min-w-0 flex-col gap-4 px-2.5 pt-1 pb-2.5">
+                    <ParticipantSection title={t('rooms:editor.sectionIdentity')}>
                       <div className="flex min-w-0 flex-col gap-1.5">
                         <Label htmlFor={`${pid}-name`}>{t('rooms:editor.participantName')}</Label>
                         <Input
@@ -673,123 +851,155 @@ export function RoomEditor({ room }: { room: Room }) {
                         />
                         <FieldError id={`${pid}-name-error`} message={visibleErrors[`${p.id}:name`]} />
                       </div>
-                    </div>
-                    <ParticipantPersonaFields
-                      idPrefix={pid}
-                      role={p.role}
-                      assistantId={p.assistantId}
-                      workProfile={p.workProfile}
-                      disabled={disabled}
-                      onChange={(patch) => updateParticipant(p.id, patch)}
-                    />
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`${pid}-model`}>{t('rooms:editor.participantModel')}</Label>
-                      <RoomModelSelect
-                        id={`${pid}-model`}
-                        value={p.model}
+                      <ParticipantPersonaFields
+                        idPrefix={pid}
+                        role={p.role}
+                        assistantId={p.assistantId}
+                        workProfile={p.workProfile}
                         disabled={disabled}
-                        invalid={Boolean(visibleErrors[`${p.id}:model`])}
-                        describedBy={`${pid}-model-error ${pid}-availability`}
-                        onChange={(ref) => updateParticipant(p.id, { model: ref })}
+                        onChange={(patch) => updateParticipant(p.id, patch)}
                       />
-                      <FieldError id={`${pid}-model-error`} message={visibleErrors[`${p.id}:model`]} />
-                      {availability.state === 'unavailable' && (
-                        <p
-                          id={`${pid}-availability`}
-                          data-testid="participant-availability"
-                          className="text-xs text-destructive"
-                        >
-                          {t(`rooms:availability.${availability.reason}`)}
-                          {availability.message ? ` — ${availability.message}` : ''}
-                        </p>
-                      )}
-                    </div>
+                    </ParticipantSection>
 
-                    <div className="flex flex-col gap-1.5">
-                      <span id={`${pid}-tools`} className="text-[12.5px] font-medium">
-                        {t('rooms:editor.toolAccess')}
-                      </span>
-                      <RadioGroup
-                        aria-labelledby={`${pid}-tools`}
-                        aria-describedby={`${pid}-tools-hint`}
-                        value={tools ? p.toolAccess : 'none'}
-                        disabled={disabled || !tools}
-                        onValueChange={(v) => updateParticipant(p.id, { toolAccess: v as ToolAccess })}
-                        className="flex flex-wrap gap-4"
-                      >
-                        {(['none', 'read', 'edit', 'full'] as const).map((v) => (
-                          <div key={v} className="flex items-center gap-2">
-                            <RadioGroupItem id={`${pid}-tools-${v}`} value={v} aria-label={t(toolKey(v))} />
-                            <Label htmlFor={`${pid}-tools-${v}`}>{t(toolKey(v))}</Label>
-                          </div>
-                        ))}
-                      </RadioGroup>
-                      <p id={`${pid}-tools-hint`} className="text-xs text-muted-foreground">
-                        {!tools
-                          ? t('rooms:editor.toolUnsupported')
-                          : p.toolAccess === 'full'
-                            ? t('rooms:editor.toolFullHint')
-                            : p.toolAccess === 'edit'
-                              ? t('rooms:editor.toolEditHint')
-                              : t('rooms:editor.toolReadHint')}
-                      </p>
-                    </div>
-
-                    <ParticipantReasoningField
-                      pid={pid}
-                      t={t}
-                      disabled={disabled}
-                      controls={participantReasoningControls(p.model.provider, model)}
-                      value={p.reasoning}
-                      onChange={(reasoning) => updateParticipant(p.id, { reasoning })}
-                    />
-
-                    <details className="group/price text-sm">
-                      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-                        <ChevronDown
-                          aria-hidden
-                          className="size-3 -rotate-90 transition-transform duration-200 group-open/price:rotate-0"
+                    <ParticipantSection title={t('rooms:editor.sectionModel')}>
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <Label htmlFor={`${pid}-model`}>{t('rooms:editor.participantModel')}</Label>
+                        <RoomModelSelect
+                          id={`${pid}-model`}
+                          value={p.model}
+                          disabled={disabled}
+                          invalid={Boolean(visibleErrors[`${p.id}:model`])}
+                          describedBy={`${pid}-model-error ${pid}-availability`}
+                          onChange={(ref) => updateParticipant(p.id, { model: ref })}
                         />
-                        {t('rooms:editor.pricing')}
-                      </summary>
-                      <p className="mt-1 text-xs text-muted-foreground">{t('rooms:editor.pricingHint')}</p>
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        <div className="flex min-w-0 flex-col gap-1.5">
-                          <Label htmlFor={`${pid}-price-in`}>{t('rooms:editor.priceInput')}</Label>
-                          <Input
-                            id={`${pid}-price-in`}
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={p.priceIn}
-                            onChange={(e) => updateParticipant(p.id, { priceIn: e.target.value })}
-                          />
-                        </div>
-                        <div className="flex min-w-0 flex-col gap-1.5">
-                          <Label htmlFor={`${pid}-price-out`}>{t('rooms:editor.priceOutput')}</Label>
-                          <Input
-                            id={`${pid}-price-out`}
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={p.priceOut}
-                            onChange={(e) => updateParticipant(p.id, { priceOut: e.target.value })}
-                          />
-                        </div>
+                        <FieldError id={`${pid}-model-error`} message={visibleErrors[`${p.id}:model`]} />
+                        {availability.state === 'unavailable' && (
+                          <p
+                            id={`${pid}-availability`}
+                            data-testid="participant-availability"
+                            className="text-xs text-destructive"
+                          >
+                            {t(`rooms:availability.${availability.reason}`)}
+                            {availability.message ? ` — ${availability.message}` : ''}
+                          </p>
+                        )}
                       </div>
-                    </details>
+                      <ParticipantReasoningField
+                        pid={pid}
+                        t={t}
+                        disabled={disabled}
+                        controls={participantReasoningControls(p.model.provider, model)}
+                        value={p.reasoning}
+                        onChange={(reasoning) => updateParticipant(p.id, { reasoning })}
+                      />
+                    </ParticipantSection>
 
-                    <div>
+                    <ParticipantSection title={t('rooms:editor.sectionTools')}>
+                      <div className="flex flex-col gap-1.5">
+                        <span id={`${pid}-tools`} className="text-[12.5px] font-medium">
+                          {t('rooms:editor.toolAccess')}
+                        </span>
+                        <Segmented<ToolAccess>
+                          size="sm"
+                          wrap
+                          aria-label={t('rooms:editor.toolAccess')}
+                          value={tools ? p.toolAccess : 'none'}
+                          onValueChange={(v) => !disabled && tools && updateParticipant(p.id, { toolAccess: v })}
+                          options={(['none', 'read', 'edit', 'full'] as const).map((v) => ({
+                            value: v,
+                            label: t(toolKey(v)),
+                            disabled: disabled || !tools,
+                            testId: `${pid}-tools-${v}`,
+                          }))}
+                        />
+                        {!tools ? (
+                          <p
+                            id={`${pid}-tools-hint`}
+                            className="flex items-start gap-1.5 rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground"
+                          >
+                            <Info aria-hidden className="mt-px size-3.5 shrink-0" />
+                            <span className="min-w-0">{t('rooms:editor.toolUnsupported')}</span>
+                          </p>
+                        ) : (
+                          <p id={`${pid}-tools-hint`} className="text-xs text-muted-foreground">
+                            {p.toolAccess === 'full'
+                              ? t('rooms:editor.toolFullHint')
+                              : p.toolAccess === 'edit'
+                                ? t('rooms:editor.toolEditHint')
+                                : t('rooms:editor.toolReadHint')}
+                          </p>
+                        )}
+                      </div>
+                      {tools && mode === 'compare' && (access === 'edit' || access === 'full') && (
+                        <CompareIsolationNote
+                          roomId={room.id}
+                          folder={room.folder ?? null}
+                          writers={1}
+                          t={t}
+                          testId="participant-isolation"
+                        />
+                      )}
+                      {tools && (
+                        <ParticipantToolsField
+                          pid={pid}
+                          t={t}
+                          folder={room.folder ?? null}
+                          access={access}
+                          window={knownWindowFor(p.model, lookup)}
+                          disabledTools={p.disabledTools}
+                          disabled={disabled}
+                          onChange={(next) => updateParticipant(p.id, { disabledTools: next })}
+                        />
+                      )}
+                    </ParticipantSection>
+
+                    <footer className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-2 border-t border-border pt-2.5">
+                      <details className="group/price min-w-0 flex-1 basis-48 text-sm">
+                        <summary className="flex h-6 cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                          <ChevronDown
+                            aria-hidden
+                            className="size-3 -rotate-90 transition-transform duration-200 group-open/price:rotate-0"
+                          />
+                          {t('rooms:editor.pricing')}
+                        </summary>
+                        <p className="mt-1 text-xs text-muted-foreground">{t('rooms:editor.pricingHint')}</p>
+                        <div className="mt-2 grid gap-2 @[26rem]:grid-cols-2">
+                          <div className="flex min-w-0 flex-col gap-1.5">
+                            <Label htmlFor={`${pid}-price-in`}>{t('rooms:editor.priceInput')}</Label>
+                            <Input
+                              id={`${pid}-price-in`}
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={p.priceIn}
+                              onChange={(e) => updateParticipant(p.id, { priceIn: e.target.value })}
+                            />
+                          </div>
+                          <div className="flex min-w-0 flex-col gap-1.5">
+                            <Label htmlFor={`${pid}-price-out`}>{t('rooms:editor.priceOutput')}</Label>
+                            <Input
+                              id={`${pid}-price-out`}
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={p.priceOut}
+                              onChange={(e) => updateParticipant(p.id, { priceOut: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </details>
                       <Button
                         type="button"
                         size="xs"
-                        variant="destructive"
+                        variant="ghost"
+                        className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         aria-label={t('rooms:editor.removeLabel', { name: p.name })}
                         onClick={() => void remove(p.id)}
                       >
+                        <Trash2 aria-hidden />
                         {t('rooms:editor.remove')}
                       </Button>
-                    </div>
+                    </footer>
                   </div>
                 </details>
               )
@@ -798,7 +1008,7 @@ export function RoomEditor({ room }: { room: Room }) {
             <div
               id={`${uid}-add`}
               hidden={!addOpen}
-              className="mt-1.5 flex min-w-0 flex-col gap-2 rounded-[10px] border border-dashed border-border-strong p-3 motion-safe:animate-dd-in"
+              className="@container mt-1.5 flex min-w-0 flex-col gap-2 rounded-[10px] border border-dashed border-border-strong p-3 motion-safe:animate-dd-in"
             >
               <h4 className="text-xs font-medium text-muted-foreground">{t('rooms:editor.addHeading')}</h4>
               {participants.length < 2 && (
@@ -812,7 +1022,7 @@ export function RoomEditor({ room }: { room: Room }) {
                 </p>
               ) : (
                 <>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid gap-2 @[26rem]:grid-cols-2">
                     <div className="flex min-w-0 flex-col gap-1.5">
                       <Label htmlFor={`${uid}-new-name`}>{t('rooms:editor.participantName')}</Label>
                       <Input
@@ -888,11 +1098,34 @@ export function RoomEditor({ room }: { room: Room }) {
             ]}
           />
 
+          {/* Why everything below is read-only, before the fields, not under them. */}
+          {locked && (
+            <div
+              role="note"
+              className="flex items-center gap-2 rounded-[10px] bg-muted px-2.5 py-2 text-xs text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
+            >
+              <Lock aria-hidden className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1">{t('rooms:editor.lockedWhileRunning')}</span>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                disabled={pendingAction !== null}
+                onClick={() => void pause()}
+              >
+                {t('rooms:controls.pause')}
+              </Button>
+            </div>
+          )}
+
           <fieldset
             disabled={disabled}
             className={cn(
-              'flex min-w-0 flex-col gap-2.5 transition-opacity',
-              locked && 'opacity-55'
+              'flex min-w-0 flex-col gap-2.5',
+              // Locked reads as read-only, not as gone: labels and values stay
+              // at muted-foreground contrast (>=4.5:1) instead of fading to ~2:1.
+              locked &&
+                '[&_[data-slot=label]]:opacity-100! [&_[data-slot=label]]:text-muted-foreground [&_input:disabled]:opacity-100! [&_input:disabled]:bg-muted [&_input:disabled]:text-muted-foreground [&_textarea:disabled]:opacity-100! [&_textarea:disabled]:text-muted-foreground'
             )}
           >
             <div hidden={tab !== 'general'} className="flex min-w-0 flex-col gap-2.5">
@@ -1005,6 +1238,49 @@ export function RoomEditor({ room }: { room: Room }) {
                 ))}
               </RadioGroup>
               <FieldError id={`${uid}-mode-error`} message={visibleErrors.mode} />
+              {mode === 'compare' && (
+                <CompareIsolationNote
+                  roomId={room.id}
+                  folder={room.folder ?? null}
+                  writers={participants.filter((p) => p.toolAccess === 'edit' || p.toolAccess === 'full').length}
+                  t={t}
+                />
+              )}
+              {mode === 'compare' && (
+                <div data-testid="compare-run-setting" className="flex min-w-0 flex-col gap-1.5 pt-1">
+                  <span id={`${uid}-run`} className="text-[12.5px] font-medium">
+                    {t('rooms:editor.compareRun')}
+                  </span>
+                  <p className="text-xs text-muted-foreground">{t('rooms:editor.compareRunHint')}</p>
+                  <RadioGroup
+                    aria-labelledby={`${uid}-run`}
+                    value={compareRun}
+                    disabled={disabled}
+                    onValueChange={(v) => edit(setCompareRun)(v as CompareRun)}
+                    className="gap-1"
+                  >
+                    {COMPARE_RUNS.map((r) => (
+                      <label
+                        key={r}
+                        htmlFor={`${uid}-run-${r}`}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-2.5 rounded-[10px] border-[0.8px] border-transparent p-2 text-[13px] transition-colors hover:bg-hover-row',
+                          compareRun === r && 'border-border bg-card shadow-lift'
+                        )}
+                      >
+                        <RadioGroupItem id={`${uid}-run-${r}`} value={r} />
+                        {t(`rooms:editor.compareRunOption.${r}`)}
+                      </label>
+                    ))}
+                  </RadioGroup>
+                  {compareRun === 'together' &&
+                    participants.filter((p) => LOCAL_PROVIDERS.includes(p.model.provider)).length >= 2 && (
+                      <p data-testid="compare-run-suggest" className="text-xs text-warning">
+                        {t('rooms:editor.compareRunSuggest')}
+                      </p>
+                    )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
                 <div className="min-w-0">
@@ -1097,36 +1373,42 @@ export function RoomEditor({ room }: { room: Room }) {
                   )
                 })}
               </div>
+              <div data-testid="tool-budget" className="flex min-w-0 flex-col gap-2 pt-2">
+                <span className="text-[12.5px] font-medium">{t('rooms:editor.budget.heading')}</span>
+                <p className="text-xs text-muted-foreground">{t('rooms:editor.budget.hint')}</p>
+                <div className="grid gap-x-2.5 gap-y-3 sm:grid-cols-3">
+                  {BUDGET_KEYS.map((key) => {
+                    const bid = `${uid}-budget-${key}`
+                    return (
+                      <div key={key} className="flex min-w-0 flex-col gap-1.5">
+                        <Label htmlFor={bid}>{t(`rooms:editor.budget.${key}`)}</Label>
+                        <Input
+                          id={bid}
+                          type="number"
+                          className="tabular-nums"
+                          min={1}
+                          max={ROOM_TOOL_BUDGET_CEILINGS[key]}
+                          value={budget[key]}
+                          placeholder={t('rooms:editor.budget.default', { value: budgetDefault(key) })}
+                          onChange={(e) => edit(setBudget)({ ...budget, [key]: e.target.value })}
+                        />
+                        <p className="text-[11.5px] text-muted-foreground">
+                          {t('rooms:editor.ceiling', { max: ROOM_TOOL_BUDGET_CEILINGS[key] })}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           </fieldset>
 
-          {locked ? (
-            <div
-              role="note"
-              className="flex items-center gap-2 rounded-[10px] bg-muted px-2.5 py-2 text-xs text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
-            >
-              <Lock aria-hidden className="size-3.5 shrink-0" />
-              <span className="min-w-0 flex-1">{t('rooms:editor.lockedWhileRunning')}</span>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                disabled={pendingAction !== null}
-                onClick={() => void pause()}
-              >
-                {t('rooms:controls.pause')}
-              </Button>
-            </div>
-          ) : (
+          {locked ? null : (
             <div className="flex flex-col items-stretch gap-2">
               <Button type="submit" className="w-full" disabled={busy}>
                 {t('rooms:editor.save')}
               </Button>
-              {saved && (
-                <span role="status" className="text-center text-xs text-muted-foreground">
-                  {t('rooms:editor.saved')}
-                </span>
-              )}
+              {saveStatus && <span className="text-center">{saveStatus}</span>}
             </div>
           )}
           {error && (

@@ -36,7 +36,7 @@ const ShimmerComponent = ({
     <MotionComponent
       animate={{ backgroundPosition: "0% center" }}
       className={cn(
-        "relative inline-block bg-clip-text text-transparent",
+        "descender-safe relative inline-block bg-clip-text text-transparent",
         className,
       )}
       initial={{ backgroundPosition: "100% center" }}

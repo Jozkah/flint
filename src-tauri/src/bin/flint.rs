@@ -313,6 +313,11 @@ enum Commands {
         /// Where the background starter collects the first-run credential
         #[arg(long, hide = true)]
         credential_file: Option<std::path::PathBuf>,
+        /// A reverse proxy on this machine (Tailscale Serve, Caddy) fronts the
+        /// server: believe its X-Forwarded-For on loopback connections when
+        /// rate-limiting sign-in. Off by default
+        #[arg(long)]
+        trust_proxy: bool,
     },
     /// Stop the `flint serve` running on this data folder
     Stop {
@@ -325,6 +330,30 @@ enum Commands {
     Cli {
         #[command(subcommand)]
         cmd: CliCommands,
+    },
+    /// Start an installed coding CLI (claude, codex, aider) pointed at the local Flint API server
+    #[command(display_order = 3)]
+    Launch {
+        /// The tool to start: claude, codex or aider
+        tool: String,
+        /// The model the tool should ask the server for
+        #[arg(long)]
+        model: Option<String>,
+        /// The server to use (default: the address saved in Flint's settings, else http://127.0.0.1:1337/v1)
+        #[arg(long)]
+        base_url: Option<String>,
+        /// The server's API key (default: $FLINT_API_KEY, else none)
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Print the command and environment that would run, and run nothing
+        #[arg(long)]
+        dry_run: bool,
+        /// With --dry-run, print JSON
+        #[arg(long)]
+        json: bool,
+        /// Arguments passed to the tool, after `--`
+        #[arg(last = true)]
+        args: Vec<String>,
     },
     /// Sign in to Tokamak and save the API key to ~/.jan/config.toml
     #[command(display_order = 2)]
@@ -542,6 +571,12 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: ScheduleCommands,
     },
+    /// Automations: typed, validated runs with a trigger, tool profile, budget and folders
+    #[command(display_order = 16)]
+    Automation {
+        #[command(subcommand)]
+        cmd: AutomationCommands,
+    },
     /// Where Flint keeps its data; `--set` moves it (copying what is there)
     #[command(display_order = 20)]
     DataFolder {
@@ -551,6 +586,18 @@ enum CliCommands {
         /// With `--set`, do not copy the current folder's contents across
         #[arg(long)]
         no_copy: bool,
+    },
+    /// Trust a folder to run its own hooks and agent definitions, for good
+    #[command(display_order = 21)]
+    Trust {
+        /// The folder to trust (default: the current one)
+        folder: Option<std::path::PathBuf>,
+        /// Stop trusting it instead
+        #[arg(long)]
+        revoke: bool,
+        /// List the trusted folders and exit
+        #[arg(long)]
+        list: bool,
     },
     /// Bring Claude Code skills and plugins in from ~/.claude
     #[command(display_order = 22)]
@@ -581,6 +628,59 @@ enum CliCommands {
     Archive {
         #[command(subcommand)]
         cmd: ArchiveCommands,
+    },
+    /// Speak the Agent Client Protocol on stdin/stdout, so an editor can run
+    /// Flint as its agent
+    #[command(display_order = 18)]
+    Acp,
+    /// Permission prompts put off to answer later, and the scoped rules
+    /// saved with "allow always"
+    #[command(display_order = 23)]
+    Approvals {
+        #[command(subcommand)]
+        cmd: ApprovalsCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum AutomationCommands {
+    /// List the saved automations
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print one automation's definition
+    Show { id: String },
+    /// Check a definition file and list every problem, without saving it
+    Validate {
+        #[arg(long)]
+        file: std::path::PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate a definition file and save it (replacing an automation with the same id)
+    Add {
+        #[arg(long)]
+        file: std::path::PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Start a run now, detached; `--wait` stays until it ends
+    Run {
+        /// The automation id (see `list`)
+        id: String,
+        /// Work in this one of the automation's folders (default: the first)
+        #[arg(long)]
+        folder: Option<String>,
+        #[arg(long)]
+        wait: bool,
+    },
+    /// Delete an automation, its schedule entry and its run history
+    Remove {
+        id: String,
+        /// Confirm: the run history goes with it
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -1303,6 +1403,16 @@ enum AgentCommands {
         #[arg(long)]
         show: Option<String>,
     },
+    /// Print what a run changed: every side-effecting tool call it made (file
+    /// writes with the file's hash before and after, commands, network calls),
+    /// in order, from the session's record
+    Ledger {
+        /// A run id (`<session>#run-N`), or a session id for all of its runs
+        run: String,
+        /// Print the entries as a JSON array
+        #[arg(long)]
+        json: bool,
+    },
     /// Print the protocol's JSON Schema, generated from the types that define
     /// the channel (see `protocol/schema.json`)
     Schema {
@@ -1498,6 +1608,19 @@ enum MemoryCommands {
         #[command(flatten)]
         place: MemoryPlace,
     },
+    /// Read-only report: counts, near-duplicates, superseded leftovers,
+    /// never-recalled and stale memories, and what they cost in a prompt
+    Audit {
+        /// Print the report as JSON
+        #[arg(long)]
+        json: bool,
+        /// Report memories untouched for more than this many days
+        #[arg(long, default_value_t = 90)]
+        stale_days: u32,
+        /// The project folder whose memory is audited
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
     /// Write a scope's memories, with provenance, to a file
     Export {
         scope: String,
@@ -1636,6 +1759,36 @@ enum SkillsCommands {
         #[arg(long, default_value = ".")]
         project: String,
     },
+}
+
+#[derive(Subcommand)]
+enum ApprovalsCommands {
+    /// List the permission prompts a run put off (`[approvals] defer = true`)
+    List {
+        /// Only this project folder
+        #[arg(long)]
+        project: Option<std::path::PathBuf>,
+        /// Include answered, applied, expired and voided ones
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Allow a put-off call; the resumed session's identical call then runs once
+    Allow { id: String },
+    /// Deny a put-off call
+    Deny { id: String },
+    /// Drop a record from the list
+    Discard { id: String },
+    /// List the scoped rules saved with "allow always" (folder, command prefix)
+    Rules {
+        #[arg(long)]
+        project: Option<std::path::PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Revoke a scoped rule by its id
+    Revoke { id: String },
 }
 
 #[derive(Subcommand)]
@@ -2027,6 +2180,15 @@ async fn run() {
     // copy per shell command.
     tauri_plugin_agent_tools::run_sandbox_helper_if_requested();
 
+    // The same trusted-folder list the desktop app keeps, so a folder trusted
+    // there is trusted here, and one that is not stays off.
+    tauri_plugin_agent_tools::folder_trust::set_store(
+        app_lib::core::app::commands::resolve_jan_data_folder().join("trusted-folders.json"),
+    );
+    tauri_plugin_agent_tools::folder_trust::close_migration_if_fresh(
+        &app_lib::core::app::commands::resolve_jan_data_folder(),
+    );
+
     // The same toolchain grants the desktop app records, so a CLI run's
     // sandbox can use what the user allowed there.
     tauri_plugin_agent_tools::tools::toolchain_grants::set_store(
@@ -2101,7 +2263,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy } => {
             // `--data-dir` was applied in `main`, before any thread started.
             let _ = data_dir;
             let assets = assets_dir.unwrap_or_else(|| {
@@ -2163,6 +2325,7 @@ async fn run() {
                     allowed_origins,
                     llama_worker,
                     credential_file,
+                    trust_proxy,
                 },
             ).await {
                 eprintln!("Error: {error}");
@@ -2188,6 +2351,20 @@ async fn run() {
             }
         }
         Commands::Cli { cmd } => handle_cli(cmd).await,
+        Commands::Launch { tool, model, base_url, api_key, dry_run, json, args } => {
+            if let Err(e) = app_lib::core::cli::launch_cmd::run(
+                &tool,
+                model.as_deref(),
+                base_url.as_deref(),
+                api_key.as_deref(),
+                dry_run,
+                json,
+                &args,
+            ) {
+                eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+                std::process::exit(e.exit_code());
+            }
+        }
         Commands::Login { paste_token } => {
             if let Err(e) = app_lib::core::cli::login::run_login(paste_token).await {
                 eprintln!("Error: {e}");
@@ -2471,14 +2648,55 @@ fn format_plugin_list(plugins: &[InstalledPlugin]) -> String {
 
 // ── CLI dispatch ─────────────────────────────────────────────────────────
 
+/// `flint trust`: the list of folders allowed to run their own hooks and
+/// agent definitions. Trusting is kept for good; `--revoke` undoes it.
+fn handle_trust(folder: Option<std::path::PathBuf>, revoke: bool, list: bool) {
+    use tauri_plugin_agent_tools::folder_trust;
+    if list {
+        for entry in folder_trust::list() {
+            println!("{entry}");
+        }
+        return;
+    }
+    let folder = folder
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| {
+            eprintln!("Error: no folder given and the current folder is unknown");
+            std::process::exit(1);
+        });
+    let outcome = if revoke {
+        folder_trust::revoke(&folder).map(|was| {
+            if was { "no longer trusted" } else { "was not in the trusted list" }
+        })
+    } else if !folder.is_dir() {
+        Err(format!("{} is not a folder", folder.display()))
+    } else {
+        folder_trust::trust(&folder).map(|_| "trusted for good")
+    };
+    match outcome {
+        Ok(what) => println!("{}: {what}", folder.display()),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 async fn handle_cli(cmd: CliCommands) {
     match cmd {
         CliCommands::Job { cmd } => handle_job(cmd),
         CliCommands::Threads { cmd } => handle_threads(cmd).await,
         CliCommands::Archive { cmd } => handle_archive(cmd).await,
+        CliCommands::Acp => {
+            if let Err(e) = app_lib::core::cli::acp::serve().await {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
         CliCommands::Skills { cmd } => handle_skills(cmd).await,
         CliCommands::Worktree { cmd } => handle_worktree(cmd),
         CliCommands::Memory { cmd } => handle_memory(cmd),
+        CliCommands::Approvals { cmd } => handle_approvals(cmd),
         CliCommands::ImportClaude { cmd } => handle_import_claude(cmd).await,
         CliCommands::DataFolder { set, no_copy } => {
             let result = match set {
@@ -2487,6 +2705,7 @@ async fn handle_cli(cmd: CliCommands) {
             };
             print_or_exit(result);
         }
+        CliCommands::Trust { folder, revoke, list } => handle_trust(folder, revoke, list),
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
@@ -2497,6 +2716,30 @@ async fn handle_cli(cmd: CliCommands) {
         }
         CliCommands::Net { cmd } => handle_net(cmd),
         CliCommands::Bench { cmd } => handle_bench(cmd),
+        CliCommands::Automation { cmd } => {
+            use app_lib::core::cli::automation_cmd as auto;
+            let result = match cmd {
+                AutomationCommands::List { json } => auto::list(json),
+                AutomationCommands::Show { id } => auto::show(&id),
+                AutomationCommands::Validate { file, json } => auto::validate(&file, json),
+                AutomationCommands::Add { file, json } => auto::add(&file, json),
+                AutomationCommands::Run { id, folder, wait } => auto::run(&id, folder.as_deref(), wait).await,
+                AutomationCommands::Remove { id, yes } => {
+                    if yes {
+                        auto::remove(&id)
+                    } else {
+                        Err(HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                            "this deletes the automation and its run history; run again with --yes",
+                        ))
+                    }
+                }
+            };
+            if let Err(e) = result {
+                eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+                std::process::exit(e.exit_code());
+            }
+        }
         CliCommands::Schedule { cmd } => {
             use app_lib::core::cli::{schedule, schedule_manage};
             let result = match cmd {
@@ -2584,7 +2827,7 @@ fn handle_bench(cmd: BenchCommands) {
                 &scratch,
                 &runner,
                 &|| stop.load(std::sync::atomic::Ordering::SeqCst),
-                &mut |t| eprintln!("  {:<24} {:<14} {:>6} ms  {}", t.id, t.state, t.duration_ms, t.notes.first().map(String::as_str).unwrap_or("")),
+                &mut |t| eprintln!("  {:<24} {:<14} {:>6} ms  {}  {}", t.id, t.state, t.duration_ms, t.efficiency(), t.notes.first().map(String::as_str).unwrap_or("")),
             );
             let _ = std::fs::remove_dir_all(&scratch);
             let report = report?;
@@ -3611,6 +3854,20 @@ async fn handle_agent(cmd: AgentCommands) {
         )
         .map(|text| print!("{text}"))
         .map_err(HarnessError::legacy),
+        AgentCommands::Ledger { run, json } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            match app_lib::core::agent::ledger::read(&data, &run) {
+                Ok(entries) if json => {
+                    println!("{}", serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string()));
+                    Ok(())
+                }
+                Ok(entries) => {
+                    print!("{}", app_lib::core::agent::ledger::render_text(&entries));
+                    Ok(())
+                }
+                Err(e) => Err(HarnessError::legacy(e)),
+            }
+        }
         AgentCommands::Status { project, providers } => {
             match cli_agent_status(&project, &providers.into_overrides()) {
                 Ok(status) => {
@@ -3656,27 +3913,10 @@ async fn handle_agent(cmd: AgentCommands) {
 /// outcome as a crash or a usage error: the run stopped where the caller asked
 /// it to stop, but it has no final answer, so a pipeline that only reads the
 /// exit code would take an unfinished task for a finished one. It exits `53`;
-/// every other failure keeps the kind's own code.
+/// every other ending has its own typed reason (`end_reason`), and a plain
+/// failure keeps the kind's own code.
 fn run_exit_code(e: &HarnessError) -> i32 {
-    if is_turn_limit_exhaustion(e) {
-        53
-    } else {
-        e.exit_code()
-    }
-}
-
-/// Whether the run ended because `--max-turns` ran out with tool calls still in
-/// flight. The message is the only marker that separates it from the other
-/// budget exhaustions, so the match is anchored at both ends.
-fn is_turn_limit_exhaustion(e: &HarnessError) -> bool {
-    const TURN_LIMIT: &str = "-turn limit while the model was still calling tools";
-    e.chain().into_iter().any(|cause| {
-        matches!(
-            cause.kind(),
-            tauri_plugin_agent_tools::harness_error::ErrorKind::BudgetExhausted
-        ) && cause.message().starts_with("reached the ")
-            && cause.message().ends_with(TURN_LIMIT)
-    })
+    app_lib::core::agent::end_reason::EndReason::from_error(e).exit_code(Some(e))
 }
 
 /// `flint cli agent prompts`: what a session sent to the model (AH-087).
@@ -3863,6 +4103,18 @@ async fn handle_import_claude(cmd: ImportClaudeCommands) {
     });
 }
 
+fn handle_approvals(cmd: ApprovalsCommands) {
+    use app_lib::core::cli::approvals_cmd as a;
+    exit_on_error(match cmd {
+        ApprovalsCommands::List { project, all, json } => a::list(project.as_deref(), all, json),
+        ApprovalsCommands::Allow { id } => a::answer(&id, true),
+        ApprovalsCommands::Deny { id } => a::answer(&id, false),
+        ApprovalsCommands::Discard { id } => a::discard(&id),
+        ApprovalsCommands::Rules { project, json } => a::rules(project.as_deref(), json),
+        ApprovalsCommands::Revoke { id } => a::revoke(&id),
+    });
+}
+
 fn handle_memory(cmd: MemoryCommands) {
     use app_lib::core::cli::memory_cmd as m;
     exit_on_error(match cmd {
@@ -3874,6 +4126,7 @@ fn handle_memory(cmd: MemoryCommands) {
         MemoryCommands::Clear { scope, yes, place } => m::clear(&place.project, place.session.as_deref(), &scope, yes),
         MemoryCommands::Pin { scope, id, place } => m::pin(&place.project, place.session.as_deref(), &scope, &id, true),
         MemoryCommands::Unpin { scope, id, place } => m::pin(&place.project, place.session.as_deref(), &scope, &id, false),
+        MemoryCommands::Audit { json, stale_days, project } => m::audit(&project, json, stale_days),
         MemoryCommands::Export { scope, path, place } => m::export(&place.project, place.session.as_deref(), &scope, &path),
     });
 }
@@ -4880,6 +5133,7 @@ mod tests {
             vec!["flint", "cli", "threads", "export", "abc", "--format", "obsidian"],
             vec!["flint", "cli", "skills", "enabled", "a", "b"],
             vec!["flint", "cli", "memory", "list", "project"],
+            vec!["flint", "cli", "memory", "audit", "--json", "--stale-days", "30"],
             vec!["flint", "cli", "worktree", "discard", "abcd1234", "--force"],
             vec!["flint", "cli", "mcp", "trust", "demo", "--yes"],
             vec!["flint", "cli", "models", "search", "qwen"],

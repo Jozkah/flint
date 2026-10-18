@@ -9,7 +9,9 @@
       "title": "Flint wykonuje zadania w Twojej przeglądarce",
       "description": "Zainstaluj rozszerzenie, aby dać Janowi dostęp do przeglądarki",
       "getExtension": "Pobierz rozszerzenie"
-    }
+    },
+    "requires": "Wymaga zainstalowania rozszerzenia przeglądarki w przeglądarce opartej na Chrome.",
+    "install": "Zainstaluj rozszerzenie →"
   },
   "serverName": "Nazwa Serwera",
   "enterServerName": "Wprowadź nazwę serwera",
@@ -146,7 +148,7 @@
   "experimental": "Eksperymentalne",
   "editAllJson": "Edytuj JSON Wszystkich Serwerów",
   "findMore": "Znajdź więcej serwerów MCP na",
-  "allowPermissions": "Pozwalaj na Wszystkie Użycia Narzędzi MCP",
+  "allowPermissions": "Zezwalaj na wszystkie uprawnienia narzędzi MCP",
   "allowPermissionsDesc": "Po włączeniu będzie automatycznie zezwalać na wszystkie użycia narzędzi MCP bez wyświetlania próśb o zgodę. To ustawienie obowiązuje globalnie dla wszystkich rozmów, w tym nowych czatów.",
   "autoApproveServer": "Zatwierdzaj automatycznie narzędzia tego serwera",
   "noServers": "Nie znaleziono serwerów MCP",
@@ -174,7 +176,9 @@
     "selectRouterModelPlaceholder": "Wybierz model routowania…",
     "routerModelSearchPlaceholder": "Szukaj modeli…",
     "routerModelEmptyList": "Brak lekkich modeli. Dodaj mniejszy model lub skonfiguruj klucze API w sekcji Modele.",
-    "routerModelEmptySearch": "Brak wyników dla „{{query}}”."
+    "routerModelEmptySearch": "Brak wyników dla „{{query}}”.",
+    "idleShutdown": "Zatrzymuj bezczynne serwery po (minutach)",
+    "idleShutdownDesc": "Serwer MCP bez wywołań narzędzi przez ten czas jest zatrzymywany, aby zwolnić pamięć, i uruchamia się ponownie, gdy jest potrzebny. Serwery ustawione na start z Flint nadal działają. Ustaw 0, aby nigdy ich nie zatrzymywać."
   },
   "auth": {
     "label": "Uwierzytelnianie:",
@@ -265,7 +269,8 @@
   "lifecycle": {
     "startWithFlint": "Uruchamiaj z Flint",
     "start": "Uruchom",
-    "stop": "Zatrzymaj"
+    "stop": "Zatrzymaj",
+    "toolTimeout": "Limit czasu narzędzia (s)"
   },
   "cwd": "Katalog roboczy",
   "cwdPlaceholder": "Opcjonalnie, np. C:\\tools\\my-server",

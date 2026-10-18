@@ -38,8 +38,7 @@ export function ShellNavProvider({ children }: { children: React.ReactNode }) {
     () => ({
       open,
       setOpen: setLeftPanel,
-      toggle: () =>
-        isMobile ? setOpenMobile((v) => !v) : setLeftPanel(!open),
+      toggle: () => (isMobile ? setOpenMobile((v) => !v) : setLeftPanel(!open)),
       openMobile,
       setOpenMobile,
       isMobile,
@@ -47,8 +46,20 @@ export function ShellNavProvider({ children }: { children: React.ReactNode }) {
     [open, setLeftPanel, isMobile, openMobile]
   )
   return (
-    <ShellNavContext.Provider value={value}>{children}</ShellNavContext.Provider>
+    <ShellNavContext.Provider value={value}>
+      {children}
+    </ShellNavContext.Provider>
   )
+}
+
+/**
+ * Shuts the narrow-window navigation sheet. Rows that navigate call it so the
+ * sheet does not stay over the page just picked (a no-op on desktop and
+ * outside the shell).
+ */
+export function useCloseDrawer(): () => void {
+  const { setOpenMobile } = useShellNav()
+  return React.useCallback(() => setOpenMobile?.(false), [setOpenMobile])
 }
 
 /** The shell context when rendered inside the app shell, otherwise null. */
@@ -120,7 +131,10 @@ export function NavList({ className, ...props }: React.ComponentProps<'ul'>) {
   return (
     <ul
       data-slot="nav-list"
-      className={cn('m-0 flex w-full min-w-0 list-none flex-col gap-0.5 p-0', className)}
+      className={cn(
+        'm-0 flex w-full min-w-0 list-none flex-col gap-0.5 p-0',
+        className
+      )}
       {...props}
     />
   )
@@ -137,7 +151,7 @@ export function NavItem({ className, ...props }: React.ComponentProps<'li'>) {
 }
 
 const navButtonVariants = cva(
-  'peer/nav-button relative flex w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-lg border-[0.8px] border-transparent text-left leading-none text-secondary-foreground outline-hidden transition-[background-color,box-shadow,border-color,color,transform] duration-150 ease-expo hover:bg-nav-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985] disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:border-border data-[active=true]:bg-card data-[active=true]:text-foreground data-[active=true]:shadow-[0_4px_7px_rgba(0,0,0,.04)] group-has-data-[slot=nav-action]/nav-item:pr-8 [&>span:last-child]:text-fade [&>svg]:shrink-0 [&>svg:not([class*="size-"])]:size-4 [&>svg]:transition-transform [&>svg]:duration-200 hover:[&>svg:first-child]:scale-110',
+  'peer/nav-button relative flex w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-lg border-[0.8px] border-transparent text-left leading-none text-secondary-foreground outline-hidden transition-[background-color,box-shadow,border-color,color,transform,padding] duration-150 ease-expo hover:bg-nav-hover hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring active:scale-[.985] disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:border-border data-[active=true]:bg-card data-[active=true]:text-foreground data-[active=true]:shadow-[0_4px_7px_rgba(0,0,0,.04)] group-has-[[data-slot=nav-action][data-reveal=always]]/nav-item:pr-8 group-has-data-[slot=nav-action]/nav-item:group-hover/nav-item:pr-8 group-has-data-[slot=nav-action]/nav-item:group-focus-within/nav-item:pr-8 group-has-[[data-slot=nav-action][data-state=open]]/nav-item:pr-8 group-has-data-[slot=nav-action]/nav-item:pointer-coarse:pr-8 [&>span:last-child]:text-fade [&>svg]:shrink-0 [&>svg:not([class*="size-"])]:size-4 [&>svg]:transition-transform [&>svg]:duration-200 hover:[&>svg:first-child]:scale-110',
   {
     variants: {
       size: {
@@ -199,12 +213,15 @@ export const NavButton = React.forwardRef<
 export const NavAction = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<'button'> & { asChild?: boolean; showOnHover?: boolean }
->(function NavAction({ className, asChild, showOnHover = false, ...props }, ref) {
+>(function NavAction(
+  { className, asChild, showOnHover = false, ...props },
+  ref
+) {
   const Comp = asChild ? Slot : 'button'
   return (
     <Comp
       ref={ref}
-      data-slot="nav-action"
+      data-reveal={showOnHover ? 'hover' : 'always'}
       className={cn(
         'absolute top-1/2 right-1 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted-foreground transition-[opacity,background-color,color] duration-150 outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 [&>svg]:size-3.5 [&>svg]:shrink-0',
         showOnHover &&
@@ -212,6 +229,10 @@ export const NavAction = React.forwardRef<
         className
       )}
       {...props}
+      // After the spread: a menu trigger wrapped around this (asChild) passes
+      // its own data-slot, which would hide the action from the row's
+      // `:has([data-slot=nav-action])` padding rules.
+      data-slot="nav-action"
     />
   )
 })
@@ -236,7 +257,9 @@ export function NavCollapse({
       inert={!open}
       className={cn(
         'grid transition-[grid-template-rows,opacity,margin] duration-300 ease-expo',
-        open ? 'mt-0.5 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+        open
+          ? 'mt-0.5 grid-rows-[1fr] opacity-100'
+          : 'grid-rows-[0fr] opacity-0',
         className
       )}
     >

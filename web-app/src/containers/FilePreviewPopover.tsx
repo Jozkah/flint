@@ -14,6 +14,8 @@ import {
 } from '@/lib/filePreview'
 import { toAssetUrl } from '@/lib/assetPath'
 import type { Attachment } from '@/types/attachment'
+import { stringSource, urlSource } from '@/lib/fileChunks'
+import { FileViewerDialog, type ViewerSpec } from '@/containers/FileViewerDialog'
 
 const ABSOLUTE = /^([a-z]:[\\/]|\\\\|\/|file:\/\/)/i
 
@@ -44,6 +46,99 @@ export function previewLoader(
     const url = await toAssetUrl(path)
     const bytes = await readCapped(url, zip ? ZIP_CAP : TEXT_CAP, signal, zip)
     return bytes ? previewFromBytes(ext, bytes) : null
+  }
+}
+
+/**
+ * The readable form of a file chip on a sent message: its inline text from
+ * the message metadata (matched by name), else its id when that is a path.
+ */
+export function sentAttachment(
+  file: { id: string; name: string; type?: string; size?: number },
+  metadata?: Record<string, unknown>
+): Pick<Attachment, 'name' | 'path' | 'fileType' | 'inlineContent' | 'size'> {
+  const inline = metadata?.inline_file_contents
+  const hit = Array.isArray(inline)
+    ? (inline as Array<{ name?: string; content?: string; path?: string }>).find(
+        (f) => f?.name === file.name && typeof f.content === 'string'
+      )
+    : undefined
+  return {
+    name: file.name,
+    fileType: file.type,
+    size: file.size,
+    inlineContent: hit?.content,
+    path: ABSOLUTE.test(file.id)
+      ? file.id
+      : hit?.path && ABSOLUTE.test(hit.path)
+        ? hit.path
+        : undefined,
+  }
+}
+
+/** UTF-8 size of a string, without encoding it. */
+function utf8Bytes(text: string): number {
+  let n = 0
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    if (c < 0x80) n += 1
+    else if (c < 0x800) n += 2
+    else if (c >= 0xd800 && c <= 0xdbff) {
+      n += 4
+      i++
+    } else n += 3
+  }
+  return n
+}
+
+const MEDIA = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif', 'heic',
+  'mp3', 'wav', 'ogg', 'flac', 'm4a', 'mp4', 'mov', 'webm', 'mkv', 'avi', 'pdf',
+])
+
+/**
+ * How the full viewer reads an attachment, or null when it cannot: text is
+ * read in chunks (inline text sliced, a file by byte range); Office files
+ * are parsed with higher limits. Images keep their own viewer.
+ */
+export function viewerSpec(
+  att: Pick<Attachment, 'name' | 'path' | 'fileType' | 'inlineContent' | 'size'>
+): ViewerSpec | null {
+  const ext = (att.fileType || extensionOf(att.name ?? '')).toLowerCase()
+  if (MEDIA.has(ext)) return null
+  const kind = previewKind(ext)
+  const zip = kind === 'docx' || kind === 'xlsx' || kind === 'pptx'
+  const inline = att.inlineContent
+  const path = att.path
+  if (!zip && inline) {
+    // Inline text is capped when it is added: a file larger than what was kept
+    // is read from disk when it still can be, and otherwise says it is cut.
+    const shown = utf8Bytes(inline)
+    const cut = typeof att.size === 'number' && att.size > shown
+    if (!cut) return { mode: 'lines', open: async () => stringSource(inline) }
+    if (!path || !ABSOLUTE.test(path)) {
+      return {
+        mode: 'lines',
+        open: async () => stringSource(inline),
+        truncated: { shown, total: att.size as number },
+      }
+    }
+  }
+  if (!path || !ABSOLUTE.test(path)) return null
+  if (zip) {
+    if (typeof att.size === 'number' && att.size > ZIP_CAP) return null
+    return {
+      mode: 'doc',
+      load: async (signal) => {
+        const bytes = await readCapped(await toAssetUrl(path), ZIP_CAP, signal, true)
+        return bytes ? previewFromBytes(ext, bytes, 500) : null
+      },
+    }
+  }
+  return {
+    mode: 'lines',
+    open: async () =>
+      urlSource(await toAssetUrl(path), typeof att.size === 'number' ? att.size : null),
   }
 }
 
@@ -98,6 +193,7 @@ export function FilePreviewPopover({
   name,
   meta,
   load,
+  viewer,
   className,
   children,
 }: {
@@ -105,11 +201,14 @@ export function FilePreviewPopover({
   name: string
   meta?: string
   load?: ((signal: AbortSignal) => Promise<FilePreview | null>) | null
+  /** When set, an "Open full preview" button opens the full viewer. */
+  viewer?: ViewerSpec | null
   className?: string
   children: ReactNode
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [full, setFull] = useState(false)
   const [state, setState] = useState<
     { status: 'idle' | 'loading' | 'none' } | { status: 'ready'; preview: FilePreview }
   >({ status: 'idle' })
@@ -147,6 +246,7 @@ export function FilePreviewPopover({
   }, [open])
 
   return (
+    <>
     <Popover
       open={open}
       onOpenChange={(v) => {
@@ -168,7 +268,7 @@ export function FilePreviewPopover({
         data-testid="file-preview-popover"
       >
         <div className="mb-1 min-w-0">
-          <div className="truncate text-sm font-medium" title={name}>
+          <div className="truncate text-sm font-medium">
             {title}
           </div>
           <div className="text-[11px] text-muted-foreground">
@@ -186,7 +286,30 @@ export function FilePreviewPopover({
             {t('common:composerChip.previewNone')}
           </div>
         )}
+        {viewer ? (
+          <button
+            type="button"
+            data-testid="file-preview-open-full"
+            onClick={() => {
+              setOpen(false)
+              setFull(true)
+            }}
+            className="mt-2 w-full rounded-md border-[0.8px] border-border bg-card px-2 py-1 text-xs font-medium hover:bg-hover-btn focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+          >
+            {t('common:fileViewer.openFull')}
+          </button>
+        ) : null}
       </PopoverContent>
     </Popover>
+    {viewer && full ? (
+      <FileViewerDialog
+        open={full}
+        onOpenChange={setFull}
+        name={name}
+        meta={meta}
+        spec={viewer}
+      />
+    ) : null}
+    </>
   )
 }

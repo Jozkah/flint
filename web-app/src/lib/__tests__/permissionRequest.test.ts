@@ -39,6 +39,7 @@ describe('categorizeTool', () => {
     ['read', 'read'],
     ['grep', 'read'],
     ['screenshot', 'read'],
+    ['ocr', 'read'],
     ['task', 'other'],
     ['something_new', 'other'],
   ])('%s is %s', (tool, category) => {
@@ -48,6 +49,63 @@ describe('categorizeTool', () => {
   it('treats any tool with a server as an external tool, whatever its name', () => {
     expect(categorizeTool('write_file', 'filesystem')).toBe('external-tool')
     expect(categorizeTool('bash', 'remote')).toBe('external-tool')
+  })
+})
+
+describe('a built-in host tool', () => {
+  it('says it runs programs, not that Flint cannot tell what it does (D6)', () => {
+    const d = describePermissionRequest({
+      toolName: 'host_powershell',
+      input: { script: 'Get-ChildItem' },
+    })
+    expect(d.consequences).toEqual([{ key: 'permissions:consequence.command' }])
+  })
+})
+
+describe('the spend pause of a run', () => {
+  it('has its own words, not the generic unknown-tool ones', () => {
+    const d = describePermissionRequest({
+      toolName: 'spend_pause',
+      input: undefined,
+      alwaysAsk: true,
+    })
+    expect(d.action.key).toBe('permissions:action.spendPause')
+    expect(d.consequences).toEqual([{ key: 'permissions:consequence.spendPause' }])
+    expect(d.scopesOffered).toEqual(['allow-once'])
+  })
+
+  it('names ocr as a read of the file it is given', () => {
+    const d = describePermissionRequest({
+      toolName: 'ocr',
+      input: { path: 'C:/scans/receipt.png' },
+    })
+    expect(d.category).toBe('read')
+    expect(d.consequences).toEqual([{ key: 'permissions:consequence.read' }])
+  })
+})
+
+describe('the arguments line of a request (M-006)', () => {
+  it('shows the arguments of an MCP call as key=value on one line', () => {
+    const d = describePermissionRequest({
+      toolName: 'slow',
+      serverName: 'tiny2',
+      input: { seconds: 25, mode: 'deep', opts: { a: 1 } },
+    })
+    expect(d.argumentsSummary).toBe('seconds=25, mode=deep, opts={"a":1}')
+  })
+
+  it('redacts secrets and truncates', () => {
+    const d = describePermissionRequest({
+      toolName: 'login',
+      serverName: 'x',
+      input: { api_key: 'sk-live-abcdef123456', note: 'n'.repeat(400) },
+    })
+    expect(d.argumentsSummary).not.toContain('sk-live-abcdef123456')
+    expect(d.argumentsSummary!.length).toBeLessThanOrEqual(200)
+  })
+
+  it('is left out when there are no arguments', () => {
+    expect(describePermissionRequest({ toolName: 'ping', serverName: 'x', input: {} }).argumentsSummary).toBeUndefined()
   })
 })
 

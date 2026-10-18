@@ -82,6 +82,24 @@ describe('textToolCallMiddleware stream', () => {
     expect(finish.finishReason.unified).toBe('tool-calls')
   })
 
+  it('runs a gemma tool_code block, print() wrapped, as a real call (T7-070)', async () => {
+    const parts = await run(['```tool', '_code\nprint(read_file(path="notes.md"))\n', '```'])
+    expect(textOf(parts)).toBe('')
+    expect(parts.find((p) => p.type === 'tool-call')).toMatchObject({
+      toolName: 'read_file',
+      input: '{"path":"notes.md"}',
+    })
+  })
+
+  it("runs a gemma tool_code call with single quotes, but not one naming a tool it lacks", async () => {
+    const ok = await run(["```tool_code\nread_file(path='x.txt')\n```"])
+    expect(ok.find((p) => p.type === 'tool-call')).toMatchObject({ input: '{"path":"x.txt"}' })
+    const unknown = "```tool_code\ndelete_everything(path='x')\n```"
+    const parts = await run([unknown])
+    expect(parts.some((p) => p.type === 'tool-call')).toBe(false)
+    expect(textOf(parts)).toBe(unknown)
+  })
+
   it('passes ordinary text, including a lone "<", through untouched', async () => {
     const parts = await run(['a < b and ', '<b>bold</b>'])
     expect(textOf(parts)).toBe('a < b and <b>bold</b>')

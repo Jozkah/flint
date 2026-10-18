@@ -451,3 +451,59 @@ async fn model_routing_asks_nothing_when_off_or_without_a_list_and_rejects_a_bad
     assert_eq!(d.skill, None);
     assert_eq!(d.fallback, Some(Fallback::BadResponse));
 }
+
+// --- tool-call review ---------------------------------------------------------
+
+fn review(choice: &str, p: f64) -> Value {
+    json!({
+        "model": "jev-1.13.0",
+        "answers": { "review": { "type": "choice", "choice": choice, "confidence": p,
+                                  "probabilities": { choice: p } } },
+        "usage": { "input_tokens": 200, "output_tokens": 5 }
+    })
+}
+
+fn pending() -> JudgeInput {
+    crate::core::agent::auto_mode::judge_input("bash", &json!({ "command": "make deploy" }), "fix the README typo")
+}
+
+#[tokio::test]
+async fn a_confident_refusal_denies_with_its_reason() {
+    let (post, calls, seen) = fake(Ok(review("deny_off_task", 0.95)));
+    let deps = Deps { modes: Modes::default(), key: Some("ts-key".into()), post: &post };
+    match review_call(&deps, &pending()).await {
+        Ok(Verdict::Deny { reason }) => assert!(reason.contains("did not ask for"), "{reason}"),
+        other => panic!("expected a deny, got {other:?}"),
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let (body, key) = seen.lock().unwrap()[0].clone();
+    assert_eq!(key, "ts-key");
+    assert!(!body.to_string().contains("ts-key"), "the key is a header, never the body");
+    assert_eq!(body["state"]["tool"], "bash");
+    assert_eq!(body["state"]["request"], "fix the README typo");
+    let mut keys: Vec<&String> = body["questions"]["review"]["criteria"].as_object().unwrap().keys().collect();
+    keys.sort();
+    assert!(keys.iter().all(|k| *k == "ask" || k.starts_with("deny_")), "{keys:?}: no option approves");
+}
+
+#[tokio::test]
+async fn ask_an_unsure_refusal_and_a_bad_answer_never_deny() {
+    for reply in [review("ask", 0.99), review("deny_destructive", 0.6)] {
+        let (post, _, _) = fake(Ok(reply));
+        let deps = Deps { modes: Modes::default(), key: Some("k".into()), post: &post };
+        assert_eq!(review_call(&deps, &pending()).await, Ok(Verdict::Ask));
+    }
+    for reply in [Ok(review("approve", 0.99)), Ok(choice("s0", 0.99)), Err(CallError::Timeout), Err(CallError::Http("HTTP 500".into()))] {
+        let (post, _, _) = fake(reply);
+        let deps = Deps { modes: Modes::default(), key: Some("k".into()), post: &post };
+        assert!(review_call(&deps, &pending()).await.is_err());
+    }
+}
+
+#[tokio::test]
+async fn no_key_makes_no_review_request() {
+    let (post, calls, _) = fake(Ok(review("deny_off_task", 0.99)));
+    let deps = Deps { modes: Modes::default(), key: None, post: &post };
+    assert_eq!(review_call(&deps, &pending()).await, Err(Fallback::NoKey));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}

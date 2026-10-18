@@ -142,7 +142,6 @@ fn parse_event(raw: &str) -> Option<SseEvent> {
     Some(ev)
 }
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -219,8 +218,8 @@ pub trait UpstreamConverter: Send + Sync {
         Vec::new()
     }
 
-    /// Additional headers derived from a credential. Most providers need none;
-    /// ChatGPT account OAuth needs the account id carried inside its JWT.
+    /// Additional headers derived from a credential. No provider needs any
+    /// today; kept so a converter can add one without a signature change.
     fn credential_headers(&self, _key: &str) -> Vec<(&'static str, String)> {
         Vec::new()
     }
@@ -242,15 +241,11 @@ pub trait UpstreamConverter: Send + Sync {
 }
 
 /// Select the converter for a provider's `api_type`. `None`, `"openai"`, and
-/// unknown values keep the verbatim chat/completions passthrough. `oauth`
-/// selects the Anthropic OAuth auth scheme (Bearer + beta header) when the
-/// credential is an account access token instead of an API key.
-pub fn converter_for(api_type: Option<&str>, oauth: bool) -> Option<Box<dyn UpstreamConverter>> {
+/// unknown values keep the verbatim chat/completions passthrough.
+pub fn converter_for(api_type: Option<&str>) -> Option<Box<dyn UpstreamConverter>> {
     match api_type {
-        Some("openai-responses") if oauth => Some(Box::new(OpenAIResponsesConverter::new_oauth())),
         Some("openai-responses") => Some(Box::new(OpenAIResponsesConverter::new())),
         Some("google") => Some(Box::new(GoogleGenerateContentConverter::new())),
-        Some("anthropic") if oauth => Some(Box::new(AnthropicMessagesConverter::new_oauth())),
         Some("anthropic") => Some(Box::new(AnthropicMessagesConverter::new())),
         _ => None,
     }
@@ -280,29 +275,12 @@ pub struct StreamState {
 /// proxy's OpenAI-SDK clients get reasoning summaries (`reasoning_content`)
 /// without switching wire formats.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesConverter {
-    oauth: bool,
-}
+pub struct OpenAIResponsesConverter;
 
 impl OpenAIResponsesConverter {
     pub fn new() -> Self {
-        Self { oauth: false }
+        Self
     }
-
-    pub fn new_oauth() -> Self {
-        Self { oauth: true }
-    }
-}
-
-fn chatgpt_account_id(token: &str) -> Option<String> {
-    let payload = token.split('.').nth(1)?;
-    let decoded = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let claims: Value = serde_json::from_slice(&decoded).ok()?;
-    claims
-        .get("https://api.openai.com/auth")?
-        .get("chatgpt_account_id")?
-        .as_str()
-        .map(str::to_string)
 }
 
 /// An image carried by an OpenAI `image_url` content part, in the two forms
@@ -370,29 +348,7 @@ impl UpstreamConverter for OpenAIResponsesConverter {
     }
 
     fn upstream_path(&self, _body: &Value) -> String {
-        if self.oauth {
-            "/codex/responses".to_string()
-        } else {
-            "/responses".to_string()
-        }
-    }
-
-    fn credential_headers(&self, key: &str) -> Vec<(&'static str, String)> {
-        if !self.oauth {
-            return Vec::new();
-        }
-        let mut headers = vec![
-            ("OpenAI-Beta", "responses=experimental".to_string()),
-            ("originator", "jan".to_string()),
-            (
-                "User-Agent",
-                concat!("jan/", env!("CARGO_PKG_VERSION")).to_string(),
-            ),
-        ];
-        if let Some(account_id) = chatgpt_account_id(key) {
-            headers.push(("chatgpt-account-id", account_id));
-        }
-        headers
+        "/responses".to_string()
     }
 
     fn convert_request(&self, body: &Value) -> Value {
@@ -499,12 +455,6 @@ impl UpstreamConverter for OpenAIResponsesConverter {
             out["tool_choice"] = tc.clone();
         }
 
-        if self.oauth {
-            out["store"] = json!(false);
-            out["include"] = json!(["reasoning.encrypted_content"]);
-            out["text"] = json!({"verbosity": "low"});
-            out.as_object_mut().unwrap().remove("max_output_tokens");
-        }
         out
     }
 
@@ -1158,22 +1108,11 @@ const ANTHROPIC_DEFAULT_MAX_TOKENS: i64 = 4096;
 /// `anthropic-version` header. The registered provider `base_url` should include
 /// the version prefix, e.g. `https://api.anthropic.com/v1`.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct AnthropicMessagesConverter {
-    /// `true` when the credential is an OAuth access token (Account login)
-    /// rather than a standard `sk-ant-` API key. Anthropic authenticates an
-    /// OAuth token as `Authorization: Bearer` plus the `anthropic-beta` oauth
-    /// header; a plain API key goes as `x-api-key`. Defaults to the API-key
-    /// scheme, matching the pre-account behaviour.
-    oauth: bool,
-}
+pub struct AnthropicMessagesConverter;
 
 impl AnthropicMessagesConverter {
     pub fn new() -> Self {
-        Self { oauth: false }
-    }
-
-    pub fn new_oauth() -> Self {
-        Self { oauth: true }
+        Self
     }
 }
 
@@ -1243,19 +1182,11 @@ fn ephemeral_cache_marker() -> Value {
 ///
 /// The first system message is the stable head the loop writes once per
 /// session; later ones are appended updates. Marking the head keeps the cached
-/// prefix intact when an update lands behind it. The OAuth billing marker stays
-/// its own leading block, outside the cached text, as the Claude Code CLI
-/// sends it. Joined, the blocks read as the same text the plain path sends.
-fn anthropic_system_blocks(system: &[String], oauth: bool) -> Value {
+/// prefix intact when an update lands behind it. Joined, the blocks read as the
+/// same text the plain path sends.
+fn anthropic_system_blocks(system: &[String]) -> Value {
     let mut blocks: Vec<Value> = Vec::new();
-    let mut rest = system;
-    if oauth {
-        if let Some((billing, tail)) = system.split_first() {
-            blocks.push(json!({"type": "text", "text": billing}));
-            rest = tail;
-        }
-    }
-    if let Some((head, tail)) = rest.split_first() {
+    if let Some((head, tail)) = system.split_first() {
         blocks.push(json!({
             "type": "text",
             "text": head,
@@ -1330,40 +1261,15 @@ impl UpstreamConverter for AnthropicMessagesConverter {
     }
 
     fn upstream_path(&self, _body: &Value) -> String {
-        // An OAuth `sk-ant-oat01` token is billed against the Claude Code /
-        // subscription quota only when the request hits the Code endpoint with
-        // the `?beta=true` suffix (mirrors the Claude Code CLI and 9router).
-        // Without it the token is throttled by the shared API rate limit (429).
-        if self.oauth {
-            "/messages?beta=true".to_string()
-        } else {
-            "/messages".to_string()
-        }
+        "/messages".to_string()
     }
 
     fn auth_header(&self, key: &str) -> (&'static str, String) {
-        if self.oauth {
-            ("authorization", format!("Bearer {key}"))
-        } else {
-            ("x-api-key", key.to_string())
-        }
+        ("x-api-key", key.to_string())
     }
 
     fn extra_headers(&self) -> Vec<(&'static str, &'static str)> {
-        let mut headers = vec![("anthropic-version", "2023-06-01")];
-        if self.oauth {
-            // The `claude-code` beta marks the request as Claude Code traffic,
-            // which is what routes an OAuth token to its Code/subscription
-            // quota. The set mirrors the Claude Code CLI (and 9router).
-            headers.push((
-                "anthropic-beta",
-                "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
-            ));
-            headers.push(("anthropic-dangerous-direct-browser-access", "true"));
-            headers.push(("user-agent", "claude-cli/2.1.92 (external, sdk-cli)"));
-            headers.push(("x-app", "cli"));
-        }
-        headers
+        vec![("anthropic-version", "2023-06-01")]
     }
 
     fn convert_request(&self, body: &Value) -> Value {
@@ -1391,19 +1297,6 @@ impl UpstreamConverter for AnthropicMessagesConverter {
         }
 
         let mut system: Vec<String> = Vec::new();
-        if self.oauth {
-            // Anthropic gates heavy-model quota (sonnet/opus) behind this
-            // billing marker on the /v1/messages body when the request is an
-            // OAuth account token. The Claude Code CLI injects it as the first
-            // system block on every request; without it an OAuth token is
-            // throttled to the lightweight models (429 on sonnet) regardless
-            // of the account's real plan. Mirrors the CLI's
-            // `cc_version`/`cc_entrypoint` pair so Flint's subscription is billed
-            // against the same quota the user's `claude` CLI uses.
-            system.push(
-                "x-anthropic-billing-header: cc_version=2.1.92; cc_entrypoint=sdk-cli;".to_string(),
-            );
-        }
         let mut messages: Vec<Value> = Vec::new();
         if let Some(msgs) = body.get("messages").and_then(|m| m.as_array()) {
             for msg in msgs {
@@ -1472,7 +1365,7 @@ impl UpstreamConverter for AnthropicMessagesConverter {
         let explicit = self.cache_capability() == CacheCapability::Explicit;
         if !system.is_empty() {
             out["system"] = if explicit {
-                anthropic_system_blocks(&system, self.oauth)
+                anthropic_system_blocks(&system)
             } else {
                 json!(system.join("\n\n"))
             };
@@ -2768,46 +2661,15 @@ mod anthropic_messages_tests {
     }
 
     #[test]
-    fn oauth_auth_and_headers_use_bearer_plus_code_beta() {
-        let c = AnthropicMessagesConverter::new_oauth();
-        assert_eq!(
-            c.auth_header("k"),
-            ("authorization", "Bearer k".to_string())
-        );
-        assert_eq!(
-            c.extra_headers(),
-            vec![
-                ("anthropic-version", "2023-06-01"),
-                (
-                    "anthropic-beta",
-                    "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
-                ),
-                ("anthropic-dangerous-direct-browser-access", "true"),
-                ("user-agent", "claude-cli/2.1.92 (external, sdk-cli)"),
-                ("x-app", "cli"),
-            ]
-        );
-        // The Code `?beta=true` suffix routes the OAuth token to its Code quota.
-        assert_eq!(c.upstream_path(&json!({})), "/messages?beta=true");
-    }
-
-    #[test]
-    fn converter_for_selects_oauth_scheme_only_for_anthropic_accounts() {
-        assert!(matches!(
-            converter_for(Some("anthropic"), true),
-            Some(c) if {
-                let (name, _) = c.auth_header("k");
-                name == "authorization"
-            }
-        ));
-        // Non-account Anthropic keeps the API-key scheme, and unknown
-        // api_types keep the verbatim passthrough regardless of `oauth`.
-        assert!(matches!(
-            converter_for(Some("anthropic"), false),
-            Some(c) if c.auth_header("k").0 == "x-api-key"
-        ));
-        assert!(converter_for(Some("openai"), true).is_none());
-        assert!(converter_for(None, true).is_none());
+    fn converter_for_uses_the_api_key_scheme_and_passes_unknown_through() {
+        let c = converter_for(Some("anthropic")).expect("anthropic converter");
+        assert_eq!(c.auth_header("k"), ("x-api-key", "k".to_string()));
+        assert_eq!(c.extra_headers(), vec![("anthropic-version", "2023-06-01")]);
+        assert_eq!(c.upstream_path(&json!({})), "/messages");
+        let r = converter_for(Some("openai-responses")).expect("responses converter");
+        assert_eq!(r.upstream_path(&json!({})), "/responses");
+        assert!(converter_for(Some("openai")).is_none());
+        assert!(converter_for(None).is_none());
     }
 
     #[test]
@@ -2832,38 +2694,6 @@ mod anthropic_messages_tests {
             out["messages"],
             json!([{"role": "user", "content": [{"type": "text", "text": "hi"}]}])
         );
-    }
-
-    #[test]
-    fn oauth_request_prepends_billing_header_to_system() {
-        // The Claude Code CLI injects an `x-anthropic-billing-header` system
-        // block on every /v1/messages request; without it Anthropic gates an
-        // OAuth account token to lightweight models (429 on sonnet) regardless
-        // of the account's real plan. The oauth converter must mirror that or
-        // heavy models fail under the Claude Code alias.
-        let body = json!({
-            "model": "claude-sonnet-5",
-            "messages": [
-                {"role": "system", "content": "be brief"},
-                {"role": "user", "content": "hi"}
-            ]
-        });
-        let plain = conv().convert_request(&body);
-        assert_eq!(plain["system"][0]["text"], json!("be brief"));
-
-        let oauth_body = AnthropicMessagesConverter::new_oauth().convert_request(&body);
-        let blocks = oauth_body["system"].as_array().unwrap();
-        let sys = blocks[0]["text"].as_str().unwrap();
-        assert!(
-            sys.starts_with("x-anthropic-billing-header: cc_version="),
-            "oauth request must inject the billing header first: {sys}"
-        );
-        assert!(sys.contains("cc_entrypoint=sdk-cli;"));
-        // The marker is not part of the cached text, and the real system
-        // prompt is still carried after it.
-        assert!(blocks[0].get("cache_control").is_none());
-        assert_eq!(blocks[1]["text"], json!("be brief"));
-        assert_eq!(blocks[1]["cache_control"], json!({"type": "ephemeral"}));
     }
 
     /// The reviewer's probe, inverted: a tool's image lands inside its
@@ -3023,7 +2853,7 @@ mod anthropic_messages_tests {
             "tools": [{"type": "function", "function": {"name": "a", "description": "d", "parameters": {"type": "object"}}}]
         });
         for api_type in ["openai-responses", "google"] {
-            let converter = converter_for(Some(api_type), false).expect("converter");
+            let converter = converter_for(Some(api_type)).expect("converter");
             assert_ne!(converter.cache_capability(), CacheCapability::Explicit);
             let out = converter.convert_request(&body);
             assert!(
@@ -3064,14 +2894,12 @@ mod anthropic_messages_tests {
     #[test]
     fn every_converter_declares_its_routes_capability() {
         for api_type in ["openai-responses", "google", "anthropic"] {
-            for oauth in [false, true] {
-                let converter = converter_for(Some(api_type), oauth).expect("converter");
-                assert_eq!(
-                    converter.cache_capability(),
-                    CacheCapability::for_api_type(Some(api_type)),
-                    "{api_type} oauth={oauth}"
-                );
-            }
+            let converter = converter_for(Some(api_type)).expect("converter");
+            assert_eq!(
+                converter.cache_capability(),
+                CacheCapability::for_api_type(Some(api_type)),
+                "{api_type}"
+            );
         }
         assert_eq!(CacheCapability::Explicit.as_str(), "explicit");
     }

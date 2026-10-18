@@ -1,0 +1,222 @@
+{
+  "page": {
+    "title": "Estúdio",
+    "descriptionLocal": "Crie imagens e vídeos localmente neste computador. Nada sai do seu dispositivo.",
+    "descriptionHosted": "Crie imagens com um modelo hospedado. Seu prompt é enviado ao provedor dele.",
+    "whatToMake": "O que criar",
+    "images": "Imagens",
+    "video": "Vídeo",
+    "dismiss": "Dispensar",
+    "loading": "Carregando…"
+  },
+  "elapsed": {
+    "slow": "demorando mais que o normal"
+  },
+  "builds": {
+    "anyGpu": "Qualquer placa de vídeo",
+    "noGpu": "Sem placa de vídeo",
+    "nvidia": "NVIDIA (mais rápido)",
+    "note": {
+      "linux-vulkan-x64": "Cerca de 38 MB. NVIDIA, AMD ou Intel com driver Vulkan.",
+      "linux-cpu-x64": "Cerca de 25 MB. Muito lento.",
+      "win-vulkan-x64": "Cerca de 30 MB. Funciona com NVIDIA, AMD e Intel.",
+      "win-cuda12-x64": "Cerca de 900 MB. Requer um driver NVIDIA recente.",
+      "win-cpu-x64": "Cerca de 17 MB. Muito lento."
+    }
+  },
+  "picker": {
+    "engine": "Mecanismo",
+    "searchPlaceholder": "Pesquisar modelos...",
+    "searchAria": "Pesquisar modelos",
+    "clear": "Limpar",
+    "noMatch": "Nenhum modelo encontrado.",
+    "local": "Neste computador",
+    "leaves": "o prompt sai deste computador",
+    "findMore": "Encontre mais modelos de imagem em Descobrir",
+    "manageHosted": "Gerenciar provedores hospedados",
+    "addKey": "Adicione uma chave de API para usar modelos hospedados"
+  },
+  "setup": {
+    "unavailableTitle": "Ainda não disponível neste sistema",
+    "unavailableBody": "A geração local de imagens e vídeos exige Windows x64 ou Linux x64.",
+    "title": "Configurar o mecanismo de imagens",
+    "body": "O Flint cria imagens e vídeos neste computador com o stable-diffusion.cpp. O mecanismo é baixado uma vez, verificado pelo checksum publicado e só roda enquanto você gera.",
+    "downloading": "Baixando… {{percent}}%",
+    "unpacking": "Descompactando…",
+    "checking": "Verificando se inicia…",
+    "installing": "Instalando…",
+    "install": "Baixar e instalar"
+  },
+  "size": {
+    "width": "Largura em pixels",
+    "height": "Altura em pixels",
+    "swap": "Trocar largura e altura",
+    "hintVideo": "Múltiplos de 16, até {{max}} px. Clipes grandes exigem muita memória.",
+    "hintImage": "Múltiplos de 16, até {{max}} px. Imagens grandes exigem mais memória e tempo."
+  },
+  "activity": {
+    "done": "Concluído",
+    "failed": "Falhou",
+    "stopped": "Interrompido",
+    "title": "Atividade recente",
+    "clearTitle": "Esvazia esta lista. Suas imagens continuam em Suas criações.",
+    "clearAll": "Limpar tudo",
+    "empty": "Nada ainda. O que você criar aparece aqui.",
+    "making": "Criando",
+    "open": "Abrir"
+  },
+  "video": {
+    "steps_one": "{{count}} passo",
+    "steps_other": "{{count}} passos",
+    "frames_one": "{{count}} quadro",
+    "frames_other": "{{count}} quadros",
+    "seed": "seed {{seed}}",
+    "avoid": "Evitar: {{prompt}}",
+    "copyPrompt": "Copiar prompt"
+  },
+  "actions": {
+    "promptCopied": "Prompt copiado",
+    "archive": "Mover para o arquivo",
+    "delete": "Excluir"
+  },
+  "time": {
+    "fewSeconds": "há alguns segundos"
+  },
+  "model": {
+    "title": "Modelo",
+    "manage": "Gerenciar",
+    "textToVideo": "Texto para vídeo",
+    "textToImage": "Texto para imagem",
+    "hostedBy": "Hospedado por {{provider}}",
+    "loaded": "Carregado",
+    "ready": "Pronto",
+    "notDownloaded": "Não baixado",
+    "hostedNote": "Seu prompt é enviado a {{provider}}, usa sua chave de API de Provedores e é cobrado por ele.",
+    "localNote_one": "Roda neste computador. Começa em {{width}} × {{height}}, {{count}} passo.",
+    "localNote_other": "Roda neste computador. Começa em {{width}} × {{height}}, {{count}} passos.",
+    "unload": "Descarregar",
+    "loading": "Carregando…",
+    "load": "Carregar",
+    "installFirst": "Instale o mecanismo de imagens acima para usar este modelo.",
+    "removeTitle": "Tira o modelo desta lista. Os arquivos baixados continuam no disco.",
+    "remove": "Remover do Estúdio"
+  },
+  "download": {
+    "starting": "Iniciando…",
+    "startingSize": "Iniciando… {{size}} para baixar",
+    "progress": "{{bytes}} de {{total}}",
+    "downloading": "Baixando…",
+    "button": "Baixar ({{size}})"
+  },
+  "duration": {
+    "s": "{{count}} s",
+    "min": "{{count}} min",
+    "minS": "{{minutes}} min {{seconds}} s"
+  },
+  "phase": {
+    "queued": "Aguardando",
+    "encoding": "Lendo o prompt",
+    "sampling": "Desenhando",
+    "decoding": "Finalizando",
+    "saving": "Salvando",
+    "working": "Trabalhando"
+  },
+  "settings": {
+    "title": "Configurações de geração",
+    "reset": "Redefinir",
+    "shape": "Formato",
+    "aspectRatio": "Proporção",
+    "customTitle": "Digite sua própria largura e altura",
+    "custom": "Personalizado",
+    "imageCount": "Quantidade de imagens",
+    "length": "Duração",
+    "seed": "Seed",
+    "random": "Aleatória",
+    "randomSeed": "Escolher uma seed aleatória",
+    "guess": "Cerca de {{duration}}, com base no seu último clipe.",
+    "advanced": "Avançado",
+    "loras": "Adaptadores LoRA",
+    "importLora": "Importar .safetensors",
+    "loraHint": "Use adaptadores feitos para a família de modelo local selecionada.",
+    "useLora": "Usar {{name}}",
+    "loraStrength": "Intensidade de {{name}}",
+    "negative": "Prompt negativo",
+    "negativeAria": "Prompt negativo",
+    "negativePlaceholder": "Borrado, baixa qualidade, dedos extras, texto, marca d'água…",
+    "avoidAria": "O que evitar",
+    "memoryWarning": "Este computador tem cerca de {{gb}} GB de memória. A geração de vídeo exige muita e, numa máquina assim, um clipe pode levar horas porque a memória acaba e os dados vão para o disco.",
+    "accept": "Entendi e quero continuar.",
+    "loraImported": "{{name}} importado"
+  },
+  "prompt": {
+    "title": "Prompt",
+    "guide": "Guia de prompts",
+    "guideDesc": "Pequenos hábitos que geram imagens melhores.",
+    "g1": {
+      "title": "Diga o que há nela",
+      "body": "Comece pelo assunto, depois onde ele está e o que está fazendo."
+    },
+    "g2": {
+      "title": "Nomeie o estilo",
+      "body": "Pintura a óleo, fotografia, ilustração plana, render 3D: o estilo muda tudo."
+    },
+    "g3": {
+      "title": "Acrescente luz e clima",
+      "body": "Luz suave da manhã, neon à noite, céu nublado: a luz define o clima."
+    },
+    "g4": {
+      "title": "Fique em uma ideia só",
+      "body": "Um prompt curto e claro vale mais que uma lista longa. Acrescente detalhes um de cada vez."
+    },
+    "g5": {
+      "title": "Use Evitar para o que você não quer",
+      "body": "Em Avançado, um prompt negativo lista o que deve ficar de fora."
+    },
+    "placeholderVideo": "Um gato andando por um beco na chuva, cinematográfico",
+    "placeholderImage": "Um farol num penhasco ao nascer do sol, pintura a óleo",
+    "enhanceTitle": "Acrescenta algumas palavras sobre detalhe e luz",
+    "enhance": "Aprimorar",
+    "example": {
+      "image": {
+        "0": "Um farol num penhasco ao nascer do sol, pintura a óleo",
+        "1": "Uma raposa numa floresta nevada, luz suave",
+        "2": "Cidade isométrica à noite, neon"
+      },
+      "video": {
+        "0": "Um gato andando por um beco na chuva, cinematográfico",
+        "1": "Ondas chegando a uma praia preta",
+        "2": "Vapor subindo de uma xícara de café"
+      }
+    },
+    "clear": "Limpar o prompt",
+    "copy": "Copiar o prompt",
+    "emptyImage": "Sua primeira imagem começa aqui",
+    "emptyVideo": "Seu primeiro vídeo começa aqui",
+    "emptyDesc": "Descreva acima ou experimente um dos exemplos.",
+    "save": "Salvar",
+    "openLarge": "Abrir em tamanho grande",
+    "remix": "Remix: mesmo prompt, seed nova",
+    "remixShort": "Remix",
+    "stop": "Parar",
+    "generateVideo": "Gerar vídeo",
+    "generateImage": "Gerar imagem",
+    "loadFirst": "Carregue o modelo primeiro",
+    "writeFirst": "Escreva um prompt primeiro.",
+    "notSetUp": "{{provider}} não está configurado em Provedores.",
+    "imageReady": "Imagem pronta",
+    "videoReady": "Vídeo pronto",
+    "waitingFor": "Aguardando {{provider}}…",
+    "eta": "faltam cerca de {{eta}}"
+  },
+  "gens": {
+    "title": "Suas criações",
+    "archive": "Arquivar",
+    "done": "Concluir",
+    "select": "Selecionar",
+    "grid": "Grade",
+    "list": "Lista",
+    "filter": "Filtro",
+    "all": "Todos",
+    "empty": "Nada aqui ainda. O que você criar aparece aqui."
+  }
+}

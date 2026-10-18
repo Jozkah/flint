@@ -12,6 +12,25 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PendingProposal } from '@janhq/tauri-plugin-agent-tools-api'
 
+// The real English strings, so the tests read what the person reads.
+vi.mock('@/i18n/react-i18next-compat', async () => {
+  const en = (await import('@/locales/en/common.json')).default as Record<string, unknown>
+  return {
+    useTranslation: () => ({
+      t: (key: string, opts?: Record<string, string>) => {
+        let v: unknown = en
+        for (const p of key.replace('common:', '').split('.')) {
+          v = (v as Record<string, unknown> | undefined)?.[p]
+        }
+        return String(v ?? key).replace(
+          /\{\{(\w+)\}\}/g,
+          (_, k: string) => opts?.[k] ?? ''
+        )
+      },
+    }),
+  }
+})
+
 const memoryProposalResolve = vi.fn()
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   memoryProposalResolve: (...a: unknown[]) => memoryProposalResolve(...a),

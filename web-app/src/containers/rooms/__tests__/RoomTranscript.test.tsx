@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { asJournal, makeMessage, makeRoom } from './roomsTestUtils'
+import { asJournal, createFakeApi, makeMessage, makeRoom, renderWithApi } from './roomsTestUtils'
 import { RoomTranscript } from '../RoomTranscript'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
@@ -197,6 +197,60 @@ describe('RoomTranscript', () => {
     expect(md.textContent).toContain('```bash\nls -la\n```')
   })
 
+  it('marks a reply cut at the reply limit and asks that participant to continue (L-002)', () => {
+    const { api } = createFakeApi()
+    const msg = makeMessage({ text: 'Photosynthesis is', finishReason: 'length', usage: { inputTokens: 5, outputTokens: 12, estimated: false } })
+    renderWithApi(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />, api)
+    const note = screen.getByTestId('reply-cut-off')
+    expect(note).toHaveTextContent('common:replyCutOff.withTokens')
+    fireEvent.click(within(note).getByRole('button', { name: 'common:continue' }))
+    expect(api.controller.sendUserMessage).toHaveBeenCalledWith(
+      'r1',
+      'Continue your previous answer from where it was cut off.',
+      { kind: 'participant', participantId: 'p1' }
+    )
+  })
+
+  it('labels the catch-up answer of a late joiner with the earlier questions it covers (R-043)', () => {
+    const msg = makeMessage({
+      text: 'Answers to all three.',
+      compare: { provider: 'openai', model: 'm', catchUp: [{ id: 'q1', text: 'First?' }, { id: 'q2', text: 'Second?' }] },
+    })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    const box = screen.getByTestId('compare-catch-up')
+    expect(box).toHaveTextContent('Catch-up: also answered 2 earlier questions')
+    expect(within(box).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['First?', 'Second?'])
+  })
+
+  it('marks a cut compare answer without a Continue (a message there is a new question)', () => {
+    const msg = makeMessage({
+      text: 'Photosynthesis is',
+      finishReason: 'length',
+      compare: { provider: 'openai', model: 'm' },
+    })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    expect(screen.getByTestId('reply-cut-off')).toHaveTextContent('common:replyCutOff.plain')
+    expect(within(screen.getByTestId('reply-cut-off')).queryByRole('button')).toBeNull()
+  })
+
+  it("counts the summary's lines from the turn's diff, like its change card (R-046)", () => {
+    const msg = makeMessage({
+      text: 'Appended.',
+      toolCalls: [
+        {
+          name: 'edit',
+          ok: true,
+          args: { path: 'a.md', old_string: 'one\ntwo', new_string: 'one\ntwo\nthree\nfour' },
+        },
+      ],
+      changes: { files: [{ path: 'a.md', additions: 2, deletions: 0 }] },
+    })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    const summary = screen.getByTestId('tool-trace-summary')
+    expect(summary).toHaveTextContent('+2')
+    expect(summary).toHaveTextContent('−0')
+  })
+
   it('folds tool calls into a one-line summary, then chips, then the full view', () => {
     const msg = makeMessage({
       text: 'Looked it up.',
@@ -226,6 +280,21 @@ describe('RoomTranscript', () => {
     expect(within(details).getByText('notes.md')).toBeInTheDocument()
     expect(within(details).getByText('FILE BODY')).toBeInTheDocument()
     expect(within(details).getByText('ERROR: nope')).toBeInTheDocument()
+  })
+
+  it('shows how long each call took in the full view', () => {
+    const msg = makeMessage({
+      text: 'Done.',
+      toolCalls: [
+        { name: 'read', ok: true, args: { path: 'a' }, output: 'A', ms: 340 },
+        { name: 'bash', ok: true, args: { command: 'x' }, output: 'B', ms: 2500 },
+      ],
+    })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    fireEvent.click(screen.getByTestId('tool-trace-summary'))
+    fireEvent.click(screen.getByTestId('tool-trace-toggle'))
+    const times = screen.getAllByTestId('tool-duration').map((e) => e.textContent)
+    expect(times).toEqual(['340 ms', '2.5 s'])
   })
 
   it('stays folded by default in the verbose transcript view too', () => {

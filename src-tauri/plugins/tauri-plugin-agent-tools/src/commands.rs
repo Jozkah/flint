@@ -253,14 +253,22 @@ pub async fn direct_edit_authorize(
 
 /// Withdraw one grant. Succeeds whether or not it was still live.
 #[cfg_attr(feature = "tauri", tauri::command)]
-pub fn direct_edit_revoke(grant_id: String) -> bool {
-    crate::grants::revoke(&grant_id)
+pub async fn direct_edit_revoke(grant_id: String) -> bool {
+    // Withdrawing a grant rewrites folder ACLs, which can take seconds on a
+    // big tree and waits on the sandbox helper's lock. A synchronous command
+    // runs on the main thread, where that froze every other IPC call.
+    tokio::task::spawn_blocking(move || crate::grants::revoke(&grant_id))
+        .await
+        .unwrap_or(false)
 }
 
 /// Withdraw every grant a session holds — detaching, switching, deleting.
 #[cfg_attr(feature = "tauri", tauri::command)]
-pub fn direct_edit_revoke_session(session_id: String) -> usize {
-    crate::grants::revoke_session(&session_id)
+pub async fn direct_edit_revoke_session(session_id: String) -> usize {
+    // Off the main thread for the same reason as `direct_edit_revoke`.
+    tokio::task::spawn_blocking(move || crate::grants::revoke_session(&session_id))
+        .await
+        .unwrap_or(0)
 }
 
 /// A `request_access` request resolved to the exact scope a grant would cover,
@@ -1406,14 +1414,7 @@ async fn execute_tool_inner(
         // Reading outside the workspace is what `request_access` exists for:
         // say so, or the model concludes the file is unreachable.
         Decision::Prompt(PromptKind::ReadEscape) => {
-            return Err(format!(
-                "tool '{name}' was refused: that path is outside the workspace and every \
-                 folder the user has granted. Call request_access with the narrowest \
-                 required path and explain why access is needed, then retry this call. \
-                 (Skill files are the exception: read one with skill_read and its `file` \
-                 argument; request_access cannot grant Flint's own data folder.)"
-            )
-            .into());
+            return Err(read_escape_message(&name, &args, &root, &read_roots).into());
         }
         // A `git` call that writes to a remote or can lose work. The renderer
         // puts every one of these to the user, naming the command, remote and
@@ -1937,7 +1938,9 @@ pub async fn mailbox_take_for_delivery(
     data_folder: String,
     session_id: String,
 ) -> Result<Vec<MailEnvelope>, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).take_for_delivery(&session_id)
+    Mailbox::open(Path::new(&data_folder))
+        .take_for_delivery(&session_id)
+        .map(|all| all.into_iter().map(MailEnvelope::screened).collect())
 }
 
 /// Queued and delivered (unread) envelopes, without changing their state.
@@ -1946,7 +1949,9 @@ pub async fn mailbox_pending(
     data_folder: String,
     session_id: String,
 ) -> Result<Vec<MailEnvelope>, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).pending(&session_id)
+    Mailbox::open(Path::new(&data_folder))
+        .pending(&session_id)
+        .map(|all| all.into_iter().map(MailEnvelope::screened).collect())
 }
 
 /// Mark envelopes read. Returns how many changed.
@@ -2364,10 +2369,50 @@ pub async fn permission_audit_recent(
     ))
 }
 
+/// The refusal for a read outside every root. It names the path that was
+/// tried and the folders that are allowed, so a model that mistyped a long
+/// path (one character off in an id) can see it and retry, instead of
+/// concluding the file is unreachable.
+fn read_escape_message(
+    name: &str,
+    args: &serde_json::Value,
+    root: &Path,
+    read_roots: &[PathBuf],
+) -> String {
+    let tried = ["path", "file_path", "dir", "directory", "cwd"]
+        .iter()
+        .find_map(|k| args.get(*k).and_then(|v| v.as_str()))
+        .map(|p| format!(" ({p})"))
+        .unwrap_or_default();
+    let mut allowed: Vec<String> = read_roots.iter().map(|r| r.display().to_string()).collect();
+    allowed.push(root.display().to_string());
+    format!(
+        "tool '{name}' was refused: that path{tried} is outside the workspace and every \
+         folder the user has granted. Allowed folders: {}. First check the path for a \
+         typo. Call request_access with the narrowest required path and explain why \
+         access is needed, then retry this call. (Skill files are the \
+         exception: read one with skill_read and its `file` argument; request_access \
+         cannot grant Flint's own data folder.)",
+        allowed.join(", ")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_read_escape_names_the_path_tried_and_the_allowed_folders() {
+        let msg = read_escape_message(
+            "read",
+            &json!({ "path": "C:/ws/abc6/src/app.js" }),
+            Path::new("C:/scratch"),
+            &[PathBuf::from("C:/ws/abc96")],
+        );
+        assert!(msg.contains("(C:/ws/abc6/src/app.js)"), "{msg}");
+        assert!(msg.contains("Allowed folders: C:/ws/abc96, C:/scratch"), "{msg}");
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -3165,7 +3210,7 @@ mod tests {
         assert!(!sibling.join("in-sibling.txt").exists(), "a folder beside them was written");
 
         // Review only: the sibling attached, no grant.
-        direct_edit_revoke(grant);
+        direct_edit_revoke(grant).await;
         let out = bash(
             format!("cat \"{}/notes.txt\"", fwd(&sibling)),
             Some(sibling.to_string_lossy().into()),

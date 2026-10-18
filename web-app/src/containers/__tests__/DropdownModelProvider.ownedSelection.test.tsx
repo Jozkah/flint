@@ -19,7 +19,9 @@ const threadsApi = {
   threads: {},
 }
 vi.mock('@/hooks/useThreads', () => ({
-  useThreads: vi.fn(() => threadsApi),
+  useThreads: vi.fn((sel?: (s: unknown) => unknown) =>
+    sel ? sel(threadsApi) : threadsApi
+  ),
 }))
 const serviceHub = {
   models: () => ({

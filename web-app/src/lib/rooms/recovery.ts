@@ -132,6 +132,9 @@ export async function recoverRoomsOnLoad(
     try {
       const { room, journal } = await persistence.getRoom(s.id)
       if (room.status !== 'running' && room.status !== 'awaiting-user') continue
+      // A room waiting for the user with no turn in flight was idle: a reload
+      // interrupted nothing, so it stays as it was.
+      if (room.status === 'awaiting-user' && unmatchedTurnStarts(journal).length === 0) continue
       await repairJournal(room.id, journal, persistence)
       const at = now()
       if (room.status === 'running') {

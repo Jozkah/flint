@@ -9,7 +9,8 @@
     "plugin": "外掛程式",
     "pluginNamed": "外掛程式 {{plugin}}",
     "skill": "技能",
-    "builtin": "內建"
+    "builtin": "內建",
+    "prompt": "提示詞"
   },
   "scope": {
     "project": "專案",

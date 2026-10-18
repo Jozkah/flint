@@ -23,6 +23,7 @@ import { useUsageStats, dayKey } from '@/stores/usage-stats-store'
 import { useServiceStore } from '@/hooks/useServiceHub'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { buildScopeChoice, type ApprovalScopeWire } from '@/lib/approvalScopes'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { usePrStatusStore } from '@/stores/pr-status-store'
@@ -31,12 +32,17 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useConversationGroups } from '@/lib/groups/store'
 import { projectKeyOf } from '@/lib/coworkCode'
+import { buildExcerpt, joinMentionBlocks, mentionToken } from '@/lib/chatMentions'
+import { setRoomPersistence, type RoomPersistence } from '@/lib/rooms/persistence'
+import { useRoomsStore } from '@/lib/rooms/store'
 import { answer } from './previewTauri'
 import { seedStudioAnswers } from './previewStudio'
 import { seedRooms } from './previewRooms'
+import { seedApplyReviewPreview } from './previewApplyReview'
 import { seedBrowserPane } from './previewBrowser'
 import { seedEngine } from './previewSeedEngine'
 import { seedHuggingFacePreview } from './previewHuggingFace'
+import { seedRichSearch } from './previewRichSearch'
 import {
   PREVIEW_DATA_FOLDER,
   patchSettingsServices,
@@ -63,6 +69,12 @@ function providers(): ModelProvider[] {
         model('llama-3.1-8b', 'Llama 3.1 8B', ['tools', 'vision']),
         model('Mistral-Small-3.2-24B-Q4_K_S', 'Mistral Small 3.2', ['tools']),
         model('phi-4-mini-Q8_0', 'Phi-4 mini', ['tools']),
+        model('Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-IQ4_XS', 'Qwen3.6-27B-IQ4_XS-LORA-Davidau-Fable', ['tools']),
+        model('Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-Q4_K_M', 'Qwen3.6-27B-Q4_K_M-Davidau-Fable', ['tools']),
+        model('Qwen3.8-27B-TTURBO-Fable-C-Fusion-709-IQ4_NL', 'Qwen3.8-27b-IQ4_NL-Davidau', ['tools']),
+        model('LFM2.5-2.6B-Q3.8-TBrilliance-NEO-MAX-Q3_K_M', 'LFM2.5-2.6B', ['tools']),
+        model('LFM2.5-2.6B-Q3.8-TBrilliance-BF16', 'LFM2.5-2.6B', ['tools']),
+        model('Cydonia-24B-v4.3-absolute-heresy.i1-Q4_1', 'Cydonia-24B-Q4_1-v4.3-Absolute-Heresy', ['tools']),
       ],
     },
     {
@@ -119,14 +131,31 @@ const FOLDERS = [
   { id: 'home', name: 'Home lab', updated_at: now - 300 * MIN },
 ]
 
-/** The example assistants: Flint, and two the user made. */
+/**
+ * The built-in and starter assistants the desktop assistant extension seeds
+ * (extensions/assistant-extension), kept to the fields the screens show so the
+ * preview has their icons. Keep in step with builtInAssistants.ts.
+ */
+export const PREVIEW_BUILT_IN_ASSISTANTS = [
+  { id: 'quartz', name: 'Quartz', avatar: '/images/assistants/quartz.png', description: 'A precise research and analysis specialist for evidence, comparisons, calculations, and decision-ready conclusions.' },
+  { id: 'coal', name: 'Coal', avatar: '/images/assistants/coal.png', description: 'A hands-on software engineer for debugging, implementation, refactors, tests, and practical code review.' },
+  { id: 'blaze', name: 'Blaze', avatar: '/images/assistants/blaze.png', description: 'A creative product and writing specialist for bold concepts, naming, UX ideas, copy, and polished creative output.' },
+  { id: 'redstone', name: 'Redstone', avatar: '/images/assistants/redstone.png', description: 'A systems and automation specialist for repeatable workflows, integrations, operations, and reliable multi-step execution.' },
+  { id: 'book-and-quill', name: 'Book and Quill', avatar: '/images/assistants/book-and-quill.png', description: 'A storyteller that writes and continues stories with vivid scenes and consistent characters.' },
+  { id: 'compass', name: 'Compass', avatar: '/images/assistants/compass.png', description: 'A translator that converts text between languages faithfully and flags tricky wording.' },
+  { id: 'emerald', name: 'Emerald', avatar: '/images/assistants/emerald.png', description: 'A money helper for budgeting, concepts and tradeoffs. Educational, not licensed financial advice.' },
+  { id: 'book', name: 'Book', avatar: '/images/assistants/book.png', description: 'A study tutor that teaches step by step and checks understanding with short questions.' },
+] as const
+
+/** The example assistants: Flint, the built-ins, and two the user made. */
 function assistants(): Assistant[] {
   const flint = useAssistant.getState().assistants.find((a) => a.id === 'jan')
   const base = { created_at: now / 1000, description: '', instructions: '', parameters: {} }
   return [
     ...(flint ? [flint] : []),
+    ...PREVIEW_BUILT_IN_ASSISTANTS.map((a) => ({ ...base, ...a })),
     { ...base, id: 'go-reviewer', name: 'Go reviewer', avatar: '🐹' },
-    { ...base, id: 'changelog', name: 'Changelog writer', avatar: '✍️' },
+    { ...base, id: 'changelog', name: 'Changelog writer', avatar: '✍️', description: 'Turns commit lists into short release notes.' },
   ] as unknown as Assistant[]
 }
 
@@ -171,7 +200,104 @@ const CHATS: ChatSeed[] = [
   ['vllm', 'Sourdough starter schedule', 9000],
   ['clutter', 'SQL window functions', 12000],
   ['test', 'Regex for ISO dates', 20000],
+  ['mdshow', 'Markdown showcase', 25000],
+  // Same title in three places, and one very long title: the @ / # menus tell
+  // the first apart and truncate the second.
+  ['plan1', 'Weekly planning', 300, 'weather'],
+  ['plan2', 'Weekly planning', 800, 'docs'],
+  ['plan3', 'Weekly planning', 5000],
+  ['longtitle', 'Investigate why the nightly benchmark regression only reproduces on the Windows runner after the allocator upgrade and compare it with the Linux numbers', 120, 'weather'],
 ]
+
+/** Every markdown feature the renderer styles: lists, tasks, tables, mermaid, long code. */
+const MARKDOWN_SHOWCASE = [
+  '# Markdown showcase',
+  '',
+  'Some **bold**, *italic*, ~~strike~~ and `inline code` with a [link](https://example.com).',
+  '',
+  '## Lists',
+  '1. First ordered item that is long enough to wrap onto a second line so that hanging indent can be inspected properly in the UI',
+  '2. Second item',
+  '   - nested bullet one',
+  '   - nested bullet two with more words to wrap around the container width and show the indentation',
+  '     - third level bullet',
+  '',
+  '- A top-level bullet that is long enough to wrap onto a second line so the hanging indent shows',
+  '- Second bullet',
+  '',
+  '- [x] done task',
+  '- [ ] open task',
+  '',
+  '## Table',
+  '| Name | Role | Team | Location |',
+  '|---|---|---|---|',
+  '| Alice | Engineer | Platform | Amsterdam |',
+  '| Charlie | Designer | Growth | Barcelona |',
+  '| Dana | Manager | Infrastructure | Copenhagen |',
+  '',
+  '## Diagram',
+  '```mermaid',
+  'graph TD',
+  '  A[Start] --> B{Check}',
+  '  B -->|yes| C[Ship]',
+  '  B -->|no| D[Fix]',
+  '  D --> B',
+  '```',
+  '',
+  '## Long code',
+  '```ts',
+  ...Array.from({ length: 72 }, (_, i) => `const line${i} = ${i} // code line ${i} that is fairly long to test wrapping`),
+  '```',
+].join('\n')
+
+/** A short exchange for a seeded chat, so its row can show a count and a preview. */
+function fillerMessages(id: string, title: string): ThreadMessage[] {
+  const base = { object: 'thread.message', thread_id: id, status: 'ready' }
+  const lines: [string, string][] = id === 'mdshow'
+    ? [['user', 'Show every markdown feature.'], ['assistant', MARKDOWN_SHOWCASE]]
+    : [
+    ['user', `Let's work on: ${title}`],
+    ['assistant', 'Sure. Start with the smallest change that shows the problem, then widen it.'],
+    ['user', 'Agreed. I will try that tomorrow and report back with the numbers.'],
+    ['assistant', 'Good plan. Keep the before and after side by side so the difference is easy to see.'],
+  ]
+  // plan1 opens with a mention of another chat, as the composer sends it, so
+  // the transcript shows the "Mentioned" chips.
+  if (id === 'plan1') {
+    const mentioned = buildExcerpt({
+      kind: 'chat',
+      id: 'release',
+      title: 'Forecast cache returns stale data',
+      project: 'acme-weather',
+      messages: [
+        { role: 'user', text: 'The /v1/forecast endpoint keeps returning yesterday’s data after midnight UTC.' },
+        { role: 'assistant', text: 'The cache key ignores the date, so it never expires at midnight.' },
+      ],
+    }).block
+    const session = buildExcerpt({
+      kind: 'session',
+      id: 'dash',
+      title: 'Hourly chart tooltip',
+      project: 'acme-weather',
+      messages: [{ role: 'user', text: 'Show the feels-like temperature in the tooltip.' }],
+    }).block
+    lines[0][1] = joinMentionBlocks(
+      `What did we decide in @${mentionToken('chat', 'release', 'Forecast cache returns stale data')} and @${mentionToken('session', 'dash', 'Hourly chart tooltip')}? Let's plan around it.`,
+      [mentioned, session]
+    )
+  }
+  return lines.map(
+    ([role, line], i) =>
+      ({
+        ...base,
+        id: `${id}-m${i}`,
+        role,
+        created_at: now - (60 - i) * MIN,
+        completed_at: now - (60 - i) * MIN,
+        content: [{ type: 'text', text: { value: line, annotations: [] } }],
+      }) as unknown as ThreadMessage
+  )
+}
 
 function threads(): Thread[] {
   return CHATS.map(([id, title, age, folder, pinned]) => {
@@ -202,6 +328,33 @@ const g = (s: string) => `${ESC}1;32m${s}${ESC}0m`
 const r = (s: string) => `${ESC}1;31m${s}${ESC}0m`
 const y = (s: string) => `${ESC}33m${s}${ESC}0m`
 
+// `?preview&attachments`: the first message carries a 200k-line paste and a
+// 5 MB log as inline files, to exercise the full attachment viewer.
+const SEED_ATTACHMENTS =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).has('attachments')
+
+function attachedBlock(): string {
+  return [
+    '',
+    '',
+    '[ATTACHED_FILES]',
+    '- file_id: pasted-text-1.txt, name: pasted-text-1.txt, type: txt, size: 7088890, mode: inline',
+    '- file_id: server.log, name: server.log, type: log, size: 5242880, mode: inline',
+    '[/ATTACHED_FILES]',
+  ].join('\n')
+}
+
+function bigAttachments(): Array<{ name: string; content: string }> {
+  const paste = Array.from({ length: 200_000 }, (_, i) => `${i + 1}. forecast row ${i} temp=${(i % 40) - 5}C`).join('\n')
+  const line = '2026-10-17T00:00:01Z INFO forecast cache refreshed region=eu-west hits=1204 misses=12\n'
+  const log = 'x'.repeat(6000) + ' (one very long line)\n' + line.repeat(Math.ceil((5 * 1024 * 1024) / line.length))
+  return [
+    { name: 'pasted-text-1.txt', content: paste },
+    { name: 'server.log', content: log },
+  ]
+}
+
 function releaseMessages(): ThreadMessage[] {
   const base = { object: 'thread.message', thread_id: 'release', status: 'ready' }
   const t = (m: number) => now - m * MIN
@@ -212,7 +365,8 @@ function releaseMessages(): ThreadMessage[] {
       role: 'user',
       created_at: t(3),
       completed_at: t(3),
-      content: [text('The /v1/forecast endpoint keeps returning yesterday’s data after midnight UTC. Can you find out why and fix it?')],
+      content: [text('The /v1/forecast endpoint keeps returning yesterday’s data after midnight UTC. Can you find out why and fix it?' + (SEED_ATTACHMENTS ? attachedBlock() : ''))],
+      ...(SEED_ATTACHMENTS ? { metadata: { inline_file_contents: bigAttachments() } } : {}),
     },
     {
       ...base,
@@ -312,6 +466,21 @@ function seedToolRuntime() {
           input: { command: 'git commit -am "fix(cache): key forecasts by UTC date"' },
           taskContext: 'Commit the cache fix and the new midnight test.',
           workspaceLabel: '~/projects/acme-weather',
+          // The "Always" form the backend offers for a command: the prefixes.
+          ...(() => {
+            const options: ApprovalScopeWire[] = [
+              { type: 'command_prefix', prefix: 'git' },
+              { type: 'command_prefix', prefix: 'git commit' },
+            ]
+            const choice = buildScopeChoice(options, 'bash')
+            return choice
+              ? {
+                  choice,
+                  chosenId: choice.defaultId,
+                  scopeForm: { root: '~/projects/acme-weather', options },
+                }
+              : {}
+          })(),
           resolve: () => {},
         },
       },
@@ -677,12 +846,62 @@ const pr = (
   loading: false,
 })
 
+/**
+ * A pull request a session recorded from its own `gh` call, with (unless
+ * `lookup` says otherwise) the live status the sidebar card lists it with.
+ */
+const sessionPr = (
+  number: number,
+  title: string,
+  state: 'open' | 'draft' | 'merged' | 'closed',
+  head: string,
+  additions: number,
+  deletions: number,
+  checks: { passed: number; failed: number; pending: number },
+  minutesAgo: number,
+  lookup: 'found' | 'loading' | 'failed' = 'found'
+) => {
+  const url = `https://github.com/acme/weather/pull/${number}`
+  const recorded = { url, number, repo: 'acme/weather', head, at: new Date(now - minutesAgo * MIN).toISOString() }
+  const entry =
+    lookup === 'found'
+      ? { lookup: { kind: 'found' as const, pr: { number, title, url, state, head, base: 'main', additions, deletions, checks } }, at: Date.now(), loading: false }
+      : lookup === 'loading'
+        ? { lookup: null, at: 0, loading: true }
+        : { lookup: { kind: 'failed' as const, message: 'gh: HTTP 502 from the GitHub API' }, at: Date.now(), loading: false }
+  return { recorded, entry }
+}
+
 function seedPrs() {
+  // The changelog session opened three; the review session seven (one still
+  // being looked up, one whose status could not be read), so the sidebar card
+  // shows a short list, a folded one, and both wait states.
+  const bySession: Record<string, ReturnType<typeof sessionPr>[]> = {
+    changelog: [
+      sessionPr(14, 'Changelog for 1.4', 'open', 'flint/changelog-1.4', 61, 3, { passed: 2, failed: 1, pending: 0 }, 40),
+      sessionPr(13, 'Document the units query parameter', 'draft', 'flint/docs-units', 22, 0, { passed: 0, failed: 0, pending: 2 }, 55),
+      sessionPr(9, 'Link the API guide from the README', 'merged', 'flint/readme-guide', 4, 1, { passed: 3, failed: 0, pending: 0 }, 90),
+    ],
+    review: [
+      sessionPr(21, 'Feels-like temperature in the hourly tooltip', 'open', 'flint/feels-like', 48, 6, { passed: 5, failed: 0, pending: 0 }, 5),
+      sessionPr(20, 'Compass points for wind direction', 'open', 'flint/wind-compass', 17, 2, { passed: 4, failed: 0, pending: 1 }, 15, 'loading'),
+      sessionPr(19, 'Round shown temperatures to whole degrees', 'draft', 'flint/round-temps', 9, 9, { passed: 0, failed: 0, pending: 0 }, 25),
+      sessionPr(18, 'Units section in docs', 'merged', 'flint/docs-units-section', 31, 0, { passed: 3, failed: 0, pending: 0 }, 60),
+      sessionPr(17, 'Drop the Kelvin fallback', 'closed', 'flint/no-kelvin', 2, 40, { passed: 1, failed: 2, pending: 0 }, 120),
+      sessionPr(16, 'Tooltip edge clipping', 'merged', 'flint/tooltip-clip', 12, 7, { passed: 3, failed: 0, pending: 0 }, 180),
+      sessionPr(15, 'Cache forecast by UTC date', 'open', 'flint/utc-cache', 26, 11, { passed: 0, failed: 0, pending: 0 }, 240, 'failed'),
+    ],
+  }
+  // Recorded oldest first, as the store keeps them.
+  for (const prs of Object.values(bySession)) prs.reverse()
   usePrStatusStore.setState({
     byFolder: {
       [RADAR_TREE]: pr(12, 'Retry the radar feed with backoff', 'open', 'flint/radar-retry', 35, 4, { passed: 3, failed: 0, pending: 1 }),
       [UNITS_TREE]: pr(11, 'Add imperial units to /v1/forecast', 'merged', 'flint/units-api', 128, 12, { passed: 4, failed: 0, pending: 0 }),
     },
+    byUrl: Object.fromEntries(Object.values(bySession).flat().map((p) => [p.recorded.url, p.entry])),
+    sessionPrs: Object.fromEntries(Object.entries(bySession).map(([id, prs]) => [id, prs.map((p) => p.recorded)])),
+    sessionPrsBackfilled: true,
     claims: { [`${RADAR_TREE}#12`]: 'escape', [`${UNITS_TREE}#11`]: 'paths' },
     backfilled: true,
   } as never)
@@ -996,7 +1215,16 @@ function seedCowork() {
   }
   const view = useCoworkView.getState()
   const rail = p.get('rail')
-  view.setRail('escape', rail === 'none' ? null : rail === 'browser' ? { kind: 'browser' } : { kind: 'diff' })
+  view.setRail(
+    'escape',
+    rail === 'none'
+      ? null
+      : rail === 'browser'
+        ? { kind: 'browser' }
+        : rail === 'preview'
+          ? { kind: 'preview' }
+          : { kind: 'diff' }
+  )
   if (rail === 'browser') seedBrowserPane('escape')
   view.setRail('dash', { kind: 'code' })
   view.setRail('paths', null)
@@ -1060,9 +1288,13 @@ function patchServices() {
     const target = hub[service]
     if (target) target[method] = fn
   }
-  set('messagesService', 'fetchMessages', async (id: string) => (id === 'release' ? releaseMessages() : []))
+  set('messagesService', 'fetchMessages', async (id: string) => {
+    if (id === 'release') return releaseMessages()
+    const chat = CHATS.find((c) => c[0] === id)
+    return chat && /^(plan\d|longtitle|mdshow)$/.test(id) ? fillerMessages(id, chat[1]) : []
+  })
   set('projectsService', 'getProjects', async () => FOLDERS)
-  set('threadsService', 'fetchThreads', async () => threads())
+  set('threadsService', 'fetchThreads', async () => (params().has('empty') ? [] : threads()))
   set('assistantsService', 'getAssistants', async () => assistants())
   // The Review only session's sandbox copy, readable the way the Code panel
   // reads sandbox files.
@@ -1104,6 +1336,46 @@ function seedBackendAnswers() {
   }
 }
 
+function seedMentionDraft(many: boolean) {
+  const chat = (id: string) => `@${mentionToken('chat', id, CHATS.find((c) => c[0] === id)?.[1] ?? id)}`
+  const session = `@${mentionToken('session', 'dash', 'Hourly chart tooltip')}`
+  const prompt = many
+    ? `Compare ${chat('kravio')} ${chat('escape')} ${session} ${chat('longtitle')} ${chat('toolargs')} ${chat('sandbox')} and @chat:deleted-thread-0badf00d#summary`
+    : `What did we settle in ${chat('kravio')} and ${session}? Use it for the new legend.`
+  void import('@/hooks/usePrompt').then((m) => m.usePrompt.getState().setPrompt(prompt))
+}
+
+function seedHeavy() {
+  const n = Number(params().get('heavy')) || 2000
+  const list: Thread[] = []
+  for (let i = 0; i < n; i++) {
+    list.push({
+      id: `heavy-${i}`,
+      title: `Heavy chat ${i} about ${['rust', 'react', 'sql', 'docker'][i % 4]}`,
+      // Spread across the last 60 days; the first 30 inside the "recent" hour.
+      updated: (now - (i < 30 ? i : i * 43) * MIN) / 1000,
+      isFavorite: i % 97 === 0,
+      assistants: [],
+      model: { id: 'claude-sonnet-5', provider: 'anthropic' },
+      metadata: {},
+    } as unknown as Thread)
+  }
+  useThreads.getState().setThreads([...threads(), ...list])
+  const code = '```ts\n' + Array.from({ length: 40 }, (_, k) => `const v${k} = compute(${k}) // line ${k}`).join('\n') + '\n```'
+  const table = '| a | b | c |\n|---|---|---|\n' + Array.from({ length: 20 }, (_, k) => `| ${k} | ${k * 2} | ${k * 3} |`).join('\n')
+  const msgs = Array.from({ length: 300 }, (_, i) => ({
+    id: `heavy-m-${i}`,
+    object: 'thread.message',
+    thread_id: 'heavy-0',
+    role: i % 2 ? 'assistant' : 'user',
+    created_at: now - (300 - i) * MIN,
+    completed_at: now - (300 - i) * MIN,
+    content: [text(i % 2 ? `## Answer ${i}\n\nSome **markdown** text.\n\n${code}\n\n${table}` : `Question ${i}?`)],
+  })) as unknown as ThreadMessage[]
+  useMessages.getState().setMessages('heavy-0', msgs)
+  ;(window as unknown as Record<string, unknown>).__flintPerf = { useThreads, useMessages }
+}
+
 export function seedPreview() {
   seedBackendAnswers()
   patchServices()
@@ -1127,9 +1399,25 @@ export function seedPreview() {
   seedUsage()
   seedCowork()
   seedRooms()
+  seedApplyReviewPreview(params().get('applyseed'))
   seedEngine()
   seedHuggingFacePreview()
   seedSettingsPreview()
+  seedRichSearch()
+  // `?heavy`: a big data folder for performance runs (2,000 chats, one
+  // 300-message chat with code and tables), stores exposed on window.
+  if (params().has('heavy')) seedHeavy()
+  // `?empty`: no conversation anywhere, to look at the @ / # menus' empty state.
+  if (params().has('empty')) {
+    useThreads.setState({ threads: {} } as never)
+    useCoworkSessions.setState({ sessions: [], currentId: null } as never)
+    setRoomPersistence({ listRooms: async () => [] } as unknown as RoomPersistence)
+    useRoomsStore.setState({ summaries: [] } as never)
+  }
+  // `?mentions`: a draft that mentions conversations, to look at the composer's
+  // mention pills and chips; `?mentions=many` mentions more than the cap, and
+  // one conversation that no longer exists.
+  if (params().has('mentions')) seedMentionDraft(params().get('mentions') === 'many')
   // Folders live in a store the hook reads through the projects service; the
   // hook's own setter is reached from its module.
   void import('@/hooks/useThreadManagement').then((m) => {

@@ -627,7 +627,11 @@ describe('the layout at each width', () => {
     expect(screen.queryByTestId('cowork-inspector')).toBeNull()
 
     await userEvent.click(screen.getByTestId('cowork-view-details'))
-    expect(await screen.findByTestId('cowork-details-view')).toBeInTheDocument()
+    const details = await screen.findByTestId('cowork-details-view')
+    expect(details).toBeInTheDocument()
+    // A page's scrollbar sits on the pane edge: it pulls out over the shell's
+    // 12px gutter (-mr-3) and the gutter moves inside as padding.
+    expect(details).toHaveClass('-mr-3', 'pr-4')
     expect(screen.getByTestId('session-details-body')).toBeInTheDocument()
     expect(screen.getAllByTestId('model-selector')).toHaveLength(1)
   })

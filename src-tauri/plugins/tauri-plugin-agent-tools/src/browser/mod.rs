@@ -13,10 +13,12 @@
 //!   against the policy and reports what the page does.
 //! - `fence`: page text reaches the model only inside an untrusted block.
 //! - `outline`: the model-facing page snapshot (refs, caps).
+//! - `download`: the opt-in, confined saving of one download.
 //! - `session`: the long-lived per-run session the `browser` tool drives.
 
 pub mod cdp;
 pub mod confine;
+pub mod download;
 pub mod events;
 pub mod fence;
 pub mod keys;

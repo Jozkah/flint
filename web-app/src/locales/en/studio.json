@@ -1,0 +1,222 @@
+{
+  "page": {
+    "title": "Studio",
+    "descriptionLocal": "Create images and video locally on this computer. Nothing leaves your device.",
+    "descriptionHosted": "Create images with a hosted model. Your prompt is sent to its provider.",
+    "whatToMake": "What to make",
+    "images": "Images",
+    "video": "Video",
+    "dismiss": "Dismiss",
+    "loading": "Loading…"
+  },
+  "elapsed": {
+    "slow": "taking longer than usual"
+  },
+  "builds": {
+    "anyGpu": "Any graphics card",
+    "noGpu": "No graphics card",
+    "nvidia": "NVIDIA (faster)",
+    "note": {
+      "linux-vulkan-x64": "About 38 MB. NVIDIA, AMD or Intel with a Vulkan driver.",
+      "linux-cpu-x64": "About 25 MB. Very slow.",
+      "win-vulkan-x64": "About 30 MB. Works on NVIDIA, AMD and Intel.",
+      "win-cuda12-x64": "About 900 MB. Needs a recent NVIDIA driver.",
+      "win-cpu-x64": "About 17 MB. Very slow."
+    }
+  },
+  "picker": {
+    "engine": "Engine",
+    "searchPlaceholder": "Search models...",
+    "searchAria": "Search models",
+    "clear": "Clear",
+    "noMatch": "No models match.",
+    "local": "On this computer",
+    "leaves": "prompt leaves this computer",
+    "findMore": "Find more picture models in Discover",
+    "manageHosted": "Manage hosted providers",
+    "addKey": "Add an API key to use hosted models"
+  },
+  "setup": {
+    "unavailableTitle": "Not available on this system yet",
+    "unavailableBody": "Local image and video generation currently requires Windows x64 or Linux x64.",
+    "title": "Set up the image engine",
+    "body": "Flint makes images and video on this computer with stable-diffusion.cpp. The engine is downloaded once, checked against its published checksum, and runs only while you generate.",
+    "downloading": "Downloading… {{percent}}%",
+    "unpacking": "Unpacking…",
+    "checking": "Checking that it starts…",
+    "installing": "Installing…",
+    "install": "Download and install"
+  },
+  "size": {
+    "width": "Width in pixels",
+    "height": "Height in pixels",
+    "swap": "Swap width and height",
+    "hintVideo": "Multiples of 16, up to {{max}} px. Big clips need a lot of memory.",
+    "hintImage": "Multiples of 16, up to {{max}} px. Big pictures need more memory and time."
+  },
+  "activity": {
+    "done": "Done",
+    "failed": "Failed",
+    "stopped": "Stopped",
+    "title": "Recent Activity",
+    "clearTitle": "Empties this list. Your pictures stay in Your Generations.",
+    "clearAll": "Clear all",
+    "empty": "Nothing yet. What you make shows up here.",
+    "making": "Making",
+    "open": "Open"
+  },
+  "video": {
+    "steps_one": "{{count}} step",
+    "steps_other": "{{count}} steps",
+    "frames_one": "{{count}} frame",
+    "frames_other": "{{count}} frames",
+    "seed": "seed {{seed}}",
+    "avoid": "Avoid: {{prompt}}",
+    "copyPrompt": "Copy prompt"
+  },
+  "actions": {
+    "promptCopied": "Prompt copied",
+    "archive": "Move to Archive",
+    "delete": "Delete"
+  },
+  "time": {
+    "fewSeconds": "a few seconds ago"
+  },
+  "model": {
+    "title": "Model",
+    "manage": "Manage",
+    "textToVideo": "Text to Video",
+    "textToImage": "Text to Image",
+    "hostedBy": "Hosted by {{provider}}",
+    "loaded": "Loaded",
+    "ready": "Ready",
+    "notDownloaded": "Not downloaded",
+    "hostedNote": "Your prompt is sent to {{provider}}, uses your API key from Providers and is billed by them.",
+    "localNote_one": "Runs on this computer. Starts at {{width}} × {{height}}, {{count}} step.",
+    "localNote_other": "Runs on this computer. Starts at {{width}} × {{height}}, {{count}} steps.",
+    "unload": "Unload",
+    "loading": "Loading…",
+    "load": "Load",
+    "installFirst": "Install the image engine above to use this model.",
+    "removeTitle": "Takes it off this list. Its downloaded files stay on disk.",
+    "remove": "Remove from Studio"
+  },
+  "download": {
+    "starting": "Starting…",
+    "startingSize": "Starting… {{size}} to download",
+    "progress": "{{bytes}} of {{total}}",
+    "downloading": "Downloading…",
+    "button": "Download ({{size}})"
+  },
+  "duration": {
+    "s": "{{count}} s",
+    "min": "{{count}} min",
+    "minS": "{{minutes}} min {{seconds}} s"
+  },
+  "phase": {
+    "queued": "Waiting",
+    "encoding": "Reading the prompt",
+    "sampling": "Drawing",
+    "decoding": "Finishing",
+    "saving": "Saving",
+    "working": "Working"
+  },
+  "settings": {
+    "title": "Generation Settings",
+    "reset": "Reset",
+    "shape": "Shape",
+    "aspectRatio": "Aspect Ratio",
+    "customTitle": "Type your own width and height",
+    "custom": "Custom",
+    "imageCount": "Image Count",
+    "length": "Length",
+    "seed": "Seed",
+    "random": "Random",
+    "randomSeed": "Pick a random seed",
+    "guess": "About {{duration}}, from your last clip.",
+    "advanced": "Advanced",
+    "loras": "LoRA adapters",
+    "importLora": "Import .safetensors",
+    "loraHint": "Use adapters made for selected local model family.",
+    "useLora": "Use {{name}}",
+    "loraStrength": "{{name}} strength",
+    "negative": "Negative Prompt",
+    "negativeAria": "Negative prompt",
+    "negativePlaceholder": "Blurry, low quality, extra fingers, text, watermark…",
+    "avoidAria": "What to avoid",
+    "memoryWarning": "This computer has about {{gb}} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk.",
+    "accept": "I understand and want to continue.",
+    "loraImported": "{{name}} imported"
+  },
+  "prompt": {
+    "title": "Prompt",
+    "guide": "Prompt Guide",
+    "guideDesc": "Short habits that give better pictures.",
+    "g1": {
+      "title": "Say what is in it",
+      "body": "Start with the subject, then where it is and what it is doing."
+    },
+    "g2": {
+      "title": "Name the style",
+      "body": "Oil painting, photograph, flat illustration, 3D render: the style changes everything."
+    },
+    "g3": {
+      "title": "Add light and mood",
+      "body": "Soft morning light, neon at night, overcast: light sets the feel."
+    },
+    "g4": {
+      "title": "Keep it to one idea",
+      "body": "A short, clear prompt beats a long list. Add detail one step at a time."
+    },
+    "g5": {
+      "title": "Use Avoid for what you do not want",
+      "body": "Under Advanced, a negative prompt lists things to leave out."
+    },
+    "placeholderVideo": "A cat walking through a rainy alley, cinematic",
+    "placeholderImage": "A lighthouse on a cliff at sunrise, oil painting",
+    "enhanceTitle": "Adds a few words about detail and light",
+    "enhance": "Enhance",
+    "example": {
+      "image": {
+        "0": "A lighthouse on a cliff at sunrise, oil painting",
+        "1": "A fox in a snowy forest, soft light",
+        "2": "Isometric city at night, neon"
+      },
+      "video": {
+        "0": "A cat walking through a rainy alley, cinematic",
+        "1": "Waves rolling onto a black beach",
+        "2": "Steam rising from a coffee cup"
+      }
+    },
+    "clear": "Clear the prompt",
+    "copy": "Copy the prompt",
+    "emptyImage": "Your first image starts here",
+    "emptyVideo": "Your first video starts here",
+    "emptyDesc": "Describe it above, or try one of the examples.",
+    "save": "Save",
+    "openLarge": "Open large",
+    "remix": "Remix: same prompt, new seed",
+    "remixShort": "Remix",
+    "stop": "Stop",
+    "generateVideo": "Generate Video",
+    "generateImage": "Generate Image",
+    "loadFirst": "Load the model first",
+    "writeFirst": "Write a prompt first.",
+    "notSetUp": "{{provider}} is not set up in Providers.",
+    "imageReady": "Image ready",
+    "videoReady": "Video ready",
+    "waitingFor": "Waiting for {{provider}}…",
+    "eta": "about {{eta}} left"
+  },
+  "gens": {
+    "title": "Your Generations",
+    "archive": "Archive",
+    "done": "Done",
+    "select": "Select",
+    "grid": "Grid",
+    "list": "List",
+    "filter": "Filter",
+    "all": "All",
+    "empty": "Nothing here yet. What you make appears here."
+  }
+}

@@ -9,7 +9,9 @@
       "title": "Flint erledigt Aufgaben in Ihrem Browser",
       "description": "Installieren Sie die Erweiterung, um Flint Browserzugriff zu gewähren",
       "getExtension": "Erweiterung holen"
-    }
+    },
+    "requires": "Erfordert, dass die Browsererweiterung in deinem Chrome-basierten Browser installiert ist.",
+    "install": "Erweiterung installieren →"
   },
   "serverName": "Server Name",
   "enterServerName": "Server Namen eingeben",
@@ -144,7 +146,7 @@
   "experimental": "Experimentell",
   "editAllJson": "JSON aller Server bearbeiten",
   "findMore": "Finde mehr MCP Server bei",
-  "allowPermissions": "Erlaube allen MCP Werkzeugen den Zugriff",
+  "allowPermissions": "Alle MCP-Tool-Berechtigungen erlauben",
   "allowPermissionsDesc": "Wenn aktiviert, werden alle MCP-Werkzeug-Aufrufe automatisch genehmigt, ohne dass Berechtigungsdialoge angezeigt werden. Diese Einstellung gilt global für alle Gespräche, einschließlich neuer Chats.",
   "autoApproveServer": "Tools dieses Servers automatisch genehmigen",
   "noServers": "Keine MCP Server gefunden",
@@ -172,7 +174,9 @@
     "selectRouterModelPlaceholder": "Weiterleitungsmodell auswählen…",
     "routerModelSearchPlaceholder": "Modelle durchsuchen…",
     "routerModelEmptyList": "Keine leichtgewichtigen Modelle verfügbar. Fügen Sie ein kleineres Modell hinzu oder konfigurieren Sie API-Schlüssel unter Modelle.",
-    "routerModelEmptySearch": "Keine Treffer für „{{query}}“."
+    "routerModelEmptySearch": "Keine Treffer für „{{query}}“.",
+    "idleShutdown": "Inaktive Server beenden nach (Minuten)",
+    "idleShutdownDesc": "Ein MCP-Server ohne Tool-Aufrufe wird nach dieser Zeit beendet, um Speicher freizugeben, und beim nächsten Bedarf neu gestartet. Server, die mit Flint starten sollen, laufen weiter. Auf 0 setzen, um sie nie zu beenden."
   },
   "auth": {
     "label": "Auth:",
@@ -259,7 +263,8 @@
   "lifecycle": {
     "startWithFlint": "Mit Flint starten",
     "start": "Starten",
-    "stop": "Stoppen"
+    "stop": "Stoppen",
+    "toolTimeout": "Tool-Timeout (s)"
   },
   "cwd": "Arbeitsverzeichnis",
   "cwdPlaceholder": "Optional, z. B. C:\\tools\\my-server",

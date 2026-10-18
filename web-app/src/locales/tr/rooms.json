@@ -12,8 +12,10 @@
     "open": "{{title}} odasını aç",
     "delete": "Sil",
     "deleteLabel": "{{title}} odasını sil",
-    "participants": "{{count}} katılımcı",
-    "turns": "{{count}} tur",
+    "participants_one": "{{count}} katılımcı",
+    "participants_other": "{{count}} katılımcı",
+    "turns_one": "{{count}} tur",
+    "turns_other": "{{count}} tur",
     "updated": "Güncellendi: {{time}}",
     "untitled": "Başlıksız oda",
     "moreLabel": "{{title}} için diğer eylemler",
@@ -54,7 +56,9 @@
     "user-selected": "Siz seçersiniz",
     "user-selectedHint": "Her turdan sonra oda, sizin sonraki konuşmacıyı seçmenizi bekler.",
     "moderator-selected": "Moderatör seçer",
-    "moderator-selectedHint": "Bir moderatör modeli her konuşmacıyı seçer ve tartışmayı kapatabilir."
+    "moderator-selectedHint": "Bir moderatör modeli her konuşmacıyı seçer ve tartışmayı kapatabilir.",
+    "compare": "Modelleri karşılaştır",
+    "compareHint": "Her mesaj tüm katılımcılara aynı anda gider; birbirlerini görmeden, kendi başlarına yanıtlar, yan yana."
   },
   "clear": {
     "command": "Bu odayı temizle: sohbeti, öğrendikleri, geçici dosyaları",
@@ -74,6 +78,9 @@
     "heading": "Oda ayarları",
     "sectionGeneral": "Genel",
     "sectionDiscussion": "Tartışma ve moderatör",
+    "sectionIdentity": "Kimlik",
+    "sectionModel": "Model ve akıl yürütme",
+    "sectionTools": "Araçlar",
     "lockedWhileRunning": "Ayarları değiştirmek için odayı duraklatın.",
     "title": "Başlık",
     "objective": "Amaç",
@@ -152,7 +159,47 @@
     "sections": "Ayar bölümü",
     "tabGeneral": "Genel",
     "tabDiscussion": "Tartışma",
-    "tabLimits": "Sınırlar"
+    "tabLimits": "Sınırlar",
+    "compareRun": "Modelleri çalıştırma",
+    "compareRunHint": "Tek tek daha yavaştır ama aynı anda tek bir yerel model yükler ve istek sınırlarını korur.",
+    "compareRunOption": {
+      "together": "Hepsi aynı anda",
+      "one-by-one": "Tek tek"
+    },
+    "compareRunSuggest": "İki veya daha fazla yerel model seçili: tek tek çalıştırmak bellek için yarışmalarını önler.",
+    "tools": {
+      "heading": "Araçlar",
+      "summary": "{{total}} araçtan {{on}} açık · ~{{tokens}} token",
+      "loading": "Araçlar yükleniyor…",
+      "empty": "Bu erişimle kullanılabilir araç yok.",
+      "group": {
+        "files": "Dosyalar ve komutlar",
+        "web": "Web",
+        "mcp": "MCP sunucuları",
+        "other": "Diğer"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Araç tanımları bu modelin bağlam penceresinin yaklaşık %{{pct}} kadarını kullanıyor.",
+      "warn": "Araç tanımları bu modelin bağlam penceresinin yaklaşık %{{pct}} kadarını kullanıyor (%{{limit}} üzerinde). Tartışmaya yer kalması için bazılarını kapatın.",
+      "windowUnknown": "Bu modelin bağlam penceresi bilinmiyor, bu yüzden pay gösterilemiyor.",
+      "notStarted": "başlatılmadı",
+      "toolsUnknown": "başlayana kadar araçlar bilinmiyor"
+    },
+    "budget": {
+      "heading": "Tur başına araç bütçesi",
+      "hint": "Araç kullanan her katılımcı turu için sınırlar. Varsayılan için alanı boş bırakın.",
+      "maxToolCalls": "En fazla araç çağrısı",
+      "maxSteps": "En fazla adım",
+      "toolTimeoutSec": "Araç zaman aşımı (saniye)",
+      "default": "Varsayılan: {{value}}"
+    },
+    "isolation": {
+      "active": "Düzenleyebilen her katılımcı kendi yalıtılmış çalışma alanında çalışır; birbirlerinin veya klasörünüzün üzerine yazamazlar.",
+      "unavailable": "Yalıtılmış çalışma alanı kullanılamıyor: {{reason}}. Düzenleyebilen katılımcılar bu odada yalnızca okur.",
+      "untrusted": "klasör güvenilir değil",
+      "trust": "Bu klasöre güven"
+    },
+    "saving": "Kaydediliyor…"
   },
   "limits": {
     "maxRounds": "Turlar",
@@ -216,6 +263,7 @@
     "moderatorNote": "Moderatör notu",
     "disagreements": "Anlaşmazlıklar",
     "jumpToLatest": "En sona git",
+    "compareRow": "{{count}} yanıt yan yana",
     "toolDetails": "Ayrıntılar",
     "toolHide": "Gizle",
     "toolArgs": "Girdi",
@@ -225,7 +273,30 @@
     "toolFailed": "başarısız",
     "speed": "{{tps}} tok/sn",
     "tokensOut": "{{approx}}{{count}} token",
-    "speedTitle": "Bu yanıtta yazılan token'lar ve ne kadar hızlı olduğu"
+    "speedTitle": "Bu yanıtta yazılan token'lar ve ne kadar hızlı olduğu",
+    "budgetHit": {
+      "tool-calls": "Bu tur araç çağrısı bütçesine ulaştı.",
+      "steps": "Bu tur adım bütçesine ulaştı.",
+      "timeout": "Bu turdaki bir araç çağrısı zaman aşımını geçti ve durduruldu."
+    },
+    "rawToolCall": "Bu, metin olarak yazılmış bir araç çağrısına benziyor. Çalıştırılmadı.",
+    "emptyReply": {
+      "length": "Model yanıt yazmadan tüm yanıt sınırını ({{count}} token) kullandı. Oda ayarlarından sınırı yükseltin veya bu katılımcının akıl yürütmesini kapatıp yeniden çalıştırın.",
+      "tools": "Araç kullandı ama metin yanıtı yazmadı.",
+      "none": "Metin yanıtı yok."
+    },
+    "thought": "Düşünme",
+    "answerFrom": "{{name}} yanıtı",
+    "expandAnswer": "{{name}} yanıtının tamamını göster",
+    "collapseAnswer": "{{name}} yanıtını kısalt",
+    "expand": "Genişlet",
+    "collapse": "Daralt",
+    "linkScroll": "Bağlı kaydırma",
+    "linkScrollHint": "Bir sorunun yanıtlarını birlikte kaydır",
+    "continuePrompt": "Önceki yanıtına kesildiği yerden devam et.",
+    "catchUp": "Telafi: önceki {{count}} soruyu da yanıtladı",
+    "catchUp_one": "Telafi: önceki 1 soruyu da yanıtladı",
+    "catchUpHint": "Bu katılımcı bu sorulardan sonra katıldı, bu yüzden bu yanıt onları da yanıtlıyor:"
   },
   "unknownWindow": {
     "title": "Bağlam penceresi bilinmiyor",
@@ -268,17 +339,24 @@
     "finalPositionsHint": "Her katılımcı nerede durduğunu belirtir",
     "synthesizeHint": "Sonucun özeti, muhalefet şerhiyle birlikte",
     "cancelTurnHint": "Yalnızca devam eden yanıtı durdur",
-    "steerLocked": "Bunlar tartışma başladığında açılır."
+    "steerLocked": "Bunlar tartışma başladığında açılır.",
+    "answering": "Yanıtlayanlar",
+    "models": "Modeller"
   },
   "stage": {
     "speaking": "{{name}} konuşuyor",
     "compacting": "{{name}} yetişiyor",
     "draft": "Başlamaya hazır",
-    "draftHint": "{{count}} katılımcı · {{mode}}",
+    "draftHint_one": "{{count}} katılımcı · {{mode}}",
+    "draftHint_other": "{{count}} katılımcı · {{mode}}",
     "running": "Tartışma sürüyor",
     "runningHint": "Sıradaki konuşmacı hazırlanıyor.",
     "awaiting-user": "Seçme sırası sizde",
     "awaitingHint": "Sıradaki konuşmacıyı seçin veya odaya yazın.",
+    "comparing": "{{count}} model yanıtlıyor",
+    "comparingHint": "Her biri kendi başına yanıtlar; yanıtlar yan yana görünür.",
+    "compareAwaiting": "Sıra sizde",
+    "compareAwaitingHint": "Bir mesaj yazın, her katılımcı yanıtlasın.",
     "paused": "Duraklatıldı",
     "pausedHint": "Buradan devam etmek için sürdürün.",
     "stopped": "Durduruldu",
@@ -289,7 +367,8 @@
     "failedHint": "Yeniden denemek için tekrar başlatın.",
     "round": "Tur",
     "turn": "Sıra",
-    "of": "/"
+    "of": "/",
+    "question": "Soru"
   },
   "usage": {
     "label": "Kullanım",
@@ -302,7 +381,8 @@
     "time": "Süre",
     "of": "{{value}} / {{max}}",
     "noLimit": "sınır yok",
-    "stopReason": "Durduruldu: {{reason}}"
+    "stopReason": "Durduruldu: {{reason}}",
+    "questions": "Sorular"
   },
   "stopReason": {
     "user": "sizin tarafınızdan durduruldu",
@@ -331,7 +411,9 @@
     "toShort": "Alıcı",
     "placeholderTo": "{{name}} kişisine yazın…",
     "mention": "Bir katılımcıdan bahset",
-    "dropSkipped": "Eklenmedi (metin değil, klasör veya mesaj sınırı aşıldı): {{files}}"
+    "dropSkipped": "Eklenmedi (metin değil, klasör veya mesaj sınırı aşıldı): {{files}}",
+    "placeholderShort": "Odaya yaz… anmak için @",
+    "extendByQuestions": "Ek soru"
   },
   "kpi": {
     "running": "Çalışıyor",
@@ -340,7 +422,8 @@
     "waitingHint": "Seçiminiz veya yanıtınız gerekiyor",
     "waitingNone": "Sizi bekleyen bir şey yok",
     "turns": "Bu haftaki turlar",
-    "turnsHint": "{{count}} oda genelinde",
+    "turnsHint_one": "{{count}} odada",
+    "turnsHint_other": "{{count}} odada",
     "models": "Katılan modeller",
     "modelsNone": "Henüz katılımcı yok"
   },
@@ -383,5 +466,132 @@
     "panes": "Oda görünümü",
     "talk": "Tartışma",
     "controls": "Kontroller"
+  },
+  "compare": {
+    "title": "Çalıştırmaları karşılaştır",
+    "modeTogether": "Hepsi aynı anda",
+    "modeOneByOne": "Tek tek",
+    "include": "Sonraki çalıştırmaya dahil et",
+    "includeFor": "{{name}} modelini sonraki çalıştırmaya dahil et",
+    "run": "Çalıştır",
+    "runAgain": "Yeniden çalıştır",
+    "runFor": "{{name}} modelini geçerli soruda çalıştır",
+    "runAgainFor": "{{name}} modelini geçerli soruda yeniden çalıştır",
+    "runAll": "Hepsini çalıştır",
+    "answerEarlier": "Önceki soruları yanıtla",
+    "answerEarlierHint": "Önceki bir soruyu kaçıran her model, en baştan oradaymış gibi sırayla şimdi yanıtlar.",
+    "export": "Karşılaştırmayı dışa aktar",
+    "saveMarkdown": "Markdown olarak kaydet…",
+    "copyMarkdown": "Markdown olarak kopyala",
+    "copyJson": "JSON olarak kopyala",
+    "saved": "Karşılaştırma kaydedildi.",
+    "copied": "Panoya kopyalandı.",
+    "copyFailed": "Panoya kopyalanamadı.",
+    "notAnswered": "Bu soruyu henüz yanıtlamadı.",
+    "state": {
+      "off": "Sonraki çalıştırmanın dışında",
+      "unavailable": "Kullanılamıyor",
+      "running": "Yanıtlıyor…",
+      "queued": "Sırada",
+      "done": "Yanıtladı",
+      "failed": "Başarısız",
+      "idle": "Henüz yanıtlamadı",
+      "waitingSlot": "Sırada: yerel model yuvası bekleniyor"
+    },
+    "retry": "Yeniden dene",
+    "retryFor": "{{name}} için yeniden dene"
+  },
+  "changes": {
+    "summaryOne": "{{count}} dosya değişti",
+    "summaryMany": "{{count}} dosya değişti",
+    "workspace": "Yalıtılmış çalışma alanı: {{path}}",
+    "binary": "İkili dosya",
+    "noExcerpt": "Alıntı yok.",
+    "openDiff": "Farkı aç",
+    "keep": "Tut",
+    "discard": "Değişiklikleri at",
+    "apply": "Klasörüme uygula",
+    "state": {
+      "kept": "Tutuldu",
+      "discarded": "Atıldı",
+      "applied": "Uygulandı",
+      "idle": "Uygulanmadı"
+    },
+    "diffTitle": "Çalışma alanındaki değişiklikler",
+    "diffHint": "Bu katılımcının yalıtılmış çalışma alanında değiştirdiği her şey.",
+    "discardTitle": "Bu değişiklikler atılsın mı?",
+    "discardHint": "Katılımcının çalışma alanı başlangıç durumuna döner. Klasörünüze dokunulmaz.",
+    "loading": "Fark yükleniyor…",
+    "empty": "Uygulanacak bir şey yok.",
+    "discardConfirm": "At",
+    "scopeTurn": "Bu tur",
+    "scopeAll": "Çalışma alanı oluşturulduğundan beri",
+    "applyShort": "Uygula",
+    "scopeAllShort": "Tümü",
+    "scope": "Gösterilecek değişiklikler",
+    "showAll": "Tüm dosyaları göster ({{count}})",
+    "partial_one": "{{count}} dosya uygulandı",
+    "partial_other": "{{count}} dosya uygulandı",
+    "applyIncludesEarlier_one": "Uygula, henüz uygulanmamış {{count}} önceki dosyayı da içerir",
+    "applyIncludesEarlier_other": "Uygula, henüz uygulanmamış {{count}} önceki dosyayı da içerir"
+  },
+  "apply": {
+    "title_one": "{{count}} değişikliği klasörüne uygula",
+    "title_other": "{{count}} değişikliği klasörüne uygula",
+    "copyPath": "{{path}} klasör yolunu kopyala",
+    "pathCopied": "Klasör yolu kopyalandı",
+    "files_one": "{{count}} dosya",
+    "files_other": "{{count}} dosya",
+    "source": "{{name}} tarafından · {{round}}. tur",
+    "safety": "Yama temiz uygulanmazsa hiçbir şey uygulanmaz. Hemen ardından geri alabilirsin.",
+    "checking": "Klasörüne uygulanıp uygulanmadığı denetleniyor…",
+    "clean": "Temiz uygulanıyor",
+    "checkFailed": "Yama denetlenemedi: {{message}}",
+    "conflict_one": "{{count}} dosya klasörüne uygulanmıyor",
+    "conflict_other": "{{count}} dosya klasörüne uygulanmıyor",
+    "conflictHint": "Bunları dışarıda bırak ya da katılımcıdan klasörün şimdiki hâline göre yeniden yapmasını iste.",
+    "notChecked": "tek tek denetlenmedi (çok fazla dosya)",
+    "fileConflict": "Uygulanmıyor",
+    "leaveOut": "Çakışan dosyaları dışarıda bırak",
+    "details": "Ayrıntılar",
+    "fileDirty": "Düzenlemeleriniz",
+    "dirtyTitle_one": "Bu dosyaların {{count}} tanesinde commit edilmemiş değişikliklerin var",
+    "dirtyTitle_other": "Bu dosyaların {{count}} tanesinde commit edilmemiş değişikliklerin var",
+    "dirtyHint": "Yama senin düzenlemelerinin üstüne yazılır. Kolayca geri dönmek istersen önce commit ya da stash yap.",
+    "selectAll": "Tüm dosyaları seç",
+    "include": "{{path}} dahil et",
+    "renamedFrom": "({{path}} adından değiştirildi)",
+    "status": {
+      "added": "Eklendi",
+      "modified": "Değiştirildi",
+      "deleted": "Silindi",
+      "renamed": "Yeniden adlandırıldı"
+    },
+    "binary": "İkili dosya değişti. İçeriği gösterilmez.",
+    "noLines": "Satır değişikliği yok (yalnızca mod ya da ad).",
+    "showMore_one": "{{count}} satır daha göster",
+    "showMore_other": "{{count}} satır daha göster",
+    "hiddenLines_one": "({{count}} gizli)",
+    "hiddenLines_other": "({{count}} gizli)",
+    "blockedConflict": "Uygulama kapalı: seçili bazı dosyalar temiz uygulanmıyor.",
+    "blockedNothing": "En az bir dosya seç.",
+    "blockedFailed": "Denetim başarılı olana kadar uygulama kapalı.",
+    "copyPatch": "Yamayı kopyala",
+    "patchCopied": "Yama kopyalandı",
+    "confirm_one": "{{count}} dosyayı uygula",
+    "confirm_other": "{{count}} dosyayı uygula",
+    "applied_one": "{{count}} dosya klasörüne uygulandı",
+    "applied_other": "{{count}} dosya klasörüne uygulandı",
+    "undo": "Geri al",
+    "undone": "Değişiklik klasöründen geri alındı",
+    "undoFailed": "Geri alınamadı: {{message}}"
+  },
+  "approvals": {
+    "held": "Oda duraklatıldı",
+    "heldHint": "Bu beklerken oda duraklatıldı, bu yüzden artık izin verilemez. Odayı sürdürün; katılımcı hâlâ gerekiyorsa yeniden soracaktır.",
+    "dismiss": "Kapat",
+    "heldBanner": "Oda duraklatıldı: bu isteğe artık izin verilemez. Yeniden sormak için sürdürün.",
+    "wantsToRun": "{{origin}}, {{tool}} çalıştırmak istiyor",
+    "details": "Ayrıntılar"
   }
 }

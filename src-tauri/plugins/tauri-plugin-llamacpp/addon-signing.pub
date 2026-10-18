@@ -1,0 +1,4 @@
+# Ed25519 public key engine add-on packs are verified with (engine/addon.rs).
+# Made by scripts/engine-addon/keygen.mjs; the private half is the
+# FLINT_ADDON_SIGNING_KEY repository secret.
+vBhU05McKu6tMcJAloYRSwSLkSysyeZd3dgvnEwTymY=

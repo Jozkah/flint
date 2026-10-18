@@ -3,6 +3,7 @@
   "title": "Lo que Flint está usando en esta conversación",
   "description": "Qué tiene disponible Flint, qué se eligió para una solicitud y qué está verificado en la copia depurada de la última solicitud. Los cambios aquí afectan a los mensajes futuros, no a una respuesta que ya se está escribiendo.",
   "refresh": "Actualizar",
+  "retry": "Reintentar",
   "details": "Detalles",
   "closeDetails": "Cerrar detalles",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Se ejecuta en este dispositivo o en tu red. Los mensajes no salen de ahí.",
+      "local": "Se ejecuta en este dispositivo. Los mensajes no salen de él.",
       "remote": "Proveedor remoto: tus mensajes y los archivos incluidos se le envían.",
       "checking": "Aún se está comprobando dónde se ejecuta este proveedor.",
-      "unknown": "No se pudo determinar dónde se ejecuta este proveedor."
+      "unknown": "No se pudo determinar dónde se ejecuta este proveedor.",
+      "network": "Se envía a {{host}} en tu red. Los mensajes y archivos incluidos salen de este dispositivo, pero no de tu red.",
+      "remoteHost": "Se envía a {{host}}: tus mensajes y archivos incluidos salen de este equipo."
     },
     "assistantInstructions": "Las instrucciones del asistente se envían como mensaje del sistema.",
     "pendingInline": "Su texto se incluirá en tu próximo mensaje.",
@@ -119,7 +122,9 @@
     "noModel": "No hay ningún modelo seleccionado.",
     "noInstructions": "Sin instrucciones del asistente. Las conversaciones normales no leen archivos de instrucciones del proyecto como Flint.md; Cowork sí.",
     "noAttachments": "No hay archivos adjuntos en esta conversación.",
+    "noAttachmentsHint": "Los archivos que adjuntes aparecerán aquí, con la forma en que Flint los usa.",
     "indexUnavailable": "No se pudieron listar los archivos indexados.",
+    "indexUnavailableHint": "Flint no pudo leer el índice de archivos de esta conversación. Inténtalo de nuevo en un momento.",
     "noMemory": "Ninguna memoria guardada se aplicó al último mensaje.",
     "noTools": "No hay herramientas disponibles."
   },
@@ -137,6 +142,8 @@
     "noProject": "ningún proyecto"
   },
   "inspect": "Inspeccionar la solicitud depurada (avanzado)",
+  "why": "Por qué",
+  "verifiedMeaning": "Qué significa «verificado»",
   "showAll": "Mostrar los {{count}}",
   "showFewer": "Mostrar menos",
   "cards": {

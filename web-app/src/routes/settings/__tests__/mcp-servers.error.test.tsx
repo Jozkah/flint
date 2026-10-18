@@ -448,4 +448,18 @@ describe('max tool output characters control', () => {
 
     expect(updateSettings).toHaveBeenCalledWith({ maxToolOutputChars: 40000 })
   })
+
+  it('rejects a zero or negative global tool timeout', () => {
+    const Component = McpServersRoute.component as React.ComponentType
+    render(<Component />)
+    fireEvent.click(screen.getByRole('radio', { name: 'engine:mcp.tabRouting' }))
+    const input = screen
+      .getAllByRole('spinbutton')
+      .find((el) => (el as HTMLInputElement).value === '60')!
+    fireEvent.change(input, { target: { value: '0' } })
+    fireEvent.change(input, { target: { value: '-5' } })
+    expect(updateSettings).not.toHaveBeenCalled()
+    fireEvent.change(input, { target: { value: '45' } })
+    expect(updateSettings).toHaveBeenCalledWith({ toolCallTimeoutSeconds: 45 })
+  })
 })

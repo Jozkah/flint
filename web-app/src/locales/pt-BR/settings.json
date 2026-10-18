@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Subagentes",
-    "description": "Com qual assistente, perfil de trabalho e modelo os subagentes que o Flint inicia são executados. Sem uma escolha aqui, um subagente herda o assistente e o perfil de trabalho do pai (personas longas são encurtadas). Isto nunca muda o que um subagente pode fazer: suas ferramentas e aprovações continuam sendo o que a execução permite.",
+    "description": "Com qual assistente, perfil de trabalho e modelo os subagentes iniciados pelo Flint são executados. Sem uma escolha aqui, um subagente herda o assistente e o perfil de trabalho do pai (instruções longas do assistente são encurtadas). Isso nunca muda o que um subagente pode fazer: suas ferramentas e aprovações continuam as que a execução permite.",
     "headlessNote": "Assistentes e perfis de trabalho se aplicam apenas ao app para desktop. Execuções pela linha de comando seguem as escolhas de modelo.",
     "defaultsTitle": "Para todos os subagentes",
     "defaultsDesc": "Cada um herda da execução que o iniciou, a menos que você escolha algo aqui.",
@@ -10,7 +10,7 @@
     "model": "Modelo",
     "inherit": "Herdar",
     "inheritDesc": "Usar o que a execução que iniciou o subagente usa.",
-    "assistantDesc": "A persona sob a qual um subagente trabalha.",
+    "assistantDesc": "O assistente sob o qual um subagente trabalha.",
     "profileDesc": "Como um subagente aborda o trabalho.",
     "modelDesc": "Executar subagentes em outro modelo, por exemplo um mais rápido para levantamentos somente leitura.",
     "groupAssistants": "Assistentes",
@@ -64,9 +64,6 @@
   "reportAnIssue": "Reportar um Problema",
   "reportAnIssueDesc": "Encontrou um bug? Ajude-nos relatando um problema no GitHub.",
   "reportIssue": "Reportar Problema",
-  "credits": "Créditos",
-  "creditsDesc1": "👋 Flint é construído com ❤️ por Jozkah.",
-  "creditsDesc2": "Agradecimentos especiais às nossas dependências de código aberto—especialmente llama.cpp e Tauri—e à nossa incrível comunidade de IA.",
   "appVersion": "Versão do App",
   "dataFolder": {
     "appData": "Dados do App",
@@ -81,7 +78,8 @@
     "enterKeyNewline": "Enter adiciona uma nova linha",
     "enterKeyNewlineDesc": "Pressionar Enter na caixa do chat adiciona uma nova linha em vez de enviar. Envie com o botão de enviar ou Ctrl/Cmd+Enter. Útil ao digitar com um método de entrada (IME), em que Enter confirma uma conversão.",
     "resetFactory": "Redefinir para Configurações Originais",
-    "resetFactoryDesc": "Restaurar aplicação ao seu estado inicial, apagando todos os modelos e histórico de chat. Esta ação é irreversível e recomendada apenas se a aplicação estiver corrompida."
+    "resetFactoryDesc": "Restaurar aplicação ao seu estado inicial, apagando todos os modelos e histórico de chat. Esta ação é irreversível e recomendada apenas se a aplicação estiver corrompida.",
+    "spellCheckHint": "O idioma da verificação ortográfica é escolhido pelo seu sistema, não pelo Flint. Adicione um idioma nas configurações de idioma e teclado do sistema (Windows: Idioma e região; macOS: Teclado > Entrada de texto; Linux: instale um dicionário hunspell)."
   },
   "shortcuts": {
     "change": "Alterar",
@@ -123,7 +121,9 @@
     "nextPane": "Próximo painel",
     "nextPaneDesc": "Ir para o próximo painel da visualização dividida.",
     "previousPane": "Painel anterior",
-    "previousPaneDesc": "Ir para o painel anterior da visualização dividida."
+    "previousPaneDesc": "Ir para o painel anterior da visualização dividida.",
+    "findInChat": "Buscar no chat",
+    "findInChatDesc": "Pesquise a conversa na tela."
   },
   "interface": {
     "title": "Interface",
@@ -141,8 +141,12 @@
     "showTokenSpeedDesc": "Exibe tokens/s e a contagem de tokens abaixo das mensagens do assistente. Desativado, um ícone compacto mostra os detalhes ao clicar.",
     "coloredUserBubble": "Balão colorido nas mensagens do usuário",
     "coloredUserBubbleDesc": "Usa a cor de destaque como fundo das suas mensagens. Desativado, elas ficam como as do assistente, com texto simples sobre um fundo neutro.",
+    "renderUserMarkdown": "Renderizar Markdown nas minhas mensagens",
+    "renderUserMarkdownDesc": "Mostra negrito, listas, títulos e código nas mensagens que você envia. Desativado, elas aparecem exatamente como digitadas.",
     "renderHtmlArtifacts": "Renderizar artefatos HTML e SVG",
     "renderHtmlArtifactsDesc": "Adiciona uma aba de Pré-visualização aos blocos de código HTML e SVG. O HTML executa a página gerada pelo modelo em um frame isolado que executa seus próprios scripts, mas não pode acessar o Flint, seus arquivos nem a rede; o SVG é renderizado de forma estática, com scripts desativados. Desativado por padrão.",
+    "wrapCodeLines": "Quebrar linhas longas em blocos de código",
+    "wrapCodeLinesDesc": "Quebra as linhas longas para a próxima linha, recuadas sob o código, em vez de rolar o bloco para o lado. O botão de quebra no cabeçalho de um bloco de código alterna esta mesma configuração.",
     "composerRailButtons": "Botões de saída no campo de mensagem do Cowork",
     "composerRailButtonsDesc": "Mostra Pré-visualização, Código, Alterações, Atividade e Linha do tempo abaixo da caixa de mensagem do Cowork. Desativado, um botão Saída no cabeçalho abre o painel.",
     "autoGenerateTitle": "Gerar título do chat automaticamente",
@@ -178,12 +182,6 @@
     "resetCodeBlockSuccess": "Estilo do bloco de código restaurado com sucesso",
     "resetCodeBlockSuccessDesc": "O estilo do bloco de código foi restaurado para o padrão.",
     "transcriptView": "Visualização da transcrição",
-    "sidebarLayout": "Barra lateral",
-    "sidebarLayoutDesc": "Quanto da barra lateral esquerda é listado.",
-    "sidebarLayout_trimmed": "Reduzida",
-    "sidebarLayout_trimmedDesc": "Novo chat, Cowork, Descobrir e seus chats. Salas, Biblioteca, Studio e as páginas do motor ficam recolhidas em Mais e Avançado.",
-    "sidebarLayout_extended": "Estendida",
-    "sidebarLayout_extendedDesc": "Tudo listado de uma vez: Mais e Avançado ficam abertos.",
     "transcriptViewDesc": "Quanto de cada turno Chat, Cowork e Salas mostram. Aprovações, perguntas e erros sempre aparecem.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "A resposta e o que precisa de você. Chamadas de ferramentas ficam recolhidas em uma linha de etapas.",
@@ -382,6 +380,9 @@
     "usageWeek": "Por semana",
     "usageWeekDesc": "Tokens, entrada mais saída, nos últimos 7 dias. Vazio significa sem limite.",
     "usageNow": "Em uso agora",
+    "usageNoLimitPlaceholder": "Sem limite",
+    "serverLog": "Log do servidor",
+    "openInNewWindow": "Abrir em nova janela",
     "usageNoLimit": "Sem limite definido",
     "usageResets": "O uso mais antigo expira em {{wait}}",
     "startServer": "Iniciar Servidor",
@@ -419,9 +420,15 @@
     "verboseLogsDesc": "Habilitar logs detalhados do servidor para depuração.",
     "proxyTimeout": "Timeout de Requisição",
     "proxyTimeoutDesc": "Tempo para aguardar uma resposta do modelo local, segundos.",
-    "defaultModel": "Modelo padrão do servidor de API local",
+    "defaultModel": "Modelo padrão",
     "defaultModelDesc": "Modelo local a carregar automaticamente quando o servidor iniciar.",
-    "defaultModelPlaceholder": "Selecione um modelo local"
+    "defaultModelPlaceholder": "Selecione um modelo local",
+    "noLocalModels": "Nenhum modelo local importado",
+    "usage5hAria": "Tokens por 5 horas",
+    "usageWeekAria": "Tokens por semana",
+    "usageWindow": "Janela",
+    "usageLimit": "Limite",
+    "usageUnsaved": "Alterações não salvas"
   },
   "privacy": {
     "analytics": "Analytics",
@@ -458,7 +465,7 @@
     "updateError": "Falha ao verificar atualizações",
     "appVersion": "Versão do App",
     "buildUpdate": "Verificar builds mais novas",
-    "buildUpdateDesc": "O Flint 0.9.0 é uma build noturna: ela é recompilada a partir do código mais recente e o número da versão permanece o mesmo. Quando ativado, o Flint pergunta ao GitHub uma vez ao iniciar (no máximo duas vezes por dia) se existe uma build mais nova. Desativado por padrão; nada é enviado em nenhum dos casos, exceto essa requisição.",
+    "buildUpdateDesc": "Builds nightly mantêm o mesmo número de versão. Quando ativado, o Flint pergunta ao GitHub uma vez ao iniciar (no máximo duas vezes por dia) se existe uma build mais nova. Desativado por padrão.",
     "buildCheckNow": "Verificar agora",
     "buildChecking": "Verificando…",
     "buildNewer": "Uma build mais nova está disponível. Baixe-a novamente na página de versões para atualizar.",
@@ -516,9 +523,21 @@
     "reportAnIssue": "Reportar um Problema",
     "reportAnIssueDesc": "Encontrou um bug? Ajude-nos relatando um problema no GitHub.",
     "reportIssue": "Reportar Problema",
-    "credits": "Créditos",
-    "creditsDesc1": "👋 Flint é construído com ❤️ por Jozkah.",
-    "creditsDesc2": "Agradecimentos especiais às nossas dependências de código aberto—especialmente llama.cpp e Tauri—e à nossa incrível comunidade de IA."
+    "advanced": "Avançado",
+    "migrateJan": {
+      "title": "Migrar do JAN",
+      "desc": "Traga os dados de uma instalação existente do JAN para o Flint — copie, reutilize no mesmo lugar, mova ou comece do zero.",
+      "open": "Abrir assistente de migração"
+    },
+    "verify": "Verificar",
+    "cli": {
+      "installedDesc": "Instalado em {{path}} — use o flint no terminal para servir modelos.",
+      "desc": "Use o flint no terminal para servir modelos sem abrir o aplicativo.",
+      "install": "Instalar",
+      "installing": "Instalando…",
+      "uninstall": "Desinstalar",
+      "uninstalling": "Desinstalando…"
+    }
   },
   "extensions": {
     "title": "Extensões"
@@ -612,7 +631,9 @@
     "summaryMaxTokens": "Tamanho do resumo",
     "summaryDescription": "O maior resumo, em tokens.",
     "projectOverride": "(Um projeto substitui isto.)",
-    "saveFailed": "Não foi possível salvar a política de compactação"
+    "saveFailed": "Não foi possível salvar a política de compactação",
+    "leanTools": "Ferramentas enxutas em modelos pequenos",
+    "leanToolsDescription": "Com uma janela de contexto de 32K tokens ou menos, a lista de plugins, a busca de imagens e as ferramentas de widgets ficam fora dos chats, para que a janela comporte a conversa. Busca na web, MCP e ferramentas do agente continuam."
   },
   "accent": {
     "title": "Cor de destaque",
@@ -701,7 +722,19 @@
     "resetCodeBlockStyleDesc": "Redefinir estilo do bloco de código para padrão.",
     "resetCodeBlockSuccess": "Estilo do bloco de código redefinido com sucesso",
     "resetCodeBlockSuccessDesc": "Estilo do bloco de código foi restaurado para padrão.",
-    "completionSoundApproval": "Somente quando for necessária aprovação"
+    "performanceMode": "Modo de desempenho",
+    "performanceModeDesc": "O modo reduzido desativa o desfoque, as sombras grandes e as animações em loop e atualiza o texto em streaming com menos frequência, para computadores mais lentos. Automático o escolhe quando este computador parece lento.",
+    "performanceModeAuto": "Automático",
+    "performanceModeReduced": "Sempre reduzido",
+    "performanceModeFull": "Completo",
+    "performanceModeNowReduced": "Agora: reduzido ({{why}})",
+    "performanceModeNowFull": "Agora: completo",
+    "perfReasonCores": "{{n}} núcleos",
+    "perfReasonMemory": "{{n}} GB de memória",
+    "perfReasonFrames": "quadros lentos",
+    "perfReasonMotion": "o sistema reduz o movimento",
+    "perfReasonData": "economia de dados",
+    "perfReasonChosen": "escolhido aqui"
   },
   "pageDesc": {
     "general": "Idioma, a pasta de dados, logs e opções de todo o app.",
@@ -1103,7 +1136,13 @@
       "updated": "Atualizada {{when}}",
       "loading": "Carregando campanhas",
       "loadFailed": "Não foi possível carregar as campanhas.",
-      "retry": "Tentar de novo"
+      "skipped_one": "{{count}} registro de campanha ilegível ignorado. Os arquivos foram deixados no lugar.",
+      "skipped_other": "{{count}} registros de campanha ilegíveis ignorados. Os arquivos foram deixados no lugar.",
+      "skipped_many": "{{count}} registros de campanha ilegíveis ignorados. Os arquivos foram deixados no lugar.",
+      "retry": "Tentar de novo",
+      "needsDesktop": "As campanhas precisam do aplicativo para desktop",
+      "needsDesktopHint": "Abra o aplicativo para desktop do Flint para ver e iniciar campanhas. Uma aba comum do navegador não consegue lê-las.",
+      "staleApp": "Esta cópia do aplicativo é mais antiga que a página. Feche e inicie de novo para carregar a versão mais recente."
     },
     "plan": {
       "edit": "Editar plano",
@@ -1158,6 +1197,188 @@
     "skipped": "Não restaurado: {{stores}}",
     "storeToolApproval": "aprovação automática de ferramentas",
     "storeMcpTrust": "confiança em servidores MCP",
-    "storeProxy": "proxy de rede"
+    "storeProxy": "proxy de rede",
+    "title": "Backup e sincronização",
+    "exported": "Configurações exportadas",
+    "exportFailed": "Falha ao exportar",
+    "importFailed": "Falha ao importar",
+    "importedRestarting": "Configurações importadas; reiniciando a janela",
+    "exportTitle": "Exportar configurações",
+    "exportDesc": "Salve suas preferências em um arquivo JSON. Para sincronizar entre computadores, salve-o em uma pasta do Google Drive ou Nextcloud e importe-o no outro computador. Chats e o estado específico de cada computador não são incluídos.",
+    "includeSecrets": "Incluir provedores e chaves de API",
+    "secretsWarning": "O arquivo conterá suas chaves de API em texto simples. Mantenha-o privado e não o coloque em uma pasta compartilhada.",
+    "exportButton": "Exportar…",
+    "importTitle": "Importar configurações",
+    "importDesc": "Substitui suas preferências por um arquivo de backup. Depois a janela é recarregada.",
+    "chooseFile": "Escolher arquivo…",
+    "pendingGroups": "Grupos de configurações no arquivo: {{groups}}.",
+    "pendingKeys": "Provedores com chaves de API: {{keys}}.",
+    "pendingExported": "Exportado em {{date}}.",
+    "pendingOverwrite": "Isso substitui seus valores atuais.",
+    "apply": "Importar e recarregar",
+    "cancel": "Cancelar"
+  },
+  "startup": {
+    "title": "Iniciar com o computador",
+    "on": "Ativado. O Flint inicia quando você entra, usando {{platform}}.",
+    "off": "Desativado. O Flint só inicia quando você o abre. Ativar pergunta antes e mostra exatamente o que é gravado.",
+    "minimized": "Iniciar minimizado",
+    "minimizedDesc": "Inicia oculto, mostrando apenas o ícone da bandeja; clique nele para abrir a janela.",
+    "confirmTitle": "Add a startup entry ({{platform}})?",
+    "confirmBody": "Isto grava exatamente a entrada abaixo na sua conta de usuário, e nada mais. Não exige direitos de administrador.",
+    "confirmUndo": "Desativar a chave remove esta entrada.",
+    "confirm": "Adicionar entrada",
+    "failed": "Não foi possível alterar a entrada de inicialização"
+  },
+  "sidebarItems": {
+    "title": "Itens da barra lateral",
+    "description": "Escolha quais itens aparecem na barra lateral esquerda. Ocultar um remove só o atalho; a página em si continua funcionando.",
+    "section": {
+      "workspace": "Espaço de trabalho",
+      "cowork": "Cowork",
+      "more": "Mais",
+      "header": "Topo e rodapé"
+    },
+    "showItem": "Mostrar {{item}} na barra lateral",
+    "hideItem": "Ocultar {{item}} da barra lateral",
+    "alwaysShown": "Sempre visível",
+    "showAll": "Mostrar tudo",
+    "preview": "Pré-visualização",
+    "reachable": "Itens ocultos continuam acessíveis pela paleta de comandos e pelas Configurações.",
+    "presets": {
+      "label": "Predefinições",
+      "minimal": "Mínimo",
+      "standard": "Padrão",
+      "everything": "Tudo"
+    }
+  },
+  "memoryPage": {
+    "useSaved": "Usar a memória salva nas conversas",
+    "useSavedDesc": "Quando desativado, o Flint não adiciona memória salva a nenhuma solicitação. Suas memórias são mantidas e ainda podem ser gerenciadas aqui.",
+    "useFacts": "Usar os fatos lembrados nas solicitações",
+    "useFactsDesc": "Desativar um escopo interrompe o envio. Nada é excluído; ao reativá-lo, ele volta a ser usado.",
+    "scope": {
+      "chat": {
+        "tab": "Esta conversa",
+        "blurb": "Lembrado apenas dentro da conversa de onde foi salvo.",
+        "recall": "Esta conversa",
+        "recallAria": "Usar as memórias desta conversa",
+        "newAria": "Nova memória para esta conversa",
+        "forgetAll": "Esquecer tudo nesta conversa",
+        "clearBody": "Tudo o que foi lembrado para esta conversa deixa de ser usado e seu texto é removido deste computador. Isso não pode ser desfeito em uma única etapa."
+      },
+      "project": {
+        "tab": "Projeto",
+        "blurb": "Disponível para todas as conversas do projeto escolhido abaixo, e para nenhum outro projeto.",
+        "recall": "Este projeto",
+        "recallAria": "Usar as memórias deste projeto",
+        "newAria": "Nova memória para este projeto",
+        "forgetAll": "Esquecer tudo neste projeto",
+        "clearBody": "Tudo o que foi lembrado para este projeto deixa de ser usado e seu texto é removido deste computador. Isso não pode ser desfeito em uma única etapa."
+      },
+      "user": {
+        "tab": "Todas as conversas",
+        "blurb": "Disponível em todo lugar. Use para coisas que são verdadeiras em geral.",
+        "recall": "Todas as conversas",
+        "recallAria": "Usar as memórias compartilhadas entre todas as conversas",
+        "newAria": "Nova memória para todas as conversas",
+        "forgetAll": "Esquecer tudo o que é compartilhado entre conversas",
+        "clearBody": "Tudo o que foi lembrado em todas as conversas deixa de ser usado e seu texto é removido deste computador. Isso não pode ser desfeito em uma única etapa."
+      }
+    },
+    "stored": {
+      "summary": "{{user}} entre chats · {{project}} · {{size}}",
+      "projectIn": "{{count}} em {{name}}",
+      "chooseProject": "escolha um projeto para contar suas memórias"
+    },
+    "listTitle": "O que o Flint lembra",
+    "tabsAria": "Escopo da memória",
+    "recallOff": "A recuperação está desativada para este escopo: as memórias são mantidas, mas não enviadas.",
+    "newPlaceholder": "Algo que o Flint deve lembrar",
+    "remember": "Lembrar",
+    "export": "Exportar",
+    "import": "Importar",
+    "importReport": {
+      "summary": "{{count}} importados da exportação",
+      "duplicates": "{{count}} já lembrados",
+      "refused": "{{count}} recusados"
+    },
+    "conversation": "Conversa",
+    "conversationAria": "Conversa cuja memória será exibida",
+    "noConversations": "Ainda não há conversas",
+    "kindChat": "Chat · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "substituído {{when}}",
+    "projectFolder": "Pasta do projeto",
+    "projectFolderAria": "Projeto cuja memória será exibida",
+    "noProjectFolders": "Nenhum projeto anexado a nenhuma sessão",
+    "chooseProject": "Escolha um projeto",
+    "chooseProjectAbove": "Escolha um projeto acima para ver e gerenciar suas memórias.",
+    "searchAria": "Pesquisar memórias",
+    "searchPlaceholder": "Pesquisar fatos lembrados",
+    "noMatch": "Nada aqui corresponde a essa pesquisa.",
+    "empty": "Nada lembrado aqui ainda.",
+    "meta": {
+      "youSaved": "Você salvou isto",
+      "inferred": "Inferido",
+      "pinned": "fixado",
+      "used_one": "usado {{count}} vez",
+      "used_other": "usado {{count}} vezes",
+      "lastUsed": "último uso {{when}}",
+      "never": "nunca"
+    },
+    "pin": "Fixar",
+    "unpin": "Desafixar",
+    "pinAria": "Fixar memória",
+    "unpinAria": "Desafixar memória",
+    "editAria": "Editar memória",
+    "forget": "Esquecer",
+    "forgetAria": "Esquecer memória",
+    "showing": "Mostrando {{from}}–{{to}} de {{total}}",
+    "previous": "Anterior",
+    "waitingTitle": "Aguardando você",
+    "waitingBody": "Nada aqui está sendo usado ainda. Uma proposta sem resposta nunca é adicionada a um prompt.",
+    "conflictsTitle": "Memórias em conflito",
+    "conflictsBody": "Nenhum dos lados está sendo usado. Esses fatos lembrados se contradizem, então o Flint deixa os dois de fora de cada solicitação até você manter um.",
+    "conflictAbout": "Sobre {{subject}}",
+    "keepThis": "Manter este",
+    "keepAria": "Manter \"{{preview}}\" e esquecer o outro",
+    "editTitle": "Editar memória",
+    "editBody": "Isto será usado em conversas futuras no escopo a que pertence.",
+    "contentAria": "Conteúdo da memória",
+    "clearTitle": "Esquecer todas as memórias aqui?",
+    "clearConfirm": "Esquecer tudo",
+    "toast": {
+      "kept": "Uma memória mantida",
+      "settleFailed": "Não foi possível resolver esse conflito",
+      "forgotten": "Memória esquecida",
+      "forgetFailed": "Não foi possível esquecer essa memória",
+      "changeFailed": "Não foi possível alterar essa memória",
+      "updated": "Memória atualizada",
+      "updateFailed": "Não foi possível atualizar essa memória",
+      "settingsFailed": "Não foi possível salvar as configurações de memória",
+      "recallFailed": "Não foi possível alterar a recuperação",
+      "saved": "Memória salva",
+      "saveFailed": "Não foi possível salvar essa memória",
+      "forgotCount_one": "{{count}} memória esquecida",
+      "forgotCount_other": "{{count}} memórias esquecidas",
+      "forgetManyFailed": "Não foi possível esquecer essas memórias",
+      "exportedCount_one": "{{count}} memória exportada",
+      "exportedCount_other": "{{count}} memórias exportadas",
+      "exportFailed": "Não foi possível exportar as memórias",
+      "importedCount_one": "{{count}} memória importada",
+      "importedCount_other": "{{count}} memórias importadas",
+      "importFailed": "Não foi possível importar as memórias"
+    },
+    "fileActionsAria": "Exportar ou importar memórias",
+    "noMatchHint": "Confira a grafia ou limpe a busca para ver tudo.",
+    "emptyHint": "Escreva uma acima, ou deixe o Flint lembrar enquanto você conversa.",
+    "footerCount_one": "1 memória neste escopo",
+    "footerCount_other": "{{count}} memórias neste escopo"
+  },
+  "chatMentions": {
+    "title": "Menções a conversas",
+    "readAny": "Permitir que o assistente leia qualquer conversa",
+    "readAnyDesc": "Desativado por padrão. Normalmente o assistente lê só as conversas que você menciona com @ ou #. Ativado, ele pode abrir qualquer chat, sessão ou sala neste computador pelo id. O que ele lê fica neste computador e é marcado como dado de referência."
   }
 }

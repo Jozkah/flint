@@ -26,7 +26,9 @@ vi.mock('@/hooks/useLocalApiServer', () => ({
   useLocalApiServer: () => store,
 }))
 vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (k: string) => k }),
+  useTranslation: () => ({
+    t: (k: string) => (k === 'uiLeftovers:serverHost.edit' ? 'Edit Server Host' : k),
+  }),
 }))
 
 import { ApiKeyInput } from '../ApiKeyInput'

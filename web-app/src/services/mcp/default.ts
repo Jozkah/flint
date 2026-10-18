@@ -17,8 +17,15 @@ import type {
 
 export class DefaultMCPService implements MCPService {
   async updateMCPConfig(configs: string): Promise<void> {
-    console.log('updateMCPConfig called with configs:', configs)
+    // Never logged: the config holds env and header secrets (M-002).
+    void configs
     // No-op - not implemented in default service
+  }
+
+  async renameMCPServer(oldName: string, newName: string): Promise<boolean> {
+    void oldName
+    void newName
+    return false
   }
 
   async restartMCPServers(): Promise<void> {
@@ -142,7 +149,8 @@ export class DefaultMCPService implements MCPService {
   }
 
   async activateMCPServer(name: string, config: MCPServerConfig): Promise<void> {
-    console.log('activateMCPServer called:', { name, config })
+    void name
+    void config
     // No-op - not implemented in default service
   }
 

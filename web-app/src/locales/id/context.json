@@ -3,6 +3,7 @@
   "title": "Yang dipakai Flint dalam percakapan ini",
   "description": "Apa yang tersedia bagi Flint, apa yang dipilih untuk sebuah permintaan, dan apa yang terverifikasi dalam salinan tersanitasi dari permintaan terakhir. Perubahan di sini memengaruhi pesan berikutnya, bukan balasan yang sedang ditulis.",
   "refresh": "Segarkan",
+  "retry": "Coba lagi",
   "details": "Detail",
   "closeDetails": "Tutup detail",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Berjalan di perangkat ini atau jaringan Anda. Pesan tidak keluar darinya.",
+      "local": "Berjalan di perangkat ini. Pesan tidak keluar darinya.",
       "remote": "Provider jarak jauh: pesan dan file yang disertakan dikirim ke sana.",
       "checking": "Masih memeriksa di mana provider ini berjalan.",
-      "unknown": "Lokasi provider ini berjalan tidak dapat ditentukan."
+      "unknown": "Lokasi provider ini berjalan tidak dapat ditentukan.",
+      "network": "Dikirim ke {{host}} di jaringan Anda. Pesan dan file yang disertakan keluar dari perangkat ini, tetapi tidak dari jaringan Anda.",
+      "remoteHost": "Dikirim ke {{host}}: pesan dan file yang disertakan keluar dari komputer ini."
     },
     "assistantInstructions": "Instruksi asisten dikirim sebagai system prompt.",
     "pendingInline": "Teksnya akan ditempatkan ke dalam pesan Anda berikutnya.",
@@ -119,7 +122,9 @@
     "noModel": "Tidak ada model yang dipilih.",
     "noInstructions": "Tidak ada instruksi asisten. Percakapan biasa tidak membaca file instruksi proyek seperti Flint.md; Cowork membacanya.",
     "noAttachments": "Tidak ada file yang terlampir pada percakapan ini.",
+    "noAttachmentsHint": "Berkas yang Anda lampirkan muncul di sini, beserta cara Flint menggunakannya.",
     "indexUnavailable": "File yang diindeks tidak dapat didaftar.",
+    "indexUnavailableHint": "Flint tidak dapat membaca indeks berkas percakapan ini. Coba lagi sebentar lagi.",
     "noMemory": "Tidak ada memori tersimpan yang berlaku pada pesan terakhir.",
     "noTools": "Tidak ada alat yang tersedia."
   },
@@ -137,6 +142,8 @@
     "noProject": "tanpa proyek"
   },
   "inspect": "Periksa permintaan tersanitasi (lanjutan)",
+  "why": "Mengapa",
+  "verifiedMeaning": "Arti “terverifikasi”",
   "showAll": "Tampilkan semua {{count}}",
   "showFewer": "Tampilkan lebih sedikit",
   "cards": {

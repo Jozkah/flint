@@ -29,6 +29,7 @@ import { SaveChatPicturesItem } from '@/components/SaveChatPicturesItem'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
+import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import { ChatTasks } from '@/containers/ChatTasks'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import {
@@ -38,9 +39,21 @@ import {
 } from '@/lib/chatDelegation'
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
 import { forkThread } from '@/lib/forkThread'
+import { ConversationFindBar } from '@/containers/ConversationFindBar'
+import {
+  useConversationFind,
+  useThreadFind,
+} from '@/hooks/useConversationFind'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
+import { useMessageWindow } from '@/hooks/useMessageWindow'
+import type { StickToBottomContext } from 'use-stick-to-bottom'
+import {
+  resolvePerfReduced,
+  streamingThrottleMs,
+  usePerfDetection,
+} from '@/lib/perfMode'
 
 import { useMessages } from '@/hooks/useMessages'
 import { getActiveMessages } from '@/hooks/useActiveMessages'
@@ -67,11 +80,15 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
+  ConversationLoadEarlier,
 } from '@/components/ai-elements/conversation'
 import { generateId } from 'ai'
-import { chatFollowUp, nextChatTurn } from '@/lib/chatSteering'
+import { chatFollowUp, nextChatTurn, stopChatTurn } from '@/lib/chatSteering'
 import type { UIMessage } from '@ai-sdk/react'
 import { useChatSessions } from '@/stores/chat-session-store'
+import { isServedByFlint } from '@/lib/platform/utils'
+import { threadChanged, useRefreshWhenVisible } from '@/lib/threadRefresh'
+import { followSentMessage } from '@/lib/followSentMessage'
 import {
   convertThreadMessagesToUIMessages,
   extractContentPartsFromUIMessage,
@@ -129,7 +146,7 @@ import {
 } from '@/utils/error'
 import { PREFLIGHT_CONTEXT_ERROR_PREFIX } from '@/lib/contextEstimate'
 import { useTranslation, i18n } from '@/i18n/react-i18next-compat'
-import { isEmptyReply } from '@/lib/chatFinish'
+import { isEmptyReply, isRefusal } from '@/lib/chatFinish'
 import { toast } from 'sonner'
 import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import {
@@ -162,6 +179,7 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import {
@@ -200,6 +218,8 @@ import {
   isVisualizeTool,
 } from '@/lib/visualize/constants'
 import { executeVisualizeTool } from '@/lib/visualize/tools'
+import { executeChatRead, isChatReadTool } from '@/lib/chatReadTool'
+import { chatReadContextForThread } from '@/lib/chatMentionSources'
 import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
 import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
 import { PathRootsContext } from '@/lib/codeOpen'
@@ -222,7 +242,7 @@ import {
 } from '@/lib/toolActivity'
 import {
   APPROVAL_CANCELLED_TEXT,
-  APPROVAL_DENIED_TEXT,
+  approvalDeniedText,
 } from '@/lib/permissionOutcome'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
@@ -252,6 +272,7 @@ import {
   useConversationPane,
 } from '@/hooks/useConversationPane'
 import { ACTIVE_PANE_RING } from '@/hooks/useCoworkPane'
+import { effectiveContextLength } from '@/lib/engineModels'
 import {
   paneDraftScope,
   useSplitConversation,
@@ -280,6 +301,8 @@ function isAutoAllowedTool(toolName: string): boolean {
     useAppState.getState().ragToolNames.has(toolName) ||
     isNativeWebTool(toolName) ||
     isVisualizeTool(toolName) ||
+    // Reads only conversations the user mentioned, from local stores.
+    isChatReadTool(toolName) ||
     isImageTool(toolName) ||
     AGENT_TOOL_NAMES.has(toolName) ||
     // Handing a job to a subagent asks for nothing itself; what the child then
@@ -417,6 +440,9 @@ export function ThreadConversation({
   const toolApprovalPromises = useRef<Map<string, Promise<boolean>>>(new Map())
 
   const titleAbortRef = useRef<AbortController | null>(null)
+  // Find in chat: the bar belongs to the conversation that is active.
+  const { findOpen, findSeed, findWaitsForOther } = useThreadFind(threadId)
+  const findRootRef = useRef<HTMLDivElement>(null)
 
   // Steering (Steer now / Ctrl+Enter in the composer) is delivered at the
   // tool loop's safe point; see chatFollowUp. Set once `sendMessage` exists.
@@ -599,6 +625,11 @@ export function ThreadConversation({
   const continueReplaceIdRef = useRef<string | null>(null)
 
   // Use the AI SDK chat hook
+  const performanceMode = useInterfaceSettings((s) => s.performanceMode)
+  const perfReduced = usePerfDetection((s) =>
+    resolvePerfReduced(performanceMode, s.detection)
+  )
+  const streamingThrottle = streamingThrottleMs(perfReduced)
   const {
     messages: chatMessages,
     status,
@@ -616,7 +647,8 @@ export function ThreadConversation({
     sessionTitle: thread?.title,
     systemMessage,
     resolveModelSelection: isSplit ? resolvePaneModel : undefined,
-    experimental_throttle: 50,
+    // One UI update per 50 ms of tokens (100 ms in reduced performance mode).
+    experimental_throttle: streamingThrottle,
     onFinish: ({ message, messages: finishedMessages, isAbort, isError, isDisconnect }) => {
       const msgMeta = message.metadata as Record<string, unknown> | undefined
       const finishReason = msgMeta?.finishReason as string | undefined
@@ -702,6 +734,18 @@ export function ThreadConversation({
           useMessageErrors
             .getState()
             .setError(userTurnId, i18n.t('model-errors:emptyReply'))
+        }
+      }
+
+      // The provider declined to answer. Say so on the turn it answers, in
+      // words that do not blame the key or the connection.
+      if (!isAbort && !isDisconnect && isRefusal(finishReason)) {
+        const userTurnId =
+          pendingAssistantParentId.current ?? resolveAssistantParent(undefined)
+        if (userTurnId) {
+          useMessageErrors
+            .getState()
+            .setError(userTurnId, i18n.t('model-errors:refusal'))
         }
       }
 
@@ -1072,6 +1116,9 @@ export function ThreadConversation({
               const refusal = useToolApprovalRequests
                 .getState()
                 .takeRefusal?.(toolCall.toolCallId)
+              const refusalReason = useToolApprovalRequests
+                .getState()
+                .takeRefusalReason?.(toolCall.toolCallId)
               await recordToolActivity({
                 ...permissionEvent,
                 phase: 'refused',
@@ -1087,12 +1134,24 @@ export function ThreadConversation({
                 errorText:
                   refusal === 'cancelled'
                     ? APPROVAL_CANCELLED_TEXT
-                    : APPROVAL_DENIED_TEXT,
+                    : approvalDeniedText(refusalReason),
               })
               continue
             }
+            // The person rewrote the command before allowing it once: run what
+            // they approved, and say so in the record.
+            const editedInput = useToolApprovalRequests
+              .getState()
+              .takeEditedInput?.(toolCall.toolCallId)
+            if (editedInput && toolName === 'bash') {
+              toolCall.input = { ...(toolCall.input as object), ...editedInput }
+            }
             if (needsApproval) {
-              void recordToolActivity({ ...permissionEvent, phase: 'allowed' })
+              void recordToolActivity({
+                ...permissionEvent,
+                phase: 'allowed',
+                ...(editedInput ? { detail: 'allowed after the user edited the command' } : {}),
+              })
             }
 
             // Timed from here, not from approval, so a long approval wait is
@@ -1131,6 +1190,11 @@ export function ThreadConversation({
               )
             } else if (isVisualizeTool(toolName)) {
               result = executeVisualizeTool(toolName, toolCall.input, threadId)
+            } else if (isChatReadTool(toolName)) {
+              result = await executeChatRead(
+                toolCall.input,
+                chatReadContextForThread(threadId)
+              )
             } else if (isImageTool(toolName)) {
               result = await runImageTool(toolName, toolCall.input, threadId)
             } else if (chatAgentToolRefusal(toolName)) {
@@ -1269,15 +1333,29 @@ export function ThreadConversation({
                     .allowOnceForServer(server, toolName, approvedFingerprint)
                     .catch(() => undefined)
                 : undefined
-              result = await serviceHub.mcp().callTool({
-                toolName,
-                serverName: server,
-                arguments: toolCall.input,
-                approvalTicket,
-                maxOutputChars: deriveToolOutputCap(
-                  typeof ctxLen === 'number' ? ctxLen : undefined
-                ),
+              // The call carries a token so Stop can cancel it while it runs.
+              const cancellationToken = `tool_call_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+              const appState = useAppState.getState()
+              appState.setThreadCancelToolCall(threadId, () => {
+                void serviceHub
+                  .mcp()
+                  .cancelToolCall(cancellationToken)
+                  .catch(() => {})
               })
+              try {
+                result = await serviceHub.mcp().callTool({
+                  toolName,
+                  serverName: server,
+                  arguments: toolCall.input,
+                  approvalTicket,
+                  cancellationToken,
+                  maxOutputChars: deriveToolOutputCap(
+                    typeof ctxLen === 'number' ? ctxLen : undefined
+                  ),
+                })
+              } finally {
+                useAppState.getState().setThreadCancelToolCall(threadId, undefined)
+              }
               const failure = result.error
                 ? String(result.error)
                 : (result as { isError?: unknown }).isError === true
@@ -1532,6 +1610,31 @@ export function ThreadConversation({
   const hasBannerError = !!(oomError || backendError || contextLimitError)
   const effectiveStatus = hasBannerError ? 'ready' : status
 
+  // Only the tail of a long transcript is mounted; see useMessageWindow.
+  const messageWindow = useMessageWindow(chatMessages.length, threadId)
+  const revealMessage = messageWindow.reveal
+  const stickRef = useRef<StickToBottomContext>(null)
+  const revealMessageId = useCallback(
+    (id: string) => {
+      const at = chatMessages.findIndex((m) => m.id === id)
+      if (at < 0) return
+      // Mounting earlier messages grows the list; stop following the bottom
+      // first, or the find jump is undone by the stick-to-bottom resize.
+      stickRef.current?.stopScroll()
+      revealMessage(at)
+    },
+    [chatMessages, revealMessage]
+  )
+
+  // Set on send; once the sent message is in the list, the view goes to it.
+  const followSentRef = useRef(false)
+  useEffect(() => {
+    if (!followSentRef.current) return
+    if (chatMessages[chatMessages.length - 1]?.role !== 'user') return
+    followSentRef.current = false
+    followSentMessage(stickRef.current)
+  }, [chatMessages])
+
   // Kept as of the last commit, so leaving this conversation while split
   // forgets exactly its own runtime entries (cleanups run before new effects).
   useEffect(() => {
@@ -1673,11 +1776,15 @@ export function ThreadConversation({
 
     // The read may already have started when the pointer reached the row.
     loadThreadMessages(threadId, (id) => serviceHub.messages().fetchMessages(id))
-      .then((fetchedMessages) => {
-        if (fetchedMessages && fetchedMessages.length > 0) {
-          const currentLocalMessages = useMessages
-            .getState()
-            .getMessages(threadId)
+      .then((fetched) => {
+        // A chat opened straight after it was made (a continued chat's summary
+        // seed) may not be on disk yet: its messages are only in the store, and
+        // the model must still be sent them.
+        const localNow = useMessages.getState().getMessages(threadId)
+        const fetchedMessages =
+          fetched && fetched.length > 0 ? fetched : (localNow ?? [])
+        if (fetchedMessages.length > 0) {
+          const currentLocalMessages = localNow
 
           let messagesToSet = fetchedMessages
 
@@ -1768,6 +1875,33 @@ export function ThreadConversation({
       )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, serviceHub])
+
+  // X01: in the browser `flint serve` serves, another tab or device may have
+  // added to this thread. Read it again when this page comes back into view,
+  // and show the server's copy when it differs and nothing is streaming here.
+  useRefreshWhenVisible(isServedByFlint(), () => {
+    if (useChatSessions.getState().sessions[threadId]?.isStreaming) return
+    void serviceHub
+      .messages()
+      .fetchMessages(threadId)
+      .then((fetched) => {
+        if (useChatSessions.getState().sessions[threadId]?.isStreaming) return
+        const shown = useMessages.getState().getMessages(threadId)
+        if (!threadChanged(shown, fetched)) return
+        setMessages(threadId, fetched)
+        const activeRootId = (
+          useThreads.getState().threads[threadId]?.metadata as
+            | Record<string, unknown>
+            | undefined
+        )?.activeRootId as string | undefined
+        setChatMessages(
+          convertThreadMessagesToUIMessages(computeActivePath(fetched, activeRootId))
+        )
+      })
+      .catch(() => {
+        // Unreachable: the page keeps what it shows.
+      })
+  })
 
   useEffect(() => {
     return () => {
@@ -2238,6 +2372,9 @@ export function ThreadConversation({
       files?: Array<{ type: string; mediaType: string; url: string }>
     ) => {
       clearBannerErrors()
+      // C14: what was sent is shown, even from a view above the end (a fork).
+      followSentMessage(stickRef.current)
+      followSentRef.current = true
       await processAndSendMessage(text, files)
     },
     [processAndSendMessage, clearBannerErrors]
@@ -2342,7 +2479,9 @@ export function ThreadConversation({
   const handleFork = useCallback(
     async (messageId: string) => {
       if (!threadId) return
-      const forkedId = await forkThread(threadId, messageId)
+      // A message off the shown branch fails here instead of forking another
+      // branch in its place.
+      const forkedId = await forkThread(threadId, messageId).catch(() => null)
       if (!forkedId) {
         toast.error(t('chat:fork.failed'))
         return
@@ -2503,8 +2642,9 @@ export function ThreadConversation({
     const model = provider.models[modelIndex]
 
     // Increase context length in steps: <8192 -> 8192 -> 32768 -> x1.5
-    const currentCtxLen =
-      (model.settings?.ctx_len?.controller_props?.value as number) ?? 8192
+    // A blank Context Size runs at the provider's Default context size, so
+    // step up from that, not from 8192.
+    const currentCtxLen = effectiveContextLength(model, provider) ?? 8192
     const maxCtxLen =
       (model.settings?.ctx_len?.controller_props?.max as number) || 131072
 
@@ -2935,9 +3075,14 @@ export function ThreadConversation({
   const projectChip = (
     <>
       {groupLabel && (
-        <Chip className="hidden max-w-48 md:inline-flex" title={groupLabel}>
-          <span className="truncate">{groupLabel}</span>
-        </Chip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Chip className="hidden max-w-48 md:inline-flex">
+              <span className="truncate">{groupLabel}</span>
+            </Chip>
+          </TooltipTrigger>
+          <TooltipContent>{groupLabel}</TooltipContent>
+        </Tooltip>
       )}
     </>
   )
@@ -3063,7 +3208,10 @@ export function ThreadConversation({
           </div>
         </HeaderPage>
       )}
-      <div className="@container/conv relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        ref={findRootRef}
+        className="@container/conv relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      >
         {detailsOpen && (
           // Narrow panes show one of the two at a time.
           <div className="shrink-0 pb-2 @3xl/conv:hidden">
@@ -3146,15 +3294,36 @@ export function ThreadConversation({
             } as CSSProperties
           }
         >
+          {/* Inside the chat column, so it never covers the Details panel. */}
+          {findOpen && isActive && !findWaitsForOther && (
+            <ConversationFindBar
+              messages={chatMessages}
+              root={() => findRootRef.current}
+              seed={findSeed}
+              onClose={() => useConversationFind.getState().setOpen(false)}
+              reveal={revealMessageId}
+              renderedFrom={messageWindow.start}
+            />
+          )}
           {/* 13.5px at the default size; the message zoom scales it. */}
-          <Conversation className="absolute inset-0 text-start text-[calc(var(--text-base)*0.84375)] leading-[1.6] text-fg-2">
+          <Conversation
+            contextRef={stickRef}
+            className="absolute inset-0 text-start text-[calc(var(--text-base)*0.84375)] leading-[1.6] text-fg-2"
+          >
             <ConversationContent
               className={cn(
                 'transcript-list mx-auto w-full min-w-0 max-w-[calc(780px+2.5rem)] pt-[22px] pb-4',
                 isSplit ? 'px-4' : 'px-5'
               )}
             >
-              {chatMessages.map((message, index) => {
+              {messageWindow.hasEarlier && (
+                <ConversationLoadEarlier
+                  hidden={messageWindow.start}
+                  onLoad={messageWindow.loadEarlier}
+                />
+              )}
+              {chatMessages.slice(messageWindow.start).map((message, i) => {
+                const index = messageWindow.start + i
                 const isLastMessage = index === chatMessages.length - 1
                 const isFirstMessage = index === 0
                 // A banner error stands in for the failed assistant turn:
@@ -3390,6 +3559,7 @@ export function ThreadConversation({
           )}
         >
           {/* Approvals a subagent raises have no tool card to sit under. */}
+          <FolderTrustBanner folder={chatPathRoots[0] ?? null} />
           <CoworkChildApprovals sessionId={threadId} />
           <ChatTasks threadId={threadId} />
           <ChatInput
@@ -3403,9 +3573,15 @@ export function ThreadConversation({
             groupOptions
             onSubmit={handleSubmit}
             onStop={() => {
-              // Stop is for the whole turn, subagents it started included.
-              stopChatDelegation(threadId)
-              stop()
+              // Stop is for the whole turn: subagents it started, and a tool
+              // call still running, whose cancelled result must not be sent
+              // back to the model for another reply.
+              stopChatTurn({
+                toolAbort: toolCallAbortController,
+                stopDelegation: () => stopChatDelegation(threadId),
+                stopStream: stop,
+                cancelToolCall: () => useAppState.getState().cancelToolCalls?.[threadId]?.(),
+              })
             }}
             chatStatus={effectiveStatus}
             // Named, not inferred from the current thread: in a split the

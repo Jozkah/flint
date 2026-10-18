@@ -279,7 +279,7 @@ fn find_process_using_port_windows(port: u16) -> Option<ProcessUsingPort> {
     use jan_process::CommandConsole;
 
     let mut cmd = Command::new("netstat");
-    cmd.args(&["-ano"]);
+    cmd.args(["-ano"]);
 
     cmd.background();
 
@@ -298,7 +298,7 @@ fn find_process_using_port_windows(port: u16) -> Option<ProcessUsingPort> {
             if let Some(pid_str) = parts.last() {
                 if let Ok(pid) = pid_str.parse::<u32>() {
                     let mut tasklist_cmd = Command::new("tasklist");
-                    tasklist_cmd.args(&["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"]);
+                    tasklist_cmd.args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"]);
 
                     tasklist_cmd.background();
 
@@ -354,7 +354,7 @@ fn win32_process_field(pid: u32, field: &str) -> Option<String> {
     use jan_process::CommandConsole;
 
     let mut cmd = Command::new("wmic");
-    cmd.args(&[
+    cmd.args([
         "process",
         "where",
         &format!("ProcessId={}", pid),
@@ -379,7 +379,7 @@ fn win32_process_field(pid: u32, field: &str) -> Option<String> {
     }
 
     let mut ps = Command::new("powershell");
-    ps.args(&[
+    ps.args([
         "-NoProfile",
         "-NonInteractive",
         "-Command",

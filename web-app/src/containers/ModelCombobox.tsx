@@ -365,7 +365,7 @@ export function ModelCombobox({
   loading = false,
   error = null,
   onRefresh,
-  placeholder = 'Type or select a model...',
+  placeholder,
   disabled = false,
   className,
   onOpenChange,
@@ -524,7 +524,7 @@ export function ModelCombobox({
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onClick={handleInputClick}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('uiLeftovers:modelCombobox.placeholder')}
           disabled={disabled}
           className="pr-16"
           autoComplete="off"
@@ -545,7 +545,7 @@ export function ModelCombobox({
                 e.stopPropagation()
                 onRefresh()
               }}
-              aria-label="Refresh models"
+              aria-label={t('uiLeftovers:modelCombobox.refresh')}
             >
               {loading ? (
                 <Loader2 className="size-4 motion-safe:animate-spin" />

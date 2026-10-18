@@ -1,3 +1,4 @@
+import { useConversationFind } from '@/hooks/useConversationFind'
 import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
@@ -10,16 +11,33 @@ import {
 import { Button } from '@/components/ui/button'
 import {
   Folder,
+  MessagesSquare,
   Search,
+  Users,
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { useThreads } from '@/hooks/useThreads'
+import { searchMessages, type MessageHit } from '@/lib/messageSearch'
+import { RichSnippet } from '@/components/RichSnippet'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
+import { buildPageIndex, searchPages, type PageEntry } from '@/lib/searchDialogPages'
+import {
+  buildSettingsIndex,
+  searchSettings,
+  type SettingsIndexEntry,
+} from '@/lib/settingsSearch'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
+import { useRoomsStore } from '@/lib/rooms/store'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { searchWork, type WorkItem } from '@/lib/searchDialogWork'
 
 const MAX_RECENT_SEARCHES = 5
+/** Wait for a pause in typing before scanning every chat's messages. */
+const MESSAGE_SEARCH_DEBOUNCE_MS = 250
 
 interface SearchDialogProps {
   open: boolean
@@ -44,6 +62,9 @@ function GroupLabel({ children }: { children: ReactNode }) {
   )
 }
 
+const NO_THREADS: ReturnType<typeof useThreads.getState>['threads'] = {}
+const NO_PROVIDERS: ReturnType<typeof useModelProvider.getState>['providers'] = []
+
 export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -54,8 +75,31 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
 
-  const threads = useThreads((state) => state.threads)
+  // Read only while it is needed: with thousands of chats every title or
+  // timestamp change would otherwise re-render this while it is hidden.
+  const threads = useThreads((state) => (open ? state.threads : NO_THREADS))
   const getFilteredThreads = useThreads((state) => state.getFilteredThreads)
+
+  // Full-text hits from inside the chats, fetched after typing pauses. A reply
+  // for an earlier query is dropped, never shown under a newer one.
+  const [messageHits, setMessageHits] = useState<MessageHit[]>([])
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!open || !query) {
+      setMessageHits([])
+      return
+    }
+    let stale = false
+    const timer = setTimeout(() => {
+      void searchMessages(query).then((hits) => {
+        if (!stale) setMessageHits(hits)
+      })
+    }, MESSAGE_SEARCH_DEBOUNCE_MS)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
+  }, [open, searchQuery])
 
   // Focus input when dialog opens
   useEffect(() => {
@@ -99,7 +143,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     onOpenChange(false)
   }
 
-  const handleSelectThread = (threadId: string) => {
+  const handleSelectThread = (threadId: string, hit?: { messageId: string }) => {
+    const hitQuery = searchQuery.trim()
     // Save to recent searches
     const stored = localStorage.getItem(localStorageKey.recentSearches)
     let threadIds: string[] = []
@@ -125,6 +170,12 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     )
 
     handleClose()
+    // A hit inside a message opens the chat with the find bar on that phrase.
+    if (hit && hitQuery) {
+      useConversationFind
+        .getState()
+        .openWith({ threadId, query: hitQuery, messageId: hit.messageId })
+    }
     navigate({ to: route.threadsDetail, params: { threadId } })
   }
 
@@ -151,9 +202,51 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     return { withProject, withoutProject }
   }, [searchQuery, getFilteredThreads])
 
+  // Pages and settings: with a minimal sidebar, this is how hidden pages
+  // are reached. Ranked after chat titles, before matches inside messages.
+  const providers = useModelProvider((s) => (open ? s.providers : NO_PROVIDERS))
+  const pageIndex = useMemo(() => (open ? buildPageIndex(t) : []), [open, t])
+  const settingsIndex = useMemo(
+    () => (open ? buildSettingsIndex(t, providers) : []),
+    [open, t, providers]
+  )
+  const pageHits = useMemo(
+    () => searchPages(pageIndex, searchQuery),
+    [pageIndex, searchQuery]
+  )
+  const settingHits = useMemo(
+    () => searchSettings(settingsIndex, searchQuery, 6),
+    [settingsIndex, searchQuery]
+  )
+
+  // Rooms and Cowork sessions, found by title like a chat.
+  const roomSummaries = useRoomsStore((s) => s.summaries)
+  const coworkSessions = useCoworkSessions((s) => s.sessions)
+  useEffect(() => {
+    if (open && useRoomsStore.getState().summaries.length === 0) {
+      void useRoomsStore.getState().loadRooms().catch(() => {})
+    }
+  }, [open])
+  const workHits = useMemo(() => {
+    if (!open || !searchQuery.trim()) return []
+    const items: WorkItem[] = [
+      ...roomSummaries.map((r) => ({ kind: 'room' as const, id: r.id, title: r.title })),
+      ...coworkSessions.map((c) => ({ kind: 'session' as const, id: c.id, title: c.title })),
+    ]
+    return searchWork(items, searchQuery)
+  }, [open, searchQuery, roomSummaries, coworkSessions])
+
   // Calculate all selectable items for keyboard navigation
   const allItems = useMemo(() => {
-    const items: Array<{ type: 'new' | 'recent' | 'result'; id: string }> = []
+    const items: Array<{
+      type: 'new' | 'recent' | 'result' | 'page' | 'setting' | 'work'
+      id: string
+      work?: WorkItem
+      page?: PageEntry
+      setting?: SettingsIndexEntry
+      /** The message a result stands for; Enter seeds the find bar with it. */
+      hit?: (typeof messageHits)[number]
+    }> = []
 
     if (!searchQuery) {
       // Start new chat option
@@ -171,10 +264,23 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       searchResults.withoutProject.forEach((thread) => {
         items.push({ type: 'result', id: thread.id })
       })
+      workHits.forEach((work) => {
+        items.push({ type: 'work', id: `${work.kind}-${work.id}`, work })
+      })
+      pageHits.forEach((page) => {
+        items.push({ type: 'page', id: page.id, page })
+      })
+      settingHits.forEach((setting) => {
+        items.push({ type: 'setting', id: setting.id, setting })
+      })
+      // Matches inside the chats' messages
+      messageHits.forEach((hit) => {
+        items.push({ type: 'result', id: hit.threadId, hit })
+      })
     }
 
     return items
-  }, [searchQuery, recentSearches, searchResults])
+  }, [searchQuery, recentSearches, searchResults, messageHits, workHits, pageHits, settingHits])
 
   // Reset selected index when items change
   useEffect(() => {
@@ -204,11 +310,41 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       if (selectedItem) {
         if (selectedItem.type === 'new') {
           handleStartNewChat()
+        } else if (selectedItem.work) {
+          openWork(selectedItem.work)
+        } else if (selectedItem.page) {
+          openPage(selectedItem.page)
+        } else if (selectedItem.setting) {
+          openSetting(selectedItem.setting)
         } else {
-          handleSelectThread(selectedItem.id)
+          handleSelectThread(selectedItem.id, selectedItem.hit)
         }
       }
     }
+  }
+
+  const openWork = (work: WorkItem) => {
+    handleClose()
+    if (work.kind === 'room') {
+      navigate({ to: route.roomDetail, params: { roomId: work.id } })
+    } else {
+      useCoworkSessions.getState().selectSession(work.id)
+      navigate({ to: route.cowork })
+    }
+  }
+
+  const openPage = (page: PageEntry) => {
+    handleClose()
+    navigate({ to: page.to })
+  }
+  const openSetting = (entry: SettingsIndexEntry) => {
+    handleClose()
+    // Parked before navigating: the page's SettingTarget claims it on mount.
+    if (entry.anchor) useSettingsSearch.getState().requestTarget(entry.anchor)
+    navigate(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (entry.params ? { to: entry.route, params: entry.params } : { to: entry.route }) as any
+    )
   }
 
   const handleStartNewChat = () => {
@@ -219,7 +355,11 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const showStartNewChat = !searchQuery
   const hasResults =
     searchResults.withProject.length > 0 ||
-    searchResults.withoutProject.length > 0
+    searchResults.withoutProject.length > 0 ||
+    workHits.length > 0 ||
+    pageHits.length > 0 ||
+    settingHits.length > 0 ||
+    messageHits.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -255,8 +395,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           <input
             ref={inputRef}
             type="text"
-            placeholder={t('common:searchThreads')}
-            aria-label={t('common:searchThreads')}
+            placeholder={t('common:searchEverything')}
+            aria-label={t('common:searchEverything')}
             className="h-[50px] min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none md:text-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -282,7 +422,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                 {t('common:noResultsFound')}
               </h3>
               <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">
-                {t('common:noResultsFoundDesc')}
+                {t('common:noResultsFoundEverywhere')}
               </p>
             </div>
           )}
@@ -386,6 +526,146 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                   >
                     <Icon name="comment" size={16} />
                     <span className="truncate">{thread.title}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Rooms and Cowork sessions, by title */}
+          {searchQuery && workHits.length > 0 && (
+            <div data-testid="search-work-hits">
+              <div className="px-2.5 pt-2 pb-1">
+                <GroupLabel>{t('common:searchGroup.work')}</GroupLabel>
+              </div>
+              {workHits.map((work, index) => {
+                const itemIndex =
+                  searchResults.withProject.length +
+                  searchResults.withoutProject.length +
+                  index
+                const Glyph = work.kind === 'room' ? Users : MessagesSquare
+                return (
+                  <button
+                    type="button"
+                    key={`${work.kind}-${work.id}`}
+                    data-index={itemIndex}
+                    data-selected={selectedIndex === itemIndex}
+                    onClick={() => openWork(work)}
+                    className={itemClass(selectedIndex === itemIndex)}
+                  >
+                    <Glyph className="size-4 shrink-0" aria-hidden />
+                    <span className="truncate">{work.title}</span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                      {work.kind === 'room'
+                        ? t('common:searchGroup.room')
+                        : t('common:searchGroup.session')}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Pages, including those hidden from the sidebar */}
+          {searchQuery && pageHits.length > 0 && (
+            <div data-testid="search-page-hits">
+              <div className="px-2.5 pt-2 pb-1">
+                <GroupLabel>{t('common:searchGroup.pages')}</GroupLabel>
+              </div>
+              {pageHits.map((page, index) => {
+                const itemIndex =
+                  searchResults.withProject.length +
+                  searchResults.withoutProject.length +
+                  workHits.length +
+                  index
+                return (
+                  <button
+                    type="button"
+                    key={page.id}
+                    data-index={itemIndex}
+                    data-selected={selectedIndex === itemIndex}
+                    onClick={() => openPage(page)}
+                    className={itemClass(selectedIndex === itemIndex)}
+                  >
+                    <Icon name="command" size={16} />
+                    <span className="truncate">{page.title}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Settings pages and single controls */}
+          {searchQuery && settingHits.length > 0 && (
+            <div data-testid="search-setting-hits">
+              <div className="px-2.5 pt-2 pb-1">
+                <GroupLabel>{t('common:searchGroup.settings')}</GroupLabel>
+              </div>
+              {settingHits.map((entry, index) => {
+                const itemIndex =
+                  searchResults.withProject.length +
+                  searchResults.withoutProject.length +
+                  workHits.length +
+                  pageHits.length +
+                  index
+                return (
+                  <button
+                    type="button"
+                    key={entry.id}
+                    data-index={itemIndex}
+                    data-selected={selectedIndex === itemIndex}
+                    onClick={() => openSetting(entry)}
+                    className={itemClass(selectedIndex === itemIndex)}
+                  >
+                    <Icon name="sb-settings" size={16} />
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">{entry.title}</span>
+                      {entry.section !== entry.title && (
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {entry.section}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Matches inside the messages of other chats */}
+          {searchQuery && messageHits.length > 0 && (
+            <div data-testid="search-message-hits">
+              <div className="px-2.5 pt-2 pb-1">
+                <GroupLabel>{t('common:searchGroup.messages')}</GroupLabel>
+              </div>
+              {messageHits.map((hit, index) => {
+                const itemIndex =
+                  searchResults.withProject.length +
+                  searchResults.withoutProject.length +
+                  workHits.length +
+                  pageHits.length +
+                  settingHits.length +
+                  index
+                return (
+                  <button
+                    type="button"
+                    key={`${hit.threadId}-${hit.messageId}`}
+                    data-index={itemIndex}
+                    data-selected={selectedIndex === itemIndex}
+                    onClick={() => handleSelectThread(hit.threadId, hit)}
+                    className={cn(
+                      itemClass(selectedIndex === itemIndex),
+                      'h-auto min-h-[34px] flex-col items-start gap-0 py-1.5'
+                    )}
+                  >
+                    <span className="w-full truncate text-[11px] text-muted-foreground">
+                      {hit.threadTitle}
+                    </span>
+                    <RichSnippet
+                      text={hit.snippet}
+                      query={searchQuery}
+                      className="w-full text-start"
+                    />
                   </button>
                 )
               })}

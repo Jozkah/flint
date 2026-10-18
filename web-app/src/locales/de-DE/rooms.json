@@ -12,8 +12,10 @@
     "open": "{{title}} öffnen",
     "delete": "Löschen",
     "deleteLabel": "{{title}} löschen",
-    "participants": "{{count}} Teilnehmer",
-    "turns": "{{count}} Beiträge",
+    "participants_one": "{{count}} Teilnehmer",
+    "participants_other": "{{count}} Teilnehmer",
+    "turns_one": "{{count}} Zug",
+    "turns_other": "{{count}} Züge",
     "updated": "Aktualisiert {{time}}",
     "untitled": "Raum ohne Titel",
     "moreLabel": "Weitere Aktionen für {{title}}",
@@ -54,7 +56,9 @@
     "user-selected": "Du wählst",
     "user-selectedHint": "Nach jedem Beitrag wartet der Raum darauf, dass du den nächsten Sprecher wählst.",
     "moderator-selected": "Moderator wählt",
-    "moderator-selectedHint": "Ein Moderator-Modell wählt jeden Sprecher und kann die Diskussion beenden."
+    "moderator-selectedHint": "Ein Moderator-Modell wählt jeden Sprecher und kann die Diskussion beenden.",
+    "compare": "Modelle vergleichen",
+    "compareHint": "Jede Nachricht geht gleichzeitig an alle Teilnehmer; sie antworten unabhängig voneinander, ohne die anderen zu sehen, nebeneinander."
   },
   "clear": {
     "command": "Diesen Raum leeren: Chat, Gelerntes, temporäre Dateien",
@@ -74,6 +78,9 @@
     "heading": "Raumeinstellungen",
     "sectionGeneral": "Allgemein",
     "sectionDiscussion": "Diskussion & Moderator",
+    "sectionIdentity": "Identität",
+    "sectionModel": "Modell & Denken",
+    "sectionTools": "Werkzeuge",
     "lockedWhileRunning": "Pausiere den Raum, um Einstellungen zu ändern.",
     "title": "Titel",
     "objective": "Ziel",
@@ -152,7 +159,47 @@
     "sections": "Einstellungsbereich",
     "tabGeneral": "Allgemein",
     "tabDiscussion": "Diskussion",
-    "tabLimits": "Limits"
+    "tabLimits": "Limits",
+    "compareRun": "Modelle ausführen",
+    "compareRunHint": "Einer nach dem anderen ist langsamer, lädt aber immer nur ein lokales Modell und schont Ratenlimits.",
+    "compareRunOption": {
+      "together": "Alle gleichzeitig",
+      "one-by-one": "Einer nach dem anderen"
+    },
+    "compareRunSuggest": "Zwei oder mehr lokale Modelle sind ausgewählt: Nacheinander ausgeführt konkurrieren sie nicht um den Speicher.",
+    "tools": {
+      "heading": "Werkzeuge",
+      "summary": "{{on}} von {{total}} an · ~{{tokens}} Tokens",
+      "loading": "Werkzeuge werden geladen…",
+      "empty": "Mit diesem Zugriff sind keine Werkzeuge verfügbar.",
+      "group": {
+        "files": "Dateien und Befehle",
+        "web": "Web",
+        "mcp": "MCP-Server",
+        "other": "Sonstiges"
+      },
+      "tokens": "~{{tokens}} Tok",
+      "share": "Werkzeugdefinitionen belegen etwa {{pct}} % des Kontextfensters dieses Modells.",
+      "warn": "Werkzeugdefinitionen belegen etwa {{pct}} % des Kontextfensters dieses Modells (über {{limit}} %). Schalte einige ab, damit Platz für die Diskussion bleibt.",
+      "windowUnknown": "Das Kontextfenster dieses Modells ist unbekannt, daher kann der Anteil nicht angezeigt werden.",
+      "notStarted": "nicht gestartet",
+      "toolsUnknown": "Werkzeuge erst nach dem Start bekannt"
+    },
+    "budget": {
+      "heading": "Werkzeugbudget pro Zug",
+      "hint": "Obergrenzen für jeden Teilnehmerzug mit Werkzeugen. Leer lassen für den Standard.",
+      "maxToolCalls": "Max. Werkzeugaufrufe",
+      "maxSteps": "Max. Schritte",
+      "toolTimeoutSec": "Werkzeug-Timeout (Sekunden)",
+      "default": "Standard: {{value}}"
+    },
+    "isolation": {
+      "active": "Jeder Teilnehmer mit Schreibzugriff arbeitet in einem eigenen isolierten Arbeitsbereich und kann weder die anderen noch deinen Ordner überschreiben.",
+      "unavailable": "Isolierter Arbeitsbereich nicht verfügbar: {{reason}}. Teilnehmer mit Schreibzugriff lesen in diesem Raum nur.",
+      "untrusted": "der Ordner ist nicht vertrauenswürdig",
+      "trust": "Diesem Ordner vertrauen"
+    },
+    "saving": "Wird gespeichert…"
   },
   "limits": {
     "maxRounds": "Runden",
@@ -216,6 +263,7 @@
     "moderatorNote": "Hinweis des Moderators",
     "disagreements": "Meinungsverschiedenheiten",
     "jumpToLatest": "Zum Neuesten springen",
+    "compareRow": "{{count}} Antworten nebeneinander",
     "toolDetails": "Details",
     "toolHide": "Ausblenden",
     "toolArgs": "Eingabe",
@@ -225,7 +273,30 @@
     "toolFailed": "fehlgeschlagen",
     "speed": "{{tps}} Tok./s",
     "tokensOut": "{{approx}}{{count}} Tokens",
-    "speedTitle": "In dieser Antwort geschriebene Tokens und wie schnell"
+    "speedTitle": "In dieser Antwort geschriebene Tokens und wie schnell",
+    "budgetHit": {
+      "tool-calls": "Dieser Zug hat sein Budget an Werkzeugaufrufen erreicht.",
+      "steps": "Dieser Zug hat sein Schrittbudget erreicht.",
+      "timeout": "Ein Werkzeugaufruf in diesem Zug hat das Timeout überschritten und wurde gestoppt."
+    },
+    "rawToolCall": "Das sieht aus wie ein als Text geschriebener Tool-Aufruf. Er wurde nicht ausgeführt.",
+    "emptyReply": {
+      "length": "Das Modell hat sein ganzes Antwortlimit ({{count}} Tokens) verbraucht, ohne eine Antwort zu schreiben. Erhöhe das Limit in den Raumeinstellungen oder schalte das Nachdenken für diesen Teilnehmer aus und starte erneut.",
+      "tools": "Hat Tools verwendet, aber keine Textantwort geschrieben.",
+      "none": "Keine Textantwort."
+    },
+    "thought": "Nachdenken",
+    "answerFrom": "Antwort von {{name}}",
+    "expandAnswer": "Ganze Antwort von {{name}} zeigen",
+    "collapseAnswer": "Antwort von {{name}} kürzen",
+    "expand": "Aufklappen",
+    "collapse": "Zuklappen",
+    "linkScroll": "Gemeinsam scrollen",
+    "linkScrollHint": "Die Antworten auf eine Frage gemeinsam scrollen",
+    "continuePrompt": "Setze deine vorige Antwort dort fort, wo sie abgeschnitten wurde.",
+    "catchUp": "Nachholen: hat auch {{count}} frühere Fragen beantwortet",
+    "catchUp_one": "Nachholen: hat auch 1 frühere Frage beantwortet",
+    "catchUpHint": "Dieser Teilnehmer kam nach diesen Fragen dazu, daher beantwortet diese Antwort sie ebenfalls:"
   },
   "unknownWindow": {
     "title": "Kontextfenster unbekannt",
@@ -268,17 +339,24 @@
     "finalPositionsHint": "Jeder Teilnehmer legt dar, wo er steht",
     "synthesizeHint": "Zusammenfassung des Ergebnisses, mit abweichenden Meinungen",
     "cancelTurnHint": "Nur die laufende Antwort stoppen",
-    "steerLocked": "Diese werden freigeschaltet, sobald die Diskussion läuft."
+    "steerLocked": "Diese werden freigeschaltet, sobald die Diskussion läuft.",
+    "answering": "Antworten",
+    "models": "Modelle"
   },
   "stage": {
     "speaking": "{{name}} spricht",
     "compacting": "{{name}} holt auf",
     "draft": "Bereit zum Start",
-    "draftHint": "{{count}} Teilnehmer · {{mode}}",
+    "draftHint_one": "{{count}} Teilnehmer · {{mode}}",
+    "draftHint_other": "{{count}} Teilnehmer · {{mode}}",
     "running": "Diskussion läuft",
     "runningHint": "Der nächste Sprecher bereitet sich vor.",
     "awaiting-user": "Du bist an der Reihe",
     "awaitingHint": "Wähle, wer als Nächstes spricht, oder schreibe in den Raum.",
+    "comparing": "{{count}} Modelle antworten",
+    "comparingHint": "Jedes antwortet für sich; die Antworten erscheinen nebeneinander.",
+    "compareAwaiting": "Du bist dran",
+    "compareAwaitingHint": "Schreibe eine Nachricht, und jeder Teilnehmer antwortet darauf.",
     "paused": "Pausiert",
     "pausedHint": "Setze fort, um von hier aus weiterzumachen.",
     "stopped": "Gestoppt",
@@ -289,7 +367,8 @@
     "failedHint": "Starte erneut, um es noch einmal zu versuchen.",
     "round": "Runde",
     "turn": "Beitrag",
-    "of": "von"
+    "of": "von",
+    "question": "Frage"
   },
   "usage": {
     "label": "Nutzung",
@@ -302,7 +381,8 @@
     "time": "Zeit",
     "of": "{{value}} / {{max}}",
     "noLimit": "kein Limit",
-    "stopReason": "Gestoppt: {{reason}}"
+    "stopReason": "Gestoppt: {{reason}}",
+    "questions": "Fragen"
   },
   "stopReason": {
     "user": "von dir gestoppt",
@@ -331,7 +411,9 @@
     "toShort": "An",
     "placeholderTo": "An {{name}} schreiben …",
     "mention": "Einen Teilnehmer erwähnen",
-    "dropSkipped": "Nicht hinzugefügt (kein Text, ein Ordner oder über dem Nachrichtenlimit): {{files}}"
+    "dropSkipped": "Nicht hinzugefügt (kein Text, ein Ordner oder über dem Nachrichtenlimit): {{files}}",
+    "placeholderShort": "An den Raum schreiben… @ zum Erwähnen",
+    "extendByQuestions": "Weitere Fragen"
   },
   "kpi": {
     "running": "Läuft",
@@ -340,7 +422,8 @@
     "waitingHint": "Braucht deine Wahl oder Antwort",
     "waitingNone": "Nichts braucht dich",
     "turns": "Beiträge diese Woche",
-    "turnsHint": "In {{count}} Räumen",
+    "turnsHint_one": "In {{count}} Raum",
+    "turnsHint_other": "In {{count}} Räumen",
     "models": "Teilnehmende Modelle",
     "modelsNone": "Noch keine Teilnehmer"
   },
@@ -383,5 +466,132 @@
     "panes": "Raumansicht",
     "talk": "Diskussion",
     "controls": "Steuerung"
+  },
+  "compare": {
+    "title": "Läufe vergleichen",
+    "modeTogether": "Alle gleichzeitig",
+    "modeOneByOne": "Einer nach dem anderen",
+    "include": "Beim nächsten Lauf einbeziehen",
+    "includeFor": "{{name}} beim nächsten Lauf einbeziehen",
+    "run": "Ausführen",
+    "runAgain": "Erneut ausführen",
+    "runFor": "{{name}} auf die aktuelle Frage ausführen",
+    "runAgainFor": "{{name}} erneut auf die aktuelle Frage ausführen",
+    "runAll": "Alle ausführen",
+    "answerEarlier": "Frühere Fragen beantworten",
+    "answerEarlierHint": "Jedes Modell, das eine frühere Frage verpasst hat, beantwortet sie jetzt der Reihe nach, als wäre es dabei gewesen.",
+    "export": "Vergleich exportieren",
+    "saveMarkdown": "Als Markdown speichern…",
+    "copyMarkdown": "Als Markdown kopieren",
+    "copyJson": "Als JSON kopieren",
+    "saved": "Vergleich gespeichert.",
+    "copied": "In die Zwischenablage kopiert.",
+    "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen.",
+    "notAnswered": "Hat diese Frage noch nicht beantwortet.",
+    "state": {
+      "off": "Beim nächsten Lauf ausgelassen",
+      "unavailable": "Nicht verfügbar",
+      "running": "Antwortet…",
+      "queued": "In der Warteschlange",
+      "done": "Beantwortet",
+      "failed": "Fehlgeschlagen",
+      "idle": "Noch nicht beantwortet",
+      "waitingSlot": "In der Warteschlange: wartet auf den Slot des lokalen Modells"
+    },
+    "retry": "Erneut versuchen",
+    "retryFor": "{{name}} erneut versuchen"
+  },
+  "changes": {
+    "summaryOne": "{{count}} Datei geändert",
+    "summaryMany": "{{count}} Dateien geändert",
+    "workspace": "Isolierter Arbeitsbereich: {{path}}",
+    "binary": "Binärdatei",
+    "noExcerpt": "Kein Auszug.",
+    "openDiff": "Diff öffnen",
+    "keep": "Behalten",
+    "discard": "Änderungen verwerfen",
+    "apply": "Auf meinen Ordner anwenden",
+    "state": {
+      "kept": "Behalten",
+      "discarded": "Verworfen",
+      "applied": "Angewendet",
+      "idle": "Nicht übernommen"
+    },
+    "diffTitle": "Änderungen im Arbeitsbereich",
+    "diffHint": "Alles, was dieser Teilnehmer in seinem isolierten Arbeitsbereich geändert hat.",
+    "discardTitle": "Diese Änderungen verwerfen?",
+    "discardHint": "Der Arbeitsbereich des Teilnehmers wird auf den Anfangszustand zurückgesetzt. Dein Ordner bleibt unberührt.",
+    "loading": "Diff wird geladen…",
+    "empty": "Nichts anzuwenden.",
+    "discardConfirm": "Verwerfen",
+    "scopeTurn": "Dieser Zug",
+    "scopeAll": "Seit der Arbeitsbereich erstellt wurde",
+    "applyShort": "Anwenden",
+    "scopeAllShort": "Alle",
+    "scope": "Welche Änderungen angezeigt werden",
+    "showAll": "Alle Dateien anzeigen ({{count}})",
+    "partial_one": "{{count}} Datei übernommen",
+    "partial_other": "{{count}} Dateien übernommen",
+    "applyIncludesEarlier_one": "Übernehmen enthält auch {{count}} frühere, noch nicht übernommene Datei",
+    "applyIncludesEarlier_other": "Übernehmen enthält auch {{count}} frühere, noch nicht übernommene Dateien"
+  },
+  "apply": {
+    "title_one": "{{count}} Änderung in deinen Ordner übernehmen",
+    "title_other": "{{count}} Änderungen in deinen Ordner übernehmen",
+    "copyPath": "Ordnerpfad {{path}} kopieren",
+    "pathCopied": "Ordnerpfad kopiert",
+    "files_one": "{{count}} Datei",
+    "files_other": "{{count}} Dateien",
+    "source": "Von {{name}} · Runde {{round}}",
+    "safety": "Es wird nichts übernommen, wenn der Patch nicht sauber passt. Du kannst es direkt danach rückgängig machen.",
+    "checking": "Prüfe, ob er auf deinen Ordner passt…",
+    "clean": "Passt sauber",
+    "checkFailed": "Patch konnte nicht geprüft werden: {{message}}",
+    "conflict_one": "{{count}} Datei passt nicht auf deinen Ordner",
+    "conflict_other": "{{count}} Dateien passen nicht auf deinen Ordner",
+    "conflictHint": "Lass sie weg oder bitte den Teilnehmer, sie auf dem aktuellen Stand deines Ordners neu zu machen.",
+    "notChecked": "nicht einzeln geprüft (zu viele Dateien)",
+    "fileConflict": "Passt nicht",
+    "leaveOut": "Konfliktdateien weglassen",
+    "details": "Einzelheiten",
+    "fileDirty": "Deine Änderungen",
+    "dirtyTitle_one": "Du hast nicht committete Änderungen in {{count}} dieser Dateien",
+    "dirtyTitle_other": "Du hast nicht committete Änderungen in {{count}} dieser Dateien",
+    "dirtyHint": "Der Patch wird über deine Änderungen geschrieben. Committe oder stashe vorher, wenn du einen einfachen Weg zurück willst.",
+    "selectAll": "Alle Dateien auswählen",
+    "include": "{{path}} einbeziehen",
+    "renamedFrom": "(umbenannt von {{path}})",
+    "status": {
+      "added": "Neu",
+      "modified": "Geändert",
+      "deleted": "Gelöscht",
+      "renamed": "Umbenannt"
+    },
+    "binary": "Binärdatei geändert. Ihr Inhalt wird nicht angezeigt.",
+    "noLines": "Keine Zeilenänderungen (nur Modus oder Name).",
+    "showMore_one": "{{count}} weitere Zeile zeigen",
+    "showMore_other": "{{count}} weitere Zeilen zeigen",
+    "hiddenLines_one": "({{count}} ausgeblendet)",
+    "hiddenLines_other": "({{count}} ausgeblendet)",
+    "blockedConflict": "Übernehmen ist aus: Einige ausgewählte Dateien passen nicht sauber.",
+    "blockedNothing": "Wähle mindestens eine Datei aus.",
+    "blockedFailed": "Übernehmen ist aus, bis die Prüfung gelingt.",
+    "copyPatch": "Patch kopieren",
+    "patchCopied": "Patch kopiert",
+    "confirm_one": "{{count}} Datei übernehmen",
+    "confirm_other": "{{count}} Dateien übernehmen",
+    "applied_one": "{{count}} Datei in deinen Ordner übernommen",
+    "applied_other": "{{count}} Dateien in deinen Ordner übernommen",
+    "undo": "Rückgängig",
+    "undone": "Die Änderung wurde aus deinem Ordner zurückgenommen",
+    "undoFailed": "Rückgängig fehlgeschlagen: {{message}}"
+  },
+  "approvals": {
+    "held": "Raum pausiert",
+    "heldHint": "Der Raum wurde pausiert, während dies wartete, daher kann es nicht mehr erlaubt werden. Setze den Raum fort; der Teilnehmer fragt erneut, wenn er es noch braucht.",
+    "dismiss": "Schließen",
+    "heldBanner": "Raum pausiert: Diese Anfrage kann nicht mehr erlaubt werden. Fortsetzen, um erneut zu fragen.",
+    "wantsToRun": "{{origin}} möchte {{tool}} ausführen",
+    "details": "Einzelheiten"
   }
 }

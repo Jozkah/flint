@@ -30,6 +30,8 @@ type DynamicControllerProps = {
     min?: number
     max?: number
     step?: number
+    /** Values the +/- buttons move between (ascending), instead of `step`. */
+    steps?: number[]
     warnAbove?: number
     warnBelow?: number
     recommended?: string
@@ -90,6 +92,7 @@ function renderControl(
         min={controllerProps.min}
         max={controllerProps.max}
         step={controllerProps.step}
+        steps={controllerProps.steps}
         onChange={(newValue) => {
           if (!isNumeric || typeof newValue !== 'string') return onChange(newValue)
           const trimmed = newValue.trim()

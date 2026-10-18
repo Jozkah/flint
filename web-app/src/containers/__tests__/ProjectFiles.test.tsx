@@ -56,6 +56,12 @@ vi.mock('@/hooks/useServiceHub', () => ({
 const uploadsHoisted = vi.hoisted(() => ({
   ingestMock: vi.fn(),
   progress: {} as Record<string, { current: number; total: number }>,
+  failures: {} as Record<string, { fileName: string; error: unknown }[]>,
+  dismissFailure: vi.fn(),
+  navigate: vi.fn(),
+}))
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => uploadsHoisted.navigate,
 }))
 const { ingestMock } = uploadsHoisted
 vi.mock('@/stores/project-uploads-store', () => ({
@@ -64,6 +70,8 @@ vi.mock('@/stores/project-uploads-store', () => ({
       progress: uploadsHoisted.progress,
       completedTick: {},
       ingest: uploadsHoisted.ingestMock,
+      failures: uploadsHoisted.failures,
+      dismissFailure: uploadsHoisted.dismissFailure,
     }),
 }))
 
@@ -120,6 +128,44 @@ describe('ProjectFiles', () => {
     readdirSyncMock.mockReset().mockResolvedValue([])
     ingestMock.mockReset()
     uploadsHoisted.progress = {}
+    uploadsHoisted.failures = {}
+  })
+
+  it('keeps a row for a file that failed for want of an embedding model (T7-054)', async () => {
+    uploadsHoisted.failures = {
+      p1: [
+        {
+          fileName: 'zorblax.txt',
+          error: new Error(
+            'Failed to determine embedding context size: No embedding model is installed.'
+          ),
+        },
+      ],
+    }
+    render(<ProjectFiles projectId="p1" lng="en" />)
+    const row = await screen.findByTestId('project-file-failure')
+    expect(within(row).getByText('zorblax.txt')).toBeInTheDocument()
+    expect(within(row).getByText('common:toast.uploadFailed.noEmbeddingModel')).toBeInTheDocument()
+    fireEvent.click(within(row).getByText('common:projects.setUpEmbeddingModel'))
+    expect(uploadsHoisted.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { providerName: 'llamacpp' } })
+    )
+    fireEvent.click(within(row).getByLabelText('common:dismiss'))
+    expect(uploadsHoisted.dismissFailure).toHaveBeenCalledWith('p1', 'zorblax.txt')
+  })
+
+  it('toasts the missing embedding model with a setup action', async () => {
+    dialogOpenMock.mockResolvedValue(['C:/f/zorblax.txt'])
+    ingestMock.mockImplementation(async (_p, _a, _fn, handlers) =>
+      handlers.onError(new Error('No embedding model is installed.'), 'zorblax.txt')
+    )
+    render(<ProjectFiles projectId="p1" lng="en" />)
+    await waitFor(() => expect(screen.getByText('common:projects.processButton')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('common:projects.processButton'))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    const opts = toastMock.error.mock.calls[0][1]
+    expect(opts.description).toBe('common:toast.uploadFailed.noEmbeddingModel')
+    expect(opts.action.label).toBe('common:projects.setUpEmbeddingModel')
   })
 
   it('shows loader while files are loading', () => {
@@ -294,6 +340,61 @@ describe('ProjectFiles', () => {
     const dropzone = container.querySelector('.border-dashed') as HTMLElement
     fireEvent.drop(dropzone, { dataTransfer: { items: [], files: [] } })
     await waitFor(() => expect(toastMock.info).toHaveBeenCalled())
+  })
+
+  // ---------- Linux drops that name files as text ----------
+
+  const linuxDrop = async (data: Record<string, string>) => {
+    const { container } = render(<ProjectFiles projectId="p1" lng="en" />)
+    await waitFor(() =>
+      expect(screen.getByText('common:projects.filesDescription')).toBeInTheDocument()
+    )
+    const dropzone = container.querySelector('.border-dashed') as HTMLElement
+    fireEvent.drop(dropzone, {
+      dataTransfer: {
+        items: [],
+        files: [],
+        types: Object.keys(data),
+        getData: (t: string) => data[t] ?? '',
+      },
+    })
+  }
+
+  it('ignores a bare path dragged as text (never walks /home/me)', async () => {
+    fileStatMock.mockResolvedValue({ isDirectory: true, size: 0 })
+    await linuxDrop({ 'text/plain': '/home/me/projects' })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(fileStatMock).not.toHaveBeenCalled()
+    expect(readdirSyncMock).not.toHaveBeenCalled()
+    expect(ingestMock).not.toHaveBeenCalled()
+  })
+
+  it('asks before adding a dropped folder instead of walking it', async () => {
+    fileStatMock.mockResolvedValue({ isDirectory: true, size: 0 })
+    await linuxDrop({ 'text/uri-list': 'file:///home/me/proj/' })
+    await waitFor(() => expect(toastMock.info).toHaveBeenCalled())
+    expect(readdirSyncMock).not.toHaveBeenCalled()
+    expect(ingestMock).not.toHaveBeenCalled()
+    const opts = toastMock.info.mock.calls.at(-1)?.[1] as {
+      action?: { onClick: () => void }
+    }
+    expect(opts?.action?.onClick).toBeTypeOf('function')
+  })
+
+  it('asks before ingesting a file a uri-list drop names (a page can forge that text)', async () => {
+    fileStatMock.mockResolvedValue({ isDirectory: false, size: 3 })
+    await linuxDrop({ 'text/uri-list': 'file:///home/me/a%20b.pdf' })
+    await waitFor(() => expect(toastMock.info).toHaveBeenCalled())
+    expect(ingestMock).not.toHaveBeenCalled()
+    expect(toastMock.info.mock.calls.at(-1)?.[0]).toBe('common:pastedPath.file')
+  })
+
+  it('ingests a file named by the GNOME drag type', async () => {
+    await linuxDrop({
+      'x-special/gnome-copied-files': 'copy\nfile:///home/me/a%20b.pdf',
+    })
+    await waitFor(() => expect(ingestMock).toHaveBeenCalled())
+    expect(ingestMock.mock.calls[0][1][0]).toMatchObject({ path: '/home/me/a b.pdf' })
   })
 
   // ---------- Upload flow: processFilePaths + ingest + humanizeUploadError ----------

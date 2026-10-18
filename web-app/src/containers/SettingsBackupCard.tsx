@@ -60,10 +60,12 @@ export function SettingsBackupCard() {
         }
       )
       if (report) {
-        toast.success('Settings exported', { description: report.path })
+        toast.success(t('settings:backup.exported'), { description: report.path })
       }
     } catch (e) {
-      toast.error('Export failed', { description: String(e) })
+      toast.error(t('settings:backup.exportFailed'), {
+        description: String(e),
+      })
     } finally {
       setBusy(false)
     }
@@ -79,7 +81,7 @@ export function SettingsBackupCard() {
       setIncludePermissions(false)
       setPending(backup)
     } catch (e) {
-      toast.error('Import failed', {
+      toast.error(t('settings:backup.importFailed'), {
         description: e instanceof Error ? e.message : String(e),
       })
     } finally {
@@ -92,7 +94,7 @@ export function SettingsBackupCard() {
     setBusy(true)
     try {
       const result = await applyBackup(io, pending, { includePermissions })
-      toast.success('Settings imported, restarting the window', {
+      toast.success(t('settings:backup.importedRestarting'), {
         description:
           result.skipped.length > 0
             ? t('settings:backup.skipped', {
@@ -107,7 +109,9 @@ export function SettingsBackupCard() {
         result.skipped.length > 0 ? 2500 : 400
       )
     } catch (e) {
-      toast.error('Import failed', { description: String(e) })
+      toast.error(t('settings:backup.importFailed'), {
+        description: String(e),
+      })
       setBusy(false)
     }
   }
@@ -118,11 +122,11 @@ export function SettingsBackupCard() {
     : 0
 
   return (
-    <Card title="Backup and sync" data-testid="settings-backup-card">
+    <Card title={t('settings:backup.title')} data-testid="settings-backup-card">
       <CardItem
         anchor="settings-general-backup-export"
-        title="Export settings"
-        description="Save your preferences to a JSON file. To sync across machines, save it into a Google Drive or Nextcloud folder and import it on the other machine. Chats and per-machine state are not included."
+        title={t('settings:backup.exportTitle')}
+        description={t('settings:backup.exportDesc')}
         column
         actions={
           <div className="flex flex-col gap-3 items-start">
@@ -133,35 +137,38 @@ export function SettingsBackupCard() {
                 onChange={(e) => setIncludeSecrets(e.target.checked)}
                 data-testid="settings-backup-include-secrets"
               />
-              Include providers and API keys
+              {t('settings:backup.includeSecrets')}
             </label>
             {includeSecrets && (
               <p className="text-sm text-destructive">
-                The file will contain your API keys in plain text. Keep it
-                private, and do not put it in a shared folder.
+                {t('settings:backup.secretsWarning')}
               </p>
             )}
             <Button variant="outline" onClick={handleExport} disabled={busy}>
-              Export…
+              {t('settings:backup.exportButton')}
             </Button>
           </div>
         }
       />
       <CardItem
         anchor="settings-general-backup-import"
-        title="Import settings"
-        description="Replace your preferences with a backup file. The window reloads afterwards."
+        title={t('settings:backup.importTitle')}
+        description={t('settings:backup.importDesc')}
         column={pending !== null}
         actions={
           pending ? (
             <div className="flex flex-col gap-3 items-start">
               <p className="text-sm">
-                {pendingStores} setting groups
-                {pendingKeys > 0 ? ` and API keys for ${pendingKeys} providers` : ''}
-                {pending.exportedAt
-                  ? `, exported ${pending.exportedAt.slice(0, 10)}`
+                {t('settings:backup.pendingGroups', { groups: pendingStores })}
+                {pendingKeys > 0
+                  ? ` ${t('settings:backup.pendingKeys', { keys: pendingKeys })}`
                   : ''}
-                . This overwrites your current values.
+                {pending.exportedAt
+                  ? ` ${t('settings:backup.pendingExported', {
+                      date: pending.exportedAt.slice(0, 10),
+                    })}`
+                  : ''}{' '}
+                {t('settings:backup.pendingOverwrite')}
               </p>
               {preview && preview.baseUrlChanges.length > 0 && (
                 <div
@@ -205,7 +212,7 @@ export function SettingsBackupCard() {
               )}
               <div className="flex gap-2">
                 <Button onClick={handleApply} disabled={busy}>
-                  Import and reload
+                  {t('settings:backup.apply')}
                 </Button>
                 <Button
                   variant="outline"
@@ -215,7 +222,7 @@ export function SettingsBackupCard() {
                   }}
                   disabled={busy}
                 >
-                  Cancel
+                  {t('settings:backup.cancel')}
                 </Button>
               </div>
             </div>
@@ -225,7 +232,7 @@ export function SettingsBackupCard() {
               onClick={handleChooseFile}
               disabled={busy}
             >
-              Choose file…
+              {t('settings:backup.chooseFile')}
             </Button>
           )
         }

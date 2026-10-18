@@ -60,7 +60,9 @@ export function controlAvailability(
     resume: s === 'paused',
     stop: ACTIVE.includes(s),
     cancelTurn: midTurn,
-    selectNext: betweenTurns && availableParticipants(room).length > 0,
+    // A compare room asks everyone at once: there is no next speaker to pick.
+    selectNext:
+      betweenTurns && availableParticipants(room).length > 0 && room.mode !== 'compare',
     callVote: wrapUp,
     requestFinalPositions: wrapUp,
     synthesize: wrapUp,
@@ -117,6 +119,51 @@ export const messagesOf = (journal: RoomJournalRecord[]): RoomMessage[] =>
   journal
     .flatMap((r) => (r.type === 'message' ? [r.message] : []))
     .sort((a, b) => a.seq - b.seq)
+
+export type TranscriptItem =
+  | { kind: 'message'; message: RoomMessage }
+  /**
+   * A compare round: the participants' answers to one user message (the
+   * question, `questionId`), side by side. Answers given later (a re-run, or a
+   * late model answering earlier questions) join their question's row.
+   */
+  | { kind: 'compare'; round: number; questionId: string | null; answers: RoomMessage[] }
+
+/**
+ * A compare room's transcript as rows: each user message is followed by one
+ * `compare` row holding every answer to it, wherever in the journal the answer
+ * arrived. System lines (an availability note, a compaction divider) stay rows
+ * of their own.
+ */
+export function compareLayout(messages: RoomMessage[]): TranscriptItem[] {
+  type Row = Extract<TranscriptItem, { kind: 'compare' }>
+  const out: TranscriptItem[] = []
+  const rows = new Map<string, Row>()
+  let last: Row | null = null
+  for (const m of messages) {
+    if (m.kind === 'speech' && m.author.kind === 'participant') {
+      const ref = m.compare?.replyTo
+      let row: Row | null = (ref && rows.get(ref)) || last
+      if (!row) {
+        row = { kind: 'compare', round: m.round, questionId: null, answers: [] }
+        out.push(row)
+        last = row
+      }
+      row.answers.push(m)
+      continue
+    }
+    out.push({ kind: 'message', message: m })
+    if (m.kind === 'user') {
+      const row: Row = { kind: 'compare', round: m.round, questionId: m.id, answers: [] }
+      out.push(row)
+      rows.set(m.id, row)
+      last = row
+    }
+  }
+  // A question nobody answered yet still has its row (with empty cells to
+  // run), but a row with no question and no answers is never drawn.
+  return out
+}
 
 /** A room with its journal, read without opening it (the rooms list). */
 export type RoomDetail = { room: Room; journal: RoomJournalRecord[] }
@@ -285,16 +332,17 @@ export function formatDuration(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
 }
 
-export const formatNumber = (n: number) => n.toLocaleString('en-US')
+export const formatNumber = (n: number, locale = 'en-US') => n.toLocaleString(locale)
 
 /** A count at a glance: 950, 48.2k, 2M (one decimal, dropped when .0). */
-export function formatCompact(n: number): string {
+export function formatCompact(n: number, locale = 'en-US'): string {
   const abs = Math.abs(n)
   const [div, unit] = abs >= 1e6 ? [1e6, 'M'] : abs >= 1e3 ? [1e3, 'k'] : [1, '']
-  if (!unit) return formatNumber(n)
+  if (!unit) return formatNumber(n, locale)
   const v = n / div
-  return `${Math.abs(v) >= 100 ? Math.round(v) : Number(v.toFixed(1))}${unit}`
+  const shown = Math.abs(v) >= 100 ? Math.round(v) : Number(v.toFixed(1))
+  return `${shown.toLocaleString(locale)}${unit}`
 }
 
-export const formatUsd = (n: number) =>
-  `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+export const formatUsd = (n: number, locale = 'en-US') =>
+  `$${n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`

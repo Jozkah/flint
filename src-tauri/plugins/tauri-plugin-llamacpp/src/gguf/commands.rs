@@ -119,10 +119,55 @@ pub async fn get_model_size(path: String) -> Result<u64, String> {
             Ok(0)
         }
     } else {
-        // Handle local file using standard fs
-        let metadata =
-            fs::metadata(&path).map_err(|e| format!("Failed to get file metadata: {}", e))?;
-        Ok(metadata.len())
+        // A split model is several files; llama.cpp loads all of them, so all
+        // of them count toward what has to fit in memory.
+        let mut total: u64 = 0;
+        for shard in gguf_shard_paths(&path) {
+            let metadata = fs::metadata(&shard)
+                .map_err(|e| format!("Failed to get file metadata for {shard}: {e}"))?;
+            total = total.saturating_add(metadata.len());
+        }
+        Ok(total)
+    }
+}
+
+/// Every shard of a split GGUF (`name-00001-of-00005.gguf`), whichever shard
+/// `path` names; a file that is not a split returns just `[path]`.
+pub fn gguf_shard_paths(path: &str) -> Vec<String> {
+    let lower = path.to_ascii_lowercase();
+    let Some(stem) = lower.strip_suffix(".gguf") else {
+        return vec![path.to_string()];
+    };
+    // "-00002-of-00005" is 15 bytes, all ASCII, so byte indexes line up.
+    let tail_len = "-00002-of-00005".len();
+    if stem.len() < tail_len || !path.is_char_boundary(stem.len() - tail_len) {
+        return vec![path.to_string()];
+    }
+    let (head_end, tail) = (stem.len() - tail_len, &stem[stem.len() - tail_len..]);
+    let b = tail.as_bytes();
+    let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
+    if b[0] != b'-' || &tail[6..10] != "-of-" || !digits(1..6) || !digits(10..15) {
+        return vec![path.to_string()];
+    }
+    let total: u32 = tail[10..15].parse().unwrap_or(0);
+    if !(2..=999).contains(&total) {
+        return vec![path.to_string()];
+    }
+    let head = &path[..head_end];
+    let ext = &path[stem.len()..];
+    let total_str = &tail[10..15];
+    (1..=total)
+        .map(|n| format!("{head}-{n:05}-of-{total_str}{ext}"))
+        .collect()
+}
+
+/// Bytes that must fit in VRAM: with KV offload disabled the cache lives in
+/// system RAM, so only the rest competes for the GPU.
+fn vram_required_bytes(total_required: u64, kv_cache_size: u64, no_kv_offload: bool) -> u64 {
+    if no_kv_offload {
+        total_required.saturating_sub(kv_cache_size)
+    } else {
+        total_required
     }
 }
 
@@ -132,7 +177,15 @@ pub async fn is_model_supported(
     ctx_size: Option<u32>,
     cache_type_k: Option<String>,
     cache_type_v: Option<String>,
+    no_kv_offload: Option<bool>,
 ) -> Result<ModelSupportStatus, String> {
+    let no_kv_offload = no_kv_offload.unwrap_or(false);
+    // The metadata lives in shard 1 of a split model, whichever shard was named.
+    let path = if path.starts_with("https://") {
+        path
+    } else {
+        gguf_shard_paths(&path).into_iter().next().unwrap_or(path)
+    };
     // Get model size
     let model_size = get_model_size(path.clone()).await?;
 
@@ -263,7 +316,7 @@ pub async fn is_model_supported(
     }
 
     // Check if everything fits in VRAM (ideal case — pure GPU execution)
-    if total_required <= usable_vram {
+    if vram_required_bytes(total_required, kv_cache_size, no_kv_offload) <= usable_vram {
         return Ok(ModelSupportStatus::Green);
     }
 
@@ -500,5 +553,42 @@ mod tests {
             check_apple_silicon_compatibility(&apple_silicon(16 * 1024), usable + 1).unwrap(),
             ModelSupportStatus::Red
         );
+    }
+
+    #[test]
+    fn shard_paths_expand_from_any_shard() {
+        let want = vec![
+            "/m/a-00001-of-00003.gguf".to_string(),
+            "/m/a-00002-of-00003.gguf".to_string(),
+            "/m/a-00003-of-00003.gguf".to_string(),
+        ];
+        assert_eq!(gguf_shard_paths("/m/a-00002-of-00003.gguf"), want);
+        assert_eq!(gguf_shard_paths("/m/a-00001-of-00003.gguf"), want);
+        assert_eq!(gguf_shard_paths("/m/a.gguf"), vec!["/m/a.gguf".to_string()]);
+        assert_eq!(
+            gguf_shard_paths("/m/a-00001-of-00001.gguf"),
+            vec!["/m/a-00001-of-00001.gguf".to_string()]
+        );
+    }
+
+    #[test]
+    fn kv_cache_leaves_the_vram_requirement_when_offload_is_off() {
+        assert_eq!(vram_required_bytes(100, 30, false), 100);
+        assert_eq!(vram_required_bytes(100, 30, true), 70);
+        assert_eq!(vram_required_bytes(10, 30, true), 0);
+    }
+
+    #[tokio::test]
+    async fn model_size_sums_every_shard() {
+        let dir = std::env::temp_dir().join(format!("flint-shards-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        for (n, len) in [(1u32, 10usize), (2, 20), (3, 30)] {
+            fs::write(dir.join(format!("m-{n:05}-of-00003.gguf")), vec![0u8; len]).unwrap();
+        }
+        let first = dir.join("m-00001-of-00003.gguf").to_string_lossy().into_owned();
+        let second = dir.join("m-00002-of-00003.gguf").to_string_lossy().into_owned();
+        assert_eq!(get_model_size(first).await.unwrap(), 60);
+        assert_eq!(get_model_size(second).await.unwrap(), 60);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

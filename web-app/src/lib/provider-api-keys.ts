@@ -1,3 +1,5 @@
+import { classifyModelLocation } from '@/lib/modelLocation'
+
 export const API_KEY_FALLBACKS_SETTING_KEY = 'api-key-fallbacks'
 
 export function serializeApiKeyFallbacks(fallbacks: string[]): string {
@@ -37,4 +39,36 @@ export function providerHasRemoteApiKeys(provider: {
   api_key_fallbacks?: string[]
 }): boolean {
   return providerRemoteApiKeyChain(provider).length > 0
+}
+
+/**
+ * Whether asking this provider for its model list can succeed: a public
+ * endpoint without a key only answers 401/403, so it is not asked at all.
+ */
+export function canListProviderModels(provider: {
+  base_url?: string
+  api_key?: string
+  api_key_fallbacks?: string[]
+}): boolean {
+  if (!provider.base_url) return false
+  return (
+    classifyModelLocation({ baseUrl: provider.base_url }) !== 'remote' ||
+    providerHasRemoteApiKeys(provider)
+  )
+}
+
+/**
+ * What a read of the OS keyring may change in memory. The keyring only fills a
+ * provider that has no key in memory yet (the store holds none after a reload).
+ * A key already in memory is the user's latest (typed, imported) and is
+ * written to the keyring by the provider sync, so a keyring read that finished
+ * late, or an older read, must not put an earlier key back over it.
+ */
+export function keyringKeysToApply(
+  current: { api_key?: string; api_key_fallbacks?: string[] } | undefined,
+  seeded: { api_key?: string; api_key_fallbacks?: string[] }
+): { api_key: string; api_key_fallbacks?: string[] } | null {
+  if (!seeded.api_key) return null
+  if (current?.api_key?.trim()) return null
+  return { api_key: seeded.api_key, api_key_fallbacks: seeded.api_key_fallbacks }
 }

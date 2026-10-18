@@ -203,5 +203,26 @@
     "description": "{{count}} chats seront supprimés. Cette action est irréversible.",
     "descriptionArchive": "{{count}} chats seront déplacés vers les archives. Vous pourrez les restaurer à partir de là.",
     "done": "{{count}} chats supprimés"
-  }
+  },
+  "find": {
+    "placeholder": "Rechercher dans la discussion",
+    "none": "Aucun résultat",
+    "previous": "Résultat précédent",
+    "next": "Résultat suivant",
+    "close": "Fermer la recherche"
+  },
+  "continueSummary": {
+    "menu": "Continuer dans une nouvelle discussion à partir d'un résumé",
+    "working": "Résumé de la discussion en cours...",
+    "done": "Poursuivie dans une nouvelle discussion.",
+    "cancel": "Annuler",
+    "errors": {
+      "no-chat": "Cette discussion ne peut pas être poursuivie.",
+      "empty": "Rien à résumer pour l'instant.",
+      "no-model": "Choisissez d'abord un modèle pour cette discussion.",
+      "model-not-loaded": "Chargez d'abord le modèle de la discussion. C'est lui qui écrit le résumé.",
+      "summary-failed": "Impossible d'écrire le résumé. Rien n'a été créé."
+    }
+  },
+  "stopToolCall": "Arrêter l'appel d'outil (Échap)"
 }

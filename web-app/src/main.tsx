@@ -1,4 +1,5 @@
 import { StrictMode } from 'react'
+import { shouldBlockDocumentDrop } from '@/lib/documentDrop'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { invoke } from '@tauri-apps/api/core'
@@ -8,6 +9,9 @@ import {
 } from '@/services/app/reset-localstorage'
 import { installConsoleLogForwarding } from '@/services/app/console-logger'
 import { bootMark } from '@/lib/bootMarks'
+import { noteBootError, startBootWatchdog } from '@/lib/bootWatchdog'
+import { routerDefaults } from '@/components/RoutePending'
+import { installWindowIdleMarker } from '@/lib/windowIdle'
 
 // Inter is bundled under public/fonts (styles/font.css), so nothing is fetched at runtime.
 import './index.css'
@@ -41,22 +45,20 @@ const setupMobileViewport = () => {
         min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
       }
 
-      /* Prevent zoom on input focus */
-      input, textarea, select {
-        font-size: 16px !important;
-      }
+      /* Fields at 16px on touch devices (no focus zoom): index.css. */
     `
     document.head.appendChild(style)
   }
 }
 
-// Prevent browser from opening dropped files
+// Prevent the webview from opening dropped files (or navigating to a dropped
+// link), while text/URL drops onto editable fields still insert.
 const preventDefaultFileDrop = () => {
   document.addEventListener('dragover', (e) => {
     e.preventDefault()
   })
   document.addEventListener('drop', (e) => {
-    e.preventDefault()
+    if (shouldBlockDocumentDrop(e)) e.preventDefault()
   })
 }
 
@@ -93,6 +95,8 @@ const consumePendingWebdataReset = async () => {
 
 const boot = async () => {
   bootMark('boot:start')
+  startBootWatchdog()
+  installWindowIdleMarker()
   installConsoleLogForwarding()
   setupMobileViewport()
   preventDefaultFileDrop()
@@ -102,12 +106,36 @@ const boot = async () => {
 
   // Dynamic imports keep store hydration AFTER the localStorage prune above.
   bootMark('boot:reset-consumed')
-  const { routeTree } = await import('./routeTree.gen')
+  // Fetch everything the first screen needs at once rather than one chunk
+  // after another: the route tree, the strings, this window's shell and the
+  // services (which ServiceHubProvider picks up instead of starting again).
+  const routeTreeLoad = import('./routeTree.gen')
+  const i18nLoad = import('./i18n')
+  i18nLoad.catch(() => {}) // awaited below; this only keeps an early failure from being "unhandled"
+  void import('./providers/ServiceHubProvider')
+    .then((m) => m.prestartServiceHub())
+    .catch(() => {})
+  void import('./lib/soloFlag').then((m) =>
+    m.isChatWindow()
+      ? import('./components/solo/SoloRoot')
+      : import('./shell/MainRoot')
+  ).catch(() => {
+    // Only a head start; the route loads it again and reports any failure.
+  })
+  const { routeTree } = await routeTreeLoad
   bootMark('boot:routetree')
-  await import('./i18n')
+  const { default: i18n } = await i18nLoad
+  try {
+    await i18n.ready
+  } catch (e) {
+    // The saved language failed to download: start in English rather than
+    // stall the whole window on it. It can be picked again in Settings.
+    noteBootError(e)
+    i18n.language = i18n.fallbackLng
+  }
   bootMark('boot:i18n')
 
-  const router = createRouter({ routeTree })
+  const router = createRouter({ routeTree, ...routerDefaults })
   // The app opens on the Overview once the first-run setup is done; until
   // then the new-chat page carries the setup guide. Only the main window's
   // start: a deep link or a logs window keeps its own path.
@@ -142,6 +170,12 @@ const boot = async () => {
         <RouterProvider router={router} />
       </StrictMode>
     )
+    // After the Toaster has mounted, so the toast is not dropped.
+    window.setTimeout(() => {
+      void import('@/lib/settingsRecoveryNotice').then((m) =>
+        m.showSettingsRecoveryNotice()
+      )
+    }, 1500)
   }
 }
 

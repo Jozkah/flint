@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { unescapeComposerMarkdown } from '../composerText'
+import { refusedDraftToRestore, unescapeComposerMarkdown } from '../composerText'
 
 describe('unescapeComposerMarkdown', () => {
   it('removes the escapes the serializer adds', () => {
@@ -23,5 +23,16 @@ describe('unescapeComposerMarkdown', () => {
     expect(unescapeComposerMarkdown('**bold** and `code`')).toBe(
       '**bold** and `code`'
     )
+  })
+})
+
+describe('refusedDraftToRestore', () => {
+  it('gives back a draft whose markdown was escaped (chat\_read)', () => {
+    const raw = '@chat:long which needle? use chat\_read'
+    expect(refusedDraftToRestore(raw, raw)).toBe(raw)
+    expect(refusedDraftToRestore('', raw)).toBe(raw)
+  })
+  it('keeps what was typed after the send', () => {
+    expect(refusedDraftToRestore('new text', 'old')).toBeNull()
   })
 })

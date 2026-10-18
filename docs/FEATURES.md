@@ -128,6 +128,8 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **Trust bound to a server's configuration:** changing, renaming or deleting a server invalidates its approvals with a stated reason.
 - **Validated MCP setup** with clear connection states and a per-server auto-approve switch.
 - **Sandboxed servers:** imported and local servers are confined to the session's permissions.
+- **`ocr`:** reads text out of an image or PDF pages with the engine the machine already has (Windows' built-in one, or `tesseract` on PATH). It refuses cleanly when there is none, reads files like `read` does, and returns the text as untrusted data.
+- **Browser tool downloads and waits:** the confined `browser` tool can `download` one file into a folder inside the working folder (never overwriting, 100 MB at most; every other download stays refused), and `wait` takes combined conditions (text, selector, their absence, address, title, load).
 - **Skills** from project and user folders with versions, requirements and enforced tool scopes.
 - **Plugins:** a manifest format, install and remove without running plugin code, a marketplace index, and a Cowork plugin manager to enable, disable, install and remove.
 - **Lifecycle hooks** that run sandboxed with timeouts and a declared failure policy.
@@ -170,6 +172,7 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **Management parity with the desktop settings:** threads (create, rename, favourite, export to Markdown, Obsidian or JSON), the archive (list, restore, purge, settings), scheduled tasks (add, edit, preview, enable, run, cancel, OS entry), skills, memory by scope, worktrees (list, merge, guarded discard), MCP tools and trust, model search, download and import, the data folder, certificate and endpoint checks, Claude Code import and the JAN migration assistant.
 - **Background jobs** that outlive the process (`flint cli job`).
 - **MCP from the terminal:** prompts, logs, tools, trust and OAuth sign-in management.
+- **`flint launch claude|codex|aider`:** starts the installed tool with environment and arguments pointing at the local API server (address from Settings, else `http://127.0.0.1:1337/v1`; key from `--api-key` or `FLINT_API_KEY`). `--dry-run` prints the command with the key masked and runs nothing. The server answers the OpenAI Responses API at `/v1/responses` (streaming or not), mapped onto its chat route, so Codex works; it keeps no response state, so send the whole `input` each time.
 - **Benchmarks** (`flint cli bench`) and **bug reports** (`flint bug-report`, `/bug` in the TUI) with a local log file.
 - **Slash commands** with arguments from built-ins, skills and plugins (command line only).
 - **What stays in the app:** Studio image and video generation, the agent browser pane, themes, phone pairing, Discussion Rooms and Jev routing.
@@ -215,6 +218,8 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **Settings > Schedules:** run a saved prompt on a schedule: daily, weekdays, certain days or a cron expression, with several times a day and a preview of the next runs.
 - **Unattended safely:** every task has an explicit tool allow-list, mandatory limits on turns, tokens and time, and an optional cost limit. A permission prompt is never shown: it is denied and recorded as what the run was blocked on. Tasks default to read-only, and writing tasks work in their own worktree.
 - **Missed runs:** after the app was closed, a task runs once on the next start by default. Optionally, Flint can install an operating-system entry (Windows scheduled task, macOS LaunchAgent or Linux systemd timer) that runs `flint cli schedule tick`, so tasks run while the app is closed. It only installs after you confirm and shows exactly what it will write.
+
+- **Automations:** `flint cli automation add --file <json>` saves a typed definition (trigger: manual or a timetable, prompt, tool profile, mandatory budget, allowed folders). A bad definition is refused with every problem listed by field, `validate` checks one without saving, and `run <id> [--folder <dir>] [--wait]` runs it under the same unattended rules as a scheduled task. A timetable trigger is also registered as a scheduled task. Nothing is sent over the network.
 
 ## Agent browser
 

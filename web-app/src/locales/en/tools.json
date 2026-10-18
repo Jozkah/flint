@@ -21,7 +21,15 @@
     "alwaysAllow": "Always allow",
     "approvalNeeded": "Approval needed",
     "permissionDetails": "Permission details",
-    "moreOptions": "More options"
+    "moreOptions": "More options",
+    "denyWithReason": "Deny with a reason",
+    "denyReasonLabel": "Why are you denying this?",
+    "denyReasonPlaceholder": "Tell the agent what to do instead",
+    "denyAndSend": "Deny and send",
+    "editCommand": "Edit command",
+    "editCommandLabel": "Command to run",
+    "editCommandHint": "Change the command, then choose Allow once to run your version.",
+    "editCommandNote": "Allow once runs your edited command. No standing permission is kept for it."
   },
   "toolCall": {
     "awaitingApproval": "Awaiting approval: {{tool}}",
@@ -71,6 +79,8 @@
     "reading": "Reading...",
     "workspaceRoot": "workspace root",
     "matches": "{{count}} matches",
-    "testsPassed": "{{count}} passed"
+    "testsPassed": "{{count}} passed",
+    "runningStatus": "Running {{tool}}…",
+    "stillRunning": "Still running {{tool}}…"
   }
 }

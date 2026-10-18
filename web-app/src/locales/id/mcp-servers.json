@@ -9,7 +9,9 @@
       "title": "Flint menyelesaikan tugas di browser Anda",
       "description": "Instal ekstensi untuk memberikan Flint akses browser",
       "getExtension": "Dapatkan Ekstensi"
-    }
+    },
+    "requires": "Memerlukan ekstensi peramban terpasang di peramban berbasis Chrome Anda.",
+    "install": "Pasang ekstensi →"
   },
   "serverName": "Nama Server",
   "enterServerName": "Masukkan nama server",
@@ -143,7 +145,7 @@
   "experimental": "Eksperimental",
   "editAllJson": "Edit Semua JSON Server",
   "findMore": "Temukan lebih banyak server MCP di",
-  "allowPermissions": "Izinkan Semua Izin Alat MCP",
+  "allowPermissions": "Izinkan semua izin alat MCP",
   "allowPermissionsDesc": "Jika diaktifkan, semua panggilan alat MCP akan disetujui secara otomatis tanpa menampilkan dialog izin. Pengaturan ini berlaku secara global untuk semua percakapan, termasuk chat baru.",
   "autoApproveServer": "Setujui otomatis alat server ini",
   "noServers": "Tidak ada server MCP yang ditemukan",
@@ -171,7 +173,9 @@
     "selectRouterModelPlaceholder": "Pilih model perutean…",
     "routerModelSearchPlaceholder": "Cari model…",
     "routerModelEmptyList": "Tidak ada model ringan. Tambahkan model yang lebih kecil atau atur kunci API di Model.",
-    "routerModelEmptySearch": "Tidak ada yang cocok untuk “{{query}}”."
+    "routerModelEmptySearch": "Tidak ada yang cocok untuk “{{query}}”.",
+    "idleShutdown": "Hentikan server yang menganggur setelah (menit)",
+    "idleShutdownDesc": "Server MCP tanpa panggilan alat selama waktu ini akan dihentikan untuk membebaskan memori, lalu dimulai lagi saat dibutuhkan. Server yang diatur mulai bersama Flint tetap berjalan. Atur ke 0 agar tidak pernah dihentikan."
   },
   "auth": {
     "label": "Autentikasi:",
@@ -256,7 +260,8 @@
   "lifecycle": {
     "startWithFlint": "Mulai bersama Flint",
     "start": "Mulai",
-    "stop": "Hentikan"
+    "stop": "Hentikan",
+    "toolTimeout": "Batas waktu alat (dtk)"
   },
   "cwd": "Direktori kerja",
   "cwdPlaceholder": "Opsional, mis. C:\\tools\\my-server",

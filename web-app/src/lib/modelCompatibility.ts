@@ -263,6 +263,11 @@ export interface FitInput {
   architecture?: KvArchitecture | null
   cacheTypeK?: string
   cacheTypeV?: string
+  /**
+   * llama.cpp `no_kv_offload`: the KV cache stays in system RAM, so it does not
+   * count against VRAM and only the rest has to fit on the GPU.
+   */
+  noKvOffload?: boolean
   /** Vision projector file size when known. */
   mmprojBytes?: number
   /** llama.cpp `n_gpu_layers`: 0 forces the CPU; negative is automatic. */
@@ -331,6 +336,7 @@ export type FitAssumption =
   | 'system-reserve'
   | 'runtime-overhead'
   | 'cpu-only-by-setting'
+  | 'kv-offload-disabled'
   | 'gpu-disabled-in-settings'
   | 'other-models-loaded'
   | 'mmap-not-counted'
@@ -506,6 +512,11 @@ export function assessModelFit(input: FitInput): FitAssessment {
     }
   }
 
+  // The cache lives in system RAM: it still has to fit the overall budget, but
+  // the GPU only has to hold the rest.
+  const kvInRam = input.noKvOffload === true && gpu > 0 && !cpuOnlyBySetting
+  if (kvInRam) assumptions.push('kv-offload-disabled')
+
   if (cpuOnlyBySetting && gpu > 0) {
     assumptions.push('cpu-only-by-setting')
     if (memoryModel === 'discrete-gpu') total -= gpu
@@ -524,7 +535,7 @@ export function assessModelFit(input: FitInput): FitAssessment {
     verdict = 'exceeds'
   } else if (headroomBytes < total * TIGHT_HEADROOM_RATIO) {
     verdict = 'tight'
-  } else if (gpu > 0 && required.total > gpu) {
+  } else if (gpu > 0 && required.total - (kvInRam ? kvCache : 0) > gpu) {
     verdict = 'fits-partial-offload'
   } else {
     verdict = 'fits'
@@ -582,4 +593,62 @@ export function estimateModelFit(
   return tierForVerdict(
     assessModelFit({ weightsBytes: fileSizeBytes, ctxLength, hardware }).verdict
   )
+}
+
+const KV_QUANT_DEFAULT = 'q8_0'
+const isExplicitCacheType = (v: unknown): v is string =>
+  typeof v === 'string' && v.length > 0 && v !== 'auto'
+
+/**
+ * The KV cache types and offload flag a model will really load with: its own
+ * setting when it names one, otherwise the engine-wide one, with `auto`
+ * resolved the way the engine resolves it (q8_0 for K; q8_0 for V only with
+ * Flash Attention on; a quantized V under Flash Attention off is f16).
+ */
+export function resolveFitKvSettings(
+  modelSettings: Record<string, unknown>,
+  engineSettings: Record<string, unknown>
+): { cacheTypeK: string; cacheTypeV: string; noKvOffload: boolean } {
+  const pick = (key: string): unknown =>
+    isExplicitCacheType(modelSettings[key])
+      ? modelSettings[key]
+      : engineSettings[key]
+  const flash = engineSettings.flash_attn
+  const k = pick('cache_type_k')
+  const v = pick('cache_type_v')
+  const cacheTypeK = isExplicitCacheType(k)
+    ? k.toLowerCase()
+    : k === 'auto' || k === undefined
+      ? KV_QUANT_DEFAULT
+      : 'f16'
+  let cacheTypeV = isExplicitCacheType(v)
+    ? v.toLowerCase()
+    : (v === 'auto' || v === undefined) && flash === 'on'
+      ? KV_QUANT_DEFAULT
+      : 'f16'
+  if (flash === 'off' && cacheTypeV !== 'f16' && cacheTypeV !== 'f32' && cacheTypeV !== 'bf16') {
+    cacheTypeV = 'f16'
+  }
+  return {
+    cacheTypeK,
+    cacheTypeV,
+    noKvOffload: modelSettings.no_kv_offload === true,
+  }
+}
+
+/** `{ key: { controller_props: { value } } }` or `[{ key, controller_props }]` as `{ key: value }`. */
+export function settingValues(
+  bag:
+    | Record<string, { controller_props?: { value?: unknown } } | undefined>
+    | Array<{ key: string; controller_props?: { value?: unknown } }>
+    | undefined
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (!bag) return out
+  if (Array.isArray(bag)) {
+    for (const s of bag) out[s.key] = s.controller_props?.value
+  } else {
+    for (const [k, s] of Object.entries(bag)) out[k] = s?.controller_props?.value
+  }
+  return out
 }

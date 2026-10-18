@@ -16,7 +16,7 @@
 //! `subagent_start`, `subagent_queued`, `subagent_title`, `subagent_finished`,
 //! `subagent_end`, `subagent`,
 //! `messages_updated`, `ask_request`, `ask_resolved`, `todo_update`,
-//! `turn_usage`, `done`, `error`, `permission_request`, `tool_request`,
+//! `turn_usage`, `done`, `error`, `run_ended`, `permission_request`, `tool_request`,
 //! `tool_request_cancelled`, `tool_details`, `request_provenance`, `compaction`,
 //! `retry`. Four tags are
 //! minted by
@@ -113,10 +113,17 @@ pub(crate) struct RunReport {
     prompt_tokens: u64,
     completion_tokens: u64,
     resources: Option<tauri_plugin_agent_tools::resources::RunResources>,
+    /// The run's typed ending (`end_reason`), from `RunEnded`.
+    ended: Option<(String, i32)>,
     /// Provider execution ids seen this run, in request order (upstream
     /// #9034). Each is a handle to one billing record; the token counts above
     /// only describe the same requests.
     execution_ids: Vec<String>,
+    /// This run's tool calls by id, from `tool_call`, so a `tool_result` can be
+    /// attributed to its tool.
+    tool_names: std::collections::HashMap<String, String>,
+    /// Failed tool calls of this run (not of its subagents), by tool.
+    tool_failures: crate::core::agent::failure_stats::FailureStats,
 }
 
 impl RunReport {
@@ -140,6 +147,15 @@ impl RunReport {
                 self.partial.clear();
             }
             StreamEvent::Token { text } => self.partial.push_str(text),
+            StreamEvent::ToolCall { id, name, .. } => {
+                self.tool_names.insert(id.clone(), name.clone());
+            }
+            // `is_error` is the loop's one failure classification, the same
+            // one `[[tool_rules]] max_failures` counts with.
+            StreamEvent::ToolResult { id, is_error: true, .. } => {
+                let name = self.tool_names.get(id).map(String::as_str).unwrap_or("unknown");
+                self.tool_failures.record(name);
+            }
             // Reasoning is display-only: it must not enter the piped/plain-text
             // report answer, which is reserved for the final completion.
             StreamEvent::Reasoning { .. } => {}
@@ -169,6 +185,9 @@ impl RunReport {
             StreamEvent::RunResources { resources } => {
                 self.resources = Some(resources.clone());
             }
+            StreamEvent::RunEnded { reason, exit_code, .. } => {
+                self.ended = Some((reason.clone(), *exit_code));
+            }
             StreamEvent::Error { code, message } => {
                 self.error = Some((code.clone(), message.clone()));
             }
@@ -181,6 +200,7 @@ impl RunReport {
     pub(crate) fn cancel(&mut self, message: &str) {
         self.error = Some(("cancelled".to_string(), message.to_string()));
         self.stop_reason = Some("cancelled".to_string());
+        self.ended = Some(("user_stop".to_string(), 130));
     }
 
     /// Render the envelope. `final_text` is the completion the run returned;
@@ -194,11 +214,25 @@ impl RunReport {
     ) -> RunResult {
         let is_error = self.error.is_some();
         let cancelled = matches!(&self.error, Some((code, _)) if code == "cancelled");
+        // A run that failed before the loop could say how it ended (setup)
+        // still gets a typed reason, from its error code.
+        let (end_reason, exit_code) = match self.ended.clone() {
+            Some(ended) => ended,
+            None => match &self.error {
+                Some((code, _)) => {
+                    let reason = crate::core::agent::end_reason::EndReason::from_code(code);
+                    (reason.tag().to_string(), reason.exit_code(None))
+                }
+                None => ("completed".to_string(), 0),
+            },
+        };
         RunResult {
             kind: "result",
             protocol_version: crate::core::agent::events::PROTOCOL_VERSION,
             is_error,
             result: super::tui::answer_without_reasoning(final_text.unwrap_or(&self.partial)),
+            end_reason,
+            exit_code,
             stop_reason: if cancelled {
                 "cancelled".to_string()
             } else if is_error {
@@ -222,6 +256,8 @@ impl RunReport {
                     .then(|| self.execution_ids.clone()),
             },
             resources: self.resources,
+            completed_with_failures: !is_error && !self.tool_failures.is_empty(),
+            tool_failures: self.tool_failures.by_tool().clone(),
         }
     }
 }
@@ -386,6 +422,14 @@ pub(crate) struct RunResult {
     is_error: bool,
     result: String,
     stop_reason: String,
+    /// Why the run ended, as one of `completed`, `user_stop`, `budget`,
+    /// `turn_limit`, `refusal`, `error`, `lease_lost`. Unlike `stop_reason`
+    /// (the provider's finish reason, or `cancelled`/`error`) this is the
+    /// harness's own typed ending, and the same value the `run_ended` event and
+    /// the process exit status carry.
+    end_reason: String,
+    /// The status the command ends with for that ending.
+    exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<RunError>,
     /// `null` when nothing was persisted, which is any run that failed before
@@ -399,6 +443,18 @@ pub(crate) struct RunResult {
     /// started none.
     #[serde(skip_serializing_if = "Option::is_none")]
     resources: Option<tauri_plugin_agent_tools::resources::RunResources>,
+    /// Tool calls of this run that failed, by tool name: a result that
+    /// starts with `ERROR` (every refusal is worded that way) or a `bash`
+    /// command that exited non-zero -- the calls whose `tool_result` has
+    /// `is_error: true`. A subagent's own calls are not counted. Absent when
+    /// none failed.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    tool_failures: std::collections::BTreeMap<String, u32>,
+    /// `true` when the run finished without an error but at least one of its
+    /// tool calls failed along the way (see `tool_failures`), whether or not
+    /// a later call recovered from it. Absent otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    completed_with_failures: bool,
 }
 
 #[derive(serde::Serialize, schemars::JsonSchema)]
@@ -781,6 +837,74 @@ mod tests {
         assert_eq!(out["resources"]["commands"], 2);
         let none = value(RunReport::default().finish(None, "m", 1, Some("ok")));
         assert!(none.get("resources").is_none());
+    }
+
+    fn tool_call(id: &str, name: &str) -> StreamEvent {
+        StreamEvent::ToolCall {
+            id: id.to_string(),
+            name: name.to_string(),
+            args: serde_json::json!({}),
+        }
+    }
+
+    fn tool_result(id: &str, is_error: bool) -> StreamEvent {
+        StreamEvent::ToolResult {
+            id: id.to_string(),
+            content: if is_error { "ERROR: boom" } else { "ok" }.to_string(),
+            is_error,
+            diff: None,
+        }
+    }
+
+    /// Failed calls are counted per tool, a subagent's are not, and a run that
+    /// still finished says it finished with failures.
+    #[test]
+    fn tool_failures_are_counted_per_tool_and_flag_a_finished_run() {
+        let mut report = RunReport::default();
+        for ev in [
+            StreamEvent::Step { index: 1, max: 0 },
+            tool_call("a", "bash"),
+            tool_call("b", "read"),
+            tool_result("a", true),
+            tool_result("b", true),
+            StreamEvent::Step { index: 2, max: 0 },
+            tool_call("c", "bash"),
+            tool_result("c", true),
+            tool_call("d", "bash"),
+            tool_result("d", false),
+            StreamEvent::Subagent {
+                run_id: "r".to_string(),
+                name: "child".to_string(),
+                event: Box::new(tool_result("x", true)),
+            },
+            StreamEvent::Done { stop_reason: "stop".to_string(), usage: None },
+        ] {
+            report.observe(&ev);
+        }
+        let out = value(report.finish(None, "m", 1, Some("done")));
+        assert_eq!(out["tool_failures"], serde_json::json!({ "bash": 2, "read": 1 }));
+        assert_eq!(out["completed_with_failures"], true);
+        assert_eq!(out["is_error"], false);
+    }
+
+    /// A run with no failed call prints the envelope it always printed, and a
+    /// failed run reports its failures but is not "completed with" them.
+    #[test]
+    fn failure_fields_are_absent_without_failures_and_not_completed_on_error() {
+        let mut clean = RunReport::default();
+        clean.observe(&tool_call("a", "ls"));
+        clean.observe(&tool_result("a", false));
+        let out = value(clean.finish(None, "m", 1, Some("ok")));
+        assert!(out.get("tool_failures").is_none(), "{out}");
+        assert!(out.get("completed_with_failures").is_none(), "{out}");
+
+        let mut failed = RunReport::default();
+        failed.observe(&tool_call("a", "edit"));
+        failed.observe(&tool_result("a", true));
+        failed.observe(&StreamEvent::Error { code: "error".to_string(), message: "boom".to_string() });
+        let out = value(failed.finish(None, "m", 1, None));
+        assert_eq!(out["tool_failures"], serde_json::json!({ "edit": 1 }));
+        assert!(out.get("completed_with_failures").is_none(), "{out}");
     }
 
     #[test]

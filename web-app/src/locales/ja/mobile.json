@@ -129,7 +129,7 @@
   "home": {
     "chatSuggestions": {
       "error": "このエラーメッセージを説明して",
-      "summarise": "添付するドキュメントを要約して",
+      "summarise": "添付した文書を要約して",
       "releaseNotes": "変更点の一覧からリリースノートの下書きを作って",
       "compare": "2 つのアプローチを比較して、おすすめを教えて"
     },
@@ -390,7 +390,8 @@
     "mode": {
       "roundRobin": "ラウンドロビン",
       "userSelected": "あなたが選択",
-      "moderatorSelected": "モデレーターが選択"
+      "moderatorSelected": "モデレーターが選択",
+      "compare": "モデルを比較"
     },
     "untitled": "無題のルーム",
     "menu": "ルームメニュー",

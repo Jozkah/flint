@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint vuole eseguire {{command}} in {{workspace}}",
     "gitRemote": "Flint vuole eseguire {{command}}, che modifica {{target}}",
     "gitDestructive": "Flint vuole eseguire {{command}}, che può far perdere del lavoro",
-    "approveCampaign": "Flint vuole avviare la campagna \"{{title}}\" ({{count}} attività)"
+    "approveCampaign": "Flint vuole avviare la campagna \"{{title}}\" ({{count}} attività)",
+    "spendPause": "Flint vuole proseguire questa esecuzione oltre la sua pausa di spesa"
   },
   "consequence": {
     "fileChange": "Può creare, sovrascrivere o modificare il contenuto dei file.",
@@ -57,7 +58,8 @@
     "gitLocal": "Modifica i file, i branch o la cronologia di questo repository su questo computer.",
     "gitRemote": "Invia modifiche a un repository remoto che altre persone possono vedere. Flint chiede ogni volta, a meno che tu non consenta temporaneamente le normali azioni Git remote per questa conversazione.",
     "gitDestructive": "Ciò che rimuove o sovrascrive potrebbe non essere recuperabile.",
-    "campaignPlan": "Avvia sessioni separate, ciascuna sul proprio branch worktree, che leggono e modificano file e usano in parallelo la quota del tuo modello. Approvare il piano non approva alcuna chiamata fatta da un'attività. Flint chiede ogni volta."
+    "campaignPlan": "Avvia sessioni separate, ciascuna sul proprio branch worktree, che leggono e modificano file e usano in parallelo la quota del tuo modello. Approvare il piano non approva alcuna chiamata fatta da un'attività. Flint chiede ogni volta.",
+    "spendPause": "L'esecuzione continua a consumare quota di modello a pagamento finché non termina o raggiunge il limite. Negare la ferma."
   },
   "repeat": {
     "allowedOnceBefore": "Hai già consentito questo comando una volta in questa conversazione."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Le future chiamate a processo singolo corrispondenti a {{action}} vengono eseguite senza chiedere, anche con ID di processo diversi. Gli altri script chiedono comunque. Revocalo in Impostazioni > Permessi.",
     "allowClipboardReadExplanation": "Flint può leggere il contenuto futuro degli appunti in ogni conversazione senza chiedere, finché non lo revochi in Impostazioni > Permessi. Scrivere negli appunti chiede comunque.",
     "allowSimilarThreadExplanation": "Le future chiamate corrispondenti a {{action}} vengono eseguite senza chiedere in questa conversazione. Revocalo in Impostazioni > Permessi.",
-    "broader": "Più ampio"
+    "broader": "Più ampio",
+    "editedRunsOnce": "I comandi modificati vengono eseguiti una sola volta."
   },
   "request": {
     "title": "Richiesta di permesso",
@@ -217,10 +220,110 @@
     "gitDestructive": "Distruttivo: {{why}}. Controlla il comando, il remote e il branch prima di consentirlo.",
     "selfApproval": "{{tool}} approva da sé i comandi su {{server}}, il che permetterebbe al modello di rispondere al posto tuo. Flint lo chiede ogni volta e non ricorda mai la risposta."
   },
+  "folderTrust": {
+    "title": "Considerare attendibile questa cartella?",
+    "bodyHooks": "{{folder}} ha hook propri. Eseguono comandi e restano disattivati finché non consideri attendibile la cartella.",
+    "bodySubagents": "{{folder}} ha definizioni di agenti proprie. Restano disattivate finché non consideri attendibile la cartella.",
+    "bodyBoth": "{{folder}} ha hook e definizioni di agenti propri. Restano disattivati finché non consideri attendibile la cartella.",
+    "keepsOff": "Considera attendibili solo cartelle che hai scritto o letto. La fiducia viene mantenuta in modo permanente; puoi annullarla più tardi.",
+    "trust": "Considera attendibile",
+    "later": "Non ora",
+    "failed": "Impossibile considerare attendibile la cartella",
+    "kept_one": "Hook mantenuti attivi per {{count}} cartella che già usi. Controllala in Impostazioni > Autorizzazioni > Cartelle attendibili.",
+    "kept_other": "Hook mantenuti attivi per {{count}} cartelle che già usi. Controllali in Impostazioni > Autorizzazioni > Cartelle attendibili."
+  },
+  "trustedFolders": {
+    "title": "Cartelle attendibili",
+    "description": "Cartelle i cui hook e definizioni di agenti propri possono essere eseguiti. La fiducia resta finché non la revochi. I file che un agente può leggere o modificare sono elencati in Accesso alle cartelle.",
+    "empty": "Ancora nessuna cartella attendibile; Flint chiede la prima volta che una cartella contiene hook o definizioni di agenti.",
+    "add": "Considera attendibile una cartella…",
+    "stop": "Revoca fiducia",
+    "stopLabel": "Revoca la fiducia a {{folder}}",
+    "confirm": "Revocare la fiducia a {{folder}}? I suoi hook e le sue definizioni di agenti restano disattivati finché non la consideri di nuovo attendibile.",
+    "confirmYes": "Revoca fiducia",
+    "cancel": "Annulla",
+    "loadFailed": "Impossibile leggere le cartelle attendibili",
+    "grantFailed": "Impossibile considerare attendibile la cartella",
+    "revokeFailed": "Impossibile revocare la fiducia alla cartella"
+  },
+  "scopeForm": {
+    "question": "Se scegli Sempre, ricordalo per:",
+    "folder": "Dentro {{dir}}",
+    "folderHint": "Solo i file in quella cartella, comunque sia scritto il percorso. Un collegamento che ne esce non conta.",
+    "prefix": "Comandi che iniziano con {{prefix}}",
+    "prefixHint": "Solo un comando semplice. Uno concatenato, con pipe o reindirizzato viene richiesto di nuovo.",
+    "everywhere": "Ogni chiamata a {{tool}}, in ogni progetto",
+    "everywhereHint": "Il vecchio significato di Sempre. Molto ampio; raramente quello che vuoi.",
+    "saveFailed": "Impossibile ricordare quella scelta",
+    "alwaysFolder": "Sempre: dentro {{dir}}",
+    "alwaysPrefix": "Sempre: comandi che iniziano con {{prefix}}",
+    "alwaysFolderExplanation": "Solo i file in quella cartella, in questo progetto, finché non lo revochi in Impostazioni > Autorizzazioni.",
+    "alwaysPrefixExplanation": "Solo un comando semplice che inizia così, in questo progetto, finché non lo revochi in Impostazioni > Autorizzazioni. Uno concatenato, con pipe o reindirizzato viene richiesto di nuovo."
+  },
+  "rules": {
+    "title": "Approvazioni ricordate",
+    "description": "Ciò che hai consentito con Sempre, limitato a una cartella o a un prefisso di comando. Una regola vale solo nel suo progetto e non scavalca mai un rifiuto o una domanda che Flint pone ogni volta.",
+    "empty": "Non è ancora stato ricordato nulla. Scegli Sempre in una richiesta e poi una cartella o un prefisso di comando.",
+    "folder": "Dentro {{dir}}",
+    "prefix": "Comandi che iniziano con {{prefix}}",
+    "run": "Il resto di questa esecuzione",
+    "once": "Una volta",
+    "project": "In {{project}}",
+    "revoke": "Revoca",
+    "revokeLabel": "Revoca l'approvazione per {{tool}}: {{scope}}",
+    "loadFailed": "Impossibile leggere le approvazioni ricordate",
+    "revokeFailed": "Impossibile revocare l'approvazione"
+  },
+  "deferred": {
+    "title": "Approvazioni in attesa",
+    "description": "Le esecuzioni che hanno incontrato una domanda quando nessuno poteva rispondere l'hanno annotata e si sono fermate. Rispondi qui e riprendi la sessione: la chiamata viene eseguita una volta se viene proposta di nuovo prima della scadenza.",
+    "empty": "Nessuna risposta in attesa.",
+    "allow": "Consenti",
+    "deny": "Rifiuta",
+    "discard": "Rimuovi",
+    "session": "Sessione {{session}}",
+    "deadline": "Rispondi entro {{when}}",
+    "status": {
+      "pending": "In attesa",
+      "allowed": "Consentita",
+      "denied": "Rifiutata",
+      "expired": "Scaduta",
+      "void": "Annullata",
+      "consumed": "Usata"
+    },
+    "loadFailed": "Impossibile leggere le approvazioni in attesa",
+    "answerFailed": "Impossibile registrare la risposta",
+    "allowLabel": "Consenti: {{summary}}",
+    "denyLabel": "Nega: {{summary}}",
+    "discardLabel": "Rimuovi: {{summary}}"
+  },
   "toast": {
     "trustFailed": "Impossibile ricordare quel server",
     "cancelledOne": "L'approvazione per {{names}} è stata annullata",
     "cancelledMany": "{{count}} approvazioni ({{names}}) sono state annullate",
     "cancelledDescription": "La chat è stata abbandonata prima della tua risposta. Invia di nuovo la richiesta per riprovare."
+  },
+  "desktopOnly": "Disponibile solo nell'app desktop di Flint.",
+  "folderAccess": {
+    "title": "Accesso alle cartelle",
+    "description": "Cartelle e file fuori dall'area di lavoro dell'agente che hai permesso a un agente di leggere o modificare. Se gli hook di una cartella possono essere eseguiti si decide in Cartelle attendibili.",
+    "empty": "Non è stato concesso alcun accesso a cartelle.",
+    "readWrite": "Lettura e scrittura",
+    "readOnly": "Sola lettura",
+    "untilRevoked": "Tutte le conversazioni, fino alla revoca",
+    "untilDate": "Questa conversazione, fino al {{when}}",
+    "revoke": "Revoca",
+    "revokeLabel": "Revoca l'accesso a {{path}}"
+  },
+  "spendPause": {
+    "preview": "Continua l'esecuzione (circa {{spent}} spesi finora)",
+    "previewCeiling": "Continua l'esecuzione fino al limite di {{ceiling}} (circa {{spent}} spesi finora)"
+  },
+  "remote": {
+    "runsOnServer": "Viene eseguito sul server.",
+    "runsOnServerAt": "Viene eseguito sul server: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Modifiche in attesa della tua approvazione"
   }
 }

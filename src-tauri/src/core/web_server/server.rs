@@ -73,6 +73,9 @@ pub struct Options {
     /// Where to leave the first-run credential instead of printing it, for a
     /// server started in the background by `flint serve --background`.
     pub credential_file: Option<PathBuf>,
+    /// `--trust-proxy`: a proxy on this machine fronts the server, so the
+    /// `X-Forwarded-For` it sets on loopback connections names the client.
+    pub trust_proxy: bool,
 }
 
 struct State {
@@ -91,6 +94,7 @@ struct State {
     /// Set to ask the accept loop to finish: `flint stop`.
     shutdown: Arc<tokio::sync::Notify>,
     shutdown_token: String,
+    trust_proxy: bool,
 }
 
 fn valid_dns_name(host: &str) -> bool {
@@ -760,6 +764,13 @@ async fn rpc_route(
     args: serde_json::Value,
     caller: &super::runner::Caller,
 ) -> Resp {
+    if command.starts_with("remote_") {
+        // Remote access (phone pairing) is the desktop app's; see `phone_client_page`.
+        return text(
+            StatusCode::NOT_FOUND,
+            "Phone pairing needs the Flint desktop app; a headless server does not offer remote access.",
+        );
+    }
     if super::campaign_driver::handles(command) {
         let Some(agent) = &state.agent else {
             return text(
@@ -869,6 +880,30 @@ async fn rpc_route(
         // browser session has none, which is an answer the pages handle (an
         // empty list), where an unknown command stopped a room before it began.
         "agent_resolve_extensions" | "agent_slash_catalog" => json(&serde_json::json!([])),
+        "search_messages" => {
+            let query = str_field(&args, "query").unwrap_or_default().to_owned();
+            let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(30) as usize;
+            let root = state.data_folder.clone();
+            blocking(move || crate::core::threads::search::search_messages_in(&root, &query, limit)).await
+        }
+        "get_secret" => {
+            let key = str_field(&args, "key").unwrap_or_default().to_owned();
+            match tokio::task::spawn_blocking(move || resources::get_secret(&key)).await {
+                Ok(value) => json(&value),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+            }
+        }
+        "set_secret" => {
+            let (Some(key), Some(value)) = (str_field(&args, "key"), str_field(&args, "value")) else {
+                return text(StatusCode::BAD_REQUEST, "key and value are required");
+            };
+            let (key, value) = (key.to_owned(), value.to_owned());
+            match tokio::task::spawn_blocking(move || resources::set_secret(&key, &value)).await {
+                Ok(Ok(())) => json(&serde_json::Value::Null),
+                Ok(Err(message)) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+            }
+        }
         "archive_get_settings" => json(&serde_json::json!(crate::core::archive::store::read_settings(&state.data_folder))),
         "plugin:hardware|get_system_info" => {
             blocking(|| Ok(tauri_plugin_hardware::get_system_info())).await
@@ -989,7 +1024,8 @@ async fn rpc_route(
             let ctx = args.get("ctxSize").and_then(serde_json::Value::as_u64).map(|v| v as u32);
             let key = str_field(&args, "cacheTypeK").map(str::to_owned);
             let value = str_field(&args, "cacheTypeV").map(str::to_owned);
-            match tauri_plugin_llamacpp::gguf::commands::is_model_supported(path, ctx, key, value).await {
+            let no_kv_offload = args.get("noKvOffload").and_then(serde_json::Value::as_bool);
+            match tauri_plugin_llamacpp::gguf::commands::is_model_supported(path, ctx, key, value, no_kv_offload).await {
                 Ok(status) => json(&status),
                 Err(message) => reply(StatusCode::UNPROCESSABLE_ENTITY, "text/plain; charset=utf-8", message),
             }
@@ -1054,6 +1090,7 @@ async fn route(state: Arc<State>, req: Request<Incoming>, peer: std::net::IpAddr
     let client = client_ip(
         peer,
         req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok()),
+        state.trust_proxy,
     );
     with_cors(route_inner(state, req, client).await, cors.as_deref())
 }
@@ -1465,6 +1502,9 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
             };
         }
     }
+    if let Some(resp) = phone_client_page(&path) {
+        return resp;
+    }
     if path.starts_with("/api/") {
         return text(StatusCode::NOT_FOUND, "Unknown API route");
     }
@@ -1488,6 +1528,17 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
     };
     reply(StatusCode::OK, content_type, body)
 }
+
+/// The phone app (`/m/`) and its pairing API (`/remote/v1/*`) belong to the
+/// desktop app's remote-access server: phone calls are run by the desktop
+/// window's TypeScript, which `flint serve` does not have. Rather than serve
+/// the web app's shell there (a phone page stuck on "not paired"), say so.
+fn phone_client_page(path: &str) -> Option<Resp> {
+    let phone = path == "/m" || path.starts_with("/m/") || path == "/remote" || path.starts_with("/remote/");
+    phone.then(|| reply(StatusCode::NOT_FOUND, "text/html; charset=utf-8", PHONE_NOT_HERE_HTML))
+}
+
+const PHONE_NOT_HERE_HTML: &str = "<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Phone app not available</title><body style=\"font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem\"><h1>Phone pairing needs the Flint desktop app</h1><p>This is a headless Flint server (<code>flint serve</code>). It does not host the phone app or pairing. Open this server's address in the phone's browser instead, or pair the phone with a computer running the Flint desktop app (Settings, Remote access).</p><p><a href=\"/\">Open this server</a></p></body>";
 
 const LOGIN_HTML: &str = include_str!("login.html");
 
@@ -1573,6 +1624,8 @@ pub async fn serve(options: Options) -> io::Result<()> {
         .map(|agent| agent.with_runner(options.agent_runner.clone(), bus.clone()));
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let settings_store = settings::Store::new(&options.data_folder);
+    // Agent runs on this server use the providers its browser client added.
+    crate::core::cli::providers::use_server_settings(settings_store.file().to_path_buf());
     let shutdown = Arc::new(tokio::sync::Notify::new());
     let shutdown_token = control::new_token();
     let data_folder_for_run = options.data_folder.clone();
@@ -1591,6 +1644,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
         settings: settings_store,
         shutdown: shutdown.clone(),
         shutdown_token: shutdown_token.clone(),
+        trust_proxy: options.trust_proxy,
     });
     // Campaigns the records say this server drives continue on their own,
     // with no client connected (P3 of the server runner).
@@ -1719,6 +1773,7 @@ mod tests {
             events: events::Bus::new(),
             shutdown: Arc::new(tokio::sync::Notify::new()),
             shutdown_token: String::new(),
+            trust_proxy: false,
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -1744,6 +1799,7 @@ mod tests {
             auth_file: dir.path().join("auth.json"),
             public_host: None,
             allow_mcp_stdio: false,
+            trust_proxy: false,
             agent_roots: Vec::new(),
             agent_run: false,
             agent_runner: Default::default(),
@@ -1797,6 +1853,7 @@ mod tests {
             auth_file: dir.path().join("auth.json"),
             public_host: None,
             allow_mcp_stdio: false,
+            trust_proxy: false,
             agent_roots: Vec::new(),
             agent_run: false,
             agent_runner: Default::default(),
@@ -1811,6 +1868,18 @@ mod tests {
         assert!(wildcard.to_string().contains("--allowed-host"));
         let origin = serve(options(vec!["phone.example"], vec!["*"])).await.unwrap_err();
         assert!(origin.to_string().contains("--allowed-origin"));
+    }
+
+    #[test]
+    fn the_phone_client_is_not_served_and_says_why() {
+        for path in ["/m", "/m/", "/m/index.html", "/remote/v1/rpc", "/remote/v1/events"] {
+            let resp = phone_client_page(path).unwrap_or_else(|| panic!("{path} must be answered"));
+            assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+        for path in ["/", "/mcp", "/models", "/api/v1/rpc/x", "/remote-x"] {
+            assert!(phone_client_page(path).is_none(), "{path}");
+        }
+        assert!(PHONE_NOT_HERE_HTML.contains("needs the Flint desktop app"));
     }
 
     #[test]
@@ -1832,6 +1901,7 @@ mod tests {
             events: events::Bus::new(),
             shutdown: Arc::new(tokio::sync::Notify::new()),
             shutdown_token: String::new(),
+            trust_proxy: false,
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::ORIGIN, HeaderValue::from_static("http://Tauri.localhost"));
@@ -1867,6 +1937,7 @@ mod tests {
             events: events::Bus::new(),
             shutdown: Arc::new(tokio::sync::Notify::new()),
             shutdown_token: String::new(),
+            trust_proxy: false,
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::HOST, HeaderValue::from_static("box.ts.net:8443"));

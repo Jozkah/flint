@@ -1,4 +1,5 @@
 import { emitTo, listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getAllWebviewWindows } from '@tauri-apps/api/webviewWindow'
 import { create } from 'zustand'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
@@ -135,6 +136,7 @@ export function applyChatWindowSession(session?: string | null) {
 // --- the main window's side -------------------------------------------------
 
 let spare: SpareState = null
+let leftoversSwept = false
 let readyUnlisten: UnlistenFn | null = null
 let nextTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -153,12 +155,34 @@ async function ensureReadyListener() {
 }
 
 /**
+ * Close hidden spares an earlier load of this main window built. The spare
+ * this module tracks is forgotten on a reload, so without this every reload
+ * left one more hidden window running until the app quit. A spare already
+ * showing a conversation is visible and is left alone.
+ */
+async function closeLeftoverSpares(): Promise<void> {
+  if (leftoversSwept) return
+  leftoversSwept = true
+  try {
+    for (const w of await getAllWebviewWindows()) {
+      if (!w.label.startsWith(SPARE_LABEL_PREFIX)) continue
+      if (await w.isVisible().catch(() => true)) continue
+      await w.close().catch(() => {})
+    }
+  } catch (err) {
+    console.warn('Could not close leftover spare windows:', err)
+  }
+}
+
+/**
  * Build the spare: a hidden window on the idle entry. Called by the main
  * window once it is idle; a no-op where a spare exists already or in a solo
  * window itself.
  */
 export async function prewarmSoloWindow(): Promise<void> {
   if (!IS_TAURI || isChatWindow() || spare) return
+  await closeLeftoverSpares()
+  if (spare) return
   const label = `${SPARE_LABEL_PREFIX}${Date.now().toString(36)}`
   spare = { label, ready: false }
   try {
@@ -272,6 +296,7 @@ export async function openChatWindow(target: SplitTarget): Promise<void> {
 export const __testing = {
   reset() {
     spare = null
+    leftoversSwept = false
     readyUnlisten = null
     clearTimeout(nextTimer)
   },

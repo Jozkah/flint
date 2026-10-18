@@ -34,7 +34,12 @@ export type RoomStatus =
   | 'completed' // reached synthesis or a clean end
   | 'failed' // could not continue (e.g. fewer than two usable participants)
 
-export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected'
+/**
+ * `compare` is not a discussion: each user message goes to every participant
+ * at once, each answers on its own without seeing the others' answers, and the
+ * transcript shows the answers side by side.
+ */
+export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected' | 'compare'
 
 /**
  * Tool access per participant. Only the user sets it. `read` runs Flint's Cowork
@@ -59,6 +64,7 @@ export type ParticipantUnavailableReason =
   | 'provider-not-configured' // e.g. no API key
   | 'model-missing'
   | 'load-failed' // local model could not start
+  | 'busy' // every slot of the local engine stayed taken; checked again next run
   | 'repeated-errors' // suspended after consecutive provider errors
   | 'context-too-small' // cannot fit the minimum room context
 
@@ -86,7 +92,56 @@ export type Participant = {
   assistantId?: string
   /** The work profile this participant works in (review, plan, debug...). */
   workProfile?: WorkProfileId
+  /** Compare rooms: left out of the next run without being removed. */
+  compareSkip?: boolean
+  /**
+   * Tools the user switched off for this participant in the room editor. Only
+   * narrows what its access allows; absent means every allowed tool.
+   */
+  disabledTools?: string[]
 }
+
+/**
+ * Per-turn tool budgets of a room, set in the editor. Absent fields use the
+ * built-in defaults (`ROOM_TOOL_BUDGET_DEFAULTS`).
+ */
+export type RoomToolBudget = {
+  /** Tool calls one participant turn may make. */
+  maxToolCalls?: number
+  /** Model steps (tool round trips) one participant turn may take. */
+  maxSteps?: number
+  /** Seconds one tool call may run before it is given up on. */
+  toolTimeoutSec?: number
+}
+
+/** Which tool budget a turn ran into. */
+export type RoomBudgetHit = 'tool-calls' | 'steps' | 'timeout'
+
+/** One file a participant turn changed, for the transcript's change card. */
+export type RoomChangedFile = {
+  path: string
+  additions: number
+  deletions: number
+  binary?: boolean
+  /** A diff excerpt (capped), shown when the card is expanded. */
+  excerpt?: string
+}
+
+/** What one participant turn changed. */
+export type RoomTurnChanges = {
+  files: RoomChangedFile[]
+  /** The participant's isolated workspace, when the turn worked in one. */
+  workspace?: string
+  /**
+   * Everything changed in the workspace since it was made, when that is more
+   * than this turn's change (`files`): the card's cumulative view.
+   */
+  cumulative?: RoomChangedFile[]
+}
+
+/** What the user decided on a turn's change card. */
+export type RoomChangeDecision = 'kept' | 'discarded' | 'applied'
+
 
 /**
  * A participant's reasoning setting, in the same terms as chat's Reasoning
@@ -97,6 +152,30 @@ export type Participant = {
 export type ParticipantReasoning = {
   mode?: 'auto' | 'on' | 'off'
   level?: 'low' | 'medium' | 'high' | 'xhigh' | 'unlimited'
+}
+
+/**
+ * How a compare room asks its participants: all at once, or one after another
+ * (one local model loaded at a time, one remote call at a time).
+ */
+export type CompareRun = 'together' | 'one-by-one'
+
+export const compareRunOf = (room: Pick<Room, 'compareRun'>): CompareRun =>
+  room.compareRun === 'one-by-one' ? 'one-by-one' : 'together'
+
+/** What a compare answer records, so runs at different dates stay comparable. */
+export type RoomCompareMeta = {
+  provider: string
+  model: string
+  /** The user message (question) this answers. */
+  replyTo?: string
+  /** Wall time of the call, start to finish. */
+  durationMs?: number
+  /**
+   * Earlier questions this participant had never answered when it answered
+   * this one (it joined late): the reply covers them too (R-043).
+   */
+  catchUp?: Array<{ id: string; text: string }>
 }
 
 export type ModeratorConfig = {
@@ -191,6 +270,12 @@ export type Room = {
   folder?: string | null
   /** More folders beside `folder`, under the same access. */
   extraFolders?: string[]
+  /** Compare rooms only; absent means 'together'. */
+  compareRun?: CompareRun
+  /** Per-turn tool budgets; absent uses the defaults. */
+  toolBudget?: RoomToolBudget
+  /** What the user decided on each turn's change card, by message id. */
+  changeDecisions?: Record<string, RoomChangeDecision>
   limits: RoomLimits
   usage: RoomUsage
   /** 1-based current round; 0 before the first turn. */
@@ -262,6 +347,16 @@ export type RoomMessage = {
   toolCalls?: RoomToolActivity[]
   /** For system notes: the history was compacted here (drawn as a divider). */
   compaction?: RoomCompaction
+  /** Compare answers: the model that wrote it and the question it answers. */
+  compare?: RoomCompareMeta
+  /** Files the turn changed, drawn as a collapsible card. */
+  changes?: RoomTurnChanges
+  /** The tool budget the turn ran into, when it did. */
+  budgetHit?: RoomBudgetHit
+  /** Why the model stopped writing ("stop", "length", ...), when known. */
+  finishReason?: string
+  /** The model's thinking, kept only when the turn wrote no answer. */
+  reasoning?: string
 }
 
 /** A compaction of the discussion, journaled so the divider survives reloads. */
@@ -287,6 +382,8 @@ export type RoomToolActivity = {
    * so the room can say what a participant is doing; never stored on a message.
    */
   running?: boolean
+  /** How long the call took, in milliseconds. Absent while it runs. */
+  ms?: number
 }
 
 /** What the moderator model is asked to return (parsed leniently from JSON). */
@@ -343,6 +440,17 @@ export interface RoomController {
   synthesize(roomId: string): Promise<void>
   /** Abort the in-flight turn only; the room pauses. */
   cancelTurn(roomId: string): Promise<void>
+  /**
+   * Compare rooms: answer with some participants (null: all included), the
+   * newest question again (`latest`) or every question each has not answered.
+   */
+  compareRun(
+    roomId: string,
+    participantIds: string[] | null,
+    scope: 'latest' | 'missing'
+  ): Promise<void>
+  /** Remember what the user decided on a turn's change card, so a reload shows it. */
+  setChangeDecision(roomId: string, messageId: string, decision: RoomChangeDecision): Promise<void>
 }
 
 /** Live, non-persisted view of the turn being streamed. */
@@ -359,4 +467,27 @@ export type LiveTurn = {
   tools?: RoomToolActivity[]
   /** The call running right now, if any. */
   activity?: { name: string; args?: unknown }
+}
+
+/** Whether a room runs in compare mode (see `SpeakingMode`). */
+export const isCompareRoom = (room: Pick<Room, 'mode'> | null | undefined): boolean =>
+  room?.mode === 'compare'
+
+/**
+ * The access a participant actually gets for one turn. In compare mode every
+ * participant answers the same message at the same time in the same folder, so
+ * a writer would overwrite the others' edits mid-turn and the columns would no
+ * longer be comparable: writers read only there. Never widens what was set.
+ */
+export function turnToolAccess(
+  room: Pick<Room, 'mode'>,
+  access: ToolAccess,
+  /**
+   * The participant works in its own isolated workspace this turn, so its
+   * writes cannot reach the others: the compare downgrade is not needed.
+   */
+  isolated = false
+): ToolAccess {
+  if (room.mode === 'compare' && !isolated && (access === 'edit' || access === 'full')) return 'read'
+  return access
 }

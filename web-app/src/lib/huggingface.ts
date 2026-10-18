@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { mergeById, searchVariants } from '@/lib/huggingfaceSearch'
 
@@ -412,7 +413,8 @@ export function inferModalities(model: HuggingFaceModel, files: HuggingFaceFile[
 }
 
 export function formatModelBytes(value?: number | null): string {
-  if (!value || value <= 0) return 'Unknown size'
+  if (!value || value <= 0)
+    return i18n.t('uiLeftovers:unknownSize', { defaultValue: 'Unknown size' })
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let amount = value
   let unit = 0

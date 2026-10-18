@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from 'react'
+import { useLayoutEffect, useRef, type RefObject } from 'react'
 
 /**
  * Marks an element with `data-overflow="true"` while its text is wider than
@@ -41,11 +41,22 @@ export function useTextOverflow(
   ref: RefObject<HTMLElement | null>,
   pick?: (root: HTMLElement) => HTMLElement | null
 ) {
+  // The observers keep the mark current, so a re-render that leaves the same
+  // element in place does not re-measure: measuring forces a layout, and a
+  // list re-rendering 2,000 rows paid one forced layout per row.
+  const watched = useRef<{ el: HTMLElement; stop: () => void } | null>(null)
   useLayoutEffect(() => {
     const root = ref.current
-    if (!root) return
-    const el = pick ? pick(root) : root
-    if (!el) return
-    return observeTextOverflow(el)
+    const el = root ? (pick ? pick(root) : root) : null
+    if (watched.current?.el === el) return
+    watched.current?.stop()
+    watched.current = el ? { el, stop: observeTextOverflow(el) } : null
   })
+  useLayoutEffect(
+    () => () => {
+      watched.current?.stop()
+      watched.current = null
+    },
+    []
+  )
 }

@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint veut exécuter {{command}} dans {{workspace}}",
     "gitRemote": "Flint veut exécuter {{command}}, ce qui modifie {{target}}",
     "gitDestructive": "Flint veut exécuter {{command}}, ce qui peut entraîner une perte de travail",
-    "approveCampaign": "Flint veut lancer la campagne « {{title}} » ({{count}} tâches)"
+    "approveCampaign": "Flint veut lancer la campagne « {{title}} » ({{count}} tâches)",
+    "spendPause": "Flint veut poursuivre cette exécution au-delà de sa pause de dépense"
   },
   "consequence": {
     "fileChange": "Elle peut créer, écraser ou modifier le contenu de fichiers.",
@@ -57,7 +58,8 @@
     "gitLocal": "Elle modifie les fichiers, branches ou l'historique de ce dépôt sur cet ordinateur.",
     "gitRemote": "Elle envoie des modifications vers un dépôt distant que d'autres personnes peuvent voir. Flint demande à chaque fois, sauf si vous autorisez temporairement les actions Git distantes ordinaires pour cette conversation.",
     "gitDestructive": "Ce qu'elle supprime ou écrase peut ne pas être récupérable.",
-    "campaignPlan": "Elle lance des sessions séparées, chacune sur sa propre branche worktree, qui lisent et modifient des fichiers et consomment en parallèle le quota de votre modèle. Approuver le plan n'approuve aucun appel effectué par une tâche. Flint demande à chaque fois."
+    "campaignPlan": "Elle lance des sessions séparées, chacune sur sa propre branche worktree, qui lisent et modifient des fichiers et consomment en parallèle le quota de votre modèle. Approuver le plan n'approuve aucun appel effectué par une tâche. Flint demande à chaque fois.",
+    "spendPause": "L'exécution continue de consommer du quota de modèle payant jusqu'à sa fin ou son plafond. Refuser l'arrête."
   },
   "repeat": {
     "allowedOnceBefore": "Vous avez déjà autorisé cette commande une fois dans cette conversation."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Les futurs appels à un seul processus correspondant à {{action}} s'exécutent sans demander, y compris avec d'autres ID de processus. Les autres scripts demandent toujours. Révoquez ceci dans Réglages > Permissions.",
     "allowClipboardReadExplanation": "Flint peut lire le futur contenu du presse-papiers dans toutes les conversations sans demander, jusqu'à ce que vous le révoquiez dans Réglages > Permissions. L'écriture dans le presse-papiers demande toujours.",
     "allowSimilarThreadExplanation": "Les futurs appels correspondant à {{action}} s'exécutent sans demander dans cette conversation. Révoquez ceci dans Réglages > Permissions.",
-    "broader": "Plus large"
+    "broader": "Plus large",
+    "editedRunsOnce": "Les commandes modifiées ne s'exécutent qu'une seule fois."
   },
   "request": {
     "title": "Demande d'autorisation",
@@ -217,10 +220,110 @@
     "gitDestructive": "Destructif : {{why}}. Vérifiez la commande, le dépôt distant et la branche avant de l'autoriser.",
     "selfApproval": "{{tool}} approuve lui-même les commandes sur {{server}}, ce qui permettrait au modèle de répondre à votre place. Flint le demande à chaque fois et ne mémorise jamais la réponse."
   },
+  "folderTrust": {
+    "title": "Faire confiance à ce dossier ?",
+    "bodyHooks": "{{folder}} contient ses propres hooks. Ils exécutent des commandes et restent désactivés tant que vous ne faites pas confiance au dossier.",
+    "bodySubagents": "{{folder}} contient ses propres définitions d'agents. Elles restent désactivées tant que vous ne faites pas confiance au dossier.",
+    "bodyBoth": "{{folder}} contient ses propres hooks et définitions d'agents. Ils restent désactivés tant que vous ne faites pas confiance au dossier.",
+    "keepsOff": "Ne faites confiance qu'aux dossiers que vous avez écrits ou lus. La confiance est conservée durablement ; vous pourrez l'annuler plus tard.",
+    "trust": "Faire confiance au dossier",
+    "later": "Pas maintenant",
+    "failed": "Impossible de faire confiance au dossier",
+    "kept_one": "Hooks conservés pour {{count}} dossier que vous utilisez déjà. Vérifiez-le dans Paramètres > Autorisations > Dossiers de confiance.",
+    "kept_other": "Hooks conservés pour {{count}} dossiers que vous utilisez déjà. Vérifiez-les dans Paramètres > Autorisations > Dossiers de confiance."
+  },
+  "trustedFolders": {
+    "title": "Dossiers de confiance",
+    "description": "Dossiers dont les propres hooks et définitions d'agents peuvent s'exécuter. La confiance est conservée jusqu'à ce que vous la retiriez. Les fichiers qu'un agent peut lire ou modifier sont listés dans Accès aux dossiers.",
+    "empty": "Aucun dossier de confiance pour l'instant ; Flint demande la première fois qu'un dossier contient des hooks ou des définitions d'agents.",
+    "add": "Faire confiance à un dossier…",
+    "stop": "Ne plus faire confiance",
+    "stopLabel": "Ne plus faire confiance à {{folder}}",
+    "confirm": "Ne plus faire confiance à {{folder}} ? Ses hooks et définitions d'agents restent désactivés jusqu'à ce que vous lui fassiez à nouveau confiance.",
+    "confirmYes": "Ne plus faire confiance",
+    "cancel": "Annuler",
+    "loadFailed": "Impossible de lire les dossiers de confiance",
+    "grantFailed": "Impossible de faire confiance au dossier",
+    "revokeFailed": "Impossible de retirer la confiance au dossier"
+  },
+  "scopeForm": {
+    "question": "Si vous choisissez Toujours, mémoriser pour :",
+    "folder": "Dans {{dir}}",
+    "folderHint": "Uniquement les fichiers de ce dossier, quelle que soit l'écriture du chemin. Un lien qui en sort ne compte pas.",
+    "prefix": "Les commandes qui commencent par {{prefix}}",
+    "prefixHint": "Une seule commande simple. Une commande enchaînée, redirigée ou avec un tube est redemandée.",
+    "everywhere": "Chaque appel à {{tool}}, dans tous les projets",
+    "everywhereHint": "L'ancien sens de Toujours. Très large ; rarement ce que vous voulez.",
+    "saveFailed": "Impossible de mémoriser ce choix",
+    "alwaysFolder": "Toujours : dans {{dir}}",
+    "alwaysPrefix": "Toujours : les commandes qui commencent par {{prefix}}",
+    "alwaysFolderExplanation": "Seulement les fichiers de ce dossier, dans ce projet, jusqu'à ce que vous le révoquiez dans Paramètres > Autorisations.",
+    "alwaysPrefixExplanation": "Seulement une commande simple qui commence ainsi, dans ce projet, jusqu'à ce que vous la révoquiez dans Paramètres > Autorisations. Une commande chaînée, avec un tube ou redirigée est de nouveau demandée."
+  },
+  "rules": {
+    "title": "Approbations mémorisées",
+    "description": "Ce que vous avez autorisé avec Toujours, limité à un dossier ou à un préfixe de commande. Une règle ne s'applique que dans son projet et ne remplace jamais un refus ni une question que Flint pose à chaque fois.",
+    "empty": "Rien n'est encore mémorisé. Choisissez Toujours sur une demande, puis un dossier ou un préfixe de commande.",
+    "folder": "Dans {{dir}}",
+    "prefix": "Les commandes qui commencent par {{prefix}}",
+    "run": "Le reste de cette exécution",
+    "once": "Une fois",
+    "project": "Dans {{project}}",
+    "revoke": "Révoquer",
+    "revokeLabel": "Révoquer l'approbation de {{tool}} : {{scope}}",
+    "loadFailed": "Impossible de lire les approbations mémorisées",
+    "revokeFailed": "Impossible de révoquer l'approbation"
+  },
+  "deferred": {
+    "title": "Approbations en attente",
+    "description": "Les exécutions qui ont rencontré une question alors que personne ne pouvait répondre l'ont notée et se sont arrêtées. Répondez ici, puis reprenez la session : l'appel s'exécute une fois s'il est proposé à nouveau avant l'échéance.",
+    "empty": "Aucune réponse n'est attendue.",
+    "allow": "Autoriser",
+    "deny": "Refuser",
+    "discard": "Supprimer",
+    "session": "Session {{session}}",
+    "deadline": "Répondre avant {{when}}",
+    "status": {
+      "pending": "En attente",
+      "allowed": "Autorisé",
+      "denied": "Refusé",
+      "expired": "Expiré",
+      "void": "Annulé",
+      "consumed": "Utilisé"
+    },
+    "loadFailed": "Impossible de lire les approbations en attente",
+    "answerFailed": "Impossible d'enregistrer la réponse",
+    "allowLabel": "Autoriser : {{summary}}",
+    "denyLabel": "Refuser : {{summary}}",
+    "discardLabel": "Supprimer : {{summary}}"
+  },
   "toast": {
     "trustFailed": "Impossible de mémoriser ce serveur",
     "cancelledOne": "L'approbation pour {{names}} a été annulée",
     "cancelledMany": "{{count}} approbations ({{names}}) ont été annulées",
     "cancelledDescription": "La conversation a été quittée avant votre réponse. Renvoyez la demande pour réessayer."
+  },
+  "desktopOnly": "Disponible uniquement dans l'application de bureau Flint.",
+  "folderAccess": {
+    "title": "Accès aux dossiers",
+    "description": "Dossiers et fichiers hors de l'espace de travail de l'agent qu'un agent a le droit de lire ou de modifier. L'exécution des hooks propres à un dossier se règle dans Dossiers de confiance.",
+    "empty": "Aucun accès à un dossier n'a été accordé.",
+    "readWrite": "Lecture et écriture",
+    "readOnly": "Lecture seule",
+    "untilRevoked": "Toutes les conversations, jusqu'à révocation",
+    "untilDate": "Cette conversation, jusqu'au {{when}}",
+    "revoke": "Révoquer",
+    "revokeLabel": "Révoquer l'accès à {{path}}"
+  },
+  "spendPause": {
+    "preview": "Poursuivre l'exécution (environ {{spent}} dépensés jusqu'ici)",
+    "previewCeiling": "Poursuivre l'exécution jusqu'à son plafond de {{ceiling}} (environ {{spent}} dépensés jusqu'ici)"
+  },
+  "remote": {
+    "runsOnServer": "S'exécute sur le serveur.",
+    "runsOnServerAt": "S'exécute sur le serveur : {{where}}."
+  },
+  "childApprovals": {
+    "label": "Modifications en attente de votre approbation"
   }
 }

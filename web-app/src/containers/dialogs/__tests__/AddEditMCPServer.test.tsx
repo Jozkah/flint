@@ -96,6 +96,36 @@ describe('AddEditMCPServer', () => {
     expect(screen.getByDisplayValue('bar')).toBeInTheDocument()
   })
 
+  it('masks env and header values until revealed (M-002)', () => {
+    const props = baseProps()
+    props.editingKey = 'srv1'
+    props.initialData = {
+      command: 'node',
+      args: [],
+      env: { API_TOKEN: 'sk-secret-12345' },
+      type: 'stdio',
+    }
+    render(<AddEditMCPServer {...props} />)
+    const value = screen.getByDisplayValue('sk-secret-12345')
+    expect(value).toHaveAttribute('type', 'password')
+    fireEvent.click(screen.getByRole('button', { name: 'common:a11y.reveal' }))
+    expect(value).toHaveAttribute('type', 'text')
+    fireEvent.click(screen.getByRole('button', { name: 'common:a11y.hide' }))
+    expect(value).toHaveAttribute('type', 'password')
+  })
+
+  it('masks header values of a remote server (M-002)', () => {
+    const props = baseProps()
+    props.editingKey = 'remote'
+    props.initialData = {
+      url: 'https://example.com/mcp',
+      headers: { Authorization: 'Bearer abc123' },
+      type: 'http',
+    }
+    render(<AddEditMCPServer {...props} />)
+    expect(screen.getByDisplayValue('Bearer abc123')).toHaveAttribute('type', 'password')
+  })
+
   it('disables Save when server name is empty (form mode)', () => {
     render(<AddEditMCPServer {...baseProps()} />)
     const saveBtn = screen.getByText('mcp-servers:save').closest('button')!
@@ -163,7 +193,7 @@ describe('AddEditMCPServer', () => {
       { target: { value: 'httpSrv' } }
     )
     fireEvent.click(screen.getByLabelText('HTTP'))
-    fireEvent.change(screen.getByPlaceholderText('Enter URL'), {
+    fireEvent.change(screen.getByPlaceholderText('integrations:mcpDialog.urlPlaceholder'), {
       target: { value: 'https://api.example.com' },
     })
     fireEvent.click(screen.getByText('mcp-servers:save'))
@@ -186,8 +216,8 @@ describe('AddEditMCPServer', () => {
   it('shows JSON error when JSON mode payload is not an object', () => {
     const props = baseProps()
     render(<AddEditMCPServer {...props} />)
-    // Toggle JSON mode — title="Add server by JSON"
-    const toggle = document.querySelector('[title="Add server by JSON"]')!
+    // Toggle JSON mode — title="integrations:mcpDialog.jsonToggle"
+    const toggle = document.querySelector('[title="integrations:mcpDialog.jsonToggle"]')!
     fireEvent.click(toggle)
     const editor = screen.getByTestId('code-editor') as HTMLTextAreaElement
     fireEvent.change(editor, { target: { value: '"not-an-object"' } })
@@ -201,7 +231,7 @@ describe('AddEditMCPServer', () => {
   it('shows JSON error when payload looks like bare server config (has command)', () => {
     const props = baseProps()
     render(<AddEditMCPServer {...props} />)
-    fireEvent.click(document.querySelector('[title="Add server by JSON"]')!)
+    fireEvent.click(document.querySelector('[title="integrations:mcpDialog.jsonToggle"]')!)
     fireEvent.change(screen.getByTestId('code-editor'), {
       target: { value: JSON.stringify({ command: 'node' }) },
     })
@@ -214,7 +244,7 @@ describe('AddEditMCPServer', () => {
   it('saves each server entry from valid JSON payload', () => {
     const props = baseProps()
     render(<AddEditMCPServer {...props} />)
-    fireEvent.click(document.querySelector('[title="Add server by JSON"]')!)
+    fireEvent.click(document.querySelector('[title="integrations:mcpDialog.jsonToggle"]')!)
     const payload = {
       s1: { command: 'c1', args: [], type: 'stdio' },
       s2: { command: 'c2', args: [], type: 'stdio' },
@@ -307,12 +337,12 @@ describe('AddEditMCPServer', () => {
       render(<AddEditMCPServer {...props} />)
       typeName('remote')
       fireEvent.click(screen.getByLabelText('HTTP'))
-      fireEvent.change(screen.getByPlaceholderText('Enter URL'), {
+      fireEvent.change(screen.getByPlaceholderText('integrations:mcpDialog.urlPlaceholder'), {
         target: { value: 'ftp://example.com' },
       })
       fireEvent.click(screen.getByText('mcp-servers:save'))
       expect(props.onSave).not.toHaveBeenCalled()
-      const url = screen.getByPlaceholderText('Enter URL')
+      const url = screen.getByPlaceholderText('integrations:mcpDialog.urlPlaceholder')
       expect(url).toHaveAttribute('aria-invalid', 'true')
       expect(document.activeElement).toBe(url)
       expect(
@@ -338,7 +368,7 @@ describe('AddEditMCPServer', () => {
   it('rejects JSON where a server declares an invalid transport type', () => {
     const props = baseProps()
     render(<AddEditMCPServer {...props} />)
-    fireEvent.click(document.querySelector('[title="Add server by JSON"]')!)
+    fireEvent.click(document.querySelector('[title="integrations:mcpDialog.jsonToggle"]')!)
     fireEvent.change(screen.getByTestId('code-editor'), {
       target: {
         value: JSON.stringify({ s1: { command: 'c', type: 'nope' } }),
@@ -357,7 +387,7 @@ describe('AddEditMCPServer JSON duplicate names (#221)', () => {
   beforeEach(() => vi.clearAllMocks())
 
   const pasteJson = (value: unknown) => {
-    fireEvent.click(document.querySelector('[title="Add server by JSON"]')!)
+    fireEvent.click(document.querySelector('[title="integrations:mcpDialog.jsonToggle"]')!)
     fireEvent.change(screen.getByTestId('code-editor'), {
       target: { value: JSON.stringify(value) },
     })

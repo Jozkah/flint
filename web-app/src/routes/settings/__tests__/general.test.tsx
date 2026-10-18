@@ -7,6 +7,12 @@ const mockGetUnavailableJanDataFolder = vi.hoisted(() =>
 )
 
 // Mock all the dependencies
+const platform = vi.hoisted(() => ({ tauri: true }))
+vi.mock('@/lib/platform/utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/platform/utils')>()),
+  isPlatformTauri: () => platform.tauri,
+}))
+
 vi.mock('@/containers/SettingsMenu', () => ({
   default: () => <div data-testid="settings-menu">Settings Menu</div>,
 }))
@@ -369,6 +375,21 @@ describe('General Settings Route', () => {
     }
   )
 
+  it('leaves the data folder and update check out of the browser client', async () => {
+    platform.tauri = false
+    try {
+      const Component = GeneralRoute.component as React.ComponentType
+      await act(async () => {
+        render(<Component />)
+      })
+      expect(screen.queryByTestId('open-migration-assistant')).toBeNull()
+      expect(screen.queryByText('common:dataFolder')).toBeNull()
+      expect(screen.getByText('common:language')).toBeInTheDocument()
+    } finally {
+      platform.tauri = true
+    }
+  })
+
   it('should render the general settings page', async () => {
     const Component = GeneralRoute.component as React.ComponentType
     await act(async () => {
@@ -378,6 +399,18 @@ describe('General Settings Route', () => {
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
     expect(screen.queryByTestId('settings-menu')).toBeNull()
     expect(screen.getByText('common:settings')).toBeInTheDocument()
+  })
+
+  it('has no Credits card', async () => {
+    const Component = GeneralRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+
+    const titles = screen
+      .getAllByTestId('card')
+      .map((c) => c.getAttribute('data-title'))
+    expect(titles).not.toContain('settings:general.credits')
   })
 
   it('says so when the saved data folder is unavailable (#8855)', async () => {

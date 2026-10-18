@@ -10,6 +10,7 @@ import { useShellMotion } from '@/components/shell/useShellMotion'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { InterfaceProvider } from '@/providers/InterfaceProvider'
 import { UsageActivityRecorder } from '@/providers/UsageActivityRecorder'
+import { ActiveModelsSync } from '@/providers/ActiveModelsSync'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { KeyboardShortcutsProvider } from '@/providers/KeyboardShortcuts'
 import { DataProvider } from '@/providers/DataProvider'
@@ -38,6 +39,7 @@ import { WindowResizeGrips } from '@/components/WindowResizeGrips'
 import ErrorDialog from '@/containers/dialogs/ErrorDialog'
 import LlamacppBusyOnExitDialog from '@/containers/dialogs/LlamacppBusyOnExitDialog'
 import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
+import { EngineAddonOffer } from '@/containers/EngineAddon'
 import MissingDependenciesDialog from '@/containers/dialogs/MissingDependenciesDialog'
 import { MigrationAssistant } from '@/containers/MigrationAssistant'
 import { TemporaryChatGuard } from '@/containers/TemporaryChatGuard'
@@ -50,6 +52,8 @@ import { RemotePairingConfirm } from '@/containers/RemotePairingConfirm'
 import { FlintServerAutoConnect } from '@/containers/FlintServerAutoConnect'
 import { detectWindowChrome } from '@/lib/titlebar'
 import { CampaignRunHost } from '@/containers/CampaignRunHost'
+import { ServerFolderPickerHost } from '@/containers/ServerFolderChooser'
+import { ServerOfflineBanner } from '@/containers/ServerOfflineBanner'
 
 /**
  * The app shell: the sidebar (on narrow windows a navigation sheet) beside the
@@ -91,6 +95,8 @@ const AppLayout = () => {
           <RemotePairingConfirm />
           {/* Keeps campaign task runs going on every route (R3). */}
           {IS_TAURI && <CampaignRunHost />}
+          {/* The browser's folder chooser over the server's roots. */}
+          {!IS_TAURI && <ServerFolderPickerHost />}
           {/* Only a borderless window draws its own caption buttons and resize
               grips. Windows has a native title bar, which owns dragging, snap,
               double-click maximise and the caption buttons; nothing here may sit
@@ -103,7 +109,9 @@ const AppLayout = () => {
             className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-card px-3 shadow-[inset_0_0_0_0.8px_var(--border)]"
           >
             <TopHeader />
-            <div ref={pageRef} className="relative min-h-0 flex-1 overflow-hidden">
+            {/* The browser client says when its server stops answering. */}
+            {!IS_TAURI && <ServerOfflineBanner />}
+            <div ref={pageRef} className="relative -mr-3 min-h-0 flex-1 overflow-hidden pr-3">
               <Outlet />
             </div>
           </main>
@@ -159,6 +167,7 @@ export default function MainRootLayout() {
         <TranslationProvider>
           <ExtensionProvider>
             <DataProvider />
+            <ActiveModelsSync />
             <GlobalEventHandler />
             {/* One mount, above every route: Search is offered from the
                 rail and from Cowork's own header, and a dialog that lived
@@ -173,6 +182,7 @@ export default function MainRootLayout() {
           <ErrorDialog />
           <LlamacppBusyOnExitDialog />
           <LlamacppOomListener />
+          <EngineAddonOffer />
           <MissingDependenciesDialog />
           <MigrationAssistant />
           <OutOfContextPromiseModal />

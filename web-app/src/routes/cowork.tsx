@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { useSecondClock } from '@/lib/sharedClock'
+import { isPlatformTauri } from '@/lib/platform/utils'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { toAssetUrl } from '@/lib/assetPath'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
@@ -46,7 +48,6 @@ import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
   Fragment,
-  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -220,10 +221,8 @@ import {
   type DirectEditFacts,
 } from '@/containers/dialogs/DirectEditConfirmDialog'
 import {
-  defaultModeFor,
   isReadOnly,
   modeOf,
-  modeShortLabelKey,
 } from '@/lib/coworkMode'
 import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
@@ -449,7 +448,7 @@ import {
   useCoworkWorktrees,
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
-import { DEFAULT_SESSION_TITLE } from '@/lib/coworkSessionStart'
+import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { CoworkSessionWorktreeBar } from '@/containers/CoworkSessionWorktreeBar'
@@ -475,6 +474,7 @@ import { CoworkBundleImport } from '@/containers/CoworkBundleImport'
 import { CoworkEventExport } from '@/containers/CoworkEventExport'
 import { recordEvents } from '@/lib/eventLog'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
+import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import {
   beginTeamChild,
   settleTeamChild,
@@ -517,7 +517,20 @@ import {
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
-import { isRemoteSession, sendRemoteTurn, useRemoteCowork } from '@/lib/remoteCowork'
+import {
+  allowedRemoteModes,
+  isRemoteSession,
+  modeToAccess,
+  sendRemoteTurn,
+  serverPageMode,
+  setRemoteMode,
+  startRemoteSession,
+  useRemoteCowork,
+  useRunnerInfo,
+} from '@/lib/remoteCowork'
+import { setRunModel } from '@/lib/remoteRunner'
+import { isServerTransport } from '@/lib/serverTransportFlag'
+import { pickServerFolder } from '@/lib/serverFolderPicker'
 import { MAX_RUN_ATTACHMENTS, type RunAttachment } from '@/lib/remoteRunner'
 import { RemoteWorktreePanel } from '@/components/server/RemoteWorktreePanel'
 import { notifyAnswerFinished } from '@/lib/completionSound'
@@ -736,7 +749,11 @@ export function CoworkPage() {
     () => (folder ? [folder, ...extraFolders] : []),
     [folder, extraFolders]
   )
-  const mode = modeOf(session ?? {})
+  // On a server page the mode is the server's: a server session shows the
+  // access the server reported, and nothing defaults to Auto there.
+  const mode = isServerTransport() ? serverPageMode(session ?? undefined) : modeOf(session ?? {})
+  const runnerInfoForModes = useRunnerInfo(isServerTransport())
+  const modeOptions = isServerTransport() ? allowedRemoteModes(runnerInfoForModes) : undefined
 
   /**
    * The one description of this run.
@@ -1810,10 +1827,14 @@ export function CoworkPage() {
 
   const attachFolder = useCallback(async (given?: string) => {
     const openingSessionId = session?.id
+    // A browser cannot open a native folder dialog: on a page `flint serve`
+    // serves, the folders come from the server's allowed roots instead.
     const picked =
       typeof given === 'string'
         ? given
-        : await serviceHub.dialog().open({ directory: true })
+        : isServerTransport()
+          ? await pickServerFolder()
+          : await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
     // A split-view pane's session is never the global current one, so it is
     // compared against the pane's own id.
@@ -1821,6 +1842,24 @@ export function CoworkPage() {
       (paneSessionIdRef.current ?? useCoworkSessions.getState().currentId) !==
         openingSessionId) return
     const sid = ensureCurrentSession(paneSessionIdRef.current)
+    // A page `flint serve` serves has no agent tools of its own: a blank
+    // local session given a server folder becomes a server session there.
+    if (isServerTransport() && typeof given !== 'string' && !isRemoteSession(sid)) {
+      const current = useCoworkSessions.getState().sessions.find((x) => x.id === sid)
+      if (!current || isSessionEmpty(current)) {
+        try {
+          // The mode picked before the folder travels with the new session.
+          await startRemoteSession({
+            folder: picked,
+            ...(current?.mode ? { access: modeToAccess(current.mode) } : {}),
+          })
+          return
+        } catch (e) {
+          // A server that does not run sessions: attach as before.
+          console.warn('server session not started', e)
+        }
+      }
+    }
     if (!useCoworkRun.getState().runs[sid] && authorityMayChange(sid))
       useCoworkSessions.getState().setFolder(sid, picked)
     else setPendingFolder((pending) => ({ ...pending, [sid]: picked }))
@@ -1847,7 +1886,9 @@ export function CoworkPage() {
    */
   const addExtraFolder = useCallback(async () => {
     if (!session?.id || folderHeld(session.id)) return
-    const picked = await serviceHub.dialog().open({ directory: true })
+    const picked = isServerTransport()
+      ? await pickServerFolder()
+      : await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
     if (folderHeld(session.id)) return
     const sid = session.id
@@ -2136,7 +2177,9 @@ export function CoworkPage() {
   const applySessionId = session?.id
   const refreshGit = git.refresh
   const sandboxApply = useMemo<SandboxApplyActions | undefined>(() => {
-    if (!folder || !applySessionId) return undefined
+    // Applying writes this machine's files through desktop-only commands; the
+    // browser client of `flint serve` reviews without them.
+    if (!isPlatformTauri() || !folder || !applySessionId) return undefined
     const planFor = (path: string) =>
       planSandboxApply(workspacePath, applyFolders, path)
     return {
@@ -2252,7 +2295,14 @@ export function CoworkPage() {
           .getState()
           .authorize(sid, folder, dataFolder, extraFolders)
         if (!result.ok) {
-          if (result.reason !== 'superseded') toast.error(result.reason)
+          // One toast per folder: reopening sessions that share an unreadable
+          // folder updated the same message instead of stacking copies, and it
+          // clears itself.
+          if (result.reason !== 'superseded')
+            toast.error(result.reason, {
+              id: `folder-access:${folder}`,
+              duration: 8000,
+            })
           return
         }
         const current = useCoworkSessions
@@ -2262,7 +2312,10 @@ export function CoworkPage() {
           await useDirectEditGrants.getState().revokeSession(sid)
         }
       } catch (error) {
-        toast.error(String(error))
+        toast.error(String(error), {
+          id: `folder-access:${folder}`,
+          duration: 8000,
+        })
       } finally {
         done()
       }
@@ -2536,13 +2589,8 @@ export function CoworkPage() {
 
   // Advances the cards' elapsed labels. Only while work is live: an idle
   // conversation must not re-render every second.
-  const [activityNow, setActivityNow] = useState(() => Date.now())
   const activityActive = taskCounts.running + taskCounts.queued > 0
-  useEffect(() => {
-    if (!activityActive) return
-    const id = setInterval(() => setActivityNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [activityActive])
+  const activityNow = useSecondClock(activityActive)
 
   // A task the inline card asked the panel to reveal.
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
@@ -2686,8 +2734,13 @@ export function CoworkPage() {
 
   // The status line's phase: shown for the whole run, not only the gaps.
   const runStatusNow = useMemo(
-    () => runStatus(running, displayedTurns),
-    [running, displayedTurns]
+    () => runStatus(running, displayedTurns, t),
+    [running, displayedTurns, t]
+  )
+  // A run held on an approval is waiting for the user, not working: the
+  // status line and the activity card stop their clocks and say so.
+  const waitingForUser = useToolApprovalRequests((s) =>
+    Object.values(s.pending).some((p) => p.threadId === session?.id)
   )
 
 
@@ -2839,7 +2892,9 @@ export function CoworkPage() {
       toast.error(
         resolved.unavailable
           ? t('common:sessionModelUnavailable', { model: resolved.unavailable.id })
-          : t('common:selectModel')
+          : resolved.needsKey
+            ? t('common:selectModelNoKey', { provider: resolved.needsKey })
+            : t('common:selectModel')
       )
       onRefused?.()
       return
@@ -2853,7 +2908,10 @@ export function CoworkPage() {
       // refusal is, the way a tool-call message offers it in chat.
       const modelId = selectedModel.id
       const providerId = resolved.choice?.provider ?? globalProvider
+      // Kept until dismissed: it is the only sign the send was refused, and
+      // its action is the fix (CW-002: a 4 s toast read as a silent no-op).
       toast.error(t('common:modelNoTools', { model: modelId }), {
+        duration: Infinity,
         action: providerId
           ? {
               label: t('common:modelCapability.enableAlways'),
@@ -5504,7 +5562,7 @@ export function CoworkPage() {
       }
     >
       <PanelRight className="size-4" aria-hidden />
-      <span className="max-sm:sr-only">{t('common:coworkLayout.output')}</span>
+      <span className="max-lg:sr-only">{t('common:coworkLayout.output')}</span>
     </Button>
   )
   // The rail buttons stay in the composer row whether or not the output panel
@@ -5537,16 +5595,49 @@ export function CoworkPage() {
       key={session?.id ?? 'none'}
       model={session?.model}
       useLastUsedModel={!session?.model}
-      onModelChange={(model) =>
-        useCoworkSessions
-          .getState()
-          .setModel(ensureCurrentSession(paneSessionIdRef.current), {
+      onModelChange={(model) => {
+        const sid = ensureCurrentSession(paneSessionIdRef.current)
+        useCoworkSessions.getState().setModel(sid, {
           provider: model.provider,
           id: model.id,
         })
-      }
+        if (!isServerTransport()) return
+        // On a server page the choice is also the browser's stored selection,
+        // the model server sessions default to, and a server session in view
+        // switches to it on the server.
+        useModelProvider.getState().selectModelProvider(model.provider, model.id)
+        if (isRemoteSession(sid)) {
+          void setRunModel(sid, model.id)
+            .then(() =>
+              useCoworkSessions.setState((st) => ({
+                sessions: st.sessions.map((x) =>
+                  x.id === sid ? { ...x, remoteModel: model.id } : x
+                ),
+              }))
+            )
+            .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
+        }
+      }}
     />
   )
+
+  // A server session runs with the server's model, which may differ from the
+  // picker's: the header names the one it runs with.
+  const serverModelChip = session?.remote ? (
+    <span
+      data-testid="cowork-server-model"
+      className={cn(
+        'min-w-0 shrink truncate rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground',
+        // On a phone it shares the row with the view switch, which keeps its room.
+        phone ? 'max-w-24' : 'max-w-56'
+      )}
+      title={session.remoteModel ?? undefined}
+    >
+      {t('integrations:serverSession.runsWith', {
+        model: session.remoteModel || t('integrations:remoteRunner.serverDefault'),
+      })}
+    </span>
+  ) : null
 
   // Mode, access and workspace: in the context bar on wide screens, in the
   // composer row on phones where the bar holds the view switch.
@@ -5584,7 +5675,15 @@ export function CoworkPage() {
         gitBranch={gitBranch}
         onAttach={() => void attachFolder()}
         onDetach={detachFolder}
-        access={effective.access}
+        // With no folder, describe what attaching will give: direct editing,
+        // unless automatic worktrees are on (useCoworkSessions' attach default).
+        access={
+          folder
+            ? effective.access
+            : useCoworkParallel.getState().autoWorktree
+              ? 'review-only'
+              : 'edit-folder'
+        }
         extraFolders={extraFolders}
         extraFoldersWritable={
           capabilityState.known && capabilityState.directEdit
@@ -5597,22 +5696,27 @@ export function CoworkPage() {
 
   // What the run may do and how it works: under the composer, as quiet
   // one-word buttons (Claude's layout), and as pills in a pane's composer row.
-  const runControls = (
-    variant: 'pill' | 'quiet',
-    effort?: { node: ReactNode; overridden: boolean; label: string | null }
-  ) => {
+  const runControls = (variant: 'pill' | 'quiet') => {
     const modeSelector = (
       <CoworkModeSelector
         variant="pill"
         mode={mode}
+        options={modeOptions}
         // A choice made before the first message still needs a session to
         // live on; dropping it left the session in its default mode while the
         // user believed they had picked another.
-        onChange={(next) =>
-          useCoworkSessions
-            .getState()
-            .setMode(ensureCurrentSession(paneSessionIdRef.current), next)
-        }
+        onChange={(next) => {
+          const sid = ensureCurrentSession(paneSessionIdRef.current)
+          useCoworkSessions.getState().setMode(sid, next)
+          // A server session runs with the server's access: the choice is
+          // sent there, and the picker shows what the server answered. One
+          // that does not land is sent again before the next message.
+          if (isRemoteSession(sid)) {
+            void setRemoteMode(sid, next).catch((e) =>
+              toast.error(e instanceof Error ? e.message : String(e))
+            )
+          }
+        }}
       />
     )
     const profilePicker =
@@ -5624,21 +5728,11 @@ export function CoworkPage() {
           onAuto={() => useWorkProfiles.getState().clearManual(session.id)}
         />
       ) : null
-    // Non-default settings stay named next to the closed group.
+    // The mode and the effort sit in the row itself, one click away; only
+    // the work profile stays behind the group, named beside it when set.
     const exceptions: RunSettingsException[] = []
-    if (mode !== defaultModeFor(folder))
-      exceptions.push({
-        id: 'mode',
-        label: t(modeShortLabelKey(mode)),
-        warn: mode === 'auto' || mode === 'bypass',
-      })
     if (workProfileChoice?.manual)
       exceptions.push({ id: 'profile', label: workProfile(workProfileChoice.id).label })
-    if (effort?.overridden)
-      exceptions.push({
-        id: 'effort',
-        label: t('common:coworkRunSettings.effort', { level: effort.label ?? '' }),
-      })
     return (
     <>
       {/* Folder access stays in the row: it says what can be written. */}
@@ -5665,11 +5759,10 @@ export function CoworkPage() {
           else void returnToReviewOnly()
         }}
       />
-      <CoworkRunSettings exceptions={exceptions}>
-        {modeSelector}
-        {profilePicker}
-        {effort?.node}
-      </CoworkRunSettings>
+      {modeSelector}
+      {profilePicker && (
+        <CoworkRunSettings exceptions={exceptions}>{profilePicker}</CoworkRunSettings>
+      )}
     </>
     )
   }
@@ -5756,10 +5849,16 @@ export function CoworkPage() {
   )
 
   const runningChip = running ? (
-    <Chip className="border-transparent bg-transparent text-secondary-foreground">
+    <Chip className="shrink-0 border-transparent bg-transparent text-secondary-foreground">
       <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden />
-      {/* Icon only on a phone or in a pane, where the title needs the room. */}
-      <span className={paneChrome ? 'sr-only' : 'max-md:sr-only'}>
+      {/* Icon only on a phone, in a pane, or when the header's context bar is
+          too narrow for the word: the state stays visible and the folder
+          chip beside it is the one that gives way. */}
+      <span
+        className={
+          paneChrome ? 'sr-only' : 'max-md:sr-only @max-[7.5rem]/ctx:sr-only'
+        }
+      >
         {t('common:coworkLayout.running')}
       </span>
     </Chip>
@@ -5857,6 +5956,7 @@ export function CoworkPage() {
           controls={paneChrome.controls}
         >
           {runningChip}
+          {serverModelChip}
           {progressButton}
           {headerStop}
           {!phone && !showComposerRailButtons && outputToggle}
@@ -5884,6 +5984,7 @@ export function CoworkPage() {
             >
               {workspacePill}
               {runningChip}
+              {serverModelChip}
               {progressButton}
             </div>
           )}
@@ -5907,6 +6008,7 @@ export function CoworkPage() {
         // row of their own over the page.
         <div className="flex shrink-0 items-center gap-2 pt-2 pb-2">
           {viewSwitch(false)}
+          {serverModelChip}
           {headerStop}
         </div>
       )}
@@ -5959,7 +6061,9 @@ export function CoworkPage() {
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState
                 folder={folder}
+                access={effective.access}
                 onPick={(text) => usePrompt.getState().setPrompt(text)}
+                onAttachFolder={() => void attachFolder()}
               />
             ) : (
               <Conversation className="absolute inset-0 text-start">
@@ -6060,6 +6164,7 @@ export function CoworkPage() {
                             <CoworkWorkflowCard
                               view={view}
                               now={activityNow}
+                              waiting={waitingForUser}
                               onOpenTask={(task) => {
                                 showTaskInPanel(task)
                                 revealOutput()
@@ -6251,6 +6356,9 @@ export function CoworkPage() {
                         hideIdle={!awaitingModel}
                         stateKey={session?.id}
                         status={runStatusNow}
+                        waitingLabel={
+                          waitingForUser ? t('common:waitingForYou') : undefined
+                        }
                       />
                     </div>
                   )}
@@ -6371,6 +6479,11 @@ export function CoworkPage() {
                   beneath the conversation. */}
               {/* Not beside the session's own worktree bar: a session that
                   already has a worktree is not about to adopt another. */}
+              {/* Whether a folder's own hooks and agents may run: asked here,
+                  over the composer, so it cannot scroll away. Outside the
+                  stack so it never pushes the session's own bars behind
+                  "Show N more". */}
+              <FolderTrustBanner folder={folder} />
               {/* The bars over the composer stack: two at a time, the rest
                   behind "Show N more". */}
               <CoworkBarStack>
@@ -6551,16 +6664,7 @@ export function CoworkPage() {
                 groupOptions
                 // Under the composer, as Claude lays it out: what the run may
                 // do on the left; the effort and the model on the right.
-                belowLeftWithEffort={
-                  !paneChrome
-                    ? (ctx) =>
-                        runControls('quiet', {
-                          node: ctx.effort,
-                          overridden: ctx.effortOverridden,
-                          label: ctx.effortLabel,
-                        })
-                    : undefined
-                }
+                belowLeft={!paneChrome ? runControls('quiet') : undefined}
                 // Below the input in every layout, a split pane included: each
                 // pane picks its own session's model there, never the global one.
                 modelControl={quietModelSelector}
@@ -6586,7 +6690,13 @@ export function CoworkPage() {
 
         {view === 'details' && (
           <div
-            className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-3"
+            className={cn(
+              'flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto py-3',
+              // As a page its scrollbar sits on the pane edge, past the shell's
+              // 12px gutter (-mr-3), the gutter moving inside as padding; in a
+              // split pane the scroller already ends at the pane's edge.
+              paneChrome ? 'px-1' : '-mr-3 pr-4 pl-1'
+            )}
             data-testid="cowork-details-view"
           >
             <Button
@@ -6615,7 +6725,12 @@ export function CoworkPage() {
             root={rail.root ?? workspacePath}
             path={rail.path}
             onClose={closeRail}
-            verify={session?.id ? <BrowserVerifyPanel sessionId={session.id} /> : undefined}
+            // Open while there is nothing to preview; folded over a file.
+            verify={
+              session?.id ? (
+                <BrowserVerifyPanel sessionId={session.id} defaultOpen={!rail.path} />
+              ) : undefined
+            }
           />
         )}
         {rail?.kind === 'diff' && (
@@ -6859,7 +6974,10 @@ export function CoworkPage() {
                   )?.plan.source ?? null)
                 : null
             }
-            onApplySandboxHunk={async (projectPath, expected, content) => {
+            onApplySandboxHunk={
+              !sandboxApply
+                ? undefined
+                : async (projectPath, expected, content) => {
               const copy =
                 sandboxApply && session?.id
                   ? sandboxCopyOfProjectFile(
@@ -6880,7 +6998,8 @@ export function CoworkPage() {
               })
               if (outcome === 'applied') git.refresh()
               return outcome
-            }}
+                  }
+            }
             onApplySandboxCopy={(projectPath) => {
               if (!sandboxApply) return
               const copy = sandboxCopyOfProjectFile(

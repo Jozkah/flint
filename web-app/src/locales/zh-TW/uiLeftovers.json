@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "石板灰",
+    "vermilion": "朱紅",
+    "ink": "墨藍",
+    "moss": "苔綠",
+    "slate": "石板藍",
+    "violet": "紫羅蘭"
+  },
+  "fontSizeNames": {
+    "small": "小",
+    "medium": "中",
+    "large": "大",
+    "extraLarge": "特大"
+  },
+  "unknownSize": "大小不明",
+  "official": "官方",
+  "configuration": "設定",
+  "modelCombobox": {
+    "refresh": "重新整理模型",
+    "placeholder": "輸入或選擇模型..."
+  },
+  "hubTasks": {
+    "moreAria": "更多瀏覽方式",
+    "more": "更多",
+    "all": "全部",
+    "chat": "聊天",
+    "coding": "程式設計",
+    "reasoning": "推理",
+    "vision": "視覺",
+    "small": "小而快",
+    "tools": "工具使用",
+    "multilingual": "多語言",
+    "speech": "語音",
+    "embeddings": "嵌入",
+    "summaries": "摘要",
+    "translation": "翻譯"
+  },
+  "tokenSpeed": {
+    "aria": "此訊息的 token 用量",
+    "tooltip": "token 用量",
+    "generation": "生成",
+    "reading": "讀取",
+    "draftAccepted": "草稿已採用",
+    "tokens": "Token",
+    "memoryInRequest": "此請求中的記憶",
+    "memoriesSent": "已傳送的記憶",
+    "withheld": "因衝突而擱置:{{ids}}",
+    "perSec": "{{n}} token/秒",
+    "count": "{{n}} 個 token"
+  },
+  "serverHost": {
+    "edit": "編輯伺服器主機"
+  },
+  "extensions": {
+    "plugins": "外掛程式",
+    "global": "全域",
+    "workspace": "工作區",
+    "toggle": "切換 {{name}}",
+    "enable": "啟用",
+    "disable": "停用",
+    "workspaceOnly": "僅工作區",
+    "globalAll": "全域(所有工作區)",
+    "enabledToast": "已啟用 {{name}}",
+    "disabledToast": "已停用 {{name}}"
+  },
+  "scope": "範圍",
+  "localApi": {
+    "starting": "正在啟動伺服器...",
+    "startingDesc": "正在嘗試在連接埠 {{port}} 上啟動伺服器",
+    "status": "伺服器狀態",
+    "runningDesc": "伺服器正在執行。",
+    "stoppedDesc": "伺服器已停止。",
+    "running": "執行中",
+    "stopped": "已停止"
+  },
+  "toolOutputAlt": "工具輸出",
+  "memory": {
+    "exportFilter": "Flint 記憶匯出",
+    "why": "Flint 為什麼記住這項內容",
+    "writtenBy": "寫入者",
+    "created": "建立時間",
+    "updated": "更新時間",
+    "fromConversation": "來源對話",
+    "fromMessage": "來源訊息",
+    "projectIdentity": "專案識別",
+    "replaces": "取代",
+    "redacted": "已遮蔽",
+    "expires": "到期時間",
+    "version": "版本",
+    "source": "來源",
+    "importedFrom": "匯入自",
+    "originally": "原始資訊",
+    "fromRun": "來源執行",
+    "savedInProject": "儲存到的專案",
+    "contentHash": "內容雜湊",
+    "earlierVersions": "歷史版本",
+    "usedIn": "使用於",
+    "notRecorded": "未記錄",
+    "deletedSince": "(之後已刪除)",
+    "yes": "是",
+    "no": "否",
+    "versionUnknown": "未知(儲存時尚未記錄版本)",
+    "unknown": "未知",
+    "importedExport": "匯出 {{id}}({{scope}},{{when}})",
+    "createdWhen": "建立於 {{when}}",
+    "conversationId": "對話 {{id}}",
+    "runId": "執行 {{id}}",
+    "turnId": "輪次 {{id}}",
+    "snapshotId": "快照 {{id}}",
+    "noRequests": "尚無已記錄的請求"
+  }
+}

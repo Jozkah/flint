@@ -273,6 +273,9 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
               checkpoint: wire(target),
               latest,
               safety,
+              // Voids this session's unspent deferred approvals and tells its
+              // next run which earlier answers no longer stand.
+              session: sessionId,
             })
           } catch (e) {
             return { ok: false, reason: messageOf(e) }

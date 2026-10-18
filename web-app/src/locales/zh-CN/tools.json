@@ -21,7 +21,15 @@
     "alwaysAllow": "始终允许",
     "approvalNeeded": "需要批准",
     "permissionDetails": "权限详情",
-    "moreOptions": "更多选项"
+    "moreOptions": "更多选项",
+    "denyWithReason": "拒绝并说明原因",
+    "denyReasonLabel": "你为什么拒绝？",
+    "denyReasonPlaceholder": "告诉智能体改为做什么",
+    "denyAndSend": "拒绝并发送",
+    "editCommand": "编辑命令",
+    "editCommandLabel": "要运行的命令",
+    "editCommandHint": "修改命令，然后选择“允许一次”来运行你的版本。",
+    "editCommandNote": "“允许一次”会运行你编辑后的命令，不会为它保留长期权限。"
   },
   "toolCall": {
     "awaitingApproval": "等待批准：{{tool}}",
@@ -71,6 +79,8 @@
     "reading": "正在读取...",
     "workspaceRoot": "工作区根目录",
     "matches": "{{count}} 个匹配项",
-    "testsPassed": "{{count}} 个通过"
+    "testsPassed": "{{count}} 个通过",
+    "runningStatus": "正在运行 {{tool}}…",
+    "stillRunning": "仍在运行 {{tool}}…"
   }
 }

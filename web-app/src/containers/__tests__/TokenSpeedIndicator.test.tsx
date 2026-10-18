@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { TokenSpeedIndicator } from '@/containers/TokenSpeedIndicator'
 import { isMeaningfulSpeed, speedStats } from '@/lib/tokenSpeed'
 
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
+
 vi.mock('@/hooks/useInterfaceSettings', () => ({
   useInterfaceSettings: (sel: (s: { showTokenSpeed: boolean }) => unknown) =>
     sel({ showTokenSpeed: true }),
@@ -39,6 +41,18 @@ describe('TokenSpeedIndicator', () => {
       />
     )
     expect(screen.getByText('42 tokens/sec')).toBeTruthy()
+  })
+  // C069: at 430px the count was cut mid-word with no ellipsis.
+  it('ends a narrow row in an ellipsis instead of a cut figure', () => {
+    render(
+      <TokenSpeedIndicator
+        metadata={{
+          tokenSpeed: { tokenSpeed: 234, tokenCount: 1116, durationMs: 4770 },
+        }}
+      />
+    )
+    expect(screen.getByTestId('message-token-figures').className).toContain('overflow-hidden')
+    expect(screen.getByText('(1116 tokens)').className).toContain('truncate')
   })
 })
 

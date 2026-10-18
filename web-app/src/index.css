@@ -12,13 +12,25 @@
   --normal-bg: var(--popover);
   --normal-text: var(--popover-foreground);
   --normal-border: var(--border);
+  /* The list itself never catches a click meant for what is under it (the
+     gaps between stacked toasts, the empty strip sonner keeps for hover). */
+  pointer-events: none;
+}
+/* A Radix modal sets pointer-events: none on <body>, and sonner's cards inherit
+   it, so a toast raised while a dialog is open (an approval, an error with a
+   close button, Undo) could be seen but not clicked. Visible cards take
+   pointer events back; hidden ones keep sonner's own none. */
+.toaster [data-sonner-toast]:not([data-visible='false']) {
+  pointer-events: auto;
 }
 @import '@/styles/font.css';
 @import '@/styles/tokens.css';
 @import '@/styles/markdown.css';
+@import '@/styles/mentions.css';
 @import '@/styles/motion-chat.css';
 @import '@/styles/motion-voice.css';
 @import '@/styles/motion-controls.css';
+@import '@/styles/perf.css';
 @import '@/styles/motion-media.css';
 @import '@/styles/motion-status.css';
 @source '../node_modules/streamdown/dist/**/*.js';
@@ -61,6 +73,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-tint: var(--destructive-tint);
+  --color-destructive-text: var(--destructive-text);
   --color-success: var(--success);
   --color-success-tint: var(--success-tint);
   --color-warning: var(--warning);
@@ -171,30 +184,53 @@
   background-image: var(--grad);
 }
 
-/* One-line text that fades out at its right edge instead of ending in "…".
-   A mask, so it works on any background, light or dark. Inside a sidebar row
-   that is hovered, focused or has its menu open, the fade widens and ends
-   short of the edge, so the text is gone before the row's "⋯" button. */
+/* The fade width is a real <length>, so it can transition: the mask eases in
+   and out as a title starts or stops overflowing, never snapping. */
+@property --text-fade-width {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+/* One-line text that fades out at its right edge instead of ending in "...".
+   A mask on the text itself, so it works on any background (hover, active,
+   dragged, light, dark). The fade is long and soft, and a title that fits is
+   not faded at all. A sidebar row that shows a "..." action makes room for it
+   by padding the row (nav-kit), so the text box shrinks and the fade follows;
+   there is no overlay and no seam. */
 @utility text-fade {
-  --text-fade-width: 24px;
-  --text-fade-reserve: 0px;
+  --text-fade-width: 0px;
   display: block;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: clip;
-  /* The fade is drawn only while the text overflows its box: useTextOverflow
-     sets data-overflow. Short labels stay crisp. */
+  /* Room for ascenders and descenders: a tight line-height must not clip
+     them at the box edge. The negative margin keeps the layout unchanged. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-width)), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-width)), transparent);
+  transition: --text-fade-width 180ms var(--expo, ease);
+  /* Drawn only while the text overflows: useTextOverflow sets data-overflow. */
   &[data-overflow='true'] {
-    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-reserve) - var(--text-fade-width)), transparent calc(100% - var(--text-fade-reserve)));
-    mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-reserve) - var(--text-fade-width)), transparent calc(100% - var(--text-fade-reserve)));
+    --text-fade-width: 40px;
   }
-  /* The wider fade clears the row's ⋯ action, and only where the row has one
-     showing and the text runs under it. */
-  [data-slot='nav-item']:has([data-slot='nav-action']):is(:hover, :focus-within, :has([data-slot='nav-action'][data-state='open'])) &[data-overflow='true'] {
-    --text-fade-width: 32px;
-    --text-fade-reserve: 8px;
+  &:dir(rtl) {
+    -webkit-mask-image: linear-gradient(to left, #000 calc(100% - var(--text-fade-width)), transparent);
+    mask-image: linear-gradient(to left, #000 calc(100% - var(--text-fade-width)), transparent);
   }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* A one-line clipped label (truncate, overflow-hidden) whose line-height is
+   tight: the box ends above the descenders of g j p q y. Pad the box and pull
+   the padding back with a negative margin, so nothing moves. */
+@utility descender-safe {
+  padding-block: 0.2em;
+  margin-block: -0.2em;
 }
 
 /* Loading text: a light band sweeps across muted text. */
@@ -605,4 +641,26 @@ html.resizing *::after {
   --ansi-bright-magenta: #e9b7f2;
   --ansi-bright-cyan: #95e6ea;
   --ansi-bright-white: #ffffff;
+}
+
+/* Find in chat: every match, and the one in use. */
+::highlight(conv-find) {
+  background-color: color-mix(in srgb, #facc15 40%, transparent);
+  color: inherit;
+}
+::highlight(conv-find-active) {
+  background-color: #f59e0b;
+  color: #000;
+}
+
+/* Touch-only devices: iOS zooms into a focused text field under 16px, and the
+   composer is a contenteditable, not an input (C079). Desktop (a fine or
+   hovering pointer) keeps its sizes. */
+@media (pointer: coarse) and (hover: none) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select,
+  [contenteditable='true'] {
+    font-size: 16px !important;
+  }
 }

@@ -77,6 +77,8 @@ export interface ContextItem {
   state: UsageState
   /** i18n key suffix explaining why the state is what it is. */
   reason?: string
+  /** Values the reason's message interpolates. */
+  reasonParams?: Record<string, string>
   scope?: ContextScope
   action?: ContextAction
 }
@@ -129,7 +131,10 @@ export interface ChatContextInput {
   model: {
     id?: string
     provider?: string
-    location: 'local' | 'remote' | 'checking' | 'unknown'
+    /** `local` is this device; `network` a machine on the user's network. */
+    location: 'local' | 'network' | 'remote' | 'checking' | 'unknown'
+    /** The host requests are sent to, when not this device. */
+    host?: string | null
   }
   assistant?: { name?: string; hasInstructions: boolean }
   sentFiles: FileMetadata[]
@@ -255,7 +260,16 @@ export function summarizeChatContext(input: ChatContextInput): ContextSection[] 
             label: input.model.id,
             detail: input.model.provider,
             state: 'included-every-request',
-            reason: `location.${input.model.location}`,
+            // A remote model names where it sends; without an address the
+            // plain "remote provider" sentence stays.
+            reason:
+              input.model.location === 'remote' && input.model.host
+                ? 'location.remoteHost'
+                : `location.${input.model.location}`,
+            ...(input.model.host &&
+            (input.model.location === 'network' || input.model.location === 'remote')
+              ? { reasonParams: { host: input.model.host } }
+              : {}),
             scope: 'conversation',
             action: 'open-provider-settings',
           },

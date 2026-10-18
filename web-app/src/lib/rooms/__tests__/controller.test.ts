@@ -16,6 +16,7 @@ import {
 import type { StreamReplyInput } from '../callError'
 import type { StreamReply } from '../callError'
 import { CONCLUDE_SIGNAL } from '../consensus'
+import type { RoomWorkspaceDeps } from '../isolation'
 
 // buildPrompt resolves the rooms skill catalog via the Tauri bridge; these
 // controller tests exercise turn-taking, not extension resolution, so stub
@@ -24,7 +25,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => []) }))
 
 const initialStore = useRoomsStore.getState()
 
-function setup(streamReply: StreamReply) {
+function setup(streamReply: StreamReply, workspace?: RoomWorkspaceDeps) {
   const persistence = memoryPersistence()
   setRoomPersistence(persistence)
   let id = 0
@@ -36,6 +37,7 @@ function setup(streamReply: StreamReply) {
     lookupProvider: providerLookup(defaultProviders()),
     contextWindow: () => 32_000,
     sleep: async () => true,
+    ...(workspace ? { workspace } : {}),
   })
   return { persistence, ctl }
 }
@@ -152,6 +154,28 @@ describe('room editor', () => {
     await expect(ctl.updateRoomSettings({ ...updated, status: 'running' }, { title: 'x' })).rejects.toMatchObject({
       code: 'invalid_room',
     })
+  })
+
+  it('stores a tool budget and a participant tool picker, clamped, and clears them', async () => {
+    const { ctl } = setup(scriptedStream(() => ({ text: 'x' })).fn)
+    const room = await createDefault(ctl)
+    const pid = room.participants[0].id
+    const updated = await ctl.updateRoomSettings(room, {
+      toolBudget: { maxToolCalls: 99999, maxSteps: 5, toolTimeoutSec: 'x' as never },
+      participants: [{ id: pid, disabledTools: [' bash ', 'bash', 7 as never, 'web_fetch'] }],
+    })
+    expect(updated.toolBudget).toEqual({ maxToolCalls: 200, maxSteps: 5 })
+    expect(updated.participants[0].disabledTools).toEqual(['bash', 'web_fetch'])
+    // An unrelated edit keeps both.
+    const kept = await ctl.updateRoomSettings(updated, { title: 'Again' })
+    expect(kept.toolBudget).toEqual({ maxToolCalls: 200, maxSteps: 5 })
+    expect(kept.participants[0].disabledTools).toEqual(['bash', 'web_fetch'])
+    const cleared = await ctl.updateRoomSettings(kept, {
+      toolBudget: null,
+      participants: [{ id: pid, disabledTools: null }],
+    })
+    expect(cleared.toolBudget).toBeUndefined()
+    expect(cleared.participants[0].disabledTools).toBeUndefined()
   })
 
   it("a participant's reasoning setting persists, reaches its own turns only, and null clears it", async () => {
@@ -341,6 +365,36 @@ describe('room controller', () => {
     expect(persistence.rooms.get(room.id)!).toMatchObject({ status: 'stopped', stopReason: { kind: 'user' } })
   })
 
+  it('Stop on the first press stops a compare run even with a message queued mid-run (R-031)', async () => {
+    let n = 0
+    let release!: () => void
+    const started = new Promise<void>((r) => (release = r))
+    const fn: StreamReply = async (input: StreamReplyInput) => {
+      n++
+      input.onText('partial ')
+      release()
+      return new Promise<never>((_, reject) => {
+        input.signal.addEventListener('abort', () => reject(abortError()), { once: true })
+      })
+    }
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl, { mode: 'compare', compareRun: 'one-by-one', limits: {} })
+    await ctl.sendUserMessage(room.id, 'Q one', { kind: 'room' })
+    await ctl.start(room.id)
+    await started
+    // Sent while the first participant answers: queued for the run.
+    await ctl.sendUserMessage(room.id, 'and another thing', { kind: 'room' })
+    await ctl.stop(room.id)
+    await ctl.whenIdle(room.id)
+    await new Promise((r) => setTimeout(r, 0))
+    await ctl.whenIdle(room.id)
+    expect(persistence.rooms.get(room.id)!.status).toBe('stopped')
+    expect(ctl.isRunning(room.id)).toBe(false)
+    expect(n).toBe(1)
+    // The queued message is still recorded.
+    expect(messagesOf(persistence, room.id).some((m) => m.text === 'and another thing')).toBe(true)
+  })
+
   it('selectNext continues a user-selected room with the chosen speaker', async () => {
     const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
     const { ctl, persistence } = setup(fn)
@@ -431,6 +485,28 @@ describe('clearing a room', () => {
     expect(after.extraFolders).toEqual(['C:/notes'])
     expect(after.objective).toBe('Pick a plan')
     expect(after.limits.maxTurns).toBe(2)
+  })
+
+  it('keeps the isolated workspaces on a chat or knowledge clear; only everything removes them', async () => {
+    const { fn } = scriptedStream(() => ({ text: uniqueText() }))
+    const remove = vi.fn(async () => {})
+    const ws: RoomWorkspaceDeps = { ensure: vi.fn(), changes: vi.fn(async () => []), remove }
+    const { ctl } = setup(fn, ws)
+    const room = await createDefault(ctl)
+    await ctl.clearRoom(room.id, 'chat')
+    await ctl.clearRoom(room.id, 'knowledge')
+    expect(remove).not.toHaveBeenCalled()
+    await ctl.clearRoom(room.id, 'everything')
+    expect(remove).toHaveBeenCalledWith(room.id)
+  })
+
+  it('a change-card decision is saved with the room and dropped when the chat is cleared', async () => {
+    const { ctl, persistence, room } = await ranRoom()
+    await ctl.setChangeDecision(room.id, 'm-1', 'kept')
+    await ctl.setChangeDecision(room.id, 'm-2', 'discarded')
+    expect(persistence.rooms.get(room.id)!.changeDecisions).toEqual({ 'm-1': 'kept', 'm-2': 'discarded' })
+    await ctl.clearRoom(room.id, 'chat')
+    expect(persistence.rooms.get(room.id)!.changeDecisions).toBeUndefined()
   })
 
   it('is refused while the room is running', async () => {

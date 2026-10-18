@@ -8,6 +8,7 @@
 import Fuse from 'fuse.js'
 import { route } from '@/constants/routes'
 import { getProviderTitle } from '@/lib/utils'
+import { isPlatformTauri } from '@/lib/platform/utils'
 
 /** One searchable entry of the registry, as specified for the search index. */
 export type SettingsSearchItem = {
@@ -269,6 +270,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:dataFolder.appDataDesc',
     keywords: ['storage', 'location', 'move data', 'disk'],
   }),
+  item('general', 'start-with-computer', 'settings:startup.title', {
+    descriptionKey: 'settings:startup.off',
+    keywords: ['autostart', 'startup', 'login', 'boot', 'launch at sign in'],
+  }),
   item('general', 'spell-check', 'settings:others.spellCheck', {
     descriptionKey: 'settings:others.spellCheckDesc',
     keywords: ['spelling', 'typo'],
@@ -290,9 +295,17 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:appearance.reduceMotionDesc',
     keywords: ['animation', 'motion', 'accessibility', 'transitions'],
   }),
+  item('appearance', 'performance-mode', 'settings:appearance.performanceMode', {
+    descriptionKey: 'settings:appearance.performanceModeDesc',
+    keywords: ['performance', 'slow', 'lag', 'blur', 'battery', 'reduced', 'speed'],
+  }),
   item('appearance', 'composer-rail-buttons', 'settings:interface.composerRailButtons', {
     descriptionKey: 'settings:interface.composerRailButtonsDesc',
     keywords: ['cowork', 'output', 'preview', 'changes', 'activity', 'timeline', 'composer', 'buttons'],
+  }),
+  item('appearance', 'sidebar-items', 'settings:sidebarItems.title', {
+    descriptionKey: 'settings:sidebarItems.description',
+    keywords: ['sidebar', 'navbar', 'navigation', 'hide', 'menu', 'items', 'tabs', 'declutter'],
   }),
   item('appearance', 'completion-sound', 'settings:appearance.completionSound', {
     descriptionKey: 'settings:appearance.completionSoundDesc',
@@ -325,9 +338,13 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     'settings:interface.renderHtmlArtifacts',
     {
       descriptionKey: 'settings:interface.renderHtmlArtifactsDesc',
-      keywords: ['html', 'preview', 'artifacts'],
+      keywords: ['html', 'preview', 'artifacts', 'library'],
     }
   ),
+  item('appearance', 'wrap-code-lines', 'settings:interface.wrapCodeLines', {
+    descriptionKey: 'settings:interface.wrapCodeLinesDesc',
+    keywords: ['code', 'wrap', 'line', 'scroll'],
+  }),
   item('appearance', 'inline-citations', 'settings:interface.inlineCitations', {
     descriptionKey: 'settings:interface.inlineCitationsDesc',
     keywords: ['sources', 'favicon', 'web search', 'links'],
@@ -369,6 +386,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     keywords: ['url', 'searxng'],
   }),
   // Memory
+  item('memory', 'use-saved', 'settings:memoryPage.useSaved', {
+    descriptionKey: 'settings:memoryPage.useSavedDesc',
+    keywords: ['memory on', 'memory off', 'disable memory', 'saved memory'],
+  }),
   item('memory', 'automatically-save', 'settings:memory.automaticallySave', {
     anchor: MEMORY_AUTOSAVE_ANCHOR,
     descriptionKey: 'settings:memory.automaticallySaveDesc',
@@ -385,6 +406,9 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     keywords: ['edit memory', 'forget', 'pin', 'across chats', 'this project'],
   }),
   // Permissions
+  item('permissions', 'auto-approve-limit', 'permissions:settings.autoApproveLimit', {
+    keywords: ['unattended', 'long runs', 'pause', 'auto approve', 'limit', 'steps'],
+  }),
   item('permissions', 'conversations', 'permissions:settings.conversations', {
     descriptionKey: 'permissions:settings.conversationsDesc',
     keywords: ['allow in thread', 'this conversation', 'revoke'],
@@ -392,6 +416,18 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('permissions', 'everywhere', 'permissions:settings.everywhere', {
     descriptionKey: 'permissions:settings.everywhereDesc',
     keywords: ['always allow', 'trusted servers', 'mcp trust', 'revoke'],
+  }),
+  item('permissions', 'trusted-folders', 'permissions:trustedFolders.title', {
+    descriptionKey: 'permissions:trustedFolders.description',
+    keywords: ['hooks', 'subagents', 'agent definitions', 'workspace trust', 'folder'],
+  }),
+  item('permissions', 'approval-rules', 'permissions:rules.title', {
+    descriptionKey: 'permissions:rules.description',
+    keywords: ['always allow', 'remembered', 'revoke', 'command prefix', 'rule'],
+  }),
+  item('permissions', 'deferred-approvals', 'permissions:deferred.title', {
+    descriptionKey: 'permissions:deferred.description',
+    keywords: ['pending', 'unattended', 'schedule', 'answer later', 'queue'],
   }),
   item('permissions', 'history', 'permissions:settings.history', {
     descriptionKey: 'permissions:settings.historyDesc',
@@ -401,6 +437,19 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('agent-tools', 'enable', 'settings:agentTools.enable', {
     descriptionKey: 'settings:agentTools.enableDesc',
     keywords: ['agent', 'tools', 'filesystem'],
+  }),
+  item('agent-tools', 'compaction', 'settings:compaction.title', {
+    descriptionKey: 'settings:compaction.autoDescription',
+    keywords: [
+      'compaction',
+      'auto-compact',
+      'compact',
+      'summarize',
+      'context window',
+      'reserved tokens',
+      'recent messages',
+      'trim',
+    ],
   }),
   item('agent-tools', 'network', 'settings:agentTools.network', {
     descriptionKey: 'settings:agentTools.networkDesc',
@@ -438,6 +487,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
       keywords: ['autostart', 'boot'],
     }
   ),
+  item('local-api-server', 'default-model', 'settings:localApiServer.defaultModel', {
+    descriptionKey: 'settings:localApiServer.defaultModelDesc',
+    keywords: ['model', 'fallback model', 'override'],
+  }),
   // Attachments
   item('attachments', 'enable', 'settings:attachments.enable', {
     descriptionKey: 'settings:attachments.enableDesc',
@@ -510,6 +563,17 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     'mcp-servers:runtimeSettings.toolCallTimeout',
     { keywords: ['timeout', 'seconds', 'slow tool'] }
   ),
+  item('mcp-servers', 'idle-shutdown', 'mcp-servers:runtimeSettings.idleShutdown', {
+    descriptionKey: 'mcp-servers:runtimeSettings.idleShutdownDesc',
+    keywords: ['idle', 'stop servers', 'memory', 'free memory', 'minutes'],
+  }),
+  item('mcp-servers', 'server-tool-timeout', 'mcp-servers:lifecycle.toolTimeout', {
+    anchor: undefined,
+    anchorNote:
+      'Rendered inside the card of each configured server, which exists only ' +
+      'for servers the user has added, so there is no fixed element to scroll to.',
+    keywords: ['timeout', 'seconds', 'per server', 'slow tool'],
+  }),
   item(
     'mcp-servers',
     'max-tool-output',
@@ -609,6 +673,32 @@ const stripMarkdown = (text: string): string =>
   text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
 
 /**
+ * Pages whose controls drive this machine through desktop-only commands (the
+ * local API server, phone pairing, the HTTPS proxy, coding CLIs, OS schedules,
+ * extensions). The browser client of `flint serve` has no route for them, so
+ * they are left out of its menu and search rather than shown as dead controls.
+ */
+const DESKTOP_ONLY_PAGES: ReadonlySet<string> = new Set([
+  'local-api-server',
+  'remote-access',
+  'https-proxy',
+  'claude-code',
+  'schedules',
+  'extensions',
+  'agent-tools',
+])
+
+/** Whether a settings page works on this platform. */
+export function isSettingsPageAvailable(id: string): boolean {
+  return isPlatformTauri() || !DESKTOP_ONLY_PAGES.has(id)
+}
+
+/** The anchor a provider page puts on one setting's row. */
+export function providerSettingAnchor(provider: string, key: string): string {
+  return `provider-setting-${provider}-${key}`.replace(/[^A-Za-z0-9_-]/g, '-')
+}
+
+/**
  * Resolve the static registry plus the currently active providers into a flat,
  * translated index. Rebuilt whenever providers or the language change, so
  * providers added or removed at runtime appear and disappear with them.
@@ -618,7 +708,13 @@ export function buildSettingsIndex(
   providers: ProviderForIndex[] = []
 ): SettingsIndexEntry[] {
   const entries: SettingsIndexEntry[] = []
+  const hiddenRoutes = new Set<string>(
+    SETTINGS_PAGES.filter((p) => !isSettingsPageAvailable(p.id)).map(
+      (p) => p.route
+    )
+  )
   for (const page of SETTINGS_PAGES) {
+    if (hiddenRoutes.has(page.route)) continue
     entries.push({
       kind: 'page',
       id: `page-${page.id}`,
@@ -629,6 +725,7 @@ export function buildSettingsIndex(
     })
   }
   for (const setting of SETTINGS_ITEMS) {
+    if (hiddenRoutes.has(setting.route)) continue
     entries.push({
       kind: 'setting',
       id: setting.id,
@@ -671,6 +768,7 @@ export function buildSettingsIndex(
           : undefined,
         keywords: [setting.key.replace(/-/g, ' ')],
         providerName: provider.provider,
+        anchor: providerSettingAnchor(provider.provider, setting.key),
       })
     }
   }

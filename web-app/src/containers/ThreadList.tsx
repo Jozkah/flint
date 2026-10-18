@@ -1,4 +1,5 @@
 import { FadeText } from '@/components/ui/fade-text'
+import { splitTitleTail } from '@/lib/titleTail'
 import {
   Check,
   Copy,
@@ -43,11 +44,8 @@ import {
   updatedMs,
   useThreadStatus,
 } from '@/containers/ThreadStatusMark'
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from '@/components/ui/hover-card'
+import { RowPreview } from '@/components/shell/nav/RowPreview'
+import { threadPreviewFacts, threadPreviewTranscript } from '@/lib/threadPreview'
 import { useDraggable } from '@dnd-kit/core'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
@@ -59,6 +57,7 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { forkThread } from '@/lib/forkThread'
+import { continueFromSummaryWithToast } from '@/lib/continueFromSummaryToast'
 import { ConvertToCoworkDialog } from '@/containers/dialogs/ConvertToCoworkDialog'
 import { convertChatToCowork } from '@/lib/convertChatToCowork'
 import { prefetchThreadMessages } from '@/lib/threadPrefetch'
@@ -66,7 +65,6 @@ import { ExportSubmenu } from '@/components/ExportMenu'
 import { docFromThread } from '@/lib/exportDoc'
 import { regenerateTitle } from '@/lib/regenerateTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
-import { ThreadPreviewSummary } from '@/containers/ThreadPreviewSummary'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { ThreadMessage } from '@janhq/core'
@@ -94,7 +92,10 @@ const ThreadItem = memo(
     // and a short press is still a click (the sensor waits for movement).
     const drag = useDraggable({
       id: thread.id,
-      data: { threadId: thread.id },
+      data: {
+        threadId: thread.id,
+        label: (thread.title || '').replace(/<span[^>]*>|<\/span>/g, ''),
+      },
       disabled: !draggable || !!selection,
     })
     const deleteThread = useThreads((state) => state.deleteThread)
@@ -102,6 +103,8 @@ const ThreadItem = memo(
     const { folders, addFolder } = useThreadManagement()
     const { t } = useTranslation()
     const navigate = useNavigate()
+    // Narrow windows: the sidebar is a sheet that must not stay over the chat.
+    const setOpenMobile = useShellNav().setOpenMobile
     const [menuOpen, setMenuOpen] = useState(false)
     const cursor = useCursorAnchor()
     // "Convert to Cowork" is offered only when the menu was opened by
@@ -179,7 +182,6 @@ const ThreadItem = memo(
     )
     const currentGroupId = thread.metadata?.project?.id ?? null
     const [newGroupOpen, setNewGroupOpen] = useState(false)
-    const [previewOpen, setPreviewOpen] = useState(false)
 
     /** Move the thread into a group, or out of every group with `null`. */
     // Home groups are the source of truth; the mirror updates
@@ -192,13 +194,8 @@ const ThreadItem = memo(
 
     const [groupMenuOpen, setGroupMenuOpen] = useState(false)
     // The peek must not show while the row's menu or one of its dialogs is up.
-    // Closing it is not enough: Radix keeps `previewOpen` true, so the card
-    // came back the moment the menu closed (a picked item, the delete dialog).
     const previewBlocked =
       menuOpen || renameOpen || deleteConfirmOpen || newGroupOpen || convertOpen
-    useEffect(() => {
-      if (previewBlocked) setPreviewOpen(false)
-    }, [previewBlocked])
 
     /**
      * Numbered like the design's group picker: while "Move to group" is open,
@@ -312,28 +309,36 @@ const ThreadItem = memo(
             ) : null}
           </Link>
           :
-          <HoverCard
-            openDelay={650}
-            closeDelay={80}
-            // Shut while the row's menu is open; it used to open over the menu
-            // and hide its submenus.
-            open={previewOpen && !previewBlocked}
-            onOpenChange={setPreviewOpen}
+          // A peek at the chat without opening it: the same card as a Cowork
+          // session's. Its message count and first question are read from
+          // disk when it opens, and a written summary asked of a local model.
+          <RowPreview
+            title={thread.title || t('common:newThread')}
+            status={status === 'active' ? 'running' : status === 'wait' ? 'waiting' : 'idle'}
+            meta={{
+              place: thread.metadata?.project?.name ? [thread.metadata.project.name] : undefined,
+              updated: thread.updated ? updatedMs(thread.updated) : undefined,
+            }}
+            model={thread.model}
+            summary={lastUserMessageText}
+            summaryKey={`${thread.id}\u0000${thread.updated ?? ''}`}
+            transcript={() => threadPreviewTranscript(thread.id)}
+            facts={() => threadPreviewFacts(thread.id)}
+            suppressed={previewBlocked}
           >
-            <HoverCardTrigger asChild>
               <NavButton asChild size="sm" isActive={isSelected}>
                 <Link
                   to="/threads/$threadId"
                   params={{ threadId: thread.id }}
                   data-testid="thread-nav-item"
-                  onClick={
-                    selection
-                      ? (e: React.MouseEvent) => {
-                          e.preventDefault()
-                          selection.toggle(thread.id)
-                        }
-                      : undefined
-                  }
+                  onClick={(e: React.MouseEvent) => {
+                    if (selection) {
+                      e.preventDefault()
+                      selection.toggle(thread.id)
+                      return
+                    }
+                    setOpenMobile?.(false)
+                  }}
                   onPointerEnter={() =>
                     prefetchThreadMessages(thread.id, (id) =>
                       serviceHub.messages().fetchMessages(id)
@@ -354,30 +359,26 @@ const ThreadItem = memo(
                       {selection.selected.has(thread.id) && <Check className="size-3" />}
                     </span>
                   ) : (
-                    <ThreadStatusMark status={status} />
+                    <ThreadStatusMark
+                      status={status}
+                      fork={splitTitleTail(thread.title || '')[1].trim() === '(fork)'}
+                    />
                   )}
-                  <FadeText className={isSelected ? 'font-medium' : undefined}>{thread.title || t('common:newThread')}</FadeText>
+                  {(() => {
+                    const [head, tail] = splitTitleTail(thread.title || t('common:newThread'))
+                    const isFork = tail.trim() === '(fork)'
+                    return (
+                      <>
+                        <FadeText className={isSelected ? 'font-medium' : undefined}>{head}</FadeText>
+                        {tail && !isFork && (
+                          <span className={cn('-ml-1 shrink-0', isSelected && 'font-medium')}>{tail.trim()}</span>
+                        )}
+                      </>
+                    )
+                  })()}
                 </Link>
               </NavButton>
-            </HoverCardTrigger>
-            {/* A peek at the chat without opening it: its title, when it was
-                last active and the last thing asked. */}
-            <HoverCardContent side="right" align="start" sideOffset={10} className="w-80 max-w-[calc(100vw-2rem)] p-3">
-              {/* The written summary is asked for here, when the card opens. */}
-              <ThreadPreviewSummary
-                open={previewOpen && !previewBlocked}
-                threadId={thread.id}
-                updated={thread.updated}
-                fallback={lastUserMessageText}
-              />
-              <p className="line-clamp-2 text-[0.8125rem] font-medium text-foreground">
-                {thread.title || t('common:newThread')}
-              </p>
-              <p className="mt-1 text-[11px] text-subtle-foreground">
-                {thread.updated ? new Date(updatedMs(thread.updated)).toLocaleString() : ''}
-              </p>
-            </HoverCardContent>
-          </HoverCard>
+          </RowPreview>
         }
         <DropdownMenu
           open={menuOpen}
@@ -397,6 +398,7 @@ const ThreadItem = memo(
             ) : (
               <NavAction
                 showOnHover
+                {...(currentProjectId ? { 'data-reveal': 'always' } : {})}
                 className={cn(
                   'pointer-coarse:size-9',
                   currentProjectId && 'top-1/2 right-1 -translate-y-1/2 opacity-100'
@@ -449,6 +451,17 @@ const ThreadItem = memo(
             >
               <GitFork className="size-4" />
               <span>{t('chat:fork.chat')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              data-testid="continue-from-summary"
+              onSelect={() =>
+                continueFromSummaryWithToast(thread.id, t, (newId) =>
+                  navigate({ to: route.threadsDetail, params: { threadId: newId } })
+                )
+              }
+            >
+              <Sparkles className="size-4" />
+              <span>{t('chat:continueSummary.menu')}</span>
             </DropdownMenuItem>
             <ExportSubmenu
               versions

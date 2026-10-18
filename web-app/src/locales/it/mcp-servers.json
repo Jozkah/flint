@@ -9,7 +9,9 @@
       "title": "Flint completa le attività nel tuo browser",
       "description": "Installa l'estensione per consentire a Flint l'accesso al browser",
       "getExtension": "Ottieni estensione"
-    }
+    },
+    "requires": "Richiede l'installazione dell'estensione del browser nel tuo browser basato su Chrome.",
+    "install": "Installa l'estensione →"
   },
   "serverName": "Nome server",
   "enterServerName": "Inserisci il nome del server",
@@ -145,7 +147,7 @@
   "experimental": "Sperimentale",
   "editAllJson": "Modifica JSON di tutti i server",
   "findMore": "Trova altri server MCP su",
-  "allowPermissions": "Consenti tutte le autorizzazioni degli strumenti MCP",
+  "allowPermissions": "Consenti tutti i permessi degli strumenti MCP",
   "allowPermissionsDesc": "Se abilitato, tutte le chiamate agli strumenti MCP verranno approvate automaticamente senza mostrare finestre di dialogo di autorizzazione. Questa impostazione si applica a livello globale a tutte le conversazioni, incluse le nuove chat.",
   "autoApproveServer": "Approva automaticamente gli strumenti di questo server",
   "noServers": "Nessun server MCP trovato",
@@ -173,7 +175,9 @@
     "selectRouterModelPlaceholder": "Seleziona il modello di routing…",
     "routerModelSearchPlaceholder": "Cerca modelli…",
     "routerModelEmptyList": "Nessun modello leggero disponibile. Aggiungi un modello più piccolo o configura le chiavi API in Modelli.",
-    "routerModelEmptySearch": "Nessuna corrispondenza per “{{query}}”."
+    "routerModelEmptySearch": "Nessuna corrispondenza per “{{query}}”.",
+    "idleShutdown": "Arresta i server inattivi dopo (minuti)",
+    "idleShutdownDesc": "Un server MCP senza chiamate a strumenti per questo tempo viene arrestato per liberare memoria e riparte alla prossima necessità. I server impostati per avviarsi con Flint restano attivi. Imposta 0 per non arrestarli mai."
   },
   "auth": {
     "label": "Autenticazione:",
@@ -262,7 +266,8 @@
   "lifecycle": {
     "startWithFlint": "Avvia con Flint",
     "start": "Avvia",
-    "stop": "Ferma"
+    "stop": "Ferma",
+    "toolTimeout": "Timeout strumento (s)"
   },
   "cwd": "Directory di lavoro",
   "cwdPlaceholder": "Facoltativo, ad es. C:\\tools\\my-server",

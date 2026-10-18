@@ -5,7 +5,8 @@ import '@testing-library/jest-dom'
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
-      const named = options?.tool ?? options?.server
+      const named =
+        options?.tool ?? options?.server ?? options?.dir ?? options?.prefix
       return named ? `${key}:${named}` : key
     },
   }),
@@ -16,6 +17,7 @@ const approvalState: {
   allowedOnceCommands: Record<string, string[]>
 } = { pending: {}, allowedOnceCommands: {} }
 const resolveApproval = vi.fn()
+const chooseOption = vi.fn()
 vi.mock('@/hooks/useToolApprovalRequests', async () => {
   const { repeatCommandKey } = await import('@/lib/repeatedCommand')
   const { planGitTool } = await import('@/lib/gitTool')
@@ -43,7 +45,7 @@ vi.mock('@/hooks/useToolApprovalRequests', async () => {
       return key !== null && !!s.allowedOnceCommands[threadId]?.includes(key)
     },
     useToolApprovalRequests: (selector: (s: unknown) => unknown) =>
-      selector({ ...approvalState, resolveApproval }),
+      selector({ ...approvalState, resolveApproval, chooseOption }),
     usePendingApprovalCount: (threadId?: string) =>
       Object.values(approvalState.pending).filter(
         (e) => (e as { threadId?: string }).threadId === threadId
@@ -597,5 +599,167 @@ describe('ToolOutput', () => {
       </Tool>
     )
     expect(container).not.toHaveTextContent('tools:toolCall.result')
+  })
+})
+describe('ToolApprovalActions: the Always scope and the disclosures', () => {
+  const choice = {
+    question: 'permissions:scopeForm.question',
+    defaultId: 'prefix:git commit',
+    options: [
+      { id: 'prefix:git', label: 'prefix git' },
+      { id: 'prefix:git commit', label: 'prefix git commit' },
+      { id: 'everywhere', label: 'everywhere' },
+    ],
+  }
+  const scopeForm = {
+    root: '/work',
+    options: [
+      { type: 'command_prefix', prefix: 'git' },
+      { type: 'command_prefix', prefix: 'git commit' },
+    ],
+  }
+  const pendingWithForm = (chosenId = 'prefix:git commit') => ({
+    tc1: {
+      requestId: 'r1',
+      toolCallId: 'tc1',
+      toolName: 'bash',
+      threadId: 't1',
+      input: { command: 'git commit -m x' },
+      choice,
+      chosenId,
+      scopeForm,
+    },
+  })
+
+  beforeEach(() => chooseOption.mockClear())
+
+  it('keeps the scope radios inside the Always row, not above the buttons', () => {
+    renderApproval(pendingWithForm())
+    // Hidden with the Always row until "More options" is opened.
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('approval-more-options'))
+    const menu = screen.getByTestId('approval-scope-menu')
+    expect(menu).toContainElement(screen.getByRole('radiogroup'))
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+  })
+
+  it('names the chosen scope on the Always row and drops the Broader chip', () => {
+    renderApproval(pendingWithForm())
+    fireEvent.click(screen.getByTestId('approval-more-options'))
+    const always = screen
+      .getByTestId('approval-scope-menu')
+      .querySelector('[data-scope="allow-always"]')!
+    expect(always).toHaveTextContent(
+      'permissions:scopeForm.alwaysPrefix:git commit'
+    )
+    expect(always).toHaveTextContent(
+      'permissions:scopeForm.alwaysPrefixExplanation'
+    )
+    expect(always).not.toHaveTextContent('permissions:scope.broader')
+  })
+
+  it('shows the Broader chip again when the whole tool is chosen', () => {
+    renderApproval(pendingWithForm('everywhere'))
+    fireEvent.click(screen.getByTestId('approval-more-options'))
+    const always = screen
+      .getByTestId('approval-scope-menu')
+      .querySelector('[data-scope="allow-always"]')!
+    expect(always).toHaveTextContent('permissions:scope.broader')
+    expect(always).not.toHaveTextContent('permissions:scopeForm.alwaysPrefix')
+  })
+
+  it('passes a picked scope to the store', () => {
+    renderApproval(pendingWithForm())
+    fireEvent.click(screen.getByTestId('approval-more-options'))
+    fireEvent.click(screen.getAllByRole('radio')[0])
+    expect(chooseOption).toHaveBeenCalledWith('tc1', 'r1', 'prefix:git')
+  })
+
+  it('opens one of the reason and edit panels at a time', () => {
+    renderApproval({
+      tc1: {
+        requestId: 'r1',
+        toolCallId: 'tc1',
+        toolName: 'bash',
+        threadId: 't1',
+        input: { command: 'npm test' },
+      },
+    })
+    fireEvent.click(screen.getByTestId('approval-edit-toggle'))
+    expect(screen.getByTestId('approval-edit')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('approval-deny-reason-toggle'))
+    expect(screen.queryByTestId('approval-edit')).not.toBeInTheDocument()
+    expect(screen.getByTestId('approval-deny-reason')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('approval-edit-toggle'))
+    expect(screen.queryByTestId('approval-deny-reason')).not.toBeInTheDocument()
+  })
+
+  it('never shows two Deny buttons: the reason panel turns Deny into Deny and send', () => {
+    renderApproval({
+      tc1: {
+        requestId: 'r1',
+        toolCallId: 'tc1',
+        toolName: 'bash',
+        threadId: 't1',
+        input: { command: 'npm test' },
+      },
+    })
+    expect(
+      screen.getAllByRole('button', { name: 'permissions:scope.deny' })
+    ).toHaveLength(1)
+    fireEvent.click(screen.getByTestId('approval-deny-reason-toggle'))
+    expect(
+      screen.queryByRole('button', { name: 'permissions:scope.deny' })
+    ).not.toBeInTheDocument()
+    const send = screen.getByRole('button', {
+      name: 'tools:toolApproval.denyAndSend',
+    })
+    expect(send).toBeDisabled()
+    fireEvent.change(
+      screen.getByPlaceholderText('tools:toolApproval.denyReasonPlaceholder'),
+      { target: { value: 'not now' } }
+    )
+    expect(send).toBeEnabled()
+    fireEvent.click(send)
+    expect(resolveApproval).toHaveBeenCalledWith('tc1', 'deny', 'r1', 'not now')
+  })
+
+  it('says why the broader options are off once the command is edited', () => {
+    renderApproval({
+      tc1: {
+        requestId: 'r1',
+        toolCallId: 'tc1',
+        toolName: 'bash',
+        threadId: 't1',
+        input: { command: 'npm test' },
+      },
+    })
+    fireEvent.click(screen.getByTestId('approval-more-options'))
+    expect(screen.queryByTestId('approval-edited-note')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('approval-edit-toggle'))
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'npm run lint' },
+    })
+    expect(screen.getByTestId('approval-edited-note')).toHaveTextContent(
+      'permissions:scope.editedRunsOnce'
+    )
+    const broader = screen
+      .getByTestId('approval-scope-menu')
+      .querySelector('[data-scope="allow-thread"]')!
+    expect(broader).toBeDisabled()
+    expect(broader.getAttribute('aria-describedby')).toContain(
+      screen.getByTestId('approval-edited-note').id
+    )
+  })
+
+  it('does not take focus from a field the person is typing in', () => {
+    const composer = document.createElement('textarea')
+    document.body.appendChild(composer)
+    composer.focus()
+    renderApproval({
+      tc1: { requestId: 'r1', toolCallId: 'tc1', toolName: 'bash', threadId: 't1' },
+    })
+    expect(document.activeElement).toBe(composer)
+    composer.remove()
   })
 })

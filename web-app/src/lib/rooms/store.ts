@@ -23,6 +23,11 @@ export type RoomsState = {
   /** Transcript derived from the journal (orphaned turns shown interrupted). */
   messages: RoomMessage[]
   liveTurn: LiveTurn | null
+  /**
+   * Every turn in flight in the open room, oldest first. One in the speaking
+   * modes; in a compare room one per participant. `liveTurn` is the newest.
+   */
+  liveTurns: LiveTurn[]
   listLoading: boolean
   roomLoading: boolean
   /** Rooms with an engine run in flight in this app session. */
@@ -78,6 +83,7 @@ export const useRoomsStore = create<RoomsState>()((set, get) => ({
   journal: [],
   messages: [],
   liveTurn: null,
+  liveTurns: [],
   listLoading: false,
   roomLoading: false,
   runningRoomIds: [],
@@ -106,6 +112,7 @@ export const useRoomsStore = create<RoomsState>()((set, get) => ({
       journal: [],
       messages: [],
       liveTurn: null,
+      liveTurns: [],
     })
     try {
       const { room, journal } = await getRoomPersistence().getRoom(roomId)
@@ -124,7 +131,14 @@ export const useRoomsStore = create<RoomsState>()((set, get) => ({
   },
 
   closeRoom: () =>
-    set({ currentRoomId: null, room: null, journal: [], messages: [], liveTurn: null }),
+    set({
+      currentRoomId: null,
+      room: null,
+      journal: [],
+      messages: [],
+      liveTurn: null,
+      liveTurns: [],
+    }),
 
   applyEngineUpdate: (update) => {
     const state = get()
@@ -146,9 +160,29 @@ export const useRoomsStore = create<RoomsState>()((set, get) => ({
       }
       case 'live': {
         if (update.live) {
-          if (state.currentRoomId === update.roomId) set({ liveTurn: update.live })
-        } else if (state.liveTurn?.roomId === update.roomId) {
-          set({ liveTurn: null })
+          if (state.currentRoomId !== update.roomId) return
+          const live = update.live
+          const others = state.liveTurns.filter(
+            (l) => l.roomId === update.roomId && l.turnId !== live.turnId
+          )
+          const known = others.length < state.liveTurns.length
+          // An update to a turn already shown keeps its place; a new turn joins
+          // the end and becomes `liveTurn`.
+          const liveTurns = known
+            ? state.liveTurns.map((l) => (l.turnId === live.turnId ? live : l))
+            : [...others, live]
+          const newest = liveTurns[liveTurns.length - 1]
+          set({ liveTurn: newest.turnId === live.turnId ? live : newest, liveTurns })
+        } else if (update.turnId) {
+          const liveTurns = state.liveTurns.filter((l) => l.turnId !== update.turnId)
+          if (liveTurns.length === state.liveTurns.length && state.liveTurn?.turnId !== update.turnId)
+            return
+          set({ liveTurns, liveTurn: liveTurns[liveTurns.length - 1] ?? null })
+        } else if (state.liveTurn?.roomId === update.roomId || state.liveTurns.length) {
+          set({
+            liveTurn: state.liveTurn?.roomId === update.roomId ? null : state.liveTurn,
+            liveTurns: state.liveTurns.filter((l) => l.roomId !== update.roomId),
+          })
         }
         return
       }
@@ -168,7 +202,14 @@ export const useRoomsStore = create<RoomsState>()((set, get) => ({
     set({
       summaries: state.summaries.filter((s) => s.id !== roomId),
       ...(state.currentRoomId === roomId
-        ? { currentRoomId: null, room: null, journal: [], messages: [], liveTurn: null }
+        ? {
+            currentRoomId: null,
+            room: null,
+            journal: [],
+            messages: [],
+            liveTurn: null,
+            liveTurns: [],
+          }
         : {}),
     })
   },

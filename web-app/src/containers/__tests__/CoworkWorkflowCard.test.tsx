@@ -78,7 +78,9 @@ function Card({
   now = T0 + 5_000,
   onOpenTask = vi.fn(),
   onOpenPanel = vi.fn(),
+  waiting = false,
 }: {
+  waiting?: boolean
   state: ActivityState
   now?: number
   onOpenTask?: (task: ActivityTask) => void
@@ -86,6 +88,7 @@ function Card({
 }) {
   return (
     <CoworkWorkflowCard
+      waiting={waiting}
       view={workflowView(state, WORKFLOW)!}
       now={now}
       onOpenTask={onOpenTask}
@@ -124,6 +127,19 @@ describe('CoworkWorkflowCard', () => {
     expect(summary).toHaveTextContent(/common:tasks.runningTasks count=1/)
     expect(summary).toHaveTextContent('common:tasks.runningTools')
     expect(summary).toHaveTextContent('·')
+  })
+
+  it('says it is waiting for you, without a ticking clock, while blocked', () => {
+    render(
+      <Card
+        waiting
+        state={stateWith(task({ id: 'b', title: 'pnpm build', kind: 'shell' }))}
+      />
+    )
+    const summary = screen.getByTestId('workflow-summary')
+    expect(summary).toHaveTextContent('common:waitingForYou')
+    expect(summary).not.toHaveTextContent('common:tasks.runningTools')
+    expect(summary).not.toHaveTextContent(/\d+s/)
   })
 
   it('lists each unit of work with its own status', () => {

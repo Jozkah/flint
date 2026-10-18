@@ -50,6 +50,10 @@ const IGNORED_DIRS: &[&str] = &[
     ".dart_tool",
     "Pods",
     "DerivedData",
+    // An Obsidian vault is an ordinary folder of notes; these two are the
+    // app's own settings and its deleted notes, not the user's content.
+    ".obsidian",
+    ".trash",
 ];
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -470,6 +474,23 @@ mod tests {
         assert!(!names.contains(&"debug.log"));
         assert!(names.contains(&"src"));
         assert!(names.contains(&"main.rs"));
+    }
+
+    #[test]
+    fn an_obsidian_vault_lists_its_notes_but_not_its_settings_or_trash() {
+        let root = temp_project();
+        std::fs::create_dir(root.join(".obsidian")).unwrap();
+        std::fs::write(root.join(".obsidian").join("app.json"), "{}").unwrap();
+        std::fs::create_dir(root.join(".trash")).unwrap();
+        std::fs::create_dir(root.join("Daily")).unwrap();
+        std::fs::write(root.join("Daily").join("2026-10-15.md"), "# today").unwrap();
+        std::fs::write(root.join("Inbox.md"), "note").unwrap();
+        let top = names_in(&root, "");
+        assert!(!top.contains(&".obsidian".to_string()));
+        assert!(!top.contains(&".trash".to_string()));
+        assert!(top.contains(&"Daily".to_string()));
+        assert!(top.contains(&"Inbox.md".to_string()));
+        assert!(names_in(&root, "Daily").contains(&"2026-10-15.md".to_string()));
     }
 
     /// Names of the entries `list_dir` returns for `rel`, in listing order.

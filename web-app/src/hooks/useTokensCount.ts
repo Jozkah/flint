@@ -18,6 +18,8 @@ import { useAppState } from './useAppState'
 import { useThreads } from './useThreads'
 import { useAssistant } from './useAssistant'
 import { cappedContextWindow } from '@/lib/contextEstimate'
+import { estimateTokens, inlineFilesText } from '@/lib/context-manager'
+import { fixedPromptTokens } from '@/lib/contextBreakdown'
 import {
   finalizeTokenUsage,
   readTokenUsage,
@@ -77,6 +79,15 @@ export interface TokenUsageSource {
   loadingModel?: boolean
   /** Generation speed of the latest reply and the session's average. */
   speed?: { last?: number; average?: number }
+  /**
+   * The model this surface talks to, when it is not the global picker's: a
+   * Cowork session or a chat with its own model. Without it a remote session
+   * model was measured against the global (local) model's window (C-006).
+   */
+  selection?: Pick<
+    ReturnType<typeof useModelProvider.getState>,
+    'selectedProvider' | 'selectedModel'
+  >
 }
 
 // The token-usage popup normally reflects the last *successful* turn. When a
@@ -109,11 +120,16 @@ const getLatestServerUsage = (messages: ThreadMessage[]): UsageMeta => {
 
 /**
  * Tokens in the messages after the last one the provider measured: a message
- * sent and then stopped never gets a usage record, and the card kept showing
- * the figure from before it. Roughly four characters a token, the same rough
- * count used where nothing was measured.
+ * sent and then stopped (or refused before it was sent) never gets a usage
+ * record, and the card kept showing the figure from before it. Counted with
+ * the pre-flight check's own estimator, inline attachments included; with
+ * nothing measured at all, `fixedTokens` (the system prompt and tool schemas
+ * the last request carried) is added, as that request also counted them.
  */
-export const estimateUnmeasuredTokens = (messages: ThreadMessage[]): number => {
+export const estimateUnmeasuredTokens = (
+  messages: ThreadMessage[],
+  fixedTokens = 0
+): number => {
   let last = -1
   for (let i = messages.length - 1; i >= 0; i--) {
     const usage = readTokenUsage(
@@ -124,14 +140,18 @@ export const estimateUnmeasuredTokens = (messages: ThreadMessage[]): number => {
       break
     }
   }
-  let chars = 0
+  const texts: string[] = []
   for (let i = last + 1; i < messages.length; i++) {
     for (const part of messages[i].content ?? []) {
-      chars += part?.text?.value?.length ?? 0
+      if (part?.text?.value) texts.push(part.text.value)
     }
+    const inline = inlineFilesText(messages[i].metadata)
+    if (inline) texts.push(inline)
   }
-  return Math.ceil(chars / 4)
+  const unmeasured = estimateTokens(texts.join('\n'))
+  return last === -1 && unmeasured > 0 ? unmeasured + Math.max(0, fixedTokens) : unmeasured
 }
+
 
 /**
  * The configured context size, or `undefined` when there is not one.
@@ -153,8 +173,14 @@ export const useTokensCount = (
   messages: ThreadMessage[] = [],
   source?: TokenUsageSource
 ) => {
-  const { selectedModel, selectedProvider, getProviderByName } =
-    useModelProvider()
+  const global = useModelProvider()
+  const { getProviderByName } = global
+  const selectedModel = source?.selection
+    ? source.selection.selectedModel
+    : global.selectedModel
+  const selectedProvider = source?.selection
+    ? source.selection.selectedProvider
+    : global.selectedProvider
   const [modelProps, setModelProps] = useState<ModelProps | undefined>(
     undefined
   )
@@ -256,6 +282,9 @@ export const useTokensCount = (
     threadId ? s.lastById[threadId] : undefined
   )
   const setLearnedWindow = useContextBreakdown((s) => s.setWindow)
+  const fixedTokens = fixedPromptTokens(
+    useContextBreakdown((s) => (threadId ? s.byId[threadId] : undefined))
+  )
   // The last window this chat showed, while it is still the model's: a model
   // change recomputes from the new model rather than inheriting the old size
   // (the used figure is kept: it is what the thread held when last measured).
@@ -304,7 +333,7 @@ export const useTokensCount = (
         }
       }
       const usage = source?.usage ?? getLatestServerUsage(messages)
-      const unmeasured = source?.usage ? 0 : estimateUnmeasuredTokens(messages)
+      const unmeasured = source?.usage ? 0 : estimateUnmeasuredTokens(messages, fixedTokens)
       return {
         tokenCount:
           sourceOverflow?.requestTokens ?? (usage.totalTokens ?? 0) + unmeasured,
@@ -351,7 +380,12 @@ export const useTokensCount = (
           cacheSource: 'engine-timings',
         })
       : (source?.usage ?? getLatestServerUsage(messages))
-    const tokenCount = overflow?.requestTokens ?? usage.totalTokens ?? 0
+    // A stopped reply never gets a usage record; count what came after the
+    // last measured request, as the remote branch does (C012).
+    const unmeasured =
+      liveStats || source?.usage ? 0 : estimateUnmeasuredTokens(messages, fixedTokens)
+    const tokenCount =
+      overflow?.requestTokens ?? (usage.totalTokens ?? 0) + unmeasured
     // A runtime that reports `n_ctx: 0`, or a server whose overflow error
     // carried a zero limit, has told us nothing about the window. Left as `0`
     // it renders as `0 / 0` and reads as a model with no room at all.
@@ -413,6 +447,7 @@ export const useTokensCount = (
     contextCap,
     rememberedWindow,
     remoteBaseUrl,
+    fixedTokens,
   ])
 
   return {

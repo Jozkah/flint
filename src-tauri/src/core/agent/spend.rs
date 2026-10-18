@@ -376,9 +376,8 @@ fn counted(data_folder: &Path) -> Vec<Counted> {
 /// MED-3).
 fn events_file_counted(path: &Path) -> Vec<Counted> {
     type Key = (std::time::SystemTime, u64);
-    static CACHE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (Key, Vec<Counted>)>>,
-    > = std::sync::OnceLock::new();
+    type Cache = std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (Key, Vec<Counted>)>>;
+    static CACHE: std::sync::OnceLock<Cache> = std::sync::OnceLock::new();
     let key: Option<Key> = std::fs::metadata(path)
         .ok()
         .and_then(|m| Some((m.modified().ok()?, m.len())));
@@ -493,7 +492,7 @@ fn report_of(
     let mut by_model: BTreeMap<String, ModelSpend> = BTreeMap::new();
     let mut dispatches = 0usize;
     let mut earliest: Option<u64> = None;
-    for record in all.into_iter().take(MAX_RECORDS) {
+    for record in all.iter().take(MAX_RECORDS) {
         if let Some(cutoff) = cutoff.as_ref() {
             if record.at.as_str() < cutoff.as_str() {
                 continue;
@@ -536,7 +535,7 @@ fn report_of(
     let mut priced_cost = 0.0;
     let mut unpriced = Vec::new();
     for entry in by_model.values_mut() {
-        match price_for(&prices, &entry.model) {
+        match price_for(prices, &entry.model) {
             Some(price) => {
                 let cost = cost_usd(
                     &price,

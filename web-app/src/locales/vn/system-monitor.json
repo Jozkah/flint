@@ -1,4 +1,5 @@
 {
+  "vramUsed": "VRAM đã dùng",
   "title": "Giám sát hệ thống",
   "cpuUsage": "Sử dụng CPU",
   "model": "Mô hình",
@@ -71,5 +72,6 @@
   "processor": "Bộ xử lý",
   "graphics": "Đồ họa",
   "freeVram": "VRAM trống",
-  "apiVersion": "Phiên bản API"
+  "apiVersion": "Phiên bản API",
+  "measuring": "Đang đo…"
 }

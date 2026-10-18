@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint muốn chạy {{command}} trong {{workspace}}",
     "gitRemote": "Flint muốn chạy {{command}}, lệnh này thay đổi {{target}}",
     "gitDestructive": "Flint muốn chạy {{command}}, lệnh này có thể làm mất công việc",
-    "approveCampaign": "Flint muốn bắt đầu chiến dịch \"{{title}}\" ({{count}} tác vụ)"
+    "approveCampaign": "Flint muốn bắt đầu chiến dịch \"{{title}}\" ({{count}} tác vụ)",
+    "spendPause": "Flint muốn tiếp tục lượt chạy này vượt quá mức tạm dừng chi tiêu"
   },
   "consequence": {
     "fileChange": "Nó có thể tạo, ghi đè hoặc thay đổi nội dung các tệp.",
@@ -57,7 +58,8 @@
     "gitLocal": "Nó thay đổi các tệp, nhánh hoặc lịch sử của kho lưu trữ này trên máy tính này.",
     "gitRemote": "Nó gửi các thay đổi đến một kho từ xa mà người khác có thể thấy. Flint hỏi mỗi lần trừ khi bạn tạm thời cho phép các thao tác Git từ xa thông thường cho cuộc trò chuyện này.",
     "gitDestructive": "Những gì nó xóa hoặc ghi đè có thể không khôi phục được.",
-    "campaignPlan": "Nó bắt đầu các phiên riêng biệt, mỗi phiên trên nhánh worktree của nó, đọc và thay đổi tệp và dùng song song hạn mức mô hình của bạn. Việc duyệt kế hoạch không duyệt bất kỳ lệnh gọi nào mà một tác vụ thực hiện. Flint hỏi mỗi lần."
+    "campaignPlan": "Nó bắt đầu các phiên riêng biệt, mỗi phiên trên nhánh worktree của nó, đọc và thay đổi tệp và dùng song song hạn mức mô hình của bạn. Việc duyệt kế hoạch không duyệt bất kỳ lệnh gọi nào mà một tác vụ thực hiện. Flint hỏi mỗi lần.",
+    "spendPause": "Lượt chạy tiếp tục dùng hạn mức mô hình trả phí cho đến khi xong hoặc chạm trần. Từ chối sẽ dừng lượt chạy."
   },
   "repeat": {
     "allowedOnceBefore": "Bạn đã cho phép lệnh này một lần trong cuộc trò chuyện này."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Các lệnh gọi một tiến trình trong tương lai khớp với {{action}} chạy mà không hỏi, kể cả với ID tiến trình khác. Các tập lệnh khác vẫn hỏi. Thu hồi trong Cài đặt > Quyền.",
     "allowClipboardReadExplanation": "Flint có thể đọc nội dung clipboard trong tương lai ở mọi cuộc trò chuyện mà không hỏi, cho đến khi bạn thu hồi trong Cài đặt > Quyền. Ghi vào clipboard vẫn hỏi.",
     "allowSimilarThreadExplanation": "Các lệnh gọi trong tương lai khớp với {{action}} chạy mà không hỏi trong cuộc trò chuyện này. Thu hồi trong Cài đặt > Quyền.",
-    "broader": "Rộng hơn"
+    "broader": "Rộng hơn",
+    "editedRunsOnce": "Lệnh đã chỉnh sửa chỉ chạy một lần."
   },
   "request": {
     "title": "Yêu cầu quyền",
@@ -217,10 +220,109 @@
     "gitDestructive": "Phá hủy: {{why}}. Hãy kiểm tra lệnh, kho từ xa và nhánh trước khi cho phép.",
     "selfApproval": "{{tool}} tự phê duyệt các lệnh trên {{server}}, điều này sẽ cho phép mô hình trả lời thay bạn. Flint hỏi về việc này mỗi lần và không bao giờ ghi nhớ câu trả lời."
   },
+  "folderTrust": {
+    "title": "Tin cậy thư mục này?",
+    "bodyHooks": "{{folder}} có hook riêng. Chúng chạy lệnh và vẫn tắt cho đến khi bạn tin cậy thư mục.",
+    "bodySubagents": "{{folder}} có định nghĩa tác tử riêng. Chúng vẫn tắt cho đến khi bạn tin cậy thư mục.",
+    "bodyBoth": "{{folder}} có hook và định nghĩa tác tử riêng. Chúng vẫn tắt cho đến khi bạn tin cậy thư mục.",
+    "keepsOff": "Chỉ tin cậy những thư mục bạn đã viết hoặc đã đọc. Sự tin cậy được lưu vĩnh viễn; bạn có thể hoàn tác sau.",
+    "trust": "Tin cậy thư mục",
+    "later": "Để sau",
+    "failed": "Không thể tin cậy thư mục",
+    "kept_other": "Đã giữ hook bật cho {{count}} thư mục bạn đang dùng. Xem lại trong Cài đặt > Quyền > Thư mục tin cậy."
+  },
+  "trustedFolders": {
+    "title": "Thư mục tin cậy",
+    "description": "Các thư mục có hook và định nghĩa tác tử riêng được phép chạy. Sự tin cậy được giữ cho đến khi bạn thu hồi. Các tệp mà tác tử có thể đọc hoặc thay đổi nằm trong Quyền truy cập thư mục.",
+    "empty": "Chưa có thư mục tin cậy nào; Flint sẽ hỏi lần đầu khi một thư mục có hook hoặc định nghĩa tác tử.",
+    "add": "Tin cậy một thư mục…",
+    "stop": "Ngừng tin cậy",
+    "stopLabel": "Ngừng tin cậy {{folder}}",
+    "confirm": "Ngừng tin cậy {{folder}}? Hook và định nghĩa tác tử của nó vẫn tắt cho đến khi bạn tin cậy lại.",
+    "confirmYes": "Ngừng tin cậy",
+    "cancel": "Hủy",
+    "loadFailed": "Không thể đọc các thư mục tin cậy",
+    "grantFailed": "Không thể tin cậy thư mục",
+    "revokeFailed": "Không thể ngừng tin cậy thư mục"
+  },
+  "scopeForm": {
+    "question": "Nếu bạn chọn Luôn luôn, hãy nhớ cho:",
+    "folder": "Bên trong {{dir}}",
+    "folderHint": "Chỉ các tệp trong thư mục đó, dù đường dẫn được viết thế nào. Liên kết trỏ ra ngoài không được tính.",
+    "prefix": "Các lệnh bắt đầu bằng {{prefix}}",
+    "prefixHint": "Chỉ một lệnh đơn giản. Lệnh nối chuỗi, qua pipe hoặc chuyển hướng sẽ được hỏi lại.",
+    "everywhere": "Mọi lệnh gọi {{tool}}, trong mọi dự án",
+    "everywhereHint": "Ý nghĩa cũ của Luôn luôn. Phạm vi rộng; hiếm khi là điều bạn muốn.",
+    "saveFailed": "Không thể ghi nhớ lựa chọn đó",
+    "alwaysFolder": "Luôn luôn: bên trong {{dir}}",
+    "alwaysPrefix": "Luôn luôn: các lệnh bắt đầu bằng {{prefix}}",
+    "alwaysFolderExplanation": "Chỉ các tệp trong thư mục đó, trong dự án này, cho đến khi bạn thu hồi trong Cài đặt > Quyền.",
+    "alwaysPrefixExplanation": "Chỉ một lệnh đơn giản bắt đầu như vậy, trong dự án này, cho đến khi bạn thu hồi trong Cài đặt > Quyền. Lệnh nối chuỗi, qua pipe hoặc chuyển hướng sẽ được hỏi lại."
+  },
+  "rules": {
+    "title": "Các phê duyệt đã ghi nhớ",
+    "description": "Những gì bạn đã cho phép bằng Luôn luôn, giới hạn trong một thư mục hoặc một tiền tố lệnh. Một quy tắc chỉ áp dụng trong dự án của nó và không bao giờ ghi đè lên một lần từ chối hay câu hỏi mà Flint hỏi mỗi lần.",
+    "empty": "Chưa ghi nhớ gì. Chọn Luôn luôn ở một lời nhắc rồi chọn một thư mục hoặc tiền tố lệnh.",
+    "folder": "Bên trong {{dir}}",
+    "prefix": "Các lệnh bắt đầu bằng {{prefix}}",
+    "run": "Phần còn lại của lần chạy này",
+    "once": "Một lần",
+    "project": "Trong {{project}}",
+    "revoke": "Thu hồi",
+    "revokeLabel": "Thu hồi phê duyệt cho {{tool}}: {{scope}}",
+    "loadFailed": "Không thể đọc các phê duyệt đã ghi nhớ",
+    "revokeFailed": "Không thể thu hồi phê duyệt"
+  },
+  "deferred": {
+    "title": "Phê duyệt đang chờ",
+    "description": "Các lần chạy gặp câu hỏi khi không ai trả lời được đã ghi lại và dừng. Hãy trả lời tại đây rồi tiếp tục phiên: lệnh gọi sẽ chạy một lần nếu được đề xuất lại trước hạn.",
+    "empty": "Không có gì đang chờ trả lời.",
+    "allow": "Cho phép",
+    "deny": "Từ chối",
+    "discard": "Xóa",
+    "session": "Phiên {{session}}",
+    "deadline": "Trả lời trước {{when}}",
+    "status": {
+      "pending": "Đang chờ",
+      "allowed": "Đã cho phép",
+      "denied": "Đã từ chối",
+      "expired": "Hết hạn",
+      "void": "Vô hiệu",
+      "consumed": "Đã dùng"
+    },
+    "loadFailed": "Không thể đọc các phê duyệt đang chờ",
+    "answerFailed": "Không thể ghi lại câu trả lời",
+    "allowLabel": "Cho phép: {{summary}}",
+    "denyLabel": "Từ chối: {{summary}}",
+    "discardLabel": "Xóa: {{summary}}"
+  },
   "toast": {
     "trustFailed": "Không thể ghi nhớ máy chủ đó",
     "cancelledOne": "Phê duyệt cho {{names}} đã bị hủy",
     "cancelledMany": "{{count}} phê duyệt ({{names}}) đã bị hủy",
     "cancelledDescription": "Cuộc trò chuyện đã được rời đi trước khi bạn trả lời. Hãy gửi lại yêu cầu để thử lại."
+  },
+  "desktopOnly": "Chỉ có trong ứng dụng Flint dành cho máy tính.",
+  "folderAccess": {
+    "title": "Quyền truy cập thư mục",
+    "description": "Các thư mục và tệp nằm ngoài không gian làm việc của tác tử mà bạn cho phép tác tử đọc hoặc thay đổi. Việc hook riêng của một thư mục có được chạy hay không được đặt trong Thư mục tin cậy.",
+    "empty": "Chưa cấp quyền truy cập thư mục nào.",
+    "readWrite": "Đọc và ghi",
+    "readOnly": "Chỉ đọc",
+    "untilRevoked": "Mọi cuộc trò chuyện, cho đến khi thu hồi",
+    "untilDate": "Cuộc trò chuyện này, đến {{when}}",
+    "revoke": "Thu hồi",
+    "revokeLabel": "Thu hồi quyền truy cập {{path}}"
+  },
+  "spendPause": {
+    "preview": "Tiếp tục lượt chạy (đã chi khoảng {{spent}})",
+    "previewCeiling": "Tiếp tục lượt chạy đến mức trần {{ceiling}} (đã chi khoảng {{spent}})"
+  },
+  "remote": {
+    "runsOnServer": "Chạy trên máy chủ.",
+    "runsOnServerAt": "Chạy trên máy chủ: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Các thay đổi đang chờ bạn phê duyệt"
   }
 }

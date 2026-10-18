@@ -17,8 +17,19 @@ type IngestHandlers = {
   onError: (error: unknown, fileName?: string) => void
 }
 
+/** A file that did not make it into the project, kept until dismissed or retried. */
+export type ProjectUploadFailure = {
+  fileName: string
+  error: unknown
+}
+
 interface ProjectUploadsState {
   progress: Record<string, ProjectUploadProgress>
+  // Files whose ingestion failed. A toast alone goes unseen (T7-054: a file
+  // added with no embedding model left no row and no visible message), so the
+  // file list keeps a row with the reason until it is dismissed or retried.
+  failures: Record<string, ProjectUploadFailure[]>
+  dismissFailure: (projectId: string, fileName: string) => void
   // Monotonic counter per project that increments after every successful
   // ingestion. Consumers watch this to refresh their file list whenever a
   // file finishes in the background — including while they were unmounted.
@@ -35,11 +46,32 @@ interface ProjectUploadsState {
 export const useProjectUploads = create<ProjectUploadsState>((set, get) => ({
   progress: {},
   completedTick: {},
+  failures: {},
+  dismissFailure: (projectId, fileName) =>
+    set((s) => ({
+      failures: {
+        ...s.failures,
+        [projectId]: (s.failures[projectId] ?? []).filter(
+          (f) => f.fileName !== fileName
+        ),
+      },
+    })),
   isIngesting: (projectId) => !!get().progress[projectId],
   ingest: async (projectId, attachments, ingestFn, handlers) => {
     const total = attachments.length
     if (total === 0) return
     if (get().progress[projectId]) return
+
+    // Retrying a file replaces its old failure row.
+    const retried = new Set(attachments.map((a) => a.name))
+    set((s) => ({
+      failures: {
+        ...s.failures,
+        [projectId]: (s.failures[projectId] ?? []).filter(
+          (f) => !retried.has(f.fileName)
+        ),
+      },
+    }))
 
     set((s) => ({
       progress: {
@@ -92,6 +124,20 @@ export const useProjectUploads = create<ProjectUploadsState>((set, get) => ({
       }
       handlers.onSuccess()
     } catch (error) {
+      if (currentFileName) {
+        const fileName = currentFileName
+        set((s) => ({
+          failures: {
+            ...s.failures,
+            [projectId]: [
+              ...(s.failures[projectId] ?? []).filter(
+                (f) => f.fileName !== fileName
+              ),
+              { fileName, error },
+            ],
+          },
+        }))
+      }
       handlers.onError(error, currentFileName)
     } finally {
       set((s) => {

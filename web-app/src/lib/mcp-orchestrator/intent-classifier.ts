@@ -61,15 +61,25 @@ function scoreServer(server: ServerSummary, messageTokens: string[]): number {
  * descriptions, so asking for a server by name could still route it away.
  */
 export function mentionedServers(userMessage: string, servers: ServerSummary[]): string[] {
-  const text = ` ${userMessage.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `
+  const text = userMessage.toLowerCase()
+  // Whole words only: a name inside a longer identifier ("fetch" in the
+  // built-in "web_fetch", C029) is not a mention of the server.
+  // A consumed prefix, not a lookbehind: WebKit before 16.4 cannot parse one.
+  const before = '(?:^|[^a-z0-9_\\-./\\\\])'
+  const after = '(?![a-z0-9_]|-[a-z0-9])'
   return servers
     .filter((s) => {
-      const name = s.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-      if (name.length < 2) return false
+      const parts = s.name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+      if (parts.join(' ').length < 2) return false
+      const name = parts.join('[^a-z0-9]+')
       // A one-word name ("code", "email") is an ordinary word too, so it only
       // counts when the message calls it a server or its tools.
-      if (!name.includes(' ')) return new RegExp(` ${name} (server|servers|mcp|tools?) `).test(text)
-      return text.includes(` ${name} `)
+      if (parts.length === 1) {
+        return new RegExp(
+          `${before}${name}${after}[^a-z0-9]+(server|servers|mcp|tools?)(?![a-z0-9])`
+        ).test(text)
+      }
+      return new RegExp(`${before}${name}${after}`).test(text)
     })
     .map((s) => s.name)
 }

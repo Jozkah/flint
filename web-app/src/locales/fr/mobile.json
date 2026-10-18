@@ -400,7 +400,8 @@
     "mode": {
       "roundRobin": "Tour à tour",
       "userSelected": "Vous choisissez",
-      "moderatorSelected": "Le modérateur choisit"
+      "moderatorSelected": "Le modérateur choisit",
+      "compare": "Comparer les modèles"
     },
     "untitled": "Salle sans titre",
     "menu": "Menu de la salle",

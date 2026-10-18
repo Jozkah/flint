@@ -1693,7 +1693,7 @@ pub(crate) fn creation_time(handle: windows_sys::Win32::Foundation::HANDLE) -> O
     };
     let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
     let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
-    (ok != 0).then(|| ((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64)
+    (ok != 0).then_some(((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64)
 }
 
 /// Every live descendant of `root`, found from one process snapshot.
@@ -2862,6 +2862,7 @@ mod descendant_tests {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         let _ = shell.kill();
+        let _ = shell.wait();
         assert!(gone, "the sleeping child outlived kill_descendants");
     }
 }

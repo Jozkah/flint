@@ -12,6 +12,9 @@ if (rust.status !== 0) process.exit(rust.status ?? 1)
 const suffix = process.platform === 'win32' ? '.exe' : ''
 const source = join(root, 'src-tauri', 'target', 'release', `flint${suffix}`)
 const assets = join(root, 'web-app', 'dist')
+// The phone app (src-tauri/resources/mobile) is not packaged on purpose: it is
+// served by the desktop app's remote-access server, and `flint serve` answers
+// /m/ with a page saying so (docs/MOBILE.md).
 if (!existsSync(source) || !existsSync(join(assets, 'index.html'))) {
   throw new Error('Headless server binary or production web bundle is missing')
 }

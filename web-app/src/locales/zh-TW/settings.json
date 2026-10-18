@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "子代理程式",
-    "description": "Flint 啟動的子代理程式使用哪個助理、工作設定檔和模型執行。此處不做選擇時，子代理程式會繼承其父層的助理和工作設定檔（較長的人設會被縮短）。這絕不會改變子代理程式的權限：其工具和核准保持為該次執行所允許的範圍。",
+    "description": "Flint 啟動的子代理程式使用哪個助理、工作設定檔和模型執行。此處未選擇時，子代理程式會沿用其上層的助理和工作設定檔（過長的助理指示會被縮短）。這不會改變子代理程式被允許做什麼：它的工具和核准仍以本次執行允許的為準。",
     "headlessNote": "助理和工作設定檔僅適用於桌面應用程式。從命令列執行時遵循模型選擇。",
     "defaultsTitle": "適用於所有子代理程式",
     "defaultsDesc": "除非你在此處選擇其他內容，否則每個子代理程式都會繼承啟動它的那次執行。",
@@ -10,7 +10,7 @@
     "model": "模型",
     "inherit": "繼承",
     "inheritDesc": "使用啟動該子代理程式的執行所使用的內容。",
-    "assistantDesc": "子代理程式所採用的人設。",
+    "assistantDesc": "子代理程式所使用的助理。",
     "profileDesc": "子代理程式處理工作的方式。",
     "modelDesc": "在另一個模型上執行子代理程式，例如用更快的模型進行唯讀調查。",
     "groupAssistants": "助理",
@@ -63,9 +63,6 @@
   "reportAnIssue": "報告問題",
   "reportAnIssueDesc": "發現錯誤？透過在 GitHub 上提交問題來幫助我們。",
   "reportIssue": "報告問題",
-  "credits": "致謝",
-  "creditsDesc1": "Flint 由 Jozkah 用 ❤️ 構建。",
-  "creditsDesc2": "特別感謝我們的開源依賴項——尤其是 llama.cpp 和 Tauri——以及我們出色的 AI 社群。",
   "appVersion": "應用程式版本",
   "dataFolder": {
     "appData": "應用程式資料",
@@ -80,7 +77,8 @@
     "enterKeyNewline": "Enter 鍵換行",
     "enterKeyNewlineDesc": "在聊天輸入框中按 Enter 會換行而不是傳送。使用傳送按鈕或 Ctrl/Cmd+Enter 傳送。適合使用輸入法（IME）時，Enter 用於確認轉換的情況。",
     "resetFactory": "恢復原廠設定",
-    "resetFactoryDesc": "將應用程式還原至其初始狀態，清除所有模型和聊天記錄。此操作不可逆，僅在應用程式損毀時建議使用。"
+    "resetFactoryDesc": "將應用程式還原至其初始狀態，清除所有模型和聊天記錄。此操作不可逆，僅在應用程式損毀時建議使用。",
+    "spellCheckHint": "拼字檢查的語言由你的系統決定，而不是 Flint。請在系統的語言和鍵盤設定中新增語言（Windows：語言與地區；macOS：鍵盤 > 文字輸入；Linux：安裝 hunspell 字典）。"
   },
   "shortcuts": {
     "change": "變更",
@@ -122,7 +120,9 @@
     "nextPane": "下一個窗格",
     "nextPaneDesc": "切換到分割檢視中的下一個窗格。",
     "previousPane": "上一個窗格",
-    "previousPaneDesc": "切換到分割檢視中的上一個窗格。"
+    "previousPaneDesc": "切換到分割檢視中的上一個窗格。",
+    "findInChat": "在聊天中尋找",
+    "findInChatDesc": "搜尋畫面上的對話。"
   },
   "interface": {
     "title": "外觀",
@@ -140,8 +140,12 @@
     "showTokenSpeedDesc": "在助理訊息下方內嵌顯示 token/秒和 token 數。關閉時，精簡圖示會在點擊時顯示詳細資料。",
     "coloredUserBubble": "彩色的使用者訊息泡泡",
     "coloredUserBubbleDesc": "使用強調色作為你訊息的背景。關閉時，它們與助理訊息一致，為中性背景上的純文字。",
+    "renderUserMarkdown": "在我的訊息中呈現 Markdown",
+    "renderUserMarkdownDesc": "在你傳送的訊息中顯示粗體、清單、標題和程式碼。關閉時依輸入原樣顯示。",
     "renderHtmlArtifacts": "轉譯 HTML 和 SVG 成品",
     "renderHtmlArtifactsDesc": "為 HTML 和 SVG 程式碼區塊新增「預覽」分頁。HTML 會在沙箱框架中執行模型產生的頁面，該框架會執行自己的指令碼，但無法存取 Flint、你的檔案或網路；SVG 則以停用指令碼的方式靜態轉譯。預設為關閉。",
+    "wrapCodeLines": "程式碼區塊中的長行自動換行",
+    "wrapCodeLinesDesc": "長行換到下一行並縮排對齊程式碼，而不是橫向捲動程式碼區塊。程式碼區塊標題列中的換行按鈕切換的是同一設定。",
     "composerRailButtons": "Cowork 輸入區中的輸出按鈕",
     "composerRailButtonsDesc": "在 Cowork 訊息方塊下方顯示「預覽」「程式碼」「變更」「活動」和「時間軸」。關閉時，標題列中的一個「輸出」按鈕會開啟該面板。",
     "autoGenerateTitle": "自動產生聊天標題",
@@ -177,12 +181,6 @@
     "resetCodeBlockSuccess": "程式碼區塊樣式重設成功",
     "resetCodeBlockSuccessDesc": "程式碼區塊樣式已還原為預設值。",
     "transcriptView": "對話記錄檢視",
-    "sidebarLayout": "側邊欄",
-    "sidebarLayoutDesc": "左側邊欄列出多少內容。",
-    "sidebarLayout_trimmed": "精簡",
-    "sidebarLayout_trimmedDesc": "新增聊天、Cowork、探索和您的聊天。房間、媒體庫、Studio 與引擎頁面會收合在「更多」和「進階」之下。",
-    "sidebarLayout_extended": "展開",
-    "sidebarLayout_extendedDesc": "一次列出所有內容：「更多」和「進階」保持展開。",
     "transcriptViewDesc": "聊天、Cowork 和聊天室中每輪顯示多少內容。核准、提問和錯誤一律顯示。",
     "transcriptViewNormal": "標準",
     "transcriptViewNormalDesc": "只顯示回答和需要你處理的內容。工具呼叫收合成一列步驟。",
@@ -380,6 +378,9 @@
     "usageWeek": "每週",
     "usageWeekDesc": "過去 7 天內的 token 數（輸入加輸出）。留空表示不限制。",
     "usageNow": "目前已用",
+    "usageNoLimitPlaceholder": "無限制",
+    "serverLog": "伺服器記錄",
+    "openInNewWindow": "在新視窗中開啟",
     "usageNoLimit": "未設定上限",
     "usageResets": "最早的用量將在 {{wait}} 後移出計算",
     "startServer": "啟動伺服器",
@@ -417,9 +418,15 @@
     "verboseLogsDesc": "啟用詳細伺服器日誌以進行偵錯。",
     "proxyTimeout": "請求逾時",
     "proxyTimeoutDesc": "等待本地模型回應的時間（秒）。",
-    "defaultModel": "本機 API 伺服器的預設模型",
+    "defaultModel": "預設模型",
     "defaultModelDesc": "伺服器啟動時自動載入的本機模型。",
-    "defaultModelPlaceholder": "選擇本機模型"
+    "defaultModelPlaceholder": "選擇本機模型",
+    "noLocalModels": "尚未匯入本機模型",
+    "usage5hAria": "每 5 小時的 token 數",
+    "usageWeekAria": "每週的 token 數",
+    "usageWindow": "時間窗",
+    "usageLimit": "上限",
+    "usageUnsaved": "未儲存的變更"
   },
   "privacy": {
     "analytics": "分析",
@@ -456,7 +463,7 @@
     "updateError": "檢查更新失敗",
     "appVersion": "應用程式版本",
     "buildUpdate": "檢查較新的組建",
-    "buildUpdateDesc": "Flint 0.9.0 是每夜組建：它會根據最新程式碼重新組建，版本號保持不變。開啟後，Flint 會在啟動時向 GitHub 詢問一次（每天最多兩次）是否存在較新的組建。預設為關閉；無論哪種情況，除該請求外不會傳送任何內容。",
+    "buildUpdateDesc": "每夜建置會維持相同的版本號碼。開啟後，Flint 會在啟動時向 GitHub 詢問一次（每天最多兩次）是否有更新的建置。預設為關閉。",
     "buildCheckNow": "立即檢查",
     "buildChecking": "正在檢查…",
     "buildNewer": "有較新的組建可用。請從發行頁面重新下載以更新。",
@@ -514,9 +521,21 @@
     "reportAnIssue": "報告問題",
     "reportAnIssueDesc": "發現錯誤？透過在 GitHub 上提交問題來幫助我們。",
     "reportIssue": "報告問題",
-    "credits": "致謝",
-    "creditsDesc1": "Flint 由 Jozkah 用 ❤️ 構建。",
-    "creditsDesc2": "特別感謝我們的開源依賴項——尤其是 llama.cpp 和 Tauri——以及我們出色的 AI 社群。"
+    "advanced": "進階",
+    "migrateJan": {
+      "title": "從 JAN 遷移",
+      "desc": "將現有 JAN 安裝中的資料匯入 Flint——可複製、原地重複使用、移動，或全新開始。",
+      "open": "開啟遷移助手"
+    },
+    "verify": "驗證",
+    "cli": {
+      "installedDesc": "已安裝於 {{path}}——在終端機中使用 flint 來提供模型服務。",
+      "desc": "無需開啟應用程式，即可在終端機中使用 flint 來提供模型服務。",
+      "install": "安裝",
+      "installing": "正在安裝…",
+      "uninstall": "解除安裝",
+      "uninstalling": "正在解除安裝…"
+    }
   },
   "extensions": {
     "title": "擴充功能"
@@ -610,7 +629,9 @@
     "summaryMaxTokens": "摘要長度",
     "summaryDescription": "最長摘要，以 token 計。",
     "projectOverride": "（專案會覆寫此設定。）",
-    "saveFailed": "無法儲存壓縮政策"
+    "saveFailed": "無法儲存壓縮政策",
+    "leanTools": "小模型精簡工具",
+    "leanToolsDescription": "當上下文視窗為 32K 權杖或更小時,聊天中不提供外掛清單、圖片搜尋和小工具,讓視窗留給對話。網頁搜尋、MCP 和代理工具保留。"
   },
   "accent": {
     "title": "強調色",
@@ -666,11 +687,23 @@
     "completionSoundApproval": "僅在需要核准時",
     "completionSoundVolume": "音量",
     "completionSoundPreview": "播放",
-    "increaseContrast": "提高對比度",
-    "increaseContrastDesc": "讓文字更醒目，更易閱讀。深色主題下更白，淺色主題下更深。",
     "reduceMotion": "減少動態效果",
     "reduceMotionDesc": "關閉 Flint 中的動畫。Flint 不會跟隨系統設定，因此除非你切換此項，否則動態效果保持開啟。",
-    "completionSoundApproval": "僅在需要核准時"
+    "increaseContrast": "提高對比度",
+    "increaseContrastDesc": "讓文字更醒目，更易閱讀。深色主題下更白，淺色主題下更深。",
+    "performanceMode": "效能模式",
+    "performanceModeDesc": "精簡模式會關閉模糊、大陰影和循環動畫，並降低串流文字的更新頻率，適合較慢的電腦。自動模式會在這台電腦顯得較慢時選擇它。",
+    "performanceModeAuto": "自動",
+    "performanceModeReduced": "一律精簡",
+    "performanceModeFull": "完整",
+    "performanceModeNowReduced": "目前：精簡（{{why}}）",
+    "performanceModeNowFull": "目前：完整",
+    "perfReasonCores": "{{n}} 核心",
+    "perfReasonMemory": "{{n}} GB 記憶體",
+    "perfReasonFrames": "畫面更新慢",
+    "perfReasonMotion": "系統減少動態效果",
+    "perfReasonData": "數據節省",
+    "perfReasonChosen": "在此選擇"
   },
   "pageDesc": {
     "general": "語言、資料夾、記錄和應用程式範圍的選項。",
@@ -1072,7 +1105,12 @@
       "updated": "{{when}}更新",
       "loading": "正在載入戰役",
       "loadFailed": "無法載入戰役。",
-      "retry": "重試"
+      "skipped_one": "已略過 {{count}} 筆無法讀取的戰役記錄。檔案保持原樣。",
+      "skipped_other": "已略過 {{count}} 筆無法讀取的戰役記錄。檔案保持原樣。",
+      "retry": "重試",
+      "needsDesktop": "戰役需要桌面應用程式",
+      "needsDesktopHint": "請開啟 Flint 桌面應用程式來檢視和啟動戰役。一般的瀏覽器分頁無法讀取它們。",
+      "staleApp": "這份應用程式比頁面舊。請關閉後重新啟動，以載入最新的建置。"
     },
     "plan": {
       "edit": "編輯計畫",
@@ -1127,6 +1165,187 @@
     "skipped": "未還原：{{stores}}",
     "storeToolApproval": "工具自動核准",
     "storeMcpTrust": "MCP 伺服器信任",
-    "storeProxy": "網路代理"
+    "storeProxy": "網路代理",
+    "title": "備份與同步",
+    "exported": "設定已匯出",
+    "exportFailed": "匯出失敗",
+    "importFailed": "匯入失敗",
+    "importedRestarting": "設定已匯入，正在重新啟動視窗",
+    "exportTitle": "匯出設定",
+    "exportDesc": "將偏好設定儲存為 JSON 檔案。若要在多台裝置間同步，請將檔案存放到 Google Drive 或 Nextcloud 資料夾，再於另一台裝置匯入。聊天紀錄與各裝置自身的狀態不包含在內。",
+    "includeSecrets": "包含供應商與 API 金鑰",
+    "secretsWarning": "檔案將以明文包含您的 API 金鑰。請妥善保密，不要放入共用資料夾。",
+    "exportButton": "匯出…",
+    "importTitle": "匯入設定",
+    "importDesc": "以備份檔案取代您的偏好設定。之後視窗會重新載入。",
+    "chooseFile": "選擇檔案…",
+    "pendingGroups": "檔案中的設定群組數：{{groups}}。",
+    "pendingKeys": "附有 API 金鑰的供應商數：{{keys}}。",
+    "pendingExported": "匯出於 {{date}}。",
+    "pendingOverwrite": "這會覆寫您目前的值。",
+    "apply": "匯入並重新載入",
+    "cancel": "取消"
+  },
+  "startup": {
+    "title": "隨電腦啟動",
+    "on": "已開啟。登入時 Flint 會透過 {{platform}} 啟動。",
+    "off": "已關閉。Flint 只會在你開啟時才啟動。開啟前會先詢問，並顯示將寫入的確切內容。",
+    "minimized": "最小化啟動",
+    "minimizedDesc": "隱藏啟動，只顯示系統匣圖示；點擊圖示即可開啟視窗。",
+    "confirmTitle": "將 Flint 加入 {{platform}}？",
+    "confirmBody": "這只會將下方這一筆項目寫入你的使用者帳號，不會寫入其他任何內容。不需要系統管理員權限。",
+    "confirmUndo": "關閉開關會移除這筆項目。",
+    "confirm": "加入項目",
+    "failed": "無法變更啟動項目"
+  },
+  "sidebarItems": {
+    "title": "側邊欄項目",
+    "description": "選擇要在左側側邊欄顯示哪些項目。隱藏某一項只會移除它的捷徑，頁面本身仍可正常使用。",
+    "section": {
+      "workspace": "工作區",
+      "cowork": "Cowork",
+      "more": "更多",
+      "header": "頂端和底端"
+    },
+    "showItem": "在側邊欄顯示 {{item}}",
+    "hideItem": "從側邊欄隱藏{{item}}",
+    "alwaysShown": "一律顯示",
+    "showAll": "全部顯示",
+    "preview": "預覽",
+    "reachable": "隱藏的項目仍可從命令面板和「設定」中存取。",
+    "presets": {
+      "label": "預設組合",
+      "minimal": "精簡",
+      "standard": "標準",
+      "everything": "全部"
+    }
+  },
+  "memoryPage": {
+    "useSaved": "在對話中使用已儲存的記憶",
+    "useSavedDesc": "關閉後，Flint 不會在任何請求中加入已儲存的記憶。你的記憶仍會保留，也仍可在此管理。",
+    "useFacts": "在請求中使用已記住的事實",
+    "useFactsDesc": "關閉某個範圍後將不再傳送它。不會刪除任何內容；重新開啟後會再次使用。",
+    "scope": {
+      "chat": {
+        "tab": "此對話",
+        "blurb": "僅在儲存它的對話內記住。",
+        "recall": "此對話",
+        "recallAria": "使用此對話的記憶",
+        "newAria": "此對話的新記憶",
+        "forgetAll": "忘記此對話中的全部內容",
+        "clearBody": "為此對話記住的所有內容將不再被使用，其文字會從本機移除。無法一步復原。"
+      },
+      "project": {
+        "tab": "專案",
+        "blurb": "對下方所選專案中的每個對話可用，對其他專案不可用。",
+        "recall": "此專案",
+        "recallAria": "使用此專案的記憶",
+        "newAria": "此專案的新記憶",
+        "forgetAll": "忘記此專案中的全部內容",
+        "clearBody": "為此專案記住的所有內容將不再被使用，其文字會從本機移除。無法一步復原。"
+      },
+      "user": {
+        "tab": "所有對話",
+        "blurb": "隨處可用。適合儲存普遍成立的內容。",
+        "recall": "所有對話",
+        "recallAria": "使用所有對話共用的記憶",
+        "newAria": "所有對話的新記憶",
+        "forgetAll": "忘記跨對話共用的全部內容",
+        "clearBody": "所有對話中記住的全部內容將不再被使用，其文字會從本機移除。無法一步復原。"
+      }
+    },
+    "stored": {
+      "summary": "跨聊天 {{user}} 則 · {{project}} · {{size}}",
+      "projectIn": "{{name}} 中 {{count}} 則",
+      "chooseProject": "選擇一個專案以統計其記憶"
+    },
+    "listTitle": "Flint 記住的內容",
+    "tabsAria": "記憶範圍",
+    "recallOff": "此範圍已關閉記憶調用：這些內容會保留，但不會被傳送。",
+    "newPlaceholder": "希望 Flint 記住的內容",
+    "remember": "記住",
+    "export": "匯出",
+    "import": "匯入",
+    "importReport": {
+      "summary": "已從匯出檔匯入 {{count}} 則",
+      "duplicates": "{{count}} 則已存在",
+      "refused": "{{count}} 則被拒絕"
+    },
+    "conversation": "對話",
+    "conversationAria": "要顯示其記憶的對話",
+    "noConversations": "尚無對話",
+    "kindChat": "聊天 · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "取代於 {{when}}",
+    "projectFolder": "專案資料夾",
+    "projectFolderAria": "要顯示其記憶的專案",
+    "noProjectFolders": "沒有工作階段附加任何專案",
+    "chooseProject": "選擇專案",
+    "chooseProjectAbove": "請在上方選擇一個專案，以檢視和管理其記憶。",
+    "searchAria": "搜尋記憶",
+    "searchPlaceholder": "搜尋已記住的事實",
+    "noMatch": "這裡沒有與該搜尋相符的內容。",
+    "empty": "這裡尚未記住任何內容。",
+    "meta": {
+      "youSaved": "由你儲存",
+      "inferred": "推斷",
+      "pinned": "已釘選",
+      "used_one": "已使用 {{count}} 次",
+      "used_other": "已使用 {{count}} 次",
+      "lastUsed": "上次使用 {{when}}",
+      "never": "從未"
+    },
+    "pin": "釘選",
+    "unpin": "取消釘選",
+    "pinAria": "釘選記憶",
+    "unpinAria": "取消釘選記憶",
+    "editAria": "編輯記憶",
+    "forget": "忘記",
+    "forgetAria": "忘記記憶",
+    "showing": "顯示第 {{from}}–{{to}} 則，共 {{total}} 則",
+    "previous": "上一頁",
+    "waitingTitle": "等待你處理",
+    "waitingBody": "這裡的內容目前都未被使用。未回應的提議絕不會被加入提示詞。",
+    "conflictsTitle": "相互矛盾的記憶",
+    "conflictsBody": "雙方都不會被使用。這些記住的事實相互矛盾，因此在你保留其一之前，Flint 會在每個請求中排除兩者。",
+    "conflictAbout": "關於{{subject}}",
+    "keepThis": "保留此則",
+    "keepAria": "保留「{{preview}}」並忘記另一則",
+    "editTitle": "編輯記憶",
+    "editBody": "這將用於它所屬範圍內的後續對話。",
+    "contentAria": "記憶內容",
+    "clearTitle": "忘記這裡的所有記憶？",
+    "clearConfirm": "全部忘記",
+    "toast": {
+      "kept": "已保留一則記憶",
+      "settleFailed": "無法解決該衝突",
+      "forgotten": "已忘記記憶",
+      "forgetFailed": "無法忘記該記憶",
+      "changeFailed": "無法變更該記憶",
+      "updated": "記憶已更新",
+      "updateFailed": "無法更新該記憶",
+      "settingsFailed": "無法儲存記憶設定",
+      "recallFailed": "無法變更記憶調用",
+      "saved": "記憶已儲存",
+      "saveFailed": "無法儲存該記憶",
+      "forgotCount_one": "已忘記 {{count}} 則記憶",
+      "forgotCount_other": "已忘記 {{count}} 則記憶",
+      "forgetManyFailed": "無法忘記這些記憶",
+      "exportedCount_one": "已匯出 {{count}} 則記憶",
+      "exportedCount_other": "已匯出 {{count}} 則記憶",
+      "exportFailed": "無法匯出記憶",
+      "importedCount_one": "已匯入 {{count}} 則記憶",
+      "importedCount_other": "已匯入 {{count}} 則記憶",
+      "importFailed": "無法匯入記憶"
+    },
+    "fileActionsAria": "匯出或匯入記憶",
+    "noMatchHint": "檢查拼字，或清除搜尋以查看全部。",
+    "emptyHint": "在上方寫一條，或讓 Flint 在聊天時自動記住。",
+    "footerCount_other": "此範圍內有 {{count}} 條記憶"
+  },
+  "chatMentions": {
+    "title": "對話提及",
+    "readAny": "允許助理讀取任何對話",
+    "readAnyDesc": "預設為關閉。通常助理只能讀取你用 @ 或 # 提及的對話。開啟後，它可以依 ID 開啟這台電腦上的任何聊天、工作階段或聊天室。讀取的內容只會留在這台電腦上，並標示為參考資料。"
   }
 }

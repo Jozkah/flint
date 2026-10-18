@@ -223,6 +223,28 @@ describe('TauriProvidersService', () => {
       expect(result).toEqual(['model-1', 'model-2'])
     })
 
+    it('lists an Azure deployments endpoint with api-key and api-version', async () => {
+      vi.mocked(providerRemoteApiKeyChain).mockReturnValueOnce(['az-key'])
+      vi.mocked(fetchTauri).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ data: [{ id: 'gpt' }] }),
+      } as any)
+      await svc.fetchModelsFromProvider({
+        provider: 'azure',
+        base_url: 'https://r.openai.azure.com/openai/deployments/qa',
+        active: true,
+        settings: [
+          { key: 'api-version', controller_props: { value: '2024-10-21' } },
+        ],
+      } as any)
+      const [url, init] = vi.mocked(fetchTauri).mock.calls[0] as [string, any]
+      expect(url).toBe(
+        'https://r.openai.azure.com/openai/deployments/qa/models?api-version=2024-10-21'
+      )
+      expect(init.headers['api-key']).toBe('az-key')
+    })
+
     it('returns each model id once when listed twice', async () => {
       vi.mocked(fetchTauri).mockResolvedValueOnce({
         ok: true,

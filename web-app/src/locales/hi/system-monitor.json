@@ -1,4 +1,5 @@
 {
+  "vramUsed": "उपयोग की गई VRAM",
   "title": "सिस्टम मॉनिटर",
   "cpuUsage": "CPU उपयोग",
   "model": "मॉडल",
@@ -71,5 +72,6 @@
   "processor": "प्रोसेसर",
   "graphics": "ग्राफ़िक्स",
   "freeVram": "खाली VRAM",
-  "apiVersion": "API संस्करण"
+  "apiVersion": "API संस्करण",
+  "measuring": "माप रहे हैं…"
 }

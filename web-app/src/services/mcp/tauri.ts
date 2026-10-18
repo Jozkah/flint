@@ -23,31 +23,49 @@ import { recordToolCall } from '@/stores/engine-activity-store'
  * original promise is returned untouched, so callers see exactly what they
  * saw before; the tally only observes it.
  */
-function tallied<T>(
+export function tallied<T>(
   args: { toolName: string; serverName?: string },
   promise: Promise<T> | undefined
 ): Promise<T> {
   if (!promise || typeof promise.then !== 'function') return promise as Promise<T>
   promise.then(
-    (result) =>
+    (result) => {
+      const error = (result as { error?: string } | undefined)?.error
+      if (isCancelledCall(error)) return
       recordToolCall({
         server: args.serverName ?? '',
         tool: args.toolName,
-        ok: !(result as { error?: string } | undefined)?.error,
-      }),
-    () =>
+        ok: !error,
+      })
+    },
+    (error) => {
+      // A call the user stopped did not fail: it is not counted at all.
+      if (isCancelledCall(error)) return
       recordToolCall({
         server: args.serverName ?? '',
         tool: args.toolName,
         ok: false,
       })
+    }
   )
   return promise
+}
+
+/** The backend's answer for a call stopped by its cancellation token. */
+export function isCancelledCall(error: unknown): boolean {
+  const text =
+    typeof error === 'string' ? error : error instanceof Error ? error.message : ''
+  return /^Tool call '.*' was cancelled$/.test(text.trim())
 }
 
 export class TauriMCPService extends DefaultMCPService {
   async updateMCPConfig(configs: string): Promise<void> {
     await window.core?.api?.saveMcpConfigs({ configs })
+  }
+
+  async renameMCPServer(oldName: string, newName: string): Promise<boolean> {
+    await invoke('rename_mcp_server', { oldName, newName })
+    return true
   }
 
   async restartMCPServers(): Promise<void> {
@@ -134,6 +152,7 @@ export class TauriMCPService extends DefaultMCPService {
     arguments: object
     maxOutputChars?: number
     approvalTicket?: string
+    cancellationToken?: string
   }): Promise<{ error: string; content: { text: string }[] }> {
     return tallied(args, window.core?.api?.callTool(args))
   }

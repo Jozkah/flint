@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "Son istek bağlam penceresini aştı.",
   "contextOverflowDetail": "Bu istek {{request}} jeton gerektiriyor ancak modelin bağlam penceresi yalnızca {{context}} jeton alabiliyor.",
   "contextOverflowGeneric": "İstek, kullanılabilir bağlam boyutunu aşıyor.",
+  "refusal": "Model bunu yanıtlamayı reddetti. İsteği farklı ifade etmeyi deneyin.",
   "engine": {
     "unknown": "Model motoru beklenmeyen bir hata bildirdi.",
     "MODEL_LOAD_FAILED": "Model yüklenemedi.",
@@ -14,14 +15,14 @@
     "MODEL_LOAD_TIMED_OUT": "Modelin yüklenmesi çok uzun sürdüğü için işlem durduruldu. Daha küçük bir model veya bağlam boyutu genellikle yardımcı olur.",
     "MISSING_SHARED_LIBRARY": "Motorun ihtiyaç duyduğu bir kitaplık eksik olduğundan motor başlatılamıyor.",
     "GPU_DRIVER_TOO_OLD": "GPU sürücünüz bu motor için çok eski. Sürücüyü güncellemek veya Ayarlar'dan CPU motoruna geçmek sorunu çözecektir.",
-    "CPU_NOT_SUPPORTED": "Bu bilgisayarın işlemcisinde motorun ihtiyaç duyduğu komutlar yok (AVX destekli bir x86 CPU gerekir), bu yüzden motor başlangıçta çöktü.",
+    "CPU_NOT_SUPPORTED": "Bu bilgisayarın işlemcisinde motorun gerek duyduğu komutlar yok (AVX destekli bir x86 işlemci gerekir), bu yüzden motor çöktü. Flint modeli zaten bir kez yalnızca CPU ile yeniden denedi; bu iletiyi hâlâ görüyorsanız o deneme de çöktü veya motor zaten yalnızca CPU olarak ayarlıydı.",
     "OS_VERSION_UNSUPPORTED": "Bu macOS sürümü motor için çok eski. macOS'u güncellemek sorunu çözer.",
     "MODEL_QUANT_NOT_SUPPORTED": "Bu model, GPU arka ucunun çalıştıramadığı bir nicemleme türü kullanıyor. Q4_K_M gibi farklı bir nicemleme indirin veya GPU yük aktarımını kapatın.",
     "ENGINE_STOPPED": "Motor beklenmedik şekilde durdu. Yeniden başlatmak için modeli tekrar yükleyin; sorun sürerse nedeni aşağıdaki son motor çıktısında yazar.",
     "OUT_OF_MEMORY": "Bu modeli çalıştırmak için yeterli bellek yok. Daha küçük bir model veya bağlam boyutu genellikle yardımcı olur.",
     "INVALID_ARGUMENT": "Model ayarlarından biri geçersiz.",
     "IO_ERROR": "Model başlatılırken bir dosya okunamadı veya dosyaya yazılamadı.",
-    "INTERNAL_ERROR": "Model başlatılırken Jan içinde bir hata oluştu."
+    "INTERNAL_ERROR": "Model başlatılırken Flint içinde bir hata oluştu."
   },
   "engineMissingLibraries": "Eksik: {{libraries}}",
   "engineReportedDetail": "Motorun bildirdiği hata: {{detail}}",

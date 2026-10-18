@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "Biến môi trường",
+    "description": "Biến môi trường cho llama.cpp (KEY=VALUE), phân tách bằng ';'",
+    "placeholder": "VD: GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "Tham số bổ sung",
+    "description": "Tùy chọn llama-server bổ sung, ví dụ --rope-scaling yarn --no-warmup. Áp dụng cho mọi mô hình và được ghi sau các cài đặt ở trên nên sẽ được ưu tiên. Các tùy chọn địa chỉ máy chủ, thông tin xác thực và tệp mô hình sẽ bị bỏ qua.",
+    "placeholder": "VD: --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "Số mô hình tải đồng thời tối đa",
+    "description": "Số mô hình tối đa mà bộ định tuyến giữ tải cùng lúc. 0 = không giới hạn.",
+    "placeholder": "VD: 1"
+  },
+  "idle_unload_minutes": {
+    "title": "Gỡ mô hình nhàn rỗi sau (phút)",
+    "description": "Gỡ mô hình cục bộ không được dùng trong số phút này để giải phóng bộ nhớ. Mô hình sẽ được tải lại ở yêu cầu tiếp theo. Mô hình embedding và mô hình đang xử lý yêu cầu không bao giờ bị gỡ. 0 = không bao giờ. Mặc định 30, để VRAM không bị chiếm khi bạn chơi game hoặc render.",
+    "placeholder": "VD: 10"
+  },
+  "timeout": {
+    "title": "Thời gian chờ của llama.cpp",
+    "description": "Thời gian chờ kết nối và tải của llama.cpp, tính bằng giây",
+    "placeholder": "VD: 600"
+  },
+  "ctx_size": {
+    "title": "Kích thước ngữ cảnh mặc định",
+    "description": "Cửa sổ ngữ cảnh dùng cho các mô hình cục bộ không tự đặt giá trị riêng. Lớn hơn = nhớ được nhiều hơn nhưng tốn nhiều bộ nhớ hơn. Mỗi mô hình có thể ghi đè giá trị này trong cài đặt riêng (biểu tượng bánh răng). Để Tự động để dùng kích thước gốc của mô hình (có thể rất lớn). Các kích thước phổ biến: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "Tự động"
+  },
+  "fit": {
+    "title": "Tự động khớp",
+    "description": "Để Flint quyết định số lớp chạy trên GPU và kích thước ngữ cảnh tối đa sao cho mô hình vừa với bộ nhớ của bạn. Tắt đi để tự đặt số lớp GPU và Kích thước ngữ cảnh."
+  },
+  "fit_target": {
+    "title": "Tự động khớp: bộ nhớ chừa trống",
+    "description": "Lượng bộ nhớ (MiB) mà tính năng tự động khớp chừa trống trên mỗi GPU cho ứng dụng khác và màn hình. Tăng lên nếu hệ thống bị ì khi đang tải mô hình. Chỉ áp dụng cho mô hình cục bộ.",
+    "placeholder": "1024 hoặc MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "Tự động khớp: ngữ cảnh nhỏ nhất",
+    "description": "Kích thước ngữ cảnh nhỏ nhất (tính bằng token) mà tính năng tự động khớp có thể thu nhỏ xuống khi mô hình không vừa bộ nhớ. Không bao giờ thấp hơn giá trị này, và mô hình sẽ không tải được nếu vẫn không vừa. Đây không phải kích thước ngữ cảnh: hãy đặt giá trị đó ở Kích thước ngữ cảnh mặc định hoặc theo từng mô hình ở Kích thước ngữ cảnh. Chỉ dùng khi Tự động khớp đang bật và chỉ cho mô hình cục bộ."
+  },
+  "threads": {
+    "title": "Luồng",
+    "description": "Số luồng dùng khi sinh văn bản (-1 = số lõi logic)."
+  },
+  "threads_batch": {
+    "title": "Luồng (lô)",
+    "description": "Số luồng để xử lý lô và prompt (mặc định: giống Luồng).",
+    "placeholder": "-1 (giống Luồng)"
+  },
+  "ctx_shift": {
+    "title": "Dịch chuyển ngữ cảnh",
+    "description": "Cho phép mô hình cắt bớt văn bản ở đầu để có chỗ cho văn bản mới trong bộ nhớ"
+  },
+  "n_predict": {
+    "title": "Số token dự đoán tối đa",
+    "description": "Số token tối đa được sinh ra (-1 = không giới hạn)."
+  },
+  "batch_size": {
+    "title": "Kích thước lô",
+    "description": "Kích thước lô tối đa (logic) khi xử lý prompt."
+  },
+  "ubatch_size": {
+    "title": "Kích thước uBatch",
+    "description": "Kích thước lô tối đa (vật lý) khi xử lý prompt. 0 = tự động: 1024 khi mô hình vừa VRAM và còn dư, 512 khi vừa khít, 2048 khi tràn sang RAM hệ thống.",
+    "placeholder": "0 (tự động)"
+  },
+  "n_cpu_moe": {
+    "title": "Lớp MoE trên CPU",
+    "description": "Giữ trọng số Mixture-of-Experts của N lớp đầu tiên trong bộ nhớ CPU. Giúp mô hình MoE lớn vừa với VRAM hạn chế. 0 để tắt."
+  },
+  "n_cpu_ffn": {
+    "title": "Lớp FFN dày đặc trên CPU",
+    "description": "Giữ trọng số feed-forward dày đặc của N lớp đầu tiên trong bộ nhớ CPU. Là phiên bản tương ứng của cài đặt MoE ở trên, dành cho mô hình dày đặc. 0 để tắt."
+  },
+  "no_kv_offload": {
+    "title": "Tắt offload bộ nhớ đệm KV",
+    "description": "Giữ bộ nhớ đệm KV trong RAM hệ thống thay vì bộ nhớ GPU. Hữu ích khi thiếu VRAM, nhưng đổi lại chậm hơn."
+  },
+  "device": {
+    "title": "Thiết bị để offload",
+    "description": "Danh sách bộ tăng tốc để offload, phân tách bằng dấu phẩy, đặt tên như trong danh sách phần cứng được phát hiện. Để trống để dùng mọi bộ tăng tốc khả dụng, hoặc nhập \"none\" để tắt hoàn toàn offload.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "Chế độ chia GPU",
+    "description": "Cách chia mô hình trên nhiều GPU.",
+    "options": {
+      "none": "Không",
+      "layer": "Theo lớp",
+      "row": "Theo hàng",
+      "tensor": "Tensor (thử nghiệm)"
+    }
+  },
+  "main_gpu": {
+    "title": "Chỉ số GPU chính",
+    "description": "GPU dùng cho mô hình (split-mode=none) hoặc cho kết quả trung gian (split-mode=row)."
+  },
+  "tensor_split": {
+    "title": "Chia tensor",
+    "description": "Tỷ lệ chia mô hình giữa các thiết bị, phân tách bằng dấu phẩy, ví dụ \"3,1\". Để trống để chia đều."
+  },
+  "no_op_offload": {
+    "title": "Tắt offload phép toán",
+    "description": "Giữ các phép toán tensor của máy chủ trên CPU thay vì offload sang bộ tăng tốc."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "Bật Flash Attention để tối ưu hiệu năng.",
+    "options": {
+      "auto": "Tự động",
+      "on": "Bật",
+      "off": "Tắt"
+    }
+  },
+  "parallel": {
+    "title": "Chuỗi song song",
+    "description": "Số chuỗi song song được giải mã cho các yêu cầu trò chuyện của bạn (0 = mặc định của llama.cpp là 4). Flint dành thêm một slot nội bộ ngoài số này cho các yêu cầu nền (ví dụ tự đặt tiêu đề cuộc trò chuyện) để chúng không đẩy bộ nhớ đệm KV của cuộc trò chuyện ra."
+  },
+  "reserve_background_slots": {
+    "title": "Dành slot cho tác vụ nền",
+    "description": "Giữ thêm hai slot nội bộ ngoài Chuỗi song song cho các yêu cầu nền (tự đặt tiêu đề cuộc trò chuyện, Cowork, tác tử con) để chúng không đẩy bộ nhớ đệm KV của cuộc trò chuyện ra. Tắt để chạy đúng số slot bằng Chuỗi song song (đặt 1 để chỉ có một slot); khi đó yêu cầu nền dùng chung slot với cuộc trò chuyện và có thể đẩy bộ nhớ đệm của nó ra. Sẽ tải lại mô hình."
+  },
+  "ngram_speculation": {
+    "title": "Giải mã suy đoán N-gram",
+    "description": "Tạo token nháp từ văn bản đã có trong cuộc trò chuyện (ngram-mod) và để mô hình xác minh chúng trong một lô. Kết quả giống hệt; đầu ra lặp lại như chỉnh sửa mã hay trích dẫn được sinh nhanh hơn 3-10 lần, văn bản khác không bị ảnh hưởng. Mô hình có bản nháp MTP riêng sẽ dùng bản đó."
+  },
+  "cont_batching": {
+    "title": "Gộp lô liên tục",
+    "description": "Bật gộp lô liên tục (còn gọi là gộp lô động) cho các yêu cầu đồng thời. Bật theo mặc định, giống llama.cpp."
+  },
+  "no_mmap": {
+    "title": "Tắt mmap",
+    "description": "Không ánh xạ mô hình vào bộ nhớ (tải chậm hơn nhưng có thể giảm việc đẩy trang ra đĩa nếu không dùng mlock)."
+  },
+  "lazy_mode": {
+    "title": "Đọc tensor trì hoãn",
+    "description": "Đọc các hàng của tensor lớn được đánh dấu theo kiến trúc (ví dụ embedding theo từng lớp) từ đĩa khi cần thay vì giữ trong bộ nhớ. Tự động sẽ áp dụng khi trên 4 GiB. Yêu cầu mmap.",
+    "options": {
+      "auto": "Tự động",
+      "on": "Bật",
+      "off": "Tắt"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "Khóa mô hình trong RAM để không bao giờ bị đẩy ra bộ nhớ hoán đổi. Kết hợp với \"Tắt mmap\" sẽ tải trọng số không qua mmap rồi khóa chúng lại."
+  },
+  "cache_type_k": {
+    "title": "Kiểu K của bộ nhớ đệm KV",
+    "description": "Kiểu dữ liệu bộ nhớ đệm KV cho Key. Tự động dùng q8_0, giảm một nửa bộ nhớ đệm với mức giảm chất lượng không đáng kể.",
+    "options": {
+      "auto": "Tự động",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "Kiểu V của bộ nhớ đệm KV",
+    "description": "Kiểu dữ liệu bộ nhớ đệm KV cho Value. Tự động dùng q8_0 khi Flash Attention Bật và f16 trong các trường hợp khác, vì bộ nhớ đệm V lượng tử hóa cần Flash Attention. Mô hình không tải được với thiết lập này sẽ được thử lại một lần với f16.",
+    "options": {
+      "auto": "Tự động",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "Phương pháp co giãn RoPE",
+    "description": "Phương pháp co giãn tần số RoPE. \"Mặc định của mô hình\" để mô hình tự quyết; \"Không\" tắt hẳn việc co giãn.",
+    "options": {
+      "auto": "Mặc định của mô hình",
+      "none": "Không",
+      "linear": "Tuyến tính",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "Tần số cơ sở RoPE",
+    "description": "Tần số cơ sở của RoPE (0 = lấy từ mô hình).",
+    "placeholder": "0 (mặc định của mô hình)"
+  },
+  "rope_freq_scale": {
+    "title": "Hệ số co giãn tần số RoPE",
+    "description": "Hệ số co giãn tần số RoPE. 0 lấy giá trị từ mô hình; 1 buộc không co giãn."
+  },
+  "cache_ram": {
+    "title": "RAM cho bộ nhớ đệm prompt (MiB)",
+    "description": "Kích thước bộ nhớ đệm prompt tính bằng MiB: phần RAM giữ ngữ cảnh của các cuộc trò chuyện khác để khi quay lại không phải đọc lại. Để trống hoặc -2 = tự động theo RAM của bạn (20% RAM hệ thống, tối đa một nửa lượng còn trống, 1024-8192); 0 = tắt; -1 = không giới hạn.",
+    "placeholder": "-2 (tự động)"
+  },
+  "persist_thread_cache": {
+    "title": "Ghi nhớ cuộc trò chuyện giữa các phiên",
+    "description": "Lưu bộ nhớ đệm prompt của từng cuộc trò chuyện xuống đĩa để khi mở lại không phải đọc lại toàn bộ. Chỉ khôi phục khi mô hình, cài đặt của nó và bản build llama.cpp đều khớp với lúc lưu."
+  },
+  "thread_cache_size": {
+    "title": "Giới hạn đĩa cho bộ nhớ đệm hội thoại (MiB)",
+    "description": "Dung lượng đĩa dành cho các bộ nhớ đệm hội thoại đã lưu (mặc định: 2048). Khi đạt giới hạn, các bản cũ nhất sẽ bị xóa trước. Một cuộc trò chuyện dài có thể chiếm hàng trăm MiB."
+  },
+  "cache_reuse": {
+    "title": "Tái sử dụng bộ nhớ đệm",
+    "description": "Kích thước khối tối thiểu của các token tiền tố trùng khớp được tái sử dụng từ bộ nhớ đệm. 0 = tắt."
+  },
+  "ctx_checkpoints": {
+    "title": "Điểm lưu ngữ cảnh",
+    "description": "Số điểm lưu ngữ cảnh tối đa giữ cho mỗi slot, cho phép khôi phục ngữ cảnh đã dịch chuyển thay vì xử lý lại."
+  },
+  "checkpoint_min_step": {
+    "title": "Bước tối thiểu giữa điểm lưu",
+    "description": "Số token tối thiểu giữa các điểm lưu ngữ cảnh."
+  },
+  "swa_full": {
+    "title": "Bộ nhớ đệm SWA đầy đủ",
+    "description": "Dùng bộ nhớ đệm KV kích thước đầy đủ cho mô hình sliding-window attention (ví dụ Gemma). Bật nếu mô hình như vậy xử lý lại toàn bộ prompt mỗi lượt thay vì tái sử dụng bộ nhớ đệm; tốn thêm bộ nhớ."
+  },
+  "kv_unified": {
+    "title": "Bộ nhớ đệm KV hợp nhất",
+    "description": "Dùng một bộ đệm KV hợp nhất duy nhất chia sẻ cho mọi slot. Tiết kiệm bộ nhớ khi chạy nhiều slot song song.",
+    "options": {
+      "auto": "Tự động",
+      "on": "Bật",
+      "off": "Tắt"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "Ngữ cảnh mỗi slot",
+    "description": "Giới hạn lượng bộ nhớ đệm KV hợp nhất mà một slot được dùng, tính bằng token. 0 cho phép một slot dùng toàn bộ bộ nhớ đệm. Chỉ áp dụng khi bộ nhớ đệm được hợp nhất."
+  },
+  "reasoning_preserve": {
+    "title": "Giữ lịch sử suy luận",
+    "description": "Giữ phần suy luận của mọi lượt trợ lý trước đó trong prompt, không chỉ lượt gần nhất. Chỉ ảnh hưởng đến mô hình có mẫu chat hỗ trợ, và tốn thêm token prompt."
+  },
+  "keep": {
+    "title": "Giữ N token đầu tiên",
+    "description": "Số token từ prompt ban đầu được giữ lại khi ngữ cảnh bị dịch chuyển. -1 = giữ tất cả."
+  },
+  "_ui": {
+    "moreInfo": "Tìm hiểu thêm về {{setting}}",
+    "perModelSettings": "Cài đặt theo mô hình",
+    "perModelDefault": "Mặc định (theo cài đặt: {{value}})",
+    "perModelDefaultAuto": "Mặc định (theo cài đặt: Tự động)"
+  }
+}

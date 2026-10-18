@@ -20,8 +20,10 @@ import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
+import { MiddleText } from '@/components/ui/middle-text'
 import { ProviderStatusChip } from '@/components/ProviderStatusChip'
-import { providerKeyStatus } from '@/lib/providerKeyStatus'
+import { missingKeyLabelKey, providerKeyStatus } from '@/lib/providerKeyStatus'
+import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
@@ -61,7 +63,7 @@ import { modelLogo, providerLogo } from '@/lib/brandLogos'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import {
   averageSpeeds,
-  contextLengthOf,
+  effectiveContextLength,
   formatTps,
   isEngineProviderName,
   quantOf,
@@ -77,9 +79,11 @@ export const Route = createFileRoute(route.settings.model_providers as any)({
 
 type Filter = 'all' | 'local' | 'remote'
 
-/** Installed-models table: logo, name, provider, capabilities, size, context, speed, status, menu. */
+/** Installed-models table: logo, name, provider, capabilities, size, context, speed, status, menu.
+ *  The name keeps 140px however narrow the window: at minmax(0,1fr) it was the
+ *  one column that gave way and the names vanished at 480px (T7-089). */
 const MODEL_COLS =
-  '30px minmax(0,1fr) 96px 112px 64px 68px 80px 104px 28px'
+  '30px minmax(140px,1fr) 96px 112px 64px 68px 80px minmax(104px,max-content) 28px'
 
 /** Card entrance delay: staggered, but capped so a long list is never waiting on its tail. */
 const staggerDelay = (i: number) => 120 + Math.min(i, 8) * 25
@@ -88,6 +92,7 @@ const staggerDelay = (i: number) => 120 + Math.min(i, 8) * 25
 const SPEED_WINDOW = 24
 
 function ModelProviders() {
+  const bedrockCredentials = useBedrockCredentials((state) => state.saved)
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const { providers, addProvider, updateProvider, setProviders } =
@@ -446,7 +451,18 @@ function ModelProviders() {
                             .join(' · ')}
                         </small>
                         {maxSpeed > 0 && speed && (
-                          <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+                          // Average speed against the fastest loaded model:
+                          // named and exposed as a progressbar (C147/C150).
+                          <span
+                            role="progressbar"
+                            aria-label={t('engine:loaded.speedBar')}
+                            aria-valuemin={0}
+                            aria-valuemax={Math.round(maxSpeed)}
+                            aria-valuenow={Math.round(speed.avg)}
+                            aria-valuetext={formatTps(speed.avg)}
+                            title={`${t('engine:loaded.speedBar')}: ${formatTps(speed.avg)}`}
+                            className="h-1.5 w-full overflow-hidden rounded-full bg-track"
+                          >
                             <i
                               className="block h-full rounded-full bg-grad motion-safe:animate-draw-x"
                               style={{ width: `${(speed.avg / maxSpeed) * 100}%` }}
@@ -607,7 +623,9 @@ function ModelProviders() {
                         : t('engine:providers.notSetUp')}
                     </small>
                     {provider.active ? (
-                      <ProviderStatusChip status={providerKeyStatus(provider)} />
+                      <ProviderStatusChip
+                        status={providerKeyStatus(provider, { bedrockCredentials })}
+                      />
                     ) : (
                       <Chip dot>{t('engine:status.off')}</Chip>
                     )}
@@ -677,6 +695,7 @@ function ModelProviders() {
             ) : (
               <TBox
                 columns={MODEL_COLS}
+                stackOnPhone
                 head={[
                   '',
                   t('engine:table.name'),
@@ -692,26 +711,39 @@ function ModelProviders() {
                 {shownRows.map(({ provider, model, local }) => {
                   const loaded = local && activeModels.includes(model.id)
                   const speed = speeds.get(model.id)
-                  const ctx = contextLengthOf(model)
-                  const hasKey = providerKeyStatus(provider) !== 'missing'
+                  const ctx = effectiveContextLength(model, provider)
+                  const keyStatus = providerKeyStatus(provider, { bedrockCredentials })
+                  const hasKey =
+                    keyStatus !== 'missing' && keyStatus !== 'credentials-missing'
                   return (
                     <div
                       key={`${provider.provider}:${model.id}`}
                       data-testid={`models-row-${model.id}`}
-                      className={cn(TBOX_ROW, 'motion-safe:animate-rise-in')}
+                      className={cn(
+                        TBOX_ROW,
+                        // Phones: a two-line card (logo + name, then the
+                        // figures and status) instead of columns cut off.
+                        'max-sm:flex max-sm:flex-wrap max-sm:gap-x-3 max-sm:gap-y-1.5',
+                        'motion-safe:animate-rise-in'
+                      )}
                     >
                       <BrandMark
                         logo={modelLogo(model.id, provider.provider)}
                         name={model.name || model.id}
                         size={30}
                       />
-                      <div className="flex min-w-0 flex-col gap-0.5">
+                      <div className="flex min-w-0 flex-col gap-0.5 max-sm:basis-[calc(100%-42px)]">
                         <FadeText as="b" className="text-[13px] font-medium text-foreground" title={model.id}>
                           {model.name || model.id}
                         </FadeText>
-                        <FadeText as="small" className="font-mono text-[11px] text-subtle-foreground">
-                          {model.id}
-                        </FadeText>
+                        {/* Middle-truncated: two long ids that share a
+                            prefix still differ by their tail (the quant). */}
+                        <MiddleText
+                          text={model.id}
+                          tail={18}
+                          title={model.id}
+                          className="font-mono text-[11px] text-subtle-foreground"
+                        />
                       </div>
                       <span className="min-w-0">
                         {/* The provider, never the quantization: a local id's
@@ -767,13 +799,13 @@ function ModelProviders() {
                           )
                         ) : hasKey ? (
                           <Chip tone="ok" dot>
-                            {providerKeyStatus(provider) === 'keyless'
+                            {keyStatus === 'keyless'
                               ? t('engine:status.keyless')
                               : t('engine:status.connected')}
                           </Chip>
                         ) : (
                           <Chip tone="warn" dot>
-                            {t('engine:status.noKey')}
+                            {t(missingKeyLabelKey(provider.provider))}
                           </Chip>
                         )}
                       </span>

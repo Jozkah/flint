@@ -59,6 +59,7 @@ const h = vi.hoisted(() => {
     embeddingThreads: {} as Record<string, boolean>,
     setThreadBusy: vi.fn(),
     setThreadEmbedding: vi.fn(),
+    setThreadCancelToolCall: vi.fn(),
   }
   const useAppStateMock: any = (selector: any) => selector(appStateState)
   useAppStateMock.getState = () => appStateState
@@ -324,6 +325,7 @@ vi.mock('@/lib/extension', () => ({
 
 vi.mock('@/lib/messages', () => ({
   mergeSettledToolParts: () => null,
+  threadMessageIsEmpty: () => false,
   convertThreadMessagesToUIMessages: (msgs: any[]) =>
     msgs.map((m) => ({
       id: m.id,

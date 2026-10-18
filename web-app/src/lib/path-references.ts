@@ -22,10 +22,16 @@ export type { FilePickerEntry }
  * `isReferenceToken` applies the remaining rules (URL, IPv4) on top.
  */
 export const REFERENCE_PATTERN =
-  /(^|[^A-Za-z0-9_])@((?:skill|agent|alias):[A-Za-z0-9][A-Za-z0-9_.-]*|[^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
+  /(^|[^A-Za-z0-9_])@((?:skill|agent|alias):[A-Za-z0-9][A-Za-z0-9_.-]*|(?:chat|session|room):[A-Za-z0-9][A-Za-z0-9_.-]*(?:#summary)?|[^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
 
 /** The kinds of `@` reference that name something other than a path. */
-export type TypedReferenceKind = 'skill' | 'agent' | 'alias'
+export type TypedReferenceKind =
+  | 'skill'
+  | 'agent'
+  | 'alias'
+  | 'chat'
+  | 'session'
+  | 'room'
 
 /**
  * A reference that names a skill, a saved agent or an alias rather than a
@@ -36,11 +42,21 @@ export type TypedReferenceKind = 'skill' | 'agent' | 'alias'
  */
 export function typedReference(
   raw: string
-): { kind: TypedReferenceKind; name: string } | null {
-  const match = /^(skill|agent|alias):([A-Za-z0-9][A-Za-z0-9_.-]*)$/.exec(raw)
-  return match
-    ? { kind: match[1] as TypedReferenceKind, name: match[2] }
-    : null
+): { kind: TypedReferenceKind; name: string; summary?: boolean } | null {
+  const match =
+    /^(?:(skill|agent|alias):([A-Za-z0-9][A-Za-z0-9_.-]*)|(chat|session|room):([A-Za-z0-9][A-Za-z0-9_.-]*)(#summary)?)$/.exec(
+      raw
+    )
+  if (!match) return null
+  // `@chat:`, `@session:` and `@room:` name another conversation, not a path
+  // (docs/CHAT_MENTIONS.md); `#summary` asks for a summary of it.
+  if (match[3])
+    return {
+      kind: match[3] as TypedReferenceKind,
+      name: match[4],
+      ...(match[5] ? { summary: true } : {}),
+    }
+  return { kind: match[1] as TypedReferenceKind, name: match[2] }
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   outputForEstimate,
 } from './toolOutputImages'
 import { stripToolImageSentinels } from './tool-image-sentinel'
+import { stripSummaryScaffolding } from './summaryText'
 
 /**
  * Approximate token count using a character-based heuristic.
@@ -19,7 +20,80 @@ const CHARS_PER_TOKEN = 3.5
 
 export function estimateTokens(text: string): number {
   if (!text) return 0
-  return Math.ceil(text.length / CHARS_PER_TOKEN)
+  return estimateTokensForChars(text.length)
+}
+
+/** The same estimate when only the length is known. */
+export function estimateTokensForChars(chars: number): number {
+  return chars > 0 ? Math.ceil(chars / CHARS_PER_TOKEN) : 0
+}
+
+/**
+ * The text of a message's inline attachments (`metadata.inline_file_contents`)
+ * as the request carries it. A pasted 20K-token text rides here, not in the
+ * message's parts, so every estimate of a request has to add it.
+ */
+export function inlineFilesText(metadata: unknown): string {
+  const files = (metadata as {
+    inline_file_contents?: Array<{ name?: string; content?: string }>
+  } | null | undefined)?.inline_file_contents
+  if (!Array.isArray(files)) return ''
+  return files
+    .filter((file) => file?.content)
+    .map((file) => `File: ${file.name || 'attachment'}\n${file.content}`)
+    .join('\n')
+}
+
+/**
+ * What the composer will add to the next request before it is sent: the
+ * typed text and the inline documents staged with it (a pasted 30K-token
+ * text is one), counted the way the sent message's metadata is counted, so
+ * the context ring moves while composing instead of after send (K-011).
+ */
+export function pendingComposerTokens(
+  prompt: string,
+  attachments: ReadonlyArray<{
+    type?: string
+    name?: string
+    injectionMode?: string
+    inlineContent?: string
+  }> = []
+): number {
+  const inline = inlineFilesText({
+    inline_file_contents: attachments
+      .filter(
+        (a) =>
+          a.type === 'document' && a.injectionMode === 'inline' && a.inlineContent
+      )
+      .map((a) => ({ name: a.name, content: a.inlineContent })),
+  })
+  return estimateTokens([prompt.trim(), inline].filter(Boolean).join('\n'))
+}
+
+/** One tool schema as it is sent: name, description and input schema. */
+export function estimateToolTokens(name: string, schema: unknown): number {
+  let json = ''
+  try {
+    json =
+      JSON.stringify({
+        name,
+        ...(schema && typeof schema === 'object' ? schema : { schema }),
+      }) ?? ''
+  } catch {
+    // A schema that cannot be serialised is counted by its name alone.
+  }
+  return estimateTokens(json || name) + 4
+}
+
+/**
+ * Every tool schema a request carries. The pre-flight check, the context
+ * card's breakdown and its ring all count tools with this.
+ */
+export function estimateToolSchemaTokens(tools: Record<string, unknown>): number {
+  return Object.entries(tools).reduce((total, [name, tool]) => {
+    const t = (tool ?? {}) as { description?: unknown; inputSchema?: unknown }
+    return total + estimateToolTokens(name, { description: t.description, inputSchema: t.inputSchema })
+  }, 0)
 }
 
 /**
@@ -111,16 +185,8 @@ function messageToText(message: UIMessage): string {
     }
   }
 
-  const metadata = message.metadata as
-    | { inline_file_contents?: Array<{ name?: string; content?: string }> }
-    | undefined
-  if (Array.isArray(metadata?.inline_file_contents)) {
-    for (const file of metadata.inline_file_contents) {
-      if (file?.content) {
-        parts.push(`File: ${file.name || 'attachment'}\n${file.content}`)
-      }
-    }
-  }
+  const inline = inlineFilesText(message.metadata)
+  if (inline) parts.push(inline)
 
   return parts.join('\n')
 }
@@ -241,9 +307,7 @@ const COMPACT_SYSTEM_PROMPT =
  * back.
  */
 export function extractSummary(raw: string): string {
-  const summary = /<summary>([\s\S]*?)(?:<\/summary>|$)/i.exec(raw)
-  if (summary) return summary[1].trim()
-  return raw.replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/gi, '').trim()
+  return stripSummaryScaffolding(raw)
 }
 
 export interface MicrocompactOptions {

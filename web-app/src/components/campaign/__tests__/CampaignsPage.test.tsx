@@ -54,6 +54,55 @@ describe('CampaignsPage', () => {
     expect(screen.getAllByTestId('campaigns-start').length).toBeGreaterThan(0)
   })
 
+  it('shows the real reason under the load error', () => {
+    useCampaignStore.setState({
+      campaigns: [],
+      loaded: true,
+      error: 'agent_campaign_list not allowed. Plugin not found',
+    })
+    render(<CampaignsPage />)
+    expect(screen.getByTestId('campaigns-error-reason')).toHaveTextContent(
+      'agent_campaign_list not allowed. Plugin not found'
+    )
+  })
+
+  it('says campaigns need the desktop app instead of a load error', () => {
+    useCampaignStore.setState({
+      campaigns: [],
+      loaded: true,
+      error: null,
+      unavailable: 'desktop',
+    })
+    render(<CampaignsPage />)
+    expect(screen.getByText('Campaigns need the desktop app')).toBeInTheDocument()
+    expect(screen.queryByTestId('campaigns-error')).toBeNull()
+    expect(screen.getAllByTestId('campaigns-start')[0]).toBeDisabled()
+  })
+
+  it('tells a person to restart when the app is older than the page', () => {
+    useCampaignStore.setState({
+      campaigns: [],
+      loaded: true,
+      unavailable: null,
+      error: 'Command agent_campaign_list not found',
+      staleApp: true,
+    })
+    render(<CampaignsPage />)
+    expect(screen.getByTestId('campaigns-stale-app')).toHaveTextContent(/restart/i)
+  })
+
+  it('still lists campaigns and names the records that were skipped', () => {
+    useCampaignStore.setState({
+      campaigns: [campaign('c1')],
+      loaded: true,
+      error: null,
+      skipped: [{ id: 'c-bad', reason: 'the record of campaign c-bad is unreadable' }],
+    })
+    render(<CampaignsPage />)
+    expect(screen.getByTestId('campaigns-row-c1')).toBeInTheDocument()
+    expect(screen.getByTestId('campaigns-skipped')).toHaveTextContent('c-bad')
+  })
+
   it('lists campaigns with plain status and progress, and opens the board', () => {
     useCampaignStore.setState({ campaigns: [campaign('c1')], loaded: true })
     render(<CampaignsPage />)
@@ -73,5 +122,29 @@ describe('CampaignsPage', () => {
     render(<CampaignsPage />)
     fireEvent.click(screen.getByTestId('campaigns-start'))
     expect(screen.getByTestId('campaign-goal')).toBeInTheDocument()
+  })
+
+  it('keeps the list and shows a banner when a refresh fails', () => {
+    useCampaignStore.setState({
+      campaigns: [campaign('one')],
+      loaded: true,
+      error: 'the campaigns folder could not be read: denied',
+    })
+    render(<CampaignsPage />)
+    expect(screen.getByTestId('campaigns-list')).toBeInTheDocument()
+    expect(screen.getByTestId('campaigns-refresh-error')).toHaveTextContent(
+      'the campaigns folder could not be read: denied'
+    )
+    expect(screen.queryByTestId('campaigns-error')).toBeNull()
+  })
+
+  it('shows no banner when the refresh worked', () => {
+    useCampaignStore.setState({
+      campaigns: [campaign('one')],
+      loaded: true,
+      error: null,
+    })
+    render(<CampaignsPage />)
+    expect(screen.queryByTestId('campaigns-refresh-error')).toBeNull()
   })
 })

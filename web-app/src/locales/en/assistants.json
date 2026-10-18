@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Default Assistant",
   "defaultAssistantDesc": "Used when starting a new chat",
   "allAssistants": "All Assistants",
-  "lastUsed": "Last used"
+  "lastUsed": "Last used",
+  "starterDescriptions": {
+    "jan": "Flint is a helpful desktop assistant that can reason through complex tasks and use tools to complete them on the user's behalf.",
+    "quartz": "A precise research and analysis specialist for evidence, comparisons, calculations, and decision-ready conclusions.",
+    "coal": "A hands-on software engineer for debugging, implementation, refactors, tests, and practical code review.",
+    "blaze": "A creative product and writing specialist for bold concepts, naming, UX ideas, copy, and polished creative output.",
+    "redstone": "A systems and automation specialist for repeatable workflows, integrations, operations, and reliable multi-step execution.",
+    "book-and-quill": "A storyteller that writes and continues stories with vivid scenes and consistent characters.",
+    "compass": "A translator that converts text between languages faithfully and flags tricky wording.",
+    "emerald": "A money helper for budgeting, concepts and tradeoffs. Educational, not licensed financial advice.",
+    "book": "A study tutor that teaches step by step and checks understanding with short questions."
+  }
 }

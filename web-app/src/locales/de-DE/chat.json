@@ -196,5 +196,26 @@
     "description": "{{count}} Chats werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
     "descriptionArchive": "{{count}} Chats werden ins Archiv verschoben. Dort kannst du sie wiederherstellen.",
     "done": "{{count}} Chats gelöscht"
-  }
+  },
+  "find": {
+    "placeholder": "Im Chat suchen",
+    "none": "Keine Treffer",
+    "previous": "Vorheriger Treffer",
+    "next": "Nächster Treffer",
+    "close": "Suche schließen"
+  },
+  "continueSummary": {
+    "menu": "In neuem Chat mit Zusammenfassung fortfahren",
+    "working": "Chat wird zusammengefasst...",
+    "done": "In einem neuen Chat fortgesetzt.",
+    "cancel": "Abbrechen",
+    "errors": {
+      "no-chat": "Dieser Chat kann nicht fortgesetzt werden.",
+      "empty": "Es gibt noch nichts zusammenzufassen.",
+      "no-model": "Wähle zuerst ein Modell für diesen Chat.",
+      "model-not-loaded": "Lade zuerst das Modell des Chats. Es schreibt die Zusammenfassung.",
+      "summary-failed": "Die Zusammenfassung konnte nicht geschrieben werden. Es wurde nichts erstellt."
+    }
+  },
+  "stopToolCall": "Tool-Aufruf stoppen (Esc)"
 }

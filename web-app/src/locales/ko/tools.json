@@ -21,7 +21,15 @@
     "alwaysAllow": "항상 허용",
     "approvalNeeded": "승인 필요",
     "permissionDetails": "권한 세부 정보",
-    "moreOptions": "추가 옵션"
+    "moreOptions": "추가 옵션",
+    "denyWithReason": "이유와 함께 거부",
+    "denyReasonLabel": "왜 거부하시나요?",
+    "denyReasonPlaceholder": "대신 무엇을 해야 하는지 에이전트에게 알려 주세요",
+    "denyAndSend": "거부하고 보내기",
+    "editCommand": "명령 편집",
+    "editCommandLabel": "실행할 명령",
+    "editCommandHint": "명령을 변경한 다음 '한 번 허용'을 선택하면 수정한 버전이 실행됩니다.",
+    "editCommandNote": "'한 번 허용'은 수정한 명령을 실행합니다. 이 명령에 대한 상시 권한은 저장되지 않습니다."
   },
   "toolCall": {
     "awaitingApproval": "승인 대기 중: {{tool}}",
@@ -71,6 +79,8 @@
     "reading": "읽는 중...",
     "workspaceRoot": "작업 공간 루트",
     "matches": "일치 {{count}}개",
-    "testsPassed": "{{count}}개 통과"
+    "testsPassed": "{{count}}개 통과",
+    "runningStatus": "{{tool}} 실행 중…",
+    "stillRunning": "{{tool}} 계속 실행 중…"
   }
 }

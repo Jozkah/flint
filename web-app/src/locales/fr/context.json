@@ -3,6 +3,7 @@
   "title": "Ce que Flint utilise dans cette conversation",
   "description": "Ce qui est à la disposition de Flint, ce qui a été choisi pour une requête, et ce qui est vérifié dans la copie assainie de la dernière requête. Les modifications ici affectent les messages futurs, pas une réponse déjà en cours de rédaction.",
   "refresh": "Actualiser",
+  "retry": "Réessayer",
   "details": "Détails",
   "closeDetails": "Fermer les détails",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "S'exécute sur cet appareil ou sur votre réseau. Les messages ne le quittent pas.",
+      "local": "S'exécute sur cet appareil. Les messages ne le quittent pas.",
       "remote": "Fournisseur distant : vos messages et les fichiers inclus lui sont envoyés.",
       "checking": "Recherche en cours de l'endroit où s'exécute ce fournisseur.",
-      "unknown": "Impossible de déterminer où s'exécute ce fournisseur."
+      "unknown": "Impossible de déterminer où s'exécute ce fournisseur.",
+      "network": "Envoyé à {{host}} sur votre réseau. Les messages et fichiers inclus quittent cet appareil, mais pas votre réseau.",
+      "remoteHost": "Envoyé à {{host}} : vos messages et fichiers inclus quittent cet ordinateur."
     },
     "assistantInstructions": "Les instructions de l'assistant sont envoyées comme prompt système.",
     "pendingInline": "Son texte sera placé dans votre prochain message.",
@@ -119,7 +122,9 @@
     "noModel": "Aucun modèle n'est sélectionné.",
     "noInstructions": "Aucune instruction d'assistant. Les conversations normales ne lisent pas les fichiers d'instructions de projet comme Flint.md ; Cowork, si.",
     "noAttachments": "Aucun fichier n'est joint à cette conversation.",
+    "noAttachmentsHint": "Les fichiers que vous joignez apparaissent ici, avec la façon dont Flint les utilise.",
     "indexUnavailable": "Les fichiers indexés n'ont pas pu être listés.",
+    "indexUnavailableHint": "Flint n'a pas pu lire l'index des fichiers de cette conversation. Réessayez dans un instant.",
     "noMemory": "Aucune mémoire enregistrée ne s'appliquait au dernier message.",
     "noTools": "Aucun outil n'est disponible."
   },
@@ -137,6 +142,8 @@
     "noProject": "aucun projet"
   },
   "inspect": "Inspecter la requête assainie (avancé)",
+  "why": "Pourquoi",
+  "verifiedMeaning": "Ce que « vérifié » veut dire",
   "showAll": "Afficher les {{count}}",
   "showFewer": "En afficher moins",
   "cards": {

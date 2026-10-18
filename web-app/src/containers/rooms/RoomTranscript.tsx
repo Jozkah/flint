@@ -1,5 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ChevronDown, Globe, Search, Wrench } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, ChevronDown, Globe, Link2, Search, Wrench } from 'lucide-react'
 import { toneForTool, TONE_CLASSES } from '@/lib/semanticTone'
 import { stripConclusion } from '@/lib/rooms/consensus'
 import type {
@@ -7,17 +7,24 @@ import type {
   Room,
   RoomAuthor,
   RoomJournalRecord,
+  RoomChangeDecision,
   RoomMessage,
   RoomToolActivity,
+  RoomChangedFile,
 } from '@/lib/rooms/types'
+import { changeCounts } from '@/lib/rooms/turnChanges'
+import { ReplyCutOff } from '@/components/ReplyCutOff'
+import { isCompareRoom } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { liveStatus } from '@/lib/rooms/liveStatus'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { summarizeTrace, summaryLabelParts } from '@/lib/traceSummary'
 import {
   addressLabel,
+  compareLayout,
   findParticipant,
   messagesOf,
   participantAttribution,
@@ -28,6 +35,17 @@ import {
 } from './roomUi'
 import { RoomMessageText } from './RoomMessageText'
 import { RoomAvatar } from './RoomAvatar'
+import { TurnChangeCard, type WorkspaceActions } from './TurnChangeCard'
+import { CappedAnswer } from './CappedAnswer'
+import { createScrollLink, ScrollLinkContext, useRoomsViewPrefs } from '@/lib/rooms/answerScroll'
+import {
+  applyRoomWorkspace,
+  resetRoomWorkspace,
+  roomWorkspaceApplyPreview,
+  roomWorkspacePatch,
+  undoRoomWorkspaceApply,
+} from '@/services/rooms'
+import { useRoomsApi } from './roomsBindings'
 import { CompactionDivider } from '@/containers/CompactionDivider'
 import { WidgetCard } from '@/containers/message/WidgetCard'
 import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
@@ -58,11 +76,24 @@ function authorLabel(author: RoomAuthor, room: Room | null, t: T): string {
  * get), with the role and model kept muted beside it so the name is what the
  * color highlights.
  */
-function AuthorName({ author, room, t }: { author: RoomAuthor; room: Room | null; t: T }) {
+function AuthorName({
+  author,
+  room,
+  model,
+  t,
+}: {
+  author: RoomAuthor
+  room: Room | null
+  /** The model that wrote this answer (compare), shown instead of the participant's current one. */
+  model?: string
+  t: T
+}) {
   if (author.kind === 'participant') {
     const p = findParticipant(room, author.participantId)
     const name = p?.name || author.name || t('rooms:transcript.unknownParticipant')
-    const full = authorLabel(author, room, t)
+    const full = model
+      ? `${name} · ${model}${p?.removed ? ` ${t('rooms:transcript.removed')}` : ''}`
+      : authorLabel(author, room, t)
     return (
       <>
         <RoomAvatar
@@ -134,6 +165,25 @@ function toolIcon(name: string) {
   if (name === 'web_search') return Search
   if (name === 'web_fetch') return Globe
   return Wrench
+}
+
+/** A call's duration in a compact, unit-only form ("340 ms", "2.5 s"). */
+function formatToolDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))} ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1).replace(/\.0$/, '')} s`
+  return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`
+}
+
+function ToolDuration({ ms }: { ms?: number }) {
+  if (ms === undefined) return null
+  return (
+    <span
+      data-testid="tool-duration"
+      className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground"
+    >
+      {formatToolDuration(ms)}
+    </span>
+  )
 }
 
 /** The Cowork tone for one room tool call: kind colours it, failure outranks. */
@@ -235,11 +285,25 @@ function ToolCallBody({
  * write amber, MCP violet, failures red); hovering a chip shows what that call
  * was given and what came back. Details opens every call as a full table.
  */
-function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
+function ToolTrace({
+  calls,
+  changes,
+  t,
+}: {
+  calls: RoomToolActivity[]
+  /** The turn's real diff, when it has one: its counts replace the calls' (R-046). */
+  changes?: readonly RoomChangedFile[]
+  t: T
+}) {
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const hasDetails = calls.some((c) => c.args !== undefined || Boolean(c.output))
-  const summary = summaryLabelParts(summarizeTrace(calls.map(asPart)), t as never)
+  const traced = summaryLabelParts(summarizeTrace(calls.map(asPart)), t as never)
+  // The edit calls' old/new strings count unchanged context lines too; the
+  // change card's diff is what the turn really changed, so both say the same.
+  const diff = changes && changes.length > 0 ? changeCounts(changes) : null
+  const summary =
+    traced && diff ? { ...traced, added: diff.additions, removed: diff.deletions } : traced
   const failed = calls.filter((c) => !c.ok).length
 
   return (
@@ -264,8 +328,8 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
               {summary.text}
               {(summary.added > 0 || summary.removed > 0) && (
                 <span className="ml-1 font-mono tabular-nums">
-                  <span className="text-emerald-600 dark:text-emerald-400">+{summary.added}</span>{' '}
-                  <span className="text-red-600 dark:text-red-400">−{summary.removed}</span>
+                  <span className="text-diff-add">+{summary.added}</span>{' '}
+                  <span className="text-diff-del">−{summary.removed}</span>
                 </span>
               )}
             </>
@@ -308,9 +372,11 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
                   <div className="flex items-center gap-1.5 text-xs font-medium">
                     <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
                     <span className="text-foreground">{c.name}</span>
+                    <ToolDuration ms={c.ms} />
                     <span
                       className={cn(
-                        'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
+                        c.ms === undefined && 'ml-auto',
+                        'rounded px-1.5 py-0.5 text-[10px] font-medium',
                         c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
                       )}
                     >
@@ -368,9 +434,11 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
                   </span>
                   <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
                   <span className="font-mono text-foreground">{c.name}</span>
+                  <ToolDuration ms={c.ms} />
                   <span
                     className={cn(
-                      'ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium',
+                      c.ms === undefined && 'ml-auto',
+                      'rounded-full px-2 py-0.5 text-[10px] font-medium',
                       c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
                     )}
                   >
@@ -393,6 +461,79 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
 const isWidgetCall = (c: RoomToolActivity): boolean =>
   c.name === SHOW_WIDGET_TOOL && c.ok
 
+/** The workspace actions of an isolated participant's change card. */
+function workspaceActions(message: RoomMessage): WorkspaceActions | undefined {
+  if (!message.changes?.workspace || message.author.kind !== 'participant') return undefined
+  const { roomId } = message
+  const pid = message.author.participantId
+  return {
+    patch: () => roomWorkspacePatch(roomId, pid),
+    discard: () => resetRoomWorkspace(roomId, pid),
+    apply: (paths) => applyRoomWorkspace(roomId, pid, paths),
+    preview: () => roomWorkspaceApplyPreview(roomId, pid),
+    undo: () => undoRoomWorkspaceApply(roomId, pid),
+    source: { name: message.author.name, round: message.round },
+  }
+}
+
+/**
+ * A participant turn that wrote no answer is never a blank cell: say why (the
+ * reply limit ran out, or the turn only used tools) and show the thinking the
+ * model spent its tokens on, folded as chat folds it.
+ */
+function EmptyReply({ message, t }: { message: RoomMessage; t: T }) {
+  if (message.author.kind !== 'participant' || message.kind !== 'speech') return null
+  if (message.status !== 'complete' || message.text.trim()) return null
+  const why =
+    message.finishReason === 'length'
+      ? t('rooms:transcript.emptyReply.length', { count: message.usage?.outputTokens ?? 0 })
+      : message.toolCalls?.length
+        ? t('rooms:transcript.emptyReply.tools')
+        : t('rooms:transcript.emptyReply.none')
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="empty-reply">
+      <p className="text-xs text-warning">{why}</p>
+      {message.reasoning && (
+        <details className="group text-xs text-muted-foreground" data-testid="empty-reply-thought">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 hover:text-foreground">
+            <ChevronDown className="size-3 -rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+            {t('rooms:transcript.thought')}
+          </summary>
+          <p className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words border-l-2 border-border pl-2.5">
+            {message.reasoning}
+          </p>
+        </details>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The files a turn changed. Drawn under the capped answer, not inside it, so
+ * the answer's fade and height cap never hide or clip the card.
+ */
+function MessageChanges({
+  message,
+  decision,
+  t,
+}: {
+  message: RoomMessage
+  decision?: RoomChangeDecision
+  t: T
+}) {
+  const api = useRoomsApi()
+  if (!message.changes || message.changes.files.length === 0) return null
+  return (
+    <TurnChangeCard
+      changes={message.changes}
+      actions={workspaceActions(message)}
+      decision={decision}
+      onDecision={(d) => api.controller.setChangeDecision(message.roomId, message.id, d)}
+      t={t}
+    />
+  )
+}
+
 function MessageBody({
   message,
   tally,
@@ -404,11 +545,13 @@ function MessageBody({
   mentionColors: Map<string, string>
   t: T
 }) {
+  const api = useRoomsApi()
   return (
     <>
       {message.toolCalls && message.toolCalls.some((c) => !isWidgetCall(c)) && (
         <ToolTrace
           calls={message.toolCalls.filter((c) => !isWidgetCall(c))}
+          changes={message.changes?.files}
           t={t}
         />
       )}
@@ -425,11 +568,56 @@ function MessageBody({
           }}
         />
       ))}
+      {message.compare?.catchUp && message.compare.catchUp.length > 0 && (
+        <details data-testid="compare-catch-up" className="group text-xs text-muted-foreground">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 font-medium text-warning hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronDown className="size-3 -rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+            {t('rooms:transcript.catchUp', { count: message.compare.catchUp.length })}
+          </summary>
+          <p className="mt-1">{t('rooms:transcript.catchUpHint')}</p>
+          <ol className="mt-1 list-decimal space-y-0.5 pl-5">
+            {message.compare.catchUp.map((q) => (
+              <li key={q.id} className="break-words">
+                {q.text}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
       <RoomMessageText
         text={stripConclusion(message.text).text}
         mentionColors={mentionColors}
         className="text-[13.5px] leading-[1.6] text-fg-2"
       />
+      <EmptyReply message={message} t={t} />
+      {message.author.kind === 'participant' &&
+        message.kind === 'speech' &&
+        message.finishReason === 'length' &&
+        message.text.trim() !== '' && (
+          <ReplyCutOff
+            tokens={message.usage?.outputTokens}
+            // Outside compare, the participant is asked to carry on. A compare
+            // cell is re-run from its own controls instead (a message there is
+            // a new question for everyone).
+            onContinue={
+              message.compare
+                ? undefined
+                : () => {
+                    const author = message.author as { participantId: string }
+                    void api.controller.sendUserMessage(
+                      message.roomId,
+                      t('rooms:transcript.continuePrompt'),
+                      { kind: 'participant', participantId: author.participantId }
+                    )
+                  }
+            }
+          />
+        )}
+      {message.budgetHit && (
+        <p data-testid="budget-hit" className="text-xs text-warning">
+          {t(`rooms:transcript.budgetHit.${message.budgetHit}`)}
+        </p>
+      )}
       {message.kind === 'vote-call' && (
         <p className="text-xs text-muted-foreground tabular-nums" data-testid="vote-tally">
           {t('rooms:transcript.tally', tally ?? { agree: 0, disagree: 0, abstain: 0 })}
@@ -481,10 +669,389 @@ function MessageBody({
   )
 }
 
+/** One transcript message: a compaction divider, a system line or a card. */
+function TranscriptMessage({
+  m,
+  room,
+  tallies,
+  mentionColors,
+  isFresh,
+  className,
+  t,
+}: {
+  m: RoomMessage
+  room: Room
+  tallies: Map<string, VoteTally>
+  mentionColors: Map<string, string>
+  isFresh: (id: string) => boolean
+  /** Extra classes for the card (a compare column fills its cell). */
+  className?: string
+  t: T
+}) {
+  const toUser = m.to.kind === 'user'
+  const chip = addressLabel(m.to, room, t)
+  if (m.kind === 'system' && m.compaction) {
+    return (
+      <div data-testid="room-message" data-kind="compaction">
+        <CompactionDivider record={m.compaction} />
+      </div>
+    )
+  }
+  if (m.kind === 'system') {
+    return (
+      <div
+        data-testid="room-message"
+        data-kind={m.kind}
+        className={cn(
+          'px-2 text-center text-xs text-muted-foreground',
+          isFresh(m.id) && 'motion-safe:animate-fade-in'
+        )}
+      >
+        <span className="sr-only">{t('rooms:transcript.system')}: </span>
+        <span className="whitespace-pre-wrap break-words">{m.text}</span>
+      </div>
+    )
+  }
+  return (
+    <article
+      data-testid="room-message"
+      data-kind={m.kind}
+      data-status={m.status}
+      data-addressed-to-user={toUser || undefined}
+      className={cn(
+        'flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5',
+        m.kind === 'user' && 'bg-secondary',
+        m.kind === 'synthesis' && 'border-[1.5px] border-border-strong',
+        toUser && 'shadow-[inset_4px_0_0_var(--primary)]',
+        isFresh(m.id) && 'motion-safe:animate-msg-in',
+        className
+      )}
+    >
+      <header className="flex flex-wrap items-center gap-1.5 text-xs">
+        <AuthorName author={m.author} room={room} model={m.compare?.model} t={t} />
+        {chip && (
+          <span
+            data-testid="message-to"
+            // A message to a participant wears that participant's colour,
+            // like their own name does.
+            style={
+              m.to.kind === 'participant'
+                ? {
+                    color: participantColor(m.to.participantId),
+                    backgroundColor: `color-mix(in oklab, ${participantColor(m.to.participantId)} 14%, transparent)`,
+                  }
+                : undefined
+            }
+            className={cn(
+              'rounded-full px-[7px] py-px text-[11px]',
+              m.to.kind !== 'participant' && 'bg-accent text-muted-foreground'
+            )}
+          >
+            {chip}
+          </span>
+        )}
+        <KindLabel message={m} t={t} />
+        {m.status === 'interrupted' && (
+          <Badge tone="warn">{t('rooms:transcript.interrupted')}</Badge>
+        )}
+        {(m.status === 'failed' || m.kind === 'error') && (
+          <Badge tone="error">{t('rooms:transcript.failed')}</Badge>
+        )}
+        {toUser && (
+          <span className="text-[11.5px] font-medium text-foreground">
+            {t('rooms:transcript.addressedToYou')}
+          </span>
+        )}
+        {!m.compare && (m.usage?.outputTokens || m.usage?.tokensPerSecond) ? (
+          <span
+            data-testid="message-speed"
+            title={t('rooms:transcript.speedTitle')}
+            className="ml-auto tabular-nums text-muted-foreground"
+          >
+            {[
+              m.usage?.outputTokens
+                ? t('rooms:transcript.tokensOut', {
+                    count: m.usage.outputTokens,
+                    approx: m.usage.estimated ? '~' : '',
+                  })
+                : null,
+              m.usage?.tokensPerSecond
+                ? t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        ) : null}
+      </header>
+      {m.compare && (
+        <CompareAnswerMeta m={m} t={t} />
+      )}
+      <CappedAnswer messageId={m.id} name={authorLabel(m.author, room, t)} t={t}>
+        <MessageBody
+          message={m}
+          tally={tallies.get(m.id)}
+          mentionColors={mentionColors}
+          t={t}
+        />
+      </CappedAnswer>
+      <MessageChanges message={m} decision={room.changeDecisions?.[m.id]} t={t} />
+    </article>
+  )
+}
+
+/**
+ * A compare answer's second header line: date · duration · tokens · tok/s,
+ * muted. Each item keeps its own words together, so a narrow column wraps
+ * between items, never inside one.
+ */
+function CompareAnswerMeta({ m, t }: { m: RoomMessage; t: T }) {
+  const items = [
+    answerDate(m.createdAt),
+    m.compare?.durationMs ? `${(m.compare.durationMs / 1000).toFixed(1)} s` : null,
+    m.usage?.outputTokens
+      ? t('rooms:transcript.tokensOut', {
+          count: m.usage.outputTokens,
+          approx: m.usage.estimated ? '~' : '',
+        })
+      : null,
+    m.usage?.tokensPerSecond
+      ? t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })
+      : null,
+  ].filter((x): x is string => Boolean(x))
+  return (
+    <div
+      data-testid="answer-meta"
+      className="-mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[24px] text-[11px] tabular-nums text-muted-foreground"
+    >
+      {items.map((item, i) => (
+        // The separator trails its item, so a wrapped line never starts with one.
+        <span
+          key={i}
+          className="whitespace-nowrap after:ml-1.5 after:content-['·'] last:after:content-none"
+        >
+          {item}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** The turn being streamed, drawn as a dashed card. */
+function LiveCard({
+  live,
+  room,
+  approvalTool,
+  mentionColors,
+  className,
+  t,
+}: {
+  live: LiveTurn
+  room: Room
+  approvalTool: string | null
+  mentionColors: Map<string, string>
+  className?: string
+  t: T
+}) {
+  return (
+    <article
+      data-testid="room-live-turn"
+      aria-busy="true"
+      className={cn(
+        'flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-dashed border-border-strong bg-card px-3 py-2.5 motion-safe:animate-msg-in',
+        className
+      )}
+    >
+      <header className="flex flex-wrap items-center gap-1.5 text-xs">
+        <AuthorName author={live.author} room={room} t={t} />
+        <span className="text-muted-foreground motion-safe:animate-pulse">
+          {liveStatusLabel(liveStatus(live, approvalTool), t)}
+        </span>
+      </header>
+      <CappedAnswer name={authorLabel(live.author, room, t)} streamedLength={live.text.length} t={t}>
+      {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
+      {live.compacting ? (
+        <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
+      ) : live.text ? (
+        <RoomMessageText
+          text={stripConclusion(live.text).text}
+          mentionColors={mentionColors}
+          isStreaming
+          className="text-[13.5px] leading-[1.6] text-fg-2"
+        />
+      ) : null}
+      </CappedAnswer>
+    </article>
+  )
+}
+
+/** An answer's date and time, so runs of the same model on different days tell apart. */
+function answerDate(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+/** Where a participant's column goes: its order in the room, the removed last. */
+function columnRank(room: Room, author: RoomAuthor): number {
+  if (author.kind !== 'participant') return Number.MAX_SAFE_INTEGER
+  const p = findParticipant(room, author.participantId)
+  return p ? p.order : Number.MAX_SAFE_INTEGER
+}
+
+/**
+ * A compare round: every participant's answer to the same user message in a
+ * column of its own (stacked when the transcript is narrow), each headed by the
+ * participant and model, with the same token and speed figures as any message.
+ * Turns still being written sit in their column beside the finished ones.
+ */
+function CompareRow({
+  answers,
+  lives,
+  room,
+  tallies,
+  mentionColors,
+  isFresh,
+  approvalTool,
+  questionId = null,
+  latest = false,
+  onRun,
+  t,
+}: {
+  answers: RoomMessage[]
+  lives: LiveTurn[]
+  room: Room
+  /** The question this row answers; with it, models that have not answered show an empty cell. */
+  questionId?: string | null
+  /** The newest question: an empty cell runs just that model on it. */
+  latest?: boolean
+  onRun?: (participantId: string, scope: 'latest' | 'missing') => void
+  tallies: Map<string, VoteTally>
+  mentionColors: Map<string, string>
+  isFresh: (id: string) => boolean
+  approvalTool: string | null
+  t: T
+}) {
+  const present = new Set(
+    [...answers.map((m) => m.author), ...lives.map((l) => l.author)].flatMap((a) =>
+      a.kind === 'participant' ? [a.participantId] : []
+    )
+  )
+  const missing = questionId
+    ? room.participants.filter((p) => !p.removed && !present.has(p.id))
+    : []
+  const cells = [
+    ...answers.map((m) => ({ key: m.id, rank: columnRank(room, m.author), at: m.createdAt, message: m, live: null, empty: null })),
+    ...lives.map((l) => ({ key: l.turnId, rank: columnRank(room, l.author), at: Number.MAX_SAFE_INTEGER, message: null, live: l, empty: null })),
+    ...missing.map((p) => ({ key: `missing-${p.id}`, rank: p.order, at: 0, message: null, live: null, empty: p })),
+  ].sort((a, b) => a.rank - b.rank || a.at - b.at)
+  if (cells.length === 0) return null
+  return (
+    <CompareRowLinked>
+    <div
+      data-testid="room-compare-row"
+      role="group"
+      aria-label={t('rooms:transcript.compareRow', { count: cells.length })}
+      // Wrapping flex, not a grid: when the answers do not all fit on one line the
+      // last line's cells grow to fill it, so 3 answers at a narrow width are
+      // 2 + 1 full-width, never 2 + an empty cell.
+      className="flex flex-wrap items-stretch gap-2.5"
+    >
+      {cells.map((c) =>
+        c.message ? (
+          <TranscriptMessage
+            key={c.key}
+            m={c.message}
+            room={room}
+            tallies={tallies}
+            mentionColors={mentionColors}
+            isFresh={isFresh}
+            className="min-w-0 flex-[1_1_min(100%,240px)]"
+            t={t}
+          />
+        ) : c.live ? (
+          <LiveCard
+            key={c.key}
+            live={c.live}
+            room={room}
+            approvalTool={approvalTool}
+            mentionColors={mentionColors}
+            className="min-w-0 flex-[1_1_min(100%,240px)]"
+            t={t}
+          />
+        ) : c.empty ? (
+          <div
+            key={c.key}
+            data-testid="compare-missing"
+            className="flex min-w-0 flex-[1_1_min(100%,240px)] flex-col items-start gap-1.5 rounded-[10px] border-[0.8px] border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground"
+          >
+            <span className="font-medium text-foreground">{c.empty.name}</span>
+            <span>
+              {t(
+                c.empty.compareSkip
+                  ? 'rooms:compare.state.off'
+                  : room.status === 'running' && latest
+                    ? 'rooms:compare.state.queued'
+                    : 'rooms:compare.notAnswered'
+              )}
+            </span>
+            {onRun && room.status !== 'running' && (
+              <button
+                type="button"
+                onClick={() => onRun(c.empty!.id, latest ? 'latest' : 'missing')}
+                className="inline-flex h-7 cursor-pointer items-center rounded-full border-[0.8px] border-border bg-card px-2.5 text-[11.5px] text-foreground outline-hidden hover:border-border-strong focus-visible:ring-[3px] focus-visible:ring-ring/40"
+              >
+                {t(latest ? 'rooms:compare.run' : 'rooms:compare.answerEarlier')}
+              </button>
+            )}
+          </div>
+        ) : null
+      )}
+    </div>
+    </CompareRowLinked>
+  )
+}
+
+/** The answers of one row scroll together while Link scrolling is on. */
+function CompareRowLinked({ children }: { children: React.ReactNode }) {
+  const link = useMemo(() => createScrollLink(() => useRoomsViewPrefs.getState().linkScroll), [])
+  return <ScrollLinkContext.Provider value={link}>{children}</ScrollLinkContext.Provider>
+}
+
+/** On by default; turns off the scroll link between compare columns. */
+function LinkScrollToggle({ t }: { t: T }) {
+  const on = useRoomsViewPrefs((s) => s.linkScroll)
+  const set = useRoomsViewPrefs((s) => s.setLinkScroll)
+  return (
+    <Tooltip>
+    <TooltipTrigger asChild>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      data-testid="room-link-scroll"
+      onClick={() => set(!on)}
+      className={cn(
+        // Stacked columns (a narrow transcript) have nothing to scroll side by side.
+        '@max-[520px]:hidden inline-flex h-7 cursor-pointer items-center gap-1.5 self-end rounded-full border-[0.8px] px-2.5 text-[11.5px] outline-hidden transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40',
+        on ? 'border-border-strong bg-accent text-foreground' : 'border-border text-muted-foreground hover:text-foreground'
+      )}
+    >
+      <Link2 aria-hidden className="size-3.5" />
+      {t('rooms:transcript.linkScroll')}
+    </button>
+    </TooltipTrigger>
+    <TooltipContent side="bottom" align="end">
+      {t('rooms:transcript.linkScrollHint')}
+    </TooltipContent>
+    </Tooltip>
+  )
+}
+
 type RoomTranscriptProps = {
   room: Room
   journal: RoomJournalRecord[]
   liveTurn: LiveTurn | null
+  /** Every turn in flight; a compare room streams one per participant. */
+  liveTurns?: LiveTurn[]
 }
 
 /**
@@ -509,14 +1076,44 @@ function liveStatusLabel(status: ReturnType<typeof liveStatus>, t: T): string {
   }
 }
 
-export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps) {
+export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTranscriptProps) {
   const { t } = useTranslation()
   const messages = useMemo(() => messagesOf(journal), [journal])
+  const compare = isCompareRoom(room)
+  const items = useMemo(() => (compare ? compareLayout(messages) : null), [compare, messages])
   const tallies = useMemo(() => voteTallies(messages), [messages])
   // Name -> color for the participants, so an @mention of one is painted in the
   // same color as that participant's name. Rebuilt only when the roster changes.
   const mentionColors = useMemo(() => participantColorsByName(room), [room])
   const live = liveTurn?.roomId === room.id ? liveTurn : null
+  const compareLives = compare
+    ? (liveTurns ?? (live ? [live] : [])).filter((l) => l.roomId === room.id)
+    : []
+  // Several turns stream at once in a compare room; any of them growing follows.
+  const compareStreamed = compareLives.map((l) => l.text.length).join(',')
+  const api = useRoomsApi()
+  const onRun = (participantId: string, scope: 'latest' | 'missing') =>
+    void api.controller.compareRun(room.id, [participantId], scope).catch(() => {})
+  // Each live answer goes to the first question its model has not answered
+  // (a late model answering earlier questions), else the newest one.
+  const livesFor = useMemo(() => {
+    const out = new Map<number, LiveTurn[]>()
+    if (!items) return out
+    const rows = items.flatMap((it, i) => (it.kind === 'compare' && it.questionId ? [i] : []))
+    for (const l of compareLives) {
+      const pid = l.author.kind === 'participant' ? l.author.participantId : ''
+      const at =
+        rows.find((i) => {
+          const it = items[i] as Extract<(typeof items)[number], { kind: 'compare' }>
+          return !it.answers.some(
+            (m) => m.author.kind === 'participant' && m.author.participantId === pid && m.status === 'complete'
+          )
+        }) ?? rows.at(-1) ?? items.length - 1
+      out.set(at, [...(out.get(at) ?? []), l])
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, compareLives.map((l) => l.turnId).join(',')])
   const approvalTool = useToolApprovalRequests((s) => {
     for (const p of Object.values(s.pending ?? {})) if (p.threadId === room.id) return p.toolName
     return null
@@ -559,9 +1156,19 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [messages.length, live?.text, live?.author])
+  }, [messages.length, live?.text, live?.author, compareStreamed])
 
   const showJump = !follow
+
+  // The visible height of the conversation, for the answer cap (CSS cannot
+  // read a scroll port's height): an answer never outgrows the view.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => el.style.setProperty('--room-transcript-h', `${el.clientHeight}px`))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Messages already in the journal when it first loads appear at once; only
   // the ones that arrive afterwards rise in, so opening a room is not a cascade.
@@ -570,8 +1177,10 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
     seenRef.current = new Set(messages.map((m) => m.id))
   }
   const isFresh = (id: string) => seenRef.current !== null && !seenRef.current.has(id)
+  const shared = { room, tallies, mentionColors, isFresh, t }
 
   return (
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="room-transcript">
     <div
       ref={scrollRef}
       onScroll={onScroll}
@@ -579,167 +1188,69 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
       data-testid="room-transcript-scroll"
       className="relative flex-1 min-h-0 overflow-y-auto outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
     >
-      <div className="flex flex-col gap-2.5 px-[max(16px,calc((100%-760px)/2))] pt-3.5 pb-2">
+      <div
+        className={cn(
+          '@container flex flex-col gap-3 pt-3 pb-3',
+          // Side-by-side answers need more width than one column of speech.
+          compare
+            ? 'px-[max(12px,calc((100%-1200px)/2))]'
+            : 'px-[max(12px,calc((100%-760px)/2))]'
+        )}
+      >
+      {compare && items?.some((x) => x.kind === 'compare') && <LinkScrollToggle t={t} />}
       <div
         role="log"
         aria-live="polite"
         aria-relevant="additions"
         aria-label={t('rooms:transcript.label')}
-        className="flex flex-col gap-2.5"
+        className="flex flex-col gap-3"
       >
         {messages.length === 0 && !live && (
           <p className="mt-10 text-center text-[13px] text-muted-foreground">
             {t('rooms:transcript.empty')}
           </p>
         )}
-        {messages.map((m) => {
-          const toUser = m.to.kind === 'user'
-          const chip = addressLabel(m.to, room, t)
-          if (m.kind === 'system' && m.compaction) {
-            return (
-              <div key={m.id} data-testid="room-message" data-kind="compaction">
-                <CompactionDivider record={m.compaction} />
-              </div>
+        {items
+          ? items.map((item, i) =>
+              item.kind === 'message' ? (
+                <TranscriptMessage key={`msg:${item.message.id}`} m={item.message} {...shared} />
+              ) : (
+                <CompareRow
+                  // A row is keyed by its question, which is also a message sibling.
+                  key={`row:${item.questionId ?? item.answers[0]?.id ?? i}`}
+                  answers={item.answers}
+                  lives={livesFor.get(i) ?? []}
+                  questionId={item.questionId}
+                  latest={!items.slice(i + 1).some((x) => x.kind === 'compare' && x.questionId)}
+                  onRun={onRun}
+                  {...shared}
+                  approvalTool={approvalTool}
+                />
+              )
             )
-          }
-          if (m.kind === 'system') {
-            return (
-              <div
-                key={m.id}
-                data-testid="room-message"
-                data-kind={m.kind}
-                className={cn(
-                  'px-2 text-center text-xs text-muted-foreground',
-                  isFresh(m.id) && 'motion-safe:animate-fade-in'
-                )}
-              >
-                <span className="sr-only">{t('rooms:transcript.system')}: </span>
-                <span className="whitespace-pre-wrap break-words">{m.text}</span>
-              </div>
-            )
-          }
-          return (
-            <article
-              key={m.id}
-              data-testid="room-message"
-              data-kind={m.kind}
-              data-status={m.status}
-              data-addressed-to-user={toUser || undefined}
-              className={cn(
-                'flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5',
-                m.kind === 'user' && 'bg-secondary',
-                m.kind === 'synthesis' && 'border-[1.5px] border-border-strong',
-                toUser && 'shadow-[inset_4px_0_0_var(--primary)]',
-                isFresh(m.id) && 'motion-safe:animate-msg-in'
-              )}
-            >
-              <header className="flex flex-wrap items-center gap-1.5 text-xs">
-                <AuthorName author={m.author} room={room} t={t} />
-                {chip && (
-                  <span
-                    data-testid="message-to"
-                    // A message to a participant wears that participant's colour,
-                    // like their own name does.
-                    style={
-                      m.to.kind === 'participant'
-                        ? {
-                            color: participantColor(m.to.participantId),
-                            backgroundColor: `color-mix(in oklab, ${participantColor(m.to.participantId)} 14%, transparent)`,
-                          }
-                        : undefined
-                    }
-                    className={cn(
-                      'rounded-full px-[7px] py-px text-[11px]',
-                      m.to.kind !== 'participant' && 'bg-accent text-muted-foreground'
-                    )}
-                  >
-                    {chip}
-                  </span>
-                )}
-                <KindLabel message={m} t={t} />
-                {m.status === 'interrupted' && (
-                  <Badge tone="warn">{t('rooms:transcript.interrupted')}</Badge>
-                )}
-                {(m.status === 'failed' || m.kind === 'error') && (
-                  <Badge tone="error">{t('rooms:transcript.failed')}</Badge>
-                )}
-                {toUser && (
-                  <span className="text-[11.5px] font-medium text-foreground">
-                    {t('rooms:transcript.addressedToYou')}
-                  </span>
-                )}
-                {m.usage?.outputTokens || m.usage?.tokensPerSecond ? (
-                  <span
-                    data-testid="message-speed"
-                    title={t('rooms:transcript.speedTitle')}
-                    className="ml-auto tabular-nums text-muted-foreground"
-                  >
-                    {[
-                      m.usage?.outputTokens
-                        ? t('rooms:transcript.tokensOut', {
-                            count: m.usage.outputTokens,
-                            approx: m.usage.estimated ? '~' : '',
-                          })
-                        : null,
-                      m.usage?.tokensPerSecond
-                        ? t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                ) : null}
-              </header>
-              <MessageBody
-                message={m}
-                tally={tallies.get(m.id)}
-                mentionColors={mentionColors}
-                t={t}
-              />
-            </article>
-          )
-        })}
+          : messages.map((m) => <TranscriptMessage key={m.id} m={m} {...shared} />)}
       </div>
-      {live && (
-        <article
-          data-testid="room-live-turn"
-          aria-busy="true"
-          className="flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-dashed border-border-strong bg-card px-3 py-2.5 motion-safe:animate-msg-in"
-        >
-          <header className="flex flex-wrap items-center gap-1.5 text-xs">
-            <AuthorName author={live.author} room={room} t={t} />
-            <span className="text-muted-foreground motion-safe:animate-pulse">
-              {liveStatusLabel(liveStatus(live, approvalTool), t)}
-            </span>
-          </header>
-          {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
-          {live.compacting ? (
-            <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
-          ) : live.text ? (
-            <RoomMessageText
-              text={stripConclusion(live.text).text}
-              mentionColors={mentionColors}
-              isStreaming
-              className="text-[13.5px] leading-[1.6] text-fg-2"
-            />
-          ) : null}
-        </article>
+      {items && compareLives.length > 0 && !items.some((x) => x.kind === 'compare') && (
+        <CompareRow answers={[]} lives={compareLives} {...shared} approvalTool={approvalTool} />
+      )}
+      {!items && live && (
+        <LiveCard live={live} room={room} approvalTool={approvalTool} mentionColors={mentionColors} t={t} />
       )}
       </div>
+    </div>
       {/*
-        Sticky within the scroll port, so it hovers over the newest messages
-        only while the reader has scrolled away from the bottom. Selecting it
-        returns to the latest and re-arms auto-follow. `pointer-events-none` on
-        the centering row lets clicks fall through to the transcript except on
-        the button itself.
+        Its own row under the conversation, just above the dock, so it never
+        sits over a message. Shown only while the reader has scrolled away from
+        the bottom; selecting it returns to the latest and re-arms auto-follow.
       */}
       {showJump && (
-        <div className="pointer-events-none sticky bottom-3 flex justify-center">
+        <div className="flex shrink-0 justify-center py-1.5" data-testid="room-jump-row">
           <button
             type="button"
             onClick={scrollToBottom}
             data-testid="room-jump-latest"
-            className="pointer-events-auto inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-full bg-popover px-3 text-xs text-foreground shadow-pop outline-hidden transition-transform duration-150 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] motion-safe:animate-pop"
+            data-placement="above-dock"
+            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] border-border bg-popover px-3 text-xs text-foreground shadow-pop outline-hidden transition-transform duration-150 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] motion-safe:animate-pop"
           >
             <ArrowDown className="size-[13px]" aria-hidden />
             {t('rooms:transcript.jumpToLatest')}

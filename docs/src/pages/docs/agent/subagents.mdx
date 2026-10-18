@@ -84,6 +84,21 @@ The cap is snapshotted when a run starts, so changing it mid-run takes effect on
 A queue is not an error signal. The main agent keeps dispatching; runs just wait their turn.
 </Callout>
 
+## When a child fails
+
+`[subagents] on_failure` in `agent.toml` decides what one failed child does to the rest of the
+fan-out:
+
+| Value | Effect |
+| --- | --- |
+| `continue` (default) | Siblings carry on. |
+| `stop` | The other children, running or queued, are stopped; collecting one says it was stopped because the named sibling failed. |
+| `retry_once` | A child whose run failed is run once more before it counts as failed. A refusal, a missing checkout and a child that used all its turns are not retried. |
+
+Whatever the value, the parent is told which children failed: collecting a child's answer, and
+`list_subagent_runs`, name every other child that has failed so far and why. An unrecognised value
+refuses the dispatch with a message instead of being ignored.
+
 ## Isolation
 
 A subagent does not see your conversation. It gets only the task it was handed, so that description

@@ -321,7 +321,11 @@ export function sessionPrStatuses(
   })
 }
 
-function useFolderPrView(
+/**
+ * The pull request for `folder`'s current branch alone (none of the session's
+ * recorded ones) and how `sessionId` relates to it.
+ */
+export function useFolderPrView(
   folder: string | null | undefined,
   sessionId?: string | null
 ): { pr: PrStatus; relation: 'mine' | 'foreign' } | null {

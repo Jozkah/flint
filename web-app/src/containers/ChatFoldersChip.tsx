@@ -36,7 +36,6 @@ export function ChatFoldersChip({ threadId }: { threadId: string }) {
           type="button"
           data-testid="chat-folders-chip"
           aria-label={t('common:groups.chatFolders')}
-          title={t('common:groups.chatFolders')}
           className="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:bg-accent"
         >
           <FolderIcon aria-hidden className="size-3.5" />

@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "Yêu cầu gần nhất đã làm tràn cửa sổ ngữ cảnh.",
   "contextOverflowDetail": "Yêu cầu này cần {{request}} token, nhưng cửa sổ ngữ cảnh của mô hình chỉ chứa {{context}}.",
   "contextOverflowGeneric": "Yêu cầu vượt quá kích thước ngữ cảnh khả dụng.",
+  "refusal": "Mô hình đã từ chối trả lời. Hãy thử diễn đạt lại yêu cầu.",
   "engine": {
     "unknown": "Engine mô hình báo một lỗi không mong đợi.",
     "MODEL_LOAD_FAILED": "Không thể tải mô hình.",
@@ -14,7 +15,7 @@
     "MODEL_LOAD_TIMED_OUT": "Mô hình tải quá lâu nên đã bị dừng. Thường thì dùng mô hình nhỏ hơn hoặc kích thước ngữ cảnh nhỏ hơn sẽ giúp ích.",
     "MISSING_SHARED_LIBRARY": "Thiếu một thư viện mà engine cần, nên nó không thể khởi động.",
     "GPU_DRIVER_TOO_OLD": "Trình điều khiển GPU của bạn quá cũ so với engine này. Cập nhật trình điều khiển, hoặc chuyển sang engine CPU trong Cài đặt, sẽ khắc phục việc này.",
-    "CPU_NOT_SUPPORTED": "Bộ xử lý của máy tính này thiếu các lệnh mà engine cần (cần CPU x86 có AVX), nên engine đã bị lỗi ngay khi khởi động.",
+    "CPU_NOT_SUPPORTED": "Bộ xử lý của máy tính này thiếu các lệnh mà engine cần (cần CPU x86 có AVX), nên engine đã bị sập. Flint đã thử lại mô hình một lần chỉ trên CPU; nếu bạn vẫn thấy thông báo này, lần thử lại đó cũng bị sập, hoặc engine vốn đã được đặt chỉ dùng CPU.",
     "OS_VERSION_UNSUPPORTED": "Phiên bản macOS này quá cũ đối với engine. Cập nhật macOS sẽ khắc phục được.",
     "MODEL_QUANT_NOT_SUPPORTED": "Mô hình này dùng kiểu lượng tử hóa mà backend GPU không chạy được. Hãy tải một bản lượng tử hóa khác như Q4_K_M, hoặc tắt chuyển tải sang GPU.",
     "ENGINE_STOPPED": "Engine đã dừng đột ngột. Hãy tải lại mô hình để khởi động lại; nếu vẫn tiếp diễn, đầu ra cuối cùng của engine bên dưới sẽ cho biết lý do.",

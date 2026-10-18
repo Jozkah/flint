@@ -72,8 +72,30 @@
       "body": "Usa un model allotjat amb el teu propi compte."
     },
     "import": {
-      "title": "Importa un fitxer",
-      "body": "Afegeix un fitxer de model que ja tinguis."
+      "title": "Afegeix un fitxer de model",
+      "body": "Tria un fitxer .gguf o troba els models que Ollama, LM Studio i altres ja han desat en aquest ordinador. No es baixa res."
     }
+  },
+  "fit": {
+    "heading": "Funcionarà bé aquí?"
+  },
+  "sample": {
+    "button": "Prova una pregunta d'exemple",
+    "hint": "Posa una pregunta al quadre de missatge. Prem Intro per enviar-la o edita-la abans.",
+    "question": "En tres frases, explica què és un model de llenguatge i què no pot fer."
+  },
+  "approvalsNote": "Quan Flint vol canviar un fitxer o executar una ordre, s'atura i ho pregunta primer. La sol·licitud apareix a la conversa amb exactament què farà, i tu tries Permet o Denega. No s'executa res fins que responguis.",
+  "checklist": {
+    "label": "Progrés",
+    "model-added": "Model afegit",
+    "first-chat": "Primer xat",
+    "first-project": "Primer projecte"
+  },
+  "sidebar": {
+    "title": "Fes teva la barra lateral",
+    "body": "Amaga els elements que no fas servir. Ho pots canviar quan vulguis a Configuració, a Aparença.",
+    "customize": "Personalitza la barra lateral",
+    "close": "Fet",
+    "bodyMinimal": "Flint comença amb una barra lateral curta. Totes les altres pàgines són a la paleta d'ordres, o les pots tornar a afegir aquí."
   }
 }

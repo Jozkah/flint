@@ -28,6 +28,11 @@ impl Store {
         }
     }
 
+    /// The file the store keeps its values in.
+    pub fn file(&self) -> &Path {
+        &self.file
+    }
+
     fn read(&self) -> BTreeMap<String, String> {
         std::fs::read(&self.file)
             .ok()

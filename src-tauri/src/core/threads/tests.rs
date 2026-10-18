@@ -110,6 +110,24 @@ async fn list_threads_skips_a_thread_file_it_cannot_read() {
 }
 
 #[tokio::test]
+async fn list_threads_skips_a_thread_file_with_malformed_json() {
+    let (app, data_folder) = mock_app_with_temp_data_dir();
+    let created = create_thread(app.handle().clone(), create_test_thread("Fine"))
+        .await
+        .unwrap();
+    let broken_dir = get_data_dir(&data_folder).join(format!("garbled-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&broken_dir).unwrap();
+    fs::write(broken_dir.join(THREADS_FILE), "{ \"id\": \"x\", truncated").unwrap();
+
+    let threads = list_threads(app.handle().clone())
+        .await
+        .expect("a garbled thread.json must not fail the whole listing");
+    assert!(threads.iter().any(|t| t["id"] == created["id"]));
+    assert!(!threads.iter().any(|t| t["id"] == "x"));
+    let _ = fs::remove_dir_all(&broken_dir);
+}
+
+#[tokio::test]
 async fn test_create_and_list_messages() {
     let (app, _data_dir) = mock_app_with_temp_data_dir();
     // Create a thread first

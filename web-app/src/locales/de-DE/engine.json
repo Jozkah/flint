@@ -24,7 +24,8 @@
     "embeddingSub": "{{count}} Embedding-Modelle",
     "addedSub": "zu Flint hinzugefügt",
     "repliesToday": "Antworten heute",
-    "repliesSub": "{{count}} Antworten gemessen",
+    "repliesSub_one": "{{count}} gemessene Antwort",
+    "repliesSub_other": "{{count}} gemessene Antworten",
     "apiKeys": "API-Schlüssel",
     "fallbackSub": "{{count}} Ersatzschlüssel",
     "noFallbackSub": "kein Ersatzschlüssel",
@@ -34,7 +35,8 @@
     "title": "Jetzt geladen",
     "empty": "Kein Modell geladen",
     "emptyHint": "Starte ein lokales Modell aus der Tabelle unten oder sende ihm eine Nachricht.",
-    "unload": "Entladen"
+    "unload": "Entladen",
+    "speedBar": "Durchschnittliche Geschwindigkeit, verglichen mit dem schnellsten geladenen Modell"
   },
   "speed": {
     "title": "Generierungsgeschwindigkeit",
@@ -66,7 +68,8 @@
     "loaded": "Geladen",
     "ready": "Bereit",
     "noKey": "Kein API-Schlüssel",
-    "keyless": "Kein Schlüssel nötig"
+    "keyless": "Kein Schlüssel nötig",
+    "noCredentials": "Keine AWS-Zugangsdaten"
   },
   "installed": {
     "title": "Installierte Modelle",
@@ -106,7 +109,10 @@
     "connection": "Verbindung",
     "engineSettings": "Engine-Einstellungen",
     "memorySettings": "Speicher & Cache",
-    "danger": "Gefahrenbereich"
+    "settingNotSaved": "„{{setting}}“ wurde nicht gespeichert",
+    "danger": "Gefahrenbereich",
+    "networkNote": "In deinem Netzwerk · gesendet an {{host}}",
+    "reachUnknownNote": "Prüfe, wo dieser Anbieter läuft"
   },
   "mcp": {
     "title": "Tools & MCP",
@@ -125,7 +131,8 @@
     "kpiApprovedAll": "Alle Tool-Aufrufe sind erlaubt",
     "tabServers": "Server",
     "tabRouting": "Routing & Limits",
-    "toolsCount": "{{count}} Tools",
+    "toolsCount_one": "{{count}} Tool",
+    "toolsCount_other": "{{count}} Tools",
     "filterLabel": "Server anzeigen",
     "filterAll": "Alle",
     "filterOn": "An",
@@ -135,7 +142,7 @@
     "viewList": "Liste",
     "callsPerMin": "Aufrufe / Min.",
     "window": "letzte {{count}} Min.",
-    "needsExtension": "Erfordert die Jan Browser Extension",
+    "needsExtension": "Erfordert die Browsererweiterung",
     "moreActions": "Weitere Aktionen für {{serverName}}",
     "addTile": "MCP-Server hinzufügen",
     "addTileHint": "STDIO, HTTP oder SSE"
@@ -179,5 +186,46 @@
     "kindAudio": "Audio",
     "kindVideo": "Video",
     "htmlPage": "HTML-Seite"
+  },
+  "addon": {
+    "offerTitle": "Schneller auf deiner NVIDIA-GPU",
+    "offerBody": "Lokale Modelle laufen auf dieser GPU mit der CUDA-Engine meist schneller als mit Vulkan: oft 10-70 % mehr Tokens pro Sekunde, mehr, wenn ein Modell nicht ganz in den VRAM passt. Einmaliger Download von etwa {{size}}.",
+    "download": "Herunterladen",
+    "notNow": "Nicht jetzt",
+    "dontRemind": "Nicht mehr erinnern",
+    "gettingTitle": "CUDA-Engine wird geladen",
+    "downloading": "{{received}} von {{total}} geladen",
+    "verifying": "Download wird geprüft...",
+    "installing": "Wird installiert...",
+    "vulkanMeanwhile": "Bis dahin wird Vulkan verwendet. CUDA übernimmt beim nächsten Laden eines Modells.",
+    "cancel": "Abbrechen",
+    "installedTitle": "CUDA-Engine installiert",
+    "installedBody": "Sie wird ab dem nächsten Laden eines Modells verwendet.",
+    "ok": "Alles klar",
+    "failedTitle": "CUDA-Engine konnte nicht geladen werden",
+    "retry": "Erneut versuchen",
+    "driverTitle": "NVIDIA-Treiber aktualisieren",
+    "driverBody": "Aktualisiere deinen NVIDIA-Treiber, um die schnellere CUDA-Engine zu nutzen. Installiert: {{current}}, benötigt: R{{min}} oder neuer. Bis dahin wird Vulkan verwendet.",
+    "close": "Schließen",
+    "panelTitle": "Engine-Erweiterungen",
+    "panelDesc": "Zusätzliche GPU-Engines, nur auf Wunsch heruntergeladen. Vulkan bleibt als Rückfall.",
+    "cudaName": "NVIDIA-CUDA-Engine",
+    "inUse": "aktiv",
+    "unavailableBuild": "Engine-Erweiterungen sind in diesem Build nicht verfügbar.",
+    "installedVersion": "Installiert: {{version}}, {{size}}",
+    "repairNeeded": "Beschädigt, daher wird Vulkan verwendet. Zum Reparieren erneut herunterladen.",
+    "notInstalledOffer": "Nicht installiert. Auf dieser GPU meist schneller als Vulkan (etwa {{size}}).",
+    "repair": "Reparieren",
+    "remove": "Entfernen",
+    "installFile": "Aus Datei installieren...",
+    "checkAgain": "Erneut prüfen",
+    "remindSetting": "CUDA-Engine vorschlagen, wenn ein Modell lädt",
+    "errors": {
+      "offline": "Keine Verbindung zu GitHub. Versuche es später erneut oder installiere die Erweiterung aus einer Datei.",
+      "notPublished": "Für diese Version ist noch keine CUDA-Engine veröffentlicht.",
+      "diskSpace": "Nicht genug freier Speicherplatz für die CUDA-Engine.",
+      "verify": "Der Download hat die Prüfung nicht bestanden und wurde nicht installiert.",
+      "mismatch": "Diese Erweiterung wurde für eine andere Flint-Version gebaut."
+    }
   }
 }

@@ -268,7 +268,7 @@ function RoomsList() {
   return (
     <div className="@container/rooms flex h-full flex-col">
       <HeaderPage />
-      <div className="h-full overflow-y-auto">
+      <div className="-mr-3 h-full overflow-y-auto pr-3">
         <div className="flex w-full flex-col gap-5 px-1 py-4">
           <div className="flex flex-wrap items-end gap-3 motion-safe:animate-rise-in">
             <div className="flex min-w-0 flex-1 flex-col gap-1">

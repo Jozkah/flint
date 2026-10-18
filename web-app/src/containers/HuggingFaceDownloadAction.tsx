@@ -164,7 +164,7 @@ export function HuggingFaceDownloadAction({
         models: serviceHub.models(),
       })
     } catch (error) {
-      toast.error('Could not start model download', {
+      toast.error(t('sweep:hub.downloadStartFailed'), {
         description: error instanceof Error ? error.message : String(error),
       })
     }
@@ -251,7 +251,7 @@ export function HuggingFaceDownloadAction({
     return (
       <div className={cn('flex items-center gap-1.5', className)}>
         <Button variant="outline" size="sm" onClick={() => void resumeHuggingFaceBundle(bundleId)}>
-          <Play className="size-3.5" /> Resume
+          <Play className="size-3.5" /> {t('sweep:hub.resume')}
         </Button>
         <Button variant="ghost" size="icon" className="size-8" onClick={() => void cancelHuggingFaceBundle(bundleId)} title={t('common:a11y.cancelDownload')}>
           <X className="size-3.5" />
@@ -264,10 +264,10 @@ export function HuggingFaceDownloadAction({
     return (
       <div className={cn('flex max-w-72 items-center gap-2', className)} title={task.error}>
         <span className="min-w-0 line-clamp-2 text-right text-xs text-destructive">
-          Download failed{task.error ? `: ${task.error}` : ''}
+          {task.error ? t('sweep:hub.downloadFailedWith', { error: task.error }) : t('sweep:hub.downloadFailed')}
         </span>
         <Button variant="outline" size="sm" className="shrink-0" onClick={() => void retryHuggingFaceBundle(bundleId)}>
-          <RotateCcw className="size-3.5" /> Retry
+          <RotateCcw className="size-3.5" /> {t('sweep:hub.retry')}
         </Button>
       </div>
     )
@@ -277,9 +277,9 @@ export function HuggingFaceDownloadAction({
     return (
       <div className={cn('flex items-center gap-2', className)}>
         <span className="flex items-center gap-1 text-xs text-emerald-500">
-          <Check className="size-3.5" /> Installed
+          <Check className="size-3.5" /> {t('sweep:hub.installed')}
         </span>
-        <Button size="sm" onClick={useModel}>New Chat</Button>
+        <Button size="sm" onClick={useModel}>{t('sweep:hub.newChat')}</Button>
       </div>
     )
   }
@@ -287,7 +287,7 @@ export function HuggingFaceDownloadAction({
   return (
     <Button variant="outline" size="sm" onClick={() => void start()} className={className}>
       {updateAvailable ? <RefreshCw className="size-3.5" /> : <Download className="size-3.5" />}
-      {updateAvailable ? 'Update' : 'Download'}
+      {updateAvailable ? t('sweep:hub.update') : t('sweep:hub.download')}
     </Button>
   )
 }

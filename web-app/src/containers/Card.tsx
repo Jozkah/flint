@@ -28,6 +28,11 @@ type CardItemProps = {
   title?: string | ReactNode
   description?: string | ReactNode
   descriptionOutside?: string | ReactNode
+  /**
+   * Show a plain-text description in full instead of one clamped line (for
+   * descriptions that carry a warning the reader must not miss).
+   */
+  wrapDescription?: boolean
   align?: 'start' | 'center' | 'end'
   actions?: ReactNode
   column?: boolean
@@ -54,6 +59,7 @@ export function CardItem({
   title,
   description,
   descriptionOutside,
+  wrapDescription = false,
   className,
   classNameWrapperAction,
   align = 'center',
@@ -120,10 +126,12 @@ export function CardItem({
                 // assistive tech still gets all of it through the control's
                 // aria-describedby. Rich descriptions (lists, links) show in
                 // full.
-                title={typeof description === 'string' ? description : undefined}
+                title={
+                  typeof description === 'string' && !wrapDescription ? description : undefined
+                }
                 className={cn(
                   'text-xs leading-[1.4] text-muted-foreground',
-                  typeof description === 'string' && 'line-clamp-1'
+                  typeof description === 'string' && !wrapDescription && 'line-clamp-1'
                 )}
               >
                 {description}

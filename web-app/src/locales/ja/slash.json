@@ -9,7 +9,8 @@
     "plugin": "プラグイン",
     "pluginNamed": "プラグイン {{plugin}}",
     "skill": "スキル",
-    "builtin": "組み込み"
+    "builtin": "組み込み",
+    "prompt": "プロンプト"
   },
   "scope": {
     "project": "プロジェクト",

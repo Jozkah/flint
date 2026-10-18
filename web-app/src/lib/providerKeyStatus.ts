@@ -20,17 +20,36 @@ export type ProviderKeyStatus =
   | 'missing'
   /** Needs no key: its settings have none, or it is a loopback or LAN endpoint. */
   | 'keyless'
+  /** Amazon Bedrock without saved AWS credentials: it signs requests, so it is never keyless. */
+  | 'credentials-missing'
 
 /**
  * Whether a provider has what it needs to be called. Honest about only what is
  * known on this machine: a saved key is not proof the key works.
  */
-export function providerKeyStatus(provider: KeyStatusProvider): ProviderKeyStatus {
+export function providerKeyStatus(
+  provider: KeyStatusProvider,
+  options?: { bedrockCredentials?: boolean }
+): ProviderKeyStatus {
   if (isEngineProviderName(provider.provider)) return 'local'
+  // Bedrock has no API key: its AWS credentials live in the keyring, and
+  // without them every request fails, so "No key needed" would be wrong.
+  if (provider.provider === 'bedrock') {
+    return options?.bedrockCredentials === true ? 'keyed' : 'credentials-missing'
+  }
   if (providerHasRemoteApiKeys(provider)) return 'keyed'
   const declaresKey =
     !provider.settings?.length || provider.settings.some((s) => s.key === 'api-key')
   if (!declaresKey) return 'keyless'
   if (classifyModelLocation({ baseUrl: provider.base_url }) === 'local') return 'keyless'
   return 'missing'
+}
+
+/**
+ * The one phrase for "this provider cannot be called yet", used by the
+ * provider header, the providers table and every model row alike: "No AWS
+ * credentials" for Bedrock, "No API key" for the rest.
+ */
+export function missingKeyLabelKey(provider: string | undefined): string {
+  return provider === 'bedrock' ? 'engine:status.noCredentials' : 'engine:status.noKey'
 }

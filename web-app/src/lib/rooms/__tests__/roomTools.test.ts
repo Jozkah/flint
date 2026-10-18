@@ -23,7 +23,8 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
 }))
 
 const getTools = vi.fn(async () => [] as unknown[])
-const callTool = vi.fn(async () => ({ error: '', content: [{ text: '' }] }))
+const callTool = vi.fn(async (_args?: unknown) => ({ error: '', content: [{ text: '' }] }))
+const cancelToolCall = vi.fn(async (_token?: string) => {})
 let trustedServers: string[] = []
 vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({
@@ -31,6 +32,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
     mcp: () => ({
       getTools,
       callTool,
+      cancelToolCall,
       trustReport: async () => ({
         trusted: trustedServers.map((name) => ({ name, fingerprint: 'fp', currentFingerprint: 'fp' })),
         invalidated: [],
@@ -126,7 +128,7 @@ describe('buildRoomTools', () => {
       readOnlyProject: '/work',
       scope: 'thread',
     })
-    expect(activity).toEqual([
+    expect(activity).toMatchObject([
       { name: 'read', ok: true, args: { path: 'src/main.rs' }, output: 'FILE BODY' },
     ])
   })
@@ -141,6 +143,19 @@ describe('buildRoomTools', () => {
     expect(events[1].running).toBeUndefined()
   })
 
+  it('records how long each call took', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    executeAgentTool.mockImplementation(
+      () => new Promise((r) => setTimeout(() => r({ content: 'X' }), 25))
+    )
+    const events: RoomToolActivity[] = []
+    const tools = await buildRoomTools(ctx, (a) => events.push(a))
+    await (tools.read as { execute: (i: unknown) => Promise<string> }).execute({ path: 'a' })
+    const settled = events.find((e) => !e.running)!
+    expect(settled.ms).toBeGreaterThanOrEqual(20)
+    expect(events[0].ms).toBeUndefined()
+  })
+
   it('surfaces a tool error as text and marks the activity failed', async () => {
     getAgentToolSchemas.mockResolvedValue([schema('grep')])
     executeAgentTool.mockResolvedValue({ error: 'permission denied' })
@@ -152,7 +167,7 @@ describe('buildRoomTools', () => {
     })
 
     expect(out).toBe('ERROR: permission denied')
-    expect(activity).toEqual([
+    expect(activity).toMatchObject([
       { name: 'grep', ok: false, args: { pattern: 'x' }, output: 'ERROR: permission denied' },
     ])
   })
@@ -172,6 +187,14 @@ describe('buildRoomTools', () => {
 
     expect(directEditAuthorize).toHaveBeenCalledWith('/data', 'r1', '/work')
     expect(Object.keys(tools).sort()).toEqual(['edit', 'read', 'skill_read', 'write'])
+
+    // Two editing participants each hold their own grant: a grant is one per
+    // session, so keyed by the room alone the second replaced the first.
+    directEditAuthorize.mockClear()
+    await buildRoomTools({ roomId: 'r1', participantId: 'pa', folder: '/ws/pa', access: 'edit' })
+    await buildRoomTools({ roomId: 'r1', participantId: 'pb', folder: '/ws/pb', access: 'edit' })
+    const sessions = directEditAuthorize.mock.calls.map((c) => (c as unknown[])[1])
+    expect(sessions).toEqual(['r1--pa', 'r1--pb'])
 
     await (tools.write as { execute: (i: unknown) => Promise<string> }).execute({
       path: 'a.txt',
@@ -217,10 +240,38 @@ describe('buildRoomTools', () => {
       toolName: 'search_docs',
       serverName: 'docs',
       arguments: { q: 'x' },
+      cancellationToken: expect.stringMatching(/^tool_call_/),
     })
-    expect(activity).toEqual([
+    expect(activity).toMatchObject([
       { name: 'search_docs', ok: true, args: { q: 'x' }, output: 'RESULT A\nRESULT B', mcp: true },
     ])
+  })
+
+  it('stopping the room cancels a running MCP call at the server (M-011)', async () => {
+    trustedServers = ['docs']
+    getAgentToolSchemas.mockResolvedValue([])
+    getTools.mockResolvedValue([
+      { name: 'slow', description: 'slow', inputSchema: { type: 'object' }, server: 'docs' },
+    ])
+    let started!: () => void
+    const running = new Promise<void>((r) => (started = r))
+    callTool.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          started()
+          cancelToolCall.mockImplementationOnce(async () => resolve({ error: 'cancelled', content: [] }))
+        })
+    )
+    const tools = await buildRoomTools(ctx)
+    const ac = new AbortController()
+    const out = (
+      tools.slow as { execute: (i: unknown, o: { abortSignal: AbortSignal }) => Promise<string> }
+    ).execute({ seconds: 25 }, { abortSignal: ac.signal })
+    await running
+    ac.abort()
+    expect(await out).toBe('ERROR: cancelled')
+    const token = (callTool.mock.calls.at(-1)![0] as { cancellationToken: string }).cancellationToken
+    expect(cancelToolCall).toHaveBeenCalledWith(token)
   })
 
   it('surfaces an MCP tool error and never shadows a built-in of the same name', async () => {
@@ -239,7 +290,19 @@ describe('buildRoomTools', () => {
 
     const out = await (tools.ask as { execute: (i: unknown) => Promise<string> }).execute({})
     expect(out).toBe('ERROR: boom')
-    expect(activity).toEqual([{ name: 'ask', ok: false, args: {}, output: 'ERROR: boom', mcp: true }])
+    expect(activity).toMatchObject([{ name: 'ask', ok: false, args: {}, output: 'ERROR: boom', mcp: true }])
+  })
+
+  it('leaves out every tool of a server the participant switched off as a whole', async () => {
+    trustedServers = ['docs', 'git']
+    disabledTools = []
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    getTools.mockResolvedValue([
+      { name: 'search_docs', description: 's', inputSchema: { type: 'object' }, server: 'docs' },
+      { name: 'git_log', description: 'g', inputSchema: { type: 'object' }, server: 'git' },
+    ])
+    const tools = await buildRoomTools({ ...ctx, disabledTools: ['mcp:docs'] })
+    expect(Object.keys(tools).sort()).toEqual(['git_log', 'read', 'skill_read'])
   })
 
   it('withholds MCP tools from servers the user has not trusted', async () => {

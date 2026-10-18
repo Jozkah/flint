@@ -196,5 +196,26 @@
     "description": "{{count}} cuộc trò chuyện sẽ bị xóa. Không thể hoàn tác thao tác này.",
     "descriptionArchive": "{{count}} cuộc trò chuyện sẽ được chuyển vào Kho lưu trữ. Bạn có thể khôi phục từ đó.",
     "done": "Đã xóa {{count}} cuộc trò chuyện"
-  }
+  },
+  "find": {
+    "placeholder": "Tìm trong cuộc trò chuyện",
+    "none": "Không có kết quả",
+    "previous": "Kết quả trước",
+    "next": "Kết quả tiếp theo",
+    "close": "Đóng thanh tìm kiếm"
+  },
+  "continueSummary": {
+    "menu": "Tiếp tục trong cuộc trò chuyện mới từ bản tóm tắt",
+    "working": "Đang tóm tắt cuộc trò chuyện...",
+    "done": "Đã tiếp tục trong một cuộc trò chuyện mới.",
+    "cancel": "Hủy",
+    "errors": {
+      "no-chat": "Không thể tiếp tục cuộc trò chuyện này.",
+      "empty": "Chưa có gì để tóm tắt.",
+      "no-model": "Hãy chọn mô hình cho cuộc trò chuyện này trước.",
+      "model-not-loaded": "Hãy tải mô hình của cuộc trò chuyện trước. Mô hình sẽ viết bản tóm tắt.",
+      "summary-failed": "Không thể viết bản tóm tắt. Chưa có gì được tạo."
+    }
+  },
+  "stopToolCall": "Dừng lệnh gọi công cụ (Esc)"
 }

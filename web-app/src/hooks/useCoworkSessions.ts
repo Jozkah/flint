@@ -228,6 +228,12 @@ export type CoworkSession = {
    * server's, and its transcript is read from there, never saved here.
    */
   remote?: boolean
+  /** A server session's state as the server last reported it. */
+  remoteStatus?: 'running' | 'idle' | 'awaiting_approval' | 'awaiting_answer'
+  /** The model the server runs a server session with, as it reported it. */
+  remoteModel?: string | null
+  /** The access a server session runs with, as the server last reported it. */
+  remoteAccess?: string
   updated: number
   /**
    * When the session was created (epoch millis). Absent on sessions saved

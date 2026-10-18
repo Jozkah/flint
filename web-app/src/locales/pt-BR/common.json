@@ -7,7 +7,7 @@
     "rename": "Renomear",
     "deleteGroup": "Excluir grupo",
     "deleteTitle": "Excluir {{name}}?",
-    "deleteBody": "O grupo é removido. Seus itens saem dele e não são excluídos.",
+    "deleteBody": "O grupo é removido. Seus itens saem dele e não são excluídos. Subpastas sobem um nível.",
     "folders": "Pastas…",
     "foldersTitle": "Pastas de “{{name}}”",
     "foldersBodyHome": "Chats iniciados neste grupo ou movidos para ele recebem estas pastas, somente leitura para as ferramentas do chat.",
@@ -53,7 +53,43 @@
     "chatFoldersBody": "As ferramentas do chat podem ler estas pastas. As gravações ficam na sandbox própria do chat.",
     "chatFoldersEmpty": "Nenhuma pasta anexada.",
     "addFolder": "Adicionar pasta",
-    "chatFolderCount": "Pastas: {{count}}"
+    "chatFolderCount": "Pastas: {{count}}",
+    "newSubfolder": "Nova subpasta",
+    "moveInto": "Mover para a pasta",
+    "topLevel": "Nível superior",
+    "errors": {
+      "nameEmpty": "O nome do grupo não pode ficar vazio",
+      "notFound": "Grupo não encontrado",
+      "tooDeep": "Os grupos não podem ser aninhados tão profundamente",
+      "intoItself": "Um grupo não pode ser movido para dentro de si mesmo"
+    },
+    "failed": {
+      "create": "Não foi possível criar o grupo",
+      "rename": "Não foi possível renomear o grupo",
+      "moveFolder": "Não foi possível mover a pasta",
+      "saveState": "Não foi possível salvar o estado do grupo",
+      "reorder": "Não foi possível reordenar os grupos",
+      "moveItem": "Não foi possível mover o item",
+      "delete": "Não foi possível excluir o grupo",
+      "saveFolders": "Não foi possível salvar as pastas do grupo",
+      "updateContext": "Não foi possível atualizar o contexto de pastas",
+      "update": "Não foi possível atualizar os grupos",
+      "import": "Não foi possível importar os grupos",
+      "unreadable": "{{failure}}: não foi possível ler os grupos salvos",
+      "restored": "{{failure}}. Sua ordem anterior foi restaurada."
+    },
+    "announce": {
+      "created": "Grupo {{name}} criado",
+      "collapsed": "{{name}} recolhido",
+      "expanded": "{{name}} expandido",
+      "reordered": "{{name}} movido para a posição {{position}} de {{total}}",
+      "movedToPosition": "Movido para {{name}}, posição {{position}}",
+      "movedToRecents": "Movido para Recentes",
+      "deleted": "Grupo {{name}} excluído. Seus itens foram movidos para Recentes",
+      "ctxReplaced": "{{base}}. O contexto de pastas foi substituído pelas pastas do grupo; o acesso ainda precisa de aprovação",
+      "ctxMerged": "{{base}}. As pastas do grupo foram adicionadas ao contexto de pastas; o acesso ainda precisa de aprovação",
+      "foldersAdded": "{{base}}. As pastas do item foram adicionadas ao grupo"
+    }
   },
   "htmlArtifact": {
     "code": "Código",
@@ -187,7 +223,7 @@
   "profile": "Perfil",
   "reset": "Redefinir",
   "search": "Buscar",
-  "searchThreads": "Pesquisar conversas...",
+  "searchThreads": "Pesquisar chats...",
   "toNavigate": "para navegar",
   "toSelect": "para selecionar",
   "toClose": "para fechar",
@@ -213,6 +249,7 @@
   "preview": {
     "title": "Pré-visualização",
     "empty": "Abra um artefato gerado para pré-visualizá-lo aqui.",
+    "emptyHint": "Os arquivos que o Flint cria nesta sessão abrem aqui.",
     "loading": "Abrindo…",
     "unsupported": "O Flint não consegue exibir este tipo de arquivo. Abra-o para vê-lo em outro app.",
     "outside": "Este arquivo não está mais no espaço de trabalho da sessão.",
@@ -278,7 +315,7 @@
     "searchThreads": "Pesquisar conversas",
     "toggleSidebar": "Alternar barra lateral",
     "openCowork": "Abrir Cowork",
-    "openArtifacts": "Abrir artefatos",
+    "openArtifacts": "Abrir Biblioteca",
     "openSystemMonitor": "Abrir monitor do sistema",
     "openLogs": "Abrir logs do app",
     "section": {
@@ -292,11 +329,18 @@
       "navigation": "Ir para",
       "settings": "Configurações",
       "threads": "Conversas"
-    }
+    },
+    "openItem": "Abrir {{item}}"
   },
   "searchGroup": {
+    "pages": "Páginas",
+    "settings": "Configurações",
     "inProjects": "Em projetos",
-    "conversations": "Conversas"
+    "conversations": "Conversas",
+    "messages": "Nas mensagens",
+    "work": "Salas e sessões",
+    "room": "Sala",
+    "session": "Sessão do Cowork"
   },
   "rail": {
     "label": "Painéis do Cowork",
@@ -611,7 +655,8 @@
       "add": "Adicionar",
       "cancel": "Cancelar",
       "remove": "Remover"
-    }
+    },
+    "ctxAutoFitHint": "O ajuste automático está ativado: deixe vazio e ele escolhe o contexto, reduzindo-o se preciso para caber na memória. Um número aqui é usado como está."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -654,6 +699,14 @@
     "showRawLibraries": "Mostrar os nomes de {{count}} bibliotecas ausentes"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Criar projeto",
+      "editTitle": "Editar projeto",
+      "namePlaceholder": "Digite o nome do projeto...",
+      "alreadyExists": "O projeto \"{{projectName}}\" já existe",
+      "createSuccess": "Projeto \"{{projectName}}\" criado",
+      "updateSuccess": "Projeto \"{{projectName}}\" atualizado"
+    },
     "title": "Projetos",
     "new": "Novos Projetos",
     "addProject": "Adicionar Projeto",
@@ -748,7 +801,8 @@
     "pathNameNotice": "Isto dá nome a uma coleção de chats; não abre essa pasta.",
     "openCodeFolderInCowork": "Abrir pasta de código no Cowork",
     "openCodeFolder": "Abrir pasta de código",
-    "openCodeFolderDescription": "Escolha uma pasta no seu computador para o Flint trabalhar."
+    "openCodeFolderDescription": "Escolha uma pasta no seu computador para o Flint trabalhar.",
+    "setUpEmbeddingModel": "Configurar um modelo de embedding"
   },
   "attachmentsIngestion": {
     "title": "Escolha como ingerir os anexos",
@@ -880,7 +934,8 @@
       "unsupportedType": "O tipo de arquivo \"{{type}}\" não é suportado.",
       "ioError": "Não foi possível ler {{subject}}: {{message}}",
       "parseGeneric": "{{subject}} não pôde ser analisado: {{message}}",
-      "fallback": "Falha ao processar {{subject}}."
+      "fallback": "Falha ao processar {{subject}}.",
+      "noEmbeddingModel": "{{subject}} não foi adicionado: nenhum modelo de embedding está instalado para indexá-lo. Configure um no Llama.cpp e adicione o arquivo novamente."
     },
     "fileDeleted": {
       "title": "Arquivo excluído",
@@ -941,6 +996,7 @@
     "missing": "Não está mais disponível: {{model}}",
     "use": "Usar este modelo",
     "thisChat": "Este chat",
+    "thisRoom": "Esta sala",
     "thisSession": "Esta sessão"
   },
   "skillsUsedCount_one": "Usou {{count}} skill",
@@ -964,6 +1020,28 @@
   "artifactsCount_many": "{{count}} de itens",
   "previewMessageCount_one": "{{count}} mensagem",
   "previewMessageCount_other": "{{count}} mensagens",
+  "rowPreview": {
+    "status": {
+      "running": "Em execução",
+      "waiting": "Precisa de você",
+      "idle": "Ocioso",
+      "error": "Erro"
+    },
+    "prState": {
+      "open": "Aberto",
+      "draft": "Rascunho",
+      "merged": "Mesclado",
+      "closed": "Fechado"
+    },
+    "pullRequests": "Pull requests",
+    "morePrs_one": "+{{count}} mais",
+    "morePrs_other": "+{{count}} mais",
+    "noChecks": "Sem verificações",
+    "empty": "Nada aqui ainda.",
+    "noMessages": "Nenhuma mensagem ainda",
+    "summarizing": "Escrevendo um resumo…",
+    "openHint": "Abrir"
+  },
   "previewMessageCount_many": "{{count}} de mensagens",
   "artifactDetails": "Detalhes do item",
   "artifactBack": "Voltar à Biblioteca",
@@ -1008,7 +1086,10 @@
     "branchLabel": "Branch",
     "actionsLabel": "Ações da pasta",
     "copyPath": "Copiar caminho",
-    "copied": "Caminho copiado"
+    "copied": "Caminho copiado",
+    "footnoteEmptyEdit": "Anexe uma pasta para o agente trabalhar no seu projeto.",
+    "a11yWithFolderEditable": "Pasta do projeto {{folder}}, anexada para edição. Altere ou desanexe.",
+    "a11yWithFolderWorktree": "Pasta do projeto {{folder}}, editada por um worktree separado. Altere ou desanexe."
   },
   "coworkEmpty": {
     "title": "No que vamos trabalhar?",
@@ -1024,7 +1105,15 @@
       "first": "Explique como {{folder}} está estruturada",
       "second": "Encontre todos os TODO em {{folder}} e agrupe-os por área",
       "third": "Escreva testes para a parte de {{folder}} que eu indicar"
-    }
+    },
+    "vault": {
+      "badge": "Cofre do Obsidian",
+      "hint": "Esta pasta é um cofre do Obsidian. O Flint a lê como qualquer pasta de notas Markdown e ignora as configurações .obsidian e a .trash do Obsidian.",
+      "add": "Adicionar meu cofre do Obsidian",
+      "addHint": "Um cofre do Obsidian é só uma pasta. Escolha-o como qualquer outra pasta."
+    },
+    "subtitleFolderEdit": "Dê uma tarefa ao Flint. Ele lê e altera arquivos em {{folder}} diretamente e trabalha sozinho a partir daí.",
+    "subtitleFolderWorktree": "Dê uma tarefa ao Flint. Ele trabalha em um worktree git de {{folder}}, então sua pasta só muda quando você mesclar."
   },
   "sandbox": {
     "noTerminal": "Sem terminal",
@@ -1195,7 +1284,8 @@
     "sensitiveRefused": "{{name}} parece conter credenciais ou uma chave, então não foi aberto",
     "binaryRefused": "{{name}} não é um arquivo de texto, seja qual for a extensão",
     "chooseAgainAction": "Escolher novamente",
-    "externalGone": "Este arquivo foi aberto de fora do projeto, e esse acesso não persistiu. Escolha-o novamente para reabri-lo."
+    "externalGone": "Este arquivo foi aberto de fora do projeto, e esse acesso não persistiu. Escolha-o novamente para reabri-lo.",
+    "oneFolderAtATime": "Apenas uma pasta por vez. \"{{name}}\" não foi adicionada."
   },
   "settingsSearch": {
     "label": "Pesquisar configurações",
@@ -1205,7 +1295,9 @@
     "count_other": "{{count}} resultados",
     "count_many": "{{count}} de resultados",
     "empty": "Nenhuma configuração correspondente.",
-    "clear": "Limpar pesquisa"
+    "clear": "Limpar pesquisa",
+    "emptyHint": "Tente outra palavra ou pesquise pela função: tema, proxy, memória.",
+    "pageCrumb": "Página"
   },
   "tasks": {
     "title": "Atividade",
@@ -1389,7 +1481,14 @@
     "recommended": "Recomendado",
     "reset": "Redefinir para o global",
     "resetAll": "Redefinir para os padrões globais",
-    "overridden": "Definido para este chat"
+    "overridden": "Definido para este chat",
+    "levels": {
+      "low": "Baixo",
+      "medium": "Médio",
+      "high": "Alto",
+      "xhigh": "Muito alto",
+      "unlimited": "Ilimitado"
+    }
   },
   "modelOffline": {
     "badge": "Inacessível",
@@ -2155,10 +2254,12 @@
   },
   "browserVerify": {
     "title": "Verificar no navegador",
+    "about": "Como funciona",
     "explain": "Abre seu app local em um perfil de navegador separado e temporário (não a pré-visualização do Flint, sem cookies), limitado à própria origem do app. Requisições para outros lugares são bloqueadas e listadas.",
     "url": "URL do app local",
     "notLocal": "Somente um app nesta máquina (localhost, 127.0.0.1) pode ser verificado.",
-    "steps": "Etapas (opcional): open, click, type, expect, wait, screenshot — uma por linha",
+    "stepsLabel": "Passos (opcional)",
+    "stepsHint": "Um por linha: open, click, type, expect, wait, screenshot",
     "run": "Verificar",
     "cancel": "Parar",
     "using": "Usando {{browser}}",
@@ -2526,12 +2627,17 @@
       "slots": "{{count}} slots",
       "vision": "Visão",
       "audio": "Áudio",
+      "fixedPrompt": "Enviado com cada solicitação: {{count}} tokens (prompt do sistema e esquemas de ferramentas).",
       "tokenUsage": "Uso de tokens",
       "tokenUsageSr": "Uso de tokens {{value}}"
     }
   },
   "voicePill": {
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "dictate": "Ditar",
+    "stop": "Parar de ditar",
+    "working": "Processando…",
+    "setup": "Configurar entrada de voz"
   },
   "motionMedia": {
     "queued": "Na fila",
@@ -2552,11 +2658,27 @@
     "previewLoading": "Carregando pré-visualização…",
     "previewNone": "Nenhuma pré-visualização disponível"
   },
+  "fileViewer": {
+    "openFull": "Abrir prévia completa",
+    "loadMore": "Carregar mais",
+    "showingFirst": "Mostrando os primeiros {{loaded}} de {{total}}",
+    "lines_one": "{{count}} linha",
+    "lines_other": "{{count}} linhas",
+    "wrap": "Quebrar linhas",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "binary": "Parece um arquivo binário, então não há prévia de texto.",
+    "expandLine": "Mostrar linha inteira",
+    "collapseLine": "Encurtar linha",
+    "truncatedOnAdd": "Mostrando os primeiros {{shown}} de {{total}} (o anexo foi cortado quando foi adicionado)"
+  },
   "dropAttachFailed": "Não foi possível anexar os arquivos soltos",
+  "sampler": {
+    "label": "Parâmetros de amostragem",
+    "notSupported": "Não suportado por {{provider}}"
+  },
   "translate": {
     "title": "Tradutor",
-    "usingModel": "Usando {{model}}",
-    "noModel": "Escolha um modelo no seletor de modelos",
     "from": "Traduzir de",
     "to": "Traduzir para",
     "detect": "Detectar idioma",
@@ -2568,12 +2690,210 @@
     "copyFailed": "Não foi possível copiar a tradução",
     "failed": "A tradução falhou",
     "inputPlaceholder": "Texto para traduzir",
-    "outputPlaceholder": "A tradução aparece aqui"
+    "outputPlaceholder": "A tradução aparece aqui",
+    "description": "Traduza texto entre idiomas com o modelo selecionado. Nada é salvo.",
+    "sourceTitle": "Texto de origem",
+    "targetTitle": "Tradução",
+    "paste": "Colar da área de transferência",
+    "pasteFailed": "Não foi possível ler a área de transferência",
+    "clear": "Limpar",
+    "characters_one": "{{count}} caractere",
+    "characters_many": "{{count}} de caracteres",
+    "characters_other": "{{count}} caracteres",
+    "translating": "Traduzindo…",
+    "retry": "Tentar novamente",
+    "shortcut": "Traduzir (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Buscar idiomas",
+    "noLanguages": "Nenhum idioma correspondente",
+    "errorAuth": "O provedor rejeitou sua chave de API. Verifique-a nas configurações do provedor.",
+    "errorQuota": "O provedor diz que sua cota acabou ou que há limite de taxa. Aguarde um pouco ou verifique seu plano.",
+    "errorModelNotFound": "O provedor não tem este modelo. Escolha outro modelo ou verifique as configurações do provedor.",
+    "errorNetwork": "Não foi possível alcançar o provedor. Verifique sua conexão ou se o servidor está em execução.",
+    "errorEngine": "O motor que executa este modelo não está disponível. Reinicie o Flint e tente novamente.",
+    "openProvider": "Abrir configurações do provedor",
+    "errorDetails": "Detalhes",
+    "pasteHint": "O acesso à área de transferência foi bloqueado. Clique na caixa de texto e pressione {{keys}}.",
+    "swapNeedsSource": "Escolha um idioma de origem para inverter"
   },
   "markdownImage": {
     "load": "Carregar imagem de {{host}}"
   },
   "messageSaveFailed": "Não foi possível salvar a mensagem. Ela pode ser perdida após reiniciar.",
   "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida.",
-  "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada"
+  "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada",
+  "settingsRecovered": {
+    "title": "Não foi possível ler o arquivo de configurações",
+    "withBackup": "{{file}} estava danificado, então o Flint iniciou com as configurações padrão. O arquivo danificado foi mantido como {{backup}}.",
+    "noBackup": "{{file}} estava danificado, então o Flint iniciou com as configurações padrão. Não foi possível salvar uma cópia do arquivo danificado."
+  },
+  "promptLibrary": {
+    "title": "Biblioteca de prompts",
+    "description": "Prompts que você reutiliza. Digite @ ou / no campo de mensagem para inserir um. Use {{name}} ou {{name:default}} para as partes que você preenche a cada vez.",
+    "manage": "Seus prompts",
+    "add": "Adicionar prompt",
+    "editTitle": "Editar prompt",
+    "import": "Importar",
+    "export": "Exportar",
+    "imported_one": "{{count}} prompt adicionado",
+    "imported_other": "{{count}} prompts adicionados",
+    "importedNone": "Nenhum prompt novo encontrado",
+    "search": "Buscar prompts",
+    "empty": "Nenhum prompt ainda.",
+    "edit": "Editar {{name}}",
+    "delete": "Excluir {{name}}",
+    "deleted": "Prompt excluído",
+    "undo": "Desfazer",
+    "name": "Nome",
+    "folder": "Pasta (opcional)",
+    "tags": "Tags, separadas por vírgula",
+    "body": "Texto do prompt",
+    "bodyHint": "Escreva o prompt. Use {{topic}} ou {{tone:friendly}} para os espaços em branco.",
+    "variables": "Pede: {{names}}",
+    "defaultValue": "Padrão: {{value}}",
+    "requiredField": "Obrigatório",
+    "fillNeeded": "Preencha {{names}} para inserir",
+    "insert": "Inserir",
+    "errors": {
+      "nameRequired": "Um prompt precisa de um nome",
+      "nameTooLong": "Esse nome é longo demais",
+      "bodyRequired": "Um prompt precisa de algum texto",
+      "bodyTooLong": "Esse prompt é longo demais",
+      "gone": "Esse prompt não existe mais",
+      "invalidJson": "Esse arquivo não é um JSON válido",
+      "noPrompts": "Nenhum prompt encontrado nesse arquivo"
+    },
+    "noResults": "Nenhum prompt corresponde a “{{query}}”.",
+    "clearSearch": "Limpar busca"
+  },
+  "memoryProposal": {
+    "title": "Lembrar disso?",
+    "wouldApply": "Valeria para: {{where}}.",
+    "remember": "Lembrar",
+    "discard": "Descartar",
+    "reviewBoth": "Revisar ambas",
+    "saving": "Salvando…",
+    "discarding": "Descartando…",
+    "scope": {
+      "session": "esta conversa",
+      "project": "este projeto",
+      "user": "em qualquer lugar"
+    }
+  },
+  "picker": {
+    "filter": "Filtrar",
+    "source": "Origem",
+    "sourceAll": "Todos",
+    "sourceLocal": "Local",
+    "sourceCloud": "Nuvem",
+    "capabilities": "Capacidades",
+    "cap": {
+      "vision": "Visão",
+      "tools": "Ferramentas",
+      "reasoning": "Raciocínio",
+      "embeddings": "Embeddings"
+    },
+    "loadedNow": "Carregado agora",
+    "sort": "Ordenar",
+    "sortDefault": "Ordem padrão",
+    "sortName": "Nome (A–Z)",
+    "sortRecent": "Usados recentemente",
+    "sortSize": "Tamanho",
+    "clearFilters": "Limpar filtros",
+    "noMatch": "Nenhum modelo corresponde",
+    "noMatchFilters": "Nenhum modelo corresponde: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Sessão",
+      "room": "Sala"
+    },
+    "heading": "Conversas",
+    "empty": "Nenhuma outra conversa",
+    "noMatch": "Nenhuma conversa corresponde",
+    "messages": "Mensagens: {{n}}",
+    "included": "Incluído: {{title}} (mensagens: {{n}}, ~{{size}} caracteres)",
+    "group": "Conversas mencionadas",
+    "summarize": "Resumir",
+    "summarizeHint": "Incluir um resumo em vez das últimas mensagens",
+    "remove": "Remover a menção a {{title}}",
+    "mentioned": "Mencionado: {{title}}",
+    "open": "Abrir {{title}}",
+    "status": {
+      "missing": "Não encontrado: {{title}}",
+      "self": "{{title}} é esta conversa, por isso fica de fora",
+      "over-cap": "{{title}} fica de fora: no máximo {{max}} conversas por mensagem"
+    },
+    "excerpt": "Trecho",
+    "summary": "Resumo",
+    "modeGroup": "O que incluir de {{title}}",
+    "excerptHint": "As mensagens mais recentes, cerca de {{tokens}} tokens",
+    "summaryHint": "Um resumo escrito pelo modelo, no máximo cerca de {{tokens}} tokens",
+    "needsModel": "Carregue um modelo para incluir um resumo em vez disso",
+    "totals_one": "{{count}} mensagem · ~{{tokens}} tokens incluídos",
+    "totals_many": "{{count}} de mensagens · ~{{tokens}} tokens incluídos",
+    "totals_other": "{{count}} mensagens · ~{{tokens}} tokens incluídos",
+    "readOnly": "Enviado como contexto citado, somente leitura. O modelo não pode alterar essa conversa.",
+    "tooLarge": "Isso passa de um quarto da janela de contexto do modelo.",
+    "useSummary": "Usar um resumo",
+    "resolving": "Procurando {{title}}",
+    "chipStatus": {
+      "missing": "Não encontrada",
+      "self": "Esta conversa",
+      "over-cap": "Acima do limite"
+    },
+    "preview": {
+      "empty": "Ainda sem mensagens",
+      "you": "Você",
+      "assistant": "Assistente"
+    },
+    "messagesCount_one": "{{count}} mensagem",
+    "messagesCount_many": "{{count}} de mensagens",
+    "messagesCount_other": "{{count}} mensagens",
+    "compact_one": "{{count}} menção · {{mode}}",
+    "compact_many": "{{count}} menções · {{mode}}",
+    "compact_other": "{{count}} menções · {{mode}}",
+    "mixed": "Misto"
+  },
+  "campaignList": {
+    "timeout": "O app não respondeu a tempo.",
+    "unreadableRecord": "o backend enviou um registro que esta página não consegue ler"
+  },
+  "composer": {
+    "messageLabel": "Mensagem"
+  },
+  "routeLoading": {
+    "slow": "Esta página está demorando mais que o normal para abrir.",
+    "reload": "Recarregar",
+    "retry": "Tentar novamente",
+    "failed": "Não foi possível abrir esta página"
+  },
+  "replyCutOff": {
+    "withTokens": "Cortada no limite de resposta ({{tokens}} tokens)",
+    "plain": "Cortada no limite de resposta"
+  },
+  "routeNotFound": {
+    "title": "Página não encontrada",
+    "body": "Não há página em {{path}}. Ela pode ter sido movida, ou o link está desatualizado.",
+    "home": "Ir para o início",
+    "settings": "Abrir configurações"
+  },
+  "waitingForYou": "Aguardando você",
+  "dnd": {
+    "anItem": "o item",
+    "aGroup": "um grupo",
+    "picked": "{{item}} selecionado para mover.",
+    "over": "{{item}} está sobre {{group}}.",
+    "notOver": "{{item}} não está sobre nenhum grupo.",
+    "dropped": "{{item}} movido para {{group}}.",
+    "cancelled": "{{item}} voltou ao lugar."
+  },
+  "searchEverything": "Pesquisar conversas, salas, páginas e configurações…",
+  "noResultsFoundEverywhere": "Nada encontrado em conversas, salas, sessões do Cowork, páginas ou configurações. Tente outra palavra.",
+  "selectModelNoKey": "Nenhum modelo foi escolhido para esta sessão e {{provider}} não tem chave de API. Escolha primeiro um modelo no menu de modelos.",
+  "serverConnection": {
+    "offlineTitle": "Não foi possível acessar o servidor do Flint.",
+    "offlineBody": "Reconectando… O que você fizer agora pode não ser salvo até ele voltar.",
+    "statusOffline": "Servidor inacessível"
+  }
 }

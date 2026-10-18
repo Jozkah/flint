@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint wants to run {{command}} in {{workspace}}",
     "gitRemote": "Flint wants to run {{command}}, which changes {{target}}",
     "gitDestructive": "Flint wants to run {{command}}, which can lose work",
-    "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)"
+    "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)",
+    "spendPause": "Flint wants to keep this run going past its spend pause"
   },
   "consequence": {
     "fileChange": "It can create, overwrite or change the contents of files.",
@@ -57,7 +58,8 @@
     "gitLocal": "It changes this repository's files, branches or history on this computer.",
     "gitRemote": "It sends changes to a remote repository that other people can see. Flint asks every time unless you temporarily allow ordinary remote Git actions for this conversation.",
     "gitDestructive": "What it removes or overwrites may not be recoverable.",
-    "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time."
+    "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time.",
+    "spendPause": "The run keeps using paid model quota until it finishes or reaches its ceiling. Deny stops the run."
   },
   "repeat": {
     "allowedOnceBefore": "You allowed this command once already in this conversation."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Future single-process calls matching {{action}} run without asking, including different process IDs. Other scripts still ask. Revoke this in Settings > Permissions.",
     "allowClipboardReadExplanation": "Flint can read future clipboard content in every conversation without asking, until you revoke this in Settings > Permissions. Writing to the clipboard still asks.",
     "allowSimilarThreadExplanation": "Future calls matching {{action}} run without asking in this conversation. Revoke this in Settings > Permissions.",
-    "broader": "Broader"
+    "broader": "Broader",
+    "editedRunsOnce": "Edited commands run once only."
   },
   "request": {
     "title": "Permission request",
@@ -217,10 +220,110 @@
     "gitDestructive": "Destructive: {{why}}. Check the command, remote and branch before allowing it.",
     "selfApproval": "{{tool}} approves commands on {{server}} itself, which would let the model answer for you. Flint asks about it every time and never remembers the answer."
   },
+  "folderTrust": {
+    "title": "Trust this folder?",
+    "bodyHooks": "{{folder}} has hooks of its own. They run commands, and stay off until you trust the folder.",
+    "bodySubagents": "{{folder}} has agent definitions of its own. They stay off until you trust the folder.",
+    "bodyBoth": "{{folder}} has hooks and agent definitions of its own. They stay off until you trust the folder.",
+    "keepsOff": "Only trust folders you wrote or have read. Trusting is kept for good; you can undo it later.",
+    "trust": "Trust folder",
+    "later": "Not now",
+    "failed": "Could not trust the folder",
+    "kept_one": "Kept hooks on for {{count}} folder you already use. Review it in Settings > Permissions > Trusted folders.",
+    "kept_other": "Kept hooks on for {{count}} folders you already use. Review them in Settings > Permissions > Trusted folders."
+  },
+  "trustedFolders": {
+    "title": "Trusted folders",
+    "description": "Folders whose own hooks and agent definitions may run. Trust is kept until you take it back. Files an agent may read or change are listed under Folder access.",
+    "empty": "No trusted folders yet; Flint asks the first time a folder carries hooks or agent definitions.",
+    "add": "Trust a folder…",
+    "stop": "Stop trusting",
+    "stopLabel": "Stop trusting {{folder}}",
+    "confirm": "Stop trusting {{folder}}? Its hooks and agent definitions stay off until you trust it again.",
+    "confirmYes": "Stop trusting",
+    "cancel": "Cancel",
+    "loadFailed": "Could not read the trusted folders",
+    "grantFailed": "Could not trust the folder",
+    "revokeFailed": "Could not stop trusting the folder"
+  },
+  "scopeForm": {
+    "question": "If you choose Always, remember it for:",
+    "folder": "Inside {{dir}}",
+    "folderHint": "Only files in that folder, however the path is spelled. A link out of it does not count.",
+    "prefix": "Commands that start with {{prefix}}",
+    "prefixHint": "Only one plain command. A chained, piped or redirected one is asked about again.",
+    "everywhere": "Every {{tool}} call, in every project",
+    "everywhereHint": "The old meaning of Always. Broad; rarely what you want.",
+    "saveFailed": "Could not remember that choice",
+    "alwaysFolder": "Always: inside {{dir}}",
+    "alwaysPrefix": "Always: commands that start with {{prefix}}",
+    "alwaysFolderExplanation": "Only files in that folder, in this project, until you revoke it in Settings > Permissions.",
+    "alwaysPrefixExplanation": "Only one plain command that starts this way, in this project, until you revoke it in Settings > Permissions. A chained, piped or redirected one is asked about again."
+  },
+  "rules": {
+    "title": "Remembered approvals",
+    "description": "What you chose to allow with Always, limited to one folder or one command prefix. A rule applies only inside its project and never overrides a denial or a question Flint asks every time.",
+    "empty": "Nothing is remembered yet. Choose Always on a prompt and pick a folder or a command prefix.",
+    "folder": "Inside {{dir}}",
+    "prefix": "Commands that start with {{prefix}}",
+    "run": "The rest of this run",
+    "once": "Once",
+    "project": "In {{project}}",
+    "revoke": "Revoke",
+    "revokeLabel": "Revoke the approval for {{tool}}: {{scope}}",
+    "loadFailed": "Could not read the remembered approvals",
+    "revokeFailed": "Could not revoke the approval"
+  },
+  "deferred": {
+    "title": "Approvals waiting",
+    "description": "Runs that reached a question while nobody could answer wrote it down and stopped. Answer here, then resume the session: the call runs once if it is proposed again before the deadline.",
+    "empty": "Nothing is waiting for an answer.",
+    "allow": "Allow",
+    "deny": "Deny",
+    "discard": "Remove",
+    "session": "Session {{session}}",
+    "deadline": "Answer by {{when}}",
+    "status": {
+      "pending": "Waiting",
+      "allowed": "Allowed",
+      "denied": "Denied",
+      "expired": "Expired",
+      "void": "Void",
+      "consumed": "Used"
+    },
+    "loadFailed": "Could not read the waiting approvals",
+    "answerFailed": "Could not record the answer",
+    "allowLabel": "Allow: {{summary}}",
+    "denyLabel": "Deny: {{summary}}",
+    "discardLabel": "Remove: {{summary}}"
+  },
   "toast": {
     "trustFailed": "Could not remember that server",
     "cancelledOne": "Approval for {{names}} was cancelled",
     "cancelledMany": "{{count}} approvals ({{names}}) were cancelled",
     "cancelledDescription": "The chat was left before you answered. Send the request again to retry."
+  },
+  "desktopOnly": "Available in the Flint desktop app only.",
+  "folderAccess": {
+    "title": "Folder access",
+    "description": "Folders and files outside the agent workspace that you let an agent read or change. Whether a folder's own hooks may run is set under Trusted folders.",
+    "empty": "No folder access has been granted.",
+    "readWrite": "Read and write",
+    "readOnly": "Read only",
+    "untilRevoked": "Every conversation, until revoked",
+    "untilDate": "This conversation, until {{when}}",
+    "revoke": "Revoke",
+    "revokeLabel": "Revoke access to {{path}}"
+  },
+  "spendPause": {
+    "preview": "Continue the run (about {{spent}} spent so far)",
+    "previewCeiling": "Continue the run up to its {{ceiling}} ceiling (about {{spent}} spent so far)"
+  },
+  "remote": {
+    "runsOnServer": "Runs on the server.",
+    "runsOnServerAt": "Runs on the server: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Changes waiting for your approval"
   }
 }

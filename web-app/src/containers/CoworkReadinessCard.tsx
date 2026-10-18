@@ -1,3 +1,4 @@
+import { DetailsCard } from '@/containers/DetailsCard'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { modeLabelKey } from '@/lib/coworkMode'
 import {
@@ -37,10 +38,12 @@ function Row({
   label: string
   children: React.ReactNode
 }) {
+  // Values wrap rather than truncate: a path or a token figure cut off with
+  // an ellipsis is the one thing this card must never do.
   return (
     <div className="contents">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate">{children}</dd>
+      <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   )
 }
@@ -109,16 +112,14 @@ export function CoworkReadinessCard({
   const total = accountedTotal(manifest.context)
 
   return (
-    <section
+    <DetailsCard
       aria-label={t('common:readiness.title')}
-      className="flex flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-card p-3 text-[12.5px]"
+      title={t('common:readiness.title')}
+      className="text-[12.5px]"
     >
-      <h3 className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
-        {t('common:readiness.title')}
-      </h3>
       {/* One label column and one value column, as the design's key-value
           table: the labels line up down one edge. */}
-      <dl className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] items-baseline gap-x-3.5 gap-y-1.5 max-sm:grid-cols-[minmax(0,110px)_minmax(0,1fr)]">
+      <dl className="grid grid-cols-[minmax(0,128px)_minmax(0,1fr)] items-baseline gap-x-4 gap-y-2.5 leading-5 max-sm:grid-cols-[minmax(0,100px)_minmax(0,1fr)]">
         <Row label={t('common:readiness.repository')}>
           {/* The canonical path, not what was typed: this is the row someone
               checks when they suspect the wrong repository is attached. */}
@@ -222,7 +223,7 @@ export function CoworkReadinessCard({
         {modelTest && manifest.model.id ? (
           <div className="contents">
             <dt className="text-muted-foreground">{t('common:readiness.toolTest')}</dt>
-            <dd className="min-w-0">{modelTest}</dd>
+            <dd className="min-w-0 break-words">{modelTest}</dd>
           </div>
         ) : null}
         <Row label={t('common:readiness.tools')}>
@@ -250,7 +251,7 @@ export function CoworkReadinessCard({
             <dt className="text-muted-foreground">
               {t('common:readiness.tooling.label')}
             </dt>
-            <dd className="min-w-0">
+            <dd className="min-w-0 break-words">
               {manifest.tooling.state === 'loading' ? (
                 t('common:readiness.tooling.loading')
               ) : manifest.tooling.state === 'failed' ? (
@@ -317,6 +318,6 @@ export function CoworkReadinessCard({
           })}
         </Row>
       </dl>
-    </section>
+    </DetailsCard>
   )
 }

@@ -22,6 +22,11 @@ export type MCPServerConfig = {
    */
   startWithFlint?: boolean
   /**
+   * This server's own tool call timeout in seconds. Absent: the global
+   * `toolCallTimeoutSeconds` setting applies.
+   */
+  toolCallTimeoutSeconds?: number
+  /**
    * Working directory of a local (stdio) server. Absent: the server starts
    * from Flint's own directory.
    */

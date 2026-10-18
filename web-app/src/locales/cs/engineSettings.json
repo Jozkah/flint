@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "Proměnné prostředí",
+    "description": "Proměnné prostředí pro llama.cpp (KEY=VALUE), oddělené znakem ';'",
+    "placeholder": "Např. GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "Další argumenty",
+    "description": "Další volby llama-server, např. --rope-scaling yarn --no-warmup. Použijí se pro každý model a zapisují se až za výše uvedená nastavení, takže mají přednost. Volby adresy serveru, přihlašovacích údajů a souboru modelu se ignorují.",
+    "placeholder": "Např. --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "Max. počet současně načtených modelů",
+    "description": "Maximální počet modelů, které router drží načtené současně. 0 = neomezeně.",
+    "placeholder": "např. 1"
+  },
+  "idle_unload_minutes": {
+    "title": "Uvolnit nečinné modely po (minutách)",
+    "description": "Uvolní lokální model, který nebyl použit tolik minut, aby se uvolnila paměť. Při dalším požadavku se znovu načte. Embedding modely a modely s probíhajícím požadavkem se nikdy neuvolňují. 0 = nikdy. Výchozí je 30, aby VRAM nezůstávala obsazená, když hrajete nebo renderujete.",
+    "placeholder": "např. 10"
+  },
+  "timeout": {
+    "title": "Časový limit pro llama.cpp",
+    "description": "Časový limit připojení a načítání llama.cpp v sekundách",
+    "placeholder": "např. 600"
+  },
+  "ctx_size": {
+    "title": "Výchozí velikost kontextu",
+    "description": "Kontextové okno pro lokální modely, které si nenastavují vlastní. Větší = pamatuje si víc, ale potřebuje více paměti. Každý model to může přepsat ve svém nastavení (ikona ozubeného kola). Ponechte Auto pro nativní velikost modelu (může být obrovská). Běžné velikosti: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "Auto"
+  },
+  "fit": {
+    "title": "Automatické přizpůsobení",
+    "description": "Nechá Flint rozhodnout, kolik vrstev poběží na GPU a jak velký může být kontext, aby se model vešel do paměti. Vypněte, chcete-li vrstvy GPU a velikost kontextu nastavit sami."
+  },
+  "fit_target": {
+    "title": "Automatické přizpůsobení: volná paměť",
+    "description": "Kolik paměti (v MiB) ponechá automatické přizpůsobení na každé GPU volné pro ostatní aplikace a displej. Zvyšte, pokud systém při načteném modelu zpomaluje. Pouze lokální modely.",
+    "placeholder": "1024 nebo MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "Automatické přizpůsobení: nejmenší kontext",
+    "description": "Nejmenší velikost kontextu (v tokenech), na kterou smí automatické přizpůsobení zmenšit kontext, když se model nevejde do paměti. Pod tuto hodnotu nikdy nejde, a pokud se model stále nevejde, načtení selže. Nejde o velikost kontextu: tu nastavíte ve Výchozí velikosti kontextu nebo pro jednotlivé modely ve Velikosti kontextu. Používá se jen při zapnutém automatickém přizpůsobení a jen pro lokální modely."
+  },
+  "threads": {
+    "title": "Vlákna",
+    "description": "Počet vláken použitých při generování (-1 pro logická jádra)."
+  },
+  "threads_batch": {
+    "title": "Vlákna (dávka)",
+    "description": "Počet vláken pro dávkové zpracování a zpracování promptu (výchozí: stejně jako Vlákna).",
+    "placeholder": "-1 (stejně jako Vlákna)"
+  },
+  "ctx_shift": {
+    "title": "Posun kontextu",
+    "description": "Umožní modelu odříznout text na začátku, aby uvolnil místo pro nový text ve své paměti"
+  },
+  "n_predict": {
+    "title": "Max. počet generovaných tokenů",
+    "description": "Maximální počet tokenů k vygenerování (-1 = neomezeně)."
+  },
+  "batch_size": {
+    "title": "Velikost dávky",
+    "description": "Logická maximální velikost dávky pro zpracování promptů."
+  },
+  "ubatch_size": {
+    "title": "Velikost mikrodávky (uBatch)",
+    "description": "Fyzická maximální velikost dávky pro zpracování promptů. 0 = auto: 1024, když se model vejde do VRAM s rezervou, 512, když je to těsné, 2048, když přetéká do systémové RAM.",
+    "placeholder": "0 (auto)"
+  },
+  "n_cpu_moe": {
+    "title": "Vrstvy MoE na CPU",
+    "description": "Ponechá váhy Mixture-of-Experts prvních N vrstev v paměti CPU. Díky tomu se velký MoE model vejde i do omezené VRAM. 0 funkci vypíná."
+  },
+  "n_cpu_ffn": {
+    "title": "Husté vrstvy FFN na CPU",
+    "description": "Ponechá husté feed-forward váhy prvních N vrstev v paměti CPU. Protějšek výše uvedeného nastavení MoE pro husté modely. 0 funkci vypíná."
+  },
+  "no_kv_offload": {
+    "title": "Vypnout přesun KV cache",
+    "description": "Ponechá KV cache v systémové RAM místo v paměti GPU. Užitečné při nedostatku VRAM, za cenu rychlosti."
+  },
+  "device": {
+    "title": "Zařízení pro přesun",
+    "description": "Akcelerátory oddělené čárkami, na které se má přesouvat, pojmenované jako v seznamu zjištěného hardwaru. Ponechte prázdné pro použití všech dostupných akcelerátorů, nebo zadejte \"none\" pro úplné vypnutí přesunu.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "Režim rozdělení mezi GPU",
+    "description": "Jak rozdělit model mezi více GPU.",
+    "options": {
+      "none": "Žádný",
+      "layer": "Vrstva",
+      "row": "Řádek",
+      "tensor": "Tenzor (experimentální)"
+    }
+  },
+  "main_gpu": {
+    "title": "Index hlavní GPU",
+    "description": "GPU použitá pro model (split-mode=none) nebo pro mezivýsledky (split-mode=row)."
+  },
+  "tensor_split": {
+    "title": "Rozdělení tenzorů",
+    "description": "Poměry oddělené čárkami pro rozdělení modelu mezi zařízení, např. \"3,1\". Ponechte prázdné pro rovnoměrné rozdělení."
+  },
+  "no_op_offload": {
+    "title": "Vypnout přesun operací",
+    "description": "Ponechá tenzorové operace hostitele na CPU místo jejich přesunu na akcelerátor."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "Zapne Flash Attention pro optimalizovaný výkon.",
+    "options": {
+      "auto": "Auto",
+      "on": "Zapnuto",
+      "off": "Vypnuto"
+    }
+  },
+  "parallel": {
+    "title": "Paralelní sekvence",
+    "description": "Počet paralelních sekvencí dekódovaných pro vaše vlastní požadavky v chatu (0 = výchozí hodnota llama.cpp, tedy 4). Flint navíc rezervuje jeden interní slot pro požadavky na pozadí (např. automatické pojmenování vláken), aby nevytlačovaly KV cache vašeho chatu."
+  },
+  "reserve_background_slots": {
+    "title": "Rezervovat sloty na pozadí",
+    "description": "Ponechá dva další interní sloty nad rámec paralelních sekvencí pro požadavky na pozadí (automatické pojmenování vláken, Cowork, subagenti), aby nevytlačovaly KV cache vašeho chatu. Vypněte, chcete-li přesně tolik slotů, kolik je paralelních sekvencí (nastavte 1 pro jediný slot); požadavky na pozadí pak sdílejí slot vašeho chatu a mohou vytlačit jeho cache. Znovu načte model."
+  },
+  "ngram_speculation": {
+    "title": "Spekulativní dekódování pomocí N-gramů",
+    "description": "Navrhuje tokeny z textu, který už v konverzaci je (ngram-mod), a nechá je model ověřit v jedné dávce. Výstup je totožný; opakující se výstup, jako jsou úpravy kódu nebo citace, se generuje 3-10x rychleji, jiný text není ovlivněn. Modely s vlastním návrhem MTP použijí místo toho jej."
+  },
+  "cont_batching": {
+    "title": "Průběžné dávkování",
+    "description": "Zapne průběžné dávkování (také dynamické dávkování) pro souběžné požadavky. Ve výchozím stavu zapnuto, stejně jako v llama.cpp."
+  },
+  "no_mmap": {
+    "title": "Vypnout mmap",
+    "description": "Nemapovat model do paměti (pomalejší načítání, ale může snížit stránkování, pokud se nepoužívá mlock)."
+  },
+  "lazy_mode": {
+    "title": "Líné čtení tenzorů",
+    "description": "Čte řádky velkých tenzorů označených architekturou (např. embeddingy pro jednotlivé vrstvy) z disku podle potřeby místo jejich držení v paměti. Auto to použije nad 4 GiB. Vyžaduje mmap.",
+    "options": {
+      "auto": "Auto",
+      "on": "Zapnuto",
+      "off": "Vypnuto"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "Uzamkne model v RAM, aby nebyl nikdy odložen na disk. V kombinaci s \"Vypnout mmap\" se váhy načtou bez mmap a poté uzamknou."
+  },
+  "cache_type_k": {
+    "title": "Typ K pro KV cache",
+    "description": "Datový typ KV cache pro klíče (K). Auto používá q8_0, který zmenší cache na polovinu se zanedbatelnou ztrátou kvality.",
+    "options": {
+      "auto": "Auto",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "Typ V pro KV cache",
+    "description": "Datový typ KV cache pro hodnoty (V). Auto používá q8_0, když je Flash Attention Zapnuto, jinak f16, protože kvantizovaná V cache vyžaduje Flash Attention. Model, který se s ním nenačte, se jednou zkusí znovu s f16.",
+    "options": {
+      "auto": "Auto",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "Metoda škálování RoPE",
+    "description": "Metoda škálování frekvence RoPE. \"Výchozí modelu\" ponechá volbu na modelu; \"Žádné\" škálování výslovně vypne.",
+    "options": {
+      "auto": "Výchozí modelu",
+      "none": "Žádné",
+      "linear": "Lineární",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "Základní frekvence RoPE",
+    "description": "Základní frekvence RoPE (0 = načte se z modelu).",
+    "placeholder": "0 (výchozí modelu)"
+  },
+  "rope_freq_scale": {
+    "title": "Faktor škálování frekvence RoPE",
+    "description": "Faktor škálování frekvence RoPE. 0 načte hodnotu z modelu; 1 vynutí žádné škálování."
+  },
+  "cache_ram": {
+    "title": "RAM pro cache promptů (MiB)",
+    "description": "Velikost cache promptů v MiB: RAM, která uchovává kontext jiných konverzací, aby se při návratu k nim nemusel znovu načítat. Prázdné nebo -2 = automaticky podle vaší RAM (20 % systémové RAM, nejvýše polovina volné, 1024-8192); 0 = vypnuto; -1 = neomezeně.",
+    "placeholder": "-2 (auto)"
+  },
+  "persist_thread_cache": {
+    "title": "Pamatovat si konverzace mezi relacemi",
+    "description": "Ukládá cache promptů každé konverzace na disk, aby se při jejím opětovném otevření nemusela znovu načítat celá. Obnoví se jen tehdy, když model, jeho nastavení a sestavení llama.cpp odpovídají tomu, co ji uložilo."
+  },
+  "thread_cache_size": {
+    "title": "Limit disku pro cache konverzací (MiB)",
+    "description": "Místo na disku pro uložené cache konverzací (výchozí: 2048). Po jeho dosažení se nejdříve odstraní nejstarší. Jedna dlouhá konverzace může zabrat stovky MiB."
+  },
+  "cache_reuse": {
+    "title": "Opětovné použití cache",
+    "description": "Minimální velikost bloku shodných prefixových tokenů, které se znovu použijí z cache. 0 = vypnuto."
+  },
+  "ctx_checkpoints": {
+    "title": "Kontrolní body kontextu",
+    "description": "Maximální počet kontrolních bodů kontextu na slot, díky nimž lze posunutý kontext obnovit místo opětovného zpracování."
+  },
+  "checkpoint_min_step": {
+    "title": "Minimální krok kontrolních bodů",
+    "description": "Minimální počet tokenů mezi kontrolními body kontextu."
+  },
+  "swa_full": {
+    "title": "Plná SWA cache",
+    "description": "Použije KV cache plné velikosti pro modely se sliding-window attention (např. Gemma). Zapněte, pokud takový model v každém kole znovu zpracovává celý prompt místo opětovného použití cache; spotřebuje více paměti."
+  },
+  "kv_unified": {
+    "title": "Sjednocená KV cache",
+    "description": "Použije jediný sjednocený KV buffer sdílený všemi sloty. Šetří paměť při běhu více paralelních slotů.",
+    "options": {
+      "auto": "Auto",
+      "on": "Zapnuto",
+      "off": "Vypnuto"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "Kontext na slot",
+    "description": "Omezí, kolik sjednocené KV cache smí jeden slot využít, v tokenech. Při 0 může slot zaplnit celou cache. Platí pouze pro sjednocenou cache."
+  },
+  "reasoning_preserve": {
+    "title": "Zachovat historii uvažování",
+    "description": "Ponechá v promptu uvažování všech dřívějších odpovědí asistenta, nejen té poslední. Týká se pouze modelů, jejichž šablona chatu to podporuje, a spotřebovává tokeny promptu."
+  },
+  "keep": {
+    "title": "Zachovat prvních N tokenů",
+    "description": "Počet tokenů z původního promptu, které se zachovají při posunu kontextu. -1 = zachovat vše."
+  },
+  "_ui": {
+    "moreInfo": "Více o {{setting}}",
+    "perModelSettings": "Nastavení pro jednotlivé modely",
+    "perModelDefault": "Výchozí (z nastavení: {{value}})",
+    "perModelDefaultAuto": "Výchozí (z nastavení: Auto)"
+  }
+}

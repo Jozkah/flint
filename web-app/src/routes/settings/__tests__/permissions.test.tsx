@@ -384,6 +384,34 @@ describe('Permissions settings', () => {
     expect(screen.queryByText('cmd-10')).not.toBeInTheDocument()
   })
 
+  it('writes an older decision as a date above its time, with the full time on hover', async () => {
+    auditRecent.mockResolvedValue([
+      {
+        v: 1,
+        at: '2020-03-04T09:15:00Z',
+        session: 's',
+        run: '',
+        call: 'c1',
+        agent: '',
+        project: '',
+        tool: 'bash',
+        capability: 'exec',
+        kind: 'command',
+        resource: 'old-command',
+        decision: 'allow',
+        reason: '',
+        rule: '',
+      },
+    ])
+    render(<Page />)
+    await screen.findByText('old-command')
+    const time = document.querySelector('time[datetime="2020-03-04T09:15:00Z"]')!
+    expect(time.children).toHaveLength(2)
+    expect(time.getAttribute('title')).toMatch(/2020/)
+    // The column is sized by its content, not fixed to a width a date overflows.
+    expect(document.querySelector('table')!.className).not.toContain('table-fixed')
+  })
+
   it('says when decision history cannot be read', async () => {
     auditRecent.mockRejectedValue(new Error('not in the desktop app'))
     render(<Page />)

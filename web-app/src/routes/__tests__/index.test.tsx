@@ -32,7 +32,10 @@ vi.mock('@/hooks/useModelProvider', () => ({
 }))
 
 vi.mock('@/hooks/useThreads', () => ({
-  useThreads: () => ({ setCurrentThreadId: h.setCurrentThreadId }),
+  useThreads: (sel?: (s: unknown) => unknown) => {
+    const state = { setCurrentThreadId: h.setCurrentThreadId }
+    return sel ? sel(state) : state
+  },
 }))
 
 vi.mock('@/hooks/useTools', () => ({

@@ -201,7 +201,7 @@ export type RoomDetail = {
   status: SessionStatus
   /** The desktop's own status word (`awaiting-user`, `completed`). */
   roomStatus: string
-  mode: 'round-robin' | 'user-selected' | 'moderator-selected'
+  mode: 'round-robin' | 'user-selected' | 'moderator-selected' | 'compare'
   participants: RoomParticipant[]
   moderator: { enabled: boolean; name: string; model: string | null; provider?: string }
   nextSpeakerId: string | null

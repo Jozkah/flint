@@ -16,6 +16,7 @@
     "test:coverage": "cross-env NODE_OPTIONS=--max-old-space-size=4096 vitest --coverage --run"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^4.0.0",
     "@ai-sdk/anthropic": "^3.0.0",
     "@ai-sdk/google": "^3.0.0",
     "@ai-sdk/mistral": "^3.0.0",

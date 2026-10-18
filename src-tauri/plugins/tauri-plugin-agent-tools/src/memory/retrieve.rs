@@ -12,7 +12,7 @@
 //! record beat another instead of presenting a flat block of text.
 
 use super::record::{
-    deduplicate, detect_conflicts, prefer, Conflict, MemoryId, MemoryRecord, PrecedenceReason,
+    deduplicate, detect_conflicts, Conflict, MemoryId, MemoryRecord, PrecedenceReason,
     Scope,
 };
 
@@ -38,6 +38,10 @@ pub struct RetrievalContext<'a> {
     /// approved compatibility files, skills). A memory contradicting any of it
     /// is withheld and reported (AH-084). Empty when the caller has none.
     pub instructions: &'a [super::precedence::Instruction],
+    /// `Some` ranks the survivors by relevance, recency and use under an
+    /// optional token cap (see `ranking`). `None` is the precedence order and
+    /// the character budget alone, exactly as before.
+    pub ranking: Option<super::ranking::Ranking<'a>>,
 }
 
 /// Characters of memory one dispatch may carry.
@@ -184,17 +188,15 @@ pub fn select(records: &[MemoryRecord], ctx: &RetrievalContext<'_>) -> Selection
     //    input order, so what the model receives does not depend on how the
     //    store happened to be written.
     let mut ordered = deduped;
-    ordered.sort_by(|a, b| {
-        if a.id == b.id {
-            return std::cmp::Ordering::Equal;
-        }
-        let (winner, _) = prefer(a, b);
-        if winner.id == a.id {
-            std::cmp::Ordering::Less
-        } else {
-            std::cmp::Ordering::Greater
-        }
-    });
+    match &ctx.ranking {
+        Some(ranking) => super::ranking::rank_by_score(&mut ordered, ranking.query, ctx.now),
+        None => super::record::rank(&mut ordered),
+    }
+    // A token cap tightens the character budget; it never loosens it.
+    let budget_chars = match ctx.ranking.and_then(|r| r.max_tokens) {
+        Some(tokens) => ctx.budget_chars.min(super::ranking::chars_for_tokens(tokens)),
+        None => ctx.budget_chars,
+    };
 
     // 5. Budget, applied last and in that order, so what is dropped is always
     //    the least important rather than whatever came last in the file.
@@ -206,7 +208,7 @@ pub fn select(records: &[MemoryRecord], ctx: &RetrievalContext<'_>) -> Selection
     };
     for record in ordered {
         let cost = record.content.chars().count() + 1;
-        if selection.chars_used + cost > ctx.budget_chars {
+        if selection.chars_used + cost > budget_chars {
             selection.dropped_for_budget.push(record.id);
             continue;
         }
@@ -313,6 +315,7 @@ mod tests {
             budget_chars: 10_000,
             temporary: false,
             instructions: &[],
+            ranking: None,
         }
     }
 

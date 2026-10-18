@@ -630,6 +630,7 @@ mod tests {
     use super::*;
 
     // Spawns a child to read env vars since Command doesn't expose a getter.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))] // only the linux-gated tests below call it
     async fn read_env_from_child(command: &mut tokio::process::Command, var: &str) -> String {
         use std::process::Stdio;
         #[cfg(target_os = "linux")]

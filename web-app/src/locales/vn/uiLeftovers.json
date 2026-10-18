@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "Đá phiến",
+    "vermilion": "Đỏ son",
+    "ink": "Mực",
+    "moss": "Rêu",
+    "slate": "Xanh đá phiến",
+    "violet": "Tím"
+  },
+  "fontSizeNames": {
+    "small": "Nhỏ",
+    "medium": "Vừa",
+    "large": "Lớn",
+    "extraLarge": "Rất lớn"
+  },
+  "unknownSize": "Không rõ kích thước",
+  "official": "Chính thức",
+  "configuration": "Cấu hình",
+  "modelCombobox": {
+    "refresh": "Làm mới danh sách mô hình",
+    "placeholder": "Nhập hoặc chọn một mô hình..."
+  },
+  "hubTasks": {
+    "moreAria": "Thêm cách duyệt khác",
+    "more": "Thêm",
+    "all": "Tất cả",
+    "chat": "Trò chuyện",
+    "coding": "Lập trình",
+    "reasoning": "Suy luận",
+    "vision": "Thị giác",
+    "small": "Nhỏ và nhanh",
+    "tools": "Dùng công cụ",
+    "multilingual": "Đa ngôn ngữ",
+    "speech": "Giọng nói",
+    "embeddings": "Embedding",
+    "summaries": "Tóm tắt",
+    "translation": "Dịch thuật"
+  },
+  "tokenSpeed": {
+    "aria": "Lượng token của tin nhắn này",
+    "tooltip": "Lượng token",
+    "generation": "Tạo văn bản",
+    "reading": "Đọc",
+    "draftAccepted": "Bản nháp được chấp nhận",
+    "tokens": "Token",
+    "memoryInRequest": "Bộ nhớ trong yêu cầu này",
+    "memoriesSent": "Ký ức đã gửi",
+    "withheld": "Bị giữ lại do mâu thuẫn: {{ids}}",
+    "perSec": "{{n}} token/giây",
+    "count": "{{n}} token"
+  },
+  "serverHost": {
+    "edit": "Sửa máy chủ lưu trữ của server"
+  },
+  "extensions": {
+    "plugins": "Plugin",
+    "global": "Toàn cục",
+    "workspace": "Không gian làm việc",
+    "toggle": "Bật/tắt {{name}}",
+    "enable": "Bật",
+    "disable": "Tắt",
+    "workspaceOnly": "Chỉ không gian làm việc",
+    "globalAll": "Toàn cục (mọi không gian làm việc)",
+    "enabledToast": "Đã bật {{name}}",
+    "disabledToast": "Đã tắt {{name}}"
+  },
+  "scope": "Phạm vi",
+  "localApi": {
+    "starting": "Đang khởi động server...",
+    "startingDesc": "Đang thử khởi động server trên cổng {{port}}",
+    "status": "Trạng thái server",
+    "runningDesc": "Server đang chạy.",
+    "stoppedDesc": "Server đã dừng.",
+    "running": "Đang chạy",
+    "stopped": "Đã dừng"
+  },
+  "toolOutputAlt": "Kết quả công cụ",
+  "memory": {
+    "exportFilter": "Bản xuất bộ nhớ Flint",
+    "why": "Vì sao Flint nhớ điều này",
+    "writtenBy": "Người ghi",
+    "created": "Tạo lúc",
+    "updated": "Cập nhật lúc",
+    "fromConversation": "Từ cuộc trò chuyện",
+    "fromMessage": "Từ tin nhắn",
+    "projectIdentity": "Danh tính dự án",
+    "replaces": "Thay thế",
+    "redacted": "Đã che",
+    "expires": "Hết hạn",
+    "version": "Phiên bản",
+    "source": "Nguồn",
+    "importedFrom": "Nhập từ",
+    "originally": "Ban đầu",
+    "fromRun": "Từ lượt chạy",
+    "savedInProject": "Lưu trong dự án",
+    "contentHash": "Mã băm nội dung",
+    "earlierVersions": "Các phiên bản trước",
+    "usedIn": "Được dùng trong",
+    "notRecorded": "chưa ghi nhận",
+    "deletedSince": "(đã bị xóa)",
+    "yes": "có",
+    "no": "không",
+    "versionUnknown": "không rõ (lưu trước khi có lưu phiên bản)",
+    "unknown": "không rõ",
+    "importedExport": "bản xuất {{id}} ({{scope}}, {{when}})",
+    "createdWhen": "tạo lúc {{when}}",
+    "conversationId": "cuộc trò chuyện {{id}}",
+    "runId": "lượt chạy {{id}}",
+    "turnId": "lượt {{id}}",
+    "snapshotId": "ảnh chụp {{id}}",
+    "noRequests": "chưa có yêu cầu nào được ghi nhận"
+  }
+}

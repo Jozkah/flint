@@ -321,15 +321,40 @@ export function interruptRun(id: string, fetchImpl: FetchLike = defaultFetch()) 
   return rpc<Record<string, never>>('agent_run_interrupt', { id }, fetchImpl)
 }
 
-export type ApprovalAnswer = 'allow_once' | 'allow_always' | 'deny'
+/** `defer` answers later: the call is refused for now and recorded (`[approvals]`). */
+export type ApprovalAnswer = 'allow_once' | 'allow_always' | 'deny' | 'defer'
+
+/**
+ * How far an `allow_always` reaches: a folder or a command prefix is saved as a
+ * rule for the project, `once` and `run` keep it to the call or the run. The
+ * server checks it against the call it was chosen for.
+ */
+export type ApprovalScopeAnswer =
+  | { type: 'once' }
+  | { type: 'run' }
+  | { type: 'folder'; dir: string }
+  | { type: 'command_prefix'; prefix: string }
 
 export function approveRun(
   id: string,
   requestId: string,
   decision: ApprovalAnswer,
-  fetchImpl: FetchLike = defaultFetch()
+  fetchImpl: FetchLike = defaultFetch(),
+  scope?: ApprovalScopeAnswer,
+  /** Sent with `deny` only; the run is told why. */
+  reason?: string
 ) {
-  return rpc<Record<string, never>>('agent_run_approve', { id, requestId, decision }, fetchImpl)
+  return rpc<Record<string, never>>(
+    'agent_run_approve',
+    {
+      id,
+      requestId,
+      decision,
+      ...(scope ? { scope } : {}),
+      ...(decision === 'deny' && reason ? { reason } : {}),
+    },
+    fetchImpl
+  )
 }
 
 export type AskResult = { id: string; selected: string[]; custom_input?: string }
@@ -498,6 +523,26 @@ export function listServerFolders(
   fetchImpl: FetchLike = defaultFetch()
 ): Promise<{ path: string | null; parent: string | null; entries: ServerFolder[] }> {
   return rpc('agent_server_folders', path ? { path } : {}, fetchImpl)
+}
+
+export type FolderListing = {
+  path: string | null
+  parent: string | null
+  entries: ServerFolder[]
+  /** More folders were there than one listing returns. */
+  truncated?: boolean
+}
+
+/**
+ * The folder chooser's listing (`agent_list_folders`): the server's roots when
+ * `path` is omitted, else the folders under `path`. The server refuses paths
+ * outside its roots, relative or `..` paths, shares and encoded input.
+ */
+export function listAgentFolders(
+  path?: string | null,
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<FolderListing> {
+  return rpc('agent_list_folders', path ? { path } : {}, fetchImpl)
 }
 
 /** One server-sent record: its `event:` name, its `id:` and its data text. */

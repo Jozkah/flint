@@ -8,7 +8,8 @@
   --vp-accent: var(--foreground);
   --vp-icon: var(--secondary-foreground);
   --vp-bg: var(--accent);
-  --vp-time-size: max(10px, calc(var(--vp-size) * 0.36));
+  /* Never below the 11px type scale; tracks larger mics up to 12px. */
+  --vp-time-size: clamp(11px, calc(var(--vp-size) * 0.4), 12px);
   --vp-clock-w: calc(var(--vp-time-size) * 2.5 + 4px);
   --vp-wave-w: calc(var(--vp-size) * 1.9);
   --vp-extra: calc(var(--vp-clock-w) + var(--vp-wave-w));

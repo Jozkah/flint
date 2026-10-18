@@ -405,7 +405,8 @@
     "mode": {
       "roundRobin": "Po kolei",
       "userSelected": "Ty wybierasz",
-      "moderatorSelected": "Wybiera moderator"
+      "moderatorSelected": "Wybiera moderator",
+      "compare": "Porównaj modele"
     },
     "untitled": "Pokój bez tytułu",
     "menu": "Menu pokoju",
@@ -1320,6 +1321,8 @@
       "working": "W toku: ukończono {{done}} z {{total}} zadań",
       "attention_one": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
       "attention_other": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
+      "attention_few": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
+      "attention_many": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
       "review": "Gotowe do Twojego przeglądu",
       "merging": "Czekam na zastosowanie zmian",
       "paused": "Wstrzymana",
@@ -1349,6 +1352,8 @@
     },
     "files_one": "Plików: {{count}}, +{{added}} -{{removed}}",
     "files_other": "Plików: {{count}}, +{{added}} -{{removed}}",
+    "files_few": "Plików: {{count}}, +{{added}} -{{removed}}",
+    "files_many": "Plików: {{count}}, +{{added}} -{{removed}}",
     "filesUncommitted": "jeszcze nie zapisano w commicie",
     "budget": "Tokeny: {{used}} z {{budget}}",
     "tokens": "Zużyte tokeny: {{used}}",
@@ -1377,6 +1382,8 @@
       "prepared": "Zmiany są gotowe do przeglądu",
       "changes_one": "Plików do zastosowania: {{count}}",
       "changes_other": "Plików do zastosowania: {{count}}",
+      "changes_few": "Plików do zastosowania: {{count}}",
+      "changes_many": "Plików do zastosowania: {{count}}",
       "gateFailed": "Kontrola nie przeszła: {{command}}",
       "flagged": "Sprawdź to najpierw",
       "looked": "Przejrzałem ten plik",

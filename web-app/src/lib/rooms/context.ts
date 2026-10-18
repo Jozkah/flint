@@ -17,7 +17,8 @@ import { resolveExtensions, type SkillMeta } from '@/lib/extensionsStore'
 import { addressLabel } from './addressing'
 import { CONCLUDE_SIGNAL } from './consensus'
 import { pinnedReplyLanguage, replyLanguageLine } from '@/lib/replyLanguage'
-import type { Participant, Room, RoomMessage } from './types'
+import { turnToolAccess, type Participant, type Room, type RoomMessage } from './types'
+import { workspacePromptLine } from './isolation'
 
 export type PromptMessage = { role: 'user' | 'assistant'; content: string }
 
@@ -110,7 +111,47 @@ function roleSuffix(role: string): string {
   return role.trim() ? ` (${role.trim()})` : ''
 }
 
-export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string {
+/**
+ * A compare room's participant prompt: one of several models answering the
+ * user on its own. No roster, no addressing and no conclude signal: there is
+ * no discussion to take part in.
+ */
+function compareSystemPrompt(
+  base: Room,
+  participant: Participant,
+  workspace: { path: string; source: string } | null
+): string {
+  // An isolated participant works in its own copy: that copy is its folder,
+  // the shared extra folders are not reachable, and its access is kept.
+  const room: Room = workspace ? { ...base, folder: workspace.path, extraFolders: [] } : base
+  const access = turnToolAccess(room, participant.toolAccess, workspace !== null)
+  const lines: string[] = [
+    `You are ${participant.name}${roleSuffix(participant.role)}, one of several assistants answering the user's messages independently.`,
+    ...participantPersona(participant),
+    `Objective: ${room.objective || room.title || '(none given)'}`,
+    "Every assistant gets the same messages at the same time; you do not see the others' answers and they do not see yours. " +
+      'Answer the user directly and completely, as you would in a one-to-one chat.',
+    access === 'none'
+      ? 'You have no tools here. Do not attempt tool calls or emit tool, command, or ```bash``` blocks -- they do nothing here. Reason only from the conversation and your own knowledge, and if a step would need a tool you do not have, say so plainly.'
+      : toolGuidance(room, access as 'read' | 'edit' | 'full'),
+    ...(workspace ? [workspacePromptLine(workspace.path, workspace.source)] : []),
+    replyLanguageLine() ||
+      "Write in the language of the objective and of the user's messages, whatever language a file or tool result is in.",
+    'Start your message with the text itself, never with a bracketed header; the room adds those.',
+    FRAMING_NOTICE,
+    UNTRUSTED_NOTICE,
+  ]
+  return lines.join('\n')
+}
+
+export function buildSystemPrompt(
+  room: Room,
+  speaker: SpeakerIdentity,
+  workspace?: { path: string; source: string } | null
+): string {
+  if (room.mode === 'compare' && speaker.kind === 'participant') {
+    return compareSystemPrompt(room, speaker.participant, workspace ?? null)
+  }
   const others = room.participants
     .filter((p) => !p.removed)
     .filter((p) => speaker.kind !== 'participant' || p.id !== speaker.participant.id)
@@ -139,7 +180,10 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
     lines.push(
       speaker.participant.toolAccess === 'none'
         ? 'You have no tools in this discussion. Do not attempt tool calls or emit tool, command, or ```bash``` blocks -- they do nothing here. Reason only from the conversation and your own knowledge, and if a step would need a tool you do not have, say so plainly.'
-        : toolGuidance(room, speaker.participant.toolAccess)
+        : toolGuidance(
+          room,
+          turnToolAccess(room, speaker.participant.toolAccess) as 'read' | 'edit' | 'full'
+        )
     )
   }
   if (speaker.kind === 'participant' && room.mode !== 'moderator-selected') {
@@ -192,6 +236,7 @@ function toolGuidance(room: Room, access: 'read' | 'edit' | 'full'): string {
         ? [`Also attached, with the same access: ${extras.map((f) => `\`${f}\``).join(', ')}.`]
         : []),
       `Always use full paths under it — e.g. \`${example}\`. Use \`skill_list\` and \`skill_read\` for skills, and \`list_plugins\` for what is installed.`,
+      'For work of several steps, keep a plan with the `todo` tool; it is your own list and stays with you across turns.',
       "The shell's working directory is a scratch sandbox, not the project: you cannot `cd` or `Set-Location` into the folder (it is refused), so give commands absolute paths (for example `python -m unittest discover -s <folder>/tests`) and set `PYTHONPATH` when a package must be importable.",
       'Anything that changes files or runs a command may wait for the user to allow it; if a call is refused, do not retry it or work around it. Say what you would have done.',
       'Do not invent file contents or command output: if a call fails, say so instead of guessing. Other participants work at the same time in the same folders, so keep changes small and say what you changed.',
@@ -210,6 +255,11 @@ function toolGuidance(room: Room, access: 'read' | 'edit' | 'full'): string {
       : []),
     `Always use full paths under it — e.g. read \`${example}\`, and list the folder with \`ls\` on \`${room.folder}\`. A bare filename like \`notes.md\` will not resolve.`,
     'Do not invent file contents: if a read fails, say so instead of guessing.',
+    ...(access === 'read' && room.mode === 'compare'
+      ? [
+          'This room compares answers side by side in one folder, so every participant reads only here: describe the changes you would make instead of making them.',
+        ]
+      : []),
     ...(access === 'edit'
       ? [
           'Do not delete, overwrite or move files beyond what the objective requires; if a change is hard to undo, ask the room or the user first.',
@@ -257,7 +307,13 @@ export function isProjectable(m: RoomMessage): boolean {
   return m.text.trim() !== ''
 }
 
-export type HistoryEntry = { source: RoomMessage; message: PromptMessage; tokens: number }
+/** Whether a compare-room participant may see `m`: the user's, or its own. */
+export function visibleInCompare(m: RoomMessage, participantId: string): boolean {
+  if (m.author.kind === 'user') return true
+  return m.author.kind === 'participant' && m.author.participantId === participantId
+}
+
+export type HistoryEntry ={ source: RoomMessage; message: PromptMessage; tokens: number }
 
 export function projectHistory(
   room: Room,
@@ -265,8 +321,12 @@ export function projectHistory(
   speaker: SpeakerIdentity
 ): HistoryEntry[] {
   const out: HistoryEntry[] = []
+  // In a compare room a participant sees the user and itself only: what the
+  // other models (or a moderator) said is never part of its context.
+  const isolated = room.mode === 'compare' && speaker.kind === 'participant'
   for (const m of messages) {
     if (!isProjectable(m)) continue
+    if (isolated && !visibleInCompare(m, speaker.participant.id)) continue
     const own =
       speaker.kind === 'participant' &&
       m.author.kind === 'participant' &&
@@ -371,6 +431,8 @@ export type BuildPromptInput = {
   room: Room
   messages: RoomMessage[]
   speaker: SpeakerIdentity
+  /** Compare rooms: the speaker's own isolated workspace this turn. */
+  workspace?: { path: string; source: string } | null
   instruction?: string | null
   contextWindow: number | null | undefined
   maxOutputTokens: number
@@ -450,7 +512,7 @@ export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt>
     input.contextWindow && input.contextWindow > 0
       ? input.contextWindow
       : FALLBACK_CONTEXT_WINDOW
-  let system = buildSystemPrompt(input.room, input.speaker)
+  let system = buildSystemPrompt(input.room, input.speaker, input.workspace)
   // Skills are loaded with `skill_read`, which only a participant with tools
   // is given; listing them to anyone else describes something it cannot use.
   const hasTools =

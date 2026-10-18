@@ -18,13 +18,9 @@ import {
   type ExportDoc,
   type ExportView,
 } from '@/lib/exportMarkdown'
-import {
-  currentPdfStrategy,
-  printDocument,
-  renderHtmlPage,
-  renderPng,
-  type PdfStrategy,
-} from '@/lib/exportRender'
+// The page renderers pull in react-dom/server (about 4 MB unminified in the dev
+// server), so they load when a PDF or image export is asked for, not at start-up.
+import type { PdfStrategy } from '@/lib/exportRender'
 
 /** The backend refuses more than this; refuse here first, with a reason. */
 export const MAX_EXPORT_BYTES = 50 * 1024 * 1024
@@ -93,6 +89,13 @@ export async function exportDocument(
   try {
     const { doc, redactions } = redactDoc(source)
     const render = { view: options.view }
+
+    const pageRenderer =
+      format === 'pdf' || format === 'image'
+        ? await import('@/lib/exportRender')
+        : null
+    const { currentPdfStrategy, printDocument, renderHtmlPage, renderPng } =
+      pageRenderer ?? ({} as NonNullable<typeof pageRenderer>)
 
     let asHtml = false
     if (format === 'pdf') {

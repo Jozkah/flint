@@ -27,6 +27,20 @@ function isAnthropicProvider(provider: {
   )
 }
 
+/// Google's native Gemini API (`.../v1beta`) takes the key as `x-goog-api-key`;
+/// only its OpenAI shim (`.../v1beta/openai`) accepts `Authorization: Bearer`.
+function isGoogleNativeBase(baseUrl: string | undefined): boolean {
+  try {
+    const url = new URL(baseUrl ?? '')
+    return (
+      url.hostname.toLowerCase() === 'generativelanguage.googleapis.com' &&
+      !/\/openai\/?$/i.test(url.pathname)
+    )
+  } catch {
+    return false
+  }
+}
+
 /// The one auth header a model-list or key-test request carries. Anthropic
 /// authenticates with `x-api-key`; every other provider takes
 /// `Authorization: Bearer`. Sending both breaks upstreams that reject mixed
@@ -39,6 +53,8 @@ export function applyProviderAuthHeader(
   if (!key) return
   if (isAnthropicProvider(provider)) {
     headers['x-api-key'] = key
+  } else if (isGoogleNativeBase(provider.base_url)) {
+    headers['x-goog-api-key'] = key
   } else {
     headers['Authorization'] = `Bearer ${key}`
   }

@@ -22,6 +22,8 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
       if (key === 'common:noModelsFoundFor')
         return `No models found for "${options?.searchValue}"`
       if (key === 'common:noModels') return 'No models available'
+      if (key === 'uiLeftovers:modelCombobox.placeholder') return 'Type or select a model...'
+      if (key === 'uiLeftovers:modelCombobox.refresh') return 'Refresh models'
       return key
     },
   }),

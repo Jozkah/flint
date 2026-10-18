@@ -1,3 +1,4 @@
+import { missingKeyLabelKey } from '@/lib/providerKeyStatus'
 import { describe, expect, it } from 'vitest'
 import {
   deriveModelStatus,
@@ -121,8 +122,18 @@ describe('status presentation', () => {
   it('gives every status a tone and a providers: label key', () => {
     for (const status of all) {
       expect(modelStatusTone(status)).toBeTruthy()
-      expect(modelStatusLabelKey(status)).toMatch(/^providers:status\./)
+      expect(modelStatusLabelKey(status)).toMatch(
+        status === 'needs-api-key' ? /^engine:status\./ : /^providers:status\./
+      )
     }
+  })
+
+  it('names a missing key with the provider header words', () => {
+    expect(modelStatusLabelKey('needs-api-key', 'bedrock')).toBe(
+      missingKeyLabelKey('bedrock')
+    )
+    expect(missingKeyLabelKey('bedrock')).toBe('engine:status.noCredentials')
+    expect(modelStatusLabelKey('needs-api-key', 'openai')).toBe('engine:status.noKey')
   })
 
   it('draws failures as destructive and loaded models as success', () => {

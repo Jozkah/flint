@@ -191,6 +191,27 @@ pub async fn list_messages<R: Runtime>(
     read_messages_from_file(&data_folder, &thread_id)
 }
 
+/// Finds a phrase in the text of every conversation: where it was said, with a
+/// snippet. Desktop file storage only; the mobile database returns nothing.
+#[tauri::command]
+pub async fn search_messages<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<super::search::MessageHit>, String> {
+    if should_use_sqlite() {
+        return Ok(Vec::new());
+    }
+    let data_folder = get_jan_data_folder_path(app_handle);
+    let limit = limit.unwrap_or(30);
+    // A scan reads every chat's file; keep it off the async runtime's threads.
+    tokio::task::spawn_blocking(move || {
+        super::search::search_messages_in(&data_folder, &query, limit)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Appends a new message to a thread's messages.jsonl file.
 /// Uses a per-thread async lock to prevent race conditions and ensure file consistency.
 #[tauri::command]

@@ -196,5 +196,26 @@
     "description": "{{count}} sohbet silinecek. Bu işlem geri alınamaz.",
     "descriptionArchive": "{{count}} sohbet arşive taşınacak. Oradan geri yükleyebilirsiniz.",
     "done": "{{count}} sohbet silindi"
-  }
+  },
+  "find": {
+    "placeholder": "Sohbette bul",
+    "none": "Eşleşme yok",
+    "previous": "Önceki eşleşme",
+    "next": "Sonraki eşleşme",
+    "close": "Aramayı kapat"
+  },
+  "continueSummary": {
+    "menu": "Özetten yeni bir sohbetle devam et",
+    "working": "Sohbet özetleniyor…",
+    "done": "Yeni bir sohbette devam edildi.",
+    "cancel": "İptal",
+    "errors": {
+      "no-chat": "Bu sohbete devam edilemez.",
+      "empty": "Henüz özetlenecek bir şey yok.",
+      "no-model": "Önce bu sohbet için bir model seçin.",
+      "model-not-loaded": "Önce sohbetin modelini yükleyin. Özeti o yazar.",
+      "summary-failed": "Özet yazılamadı. Hiçbir şey oluşturulmadı."
+    }
+  },
+  "stopToolCall": "Araç çağrısını durdur (Esc)"
 }

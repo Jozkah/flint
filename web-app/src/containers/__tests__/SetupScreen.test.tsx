@@ -75,16 +75,21 @@ vi.mock('@/constants/localStorage', () => ({
   },
 }))
 
-vi.mock('@/constants/routes', () => ({
-  route: {
-    home: '/',
-    cowork: '/cowork',
-    settings: {
-      providers: '/settings/providers/$providerName',
-      model_providers: '/settings/providers',
+vi.mock('@/constants/routes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/constants/routes')>()
+  return {
+    route: {
+      ...actual.route,
+      home: '/',
+      cowork: '/cowork',
+      settings: {
+        ...actual.route.settings,
+        providers: '/settings/providers/$providerName',
+        model_providers: '/settings/providers',
+      },
     },
-  },
-}))
+  }
+})
 
 vi.mock('@/containers/HeaderPage', () => ({
   default: () => <header data-testid="header-page" />,
@@ -101,9 +106,34 @@ vi.mock('@/components/ui/button', () => ({
   ),
 }))
 
+vi.mock('@/containers/ModelSupportStatus', () => ({
+  ModelSupportStatus: ({
+    modelId,
+    provider,
+  }: {
+    modelId?: string
+    provider?: string
+  }) => <span data-testid="fit-status">{`${provider}:${modelId}`}</span>,
+}))
+vi.mock('../ModelSupportStatus', () => ({
+  ModelSupportStatus: ({
+    modelId,
+    provider,
+  }: {
+    modelId?: string
+    provider?: string
+  }) => <span data-testid="fit-status">{`${provider}:${modelId}`}</span>,
+}))
+vi.mock('@/containers/dialogs/ImportLlamacppModelDialog', () => ({
+  ImportLlamacppModelDialog: ({ trigger }: { trigger: React.ReactNode }) => (
+    <>{trigger}</>
+  ),
+}))
+
 import SetupScreen from '../SetupScreen'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { INITIAL_GUIDE_STATE } from '@/lib/onboarding'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 // The readiness probes resolve after mount, so flush them before asserting to
 // keep pending state updates out of the test.
@@ -496,6 +526,22 @@ describe('SetupScreen', () => {
       expect(screen.getByText('setup:finishBody')).toBeInTheDocument()
     })
 
+    it('tells people they can hide sidebar items, and lets them do it here', async () => {
+      await renderPastSetup()
+
+      expect(screen.getByTestId('setup-sidebar')).toHaveTextContent(
+        'onboarding:sidebar.title'
+      )
+      expect(screen.queryByTestId('sidebar-items-picker')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('setup-customize-sidebar'))
+      expect(screen.getByTestId('sidebar-items-picker')).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('sidebar-item-switch-studio'))
+      expect(useInterfaceSettings.getState().hiddenNavItems).toContain('studio')
+      useInterfaceSettings.setState({ hiddenNavItems: [] })
+      fireEvent.click(screen.getByTestId('setup-customize-sidebar'))
+      expect(screen.queryByTestId('sidebar-items-picker')).not.toBeInTheDocument()
+    })
+
     it('offers no download and no catalogue', async () => {
       await renderPastSetup()
 
@@ -519,6 +565,23 @@ describe('SetupScreen', () => {
       expect(
         screen.getAllByTestId('setup-local-model').map((o) => o.textContent)
       ).toEqual(['local-a.gguf', 'local-b.gguf'])
+    })
+
+    it('shows fit advice for the model once one is picked, and not before', async () => {
+      hoisted.providersMock.getProviderByName.mockReturnValue({
+        models: [{ id: 'local-a.gguf' }],
+      })
+
+      await renderPastSetup()
+      expect(screen.queryByTestId('setup-model-fit')).not.toBeInTheDocument()
+
+      await act(async () => {
+        fireEvent.click(screen.getAllByTestId('setup-local-model')[0])
+      })
+      expect(screen.getByTestId('setup-model-fit')).toBeInTheDocument()
+      expect(screen.getByTestId('fit-status')).toHaveTextContent(
+        'llamacpp:local-a.gguf'
+      )
     })
 
     it('shows a model by the name the user gave it', async () => {
@@ -583,17 +646,18 @@ describe('SetupScreen', () => {
       expect(options[1]).toHaveAttribute('aria-checked', 'false')
     })
 
-    it('sends the user to the local provider to import one', async () => {
+    it('opens the importer in place (file or models other apps saved) instead of leaving setup', async () => {
+      hoisted.providersMock.getProviderByName.mockReturnValue({
+        provider: 'llamacpp',
+        models: [],
+      })
       await renderPastSetup()
 
       await act(async () => {
         fireEvent.click(screen.getByTestId('model-setup-import'))
       })
 
-      expect(hoisted.navigateMock).toHaveBeenCalledWith({
-        to: '/settings/providers/$providerName',
-        params: { providerName: 'llamacpp' },
-      })
+      expect(hoisted.navigateMock).not.toHaveBeenCalled()
     })
 
     it('offers nothing that fetches', async () => {

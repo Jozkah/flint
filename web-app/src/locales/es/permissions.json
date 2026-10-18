@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint quiere ejecutar {{command}} en {{workspace}}",
     "gitRemote": "Flint quiere ejecutar {{command}}, que cambia {{target}}",
     "gitDestructive": "Flint quiere ejecutar {{command}}, que puede hacer perder trabajo",
-    "approveCampaign": "Flint quiere iniciar la campaña \"{{title}}\" ({{count}} tareas)"
+    "approveCampaign": "Flint quiere iniciar la campaña \"{{title}}\" ({{count}} tareas)",
+    "spendPause": "Flint quiere continuar esta ejecución más allá de su pausa de gasto"
   },
   "consequence": {
     "fileChange": "Puede crear, sobrescribir o cambiar el contenido de archivos.",
@@ -57,7 +58,8 @@
     "gitLocal": "Cambia los archivos, ramas o el historial de este repositorio en este equipo.",
     "gitRemote": "Envía cambios a un repositorio remoto que otras personas pueden ver. Flint pregunta siempre, salvo que permitas temporalmente las acciones remotas ordinarias de Git en esta conversación.",
     "gitDestructive": "Lo que elimina o sobrescribe puede no ser recuperable.",
-    "campaignPlan": "Inicia sesiones separadas, cada una en su propia rama de worktree, que leen y cambian archivos y usan la cuota de tu modelo en paralelo. Aprobar el plan no aprueba ninguna llamada que haga una tarea. Flint pregunta cada vez."
+    "campaignPlan": "Inicia sesiones separadas, cada una en su propia rama de worktree, que leen y cambian archivos y usan la cuota de tu modelo en paralelo. Aprobar el plan no aprueba ninguna llamada que haga una tarea. Flint pregunta cada vez.",
+    "spendPause": "La ejecución sigue consumiendo cuota de modelo de pago hasta que termine o llegue a su tope. Denegar la detiene."
   },
   "repeat": {
     "allowedOnceBefore": "Ya permitiste este comando una vez en esta conversación."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Las futuras llamadas de un solo proceso que coincidan con {{action}} se ejecutan sin preguntar, incluso con distintos ID de proceso. Otros scripts siguen preguntando. Revócalo en Ajustes > Permisos.",
     "allowClipboardReadExplanation": "Flint puede leer el contenido futuro del portapapeles en todas las conversaciones sin preguntar, hasta que lo revoques en Ajustes > Permisos. Escribir en el portapapeles sigue preguntando.",
     "allowSimilarThreadExplanation": "Las futuras llamadas que coincidan con {{action}} se ejecutan sin preguntar en esta conversación. Revócalo en Ajustes > Permisos.",
-    "broader": "Más amplio"
+    "broader": "Más amplio",
+    "editedRunsOnce": "Los comandos editados se ejecutan solo una vez."
   },
   "request": {
     "title": "Solicitud de permiso",
@@ -217,10 +220,110 @@
     "gitDestructive": "Destructivo: {{why}}. Revisa el comando, el remoto y la rama antes de permitirlo.",
     "selfApproval": "{{tool}} aprueba comandos en {{server}} por sí mismo, lo que permitiría que el modelo respondiera por ti. Flint pregunta siempre y nunca recuerda la respuesta."
   },
+  "folderTrust": {
+    "title": "¿Confiar en esta carpeta?",
+    "bodyHooks": "{{folder}} tiene hooks propios. Ejecutan comandos y permanecen desactivados hasta que confíes en la carpeta.",
+    "bodySubagents": "{{folder}} tiene definiciones de agentes propias. Permanecen desactivadas hasta que confíes en la carpeta.",
+    "bodyBoth": "{{folder}} tiene hooks y definiciones de agentes propios. Permanecen desactivados hasta que confíes en la carpeta.",
+    "keepsOff": "Confía solo en carpetas que hayas escrito o leído. La confianza se conserva de forma permanente; puedes deshacerla más tarde.",
+    "trust": "Confiar en la carpeta",
+    "later": "Ahora no",
+    "failed": "No se pudo confiar en la carpeta",
+    "kept_one": "Se mantuvieron los hooks activados en {{count}} carpeta que ya usas. Revísala en Ajustes > Permisos > Carpetas de confianza.",
+    "kept_other": "Se mantuvieron los hooks activados en {{count}} carpetas que ya usas. Revísalos en Ajustes > Permisos > Carpetas de confianza."
+  },
+  "trustedFolders": {
+    "title": "Carpetas de confianza",
+    "description": "Carpetas cuyos hooks y definiciones de agentes propios pueden ejecutarse. La confianza se mantiene hasta que la retires. Los archivos que un agente puede leer o cambiar están en Acceso a carpetas.",
+    "empty": "Aún no hay carpetas de confianza; Flint pregunta la primera vez que una carpeta incluye hooks o definiciones de agentes.",
+    "add": "Confiar en una carpeta…",
+    "stop": "Dejar de confiar",
+    "stopLabel": "Dejar de confiar en {{folder}}",
+    "confirm": "¿Dejar de confiar en {{folder}}? Sus hooks y definiciones de agentes permanecen desactivados hasta que vuelvas a confiar en ella.",
+    "confirmYes": "Dejar de confiar",
+    "cancel": "Cancelar",
+    "loadFailed": "No se pudieron leer las carpetas de confianza",
+    "grantFailed": "No se pudo confiar en la carpeta",
+    "revokeFailed": "No se pudo dejar de confiar en la carpeta"
+  },
+  "scopeForm": {
+    "question": "Si eliges Siempre, recordarlo para:",
+    "folder": "Dentro de {{dir}}",
+    "folderHint": "Solo los archivos de esa carpeta, se escriba como se escriba la ruta. Un enlace que salga de ella no cuenta.",
+    "prefix": "Comandos que empiezan por {{prefix}}",
+    "prefixHint": "Solo un comando simple. Uno encadenado, con tubería o redirigido se vuelve a preguntar.",
+    "everywhere": "Cada llamada a {{tool}}, en todos los proyectos",
+    "everywhereHint": "El antiguo significado de Siempre. Muy amplio; pocas veces lo que quieres.",
+    "saveFailed": "No se pudo recordar esa elección",
+    "alwaysFolder": "Siempre: dentro de {{dir}}",
+    "alwaysPrefix": "Siempre: comandos que empiezan por {{prefix}}",
+    "alwaysFolderExplanation": "Solo los archivos de esa carpeta, en este proyecto, hasta que lo revoques en Ajustes > Permisos.",
+    "alwaysPrefixExplanation": "Solo un comando simple que empiece así, en este proyecto, hasta que lo revoques en Ajustes > Permisos. Uno encadenado, con tuberías o redirigido se vuelve a preguntar."
+  },
+  "rules": {
+    "title": "Aprobaciones recordadas",
+    "description": "Lo que permitiste con Siempre, limitado a una carpeta o a un prefijo de comando. Una regla solo se aplica dentro de su proyecto y nunca anula una denegación ni una pregunta que Flint hace siempre.",
+    "empty": "Aún no se recuerda nada. Elige Siempre en una solicitud y selecciona una carpeta o un prefijo de comando.",
+    "folder": "Dentro de {{dir}}",
+    "prefix": "Comandos que empiezan por {{prefix}}",
+    "run": "El resto de esta ejecución",
+    "once": "Una vez",
+    "project": "En {{project}}",
+    "revoke": "Revocar",
+    "revokeLabel": "Revocar la aprobación de {{tool}}: {{scope}}",
+    "loadFailed": "No se pudieron leer las aprobaciones recordadas",
+    "revokeFailed": "No se pudo revocar la aprobación"
+  },
+  "deferred": {
+    "title": "Aprobaciones en espera",
+    "description": "Las ejecuciones que llegaron a una pregunta cuando nadie podía responder la anotaron y se detuvieron. Responde aquí y reanuda la sesión: la llamada se ejecuta una vez si se propone de nuevo antes del plazo.",
+    "empty": "No hay nada esperando respuesta.",
+    "allow": "Permitir",
+    "deny": "Denegar",
+    "discard": "Quitar",
+    "session": "Sesión {{session}}",
+    "deadline": "Responder antes de {{when}}",
+    "status": {
+      "pending": "En espera",
+      "allowed": "Permitida",
+      "denied": "Denegada",
+      "expired": "Caducada",
+      "void": "Anulada",
+      "consumed": "Usada"
+    },
+    "loadFailed": "No se pudieron leer las aprobaciones en espera",
+    "answerFailed": "No se pudo registrar la respuesta",
+    "allowLabel": "Permitir: {{summary}}",
+    "denyLabel": "Denegar: {{summary}}",
+    "discardLabel": "Quitar: {{summary}}"
+  },
   "toast": {
     "trustFailed": "No se pudo recordar ese servidor",
     "cancelledOne": "Se canceló la aprobación de {{names}}",
     "cancelledMany": "Se cancelaron {{count}} aprobaciones ({{names}})",
     "cancelledDescription": "Se salió del chat antes de que respondieras. Vuelve a enviar la solicitud para reintentar."
+  },
+  "desktopOnly": "Solo disponible en la aplicación de escritorio de Flint.",
+  "folderAccess": {
+    "title": "Acceso a carpetas",
+    "description": "Carpetas y archivos fuera del espacio de trabajo del agente que dejaste leer o cambiar a un agente. Si los hooks de una carpeta pueden ejecutarse se decide en Carpetas de confianza.",
+    "empty": "No se ha concedido acceso a ninguna carpeta.",
+    "readWrite": "Lectura y escritura",
+    "readOnly": "Solo lectura",
+    "untilRevoked": "Todas las conversaciones, hasta que se revoque",
+    "untilDate": "Esta conversación, hasta el {{when}}",
+    "revoke": "Revocar",
+    "revokeLabel": "Revocar el acceso a {{path}}"
+  },
+  "spendPause": {
+    "preview": "Continuar la ejecución (unos {{spent}} gastados hasta ahora)",
+    "previewCeiling": "Continuar la ejecución hasta su tope de {{ceiling}} (unos {{spent}} gastados hasta ahora)"
+  },
+  "remote": {
+    "runsOnServer": "Se ejecuta en el servidor.",
+    "runsOnServerAt": "Se ejecuta en el servidor: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Cambios en espera de tu aprobación"
   }
 }

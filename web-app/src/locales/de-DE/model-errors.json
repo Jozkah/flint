@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "Die letzte Anfrage hat das Kontextfenster überschritten.",
   "contextOverflowDetail": "Diese Anfrage benötigte {{request}} Tokens, aber das Kontextfenster des Modells fasst nur {{context}}.",
   "contextOverflowGeneric": "Die Anfrage überschreitet die verfügbare Kontextgröße.",
+  "refusal": "Das Modell hat die Antwort verweigert. Formuliere die Anfrage anders.",
   "engine": {
     "unknown": "Die Modell-Engine hat einen unerwarteten Fehler gemeldet.",
     "MODEL_LOAD_FAILED": "Das Modell konnte nicht geladen werden.",
@@ -14,7 +15,7 @@
     "MODEL_LOAD_TIMED_OUT": "Das Laden des Modells hat zu lange gedauert und wurde gestoppt. Ein kleineres Modell oder eine kleinere Kontextgröße hilft meist.",
     "MISSING_SHARED_LIBRARY": "Eine Bibliothek, die die Engine benötigt, fehlt, daher kann sie nicht starten.",
     "GPU_DRIVER_TOO_OLD": "Dein GPU-Treiber ist für diese Engine zu alt. Ein Treiber-Update oder der Wechsel zur CPU-Engine in den Einstellungen behebt das.",
-    "CPU_NOT_SUPPORTED": "Dem Prozessor dieses Computers fehlen Befehle, die die Engine benötigt (erforderlich ist eine x86-CPU mit AVX), daher ist die Engine beim Start abgestürzt.",
+    "CPU_NOT_SUPPORTED": "Dem Prozessor dieses Computers fehlen Befehle, die die Engine benötigt (erforderlich ist eine x86-CPU mit AVX), daher ist die Engine abgestürzt. Flint hat das Modell bereits einmal nur auf der CPU erneut versucht; wenn du das hier trotzdem siehst, ist auch dieser Versuch abgestürzt oder die Engine war schon auf reine CPU-Nutzung eingestellt.",
     "OS_VERSION_UNSUPPORTED": "Diese macOS-Version ist für die Engine zu alt. Ein Update von macOS behebt das.",
     "MODEL_QUANT_NOT_SUPPORTED": "Dieses Modell verwendet einen Quantisierungstyp, den das GPU-Backend nicht ausführen kann. Lade eine andere Quantisierung wie Q4_K_M herunter oder schalte das GPU-Offloading aus.",
     "ENGINE_STOPPED": "Die Engine wurde unerwartet beendet. Lade das Modell erneut, um sie neu zu starten; falls das weiterhin passiert, nennt die letzte Ausgabe der Engine unten den Grund.",

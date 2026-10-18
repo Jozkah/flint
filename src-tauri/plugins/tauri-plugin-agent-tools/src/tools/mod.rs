@@ -31,9 +31,12 @@ pub mod docker_tool;
 pub mod host_read;
 pub mod local_http;
 pub mod handlers;
+pub mod syntax_check;
 pub mod host_tools;
 pub mod image;
+pub mod ocr;
 pub mod jail;
+pub mod sandbox_integrity;
 pub mod mcp_confine;
 pub mod owned;
 /// Paths whose backslashes JSON turned into control characters.
@@ -152,6 +155,10 @@ pub struct ToolContext<'a> {
     /// otherwise: running a program the user did not ask for is a thing to opt
     /// into, and a formatter is still a program.
     pub format_on_edit: bool,
+    /// Whether a `.json`/`.toml`/`.yaml` file this run writes or edits is
+    /// parse-checked and a failure appended to the tool result. On unless
+    /// `[tools] check_syntax = false`.
+    pub check_syntax: bool,
     /// Every tool this run could call, built-in and MCP alike (AH-124).
     ///
     /// Carried so a skill that declares a tool nothing here provides is
@@ -306,6 +313,7 @@ impl<'a> ToolContext<'a> {
             permissions: None,
             subject: None,
             format_on_edit: false,
+            check_syntax: true,
             available_tools: None,
             temporary: false,
             sandbox: true,
@@ -376,6 +384,12 @@ impl<'a> ToolContext<'a> {
     /// (AH-149).
     pub fn with_format_on_edit(mut self, on: bool) -> Self {
         self.format_on_edit = on;
+        self
+    }
+
+    /// Turn the post-edit parse check on or off (`[tools] check_syntax`).
+    pub fn with_check_syntax(mut self, on: bool) -> Self {
+        self.check_syntax = on;
         self
     }
 
@@ -573,6 +587,12 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
     // Read: it renders a file that is already reachable and writes nothing back.
     BuiltinTool {
         name: "screenshot",
+        capability: Capability::Read,
+        path_args: &["path"],
+    },
+    // Read: it reads a file that is already reachable and writes nothing back.
+    BuiltinTool {
+        name: "ocr",
         capability: Capability::Read,
         path_args: &["path"],
     },
@@ -1060,7 +1080,8 @@ mod tests {
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 57);
+        // + ocr, text out of an image or PDF with the OS engine.
+        assert_eq!(BUILTIN_TOOLS.len(), 58);
     }
 
     #[test]

@@ -84,7 +84,7 @@ pub async fn settings_backup_store_provider_keys(
     keys: Vec<String>,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        crate::core::server::provider_secrets::store_provider_keys(&provider, &keys)
+        crate::core::server::provider_secrets::store_provider_keys_guarded(&provider, &keys)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -93,6 +93,20 @@ pub async fn settings_backup_store_provider_keys(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backup_import_cannot_overwrite_reserved_auth_records() {
+        let r = tauri::async_runtime::block_on(settings_backup_store_provider_keys(
+            "auth:bedrock-aws".into(),
+            vec!["evil".into()],
+        ));
+        assert!(r.is_err());
+        let r = tauri::async_runtime::block_on(settings_backup_store_provider_keys(
+            " AUTH:x".into(),
+            vec![],
+        ));
+        assert!(r.is_err());
+    }
 
     #[test]
     fn a_normal_file_is_read_back_verbatim() {

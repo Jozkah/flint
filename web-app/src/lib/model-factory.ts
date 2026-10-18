@@ -52,6 +52,7 @@ import {
   extractReasoningMiddleware,
   wrapLanguageModel,
   type LanguageModel,
+  type LanguageModelMiddleware,
 } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import {
@@ -65,6 +66,12 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createXai } from '@ai-sdk/xai'
 import { createMistral } from '@ai-sdk/mistral'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
+import {
+  DEFAULT_BEDROCK_BASE_URL,
+  bedrockRegion,
+  createBedrockSigningFetch,
+} from '@/lib/bedrock'
 import { invoke } from '@tauri-apps/api/core'
 import { findSessionByModel } from '@janhq/tauri-plugin-llamacpp-api'
 import {
@@ -566,6 +573,58 @@ function requestUrlOf(input: RequestInfo | URL): string {
  * `error.message` is cleaned of stack-trace noise before the AI SDK surfaces
  * it to the UI.
  */
+/** A seed worth sending: a whole number of zero or more (string or number). */
+function isFixedSeed(value: unknown): boolean {
+  const n =
+    typeof value === 'string' && value.trim() !== ''
+      ? Number(value)
+      : typeof value === 'number'
+        ? value
+        : NaN
+  return Number.isInteger(n) && n >= 0
+}
+
+/**
+ * Maps the OpenAI-shaped sampling params onto the AI SDK call settings, which
+ * the Bedrock client turns into the Converse `inferenceConfig` before the body
+ * is built and signed. `seed` (and top_k etc.) have no Converse equivalent and
+ * are ignored. Settings the caller already set (e.g. maxOutputTokens from the
+ * transport) win.
+ */
+export function bedrockSamplingMiddleware(
+  parameters: Record<string, unknown>
+): LanguageModelMiddleware {
+  const num = (v: unknown): number | undefined => {
+    const n =
+      typeof v === 'string' && v.trim() !== '' ? Number(v) : (v as number)
+    return typeof n === 'number' && Number.isFinite(n) ? n : undefined
+  }
+  const temperature = num(parameters.temperature)
+  const topP = num(parameters.top_p)
+  const maxTokens = num(parameters.max_output_tokens ?? parameters.max_tokens)
+  const rawStop = parameters.stop_sequences ?? parameters.stop
+  const stop = (
+    typeof rawStop === 'string'
+      ? rawStop.split(/\r?\n/)
+      : Array.isArray(rawStop)
+        ? rawStop
+        : []
+  ).filter((s): s is string => typeof s === 'string' && s.length > 0)
+  return {
+    specificationVersion: 'v3',
+    transformParams: async ({ params }) => ({
+      ...params,
+      temperature: params.temperature ?? temperature,
+      topP: params.topP ?? topP,
+      maxOutputTokens:
+        params.maxOutputTokens ??
+        (maxTokens !== undefined && maxTokens > 0 ? maxTokens : undefined),
+      stopSequences:
+        params.stopSequences ?? (stop.length > 0 ? stop : undefined),
+    }),
+  } as LanguageModelMiddleware
+}
+
 export function createCustomFetch(
   baseFetch: typeof globalThis.fetch,
   parameters: Record<string, unknown>,
@@ -623,6 +682,9 @@ export function createCustomFetch(
       if (CLIENT_SIDE_PARAM_KEYS.has(key)) continue
       if (!keepLlamacppOnly && LLAMACPP_ONLY_PARAM_KEYS.has(key)) continue
       const targetKey = WIRE_KEY_REMAP[key] ?? key
+      // -1 (or empty) is "random": leave the field out rather than send a
+      // negative seed that strict servers reject.
+      if (key === 'seed' && !isFixedSeed(value)) continue
       const coerced =
         key === 'samplers'
           ? coerceSamplers(value)
@@ -919,6 +981,19 @@ export function splitBaseUrlQuery(baseUrl: string): {
   } catch {
     return { baseURL: baseUrl }
   }
+}
+
+/**
+ * The `api-version` an Azure provider's settings carry, for legacy
+ * deployments-style endpoints whose URL does not name one. Blank when unset.
+ */
+export function azureApiVersionSetting(
+  provider: Pick<ProviderObject, 'settings'>
+): string {
+  const setting = provider.settings?.find((s) => s.key === 'api-version')
+  const value = (setting?.controller_props as { value?: unknown } | undefined)
+    ?.value
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 /** Reads the global "Strip reasoning from context" toggle; defaults to false. */
@@ -1273,6 +1348,9 @@ export class ModelFactory {
           dispatchOnly(parameters)
         )
 
+      case 'bedrock':
+        return this.createBedrockModel(modelId, provider, parameters)
+
       case 'mistral':
         return this.createMistralModel(modelId, provider, parameters)
 
@@ -1570,6 +1648,50 @@ export class ModelFactory {
   }
 
   /**
+   * Amazon Bedrock through the AI SDK's Converse client. The SDK is given a
+   * placeholder bearer key only so it does not look for AWS credentials in the
+   * webview; the signing fetch replaces its headers with a SigV4 signature the
+   * backend makes from the keyring (see lib/bedrock.ts).
+   */
+  private static createBedrockModel(
+    modelId: string,
+    provider: ProviderObject,
+    parameters: Record<string, unknown> = {}
+  ): LanguageModel {
+    const baseURL = (provider.base_url?.trim() || DEFAULT_BEDROCK_BASE_URL).replace(
+      /\/+$/,
+      ''
+    )
+    const region = bedrockRegion(baseURL)
+    if (!region) {
+      throw new Error(
+        'The Amazon Bedrock Base URL must look like https://bedrock-runtime.<region>.amazonaws.com'
+      )
+    }
+    // Signing must be innermost: nothing may touch the body after the SigV4
+    // hash is taken. OpenAI-style assistant params are not merged into the
+    // Converse body (they are invalid there); only dispatch identity rides.
+    const dispatchOnly: Record<string, unknown> =
+      parameters[DISPATCH_PARAM_KEY] !== undefined
+        ? { [DISPATCH_PARAM_KEY]: parameters[DISPATCH_PARAM_KEY] }
+        : {}
+    const fetchImpl = createCustomFetch(
+      createBedrockSigningFetch(getRuntimeFetch()),
+      dispatchOnly
+    )
+    const bedrock = createAmazonBedrock({
+      region,
+      baseURL,
+      apiKey: 'signed-by-flint',
+      fetch: fetchImpl,
+    })
+    return wrapLanguageModel({
+      model: bedrock(modelId),
+      middleware: bedrockSamplingMiddleware(parameters),
+    })
+  }
+
+  /**
    * Create a Mistral model using the official AI SDK. Needed for magistral-*,
    * which streams `delta.content` as an array of typed parts (thinking + text);
    * the generic openai-compatible schema rejects this with a Zod
@@ -1735,14 +1857,22 @@ export class ModelFactory {
     // Only OpenAI itself may fall back to api.openai.com: any other provider
     // with a blank Base URL would send its own key there.
     if (!isAzure && provider.provider !== 'openai') requireAzureEndpoint(provider)
-    const endpoint = isAzure
-      ? splitBaseUrlQuery(provider.base_url ?? '')
-      : { baseURL: provider.base_url || 'https://api.openai.com/v1' }
+    const endpoint: { baseURL: string; queryParams?: Record<string, string> } =
+      isAzure
+        ? splitBaseUrlQuery(provider.base_url ?? '')
+        : { baseURL: provider.base_url || 'https://api.openai.com/v1' }
+    if (isAzure && !endpoint.queryParams?.['api-version']) {
+      // The Azure settings field fills in what the URL did not say; a version
+      // typed into the URL always wins.
+      const apiVersion = azureApiVersionSetting(provider)
+      if (apiVersion) {
+        endpoint.queryParams = { ...endpoint.queryParams, 'api-version': apiVersion }
+      }
+    }
     const openAICompatible = createOpenAICompatible({
       name: provider.provider,
       baseURL: endpoint.baseURL,
-      queryParams: (endpoint as { queryParams?: Record<string, string> })
-        .queryParams,
+      queryParams: endpoint.queryParams,
       headers,
       includeUsage: true,
       fetch: fetchImpl,

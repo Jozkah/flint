@@ -21,7 +21,15 @@
     "alwaysAllow": "हमेशा अनुमति दें",
     "approvalNeeded": "स्वीकृति आवश्यक",
     "permissionDetails": "अनुमति का विवरण",
-    "moreOptions": "और विकल्प"
+    "moreOptions": "और विकल्प",
+    "denyWithReason": "कारण के साथ अस्वीकार करें",
+    "denyReasonLabel": "आप इसे क्यों अस्वीकार कर रहे हैं?",
+    "denyReasonPlaceholder": "एजेंट को बताएँ कि इसके बजाय क्या करना है",
+    "denyAndSend": "अस्वीकार करें और भेजें",
+    "editCommand": "कमांड संपादित करें",
+    "editCommandLabel": "चलाने वाला कमांड",
+    "editCommandHint": "कमांड बदलें, फिर अपना संस्करण चलाने के लिए एक बार अनुमति दें चुनें।",
+    "editCommandNote": "एक बार अनुमति दें आपका संपादित कमांड चलाता है। इसके लिए कोई स्थायी अनुमति नहीं रखी जाती।"
   },
   "toolCall": {
     "awaitingApproval": "मंज़ूरी की प्रतीक्षा में: {{tool}}",
@@ -71,6 +79,8 @@
     "reading": "पढ़ा जा रहा है...",
     "workspaceRoot": "वर्कस्पेस रूट",
     "matches": "{{count}} मेल",
-    "testsPassed": "{{count}} पास हुए"
+    "testsPassed": "{{count}} पास हुए",
+    "runningStatus": "{{tool}} चल रहा है…",
+    "stillRunning": "{{tool}} अभी भी चल रहा है…"
   }
 }

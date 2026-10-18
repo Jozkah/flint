@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n/react-i18next-compat'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels, type ModelRef } from '@/lib/modelReplace'
 import type { Participant, Room } from './types'
@@ -27,7 +28,10 @@ export async function replaceMissingRoomModels(
 ): Promise<Patch | null> {
   const missing = unavailableModels(roomModelRefs(room), lookup)
   if (missing.length === 0) return {}
-  const choices = await promptReplaceModels(room.title || 'This room', missing)
+  const choices = await promptReplaceModels(
+    room.title || i18n.t('common:modelReplace.thisRoom'),
+    missing
+  )
   if (!choices) return null
   const swap = (ref: ModelRef) => choices[modelKey(ref)] ?? ref
   const modModel = room.moderator.model

@@ -7,7 +7,7 @@
     "rename": "Canvia el nom",
     "deleteGroup": "Suprimeix el grup",
     "deleteTitle": "Voleu suprimir {{name}}?",
-    "deleteBody": "S'elimina el grup. Els seus elements en surten i no se suprimeixen.",
+    "deleteBody": "S'elimina el grup. Els seus elements en surten i no se suprimeixen. Les subcarpetes pugen un nivell.",
     "folders": "Carpetes…",
     "foldersTitle": "Carpetes de «{{name}}»",
     "foldersBodyHome": "Els xats iniciats en aquest grup o moguts a dins reben aquestes carpetes, de només lectura per a les seves eines.",
@@ -53,7 +53,43 @@
     "chatFoldersBody": "Les eines del xat poden llegir aquestes carpetes. Les escriptures queden a la seva pròpia zona aïllada.",
     "chatFoldersEmpty": "No hi ha carpetes adjuntes.",
     "addFolder": "Afegeix una carpeta",
-    "chatFolderCount": "Carpetes: {{count}}"
+    "chatFolderCount": "Carpetes: {{count}}",
+    "newSubfolder": "Subcarpeta nova",
+    "moveInto": "Mou a la carpeta",
+    "topLevel": "Nivell superior",
+    "errors": {
+      "nameEmpty": "El nom del grup no pot ser buit",
+      "notFound": "No s'ha trobat el grup",
+      "tooDeep": "Els grups no es poden aniuar tan profundament",
+      "intoItself": "Un grup no es pot moure dins d'ell mateix"
+    },
+    "failed": {
+      "create": "No s'ha pogut crear el grup",
+      "rename": "No s'ha pogut canviar el nom del grup",
+      "moveFolder": "No s'ha pogut moure la carpeta",
+      "saveState": "No s'ha pogut desar l'estat del grup",
+      "reorder": "No s'han pogut reordenar els grups",
+      "moveItem": "No s'ha pogut moure l'element",
+      "delete": "No s'ha pogut eliminar el grup",
+      "saveFolders": "No s'han pogut desar les carpetes del grup",
+      "updateContext": "No s'ha pogut actualitzar el context de carpetes",
+      "update": "No s'han pogut actualitzar els grups",
+      "import": "No s'han pogut importar els grups",
+      "unreadable": "{{failure}}: no s'han pogut llegir els grups desats",
+      "restored": "{{failure}}. S'ha restaurat l'ordre anterior."
+    },
+    "announce": {
+      "created": "Grup {{name}} creat",
+      "collapsed": "{{name}} replegat",
+      "expanded": "{{name}} desplegat",
+      "reordered": "{{name}} mogut a la posició {{position}} de {{total}}",
+      "movedToPosition": "Mogut a {{name}}, posició {{position}}",
+      "movedToRecents": "Mogut a Recents",
+      "deleted": "Grup {{name}} eliminat. Els seus elements s'han mogut a Recents",
+      "ctxReplaced": "{{base}}. El context de carpetes s'ha substituït per les carpetes del grup; l'accés encara requereix aprovació",
+      "ctxMerged": "{{base}}. S'han afegit les carpetes del grup al context de carpetes; l'accés encara requereix aprovació",
+      "foldersAdded": "{{base}}. S'han afegit les carpetes de l'element al grup"
+    }
   },
   "htmlArtifact": {
     "code": "Codi",
@@ -187,7 +223,7 @@
   "profile": "Perfil",
   "reset": "Restableix",
   "search": "Cerca",
-  "searchThreads": "Cerca converses...",
+  "searchThreads": "Cerca xats...",
   "toNavigate": "per navegar",
   "toSelect": "per seleccionar",
   "toClose": "per tancar",
@@ -213,6 +249,7 @@
   "preview": {
     "title": "Previsualització",
     "empty": "Obre un artefacte generat per previsualitzar-lo aquí.",
+    "emptyHint": "Els fitxers que Flint crea en aquesta sessió s'obren aquí.",
     "loading": "S'està obrint…",
     "unsupported": "Flint no pot mostrar aquest tipus de fitxer. Obre'l per veure'l en una altra aplicació.",
     "outside": "Aquest fitxer ja no és a l'espai de treball de la sessió.",
@@ -278,7 +315,7 @@
     "searchThreads": "Cerca converses",
     "toggleSidebar": "Mostra o amaga la barra lateral",
     "openCowork": "Obre Cowork",
-    "openArtifacts": "Obre els artefactes",
+    "openArtifacts": "Obre Biblioteca",
     "openSystemMonitor": "Obre el monitor del sistema",
     "openLogs": "Obre els registres de l'aplicació",
     "section": {
@@ -292,11 +329,18 @@
       "navigation": "Vés a",
       "settings": "Configuració",
       "threads": "Converses"
-    }
+    },
+    "openItem": "Obre {{item}}"
   },
   "searchGroup": {
+    "pages": "Pàgines",
+    "settings": "Configuració",
     "inProjects": "En projectes",
-    "conversations": "Converses"
+    "conversations": "Converses",
+    "messages": "Als missatges",
+    "work": "Sales i sessions",
+    "room": "Sala",
+    "session": "Sessió de Cowork"
   },
   "rail": {
     "label": "Panells de Cowork",
@@ -612,7 +656,8 @@
       "add": "Afegeix",
       "cancel": "Cancel·la",
       "remove": "Elimina"
-    }
+    },
+    "ctxAutoFitHint": "L'ajust automàtic està activat: deixa-ho buit i l'ajust automàtic tria el context, reduint-lo si cal perquè càpiga a la memòria. Un número aquí s'utilitza tal com està."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -655,6 +700,14 @@
     "showRawLibraries": "Mostra els noms de {{count}} biblioteques que falten"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Crea un projecte",
+      "editTitle": "Edita el projecte",
+      "namePlaceholder": "Introdueix el nom del projecte...",
+      "alreadyExists": "El projecte «{{projectName}}» ja existeix",
+      "createSuccess": "S'ha creat el projecte «{{projectName}}»",
+      "updateSuccess": "S'ha actualitzat el projecte «{{projectName}}»"
+    },
     "title": "Projectes",
     "new": "Col·lecció nova",
     "addProject": "Afegeix un projecte",
@@ -749,7 +802,8 @@
     "pathNameNotice": "Això dona nom a una col·lecció de xats; no obre aquesta carpeta.",
     "openCodeFolderInCowork": "Obre la carpeta de codi a Cowork",
     "openCodeFolder": "Obre la carpeta de codi",
-    "openCodeFolderDescription": "Tria una carpeta del teu ordinador perquè Flint hi treballi."
+    "openCodeFolderDescription": "Tria una carpeta del teu ordinador perquè Flint hi treballi.",
+    "setUpEmbeddingModel": "Configura un model d'incrustació"
   },
   "attachmentsIngestion": {
     "title": "Tria com ingerir els adjunts",
@@ -881,7 +935,8 @@
       "unsupportedType": "El tipus de fitxer «{{type}}» no és compatible.",
       "ioError": "No s'ha pogut llegir {{subject}}: {{message}}",
       "parseGeneric": "{{subject}} no s'ha pogut analitzar: {{message}}",
-      "fallback": "No s'ha pogut processar {{subject}}."
+      "fallback": "No s'ha pogut processar {{subject}}.",
+      "noEmbeddingModel": "{{subject}} no s'ha afegit: no hi ha cap model d'incrustació instal·lat per indexar-lo. Configura'n un a Llama.cpp i torna a afegir el fitxer."
     },
     "fileDeleted": {
       "title": "Fitxer eliminat",
@@ -942,6 +997,7 @@
     "missing": "Ja no està disponible: {{model}}",
     "use": "Utilitza aquest model",
     "thisChat": "Aquest xat",
+    "thisRoom": "Aquesta sala",
     "thisSession": "Aquesta sessió"
   },
   "skillsUsedCount_one": "S'ha utilitzat {{count}} habilitat",
@@ -966,6 +1022,29 @@
   "previewMessageCount_one": "{{count}} missatge",
   "previewMessageCount_many": "{{count}} de missatges",
   "previewMessageCount_other": "{{count}} missatges",
+  "rowPreview": {
+    "status": {
+      "running": "En execució",
+      "waiting": "Et necessita",
+      "idle": "Inactiu",
+      "error": "Error"
+    },
+    "prState": {
+      "open": "Oberta",
+      "draft": "Esborrany",
+      "merged": "Combinada",
+      "closed": "Tancada"
+    },
+    "pullRequests": "Pull requests",
+    "morePrs_one": "+{{count}} més",
+    "morePrs_other": "+{{count}} més",
+    "morePrs_many": "+{{count}} més",
+    "noChecks": "Sense comprovacions",
+    "empty": "Encara no hi ha res.",
+    "noMessages": "Encara no hi ha missatges",
+    "summarizing": "S'està escrivint un resum…",
+    "openHint": "Obre"
+  },
   "artifactDetails": "Detalls de l'element",
   "artifactBack": "Torna a la biblioteca",
   "artifactClose": "Tanca els detalls",
@@ -1009,7 +1088,10 @@
     "branchLabel": "Branca",
     "actionsLabel": "Accions de carpeta",
     "copyPath": "Copia la ruta",
-    "copied": "Ruta copiada"
+    "copied": "Ruta copiada",
+    "footnoteEmptyEdit": "Adjunta una carpeta perquè l'agent treballi en el teu projecte.",
+    "a11yWithFolderEditable": "Carpeta del projecte {{folder}}, adjuntada per editar. Canvia-la o treu-la.",
+    "a11yWithFolderWorktree": "Carpeta del projecte {{folder}}, editada mitjançant un worktree separat. Canvia-la o treu-la."
   },
   "coworkEmpty": {
     "title": "En què treballem?",
@@ -1025,7 +1107,15 @@
       "first": "Explica com està organitzat {{folder}}",
       "second": "Troba tots els TODO de {{folder}} i agrupa'ls per àrea",
       "third": "Escriu proves per a la part de {{folder}} que t'indiqui"
-    }
+    },
+    "vault": {
+      "badge": "Dipòsit d'Obsidian",
+      "hint": "Aquesta carpeta és un dipòsit d'Obsidian. Flint la llegeix com qualsevol carpeta de notes en Markdown i ignora la configuració .obsidian i la .trash d'Obsidian.",
+      "add": "Afegeix el meu dipòsit d'Obsidian",
+      "addHint": "Un dipòsit d'Obsidian és només una carpeta. Tria'l com qualsevol altra carpeta."
+    },
+    "subtitleFolderEdit": "Dona una tasca a Flint. Llegeix i modifica els fitxers de {{folder}} directament, i treballa pel seu compte a partir d'aquí.",
+    "subtitleFolderWorktree": "Dona una tasca a Flint. Treballa en un worktree de git de {{folder}}, així que la teva carpeta només canvia quan fusionis."
   },
   "sandbox": {
     "noTerminal": "Sense terminal",
@@ -1196,7 +1286,8 @@
     "sensitiveRefused": "{{name}} sembla contenir credencials o una clau, així que no s'ha obert",
     "binaryRefused": "{{name}} no és un fitxer de text, digui el que digui l'extensió",
     "chooseAgainAction": "Tria de nou",
-    "externalGone": "Aquest fitxer es va obrir des de fora del projecte i aquest accés no s'ha conservat. Tria'l de nou per reobrir-lo."
+    "externalGone": "Aquest fitxer es va obrir des de fora del projecte i aquest accés no s'ha conservat. Tria'l de nou per reobrir-lo.",
+    "oneFolderAtATime": "Només una carpeta alhora. «{{name}}» no s'ha afegit."
   },
   "settingsSearch": {
     "label": "Cerca a la configuració",
@@ -1206,7 +1297,9 @@
     "count_many": "{{count}} de resultats",
     "count_other": "{{count}} resultats",
     "empty": "Cap configuració coincideix.",
-    "clear": "Esborra la cerca"
+    "clear": "Esborra la cerca",
+    "emptyHint": "Prova una altra paraula o cerca pel que fa: tema, proxy, memòria.",
+    "pageCrumb": "Pàgina"
   },
   "tasks": {
     "title": "Activitat",
@@ -1390,7 +1483,14 @@
     "recommended": "Recomanat",
     "reset": "Restableix al valor global",
     "resetAll": "Restableix als valors globals per defecte",
-    "overridden": "Definit per a aquest xat"
+    "overridden": "Definit per a aquest xat",
+    "levels": {
+      "low": "Baix",
+      "medium": "Mitjà",
+      "high": "Alt",
+      "xhigh": "Molt alt",
+      "unlimited": "Il·limitat"
+    }
   },
   "modelOffline": {
     "badge": "Inabastable",
@@ -2152,10 +2252,12 @@
   },
   "browserVerify": {
     "title": "Verifica al navegador",
+    "about": "Com funciona",
     "explain": "Obre la teva aplicació local en un perfil de navegador separat i temporal (no la previsualització de Flint, sense galetes), limitat a l'origen propi de l'aplicació. Les peticions a altres llocs es bloquegen i es llisten.",
     "url": "URL de l'aplicació local",
     "notLocal": "Només es pot verificar una aplicació d'aquesta màquina (localhost, 127.0.0.1).",
-    "steps": "Passos (opcional): open, click, type, expect, wait, screenshot — un per línia",
+    "stepsLabel": "Passos (opcional)",
+    "stepsHint": "Un per línia: open, click, type, expect, wait, screenshot",
     "run": "Verifica",
     "cancel": "Atura",
     "using": "S'utilitza {{browser}}",
@@ -2523,12 +2625,17 @@
       "slots": "{{count}} ranures",
       "vision": "Visió",
       "audio": "Àudio",
+      "fixedPrompt": "S'envia amb cada sol·licitud: {{count}} tokens (indicació del sistema i esquemes d'eines).",
       "tokenUsage": "Ús de tokens",
       "tokenUsageSr": "Ús de tokens {{value}}"
     }
   },
   "voicePill": {
-    "cancel": "Cancel·la"
+    "cancel": "Cancel·la",
+    "dictate": "Dicta",
+    "stop": "Atura el dictat",
+    "working": "Treballant…",
+    "setup": "Configura l'entrada de veu"
   },
   "coworkRunSettings": {
     "label": "Paràmetres de l'execució",
@@ -2554,11 +2661,27 @@
     "previewLoading": "Carregant la previsualització…",
     "previewNone": "No hi ha cap previsualització disponible"
   },
+  "fileViewer": {
+    "openFull": "Obre la vista prèvia completa",
+    "loadMore": "Carrega'n més",
+    "showingFirst": "Es mostren els primers {{loaded}} de {{total}}",
+    "lines_one": "{{count}} línia",
+    "lines_other": "{{count}} línies",
+    "wrap": "Ajusta les línies",
+    "copy": "Copia",
+    "copied": "Copiat",
+    "binary": "Sembla un fitxer binari, així que no hi ha vista prèvia de text.",
+    "expandLine": "Mostra la línia completa",
+    "collapseLine": "Escurça la línia",
+    "truncatedOnAdd": "Es mostren els primers {{shown}} de {{total}} (l'adjunt es va retallar en afegir-lo)"
+  },
   "dropAttachFailed": "No s'han pogut adjuntar els fitxers deixats anar",
+  "sampler": {
+    "label": "Paràmetres de mostreig",
+    "notSupported": "No compatible amb {{provider}}"
+  },
   "translate": {
     "title": "Traductor",
-    "usingModel": "Amb {{model}}",
-    "noModel": "Tria un model al selector de models",
     "from": "Tradueix de",
     "to": "Tradueix a",
     "detect": "Detecta l'idioma",
@@ -2570,12 +2693,210 @@
     "copyFailed": "No s'ha pogut copiar la traducció",
     "failed": "La traducció ha fallat",
     "inputPlaceholder": "Text per traduir",
-    "outputPlaceholder": "La traducció apareix aquí"
+    "outputPlaceholder": "La traducció apareix aquí",
+    "description": "Tradueix text entre idiomes amb el model seleccionat. No es desa res.",
+    "sourceTitle": "Text original",
+    "targetTitle": "Traducció",
+    "paste": "Enganxa del porta-retalls",
+    "pasteFailed": "No s'ha pogut llegir el porta-retalls",
+    "clear": "Esborra",
+    "characters_one": "{{count}} caràcter",
+    "characters_many": "{{count}} de caràcters",
+    "characters_other": "{{count}} caràcters",
+    "translating": "S'està traduint…",
+    "retry": "Torna-ho a provar",
+    "shortcut": "Tradueix (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Cerca idiomes",
+    "noLanguages": "Cap idioma coincident",
+    "errorAuth": "El proveïdor ha rebutjat la teva clau d'API. Comprova-la a la configuració del proveïdor.",
+    "errorQuota": "El proveïdor diu que t'has quedat sense quota o que has superat el límit de peticions. Espera una mica o revisa el teu pla.",
+    "errorModelNotFound": "El proveïdor no té aquest model. Tria'n un altre o revisa la configuració del proveïdor.",
+    "errorNetwork": "No s'ha pogut contactar amb el proveïdor. Comprova la connexió o que el servidor estigui en marxa.",
+    "errorEngine": "El motor que executa aquest model no està disponible. Reinicia Flint i torna-ho a provar.",
+    "openProvider": "Obre la configuració del proveïdor",
+    "errorDetails": "Detalls",
+    "pasteHint": "L'accés al porta-retalls s'ha bloquejat. Fes clic al quadre de text i prem {{keys}}.",
+    "swapNeedsSource": "Tria una llengua d'origen per intercanviar"
   },
   "markdownImage": {
     "load": "Carrega la imatge de {{host}}"
   },
   "messageSaveFailed": "No s'ha pogut desar el missatge. Es pot perdre després de reiniciar.",
   "threadSaveFailed": "No s'ha pogut desar el canvi d'aquest fil. S'ha revertit.",
-  "attachmentsProcessFailed": "No s'han pogut preparar els adjunts, així que el missatge no s'ha enviat"
+  "attachmentsProcessFailed": "No s'han pogut preparar els adjunts, així que el missatge no s'ha enviat",
+  "settingsRecovered": {
+    "title": "No s'ha pogut llegir el fitxer de configuració",
+    "withBackup": "{{file}} estava malmès, així que Flint ha començat amb la configuració per defecte. El fitxer malmès s'ha conservat com a {{backup}}.",
+    "noBackup": "{{file}} estava malmès, així que Flint ha començat amb la configuració per defecte. No s'ha pogut desar una còpia del fitxer malmès."
+  },
+  "promptLibrary": {
+    "title": "Biblioteca de consignes",
+    "description": "Consignes que reutilitzes. Escriu @ o / al compositor per inserir-ne una. Fes servir {{name}} o {{name:default}} per a les parts que omples cada vegada.",
+    "manage": "Les teves consignes",
+    "add": "Afegeix una consigna",
+    "editTitle": "Edita la consigna",
+    "import": "Importa",
+    "export": "Exporta",
+    "imported_one": "S'ha afegit {{count}} consigna",
+    "imported_other": "S'han afegit {{count}} consignes",
+    "importedNone": "No s'han trobat indicacions noves",
+    "search": "Cerca consignes",
+    "empty": "Encara no hi ha consignes.",
+    "edit": "Edita {{name}}",
+    "delete": "Suprimeix {{name}}",
+    "deleted": "Consigna suprimida",
+    "undo": "Desfés",
+    "name": "Nom",
+    "folder": "Carpeta (opcional)",
+    "tags": "Etiquetes, separades per comes",
+    "body": "Text de la consigna",
+    "bodyHint": "Escriu la consigna. Fes servir {{topic}} o {{tone:friendly}} per als buits.",
+    "variables": "Demana: {{names}}",
+    "defaultValue": "Per defecte: {{value}}",
+    "requiredField": "Obligatori",
+    "fillNeeded": "Omple {{names}} per inserir",
+    "insert": "Insereix",
+    "errors": {
+      "nameRequired": "Un prompt necessita un nom",
+      "nameTooLong": "Aquest nom és massa llarg",
+      "bodyRequired": "Un prompt necessita text",
+      "bodyTooLong": "Aquest prompt és massa llarg",
+      "gone": "Aquest prompt ja no existeix",
+      "invalidJson": "Aquest fitxer no és un JSON vàlid",
+      "noPrompts": "No s'ha trobat cap prompt en aquest fitxer"
+    },
+    "noResults": "Cap indicació coincideix amb «{{query}}».",
+    "clearSearch": "Esborra la cerca"
+  },
+  "memoryProposal": {
+    "title": "Vols recordar això?",
+    "wouldApply": "S'aplicaria a: {{where}}.",
+    "remember": "Recorda",
+    "discard": "Descarta",
+    "reviewBoth": "Revisa-les totes dues",
+    "saving": "Desant…",
+    "discarding": "Descartant…",
+    "scope": {
+      "session": "aquesta conversa",
+      "project": "aquest projecte",
+      "user": "a tot arreu"
+    }
+  },
+  "picker": {
+    "filter": "Filtra",
+    "source": "Origen",
+    "sourceAll": "Tots",
+    "sourceLocal": "Local",
+    "sourceCloud": "Núvol",
+    "capabilities": "Capacitats",
+    "cap": {
+      "vision": "Visió",
+      "tools": "Eines",
+      "reasoning": "Raonament",
+      "embeddings": "Incrustació"
+    },
+    "loadedNow": "Carregat ara",
+    "sort": "Ordena",
+    "sortDefault": "Ordre per defecte",
+    "sortName": "Nom (A–Z)",
+    "sortRecent": "Usats recentment",
+    "sortSize": "Mida",
+    "clearFilters": "Esborra els filtres",
+    "noMatch": "Cap model coincideix",
+    "noMatchFilters": "Cap model coincideix: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Xat",
+      "session": "Sessió",
+      "room": "Sala"
+    },
+    "heading": "Converses",
+    "empty": "No hi ha cap altra conversa",
+    "noMatch": "Cap conversa coincideix",
+    "messages": "Missatges: {{n}}",
+    "included": "Inclòs: {{title}} (missatges: {{n}}, ~{{size}} caràcters)",
+    "group": "Converses esmentades",
+    "summarize": "Resumeix",
+    "summarizeHint": "Inclou un resum en lloc dels darrers missatges",
+    "remove": "Treu la menció de {{title}}",
+    "mentioned": "Esmentat: {{title}}",
+    "open": "Obre {{title}}",
+    "status": {
+      "missing": "No s'ha trobat: {{title}}",
+      "self": "{{title}} és aquesta conversa, per això s'omet",
+      "over-cap": "{{title}} s'omet: com a màxim {{max}} converses per missatge"
+    },
+    "excerpt": "Extracte",
+    "summary": "Resum",
+    "modeGroup": "Què s’inclou de {{title}}",
+    "excerptHint": "Els missatges més recents, uns {{tokens}} tokens",
+    "summaryHint": "Un resum escrit pel model, com a màxim uns {{tokens}} tokens",
+    "needsModel": "Carrega un model per incloure-hi un resum",
+    "totals_one": "{{count}} missatge · ~{{tokens}} tokens inclosos",
+    "totals_many": "{{count}} de missatges · ~{{tokens}} tokens inclosos",
+    "totals_other": "{{count}} missatges · ~{{tokens}} tokens inclosos",
+    "readOnly": "S’envia com a context citat de només lectura. El model no pot canviar aquesta conversa.",
+    "tooLarge": "Supera una quarta part de la finestra de context del model.",
+    "useSummary": "Fes servir un resum",
+    "resolving": "Cercant {{title}}",
+    "chipStatus": {
+      "missing": "No trobada",
+      "self": "Aquesta conversa",
+      "over-cap": "Per sobre del límit"
+    },
+    "preview": {
+      "empty": "Encara no hi ha missatges",
+      "you": "Tu",
+      "assistant": "Assistent"
+    },
+    "messagesCount_one": "{{count}} missatge",
+    "messagesCount_many": "{{count}} de missatges",
+    "messagesCount_other": "{{count}} missatges",
+    "compact_one": "{{count}} menció · {{mode}}",
+    "compact_many": "{{count}} mencions · {{mode}}",
+    "compact_other": "{{count}} mencions · {{mode}}",
+    "mixed": "Mixt"
+  },
+  "campaignList": {
+    "timeout": "L'aplicació no ha respost a temps.",
+    "unreadableRecord": "el backend ha enviat un registre que aquesta pàgina no pot llegir"
+  },
+  "composer": {
+    "messageLabel": "Missatge"
+  },
+  "routeLoading": {
+    "slow": "Aquesta pàgina triga més del normal a obrir-se.",
+    "reload": "Torna a carregar",
+    "retry": "Torna-ho a provar",
+    "failed": "No s'ha pogut obrir aquesta pàgina"
+  },
+  "replyCutOff": {
+    "withTokens": "Tallada al límit de resposta ({{tokens}} tokens)",
+    "plain": "Tallada al límit de resposta"
+  },
+  "routeNotFound": {
+    "title": "No s'ha trobat la pàgina",
+    "body": "No hi ha cap pàgina a {{path}}. Potser s'ha mogut o l'enllaç està obsolet.",
+    "home": "Ves a l'inici",
+    "settings": "Obre la configuració"
+  },
+  "waitingForYou": "T'espera a tu",
+  "dnd": {
+    "anItem": "l'element",
+    "aGroup": "un grup",
+    "picked": "S'ha agafat {{item}}.",
+    "over": "{{item}} és sobre {{group}}.",
+    "notOver": "{{item}} no és sobre cap grup.",
+    "dropped": "S'ha mogut {{item}} a {{group}}.",
+    "cancelled": "{{item}} s'ha tornat al seu lloc."
+  },
+  "searchEverything": "Cerca xats, sales, pàgines i configuració…",
+  "noResultsFoundEverywhere": "No hi ha coincidències en xats, sales, sessions de Cowork, pàgines ni configuració. Prova una altra paraula.",
+  "selectModelNoKey": "No s'ha triat cap model per a aquesta sessió i {{provider}} no té clau d'API. Tria primer un model al menú de models.",
+  "serverConnection": {
+    "offlineTitle": "No es pot contactar amb el servidor de Flint.",
+    "offlineBody": "S'està tornant a connectar… El que facis ara potser no es desarà fins que torni.",
+    "statusOffline": "Servidor inaccessible"
+  }
 }

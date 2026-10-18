@@ -10,7 +10,13 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
 }))
 vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (k: string) => k.split(/[:.]/).pop() ?? k }),
+  useTranslation: () => ({
+    t: (k: string, o?: { item?: string }) => {
+      if (k === 'common:translate.title') return 'Translate'
+      const last = k.split(/[:.]/).pop() ?? k
+      return o?.item ? `${last} ${o.item}` : last
+    },
+  }),
 }))
 vi.mock('@/hooks/useThreads', () => ({
   useThreads: (sel: (s: unknown) => unknown) =>
@@ -27,10 +33,13 @@ vi.mock('@/hooks/useSearchDialog', () => ({
 }))
 
 import { CommandPalette, useCommandPalette } from '../CommandPalette'
+import { hiddenForPreset, hideableSidebarIds } from '@/lib/sidebarItems'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 beforeEach(() => {
   navigate.mockReset()
   setSearchOpen.mockReset()
+  useInterfaceSettings.setState({ hiddenNavItems: [] })
   act(() => useCommandPalette.getState().setOpen(true))
 })
 
@@ -44,6 +53,42 @@ describe('CommandPalette', () => {
     expect(ids).toContain('nav-cowork')
     expect(ids).toContain('thread-a')
     expect(ids.some((id) => id?.startsWith('settings-'))).toBe(true)
+  })
+
+  it('keeps every page the sidebar can hide one entry away', async () => {
+    render(<CommandPalette />)
+    const ids = (await screen.findAllByTestId('command-palette-item')).map(
+      (e) => e.getAttribute('data-command')
+    )
+    for (const id of hideableSidebarIds()) {
+      // Library has its own entry, routed to the same page.
+      if (id === 'library') continue
+      expect(ids).toContain(`nav-${id}`)
+    }
+  })
+
+  it('finds a hidden page by part of its name and opens it', async () => {
+    useInterfaceSettings.setState({ hiddenNavItems: hiddenForPreset('minimal') })
+    render(<CommandPalette />)
+    await userEvent.type(screen.getByTestId('command-palette-input'), 'transl')
+    const first = screen.getAllByTestId('command-palette-item')[0]
+    expect(first.getAttribute('data-command')).toBe('nav-translate')
+    await userEvent.type(screen.getByTestId('command-palette-input'), '{Enter}')
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: '/translate' }))
+  })
+
+  it('lists Rooms, and shows or hides a page in the sidebar', async () => {
+    useInterfaceSettings.setState({ hiddenNavItems: ['studio'] })
+    render(<CommandPalette />)
+    const ids = (await screen.findAllByTestId('command-palette-item')).map(
+      (e) => e.getAttribute('data-command')
+    )
+    expect(ids).toContain('nav-rooms')
+    await userEvent.type(
+      screen.getByTestId('command-palette-input'),
+      'showItem studio{Enter}'
+    )
+    expect(useInterfaceSettings.getState().hiddenNavItems).toEqual([])
   })
 
   it('runs the best match on Enter and closes', async () => {

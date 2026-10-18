@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { Switch } from '@/components/ui/switch'
+import { DetailsCard, HelpTip } from '@/containers/DetailsCard'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 
@@ -8,6 +9,10 @@ import { useSessionMessaging } from '@/hooks/useSessionMessaging'
  * mail from another session is sent to this session's agent once it is idle;
  * off, it waits for the user) and "Accept messages" (on by default; off, other
  * sessions are refused when they try to write to this one).
+ *
+ * Two switch rows. Each row's rationale sits behind an (i): it still
+ * describes the switch for assistive technology, without three lines of
+ * grey under every control.
  */
 export function SessionMessagingToggle({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation()
@@ -17,50 +22,54 @@ export function SessionMessagingToggle({ sessionId }: { sessionId: string }) {
   const descriptionId = useId()
   const acceptId = useId()
   const acceptDescriptionId = useId()
-  return (
-    <div className="space-y-2" data-testid="session-messaging-toggle">
-      <div className="flex items-start gap-2 text-xs">
-        <Switch
-          id={acceptId}
-          checked={accepts}
-          aria-describedby={acceptDescriptionId}
-          data-testid="session-messaging-accept"
-          onCheckedChange={(checked) =>
-            useSessionMessaging
-              .getState()
-              .setAcceptsMessages(sessionId, checked === true)
-          }
-        />
-        <div className="min-w-0">
-          <label htmlFor={acceptId} className="font-medium">
-            {t('messaging:accept.label')}
-          </label>
-          <p id={acceptDescriptionId} className="text-muted-foreground">
-            {t('messaging:accept.description')}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-start gap-2 text-xs">
-        <Switch
-          id={switchId}
-          checked={on}
-          aria-describedby={descriptionId}
-          data-testid="session-messaging-autowake"
-          onCheckedChange={(checked) =>
-            useSessionMessaging
-              .getState()
-              .setAutoWake(sessionId, checked === true)
-          }
-        />
-        <div className="min-w-0">
-          <label htmlFor={switchId} className="font-medium">
-            {t('messaging:autoWake.label')}
-          </label>
-          <p id={descriptionId} className="text-muted-foreground">
-            {t('messaging:autoWake.description')}
-          </p>
-        </div>
-      </div>
+
+  const row = (
+    id: string,
+    describedBy: string,
+    label: string,
+    description: string,
+    checked: boolean,
+    testId: string,
+    onChange: (checked: boolean) => void
+  ) => (
+    <div className="flex min-h-8 items-center gap-2">
+      <label htmlFor={id} className="min-w-0 flex-1 text-[12.5px] leading-5 text-foreground">
+        {label}
+      </label>
+      <HelpTip id={describedBy} label={label}>
+        {description}
+      </HelpTip>
+      <Switch
+        id={id}
+        checked={checked}
+        aria-describedby={describedBy}
+        data-testid={testId}
+        onCheckedChange={(value) => onChange(value === true)}
+      />
     </div>
+  )
+
+  return (
+    <DetailsCard className="gap-1" data-testid="session-messaging-toggle">
+      {row(
+        acceptId,
+        acceptDescriptionId,
+        t('messaging:accept.label'),
+        t('messaging:accept.description'),
+        accepts,
+        'session-messaging-accept',
+        (checked) =>
+          useSessionMessaging.getState().setAcceptsMessages(sessionId, checked)
+      )}
+      {row(
+        switchId,
+        descriptionId,
+        t('messaging:autoWake.label'),
+        t('messaging:autoWake.description'),
+        on,
+        'session-messaging-autowake',
+        (checked) => useSessionMessaging.getState().setAutoWake(sessionId, checked)
+      )}
+    </DetailsCard>
   )
 }

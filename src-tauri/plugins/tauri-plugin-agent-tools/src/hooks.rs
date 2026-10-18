@@ -2,7 +2,7 @@
 //! AH-129.
 //!
 //! A hook is a shell command the *user* asks to be run when something happens:
-//! before a tool call, after one, when a session starts, when a run ends. It is
+//! before a tool call, after one, around a compaction, when a run ends. It is
 //! the escape hatch for everything the harness does not do itself -- a linter
 //! before every write, a notification when a run ends, a policy check that
 //! refuses a command the project does not allow.
@@ -85,6 +85,14 @@ pub enum Event {
     /// detached by [`fire_post_tool_batch`] and can neither block nor alter
     /// anything.
     PostToolBatch,
+    /// Just before the run summarizes its conversation to make room (a
+    /// compaction). Observe-only like [`Event::PostToolBatch`]: fired detached
+    /// by [`fire_compaction`], told nothing about the conversation, and unable
+    /// to block or delay the compaction it runs before.
+    PreCompact,
+    /// Just after a compaction has replaced the conversation with a shorter
+    /// one. Observe-only, fired the same way as [`Event::PreCompact`].
+    PostCompact,
     /// Once, when a session begins.
     ///
     /// Declared and not yet fired: parsing refuses it rather than accepting a
@@ -100,6 +108,8 @@ impl Event {
             Event::PreTool => "pre-tool",
             Event::PostTool => "post-tool",
             Event::PostToolBatch => "post-tool-batch",
+            Event::PreCompact => "pre-compact",
+            Event::PostCompact => "post-compact",
             Event::SessionStart => "session-start",
             Event::RunEnd => "run-end",
         }
@@ -115,6 +125,8 @@ impl Event {
             "pre-tool" => Some(Event::PreTool),
             "post-tool" => Some(Event::PostTool),
             "post-tool-batch" => Some(Event::PostToolBatch),
+            "pre-compact" => Some(Event::PreCompact),
+            "post-compact" => Some(Event::PostCompact),
             "run-end" => Some(Event::RunEnd),
             _ => None,
         }
@@ -122,9 +134,12 @@ impl Event {
 
     /// Whether a failing hook at this point can stop anything.
     ///
-    /// Only `pre-tool` can: by the time the other three run, the thing they
-    /// would refuse has already happened, and a "block" there would be a
-    /// refusal of something that cannot be taken back.
+    /// Only `pre-tool` can: by the time the after-the-fact events run, the
+    /// thing they would refuse has already happened, and a "block" there would
+    /// be a refusal of something that cannot be taken back. `pre-compact` runs
+    /// before its compaction but is observe-only by design: a compaction is
+    /// what keeps a run inside its context window, and a hook that could stop
+    /// it could wedge the run.
     pub fn can_block(self) -> bool {
         matches!(self, Event::PreTool)
     }
@@ -278,12 +293,36 @@ pub fn config_path(project_root: &Path) -> PathBuf {
 /// ones that happened to parse: a policy file that is half-applied is worse
 /// than one that is refused out loud.
 pub fn load(project_root: &Path) -> Result<Vec<Hook>, HookError> {
+    load_with(project_root, crate::folder_trust::is_trusted(project_root))
+}
+
+/// The note a run shows when a project's hooks are off because its folder is
+/// not trusted. `None` when they are not off (or there are none).
+pub fn untrusted_note(project_root: &Path) -> Option<String> {
+    (config_path(project_root).is_file() && !crate::folder_trust::is_trusted(project_root)).then(|| {
+        format!(
+            "[hooks off] this project's .jan/agent/hooks.toml did not run because the folder is not trusted. \
+             Trust it with `flint trust {}` (or the banner in the desktop app) to turn its hooks on.",
+            project_root.display()
+        )
+    })
+}
+
+/// [`load`] with the trust decision made by the caller, so the gate can be
+/// tested without the process-wide trust list.
+pub fn load_with(project_root: &Path, trusted: bool) -> Result<Vec<Hook>, HookError> {
     let path = config_path(project_root);
     let raw = match std::fs::read_to_string(&path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(HookError::new(HookErrorKind::Io, format!("hooks.toml: {e}"))),
     };
+    // A project the user has not trusted yet keeps its hooks off: the file may
+    // have arrived with a clone, and what it runs is not the user's choice.
+    // `folder_trust` says why and how to turn them on.
+    if !trusted {
+        return Ok(Vec::new());
+    }
     // The file has to be the project's own. A `.jan/agent/hooks.toml` that is
     // a symlink to somewhere else means someone outside the project decides
     // what runs inside it.
@@ -357,11 +396,16 @@ pub fn parse(raw: &str) -> Result<Vec<Hook>, HookError> {
             )
         })?;
         if on_failure == OnFailure::Block && !event.can_block() {
+            let why = if event == Event::PreCompact {
+                "is observe-only and cannot stop a compaction"
+            } else {
+                "runs after it"
+            };
             return Err(HookError::new(
                 HookErrorKind::CannotBlock,
                 format!(
                     "hook {at}: `block` needs an event that runs before the work it refuses; \
-                     `{}` runs after it",
+                     `{}` {why}",
                     event.as_str()
                 ),
             ));
@@ -883,6 +927,91 @@ pub fn fire_post_tool_batch_as(
     }))
 }
 
+/// Run the `pre-compact` or `post-compact` hooks and say nothing back.
+///
+/// Observe-only, exactly like [`run_post_tool_batch_as`]: a `block` policy
+/// cannot be parsed for either event and is cleared here regardless. The hook
+/// is told the event, the project root and the agent (`FLINT_HOOK_AGENT`),
+/// never anything from the conversation being compacted. A `tools` list means
+/// nothing for a compaction and does not stop the hook from running. Any other
+/// event runs nothing.
+pub async fn run_compaction_as(
+    hooks: &[Hook],
+    event: Event,
+    agent: &str,
+    ctx: &Context<'_>,
+) -> Decision {
+    if !matches!(event, Event::PreCompact | Event::PostCompact) {
+        return Decision::default();
+    }
+    let agent = hook_agent(agent).to_string();
+    let matching: Vec<Hook> = hooks
+        .iter()
+        .filter(|h| h.event == event)
+        .map(|h| Hook { tools: Vec::new(), ..h.clone() })
+        .collect();
+    if matching.is_empty() {
+        return Decision::default();
+    }
+    let extra = [("FLINT_HOOK_AGENT", agent.clone()), ("JAN_HOOK_AGENT", agent)];
+    let mut decision = run_with_env(&matching, event, None, ctx, &extra).await;
+    decision.blocked = None;
+    decision
+}
+
+/// Fire the `pre-compact` or `post-compact` hooks without making the run wait
+/// for them.
+///
+/// The same contract as [`fire_post_tool_batch_as`]: returns immediately, a
+/// project with no hooks file costs one metadata call, and the hooks are read
+/// (through [`load`], so an untrusted folder runs none) and run on a detached
+/// task that owns everything it uses. A slow, failing or malformed hook is
+/// logged and dropped and can never delay or alter the compaction. Any event
+/// other than the two compaction events fires nothing. The handle is for
+/// tests; callers ignore it.
+#[allow(clippy::too_many_arguments)]
+pub fn fire_compaction(
+    project_root: &Path,
+    event: Event,
+    agent: &str,
+    allow_network: bool,
+    home_readonly: bool,
+    sandbox: bool,
+    mask_root: Option<&Path>,
+) -> Option<tokio::task::JoinHandle<()>> {
+    if !matches!(event, Event::PreCompact | Event::PostCompact)
+        || !config_path(project_root).is_file()
+    {
+        return None;
+    }
+    let runtime = tokio::runtime::Handle::try_current().ok()?;
+    let root = project_root.to_path_buf();
+    let mask = mask_root.map(Path::to_path_buf);
+    let agent = hook_agent(agent);
+    let name = event.as_str();
+    Some(runtime.spawn(async move {
+        let hooks = match load(&root) {
+            Ok(hooks) => hooks,
+            Err(e) => {
+                eprintln!("{name} hooks skipped: {}", e.message);
+                return;
+            }
+        };
+        let ctx = Context {
+            project_root: &root,
+            allow_network,
+            home_readonly,
+            sandbox,
+            mask_root: mask.as_deref(),
+            cancel: None,
+        };
+        let decision = run_compaction_as(&hooks, event, agent, &ctx).await;
+        for failure in decision.runs.iter().filter_map(|r| r.error.as_ref()) {
+            eprintln!("{name} hook failed (ignored): {}", failure.message);
+        }
+    }))
+}
+
 fn bound(text: &str) -> String {
     if text.chars().count() <= MAX_OUTPUT {
         return text.to_string();
@@ -994,6 +1123,116 @@ mod tests {
         assert_eq!(err.kind, HookErrorKind::CannotBlock);
         // Still refused, still unfired.
         assert!(Event::parse("session-start").is_none());
+    }
+
+    #[test]
+    fn compaction_events_parse_round_trip_and_cannot_block() {
+        for (raw, event) in [("pre-compact", Event::PreCompact), ("post-compact", Event::PostCompact)] {
+            let hooks = parse(&format!("[[hook]]\nevent = \"{raw}\"\ncommand = \"x\"\n")).unwrap();
+            assert_eq!(hooks[0].event, event);
+            assert_eq!(hooks[0].on_failure, OnFailure::Warn);
+            assert_eq!(event.as_str(), raw);
+            assert_eq!(Event::parse(event.as_str()), Some(event));
+            assert!(!event.can_block());
+            let err = parse(&format!(
+                "[[hook]]\nevent = \"{raw}\"\ncommand = \"x\"\non_failure = \"block\"\n"
+            ))
+            .unwrap_err();
+            assert_eq!(err.kind, HookErrorKind::CannotBlock, "{raw}");
+            assert!(err.message.contains(raw), "{}", err.message);
+            // `ignore` is accepted like any observe-only event.
+            parse(&format!("[[hook]]\nevent = \"{raw}\"\ncommand = \"x\"\non_failure = \"ignore\"\n"))
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn a_compaction_hook_applies_only_to_its_own_event() {
+        let hooks = parse(
+            "[[hook]]\nevent = \"pre-compact\"\ncommand = \"x\"\n\
+             [[hook]]\nevent = \"post-compact\"\ncommand = \"y\"\n",
+        )
+        .unwrap();
+        assert!(hooks[0].applies_to(Event::PreCompact, None));
+        assert!(!hooks[0].applies_to(Event::PostCompact, None));
+        assert!(!hooks[0].applies_to(Event::PostToolBatch, None));
+        assert!(hooks[1].applies_to(Event::PostCompact, None));
+        assert!(!hooks[1].applies_to(Event::PreCompact, None));
+    }
+
+    #[test]
+    fn no_compaction_hook_is_a_cheap_no_op() {
+        let root = dir("compact-none");
+        let _ = std::fs::remove_file(config_path(&root));
+        assert!(fire_compaction(&root, Event::PreCompact, "main", false, true, false, None).is_none());
+        // Only the two compaction events fire through this path.
+        write_config(&root, &format!("[[hook]]\nevent = \"post-tool\"\ncommand = \"{OK}\"\n"));
+        assert!(fire_compaction(&root, Event::PostTool, "main", false, true, false, None).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn compaction_hooks_are_told_their_event_and_agent_only() {
+        let root = dir("compact-env");
+        let out = root.join("seen");
+        let out_path = out.display().to_string().replace('\\', "/");
+        let line = "echo $FLINT_HOOK_EVENT:$JAN_HOOK_EVENT:$FLINT_HOOK_AGENT:$FLINT_HOOK_TOOL:$FLINT_HOOK_TOOL_COUNT";
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"pre-compact\"\ncommand = \"{line} >> '{out_path}'\"\ntools = [\"read\"]\n\
+                 [[hook]]\nevent = \"post-compact\"\ncommand = \"{line} >> '{out_path}'\"\n\
+                 [[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo batch >> '{out_path}'\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let d = run_compaction_as(&hooks, Event::PreCompact, "main", &ctx(&root)).await;
+        assert_eq!(d.runs.len(), 1);
+        assert!(d.runs[0].ok, "{:?}", d.runs[0].error);
+        let d = run_compaction_as(&hooks, Event::PostCompact, "subagent", &ctx(&root)).await;
+        assert_eq!(d.runs.len(), 1);
+        assert!(d.runs[0].ok, "{:?}", d.runs[0].error);
+        // Not a compaction event: nothing runs, not even the batch hook.
+        let d = run_compaction_as(&hooks, Event::PostToolBatch, "main", &ctx(&root)).await;
+        assert!(d.runs.is_empty());
+        let seen = std::fs::read_to_string(&out).unwrap();
+        let lines: Vec<&str> = seen.lines().map(str::trim).collect();
+        assert_eq!(
+            lines,
+            vec!["pre-compact:pre-compact:main::", "post-compact:post-compact:subagent::"]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_failing_or_slow_compaction_hook_never_blocks_or_waits() {
+        let root = dir("compact-fail");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"pre-compact\"\ncommand = \"{FAIL}\"\n\
+                 [[hook]]\nevent = \"post-compact\"\ncommand = \"sleep 5\"\ntimeout_secs = 1\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let d = run_compaction_as(&hooks, Event::PreCompact, "main", &ctx(&root)).await;
+        assert!(d.allowed());
+        assert_eq!(d.runs.len(), 1);
+        assert!(!d.runs[0].ok);
+        let started = std::time::Instant::now();
+        let d = run_compaction_as(&hooks, Event::PostCompact, "main", &ctx(&root)).await;
+        assert!(started.elapsed() < Duration::from_secs(4));
+        assert!(d.allowed());
+        assert_eq!(d.runs[0].error.as_ref().map(|e| e.kind), Some(HookErrorKind::TimedOut));
+        // The detached path completes without panicking or surfacing.
+        let handle = fire_compaction(&root, Event::PreCompact, "main", false, true, false, None).unwrap();
+        handle.await.expect("the detached compaction task must not panic");
+        // And the caller is never made to wait for a slow hook.
+        let before = std::time::Instant::now();
+        let handle = fire_compaction(&root, Event::PostCompact, "main", false, true, false, None).unwrap();
+        assert!(before.elapsed() < Duration::from_millis(500));
+        handle.abort();
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1600,5 +1839,27 @@ mod tests {
             "Authorization: Bearer sk-not-a-real-key-1234567890 was rejected",
         );
         assert!(!err.message.contains("sk-not-a-real-key-1234567890"), "{}", err.message);
+    }
+
+    #[test]
+    fn an_untrusted_folder_keeps_its_hooks_off_and_a_trusted_one_runs_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent = dir.path().join(".jan").join("agent");
+        std::fs::create_dir_all(&agent).unwrap();
+        std::fs::write(
+            agent.join("hooks.toml"),
+            "[[hook]]
+event = \"pre-tool\"
+command = \"exit 1\"
+on_failure = \"block\"
+",
+        )
+        .unwrap();
+        assert!(load_with(dir.path(), false).unwrap().is_empty(), "untrusted: nothing loads");
+        assert_eq!(load_with(dir.path(), true).unwrap().len(), 1, "trusted: the hook loads");
+        // And a malformed file is still reported once the folder is trusted.
+        std::fs::write(agent.join("hooks.toml"), "[[hook]
+").unwrap();
+        assert!(load_with(dir.path(), true).is_err());
     }
 }

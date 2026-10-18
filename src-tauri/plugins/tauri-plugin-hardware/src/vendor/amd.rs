@@ -127,8 +127,8 @@ mod windows_impl {
     }
 
     type AdlMainMallocCallback = Option<unsafe extern "C" fn(i32) -> *mut c_void>;
-    type ADLMAINCONTROLCREATE = unsafe extern "C" fn(AdlMainMallocCallback, c_int) -> c_int;
-    type ADLMAINCONTROLDESTROY = unsafe extern "C" fn() -> c_int;
+    type AdlMainControlCreate = unsafe extern "C" fn(AdlMainMallocCallback, c_int) -> c_int;
+    type AdlMainControlDestroy = unsafe extern "C" fn() -> c_int;
     type AdlAdapterNumberofadaptersGet = unsafe extern "C" fn(*mut c_int) -> c_int;
     type AdlAdapterAdapterinfoGet = unsafe extern "C" fn(*mut AdapterInfo, c_int) -> c_int;
     type AdlAdapterActiveGet = unsafe extern "C" fn(c_int, *mut c_int) -> c_int;
@@ -156,10 +156,10 @@ mod windows_impl {
                 }};
             }
 
-            let adlmaincontrolcreate: Symbol<ADLMAINCONTROLCREATE> =
-                get_sym!(lib, b"ADL_Main_Control_Create\0", ADLMAINCONTROLCREATE);
-            let adlmaincontroldestroy: Symbol<ADLMAINCONTROLDESTROY> =
-                get_sym!(lib, b"ADL_Main_Control_Destroy\0", ADLMAINCONTROLDESTROY);
+            let adlmaincontrolcreate: Symbol<AdlMainControlCreate> =
+                get_sym!(lib, b"ADL_Main_Control_Create\0", AdlMainControlCreate);
+            let adlmaincontroldestroy: Symbol<AdlMainControlDestroy> =
+                get_sym!(lib, b"ADL_Main_Control_Destroy\0", AdlMainControlDestroy);
             let adl_adapter_number_of_adapters_get: Symbol<AdlAdapterNumberofadaptersGet> =
                 get_sym!(lib, b"ADL_Adapter_NumberOfAdapters_Get\0", AdlAdapterNumberofadaptersGet);
             let adl_adapter_adapter_info_get: Symbol<AdlAdapterAdapterinfoGet> =

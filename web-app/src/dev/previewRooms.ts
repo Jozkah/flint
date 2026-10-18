@@ -4,6 +4,8 @@
  * transcripts, served through the rooms engine's persistence port so the real
  * store, bindings and pages render them. Writes stay in memory.
  */
+import { noteIsolation } from '@/lib/rooms/isolation'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { setRoomPersistence, type RoomPersistence } from '@/lib/rooms/persistence'
 import { useRoomsStore, summaryOf } from '@/lib/rooms/store'
 import { participantColor } from '@/containers/rooms/roomUi'
@@ -169,6 +171,90 @@ const SPECS: Spec[] = [
     ],
   },
   {
+    id: 'compare',
+    title: 'Which model explains it best?',
+    objective: 'Compare how each model explains a weather concept to a new user of the app.',
+    status: 'awaiting-user',
+    mode: 'compare',
+    turns: 6,
+    rounds: 2,
+    tokens: 9_300,
+    cost: 0.05,
+    maxCost: null,
+    activeMs: (1 * 60 + 25) * 1000,
+    ageMin: 25,
+    parts: [
+      ['Sonnet', '', 'anthropic', 'claude-sonnet-5', 'none', 0],
+      ['GPT', '', 'openai', 'gpt-5', 'none', 3],
+      ['Qwen', '', 'llamacpp', 'qwen3-8b-instruct', 'none', 5],
+      // Added after the questions were asked: shows the unanswered cells.
+      ['Qwen 3.5', '', 'llamacpp', 'qwen3.5-9b-instruct', 'none', 2],
+    ],
+  },
+  {
+    id: 'compare-code',
+    title: 'Fix the flaky retry test',
+    objective: 'Each model fixes the flaky radar retry test in its own copy of the repo.',
+    status: 'awaiting-user',
+    mode: 'compare',
+    turns: 2,
+    rounds: 1,
+    tokens: 14_200,
+    cost: 0.08,
+    maxCost: null,
+    activeMs: 95 * 1000,
+    ageMin: 12,
+    folder: 'C:\\Projects\\weather-app',
+    parts: [
+      ['Sonnet', '', 'anthropic', 'claude-sonnet-5', 'edit', 0],
+      ['Qwen', '', 'llamacpp', 'qwen3-8b-instruct', 'full', 5],
+    ],
+  },
+  // Rich text in a compare room: markdown, code, a table, a tool call written
+  // as text, and a turn that ran out of tokens thinking. Only with
+  // `?preview&roomsRich`, so the default preview stays as the screenshots show it.
+  {
+    id: 'rich-text',
+    title: 'Add mul to app.js',
+    objective: 'Each model adds a mul function to src/app.js.',
+    status: 'awaiting-user',
+    mode: 'compare',
+    turns: 3,
+    rounds: 1,
+    tokens: 6_100,
+    cost: null,
+    maxCost: null,
+    activeMs: 40 * 1000,
+    ageMin: 5,
+    folder: 'C:\\Projects\\calc',
+    parts: [
+      ['Alice', '', 'llamacpp', 'qwen3-8b', 'edit', 4],
+      ['Bob', '', 'llamacpp', 'qwen3-8b', 'edit', 6],
+      ['Carol', '', 'llamacpp', 'qwen3-8b', 'edit', 1],
+    ],
+  },
+  // Three answers of very different lengths, for the capped, scroll-linked
+  // compare cells. Only with `?preview&roomsLong`.
+  {
+    id: 'long-answers',
+    title: 'Explain the retry backoff',
+    objective: 'Each model explains the radar retry backoff in its own words.',
+    status: 'awaiting-user',
+    mode: 'compare',
+    turns: 3,
+    rounds: 1,
+    tokens: 21_400,
+    cost: 0.11,
+    maxCost: null,
+    activeMs: 70 * 1000,
+    ageMin: 3,
+    parts: [
+      ['Sonnet', '', 'anthropic', 'claude-sonnet-5', 'none', 0],
+      ['GPT', '', 'openai', 'gpt-5', 'none', 3],
+      ['Qwen', '', 'llamacpp', 'qwen3-8b-instruct', 'none', 5],
+    ],
+  },
+  {
     id: 'naming',
     title: 'Name the mobile app',
     objective: 'Short, memorable names for the weather app.',
@@ -194,6 +280,7 @@ function roomOf(s: Spec): Room {
     objective: s.objective,
     status: s.status,
     mode: s.mode,
+    ...(s.mode === 'compare' ? { compareRun: 'one-by-one' as const } : {}),
     moderator: {
       enabled: !!s.moderator,
       name: 'Moderator',
@@ -213,8 +300,9 @@ function roomOf(s: Spec): Room {
       consecutiveRepetitive: 0,
     },
     round: s.rounds,
-    spokenThisRound: parts.slice(0, 1).map((p) => p.id),
-    nextSpeakerId: parts[1]?.id ?? null,
+    // A compare room waiting for the user has heard everyone this round.
+    spokenThisRound: (s.mode === 'compare' ? parts : parts.slice(0, 1)).map((p) => p.id),
+    nextSpeakerId: s.mode === 'compare' ? null : (parts[1]?.id ?? null),
     stopReason:
       s.status === 'completed'
         ? { kind: 'synthesized' }
@@ -239,6 +327,13 @@ type M = {
   vote?: RoomMessage['vote']
   dissent?: RoomMessage['dissent']
   disagreements?: string[]
+  /** The round, when the spread over `usage.rounds` would put it wrong. */
+  round?: number
+  usage?: RoomMessage['usage']
+  changes?: RoomMessage['changes']
+  budgetHit?: RoomMessage['budgetHit']
+  finishReason?: string
+  reasoning?: string
 }
 
 function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
@@ -269,10 +364,18 @@ function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
         to: m.to ?? { kind: 'room' },
         kind,
         text: m.text,
-        round: Math.max(1, Math.ceil(((i + 1) / list.length) * room.usage.rounds)),
+        round: m.round ?? Math.max(1, Math.ceil(((i + 1) / list.length) * room.usage.rounds)),
         createdAt: start + i * 2 * MIN,
         status: 'complete',
         ...(m.tools ? { toolCalls: m.tools } : {}),
+        ...(m.usage ? { usage: m.usage } : {}),
+        ...(m.changes ? { changes: m.changes } : {}),
+        ...(m.budgetHit ? { budgetHit: m.budgetHit } : {}),
+        ...(m.finishReason ? { finishReason: m.finishReason } : {}),
+        ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+        ...(room.mode === 'compare' && p && kind === 'speech'
+          ? { compare: { provider: p.model.provider, model: p.model.id, durationMs: 1800 + i * 210 } }
+          : {}),
         ...(vote ? { vote } : {}),
         ...(m.dissent ? { dissent: m.dissent } : {}),
         ...(m.disagreements
@@ -293,6 +396,14 @@ function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
 }
 
 const proposal = 'Retry 3 times with jittered backoff, then serve the cached frame, and add a timeout test before 1.4.'
+
+// `&codeLong` adds a 20k-char minified line to the rich thread, to check the
+// code block keeps scrolling (or wrapping) without a layout blowup. Off by default.
+function longCodeSample(): string {
+  if (!new URLSearchParams(window.location.search).has('codeLong')) return ''
+  const line = 'var a=1,b=[2,3];function f(x){return x*a+b[0]}'.repeat(440)
+  return '\n\n```js\n' + line + '\n```'
+}
 
 const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
   arch: () => [
@@ -362,7 +473,147 @@ const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
     { by: 'Qwen', text: 'Agreed. Keep third-party notices in a NOTICE file.' },
     { sys: true, text: 'Stopped by you.' },
   ],
+  compare: () => [
+    { sys: true, text: 'Room started · Compare models · 3 participants' },
+    { you: true, round: 1, text: 'In one short paragraph: what does "feels like" temperature mean?' },
+    {
+      by: 'Sonnet',
+      round: 1,
+      usage: { inputTokens: 410, outputTokens: 96, estimated: false, tokensPerSecond: 71 },
+      text: '“Feels like” is how warm or cold the air seems on your skin, not what the thermometer reads. Wind pulls heat away from you, so a windy 5 °C can feel like 1 °C; humidity stops sweat from cooling you, so a muggy 30 °C can feel like 35 °C.',
+    },
+    {
+      by: 'GPT',
+      round: 1,
+      usage: { inputTokens: 402, outputTokens: 74, estimated: false, tokensPerSecond: 88 },
+      text: 'It is the temperature your body perceives once wind chill (in the cold) or the heat index (in the heat) is taken into account. Dress for the “feels like” number, not the actual one.',
+    },
+    {
+      by: 'Qwen',
+      round: 1,
+      usage: { inputTokens: 398, outputTokens: 112, estimated: true, tokensPerSecond: 34 },
+      text: 'The apparent temperature combines air temperature with wind speed and relative humidity to estimate the thermal sensation on exposed skin. Below about 10 °C wind lowers it; above about 27 °C humidity raises it.',
+    },
+    { you: true, round: 2, text: 'Now say it so a ten-year-old gets it.' },
+    {
+      by: 'Sonnet',
+      round: 2,
+      usage: { inputTokens: 640, outputTokens: 58, estimated: false, tokensPerSecond: 69 },
+      text: 'Wind blows your warmth away, so it feels colder than it is. Sticky, wet air keeps you from cooling down, so it feels hotter.',
+    },
+    {
+      by: 'GPT',
+      round: 2,
+      usage: { inputTokens: 588, outputTokens: 41, estimated: false, tokensPerSecond: 90 },
+      text: 'It’s how cold or hot it feels to you, not to the thermometer. Wind makes it feel colder; muggy air makes it feel hotter.',
+    },
+    {
+      by: 'Qwen',
+      round: 2,
+      usage: { inputTokens: 671, outputTokens: 63, estimated: true, tokensPerSecond: 31 },
+      text: 'Think of a fan on a cool day: brr! That’s wind making it feel colder. On a sticky summer day you feel extra hot because your sweat can’t dry.',
+    },
+  ],
+  'compare-code': () => [
+    { sys: true, text: 'Room started · Compare models · 2 participants' },
+    { you: true, round: 1, text: 'The radar retry test fails about one run in ten. Find out why and fix it.' },
+    {
+      by: 'Sonnet',
+      round: 1,
+      tools: [
+        { name: 'read', ok: true, args: { path: 'src/radar/retry.test.ts' }, ms: 40 },
+        { name: 'edit', ok: true, args: { path: 'src/radar/retry.test.ts' }, ms: 120 },
+      ],
+      changes: {
+        workspace: 'C:\\Users\\me\\AppData\\Roaming\\Flint\\rooms\\compare-code\\workspaces\\sonnet',
+        files: [
+          {
+            path: 'src/radar/retry.test.ts',
+            additions: 4,
+            deletions: 2,
+            // As git prints it, plumbing and all: the card drops the header lines.
+            excerpt:
+              'diff --git a/src/radar/retry.test.ts b/src/radar/retry.test.ts\nindex e794c94..52c450e 100644\n--- a/src/radar/retry.test.ts\n+++ b/src/radar/retry.test.ts\n@@ -18,8 +18,10 @@ describe(\'retry\', () => {\n   it(\'gives up after three tries\', async () => {\n-  await sleep(100)\n-  expect(calls).toBe(3)\n+  vi.useFakeTimers()\n+  const done = retry(fetchFrame)\n+  await vi.runAllTimersAsync()\n+  expect(await done).toBe(frame)\n   })',
+          },
+          { path: 'src/radar/retry.ts', additions: 1, deletions: 0, excerpt: '+export const RETRY_JITTER_MS = 50' },
+          {
+            path: 'src/radar/jitter.ts',
+            additions: 3,
+            deletions: 0,
+            excerpt:
+              'diff --git a/src/radar/jitter.ts b/src/radar/jitter.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/radar/jitter.ts\n@@ -0,0 +1,3 @@\n+export function jitter(ms: number): number {\n+  return ms + Math.random() * 50\n+}',
+          },
+        ],
+      },
+      text: 'The test slept a fixed 100 ms while the retry waits up to 120 ms with jitter, so it raced. I switched it to fake timers; it no longer depends on the clock.',
+    },
+    {
+      by: 'Qwen',
+      round: 1,
+      tools: [{ name: 'bash', ok: true, args: { command: 'npx vitest run src/radar' }, ms: 4100 }],
+      budgetHit: 'tool-calls',
+      text: 'I ran the radar tests several times to reproduce the failure but used up my tool calls before changing anything.',
+    },
+  ],
+  'long-answers': () => [
+    { sys: true, text: 'Room started · Compare models · 3 participants' },
+    { you: true, round: 1, text: 'Explain how the radar retry backoff works, step by step.' },
+    { by: 'Sonnet', round: 1, text: longAnswer('Sonnet', 40) },
+    { by: 'GPT', round: 1, text: longAnswer('GPT', 12) },
+    { by: 'Qwen', round: 1, text: 'It waits a little longer after each failure, with some randomness, up to a cap.' },
+  ],
+  'rich-text': () => [
+    { sys: true, text: 'Room started · Compare models · 3 participants' },
+    { you: true, round: 1, text: 'Edit `src/app.js`: add a function **mul(a, b)** that returns `a*b` and export it.' },
+    {
+      by: 'Alice',
+      round: 1,
+      tools: [
+        { name: 'read', ok: true, args: { path: 'C:\\Projects\\calc\\src\\app.js' }, output: 'function add(a, b) { return a + b }\nmodule.exports = { add }\n', ms: 30 },
+        { name: 'read', ok: false, args: { path: 'C:\\Projects\\calc\\src\\app.js', offset: 5 }, output: 'ERROR: offset 5 is beyond end of file (2 lines total)', ms: 12 },
+      ],
+      text:
+        '## Change\n\nAdded `mul` next to `add`:\n\n```js\nfunction add(a, b) { return a + b }\nfunction mul(a, b) { return a * b }\nmodule.exports = { add, mul } // a long line so the block has to scroll sideways inside its own column rather than widen it\n```\n\n| function | before | after |\n|---|---|---|\n| add | yes | yes |\n| mul | no | **yes** |\n\n- exported from `module.exports`\n- no other file touched\n\nSee [Node modules](https://nodejs.org/api/modules.html).' +
+        longCodeSample(),
+    },
+    {
+      by: 'Bob',
+      round: 1,
+      tools: [{ name: 'read', ok: true, args: { path: 'C:\\Projects\\calc\\src\\app.js' }, output: 'function add(a, b) { return a + b }\n', ms: 25 }],
+      text:
+        '<tool_call>\n' +
+        JSON.stringify({
+          name: 'edit',
+          arguments: {
+            path: 'C:\\Projects\\calc\\src\\app.js',
+            content: 'function add(a, b) { return a + b }\nfunction mul(a, b) { return a * b }\nmodule.exports = { add, mul }',
+          },
+        }) +
+        '\n</tool_call>',
+    },
+    {
+      by: 'Carol',
+      round: 1,
+      finishReason: 'length',
+      usage: { inputTokens: 2614, outputTokens: 1024, estimated: false, tokensPerSecond: 113 },
+      reasoning: 'Okay, the user wants mul added. First I should read the file. Wait, maybe the file uses ES modules? Let me think about both cases...',
+      text: '',
+    },
+  ],
   naming: () => [],
+}
+
+/** A long markdown answer: `sections` headed steps, with a code block now and then. */
+function longAnswer(who: string, sections: number): string {
+  const out = [`## How the backoff works (${who})`]
+  for (let i = 1; i <= sections; i++) {
+    out.push(
+      `### Step ${i}`,
+      `After failure ${i}, the client waits about ${Math.min(2 ** i * 100, 30_000)} ms before trying again. The wait doubles each time, a random jitter of up to a quarter of it is added so many clients do not retry together, and the total is capped so a long outage never leaves the radar silent for more than half a minute.`
+    )
+    if (i % 6 === 0) out.push('```ts\nconst wait = Math.min(base * 2 ** attempt, cap) + Math.random() * jitter // a deliberately long line that has to scroll sideways inside the code block\n```')
+  }
+  return out.join('\n\n')
 }
 
 const LIVE_TEXT =
@@ -371,7 +622,12 @@ const LIVE_TEXT =
 export function seedRooms() {
   const rooms = new Map<string, Room>()
   const journals = new Map<string, RoomJournalRecord[]>()
+  const query = new URLSearchParams(window.location.search)
+  const rich = query.has('roomsRich')
+  const long = query.has('roomsLong')
   for (const s of SPECS) {
+    if (s.id === 'rich-text' && !rich) continue
+    if (s.id === 'long-answers' && !long) continue
     const room = roomOf(s)
     rooms.set(room.id, room)
     journals.set(room.id, journalOf(room, TRANSCRIPTS[room.id](room)))
@@ -404,6 +660,31 @@ export function seedRooms() {
     },
   }
   setRoomPersistence(persistence)
+
+  // The coding compare room: isolation could not be made (shown in the
+  // editor), and a prompt from before the pause is held on screen.
+  noteIsolation('compare-code', 'the folder is not trusted')
+  const qwen = rooms.get('compare-code')?.participants.find((p) => p.name === 'Qwen')
+  if (qwen && !useToolApprovalRequests.getState().pending['preview-held-1']) {
+    const ctrl = new AbortController()
+    void useToolApprovalRequests.getState().requestApproval('preview-held-1', 'bash', 'compare-code', undefined, {
+      input: { command: 'npm install --save-dev vitest-retry' },
+      origin: qwen.name,
+      workspaceLabel: 'C:\\Projects\\weather-app',
+      signal: ctrl.signal,
+      holdOnAbort: () => 'room paused',
+    })
+    ctrl.abort()
+  }
+  // `?preview&roomsApproval`: a live prompt too, waiting to be answered.
+  const sonnet = rooms.get('compare-code')?.participants.find((p) => p.name === 'Sonnet')
+  if (sonnet && query.has('roomsApproval') && !useToolApprovalRequests.getState().pending['preview-live-1']) {
+    void useToolApprovalRequests.getState().requestApproval('preview-live-1', 'bash', 'compare-code', undefined, {
+      input: { command: 'npx vitest run src/radar/retry.test.ts --reporter=dot' },
+      origin: sonnet.name,
+      workspaceLabel: 'C:\\Projects\\weather-app',
+    })
+  }
 
   // The running room shows GPT's turn streaming in, as the mockup does. The
   // store clears the live turn whenever a room opens, so it is set again once

@@ -325,10 +325,15 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
 
   list: async (project, dataFolder) => {
     try {
-      return await invoke<WorktreeRecord[]>('agent_worktree_list', {
+      const found = await invoke<
+        WorktreeRecord[] | { worktrees?: WorktreeRecord[] } | null
+      >('agent_worktree_list', {
         dataFolder,
         project,
       })
+      // `flint serve` answers the same command with `{ worktrees }`.
+      if (Array.isArray(found)) return found
+      return Array.isArray(found?.worktrees) ? found.worktrees : []
     } catch {
       return []
     }

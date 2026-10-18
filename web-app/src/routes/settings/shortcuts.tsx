@@ -143,6 +143,7 @@ function Shortcuts() {
     [ShortcutAction.TOGGLE_SIDEBAR]: t('settings:shortcuts.toggleSidebar'),
     [ShortcutAction.GO_TO_SETTINGS]: t('settings:shortcuts.goToSettings'),
     [ShortcutAction.SEARCH]: t('settings:shortcuts.search'),
+    [ShortcutAction.FIND_IN_CHAT]: t('settings:shortcuts.findInChat'),
     [ShortcutAction.SWITCH_ASSISTANT]: t('settings:shortcuts.switchAssistant'),
     [ShortcutAction.ZOOM_IN]: t('settings:shortcuts.zoomIn'),
     [ShortcutAction.ZOOM_OUT]: t('settings:shortcuts.zoomOut'),
@@ -273,6 +274,16 @@ function Shortcuts() {
             actions={
               <ShortcutRebind action={ShortcutAction.SEARCH} label={commandName}>
                 <ShortcutLabel action={ShortcutAction.SEARCH} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-find-in-chat"
+            title={t('settings:shortcuts.findInChat')}
+            description={t('settings:shortcuts.findInChatDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.FIND_IN_CHAT} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.FIND_IN_CHAT} />
               </ShortcutRebind>
             }
           />

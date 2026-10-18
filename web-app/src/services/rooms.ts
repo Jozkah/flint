@@ -7,8 +7,10 @@
  */
 import { invoke } from '@tauri-apps/api/core'
 import { trackArchiveWork } from '@/lib/archive'
+import type { ApplyPreview } from '@/lib/rooms/applyReview'
 import type {
   Room,
+  RoomChangedFile,
   RoomError,
   RoomErrorCode,
   RoomJournalRecord,
@@ -119,4 +121,58 @@ export async function clearRoomJournal(roomId: string): Promise<void> {
  */
 export async function deleteRoom(roomId: string): Promise<void> {
   await trackArchiveWork(call<null>('room_delete', { roomId }))
+}
+
+/** A compare participant's isolated workspace (see `lib/rooms/isolation.ts`). */
+export function ensureRoomWorkspace(
+  roomId: string,
+  participantId: string,
+  folder: string
+): Promise<{ path: string; kind: 'worktree' | 'copy' }> {
+  return call('room_workspace_ensure', { roomId, participantId, folder })
+}
+
+export function roomWorkspaceChanges(
+  roomId: string,
+  participantId: string,
+  scope: 'turn' | 'all' = 'all'
+): Promise<{ files: RoomChangedFile[] }> {
+  return call('room_workspace_changes', { roomId, participantId, scope })
+}
+
+/** Mark the start of a participant turn in its workspace (see `scope: 'turn'`). */
+export async function markRoomWorkspaceTurn(roomId: string, participantId: string): Promise<void> {
+  await call<null>('room_workspace_mark_turn', { roomId, participantId })
+}
+
+/** The participant's whole change as one patch, previewed before applying. */
+export function roomWorkspacePatch(roomId: string, participantId: string): Promise<string> {
+  return call('room_workspace_patch', { roomId, participantId })
+}
+
+/** Throw away what the participant changed in its workspace. */
+export async function resetRoomWorkspace(roomId: string, participantId: string): Promise<void> {
+  await call<null>('room_workspace_reset', { roomId, participantId })
+}
+
+/**
+ * Apply the participant's change to the user's folder -- all of it, or only
+ * `paths` (paths after the change); resolves with the file count.
+ */
+export function applyRoomWorkspace(roomId: string, participantId: string, paths?: string[]): Promise<number> {
+  return call('room_workspace_apply', { roomId, participantId, paths: paths ?? null })
+}
+
+/** The review before applying: patch, target, dry-run per file, uncommitted overlaps. */
+export function roomWorkspaceApplyPreview(roomId: string, participantId: string): Promise<ApplyPreview> {
+  return call('room_workspace_apply_preview', { roomId, participantId })
+}
+
+/** Reverse the last apply in the user's folder. */
+export async function undoRoomWorkspaceApply(roomId: string, participantId: string): Promise<void> {
+  await call<null>('room_workspace_undo_apply', { roomId, participantId })
+}
+
+export async function removeRoomWorkspaces(roomId: string): Promise<void> {
+  await call<null>('room_workspace_remove', { roomId })
 }

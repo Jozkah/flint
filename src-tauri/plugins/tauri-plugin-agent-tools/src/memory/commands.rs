@@ -1303,6 +1303,7 @@ pub async fn memory_retrieve(
             budget_chars: budget_chars.unwrap_or(super::retrieve::DEFAULT_BUDGET_CHARS),
             temporary: false,
             instructions: &instructions,
+            ranking: None,
         },
     );
 

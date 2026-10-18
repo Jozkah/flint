@@ -85,6 +85,20 @@ export function rankCommands(
     ],
     threshold: 0.4,
     ignoreLocation: true,
+    includeScore: true,
   })
-  return fuse.search(trimmed, { limit }).map((r) => r.item)
+  // Near-equal matches keep section order, so "Open Translate" comes before
+  // "Show Translate in the sidebar".
+  const rank = (section: PaletteSection) => SECTION_ORDER.indexOf(section)
+  return fuse
+    .search(trimmed)
+    .map((r, i) => ({ r, i, bucket: Math.round((r.score ?? 0) * 20) }))
+    .sort(
+      (a, b) =>
+        a.bucket - b.bucket ||
+        rank(a.r.item.section) - rank(b.r.item.section) ||
+        a.i - b.i
+    )
+    .slice(0, limit)
+    .map(({ r }) => r.item)
 }

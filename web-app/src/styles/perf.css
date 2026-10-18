@@ -1,0 +1,52 @@
+/* ---- Idle window ----
+   While the window is hidden or unfocused (lib/windowIdle.ts), looping
+   animations stop: every frame of a spinner or pulse restyles the page, which
+   with a long thread open cost about a third of the app's idle CPU. Only
+   looping ones: an entering dialog or toast still finishes its animation. */
+[data-window-idle] :is(
+    [class*='animate-spin'],
+    [class*='animate-pulse'],
+    [class*='animate-ping'],
+    [class*='animate-bounce'],
+    [class*='_infinite']
+  ),
+[data-window-idle] :is([class*='animate-spin'], [class*='animate-pulse'])::before,
+[data-window-idle] :is([class*='animate-spin'], [class*='animate-pulse'])::after {
+  animation-play-state: paused !important;
+}
+
+/* ---- Performance mode: reduced ----
+   Settings > Appearance > Performance mode (lib/perfMode.ts sets
+   html[data-perf='reduced'] when chosen, or when Auto finds a slow machine).
+   Drops what costs the most per frame on weak GPUs/CPUs: backdrop blur, large
+   shadows, shimmer and looping animations, animated transitions; and lets the
+   browser skip layout and paint for transcript and list rows off screen. */
+[data-perf='reduced'] *,
+[data-perf='reduced'] *::before,
+[data-perf='reduced'] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+[data-perf='reduced'] :is([class*='shadow-lg'], [class*='shadow-xl'], [class*='shadow-2xl']) {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12) !important;
+}
+[data-perf='reduced'] :is(
+    [class*='text-shimmer'],
+    .rf-shimmer,
+    [class*='animate-pulse'],
+    [class*='animate-ping'],
+    [class*='animate-bounce'],
+    [class*='_infinite']
+  ) {
+  animation: none !important;
+}
+/* The slider value bubble fades in from a blur; reduced mode skips the blur. */
+[data-perf='reduced'] .flint-slider-bubble {
+  filter: none !important;
+}
+[data-perf='reduced'] :is([data-message-id], [data-testid='chat-group'] li) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}

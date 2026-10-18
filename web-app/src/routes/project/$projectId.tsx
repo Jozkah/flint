@@ -101,7 +101,7 @@ function ProjectPageContent() {
     <div className="flex h-full w-full flex-col">
       {/* The mockup's collection page: the composer and the conversations on
           the left, the collection's settings in a Frame on the right. */}
-      <div className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-3.5 pb-[max(1rem,env(safe-area-inset-bottom))] [scrollbar-width:thin]">
+      <div className="relative -mr-3 min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-3.5 pr-4 pl-1 pb-[max(1rem,env(safe-area-inset-bottom))] [scrollbar-width:thin]">
         {/* The page head: the collection's name and its menu, what a
             collection is, and the model on the right. */}
         <div className="mb-5 flex flex-wrap items-start justify-between gap-4 motion-safe:animate-rise-in">

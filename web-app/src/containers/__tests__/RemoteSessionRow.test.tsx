@@ -47,9 +47,9 @@ describe('a server session row', () => {
     const onChanged = vi.fn()
     render(<SessionRow session={session()} info={{ allowBypass: false }} models={models} onChanged={onChanged} />)
     // Unattended access is not offered when the operator did not allow it.
-    const access = screen.getByLabelText('Access') as HTMLSelectElement
+    const access = screen.getByLabelText('integrations:remoteRunner.access') as HTMLSelectElement
     expect([...access.options].map((o) => o.value)).toEqual(['read', 'ask'])
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'm2' } })
+    fireEvent.change(screen.getByLabelText('integrations:remoteRunner.model'), { target: { value: 'm2' } })
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
     fireEvent.change(access, { target: { value: 'read' } })
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(2))
@@ -78,9 +78,9 @@ describe('a server session row', () => {
     const fetch = stubFetch()
     const onChanged = vi.fn()
     render(<SessionRow session={session()} info={{ allowBypass: true }} models={models} onChanged={onChanged} />)
-    fireEvent.click(screen.getByTitle('Rename'))
-    fireEvent.change(screen.getByLabelText('Session title'), { target: { value: 'Monthly' } })
-    fireEvent.click(screen.getByText('Save'))
+    fireEvent.click(screen.getByTitle('integrations:remoteRunner.rename'))
+    fireEvent.change(screen.getByLabelText('integrations:remoteRunner.sessionTitle'), { target: { value: 'Monthly' } })
+    fireEvent.click(screen.getByText('integrations:save'))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
     expect(JSON.parse((fetch.mock.calls[0][1] as RequestInit).body as string)).toEqual({
       id: 's1',
@@ -98,7 +98,7 @@ describe('a server session row', () => {
         onChanged={vi.fn()}
       />
     )
-    expect((screen.getByLabelText('Model') as HTMLSelectElement).disabled).toBe(true)
-    expect((screen.getByLabelText('Access') as HTMLSelectElement).disabled).toBe(true)
+    expect((screen.getByLabelText('integrations:remoteRunner.model') as HTMLSelectElement).disabled).toBe(true)
+    expect((screen.getByLabelText('integrations:remoteRunner.access') as HTMLSelectElement).disabled).toBe(true)
   })
 })

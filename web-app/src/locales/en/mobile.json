@@ -216,7 +216,7 @@
   "home": {
     "chatSuggestions": {
       "error": "Explain this error message",
-      "summarise": "Summarise a document I attach",
+      "summarise": "Summarize a document I attach",
       "releaseNotes": "Draft release notes from a list of changes",
       "compare": "Compare two approaches and recommend one"
     },
@@ -479,7 +479,8 @@
     "mode": {
       "roundRobin": "Round-robin",
       "userSelected": "You choose",
-      "moderatorSelected": "Moderator chooses"
+      "moderatorSelected": "Moderator chooses",
+      "compare": "Compare models"
     },
     "untitled": "Untitled room",
     "menu": "Room menu",

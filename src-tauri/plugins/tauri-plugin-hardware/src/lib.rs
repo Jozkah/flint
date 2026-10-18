@@ -84,12 +84,24 @@ pub fn get_system_info() -> SystemInfo {
 /// Live CPU, memory and GPU usage. Blocks for the CPU sampling interval, so
 /// call it off the async runtime.
 pub fn sample_system_usage() -> SystemUsage {
-    let mut system = sysinfo::System::new();
+    let mut guard = USAGE_SAMPLER.lock().unwrap_or_else(|e| e.into_inner());
+    let (system, last) = guard.get_or_insert_with(|| (sysinfo::System::new(), None));
     system.refresh_memory();
 
-    system.refresh_cpu_all();
-    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-    system.refresh_cpu_all();
+    // A poller (the System Monitor, every 5 s) reuses the previous refresh as
+    // its baseline instead of blocking 200 ms and rebuilding the CPU list
+    // each call. A stale or missing baseline is retaken so a lone call still
+    // reports current usage, not an average over minutes.
+    let since_last = last.map(|t: std::time::Instant| t.elapsed());
+    if needs_cpu_baseline(since_last) {
+        system.refresh_cpu_usage();
+        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+    } else if let Some(wait) = since_last.and_then(|age| sysinfo::MINIMUM_CPU_UPDATE_INTERVAL.checked_sub(age)) {
+        // Two callers back to back: sysinfo needs this gap between samples.
+        std::thread::sleep(wait);
+    }
+    system.refresh_cpu_usage();
+    *last = Some(std::time::Instant::now());
 
     let cpus = system.cpus();
     let cpu_usage =
@@ -106,6 +118,39 @@ pub fn sample_system_usage() -> SystemUsage {
             .map(|gpu| gpu.get_usage())
             .collect(),
     }
+}
+
+/// The sampler behind [`sample_system_usage`] and when it last refreshed.
+static USAGE_SAMPLER: std::sync::Mutex<Option<(sysinfo::System, Option<std::time::Instant>)>> =
+    std::sync::Mutex::new(None);
+
+/// Oldest previous refresh still used as the CPU usage baseline.
+const CPU_BASELINE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Whether a CPU sample must first take a fresh baseline (and wait for it).
+fn needs_cpu_baseline(since_last: Option<std::time::Duration>) -> bool {
+    since_last.map_or(true, |age| age > CPU_BASELINE_MAX_AGE)
+}
+
+/// Memory a new process can take now, in MiB (the OS "available" figure).
+/// Cheap: unlike [`sample_system_usage`] it does not sample the CPU, so a guard
+/// can call it before every turn.
+pub fn available_memory_mb() -> u64 {
+    let mut system = sysinfo::System::new();
+    system.refresh_memory();
+    system.available_memory() / 1024 / 1024
+}
+
+/// Free VRAM in MiB on the GPU with the most room, or `None` when no GPU
+/// reports its usage (no GPU, or a vendor whose usage we cannot read).
+pub fn free_vram_mb() -> Option<u64> {
+    get_system_info()
+        .gpus
+        .iter()
+        .map(|gpu| gpu.get_usage())
+        .filter(|usage| usage.total_memory > 0)
+        .map(|usage| usage.total_memory.saturating_sub(usage.used_memory))
+        .max()
 }
 
 /// Invalidates cached hardware info so the next `get_system_info()` re-detects GPUs.

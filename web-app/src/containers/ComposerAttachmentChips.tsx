@@ -25,6 +25,7 @@ import { displayNameOf } from '@/lib/displayName'
 import {
   FilePreviewPopover,
   previewLoader,
+  viewerSpec,
 } from '@/containers/FilePreviewPopover'
 
 const ICONS: Record<ChipIcon, typeof Paperclip> = {
@@ -102,7 +103,6 @@ export function ComposerAttachmentChips({
             key={`${att.type}-${idx}-${att.name}`}
             role="listitem"
             data-testid="composer-attachment-chip"
-            title={att.name}
             className={cn(
               'flex h-10 shrink-0 items-center gap-1.5 rounded-lg border-[0.8px] bg-muted pl-1 pr-1 text-xs text-foreground focus-within:outline-2 focus-within:outline-solid focus-within:outline-ring pointer-coarse:h-12',
               warn ? 'border-warning/50' : 'border-border'
@@ -130,6 +130,7 @@ export function ComposerAttachmentChips({
                 name={att.path || att.name}
                 meta={size}
                 load={previewLoader(att)}
+                viewer={viewerSpec(att)}
                 className="flex min-w-0 items-center gap-1.5 rounded-md text-start focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               >
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-card text-muted-foreground">

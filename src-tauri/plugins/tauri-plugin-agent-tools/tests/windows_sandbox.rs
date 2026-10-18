@@ -459,7 +459,7 @@ fn the_selected_shell_writes_its_worktree_and_not_the_checkout() {
     let argv = appcontainer::helper_args(
         &sandbox.workspace,
         Some(&sandbox.scratch),
-        &[worktree.clone()],
+        std::slice::from_ref(&worktree),
         false,
         &powershell(),
         &[
@@ -501,7 +501,7 @@ fn a_worktrees_jan_is_unreadable_from_the_sandbox() {
     let argv = appcontainer::helper_args(
         &sandbox.workspace,
         Some(&sandbox.scratch),
-        &[worktree.clone()],
+        std::slice::from_ref(&worktree),
         false,
         &powershell(),
         &[

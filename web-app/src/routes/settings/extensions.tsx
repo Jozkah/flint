@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { useCallback, useEffect, useState } from 'react'
 import { route } from '@/constants/routes'
 import { Card, CardItem } from '@/containers/Card'
@@ -36,7 +37,7 @@ import { toast } from 'sonner'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.extensions as any)({
-  component: ExtensionsContent,
+  component: desktopOnlyRoute(ExtensionsContent, 'common:extensions'),
 })
 
 /** The design's small mono version chip. */
@@ -54,6 +55,7 @@ function PluginRow({
   onToggle: (enabled: boolean) => void
   onScopeChange: (scope: Scope) => void
 }) {
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
 
   const openRowMenu = (e: React.MouseEvent) => {
@@ -75,7 +77,7 @@ function PluginRow({
           <span>{p.name}</span>
           <span className={VERSION_CHIP}>v{p.version}</span>
           <span className="font-normal text-muted-foreground">
-            {scope === 'global' ? 'Global' : 'Workspace'}
+            {scope === 'global' ? t('uiLeftovers:extensions.global') : t('uiLeftovers:extensions.workspace')}
           </span>
         </div>
         <p className="text-xs leading-[1.35] text-muted-foreground">
@@ -85,28 +87,28 @@ function PluginRow({
       <Switch
         checked={p.enabled}
         onCheckedChange={onToggle}
-        aria-label={`Toggle ${p.name}`}
+        aria-label={t('uiLeftovers:extensions.toggle', { name: p.name })}
       />
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger className="sr-only" />
         <DropdownMenuContent className="w-52" align="start">
           <DropdownMenuItem onSelect={() => onToggle(!p.enabled)}>
             {p.enabled ? <EyeOff size={14} /> : <Eye size={14} />}
-            <span>{p.enabled ? 'Disable' : 'Enable'}</span>
+            <span>{p.enabled ? t('uiLeftovers:extensions.disable') : t('uiLeftovers:extensions.enable')}</span>
           </DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <Globe size={14} />
-              <span>Scope</span>
+              <span>{t('uiLeftovers:scope')}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem onSelect={() => onScopeChange('workspace')}>
                 {scope === 'workspace' && <Check size={14} />}
-                <span>Workspace only</span>
+                <span>{t('uiLeftovers:extensions.workspaceOnly')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onScopeChange('global')}>
                 {scope === 'global' && <Check size={14} />}
-                <span>Global (all workspaces)</span>
+                <span>{t('uiLeftovers:extensions.globalAll')}</span>
               </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
@@ -154,7 +156,14 @@ function ExtensionsContent() {
         list.map((p) => (p.id === plugin.id ? { ...p, enabled: state.enabled } : p))
       )
       invalidateSkills()
-      toast.success(state.enabled ? `${plugin.name} enabled` : `${plugin.name} disabled`)
+      toast.success(
+        t(
+          state.enabled
+            ? 'uiLeftovers:extensions.enabledToast'
+            : 'uiLeftovers:extensions.disabledToast',
+          { name: plugin.name }
+        )
+      )
     } catch {
       setPlugins((list) =>
         list.map((p) => (p.id === plugin.id ? { ...p, enabled: !enabled } : p))
@@ -172,7 +181,7 @@ function ExtensionsContent() {
       >
         {plugins.length > 0 && (
           <Card
-            title="Plugins"
+            title={t('uiLeftovers:extensions.plugins')}
             aside={<span className="tabular-nums">{plugins.length}</span>}
           >
             {plugins.map((p) => (

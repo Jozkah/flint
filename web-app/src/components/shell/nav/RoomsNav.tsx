@@ -22,6 +22,7 @@ import {
   NavCollapse,
   NavItem,
   NavList,
+  useCloseDrawer,
   useShellNav,
 } from '@/components/shell/nav-kit'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -74,7 +75,7 @@ const RoomItem = memo(function RoomItem({
   // Waiting on the user: a pending tool approval for the room, or every
   // participant waiting on the user's reply or choice of speaker.
   const awaitingApproval = useToolApprovalRequests((s) =>
-    Object.values(s.pending ?? {}).some((p) => p.threadId === room.id)
+    Object.values(s.pending ?? {}).some((p) => p.threadId === room.id && !p.held)
   )
   const status = roomNavStatus({
     status: room.status,
@@ -99,7 +100,8 @@ const RoomItem = memo(function RoomItem({
     <NavItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
       <RowPreview
         title={room.title}
-        updated={room.updatedAt}
+        status={status === 'wait' ? 'waiting' : status === 'active' ? 'running' : 'idle'}
+        meta={{ updated: room.updatedAt, messages: room.turns }}
         summary={room.objective}
         summaryKey={`${room.id}\u0000${room.updatedAt}`}
         transcript={() => roomTranscript(room.id)}
@@ -178,6 +180,7 @@ const RoomItem = memo(function RoomItem({
 export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const closeDrawer = useCloseDrawer()
   const { pathname } = useLocation()
   const { isMobile } = useShellNav()
   const api = useRoomsApi()
@@ -213,6 +216,7 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       search: (groupId ? { new: 1, group: groupId } : { new: 1 }) as any,
     })
+    closeDrawer()
   }
   const roomIds = useMemo(() => summaries.map((r) => r.id), [summaries])
   const byId = useMemo(
@@ -239,8 +243,9 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
   const selectRoom = useCallback(
     (id: string) => {
       navigate({ to: '/rooms/$roomId', params: { roomId: id } })
+      closeDrawer()
     },
-    [navigate]
+    [navigate, closeDrawer]
   )
 
   const confirmDelete = async () => {
@@ -262,7 +267,10 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
       <NavItem>
         <NavButton
           isActive={pathname === route.rooms}
-          onClick={() => navigate({ to: route.rooms })}
+          onClick={() => {
+            navigate({ to: route.rooms })
+            closeDrawer()
+          }}
           data-testid="nav-rooms"
         >
           {icon}

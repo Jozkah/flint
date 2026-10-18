@@ -72,10 +72,33 @@ pub fn worktree_capability() -> bool {
 /// Whether `root` is a managed worktree: strictly inside Jan's worktree folder.
 #[cfg(any(feature = "tauri", test))]
 fn is_owned_worktree(root: &Path, data_folder: &Path) -> bool {
+    if is_room_workspace(root, data_folder) {
+        return true;
+    }
     let Ok(owned) = crate::workspace::worktrees_dir(data_folder).canonicalize() else {
         return false;
     };
     root.starts_with(&owned) && root != owned
+}
+
+/// Whether `root` is a compare room participant's isolated workspace,
+/// `<data>/rooms/<room>/workspaces/<participant>` or a folder inside one. The
+/// app makes and owns these exactly as it does worktrees; anything else under
+/// `rooms` (the room folder, its journal, the workspaces folder itself) is not.
+#[cfg(any(feature = "tauri", test))]
+fn is_room_workspace(root: &Path, data_folder: &Path) -> bool {
+    let Ok(rooms) = data_folder.join("rooms").canonicalize() else {
+        return false;
+    };
+    let Ok(rest) = root.strip_prefix(&rooms) else {
+        return false;
+    };
+    let parts: Vec<_> = rest.components().collect();
+    parts.len() >= 3
+        && parts[1].as_os_str() == "workspaces"
+        && parts
+            .iter()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
 }
 
 /// A new opaque id.
@@ -183,9 +206,6 @@ pub fn authorize_with_extras(
         .map(|grant| grant.workspace.clone())
         .collect();
     grants.retain(|_, grant| grant.session_id != session_id);
-    // The replaced grant's folders may not be in this one (a folder removed
-    // from the session): their ACEs go now, not at the next command.
-    withdraw_folder_aces(&replaced);
     grants.insert(
         id.clone(),
         Grant {
@@ -195,6 +215,13 @@ pub fn authorize_with_extras(
             workspace: workspace.to_path_buf(),
         },
     );
+    // Released before the ACL work: withdrawing can wait on the sandbox
+    // helper's lock and walk a whole tree, and every other grant check
+    // (including revokes the UI makes) needs this registry meanwhile.
+    drop(grants);
+    // The replaced grant's folders may not be in this one (a folder removed
+    // from the session): their ACEs go now, not at the next command.
+    withdraw_folder_aces(&replaced);
     Ok(id)
 }
 
@@ -327,8 +354,11 @@ pub fn revoke_session(session_id: &str) -> usize {
         }
         keep
     });
+    let removed = before - grants.len();
+    // Not under the registry lock: see `authorize`.
+    drop(grants);
     withdraw_folder_aces(&released);
-    before - grants.len()
+    removed
 }
 
 /// The root this grant authorizes, if it is live and belongs to `session_id`.
@@ -591,6 +621,39 @@ mod tests {
         let root = crate::workspace::worktrees_dir(&data);
         assert!(authorize(&session, &root.to_string_lossy(), &ws, &data).is_err());
         let climb = owned.join("..").join("..").join("..");
+        assert!(authorize(&session, &climb.to_string_lossy(), &ws, &data).is_err());
+
+        revoke_session(&session);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    /// A compare room participant's isolated workspace lives inside the data
+    /// folder, and is the app's own like a worktree: it can be edited. The
+    /// room folder and the workspaces folder above it cannot.
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_a_room_workspace_can_be_authorized() {
+        if jail::backend() != jail::Backend::AppContainer {
+            eprintln!("skipping: AppContainer is not available here");
+            return;
+        }
+        let (ws, data, _repo, session) = fixture();
+        let room = data.join("rooms").join("room-1");
+        let mine = room.join("workspaces").join("participant-1");
+        std::fs::create_dir_all(mine.join("src")).unwrap();
+
+        let id = authorize(&session, &mine.to_string_lossy(), &ws, &data)
+            .expect("a room workspace is authorized");
+        assert_eq!(resolve(&id, &session), Some(mine.canonicalize().unwrap()));
+        assert!(authorize(&session, &mine.join("src").to_string_lossy(), &ws, &data).is_ok());
+        for refused in [room.join("workspaces"), room.clone(), data.join("rooms")] {
+            assert!(
+                authorize(&session, &refused.to_string_lossy(), &ws, &data).is_err(),
+                "{} must stay refused",
+                refused.display()
+            );
+        }
+        let climb = mine.join("..").join("..");
         assert!(authorize(&session, &climb.to_string_lossy(), &ws, &data).is_err());
 
         revoke_session(&session);

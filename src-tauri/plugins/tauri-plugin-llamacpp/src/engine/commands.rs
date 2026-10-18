@@ -14,7 +14,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 
 #[cfg(feature = "tauri")]
+use super::driver;
+#[cfg(feature = "tauri")]
 use super::worker;
+#[cfg(feature = "tauri")]
+use tauri_plugin_hardware::vendor::nvidia::{nvidia_driver, CudaVersion, NvidiaDriver};
 use super::worker::WorkerHandle;
 use crate::state::LlamacppState;
 
@@ -61,7 +65,7 @@ fn generate_worker_key() -> String {
 /// has something to configure, and which directory came up empty is the only
 /// thing that distinguishes the ways that happens.
 #[cfg(feature = "tauri")]
-fn resolve_worker_exe<R: tauri::Runtime>(
+pub(crate) fn resolve_worker_exe<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, String> {
     if let Some(p) = crate::compat_env::var_os("LLAMA_WORKER_BIN") {
@@ -137,15 +141,54 @@ fn worker_missing_message(tried: &[PathBuf]) -> String {
 /// Forwards a worker fault to the frontend, which turns it into the OOM or
 /// backend-error dialog. A mid-generation `GGML_ASSERT` kills the worker
 /// outright, so its log line is the only account of what happened.
+///
+/// A driver too old for the engine's CUDA code is told apart from a generic
+/// backend crash, and the banner (which shows this text verbatim) says to
+/// update the driver instead of leaving the user with a bare ggml abort.
 #[cfg(feature = "tauri")]
-fn fault_emitter<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) -> worker::FaultCallback {
+fn fault_emitter<R: tauri::Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    versions: Arc<EngineVersions>,
+) -> worker::FaultCallback {
     use tauri::Emitter;
     Arc::new(move |fault: worker::RuntimeFault, line: String| {
         log::error!("flint-llama-worker fault ({fault:?}): {line}");
-        if let Err(e) = app_handle.emit(fault.event_name(), line) {
+        let payload = driver::fault_payload(
+            &line,
+            versions.driver.get(),
+            versions.toolkit.get().copied(),
+        );
+        if let Err(e) = app_handle.emit(fault.event_name(), payload) {
             log::warn!("emit {} failed: {e}", fault.event_name());
         }
     })
+}
+
+/// What the fault callback needs to word a driver error. Filled once, off the
+/// callback's path: it runs on the task draining the worker's stderr, where an
+/// NVML load must not block. A fault before the fill is worded without them.
+#[cfg(feature = "tauri")]
+#[derive(Default)]
+struct EngineVersions {
+    toolkit: std::sync::OnceLock<CudaVersion>,
+    driver: std::sync::OnceLock<NvidiaDriver>,
+}
+
+/// Reads the NVIDIA driver, writes it and the engine's CUDA toolkit to
+/// `app.log`, and warns when the driver is older than the engine. Without this a
+/// CUDA failure on an old driver cannot be told from any other.
+#[cfg(feature = "tauri")]
+async fn record_nvidia_driver(versions: Arc<EngineVersions>) {
+    // NVML loads a shared library and may take a moment on first use.
+    let Ok(Some(driver)) = tokio::task::spawn_blocking(nvidia_driver).await else {
+        return;
+    };
+    let toolkit = versions.toolkit.get().copied();
+    log::info!("{}", driver::startup_line(&driver, toolkit));
+    if let Some(warning) = driver::startup_warning(&driver, toolkit) {
+        log::warn!("{warning}");
+    }
+    let _ = versions.driver.set(driver);
 }
 
 /// Forwards where a load placed its model to the frontend, which shows it in
@@ -180,7 +223,12 @@ pub async fn start_engine<R: tauri::Runtime>(
     }
 
     let exe = resolve_worker_exe(&app_handle)?;
+    let mut envs = envs;
+    let addon = super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let api_key = generate_worker_key();
+    // Filled from the handshake, after the worker is up; a fault before then
+    // is worded without it.
+    let versions = Arc::new(EngineVersions::default());
     let handle = worker::spawn_with_offload(
         &exe,
         &PathBuf::from(preset_path),
@@ -189,7 +237,7 @@ pub async fn start_engine<R: tauri::Runtime>(
         models_max,
         slot_cache_mib,
         envs,
-        Some(fault_emitter(app_handle.clone())),
+        Some(fault_emitter(app_handle.clone(), versions.clone())),
         Some(offload_emitter(app_handle.clone())),
     )
     .await
@@ -201,7 +249,21 @@ pub async fn start_engine<R: tauri::Runtime>(
             serde_json::to_string(&err).unwrap_or(err.message)
         }
         other => other.to_string(),
-    })?;
+    });
+    let handle = match handle {
+        Ok(handle) => handle,
+        Err(e) => {
+            // A worker that would not start: the driver it ran against is the
+            // first thing a CUDA failure needs to be read with.
+            record_nvidia_driver(versions).await;
+            return Err(e);
+        }
+    };
+    if let Some(v) = handle.cuda_toolkit {
+        let _ = versions.toolkit.set(v);
+    }
+    // Detached: NVML can be slow to load, and start_engine holds the engine lock.
+    tokio::spawn(record_nvidia_driver(versions));
 
     let info = EngineInfo::from(&handle);
     // Subscribed here rather than lazily: an eviction can happen on the very
@@ -211,6 +273,9 @@ pub async fn start_engine<R: tauri::Runtime>(
         previous.abort();
     }
     *guard = Some(handle);
+    if let Ok(mut in_use) = state.addon_in_use.lock() {
+        *in_use = addon;
+    }
     Ok(info)
 }
 
@@ -379,9 +444,12 @@ pub struct EngineDevice {
 #[tauri::command]
 pub async fn engine_devices<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
+    state: State<'_, Arc<LlamacppState>>,
     envs: HashMap<String, String>,
 ) -> Result<Vec<EngineDevice>, String> {
     let exe = resolve_worker_exe(&app_handle)?;
+    let mut envs = envs;
+    super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--list-devices").envs(envs);
     cmd.stdout(std::process::Stdio::piped());
@@ -441,7 +509,19 @@ pub async fn reload_models(
             .ok_or_else(|| "the engine worker is not running".to_string())?;
         (h.port, h.api_key.clone())
     };
+    reload_models_on(port, &api_key, preset_path, models_max, slot_cache_mib, idle_unload_minutes).await
+}
 
+/// [`reload_models`] against a worker named by port and key, for a caller that
+/// already holds (or has just released) the engine lock.
+pub async fn reload_models_on(
+    port: u16,
+    api_key: &str,
+    preset_path: String,
+    models_max: Option<u32>,
+    slot_cache_mib: Option<u64>,
+    idle_unload_minutes: Option<u32>,
+) -> Result<ReloadReport, String> {
     let mut body = serde_json::json!({ "preset_path": preset_path });
     if let Some(m) = models_max {
         body["models_max"] = serde_json::json!(m);
@@ -455,7 +535,7 @@ pub async fn reload_models(
 
     let resp = worker_client(RELOAD_MODELS_TIMEOUT)?
         .post(format!("http://127.0.0.1:{port}/models/reload"))
-        .bearer_auth(&api_key)
+        .bearer_auth(api_key)
         .json(&body)
         .send()
         .await

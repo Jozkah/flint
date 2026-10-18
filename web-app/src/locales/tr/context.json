@@ -3,6 +3,7 @@
   "title": "Flint'in bu konuşmada kullandıkları",
   "description": "Flint için nelerin kullanılabilir olduğu, bir istek için nelerin seçildiği ve son isteğin temizlenmiş kopyasında nelerin doğrulandığı. Buradaki değişiklikler gelecekteki mesajları etkiler; halihazırda yazılmakta olan yanıtı etkilemez.",
   "refresh": "Yenile",
+  "retry": "Yeniden dene",
   "details": "Ayrıntılar",
   "closeDetails": "Ayrıntıları kapat",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Bu cihazda veya ağınızda çalışır. Mesajlar buradan dışarı çıkmaz.",
+      "local": "Bu cihazda çalışır. Mesajlar cihazdan çıkmaz.",
       "remote": "Uzak sağlayıcı: mesajlarınız ve eklenen dosyalar ona gönderilir.",
       "checking": "Bu sağlayıcının nerede çalıştığı hâlâ kontrol ediliyor.",
-      "unknown": "Bu sağlayıcının nerede çalıştığı belirlenemedi."
+      "unknown": "Bu sağlayıcının nerede çalıştığı belirlenemedi.",
+      "network": "Ağınızdaki {{host}} adresine gönderilir. Mesajlar ve eklenen dosyalar bu cihazdan çıkar ama ağınızdan çıkmaz.",
+      "remoteHost": "{{host}} adresine gönderilir: mesajlarınız ve eklenen dosyalar bu bilgisayardan çıkar."
     },
     "assistantInstructions": "Asistanın talimatları sistem istemi olarak gönderilir.",
     "pendingInline": "Metni bir sonraki mesajınıza yerleştirilecek.",
@@ -119,7 +122,9 @@
     "noModel": "Hiçbir model seçilmedi.",
     "noInstructions": "Asistan talimatı yok. Normal konuşmalar Flint.md gibi proje talimat dosyalarını okumaz; Cowork okur.",
     "noAttachments": "Bu konuşmaya hiçbir dosya eklenmedi.",
+    "noAttachmentsHint": "Eklediğiniz dosyalar, Flint'in onları nasıl kullandığıyla birlikte burada görünür.",
     "indexUnavailable": "Dizinlenmiş dosyalar listelenemedi.",
+    "indexUnavailableHint": "Flint bu konuşmanın dosya dizinini okuyamadı. Birazdan yeniden deneyin.",
     "noMemory": "Son mesaja kayıtlı bellek uygulanmadı.",
     "noTools": "Kullanılabilir araç yok."
   },
@@ -137,6 +142,8 @@
     "noProject": "proje yok"
   },
   "inspect": "Temizlenmiş isteği incele (gelişmiş)",
+  "why": "Neden",
+  "verifiedMeaning": "“Doğrulandı” ne anlama gelir",
   "showAll": "{{count}} öğenin tümünü göster",
   "showFewer": "Daha az göster",
   "cards": {

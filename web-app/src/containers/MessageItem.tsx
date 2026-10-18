@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { useSecondClock } from '@/lib/sharedClock'
+import { citationsForCopy } from '@/lib/webUrl'
 import { memo, useState, useCallback, useEffect, useMemo } from 'react'
 import { SlashInvocation } from '@/components/SlashInvocation'
 import { parseSlashMarker } from '@/lib/slashCommands'
@@ -73,15 +75,23 @@ import {
 } from '@/hooks/useConversationPane'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import { tidySummaryMarkdown } from '@/lib/continueFromSummary'
 import { useMessageErrors } from '@/stores/message-errors'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
 import { AgentMessageHeader } from '@/containers/AgentMessageHeader'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
 import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
 import { extractFilesFromPrompt, FileMetadata } from '@/lib/fileMetadata'
+import { nameMentions, splitMentionBlocks } from '@/lib/chatMentions'
+import { SentMentions } from '@/containers/SentMentions'
 import { displayNameOf } from '@/lib/displayName'
 import { formatChipSize } from '@/lib/attachmentChip'
-import { FilePreviewPopover } from '@/containers/FilePreviewPopover'
+import {
+  FilePreviewPopover,
+  previewLoader,
+  sentAttachment,
+  viewerSpec,
+} from '@/containers/FilePreviewPopover'
 import { Button } from '@/components/ui/button'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -100,6 +110,7 @@ import { CompactionDivider } from '@/containers/CompactionDivider'
 import { AttachedImages } from '@/components/AttachedImages'
 import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
 import type { CompactionRecord } from '@/lib/compaction'
+import { ReplyCutOff } from '@/components/ReplyCutOff'
 
 export type MessageItemProps = {
   message: UIMessage
@@ -187,6 +198,7 @@ export const MessageItem = memo(
     const toolsEnabled = useModelToolsEnabled(selectedModel, threadId)
     const grantThreadTools = useThreadToolGrants((s) => s.grant)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
+    const renderUserMarkdown = useInterfaceSettings((s) => s.renderUserMarkdown)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
     const createdAt = (metadata?.createdAt as Date) ?? new Date()
@@ -327,12 +339,7 @@ export const MessageItem = memo(
 
     // Re-render once a second while a label is showing, purely to advance the
     // elapsed-time readout -- no state carried, just a tick.
-    const [, forceTick] = useState(0)
-    useEffect(() => {
-      if (!activityLabel) return
-      const id = setInterval(() => forceTick((n) => n + 1), 1000)
-      return () => clearInterval(id)
-    }, [activityLabel])
+    useSecondClock(!!activityLabel)
 
     const isStreaming =
       (isLastMessage &&
@@ -443,14 +450,16 @@ export const MessageItem = memo(
 
     // Get full text content for copy button
     const getFullTextContent = useCallback(() => {
-      return message.parts
+      const text = message.parts
         .filter(
           (part): part is { type: 'text'; text: string } =>
             part.type === CONTENT_TYPE.TEXT
         )
         .map((part) => part.text)
         .join('\n')
-    }, [message.parts])
+      // A reply's cite markers are chips on screen; copied, they are links.
+      return message.role === 'assistant' ? citationsForCopy(text) : text
+    }, [message.parts, message.role])
 
     const renderTextPart = (
       part: { type: 'text'; text: string },
@@ -462,10 +471,18 @@ export const MessageItem = memo(
 
       const isLastPart = partIndex === message.parts.length - 1
 
-      // For user messages, extract and clean the text from file metadata
+      // For user messages, extract and clean the text from file metadata, and
+      // fold the mentioned-conversation blocks into chips.
+      const mentioned =
+        message.role === 'user'
+          ? splitMentionBlocks(part.text)
+          : { clean: part.text, mentions: [] }
       const displayText =
         message.role === 'user'
-          ? extractFilesFromPrompt(part.text).cleanPrompt
+          ? nameMentions(
+              extractFilesFromPrompt(mentioned.clean).cleanPrompt,
+              mentioned.mentions
+            )
           : part.text
 
       // A `/command` the user sent reads as typed; the expansion folds away.
@@ -481,7 +498,7 @@ export const MessageItem = memo(
       }
 
       return (
-        <div key={`${message.id}-${partIndex}`} className="w-full">
+        <div key={`${message.id}-${partIndex}`} data-message-id={message.id} className="w-full">
           {message.role === 'user' ? (
             <div className="flex justify-end w-full h-full text-start wrap-break-word whitespace-normal">
               <div
@@ -507,19 +524,25 @@ export const MessageItem = memo(
                   </div>
                 )}
                 {partIndex === 0 && <AgentMessageHeader metadata={metadata} />}
+                {mentioned.mentions.length > 0 && (
+                  <SentMentions mentions={mentioned.mentions} />
+                )}
                 {/* Show attached files if any */}
                 {attachedFiles.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
-                    {attachedFiles.map((file: FileMetadata, idx: number) => (
+                    {attachedFiles.map((file: FileMetadata, idx: number) => {
+                      const sent = sentAttachment(file, metadata)
+                      return (
                       <div
                         key={`file-${idx}-${file.id}`}
                         data-testid="sent-file-chip"
-                        title={file.name}
                         className="flex min-w-0 max-w-full items-center rounded-md bg-card text-foreground border-[0.8px] border-border text-xs"
                       >
                         <FilePreviewPopover
                           name={file.name}
                           meta={formatChipSize(file.size)}
+                          load={previewLoader(sent)}
+                          viewer={viewerSpec(sent)}
                           className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-start focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
                         >
                           <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
@@ -533,7 +556,8 @@ export const MessageItem = memo(
                           )}
                         </FilePreviewPopover>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
                 {displayText &&
@@ -542,6 +566,24 @@ export const MessageItem = memo(
                       invocation={slashInvocation.invocation}
                       body={slashInvocation.body}
                     />
+                  ) : renderUserMarkdown || metadata?.continuedFrom ? (
+                    // The continue-from-summary seed is model-written Markdown;
+                    // other messages only when the user opted in, since pasted
+                    // logs and code read better exactly as typed.
+                    <div dir="auto" className="select-text" data-testid="user-markdown">
+                      <RenderMarkdown
+                        content={
+                          // Seeds written before the summary was tidied still
+                          // read well.
+                          metadata?.continuedFrom
+                            ? tidySummaryMarkdown(displayText)
+                            : displayText
+                        }
+                        isUser
+                        isAnimating={false}
+                        messageId={message.id}
+                      />
+                    </div>
                   ) : (
                     <div dir="auto" className="select-text whitespace-pre-wrap">
                       {displayText}
@@ -776,6 +818,7 @@ export const MessageItem = memo(
     return (
       <div
         data-role={message.role}
+        data-message-id={message.id}
         className={cn(
           'group/message relative mb-3 w-full',
           // A different assistant took over: a rule and some air mark the change.
@@ -934,8 +977,49 @@ export const MessageItem = memo(
               status !== CHAT_STATUS.SUBMITTED && (
                 <DeleteMessageDialog onDelete={handleDelete} />
               )}
+
+            {/* Last with no reply (the reply was deleted, or never came):
+                ask for one (C092). */}
+            {selectedModel &&
+              onRegenerate &&
+              isLastMessage &&
+              status !== CHAT_STATUS.STREAMING &&
+              status !== CHAT_STATUS.SUBMITTED && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className={ACTION_BUTTON}
+                      onClick={handleRegenerate}
+                      aria-label={t('chat:actions.regenerate')}
+                    >
+                      <RefreshCw className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t('chat:actions.regenerate')}</TooltipContent>
+                </Tooltip>
+              )}
           </div>
         )}
+
+        {/* A reply cut at the output limit ends mid-sentence: say so (L-002). */}
+        {message.role === 'assistant' &&
+          !isStreaming &&
+          metadata?.finishReason === 'length' && (
+            <ReplyCutOff
+              className="mt-1.5"
+              tokens={
+                (metadata.usage as { outputTokens?: number } | undefined)
+                  ?.outputTokens
+              }
+              onContinue={
+                selectedModel && onContinue && isLastMessage && canContinue
+                  ? handleContinue
+                  : undefined
+              }
+            />
+          )}
 
         {/* Message actions for assistant messages (non-tool) */}
         {message.role === 'assistant' && !(hideActions && midReply) && (

@@ -58,6 +58,15 @@ describe('RoomModelSelect', () => {
     expect(headings).toEqual(['OpenAI', 'OpenRouter', 'Groq'])
   })
 
+  it('hands the picker capabilities and source, so it can filter', async () => {
+    render(<RoomModelSelect id="m" value={null} onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    await userEvent.click(await screen.findByRole('button', { name: 'common:picker.filter' }))
+    // Every provider here is remote: no local/cloud split to offer, but tools is a capability.
+    expect(screen.queryByRole('button', { name: 'common:picker.sourceLocal' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'common:picker.cap.tools' })).toBeInTheDocument()
+  })
+
   it('reports the model chosen from the list', async () => {
     const onChange = vi.fn()
     render(<RoomModelSelect id="m" value={null} onChange={onChange} />)

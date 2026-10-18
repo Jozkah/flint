@@ -1,3 +1,5 @@
+import i18n from '@/i18n/setup'
+
 export type ThinkingBudgetLevelKey =
   | 'low'
   | 'medium'
@@ -20,6 +22,14 @@ export const THINKING_BUDGET_LEVELS: Array<{
   { key: 'xhigh', label: 'XHigh', ratio: 0.75 },
   { key: 'unlimited', label: 'Unlimited', ratio: null },
 ]
+
+/** The level's name in the current language (`label` is the English fallback). */
+export function thinkingBudgetLabel(key: ThinkingBudgetLevelKey): string {
+  const fallback = THINKING_BUDGET_LEVELS.find((l) => l.key === key)?.label ?? key
+  return i18n.t(`common:reasoningEffort.levels.${key}`, {
+    defaultValue: fallback,
+  })
+}
 
 export const DEFAULT_THINKING_BUDGET_LEVEL: ThinkingBudgetLevelKey = 'unlimited'
 

@@ -7,7 +7,7 @@
     "rename": "名前を変更",
     "deleteGroup": "グループを削除",
     "deleteTitle": "{{name}} を削除しますか？",
-    "deleteBody": "グループは削除されます。中の項目はグループから外れ、削除はされません。",
+    "deleteBody": "グループは削除されます。中の項目はグループから外れ、削除はされません。サブフォルダは1階層上に移動します。",
     "folders": "フォルダー…",
     "foldersTitle": "「{{name}}」のフォルダー",
     "foldersBodyHome": "このグループで始めた、またはこのグループに移動したチャットには、これらのフォルダーが読み取り専用で追加されます。",
@@ -53,7 +53,43 @@
     "chatFoldersBody": "チャットのツールはこれらのフォルダーを読み取れます。書き込みはチャット専用のサンドボックスに残ります。",
     "chatFoldersEmpty": "フォルダーは追加されていません。",
     "addFolder": "フォルダーを追加",
-    "chatFolderCount": "フォルダー: {{count}}"
+    "chatFolderCount": "フォルダー: {{count}}",
+    "newSubfolder": "新しいサブフォルダ",
+    "moveInto": "フォルダに移動",
+    "topLevel": "最上位",
+    "errors": {
+      "nameEmpty": "グループ名を空にすることはできません",
+      "notFound": "グループが見つかりません",
+      "tooDeep": "グループをこれ以上深く入れ子にすることはできません",
+      "intoItself": "グループを自分自身の中に移動することはできません"
+    },
+    "failed": {
+      "create": "グループを作成できませんでした",
+      "rename": "グループの名前を変更できませんでした",
+      "moveFolder": "フォルダーを移動できませんでした",
+      "saveState": "グループの状態を保存できませんでした",
+      "reorder": "グループを並べ替えられませんでした",
+      "moveItem": "項目を移動できませんでした",
+      "delete": "グループを削除できませんでした",
+      "saveFolders": "グループのフォルダーを保存できませんでした",
+      "updateContext": "フォルダーのコンテキストを更新できませんでした",
+      "update": "グループを更新できませんでした",
+      "import": "グループをインポートできませんでした",
+      "unreadable": "{{failure}}: 保存されたグループを読み込めませんでした",
+      "restored": "{{failure}}。以前の並び順に戻しました。"
+    },
+    "announce": {
+      "created": "グループ「{{name}}」を作成しました",
+      "collapsed": "{{name}}を折りたたみました",
+      "expanded": "{{name}}を展開しました",
+      "reordered": "{{name}}を{{total}}件中{{position}}番目に移動しました",
+      "movedToPosition": "{{name}}の{{position}}番目に移動しました",
+      "movedToRecents": "最近に移動しました",
+      "deleted": "グループ「{{name}}」を削除しました。項目は最近に移動しました",
+      "ctxReplaced": "{{base}}。フォルダーのコンテキストをグループのフォルダーに置き換えました。アクセスには引き続き承認が必要です",
+      "ctxMerged": "{{base}}。グループのフォルダーをフォルダーのコンテキストに追加しました。アクセスには引き続き承認が必要です",
+      "foldersAdded": "{{base}}。項目のフォルダーをグループに追加しました"
+    }
   },
   "htmlArtifact": {
     "code": "コード",
@@ -162,7 +198,7 @@
   "favorites": "お気に入り",
   "hub": "ハブ",
   "helpSupport": "ヘルプとサポート",
-  "helpUsImproveJan": "Janの改善にご協力ください",
+  "helpUsImproveJan": "Flintの改善にご協力ください",
   "analyticsConsentDetail": "機能の利用状況を把握するため、匿名のデータを収集します。チャットや個人情報が追跡されることはありません。設定 > プライバシーでいつでも変更できます。",
   "analyticsConsentQuestion": "Flint の改善にご協力いただけますか?",
   "unstarAll": "すべてのスターを解除",
@@ -186,7 +222,7 @@
   "profile": "プロフィール",
   "reset": "リセット",
   "search": "検索",
-  "searchThreads": "スレッドを検索...",
+  "searchThreads": "チャットを検索...",
   "toNavigate": "で移動",
   "toSelect": "で選択",
   "toClose": "で閉じる",
@@ -212,6 +248,7 @@
   "preview": {
     "title": "プレビュー",
     "empty": "生成されたアーティファクトを開くと、ここにプレビューが表示されます。",
+    "emptyHint": "このセッションで Flint が作成したファイルはここに開きます。",
     "loading": "開いています…",
     "unsupported": "Flint ではこの種類のファイルを表示できません。開いて別のアプリで確認してください。",
     "outside": "このファイルはセッションのワークスペース内にありません。",
@@ -276,7 +313,7 @@
     "searchThreads": "会話を検索",
     "toggleSidebar": "サイドバーを切り替え",
     "openCowork": "Cowork を開く",
-    "openArtifacts": "アーティファクトを開く",
+    "openArtifacts": "ライブラリ を開く",
     "openSystemMonitor": "システムモニターを開く",
     "openLogs": "アプリのログを開く",
     "section": {
@@ -290,11 +327,18 @@
       "navigation": "移動",
       "settings": "設定",
       "threads": "会話"
-    }
+    },
+    "openItem": "{{item}} を開く"
   },
   "searchGroup": {
+    "pages": "ページ",
+    "settings": "設定",
     "inProjects": "プロジェクト内",
-    "conversations": "会話"
+    "conversations": "会話",
+    "messages": "メッセージ内",
+    "work": "ルームとセッション",
+    "room": "ルーム",
+    "session": "Cowork セッション"
   },
   "rail": {
     "label": "Cowork パネル",
@@ -470,7 +514,7 @@
   "confirm": "確認",
   "continue": "続ける",
   "loading": "読み込み中...",
-  "settingUpJan": "Janを起動しています…",
+  "settingUpJan": "Flintを起動しています…",
   "registeringExtensions": "拡張機能を登録しています…",
   "loadingExtensions": "拡張機能を読み込んでいます… ({{done}}/{{total}})",
   "error": "エラー",
@@ -607,7 +651,8 @@
       "add": "追加",
       "cancel": "キャンセル",
       "remove": "削除"
-    }
+    },
+    "ctxAutoFitHint": "自動調整がオンです：空欄にすると自動調整がコンテキストを選び、必要ならメモリに収まるよう縮小します。ここに入力した数値はそのまま使われます。"
   },
   "dialogs": {
     "changeDataFolder": {
@@ -650,6 +695,14 @@
     "showRawLibraries": "不足している{{count}}件のライブラリ名を表示"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "プロジェクトを作成",
+      "editTitle": "プロジェクトを編集",
+      "namePlaceholder": "プロジェクト名を入力...",
+      "alreadyExists": "プロジェクト「{{projectName}}」は既に存在します",
+      "createSuccess": "プロジェクト「{{projectName}}」を作成しました",
+      "updateSuccess": "プロジェクト「{{projectName}}」を更新しました"
+    },
     "title": "プロジェクト",
     "new": "新しいプロジェクト",
     "addProject": "プロジェクトを追加",
@@ -743,7 +796,8 @@
     "pathNameNotice": "これはチャットコレクションの名前であり、そのフォルダーを開くことはありません。",
     "openCodeFolderInCowork": "コードフォルダーを Cowork で開く",
     "openCodeFolder": "コードフォルダーを開く",
-    "openCodeFolderDescription": "Flint が作業するフォルダーをコンピューターから選択してください。"
+    "openCodeFolderDescription": "Flint が作業するフォルダーをコンピューターから選択してください。",
+    "setUpEmbeddingModel": "埋め込みモデルを設定"
   },
   "attachmentsIngestion": {
     "title": "添付ファイルの取り込み方法を選択",
@@ -875,7 +929,8 @@
       "unsupportedType": "ファイル形式「{{type}}」はサポートされていません。",
       "ioError": "{{subject}}を読み取れませんでした: {{message}}",
       "parseGeneric": "{{subject}}を解析できませんでした: {{message}}",
-      "fallback": "{{subject}}の処理に失敗しました。"
+      "fallback": "{{subject}}の処理に失敗しました。",
+      "noEmbeddingModel": "{{subject}} は追加されませんでした：インデックス作成用の埋め込みモデルがインストールされていません。Llama.cpp で設定してから、もう一度ファイルを追加してください。"
     },
     "fileDeleted": {
       "title": "ファイルを削除しました",
@@ -935,6 +990,7 @@
     "missing": "利用できなくなりました: {{model}}",
     "use": "このモデルを使用",
     "thisChat": "このチャット",
+    "thisRoom": "このルーム",
     "thisSession": "このセッション"
   },
   "skillsUsedCount_one": "{{count}} 個のスキルを使用",
@@ -956,6 +1012,28 @@
   "artifactsCount_other": "{{count}} 件",
   "previewMessageCount_one": "{{count}} 件のメッセージ",
   "previewMessageCount_other": "{{count}} 件のメッセージ",
+  "rowPreview": {
+    "status": {
+      "running": "実行中",
+      "waiting": "対応が必要",
+      "idle": "待機中",
+      "error": "エラー"
+    },
+    "prState": {
+      "open": "オープン",
+      "draft": "ドラフト",
+      "merged": "マージ済み",
+      "closed": "クローズ済み"
+    },
+    "pullRequests": "プルリクエスト",
+    "morePrs_one": "他 {{count}} 件",
+    "morePrs_other": "他 {{count}} 件",
+    "noChecks": "チェックなし",
+    "empty": "まだ何もありません。",
+    "noMessages": "メッセージはまだありません",
+    "summarizing": "要約を作成中…",
+    "openHint": "開く"
+  },
   "artifactDetails": "項目の詳細",
   "artifactBack": "ライブラリに戻る",
   "artifactClose": "詳細を閉じる",
@@ -999,7 +1077,10 @@
     "branchLabel": "ブランチ",
     "actionsLabel": "フォルダーの操作",
     "copyPath": "パスをコピー",
-    "copied": "パスをコピーしました"
+    "copied": "パスをコピーしました",
+    "footnoteEmptyEdit": "フォルダーを添付すると、エージェントがプロジェクトで作業できます。",
+    "a11yWithFolderEditable": "プロジェクトフォルダー {{folder}}（編集用に添付）。変更または切り離します。",
+    "a11yWithFolderWorktree": "プロジェクトフォルダー {{folder}}（別の worktree で編集）。変更または切り離します。"
   },
   "coworkEmpty": {
     "title": "何に取り組みますか?",
@@ -1015,7 +1096,15 @@
       "first": "{{folder}} の構成を説明して",
       "second": "{{folder}} 内の TODO をすべて見つけて、領域ごとにまとめて",
       "third": "{{folder}} の指定した部分のテストを書いて"
-    }
+    },
+    "vault": {
+      "badge": "Obsidian Vault",
+      "hint": "このフォルダは Obsidian の Vault です。Flint は Markdown ノートのフォルダと同じように読み取り、Obsidian の .obsidian 設定と .trash は除外します。",
+      "add": "自分の Obsidian Vault を追加",
+      "addHint": "Obsidian の Vault は単なるフォルダです。ほかのフォルダと同じように選んでください。"
+    },
+    "subtitleFolderEdit": "Flint にタスクを任せましょう。{{folder}} のファイルを直接読み書きし、そこから自分で作業を進めます。",
+    "subtitleFolderWorktree": "Flint にタスクを任せましょう。{{folder}} の git worktree で作業するので、フォルダーはマージしたときだけ変わります。"
   },
   "sandbox": {
     "noTerminal": "ターミナルなし",
@@ -1183,7 +1272,8 @@
     "sensitiveRefused": "{{name}} は認証情報またはキーのように見えるため、開きませんでした",
     "binaryRefused": "{{name}} は拡張子に関わらず、テキストファイルではありません",
     "chooseAgainAction": "選び直す",
-    "externalGone": "このファイルはプロジェクト外から開かれたもので、そのアクセス権は失効しました。選び直して開き直してください。"
+    "externalGone": "このファイルはプロジェクト外から開かれたもので、そのアクセス権は失効しました。選び直して開き直してください。",
+    "oneFolderAtATime": "フォルダーは一度に1つだけ追加できます。「{{name}}」は追加されませんでした。"
   },
   "settingsSearch": {
     "label": "設定を検索",
@@ -1192,7 +1282,9 @@
     "count_one": "1 件の結果",
     "count_other": "{{count}} 件の結果",
     "empty": "一致する設定はありません。",
-    "clear": "検索をクリア"
+    "clear": "検索をクリア",
+    "emptyHint": "別の言葉で試すか、機能で検索してください：テーマ、プロキシ、メモリ。",
+    "pageCrumb": "ページ"
   },
   "tasks": {
     "title": "アクティビティ",
@@ -1366,7 +1458,14 @@
     "recommended": "おすすめ",
     "reset": "グローバル設定に戻す",
     "resetAll": "グローバルの既定値に戻す",
-    "overridden": "このチャットで設定済み"
+    "overridden": "このチャットで設定済み",
+    "levels": {
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "最高",
+      "unlimited": "無制限"
+    }
   },
   "modelOffline": {
     "badge": "接続不可",
@@ -2118,10 +2217,12 @@
   },
   "browserVerify": {
     "title": "ブラウザーで検証",
+    "about": "仕組み",
     "explain": "ローカルアプリを、別の一時的なブラウザープロファイル (Flint のプレビューではなく、Cookie なし) で開き、アプリ自身のオリジンに限定します。他の場所へのリクエストはブロックされ、一覧表示されます。",
     "url": "ローカルアプリの URL",
     "notLocal": "このマシン上のアプリ (localhost、127.0.0.1) のみ検証できます。",
-    "steps": "ステップ (任意): open、click、type、expect、wait、screenshot — 1 行に 1 つ",
+    "stepsLabel": "手順（任意）",
+    "stepsHint": "1 行に 1 つ: open, click, type, expect, wait, screenshot",
     "run": "検証",
     "cancel": "停止",
     "using": "{{browser}} を使用",
@@ -2478,12 +2579,17 @@
       "slots": "{{count}} スロット",
       "vision": "ビジョン",
       "audio": "オーディオ",
+      "fixedPrompt": "リクエストごとに送信: {{count}} トークン(システムプロンプトとツールスキーマ)。",
       "tokenUsage": "トークン使用量",
       "tokenUsageSr": "トークン使用量 {{value}}"
     }
   },
   "voicePill": {
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "dictate": "音声入力",
+    "stop": "音声入力を停止",
+    "working": "処理中…",
+    "setup": "音声入力を設定"
   },
   "motionMedia": {
     "queued": "待機中",
@@ -2504,11 +2610,26 @@
     "previewLoading": "プレビューを読み込んでいます…",
     "previewNone": "プレビューはありません"
   },
+  "fileViewer": {
+    "openFull": "完全なプレビューを開く",
+    "loadMore": "さらに読み込む",
+    "showingFirst": "{{total}} のうち最初の {{loaded}} を表示中",
+    "lines_other": "{{count}} 行",
+    "wrap": "行を折り返す",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "binary": "バイナリファイルのようなので、テキストのプレビューはありません。",
+    "expandLine": "行全体を表示",
+    "collapseLine": "行を短くする",
+    "truncatedOnAdd": "{{total}} のうち最初の {{shown}} を表示しています（添付ファイルは追加時に切り詰められました）"
+  },
   "dropAttachFailed": "ドロップしたファイルを添付できませんでした",
+  "sampler": {
+    "label": "サンプリングパラメータ",
+    "notSupported": "{{provider}} では未対応"
+  },
   "translate": {
     "title": "翻訳",
-    "usingModel": "{{model}} を使用中",
-    "noModel": "モデルセレクターでモデルを選択してください",
     "from": "翻訳元",
     "to": "翻訳先",
     "detect": "言語を検出",
@@ -2520,12 +2641,201 @@
     "copyFailed": "翻訳をコピーできませんでした",
     "failed": "翻訳に失敗しました",
     "inputPlaceholder": "翻訳するテキスト",
-    "outputPlaceholder": "ここに翻訳が表示されます"
+    "outputPlaceholder": "ここに翻訳が表示されます",
+    "description": "選択中のモデルで言語間のテキストを翻訳します。何も保存されません。",
+    "sourceTitle": "原文",
+    "targetTitle": "翻訳",
+    "paste": "クリップボードから貼り付け",
+    "pasteFailed": "クリップボードを読み取れませんでした",
+    "clear": "クリア",
+    "characters_other": "{{count}} 文字",
+    "translating": "翻訳中…",
+    "retry": "再試行",
+    "shortcut": "翻訳(Ctrl/Cmd+Enter)",
+    "searchLanguages": "言語を検索",
+    "noLanguages": "一致する言語がありません",
+    "errorAuth": "プロバイダーが API キーを拒否しました。プロバイダー設定で確認してください。",
+    "errorQuota": "プロバイダーから、クォータ超過またはレート制限と通知されました。しばらく待つか、プランを確認してください。",
+    "errorModelNotFound": "プロバイダーにこのモデルがありません。別のモデルを選ぶか、プロバイダー設定を確認してください。",
+    "errorNetwork": "プロバイダーに接続できませんでした。接続状態とサーバーの起動を確認してください。",
+    "errorEngine": "このモデルを実行するエンジンを利用できません。Flint を再起動してもう一度お試しください。",
+    "openProvider": "プロバイダー設定を開く",
+    "errorDetails": "詳細",
+    "pasteHint": "クリップボードへのアクセスがブロックされました。テキスト欄をクリックして {{keys}} を押してください。",
+    "swapNeedsSource": "入れ替えるには翻訳元の言語を選んでください"
   },
   "markdownImage": {
     "load": "{{host}} から画像を読み込む"
   },
   "messageSaveFailed": "メッセージを保存できませんでした。再起動後に失われる可能性があります。",
   "threadSaveFailed": "このスレッドの変更を保存できませんでした。元に戻しました。",
-  "attachmentsProcessFailed": "添付ファイルを準備できなかったため、メッセージは送信されませんでした"
+  "attachmentsProcessFailed": "添付ファイルを準備できなかったため、メッセージは送信されませんでした",
+  "settingsRecovered": {
+    "title": "設定ファイルを読み取れませんでした",
+    "withBackup": "{{file}} が破損していたため、Flint は既定の設定で起動しました。破損したファイルは {{backup}} として保存されています。",
+    "noBackup": "{{file}} が破損していたため、Flint は既定の設定で起動しました。破損したファイルのコピーは保存できませんでした。"
+  },
+  "promptLibrary": {
+    "title": "プロンプトライブラリ",
+    "description": "繰り返し使うプロンプトです。入力欄で @ または / を入力すると挿入できます。毎回入力する部分には {{name}} または {{name:default}} を使います。",
+    "manage": "自分のプロンプト",
+    "add": "プロンプトを追加",
+    "editTitle": "プロンプトを編集",
+    "import": "インポート",
+    "export": "エクスポート",
+    "imported_other": "{{count}} 件のプロンプトを追加しました",
+    "importedNone": "新しいプロンプトはありません",
+    "search": "プロンプトを検索",
+    "empty": "プロンプトはまだありません。",
+    "edit": "{{name}} を編集",
+    "delete": "{{name}} を削除",
+    "deleted": "プロンプトを削除しました",
+    "undo": "元に戻す",
+    "name": "名前",
+    "folder": "フォルダ(任意)",
+    "tags": "タグ(カンマ区切り)",
+    "body": "プロンプト本文",
+    "bodyHint": "プロンプトを書きます。空欄には {{topic}} や {{tone:friendly}} を使います。",
+    "variables": "入力が必要: {{names}}",
+    "defaultValue": "既定値: {{value}}",
+    "requiredField": "必須",
+    "fillNeeded": "挿入するには {{names}} を入力してください",
+    "insert": "挿入",
+    "errors": {
+      "nameRequired": "プロンプトには名前が必要です",
+      "nameTooLong": "名前が長すぎます",
+      "bodyRequired": "プロンプトにはテキストが必要です",
+      "bodyTooLong": "プロンプトが長すぎます",
+      "gone": "そのプロンプトはもう存在しません",
+      "invalidJson": "このファイルは有効なJSONではありません",
+      "noPrompts": "このファイルにプロンプトが見つかりません"
+    },
+    "noResults": "「{{query}}」に一致するプロンプトはありません。",
+    "clearSearch": "検索をクリア"
+  },
+  "memoryProposal": {
+    "title": "これを記憶しますか？",
+    "wouldApply": "{{where}}に適用されます。",
+    "remember": "記憶する",
+    "discard": "破棄",
+    "reviewBoth": "両方を確認",
+    "saving": "保存中…",
+    "discarding": "破棄中…",
+    "scope": {
+      "session": "この会話",
+      "project": "このプロジェクト",
+      "user": "すべての場所"
+    }
+  },
+  "picker": {
+    "filter": "フィルター",
+    "source": "提供元",
+    "sourceAll": "すべて",
+    "sourceLocal": "ローカル",
+    "sourceCloud": "クラウド",
+    "capabilities": "機能",
+    "cap": {
+      "vision": "ビジョン",
+      "tools": "ツール",
+      "reasoning": "推論",
+      "embeddings": "埋め込み"
+    },
+    "loadedNow": "現在読み込み中",
+    "sort": "並べ替え",
+    "sortDefault": "既定の順",
+    "sortName": "名前 (A–Z)",
+    "sortRecent": "最近使用",
+    "sortSize": "サイズ",
+    "clearFilters": "フィルターを解除",
+    "noMatch": "一致するモデルがありません",
+    "noMatchFilters": "一致するモデルがありません: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "チャット",
+      "session": "セッション",
+      "room": "ルーム"
+    },
+    "heading": "会話",
+    "empty": "ほかの会話はありません",
+    "noMatch": "一致する会話はありません",
+    "messages": "メッセージ数: {{n}}",
+    "included": "含めたもの: {{title}}(メッセージ {{n}} 件、約 {{size}} 文字)",
+    "group": "メンションした会話",
+    "summarize": "要約",
+    "summarizeHint": "最新のメッセージの代わりに要約を含める",
+    "remove": "{{title}} のメンションを外す",
+    "mentioned": "メンション: {{title}}",
+    "open": "{{title}} を開く",
+    "status": {
+      "missing": "見つかりません: {{title}}",
+      "self": "{{title}} はこの会話のため含めません",
+      "over-cap": "{{title}} は含めません: 1 通につき最大 {{max}} 件までです"
+    },
+    "excerpt": "抜粋",
+    "summary": "要約",
+    "modeGroup": "{{title}} から含める内容",
+    "excerptHint": "最新のメッセージ、約 {{tokens}} トークン",
+    "summaryHint": "モデルが書く要約、最大で約 {{tokens}} トークン",
+    "needsModel": "代わりに要約を含めるにはモデルを読み込んでください",
+    "totals_other": "{{count}} 件のメッセージ · ~{{tokens}} トークンを含む",
+    "readOnly": "引用された読み取り専用のコンテキストとして送信されます。モデルはその会話を変更できません。",
+    "tooLarge": "モデルのコンテキストウィンドウの 4 分の 1 を超えています。",
+    "useSummary": "要約を使う",
+    "resolving": "{{title}} を検索中",
+    "chipStatus": {
+      "missing": "見つかりません",
+      "self": "この会話",
+      "over-cap": "上限超過"
+    },
+    "preview": {
+      "empty": "まだメッセージはありません",
+      "you": "あなた",
+      "assistant": "アシスタント"
+    },
+    "messagesCount_other": "{{count}} 件のメッセージ",
+    "compact_other": "メンション {{count}} 件 · {{mode}}",
+    "mixed": "混在"
+  },
+  "campaignList": {
+    "timeout": "アプリが時間内に応答しませんでした。",
+    "unreadableRecord": "バックエンドから、このページで読み取れないレコードが送信されました"
+  },
+  "composer": {
+    "messageLabel": "メッセージ"
+  },
+  "routeLoading": {
+    "slow": "このページを開くのにいつもより時間がかかっています。",
+    "reload": "再読み込み",
+    "retry": "もう一度試す",
+    "failed": "このページを開けませんでした"
+  },
+  "replyCutOff": {
+    "withTokens": "返信の上限で途切れました（{{tokens}} トークン）",
+    "plain": "返信の上限で途切れました"
+  },
+  "routeNotFound": {
+    "title": "ページが見つかりません",
+    "body": "{{path}} にページはありません。移動したか、リンクが古くなっている可能性があります。",
+    "home": "ホームへ",
+    "settings": "設定を開く"
+  },
+  "waitingForYou": "あなたの対応待ち",
+  "dnd": {
+    "anItem": "項目",
+    "aGroup": "グループ",
+    "picked": "{{item}} を持ち上げました。",
+    "over": "{{item}} は {{group}} の上にあります。",
+    "notOver": "{{item}} はどのグループの上にもありません。",
+    "dropped": "{{item}} を {{group}} に移動しました。",
+    "cancelled": "{{item}} を元に戻しました。"
+  },
+  "searchEverything": "チャット、ルーム、ページ、設定を検索…",
+  "noResultsFoundEverywhere": "チャット、ルーム、Cowork セッション、ページ、設定に一致するものがありません。別のキーワードをお試しください。",
+  "selectModelNoKey": "このセッションにはモデルが選ばれておらず、{{provider}} には API キーがありません。まずモデルメニューでモデルを選んでください。",
+  "serverConnection": {
+    "offlineTitle": "Flint サーバーに接続できません。",
+    "offlineBody": "再接続しています… 復旧するまで、今の操作は保存されない場合があります。",
+    "statusOffline": "サーバーに接続できません"
+  }
 }

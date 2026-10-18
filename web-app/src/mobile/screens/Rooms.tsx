@@ -11,7 +11,7 @@ import { byKind, useSessions } from '../state/sessions'
 import { ROOM_STATUS } from '../shell/labels'
 import { t } from '../i18n'
 
-const MODE = { 'round-robin': t('rooms.mode.roundRobin'), 'user-selected': t('rooms.mode.userSelected'), 'moderator-selected': t('rooms.mode.moderatorSelected') } as const
+const MODE = { 'round-robin': t('rooms.mode.roundRobin'), 'user-selected': t('rooms.mode.userSelected'), 'moderator-selected': t('rooms.mode.moderatorSelected'), compare: t('rooms.mode.compare') } as const
 
 function RoomCard({ s }: { s: SessionSummary }) {
   const { data: room } = useRpc('rooms.get', { id: s.id })

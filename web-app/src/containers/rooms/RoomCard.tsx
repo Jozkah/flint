@@ -205,7 +205,7 @@ export function RoomCard({
               <b className="font-semibold text-foreground">{summary.turns}</b> {t('rooms:stage.of')}{' '}
               {maxTurns}
             </span>
-            {tokens > 0 && <span>{t('rooms:list.tokens', { count: formatCompact(tokens) })}</span>}
+            {tokens > 0 && <span>{t('rooms:list.tokens', { count: formatCompact(tokens, i18n.language) })}</span>}
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
             <i

@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "Variabili d'ambiente",
+    "description": "Variabili d'ambiente per llama.cpp (KEY=VALUE), separate da ';'",
+    "placeholder": "Es. GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "Argomenti aggiuntivi",
+    "description": "Opzioni extra di llama-server, ad es. --rope-scaling yarn --no-warmup. Si applicano a ogni modello e vengono scritte dopo le impostazioni qui sopra, quindi hanno la precedenza. Le opzioni per indirizzo del server, credenziali e file del modello vengono ignorate.",
+    "placeholder": "Es. --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "Numero massimo di modelli caricati contemporaneamente",
+    "description": "Numero massimo di modelli che il router mantiene caricati contemporaneamente. 0 = illimitato.",
+    "placeholder": "es. 1"
+  },
+  "idle_unload_minutes": {
+    "title": "Scarica i modelli inattivi dopo (minuti)",
+    "description": "Scarica un modello locale non utilizzato da questo numero di minuti, per liberare memoria. Viene ricaricato alla richiesta successiva. I modelli di embedding e quelli con una richiesta in corso non vengono mai scaricati. 0 = mai. Predefinito 30, così la VRAM non resta occupata mentre giochi o esegui un rendering.",
+    "placeholder": "es. 10"
+  },
+  "timeout": {
+    "title": "Timeout di llama.cpp",
+    "description": "Timeout di connessione e caricamento di llama.cpp, in secondi",
+    "placeholder": "es. 600"
+  },
+  "ctx_size": {
+    "title": "Dimensione del contesto predefinita",
+    "description": "La finestra di contesto usata per i modelli locali che non ne impostano una propria. Più grande = ricorda di più ma richiede più memoria. Ogni modello può sovrascriverla nelle proprie impostazioni (icona a ingranaggio). Lascia su Automatico per usare la dimensione nativa del modello (può essere enorme). Dimensioni comuni: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "Automatico"
+  },
+  "fit": {
+    "title": "Adattamento automatico",
+    "description": "Lascia che Flint decida quanti layer eseguire sulla GPU e quanto può essere grande il contesto, in modo che il modello entri nella tua memoria. Disattivalo per impostare manualmente i layer GPU e la dimensione del contesto."
+  },
+  "fit_target": {
+    "title": "Adattamento automatico: memoria da lasciare libera",
+    "description": "Quanta memoria (in MiB) l'adattamento automatico lascia libera su ogni GPU per altre app e per lo schermo. Aumentala se il sistema diventa lento mentre un modello è caricato. Solo modelli locali.",
+    "placeholder": "1024 oppure MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "Adattamento automatico: contesto minimo",
+    "description": "La dimensione minima del contesto (in token) a cui l'adattamento automatico può ridursi quando il modello non entra in memoria. Non scende mai al di sotto di questo valore e, se il modello continua a non entrare, il caricamento non riesce. Questa non è la dimensione del contesto: impostala in Dimensione del contesto predefinita o per singolo modello in Dimensione del contesto. Usata solo con l'adattamento automatico attivo e solo per i modelli locali."
+  },
+  "threads": {
+    "title": "Thread",
+    "description": "Numero di thread da usare durante la generazione (-1 per i core logici)."
+  },
+  "threads_batch": {
+    "title": "Thread (batch)",
+    "description": "Numero di thread per l'elaborazione batch e del prompt (predefinito: uguale a Thread).",
+    "placeholder": "-1 (uguale a Thread)"
+  },
+  "ctx_shift": {
+    "title": "Scorrimento del contesto",
+    "description": "Consente al modello di tagliare il testo iniziale per fare spazio al nuovo testo nella sua memoria"
+  },
+  "n_predict": {
+    "title": "Numero massimo di token da generare",
+    "description": "Numero massimo di token da generare (-1 = infinito)."
+  },
+  "batch_size": {
+    "title": "Dimensione batch",
+    "description": "Dimensione massima logica del batch per l'elaborazione dei prompt."
+  },
+  "ubatch_size": {
+    "title": "Dimensione uBatch",
+    "description": "Dimensione massima fisica del batch per l'elaborazione dei prompt. 0 = automatico: 1024 quando il modello entra nella VRAM con margine, 512 quando è al limite, 2048 quando sconfina nella RAM di sistema.",
+    "placeholder": "0 (automatico)"
+  },
+  "n_cpu_moe": {
+    "title": "Layer MoE sulla CPU",
+    "description": "Mantiene nella memoria della CPU i pesi Mixture-of-Experts dei primi N layer. Permette a un grande modello MoE di entrare in una VRAM limitata. 0 lo disattiva."
+  },
+  "n_cpu_ffn": {
+    "title": "Layer FFN densi sulla CPU",
+    "description": "Mantiene nella memoria della CPU i pesi feed-forward densi dei primi N layer. È l'equivalente dell'impostazione MoE qui sopra, per i modelli densi. 0 lo disattiva."
+  },
+  "no_kv_offload": {
+    "title": "Disattiva l'offload della cache KV",
+    "description": "Mantiene la cache KV nella RAM di sistema invece che nella memoria della GPU. Utile quando la VRAM scarseggia, a scapito della velocità."
+  },
+  "device": {
+    "title": "Dispositivi per l'offload",
+    "description": "Acceleratori su cui eseguire l'offload, separati da virgole, con i nomi dell'elenco dell'hardware rilevato. Lascia vuoto per usare tutti gli acceleratori disponibili, oppure imposta \"none\" per disattivare completamente l'offload.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "Modalità di suddivisione GPU",
+    "description": "Come suddividere il modello su più GPU.",
+    "options": {
+      "none": "Nessuna",
+      "layer": "Per layer",
+      "row": "Per riga",
+      "tensor": "Per tensore (sperimentale)"
+    }
+  },
+  "main_gpu": {
+    "title": "Indice della GPU principale",
+    "description": "La GPU da usare per il modello (split-mode=none) o per i risultati intermedi (split-mode=row)."
+  },
+  "tensor_split": {
+    "title": "Suddivisione dei tensori",
+    "description": "Proporzioni separate da virgole per suddividere il modello tra i dispositivi, ad es. \"3,1\". Lascia vuoto per una suddivisione uniforme."
+  },
+  "no_op_offload": {
+    "title": "Disattiva l'offload delle operazioni",
+    "description": "Mantiene le operazioni sui tensori dell'host sulla CPU invece di delegarle all'acceleratore."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "Attiva Flash Attention per prestazioni ottimizzate.",
+    "options": {
+      "auto": "Automatico",
+      "on": "Attivo",
+      "off": "Disattivo"
+    }
+  },
+  "parallel": {
+    "title": "Sequenze parallele",
+    "description": "Numero di sequenze parallele da decodificare per le tue richieste di chat (0 = valore predefinito di llama.cpp, cioè 4). Flint riserva in più uno slot interno per le richieste in background (ad es. la generazione automatica dei titoli delle conversazioni), così non rimuovono la cache KV della tua chat."
+  },
+  "reserve_background_slots": {
+    "title": "Riserva slot per il background",
+    "description": "Mantiene due slot interni in più oltre alle Sequenze parallele per le richieste in background (titoli automatici delle conversazioni, Cowork, subagenti), così non rimuovono la cache KV della tua chat. Disattivalo per usare esattamente il numero di slot di Sequenze parallele (impostalo a 1 per un solo slot); le richieste in background condivideranno allora lo slot della chat e potranno rimuoverne la cache. Ricarica il modello."
+  },
+  "ngram_speculation": {
+    "title": "Decodifica speculativa N-gram",
+    "description": "Genera token di bozza dal testo già presente nella conversazione (ngram-mod) e lascia che il modello li verifichi in un unico batch. L'output è identico; l'output ripetitivo, come modifiche al codice o citazioni, viene generato 3-10 volte più velocemente, mentre il resto del testo non cambia. I modelli con una propria bozza MTP usano quella."
+  },
+  "cont_batching": {
+    "title": "Batching continuo",
+    "description": "Attiva il batching continuo (detto anche batching dinamico) per le richieste concorrenti. Attivo per impostazione predefinita, come in llama.cpp."
+  },
+  "no_mmap": {
+    "title": "Disattiva mmap",
+    "description": "Non mappa il modello in memoria (caricamento più lento, ma può ridurre lo swapping se non si usa mlock)."
+  },
+  "lazy_mode": {
+    "title": "Lettura differita dei tensori",
+    "description": "Legge dal disco su richiesta le righe dei tensori grandi contrassegnati dall'architettura (ad es. gli embedding per layer) invece di tenerle in memoria. Automatico lo applica oltre i 4 GiB. Richiede mmap.",
+    "options": {
+      "auto": "Automatico",
+      "on": "Attivo",
+      "off": "Disattivo"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "Blocca il modello nella RAM in modo che non venga mai spostato nello swap. Insieme a \"Disattiva mmap\" carica i pesi senza mmap e poi li blocca."
+  },
+  "cache_type_k": {
+    "title": "Tipo della cache KV per K",
+    "description": "Tipo di dati della cache KV per le chiavi (K). Automatico usa q8_0, che dimezza la cache con una perdita di qualità trascurabile.",
+    "options": {
+      "auto": "Automatico",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "Tipo della cache KV per V",
+    "description": "Tipo di dati della cache KV per i valori (V). Automatico usa q8_0 quando Flash Attention è attivo e f16 negli altri casi, perché una cache V quantizzata richiede Flash Attention. Se un modello non si carica con questa impostazione, viene ritentato una volta con f16.",
+    "options": {
+      "auto": "Automatico",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "Metodo di scalatura RoPE",
+    "description": "Metodo di scalatura della frequenza RoPE. \"Predefinito del modello\" lascia la scelta al modello; \"Nessuno\" disattiva esplicitamente la scalatura.",
+    "options": {
+      "auto": "Predefinito del modello",
+      "none": "Nessuno",
+      "linear": "Lineare",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "Frequenza base RoPE",
+    "description": "Frequenza base RoPE (0 = letta dal modello).",
+    "placeholder": "0 (predefinito del modello)"
+  },
+  "rope_freq_scale": {
+    "title": "Fattore di scala della frequenza RoPE",
+    "description": "Fattore di scala della frequenza RoPE. 0 legge il valore dal modello; 1 forza l'assenza di scalatura."
+  },
+  "cache_ram": {
+    "title": "RAM per la cache dei prompt (MiB)",
+    "description": "Dimensione della cache dei prompt in MiB: la RAM che conserva il contesto delle altre conversazioni, così tornando a una di esse non va riletto. Vuoto o -2 = automatico in base alla RAM (20% della RAM di sistema, al massimo metà di quella libera, 1024-8192); 0 = disattivata; -1 = illimitata.",
+    "placeholder": "-2 (automatico)"
+  },
+  "persist_thread_cache": {
+    "title": "Ricorda le conversazioni tra le sessioni",
+    "description": "Salva su disco la cache dei prompt di ogni conversazione, così riaprendola non è necessario rileggerla tutta. Viene ripristinata solo se il modello, le sue impostazioni e la build di llama.cpp corrispondono a quelli con cui è stata salvata."
+  },
+  "thread_cache_size": {
+    "title": "Limite su disco della cache delle conversazioni (MiB)",
+    "description": "Spazio su disco per le cache delle conversazioni salvate (predefinito: 2048). Una volta raggiunto, vengono eliminate per prime le più vecchie. Una singola conversazione lunga può occupare centinaia di MiB."
+  },
+  "cache_reuse": {
+    "title": "Riutilizzo della cache",
+    "description": "Dimensione minima del blocco di token di prefisso corrispondenti da riutilizzare dalla cache. 0 = disattivato."
+  },
+  "ctx_checkpoints": {
+    "title": "Checkpoint del contesto",
+    "description": "Numero massimo di checkpoint del contesto conservati per slot, che permettono di ripristinare un contesto scorso invece di rielaborarlo."
+  },
+  "checkpoint_min_step": {
+    "title": "Intervallo minimo tra checkpoint",
+    "description": "Numero minimo di token tra un checkpoint del contesto e il successivo."
+  },
+  "swa_full": {
+    "title": "Cache SWA completa",
+    "description": "Usa una cache KV a dimensione piena per i modelli con sliding window attention (ad es. Gemma). Attivala se un modello di questo tipo rielabora l'intero prompt a ogni turno invece di riutilizzare la cache; richiede più memoria."
+  },
+  "kv_unified": {
+    "title": "Cache KV unificata",
+    "description": "Usa un unico buffer KV unificato condiviso tra tutti gli slot. Risparmia memoria quando si usano più slot in parallelo.",
+    "options": {
+      "auto": "Automatico",
+      "on": "Attivo",
+      "off": "Disattivo"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "Contesto per slot",
+    "description": "Limita la quantità della cache KV unificata, in token, che un singolo slot può usare. 0 lascia uno slot libero di riempire l'intera cache. Si applica solo quando la cache è unificata."
+  },
+  "reasoning_preserve": {
+    "title": "Conserva la cronologia del ragionamento",
+    "description": "Mantiene nel prompt il ragionamento di tutti i turni precedenti dell'assistente, non solo dell'ultimo. Ha effetto solo sui modelli il cui template di chat lo supporta e consuma token del prompt."
+  },
+  "keep": {
+    "title": "Mantieni i primi N token",
+    "description": "Numero di token del prompt iniziale da mantenere quando il contesto scorre. -1 = mantieni tutti."
+  },
+  "_ui": {
+    "moreInfo": "Ulteriori informazioni su {{setting}}",
+    "perModelSettings": "Impostazioni per modello",
+    "perModelDefault": "Predefinito (dalle impostazioni: {{value}})",
+    "perModelDefaultAuto": "Predefinito (dalle impostazioni: Automatico)"
+  }
+}

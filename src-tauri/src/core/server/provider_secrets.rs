@@ -270,7 +270,32 @@ fn note_keyring_failure(err: &keyring::Error) {
 }
 
 fn keyring_entry(provider: &str) -> keyring::Result<Entry> {
-    Entry::new(KEYRING_SERVICE, provider)
+    let chosen = crate::core::compat_env::var("DATA_FOLDER")
+        .ok()
+        .filter(|f| !f.is_empty())
+        .map(PathBuf::from);
+    let default = crate::core::app::commands::default_cli_data_folder();
+    Entry::new(&keyring_service_for(chosen.as_deref(), &default), provider)
+}
+
+/// The keyring service a data folder's provider keys live under.
+///
+/// The keyring is per user, not per data folder, so a folder chosen by
+/// `--data-dir` / `FLINT_DATA_FOLDER` (a `flint serve` profile, a harness)
+/// gets its own service named after a hash of the canonical folder: it neither
+/// reads nor overwrites the desktop app's keys. Without that override, or when
+/// it names the default folder, the service stays `jan-providers`, so existing
+/// installs keep their keys.
+fn keyring_service_for(chosen: Option<&std::path::Path>, default: &std::path::Path) -> String {
+    let canon = |p: &std::path::Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    match chosen {
+        Some(dir) if canon(dir) != canon(default) => {
+            let digest = Sha256::digest(canon(dir).to_string_lossy().as_bytes());
+            let short: String = digest[..6].iter().map(|b| format!("{b:02x}")).collect();
+            format!("flint-providers:{short}")
+        }
+        _ => KEYRING_SERVICE.to_string(),
+    }
 }
 
 fn secrets_file_path() -> PathBuf {
@@ -651,11 +676,53 @@ pub fn load_provider_keys(provider: &str) -> Vec<String> {
     file_load(provider)
 }
 
+/// `auth:*` names hold internal login/credential records (see
+/// [`store_secret_record`]); every webview-facing command must never read,
+/// overwrite or delete them. Internal callers go through the `*_secret_record`
+/// functions, which add the prefix themselves and bypass this guard.
+const RESERVED_PREFIX: &str = "auth:";
+
+pub fn reject_reserved_key(key: &str) -> Result<(), String> {
+    // Case-insensitive: the Windows credential store compares target names
+    // without regard to case, so `AUTH:bedrock-aws` would otherwise reach the
+    // reserved `auth:bedrock-aws` entry.
+    if key
+        .trim()
+        .to_ascii_lowercase()
+        .starts_with(RESERVED_PREFIX)
+    {
+        return Err(format!("secret key is reserved: {key}"));
+    }
+    Ok(())
+}
+
+/// [`load_provider_keys`] for webview-facing callers: a reserved name reads as
+/// empty, exactly like an absent entry.
+pub fn load_provider_keys_guarded(provider: &str) -> Vec<String> {
+    if reject_reserved_key(provider).is_err() {
+        return Vec::new();
+    }
+    load_provider_keys(provider)
+}
+
+/// [`store_provider_keys`] for webview-facing callers; refuses reserved names.
+pub fn store_provider_keys_guarded(provider: &str, keys: &[String]) -> Result<(), String> {
+    reject_reserved_key(provider)?;
+    store_provider_keys(provider, keys)
+}
+
+/// [`delete_provider_keys`] for webview-facing callers; refuses reserved names.
+pub fn delete_provider_keys_guarded(provider: &str) -> Result<(), String> {
+    reject_reserved_key(provider)?;
+    delete_provider_keys(provider)
+}
+
 /// Store a single generic secret (e.g. the Hugging Face token) under `key`.
 /// Empty value deletes it. Backed by the same keyring/encrypted-file store.
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
 pub async fn set_secret(key: String, value: String) -> Result<(), String> {
+    reject_reserved_key(&key)?;
     // Keyring/file access is blocking; keep it off the main (UI) thread.
     tauri::async_runtime::spawn_blocking(move || {
         if value.is_empty() {
@@ -680,6 +747,34 @@ pub fn load_secret_record(key: &str) -> Option<String> {
     load_provider_keys(&format!("auth:{key}"))
         .into_iter()
         .next()
+}
+
+/// Like [`load_secret_record`] but a real keyring read error is returned
+/// instead of looking like "absent", so read-modify-write callers do not
+/// overwrite a record they failed to read. `Ok(None)` means absent.
+pub fn try_load_secret_record(key: &str) -> Result<Option<String>, String> {
+    let name = format!("auth:{key}");
+    if !keyring_down() {
+        match keyring_entry(&name).and_then(|e| e.get_password()) {
+            Ok(serialized) => {
+                if let Ok(keys) = serde_json::from_str::<Vec<String>>(&serialized) {
+                    if let Some(first) = keys.into_iter().next() {
+                        return Ok(Some(first));
+                    }
+                }
+            }
+            Err(keyring::Error::NoEntry) => {}
+            Err(err) => {
+                note_keyring_failure(&err);
+                // An infra failure flips to the file store, which is then
+                // authoritative; anything else is a genuine read error.
+                if !keyring_down() {
+                    return Err(format!("keyring read failed: {err}"));
+                }
+            }
+        }
+    }
+    Ok(file_load(&name).into_iter().next())
 }
 
 /// Remove a secret record stored via [`store_secret_record`]. Missing entries
@@ -713,6 +808,9 @@ pub fn use_file_secrets_only() {
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
 pub async fn get_secret(key: String) -> Option<String> {
+    if reject_reserved_key(&key).is_err() {
+        return None;
+    }
     tauri::async_runtime::spawn_blocking(move || load_provider_keys(&key).into_iter().next())
         .await
         .ok()
@@ -867,6 +965,21 @@ mod tests {
             file_load("general:huggingface-token"),
             vec!["hf_general".to_string()]
         );
+    }
+
+    #[test]
+    fn a_chosen_data_folder_gets_its_own_keyring_service() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let default = tempfile::tempdir().unwrap();
+        let sa = keyring_service_for(Some(a.path()), default.path());
+        let sb = keyring_service_for(Some(b.path()), default.path());
+        assert!(sa.starts_with("flint-providers:"), "{sa}");
+        assert_ne!(sa, sb, "two data folders must not share keys");
+        assert_eq!(sa, keyring_service_for(Some(a.path()), default.path()));
+        // The default folder, chosen or not, keeps the service desktop installs use.
+        assert_eq!(keyring_service_for(None, default.path()), "jan-providers");
+        assert_eq!(keyring_service_for(Some(default.path()), default.path()), "jan-providers");
     }
 
     #[test]
@@ -1034,6 +1147,26 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn webview_commands_reject_reserved_auth_keys() {
+        assert!(reject_reserved_key("auth:bedrock-aws").is_err());
+        assert!(reject_reserved_key("auth:anything").is_err());
+        assert!(reject_reserved_key("AUTH:bedrock-aws").is_err());
+        assert!(reject_reserved_key("Auth:Anything").is_err());
+        assert!(reject_reserved_key(" auth:x").is_err());
+        assert!(reject_reserved_key("huggingface-token").is_ok());
+    }
+
+    #[test]
+    fn try_load_secret_record_roundtrips_and_reports_absent() {
+        let _tmp = TempDataFolder::new();
+        force_file_secrets();
+        store_secret_record("probe", "v").unwrap();
+        assert_eq!(try_load_secret_record("probe").unwrap().as_deref(), Some("v"));
+        assert_eq!(try_load_secret_record("absent").unwrap(), None);
+        delete_secret_record("probe").unwrap();
     }
 }
 

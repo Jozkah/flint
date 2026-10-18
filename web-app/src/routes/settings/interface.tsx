@@ -8,6 +8,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { FontSizeSwitcher } from '@/containers/FontSizeSwitcher'
 import { AccentSettings } from '@/containers/AccentSettings'
+import { SidebarItemsPicker } from '@/containers/SidebarItemsPicker'
 import { NotificationPositionSwitcher } from '@/containers/NotificationPositionSwitcher'
 import {
   COMPLETION_SOUNDS,
@@ -21,9 +22,16 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
 import { TRANSCRIPT_VIEWS } from '@/lib/transcriptView'
 import { toast } from 'sonner'
 import { switchTheme } from '@/lib/themeTransition'
+import {
+  PERFORMANCE_MODES,
+  resolvePerfReduced,
+  usePerfDetection,
+  type PerformanceMode,
+} from '@/lib/perfMode'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.interface as any)({
@@ -55,7 +63,7 @@ function ThemeSegmented() {
       role="group"
       aria-label={t('settings:interface.theme')}
       data-testid="theme-segmented"
-      className="relative flex w-[260px] max-w-full gap-2"
+      className="relative grid w-max max-w-full min-w-[260px] grid-cols-3 gap-2"
     >
       <span
         aria-hidden
@@ -75,7 +83,7 @@ function ThemeSegmented() {
               if (!pressed) switchTheme(e.currentTarget, value, setTheme)
             }}
             className={cn(
-              'relative z-10 inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] pointer-coarse:h-11',
+              'relative z-10 inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] pointer-coarse:h-11',
               pressed
                 ? 'border-transparent bg-transparent text-on-grad'
                 : 'border-border bg-card text-secondary-foreground hover:bg-hover-row'
@@ -97,8 +105,12 @@ function InterfaceSettings() {
     setShowTokenSpeed,
     coloredUserBubble,
     setColoredUserBubble,
+    renderUserMarkdown,
+    setRenderUserMarkdown,
     renderHtmlArtifacts,
     setRenderHtmlArtifacts,
+    wrapCodeLines,
+    setWrapCodeLines,
     showInlineCitations,
     setShowInlineCitations,
     autoGenerateTitle,
@@ -118,6 +130,7 @@ function InterfaceSettings() {
         title={t('settings:appearance.themeLabel')}
         description={t('settings:appearance.themeHint')}
         actions={<ThemeSegmented />}
+        classNameWrapperAction="sm:max-w-full"
       />
     </Card>
   )
@@ -137,6 +150,7 @@ function InterfaceSettings() {
           />
         }
       />
+      <PerformanceModeSetting />
     </Card>
   )
 
@@ -172,6 +186,19 @@ function InterfaceSettings() {
         }
       />
       <CardItem
+        anchor="settings-appearance-user-markdown"
+        title={t('settings:interface.renderUserMarkdown')}
+        description={t('settings:interface.renderUserMarkdownDesc')}
+        actions={
+          <Switch
+            aria-label={t('settings:interface.renderUserMarkdown')}
+            data-testid="render-user-markdown-switch"
+            checked={renderUserMarkdown}
+            onCheckedChange={setRenderUserMarkdown}
+          />
+        }
+      />
+      <CardItem
         anchor="settings-appearance-token-speed"
         title={t('settings:interface.showTokenSpeed')}
         description={t('settings:interface.showTokenSpeedDesc')}
@@ -193,14 +220,13 @@ function InterfaceSettings() {
     </Card>
   )
 
-  const sidebar = (
-    <Card title={t('settings:interface.sidebarLayout')}>
-      <CardItem
-        anchor="settings-appearance-sidebar-layout"
-        title={t('settings:interface.sidebarLayout')}
-        description={t('settings:interface.sidebarLayoutDesc')}
-      />
-      <SidebarLayoutPicker />
+  const sidebarItems = (
+    <Card
+      title={t('settings:sidebarItems.title')}
+      description={t('settings:sidebarItems.description')}
+      anchor="settings-appearance-sidebar-items"
+    >
+      <SidebarItemsPicker />
     </Card>
   )
 
@@ -227,6 +253,18 @@ function InterfaceSettings() {
           <Switch
             checked={renderHtmlArtifacts}
             onCheckedChange={setRenderHtmlArtifacts}
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-appearance-wrap-code-lines"
+        title={t('settings:interface.wrapCodeLines')}
+        description={t('settings:interface.wrapCodeLinesDesc')}
+        actions={
+          <Switch
+            aria-label={t('settings:interface.wrapCodeLines')}
+            checked={wrapCodeLines}
+            onCheckedChange={setWrapCodeLines}
           />
         }
       />
@@ -300,63 +338,23 @@ function InterfaceSettings() {
         title={t('common:appearance')}
         description={t('settings:pageDesc.appearance')}
         // Two columns of about equal height, so neither ends in a long empty
-        // stretch: the everyday settings and Sounds on the left, the tall
-        // pickers (accent, transcript view) and Reset on the right.
-        layout={[0, 1, 0, 1, 1, 0, 1, 0, 0]}
+        // stretch. The Sidebar items card (2) is wide and holds a long list,
+        // so it spans both columns between two balanced rows: theme and
+        // reading against accent and transcript view above it; chat display
+        // against reset, motion and sounds below.
+        layout={[0, 1, 0, 1, 2, 0, 1, 1, 1]}
       >
         {theme}
         <AccentSettings />
         {reading}
         {transcript}
-        {sidebar}
+        {sidebarItems}
         {chatDisplay}
         {reset}
         {motion}
         <CompletionSoundSettings />
       </SettingsPageBody>
     </div>
-  )
-}
-
-/** Trimmed or extended sidebar: two radios, each with its summary. */
-function SidebarLayoutPicker() {
-  const { t } = useTranslation()
-  const value = useInterfaceSettings((s) => s.sidebarLayout)
-  const setValue = useInterfaceSettings((s) => s.setSidebarLayout)
-  return (
-    <RadioGroup
-      value={value}
-      onValueChange={(v) => setValue(v as typeof value)}
-      aria-label={t('settings:interface.sidebarLayout')}
-      data-testid="sidebar-layout-picker"
-      className="gap-2 pb-2"
-    >
-      {(['trimmed', 'extended'] as const).map((mode) => {
-        const id = `sidebar-layout-${mode}`
-        return (
-          <label
-            key={mode}
-            htmlFor={id}
-            className="flex cursor-pointer items-start gap-2.5 rounded-md px-1 py-1.5"
-          >
-            <RadioGroupItem
-              id={id}
-              value={mode}
-              aria-describedby={`${id}-desc`}
-              className="mt-0.5"
-            />
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-sm font-medium text-foreground">
-                {t(`settings:interface.sidebarLayout_${mode}`)}
-              </span>
-              <span id={`${id}-desc`} className="text-xs text-muted-foreground">
-                {t(`settings:interface.sidebarLayout_${mode}Desc`)}
-              </span>
-            </span>
-          </label>
-        )
-      })}
-    </RadioGroup>
   )
 }
 
@@ -419,6 +417,101 @@ const LABEL: Record<CompletionSound, string> = {
   approval: 'settings:appearance.completionSoundApproval',
 }
 
+/** The value a radio-group key moves to (arrows wrap, Home / End jump). */
+function stepRadio<T>(values: readonly T[], current: T, key: string): T | undefined {
+  const i = Math.max(0, values.indexOf(current))
+  const n = values.length
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return values[(i + 1) % n]
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return values[(i - 1 + n) % n]
+    case 'Home':
+      return values[0]
+    case 'End':
+      return values[n - 1]
+    default:
+      return undefined
+  }
+}
+
+const PERF_LABEL: Record<PerformanceMode, string> = {
+  auto: 'settings:appearance.performanceModeAuto',
+  reduced: 'settings:appearance.performanceModeReduced',
+  full: 'settings:appearance.performanceModeFull',
+}
+
+/** Settings › Appearance › Motion: Performance mode, with what Auto found. */
+export function PerformanceModeSetting() {
+  const { t } = useTranslation()
+  const mode = useInterfaceSettings((s) => s.performanceMode)
+  const setMode = useInterfaceSettings((s) => s.setPerformanceMode)
+  const detection = usePerfDetection((s) => s.detection)
+  const reduced = resolvePerfReduced(mode, detection)
+  const why =
+    mode === 'reduced'
+      ? t('settings:appearance.perfReasonChosen')
+      : detection.reason === 'cores'
+        ? t('settings:appearance.perfReasonCores', { n: detection.cores })
+        : detection.reason === 'memory'
+          ? t('settings:appearance.perfReasonMemory', { n: detection.memoryGb })
+          : detection.reason === 'frames'
+            ? t('settings:appearance.perfReasonFrames')
+            : detection.reason === 'motion'
+              ? t('settings:appearance.perfReasonMotion')
+              : t('settings:appearance.perfReasonData')
+  const current = reduced
+    ? t('settings:appearance.performanceModeNowReduced', { why })
+    : t('settings:appearance.performanceModeNowFull')
+  return (
+    <CardItem
+      column
+      anchor="settings-appearance-performance-mode"
+      title={t('settings:appearance.performanceMode')}
+      description={
+        <>
+          {t('settings:appearance.performanceModeDesc')}{' '}
+          <span data-testid="performance-mode-current">{current}</span>
+        </>
+      }
+      actions={
+        // Radix radio group: one tab stop (roving tabindex) and arrow focus.
+        // Radix only selects on arrow focus while the key is still down, so the
+        // keys also pick the mode here; Home / End jump to the first / last.
+        <RadioGroup
+          value={mode}
+          onValueChange={(v) => setMode(v as PerformanceMode)}
+          onKeyDown={(e) => {
+            const next = stepRadio(PERFORMANCE_MODES, mode, e.key)
+            if (next !== undefined && next !== mode) setMode(next)
+          }}
+          orientation="horizontal"
+          loop
+          aria-label={t('settings:appearance.performanceMode')}
+          data-testid="performance-mode"
+          className="inline-flex flex-wrap gap-0 rounded-md border border-border p-0.5"
+        >
+          {PERFORMANCE_MODES.map((m) => (
+            <RadioGroupPrimitive.Item
+              key={m}
+              value={m}
+              data-mode={m}
+              className={cn(
+                'rounded px-2.5 py-1 text-xs outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2.5',
+                mode === m ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground'
+              )}
+            >
+              {t(PERF_LABEL[m])}
+            </RadioGroupPrimitive.Item>
+          ))}
+        </RadioGroup>
+      }
+    />
+  )
+}
+
 /** Settings › Appearance › Sounds: when a finished answer plays a sound. */
 function CompletionSoundSettings() {
   const { t } = useTranslation()
@@ -439,7 +532,9 @@ function CompletionSoundSettings() {
             role="radiogroup"
             aria-label={t('settings:appearance.completionSound')}
             data-testid="completion-sound-mode"
-            className="inline-flex flex-wrap rounded-md border border-border p-0.5"
+            // Two even columns: four options never leave one alone on a
+            // ragged second line.
+            className="grid w-full max-w-md grid-cols-2 gap-0.5 rounded-md border border-border p-0.5"
           >
             {COMPLETION_SOUNDS.map((m) => (
               <button
@@ -450,7 +545,7 @@ function CompletionSoundSettings() {
                 data-mode={m}
                 onClick={() => setMode(m)}
                 className={cn(
-                  'rounded px-2.5 py-1 text-xs pointer-coarse:py-2.5',
+                  'min-w-0 rounded px-2.5 py-1 text-xs leading-tight pointer-coarse:py-2.5',
                   mode === m ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground'
                 )}
               >

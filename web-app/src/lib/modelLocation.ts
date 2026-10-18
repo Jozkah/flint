@@ -84,3 +84,27 @@ export function isLocalModel(input: LocationInput): boolean {
 export function isRemoteModel(input: LocationInput): boolean {
   return classifyModelLocation(input) === 'remote'
 }
+
+/**
+ * Where a request goes, one step finer than `ModelLocation`: this device, a
+ * machine on the user's network, or the internet. "Local" alone made the chat
+ * details tell a LAN server's user "messages do not leave it" while the
+ * provider page called the same server remote (T7-115). Both now ask this.
+ */
+export type ModelReach = 'device' | 'network' | 'remote' | 'checking' | 'unknown'
+
+export function modelReach(input: LocationInput): ModelReach {
+  if (input.builtInEngine) return 'device'
+  const location = classifyModelLocation(input)
+  if (location !== 'local') return location
+  return endpointScope(input.baseUrl) === 'loopback' ? 'device' : 'network'
+}
+
+/** `host[:port]` of an endpoint, for saying where requests are sent. */
+export function endpointHost(baseUrl: string | null | undefined): string | null {
+  try {
+    return baseUrl ? new URL(baseUrl.trim()).host || null : null
+  } catch {
+    return null
+  }
+}

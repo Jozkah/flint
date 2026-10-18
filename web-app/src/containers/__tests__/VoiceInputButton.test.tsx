@@ -114,13 +114,13 @@ describe('VoiceInputButton', () => {
 
   it('exposes the same labels and test id', () => {
     mount()
-    expect(button()).toHaveAttribute('aria-label', 'Dictate')
+    expect(button()).toHaveAttribute('aria-label', 'dictate')
     expect(button()).toHaveAttribute('aria-pressed', 'false')
     setStatus('listening')
-    expect(button()).toHaveAttribute('aria-label', 'Stop dictating')
+    expect(button()).toHaveAttribute('aria-label', 'stop')
     expect(button()).toHaveAttribute('aria-pressed', 'true')
     setStatus('stopping')
-    expect(button()).toHaveAttribute('aria-label', 'Working…')
+    expect(button()).toHaveAttribute('aria-label', 'working')
   })
 
   it('tap starts, second tap stops and keeps the text', () => {

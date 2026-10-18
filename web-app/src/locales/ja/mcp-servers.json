@@ -6,10 +6,12 @@
       "checking": "拡張機能の状態を確認中..."
     },
     "notInstalled": {
-      "title": "Janがブラウザでタスクを実行します",
-      "description": "拡張機能をインストールしてJanにブラウザアクセスを許可してください",
+      "title": "Flintがブラウザでタスクを実行します",
+      "description": "拡張機能をインストールしてFlintにブラウザアクセスを許可してください",
       "getExtension": "拡張機能を取得"
-    }
+    },
+    "requires": "Chrome ベースのブラウザにブラウザ拡張機能をインストールする必要があります。",
+    "install": "拡張機能をインストール →"
   },
   "serverName": "サーバー名",
   "enterServerName": "サーバー名を入力",
@@ -144,7 +146,7 @@
   "experimental": "実験的",
   "editAllJson": "すべてのサーバーのJSONを編集",
   "findMore": "その他のMCPサーバーは以下で検索してください",
-  "allowPermissions": "すべてのMCPツール権限を許可",
+  "allowPermissions": "MCP ツールの権限をすべて許可",
   "allowPermissionsDesc": "有効にすると、すべてのMCPツール呼び出しは許可ダイアログを表示せずに自動的に承認されます。この設定は、新しいチャットを含むすべての会話にグローバルに適用されます。",
   "autoApproveServer": "このサーバーのツールを自動承認",
   "noServers": "MCPサーバーが見つかりません",
@@ -158,13 +160,13 @@
   "serverStatusInactive": "サーバー {{serverKey}} が正常に非アクティブ化されました",
   "runtimeSettings": {
     "title": "ランタイム設定",
-    "description": "JanがMCPサーバーを管理し再試行する方法を設定します。",
+    "description": "FlintがMCPサーバーを管理し再試行する方法を設定します。",
     "toolCallTimeout": "ツール呼び出しタイムアウト（秒）",
     "toolCallTimeoutDesc": "MCPツールの応答を待機する最大時間（タイムアウトまで）。",
     "maxToolOutputChars": "ツール出力の最大文字数",
     "maxToolOutputCharsDesc": "会話に保持されるツール結果の最大長です。これを超えた部分は切り詰められ、切り詰めたことが示されるため、1 つの大きな結果でモデルのコンテキストが使い果たされることはありません。0 にすると、結果が全体保持されます。",
     "smartToolRouting": "スマートなMCPツールルーティング",
-    "smartToolRoutingDesc": "有効にすると、Janはツールを読み込む前に関連するMCPサーバーを選びます。無効にすると、常にMCPツールの全リストを読み込みます。",
+    "smartToolRoutingDesc": "有効にすると、Flintはツールを読み込む前に関連するMCPサーバーを選びます。無効にすると、常にMCPツールの全リストを読み込みます。",
     "useLightweightRouterModel": "ルーティング専用モデルを使う",
     "useLightweightRouterModelDesc": "スマートルーティングがオンなとき、ルーティングはチャットモデルではなく別の（多くの場合小さな）モデルで実行されます。オフにすると、ルーティングに常にアクティブなチャットモデルを使います。",
     "routerModel": "ルーティングモデル",
@@ -172,7 +174,9 @@
     "selectRouterModelPlaceholder": "ルーティングモデルを選択…",
     "routerModelSearchPlaceholder": "モデルを検索…",
     "routerModelEmptyList": "利用可能な軽量モデルがありません。より小さなモデルを追加するか、「モデル」でAPIキーを設定してください。",
-    "routerModelEmptySearch": "「{{query}}」に一致するものはありません。"
+    "routerModelEmptySearch": "「{{query}}」に一致するものはありません。",
+    "idleShutdown": "アイドル中のサーバーを停止するまでの時間(分)",
+    "idleShutdownDesc": "ここで指定した時間ツール呼び出しがない MCP サーバーは、メモリを空けるため停止され、必要になったときに再び起動します。Flint と同時に起動する設定のサーバーは動き続けます。0 にすると停止しません。"
   },
   "auth": {
     "label": "認証:",
@@ -259,7 +263,8 @@
   "lifecycle": {
     "startWithFlint": "Flint と一緒に起動",
     "start": "起動",
-    "stop": "停止"
+    "stop": "停止",
+    "toolTimeout": "ツールのタイムアウト(秒)"
   },
   "cwd": "作業ディレクトリ",
   "cwdPlaceholder": "任意。例: C:\\tools\\my-server",

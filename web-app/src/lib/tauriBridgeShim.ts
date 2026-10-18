@@ -8,6 +8,8 @@
  * refuses for everything else.
  */
 
+import { DESKTOP_ONLY_COMMANDS } from '@/lib/desktopOnlyCommands'
+
 type InvokeArgs = Record<string, unknown> | number[] | ArrayBuffer | Uint8Array
 
 export class Channel<T = unknown> {
@@ -25,7 +27,16 @@ export function convertFileSrc(filePath: string): string {
   return filePath
 }
 
+/**
+ * Desktop-only commands (desktopOnlyCommands.ts) have no server route, so they
+ * are refused here without a request rather than adding a 404 per call.
+ */
+const UNKNOWN_COMMAND = 'Unknown command'
+/** Commands the server answered "Unknown command" for: not asked again. */
+const refused = new Set<string>(DESKTOP_ONLY_COMMANDS.keys())
+
 export async function invoke<T = unknown>(command: string, args?: InvokeArgs): Promise<T> {
+  if (refused.has(command)) throw new Error(UNKNOWN_COMMAND)
   const response = await fetch(`/api/v1/rpc/${encodeURIComponent(command)}`, {
     method: 'POST',
     credentials: 'same-origin',
@@ -38,6 +49,7 @@ export async function invoke<T = unknown>(command: string, args?: InvokeArgs): P
   }
   if (!response.ok) {
     const body = await response.text()
+    if (response.status === 404 && body === UNKNOWN_COMMAND) refused.add(command)
     // Tauri rejects with the command's own error value. The plugin's errors are
     // objects, which callers inspect, so a JSON object body is passed on as is.
     try {

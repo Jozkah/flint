@@ -73,6 +73,8 @@ export type LlamacppConfig = {
   extra_args: string
   models_max: string | number
   timeout: number
+  /** Default context size for models that set none; blank or 0 = auto. */
+  ctx_size?: string | number
   fit: boolean
   fit_target: string
   fit_ctx: string
@@ -93,6 +95,8 @@ export type LlamacppConfig = {
   flash_attn: string
   parallel: number
   cont_batching: boolean
+  /** ngram-mod speculative decoding for every model without its own draft. */
+  ngram_speculation: boolean
   no_mmap: boolean
   mlock: boolean
   cache_type_k: string

@@ -38,6 +38,9 @@ pub struct ScanEnv {
     pub hf_home: Option<PathBuf>,
     pub llama_cache: Option<PathBuf>,
     pub ollama_models: Option<PathBuf>,
+    /// Folders the user added by hand; each is scanned for GGUF files, and as
+    /// an Ollama store when it holds `manifests/` and `blobs/`.
+    pub extra_folders: Vec<PathBuf>,
 }
 
 impl ScanEnv {
@@ -54,6 +57,7 @@ impl ScanEnv {
             hf_home: var("HF_HOME"),
             llama_cache: var("LLAMA_CACHE"),
             ollama_models: var("OLLAMA_MODELS"),
+            extra_folders: Vec::new(),
         }
     }
 }
@@ -73,7 +77,8 @@ fn is_loadable_name(name: &str) -> bool {
     if !lower.ends_with(".gguf") || lower.contains("mmproj") {
         return false;
     }
-    if let Some(of) = lower.find("-of-") {
+    // The last "-of-": a model name may contain one too.
+    if let Some(of) = lower.rfind("-of-") {
         // "...-00002-of-00005.gguf": only shard 1 is loadable.
         let before = &lower[..of];
         if let Some(dash) = before.rfind('-') {
@@ -231,9 +236,8 @@ fn scan_ollama(out: &mut Vec<ScannedModel>, seen: &mut HashSet<PathBuf>, root: &
             })
             .and_then(|layer| layer.get("digest"))
             .and_then(|d| d.as_str());
-        let Some(digest) = digest else { continue };
-        // "sha256:abc" on the wire, "sha256-abc" on disk.
-        let blob = blobs.join(digest.replacen(':', "-", 1));
+        let Some(blob_name) = digest.and_then(blob_file_name) else { continue };
+        let blob = blobs.join(blob_name);
         let rel = manifest.strip_prefix(&manifests).unwrap_or(&manifest);
         let parts: Vec<String> = rel
             .components()
@@ -247,6 +251,15 @@ fn scan_ollama(out: &mut Vec<ScannedModel>, seen: &mut HashSet<PathBuf>, root: &
         };
         push(out, seen, &blob, name, "Ollama");
     }
+}
+
+/// The blob file for a manifest digest: "sha256:<64 hex>" on the wire,
+/// "sha256-<64 hex>" on disk. Anything else (a path, a separator) is refused
+/// so a manifest cannot point outside the blobs folder.
+fn blob_file_name(digest: &str) -> Option<String> {
+    let hex = digest.strip_prefix("sha256:")?;
+    (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+        .then(|| format!("sha256-{hex}"))
 }
 
 pub fn scan(env: &ScanEnv) -> Vec<ScannedModel> {
@@ -322,14 +335,32 @@ pub fn scan(env: &ScanEnv) -> Vec<ScannedModel> {
         scan_ollama(&mut out, &mut seen, &dir);
     }
 
+    for dir in &env.extra_folders {
+        if dir.join("manifests").is_dir() && dir.join("blobs").is_dir() {
+            scan_ollama(&mut out, &mut seen, dir);
+        }
+        scan_folder_of_ggufs(&mut out, &mut seen, dir, 4, "Custom folder", lmstudio_name);
+    }
+
     out
 }
 
 /// Models other apps already keep on this machine. Runs on a blocking thread:
 /// it walks directories.
 #[tauri::command]
-pub async fn scan_local_models() -> Result<Vec<ScannedModel>, String> {
-    tauri::async_runtime::spawn_blocking(|| scan(&ScanEnv::from_process()))
+pub async fn scan_local_models(
+    extra_folders: Option<Vec<String>>,
+) -> Result<Vec<ScannedModel>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut env = ScanEnv::from_process();
+        env.extra_folders = extra_folders
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| !f.trim().is_empty())
+            .map(PathBuf::from)
+            .collect();
+        scan(&env)
+    })
         .await
         .map_err(|e| format!("Model scan failed: {e}"))
 }
@@ -337,6 +368,24 @@ pub async fn scan_local_models() -> Result<Vec<ScannedModel>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_ollama_digest_must_be_a_plain_sha256() {
+        let hex = "a".repeat(64);
+        assert_eq!(blob_file_name(&format!("sha256:{hex}")), Some(format!("sha256-{hex}")));
+        assert_eq!(blob_file_name("sha256:../../x"), None);
+        assert_eq!(blob_file_name("/etc/passwd"), None);
+        assert_eq!(blob_file_name(r"C:\x"), None);
+        assert_eq!(blob_file_name(&format!("sha256:{}", "A".repeat(64))), None);
+        assert_eq!(blob_file_name(&format!("sha256:{}/", "a".repeat(63))), None);
+    }
+
+    #[test]
+    fn a_model_name_containing_of_is_judged_by_its_shard_suffix() {
+        assert!(!is_loadable_name("foo-of-bar-00002-of-00003.gguf"));
+        assert!(is_loadable_name("foo-of-bar-00001-of-00003.gguf"));
+        assert!(is_loadable_name("foo-of-bar.gguf"));
+    }
 
     fn gguf(path: &Path, len: usize) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -353,6 +402,7 @@ mod tests {
             hf_home: None,
             llama_cache: None,
             ollama_models: None,
+            extra_folders: Vec::new(),
         }
     }
 
@@ -410,15 +460,15 @@ mod tests {
     fn resolves_an_ollama_manifest_to_its_blob() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join(".ollama/models");
-        let blob = root.join("blobs/sha256-deadbeef");
+        let blob = root.join("blobs/sha256-deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
         gguf(&blob, 2_000_000);
         let manifest = root.join("manifests/registry.ollama.ai/library/qwen3/8b");
         fs::create_dir_all(manifest.parent().unwrap()).unwrap();
         fs::write(
             &manifest,
             r#"{"layers":[
-                {"mediaType":"application/vnd.ollama.image.template","digest":"sha256:aaaa"},
-                {"mediaType":"application/vnd.ollama.image.model","digest":"sha256:deadbeef"}
+                {"mediaType":"application/vnd.ollama.image.template","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+                {"mediaType":"application/vnd.ollama.image.model","digest":"sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}
             ]}"#,
         )
         .unwrap();
@@ -426,24 +476,61 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].name, "qwen3:8b");
         assert_eq!(found[0].source, "Ollama");
-        assert!(found[0].path.ends_with("sha256-deadbeef"));
+        assert!(found[0].path.ends_with("sha256-deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
     }
 
     #[test]
     fn lists_a_blob_reachable_from_two_stores_once() {
         let dir = tempfile::tempdir().unwrap();
-        let blob = dir.path().join(".ollama/models/blobs/sha256-ab");
+        let blob = dir.path().join(".ollama/models/blobs/sha256-abababababababababababababababababababababababababababababababab");
         gguf(&blob, 2_000_000);
         let manifests = dir.path().join(".ollama/models/manifests/r/library/m");
         fs::create_dir_all(&manifests).unwrap();
         for tag in ["a", "b"] {
             fs::write(
                 manifests.join(tag),
-                r#"{"layers":[{"mediaType":"application/vnd.ollama.image.model","digest":"sha256:ab"}]}"#,
+                r#"{"layers":[{"mediaType":"application/vnd.ollama.image.model","digest":"sha256:abababababababababababababababababababababababababababababababab"}]}"#,
             )
             .unwrap();
         }
         assert_eq!(scan(&env(dir.path())).len(), 1);
+    }
+
+    #[test]
+    fn scans_a_user_added_folder_of_ggufs() {
+        let dir = tempfile::tempdir().unwrap();
+        let extra = dir.path().join("D-drive-models");
+        gguf(&extra.join("org/repo/m-q4.gguf"), 2_000_000);
+        gguf(&extra.join("mmproj-x.gguf"), 2_000_000);
+        let mut e = env(dir.path());
+        e.extra_folders = vec![extra.clone(), dir.path().join("does-not-exist")];
+        let found = scan(&e);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].source, "Custom folder");
+        assert_eq!(found[0].name, "org/repo / m-q4");
+        // The path handed to the loader is absolute and readable.
+        assert!(Path::new(&found[0].path).is_absolute());
+        assert!(fs::File::open(&found[0].path).is_ok());
+    }
+
+    #[test]
+    fn a_user_added_folder_can_be_an_ollama_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("moved-ollama");
+        gguf(&root.join("blobs/sha256-cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe"), 2_000_000);
+        let manifest = root.join("manifests/registry.ollama.ai/library/llama3/latest");
+        fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+        fs::write(
+            &manifest,
+            r#"{"layers":[{"mediaType":"application/vnd.ollama.image.model","digest":"sha256:cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe"}]}"#,
+        )
+        .unwrap();
+        let mut e = env(dir.path());
+        e.extra_folders = vec![root];
+        let found = scan(&e);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "llama3:latest");
+        assert_eq!(found[0].source, "Ollama");
     }
 
     #[test]

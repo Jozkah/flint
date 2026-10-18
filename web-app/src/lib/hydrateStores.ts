@@ -15,8 +15,10 @@ import { useVulkan } from '@/hooks/useVulkan'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useModelOrder } from '@/hooks/useModelOrder'
 import { useModelFilter } from '@/hooks/useModelFilter'
+import { useModelLibrary } from '@/hooks/useModelLibrary'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
+import { useEngineAddon } from '@/hooks/useEngineAddon'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
@@ -29,11 +31,14 @@ import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
+import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
+import { useChatMentionConfig } from '@/hooks/useChatMentionConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { useKeybindings } from '@/hooks/useKeybindings'
 import { useReferenceAliases } from '@/lib/referenceAliases'
+import { usePromptLibrary } from '@/lib/promptLibrary'
 import { useProjectInitDrafts } from '@/lib/projectInit'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useModelDoctor } from '@/hooks/useModelDoctor'
@@ -54,6 +59,8 @@ import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useGlobalExtensions } from '@/hooks/useGlobalExtensions'
 import { initConversationGroups } from '@/lib/groups/bootstrap'
 import { isChatWindow } from '@/lib/soloFlag'
+import { hasUsableProvider, isSetupCompleted } from '@/lib/providerReadiness'
+import { backendReadFailures } from '@/lib/backendStorage'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -80,8 +87,10 @@ const secondaryStores = [
   useFavoriteModel,
   useModelOrder,
   useModelFilter,
+  useModelLibrary,
   useDefaultEmbeddingModel,
   useAgentMode,
+  useEngineAddon,
   useWebSearchConfig,
   useWebPreviewSettings,
   useCoworkSessions,
@@ -91,11 +100,14 @@ const secondaryStores = [
   useFileActivity,
   useAgentToolsConfig,
   useVisualizeConfig,
+  useLeanToolsConfig,
+  useChatMentionConfig,
   useModelOverrides,
   useContextBreakdown,
   useCoworkDisplay,
   useKeybindings,
   useReferenceAliases,
+  usePromptLibrary,
   useProjectInitDrafts,
   useModelEvidence,
   useModelDoctor,
@@ -118,6 +130,15 @@ export async function hydrateBackendStores(): Promise<void> {
   await Promise.all(
     secondaryStores.map((store) => Promise.resolve(store.persist.rehydrate()))
   )
+  // A store whose saved settings could not be read stays on defaults and
+  // refuses to write them (see backendStorage); the app must not start on it.
+  const unread = backendReadFailures()
+  if (unread.length > 0) {
+    throw new Error(`Could not read saved settings: ${unread.join(', ')}`)
+  }
+  // Decided here, before the first render, so the sidebar never flashes the
+  // full list on a new install.
+  useInterfaceSettings.getState().resolveNavDefaults(isExistingInstall())
   // Secrets are never in the persisted blobs; seed them from the keyring
   // before anything (the server auto-start) reads them.
   await Promise.all([seedLocalApiServerKey(), seedProxyPassword()])
@@ -147,6 +168,19 @@ export async function hydrateBackendStores(): Promise<void> {
       }))
     )
   }
+}
+
+/**
+ * Whether this install was used before: setup finished, a model usable, or a
+ * Cowork session saved. Chats load later (from the extension), but anyone with
+ * one has also passed setup.
+ */
+export function isExistingInstall(): boolean {
+  return (
+    isSetupCompleted() ||
+    hasUsableProvider(useModelProvider.getState().providers) ||
+    useCoworkSessions.getState().sessions.length > 0
+  )
 }
 
 /** Recorded as the reason on work the previous app run left unfinished. */

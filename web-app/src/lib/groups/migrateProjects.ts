@@ -25,6 +25,7 @@ export function migrateProjects(
       position,
       collapsed: false,
       folderBindings: [],
+      parentId: null,
       createdAt: f.updated_at ?? now,
       updatedAt: f.updated_at ?? now,
     }))

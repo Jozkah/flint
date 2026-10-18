@@ -65,6 +65,8 @@ impl ConfinedMcpLaunch {
         params: &McpServerConfig,
         build: impl FnOnce() -> Command,
     ) -> Result<Self, String> {
+        // `[mcp] allow_commands` in agent.toml: refuse before anything is built.
+        super::allowlist::enforce(&params.command)?;
         let command = build();
         match params.confinement.as_ref() {
             None if !params.imported => Ok(Self {

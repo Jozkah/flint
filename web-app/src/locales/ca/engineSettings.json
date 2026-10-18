@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "Variables d'entorn",
+    "description": "Variables d'entorn per a llama.cpp (KEY=VALUE), separades per ';'",
+    "placeholder": "Ex. GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "Arguments addicionals",
+    "description": "Opcions addicionals de llama-server, p. ex. --rope-scaling yarn --no-warmup. S'apliquen a tots els models i s'escriuen després de la configuració anterior, de manera que tenen prioritat. S'ignoren les opcions d'adreça del servidor, credencials i fitxer del model.",
+    "placeholder": "Ex. --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "Màx. de models carregats alhora",
+    "description": "Nombre màxim de models que l'encaminador manté carregats alhora. 0 = il·limitat.",
+    "placeholder": "p. ex. 1"
+  },
+  "idle_unload_minutes": {
+    "title": "Descarrega els models inactius després de (minuts)",
+    "description": "Descarrega un model local que no s'ha fet servir durant aquests minuts per alliberar memòria. Es torna a carregar amb la petició següent. Els models d'embeddings i els que tenen una petició en curs no es descarreguen mai. 0 = mai. Per defecte 30, perquè no es reservi VRAM mentre jugues o renderitzes.",
+    "placeholder": "p. ex. 10"
+  },
+  "timeout": {
+    "title": "Temps d'espera de llama.cpp",
+    "description": "Temps d'espera de connexió i càrrega de llama.cpp en segons",
+    "placeholder": "p. ex. 600"
+  },
+  "ctx_size": {
+    "title": "Mida de context predeterminada",
+    "description": "La finestra de context que fan servir els models locals que no en defineixen una de pròpia. Més gran = recorda més però necessita més memòria. Cada model la pot canviar a la seva configuració (icona d'engranatge). Deixa-ho en Auto per fer servir la mida nativa del model (pot ser enorme). Mides habituals: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "Auto"
+  },
+  "fit": {
+    "title": "Ajust automàtic",
+    "description": "Deixa que Flint decideixi quantes capes s'executen a la GPU i quina mida pot tenir el context perquè el model càpiga a la memòria. Desactiva-ho per definir tu mateix les capes de GPU i la mida del context."
+  },
+  "fit_target": {
+    "title": "Ajust automàtic: memòria lliure reservada",
+    "description": "Quanta memòria (en MiB) deixa lliure l'ajust automàtic a cada GPU per a altres aplicacions i la pantalla. Augmenta-la si el sistema va lent mentre hi ha un model carregat. Només models locals.",
+    "placeholder": "1024 o MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "Ajust automàtic: context mínim",
+    "description": "La mida de context més petita (en tokens) a què pot reduir l'ajust automàtic quan el model no cap a la memòria. Mai no baixa d'aquest valor i, si el model encara no hi cap, la càrrega falla. No és la mida del context: aquesta es defineix a Mida de context predeterminada o, per model, a Mida del context. Només s'utilitza amb l'ajust automàtic activat i només per a models locals."
+  },
+  "threads": {
+    "title": "Fils",
+    "description": "Nombre de fils que es fan servir durant la generació (-1 per als nuclis lògics)."
+  },
+  "threads_batch": {
+    "title": "Fils (lot)",
+    "description": "Nombre de fils per al processament per lots i del prompt (per defecte: igual que Fils).",
+    "placeholder": "-1 (igual que Fils)"
+  },
+  "ctx_shift": {
+    "title": "Desplaçament del context",
+    "description": "Permet que el model retalli text del principi per fer lloc al text nou a la seva memòria"
+  },
+  "n_predict": {
+    "title": "Màx. de tokens a predir",
+    "description": "Nombre màxim de tokens a generar (-1 = infinit)."
+  },
+  "batch_size": {
+    "title": "Mida del lot",
+    "description": "Mida màxima lògica del lot per processar prompts."
+  },
+  "ubatch_size": {
+    "title": "Mida del microlot (uBatch)",
+    "description": "Mida màxima física del lot per processar prompts. 0 = auto: 1024 si el model cap a la VRAM amb marge, 512 si va just, 2048 si es desborda a la RAM del sistema.",
+    "placeholder": "0 (auto)"
+  },
+  "n_cpu_moe": {
+    "title": "Capes MoE a la CPU",
+    "description": "Manté els pesos Mixture-of-Experts de les primeres N capes a la memòria de la CPU. Permet que un model MoE gran càpiga en una VRAM limitada. 0 ho desactiva."
+  },
+  "n_cpu_ffn": {
+    "title": "Capes FFN denses a la CPU",
+    "description": "Manté els pesos feed-forward densos de les primeres N capes a la memòria de la CPU. L'equivalent de l'opció MoE anterior, per a models densos. 0 ho desactiva."
+  },
+  "no_kv_offload": {
+    "title": "Desactiva la descàrrega de la memòria cau KV",
+    "description": "Manté la memòria cau KV a la RAM del sistema en lloc de la memòria de la GPU. Útil quan hi ha poca VRAM, a costa de la velocitat."
+  },
+  "device": {
+    "title": "Dispositius de descàrrega",
+    "description": "Acceleradors on descarregar, separats per comes, amb el nom que apareix a la llista de maquinari detectat. Deixa-ho buit per fer servir tots els acceleradors disponibles, o escriu \"none\" per desactivar del tot la descàrrega.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "Mode de repartiment entre GPU",
+    "description": "Com es reparteix el model entre diverses GPU.",
+    "options": {
+      "none": "Cap",
+      "layer": "Capa",
+      "row": "Fila",
+      "tensor": "Tensor (experimental)"
+    }
+  },
+  "main_gpu": {
+    "title": "Índex de la GPU principal",
+    "description": "La GPU que es fa servir per al model (split-mode=none) o per als resultats intermedis (split-mode=row)."
+  },
+  "tensor_split": {
+    "title": "Repartiment de tensors",
+    "description": "Proporcions separades per comes per repartir el model entre dispositius, p. ex. \"3,1\". Deixa-ho buit per a un repartiment equitatiu."
+  },
+  "no_op_offload": {
+    "title": "Desactiva la descàrrega d'operacions",
+    "description": "Manté les operacions de tensors de l'amfitrió a la CPU en lloc de descarregar-les a l'accelerador."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "Activa Flash Attention per a un rendiment optimitzat.",
+    "options": {
+      "auto": "Auto",
+      "on": "Activat",
+      "off": "Desactivat"
+    }
+  },
+  "parallel": {
+    "title": "Seqüències paral·leles",
+    "description": "Nombre de seqüències paral·leles que es descodifiquen per a les teves pròpies peticions de xat (0 = valor predeterminat de llama.cpp, 4). Flint reserva a més una ranura interna addicional per a peticions en segon pla (p. ex. títols automàtics dels fils), perquè no desallotgin la memòria cau KV del teu xat."
+  },
+  "reserve_background_slots": {
+    "title": "Reserva ranures en segon pla",
+    "description": "Manté dues ranures internes addicionals, a més de les seqüències paral·leles, per a peticions en segon pla (títols automàtics dels fils, Cowork, subagents) perquè no desallotgin la memòria cau KV del teu xat. Desactiva-ho per fer servir exactament tantes ranures com seqüències paral·leles (posa 1 per a una sola ranura); llavors les peticions en segon pla comparteixen la ranura del teu xat i en poden desallotjar la memòria cau. Torna a carregar el model."
+  },
+  "ngram_speculation": {
+    "title": "Descodificació especulativa per N-grames",
+    "description": "Genera tokens d'esborrany a partir del text que ja hi ha a la conversa (ngram-mod) i deixa que el model els verifiqui en un sol lot. La sortida és idèntica; les sortides repetitives, com ara edicions de codi o citacions, es generen de 3 a 10 vegades més ràpid, i la resta del text no es veu afectada. Els models amb el seu propi esborrany MTP fan servir aquest."
+  },
+  "cont_batching": {
+    "title": "Processament continu per lots",
+    "description": "Activa el processament continu per lots (també anomenat dinàmic) per a peticions simultànies. Activat per defecte, igual que a llama.cpp."
+  },
+  "no_mmap": {
+    "title": "Desactiva mmap",
+    "description": "No mapeja el model a la memòria (càrrega més lenta, però pot reduir la paginació si no es fa servir mlock)."
+  },
+  "lazy_mode": {
+    "title": "Lectura diferida de tensors",
+    "description": "Llegeix sota demanda des del disc les files dels tensors grans marcats per l'arquitectura (p. ex. embeddings per capa) en lloc de mantenir-les a la memòria. Auto ho aplica a partir de 4 GiB. Requereix mmap.",
+    "options": {
+      "auto": "Auto",
+      "on": "Activat",
+      "off": "Desactivat"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "Bloqueja el model a la RAM perquè no es passi mai a l'intercanvi. Combinat amb \"Desactiva mmap\", carrega els pesos sense mmap i després els bloqueja."
+  },
+  "cache_type_k": {
+    "title": "Tipus K de la memòria cau KV",
+    "description": "Tipus de dades de la memòria cau KV per a les claus (K). Auto fa servir q8_0, que redueix la memòria cau a la meitat amb una pèrdua de qualitat insignificant.",
+    "options": {
+      "auto": "Auto",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "Tipus V de la memòria cau KV",
+    "description": "Tipus de dades de la memòria cau KV per als valors (V). Auto fa servir q8_0 quan Flash Attention està Activat i f16 en cas contrari, ja que una memòria cau V quantificada necessita Flash Attention. Si un model no es carrega amb aquest tipus, es torna a provar una vegada amb f16.",
+    "options": {
+      "auto": "Auto",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "Mètode d'escalat RoPE",
+    "description": "Mètode d'escalat de freqüència RoPE. \"Predeterminat del model\" ho deixa en mans del model; \"Cap\" desactiva explícitament l'escalat.",
+    "options": {
+      "auto": "Predeterminat del model",
+      "none": "Cap",
+      "linear": "Lineal",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "Freqüència base de RoPE",
+    "description": "Freqüència base de RoPE (0 = es carrega del model).",
+    "placeholder": "0 (predeterminat del model)"
+  },
+  "rope_freq_scale": {
+    "title": "Factor d'escala de freqüència RoPE",
+    "description": "Factor d'escalat de freqüència RoPE. 0 carrega el valor del model; 1 força que no hi hagi escalat."
+  },
+  "cache_ram": {
+    "title": "RAM de la memòria cau de prompts (MiB)",
+    "description": "Mida de la memòria cau de prompts en MiB: la RAM que conserva el context d'altres converses perquè no s'hagi de tornar a llegir quan hi tornes. Buit o -2 = automàtic segons la teva RAM (20 % de la RAM del sistema, com a màxim la meitat de la lliure, 1024-8192); 0 = desactivat; -1 = il·limitat.",
+    "placeholder": "-2 (auto)"
+  },
+  "persist_thread_cache": {
+    "title": "Recorda les converses entre sessions",
+    "description": "Desa al disc la memòria cau de prompts de cada conversa perquè, en tornar-la a obrir, no calgui rellegir-la sencera. Només es restaura si el model, la seva configuració i la compilació de llama.cpp coincideixen amb els que la van desar."
+  },
+  "thread_cache_size": {
+    "title": "Límit de disc de la memòria cau de converses (MiB)",
+    "description": "Espai de disc per a les memòries cau de converses desades (per defecte: 2048). Quan s'arriba al límit, s'eliminen primer les més antigues. Una conversa llarga pot ocupar centenars de MiB."
+  },
+  "cache_reuse": {
+    "title": "Reutilització de la memòria cau",
+    "description": "Mida mínima del bloc de tokens de prefix coincidents que es reutilitzen de la memòria cau. 0 = desactivat."
+  },
+  "ctx_checkpoints": {
+    "title": "Punts de control del context",
+    "description": "Nombre màxim de punts de control del context per ranura, que permeten restaurar un context desplaçat en lloc de tornar-lo a processar."
+  },
+  "checkpoint_min_step": {
+    "title": "Pas mínim entre punts de control",
+    "description": "Nombre mínim de tokens entre punts de control del context."
+  },
+  "swa_full": {
+    "title": "Memòria cau SWA completa",
+    "description": "Fa servir una memòria cau KV de mida completa per als models amb atenció de finestra lliscant (p. ex. Gemma). Activa-ho si un model d'aquest tipus torna a processar tot el prompt a cada torn en lloc de reutilitzar la memòria cau; consumeix més memòria."
+  },
+  "kv_unified": {
+    "title": "Memòria cau KV unificada",
+    "description": "Fa servir una única memòria intermèdia KV unificada compartida entre totes les ranures. Estalvia memòria quan s'executen diverses ranures en paral·lel.",
+    "options": {
+      "auto": "Auto",
+      "on": "Activat",
+      "off": "Desactivat"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "Context per ranura",
+    "description": "Limita, en tokens, quanta memòria cau KV unificada pot fer servir una ranura. Amb 0, una ranura pot omplir tota la memòria cau. Només s'aplica quan la memòria cau està unificada."
+  },
+  "reasoning_preserve": {
+    "title": "Conserva l'historial de raonament",
+    "description": "Manté al prompt el raonament de tots els torns anteriors de l'assistent, no només del més recent. Només afecta els models amb una plantilla de xat que ho admet, i consumeix tokens del prompt."
+  },
+  "keep": {
+    "title": "Conserva els primers N tokens",
+    "description": "Nombre de tokens del prompt inicial que es conserven quan es desplaça el context. -1 = conservar-los tots."
+  },
+  "_ui": {
+    "moreInfo": "Més sobre {{setting}}",
+    "perModelSettings": "Configuració per model",
+    "perModelDefault": "Predeterminat (de la configuració: {{value}})",
+    "perModelDefaultAuto": "Predeterminat (de la configuració: Auto)"
+  }
+}

@@ -9,7 +9,9 @@
       "title": "Flint hoàn thành các tác vụ trong trình duyệt của bạn",
       "description": "Cài đặt tiện ích để cho phép Flint truy cập trình duyệt",
       "getExtension": "Tải tiện ích"
-    }
+    },
+    "requires": "Yêu cầu cài tiện ích mở rộng trình duyệt trên trình duyệt nền Chrome của bạn.",
+    "install": "Cài tiện ích mở rộng →"
   },
   "serverName": "Tên máy chủ",
   "enterServerName": "Nhập tên máy chủ",
@@ -172,7 +174,9 @@
     "selectRouterModelPlaceholder": "Chọn model định tuyến…",
     "routerModelSearchPlaceholder": "Tìm model…",
     "routerModelEmptyList": "Không có model nhẹ. Hãy thêm model nhỏ hơn hoặc cấu hình khóa API trong Models.",
-    "routerModelEmptySearch": "Không có kết quả cho “{{query}}”."
+    "routerModelEmptySearch": "Không có kết quả cho “{{query}}”.",
+    "idleShutdown": "Dừng máy chủ không hoạt động sau (phút)",
+    "idleShutdownDesc": "Máy chủ MCP không có lệnh gọi công cụ nào trong khoảng thời gian này sẽ bị dừng để giải phóng bộ nhớ và khởi động lại khi cần. Các máy chủ được đặt chạy cùng Flint vẫn tiếp tục chạy. Đặt 0 để không bao giờ dừng."
   },
   "auth": {
     "label": "Xác thực:",
@@ -259,7 +263,8 @@
   "lifecycle": {
     "startWithFlint": "Khởi động cùng Flint",
     "start": "Khởi động",
-    "stop": "Dừng"
+    "stop": "Dừng",
+    "toolTimeout": "Thời gian chờ công cụ (giây)"
   },
   "cwd": "Thư mục làm việc",
   "cwdPlaceholder": "Tùy chọn, ví dụ C:\\tools\\my-server",

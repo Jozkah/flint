@@ -31,6 +31,9 @@ export const PlatformShortcuts: ShortcutMap = {
   // Search - opens search dialog
   [ShortcutAction.SEARCH]: { key: 'k', usePlatformMetaKey: true },
 
+  // Find in chat - opens the find bar over the conversation on screen
+  [ShortcutAction.FIND_IN_CHAT]: { key: 'f', usePlatformMetaKey: true },
+
   // Switch assistant - opens the chat input assistant switcher
   [ShortcutAction.SWITCH_ASSISTANT]: { key: 'j', usePlatformMetaKey: true },
 

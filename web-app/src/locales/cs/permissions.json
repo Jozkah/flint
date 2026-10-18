@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint chce spustit {{command}} v {{workspace}}",
     "gitRemote": "Flint chce spustit {{command}}, což změní {{target}}",
     "gitDestructive": "Flint chce spustit {{command}}, což může způsobit ztrátu práce",
-    "approveCampaign": "Flint chce spustit kampaň „{{title}}“ (úkolů: {{count}})"
+    "approveCampaign": "Flint chce spustit kampaň „{{title}}“ (úkolů: {{count}})",
+    "spendPause": "Flint chce pokračovat v tomto běhu po dosažení limitu pozastavení výdajů"
   },
   "consequence": {
     "fileChange": "Může vytvářet, přepisovat nebo měnit obsah souborů.",
@@ -57,7 +58,8 @@
     "gitLocal": "Mění soubory, větve nebo historii tohoto repozitáře na tomto počítači.",
     "gitRemote": "Odesílá změny do vzdáleného repozitáře, který mohou vidět další lidé. Flint se ptá pokaždé, pokud pro tuto konverzaci dočasně nepovolíte běžné vzdálené akce Gitu.",
     "gitDestructive": "To, co odstraní nebo přepíše, nemusí jít obnovit.",
-    "campaignPlan": "Spustí samostatné relace, každou na vlastní větvi pracovního stromu, které čtou a mění soubory a souběžně čerpají z kvóty vašeho modelu. Schválení plánu neschvaluje žádné volání, které úkol provede. Flint se ptá pokaždé."
+    "campaignPlan": "Spustí samostatné relace, každou na vlastní větvi pracovního stromu, které čtou a mění soubory a souběžně čerpají z kvóty vašeho modelu. Schválení plánu neschvaluje žádné volání, které úkol provede. Flint se ptá pokaždé.",
+    "spendPause": "Běh dál spotřebovává placenou kvótu modelu, dokud neskončí nebo nedosáhne stropu. Zamítnutím se zastaví."
   },
   "repeat": {
     "allowedOnceBefore": "Tento příkaz jste v této konverzaci již jednou povolili."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Budoucí volání jednoho procesu odpovídající {{action}} se spustí bez dotazu, včetně jiných ID procesů. Jiné skripty se stále ptají. Odvolat to můžete v Nastavení > Oprávnění.",
     "allowClipboardReadExplanation": "Flint může číst budoucí obsah schránky ve všech konverzacích bez dotazu, dokud to neodvoláte v Nastavení > Oprávnění. Zápis do schránky se stále ptá.",
     "allowSimilarThreadExplanation": "Budoucí volání odpovídající {{action}} se v této konverzaci spustí bez dotazu. Odvolat to můžete v Nastavení > Oprávnění.",
-    "broader": "Širší"
+    "broader": "Širší",
+    "editedRunsOnce": "Upravené příkazy se spustí jen jednou."
   },
   "request": {
     "title": "Žádost o oprávnění",
@@ -217,10 +220,112 @@
     "gitDestructive": "Destruktivní: {{why}}. Před povolením zkontrolujte příkaz, vzdálený repozitář a větev.",
     "selfApproval": "{{tool}} schvaluje příkazy na {{server}} samo, což by modelu umožnilo odpovídat za vás. Flint se na to ptá pokaždé a odpověď si nikdy nepamatuje."
   },
+  "folderTrust": {
+    "title": "Důvěřovat této složce?",
+    "bodyHooks": "{{folder}} má vlastní hooky. Spouštějí příkazy a zůstávají vypnuté, dokud složce nebudete důvěřovat.",
+    "bodySubagents": "{{folder}} má vlastní definice agentů. Zůstávají vypnuté, dokud složce nebudete důvěřovat.",
+    "bodyBoth": "{{folder}} má vlastní hooky a definice agentů. Zůstávají vypnuté, dokud složce nebudete důvěřovat.",
+    "keepsOff": "Důvěřujte jen složkám, které jste napsali nebo přečetli. Důvěra se uchovává trvale; později ji můžete zrušit.",
+    "trust": "Důvěřovat složce",
+    "later": "Teď ne",
+    "failed": "Složce se nepodařilo důvěřovat",
+    "kept_one": "Hooky ponechány zapnuté pro složku, kterou už používáte: {{count}}. Zkontrolujte ji v Nastavení > Oprávnění > Důvěryhodné složky.",
+    "kept_other": "Hooky ponechány zapnuté pro složky, které už používáte: {{count}}. Zkontrolujte je v Nastavení > Oprávnění > Důvěryhodné složky.",
+    "kept_few": "Hooky ponechány zapnuté pro složky, které už používáte: {{count}}. Zkontrolujte je v Nastavení > Oprávnění > Důvěryhodné složky.",
+    "kept_many": "Hooky ponechány zapnuté pro složky, které už používáte: {{count}}. Zkontrolujte je v Nastavení > Oprávnění > Důvěryhodné složky."
+  },
+  "trustedFolders": {
+    "title": "Důvěryhodné složky",
+    "description": "Složky, jejichž vlastní hooky a definice agentů smějí běžet. Důvěra platí, dokud ji nevezmete zpět. Soubory, které může agent číst nebo měnit, jsou uvedeny v části Přístup ke složkám.",
+    "empty": "Zatím žádné důvěryhodné složky; Flint se zeptá poprvé, když složka obsahuje hooky nebo definice agentů.",
+    "add": "Důvěřovat složce…",
+    "stop": "Přestat důvěřovat",
+    "stopLabel": "Přestat důvěřovat složce {{folder}}",
+    "confirm": "Přestat důvěřovat složce {{folder}}? Její hooky a definice agentů zůstanou vypnuté, dokud jí znovu nebudete důvěřovat.",
+    "confirmYes": "Přestat důvěřovat",
+    "cancel": "Zrušit",
+    "loadFailed": "Důvěryhodné složky se nepodařilo načíst",
+    "grantFailed": "Složce se nepodařilo důvěřovat",
+    "revokeFailed": "Důvěru ke složce se nepodařilo zrušit"
+  },
+  "scopeForm": {
+    "question": "Pokud zvolíte Vždy, zapamatovat pro:",
+    "folder": "Uvnitř {{dir}}",
+    "folderHint": "Jen soubory v této složce, bez ohledu na zápis cesty. Odkaz mimo ni se nepočítá.",
+    "prefix": "Příkazy začínající na {{prefix}}",
+    "prefixHint": "Jen jeden obyčejný příkaz. Zřetězený, s rourou nebo přesměrovaný se zeptá znovu.",
+    "everywhere": "Každé volání {{tool}} v každém projektu",
+    "everywhereHint": "Původní význam Vždy. Velmi široké; zřídka to, co chcete.",
+    "saveFailed": "Tuto volbu se nepodařilo zapamatovat",
+    "alwaysFolder": "Vždy: uvnitř {{dir}}",
+    "alwaysPrefix": "Vždy: příkazy začínající na {{prefix}}",
+    "alwaysFolderExplanation": "Jen soubory v této složce, v tomto projektu, dokud to neodvoláte v Nastavení > Oprávnění.",
+    "alwaysPrefixExplanation": "Jen jednoduchý příkaz, který takto začíná, v tomto projektu, dokud to neodvoláte v Nastavení > Oprávnění. U zřetězeného, přesměrovaného nebo propojeného příkazu se zeptáme znovu."
+  },
+  "rules": {
+    "title": "Zapamatovaná schválení",
+    "description": "Co jste povolili tlačítkem Vždy, omezené na jednu složku nebo jednu předponu příkazu. Pravidlo platí jen ve svém projektu a nikdy neruší zamítnutí ani otázku, kterou Flint pokládá pokaždé.",
+    "empty": "Zatím není nic zapamatováno. Zvolte u výzvy Vždy a pak složku nebo předponu příkazu.",
+    "folder": "Uvnitř {{dir}}",
+    "prefix": "Příkazy začínající na {{prefix}}",
+    "run": "Zbytek tohoto běhu",
+    "once": "Jednou",
+    "project": "V {{project}}",
+    "revoke": "Odvolat",
+    "revokeLabel": "Odvolat schválení pro {{tool}}: {{scope}}",
+    "loadFailed": "Zapamatovaná schválení se nepodařilo načíst",
+    "revokeFailed": "Schválení se nepodařilo odvolat"
+  },
+  "deferred": {
+    "title": "Čekající schválení",
+    "description": "Běhy, které narazily na otázku, když nikdo nemohl odpovědět, si ji zapsaly a zastavily se. Odpovězte zde a obnovte relaci: volání se provede jednou, pokud bude před uplynutím lhůty navrženo znovu.",
+    "empty": "Nic nečeká na odpověď.",
+    "allow": "Povolit",
+    "deny": "Zamítnout",
+    "discard": "Odebrat",
+    "session": "Relace {{session}}",
+    "deadline": "Odpovědět do {{when}}",
+    "status": {
+      "pending": "Čeká",
+      "allowed": "Povoleno",
+      "denied": "Zamítnuto",
+      "expired": "Vypršelo",
+      "void": "Neplatné",
+      "consumed": "Použito"
+    },
+    "loadFailed": "Čekající schválení se nepodařilo načíst",
+    "answerFailed": "Odpověď se nepodařilo zaznamenat",
+    "allowLabel": "Povolit: {{summary}}",
+    "denyLabel": "Zamítnout: {{summary}}",
+    "discardLabel": "Odebrat: {{summary}}"
+  },
   "toast": {
     "trustFailed": "Tento server se nepodařilo zapamatovat",
     "cancelledOne": "Schválení pro {{names}} bylo zrušeno",
     "cancelledMany": "Schválení zrušena ({{count}}): {{names}}",
     "cancelledDescription": "Chat byl opuštěn dřív, než jste odpověděli. Odešlete žádost znovu."
+  },
+  "desktopOnly": "K dispozici jen v desktopové aplikaci Flint.",
+  "folderAccess": {
+    "title": "Přístup ke složkám",
+    "description": "Složky a soubory mimo pracovní prostor agenta, které jste agentovi povolili číst nebo měnit. Zda smějí běžet vlastní hooky složky, se nastavuje v části Důvěryhodné složky.",
+    "empty": "Zatím nebyl udělen žádný přístup ke složkám.",
+    "readWrite": "Čtení i zápis",
+    "readOnly": "Jen čtení",
+    "untilRevoked": "Všechny konverzace, dokud se neodvolá",
+    "untilDate": "Tato konverzace, do {{when}}",
+    "revoke": "Odvolat",
+    "revokeLabel": "Odvolat přístup k {{path}}"
+  },
+  "spendPause": {
+    "preview": "Pokračovat v běhu (zatím utraceno asi {{spent}})",
+    "previewCeiling": "Pokračovat v běhu až do stropu {{ceiling}} (zatím utraceno asi {{spent}})"
+  },
+  "remote": {
+    "runsOnServer": "Běží na serveru.",
+    "runsOnServerAt": "Běží na serveru: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Změny čekající na vaše schválení"
   }
 }

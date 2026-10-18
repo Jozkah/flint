@@ -54,3 +54,19 @@ describe('cloud context overflow wording', () => {
     expect(isLocalContextOverflowMessage(openai)).toBe(false)
   })
 })
+
+describe('a refusal', () => {
+  it('is read from either spelling of the finish reason', async () => {
+    const { isRefusal } = await import('../chatFinish')
+    expect(isRefusal('content-filter')).toBe(true)
+    expect(isRefusal('content_filter')).toBe(true)
+    expect(isRefusal('stop')).toBe(false)
+    expect(isRefusal(undefined)).toBe(false)
+  })
+
+  it('is not reported as an empty reply, since it explains itself', () => {
+    expect(
+      isEmptyReply({ message: assistant([]), isAbort: false, isError: false, finishReason: 'content-filter' })
+    ).toBe(false)
+  })
+})

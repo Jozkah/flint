@@ -81,17 +81,25 @@ export function useMcpAuth(serverNames: string[]) {
   // The backend emits the consent url before it starts waiting on the redirect,
   // so the link is available for the whole time the flow is pending.
   useEffect(() => {
-    const unlisten = listen<{ server: string; url: string }>(
-      'mcp-oauth-url',
-      (event) => {
-        setConsentUrls((prev) => ({
-          ...prev,
-          [event.payload.server]: event.payload.url,
-        }))
-      }
-    )
+    // Outside the desktop app (the browser client) there is no event bridge:
+    // listening throws, and that must not take the page down with it.
+    let unlisten: Promise<() => void> | undefined
+    try {
+      unlisten = listen<{ server: string; url: string }>(
+        'mcp-oauth-url',
+        (event) => {
+          setConsentUrls((prev) => ({
+            ...prev,
+            [event.payload.server]: event.payload.url,
+          }))
+        }
+      )
+      unlisten.catch(() => undefined)
+    } catch {
+      unlisten = undefined
+    }
     return () => {
-      void unlisten.then((off) => off())
+      void unlisten?.then((off) => off()).catch(() => undefined)
     }
   }, [])
 

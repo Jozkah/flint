@@ -8,8 +8,17 @@ import {
   type MemoryScope,
   type MemoryView,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { ChevronDown, PanelRight, RefreshCw, X } from 'lucide-react'
+import {
+  CheckIcon,
+  ChevronDown,
+  FileWarning,
+  PanelRight,
+  Paperclip,
+  RefreshCw,
+  X,
+} from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
+import { EmptyState } from '@/components/ui/empty-state'
 import {
   AutoCompactRow,
   ChatActivityFrame,
@@ -37,6 +46,8 @@ import { extractFilesFromPrompt, type FileMetadata } from '@/lib/fileMetadata'
 import { contextUsage } from '@/lib/contextUsage'
 import { useProviderLocations } from '@/hooks/useEndpointLocations'
 import { cn, isLocalProvider } from '@/lib/utils'
+import { endpointHost } from '@/lib/modelLocation'
+import { endpointScope } from '@/lib/endpointDiagnostics'
 import {
   evidenceFromSnapshot,
   summarizeChatContext,
@@ -343,7 +354,10 @@ export function WhatJanIsUsingToggle({
       )}
     >
       <PanelRight className="size-3.5" aria-hidden />
-      <span className="max-sm:sr-only">{t('context:details')}</span>
+      {/* A narrow header keeps the icon; the label would be cut (C068). */}
+      <span className="max-sm:sr-only @max-[24rem]/hslot:sr-only">
+        {t('context:details')}
+      </span>
     </Button>
   )
 }
@@ -379,6 +393,8 @@ export function WhatJanIsUsingPanel({
   const [tab, setTab] = useState<DetailsTab>('using')
   // Long sections (every tool of a server) show their first few items.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  // Which items show the reason behind their state.
+  const [whyOpen, setWhyOpen] = useState<Record<string, boolean>>({})
 
   const thread = useThreads((s) => s.threads[threadId])
   const selectedModel = useModelProvider((s) => s.selectedModel)
@@ -539,6 +555,17 @@ export function WhatJanIsUsingPanel({
     (name) => Boolean(isLocalProvider(name))
   )
 
+  // This device, the user's network or the internet: the same answer the
+  // provider page gives (T7-115).
+  const providerReach = useCallback(
+    (p: { provider: string; base_url?: string }) => {
+      const location = locateProvider(p)
+      if (location !== 'local' || isLocalProvider(p.provider)) return location
+      return endpointScope(p.base_url) === 'loopback' ? 'local' : 'network'
+    },
+    [locateProvider]
+  )
+
   const currentProject = thread?.metadata?.project
   const sections = useMemo(
     () =>
@@ -546,7 +573,8 @@ export function WhatJanIsUsingPanel({
         model: {
           id: selectedModel?.id,
           provider: selectedProvider,
-          location: provider ? locateProvider(provider) : 'unknown',
+          location: provider ? providerReach(provider) : 'unknown',
+          host: provider && !isLocalProvider(provider.provider) ? endpointHost(provider.base_url) : null,
         },
         assistant: {
           name: thread?.assistants?.[0]?.name,
@@ -588,7 +616,7 @@ export function WhatJanIsUsingPanel({
       evidence,
       currentProject,
       lastProjectName,
-      locateProvider,
+      providerReach,
     ]
   )
 
@@ -640,81 +668,167 @@ export function WhatJanIsUsingPanel({
     return t(`context:notice.${notice.key}`, values)
   }
 
+  // The empty Files tab says what happened and what to do about it; a bare
+  // "could not be listed" read as a broken panel.
+  const renderEmpty = (section: ContextSection) => {
+    if (section.id !== 'attachments') {
+      return (
+        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+          {t(`context:empty.${section.emptyReason}`)}
+        </p>
+      )
+    }
+    const failed = section.emptyReason === 'indexUnavailable'
+    return (
+      <EmptyState
+        className="py-6"
+        data-testid={`context-empty-${section.emptyReason}`}
+        icon={failed ? <FileWarning /> : <Paperclip />}
+        title={t(`context:empty.${section.emptyReason}`)}
+        description={t(`context:empty.${section.emptyReason}Hint`)}
+        action={
+          failed ? (
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="context-files-retry"
+              onClick={() => setRefreshKey((k) => k + 1)}
+            >
+              <RefreshCw className="size-3.5" aria-hidden />
+              {t('context:retry')}
+            </Button>
+          ) : undefined
+        }
+      />
+    )
+  }
+
+  // A line of fact under the status: the provider's token usage was recorded.
+  // It is not a second request, so it gets no second "Provider responded".
+  const renderUsage = (item: ContextItem) => (
+    <li
+      key={item.key}
+      className="flex items-start gap-1.5 text-xs text-muted-foreground"
+      data-testid={`context-item-${item.key}`}
+      data-state={item.state}
+    >
+      <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />
+      <span>
+        <span className="text-foreground">{labelFor(item)}</span>
+        {item.reason && (
+          <>
+            {' '}
+            <span>{t(`context:reason.${item.reason}`, item.reasonParams)}</span>
+          </>
+        )}
+      </span>
+    </li>
+  )
+
+  const renderItem = (section: ContextSection, item: ContextItem) => {
+    if (section.id === 'payload' && item.key === 'payload:usage') {
+      return renderUsage(item)
+    }
+    // The request's own line is status, so its reason stays in view; for
+    // everything else the reason is rationale, one tap away behind "Why".
+    const statusLine = section.id === 'payload'
+    const reasonOpen = statusLine || Boolean(whyOpen[item.key])
+    const reasonId = `${tabsId}-why-${item.key}`
+    // The request's line sits under the "Last request" heading already, so
+    // it leads with the provider and model rather than repeating the words.
+    const title =
+      item.key === 'payload:request' && item.detail ? item.detail : labelFor(item)
+    const meta = [
+      title === item.detail ? null : item.detail,
+      item.scope ? t(`context:scope.${item.scope}`) : null,
+    ].filter(Boolean)
+    return (
+      <li
+        key={item.key}
+        className="flex flex-col gap-1.5"
+        data-testid={`context-item-${item.key}`}
+        data-state={item.state}
+      >
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="text-[12.5px] leading-5 break-words text-foreground">
+            {title}
+          </p>
+          {meta.length > 0 && (
+            <p className="text-xs leading-relaxed break-words text-muted-foreground">
+              {meta.join(' · ')}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <StateChip
+            state={item.state}
+            label={t(`context:state.${item.state}`)}
+          />
+          {item.reason && !statusLine && (
+            <button
+              type="button"
+              aria-expanded={reasonOpen}
+              aria-controls={reasonId}
+              data-testid={`context-why-${item.key}`}
+              onClick={() =>
+                setWhyOpen((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
+              }
+              className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
+            >
+              {t('context:why')}
+            </button>
+          )}
+          {item.action && (
+            <Button
+              size="sm"
+              variant="link"
+              className="h-auto px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
+              onClick={() => runAction(item.action!, item)}
+            >
+              {t(`context:action.${item.action}`)}
+            </Button>
+          )}
+        </div>
+        {item.reason && (
+          <p
+            id={reasonId}
+            hidden={!reasonOpen}
+            className="text-xs leading-relaxed text-muted-foreground"
+          >
+            {t(`context:reason.${item.reason}`, item.reasonParams)}
+          </p>
+        )}
+      </li>
+    )
+  }
+
   const renderSection = (section: ContextSection) => (
     <section
       key={section.id}
       aria-labelledby={`${tabsId}-context-${section.id}`}
       data-testid={`context-section-${section.id}`}
-      className="border-b border-dashed border-border py-2.5 last:border-b-0"
+      className="border-b border-dashed border-border py-3.5 first:pt-3 last:border-b-0"
     >
       <h3
         id={`${tabsId}-context-${section.id}`}
-        className="text-[13px] font-medium text-foreground"
+        className="text-[13px] leading-5 font-medium text-foreground"
       >
         {t(`context:section.${section.id}`)}
       </h3>
       {section.items.length === 0 ? (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t(`context:empty.${section.emptyReason}`)}
-        </p>
+        renderEmpty(section)
       ) : (
-        <ul className="flex flex-col gap-2.5 pt-0.5">
+        <ul className="flex flex-col gap-3 pt-2">
           {(expanded[section.id]
             ? section.items
             : section.items.slice(0, SECTION_PREVIEW)
-          ).map((item) => (
-            <li
-              key={item.key}
-              className="flex flex-col items-start gap-1.5"
-              data-testid={`context-item-${item.key}`}
-              data-state={item.state}
-            >
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <p className="break-words text-xs text-muted-foreground">
-                  <span>{labelFor(item)}</span>
-                  {item.detail ? (
-                    <>
-                      <span aria-hidden className="text-subtle-foreground"> · </span>
-                      <span className="text-subtle-foreground">{item.detail}</span>
-                    </>
-                  ) : null}
-                  {item.scope ? (
-                    <>
-                      <span aria-hidden className="text-subtle-foreground"> · </span>
-                      <span className="text-subtle-foreground">
-                        {t(`context:scope.${item.scope}`)}
-                      </span>
-                    </>
-                  ) : null}
-                </p>
-                {item.reason && (
-                  <p className="text-[11.5px] leading-snug text-subtle-foreground">
-                    {t(`context:reason.${item.reason}`)}
-                  </p>
-                )}
-              </div>
-              <StateChip
-                state={item.state}
-                label={t(`context:state.${item.state}`)}
-              />
-              {item.action && (
-                <Button
-                  size="sm"
-                  variant="link"
-                  className="h-auto px-0 text-[12.5px] text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
-                  onClick={() => runAction(item.action!, item)}
-                >
-                  {t(`context:action.${item.action}`)}
-                </Button>
-              )}
-            </li>
-          ))}
+          ).map((item) => renderItem(section, item))}
         </ul>
       )}
       {section.items.length > SECTION_PREVIEW && (
         <button
           type="button"
-          className="mt-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
+          className="mt-2.5 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
           aria-expanded={Boolean(expanded[section.id])}
           onClick={() =>
             setExpanded((prev) => ({ ...prev, [section.id]: !prev[section.id] }))
@@ -725,31 +839,49 @@ export function WhatJanIsUsingPanel({
             : t('context:showAll', { count: section.items.length })}
         </button>
       )}
-      {section.notices?.map((notice) => (
-        <p
-          key={notice.key}
-          role="note"
-          className="mt-2 text-xs leading-relaxed text-muted-foreground"
-          data-testid={`context-notice-${notice.key}`}
-        >
-          {noticeText(notice)}
-        </p>
-      ))}
+      {section.notices?.map((notice) =>
+        notice.key === 'adapterBoundary' ? (
+          // The caveat on "verified": reference material, behind a disclosure.
+          <details key={notice.key} className="group mt-3">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronDown
+                aria-hidden
+                className="size-3.5 shrink-0 -rotate-90 transition-transform group-open:rotate-0"
+              />
+              {t('context:verifiedMeaning')}
+            </summary>
+            <p
+              role="note"
+              className="mt-1.5 pl-5 text-xs leading-relaxed text-muted-foreground"
+              data-testid={`context-notice-${notice.key}`}
+            >
+              {noticeText(notice)}
+            </p>
+          </details>
+        ) : (
+          <p
+            key={notice.key}
+            role="note"
+            className="mt-3 rounded-lg bg-warning-tint px-2.5 py-2 text-xs leading-relaxed text-fg-2"
+            data-testid={`context-notice-${notice.key}`}
+          >
+            {noticeText(notice)}
+          </p>
+        )
+      )}
       {section.id === 'memory' && section.items.length > 0 && (
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="mt-2.5 text-xs text-muted-foreground">
           {t('context:memoryScopeNote')}
         </p>
       )}
       {section.snapshotId && (
         <div className="mt-3" data-testid="context-inspect-request">
-          <p className="mb-1 text-xs font-medium text-foreground">
-            {t('context:inspect')}
-          </p>
           {/* Advanced and collapsed by default: the sanitized record, read
               back from disk and scoped to this conversation. */}
           <PromptSnapshotView
             snapshotId={section.snapshotId}
             sessionId={threadId}
+            summary={t('context:inspect')}
           />
         </div>
       )}
@@ -784,7 +916,7 @@ export function WhatJanIsUsingPanel({
           document.getElementById(`${tabsId}-tab-${next}`)?.focus()
         }}
         className={cn(
-          'relative flex h-9 items-center gap-1.5 px-2 text-[12.5px] font-medium whitespace-nowrap transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11',
+          'relative flex h-10 items-center gap-1.5 px-2.5 text-[12.5px] font-medium whitespace-nowrap transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11',
           selected
             ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-t-full after:bg-primary'
             : 'text-muted-foreground hover:text-foreground'
@@ -864,7 +996,7 @@ export function WhatJanIsUsingPanel({
           <div
             role="tablist"
             aria-label={t('context:tabs.label')}
-            className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-b border-dashed border-border px-2.5"
+            className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-b border-dashed border-border px-1.5 [scrollbar-width:none]"
           >
             {tabButton('using', t('context:tabs.using'))}
             {tabButton('files', t('context:tabs.files'), fileCount)}
@@ -875,7 +1007,7 @@ export function WhatJanIsUsingPanel({
             aria-labelledby={`${tabsId}-tab-using`}
             hidden={tab !== 'using'}
           >
-            <div className="px-4">
+            <div className="px-4 pb-1">
               {included.map(renderSection)}
               {payload.map(renderSection)}
             </div>
@@ -886,7 +1018,7 @@ export function WhatJanIsUsingPanel({
             aria-labelledby={`${tabsId}-tab-files`}
             hidden={tab !== 'files'}
           >
-            <div className="px-4">{attachments.map(renderSection)}</div>
+            <div className="px-4 pb-1">{attachments.map(renderSection)}</div>
           </div>
         </FrameBody>
       </Frame>

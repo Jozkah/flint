@@ -742,6 +742,96 @@ async fn upload_attaches_a_file_from_the_working_folder_and_refuses_everything_e
 }
 
 #[tokio::test]
+async fn download_saves_one_file_into_a_confined_folder_and_everything_else_stays_refused() {
+    if !browser_or_skip("download") {
+        return;
+    }
+    let _g = GATE.lock().await;
+    let app = serve();
+    let base = std::env::temp_dir().join(format!("flint-download-{}", std::process::id()));
+    let work = base.join("work");
+    let outside = base.join("outside");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let store = base.join("store");
+    std::fs::create_dir_all(&store).unwrap();
+    let enabled: Vec<String> = vec![];
+    let tool = crate::tools::lookup("browser").unwrap();
+    let call = |n: u32| crate::lifecycle::Token::new(Scope::new("sess-d", "run-d", format!("c{n}")));
+    let run_call = |n: u32, args: Value| {
+        let (work, store, enabled) = (work.clone(), store.clone(), enabled.clone());
+        async move {
+            let ctx = crate::tools::ToolContext::new(&work, &store, &enabled).with_cancel(call(n));
+            crate::tools::handlers::execute_builtin(tool, &args, &ctx).await.0
+        }
+    };
+
+    run_call(1, json!({ "action": "open", "url": app.url("/") })).await;
+    let snap = run_call(2, json!({ "action": "snapshot" })).await;
+    let link = ref_of(&snap, "link \"Download\"");
+
+    // The refusals come first: nothing is saved, nothing is created outside.
+    let host = outside.join("new").to_string_lossy().into_owned();
+    for (path, why) in [(host.as_str(), "outside your working folder"), ("../outside", "\"..\""), ("", "needs a `path`")] {
+        let r = run_call(3, json!({ "action": "download", "ref": link, "path": path })).await;
+        assert!(r.starts_with("ERROR") && r.contains(why), "{path}: {r}");
+    }
+    assert!(!outside.join("new").exists());
+    assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
+
+    let ok = run_call(4, json!({ "action": "download", "ref": link, "path": "got" })).await;
+    assert!(ok.contains("Saved a.zip (2 bytes)") && ok.contains("untrusted"), "{ok}");
+    assert_eq!(std::fs::read(work.join("got").join("a.zip")).unwrap(), b"PK");
+    // A second download never replaces the first, and the scratch folder is gone.
+    let again = run_call(5, json!({ "action": "download", "ref": link, "path": "got" })).await;
+    assert!(again.contains("a (2).zip"), "{again}");
+    let names: Vec<String> = std::fs::read_dir(work.join("got")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    // Outside the action, downloads are refused again.
+    let plain = run_call(6, json!({ "action": "click", "ref": link })).await;
+    assert!(plain.contains("refused"), "{plain}");
+    assert_eq!(std::fs::read_dir(work.join("got")).unwrap().count(), 2);
+    // A ref that downloads nothing says so.
+    let h1 = ref_of(&snap, "button \"Greet\"");
+    let none = run_call(7, json!({ "action": "download", "ref": h1, "path": "got", "timeout": 1000 })).await;
+    assert!(none.starts_with("ERROR") && none.contains("no download started"), "{none}");
+    // Without a confined folder from the tool layer the session itself refuses.
+    let direct = session::run(&caller("d-direct"), &json!({ "action": "download", "ref": "e1", "path": "got" })).await;
+    assert!(direct.text.starts_with("ERROR"), "{}", direct.text);
+    run_call(8, json!({ "action": "close" })).await;
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[tokio::test]
+async fn wait_conditions_combine_and_time_out_naming_what_is_missing() {
+    if !browser_or_skip("wait-conditions") {
+        return;
+    }
+    let _g = GATE.lock().await;
+    let app = serve();
+    let c = caller("wait-cond");
+    act(&c, json!({ "action": "open", "url": app.url("/") })).await;
+    let snap = act(&c, json!({ "action": "snapshot" })).await;
+    let greet = ref_of(&snap, "button \"Greet\"");
+    act(&c, json!({ "action": "click", "ref": greet })).await;
+    let ok = act(&c, json!({ "action": "wait", "text": "Hello", "selector": "#out", "title_contains": "Demo", "ready": true })).await;
+    assert!(ok.contains("Done waiting for") && !ok.starts_with("ERROR"), "{ok}");
+    let gone = act(&c, json!({ "action": "wait", "selector_gone": "#nothing-here", "text_gone": "zzz-not-there" })).await;
+    assert!(gone.contains("Done waiting"), "{gone}");
+    let stuck = act(&c, json!({ "action": "wait", "text_gone": "Hello", "selector": "#out", "timeout": 300 })).await;
+    assert!(stuck.starts_with("ERROR") && stuck.contains("disappear") && !stuck.contains("an element matching"), "only the unmet one is named: {stuck}");
+    let bad = act(&c, json!({ "action": "wait", "url_contains": "/never", "timeout": 300 })).await;
+    assert!(bad.contains("timed out") && bad.contains("/never"), "{bad}");
+    let link = ref_of(&act(&c, json!({ "action": "snapshot" })).await, "link \"Next page\"");
+    act(&c, json!({ "action": "click", "ref": link })).await;
+    let moved = act(&c, json!({ "action": "wait", "url_contains": "/next", "text": "Next page" })).await;
+    assert!(moved.contains("Done waiting"), "{moved}");
+    let none = act(&c, json!({ "action": "wait" })).await;
+    assert!(none.starts_with("ERROR") && none.contains("url_contains"), "{none}");
+    act(&c, json!({ "action": "close" })).await;
+}
+
+#[tokio::test]
 async fn a_compact_screenshot_is_a_bounded_jpeg_and_the_default_stays_a_png() {
     if !browser_or_skip("compact-image") {
         return;
@@ -750,7 +840,7 @@ async fn a_compact_screenshot_is_a_bounded_jpeg_and_the_default_stays_a_png() {
     let app = serve();
     let c = caller("compact");
     act(&c, json!({ "action": "open", "url": app.url("/") })).await;
-    let opts = session::Options { upload: None, compact_image: true };
+    let opts = session::Options { upload: None, download_dir: None, compact_image: true };
     let small = session::run_with(&c, &json!({ "action": "screenshot" }), &opts).await;
     let jpeg = small.image.expect("a compact screenshot");
     assert_eq!(small.image_mime, "image/jpeg");

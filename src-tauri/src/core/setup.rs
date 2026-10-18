@@ -246,10 +246,34 @@ pub fn setup_mcp<R: Runtime>(app: &App<R>) {
     // local API server's tool execution) start enabled servers through this.
     {
         let hook_app = app_handle.clone();
-        crate::core::mcp::lazy::install_ensure_all_hook(Box::new(move || {
+        crate::core::mcp::lazy::install_ensure_all_hook(Box::new(move |cap| {
             let app = hook_app.clone();
             Box::pin(async move {
-                crate::core::mcp::helpers::ensure_all_enabled_started(&app).await;
+                crate::core::mcp::helpers::ensure_all_enabled_started_within(&app, cap).await
+            })
+        }));
+    }
+    // A server that keeps timing out is stopped from paths that hold no app
+    // handle (the agent loop); it starts again on its next use.
+    {
+        let hook_app = app_handle.clone();
+        crate::core::mcp::stall::install_stop_hook(Box::new(move |name| {
+            let app = hook_app.clone();
+            Box::pin(async move {
+                let config = app
+                    .state::<AppState>()
+                    .mcp_active_servers
+                    .lock()
+                    .await
+                    .get(&name)
+                    .cloned();
+                let _ = crate::core::mcp::helpers::stop_running_mcp_server(
+                    &app,
+                    &name,
+                    config.as_ref(),
+                )
+                .await;
+                crate::core::mcp::helpers::emit_mcp_update_event(&app, &name);
             })
         }));
     }
@@ -306,6 +330,24 @@ pub fn show_tray<R: Runtime>(app: &AppHandle<R>) {
             }
         }
     });
+}
+
+/// Create the tray icon now, on the calling thread (setup runs on the main
+/// thread), and report whether one exists afterwards. `show_tray` only queues
+/// the work, so a caller that must know the icon is there (start-minimized
+/// hides the window) uses this.
+#[cfg(feature = "desktop")]
+pub fn ensure_tray_now<R: Runtime>(app: &AppHandle<R>) -> bool {
+    if app.tray_by_id(TRAY_ID).is_some() {
+        return true;
+    }
+    match setup_tray(app) {
+        Ok(_) => true,
+        Err(e) => {
+            log::error!("Failed to create tray icon: {e}");
+            false
+        }
+    }
 }
 
 #[cfg(feature = "desktop")]

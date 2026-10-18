@@ -77,7 +77,7 @@ pub struct Request<'a> {
     pub model: &'a str,
 }
 
-fn glob_matches(pattern: &str, text: &str) -> bool {
+pub(crate) fn glob_matches(pattern: &str, text: &str) -> bool {
     // One wildcard character, and it may appear anywhere: `gpt-*`, `*-mini`,
     // `*turbo*`. Anything more is a pattern language nobody asked for.
     let mut remaining = text;

@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "Batu tulis",
+    "vermilion": "Merah terakota",
+    "ink": "Tinta",
+    "moss": "Lumut",
+    "slate": "Biru batu tulis",
+    "violet": "Ungu"
+  },
+  "fontSizeNames": {
+    "small": "Kecil",
+    "medium": "Sedang",
+    "large": "Besar",
+    "extraLarge": "Sangat besar"
+  },
+  "unknownSize": "Ukuran tidak diketahui",
+  "official": "Resmi",
+  "configuration": "Konfigurasi",
+  "modelCombobox": {
+    "refresh": "Segarkan model",
+    "placeholder": "Ketik atau pilih model..."
+  },
+  "hubTasks": {
+    "moreAria": "Cara lain untuk menjelajah",
+    "more": "Lainnya",
+    "all": "Semua",
+    "chat": "Obrolan",
+    "coding": "Pemrograman",
+    "reasoning": "Penalaran",
+    "vision": "Visi",
+    "small": "Kecil & cepat",
+    "tools": "Penggunaan alat",
+    "multilingual": "Multibahasa",
+    "speech": "Ucapan",
+    "embeddings": "Embedding",
+    "summaries": "Ringkasan",
+    "translation": "Terjemahan"
+  },
+  "tokenSpeed": {
+    "aria": "Penggunaan token pesan ini",
+    "tooltip": "Penggunaan token",
+    "generation": "Pembuatan",
+    "reading": "Pembacaan",
+    "draftAccepted": "Draf diterima",
+    "tokens": "Token",
+    "memoryInRequest": "Memori dalam permintaan ini",
+    "memoriesSent": "Memori terkirim",
+    "withheld": "Ditahan karena bertentangan: {{ids}}",
+    "perSec": "{{n}} token/dtk",
+    "count": "{{n}} token"
+  },
+  "serverHost": {
+    "edit": "Ubah host server"
+  },
+  "extensions": {
+    "plugins": "Plugin",
+    "global": "Global",
+    "workspace": "Ruang kerja",
+    "toggle": "Alihkan {{name}}",
+    "enable": "Aktifkan",
+    "disable": "Nonaktifkan",
+    "workspaceOnly": "Hanya ruang kerja",
+    "globalAll": "Global (semua ruang kerja)",
+    "enabledToast": "{{name}} diaktifkan",
+    "disabledToast": "{{name}} dinonaktifkan"
+  },
+  "scope": "Cakupan",
+  "localApi": {
+    "starting": "Memulai server...",
+    "startingDesc": "Mencoba memulai server di port {{port}}",
+    "status": "Status Server",
+    "runningDesc": "Server sedang berjalan.",
+    "stoppedDesc": "Server berhenti.",
+    "running": "Berjalan",
+    "stopped": "Berhenti"
+  },
+  "toolOutputAlt": "Keluaran alat",
+  "memory": {
+    "exportFilter": "Ekspor memori Flint",
+    "why": "Mengapa Flint mengingat ini",
+    "writtenBy": "Ditulis oleh",
+    "created": "Dibuat",
+    "updated": "Diperbarui",
+    "fromConversation": "Dari percakapan",
+    "fromMessage": "Dari pesan",
+    "projectIdentity": "Identitas proyek",
+    "replaces": "Menggantikan",
+    "redacted": "Disamarkan",
+    "expires": "Kedaluwarsa",
+    "version": "Versi",
+    "source": "Sumber",
+    "importedFrom": "Diimpor dari",
+    "originally": "Awalnya",
+    "fromRun": "Dari proses",
+    "savedInProject": "Disimpan di proyek",
+    "contentHash": "Hash konten",
+    "earlierVersions": "Versi sebelumnya",
+    "usedIn": "Digunakan di",
+    "notRecorded": "tidak tercatat",
+    "deletedSince": "(sudah dihapus)",
+    "yes": "ya",
+    "no": "tidak",
+    "versionUnknown": "tidak diketahui (disimpan sebelum versi dicatat)",
+    "unknown": "tidak diketahui",
+    "importedExport": "ekspor {{id}} ({{scope}}, {{when}})",
+    "createdWhen": "dibuat {{when}}",
+    "conversationId": "percakapan {{id}}",
+    "runId": "proses {{id}}",
+    "turnId": "giliran {{id}}",
+    "snapshotId": "snapshot {{id}}",
+    "noRequests": "belum ada permintaan yang tercatat"
+  }
+}

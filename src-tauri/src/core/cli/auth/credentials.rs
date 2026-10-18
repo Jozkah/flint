@@ -12,6 +12,11 @@ const CREDENTIAL_VERSION: u32 = 1;
 
 /// What a provider account is authenticated with. Stored only as a versioned
 /// record under `auth:<provider>`; never in config, logs, or transcripts.
+///
+/// `OAuthToken` is legacy: the Codex and Claude account sign-ins that wrote it
+/// were removed. The variant stays so an old record still loads (and can be
+/// reported and signed out) instead of failing to parse; nothing reads its
+/// token and nothing writes a new one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum Credential {
@@ -28,13 +33,6 @@ impl Credential {
         }
     }
 
-    /// The OAuth token bundle, when this credential is an account login.
-    pub fn as_oauth(&self) -> Option<&OAuthToken> {
-        match self {
-            Credential::ApiKey(_) => None,
-            Credential::OAuthToken(token) => Some(token),
-        }
-    }
 }
 
 /// An OAuth access token plus the fields needed to refresh it.
@@ -115,6 +113,20 @@ impl CredentialStore {
     }
 }
 
+/// Whether `provider` holds an account login left by the removed Codex/Claude
+/// sign-in. It cannot authenticate anything; callers use this to say so and
+/// point at an API key instead.
+pub fn has_removed_account_login(provider: &str) -> bool {
+    matches!(
+        CredentialStore::load(provider),
+        Ok(Some(Credential::OAuthToken(_)))
+    )
+}
+
+/// Shown when a provider is selected while only a removed account login is stored.
+pub const REMOVED_ACCOUNT_LOGIN_NOTICE: &str =
+    "the account sign-in for this provider was removed; sign in with an API key instead (/login)";
+
 fn secret_key(provider: &str) -> String {
     format!("auth:{provider}")
 }
@@ -185,11 +197,30 @@ mod tests {
     }
 
     #[test]
-    fn credential_store_roundtrips_oauth_without_provider_config() {
+    fn a_stored_account_login_still_loads_and_is_reported_as_removed() {
         let _tmp = TempSecrets::new();
         let credential = oauth_credential();
         CredentialStore::store("openai", &credential).unwrap();
         assert_eq!(CredentialStore::load("openai").unwrap(), Some(credential));
+        assert!(has_removed_account_login("openai"));
+        assert_eq!(
+            CredentialStore::load("openai").unwrap().unwrap().as_api_key(),
+            None,
+            "the legacy token is never usable as a key"
+        );
+
+        CredentialStore::store("anthropic", &Credential::ApiKey("sk-ant".into())).unwrap();
+        assert!(!has_removed_account_login("anthropic"));
+        assert!(!has_removed_account_login("deepseek"));
+    }
+
+    #[test]
+    fn a_pre_removal_oauth_record_on_disk_parses() {
+        let _tmp = TempSecrets::new();
+        // The exact shape the removed sign-in wrote.
+        let raw = r#"{"version":1,"credential":{"kind":"o_auth_token","value":{"access_token":"a","refresh_token":"r","expires_at":1800000000,"token_type":"Bearer","scopes":["x"]}}}"#;
+        provider_secrets::store_secret_record(&secret_key("anthropic"), raw).unwrap();
+        assert!(has_removed_account_login("anthropic"));
     }
 
     #[test]

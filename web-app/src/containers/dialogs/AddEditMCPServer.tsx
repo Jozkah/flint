@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SecretInput } from '@/components/ui/secret-input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Braces,
@@ -525,13 +526,13 @@ export default function AddEditMCPServer({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-[480px] lg:max-w-[480px] xl:max-w-[480px]"
-        showCloseButton={false}
         onInteractOutside={(e) => {
           e.preventDefault()
         }}
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
+          {/* Room on the right for the dialog's own close button. */}
+          <DialogTitle className="flex items-center justify-between gap-2 pr-8">
             <span>
               {editingKey
                 ? t('mcp-servers:editServer')
@@ -540,15 +541,16 @@ export default function AddEditMCPServer({
             <button
               type="button"
               className={cn(
-                'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11',
+                'inline-flex h-7 items-center gap-1.5 rounded-md border-[0.8px] border-border px-2 text-xs font-normal text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11',
                 isToggled && 'bg-accent text-foreground ring-1 ring-border'
               )}
-              title="Add server by JSON"
-              aria-label="Add server by JSON"
+              title={t('integrations:mcpDialog.jsonToggle')}
+              aria-label={t('integrations:mcpDialog.jsonToggle')}
               aria-pressed={isToggled}
               onClick={() => setIsToggled(!isToggled)}
             >
-              <Braces className="size-5" aria-hidden />
+              <Braces className="size-3.5" aria-hidden />
+              <span>JSON</span>
             </button>
           </DialogTitle>
         </DialogHeader>
@@ -614,7 +616,7 @@ export default function AddEditMCPServer({
 
             <div className="space-y-2">
               <label className="text-sm mb-2 inline-block">
-                Transport Type
+                {t('integrations:mcpDialog.transport')}
               </label>
               <RadioGroup
                 value={transportType}
@@ -672,7 +674,7 @@ export default function AddEditMCPServer({
                   {...fieldA11y('url')}
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="Enter URL"
+                  placeholder={t('integrations:mcpDialog.urlPlaceholder')}
                 />
                 <FieldMessage id={messageId('url')} issue={issueFor('url')} />
               </div>
@@ -780,14 +782,18 @@ export default function AddEditMCPServer({
                       aria-label={t('mcp-servers:key')}
                       className="min-w-0 flex-1 font-mono"
                     />
-                    <Input
-                      value={envValues[index] || ''}
-                      onChange={(e) =>
-                        handleEnvValueChange(index, e.target.value)
-                      }
-                      placeholder={t('mcp-servers:value')}
-                      className="min-w-0 flex-1"
-                    />
+                    {/* Masked: env values are usually tokens (M-002). */}
+                    <div className="min-w-0 flex-1">
+                      <SecretInput
+                        value={envValues[index] || ''}
+                        onChange={(e) =>
+                          handleEnvValueChange(index, e.target.value)
+                        }
+                        placeholder={t('mcp-servers:value')}
+                        aria-label={t('mcp-servers:value')}
+                        autoComplete="off"
+                      />
+                    </div>
                     {envKeys.length > 1 && (
                       <RowIconButton
                         label={`${t('mcp-servers:envVars')} ${index + 1}`}
@@ -811,8 +817,13 @@ export default function AddEditMCPServer({
               <>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm">Headers</label>
-                    <RowIconButton label="Headers" onClick={handleAddHeader}>
+                    <label className="text-sm">
+                      {t('integrations:mcpDialog.headers')}
+                    </label>
+                    <RowIconButton
+                      label={t('integrations:mcpDialog.headers')}
+                      onClick={handleAddHeader}
+                    >
                       <Plus aria-hidden />
                     </RowIconButton>
                   </div>
@@ -826,21 +837,26 @@ export default function AddEditMCPServer({
                         onChange={(e) =>
                           handleHeaderKeyChange(index, e.target.value)
                         }
-                        placeholder="Header name"
-                        aria-label="Header name"
+                        placeholder={t('integrations:mcpDialog.headerName')}
+                        aria-label={t('integrations:mcpDialog.headerName')}
                         className="min-w-0 flex-1 font-mono"
                       />
-                      <Input
-                        value={headerValues[index] || ''}
-                        onChange={(e) =>
-                          handleHeaderValueChange(index, e.target.value)
-                        }
-                        placeholder="Header value"
-                        className="min-w-0 flex-1"
-                      />
+                      <div className="min-w-0 flex-1">
+                        <SecretInput
+                          value={headerValues[index] || ''}
+                          onChange={(e) =>
+                            handleHeaderValueChange(index, e.target.value)
+                          }
+                          placeholder={t('integrations:mcpDialog.headerValue')}
+                          aria-label={t('integrations:mcpDialog.headerValue')}
+                          autoComplete="off"
+                        />
+                      </div>
                       {headerKeys.length > 1 && (
                         <RowIconButton
-                          label={`Header ${index + 1}`}
+                          label={t('integrations:mcpDialog.headerN', {
+                            index: index + 1,
+                          })}
                           onClick={() => handleRemoveHeader(index)}
                           destructive
                         >
@@ -861,13 +877,13 @@ export default function AddEditMCPServer({
                     htmlFor={fieldId('timeout')}
                     className="text-sm mb-2 inline-block"
                   >
-                    Timeout (seconds)
+                    {t('integrations:mcpDialog.timeout')}
                   </label>
                   <Input
                     {...fieldA11y('timeout')}
                     value={timeout}
                     onChange={(e) => setTimeout(e.target.value)}
-                    placeholder="Enter timeout in seconds"
+                    placeholder={t('integrations:mcpDialog.timeoutPlaceholder')}
                     type="number"
                   />
                   <FieldMessage

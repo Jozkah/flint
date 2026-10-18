@@ -774,6 +774,11 @@ void jan_llama_load_backends(const char * dir) {
     }
 }
 
+int jan_llama_backend_device_count(const char * name) {
+    ggml_backend_reg_t reg = name ? ggml_backend_reg_by_name(name) : nullptr;
+    return reg ? (int) ggml_backend_reg_dev_count(reg) : -1;
+}
+
 // Mirrors common_print_available_devices (common/arg.cpp:1139-1161): load every
 // backend, then report the non-CPU devices with memory in MiB. The CPU device
 // is excluded there too -- "offload to CPU" is not a choice the setting offers.

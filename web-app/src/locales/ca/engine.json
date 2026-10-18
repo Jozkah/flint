@@ -24,7 +24,9 @@
     "embeddingSub": "{{count}} models d'incrustació",
     "addedSub": "afegits a Flint",
     "repliesToday": "Respostes d'avui",
-    "repliesSub": "{{count}} respostes mesurades",
+    "repliesSub_one": "{{count}} resposta mesurada",
+    "repliesSub_many": "{{count}} respostes mesurades",
+    "repliesSub_other": "{{count}} respostes mesurades",
     "apiKeys": "Claus d'API",
     "fallbackSub": "{{count}} claus de reserva",
     "noFallbackSub": "sense clau de reserva",
@@ -34,7 +36,8 @@
     "title": "Carregats ara",
     "empty": "No hi ha cap model carregat",
     "emptyHint": "Inicia un model local des de la taula de sota, o envia-li un missatge.",
-    "unload": "Descarrega"
+    "unload": "Descarrega",
+    "speedBar": "Velocitat mitjana, respecte del model carregat més ràpid"
   },
   "speed": {
     "title": "Velocitat de generació",
@@ -67,7 +70,8 @@
     "loaded": "Carregat",
     "ready": "A punt",
     "noKey": "Sense clau d'API",
-    "keyless": "No cal clau"
+    "keyless": "No cal clau",
+    "noCredentials": "Sense credencials d'AWS"
   },
   "installed": {
     "title": "Models instal·lats",
@@ -107,7 +111,10 @@
     "connection": "Connexió",
     "engineSettings": "Configuració del motor",
     "memorySettings": "Memòria i memòria cau",
-    "danger": "Zona de perill"
+    "settingNotSaved": "No s'ha desat «{{setting}}»",
+    "danger": "Zona de perill",
+    "networkNote": "A la teva xarxa · s'envia a {{host}}",
+    "reachUnknownNote": "Comprovant on s'executa aquest proveïdor"
   },
   "mcp": {
     "title": "Eines i MCP",
@@ -126,7 +133,8 @@
     "kpiApprovedAll": "Totes les crides d'eines estan permeses",
     "tabServers": "Servidors",
     "tabRouting": "Encaminament i límits",
-    "toolsCount": "{{count}} eines",
+    "toolsCount_one": "{{count}} eina",
+    "toolsCount_other": "{{count}} eines",
     "filterLabel": "Mostra els servidors",
     "filterAll": "Tots",
     "filterOn": "Activats",
@@ -136,7 +144,7 @@
     "viewList": "Llista",
     "callsPerMin": "crides / min",
     "window": "darrers {{count}} min",
-    "needsExtension": "Requereix l'extensió de navegador de Jan",
+    "needsExtension": "Requereix l'extensió del navegador",
     "moreActions": "Més accions per a {{serverName}}",
     "addTile": "Afegeix un servidor MCP",
     "addTileHint": "STDIO, HTTP o SSE"
@@ -183,5 +191,46 @@
     "kindAudio": "Àudio",
     "kindVideo": "Vídeo",
     "htmlPage": "Pàgina HTML"
+  },
+  "addon": {
+    "offerTitle": "Més ràpid a la teva GPU NVIDIA",
+    "offerBody": "En aquesta GPU, els models locals solen anar més ràpid amb el motor CUDA que amb Vulkan: sovint un 10-70% més de tokens per segon, i més quan un model no cap sencer a la VRAM. És una baixada única d'uns {{size}}.",
+    "download": "Baixa",
+    "notNow": "Ara no",
+    "dontRemind": "No m'ho recordis més",
+    "gettingTitle": "Obtenint el motor CUDA",
+    "downloading": "Baixats {{received}} de {{total}}",
+    "verifying": "Comprovant la baixada...",
+    "installing": "Instal·lant...",
+    "vulkanMeanwhile": "Mentrestant s'utilitza Vulkan. CUDA pren el relleu a la propera càrrega d'un model.",
+    "cancel": "Cancel·la",
+    "installedTitle": "Motor CUDA instal·lat",
+    "installedBody": "S'utilitzarà a partir de la propera càrrega d'un model.",
+    "ok": "D'acord",
+    "failedTitle": "No s'ha pogut obtenir el motor CUDA",
+    "retry": "Torna-ho a provar",
+    "driverTitle": "Actualitza el controlador NVIDIA",
+    "driverBody": "Actualitza el controlador NVIDIA per fer servir el motor CUDA, més ràpid. Instal·lat: {{current}}, cal: R{{min}} o posterior. Fins aleshores s'utilitza Vulkan.",
+    "close": "Tanca",
+    "panelTitle": "Complements del motor",
+    "panelDesc": "Motors de GPU addicionals, baixats només quan ho demanes. Vulkan es manté com a alternativa.",
+    "cudaName": "Motor NVIDIA CUDA",
+    "inUse": "en ús",
+    "unavailableBuild": "Els complements del motor no estan disponibles en aquesta versió.",
+    "installedVersion": "Instal·lat: {{version}}, {{size}}",
+    "repairNeeded": "Malmès, així que s'utilitza Vulkan. Torna'l a baixar per reparar-lo.",
+    "notInstalledOffer": "No instal·lat. Sol ser més ràpid que Vulkan en aquesta GPU (uns {{size}}).",
+    "repair": "Repara",
+    "remove": "Elimina",
+    "installFile": "Instal·la des d'un fitxer...",
+    "checkAgain": "Torna a comprovar",
+    "remindSetting": "Suggereix el motor CUDA quan es carrega un model",
+    "errors": {
+      "offline": "No hi ha connexió amb GitHub. Torna-ho a provar més tard o instal·la el complement des d'un fitxer.",
+      "notPublished": "Encara no hi ha cap motor CUDA publicat per a aquesta versió.",
+      "diskSpace": "No hi ha prou espai lliure al disc per al motor CUDA.",
+      "verify": "La baixada no ha superat la verificació i no s'ha instal·lat.",
+      "mismatch": "Aquest complement es va crear per a una altra versió de Flint."
+    }
   }
 }

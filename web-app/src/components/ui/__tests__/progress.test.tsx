@@ -84,4 +84,32 @@ describe('Progress', () => {
     // For values over 100, the transform should be positive
     expect(indicator?.style.transform).toContain('translateX(--50%)')
   })
+
+  it('exposes the value to assistive tech and marks it loading, not indeterminate', () => {
+    render(<Progress value={40} />)
+    const bar = screen.getByRole('progressbar')
+    expect(bar).toHaveAttribute('aria-valuenow', '40')
+    expect(bar).toHaveAttribute('data-state', 'loading')
+  })
+
+  it('marks 100 complete and clamps an out-of-range value for the root', () => {
+    const { rerender } = render(<Progress value={100} />)
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'data-state',
+      'complete'
+    )
+    rerender(<Progress value={150} />)
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuenow',
+      '100'
+    )
+  })
+
+  it('stays indeterminate with no value', () => {
+    render(<Progress />)
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'data-state',
+      'indeterminate'
+    )
+  })
 })

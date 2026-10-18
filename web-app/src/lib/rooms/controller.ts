@@ -39,6 +39,15 @@ import {
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
 import type { StreamReply } from './callError'
+import type { RoomWorkspaceDeps } from './isolation'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { ROOM_TOOL_BUDGET_CEILINGS } from './toolBudget'
+import {
+  ensureRoomWorkspace,
+  markRoomWorkspaceTurn,
+  removeRoomWorkspaces,
+  roomWorkspaceChanges,
+} from '@/services/rooms'
 import { normaliseParticipantReasoning } from './participantReasoning'
 import {
   DEFAULT_ROOM_LIMITS,
@@ -51,10 +60,12 @@ import {
   type RoomController,
   type RoomError,
   type RoomLimits,
+  type RoomToolBudget,
   type RoomMessage,
   type RoomModelRef,
   type SpeakingMode,
   type ToolAccess,
+  type CompareRun,
 } from './types'
 
 export type ParticipantInput = {
@@ -73,6 +84,7 @@ export type CreateRoomInput = {
   title: string
   objective?: string
   mode?: SpeakingMode
+  compareRun?: CompareRun
   participants?: ParticipantInput[]
   moderator?: Partial<ModeratorConfig>
   limits?: Partial<RoomLimits>
@@ -84,19 +96,24 @@ export type CreateRoomInput = {
  * Participants not listed are left unchanged; use `removeParticipant` to remove.
  */
 export type ParticipantPatch = { id?: string } & Partial<
-  Pick<Participant, 'name' | 'role' | 'model' | 'toolAccess' | 'pricing' | 'order'>
+  Pick<Participant, 'name' | 'role' | 'model' | 'toolAccess' | 'pricing' | 'order' | 'compareSkip'>
 > & {
   /** `null` returns the participant to its model's default reasoning. */
   reasoning?: Participant['reasoning'] | null
   /** `null` clears it. */
   assistantId?: string | null
   workProfile?: Participant['workProfile'] | null
+  /** Tools switched off for this participant; `null` or `[]` turns all back on. */
+  disabledTools?: string[] | null
 }
 
 export type RoomSettingsPatch = {
+  /** Per-turn tool budgets; `null` returns to the defaults. */
+  toolBudget?: RoomToolBudget | null
   title?: string
   objective?: string
   mode?: SpeakingMode
+  compareRun?: CompareRun
   moderator?: Partial<ModeratorConfig>
   limits?: Partial<RoomLimits>
   participants?: ParticipantPatch[]
@@ -132,6 +149,53 @@ export type ControllerDeps = {
   compaction?: EngineDeps['compaction']
   sleep?: EngineDeps['sleep']
   store?: typeof useRoomsStore
+  workspace?: RoomWorkspaceDeps
+}
+
+/** A tool-name list from the editor: strings only, trimmed, no repeats, capped. */
+export function cleanDisabledTools(list: readonly unknown[] | null | undefined): string[] {
+  if (!Array.isArray(list)) return []
+  const out: string[] = []
+  for (const v of list) {
+    if (typeof v !== 'string') continue
+    const t = v.trim().slice(0, 128)
+    if (t && !out.includes(t)) out.push(t)
+    if (out.length >= 256) break
+  }
+  return out
+}
+
+/** The stored tool budget: only the fields set, clamped; none means defaults. */
+export function budgetField(budget: RoomToolBudget | null | undefined): { toolBudget: RoomToolBudget | undefined } {
+  if (!budget) return { toolBudget: undefined }
+  const c = ROOM_TOOL_BUDGET_CEILINGS
+  const one = (v: unknown, ceiling: number) => {
+    const n = Number(v)
+    return v == null || v === '' || !Number.isFinite(n) ? undefined : Math.max(1, Math.min(ceiling, Math.floor(n)))
+  }
+  const out: RoomToolBudget = {}
+  const calls = one(budget.maxToolCalls, c.maxToolCalls)
+  const steps = one(budget.maxSteps, c.maxSteps)
+  const timeout = one(budget.toolTimeoutSec, c.toolTimeoutSec)
+  if (calls !== undefined) out.maxToolCalls = calls
+  if (steps !== undefined) out.maxSteps = steps
+  if (timeout !== undefined) out.toolTimeoutSec = timeout
+  return { toolBudget: Object.keys(out).length ? out : undefined }
+}
+
+/** The backend's isolated workspaces for compare-room writers. */
+const defaultRoomWorkspace: RoomWorkspaceDeps = {
+  ensure: async (roomId, participantId, folder) => {
+    const ws = await ensureRoomWorkspace(roomId, participantId, folder)
+    if (!ws || typeof ws.path !== 'string' || !ws.path) throw new Error('no workspace was made')
+    return { path: ws.path }
+  },
+  changes: async (roomId, participantId, scope = 'turn') => {
+    const res = await roomWorkspaceChanges(roomId, participantId, scope)
+    return Array.isArray(res?.files) ? res.files : []
+  },
+  markTurn: (roomId, participantId) => markRoomWorkspaceTurn(roomId, participantId),
+  remove: (roomId) => removeRoomWorkspaces(roomId),
 }
 
 function roomError(code: RoomError['code'], message: string): RoomError {
@@ -177,6 +241,8 @@ type RoomSlot = {
   run: { controller: AbortController; intent: AbortIntent | null } | null
   override: string | null
   userQueue: Array<{ text: string; to: Address }>
+  /** Bumped by every Stop: work queued before it must not start a run after it. */
+  stops: number
 }
 
 /** Most folders a room may have beside its main one. */
@@ -206,7 +272,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
   const slot = (roomId: string): RoomSlot => {
     let s = slots.get(roomId)
     if (!s) {
-      s = { chain: Promise.resolve(), run: null, override: null, userQueue: [] }
+      s = { chain: Promise.resolve(), run: null, override: null, userQueue: [], stops: 0 }
       slots.set(roomId, s)
     }
     return s
@@ -253,6 +319,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       ((model) => roomCompactionSettingsFor(model, lookup, compactionPolicy)),
     sleep: deps.sleep,
     onUpdate: (u) => store().applyEngineUpdate(u),
+    workspace: deps.workspace ?? defaultRoomWorkspace,
   })
 
   const userMessage = (roomId: string, round: number, text: string, to: Address): RoomMessage => ({
@@ -281,6 +348,9 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
   ): Promise<void> => {
     const s = slot(roomId)
     if (s.run) return Promise.resolve()
+    // Cards held from a pause belong to a run that is gone: a new run asks
+    // again for whatever it still needs.
+    useToolApprovalRequests.getState().expireHeld(roomId)
     const run = { controller: new AbortController(), intent: null as AbortIntent | null }
     s.run = run
     store().setRunning(roomId, true)
@@ -310,6 +380,9 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         // the room can act on them, it resumes so they are not left unanswered.
         const leftovers = s.userQueue.splice(0)
         if (leftovers.length) {
+          // A Stop that ended (or lands after) this run wins over the messages
+          // it left: they are recorded but do not start the room again (R-031).
+          const stopsSeen = run.intent === 'stop' ? -1 : s.stops
           let resume = false
           void enqueue(roomId, async () => {
             const { room } = await persistence().getRoom(roomId)
@@ -319,7 +392,9 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
             resume = canResumeOnMessage(room, now())
           })
             .then(() => {
-              if (resume) void launch(roomId, { kind: 'discuss' }, (r) => r.status !== 'running')
+              if (resume && s.stops === stopsSeen) {
+                void launch(roomId, { kind: 'discuss' }, (r) => r.status !== 'running')
+              }
             })
             .catch(reportError)
         }
@@ -330,6 +405,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
   /** Abort the active run with an intent and wait for it to settle. */
   const abortRun = async (roomId: string, intent: AbortIntent): Promise<boolean> => {
     const s = slot(roomId)
+    if (intent !== 'pause') useToolApprovalRequests.getState().expireHeld(roomId)
     if (!s.run) return false
     s.run.intent = intent
     s.run.controller.abort()
@@ -476,6 +552,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
 
     stop: (roomId) =>
       guarded('stop', async () => {
+        slot(roomId).stops += 1
         if (await abortRun(roomId, 'stop')) return
         await setStatusWhenIdle(roomId, (room) =>
           room.status === 'stopped' || room.status === 'completed' || room.status === 'draft'
@@ -573,6 +650,12 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         void launch(roomId, { kind: 'vote', proposal: text })
       }),
 
+    compareRun: (roomId, participantIds, scope) =>
+      guarded('compareRun', async () => {
+        await abortRun(roomId, 'pause')
+        void launch(roomId, { kind: 'compare-run', participantIds, scope })
+      }),
+
     requestFinalPositions: (roomId) =>
       guarded('requestFinalPositions', async () => {
         await abortRun(roomId, 'pause')
@@ -602,6 +685,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         objective: (input.objective ?? '').trim(),
         status: 'draft',
         mode: input.mode ?? 'round-robin',
+        ...(input.compareRun === 'one-by-one' ? { compareRun: 'one-by-one' as const } : {}),
         moderator: normaliseModerator(input.moderator),
         participants,
         limits: clampLimits({ ...DEFAULT_ROOM_LIMITS, ...(input.limits ?? {}) }),
@@ -667,6 +751,12 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
             order: edit.order ?? prev.order,
             removed: prev.removed,
           })
+          const skip = edit.compareSkip ?? prev.compareSkip
+          if (skip) next.compareSkip = true
+          const off = cleanDisabledTools(
+            edit.disabledTools === undefined ? prev.disabledTools : edit.disabledTools
+          )
+          if (off.length) next.disabledTools = off
           participants = participants.map((p, i) => (i === idx ? next : p))
         }
         validateParticipants(participants)
@@ -675,6 +765,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           title: patch.title !== undefined ? patch.title.trim().slice(0, 200) || room.title : room.title,
           objective: patch.objective !== undefined ? patch.objective.trim() : room.objective,
           mode: patch.mode ?? room.mode,
+          ...(patch.compareRun === 'one-by-one' ||
+          (patch.compareRun === undefined && room.compareRun === 'one-by-one')
+            ? { compareRun: 'one-by-one' as const }
+            : { compareRun: undefined }),
           moderator: patch.moderator ? normaliseModerator(patch.moderator, room.moderator) : room.moderator,
           folder:
             patch.folder !== undefined ? patch.folder || null : (room.folder ?? null),
@@ -682,6 +776,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
             patch.extraFolders !== undefined ? patch.extraFolders : (room.extraFolders ?? []),
             patch.folder !== undefined ? patch.folder || null : (room.folder ?? null)
           ),
+          ...budgetField(patch.toolBudget === undefined ? room.toolBudget : patch.toolBudget),
           limits: clampLimits({ ...room.limits, ...(patch.limits ?? {}) }),
           // Raising a limit that stopped the room clears the stop, so a message
           // resumes it instead of being stranded by a limit that no longer binds.
@@ -724,6 +819,17 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       })
     },
 
+    setChangeDecision: (roomId, messageId, decision) =>
+      guarded('change-decision', async () => {
+        await enqueue(roomId, async () => {
+          const { room } = await persistence().getRoom(roomId)
+          await saveRoom({
+            ...room,
+            changeDecisions: { ...(room.changeDecisions ?? {}), [messageId]: decision },
+          })
+        })
+      }),
+
     clearRoom: (roomId, scope) =>
       guarded('clear', async () => {
         if (slot(roomId).run) {
@@ -746,13 +852,21 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           if (clearsKnowledge(scope)) {
             next = { ...clearSuspensions(next), usage: emptyUsage() }
           }
+          // Decisions name messages that are gone now.
+          if (next.changeDecisions) next = { ...next, changeDecisions: undefined }
           await saveRoom(next)
         })
-        if (clearsScratch(scope)) await clearRoomScratch(roomId)
+        if (clearsScratch(scope)) {
+          await clearRoomScratch(roomId)
+          // Only "clear everything" drops the isolated workspaces and the
+          // changes waiting in them; a chat or knowledge clear keeps them.
+          await (deps.workspace ?? defaultRoomWorkspace).remove?.(roomId).catch(() => {})
+        }
         await store().loadRoom(roomId)
       }),
 
     deleteRoom: async (roomId) => {
+      useToolApprovalRequests.getState().expireHeld(roomId)
       await abortRun(roomId, 'stop')
       await enqueue(roomId, async () => {
         await persistence().deleteRoom(roomId)

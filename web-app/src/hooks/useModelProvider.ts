@@ -245,7 +245,11 @@ export const useModelProvider = create<ModelProviderState>()(
               api_key_fallbacks:
                 existingProvider?.api_key_fallbacks ?? provider.api_key_fallbacks,
               base_url: existingProvider?.base_url || provider.base_url,
-              active: existingProvider ? existingProvider?.active : true,
+              // A first install starts with none of the built-in cloud providers
+              // switched on; the local engine and providers the user adds are.
+              active: existingProvider
+                ? existingProvider?.active
+                : !predefinedProviders.some((p) => p.provider === provider.provider),
               displayName: existingProvider?.displayName ?? provider.displayName,
             }
           })
@@ -934,9 +938,50 @@ export const useModelProvider = create<ModelProviderState>()(
           })
         }
 
+        if (version <= 22 && state?.providers) {
+          // Per-model Context Shift and KV cache types: add the controls to
+          // persisted llamacpp models. They default to "use global".
+          state.providers.forEach((provider) => {
+            if (provider.provider !== 'llamacpp' || !provider.models) return
+            provider.models.forEach((model) => {
+              if (!model.settings) model.settings = {}
+              for (const key of [
+                'ctx_shift',
+                'seed',
+                'cache_type_k',
+                'cache_type_v',
+              ] as const) {
+                if (!model.settings[key]) {
+                  model.settings[key] = {
+                    ...modelSettings[key],
+                    controller_props: { ...modelSettings[key].controller_props },
+                  }
+                }
+              }
+            })
+          })
+        }
+
+        if (version <= 23 && state?.providers) {
+          // The provider's Default context size only applies to models that
+          // set none of their own, but every model was seeded with 8192, so it
+          // never applied (C043). Clear the seeded value; keep any other.
+          state.providers.forEach((provider) => {
+            if (provider.provider !== 'llamacpp' || !provider.models) return
+            provider.models.forEach((model) => {
+              const props = (
+                model.settings?.ctx_len as
+                  | { controller_props?: { value?: unknown } }
+                  | undefined
+              )?.controller_props
+              if (props && Number(props.value) === 8192) props.value = ''
+            })
+          })
+        }
+
         return state
       },
-      version: 22,
+      version: 24,
     }
   )
 )

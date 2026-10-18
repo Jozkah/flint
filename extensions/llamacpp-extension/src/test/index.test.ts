@@ -98,6 +98,24 @@ describe('llamacpp_extension', () => {
     })
   })
 
+  describe('loadConfig', () => {
+    it('reads the settings file once and falls back to defaults', async () => {
+      const getSettings = vi
+        .spyOn(extension, 'getSettings')
+        .mockResolvedValue([
+          { key: 'a', controllerProps: { value: 'saved' } },
+          { key: 'b', controllerProps: {} },
+        ] as never)
+      const config = await extension.loadConfig([
+        { key: 'a', controllerProps: { value: 'default-a' } },
+        { key: 'b', controllerProps: { value: 'default-b' } },
+        { key: 'c', controllerProps: { value: 0 } },
+      ] as never)
+      expect(config).toEqual({ a: 'saved', b: 'default-b', c: 0 })
+      expect(getSettings).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('resolveThreadCacheBudget', () => {
     const budget = (cfg: Record<string, unknown>): number => {
       // `config` is populated by onLoad, which is not run here.
@@ -215,6 +233,38 @@ describe('llamacpp_extension', () => {
           template_kwargs: [],
         }
       ])
+    })
+  })
+
+  describe('list with a broken model.yml', () => {
+    it('keeps the readable models when one model.yml cannot be parsed', async () => {
+      const { getJanDataFolderPath, joinPath, fs } = await import('@janhq/core')
+      const { invoke } = await import('@tauri-apps/api/core')
+
+      extension['providerPath'] = '/jan/llamacpp'
+      const modelsDir = '/jan/llamacpp/models'
+      vi.mocked(getJanDataFolderPath).mockResolvedValue('/jan')
+      vi.mocked(joinPath).mockImplementation((paths) => Promise.resolve(paths.join('/')))
+      vi.mocked(fs.existsSync).mockImplementation(async (p: string) =>
+        p === modelsDir || p.endsWith('/good/model.yml') || p.endsWith('/bad/model.yml')
+      )
+      vi.mocked(fs.readdirSync).mockImplementation(async (p: string) =>
+        p === modelsDir ? [`${modelsDir}/bad`, `${modelsDir}/good`] : []
+      )
+      vi.mocked(fs.fileStat).mockResolvedValue({ isDirectory: true, size: 0 })
+      vi.mocked(invoke).mockImplementation(async (cmd: string, args?: any) => {
+        if (cmd === 'read_yaml' && String(args?.path).includes('/bad/')) {
+          throw new Error('invalid yaml: expected a mapping at line 3')
+        }
+        if (cmd === 'read_yaml') {
+          return { model_path: 'good/model.gguf', name: 'Good', size_bytes: 5 }
+        }
+        return undefined
+      })
+
+      const result = await extension.list()
+
+      expect(result.map((m) => m.id)).toEqual(['good'])
     })
   })
 
@@ -375,6 +425,34 @@ describe('llamacpp_extension', () => {
       const result = await extension.load('test-model')
 
       expect(result).toEqual(expectedSession)
+    })
+  })
+
+  describe('load context size (T7-123)', () => {
+    it('writes the context the app shows to model.yml before loading', async () => {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const { fs } = await import('@janhq/core')
+      vi.mocked(fs.existsSync).mockResolvedValue(true)
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        if (cmd === 'read_yaml') return {}
+        return undefined
+      })
+      extension['providerPath'] = '/path/to/jan/llamacpp'
+      const update = vi
+        .spyOn(extension, 'updateModelSettings')
+        .mockResolvedValue(undefined)
+      const perform = vi
+        .spyOn(extension as any, 'performLoad')
+        .mockResolvedValue({ model_id: 'm' })
+      vi.spyOn(extension as any, 'findSessionByModel').mockResolvedValue(undefined)
+
+      await extension.load('m', { ctx_size: 8192 })
+      expect(update).toHaveBeenCalledWith('m', { ctx_len: 8192 })
+      expect(perform).toHaveBeenCalled()
+
+      update.mockClear()
+      await extension.load('m', { ctx_size: '' })
+      expect(update).not.toHaveBeenCalled()
     })
   })
 
@@ -675,6 +753,28 @@ describe('llamacpp_extension', () => {
       }])).rejects.toThrow('engine unavailable')
       expect((await extension.getSettings())[0].controllerProps.value).toBe(false)
       expect(extension['config'].fit).toBe(false)
+    })
+
+    it.each([
+      ['ngram_speculation', false],
+      ['ubatch_size', 512],
+      ['ubatch_size', 0],
+    ])('rewrites the preset when %s changes to %s, even if the saved file predates it (T6-079c)', async (key, value) => {
+      vi.mocked(reloadEngineModels).mockResolvedValue({
+        added: [], changed: [], removed: [], kept: [], models_max: 1,
+      })
+      vi.mocked(generatePreset).mockClear()
+      await extension.updateSettings([{
+        key,
+        title: key,
+        description: '',
+        controllerType: 'input',
+        controllerProps: { value },
+      } as never])
+      await vi.advanceTimersByTimeAsync(600)
+      expect(generatePreset).toHaveBeenCalled()
+      const config = vi.mocked(generatePreset).mock.calls.at(-1)![2] as Record<string, unknown>
+      expect(config[key]).toBe(value)
     })
 
     it('leaves startup migrations to the initial engine load', async () => {

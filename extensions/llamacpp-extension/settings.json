@@ -1,8 +1,8 @@
 [
   {
     "key": "llamacpp_env",
-    "title": "Environmental variables",
-    "description": "Environmental variables for llama.cpp(KEY=VALUE), separated by ';'",
+    "title": "Environment variables",
+    "description": "Environment variables for llama.cpp (KEY=VALUE), separated by ';'",
     "controllerType": "input",
     "controllerProps": {
       "value": "",
@@ -60,9 +60,22 @@
     }
   },
   {
+    "key": "ctx_size",
+    "title": "Default context size",
+    "description": "The context window used for local models that do not set their own. Larger = remembers more but needs more memory. Each model can override this in its own settings (gear icon). Leave on Auto to use the model's native size (can be huge). Common sizes: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "controllerType": "input",
+    "controllerProps": {
+      "value": "",
+      "placeholder": "Auto",
+      "type": "number",
+      "textAlign": "right",
+      "min": 0
+    }
+  },
+  {
     "key": "fit",
-    "title": "Fit (auto-adjust to device memory)",
-    "description": "Whether to adjust unset arguments to fit in device memory ('on' or 'off'). (env: LLAMA_ARG_FIT)",
+    "title": "Auto-fit",
+    "description": "Let Flint decide how many layers run on the GPU and how large the context can be, so the model fits in your memory. Turn it off to set GPU layers and Context Size yourself.",
     "controllerType": "checkbox",
     "controllerProps": {
       "value": true
@@ -70,8 +83,8 @@
   },
   {
     "key": "fit_target",
-    "title": "Fit Target per Device (MiB)",
-    "description": "Target margin per device for fit, comma-separated list of MiB values. Single value is broadcast across all devices. (env: LLAMA_ARG_FIT_TARGET)",
+    "title": "Auto-fit: memory to keep free",
+    "description": "How much memory (in MiB) auto-fit leaves free on each GPU for other apps and the display. Raise it if your system gets sluggish while a model is loaded. Local models only.",
     "controllerType": "input",
     "controllerProps": {
       "value": "1024",
@@ -82,8 +95,8 @@
   },
   {
     "key": "fit_ctx",
-    "title": "Fit Minimum Context Size",
-    "description": "Minimum context size (tokens) that can be set by the auto-fit option.",
+    "title": "Auto-fit: smallest context",
+    "description": "The smallest context size (in tokens) auto-fit may shrink to when the model does not fit in memory. It never goes below this, and the model fails to load if it still does not fit. This is not the context size: set that in Default context size or per model in Context Size. Only used while Auto-fit is on, and only for local models.",
     "controllerType": "input",
     "controllerProps": {
       "value": 4096,
@@ -152,11 +165,11 @@
   {
     "key": "ubatch_size",
     "title": "uBatch Size",
-    "description": "Physical maximum batch size for processing prompts.",
+    "description": "Physical maximum batch size for processing prompts. 0 = auto: 1024 when the model fits in VRAM with room to spare, 512 when it is tight, 2048 when it spills to system RAM.",
     "controllerType": "input",
     "controllerProps": {
-      "value": 512,
-      "placeholder": "512",
+      "value": 0,
+      "placeholder": "0 (auto)",
       "type": "number",
       "textAlign": "right"
     }
@@ -290,7 +303,7 @@
   {
     "key": "parallel",
     "title": "Parallel Sequences",
-    "description": "Number of parallel sequences to decode for your own chat requests (0 = llama.cpp default of 4). Jan reserves one additional internal slot beyond this for background requests (e.g. thread auto-titling), so they don't evict your chat's KV cache.",
+    "description": "Number of parallel sequences to decode for your own chat requests (0 = llama.cpp default of 4). Flint reserves one additional internal slot beyond this for background requests (e.g. thread auto-titling), so they don't evict your chat's KV cache.",
     "controllerType": "input",
     "controllerProps": {
       "value": 1,
@@ -304,6 +317,15 @@
     "key": "reserve_background_slots",
     "title": "Reserve Background Slots",
     "description": "Keep two extra internal slots beyond Parallel Sequences for background requests (thread auto-titling, Cowork, subagents) so they do not evict your chat's KV cache. Turn off to run exactly Parallel Sequences slots (set it to 1 for a single slot); background requests then share your chat's slot and can evict its cache. Reloads the model.",
+    "controllerType": "checkbox",
+    "controllerProps": {
+      "value": true
+    }
+  },
+  {
+    "key": "ngram_speculation",
+    "title": "N-gram Speculative Decoding",
+    "description": "Draft tokens from text already in the conversation (ngram-mod) and let the model verify them in one batch. Output is identical; repetitive output such as code edits or quoting generates 3-10x faster, other text is unaffected. Models with their own MTP draft use that instead.",
     "controllerType": "checkbox",
     "controllerProps": {
       "value": true
@@ -517,11 +539,11 @@
   {
     "key": "cache_ram",
     "title": "Prompt Cache RAM (MiB)",
-    "description": "Prompt cache size in MiB (default: 4096; llama.cpp itself defaults to 8192, which can crowd out the OS on a 16 GB machine). -1 is unlimited, 0 disables it.",
+    "description": "Prompt cache size in MiB: the RAM that keeps other conversations' context so switching back to one does not re-read it. Blank or -2 = automatic from your RAM (20% of system RAM, at most half of what is free, 1024-8192); 0 = off; -1 = unlimited.",
     "controllerType": "input",
     "controllerProps": {
-      "value": 4096,
-      "placeholder": "4096",
+      "value": -2,
+      "placeholder": "-2 (auto)",
       "type": "number",
       "textAlign": "right"
     }

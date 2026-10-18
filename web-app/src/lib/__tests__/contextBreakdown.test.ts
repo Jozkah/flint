@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
 import { buildContextBreakdown, reconcileBreakdown } from '../contextBreakdown'
+import { estimateToolSchemaTokens, estimateTokens } from '../context-manager'
 
 const user = (text: string) =>
   ({ id: 'u', role: 'user', parts: [{ type: 'text', text }] }) as unknown as UIMessage
@@ -99,5 +100,31 @@ describe('reconcileBreakdown', () => {
     })
     const r = reconcileBreakdown(noMessages, sum(noMessages.segments) + 300)
     expect(r.segments.at(-1)).toMatchObject({ id: 'unmeasured', tokens: 300 })
+  })
+})
+
+describe('one estimator for the card and the pre-flight check', () => {
+  it('counts an inline attachment in the messages segment', () => {
+    const msg = {
+      id: 'u',
+      role: 'user',
+      parts: [{ type: 'text', text: 'summarize this' }],
+      metadata: { inline_file_contents: [{ name: 'paste.txt', content: 'p'.repeat(70_000) }] },
+    } as unknown as UIMessage
+    const b = buildContextBreakdown({ systemPrompt: '', tools: [], messages: [msg] })
+    expect(byId(b, 'messages')!.tokens).toBeGreaterThanOrEqual(estimateTokens('p'.repeat(70_000)))
+  })
+
+  it('measures tool schemas exactly as the transport does', () => {
+    const tools = {
+      web_search: { description: 'search the web', inputSchema: { type: 'object' } },
+      read: { description: 'read a file', inputSchema: { type: 'object', properties: { path: {} } } },
+    }
+    const b = buildContextBreakdown({
+      systemPrompt: '',
+      tools: Object.entries(tools).map(([name, schema]) => ({ name, schema })),
+      messages: [],
+    })
+    expect(byId(b, 'systemTools')!.tokens).toBe(estimateToolSchemaTokens(tools))
   })
 })

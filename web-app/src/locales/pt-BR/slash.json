@@ -9,7 +9,8 @@
     "plugin": "plugin",
     "pluginNamed": "plugin {{plugin}}",
     "skill": "skill",
-    "builtin": "integrado"
+    "builtin": "integrado",
+    "prompt": "prompt"
   },
   "scope": {
     "project": "projeto",

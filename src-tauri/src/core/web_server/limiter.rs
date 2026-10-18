@@ -88,9 +88,12 @@ impl LoginLimiter {
 /// The address a request really comes from. Behind a proxy on this machine
 /// (Tailscale Serve, Caddy) every connection arrives from loopback and the
 /// proxy names the client in `X-Forwarded-For`; that header is believed only
-/// from a loopback peer, since only a process on this machine can be one.
-pub fn client_ip(peer: IpAddr, forwarded_for: Option<&str>) -> IpAddr {
-    if peer.is_loopback() {
+/// from a loopback peer, since only a process on this machine can be one, and
+/// only when the server was told a proxy fronts it (`--trust-proxy`). Without
+/// that, any local process (or a browser page via a local relay) could name a
+/// fresh address per attempt and slip past the per-client lockout.
+pub fn client_ip(peer: IpAddr, forwarded_for: Option<&str>, trust_proxy: bool) -> IpAddr {
+    if trust_proxy && peer.is_loopback() {
         if let Some(client) = forwarded_for
             // The last entry is the one the nearest proxy added: a proxy that
             // appends (rather than replaces) keeps whatever the client sent in
@@ -158,9 +161,15 @@ mod tests {
         let remote = IpAddr::from([203, 0, 113, 9]);
         // The entry the trusted proxy added is the last one; what a client put in
         // front of it is not believed.
-        assert_eq!(client_ip(loopback, Some("10.0.0.1, 100.64.0.7")), ip(7));
-        assert_eq!(client_ip(loopback, Some("not an address")), loopback);
-        assert_eq!(client_ip(loopback, None), loopback);
-        assert_eq!(client_ip(remote, Some("100.64.0.7")), remote, "a remote peer cannot pick its own address");
+        assert_eq!(client_ip(loopback, Some("10.0.0.1, 100.64.0.7"), true), ip(7));
+        assert_eq!(client_ip(loopback, Some("not an address"), true), loopback);
+        assert_eq!(client_ip(loopback, None, true), loopback);
+        assert_eq!(client_ip(remote, Some("100.64.0.7"), true), remote, "a remote peer cannot pick its own address");
+    }
+
+    #[test]
+    fn forwarded_for_is_ignored_unless_a_proxy_is_trusted() {
+        let loopback = IpAddr::from([127, 0, 0, 1]);
+        assert_eq!(client_ip(loopback, Some("10.9.9.9"), false), loopback, "spoofed XFF must not pick the bucket");
     }
 }

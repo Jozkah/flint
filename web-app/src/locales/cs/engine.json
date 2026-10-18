@@ -24,7 +24,10 @@
     "embeddingSub": "Embedding modelů: {{count}}",
     "addedSub": "přidáno do Flintu",
     "repliesToday": "Dnešní odpovědi",
-    "repliesSub": "Změřeno odpovědí: {{count}}",
+    "repliesSub_one": "{{count}} změřená odpověď",
+    "repliesSub_few": "{{count}} změřené odpovědi",
+    "repliesSub_many": "{{count}} změřené odpovědi",
+    "repliesSub_other": "{{count}} změřených odpovědí",
     "apiKeys": "Klíče API",
     "fallbackSub": "Záložních klíčů: {{count}}",
     "noFallbackSub": "žádný záložní klíč",
@@ -34,7 +37,8 @@
     "title": "Právě načteno",
     "empty": "Není načten žádný model",
     "emptyHint": "Spusťte lokální model z tabulky níže nebo mu pošlete zprávu.",
-    "unload": "Uvolnit"
+    "unload": "Uvolnit",
+    "speedBar": "Průměrná rychlost ve srovnání s nejrychlejším načteným modelem"
   },
   "speed": {
     "title": "Rychlost generování",
@@ -68,7 +72,8 @@
     "loaded": "Načteno",
     "ready": "Připraveno",
     "noKey": "Bez klíče API",
-    "keyless": "Klíč není potřeba"
+    "keyless": "Klíč není potřeba",
+    "noCredentials": "Žádné přihlašovací údaje AWS"
   },
   "installed": {
     "title": "Nainstalované modely",
@@ -108,7 +113,10 @@
     "connection": "Připojení",
     "engineSettings": "Nastavení enginu",
     "memorySettings": "Paměť a cache",
-    "danger": "Nebezpečná zóna"
+    "settingNotSaved": "Nastavení „{{setting}}“ se neuložilo",
+    "danger": "Nebezpečná zóna",
+    "networkNote": "Ve vaší síti · odesílá se na {{host}}",
+    "reachUnknownNote": "Zjišťuje se, kde tento poskytovatel běží"
   },
   "mcp": {
     "title": "Nástroje a MCP",
@@ -127,7 +135,10 @@
     "kpiApprovedAll": "Všechna volání nástrojů jsou povolena",
     "tabServers": "Servery",
     "tabRouting": "Směrování a limity",
-    "toolsCount": "Nástrojů: {{count}}",
+    "toolsCount_one": "{{count}} nástroj",
+    "toolsCount_few": "{{count}} nástroje",
+    "toolsCount_many": "{{count}} nástroje",
+    "toolsCount_other": "{{count}} nástrojů",
     "filterLabel": "Zobrazit servery",
     "filterAll": "Vše",
     "filterOn": "Zapnuto",
@@ -137,7 +148,7 @@
     "viewList": "Seznam",
     "callsPerMin": "volání / min",
     "window": "posledních {{count}} min",
-    "needsExtension": "Vyžaduje rozšíření Jan Browser Extension",
+    "needsExtension": "Vyžaduje rozšíření prohlížeče",
     "moreActions": "Další akce pro {{serverName}}",
     "addTile": "Přidat server MCP",
     "addTileHint": "STDIO, HTTP nebo SSE"
@@ -187,5 +198,46 @@
     "kindAudio": "Zvuk",
     "kindVideo": "Video",
     "htmlPage": "Stránka HTML"
+  },
+  "addon": {
+    "offerTitle": "Rychlejší na vaší grafice NVIDIA",
+    "offerBody": "Místní modely na této grafice obvykle běží rychleji s enginem CUDA než s Vulkanem: často o 10-70 % více tokenů za sekundu, víc, když se model celý nevejde do VRAM. Jde o jednorázové stažení asi {{size}}.",
+    "download": "Stáhnout",
+    "notNow": "Teď ne",
+    "dontRemind": "Už nepřipomínat",
+    "gettingTitle": "Stahování enginu CUDA",
+    "downloading": "Staženo {{received}} z {{total}}",
+    "verifying": "Kontrola stažených dat...",
+    "installing": "Instalace...",
+    "vulkanMeanwhile": "Mezitím se používá Vulkan. CUDA převezme práci při příštím načtení modelu.",
+    "cancel": "Zrušit",
+    "installedTitle": "Engine CUDA nainstalován",
+    "installedBody": "Použije se od příštího načtení modelu.",
+    "ok": "Rozumím",
+    "failedTitle": "Engine CUDA se nepodařilo získat",
+    "retry": "Zkusit znovu",
+    "driverTitle": "Aktualizujte ovladač NVIDIA",
+    "driverBody": "Aktualizujte ovladač NVIDIA, abyste mohli použít rychlejší engine CUDA. Nainstalováno: {{current}}, potřeba: R{{min}} nebo novější. Do té doby se používá Vulkan.",
+    "close": "Zavřít",
+    "panelTitle": "Doplňky enginu",
+    "panelDesc": "Další GPU enginy, stažené jen na vaši žádost. Vulkan zůstává jako záloha.",
+    "cudaName": "Engine NVIDIA CUDA",
+    "inUse": "používá se",
+    "unavailableBuild": "Doplňky enginu nejsou v tomto sestavení dostupné.",
+    "installedVersion": "Nainstalováno: {{version}}, {{size}}",
+    "repairNeeded": "Poškozeno, proto se používá Vulkan. Pro opravu stáhněte znovu.",
+    "notInstalledOffer": "Nenainstalováno. Na této grafice obvykle rychlejší než Vulkan (asi {{size}}).",
+    "repair": "Opravit",
+    "remove": "Odebrat",
+    "installFile": "Instalovat ze souboru...",
+    "checkAgain": "Zkontrolovat znovu",
+    "remindSetting": "Navrhnout engine CUDA při načtení modelu",
+    "errors": {
+      "offline": "Žádné připojení ke GitHubu. Zkuste to později nebo nainstalujte doplněk ze souboru.",
+      "notPublished": "Pro tuto verzi zatím není engine CUDA zveřejněn.",
+      "diskSpace": "Na disku není dost místa pro engine CUDA.",
+      "verify": "Stažená data neprošla kontrolou a nebyla nainstalována.",
+      "mismatch": "Tento doplněk byl sestaven pro jinou verzi Flintu."
+    }
   }
 }

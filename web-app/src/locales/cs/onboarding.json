@@ -72,8 +72,30 @@
       "body": "Použijte hostovaný model s vlastním účtem."
     },
     "import": {
-      "title": "Importovat soubor",
-      "body": "Přidejte soubor modelu, který už máte."
+      "title": "Přidat soubor modelu",
+      "body": "Vyberte soubor .gguf nebo najděte modely, které Ollama, LM Studio a další už v tomto počítači uložily. Nic se nestahuje."
     }
+  },
+  "fit": {
+    "heading": "Poběží to tu dobře?"
+  },
+  "sample": {
+    "button": "Zkusit ukázkovou otázku",
+    "hint": "Vloží otázku do pole zprávy. Odešlete ji klávesou Enter, nebo ji nejdřív upravte.",
+    "question": "Ve třech větách vysvětli, co je jazykový model a co neumí."
+  },
+  "approvalsNote": "Když chce Flint změnit soubor nebo spustit příkaz, zastaví se a nejdřív se zeptá. Žádost se objeví v konverzaci přesně s tím, co udělá, a vy zvolíte Povolit nebo Zamítnout. Nic se nespustí, dokud neodpovíte.",
+  "checklist": {
+    "label": "Postup",
+    "model-added": "Model přidán",
+    "first-chat": "První chat",
+    "first-project": "První projekt"
+  },
+  "sidebar": {
+    "title": "Přizpůsobte si postranní panel",
+    "body": "Skryjte položky, které nepoužíváte. Kdykoli to změníte v Nastavení v části Vzhled.",
+    "customize": "Přizpůsobit postranní panel",
+    "close": "Hotovo",
+    "bodyMinimal": "Flint začíná s krátkým postranním panelem. Všechny ostatní stránky najdete v paletě příkazů, nebo je sem můžete vrátit."
   }
 }

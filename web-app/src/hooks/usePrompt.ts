@@ -31,6 +31,16 @@ type PromptStoreState = {
    * it is what the user sent, wherever they sent it from.
    */
   scoped: Record<string, ScopedPrompt>
+  /**
+   * The main composer's unsent draft of each chat it left. The main draft is
+   * one field, so without this a draft followed the user into every other
+   * chat and New Chat (UI-005).
+   */
+  stashed: Record<string, string>
+  /** The chat the main draft is currently for. */
+  draftOwner: string | null
+  /** Show chat `to`: keep the current owner's draft, bring back `to`'s. */
+  switchDraft: (to: string) => void
   setScopedPrompt: (scope: string, value: string) => void
   navigateScopedHistory: (scope: string, direction: 'up' | 'down') => void
 }
@@ -129,6 +139,26 @@ export const usePrompt = create<PromptStoreState>((set, get) => ({
   resetHistoryNavigation: () => set({ historyIndex: -1, draftPrompt: '' }),
 
   scoped: {},
+  stashed: {},
+  draftOwner: null,
+  switchDraft: (to) => {
+    const { prompt, stashed, draftOwner: from } = get()
+    if (from === to) return
+    // The first composer to show claims whatever is in the draft.
+    if (from === null) return set({ draftOwner: to })
+    const next = { ...stashed }
+    if (prompt.trim()) next[from] = prompt
+    else delete next[from]
+    const restored = next[to] ?? ''
+    delete next[to]
+    set({
+      stashed: next,
+      prompt: restored,
+      draftOwner: to,
+      historyIndex: -1,
+      draftPrompt: '',
+    })
+  },
   setScopedPrompt: (scope, value) =>
     set((state) => {
       const current = state.scoped[scope] ?? EMPTY_SCOPE

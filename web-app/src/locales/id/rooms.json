@@ -12,8 +12,8 @@
     "open": "Buka {{title}}",
     "delete": "Hapus",
     "deleteLabel": "Hapus {{title}}",
-    "participants": "{{count}} peserta",
-    "turns": "{{count}} giliran",
+    "participants_other": "{{count}} peserta",
+    "turns_other": "{{count}} giliran",
     "updated": "Diperbarui {{time}}",
     "untitled": "Ruang tanpa judul",
     "moreLabel": "Tindakan lain untuk {{title}}",
@@ -54,7 +54,9 @@
     "user-selected": "Anda yang memilih",
     "user-selectedHint": "Setelah setiap giliran ruang menunggu Anda memilih pembicara berikutnya.",
     "moderator-selected": "Moderator yang memilih",
-    "moderator-selectedHint": "Model moderator memilih setiap pembicara dan dapat menutup diskusi."
+    "moderator-selectedHint": "Model moderator memilih setiap pembicara dan dapat menutup diskusi.",
+    "compare": "Bandingkan model",
+    "compareHint": "Setiap pesan dikirim ke semua peserta sekaligus; mereka menjawab sendiri-sendiri tanpa saling melihat, berdampingan."
   },
   "clear": {
     "command": "Bersihkan ruang ini: obrolannya, yang dipelajarinya, file sementaranya",
@@ -74,6 +76,9 @@
     "heading": "Pengaturan ruang",
     "sectionGeneral": "Umum",
     "sectionDiscussion": "Diskusi & moderator",
+    "sectionIdentity": "Identitas",
+    "sectionModel": "Model & penalaran",
+    "sectionTools": "Alat",
     "lockedWhileRunning": "Jeda ruang untuk mengubah pengaturan.",
     "title": "Judul",
     "objective": "Tujuan",
@@ -152,7 +157,47 @@
     "sections": "Bagian pengaturan",
     "tabGeneral": "Umum",
     "tabDiscussion": "Diskusi",
-    "tabLimits": "Batas"
+    "tabLimits": "Batas",
+    "compareRun": "Menjalankan model",
+    "compareRunHint": "Satu per satu lebih lambat, tetapi hanya memuat satu model lokal sekaligus dan menghemat batas laju.",
+    "compareRunOption": {
+      "together": "Semua sekaligus",
+      "one-by-one": "Satu per satu"
+    },
+    "compareRunSuggest": "Dua model lokal atau lebih dipilih: menjalankannya satu per satu mencegah mereka berebut memori.",
+    "tools": {
+      "heading": "Alat",
+      "summary": "{{on}} dari {{total}} aktif · ~{{tokens}} token",
+      "loading": "Memuat alat…",
+      "empty": "Tidak ada alat yang tersedia dengan akses ini.",
+      "group": {
+        "files": "File dan perintah",
+        "web": "Web",
+        "mcp": "Server MCP",
+        "other": "Lainnya"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Definisi alat memakai sekitar {{pct}}% jendela konteks model ini.",
+      "warn": "Definisi alat memakai sekitar {{pct}}% jendela konteks model ini (lebih dari {{limit}}%). Matikan beberapa agar ada ruang untuk diskusi.",
+      "windowUnknown": "Jendela konteks model ini tidak diketahui, jadi porsinya tidak dapat ditampilkan.",
+      "notStarted": "belum dimulai",
+      "toolsUnknown": "alat belum diketahui sampai dimulai"
+    },
+    "budget": {
+      "heading": "Anggaran alat per giliran",
+      "hint": "Batas untuk setiap giliran peserta yang memakai alat. Kosongkan untuk nilai bawaan.",
+      "maxToolCalls": "Maks. panggilan alat",
+      "maxSteps": "Maks. langkah",
+      "toolTimeoutSec": "Batas waktu alat (detik)",
+      "default": "Bawaan: {{value}}"
+    },
+    "isolation": {
+      "active": "Setiap peserta yang dapat mengedit bekerja di ruang kerja terisolasi sendiri, sehingga tidak bisa saling menimpa atau menimpa folder Anda.",
+      "unavailable": "Ruang kerja terisolasi tidak tersedia: {{reason}}. Peserta yang dapat mengedit hanya membaca di ruang ini.",
+      "untrusted": "folder tidak dipercaya",
+      "trust": "Percayai folder ini"
+    },
+    "saving": "Menyimpan…"
   },
   "limits": {
     "maxRounds": "Putaran",
@@ -216,6 +261,7 @@
     "moderatorNote": "Catatan moderator",
     "disagreements": "Ketidaksepakatan",
     "jumpToLatest": "Ke yang terbaru",
+    "compareRow": "{{count}} jawaban berdampingan",
     "toolDetails": "Detail",
     "toolHide": "Sembunyikan",
     "toolArgs": "Input",
@@ -225,7 +271,30 @@
     "toolFailed": "gagal",
     "speed": "{{tps}} tok/dtk",
     "tokensOut": "{{approx}}{{count}} token",
-    "speedTitle": "Token yang ditulis dalam balasan ini, dan seberapa cepat"
+    "speedTitle": "Token yang ditulis dalam balasan ini, dan seberapa cepat",
+    "budgetHit": {
+      "tool-calls": "Giliran ini mencapai anggaran panggilan alat.",
+      "steps": "Giliran ini mencapai anggaran langkah.",
+      "timeout": "Satu panggilan alat di giliran ini melewati batas waktu dan dihentikan."
+    },
+    "rawToolCall": "Ini tampak seperti panggilan alat yang ditulis sebagai teks. Tidak dijalankan.",
+    "emptyReply": {
+      "length": "Model menghabiskan seluruh batas balasan ({{count}} token) tanpa menulis jawaban. Naikkan batas di pengaturan ruang atau matikan penalaran peserta ini, lalu jalankan lagi.",
+      "tools": "Menggunakan alat, tetapi tidak menulis balasan teks.",
+      "none": "Tidak ada balasan teks."
+    },
+    "thought": "Berpikir",
+    "answerFrom": "Jawaban dari {{name}}",
+    "expandAnswer": "Tampilkan seluruh jawaban dari {{name}}",
+    "collapseAnswer": "Persingkat jawaban dari {{name}}",
+    "expand": "Bentangkan",
+    "collapse": "Ciutkan",
+    "linkScroll": "Gulir bersama",
+    "linkScrollHint": "Gulir jawaban untuk satu pertanyaan bersamaan",
+    "continuePrompt": "Lanjutkan jawaban sebelumnya dari bagian yang terpotong.",
+    "catchUp": "Susulan: juga menjawab {{count}} pertanyaan sebelumnya",
+    "catchUp_one": "Susulan: juga menjawab 1 pertanyaan sebelumnya",
+    "catchUpHint": "Peserta ini bergabung setelah pertanyaan-pertanyaan ini, jadi balasan ini juga menjawabnya:"
   },
   "unknownWindow": {
     "title": "Jendela konteks tidak diketahui",
@@ -268,17 +337,23 @@
     "finalPositionsHint": "Setiap peserta menyatakan posisinya",
     "synthesizeHint": "Ringkasan hasil, beserta perbedaan pendapat",
     "cancelTurnHint": "Hentikan hanya balasan yang sedang berlangsung",
-    "steerLocked": "Ini terbuka setelah diskusi berjalan."
+    "steerLocked": "Ini terbuka setelah diskusi berjalan.",
+    "answering": "Menjawab",
+    "models": "Model"
   },
   "stage": {
     "speaking": "{{name}} sedang berbicara",
     "compacting": "{{name}} sedang menyusul",
     "draft": "Siap dimulai",
-    "draftHint": "{{count}} peserta · {{mode}}",
+    "draftHint_other": "{{count}} peserta · {{mode}}",
     "running": "Diskusi berjalan",
     "runningHint": "Pembicara berikutnya sedang bersiap.",
     "awaiting-user": "Giliran Anda memilih",
     "awaitingHint": "Pilih siapa yang berbicara berikutnya, atau tulis ke ruang.",
+    "comparing": "{{count}} model menjawab",
+    "comparingHint": "Masing-masing menjawab sendiri; jawabannya muncul berdampingan.",
+    "compareAwaiting": "Giliran Anda",
+    "compareAwaitingHint": "Tulis pesan dan setiap peserta akan menjawabnya.",
     "paused": "Dijeda",
     "pausedHint": "Lanjutkan untuk meneruskan dari sini.",
     "stopped": "Dihentikan",
@@ -289,7 +364,8 @@
     "failedHint": "Mulai lagi untuk mencoba ulang.",
     "round": "Putaran",
     "turn": "Giliran",
-    "of": "dari"
+    "of": "dari",
+    "question": "Pertanyaan"
   },
   "usage": {
     "label": "Penggunaan",
@@ -302,7 +378,8 @@
     "time": "Waktu",
     "of": "{{value}} / {{max}}",
     "noLimit": "tanpa batas",
-    "stopReason": "Dihentikan: {{reason}}"
+    "stopReason": "Dihentikan: {{reason}}",
+    "questions": "Pertanyaan"
   },
   "stopReason": {
     "user": "dihentikan oleh Anda",
@@ -331,7 +408,9 @@
     "toShort": "Kepada",
     "placeholderTo": "Tulis kepada {{name}}…",
     "mention": "Sebut peserta",
-    "dropSkipped": "Tidak ditambahkan (bukan teks, berupa folder, atau melebihi batas pesan): {{files}}"
+    "dropSkipped": "Tidak ditambahkan (bukan teks, berupa folder, atau melebihi batas pesan): {{files}}",
+    "placeholderShort": "Tulis ke ruang… @ untuk menyebut",
+    "extendByQuestions": "Pertanyaan tambahan"
   },
   "kpi": {
     "running": "Berjalan",
@@ -340,7 +419,7 @@
     "waitingHint": "Perlu pilihan atau balasan Anda",
     "waitingNone": "Tidak ada yang membutuhkan Anda",
     "turns": "Giliran minggu ini",
-    "turnsHint": "Di {{count}} ruang",
+    "turnsHint_other": "Di {{count}} ruang",
     "models": "Model yang ikut serta",
     "modelsNone": "Belum ada peserta"
   },
@@ -383,5 +462,130 @@
     "panes": "Tampilan ruang",
     "talk": "Diskusi",
     "controls": "Kontrol"
+  },
+  "compare": {
+    "title": "Bandingkan putaran",
+    "modeTogether": "Semua sekaligus",
+    "modeOneByOne": "Satu per satu",
+    "include": "Ikutkan di putaran berikutnya",
+    "includeFor": "Ikutkan {{name}} di putaran berikutnya",
+    "run": "Jalankan",
+    "runAgain": "Jalankan lagi",
+    "runFor": "Jalankan {{name}} untuk pertanyaan saat ini",
+    "runAgainFor": "Jalankan {{name}} lagi untuk pertanyaan saat ini",
+    "runAll": "Jalankan semua",
+    "answerEarlier": "Jawab pertanyaan sebelumnya",
+    "answerEarlierHint": "Setiap model yang melewatkan pertanyaan sebelumnya menjawabnya sekarang, berurutan, seolah-olah ia ada di sana.",
+    "export": "Ekspor perbandingan",
+    "saveMarkdown": "Simpan sebagai Markdown…",
+    "copyMarkdown": "Salin sebagai Markdown",
+    "copyJson": "Salin sebagai JSON",
+    "saved": "Perbandingan disimpan.",
+    "copied": "Disalin ke papan klip.",
+    "copyFailed": "Tidak bisa menyalin ke papan klip.",
+    "notAnswered": "Belum menjawab pertanyaan ini.",
+    "state": {
+      "off": "Tidak diikutkan di putaran berikutnya",
+      "unavailable": "Tidak tersedia",
+      "running": "Menjawab…",
+      "queued": "Dalam antrean",
+      "done": "Sudah dijawab",
+      "failed": "Gagal",
+      "idle": "Belum dijawab",
+      "waitingSlot": "Antre: menunggu slot model lokal"
+    },
+    "retry": "Coba lagi",
+    "retryFor": "Coba lagi {{name}}"
+  },
+  "changes": {
+    "summaryOne": "{{count}} file berubah",
+    "summaryMany": "{{count}} file berubah",
+    "workspace": "Ruang kerja terisolasi: {{path}}",
+    "binary": "File biner",
+    "noExcerpt": "Tidak ada cuplikan.",
+    "openDiff": "Buka diff",
+    "keep": "Simpan",
+    "discard": "Buang perubahan",
+    "apply": "Terapkan ke folder saya",
+    "state": {
+      "kept": "Disimpan",
+      "discarded": "Dibuang",
+      "applied": "Diterapkan",
+      "idle": "Belum diterapkan"
+    },
+    "diffTitle": "Perubahan di ruang kerja",
+    "diffHint": "Semua yang diubah peserta ini di ruang kerja terisolasinya.",
+    "discardTitle": "Buang perubahan ini?",
+    "discardHint": "Ruang kerja peserta kembali ke keadaan awal. Folder Anda tidak disentuh.",
+    "loading": "Memuat diff…",
+    "empty": "Tidak ada yang diterapkan.",
+    "discardConfirm": "Buang",
+    "scopeTurn": "Giliran ini",
+    "scopeAll": "Sejak ruang kerja dibuat",
+    "applyShort": "Terapkan",
+    "scopeAllShort": "Semua",
+    "scope": "Perubahan yang ditampilkan",
+    "showAll": "Tampilkan semua berkas ({{count}})",
+    "partial_other": "{{count}} file diterapkan",
+    "applyIncludesEarlier_other": "Terapkan juga mencakup {{count}} file sebelumnya yang belum diterapkan"
+  },
+  "apply": {
+    "title_one": "Terapkan {{count}} perubahan ke folder Anda",
+    "title_other": "Terapkan {{count}} perubahan ke folder Anda",
+    "copyPath": "Salin jalur folder {{path}}",
+    "pathCopied": "Jalur folder disalin",
+    "files_one": "{{count}} berkas",
+    "files_other": "{{count}} berkas",
+    "source": "Dari {{name}} · putaran {{round}}",
+    "safety": "Tidak ada yang diterapkan jika patch tidak bisa diterapkan dengan bersih. Anda bisa membatalkannya segera setelahnya.",
+    "checking": "Memeriksa apakah bisa diterapkan ke folder Anda…",
+    "clean": "Bisa diterapkan dengan bersih",
+    "checkFailed": "Tidak dapat memeriksa patch: {{message}}",
+    "conflict_one": "{{count}} berkas tidak bisa diterapkan ke folder Anda",
+    "conflict_other": "{{count}} berkas tidak bisa diterapkan ke folder Anda",
+    "conflictHint": "Kecualikan berkas itu, atau minta peserta mengerjakannya ulang terhadap folder Anda saat ini.",
+    "notChecked": "tidak diperiksa satu per satu (terlalu banyak berkas)",
+    "fileConflict": "Tidak bisa diterapkan",
+    "leaveOut": "Lewati file yang bertentangan",
+    "details": "Rincian",
+    "fileDirty": "Suntingan Anda",
+    "dirtyTitle_one": "Ada perubahan belum di-commit di {{count}} berkas ini",
+    "dirtyTitle_other": "Ada perubahan belum di-commit di {{count}} berkas ini",
+    "dirtyHint": "Patch ditulis di atas suntingan Anda. Commit atau stash dulu jika ingin mudah kembali.",
+    "selectAll": "Pilih semua berkas",
+    "include": "Sertakan {{path}}",
+    "renamedFrom": "(diganti nama dari {{path}})",
+    "status": {
+      "added": "Ditambah",
+      "modified": "Diubah",
+      "deleted": "Dihapus",
+      "renamed": "Diganti nama"
+    },
+    "binary": "Berkas biner berubah. Isinya tidak ditampilkan.",
+    "noLines": "Tidak ada baris yang berubah (hanya mode atau nama).",
+    "showMore_one": "Tampilkan {{count}} baris lagi",
+    "showMore_other": "Tampilkan {{count}} baris lagi",
+    "hiddenLines_one": "({{count}} tersembunyi)",
+    "hiddenLines_other": "({{count}} tersembunyi)",
+    "blockedConflict": "Terapkan nonaktif: beberapa berkas terpilih tidak bisa diterapkan dengan bersih.",
+    "blockedNothing": "Pilih setidaknya satu berkas.",
+    "blockedFailed": "Terapkan nonaktif sampai pemeriksaan berhasil.",
+    "copyPatch": "Salin patch",
+    "patchCopied": "Patch disalin",
+    "confirm_one": "Terapkan {{count}} berkas",
+    "confirm_other": "Terapkan {{count}} berkas",
+    "applied_one": "{{count}} berkas diterapkan ke folder Anda",
+    "applied_other": "{{count}} berkas diterapkan ke folder Anda",
+    "undo": "Urungkan",
+    "undone": "Perubahan sudah ditarik dari folder Anda",
+    "undoFailed": "Tidak dapat mengurungkan: {{message}}"
+  },
+  "approvals": {
+    "held": "Ruang dijeda",
+    "heldHint": "Ruang dijeda saat ini menunggu, jadi tidak bisa diizinkan lagi. Lanjutkan ruang dan peserta akan bertanya lagi bila masih perlu.",
+    "dismiss": "Tutup",
+    "heldBanner": "Ruang dijeda: permintaan ini tidak bisa diizinkan lagi. Lanjutkan untuk bertanya lagi.",
+    "wantsToRun": "{{origin}} ingin menjalankan {{tool}}",
+    "details": "Detail"
   }
 }

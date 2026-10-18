@@ -5,7 +5,7 @@ import { EnginePage, PageHead, SearchField } from '@/containers/engine/EngineKit
 import { Segmented } from '@/components/ui/segmented'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
-import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { Frame, FrameBody } from '@/components/ui/frame'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { LogEntry } from '@/services/app/types'
 import { cn } from '@/lib/utils'
@@ -17,20 +17,9 @@ import {
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { redactSecrets } from '@/lib/redact'
+import { formatLogTimestamp } from '@/lib/logTime'
 
 const MAX_RENDERED_LINES = 3000
-
-/** Time of day in UTC, 24-hour, as the log file records it. */
-function formatLogTimestamp(timestamp: string | number): string {
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('en-US', {
-    hourCycle: 'h23',
-    timeZone: 'UTC',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
 
 /**
  * The short name of the module a line came from: the last segment of its
@@ -94,15 +83,40 @@ export function CopyLogsButton({ logs }: { logs: LogEntry[] }) {
 }
 
 /**
- * One log line as a terminal shows it: `[time] LEVEL source: message`. Errors
- * read red, a warning's level amber and debug lines muted.
+ * The webview's console forwarder prefixes every line with where it was
+ * logged (`forward@http://localhost:1420/src/services/app/console-logger.ts:22:10: `).
+ * Noise for reading; the expanded row still shows it.
+ */
+const CALL_SITE_PREFIX = /^[\w$.<>]*@(?:https?|tauri|file|asset):\/\/\S+?:\d+:\d+:?\s*/
+
+/** The message as it is shown on the one-line row. */
+export function displayLogMessage(message: string): string {
+  return message.replace(CALL_SITE_PREFIX, '')
+}
+
+/**
+ * One log line as a terminal shows it: `[time] LEVEL source: message`, on one
+ * line with an ellipsis. Clicking the row opens it in full, with the call
+ * site the row leaves out. Errors read red, a warning's level amber and debug
+ * lines muted.
  */
 function LogLine({ log }: { log: LogEntry }) {
   const source = logSource(log)
+  const [open, setOpen] = useState(false)
+  const short = displayLogMessage(log.message)
   return (
-    <div
+    <button
+      type="button"
+      aria-expanded={open}
+      data-testid="log-line"
+      onClick={() => {
+        // A drag to select text is not a click to expand.
+        if (window.getSelection()?.toString()) return
+        setOpen((v) => !v)
+      }}
       className={cn(
-        'whitespace-pre-wrap break-words text-fg-2',
+        'block w-full min-w-0 cursor-pointer rounded-sm text-left text-fg-2 outline-hidden select-text hover:bg-accent/50 focus-visible:ring-[2px] focus-visible:ring-ring/40',
+        open ? 'whitespace-pre-wrap break-words' : 'truncate',
         log.level === 'error' && 'text-destructive',
         log.level === 'debug' && 'text-muted-foreground'
       )}
@@ -114,8 +128,8 @@ function LogLine({ log }: { log: LogEntry }) {
         {log.level.toUpperCase()}
       </b>{' '}
       {source ? `${source}: ` : ''}
-      {log.message}
-    </div>
+      {open ? log.message : short}
+    </button>
   )
 }
 
@@ -179,8 +193,8 @@ export function LogsDashboard({
   )
 
   const viewer = (
+    // No frame title: the page already says Logs right above.
     <Frame className="w-full">
-      <FrameHeader icon={<Icon name="x-terminal" size={16} />} title={title} />
       <FrameBody className="gap-0 p-0">
         <div
           className="flex flex-wrap items-center gap-3 border-b border-dashed border-border px-3 py-2.5"

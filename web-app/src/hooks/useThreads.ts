@@ -215,7 +215,18 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         updated: Date.now() / 1000,
       }
       persistThread(next, thread)
-      return { threads: { ...state.threads, [threadId]: next } }
+      const newThreads = { ...state.threads, [threadId]: next }
+      // The search index holds thread objects; without a rebuild a search
+      // result keeps the old favourite flag and timestamp.
+      return {
+        threads: newThreads,
+        searchIndex: new Fzf<Thread[]>(
+          Object.values(newThreads).filter(
+            (t) => t.id !== TEMPORARY_CHAT_ID && t.title
+          ),
+          { selector: (item: Thread) => item.title ?? '' }
+        ),
+      }
     })
   },
   deleteThread: (threadId, permanent) => {

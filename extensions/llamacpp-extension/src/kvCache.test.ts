@@ -1,11 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import {
+  gpuFlashAttnDefault,
+  lowestComputeCapability,
+  parseComputeCapability,
   resolveKvCacheTypes,
   kvDefaultsInEffect,
   shouldRetryLoadWithF16Kv,
 } from './kvCache'
 
 describe('resolveKvCacheTypes', () => {
+  it('keeps auto at f16 on the CPU backend but honours explicit types', () => {
+    expect(
+      resolveKvCacheTypes({ cacheTypeK: 'auto', cacheTypeV: 'auto', flashAttn: 'on', cpuOnly: true })
+    ).toEqual({ k: 'f16', v: 'f16' })
+    expect(
+      resolveKvCacheTypes({ cacheTypeK: 'q8_0', cacheTypeV: 'auto', cpuOnly: true })
+    ).toEqual({ k: 'q8_0', v: 'f16' })
+  })
+
   it('keeps f16 when nothing is set', () => {
     expect(resolveKvCacheTypes({})).toEqual({ k: 'f16', v: 'f16' })
   })
@@ -134,5 +146,82 @@ describe('shouldRetryLoadWithF16Kv', () => {
       })
     ).toBe(false)
     expect(shouldRetryLoadWithF16Kv({ ...base, error: 'boom' })).toBe(false)
+  })
+})
+
+describe('GPU-aware KV defaults (argument assembly only; no real GPU tested)', () => {
+  const auto = { cacheTypeK: 'auto', cacheTypeV: 'auto', flashAttn: 'auto' }
+
+  it('parses compute capabilities', () => {
+    expect(parseComputeCapability('7.5')).toBe(7.5)
+    expect(parseComputeCapability(' 8.9 ')).toBe(8.9)
+    expect(parseComputeCapability('')).toBeUndefined()
+    expect(parseComputeCapability('x')).toBeUndefined()
+    expect(parseComputeCapability(7.5)).toBeUndefined()
+  })
+
+  it('Turing (7.5): flash attention resolves on, so V is quantized too', () => {
+    expect(resolveKvCacheTypes({ ...auto, computeCapability: 7.5 })).toEqual({
+      k: 'q8_0',
+      v: 'q8_0',
+    })
+    expect(gpuFlashAttnDefault(7.5)).toBeUndefined()
+  })
+
+  it('Turing keeps an explicit flash-attn off and f16 V', () => {
+    expect(
+      resolveKvCacheTypes({ ...auto, flashAttn: 'off', computeCapability: 7.5 })
+    ).toEqual({ k: 'q8_0', v: 'f16' })
+  })
+
+  it('Turing never gets a bf16 cache, even when asked', () => {
+    expect(
+      resolveKvCacheTypes({
+        cacheTypeK: 'bf16',
+        cacheTypeV: 'bf16',
+        flashAttn: 'on',
+        computeCapability: 7.5,
+      })
+    ).toEqual({ k: 'f16', v: 'f16' })
+    expect(
+      resolveKvCacheTypes({
+        cacheTypeK: 'bf16',
+        cacheTypeV: 'bf16',
+        flashAttn: 'on',
+        computeCapability: 8.6,
+      })
+    ).toEqual({ k: 'bf16', v: 'bf16' })
+  })
+
+  it('pre-Pascal: flash attention is pinned off and V stays f16', () => {
+    expect(gpuFlashAttnDefault(5.2)).toBe('off')
+    expect(resolveKvCacheTypes({ ...auto, computeCapability: 5.2 })).toEqual({
+      k: 'q8_0',
+      v: 'f16',
+    })
+  })
+
+  it('Pascal (6.1) is left on the generic path', () => {
+    expect(gpuFlashAttnDefault(6.1)).toBeUndefined()
+    expect(resolveKvCacheTypes({ ...auto, computeCapability: 6.1 })).toEqual(
+      resolveKvCacheTypes(auto)
+    )
+  })
+
+  it('no detected GPU changes nothing', () => {
+    expect(resolveKvCacheTypes(auto)).toEqual({ k: 'q8_0', v: 'f16' })
+    expect(gpuFlashAttnDefault(undefined)).toBeUndefined()
+  })
+
+  it('a mixed rig is judged by its weakest NVIDIA card', () => {
+    expect(
+      lowestComputeCapability([
+        { nvidia_info: { compute_capability: '8.9' } },
+        { nvidia_info: { compute_capability: '7.5' } },
+        { nvidia_info: null },
+      ])
+    ).toBe(7.5)
+    expect(lowestComputeCapability([{ nvidia_info: null }])).toBeUndefined()
+    expect(lowestComputeCapability(undefined)).toBeUndefined()
   })
 })

@@ -167,6 +167,42 @@ describe('MessageItem', () => {
     expect(await screen.findByRole('menu')).toBeTruthy()
   })
 
+  it('renders the continue-from-summary seed as Markdown', () => {
+    useInterfaceSettings.setState({ renderUserMarkdown: false })
+    render(
+      <MessageItem
+        message={makeMsg({
+          role: 'user',
+          parts: [{ type: 'text', text: '- **Goal:** ship' }],
+          metadata: { createdAt: new Date(), continuedFrom: { threadId: 't0', title: 'Old' } },
+        }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(screen.getByTestId('user-markdown')).toBeInTheDocument()
+    expect(screen.getByTestId('render-markdown')).toHaveTextContent('- **Goal:** ship')
+  })
+
+  it.each([
+    [false, false],
+    [true, true],
+  ])('a plain user message renders Markdown only with the setting on (%s)', (on, md) => {
+    useInterfaceSettings.setState({ renderUserMarkdown: on })
+    render(
+      <MessageItem
+        message={makeMsg({ role: 'user', parts: [{ type: 'text', text: 'a **b** c' }] }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(!!screen.queryByTestId('user-markdown')).toBe(md)
+    if (!md) expect(screen.getByText('a **b** c')).toBeInTheDocument()
+    useInterfaceSettings.setState({ renderUserMarkdown: false })
+  })
+
   it('renders assistant text via RenderMarkdown', () => {
     render(
       <MessageItem
@@ -295,6 +331,36 @@ describe('MessageItem', () => {
     expect(screen.getByText('(inline)')).toBeInTheDocument()
   })
 
+  it('sent file chip previews inline text from metadata, no native tooltip', async () => {
+    render(
+      <MessageItem
+        message={
+          makeMsg({
+            role: 'user',
+            parts: [{ type: 'text', text: '[FILE:doc.txt] Please summarize' }],
+            metadata: {
+              createdAt: new Date(),
+              inline_file_contents: [
+                { name: 'doc.txt', content: 'first pasted line\nsecond' },
+              ],
+            },
+          }) as any
+        }
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    const chip = screen.getByTestId('sent-file-chip')
+    expect(chip).not.toHaveAttribute('title')
+    expect(chip.querySelector('[title]')).toBeNull()
+    fireEvent.click(within(chip).getByRole('button'))
+    expect(
+      await screen.findByText(/first pasted line/, {}, { timeout: 3000 })
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('file-preview-open-full')).toBeInTheDocument()
+  })
+
   it('fires onRegenerate when regenerate button clicked (assistant, last)', () => {
     const onRegenerate = vi.fn()
     render(
@@ -308,6 +374,23 @@ describe('MessageItem', () => {
     )
     const regenBtn = screen.getByLabelText('chat:actions.regenerate')
     fireEvent.click(regenBtn)
+    expect(onRegenerate).toHaveBeenCalledWith('msg-1')
+  })
+
+  // C092: after the last reply is deleted the user message is last and had no
+  // way to get a new reply.
+  it('offers Regenerate on a user message left last with no reply', () => {
+    const onRegenerate = vi.fn()
+    render(
+      <MessageItem
+        message={makeMsg({ role: 'user', parts: [{ type: 'text', text: 'Hi' }] }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+        onRegenerate={onRegenerate}
+      />
+    )
+    fireEvent.click(screen.getByLabelText('chat:actions.regenerate'))
     expect(onRegenerate).toHaveBeenCalledWith('msg-1')
   })
 
@@ -341,6 +424,32 @@ describe('MessageItem', () => {
     const btn = screen.getByLabelText('chat:actions.continue')
     fireEvent.click(btn)
     expect(onContinue).toHaveBeenCalledWith('msg-1')
+  })
+
+  it('marks a reply cut at the reply limit, with Continue (L-002)', () => {
+    const onContinue = vi.fn()
+    render(
+      <MessageItem
+        message={
+          makeMsg({
+            metadata: { createdAt: new Date(), stopped: true, finishReason: 'length', usage: { outputTokens: 12 } },
+          }) as any
+        }
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+        onContinue={onContinue}
+      />
+    )
+    const note = screen.getByTestId('reply-cut-off')
+    expect(note).toHaveTextContent('common:replyCutOff.withTokens 12')
+    fireEvent.click(within(note).getByRole('button', { name: 'common:continue' }))
+    expect(onContinue).toHaveBeenCalledWith('msg-1')
+  })
+
+  it('has no cut-off note on a reply that ended normally', () => {
+    render(<MessageItem message={makeMsg() as any} isFirstMessage isLastMessage status={'ready' as any} />)
+    expect(screen.queryByTestId('reply-cut-off')).toBeNull()
   })
 
   it('hides Continue button when the turn finished normally', () => {

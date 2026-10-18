@@ -12,6 +12,12 @@
 //! 4. `--provider`/`--api-key` CLI flags (+ `JAN_API_KEY`/`{PROVIDER}_API_KEY`
 //!    env fallback via [`ProviderOverrides::with_env`]) win over all of the
 //!    above - the most explicit, most ephemeral signal.
+//!
+//! Under `flint serve`, the providers its browser client added (kept in the
+//! server's `web-server/settings.json`, keys in the server's keyring) are
+//! layered between 2 and 3: they replace a Global/Desktop entry of the same
+//! name and are themselves replaced by a project's `agent.toml` under the same
+//! endpoint-trust rule as any other user-written provider.
 
 use std::{collections::HashMap, path::Path, time::Duration};
 
@@ -81,6 +87,19 @@ pub fn desktop_selection() -> DesktopSelection {
     }
 }
 
+/// The model the `flint serve` browser last selected, when this process is a
+/// server and that model's provider is one the browser added. `None` otherwise.
+pub fn server_selected_model() -> Option<String> {
+    let raw = server_settings_raw()?;
+    let selection = parse_selection(&raw);
+    let model = selection.model?;
+    let provider = selection.provider?;
+    server_provider_entries(&raw)
+        .iter()
+        .any(|p| p.get("provider").and_then(|v| v.as_str()) == Some(provider.as_str()))
+        .then_some(model)
+}
+
 /// Extract the selection from a `settings.json` body. Tolerant of shape drift.
 fn parse_selection(raw: &str) -> DesktopSelection {
     let root: serde_json::Value = match serde_json::from_str(raw) {
@@ -146,9 +165,11 @@ pub fn has_usable_provider(project_root: Option<&std::path::Path>) -> bool {
 
 /// Whether `provider` has a stored credential or resolves to a usable config.
 pub fn provider_is_signed_in(project_root: Option<&Path>, provider: &str) -> bool {
+    // Only an API key counts: a stored account login from a removed sign-in
+    // cannot authenticate anything.
     if matches!(
         crate::core::cli::auth::CredentialStore::load(provider),
-        Ok(Some(_))
+        Ok(Some(credential)) if credential.as_api_key().is_some()
     ) {
         return true;
     }
@@ -412,7 +433,8 @@ async fn fetch_models(
 
 /// Load provider configs by layering the four `.jan`-based scopes (see module
 /// docs for the priority order): Global `~/.jan/config.toml` -> Desktop
-/// `settings.json` (inherit-only, additive) -> project `agent.toml`
+/// `settings.json` (inherit-only, additive) -> `flint serve` browser providers
+/// (when this process is a server) -> project `agent.toml`
 /// `[provider]` override -> `--provider`/`--api-key` CLI/env overrides.
 ///
 /// `project_root` is `None` when no project context is available (e.g.
@@ -426,6 +448,9 @@ pub fn load_provider_configs(
     let mut configs = load_global_config()?;
 
     inherit_desktop_providers(&mut configs);
+    if let Some(raw) = server_settings_raw() {
+        layer_server_providers(&mut configs, &raw, load_header_secrets);
+    }
     // Everything so far is configuration the user wrote themselves, so the
     // credentials they stored for these providers may go to these endpoints.
     for cfg in configs.values_mut() {
@@ -483,6 +508,207 @@ fn inherit_desktop_providers(configs: &mut HashMap<String, ProviderConfig>) {
     for (name, cfg) in desktop_configs {
         configs.entry(name).or_insert(cfg);
     }
+}
+
+/// The `flint serve` settings store (`<data>/web-server/settings.json`), where
+/// the browser client keeps its providers. Set once when a server starts; a
+/// plain CLI run never sets it and never reads that file.
+static SERVER_SETTINGS_FILE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// Make the providers a `flint serve` browser added available to every run in
+/// this process. Called by the server at startup.
+pub fn use_server_settings(file: std::path::PathBuf) {
+    let _ = SERVER_SETTINGS_FILE.set(file);
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A test's server settings file; the process-wide one is set only once.
+    static TEST_SERVER_SETTINGS: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn server_settings_raw() -> Option<String> {
+    #[cfg(test)]
+    if let Some(file) = TEST_SERVER_SETTINGS.with(|f| f.borrow().clone()) {
+        return std::fs::read_to_string(file).ok();
+    }
+    std::fs::read_to_string(SERVER_SETTINGS_FILE.get()?).ok()
+}
+
+/// Where the browser keeps a provider's secret custom-header values: the same
+/// secret store as its keys, under a key of its own (`providerHeaderSecrets.ts`).
+fn header_secrets_key(provider: &str) -> String {
+    format!("provider-headers:{provider}")
+}
+
+/// A provider's secret header values by lower-case header name, from the
+/// server's secret store. Empty when none or unreadable.
+fn load_header_secrets(provider: &str) -> HashMap<String, String> {
+    crate::core::server::provider_secrets::load_provider_keys(&header_secrets_key(provider))
+        .into_iter()
+        .next()
+        .and_then(|raw| serde_json::from_str::<HashMap<String, String>>(&raw).ok())
+        .unwrap_or_default()
+}
+
+/// Why a provider the browser added cannot serve agent runs, if it cannot.
+/// Bedrock signs requests with AWS credentials, and a deployments-style Azure
+/// endpoint needs an `api-version` query and an `api-key` header; the agent's
+/// OpenAI-style transport does neither, so both are refused up front rather
+/// than sent and failed with a bare 401/404.
+fn server_provider_unsupported(p: &serde_json::Value) -> Option<String> {
+    let name = p.get("provider").and_then(|v| v.as_str()).unwrap_or_default();
+    if name == "bedrock" || p.get("api_type").and_then(|v| v.as_str()) == Some("bedrock") {
+        return Some(format!(
+            "provider `{name}` (Amazon Bedrock) cannot run agent sessions on `flint serve`; pick a model from another provider"
+        ));
+    }
+    let base_url = p.get("base_url").and_then(|v| v.as_str()).unwrap_or_default();
+    let azure = name == "azure"
+        || url::Url::parse(base_url).ok().and_then(|u| u.host_str().map(str::to_owned)).is_some_and(|h| {
+            h.ends_with(".openai.azure.com") || h.ends_with(".services.ai.azure.com")
+        });
+    let legacy = url::Url::parse(base_url).is_ok_and(|u| {
+        u.query().is_some() || u.path().to_ascii_lowercase().contains("/deployments")
+    });
+    if azure && legacy {
+        return Some(format!(
+            "provider `{name}` uses a deployments-style Azure endpoint (api-version), which agent sessions on `flint serve` do not support; set its base URL to the `/openai/v1` endpoint in the browser's provider settings"
+        ));
+    }
+    None
+}
+
+/// The provider entries in the server settings blob, as raw JSON.
+fn server_provider_entries(raw: &str) -> Vec<serde_json::Value> {
+    let root: serde_json::Value = serde_json::from_str(raw).unwrap_or_default();
+    root.get(MODEL_PROVIDER_KEY)
+        .and_then(|v| v.as_str())
+        .and_then(|blob| serde_json::from_str::<serde_json::Value>(blob).ok())
+        .and_then(|v| v.pointer("/state/providers").and_then(|p| p.as_array()).cloned())
+        .unwrap_or_default()
+}
+
+/// Layer the providers the `flint serve` browser added over `~/.jan/config.toml`
+/// and the desktop inherit: the server's own settings are the more specific
+/// choice on that server. Keys are never in the blob (the browser strips them
+/// and keeps them in this server's keyring); they are read on demand by
+/// [`hydrate_provider_keys`] like the desktop's. Secret custom-header values
+/// come from the same store; `header_secrets` is injected for tests.
+fn layer_server_providers(
+    configs: &mut HashMap<String, ProviderConfig>,
+    raw: &str,
+    mut header_secrets: impl FnMut(&str) -> HashMap<String, String>,
+) {
+    for p in server_provider_entries(raw) {
+        if server_provider_unsupported(&p).is_some() {
+            continue;
+        }
+        let Some(mut cfg) = provider_from_json(&p) else {
+            continue;
+        };
+        // An endpoint the browser left blank is not one to send anything to.
+        if cfg.base_url.is_none() {
+            continue;
+        }
+        let rows = p.get("custom_header").and_then(|h| h.as_array()).cloned().unwrap_or_default();
+        let mut secrets: Option<HashMap<String, String>> = None;
+        for row in rows {
+            let header = row.get("header").and_then(|v| v.as_str()).unwrap_or_default().trim();
+            if header.is_empty() {
+                continue;
+            }
+            let secret = row.get("secret").and_then(|v| v.as_bool()).unwrap_or(false);
+            let value = if secret {
+                let map = secrets.get_or_insert_with(|| header_secrets(&cfg.provider));
+                match map.get(&header.to_ascii_lowercase()) {
+                    Some(v) => {
+                        crate::core::secret_values::register(v);
+                        v.clone()
+                    }
+                    None => continue,
+                }
+            } else {
+                row.get("value").and_then(|v| v.as_str()).unwrap_or_default().to_owned()
+            };
+            cfg.custom_headers.push(crate::core::state::ProviderCustomHeader {
+                header: header.to_owned(),
+                value,
+                secret,
+            });
+        }
+        configs.insert(cfg.provider.clone(), cfg);
+    }
+}
+
+/// Whether `base_url` names this machine or a private network, where a server
+/// without a key is normal (llama.cpp, vLLM, Ollama on the LAN).
+fn is_private_endpoint(base_url: &str) -> bool {
+    let Some(host) = url::Url::parse(base_url).ok().and_then(|u| u.host().map(|h| h.to_owned())) else {
+        return false;
+    };
+    match host {
+        url::Host::Ipv4(ip) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+        url::Host::Ipv6(ip) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
+        url::Host::Domain(name) => {
+            let name = name.to_ascii_lowercase();
+            !name.contains('.')
+                || [".local", ".lan", ".internal", ".home.arpa", ".localhost"]
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix))
+        }
+    }
+}
+
+/// Refuse a run whose model belongs to a provider the `flint serve` browser
+/// added but that cannot serve it: an unsupported kind (Bedrock, legacy
+/// Azure), or a public endpoint with no key stored on this server. The error
+/// names the provider and where to fix it, and never carries a key.
+pub fn check_server_provider(model: &str) -> Result<(), String> {
+    let Some(raw) = server_settings_raw() else {
+        return Ok(());
+    };
+    let configs = load_provider_configs(None, &ProviderOverrides::default()).unwrap_or_default();
+    check_server_provider_in(&raw, &configs, model, has_credential)
+}
+
+fn check_server_provider_in(
+    raw: &str,
+    configs: &HashMap<String, ProviderConfig>,
+    model: &str,
+    has_key: impl Fn(&ProviderConfig) -> bool,
+) -> Result<(), String> {
+    let (prefix, bare) = match model.split_once('/') {
+        Some((p, rest)) => (Some(p), rest),
+        None => (None, model),
+    };
+    for p in server_provider_entries(raw) {
+        let name = p.get("provider").and_then(|v| v.as_str()).unwrap_or_default();
+        let offers = p
+            .get("models")
+            .and_then(|m| m.as_array())
+            .is_some_and(|ms| ms.iter().any(|m| {
+                let id = m.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+                id == model || (prefix == Some(name) && id == bare)
+            }));
+        if !offers || p.get("active").and_then(|v| v.as_bool()) == Some(false) {
+            continue;
+        }
+        if let Some(reason) = server_provider_unsupported(&p) {
+            return Err(reason);
+        }
+        // Only the entry the run will actually use: a project may have replaced it.
+        let Some(cfg) = configs.get(name) else { continue };
+        let server_url = p.get("base_url").and_then(|v| v.as_str()).unwrap_or_default();
+        let ours = cfg.base_url.as_deref().is_some_and(|u| same_endpoint(u, server_url));
+        if ours && !has_key(cfg) && !is_private_endpoint(server_url) {
+            return Err(format!(
+                "provider `{name}` has no API key stored on this Flint server; add it in the browser under Settings > Model Providers > {name}, then start the session again"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Apply the project's `agent.toml` `[provider]` section, if present. Highest
@@ -567,31 +793,14 @@ pub fn has_credential(config: &ProviderConfig) -> bool {
 }
 
 /// Whether a credential is stored under `provider`'s name anywhere a request
-/// could have taken it from. Presence only: no secret is read. Claude's
-/// account also falls back to Claude Code's own keychain entry, which cannot
-/// be probed without reading it, so that name counts -- except for a loopback
-/// `base_url`, where a keyless local proxy is the common case and nothing
-/// leaves the machine either way.
-pub(crate) fn has_stored_credential(provider: &str, base_url: &str) -> bool {
-    use crate::core::cli::auth::account::AccountProvider;
-    matches!(crate::core::cli::auth::CredentialStore::load(provider), Ok(Some(_)))
-        || crate::core::server::provider_secrets::has_stored_key(provider)
-        || matches!(
-            AccountProvider::from_credential_provider(provider),
-            Some(AccountProvider::Claude)
-        ) && !parsed_loopback(base_url)
-}
-
-/// Whether `url`'s host, as a URL parser reads it, is this machine. Unlike
-/// [`is_loopback_url`], user info (`http://localhost:80@evil.example`) cannot
-/// pass for the host.
-fn parsed_loopback(url: &str) -> bool {
-    match url::Url::parse(url.trim()).ok().and_then(|u| u.host().map(|h| h.to_owned())) {
-        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
-        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
-        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
-        None => false,
-    }
+/// could have taken it from. Presence only: no secret is read. A stored
+/// account login left by the removed Codex/Claude sign-in is not a credential
+/// anything can send, so it does not count.
+pub(crate) fn has_stored_credential(provider: &str, _base_url: &str) -> bool {
+    matches!(
+        crate::core::cli::auth::CredentialStore::load(provider),
+        Ok(Some(credential)) if credential.as_api_key().is_some()
+    ) || crate::core::server::provider_secrets::has_stored_key(provider)
 }
 
 /// The error for a provider whose endpoint does not match the one its stored
@@ -1695,7 +1904,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_is_signed_in_when_oauth_credential_exists() {
+    fn provider_is_not_signed_in_with_only_a_legacy_account_credential() {
         use crate::core::agent::global_config::with_temp_home;
         use crate::core::cli::auth::{Credential, CredentialStore, OAuthToken};
 
@@ -1713,7 +1922,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(provider_is_signed_in(None, "anthropic"));
+                assert!(!provider_is_signed_in(None, "anthropic"));
             });
         });
     }
@@ -2031,49 +2240,45 @@ mod credential_origin_tests {
         })
     }
 
+    /// A stored account login from the removed Codex/Claude sign-in loads
+    /// without panic and is never sent: not to the trusted endpoint, not to a
+    /// project-supplied one.
     #[test]
-    fn an_account_token_is_not_paired_with_a_project_base_url() {
+    fn a_legacy_account_token_is_never_sent() {
         with_store(|| {
             trust("openai", "https://api.openai.com/v1", &["gpt-x"]);
             CredentialStore::store("openai", &oauth("account-access")).unwrap();
-            let root = project("openai", "https://evil.example/v1", None, &["gpt-x"]);
-            let configs = load(&root, &ProviderOverrides::default());
-            let err = resolve(configs, "gpt-x")
-                .expect_err("a withheld stored credential is a configuration error");
-            assert!(err.contains("openai") && err.contains("base_url"), "{err}");
-        });
-    }
-
-    #[test]
-    fn an_account_token_still_reaches_the_trusted_endpoint() {
-        with_store(|| {
-            trust("openai", "https://api.openai.com/v1", &["gpt-x"]);
-            CredentialStore::store("openai", &oauth("account-access")).unwrap();
+            // Selecting it at the trusted endpoint gives the clear "was
+            // removed, use an API key" error.
             let root = project("openai", "https://api.openai.com/v1/", None, &["gpt-x"]);
             let configs = load(&root, &ProviderOverrides::default());
+            let err = resolve(configs, "gpt-x").expect_err("no usable credential");
+            assert!(err.contains("API key"), "{err}");
+            assert!(!err.contains("account-access"), "{err}");
+
+            // A project-supplied endpoint gets no stored credential at all.
+            let root = project("openai", "https://evil.example/v1", None, &["gpt-x"]);
+            let configs = load(&root, &ProviderOverrides::default());
             let (_, keys) = resolve(configs, "gpt-x").unwrap();
-            assert_eq!(keys, vec!["account-access".to_string()]);
+            assert!(keys.is_empty(), "{keys:?}");
         });
     }
 
-    /// Claude's account falls back to Claude Code's keychain, which cannot be
-    /// probed, so a redirected `anthropic` is refused -- but not a keyless
-    /// local proxy, where nothing leaves the machine.
+    /// With no stored credential there is nothing to withhold: a redirected
+    /// `anthropic` carries no key and resolves like any keyless provider.
     #[test]
-    fn a_redirected_anthropic_is_refused_unless_it_is_a_local_proxy() {
+    fn a_redirected_anthropic_carries_no_credential() {
         with_store(|| {
-            let root = project("anthropic", "https://evil.example/v1", None, &["claude-x"]);
-            let err = resolve(load(&root, &ProviderOverrides::default()), "claude-x")
-                .expect_err("Claude Code's credential must not be assumed away");
-            assert!(err.contains("anthropic"), "{err}");
-
-            let root = project("anthropic", "http://localhost:4000/v1", None, &["claude-x"]);
-            let (url, keys) = resolve(load(&root, &ProviderOverrides::default()), "claude-x").unwrap();
-            assert_eq!(url, "http://localhost:4000/v1/chat/completions");
-            assert!(keys.is_empty());
-
-            let root = project("anthropic", "http://localhost:80@evil.example/v1", None, &["claude-x"]);
-            assert!(resolve(load(&root, &ProviderOverrides::default()), "claude-x").is_err());
+            for url in [
+                "https://evil.example/v1",
+                "http://localhost:4000/v1",
+                "http://localhost:80@evil.example/v1",
+            ] {
+                let root = project("anthropic", url, None, &["claude-x"]);
+                let (_, keys) =
+                    resolve(load(&root, &ProviderOverrides::default()), "claude-x").unwrap();
+                assert!(keys.is_empty(), "{url}: {keys:?}");
+            }
         });
     }
 
@@ -2173,5 +2378,265 @@ mod credential_origin_tests {
 
         let err = pin_provider(&mut configs, "missing", "qwen3.8").unwrap_err();
         assert!(err.contains("unknown provider 'missing'"), "{err}");
+    }
+}
+
+/// E5: providers a `flint serve` browser added (its `web-server/settings.json`,
+/// keys in the server's keyring) reach agent runs on that server.
+#[cfg(test)]
+mod server_settings_tests {
+    use super::*;
+    use crate::core::agent::global_config::{set_provider, with_temp_home, ProviderUpdate};
+
+    const V100: &str = "http://v100:8552/v1";
+
+    /// The store the browser writes: `model-provider` holds zustand's JSON string.
+    fn blob(providers: serde_json::Value) -> String {
+        let state = serde_json::json!({ "state": { "providers": providers }, "version": 1 });
+        serde_json::json!({ MODEL_PROVIDER_KEY: state.to_string() }).to_string()
+    }
+
+    fn provider(name: &str, base_url: &str, models: &[&str]) -> serde_json::Value {
+        serde_json::json!({
+            "active": true,
+            "provider": name,
+            "base_url": base_url,
+            "settings": [],
+            "models": models.iter().map(|m| serde_json::json!({ "id": m })).collect::<Vec<_>>(),
+        })
+    }
+
+    /// Run `f` as a server whose browser saved `raw`, with a scratch home,
+    /// data folder and file-backed secret store.
+    fn as_server<T>(raw: &str, f: impl FnOnce() -> T) -> T {
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("web-server").join("settings.json");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, raw).unwrap();
+        let prev = std::env::var("JAN_DATA_FOLDER").ok();
+        std::env::set_var("JAN_DATA_FOLDER", dir.path());
+        crate::core::server::provider_secrets::force_file_secrets();
+        TEST_SERVER_SETTINGS.with(|f| *f.borrow_mut() = Some(file));
+        let result = with_temp_home(|_| f());
+        TEST_SERVER_SETTINGS.with(|f| *f.borrow_mut() = None);
+        match &prev {
+            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
+            None => std::env::remove_var("JAN_DATA_FOLDER"),
+        }
+        result
+    }
+
+    fn project(name: &str, base_url: &str, models: &[&str]) -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join(".jan").join("agent");
+        std::fs::create_dir_all(&dir).unwrap();
+        let models = models.iter().map(|m| format!("\"{m}\"")).collect::<Vec<_>>().join(", ");
+        std::fs::write(
+            dir.join("agent.toml"),
+            format!("[provider]\nname = \"{name}\"\nbase_url = \"{base_url}\"\nmodels = [{models}]\n"),
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn a_browser_provider_resolves_with_its_keyring_key_and_headers() {
+        let mut v100 = provider("v100", V100, &["qwen3.8-27b-coder390"]);
+        v100["custom_header"] = serde_json::json!([
+            { "header": "X-Team", "value": "red", "secret": false },
+            { "header": "X-Token", "value": "", "secret": true },
+        ]);
+        let raw = blob(serde_json::json!([v100]));
+        as_server(&raw, || {
+            crate::core::server::provider_secrets::store_provider_keys("v100", &["sk-web".into()])
+                .unwrap();
+            crate::core::server::provider_secrets::store_provider_keys(
+                &header_secrets_key("v100"),
+                &[r#"{"x-token":"hdr-secret"}"#.into()],
+            )
+            .unwrap();
+            let configs = load_provider_configs(None, &ProviderOverrides::default()).unwrap();
+            let mut cfg = configs.get("v100").expect("browser provider listed").clone();
+            assert_eq!(cfg.base_url.as_deref(), Some(V100));
+            assert_eq!(cfg.models, vec!["qwen3.8-27b-coder390".to_string()]);
+            assert!(cfg.may_use_stored_credentials());
+            let headers: Vec<_> = cfg
+                .custom_headers
+                .iter()
+                .map(|h| (h.header.as_str(), h.value.as_str()))
+                .collect();
+            assert_eq!(headers, vec![("X-Team", "red"), ("X-Token", "hdr-secret")]);
+            assert!(cfg.bearer_key_chain().is_empty(), "keys are read on demand only");
+            hydrate_provider_keys(&mut cfg);
+            assert_eq!(cfg.bearer_key_chain(), vec!["sk-web".to_string()]);
+            assert!(reachable_models(&configs)
+                .iter()
+                .any(|(_, m)| m == "qwen3.8-27b-coder390"));
+        });
+    }
+
+    #[test]
+    fn without_a_server_the_browser_store_is_not_read() {
+        let raw = blob(serde_json::json!([provider("v100", V100, &["m"])]));
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("web-server")).unwrap();
+        std::fs::write(dir.path().join("web-server").join("settings.json"), raw).unwrap();
+        let configs =
+            with_temp_home(|_| load_provider_configs(None, &ProviderOverrides::default()).unwrap());
+        assert!(!configs.contains_key("v100"));
+    }
+
+    #[test]
+    fn the_server_replaces_global_and_a_project_replaces_the_server() {
+        let raw = blob(serde_json::json!([provider("v100", V100, &["web-model"])]));
+        as_server(&raw, || {
+            set_provider(
+                "v100",
+                ProviderUpdate {
+                    api_key: Some("sk-global".into()),
+                    base_url: Some("http://old:1/v1".into()),
+                    models: Some(vec!["old-model".into()]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let configs = load_provider_configs(None, &ProviderOverrides::default()).unwrap();
+            let cfg = &configs["v100"];
+            assert_eq!(cfg.base_url.as_deref(), Some(V100), "server settings outrank ~/.jan");
+            assert!(
+                cfg.api_key.is_none(),
+                "the global key does not follow the name to the server's endpoint"
+            );
+
+            // A project keeping the server's endpoint may use its stored key...
+            let same = project("v100", "http://v100:8552/v1/", &["p-model"]);
+            let configs =
+                load_provider_configs(Some(same.path()), &ProviderOverrides::default()).unwrap();
+            assert_eq!(configs["v100"].models, vec!["p-model".to_string()]);
+            assert!(configs["v100"].may_use_stored_credentials());
+
+            // ...one pointing the name elsewhere may not.
+            let evil = project("v100", "https://evil.example/v1", &["p-model"]);
+            let mut cfg = load_provider_configs(Some(evil.path()), &ProviderOverrides::default())
+                .unwrap()["v100"]
+                .clone();
+            crate::core::server::provider_secrets::store_provider_keys("v100", &["sk-web".into()])
+                .unwrap();
+            hydrate_provider_keys(&mut cfg);
+            assert!(cfg.bearer_key_chain().is_empty(), "server key sent to a project URL");
+
+            // An explicit --api-key still wins for the run it was given to.
+            let flagged = ProviderOverrides {
+                provider: Some("v100".into()),
+                api_key: Some("sk-flag".into()),
+                pin: true,
+            };
+            let configs = load_provider_configs(None, &flagged).unwrap();
+            assert_eq!(configs["v100"].bearer_key_chain(), vec!["sk-flag".to_string()]);
+        });
+    }
+
+    #[test]
+    fn unsupported_or_switched_off_browser_providers_are_not_layered() {
+        let mut off = provider("off", "https://api.off.example/v1", &["m-off"]);
+        off["active"] = serde_json::json!(false);
+        let raw = blob(serde_json::json!([
+            provider("bedrock", "https://bedrock-runtime.us-east-1.amazonaws.com", &["claude"]),
+            provider(
+                "azure",
+                "https://x.openai.azure.com/openai/deployments/gpt?api-version=2024-10-21",
+                &["gpt"]
+            ),
+            provider("azure-v1", "https://x.openai.azure.com/openai/v1", &["gpt-v1"]),
+            off,
+        ]));
+        let mut configs = HashMap::new();
+        layer_server_providers(&mut configs, &raw, |_| HashMap::new());
+        let mut names: Vec<_> = configs.keys().cloned().collect();
+        names.sort();
+        assert_eq!(names, vec!["azure-v1".to_string()]);
+
+        let err = check_server_provider_in(&raw, &configs, "claude", |_| true).unwrap_err();
+        assert!(err.contains("Bedrock") && err.contains("flint serve"), "{err}");
+        let err = check_server_provider_in(&raw, &configs, "gpt", |_| true).unwrap_err();
+        assert!(err.contains("/openai/v1"), "{err}");
+        assert!(check_server_provider_in(&raw, &configs, "gpt-v1", |_| true).is_ok());
+    }
+
+    #[test]
+    fn a_missing_key_names_the_provider_and_where_to_set_it() {
+        let raw = blob(serde_json::json!([
+            provider("openrouter", "https://openrouter.ai/api/v1", &["or-model"]),
+            provider("v100", V100, &["qwen"]),
+        ]));
+        let mut configs = HashMap::new();
+        layer_server_providers(&mut configs, &raw, |_| HashMap::new());
+        let err = check_server_provider_in(&raw, &configs, "or-model", |_| false).unwrap_err();
+        assert!(err.contains("`openrouter`"), "{err}");
+        assert!(err.contains("Settings > Model Providers > openrouter"), "{err}");
+        assert!(check_server_provider_in(&raw, &configs, "openrouter/or-model", |_| true).is_ok());
+        // A LAN server without a key is normal.
+        assert!(check_server_provider_in(&raw, &configs, "qwen", |_| false).is_ok());
+        // A model no browser provider offers is not this check's business.
+        assert!(check_server_provider_in(&raw, &configs, "elsewhere", |_| false).is_ok());
+    }
+
+    #[test]
+    fn errors_never_carry_a_key_or_header_secret() {
+        let mut p = provider("bedrock", "https://bedrock.example?token=sk-in-url", &["m"]);
+        p["settings"] = serde_json::json!([
+            { "key": "api-key", "controller_props": { "value": "sk-leak" } }
+        ]);
+        let mut q = provider("cloud", "https://cloud.example/v1", &["c"]);
+        q["custom_header"] =
+            serde_json::json!([{ "header": "X-Token", "value": "", "secret": true }]);
+        let raw = blob(serde_json::json!([p, q]));
+        let mut configs = HashMap::new();
+        layer_server_providers(&mut configs, &raw, |_| {
+            HashMap::from([("x-token".to_string(), "hdr-leak".to_string())])
+        });
+        for model in ["m", "c"] {
+            let err = check_server_provider_in(&raw, &configs, model, |_| false).unwrap_err();
+            for secret in ["sk-leak", "hdr-leak", "sk-in-url"] {
+                assert!(!err.contains(secret), "{secret} in {err}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_browser_selection_is_the_default_model_only_for_its_own_providers() {
+        let with = |provider: &str| {
+            let state = serde_json::json!({ "state": {
+                "providers": [provider_json("v100")],
+                "selectedProvider": provider,
+                "selectedModel": { "id": "qwen" },
+            }});
+            serde_json::json!({ MODEL_PROVIDER_KEY: state.to_string() }).to_string()
+        };
+        assert_eq!(as_server(&with("v100"), server_selected_model).as_deref(), Some("qwen"));
+        assert_eq!(as_server(&with("llamacpp"), server_selected_model), None);
+        assert_eq!(server_selected_model(), None, "not a server");
+    }
+
+    fn provider_json(name: &str) -> serde_json::Value {
+        provider(name, V100, &["qwen"])
+    }
+
+    #[test]
+    fn private_endpoints_are_told_apart_from_public_ones() {
+        for url in [
+            "http://v100:8552/v1",
+            "http://127.0.0.1:1337/v1",
+            "http://192.168.1.5/v1",
+            "http://box.lan/v1",
+            "http://[::1]:8080",
+        ] {
+            assert!(is_private_endpoint(url), "{url}");
+        }
+        for url in ["https://api.openai.com/v1", "http://8.8.8.8/v1", "not a url"] {
+            assert!(!is_private_endpoint(url), "{url}");
+        }
     }
 }

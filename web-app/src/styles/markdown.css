@@ -71,42 +71,61 @@
     text-decoration: line-through;
   }
 
-  /* Lists */
+  /* Lists: markers sit outside the text so wrapped lines hang under the
+     first word, never under the marker. Disc / decimal at the top level,
+     circle / lower-alpha one level down, square / lower-roman below that. */
   ul,
   ol {
     line-height: 1.65;
     margin-bottom: 0.85em;
     padding-left: 1.5em;
+    white-space: normal;
+    list-style-position: outside;
   }
-
   ul {
     list-style-type: disc;
   }
-
-  ul > li {
-    list-style-type: circle;
-  }
-
   ol {
     list-style-type: decimal;
   }
-
-  li {
-    margin-bottom: 0.35em;
+  ul ul {
+    list-style-type: circle;
   }
-
-  li > ul,
-  li > ol {
-    margin-top: 0.35em;
-    margin-bottom: 0.35em;
+  ol ol {
+    list-style-type: lower-alpha;
   }
-
-  li > ol {
+  ul ul ul {
+    list-style-type: square;
+  }
+  ol ol ol {
     list-style-type: lower-roman;
   }
-
-  li > ul {
-    list-style-type: circle;
+  li {
+    margin-bottom: 0.25em;
+    padding-left: 0.15em;
+  }
+  li::marker {
+    color: var(--color-muted-foreground);
+  }
+  /* Paragraphs inside loose items stay blocks (inline paragraphs broke the
+     hanging indent) but lose their own spacing. */
+  li > p {
+    margin: 0;
+  }
+  li > ul,
+  li > ol {
+    margin-top: 0.25em;
+    margin-bottom: 0.25em;
+  }
+  /* Task lists: the checkbox is the marker, so no bullet beside it. A list
+     can mix plain and task items, so only the task items lose the marker. */
+  li.task-list-item {
+    list-style: none;
+    padding-left: 0;
+  }
+  li.task-list-item > input[type='checkbox'] {
+    margin: 0 0.5em 0 0;
+    vertical-align: -0.1em;
   }
 
   /* Blockquotes: quieter by colour, never by opacity. */
@@ -134,10 +153,18 @@
     font-family: var(--font-mono), monospace;
     @apply bg-code-bg text-foreground px-0!;
     max-width: 100%;
+    min-width: 0;
+    /* Long lines scroll sideways inside the block by default; the wrap toggle
+       (data-code-wrap on the .markdown root) turns wrapping on instead. */
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+    overflow-x: auto;
+    margin-bottom: 8px;
+  }
+  &[data-code-wrap="on"] pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    word-break: break-word;
-    margin-bottom: 8px;
   }
 
   pre code {
@@ -161,6 +188,15 @@
     line-height: 1.45;
   }
 
+  /* Cells never break inside a word (no "Engi-neer"); the column keeps a
+     readable minimum and the table scrolls inside its box instead. */
+  th,
+  td {
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: manual;
+    min-width: 6rem;
+  }
   th {
     text-align: left;
     font-weight: 600;
@@ -184,24 +220,6 @@
 
   a:hover {
     text-decoration: underline;
-  }
-
-  ul.contains-task-list {
-    list-style: none;
-    padding-left: 0;
-  }
-
-  ol,
-  ul {
-    list-style: auto;
-    padding-left: 16px;
-    white-space: normal;
-    list-style-position: inside;
-    li {
-      p {
-        display: inline;
-      }
-    }
   }
 
   /* Images */
@@ -245,6 +263,64 @@
   }
   [data-streamdown="code-block"] pre {
     margin-bottom: 0;
+  }
+  [data-streamdown="code-block"] {
+    max-width: 100%;
+    min-width: 0;
+  }
+  /* One row per source line: the number sits in a fixed gutter (padding on
+     the row, pulled back by a negative margin) so wrapped continuation lines
+     hang under the code, never under the number. Without wrapping the code
+     element grows to the longest line so the sticky gutter stays put while the
+     block scrolls sideways. */
+  [data-streamdown="code-block-body"] {
+    --code-gutter: 2.75rem;
+    /* Long blocks stop at ~60% of the window and scroll inside; the header's
+       expand toggle (data-code-expanded) lifts the cap. */
+    max-height: max(8rem, 60vh);
+    overflow-y: auto;
+  }
+  [data-code-expanded] [data-streamdown="code-block-body"] {
+    max-height: none;
+  }
+  /* A soft fade at the bottom edge says there is more below. */
+  [data-code-capped] [data-streamdown="code-block-body"] {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 2rem), transparent);
+  }
+  [data-streamdown="code-block-header"] {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    gap: 0.5rem;
+  }
+  [data-streamdown="code-block-header"] > div:last-child {
+    flex-shrink: 0;
+  }
+  [data-streamdown="code-block-body"] > code {
+    display: inline-block;
+    min-width: 100%;
+    padding: 0;
+  }
+  &[data-code-wrap="on"] [data-streamdown="code-block-body"] > code {
+    display: block;
+  }
+  [data-streamdown="code-block-body"] > code > span {
+    display: block;
+    padding-left: var(--code-gutter);
+  }
+  [data-streamdown="code-block-body"] > code > span::before {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    box-sizing: border-box;
+    width: var(--code-gutter);
+    margin-left: calc(-1 * var(--code-gutter));
+    margin-right: 0;
+    padding-right: 1rem;
+    background: var(--color-code-bg);
+    font-size: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    user-select: none;
   }
   [data-streamdown="inline-code"] {
     @apply bg-accent;

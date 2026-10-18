@@ -129,6 +129,15 @@ describe('enableMcpServer', () => {
     expect(useMCPServers.getState().editServer).not.toHaveBeenCalled()
   })
 
+  // C030: the backend registers the server as enabled before starting it, so
+  // a failed start left it enabled and every later send started it on demand.
+  it('turns the server back off when the start itself fails', async () => {
+    mcp.activateMCPServer.mockRejectedValue(new Error('os error 193'))
+    await expect(enableMcpServer('notion')).rejects.toThrow(/193/)
+    expect(mcp.deactivateMCPServer).toHaveBeenCalledWith('notion')
+    expect(useMCPServers.getState().editServer).not.toHaveBeenCalled()
+  })
+
   it('refuses a server that is not configured', async () => {
     await expect(enableMcpServer('nope')).rejects.toThrow(/nope/)
   })

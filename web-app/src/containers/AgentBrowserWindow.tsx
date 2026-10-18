@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useSecondClock } from '@/lib/sharedClock'
 import { ArrowLeft, ArrowRight, RotateCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -40,12 +40,7 @@ export function AgentBrowserWindow({
   useBrowserToolWatching(!!view)
 
   // "Live" is read off the clock, so it has to be re-read as time passes.
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!view) return
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [view])
+  const now = useSecondClock(!!view)
 
   if (!view) return null
   const live = isLive(view, now)

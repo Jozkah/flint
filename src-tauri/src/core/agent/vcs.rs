@@ -26,7 +26,7 @@
 //! The operations that do change history -- [`apply_split`] (AH-160),
 //! [`rebase_start`] (AH-166) and [`cherry_pick`] (AH-167) -- are built so that
 //! work is recoverable at every step: they refuse a dirty tree, write a backup
-//! ref (`refs/jan/backup/...`) before anything moves, never pass a name that
+//! ref (`refs/flint/backup/...`) before anything moves, never pass a name that
 //! could be read as an option, never open an editor, and [`abort_op`] returns
 //! the branch exactly to its backup and checks that it did.
 
@@ -1110,12 +1110,26 @@ pub struct HistoryOp {
     pub note: String,
 }
 
-const BACKUP_PREFIX: &str = "refs/jan/backup/";
+const BACKUP_PREFIX: &str = "refs/flint/backup/";
 /// Where a finished operation left the branch, named like its backup.
-const AFTER_PREFIX: &str = "refs/jan/after/";
+const AFTER_PREFIX: &str = "refs/flint/after/";
+/// Names older builds wrote; still read so existing backups stay usable.
+const LEGACY_BACKUP_PREFIX: &str = "refs/jan/backup/";
+const LEGACY_AFTER_PREFIX: &str = "refs/jan/after/";
+
+/// The backup name without its prefix, and the matching after-ref prefix.
+fn split_backup(backup: &str) -> Option<(&'static str, &str)> {
+    let b = backup.trim();
+    b.strip_prefix(BACKUP_PREFIX)
+        .map(|rest| (AFTER_PREFIX, rest))
+        .or_else(|| b.strip_prefix(LEGACY_BACKUP_PREFIX).map(|rest| (LEGACY_AFTER_PREFIX, rest)))
+}
 
 fn after_ref(backup: &str) -> String {
-    format!("{AFTER_PREFIX}{}", backup.trim().trim_start_matches(BACKUP_PREFIX))
+    match split_backup(backup) {
+        Some((after, rest)) => format!("{after}{rest}"),
+        None => format!("{AFTER_PREFIX}{}", backup.trim()),
+    }
 }
 
 /// Branches a guided rebase will not rewrite: the conventional long-lived ones
@@ -1211,7 +1225,7 @@ fn parse_backup(backup: &str) -> Result<(&'static str, String), VcsError> {
             format!("{backup:?} is not a backup a guided rebase or cherry-pick made"),
         )
     };
-    let rest = backup.trim().strip_prefix(BACKUP_PREFIX).ok_or_else(bad)?;
+    let (_, rest) = split_backup(backup).ok_or_else(bad)?;
     let (operation, rest) = if let Some(rest) = rest.strip_prefix("rebase/") {
         ("rebase", rest)
     } else if let Some(rest) = rest.strip_prefix("cherry-pick/") {
@@ -1449,7 +1463,7 @@ pub fn history_status(repo: &Path) -> Result<String, VcsError> {
     };
     let refs = git(
         repo,
-        &["for-each-ref", "--sort=-creatordate", "--count=10", "--format=%(refname) %(objectname:short)", BACKUP_PREFIX],
+        &["for-each-ref", "--sort=-creatordate", "--count=10", "--format=%(refname) %(objectname:short)", BACKUP_PREFIX, LEGACY_BACKUP_PREFIX],
     )?;
     if refs.trim().is_empty() {
         out.push_str("no backups.");
@@ -2006,7 +2020,7 @@ mod tests {
         let started = rebase_start(&work, "main").unwrap();
         assert_eq!(started.state, "conflicted", "{started:?}");
         assert_eq!(started.conflicts.as_ref().unwrap().files[0].path, "file.txt");
-        assert!(started.backup.starts_with("refs/jan/backup/rebase/feature/"));
+        assert!(started.backup.starts_with("refs/flint/backup/rebase/feature/"));
         // A later process finds it.
         let status = history_status(&work).unwrap();
         assert!(status.contains("a rebase is stopped") && status.contains(&started.backup), "{status}");
@@ -2035,6 +2049,30 @@ mod tests {
         assert_eq!(tree_of(&work, "other.txt"), "other\n");
         abort_op(&work, &done.backup).unwrap();
         assert_eq!(head(&work), before, "the backup undoes a finished rebase");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn backups_use_flint_refs_and_older_jan_backups_still_undo() {
+        let (base, work) = pair("rebase-legacy");
+        run(&work, &["switch", "-q", "-c", "topic"]);
+        commit(&work, "topic.txt", "topic\n", "topic change");
+        let before = head(&work);
+        run(&work, &["switch", "-q", "main"]);
+        commit(&work, "other.txt", "other\n", "main moves on");
+        run(&work, &["switch", "-q", "topic"]);
+        let done = rebase_start(&work, "main").unwrap();
+        assert!(done.backup.starts_with("refs/flint/backup/"), "{}", done.backup);
+        // Rename both refs to what an older build wrote.
+        let rest = done.backup.trim_start_matches("refs/flint/backup/").to_string();
+        let legacy = format!("refs/jan/backup/{rest}");
+        run(&work, &["update-ref", &legacy, &done.backup]);
+        run(&work, &["update-ref", &format!("refs/jan/after/{rest}"), &format!("refs/flint/after/{rest}")]);
+        run(&work, &["update-ref", "-d", &done.backup]);
+        run(&work, &["update-ref", "-d", &format!("refs/flint/after/{rest}")]);
+        assert!(history_status(&work).unwrap().contains(&legacy));
+        abort_op(&work, &legacy).unwrap();
+        assert_eq!(head(&work), before, "a legacy backup still undoes");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -2127,7 +2165,7 @@ mod tests {
         run(&work, &["checkout", "-q", "--", "y.txt"]);
         assert_eq!(rebase_start(&work, "--exec=calc").unwrap_err().kind, VcsErrorKind::BadName);
         assert_eq!(rebase_start(&work, "no-such-branch").unwrap_err().kind, VcsErrorKind::NoBranch);
-        let listed = Command::new("git").arg("-C").arg(&work).args(["for-each-ref", "refs/jan/"]).output().unwrap();
+        let listed = Command::new("git").arg("-C").arg(&work).args(["for-each-ref", "refs/flint/", "refs/jan/"]).output().unwrap();
         assert!(String::from_utf8_lossy(&listed.stdout).trim().is_empty(), "a refused rebase wrote a backup");
         let _ = std::fs::remove_dir_all(&base);
     }

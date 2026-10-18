@@ -62,6 +62,18 @@ The installers are **not code-signed**, so your OS warns you the first time you 
 - **macOS:** right-click (or Control-click) Flint in Applications and choose **Open**, then **Open** again. Alternatively, try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
 - **macOS local models need Apple silicon** (M1 or later). On Intel Macs you can still use cloud providers.
 
+### NVIDIA GPUs: the CUDA engine add-on
+
+There is one installer per platform, and it stays small: on Windows and Linux it runs local models on any GPU through Vulkan, or on the CPU.
+
+On an NVIDIA GPU, local models usually run faster on NVIDIA's CUDA backend (in our measurements typically 10-70% more tokens per second, more when a model does not fit fully in VRAM). When you load a local model on such a machine, Flint offers the **CUDA engine add-on** in a small card: **Download**, **Not now** or **Don't remind me**. Nothing is downloaded until you click. The add-on is about a 400 MB download, 570 MB installed (the ggml CUDA module plus NVIDIA's CUDA runtime and cuBLAS), is published with each release, and is used from the next model load; Vulkan is used meanwhile and stays as the fallback.
+
+- It needs an **NVIDIA driver R580 or newer** and an RTX 20-series (Turing) or newer GPU. With an older driver Flint tells you to update it instead of offering the download; older GPUs, AMD and Intel GPUs keep using Vulkan and see no offer.
+- Manage it in **Settings → Models → llama.cpp → Engine add-ons**, or in **System Monitor**: download, remove, check again, or turn the suggestion off.
+- You can switch each GPU between CUDA and Vulkan in **System Monitor**; a choice you made is kept across updates.
+- Each pack is tied to one Flint release and verified before it is installed (signed manifest, size and SHA-256 of every file); a damaged or mismatched pack is refused and Flint stays on Vulkan. When Flint updates, it offers the matching pack again.
+- **Offline or air-gapped machines:** download `flint-engine-cuda13-<release>-win-x64.zip` (or `-linux-x64.zip`) from the release page on another machine, then use **Install from file...** under Engine add-ons. The same verification applies. The release notes and `SHA256SUMS-engine-addons.txt` list the checksums.
+
 **Models are your choice.** Open **Discover** to search Hugging Face and choose the exact GGUF quantization (or MLX repository on Apple silicon) you want Flint to download. Downloads start only when you click **Download**, support pause/resume, and are size/hash verified when Hugging Face exposes that metadata. You can still import a GGUF you already have with **Import GGUF** on the **Models** page, or add a cloud provider with your own key.
 
 ### The `flint` CLI

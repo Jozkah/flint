@@ -1,7 +1,7 @@
 {
   "limitedSupport": "Este provedor pode não ter suporte completo. Os recursos (ferramentas, visão, áudio) não são detectados automaticamente - adicione os modelos manualmente e configure os recursos por modelo.",
   "mlxExperimental": "O suporte a MLX é experimental. Embeddings estão indisponíveis, o alternador de raciocínio ainda não está conectado e algumas arquiteturas de modelo mais novas podem falhar ao carregar. Relate problemas no GitHub para que possamos priorizá-los.",
-  "engineBundled": "O motor de inferência está embutido no Jan, então não há nada para baixar ou atualizar separadamente. Cite esta versão ao relatar um modelo que falha ao carregar.",
+  "engineBundled": "O motor de inferência está embutido no Flint, então não há nada para baixar ou atualizar separadamente. Cite esta versão ao relatar um modelo que falha ao carregar.",
   "engineOtherVersion": "Precisa de outra versão do llama.cpp? Execute seu próprio llama-server e adicione-o como provedor personalizado compatível com OpenAI.",
   "engineReleaseNotes": "Notas de versão",
   "engineBuild": "Build",
@@ -14,6 +14,7 @@
   "models": "Modelos",
   "filterModels": "Filtrar {{count}} modelos",
   "modelsShown": "Mostrando {{shown}} de {{total}}",
+  "noModelsMatch": "Nenhum modelo corresponde a \"{{query}}\"",
   "showMoreModels": "Mostrar mais",
   "backendInstalled": "Instalado",
   "backendHistoryShow": "Mostrar histórico de atualizações",
@@ -38,6 +39,12 @@
   "importedTooltip": "Importado de um arquivo local. Removê-lo do Flint não excluirá o arquivo no disco.",
   "importModelSuccess": "Modelo {{provider}} foi importado com sucesso.",
   "importModelError": "Falha ao importar modelo:",
+
+  "importScanHint": "Procura no LM Studio, no Ollama, no cache do Hugging Face, no llama.cpp e no GPT4All. Nada é copiado até você importar.",
+
+  "importAddFolder": "Adicionar uma pasta de modelos",
+
+  "importRemoveFolder": "Remover a pasta {{folder}}",
   "stop": "Parar",
   "start": "Iniciar",
   "status": {
@@ -49,6 +56,10 @@
     "connected": "Conectado"
   },
   "table": {
+    "contextAutoFit": "auto-ajuste",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "O tamanho do contexto está vazio, então o motor ajustou esta janela à sua memória ao carregar o modelo.",
+    "contextAutoTitle": "O tamanho do contexto está vazio: o motor escolhe a janela ao carregar o modelo.",
     "name": "Nome",
     "file": "Arquivo",
     "size": "Tamanho",
@@ -122,6 +133,7 @@
     "cachedInputCost": "Custo de entrada em cache (USD por 1M de tokens)",
     "cacheWriteCost": "Custo de gravação em cache (USD por 1M de tokens)",
     "costHelp": "Deixe em branco para usar o preço integrado de modelos conhecidos; modelos locais são gratuitos. Um preço de entrada em cache ou de gravação em cache em branco é cobrado ao preço de entrada.",
+    "costInvalid": "Os preços devem ser um número igual ou maior que 0. Limpe o campo para usar o preço integrado.",
     "displayName": "Nome de exibição",
     "displayNamePlaceholder": "Insira um nome de exibição",
     "displayNameHelp": "Mostrado em todo lugar onde este modelo é listado. As requisições ainda usam o identificador original, {{modelId}}.",
@@ -143,12 +155,17 @@
   "addProvider": "Adicionar Provedor",
   "addOpenAIProvider": "Adicionar Provedor OpenAI",
   "enterNameForProvider": "Digite o nome para o provedor",
+  "apiVersion": {
+    "title": "Versão da API",
+    "description": "Somente para um endpoint Azure no estilo deployments (/openai/deployments/<name>) cuja URL não tem ?api-version=. O endpoint /openai/v1 não precisa dela."
+  },
   "baseUrl": {
     "title": "URL base",
     "openaiDescription": "Use um proxy ou gateway compatível com a API da OpenAI. O padrão é https://api.openai.com/v1.",
     "azureDescription": "Seu endpoint do Azure OpenAI. Substitua YOUR-RESOURCE-NAME pelo nome do seu recurso do Azure.",
     "litellmDescription": "O endereço do seu proxy LiteLLM, incluindo /v1. O padrão é http://localhost:4000/v1.",
-    "qwenDescription": "Seu endpoint do Model Studio. Uma chave só funciona na região em que foi criada: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1 para Singapura ou https://dashscope.aliyuncs.com/compatible-mode/v1 para a China continental."
+    "qwenDescription": "Seu endpoint do Model Studio. Uma chave só funciona na região em que foi criada: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1 para Singapura ou https://dashscope.aliyuncs.com/compatible-mode/v1 para a China continental.",
+    "bedrockDescription": "O endpoint de runtime do Amazon Bedrock da sua região, por exemplo https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "Chaves de API",
@@ -220,5 +237,18 @@
     "label": "Nome do provedor",
     "cancel": "Cancelar",
     "save": "Salvar"
+  },
+  "bedrock": {
+    "title": "Credenciais da AWS",
+    "description": "O Flint assina cada solicitação do Amazon Bedrock com suas chaves da AWS. Elas ficam no chaveiro do seu sistema operacional e nunca são exibidas de novo. Adicione os IDs de modelo manualmente (por exemplo, anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "ID da chave de acesso",
+    "secretAccessKey": "Chave de acesso secreta",
+    "sessionToken": "Token de sessão (opcional)",
+    "secretHint": "Requer um usuário ou função do IAM com permissão para chamar bedrock:InvokeModel.",
+    "sessionTokenHint": "Somente para credenciais temporárias (STS ou SSO).",
+    "saved": "Salva",
+    "remove": "Remover",
+    "replace": "Salva. Digite para substituí-la.",
+    "enter": "Não definida"
   }
 }

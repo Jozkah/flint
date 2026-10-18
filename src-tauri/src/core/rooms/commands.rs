@@ -109,3 +109,113 @@ pub async fn room_delete_permanently<R: Runtime>(
     let store = store(app_handle);
     run_blocking(move || store.delete(&room_id)).await
 }
+
+/// The participant's isolated workspace in a compare room, made on first use
+/// under the room's own directory. Refused for an untrusted folder.
+#[tauri::command]
+pub async fn room_workspace_ensure<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+    folder: String,
+) -> Result<super::workspace::WorkspaceInfo, RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || {
+        let path = std::path::Path::new(&folder);
+        let trusted = tauri_plugin_agent_tools::folder_trust::is_trusted(path);
+        super::workspace::ensure(&root, &room_id, &participant_id, path, trusted)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn room_workspace_changes<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+    scope: Option<super::workspace::ChangeScope>,
+) -> Result<super::workspace::WorkspaceChanges, RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    let scope = scope.unwrap_or(super::workspace::ChangeScope::All);
+    run_blocking(move || super::workspace::changes(&root, &room_id, &participant_id, scope)).await
+}
+
+/// Remember the participant's workspace as it is at the start of a turn, so
+/// the turn's change card shows that turn's change alone.
+#[tauri::command]
+pub async fn room_workspace_mark_turn<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+) -> Result<(), RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || super::workspace::mark_turn(&root, &room_id, &participant_id)).await
+}
+
+#[tauri::command]
+pub async fn room_workspace_patch<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+) -> Result<String, RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || super::workspace::patch(&root, &room_id, &participant_id)).await
+}
+
+#[tauri::command]
+pub async fn room_workspace_reset<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+) -> Result<(), RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || super::workspace::reset(&root, &room_id, &participant_id)).await
+}
+
+/// Apply a participant's change to the user's folder. Called only from the
+/// user's "Apply to my folder" action, after the patch preview.
+#[tauri::command]
+pub async fn room_workspace_apply<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+    paths: Option<Vec<String>>,
+) -> Result<u32, RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || {
+        super::workspace::apply(&root, &room_id, &participant_id, paths.as_deref())
+    })
+    .await
+}
+
+/// The review before applying: patch, target folder, a dry-run check per file,
+/// and the user's uncommitted edits to the same files. Writes nothing.
+#[tauri::command]
+pub async fn room_workspace_apply_preview<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+) -> Result<super::workspace::ApplyPreview, RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || super::workspace::preview(&root, &room_id, &participant_id)).await
+}
+
+/// Reverse the last apply in the user's folder (the toast's Undo).
+#[tauri::command]
+pub async fn room_workspace_undo_apply<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+) -> Result<(), RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || super::workspace::undo_apply(&root, &room_id, &participant_id)).await
+}
+
+#[tauri::command]
+pub async fn room_workspace_remove<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+) -> Result<(), RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || super::workspace::remove_all(&root, &room_id)).await
+}

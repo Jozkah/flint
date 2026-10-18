@@ -395,7 +395,8 @@
     "mode": {
       "roundRobin": "Lần lượt",
       "userSelected": "Bạn chọn",
-      "moderatorSelected": "Người điều phối chọn"
+      "moderatorSelected": "Người điều phối chọn",
+      "compare": "So sánh các mô hình"
     },
     "untitled": "Phòng chưa đặt tên",
     "menu": "Menu phòng",

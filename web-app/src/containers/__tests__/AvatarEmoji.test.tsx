@@ -22,6 +22,12 @@ describe('AvatarEmoji Component', () => {
     expect(img).toHaveAttribute('alt', 'Custom avatar')
   })
 
+  // C061: the pale Quartz crystal was ~1.5:1 on a white tile in light theme.
+  it('rims the pale Quartz icon with the light-theme rim token', () => {
+    render(<AvatarEmoji avatar="/images/assistants/quartz.png" />)
+    expect(screen.getByRole('img').className).toContain('var(--icon-rim)')
+  })
+
   it('should apply default image className', () => {
     render(<AvatarEmoji avatar="/images/avatar.jpg" />)
     
@@ -120,5 +126,16 @@ describe('AvatarEmoji Component', () => {
     
     const img = screen.getByRole('img')
     expect(img).toHaveAttribute('alt', 'Custom avatar')
+  })
+})
+
+describe('AvatarEmoji dark-theme lift', () => {
+  it('lifts the dim Coal and Flint icons in dark mode only', () => {
+    const { rerender } = render(<AvatarEmoji avatar="/images/assistants/coal.png" />)
+    expect(screen.getByRole('img').className).toMatch(/dark:\[filter:brightness/)
+    rerender(<AvatarEmoji avatar="/images/flint-logo.png" />)
+    expect(screen.getByRole('img').className).toMatch(/dark:\[filter:brightness/)
+    rerender(<AvatarEmoji avatar="/images/assistants/emerald.png" />)
+    expect(screen.getByRole('img').className).not.toMatch(/brightness/)
   })
 })

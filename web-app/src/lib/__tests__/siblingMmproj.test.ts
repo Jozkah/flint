@@ -48,3 +48,13 @@ describe('findSiblingMmproj', () => {
     ).toBeNull()
   })
 })
+
+describe('firstGgufShard', () => {
+  it('maps shard 2 to shard 1 and leaves other paths alone', async () => {
+    const { firstGgufShard } = await import('../siblingMmproj')
+    expect(firstGgufShard('D:\m\a-00002-of-00004.gguf')).toBe(
+      'D:\m\a-00001-of-00004.gguf'
+    )
+    expect(firstGgufShard('/m/a.gguf')).toBe('/m/a.gguf')
+  })
+})

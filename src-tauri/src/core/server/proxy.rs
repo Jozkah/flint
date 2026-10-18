@@ -1205,8 +1205,40 @@ async fn proxy_request(
     // Model id when the request resolves to an MLX session — MLX has no preset,
     // so sampling defaults are injected into the body before forwarding.
     let mut mlx_model_id: Option<String> = None;
+    // The id a request to the bundled engine named. The engine answers with the
+    // model's file path in `model`; the response is given this id back.
+    let mut engine_model_id: Option<String> = None;
 
     match (method.clone(), destination_path.as_str()) {
+        // OpenAI Responses API: rewritten to a chat/completions call on this
+        // same server and the answer rewritten back (see `responses_route`).
+        (hyper::Method::POST, "/responses") => {
+            let Ok(collected) = body.collect().await else {
+                let mut error_response = Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR);
+                error_response = add_cors_headers_with_host_and_origin(
+                    error_response,
+                    &host_header,
+                    &origin_header,
+                    &config.trusted_hosts,
+                );
+                return Ok(error_response.body(full("Failed to read request body")).unwrap());
+            };
+            let url = super::responses_route::loopback_url(&config.host, config.port, &config.prefix);
+            let handled = super::responses_route::handle(&collected.to_bytes(), &headers, &url, &local_client).await;
+            let mut response = Response::builder()
+                .status(handled.status)
+                .header("Content-Type", handled.content_type);
+            if handled.content_type == "text/event-stream" {
+                response = response.header("Cache-Control", "no-cache");
+            }
+            response = add_cors_headers_with_host_and_origin(
+                response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(response.body(handled.body).unwrap());
+        }
         // Anthropic /messages endpoint - tries /messages first, falls back to /chat/completions on error
         (hyper::Method::POST, "/messages") => {
             is_anthropic_messages = true;
@@ -1884,25 +1916,9 @@ async fn proxy_request(
 
                             if let Some(provider_cfg) = provider_config {
                                 // A converter only applies to chat/completions; other
-                                // paths keep verbatim forwarding. The OAuth auth
-                                // scheme applies only when the provider is actually
-                                // authenticated with an OAuth account token, not
-                                // merely because openai/anthropic also support
-                                // account login (an API-key sign-in must stay on
-                                // its plain key scheme).
+                                // paths keep verbatim forwarding.
                                 let converter = if destination_path == "/chat/completions" {
-                                    // OAuth account login is a `cli` feature; the
-                                    // desktop has no OAuth account token here, so it
-                                    // must keep the plain API-key scheme rather than
-                                    // treat every anthropic provider as an account.
-                                    #[cfg(feature = "cli")]
-                                    let oauth =
-                                        crate::core::cli::auth::account::has_oauth_credential(
-                                            &provider_cfg.provider,
-                                        );
-                                    #[cfg(not(feature = "cli"))]
-                                    let oauth = false;
-                                    converter_for(provider_cfg.api_type.as_deref(), oauth)
+                                    converter_for(provider_cfg.api_type.as_deref())
                                 } else {
                                     None
                                 };
@@ -1967,6 +1983,7 @@ async fn proxy_request(
                                 ));
                             } else if let Some((url, key)) = router_up {
                                 log::debug!("Routing model_id {model_id} via llamacpp router");
+                                engine_model_id = Some(model_id.to_string());
                                 session_api_keys = vec![key];
                                 target_base_url = Some(url);
                             } else {
@@ -2688,6 +2705,7 @@ async fn proxy_request(
                     .flatten();
                 let meter_folder = jan_data_folder.clone();
 
+                let mut model_rewriter = engine_model_id.take().map(ModelFieldRewriter::new);
                 tokio::spawn(async move {
                     let mut tap = super::usage_meter::UsageTap::default();
                     // Regular passthrough - when /messages succeeds directly,
@@ -2698,7 +2716,11 @@ async fn proxy_request(
                                 if meter_model.is_some() {
                                     tap.push(&chunk);
                                 }
-                                if sender.send_data(chunk).await.is_err() {
+                                let chunk = match model_rewriter.as_mut() {
+                                    Some(r) => r.push(&chunk),
+                                    None => chunk,
+                                };
+                                if !chunk.is_empty() && sender.send_data(chunk).await.is_err() {
                                     log::debug!("Client disconnected during streaming");
                                     break;
                                 }
@@ -2707,6 +2729,11 @@ async fn proxy_request(
                                 log::error!("Stream error: {e}");
                                 break;
                             }
+                        }
+                    }
+                    if let Some(rest) = model_rewriter.as_mut().map(|r| r.finish()) {
+                        if !rest.is_empty() {
+                            let _ = sender.send_data(rest).await;
                         }
                     }
                     log::debug!("Streaming complete to client");
@@ -2769,6 +2796,75 @@ async fn proxy_request(
         &config.trusted_hosts,
     );
     Ok(error_response.body(full("Internal proxy error")).unwrap())
+}
+
+/// Gives an engine response the model id the request named.
+///
+/// llama.cpp answers with the model's absolute file path in `model`
+/// (`C:\models\gemma-3-4b-it-Q4_K_M.gguf`), which leaks a local path and is not
+/// the id a client asked for or can send back (T7-080). Lines are rewritten
+/// whole, so a chunk boundary in the middle of an SSE event or a JSON body is
+/// held until the line ends (or the response does).
+pub(crate) struct ModelFieldRewriter {
+    id: String,
+    pending: Vec<u8>,
+}
+
+impl ModelFieldRewriter {
+    pub(crate) fn new(id: String) -> Self {
+        Self { id, pending: Vec::new() }
+    }
+
+    /// Complete lines of `chunk` (plus anything held over), rewritten.
+    pub(crate) fn push(&mut self, chunk: &[u8]) -> Bytes {
+        self.pending.extend_from_slice(chunk);
+        let Some(last_nl) = self.pending.iter().rposition(|b| *b == b'\n') else {
+            return Bytes::new();
+        };
+        let rest = self.pending.split_off(last_nl + 1);
+        let ready = std::mem::replace(&mut self.pending, rest);
+        let mut out = Vec::with_capacity(ready.len());
+        for line in ready.split_inclusive(|b| *b == b'\n') {
+            out.extend_from_slice(&rewrite_model_line(line, &self.id));
+        }
+        Bytes::from(out)
+    }
+
+    /// Whatever is left once the response ends (a JSON body with no newline).
+    pub(crate) fn finish(&mut self) -> Bytes {
+        let rest = std::mem::take(&mut self.pending);
+        Bytes::from(rewrite_model_line(&rest, &self.id))
+    }
+}
+
+/// One line (`data: {..}` or a bare JSON body), with a path-like `model`
+/// replaced by `id`. Anything else comes back unchanged.
+fn rewrite_model_line(line: &[u8], id: &str) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(line) else {
+        return line.to_vec();
+    };
+    let body_end = text.trim_end_matches(['\r', '\n']).len();
+    let (head, json) = match text[..body_end].strip_prefix("data: ") {
+        Some(rest) => ("data: ", rest),
+        None => ("", &text[..body_end]),
+    };
+    if !json.trim_start().starts_with('{') || !json.contains("\"model\"") {
+        return line.to_vec();
+    }
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return line.to_vec();
+    };
+    let is_path =
+        |m: &str| m.contains('/') || m.contains('\\') || m.to_ascii_lowercase().ends_with(".gguf");
+    match value.get("model").and_then(|m| m.as_str()) {
+        Some(m) if m != id && is_path(m) => {}
+        _ => return line.to_vec(),
+    }
+    value["model"] = serde_json::Value::String(id.to_string());
+    let Ok(rewritten) = serde_json::to_string(&value) else {
+        return line.to_vec();
+    };
+    format!("{head}{rewritten}{}", &text[body_end..]).into_bytes()
 }
 
 /// True when this bind exposes the API to the network with no authentication:
@@ -3689,6 +3785,36 @@ mod redirect_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn engine_responses_name_the_model_id_not_its_file_path() {
+        use super::ModelFieldRewriter;
+        let mut r = ModelFieldRewriter::new("gemma-3-4b-it-Q4_K_M".into());
+        // An SSE event split across chunks, then [DONE].
+        let a = r.push(br#"data: {"id":"x","model":"C:\\tmp\\flint-models\\gemma-3"#);
+        assert!(a.is_empty());
+        let b = r.push(b"-4b-it-Q4_K_M.gguf\",\"choices\":[]}\n\ndata: [DONE]\n\n");
+        let text = String::from_utf8(b.to_vec()).unwrap();
+        assert!(text.starts_with("data: {"), "{text}");
+        assert!(text.contains(r#""model":"gemma-3-4b-it-Q4_K_M""#), "{text}");
+        assert!(!text.contains("flint-models"), "{text}");
+        assert!(text.ends_with("data: [DONE]\n\n"), "{text}");
+        assert!(r.finish().is_empty());
+
+        // A non-streaming body with no trailing newline.
+        let mut r = ModelFieldRewriter::new("qwen".into());
+        assert!(r.push(br#"{"model":"/m/qwen.gguf","usage":{}}"#).is_empty());
+        let body = String::from_utf8(r.finish().to_vec()).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&body).unwrap()["model"],
+            "qwen"
+        );
+
+        // An id that is already a name is left byte for byte.
+        let mut r = ModelFieldRewriter::new("qwen".into());
+        let line = b"data: {\"model\": \"qwen\", \"x\": 1}\n";
+        assert_eq!(&r.push(line)[..], &line[..]);
+    }
+
     #[test]
     fn engine_context_length_reads_only_what_the_engine_reports() {
         use super::engine_context_length as ctx;

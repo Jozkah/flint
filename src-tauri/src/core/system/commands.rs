@@ -289,7 +289,7 @@ fn write_env_to_shell(env_file_path: &str, env_vars: &[(String, String)]) -> Res
 
     let new_content = format!("{}\n{}\n{}\n", marker, new_entries, marker);
 
-    let final_content = cleaned + "\n" + &new_content;
+    let final_content = cleaned + "\n" + new_content.as_str();
     atomic_write_preserving(env_file_path, &final_content)?;
     Ok(())
 }

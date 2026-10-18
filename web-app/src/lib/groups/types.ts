@@ -10,8 +10,14 @@
 export const GROUP_SURFACES = ['home', 'cowork', 'rooms'] as const
 export type GroupSurface = (typeof GROUP_SURFACES)[number]
 
-/** Current on-disk schema version of the groups store. */
-export const GROUPS_SCHEMA_VERSION = 1
+/**
+ * Current on-disk schema version of the groups store. v2 added `parentId`
+ * (nested folders); v1 data reads as all top-level.
+ */
+export const GROUPS_SCHEMA_VERSION = 2
+
+/** Deepest nesting allowed: a top-level group is depth 1. */
+export const MAX_GROUP_DEPTH = 3
 
 /**
  * A folder a group points at. Organizational context only: a binding never
@@ -29,6 +35,8 @@ export type ConversationGroup = {
   id: string
   surface: GroupSurface
   name: string
+  /** Containing group, or null for a top-level group. Max depth MAX_GROUP_DEPTH. */
+  parentId: string | null
   /** Dense 0-based order within the surface. */
   position: number
   collapsed: boolean
@@ -73,6 +81,8 @@ export type GroupsState = {
 export type GroupLayout<T> = {
   group: ConversationGroup
   children: T[]
+  /** Nested groups, in order. Empty for a leaf group. */
+  subgroups: GroupLayout<T>[]
 }
 
 export type SurfaceLayout<T> = {

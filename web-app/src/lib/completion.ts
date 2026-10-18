@@ -8,6 +8,7 @@ import {
 import { ulid } from 'ulidx'
 import { Attachment } from '@/types/attachment'
 import { injectFilesIntoPrompt } from './fileMetadata'
+import { splitMentionBlocks } from './chatMentions'
 
 /**
  * @fileoverview Helper functions for creating thread content.
@@ -46,6 +47,7 @@ export const newUserThreadContent = (
 
   const textWithFiles =
     docMetadata.length > 0 ? injectFilesIntoPrompt(content, docMetadata) : content
+  const { mentions } = splitMentionBlocks(content)
 
   const contentParts = [
     {
@@ -105,12 +107,22 @@ export const newUserThreadContent = (
     created_at: Date.now(),
     completed_at: Date.now(),
     metadata:
-      inlineDocuments.length > 0
+      inlineDocuments.length > 0 || mentions.length > 0
         ? {
-            inline_file_contents: inlineDocuments.map((doc) => ({
-              name: doc.name,
-              content: doc.inlineContent,
-            })),
+            ...(inlineDocuments.length > 0
+              ? {
+                  inline_file_contents: inlineDocuments.map((doc) => ({
+                    name: doc.name,
+                    content: doc.inlineContent,
+                    // The file itself, so the full viewer can read past the
+                    // inline cap.
+                    ...(doc.path ? { path: doc.path } : {}),
+                  })),
+                }
+              : {}),
+            // The conversations this message mentioned, by id, so the
+            // transcript can name them and a retry names the same ones.
+            ...(mentions.length > 0 ? { mentions } : {}),
           }
         : undefined,
   }

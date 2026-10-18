@@ -436,7 +436,7 @@ mod tests {
         // ~4k-char windows x ~4k-char wanted text x 4k windows is far past the
         // budget; it must return quickly, and never pick a site.
         let line = "x".repeat(4_000);
-        let content = std::iter::repeat(line.as_str()).take(4_000).collect::<Vec<_>>().join("\n");
+        let content = std::iter::repeat_n(line.as_str(), 4_000).collect::<Vec<_>>().join("\n");
         let old = format!("{}y", "x".repeat(3_999));
         let started = std::time::Instant::now();
         assert!(matches!(resolve(&content, &old, "z"), Err(MatchError::NotFound { .. })));

@@ -73,8 +73,29 @@ vi.mock('@/containers/SettingsMenu', () => ({ default: () => null }))
 vi.mock('@/containers/HeaderPage', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
+// One `t` for every render: the page lists it in effect dependencies.
+const stableT = vi.hoisted(() => {
+  const english: Record<string, string> = {
+    'uiLeftovers:memory.versionUnknown': 'unknown (saved before versions were kept)',
+    'uiLeftovers:memory.importedExport': 'export {{id}} ({{scope}}, {{when}})',
+    'uiLeftovers:memory.createdWhen': 'created {{when}}',
+    'uiLeftovers:memory.conversationId': 'conversation {{id}}',
+    'uiLeftovers:memory.runId': 'run {{id}}',
+    'uiLeftovers:memory.turnId': 'turn {{id}}',
+    'uiLeftovers:memory.snapshotId': 'snapshot {{id}}',
+    'uiLeftovers:memory.noRequests': 'no recorded request yet',
+    'uiLeftovers:memory.notRecorded': 'not recorded',
+    'uiLeftovers:memory.unknown': 'unknown',
+    'uiLeftovers:memory.yes': 'yes',
+    'uiLeftovers:memory.no': 'no',
+  }
+  return (key: string, options?: Record<string, unknown>) =>
+    (english[key] ?? key).replace(/\{\{(\w+)\}\}/g, (m, v) =>
+      options && options[v] !== undefined ? String(options[v]) : m
+    )
+})
 vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: stableT, i18n: { language: 'en' } }),
 }))
 vi.mock('@/containers/MemoryProposalCard', () => ({ MemoryProposalList: () => null }))
 vi.mock('@/hooks/useMemoryProposals', () => ({

@@ -161,27 +161,30 @@ export function CampaignSummary({
         </div>
       </dl>
 
-      <div className="flex flex-col gap-1.5">
-        <h3 className="text-xs text-muted-foreground">
-          {t('settings:campaigns.board.summary.branch')}
-        </h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="min-w-0 flex-1 basis-64 text-xs text-muted-foreground">
-            {t('settings:campaigns.board.summary.branchBody', { branch })}
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void copy()}
-            data-testid="campaign-copy-branch"
-          >
-            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-            {copied
-              ? t('settings:campaigns.board.summary.copied')
-              : t('settings:campaigns.board.summary.copy')}
-          </Button>
+      {/* A hand-made record can have neither branch: nothing to name or copy. */}
+      {branch && (
+        <div className="flex flex-col gap-1.5">
+          <h3 className="text-xs text-muted-foreground">
+            {t('settings:campaigns.board.summary.branch')}
+          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="min-w-0 flex-1 basis-64 text-xs text-muted-foreground">
+              {t('settings:campaigns.board.summary.branchBody', { branch })}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void copy()}
+              data-testid="campaign-copy-branch"
+            >
+              {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+              {copied
+                ? t('settings:campaigns.board.summary.copied')
+                : t('settings:campaigns.board.summary.copy')}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </section>
   )
 }

@@ -24,6 +24,8 @@ thiserror = "2.0"
 tokio = { version = "1", features = ["full"] }
 log = "0.4"
 rusqlite = { version = "0.32", features = ["bundled", "load_extension"] }
+# Statically linked so vec0 is always present (no file lookup). Exact pin: newer tags are alphas.
+sqlite-vec = "=0.1.9"
 uuid = { version = "1.7", features = ["v4", "serde"] }
 dirs = "6.0.0"
 

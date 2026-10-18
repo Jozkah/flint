@@ -1129,8 +1129,8 @@ fn worktree_optimize(
     worktree::apply_optimizations(
         std::path::Path::new(&record.path),
         std::path::Path::new(&record.source_root),
-        &symlink_directories,
-        &sparse_paths,
+        symlink_directories,
+        sparse_paths,
     )
 }
 
@@ -1466,6 +1466,39 @@ pub async fn agent_campaign_list(app: tauri::AppHandle) -> Vec<crate::core::agen
     off_the_main_thread(move || Ok(crate::core::agent::campaign::list(&data_folder)))
         .await
         .unwrap_or_default()
+}
+
+/// The campaign folders `agent_campaign_list` skipped because their record is
+/// unreadable, with the reason. Nothing is moved or deleted.
+#[tauri::command]
+pub async fn agent_campaign_skipped(app: tauri::AppHandle) -> Vec<crate::core::agent::campaign::SkippedRecord> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || Ok(crate::core::agent::campaign::list_with_skipped(&data_folder).1))
+        .await
+        .unwrap_or_default()
+}
+
+/// The list and the skipped report from one read of the campaign folders. The
+/// board polls every few seconds; two commands meant loading and reconciling
+/// every record twice per poll.
+#[derive(serde::Serialize)]
+pub struct CampaignListing {
+    pub campaigns: Vec<crate::core::agent::campaign::Campaign>,
+    pub skipped: Vec<crate::core::agent::campaign::SkippedRecord>,
+}
+
+pub(crate) fn campaign_listing(data_folder: &std::path::Path) -> CampaignListing {
+    let (campaigns, skipped) = crate::core::agent::campaign::list_with_skipped(data_folder);
+    CampaignListing { campaigns, skipped }
+}
+
+/// [`agent_campaign_list`] and [`agent_campaign_skipped`] in one call.
+#[tauri::command]
+pub async fn agent_campaign_list_with_skipped(app: tauri::AppHandle) -> CampaignListing {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || Ok(campaign_listing(&data_folder)))
+        .await
+        .unwrap_or(CampaignListing { campaigns: Vec::new(), skipped: Vec::new() })
 }
 
 /// Move the campaign or one of its tasks along its state machine.
@@ -1987,6 +2020,10 @@ pub async fn agent_checkpoint_restore(
     latest: String,
     safety: Option<String>,
     allow_overwrite: Option<Vec<String>>,
+    // The session the tree belongs to. A restore voids that session's unspent
+    // deferred approvals, and its next run is told which earlier approvals and
+    // refusals no longer stand.
+    session: Option<String>,
 ) -> Result<(), String> {
     blocking(move || {
         checkpoint::restore(
@@ -1996,7 +2033,14 @@ pub async fn agent_checkpoint_restore(
                 safety,
                 allow_overwrite: allow_overwrite.unwrap_or_default(),
             },
-        )
+        )?;
+        if let Some(session) = session {
+            let data = crate::core::app::commands::resolve_jan_data_folder();
+            if let Err(why) = tauri_plugin_agent_tools::deferred_approvals::record_restore(&data, &session) {
+                log::warn!("could not record the restore for session {session}: {why}");
+            }
+        }
+        Ok(())
     })
     .await?
 }
@@ -3332,3 +3376,164 @@ mod extensions_command_tests {
 }
 
 use crate::core::agent::memory_consolidation;
+
+// -- scoped approvals, and approvals answered later ----------------------------
+
+/// The prompt a built-in call would raise in `root`, if it would raise one a
+/// remembered answer may cover. `None` for an allowed call, a refused one, and
+/// the asked-every-time tier.
+fn standing_prompt_kind(
+    root: &std::path::Path,
+    tool: &tauri_plugin_agent_tools::tools::BuiltinTool,
+    args: &serde_json::Value,
+) -> Option<tauri_plugin_agent_tools::tools::gate::PromptKind> {
+    use tauri_plugin_agent_tools::tools::gate::{resolve_decision, Decision, PromptKind, SessionGrants};
+    let policy = tauri_plugin_agent_tools::policy::load(Some(root), None);
+    match resolve_decision(
+        tool,
+        args,
+        root,
+        None,
+        &[],
+        &policy.permissions,
+        &SessionGrants::default(),
+        true,
+        &policy.network,
+        &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    ) {
+        Decision::Prompt(kind) if kind != PromptKind::Ask => Some(kind),
+        _ => None,
+    }
+}
+
+/// The choices an approval prompt's form offers for this call: once, this run,
+/// and the folders or command prefixes a saved rule could cover it with.
+#[tauri::command]
+pub async fn agent_approval_scope_options(
+    root: String,
+    tool: String,
+    args: serde_json::Value,
+) -> Vec<tauri_plugin_agent_tools::scoped_rules::ApprovalScope> {
+    blocking(move || {
+        let root = std::path::PathBuf::from(root);
+        let Some(tool) = tauri_plugin_agent_tools::tools::lookup(&tool) else {
+            return Vec::new();
+        };
+        match standing_prompt_kind(&root, tool, &args) {
+            Some(kind) => tauri_plugin_agent_tools::scoped_rules::scope_options(tool, kind, &args, &root),
+            None => Vec::new(),
+        }
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// The saved rule that answers this call, if one does. Asked before a prompt
+/// is raised; a refused call or an asked-every-time one is never covered.
+#[tauri::command]
+pub async fn agent_approval_rule_check(
+    root: String,
+    tool: String,
+    args: serde_json::Value,
+) -> Option<tauri_plugin_agent_tools::scoped_rules::ScopedRule> {
+    blocking(move || {
+        let root = std::path::PathBuf::from(root);
+        let tool = tauri_plugin_agent_tools::tools::lookup(&tool)?;
+        let kind = standing_prompt_kind(&root, tool, &args)?;
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        tauri_plugin_agent_tools::scoped_rules::find_cover(&data, &root, tool, kind, &args)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// Save the scope the person picked as a rule for this project. Checked here
+/// against the call it was picked for: a folder that does not contain it, or a
+/// prefix it does not start with, is refused.
+#[tauri::command]
+pub async fn agent_approval_rule_add(
+    root: String,
+    tool: String,
+    args: serde_json::Value,
+    scope: tauri_plugin_agent_tools::scoped_rules::ApprovalScope,
+) -> Result<tauri_plugin_agent_tools::scoped_rules::ScopedRule, String> {
+    blocking(move || {
+        let root = std::path::PathBuf::from(root);
+        let tool = tauri_plugin_agent_tools::tools::lookup(&tool)
+            .ok_or_else(|| format!("unknown built-in tool '{tool}'"))?;
+        let kind = standing_prompt_kind(&root, tool, &args)
+            .ok_or_else(|| "this call is not one a saved rule can cover".to_string())?;
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        tauri_plugin_agent_tools::scoped_rules::add(&data, &root, tool, kind, &args, &scope)
+    })
+    .await?
+}
+
+/// The saved rules, for one project folder or all of them.
+#[tauri::command]
+pub async fn agent_approval_rules_list(
+    project: Option<String>,
+) -> Vec<tauri_plugin_agent_tools::scoped_rules::ScopedRule> {
+    blocking(move || {
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        tauri_plugin_agent_tools::scoped_rules::list(
+            &data,
+            project.as_deref().map(std::path::Path::new),
+        )
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Forget one saved rule.
+#[tauri::command]
+pub async fn agent_approval_rule_revoke(id: String) -> Result<bool, String> {
+    blocking(move || {
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        tauri_plugin_agent_tools::scoped_rules::revoke(&data, &id)
+    })
+    .await?
+}
+
+/// The approvals runs put off to be answered later.
+#[tauri::command]
+pub async fn agent_deferred_list(
+    project: Option<String>,
+    include_settled: bool,
+) -> Vec<tauri_plugin_agent_tools::deferred_approvals::Deferred> {
+    blocking(move || {
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        tauri_plugin_agent_tools::deferred_approvals::list(
+            &data,
+            project.as_deref().map(std::path::Path::new),
+            include_settled,
+        )
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Answer a put-off approval. Refused when it expired, was voided by a
+/// restore, or was already answered.
+#[tauri::command]
+pub async fn agent_deferred_answer(
+    id: String,
+    allow: bool,
+) -> Result<tauri_plugin_agent_tools::deferred_approvals::Deferred, String> {
+    blocking(move || {
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        tauri_plugin_agent_tools::deferred_approvals::answer(&data, &id, allow)
+    })
+    .await?
+}
+
+/// Drop a put-off approval from the list.
+#[tauri::command]
+pub async fn agent_deferred_discard(id: String) -> Result<bool, String> {
+    blocking(move || {
+        let data = crate::core::app::commands::resolve_jan_data_folder();
+        tauri_plugin_agent_tools::deferred_approvals::discard(&data, &id)
+    })
+    .await?
+}

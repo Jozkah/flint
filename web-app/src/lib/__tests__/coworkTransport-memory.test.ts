@@ -59,7 +59,7 @@ const withFiles = [
     parts: [
       {
         type: 'text',
-        text: 'Read this\n[ATTACHED_FILES]\n- file_id: f1, name: a.txt, mode: inline\n[/ATTACHED_FILES]',
+        text: 'Read this\n[ATTACHED_FILES]\n- file_id: f1, name: a.txt, mode: embeddings\n[/ATTACHED_FILES]',
       },
     ],
   },

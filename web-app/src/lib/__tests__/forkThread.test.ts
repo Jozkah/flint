@@ -19,7 +19,7 @@ vi.mock('@/hooks/useMessages', () => ({
   },
 }))
 
-import { forkThread, forkTitle, messagesToFork } from '../forkThread'
+import { ForkBranchError, forkThread, forkTitle, messagesToFork } from '../forkThread'
 
 const msg = (id: string, role: string, extra: Record<string, unknown> = {}, parent?: string | null) =>
   ({
@@ -77,8 +77,27 @@ describe('messagesToFork', () => {
     ])
   })
 
-  it('takes everything for a message that is not on the shown branch', () => {
-    expect(messagesToFork(messagesState.all as ThreadMessage[], 'nope')).toHaveLength(4)
+  // C019: never fall back silently to another branch.
+  it('refuses a message that is not on the shown branch', () => {
+    expect(() => messagesToFork(messagesState.all as ThreadMessage[], 'nope')).toThrow(
+      ForkBranchError
+    )
+  })
+
+  // C019: an edited first message makes two roots; the thread's activeRootId
+  // says which one the user is viewing, and the fork must copy that one.
+  it('copies the root branch the thread has selected, not the newest', () => {
+    const all = [
+      msg('u1', 'user', {}, null),
+      msg('a1', 'assistant', {}, 'u1'),
+      msg('u1b', 'user', {}, null),
+      msg('a1b', 'assistant', {}, 'u1b'),
+    ].map((m, i) => ({ ...m, created_at: i + 1 }) as ThreadMessage)
+    expect(messagesToFork(all, 'a1', { activeRootId: 'u1' }).map((m) => m.id)).toEqual([
+      'u1',
+      'a1',
+    ])
+    expect(() => messagesToFork(all, 'a1')).toThrow(ForkBranchError)
   })
 })
 
@@ -110,6 +129,21 @@ describe('forkThread', () => {
     expect(copies[1].metadata.usage).toEqual({ totalTokens: 9 })
   })
 
+  it('forks the branch the thread has selected', async () => {
+    messagesState.all = [
+      msg('u1', 'user', {}, null),
+      msg('a1', 'assistant', {}, 'u1'),
+      msg('u1b', 'user', {}, null),
+      msg('a1b', 'assistant', {}, 'u1b'),
+    ].map((m, i) => ({ ...m, created_at: i + 1 }) as ThreadMessage)
+    ;(threadsState.threads.t1 as { metadata: Record<string, unknown> }).metadata.activeRootId = 'u1'
+    await forkThread('t1', 'a1')
+    const copied = messagesState.addMessage.mock.calls.map(
+      (c) => (c[0].content[0] as { text: { value: string } }).text.value
+    )
+    expect(copied).toEqual(['u1', 'a1'])
+  })
+
   it('does not touch the original messages', async () => {
     await forkThread('t1')
     expect((messagesState.all as ThreadMessage[])[1].metadata).toMatchObject({ parentId: 'u1' })
@@ -124,5 +158,25 @@ describe('forkThread', () => {
     messagesState.all = []
     expect(await forkThread('t1')).toBeNull()
     expect(threadsState.createThread).not.toHaveBeenCalled()
+  })
+})
+
+describe('forkThread message ids (T7-023)', () => {
+  it('keeps the copied order when ids are created in one millisecond', async () => {
+    messagesState.all = Array.from({ length: 50 }, (_, i) =>
+      msg(`m${String(i).padStart(2, '0')}`, i % 2 ? 'assistant' : 'user', {}, i ? `m${String(i - 1).padStart(2, '0')}` : null)
+    ).map((m, i) => ({ ...m, created_at: i + 1 }) as ThreadMessage)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    try {
+      await forkThread('t1')
+    } finally {
+      now.mockRestore()
+    }
+    const added = messagesState.addMessage.mock.calls.map((c) => c[0] as ThreadMessage)
+    expect(added.map((m) => m.metadata && (m.content[0] as { text: { value: string } }).text.value)).toEqual(
+      messagesState.all.map((m) => (m as ThreadMessage).id)
+    )
+    const ids = added.map((m) => m.id)
+    expect([...ids].sort()).toEqual(ids)
   })
 })

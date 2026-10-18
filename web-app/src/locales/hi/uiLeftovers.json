@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "स्लेट",
+    "vermilion": "सिंदूरी",
+    "ink": "स्याही",
+    "moss": "काई",
+    "slate": "स्लेट नीला",
+    "violet": "बैंगनी"
+  },
+  "fontSizeNames": {
+    "small": "छोटा",
+    "medium": "मध्यम",
+    "large": "बड़ा",
+    "extraLarge": "बहुत बड़ा"
+  },
+  "unknownSize": "अज्ञात आकार",
+  "official": "आधिकारिक",
+  "configuration": "कॉन्फ़िगरेशन",
+  "modelCombobox": {
+    "refresh": "मॉडल रीफ़्रेश करें",
+    "placeholder": "कोई मॉडल लिखें या चुनें..."
+  },
+  "hubTasks": {
+    "moreAria": "ब्राउज़ करने के और तरीके",
+    "more": "और",
+    "all": "सभी",
+    "chat": "चैट",
+    "coding": "कोडिंग",
+    "reasoning": "तर्क",
+    "vision": "विज़न",
+    "small": "छोटे और तेज़",
+    "tools": "टूल का उपयोग",
+    "multilingual": "बहुभाषी",
+    "speech": "वाक्",
+    "embeddings": "एम्बेडिंग",
+    "summaries": "सारांश",
+    "translation": "अनुवाद"
+  },
+  "tokenSpeed": {
+    "aria": "इस संदेश का टोकन उपयोग",
+    "tooltip": "टोकन उपयोग",
+    "generation": "जनरेशन",
+    "reading": "पढ़ना",
+    "draftAccepted": "ड्राफ़्ट स्वीकार किया गया",
+    "tokens": "टोकन",
+    "memoryInRequest": "इस अनुरोध में मेमोरी",
+    "memoriesSent": "भेजी गई यादें",
+    "withheld": "टकराव के कारण रोकी गईं: {{ids}}",
+    "perSec": "{{n}} टोकन/सेकंड",
+    "count": "{{n}} टोकन"
+  },
+  "serverHost": {
+    "edit": "सर्वर होस्ट बदलें"
+  },
+  "extensions": {
+    "plugins": "प्लगइन",
+    "global": "ग्लोबल",
+    "workspace": "वर्कस्पेस",
+    "toggle": "{{name}} चालू/बंद करें",
+    "enable": "चालू करें",
+    "disable": "बंद करें",
+    "workspaceOnly": "केवल वर्कस्पेस",
+    "globalAll": "ग्लोबल (सभी वर्कस्पेस)",
+    "enabledToast": "{{name}} चालू किया गया",
+    "disabledToast": "{{name}} बंद किया गया"
+  },
+  "scope": "दायरा",
+  "localApi": {
+    "starting": "सर्वर शुरू हो रहा है...",
+    "startingDesc": "पोर्ट {{port}} पर सर्वर शुरू करने का प्रयास हो रहा है",
+    "status": "सर्वर की स्थिति",
+    "runningDesc": "सर्वर अभी चल रहा है।",
+    "stoppedDesc": "सर्वर बंद है।",
+    "running": "चल रहा है",
+    "stopped": "बंद"
+  },
+  "toolOutputAlt": "टूल का आउटपुट",
+  "memory": {
+    "exportFilter": "Flint मेमोरी एक्सपोर्ट",
+    "why": "Flint यह क्यों याद रखता है",
+    "writtenBy": "लिखने वाला",
+    "created": "बनाया गया",
+    "updated": "अपडेट किया गया",
+    "fromConversation": "बातचीत से",
+    "fromMessage": "संदेश से",
+    "projectIdentity": "प्रोजेक्ट की पहचान",
+    "replaces": "इसकी जगह लेता है",
+    "redacted": "छिपाया गया",
+    "expires": "समाप्ति",
+    "version": "संस्करण",
+    "source": "स्रोत",
+    "importedFrom": "यहाँ से इंपोर्ट किया गया",
+    "originally": "मूल रूप से",
+    "fromRun": "रन से",
+    "savedInProject": "प्रोजेक्ट में सहेजा गया",
+    "contentHash": "कंटेंट हैश",
+    "earlierVersions": "पिछले संस्करण",
+    "usedIn": "यहाँ उपयोग हुआ",
+    "notRecorded": "दर्ज नहीं",
+    "deletedSince": "(बाद में हटाई गई)",
+    "yes": "हाँ",
+    "no": "नहीं",
+    "versionUnknown": "अज्ञात (संस्करण सहेजे जाने से पहले सहेजा गया)",
+    "unknown": "अज्ञात",
+    "importedExport": "एक्सपोर्ट {{id}} ({{scope}}, {{when}})",
+    "createdWhen": "बनाया गया {{when}}",
+    "conversationId": "बातचीत {{id}}",
+    "runId": "रन {{id}}",
+    "turnId": "टर्न {{id}}",
+    "snapshotId": "स्नैपशॉट {{id}}",
+    "noRequests": "अभी तक कोई अनुरोध दर्ज नहीं"
+  }
+}

@@ -3,6 +3,7 @@ import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
+import { isServedByFlint } from '@/lib/platform/utils'
 import {
   SettingsColumns,
   SettingsPageBody,
@@ -24,7 +25,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Pin, PinOff } from 'lucide-react'
+import {
+  Brain,
+  Download,
+  FolderOpen,
+  Pin,
+  PinOff,
+  Search,
+  SearchX,
+  Trash2,
+  Upload,
+} from 'lucide-react'
+import { ButtonGroup } from '@/components/ui/button-group'
+import { EmptyState } from '@/components/ui/empty-state'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -77,23 +90,7 @@ export const Route = createFileRoute(route.settings.memory as any)({
  * then this project, then everything. The technical names stay in the backend
  * and in diagnostics.
  */
-const TABS: { scope: MemoryScope; label: string; blurb: string }[] = [
-  {
-    scope: 'chat',
-    label: 'This conversation',
-    blurb: 'Remembered only inside the conversation it was saved from.',
-  },
-  {
-    scope: 'project',
-    label: 'Project',
-    blurb: 'Available to every conversation in the project you choose below, and to no other project.',
-  },
-  {
-    scope: 'user',
-    label: 'All conversations',
-    blurb: 'Available everywhere. Keep this for things that are true generally.',
-  },
-]
+const TAB_SCOPES: MemoryScope[] = ['chat', 'project', 'user']
 
 const ALL_RECALLED: MemoryRecall = { session: true, project: true, user: true }
 
@@ -101,17 +98,26 @@ const ALL_RECALLED: MemoryRecall = { session: true, project: true, user: true }
 const recallKey = (scope: MemoryScope): keyof MemoryRecall =>
   scope === 'chat' ? 'session' : scope === 'project' ? 'project' : 'user'
 
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
 /** Where a memory applies, in the words the tabs use. */
-function scopeLabel(scope: MemoryScope): string {
-  return TABS.find((tab) => tab.scope === scope)?.label ?? scope
+function scopeLabel(scope: MemoryScope, t: Translate): string {
+  return TAB_SCOPES.includes(scope) ? t(`settings:memoryPage.scope.${scope}.tab`) : scope
 }
 
 /** How many rows one request fetches. The backend clamps this too. */
 const PAGE_SIZE = 50
 
-function formatWhen(seconds: number | null): string {
-  if (!seconds) return 'never'
-  return new Date(seconds * 1000).toLocaleString()
+function formatWhen(
+  seconds: number | null,
+  t: Translate,
+  language?: string
+): string {
+  if (!seconds) return t('settings:memoryPage.meta.never')
+  return new Intl.DateTimeFormat(language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(seconds * 1000))
 }
 
 function formatBytes(bytes: number): string {
@@ -121,7 +127,7 @@ function formatBytes(bytes: number): string {
 }
 
 function MemorySettings() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [scope, setScope] = useState<MemoryScope>('user')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState<MemoryView[]>([])
@@ -263,7 +269,7 @@ function MemorySettings() {
       if (nextScope === 'project' && !projectId && !projectRoot) {
         setPage([])
         setTotal(0)
-        setUnavailable('Choose a project above to see and manage its memories.')
+        setUnavailable(t('settings:memoryPage.chooseProjectAbove'))
         return
       }
       try {
@@ -285,7 +291,7 @@ function MemorySettings() {
         setUnavailable(errorText(error))
       }
     },
-    [location, projectId, projectRoot]
+    [location, projectId, projectRoot, t]
   )
 
   useEffect(() => {
@@ -350,9 +356,9 @@ function MemorySettings() {
         await memoryRecordForget(location, drop.scope, drop.id)
         await reload()
         showUndoToast({
-          message: 'Kept one memory',
+          message: t('settings:memoryPage.toast.kept'),
           description: keep.preview,
-          undoLabel: 'Undo',
+          undoLabel: t('common:undo'),
           onUndo: () => {
             void (async () => {
               await memoryRecordRestore(
@@ -366,14 +372,14 @@ function MemorySettings() {
           },
         })
       } catch (error) {
-        toast.error('Could not settle that conflict', {
+        toast.error(t('settings:memoryPage.toast.settleFailed'), {
           description: errorText(error),
         })
       } finally {
         setBusy(false)
       }
     },
-    [location, reload]
+    [location, reload, t]
   )
 
   const onForget = useCallback(
@@ -385,12 +391,14 @@ function MemorySettings() {
         await reload()
         // Undo restores the same record, not a copy of its text, so provenance
         // and identity survive the round trip.
-        showUndoToast({
-          message: 'Memory forgotten',
+        const forgottenToast = showUndoToast({
+          message: t('settings:memoryPage.toast.forgotten'),
           description: memory.preview,
-          undoLabel: 'Undo',
+          undoLabel: t('common:undo'),
           onUndo: () => {
             if (!location) return
+            // The offer is spent: drop it so it cannot sit under what follows.
+            toast.dismiss(forgottenToast)
             void (async () => {
               await memoryRecordRestore(
                 location,
@@ -403,14 +411,14 @@ function MemorySettings() {
           },
         })
       } catch (error) {
-        toast.error('Could not forget that memory', {
+        toast.error(t('settings:memoryPage.toast.forgetFailed'), {
           description: errorText(error),
         })
       } finally {
         setBusy(false)
       }
     },
-    [location, scope, reload]
+    [location, scope, reload, t]
   )
 
   const onTogglePin = useCallback(
@@ -421,14 +429,14 @@ function MemorySettings() {
         await memoryRecordPin(location, scope, memory.id, !memory.pinned)
         await reload()
       } catch (error) {
-        toast.error('Could not change that memory', {
+        toast.error(t('settings:memoryPage.toast.changeFailed'), {
           description: errorText(error),
         })
       } finally {
         setBusy(false)
       }
     },
-    [location, scope, reload]
+    [location, scope, reload, t]
   )
 
   const onSaveEdit = useCallback(async () => {
@@ -439,16 +447,16 @@ function MemorySettings() {
       await memoryRecordEdit(location, scope, editing.id, draft)
       setEditing(null)
       await reload()
-      toast.success('Memory updated')
+      toast.success(t('settings:memoryPage.toast.updated'))
     } catch (error) {
       // The backend refuses a stale edit and a credential; both arrive here.
-      toast.error('Could not update that memory', {
+      toast.error(t('settings:memoryPage.toast.updateFailed'), {
         description: errorText(error),
       })
     } finally {
       setBusy(false)
     }
-  }, [editing, draft, location, scope, reload])
+  }, [editing, draft, location, scope, reload, t])
 
   /**
    * Toggle automatic saving.
@@ -479,7 +487,7 @@ function MemorySettings() {
         setAutoSave(saved.automaticallySave)
       } catch (error) {
         setAutoSave(previous)
-        toast.error('Memory settings could not be saved', {
+        toast.error(t('settings:memoryPage.toast.settingsFailed'), {
           description: errorText(error),
         })
       } finally {
@@ -487,7 +495,7 @@ function MemorySettings() {
         setAutoSavePending(false)
       }
     },
-    [location, autoSave]
+    [location, autoSave, t]
   )
 
   /**
@@ -506,10 +514,10 @@ function MemorySettings() {
         setSettingsIssue(saved.issue ?? null)
       } catch (error) {
         setRecall(previous)
-        toast.error('Recall could not be changed', { description: errorText(error) })
+        toast.error(t('settings:memoryPage.toast.recallFailed'), { description: errorText(error) })
       }
     },
-    [location, recall]
+    [location, recall, t]
   )
 
   /** Save a memory the user wrote here, in the tab's scope. */
@@ -524,14 +532,14 @@ function MemorySettings() {
       await memoryRecordCommit(location, scope, proposal.content, proposal.contentHash, source)
       setNewMemory('')
       await reload()
-      toast.success('Memory saved')
+      toast.success(t('settings:memoryPage.toast.saved'))
     } catch (error) {
       // A credential, an empty text, a scope with no chat or project open.
-      toast.error('Could not save that memory', { description: errorText(error) })
+      toast.error(t('settings:memoryPage.toast.saveFailed'), { description: errorText(error) })
     } finally {
       setBusy(false)
     }
-  }, [location, newMemory, scope, sessionId, reload])
+  }, [location, newMemory, scope, sessionId, reload, t])
 
   /** Forget everything in one scope, after the user confirmed. */
   const onClear = useCallback(async () => {
@@ -541,13 +549,13 @@ function MemorySettings() {
       const n = await memoryScopeClear(location, clearing)
       setClearing(null)
       await reload()
-      toast.success(n === 1 ? 'Forgot 1 memory' : `Forgot ${n} memories`)
+      toast.success(t('settings:memoryPage.toast.forgotCount', { count: n }))
     } catch (error) {
-      toast.error('Could not forget those memories', { description: errorText(error) })
+      toast.error(t('settings:memoryPage.toast.forgetManyFailed'), { description: errorText(error) })
     } finally {
       setBusy(false)
     }
-  }, [location, clearing, reload])
+  }, [location, clearing, reload, t])
 
   /** Save this scope's memories, with provenance, where the user picks. */
   const onExport = useCallback(async () => {
@@ -556,22 +564,21 @@ function MemorySettings() {
       .dialog()
       .save({
         defaultPath: `jan-memory-${scope}.json`,
-        filters: [{ name: 'Flint memory export', extensions: ['json'] }],
+        filters: [{ name: t('uiLeftovers:memory.exportFilter'), extensions: ['json'] }],
       })
     if (!path) return
     setBusy(true)
     try {
       const report = await memoryExport(location, scope, path)
-      toast.success(
-        report.count === 1 ? 'Exported 1 memory' : `Exported ${report.count} memories`,
-        { description: report.path }
-      )
+      toast.success(t('settings:memoryPage.toast.exportedCount', { count: report.count }), {
+        description: report.path,
+      })
     } catch (error) {
-      toast.error('Could not export memories', { description: errorText(error) })
+      toast.error(t('settings:memoryPage.toast.exportFailed'), { description: errorText(error) })
     } finally {
       setBusy(false)
     }
-  }, [location, scope])
+  }, [location, scope, t])
 
   /** Import an export into this scope. What was refused is said, not hidden. */
   const onImport = useCallback(async () => {
@@ -580,7 +587,7 @@ function MemorySettings() {
       .dialog()
       .open({
         multiple: false,
-        filters: [{ name: 'Flint memory export', extensions: ['json'] }],
+        filters: [{ name: t('uiLeftovers:memory.exportFilter'), extensions: ['json'] }],
       })
     const path = Array.isArray(picked) ? picked[0] : picked
     if (!path) return
@@ -591,14 +598,14 @@ function MemorySettings() {
       setImportCount((n) => n + 1)
       await reload()
       const n = report.imported.length
-      toast.success(n === 1 ? 'Imported 1 memory' : `Imported ${n} memories`)
+      toast.success(t('settings:memoryPage.toast.importedCount', { count: n }))
     } catch (error) {
       setImportReport(null)
-      toast.error('Could not import memories', { description: errorText(error) })
+      toast.error(t('settings:memoryPage.toast.importFailed'), { description: errorText(error) })
     } finally {
       setBusy(false)
     }
-  }, [location, scope, reload])
+  }, [location, scope, reload, t])
 
   /**
    * Whether saved memory is added to requests at all. Same optimistic,
@@ -618,17 +625,30 @@ function MemorySettings() {
         setMemoryOn(saved.memoryEnabled ?? next)
       } catch (error) {
         setMemoryOn(previous)
-        toast.error('Memory settings could not be saved', {
+        toast.error(t('settings:memoryPage.toast.settingsFailed'), {
           description: errorText(error),
         })
       } finally {
         setMemoryOnPending(false)
       }
     },
-    [location, memoryOn, memoryOnPending]
+    [location, memoryOn, memoryOnPending, t]
   )
 
-  const activeTab = TABS.find((tab) => tab.scope === scope) ?? TABS[2]
+  const scopeKey = `settings:memoryPage.scope.${scope}`
+
+  /**
+   * How many memories a tab holds, from the storage summary; `null` while the
+   * summary has not arrived. The open tab shows the list's own total, which
+   * also covers a project the summary was not asked about.
+   */
+  const tabCount = (tab: MemoryScope): number | null => {
+    if (tab === scope && !unavailable && !query) return total
+    if (!summary) return null
+    if (tab === 'chat') return summary.sessionCount
+    if (tab === 'project') return projectId || projectRoot ? summary.projectCount : null
+    return summary.userCount
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -643,24 +663,25 @@ function MemorySettings() {
       <SettingsColumns
         left={
           <>
-            <Card title="Memory">
+            <Card title={t('common:memory')}>
               <CardItem
-                title="Use saved memory in conversations"
-                description="When this is off, Flint adds no saved memory to any request. Your memories are kept and can still be managed here."
+                anchor="settings-memory-use-saved"
+                title={t('settings:memoryPage.useSaved')}
+                description={t('settings:memoryPage.useSavedDesc')}
                 actions={
                   <Switch
                     checked={memoryOn}
                     disabled={memoryOnPending || location == null}
                     aria-busy={memoryOnPending}
-                    aria-label="Use saved memory in conversations"
+                    aria-label={t('settings:memoryPage.useSaved')}
                     onCheckedChange={(checked) => void onToggleMemory(checked)}
                   />
                 }
               />
               <CardItem
                 anchor={MEMORY_AUTOSAVE_ANCHOR}
-                title="Automatically save local memories"
-                description="When this is off, anything Flint infers is offered for your approval before it is kept. Explicit saves always work. Memories never leave this machine."
+                title={t('settings:memory.automaticallySave')}
+                description={t('settings:memory.automaticallySaveDesc')}
                 actions={
                   <Switch
                     checked={autoSave}
@@ -675,26 +696,26 @@ function MemorySettings() {
                 }
               />
               <CardItem
-                title="Use remembered facts in requests"
-                description="Turning a scope off stops it being sent. Nothing is deleted; turning it back on uses it again."
+                title={t('settings:memoryPage.useFacts')}
+                description={t('settings:memoryPage.useFactsDesc')}
               />
               <div data-testid="memory-recall" className="flex flex-col">
                 {(
                   [
-                    ['session', 'This conversation'],
-                    ['project', 'This project'],
-                    ['user', 'All conversations'],
-                  ] as Array<[keyof MemoryRecall, string]>
-                ).map(([key, label]) => (
+                    ['session', 'chat'],
+                    ['project', 'project'],
+                    ['user', 'user'],
+                  ] as Array<[keyof MemoryRecall, MemoryScope]>
+                ).map(([key, recallScope]) => (
                   <label
                     key={key}
                     className="flex min-h-11 items-center justify-between gap-3 border-b border-dashed border-border px-0.5 py-[11px] text-[13px] font-medium text-foreground pointer-fine:min-h-0"
                   >
-                    <span>{label}</span>
+                    <span>{t(`settings:memoryPage.scope.${recallScope}.recall`)}</span>
                     <Switch
                       checked={recall[key]}
                       disabled={location == null}
-                      aria-label={`Use ${label.toLowerCase()} memories`}
+                      aria-label={t(`settings:memoryPage.scope.${recallScope}.recallAria`)}
                       data-testid={`memory-recall-${key}`}
                       data-checked={recall[key] ? 'true' : 'false'}
                       onCheckedChange={(checked) => void onToggleRecall(key, checked)}
@@ -721,466 +742,558 @@ function MemorySettings() {
               {summary && (
                 <CardItem
                   anchor={MEMORY_STORAGE_ANCHOR}
-                  title="Stored on this machine"
-                  description={`${summary.userCount} across chats · ${
-                    selectedProject
-                      ? `${summary.projectCount} in ${selectedProject.name}`
-                      : 'choose a project to count its memories'
-                  } · ${formatBytes(summary.bytes)}`}
+                  title={t('settings:memory.stored')}
+                  description={t('settings:memoryPage.stored.summary', {
+                    user: summary.userCount,
+                    project: selectedProject
+                      ? t('settings:memoryPage.stored.projectIn', {
+                          count: summary.projectCount,
+                          name: selectedProject.name,
+                        })
+                      : t('settings:memoryPage.stored.chooseProject'),
+                    size: formatBytes(summary.bytes),
+                  })}
                 />
               )}
             </Card>
 
-            <Card title="Remembered">
-              <CardItem
-                anchor={MEMORY_LIST_ANCHOR}
-                title="What Flint remembers"
-                description="Search, edit, pin and forget what is remembered for this chat, this project, or across chats."
-              />
-              <div className="flex flex-col gap-3 pb-3">
-                {/* Scopes as tabs: an accent underline marks the one shown. */}
-                <div
-                  role="tablist"
-                  aria-label="Memory scope"
-                  className="-mx-4 flex items-end gap-1 overflow-x-auto border-b border-border px-4"
-                >
-                  {TABS.map((tab) => (
-                    <button
-                      key={tab.scope}
-                      type="button"
-                      role="tab"
-                      aria-selected={tab.scope === scope}
-                      className={cn(
-                        'relative shrink-0 whitespace-nowrap px-3 pt-2 pb-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
-                        tab.scope === scope
-                          ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-                          : 'text-muted-foreground hover:text-foreground'
+            {/* The facts live in the desktop app's memory store, which a
+                browser has no route to. */}
+            {isServedByFlint() ? (
+              <Card title={t('settings:memory.remembered')}>
+                <p className="pb-3 text-sm text-muted-foreground" data-testid="memory-desktop-only">
+                  {t('permissions:desktopOnly')}
+                </p>
+              </Card>
+            ) : (
+              <Card title={t('settings:memory.remembered')}>
+                <CardItem
+                  anchor={MEMORY_LIST_ANCHOR}
+                  title={t('settings:memoryPage.listTitle')}
+                  description={t('settings:memory.rememberedDesc')}
+                />
+                <div className="flex flex-col gap-3 pb-3">
+                  {/* Scopes as tabs: an accent underline marks the one shown. */}
+                  <div
+                    role="tablist"
+                    aria-label={t('settings:memoryPage.tabsAria')}
+                    className="flex min-w-0 max-w-full flex-wrap items-end gap-1 border-b border-border"
+                  >
+                    {TAB_SCOPES.map((tabScope) => (
+                      <button
+                        key={tabScope}
+                        type="button"
+                        role="tab"
+                        aria-selected={tabScope === scope}
+                        // The name stays the label alone; the count is decoration.
+                        aria-label={t(`settings:memoryPage.scope.${tabScope}.tab`)}
+                        className={cn(
+                          'relative shrink-0 whitespace-nowrap px-3 pt-2 pb-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                          tabScope === scope
+                            ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                        onClick={() => {
+                          setScope(tabScope)
+                          setOffset(0)
+                        }}
+                      >
+                        {t(`settings:memoryPage.scope.${tabScope}.tab`)}
+                        {tabCount(tabScope) !== null && (
+                          <span
+                            className={cn(
+                              'ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] tabular-nums',
+                              tabScope === scope
+                                ? 'bg-primary/12 text-foreground'
+                                : 'bg-muted text-muted-foreground'
+                            )}
+                            data-testid={`memory-tab-count-${tabScope}`}
+                            aria-hidden
+                          >
+                            {tabCount(tabScope)}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t(`${scopeKey}.blurb`)}</p>
+                  {!recall[recallKey(scope)] && (
+                    <p className="text-xs text-warning" data-testid="memory-recall-off-note">
+                      {t('settings:memoryPage.recallOff')}
+                    </p>
+                  )}
+
+                  <form
+                    className="flex flex-col gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      void onAdd()
+                    }}
+                  >
+                    <Textarea
+                      value={newMemory}
+                      aria-label={t(`${scopeKey}.newAria`)}
+                      data-testid="memory-new-content"
+                      placeholder={t('settings:memoryPage.newPlaceholder')}
+                      onChange={(e) => setNewMemory(e.target.value)}
+                    />
+                    {/* One primary action, and the file actions as a quiet
+                        pair beside it. Forgetting a whole scope is not a
+                        toolbar action: it lives in the footer under the list. */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Button
+                        type="submit"
+                        className="pointer-coarse:h-11"
+                        disabled={busy || !newMemory.trim() || location == null}
+                        data-testid="memory-new-save"
+                      >
+                        {t('settings:memoryPage.remember')}
+                      </Button>
+                      <ButtonGroup aria-label={t('settings:memoryPage.fileActionsAria')}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="pointer-coarse:h-11"
+                          disabled={busy || total === 0 || location == null}
+                          data-testid="memory-export"
+                          onClick={() => void onExport()}
+                        >
+                          <Download aria-hidden />
+                          {t('settings:memoryPage.export')}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="pointer-coarse:h-11"
+                          disabled={busy || location == null}
+                          data-testid="memory-import"
+                          onClick={() => void onImport()}
+                        >
+                          <Upload aria-hidden />
+                          {t('settings:memoryPage.import')}
+                        </Button>
+                      </ButtonGroup>
+                    </div>
+                  </form>
+
+                  {importReport && (
+                    <div
+                      key={importCount}
+                      className="rounded-md bg-muted p-3 text-xs text-fg-2"
+                      role="status"
+                      data-testid="memory-import-report"
+                      data-imported={importReport.imported.length}
+                      data-duplicates={importReport.duplicates.length}
+                      data-refused={importReport.refused.length}
+                    >
+                      <p>
+                        {t('settings:memoryPage.importReport.summary', {
+                          count: importReport.imported.length,
+                        })}{' '}
+                        <span className="font-mono">{importReport.exportId}</span>
+                        {importReport.duplicates.length > 0 &&
+                          ` · ${t('settings:memoryPage.importReport.duplicates', { count: importReport.duplicates.length })}`}
+                        {importReport.refused.length > 0 &&
+                          ` · ${t('settings:memoryPage.importReport.refused', { count: importReport.refused.length })}`}
+                      </p>
+                      {importReport.refused.length > 0 && (
+                        <ul className="mt-1 list-disc pl-4" data-testid="memory-import-refused">
+                          {importReport.refused.map((r) => (
+                            <li key={`${r.index}-${r.originalId}`}>
+                              #{r.index + 1} <span className="font-mono">{r.originalId}</span>: {r.reason}
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                      onClick={() => {
-                        setScope(tab.scope)
+                    </div>
+                  )}
+
+                  {scope === 'chat' && (
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                      {t('settings:memoryPage.conversation')}
+                      <Select
+                        className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                        aria-label={t('settings:memoryPage.conversationAria')}
+                        data-testid="memory-session-picker"
+                        value={sessionId ?? ''}
+                        onChange={(e) => {
+                          setSessionId(e.target.value || undefined)
+                          setOffset(0)
+                        }}
+                      >
+                        {conversations.sessions.length === 0 && (
+                          <option value="">{t('settings:memoryPage.noConversations')}</option>
+                        )}
+                        {conversations.sessions.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.kind === 'cowork'
+                              ? t('settings:memoryPage.kindCowork', { title: s.title })
+                              : t('settings:memoryPage.kindChat', { title: s.title })}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                  )}
+                  {scope === 'project' && (
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                      {t('settings:memoryPage.projectFolder')}
+                      <Select
+                        className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                        aria-label={t('settings:memoryPage.projectFolderAria')}
+                        data-testid="memory-project-picker"
+                        value={projectRoot ?? ''}
+                        onChange={(e) => {
+                          // `''` rather than undefined: "no folder" was chosen,
+                          // so the first folder is not picked again for them.
+                          setProjectRoot(e.target.value)
+                          // A folder is the identity; a Flint project would be
+                          // ignored beside it, so it is not left looking chosen.
+                          if (e.target.value) setProjectId('')
+                          setOffset(0)
+                        }}
+                      >
+                        {conversations.projects.length === 0 && (
+                          <option value="">{t('settings:memoryPage.noProjectFolders')}</option>
+                        )}
+                        {conversations.projects.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                  )}
+
+                  {scope === 'project' && (
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                      <label htmlFor="memory-project" className="text-xs text-muted-foreground sm:text-sm">
+                        {t('settings:memoryPage.scope.project.tab')}
+                      </label>
+                      <Select
+                        id="memory-project"
+                        value={projectId}
+                        onChange={(e) => {
+                          setProjectId(e.target.value)
+                          // A Flint project has no folder: a folder left selected
+                          // would win in the backend and show its records instead.
+                          if (e.target.value) setProjectRoot('')
+                          setOffset(0)
+                        }}
+                        className="h-9 min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                      >
+                        <option value="">{t('settings:memoryPage.chooseProject')}</option>
+                        {projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="relative">
+                    <Search
+                      size={14}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Input
+                      value={query}
+                      aria-label={t('settings:memoryPage.searchAria')}
+                      placeholder={t('settings:memoryPage.searchPlaceholder')}
+                      className="pl-8"
+                      onChange={(e) => {
+                        setQuery(e.target.value)
                         setOffset(0)
                       }}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">{activeTab.blurb}</p>
-                {!recall[recallKey(scope)] && (
-                  <p className="text-xs text-warning" data-testid="memory-recall-off-note">
-                    Recall is off for this scope: these are kept, but not sent.
-                  </p>
-                )}
+                    />
+                  </div>
 
-                <form
-                  className="flex flex-col gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    void onAdd()
-                  }}
-                >
-                  <Textarea
-                    value={newMemory}
-                    aria-label={`New memory for ${activeTab.label.toLowerCase()}`}
-                    data-testid="memory-new-content"
-                    placeholder="Something Flint should remember"
-                    onChange={(e) => setNewMemory(e.target.value)}
-                  />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="submit"
-                      className="pointer-coarse:h-11"
-                      disabled={busy || !newMemory.trim() || location == null}
-                      data-testid="memory-new-save"
-                    >
-                      Remember
-                    </Button>
+                  {unavailable ? (
+                    <EmptyState
+                      className="rounded-lg border border-dashed border-border-strong py-6"
+                      icon={<FolderOpen aria-hidden />}
+                      title={unavailable}
+                    />
+                  ) : page.length === 0 ? (
+                    <EmptyState
+                      className="rounded-lg border border-dashed border-border-strong py-6"
+                      icon={query ? <SearchX aria-hidden /> : <Brain aria-hidden />}
+                      title={
+                        query
+                          ? t('settings:memoryPage.noMatch')
+                          : t('settings:memoryPage.empty')
+                      }
+                      description={
+                        query
+                          ? t('settings:memoryPage.noMatchHint')
+                          : t('settings:memoryPage.emptyHint')
+                      }
+                    />
+                  ) : (
+                    <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card">
+                      {page.map((memory) => (
+                        <li
+                          key={memory.id}
+                          className="flex items-start justify-between gap-3 px-3 py-3"
+                          data-testid="memory-row"
+                          data-memory-id={memory.id}
+                          data-pinned={memory.pinned ? 'true' : 'false'}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm break-words text-foreground">{memory.preview}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {[
+                                memory.origin === 'explicit'
+                                  ? t('settings:memoryPage.meta.youSaved')
+                                  : t('settings:memoryPage.meta.inferred'),
+                                memory.pinned ? t('settings:memoryPage.meta.pinned') : null,
+                                memory.status !== 'active' ? memory.status : null,
+                                t('settings:memoryPage.meta.used', { count: memory.useCount }),
+                                t('settings:memoryPage.meta.lastUsed', {
+                                  when: formatWhen(memory.lastUsedAt, t, i18n.language),
+                                }),
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </p>
+                            <details className="mt-1 text-xs" data-testid="memory-provenance">
+                              <summary className="cursor-pointer rounded-sm text-acc-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2">
+                                {t('uiLeftovers:memory.why')}
+                              </summary>
+                              <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-muted p-2 text-fg-2 sm:grid-cols-[auto_1fr]">
+                                <dt>ID</dt>
+                                <dd className="font-mono break-all">{memory.id}</dd>
+                                <dt>{t('uiLeftovers:scope')}</dt>
+                                <dd>{memory.scope}</dd>
+                                <dt>{t('uiLeftovers:memory.writtenBy')}</dt>
+                                <dd>
+                                  {memory.creator} ({memory.origin})
+                                </dd>
+                                <dt>{t('uiLeftovers:memory.created')}</dt>
+                                <dd>{formatWhen(memory.createdAt, t, i18n.language)}</dd>
+                                <dt>{t('uiLeftovers:memory.updated')}</dt>
+                                <dd>{formatWhen(memory.updatedAt, t, i18n.language)}</dd>
+                                <dt>{t('uiLeftovers:memory.fromConversation')}</dt>
+                                <dd className="font-mono break-all">
+                                  {memory.sourceSessionId ?? t('uiLeftovers:memory.notRecorded')}
+                                  {memory.sourceDeleted && ` ${t('uiLeftovers:memory.deletedSince')}`}
+                                </dd>
+                                {memory.sourceMessageId && (
+                                  <>
+                                    <dt>{t('uiLeftovers:memory.fromMessage')}</dt>
+                                    <dd className="font-mono break-all">{memory.sourceMessageId}</dd>
+                                  </>
+                                )}
+                                {memory.projectId && (
+                                  <>
+                                    <dt>{t('uiLeftovers:memory.projectIdentity')}</dt>
+                                    <dd className="font-mono break-all">{memory.projectId}</dd>
+                                  </>
+                                )}
+                                {memory.supersedes && (
+                                  <>
+                                    <dt>{t('uiLeftovers:memory.replaces')}</dt>
+                                    <dd className="font-mono break-all">{memory.supersedes}</dd>
+                                  </>
+                                )}
+                                <dt>{t('uiLeftovers:memory.redacted')}</dt>
+                                <dd>{memory.redacted ? t('uiLeftovers:memory.yes') : t('uiLeftovers:memory.no')}</dd>
+                                {memory.expiresAt && (
+                                  <>
+                                    <dt>{t('uiLeftovers:memory.expires')}</dt>
+                                    <dd>{formatWhen(memory.expiresAt, t, i18n.language)}</dd>
+                                  </>
+                                )}
+                                <dt>{t('uiLeftovers:memory.version')}</dt>
+                                <dd data-testid="memory-provenance-version">
+                                  {memory.version == null ? t('uiLeftovers:memory.versionUnknown') : memory.version}
+                                </dd>
+                                <dt>{t('uiLeftovers:memory.source')}</dt>
+                                <dd data-testid="memory-provenance-source">{memory.sourceType ?? t('uiLeftovers:memory.unknown')}</dd>
+                                {memory.importedFrom && (
+                                  <>
+                                    <dt>{t('uiLeftovers:memory.importedFrom')}</dt>
+                                    <dd className="break-all" data-testid="memory-provenance-imported">
+                                      {t('uiLeftovers:memory.importedExport', {
+                                        id: memory.importedFrom.export_id,
+                                        scope: memory.importedFrom.exported_scope,
+                                        when: formatWhen(memory.importedFrom.exported_at, t, i18n.language),
+                                      })}
+                                    </dd>
+                                    <dt>{t('uiLeftovers:memory.originally')}</dt>
+                                    <dd className="break-all" data-testid="memory-provenance-original">
+                                      {memory.importedFrom.original_source_type} ·{' '}
+                                      <span className="font-mono">{memory.importedFrom.original_id}</span> ·{' '}
+                                      {t('uiLeftovers:memory.createdWhen', { when: formatWhen(memory.importedFrom.original_created_at, t, i18n.language) })}
+                                      {memory.importedFrom.original_session_id &&
+                                        ` · ${t('uiLeftovers:memory.conversationId', { id: memory.importedFrom.original_session_id })}`}
+                                      {memory.importedFrom.original_run_id &&
+                                        ` · ${t('uiLeftovers:memory.runId', { id: memory.importedFrom.original_run_id })}`}
+                                    </dd>
+                                  </>
+                                )}
+                                <dt>{t('uiLeftovers:memory.fromRun')}</dt>
+                                <dd className="font-mono break-all">{memory.sourceRunId ?? t('uiLeftovers:memory.notRecorded')}</dd>
+                                <dt>{t('uiLeftovers:memory.savedInProject')}</dt>
+                                <dd className="font-mono break-all">{memory.sourceProjectId ?? t('uiLeftovers:memory.notRecorded')}</dd>
+                                {memory.contentHash && (
+                                  <>
+                                    <dt>{t('uiLeftovers:memory.contentHash')}</dt>
+                                    <dd className="font-mono break-all">{memory.contentHash}</dd>
+                                  </>
+                                )}
+                                {(memory.history?.length ?? 0) > 0 && (
+                                  <>
+                                    <dt>{t('uiLeftovers:memory.earlierVersions')}</dt>
+                                    <dd data-testid="memory-provenance-history">
+                                      {memory.history!.map((h) => (
+                                        <span key={`${h.version}-${h.content_hash}`} className="block font-mono break-all">
+                                          v{h.version} · {h.content_hash} · {t('settings:memoryPage.replacedAt', { when: formatWhen(h.replaced_at, t, i18n.language) })}
+                                        </span>
+                                      ))}
+                                    </dd>
+                                  </>
+                                )}
+                                <dt>{t('uiLeftovers:memory.usedIn')}</dt>
+                                <dd data-testid="memory-provenance-uses">
+                                  {(memory.uses?.length ?? 0) === 0
+                                    ? t('uiLeftovers:memory.noRequests')
+                                    : memory.uses!.map((u, i: number) => (
+                                        <span
+                                          key={`${u.at}-${i}`}
+                                          className="block font-mono break-all"
+                                          data-snapshot-id={u.snapshot_id ?? ''}
+                                        >
+                                          {formatWhen(u.at, t, i18n.language)} · {u.session_id}
+                                          {u.turn_id ? ` · ${t('uiLeftovers:memory.turnId', { id: u.turn_id })}` : ''}
+                                          {u.snapshot_id ? ` · ${t('uiLeftovers:memory.snapshotId', { id: u.snapshot_id })}` : ''}
+                                          {u.reason ? ` · ${u.reason}` : ''}
+                                        </span>
+                                      ))}
+                                </dd>
+                              </dl>
+                            </details>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground pointer-coarse:size-11"
+                              disabled={busy}
+                              title={
+                                memory.pinned
+                                  ? t('settings:memoryPage.unpin')
+                                  : t('settings:memoryPage.pin')
+                              }
+                              aria-label={
+                                memory.pinned
+                                  ? t('settings:memoryPage.unpinAria')
+                                  : t('settings:memoryPage.pinAria')
+                              }
+                              onClick={() => void onTogglePin(memory)}
+                            >
+                              {memory.pinned ? (
+                                <PinOff aria-hidden />
+                              ) : (
+                                <Pin aria-hidden />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground pointer-coarse:size-11"
+                              disabled={busy}
+                              title={t('common:edit')}
+                              aria-label={t('settings:memoryPage.editAria')}
+                              onClick={() => {
+                                setEditing(memory)
+                                setDraft(memory.content)
+                              }}
+                            >
+                              <Icon name="x-edit" size={16} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground pointer-coarse:size-11"
+                              disabled={busy}
+                              title={t('settings:memoryPage.forget')}
+                              aria-label={t('settings:memoryPage.forgetAria')}
+                              onClick={() => void onForget(memory)}
+                            >
+                              <Icon name="x-trash" size={16} />
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {total > PAGE_SIZE && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-muted-foreground">
+                      <span>
+                        {t('settings:memoryPage.showing', {
+                          from: offset + 1,
+                          to: Math.min(offset + PAGE_SIZE, total),
+                          total,
+                        })}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          disabled={offset === 0}
+                          onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                        >
+                          {t('settings:memoryPage.previous')}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          disabled={offset + PAGE_SIZE >= total}
+                          onClick={() => setOffset(offset + PAGE_SIZE)}
+                        >
+                          {t('common:next')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* The destructive action, kept quiet and apart from the
+                      list it empties; the dialog still asks before anything
+                      is removed. */}
+                  <div className="-mb-3 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-border pt-2.5 pb-0.5">
+                    <p className="min-w-0 text-xs text-muted-foreground">
+                      {t('settings:memoryPage.footerCount', {
+                        count: tabCount(scope) ?? total,
+                      })}
+                    </p>
                     <Button
                       type="button"
-                      variant="outline"
-                      className="pointer-coarse:h-11"
-                      disabled={busy || total === 0 || location == null}
-                      data-testid="memory-export"
-                      onClick={() => void onExport()}
-                    >
-                      Export
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="pointer-coarse:h-11"
-                      disabled={busy || location == null}
-                      data-testid="memory-import"
-                      onClick={() => void onImport()}
-                    >
-                      Import
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      className="pointer-coarse:h-11 sm:ml-auto"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive-text hover:bg-destructive/10 hover:text-destructive-text pointer-coarse:h-11"
                       disabled={busy || total === 0 || location == null}
                       data-testid="memory-clear-scope"
                       onClick={() => setClearing(scope)}
                     >
-                      Forget all in {activeTab.label.toLowerCase()}
+                      <Trash2 aria-hidden />
+                      {t(`${scopeKey}.forgetAll`)}
                     </Button>
                   </div>
-                </form>
-
-                {importReport && (
-                  <div
-                    key={importCount}
-                    className="rounded-md bg-muted p-3 text-xs text-fg-2"
-                    role="status"
-                    data-testid="memory-import-report"
-                    data-imported={importReport.imported.length}
-                    data-duplicates={importReport.duplicates.length}
-                    data-refused={importReport.refused.length}
-                  >
-                    <p>
-                      Imported {importReport.imported.length} from export{' '}
-                      <span className="font-mono">{importReport.exportId}</span>
-                      {importReport.duplicates.length > 0 &&
-                        ` · ${importReport.duplicates.length} already remembered`}
-                      {importReport.refused.length > 0 && ` · ${importReport.refused.length} refused`}
-                    </p>
-                    {importReport.refused.length > 0 && (
-                      <ul className="mt-1 list-disc pl-4" data-testid="memory-import-refused">
-                        {importReport.refused.map((r) => (
-                          <li key={`${r.index}-${r.originalId}`}>
-                            #{r.index + 1} <span className="font-mono">{r.originalId}</span>: {r.reason}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-
-                {scope === 'chat' && (
-                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                    Conversation
-                    <Select
-                      className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
-                      aria-label="Conversation whose memory to show"
-                      data-testid="memory-session-picker"
-                      value={sessionId ?? ''}
-                      onChange={(e) => {
-                        setSessionId(e.target.value || undefined)
-                        setOffset(0)
-                      }}
-                    >
-                      {conversations.sessions.length === 0 && (
-                        <option value="">No conversations yet</option>
-                      )}
-                      {conversations.sessions.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.kind === 'cowork' ? 'Cowork · ' : 'Chat · '}
-                          {s.title}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                )}
-                {scope === 'project' && (
-                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                    Project folder
-                    <Select
-                      className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
-                      aria-label="Project whose memory to show"
-                      data-testid="memory-project-picker"
-                      value={projectRoot ?? ''}
-                      onChange={(e) => {
-                        // `''` rather than undefined: "no folder" was chosen,
-                        // so the first folder is not picked again for them.
-                        setProjectRoot(e.target.value)
-                        // A folder is the identity; a Flint project would be
-                        // ignored beside it, so it is not left looking chosen.
-                        if (e.target.value) setProjectId('')
-                        setOffset(0)
-                      }}
-                    >
-                      {conversations.projects.length === 0 && (
-                        <option value="">No project attached to any session</option>
-                      )}
-                      {conversations.projects.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                )}
-
-                {scope === 'project' && (
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-                    <label htmlFor="memory-project" className="text-xs text-muted-foreground sm:text-sm">
-                      Project
-                    </label>
-                    <Select
-                      id="memory-project"
-                      value={projectId}
-                      onChange={(e) => {
-                        setProjectId(e.target.value)
-                        // A Flint project has no folder: a folder left selected
-                        // would win in the backend and show its records instead.
-                        if (e.target.value) setProjectRoot('')
-                        setOffset(0)
-                      }}
-                      className="h-9 min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
-                    >
-                      <option value="">Choose a project</option>
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                )}
-
-                <Input
-                  value={query}
-                  aria-label="Search memories"
-                  placeholder="Search remembered facts"
-                  onChange={(e) => {
-                    setQuery(e.target.value)
-                    setOffset(0)
-                  }}
-                />
-
-                {unavailable ? (
-                  <p className="rounded-md border border-dashed border-border-strong py-6 text-center text-sm text-muted-foreground">
-                    {unavailable}
-                  </p>
-                ) : page.length === 0 ? (
-                  <p className="rounded-md border border-dashed border-border-strong py-6 text-center text-sm text-muted-foreground">
-                    {query
-                      ? 'Nothing here matches that search.'
-                      : 'Nothing remembered here yet.'}
-                  </p>
-                ) : (
-                  <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card">
-                    {page.map((memory) => (
-                      <li
-                        key={memory.id}
-                        className="flex items-start justify-between gap-3 px-3 py-3"
-                        data-testid="memory-row"
-                        data-memory-id={memory.id}
-                        data-pinned={memory.pinned ? 'true' : 'false'}
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm break-words text-foreground">{memory.preview}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {memory.origin === 'explicit' ? 'You saved this' : 'Inferred'}
-                            {memory.pinned && ' · pinned'}
-                            {memory.status !== 'active' && ` · ${memory.status}`}
-                            {' · used '}
-                            {memory.useCount}
-                            {memory.useCount === 1 ? ' time' : ' times'}
-                            {' · last used '}
-                            {formatWhen(memory.lastUsedAt)}
-                          </p>
-                          <details className="mt-1 text-xs" data-testid="memory-provenance">
-                            <summary className="cursor-pointer rounded-sm text-acc-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2">
-                              Why Flint remembers this
-                            </summary>
-                            <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-muted p-2 text-fg-2 sm:grid-cols-[auto_1fr]">
-                              <dt>ID</dt>
-                              <dd className="font-mono break-all">{memory.id}</dd>
-                              <dt>Scope</dt>
-                              <dd>{memory.scope}</dd>
-                              <dt>Written by</dt>
-                              <dd>
-                                {memory.creator} ({memory.origin})
-                              </dd>
-                              <dt>Created</dt>
-                              <dd>{formatWhen(memory.createdAt)}</dd>
-                              <dt>Updated</dt>
-                              <dd>{formatWhen(memory.updatedAt)}</dd>
-                              <dt>From conversation</dt>
-                              <dd className="font-mono break-all">
-                                {memory.sourceSessionId ?? 'not recorded'}
-                                {memory.sourceDeleted && ' (deleted since)'}
-                              </dd>
-                              {memory.sourceMessageId && (
-                                <>
-                                  <dt>From message</dt>
-                                  <dd className="font-mono break-all">{memory.sourceMessageId}</dd>
-                                </>
-                              )}
-                              {memory.projectId && (
-                                <>
-                                  <dt>Project identity</dt>
-                                  <dd className="font-mono break-all">{memory.projectId}</dd>
-                                </>
-                              )}
-                              {memory.supersedes && (
-                                <>
-                                  <dt>Replaces</dt>
-                                  <dd className="font-mono break-all">{memory.supersedes}</dd>
-                                </>
-                              )}
-                              <dt>Redacted</dt>
-                              <dd>{memory.redacted ? 'yes' : 'no'}</dd>
-                              {memory.expiresAt && (
-                                <>
-                                  <dt>Expires</dt>
-                                  <dd>{formatWhen(memory.expiresAt)}</dd>
-                                </>
-                              )}
-                              <dt>Version</dt>
-                              <dd data-testid="memory-provenance-version">
-                                {memory.version == null ? 'unknown (saved before versions were kept)' : memory.version}
-                              </dd>
-                              <dt>Source</dt>
-                              <dd data-testid="memory-provenance-source">{memory.sourceType ?? 'unknown'}</dd>
-                              {memory.importedFrom && (
-                                <>
-                                  <dt>Imported from</dt>
-                                  <dd className="break-all" data-testid="memory-provenance-imported">
-                                    export <span className="font-mono">{memory.importedFrom.export_id}</span> (
-                                    {memory.importedFrom.exported_scope}, {formatWhen(memory.importedFrom.exported_at)})
-                                  </dd>
-                                  <dt>Originally</dt>
-                                  <dd className="break-all" data-testid="memory-provenance-original">
-                                    {memory.importedFrom.original_source_type} ·{' '}
-                                    <span className="font-mono">{memory.importedFrom.original_id}</span> · created{' '}
-                                    {formatWhen(memory.importedFrom.original_created_at)}
-                                    {memory.importedFrom.original_session_id &&
-                                      ` · conversation ${memory.importedFrom.original_session_id}`}
-                                    {memory.importedFrom.original_run_id &&
-                                      ` · run ${memory.importedFrom.original_run_id}`}
-                                  </dd>
-                                </>
-                              )}
-                              <dt>From run</dt>
-                              <dd className="font-mono break-all">{memory.sourceRunId ?? 'not recorded'}</dd>
-                              <dt>Saved in project</dt>
-                              <dd className="font-mono break-all">{memory.sourceProjectId ?? 'not recorded'}</dd>
-                              {memory.contentHash && (
-                                <>
-                                  <dt>Content hash</dt>
-                                  <dd className="font-mono break-all">{memory.contentHash}</dd>
-                                </>
-                              )}
-                              {(memory.history?.length ?? 0) > 0 && (
-                                <>
-                                  <dt>Earlier versions</dt>
-                                  <dd data-testid="memory-provenance-history">
-                                    {memory.history!.map((h) => (
-                                      <span key={`${h.version}-${h.content_hash}`} className="block font-mono break-all">
-                                        v{h.version} · {h.content_hash} · replaced {formatWhen(h.replaced_at)}
-                                      </span>
-                                    ))}
-                                  </dd>
-                                </>
-                              )}
-                              <dt>Used in</dt>
-                              <dd data-testid="memory-provenance-uses">
-                                {(memory.uses?.length ?? 0) === 0
-                                  ? 'no recorded request yet'
-                                  : memory.uses!.map((u, i: number) => (
-                                      <span
-                                        key={`${u.at}-${i}`}
-                                        className="block font-mono break-all"
-                                        data-snapshot-id={u.snapshot_id ?? ''}
-                                      >
-                                        {formatWhen(u.at)} · {u.session_id}
-                                        {u.turn_id ? ` · turn ${u.turn_id}` : ''}
-                                        {u.snapshot_id ? ` · snapshot ${u.snapshot_id}` : ''}
-                                        {u.reason ? ` · ${u.reason}` : ''}
-                                      </span>
-                                    ))}
-                              </dd>
-                            </dl>
-                          </details>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground pointer-coarse:size-11"
-                            disabled={busy}
-                            title={memory.pinned ? 'Unpin' : 'Pin'}
-                            aria-label={memory.pinned ? 'Unpin memory' : 'Pin memory'}
-                            onClick={() => void onTogglePin(memory)}
-                          >
-                            {memory.pinned ? (
-                              <PinOff aria-hidden />
-                            ) : (
-                              <Pin aria-hidden />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground pointer-coarse:size-11"
-                            disabled={busy}
-                            title="Edit"
-                            aria-label="Edit memory"
-                            onClick={() => {
-                              setEditing(memory)
-                              setDraft(memory.content)
-                            }}
-                          >
-                            <Icon name="x-edit" size={16} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground pointer-coarse:size-11"
-                            disabled={busy}
-                            title="Forget"
-                            aria-label="Forget memory"
-                            onClick={() => void onForget(memory)}
-                          >
-                            <Icon name="x-trash" size={16} />
-                          </Button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {total > PAGE_SIZE && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-muted-foreground">
-                    <span>
-                      Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of{' '}
-                      {total}
-                    </span>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        disabled={offset === 0}
-                        onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        disabled={offset + PAGE_SIZE >= total}
-                        onClick={() => setOffset(offset + PAGE_SIZE)}
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Card>
+                </div>
+              </Card>
+            )}
           </>
         }
         right={[
           proposalLocation && proposalsPending.length > 0 && (
               <Card
                 key="waiting"
-                title="Waiting for you"
+                title={t('settings:memoryPage.waitingTitle')}
                 aside={<span className="tabular-nums">{proposalsPending.length}</span>}
               >
                 <p className="mb-2.5 text-[12.5px] leading-normal text-muted-foreground">
-                  Nothing here is being used yet. An unanswered proposal is
-                  never added to a prompt.
+                  {t('settings:memoryPage.waitingBody')}
                 </p>
                 <div>
                   <MemoryProposalList
@@ -1199,11 +1312,9 @@ function MemorySettings() {
               </Card>
             ),
           conflicts.length > 0 && (
-              <Card key="conflicts" title="Memories that disagree">
+              <Card key="conflicts" title={t('settings:memoryPage.conflictsTitle')}>
                 <p className="mb-1.5 text-[12.5px] leading-normal text-muted-foreground">
-                  Neither side is being used. These remembered facts
-                  contradict each other, so Flint leaves both out of every
-                  request here until you keep one.
+                  {t('settings:memoryPage.conflictsBody')}
                 </p>
                 <ul className="flex flex-col gap-3" data-testid="memory-conflicts">
                   {conflicts.map((conflict) => (
@@ -1214,7 +1325,7 @@ function MemorySettings() {
                       data-right-id={conflict.right.id}
                     >
                       <p className="mb-0.5 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
-                        About the {conflict.subject}
+                        {t('settings:memoryPage.conflictAbout', { subject: conflict.subject })}
                       </p>
                       <div className="grid gap-2.5 sm:grid-cols-2">
                         {(
@@ -1226,7 +1337,7 @@ function MemorySettings() {
                           <div key={side.id} className="flex min-w-0 flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-background p-2.5">
                             <p className="text-[13px] break-words text-foreground">{side.content}</p>
                             <p className="font-mono text-xs text-muted-foreground">
-                              {scopeLabel(side.scope)}
+                              {scopeLabel(side.scope, t)}
                               {' · '}
                               <span className="break-all">{side.id}</span>
                             </p>
@@ -1236,10 +1347,10 @@ function MemorySettings() {
                               disabled={busy}
                               data-testid="memory-conflict-keep"
                               data-keep-id={side.id}
-                              aria-label={`Keep "${side.preview}" and forget the other`}
+                              aria-label={t('settings:memoryPage.keepAria', { preview: side.preview })}
                               onClick={() => void onKeep(side, other)}
                             >
-                              Keep this one
+                              {t('settings:memoryPage.keepThis')}
                             </Button>
                           </div>
                         ))}
@@ -1256,27 +1367,25 @@ function MemorySettings() {
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit memory</DialogTitle>
-            <DialogDescription>
-              This is used in future conversations in the scope it belongs to.
-            </DialogDescription>
+            <DialogTitle>{t('settings:memoryPage.editTitle')}</DialogTitle>
+            <DialogDescription>{t('settings:memoryPage.editBody')}</DialogDescription>
           </DialogHeader>
           <Textarea
             value={draft}
-            aria-label="Memory content"
+            aria-label={t('settings:memoryPage.contentAria')}
             rows={6}
             onChange={(e) => setDraft(e.target.value)}
           />
           <DialogFooter className={STICKY_DIALOG_FOOTER}>
             <Button variant="ghost" className="pointer-coarse:h-11" onClick={() => setEditing(null)}>
-              Cancel
+              {t('common:cancel')}
             </Button>
             <Button
               disabled={busy || !draft.trim()}
               data-testid="memory-edit-save"
               onClick={() => void onSaveEdit()}
             >
-              Save
+              {t('common:save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1285,16 +1394,14 @@ function MemorySettings() {
       <Dialog open={clearing !== null} onOpenChange={(open) => !open && setClearing(null)}>
         <DialogContent data-testid="memory-clear-dialog">
           <DialogHeader>
-            <DialogTitle>Forget every memory here?</DialogTitle>
+            <DialogTitle>{t('settings:memoryPage.clearTitle')}</DialogTitle>
             <DialogDescription>
-              {clearing
-                ? `Everything remembered for ${scopeLabel(clearing).toLowerCase()} stops being used and its text is removed from this machine. This cannot be undone in one step.`
-                : null}
+              {clearing ? t(`settings:memoryPage.scope.${clearing}.clearBody`) : null}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className={STICKY_DIALOG_FOOTER}>
             <Button variant="ghost" className="pointer-coarse:h-11" onClick={() => setClearing(null)}>
-              Cancel
+              {t('common:cancel')}
             </Button>
             <Button
               variant="destructive"
@@ -1302,7 +1409,7 @@ function MemorySettings() {
               data-testid="memory-clear-confirm"
               onClick={() => void onClear()}
             >
-              Forget all
+              {t('settings:memoryPage.clearConfirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { useMemo, useState } from 'react'
 import { Icon } from '@/components/ui/icon'
 import { route } from '@/constants/routes'
@@ -17,7 +18,7 @@ import { ExtensionManager } from '@/lib/extension'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.extensions as any)({
-  component: ExtensionsPage,
+  component: desktopOnlyRoute(ExtensionsPage, 'common:appRail.extensions'),
 })
 
 type ExtensionsTab = 'plugins' | 'skills' | 'engine' | 'marketplace'
@@ -68,9 +69,9 @@ function ExtensionsPage() {
         />
 
         <div className="flex flex-wrap items-center gap-3 motion-safe:animate-rise-in [animation-delay:80ms]">
-          <div className="-mx-1 max-w-full overflow-x-auto px-1 [scrollbar-width:none]">
+          <div className="w-full min-w-0 sm:w-auto">
           <Segmented<ExtensionsTab>
-            className="w-[520px] min-w-[400px] max-w-none sm:max-w-full"
+            className="w-full sm:w-[520px] sm:max-w-full"
             aria-label={t('common:appRail.extensions')}
             value={tab}
             onValueChange={setTab}

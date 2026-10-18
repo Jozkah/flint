@@ -1,3 +1,4 @@
+import { isPerformanceMode, type PerformanceMode } from '@/lib/perfMode'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import {
@@ -8,6 +9,14 @@ import {
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { useTheme } from './useTheme'
+import {
+  hiddenForPreset,
+  hideableSidebarIds,
+  resolveSidebarDefaults,
+  SIDEBAR_DEFAULTS_VERSION,
+  sanitizeHiddenSidebarItems,
+  type SidebarPreset,
+} from '@/lib/sidebarItems'
 import {
   getDefaultNotificationPosition,
   isNotificationPosition,
@@ -27,8 +36,6 @@ export type FontSize = '14px' | '15px' | '16px' | '18px' | '20px'
 /** The left sidebar's width range, in CSS pixels. Dragging stops at either end. */
 export const SIDEBAR_MIN_WIDTH = 200
 export const SIDEBAR_MAX_WIDTH = 420
-export type SidebarLayout = 'trimmed' | 'extended'
-
 export const SIDEBAR_DEFAULT_WIDTH = 250
 
 export const sanitizeSidebarWidth = (width: unknown): number =>
@@ -91,10 +98,16 @@ interface InterfaceSettingsState {
   reduceMotion: boolean
   /** Brighter text for easier reading (html.high-contrast in index.css). */
   increaseContrast: boolean
+  /** Auto picks reduced on slow machines; see lib/perfMode. */
+  performanceMode: PerformanceMode
   notificationPosition: NotificationPosition
   showTokenSpeed: boolean
   coloredUserBubble: boolean
+  /** Render Markdown in the user's own messages (off: plain text as typed). */
+  renderUserMarkdown: boolean
   renderHtmlArtifacts: boolean
+  /** Wrap long lines in fenced code blocks (off: they scroll sideways). */
+  wrapCodeLines: boolean
   /** Favicon chips for the sources a web answer cites, inline in the text. */
   showInlineCitations: boolean
   autoGenerateTitle: boolean
@@ -102,8 +115,11 @@ interface InterfaceSettingsState {
   transcriptView: TranscriptView
   /** The left sidebar's width in CSS pixels, within the SIDEBAR_* range. */
   sidebarWidth: number
-  /** Trimmed folds the secondary destinations away; extended lists them all. */
-  sidebarLayout: SidebarLayout
+  /** Ids (lib/sidebarItems) of the sidebar destinations the person hid. */
+  hiddenNavItems: string[]
+  /** lib/sidebarItems SIDEBAR_DEFAULTS_VERSION once the starting sidebar was
+   * decided for this install; 0 until then. */
+  sidebarDefaultsVersion: number
   completionSound: CompletionSound
   /** 0 to 1. */
   completionSoundVolume: number
@@ -122,15 +138,22 @@ interface InterfaceSettingsState {
   resetAccent: () => void
   setReduceMotion: (reduce: boolean) => void
   setIncreaseContrast: (increase: boolean) => void
+  setPerformanceMode: (mode: PerformanceMode) => void
   setNotificationPosition: (position: NotificationPosition) => void
   setShowTokenSpeed: (show: boolean) => void
   setColoredUserBubble: (colored: boolean) => void
+  setRenderUserMarkdown: (render: boolean) => void
   setRenderHtmlArtifacts: (render: boolean) => void
+  setWrapCodeLines: (wrap: boolean) => void
   setShowInlineCitations: (show: boolean) => void
   setAutoGenerateTitle: (auto: boolean) => void
   setTranscriptView: (view: TranscriptView) => void
   setSidebarWidth: (width: number) => void
-  setSidebarLayout: (layout: SidebarLayout) => void
+  setNavItemHidden: (id: string, hidden: boolean) => void
+  showAllNavItems: () => void
+  applyNavPreset: (preset: SidebarPreset) => void
+  /** Decide the starting sidebar once; see resolveSidebarDefaults. */
+  resolveNavDefaults: (existingInstall: boolean) => void
   setCompletionSound: (mode: CompletionSound) => void
   setCompletionSoundVolume: (volume: number) => void
   setShowComposerRailButtons: (show: boolean) => void
@@ -144,15 +167,19 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'accent'
   | 'reduceMotion'
   | 'increaseContrast'
+  | 'performanceMode'
   | 'notificationPosition'
   | 'showTokenSpeed'
   | 'coloredUserBubble'
+  | 'renderUserMarkdown'
   | 'renderHtmlArtifacts'
+  | 'wrapCodeLines'
   | 'showInlineCitations'
   | 'autoGenerateTitle'
   | 'transcriptView'
   | 'sidebarWidth'
-  | 'sidebarLayout'
+  | 'hiddenNavItems'
+  | 'sidebarDefaultsVersion'
   | 'completionSound'
   | 'completionSoundVolume'
   | 'showComposerRailButtons'
@@ -175,15 +202,19 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     accent: DEFAULT_ACCENT,
     reduceMotion: false,
     increaseContrast: false,
+    performanceMode: 'auto',
     notificationPosition: getDefaultNotificationPosition(),
     showTokenSpeed: true,
     coloredUserBubble: false,
+    renderUserMarkdown: false,
     renderHtmlArtifacts: false,
+    wrapCodeLines: false,
     showInlineCitations: true,
     autoGenerateTitle: true,
     transcriptView: DEFAULT_TRANSCRIPT_VIEW,
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
-    sidebarLayout: 'trimmed',
+    hiddenNavItems: [],
+    sidebarDefaultsVersion: 0,
     completionSound: 'off',
     completionSoundVolume: defaultCompletionSoundVolume,
     showComposerRailButtons: false,
@@ -216,7 +247,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
     [],
     InterfaceSettingsPersistedSlice
   >(
-    (set) => {
+    (set, get) => {
       const defaultState = createDefaultInterfaceValues()
       return {
         ...defaultState,
@@ -236,15 +267,18 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             accent: DEFAULT_ACCENT,
             reduceMotion: false,
             increaseContrast: false,
+            performanceMode: 'auto',
             notificationPosition: getDefaultNotificationPosition(),
             showTokenSpeed: true,
             coloredUserBubble: false,
+            renderUserMarkdown: false,
             renderHtmlArtifacts: false,
+            wrapCodeLines: false,
             showInlineCitations: true,
             autoGenerateTitle: true,
             transcriptView: DEFAULT_TRANSCRIPT_VIEW,
             sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
-            sidebarLayout: 'trimmed',
+            hiddenNavItems: [],
             completionSound: 'off',
             completionSoundVolume: defaultCompletionSoundVolume,
             showComposerRailButtons: false,
@@ -278,6 +312,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           set({ increaseContrast: increase })
         },
 
+        setPerformanceMode: (mode) => {
+          if (isPerformanceMode(mode)) set({ performanceMode: mode })
+        },
+
         setFontSize: (size: FontSize) => {
           // Update CSS variable
           document.documentElement.style.setProperty('--font-size-base', size)
@@ -304,12 +342,19 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           set({ showTokenSpeed: show })
         },
 
+        setRenderUserMarkdown: (render) => {
+          set({ renderUserMarkdown: render })
+        },
         setColoredUserBubble: (colored) => {
           set({ coloredUserBubble: colored })
         },
 
         setRenderHtmlArtifacts: (render) => {
           set({ renderHtmlArtifacts: render })
+        },
+
+        setWrapCodeLines: (wrap) => {
+          set({ wrapCodeLines: wrap })
         },
 
         setShowInlineCitations: (show) => {
@@ -325,8 +370,45 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           set({ transcriptView: view })
         },
 
-        setSidebarLayout: (layout) => {
-          set({ sidebarLayout: layout === 'extended' ? 'extended' : 'trimmed' })
+        setNavItemHidden: (id, hidden) =>
+          set((state) => {
+            if (!hideableSidebarIds().includes(id)) return state
+            const rest = state.hiddenNavItems.filter((h) => h !== id)
+            return { hiddenNavItems: hidden ? [...rest, id] : rest }
+          }),
+
+        // Ids this version does not know are kept: they may belong to a newer
+        // build the person goes back to.
+        showAllNavItems: () =>
+          set((state) => ({
+            hiddenNavItems: state.hiddenNavItems.filter(
+              (h) => !hideableSidebarIds().includes(h)
+            ),
+          })),
+
+        // Unknown ids are kept, as in showAllNavItems.
+        applyNavPreset: (preset) =>
+          set((state) => ({
+            hiddenNavItems: [
+              ...state.hiddenNavItems.filter(
+                (h) => !hideableSidebarIds().includes(h)
+              ),
+              ...hiddenForPreset(preset),
+            ],
+          })),
+
+        resolveNavDefaults: (existingInstall) => {
+          const state = get()
+          const next = resolveSidebarDefaults({
+            decidedVersion: state.sidebarDefaultsVersion,
+            hidden: state.hiddenNavItems,
+            existingInstall,
+          })
+          if (!next) return
+          set({
+            hiddenNavItems: next.hidden,
+            sidebarDefaultsVersion: next.decidedVersion,
+          })
         },
 
         setSidebarWidth: (width) => {
@@ -350,7 +432,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
       name: localStorageKey.settingInterface,
       storage: interfaceStorage,
       skipHydration: true,
-      version: 2,
+      version: 3,
       // v0 stored `accentColor` (one of eleven preset names). The chosen
       // colour is carried over: the old default becomes today's default, the
       // others keep their exact hex as a custom accent.
@@ -368,6 +450,17 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           if (accent?.preset === 'vermilion') state.accent = DEFAULT_ACCENT
           if (typeof state.reduceMotion !== 'boolean') state.reduceMotion = false
         }
+        // v3 added sidebarDefaultsVersion. Settings saved before it belong to
+        // an install that already had today's full sidebar: it is kept.
+        if (version < 3 && typeof state.sidebarDefaultsVersion !== 'number') {
+          state.sidebarDefaultsVersion = SIDEBAR_DEFAULTS_VERSION
+        }
+        // v2 defaulted toasts to top-right, where they covered the header's
+        // controls. The old default moves to bottom-right once; a corner the
+        // user picked on purpose is kept.
+        if (version < 3 && state.notificationPosition === 'top-right') {
+          state.notificationPosition = 'bottom-right'
+        }
         return state as unknown as InterfaceSettingsPersistedSlice
       },
       partialize: (state) => ({
@@ -376,15 +469,19 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         accent: state.accent,
         reduceMotion: state.reduceMotion,
         increaseContrast: state.increaseContrast,
+        performanceMode: state.performanceMode,
         notificationPosition: state.notificationPosition,
         showTokenSpeed: state.showTokenSpeed,
         coloredUserBubble: state.coloredUserBubble,
+        renderUserMarkdown: state.renderUserMarkdown,
         renderHtmlArtifacts: state.renderHtmlArtifacts,
+        wrapCodeLines: state.wrapCodeLines,
         showInlineCitations: state.showInlineCitations,
         autoGenerateTitle: state.autoGenerateTitle,
         transcriptView: state.transcriptView,
         sidebarWidth: state.sidebarWidth,
-        sidebarLayout: state.sidebarLayout,
+        hiddenNavItems: state.hiddenNavItems,
+        sidebarDefaultsVersion: state.sidebarDefaultsVersion,
         completionSound: state.completionSound,
         completionSoundVolume: state.completionSoundVolume,
         showComposerRailButtons: state.showComposerRailButtons,
@@ -405,7 +502,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           state.messageZoom = sanitizeMessageZoom(state.messageZoom)
           state.sidebarWidth = sanitizeSidebarWidth(state.sidebarWidth)
-          if (state.sidebarLayout !== 'extended') state.sidebarLayout = 'trimmed'
+          state.hiddenNavItems = sanitizeHiddenSidebarItems(state.hiddenNavItems)
+          if (typeof state.sidebarDefaultsVersion !== 'number') {
+            state.sidebarDefaultsVersion = 0
+          }
           state.completionSound = sanitizeCompletionSound(state.completionSound)
           state.completionSoundVolume = sanitizeVolume(state.completionSoundVolume)
 
@@ -423,6 +523,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             state.increaseContrast = false
           }
 
+          if (!isPerformanceMode(state.performanceMode)) {
+            state.performanceMode = 'auto'
+          }
+
           if (
             !state.notificationPosition ||
             !isNotificationPosition(state.notificationPosition)
@@ -434,12 +538,19 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             state.showTokenSpeed = true
           }
 
+          if (typeof state.renderUserMarkdown !== 'boolean') {
+            state.renderUserMarkdown = false
+          }
           if (typeof state.coloredUserBubble !== 'boolean') {
             state.coloredUserBubble = true
           }
 
           if (typeof state.renderHtmlArtifacts !== 'boolean') {
             state.renderHtmlArtifacts = false
+          }
+
+          if (typeof state.wrapCodeLines !== 'boolean') {
+            state.wrapCodeLines = false
           }
 
           if (typeof state.showInlineCitations !== 'boolean') {

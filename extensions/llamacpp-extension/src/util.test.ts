@@ -832,3 +832,25 @@ describe('ggufShardPaths', () => {
     expect(ggufShardPaths('/m/a.gguf')).toEqual(['/m/a.gguf'])
   })
 })
+
+describe('ggufFirstShardPath', () => {
+  it('maps any shard of a split GGUF to shard 1', async () => {
+    const { ggufFirstShardPath } = await import('./util')
+    expect(ggufFirstShardPath('/m/a-00002-of-00003.gguf')).toBe(
+      '/m/a-00001-of-00003.gguf'
+    )
+    expect(ggufFirstShardPath('/m/a-00003-of-00003.gguf')).toBe(
+      '/m/a-00001-of-00003.gguf'
+    )
+    expect(ggufFirstShardPath('/m/a-00001-of-00003.gguf')).toBe(
+      '/m/a-00001-of-00003.gguf'
+    )
+  })
+  it('leaves a plain file alone', async () => {
+    const { ggufFirstShardPath } = await import('./util')
+    expect(ggufFirstShardPath('/m/a.gguf')).toBe('/m/a.gguf')
+    expect(ggufFirstShardPath('C:\m\a-00002-of-00002.gguf')).toBe(
+      'C:\m\a-00001-of-00002.gguf'
+    )
+  })
+})

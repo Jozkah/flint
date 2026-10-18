@@ -395,7 +395,8 @@
     "mode": {
       "roundRobin": "बारी-बारी से",
       "userSelected": "आप चुनते हैं",
-      "moderatorSelected": "मॉडरेटर चुनता है"
+      "moderatorSelected": "मॉडरेटर चुनता है",
+      "compare": "मॉडल की तुलना करें"
     },
     "untitled": "बिना शीर्षक का रूम",
     "menu": "रूम मेनू",

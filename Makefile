@@ -334,6 +334,9 @@ endif
 #   cuda12             cuda + vulkan   (needs CUDA 12 toolkit on PATH)
 #   rocm               hip  + vulkan   (needs ROCm/HIP)
 #   cuda13-hip-vulkan  all three       (needs the CUDA and the HIP toolkit)
+#   sycl               sycl + vulkan   (needs the Intel oneAPI DPC++ compiler;
+#                                       UNVERIFIED: never built or run on Intel
+#                                       hardware by this project)
 #
 # cuda12 and cuda13 cannot be combined: the CUDA major is whichever nvcc is on
 # PATH, one toolkit per configure, and both emit libggml-cuda.so.
@@ -380,10 +383,12 @@ ENGINE_FEATURE_cuda12 := engine-cuda
 ENGINE_FEATURE_cuda13 := engine-cuda
 ENGINE_FEATURE_hip := engine-hip
 ENGINE_FEATURE_rocm := engine-hip
+# Intel oneAPI SYCL: build plumbing only, never run on Intel hardware here.
+ENGINE_FEATURE_sycl := engine-sycl
 
 ENGINE_UNKNOWN_TOKENS := $(strip $(foreach t,$(ENGINE_TOKENS),$(if $(ENGINE_FEATURE_$(t)),,$(t))))
 ifneq ($(ENGINE_UNKNOWN_TOKENS),)
-    $(error Unknown JAN_ENGINE_VARIANT '$(JAN_ENGINE_VARIANT)': no backend named '$(ENGINE_UNKNOWN_TOKENS)'. Tokens are cpu, vulkan, metal, cuda12, cuda13, hip/rocm, joined by '-')
+    $(error Unknown JAN_ENGINE_VARIANT '$(JAN_ENGINE_VARIANT)': no backend named '$(ENGINE_UNKNOWN_TOKENS)'. Tokens are cpu, vulkan, metal, cuda12, cuda13, hip/rocm, sycl, joined by '-')
 endif
 ifneq ($(word 2,$(filter cuda12 cuda13,$(ENGINE_TOKENS))),)
     $(error JAN_ENGINE_VARIANT '$(JAN_ENGINE_VARIANT)' names more than one CUDA major, which one build cannot carry)
@@ -392,7 +397,7 @@ endif
 # The fallback adds vulkan whenever a vendor runtime is in play and the variant
 # did not already ask for it. $(sort) dedupes, so naming vulkan twice is
 # harmless and the feature list is deterministic.
-ENGINE_VENDOR_FEATURES := $(filter engine-cuda engine-hip,$(foreach t,$(ENGINE_TOKENS),$(ENGINE_FEATURE_$(t))))
+ENGINE_VENDOR_FEATURES := $(filter engine-cuda engine-hip engine-sycl,$(foreach t,$(ENGINE_TOKENS),$(ENGINE_FEATURE_$(t))))
 ENGINE_FEATURE_LIST := $(sort $(foreach t,$(ENGINE_TOKENS),$(ENGINE_FEATURE_$(t))) \
     $(if $(ENGINE_VENDOR_FEATURES),$(if $(filter 1,$(JAN_ENGINE_VULKAN_FALLBACK)),engine-vulkan,),))
 ENGINE_FEATURES := $(subst $(SPACE),$(COMMA),$(ENGINE_FEATURE_LIST))

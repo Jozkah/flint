@@ -13,6 +13,8 @@ export const localStorageKey = {
   settingWebPreview: 'setting-web-preview',
   settingAgentTools: 'setting-agent-tools',
   settingVisualize: 'setting-visualize',
+  settingLeanTools: 'setting-lean-tools',
+  settingChatMentions: 'setting-chat-mentions',
   settingHardware: 'setting-hardware',
   settingVulkan: 'setting-vulkan',
   toolApproval: 'tool-approval',
@@ -24,12 +26,14 @@ export const localStorageKey = {
   favoriteModels: 'favorite-models',
   modelOrder: 'model-order',
   modelFilter: 'model-filter',
+  modelLibrary: 'model-library',
   setupCompleted: 'setup-completed',
   threadManagement: 'thread-management',
   /** Conversation groups, one key per surface: `conversation-groups:home` etc. */
   conversationGroups: 'conversation-groups',
   recentSearches: 'recent-searches',
   agentMode: 'agent-mode',
+  engineAddon: 'engine-addon',
   coworkDisplay: 'cowork-display',
   sessionMessaging: 'session-messaging',
   campaignSettings: 'campaign-settings',
@@ -45,6 +49,8 @@ export const localStorageKey = {
   coworkCheckpoints: 'cowork-checkpoints',
   keybindings: 'keybindings',
   referenceAliases: 'reference-aliases',
+  /** Named reusable prompts, inserted from the `@` and `/` menus. */
+  promptLibrary: 'prompt-library',
   projectInitDrafts: 'project-init-drafts',
   /** Measured model test results, preferred default model, dismissed hints. */
   modelEvidence: 'model-evidence',

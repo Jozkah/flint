@@ -1,7 +1,7 @@
 {
   "limitedSupport": "Bu sağlayıcı tam olarak desteklenmeyebilir. Yetenekler (araçlar, görüntü, ses) otomatik algılanmaz - modelleri elle ekleyin ve her model için yetenekleri yapılandırın.",
   "mlxExperimental": "MLX desteği deneyseldir. Gömme (embedding) kullanılamaz, muhakeme anahtarı henüz bağlanmamıştır ve bazı yeni model mimarileri yüklenemeyebilir. Öncelik verelim diye sorunları GitHub'da bildirin.",
-  "engineBundled": "Çıkarım motoru Jan'e gömülüdür, bu yüzden ayrıca indirilecek veya güncellenecek bir şey yoktur. Yüklenemeyen bir model bildirirken bu sürümü belirtin.",
+  "engineBundled": "Çıkarım motoru Flint'e gömülüdür, bu yüzden ayrıca indirilecek veya güncellenecek bir şey yoktur. Yüklenemeyen bir model bildirirken bu sürümü belirtin.",
   "engineOtherVersion": "Farklı bir llama.cpp sürümü mü gerekiyor? Kendi llama-server'ınızı çalıştırıp OpenAI uyumlu özel bir sağlayıcı olarak ekleyin.",
   "engineReleaseNotes": "Sürüm notları",
   "engineBuild": "Derleme",
@@ -14,6 +14,7 @@
   "models": "Modeller",
   "filterModels": "{{count}} modeli filtrele",
   "modelsShown": "{{total}} içinden {{shown}} gösteriliyor",
+  "noModelsMatch": "\"{{query}}\" ile eşleşen model yok",
   "showMoreModels": "Daha fazla göster",
   "backendInstalled": "Kurulu",
   "backendHistoryShow": "Güncelleme geçmişini göster",
@@ -35,9 +36,15 @@
   "refresh": "Yenile",
   "import": "İçe Aktar",
   "imported": "İçe aktarıldı",
-  "importedTooltip": "Yerel bir dosyadan içe aktarıldı. Jan'den kaldırmak, dosyayı diskten silmez.",
+  "importedTooltip": "Yerel bir dosyadan içe aktarıldı. Flint'ten kaldırmak, dosyayı diskten silmez.",
   "importModelSuccess": "{{provider}} modeli başarıyla içe aktarıldı.",
   "importModelError": "Model içe aktarılamadı:",
+
+  "importScanHint": "LM Studio, Ollama, Hugging Face önbelleği, llama.cpp ve GPT4All içinde arar. İçe aktarana kadar hiçbir şey kopyalanmaz.",
+
+  "importAddFolder": "Model klasörü ekle",
+
+  "importRemoveFolder": "{{folder}} klasörünü kaldır",
   "stop": "Durdur",
   "start": "Başlat",
   "status": {
@@ -49,6 +56,10 @@
     "connected": "Bağlı"
   },
   "table": {
+    "contextAutoFit": "otomatik",
+    "contextAuto": "otomatik",
+    "contextAutoFitTitle": "Bağlam boyutu boş, bu yüzden motor model yüklenirken bu pencereyi belleğinize göre ayarladı.",
+    "contextAutoTitle": "Bağlam boyutu boş: motor, model yüklenirken pencereyi seçer.",
     "name": "Ad",
     "file": "Dosya",
     "size": "Boyut",
@@ -82,8 +93,8 @@
   "deleteModel": {
     "title": "Modeli Sil: {{modelId}}",
     "description": "Bu modeli silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.",
-    "importedDescription": "İçe aktarılan bu modeli Jan'den kaldırmak istiyor musunuz? Diskteki yerel dosyanız silinmeyecek.",
-    "removeFromJan": "Jan'den Kaldır",
+    "importedDescription": "İçe aktarılan bu modeli Flint'ten kaldırmak istiyor musunuz? Diskteki yerel dosyanız silinmeyecek.",
+    "removeFromJan": "Flint'ten Kaldır",
     "success": "{{modelId}} modeli kalıcı olarak silindi.",
     "cancel": "Vazgeç",
     "delete": "Sil"
@@ -99,7 +110,7 @@
     "sizeLabel": "Boşaltılacak disk alanı:",
     "calculating": "Hesaplanıyor…",
     "warning": "Bu işlem geri alınamaz.",
-    "importedExcluded": "{{count}} içe aktarılan model korunacak (dosyaları Jan tarafından indirilmedi).",
+    "importedExcluded": "{{count}} içe aktarılan model korunacak (dosyaları Flint tarafından indirilmedi).",
     "confirm": "{{count}} modeli sil",
     "deleting": "Siliniyor…",
     "success": "{{count}} model silindi.",
@@ -122,6 +133,7 @@
     "cachedInputCost": "Önbelleğe alınmış girdi maliyeti (1M token başına USD)",
     "cacheWriteCost": "Önbellek yazma maliyeti (1M token başına USD)",
     "costHelp": "Bilinen modeller için yerleşik fiyatı kullanmak üzere boş bırakın; yerel modeller ücretsizdir. Boş bırakılan önbelleğe alınmış girdi veya önbellek yazma fiyatı girdi fiyatı üzerinden ücretlendirilir.",
+    "costInvalid": "Fiyatlar 0 veya daha büyük bir sayı olmalıdır. Yerleşik fiyatı kullanmak için alanı boş bırakın.",
     "displayName": "Görünen ad",
     "displayNamePlaceholder": "Bir görünen ad girin",
     "displayNameHelp": "Bu modelin listelendiği her yerde gösterilir. İstekler yine özgün tanımlayıcıyı, {{modelId}}, kullanır.",
@@ -143,16 +155,21 @@
   "addProvider": "Sağlayıcı Ekle",
   "addOpenAIProvider": "OpenAI Sağlayıcısı Ekle",
   "enterNameForProvider": "Sağlayıcı için ad girin",
+  "apiVersion": {
+    "title": "API sürümü",
+    "description": "Yalnızca URL'sinde ?api-version= bulunmayan, dağıtım tarzı bir Azure uç noktası (/openai/deployments/<name>) için. /openai/v1 uç noktası buna ihtiyaç duymaz."
+  },
   "baseUrl": {
     "title": "Temel URL",
     "openaiDescription": "OpenAI API'sini konuşan bir proxy veya ağ geçidi kullanın. Varsayılan https://api.openai.com/v1 adresidir.",
     "azureDescription": "Azure OpenAI uç noktanız. YOUR-RESOURCE-NAME'i Azure kaynak adınızla değiştirin.",
     "litellmDescription": "LiteLLM proxy adresiniz, /v1 dahil. Varsayılan http://localhost:4000/v1'dir.",
-    "qwenDescription": "Model Studio uç noktanız. Bir anahtar yalnızca oluşturulduğu bölgede çalışır: Singapur için https://dashscope-intl.aliyuncs.com/compatible-mode/v1, anakara Çin için https://dashscope.aliyuncs.com/compatible-mode/v1 kullanın."
+    "qwenDescription": "Model Studio uç noktanız. Bir anahtar yalnızca oluşturulduğu bölgede çalışır: Singapur için https://dashscope-intl.aliyuncs.com/compatible-mode/v1, anakara Çin için https://dashscope.aliyuncs.com/compatible-mode/v1 kullanın.",
+    "bedrockDescription": "Bölgenizin Amazon Bedrock çalışma zamanı uç noktası, örneğin https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "API anahtarları",
-    "description": "API anahtarınızı girin. Gelişmiş bölümünde ek anahtarlar ekleyebilirsiniz; bir anahtar başarısız olursa Jan otomatik olarak bir sonrakini dener.",
+    "description": "API anahtarınızı girin. Gelişmiş bölümünde ek anahtarlar ekleyebilirsiniz; bir anahtar başarısız olursa Flint otomatik olarak bir sonrakini dener.",
     "placeholder": "sk-…\nsk-…",
     "primaryPlaceholder": "Birincil API anahtarını girin",
     "keyPlaceholder": "API anahtarını girin",
@@ -219,5 +236,18 @@
     "label": "Sağlayıcı adı",
     "cancel": "İptal",
     "save": "Kaydet"
+  },
+  "bedrock": {
+    "title": "AWS kimlik bilgileri",
+    "description": "Flint her Amazon Bedrock isteğini AWS anahtarlarınızla imzalar. Anahtarlar işletim sisteminizin anahtar zincirinde saklanır ve bir daha gösterilmez. Model kimliklerini elle ekleyin (örneğin anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "Erişim anahtarı kimliği",
+    "secretAccessKey": "Gizli erişim anahtarı",
+    "sessionToken": "Oturum belirteci (isteğe bağlı)",
+    "secretHint": "bedrock:InvokeModel çağrısına izinli bir IAM kullanıcısı veya rolü gerekir.",
+    "sessionTokenHint": "Yalnızca geçici kimlik bilgileri için (STS veya SSO).",
+    "saved": "Kaydedildi",
+    "remove": "Kaldır",
+    "replace": "Kaydedildi. Değiştirmek için yazın.",
+    "enter": "Ayarlanmadı"
   }
 }

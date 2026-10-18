@@ -25,3 +25,9 @@
 html:not(.reduce-motion) .room-eq > i {
   animation: room-eq 1s ease-in-out infinite;
 }
+
+/* A locked room (running) still has to be readable: its fields keep their
+   values legible instead of fading to half. The lock hint says why. */
+.room-participants:disabled :is([data-slot='input'], [data-slot='segmented'] button, button[aria-haspopup]) {
+  opacity: 0.8;
+}

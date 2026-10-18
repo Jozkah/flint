@@ -126,6 +126,14 @@ export type AvailabilityChange = {
   to: ParticipantAvailability
 }
 
+/** Local engines: one shared process whose model slots are limited. */
+export const LOCAL_ENGINES = ['llamacpp', 'mlx']
+
+/** The local engine a participant runs on, or null for a remote provider. */
+export function localEngineOf(p: Participant): string | null {
+  return LOCAL_ENGINES.includes(p.model?.provider) ? p.model.provider : null
+}
+
 /** Re-evaluate every non-removed participant; sticky suspensions are kept. */
 export function preflightParticipants(
   room: Room,
@@ -161,13 +169,17 @@ export function preflightParticipants(
   return { room: { ...room, participants }, changes }
 }
 
-/** Clear suspensions on resume/start and on edit. */
-export function clearSuspensions(room: Room): Room {
+/**
+ * Clear suspensions on resume/start and on edit, or for just `ids` when the
+ * user retries those participants. Availability is checked again afterwards.
+ */
+export function clearSuspensions(room: Room, ids?: readonly string[] | null): Room {
   return {
     ...room,
     participants: room.participants.map((p) =>
+      (!ids || ids.includes(p.id)) &&
       p.availability.state === 'unavailable' &&
-      (p.availability.reason === 'repeated-errors' || p.availability.reason === 'load-failed')
+      (STICKY_REASONS.includes(p.availability.reason) || p.availability.reason === 'busy')
         ? { ...p, availability: { state: 'unknown' } }
         : p
     ),

@@ -21,7 +21,15 @@
     "alwaysAllow": "一律允許",
     "approvalNeeded": "需要核准",
     "permissionDetails": "權限詳細資料",
-    "moreOptions": "更多選項"
+    "moreOptions": "更多選項",
+    "denyWithReason": "拒絕並說明原因",
+    "denyReasonLabel": "你為什麼拒絕？",
+    "denyReasonPlaceholder": "告訴代理程式改為做什麼",
+    "denyAndSend": "拒絕並傳送",
+    "editCommand": "編輯指令",
+    "editCommandLabel": "要執行的指令",
+    "editCommandHint": "修改指令，然後選擇「允許一次」來執行你的版本。",
+    "editCommandNote": "「允許一次」會執行你編輯後的指令，不會為它保留長期權限。"
   },
   "toolCall": {
     "awaitingApproval": "等待核准：{{tool}}",
@@ -71,6 +79,8 @@
     "reading": "正在讀取...",
     "workspaceRoot": "工作區根目錄",
     "matches": "{{count}} 個相符項目",
-    "testsPassed": "{{count}} 個通過"
+    "testsPassed": "{{count}} 個通過",
+    "runningStatus": "正在執行 {{tool}}…",
+    "stillRunning": "仍在執行 {{tool}}…"
   }
 }

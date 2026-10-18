@@ -258,7 +258,7 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
         <span
           ref={branchRef}
           data-testid="session-worktree-branch"
-          className="text-fade min-w-0 flex-1 font-mono"
+          className="text-fade min-w-[min(12rem,100%)] flex-1 font-mono"
           title={
             isCopy
               ? t('common:coworkParallel.copyTitle', { folder: props.folder })

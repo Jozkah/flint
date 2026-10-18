@@ -5,7 +5,11 @@ pub mod commands;
 pub mod converters;
 #[cfg(not(feature = "cli"))]
 pub mod images_route;
+#[cfg(not(feature = "cli"))]
+pub mod responses_route;
 pub mod provider_secrets;
+#[cfg(not(feature = "cli"))]
+pub mod bedrock;
 #[cfg(not(feature = "cli"))]
 pub mod proxy;
 #[cfg(not(feature = "cli"))]

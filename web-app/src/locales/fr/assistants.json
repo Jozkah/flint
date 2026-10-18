@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Assistant par défaut",
   "defaultAssistantDesc": "Utilisé au début d'une nouvelle discussion",
   "allAssistants": "Tous les assistants",
-  "lastUsed": "Dernière utilisation"
+  "lastUsed": "Dernière utilisation",
+  "starterDescriptions": {
+    "jan": "Flint est un assistant de bureau qui réfléchit aux tâches complexes et utilise des outils pour les mener à bien à votre place.",
+    "quartz": "Un spécialiste précis de la recherche et de l'analyse : preuves, comparaisons, calculs et conclusions prêtes pour décider.",
+    "coal": "Un ingénieur logiciel pragmatique pour le débogage, l'implémentation, la refactorisation, les tests et la revue de code.",
+    "blaze": "Un spécialiste créatif du produit et de l'écriture : concepts audacieux, noms, idées d'UX, textes et résultats soignés.",
+    "redstone": "Un spécialiste des systèmes et de l'automatisation : workflows reproductibles, intégrations, opérations et exécution fiable en plusieurs étapes.",
+    "book-and-quill": "Un conteur qui écrit et poursuit des histoires avec des scènes vivantes et des personnages cohérents.",
+    "compass": "Un traducteur qui convertit fidèlement les textes d'une langue à l'autre et signale les tournures délicates.",
+    "emerald": "Un assistant pour l'argent : budget, notions et arbitrages. Pédagogique, pas un conseil financier agréé.",
+    "book": "Un tuteur qui enseigne pas à pas et vérifie la compréhension par de courtes questions."
+  }
 }

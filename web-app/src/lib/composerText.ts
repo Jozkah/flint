@@ -14,3 +14,18 @@ export function unescapeComposerMarkdown(text: string): string {
     .replace(ESCAPED, '$1')
     .replace(/&(lt|gt|amp);/g, (_m, name: string) => ENTITIES[name])
 }
+
+/**
+ * The draft to put back after a refused send, or null when the user has typed
+ * something new since. `now` is the composer's draft as last rendered: the
+ * clear after the send may not have rendered yet, so the sent draft itself
+ * still counts as untouched. Compared and restored as saved (escaped): the
+ * unescaped text never equals a draft with `_` or `*` in it, and the draft
+ * was lost (CW-002).
+ */
+export function refusedDraftToRestore(
+  now: string,
+  sentRaw: string
+): string | null {
+  return !now || now === sentRaw ? sentRaw : null
+}

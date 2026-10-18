@@ -15,6 +15,31 @@ export function contextLengthOf(model: Model): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined
 }
 
+/** The window llama.cpp's preset falls back to with no context set and auto-fit off. */
+const ENGINE_DEFAULT_CTX = 8192
+
+/**
+ * The context a model actually runs with: its own, else (llama.cpp) the
+ * provider's Default context size, else the engine's 8192 cap. Undefined when
+ * auto-fit chooses it, or for a remote model that states none.
+ */
+export function effectiveContextLength(
+  model: Model,
+  provider: Pick<ModelProvider, 'provider' | 'settings'> | undefined
+): number | undefined {
+  const own = contextLengthOf(model)
+  if (own !== undefined) return own
+  if (provider?.provider !== 'llamacpp') return undefined
+  const setting = (key: string) =>
+    provider.settings?.find((s) => s.key === key)?.controller_props?.value
+  const raw = setting('ctx_size')
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (raw !== '' && Number.isFinite(n) && n > 0) {
+    return Math.max(512, Math.floor(n))
+  }
+  return setting('fit') === true ? undefined : ENGINE_DEFAULT_CTX
+}
+
 /** The quantization named in a GGUF model id, e.g. `Q4_K_M`, when there is one. */
 export function quantOf(id: string): string | undefined {
   const m = /(?:^|[-_.])((?:IQ|Q)\d(?:_[A-Z0-9]+)*|BF16|F16|F32)(?:$|[-_.])/i.exec(id)

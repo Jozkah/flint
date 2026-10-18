@@ -1,16 +1,15 @@
+import { isServedByFlint } from '@/lib/platform/utils'
+import { useServerConnection } from '@/lib/serverConnection'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useSidebarGlide } from '@/components/shell/useSidebarGlide'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
   ChevronRight,
-  Languages,
   Pencil,
   MoreHorizontal,
   Server,
   Settings,
-  Workflow,
-  type LucideIcon,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -56,6 +55,8 @@ import {
   sanitizeSidebarWidth,
   useInterfaceSettings,
 } from '@/hooks/useInterfaceSettings'
+import { getSidebarItem, isSidebarItemHidden } from '@/lib/sidebarItems'
+import { SidebarItemIcon } from './SidebarItemIcon'
 
 const TAB_KEY = 'flint:sidebar-tab'
 
@@ -76,11 +77,11 @@ function writeTab(tab: SidebarTab) {
 }
 
 type LinkRow = {
+  /** Id in lib/sidebarItems: lets the person hide the row. */
+  id: string
   to: string
   label: string
   icon: IconName
-  /** A lucide glyph instead of the duotone set (campaigns). */
-  lucide?: LucideIcon
   active: boolean
   count?: number
   testId?: string
@@ -99,11 +100,7 @@ function LinkRows({ rows, onNavigate }: { rows: LinkRow[]; onNavigate?: () => vo
                 aria-current={row.active ? 'page' : undefined}
                 onClick={onNavigate}
               >
-                {row.lucide ? (
-                  <row.lucide aria-hidden />
-                ) : (
-                  <Icon name={row.icon} />
-                )}
+                <SidebarItemIcon item={getSidebarItem(row.id) ?? row} />
                 <span className="flex-1 truncate">{row.label}</span>
                 {row.count !== undefined && row.count > 0 && (
                   <span className="mr-1.5 text-[11px] text-muted-foreground tabular-nums">
@@ -331,6 +328,17 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     writeTab(next)
   }
 
+  const hiddenNavItems = useInterfaceSettings((s) => s.hiddenNavItems)
+  // The browser client of `flint serve` has no route for these: they drive
+  // the desktop machine (extensions, OS schedules, the local API server).
+  const served = isServedByFlint()
+  const shown = (rows: LinkRow[]) =>
+    rows.filter(
+      (row) =>
+        !isSidebarItemHidden(hiddenNavItems, row.id) &&
+        !(served && DESKTOP_ONLY_ROWS.has(row.id))
+    )
+
   const newChat = () => {
     useAgentMode.getState().removeThread(TEMPORARY_CHAT_ID)
     navigate({ to: route.home })
@@ -340,6 +348,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   // Both tabs.
   const shared: LinkRow[] = [
     {
+      id: 'models',
       to: route.settings.model_providers,
       label: t('common:appRail.models'),
       icon: 'x-cube',
@@ -348,6 +357,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'rail-models',
     },
     {
+      id: 'discover',
       to: route.hub.index,
       label: t('common:shell.discover'),
       icon: 'search',
@@ -359,6 +369,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   // Chat tab only.
   const library: LinkRow[] = [
     {
+      id: 'library',
       to: route.artifacts,
       label: t('common:appRail.library'),
       icon: 'x-library',
@@ -366,10 +377,10 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'rail-library',
     },
     {
+      id: 'translate',
       to: route.translate,
       label: t('common:translate.title'),
       icon: 'x-library',
-      lucide: Languages,
       active: pathname === route.translate,
       testId: 'rail-translate',
     },
@@ -377,14 +388,15 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   // Cowork tab only.
   const destinations: LinkRow[] = [
     {
+      id: 'campaigns',
       to: route.campaigns,
       label: t('settings:campaigns.nav'),
       icon: 'x-cowork',
-      lucide: Workflow,
       active: within(route.campaigns) || within('/campaign'),
       testId: 'nav-campaigns',
     },
     {
+      id: 'studio',
       to: route.studio,
       label: t('common:shell.studio'),
       icon: 'x-palette',
@@ -392,6 +404,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'nav-studio',
     },
     {
+      id: 'tools',
       to: route.settings.mcp_servers,
       label: t('common:shell.toolsAndMcp'),
       icon: 'flow',
@@ -399,6 +412,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'rail-tools',
     },
     {
+      id: 'extensions',
       to: route.extensions,
       label: t('common:appRail.extensions'),
       icon: 'x-puzzle',
@@ -406,6 +420,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'rail-extensions',
     },
     {
+      id: 'schedules',
       to: route.settings.schedules,
       label: t('common:shell.schedules'),
       icon: 'x-refresh',
@@ -415,6 +430,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   ]
   const leftovers: LinkRow[] = [
     {
+      id: 'logs',
       to: route.appLogs,
       label: t('common:shell.logs'),
       icon: 'x-terminal',
@@ -422,6 +438,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'nav-logs',
     },
     {
+      id: 'archive',
       to: route.archive,
       label: t('archive:nav'),
       icon: 'x-disk',
@@ -429,6 +446,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'nav-archive',
     },
     {
+      id: 'local-api',
       to: route.settings.local_api_server,
       label: t('common:shell.localApi'),
       icon: 'x-server',
@@ -438,6 +456,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'rail-local-api',
     },
     {
+      id: 'system-monitor',
       to: route.systemMonitor,
       label: t('common:shell.systemMonitor'),
       icon: 'x-monitor',
@@ -447,6 +466,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   ]
   const support: LinkRow[] = [
     {
+      id: 'settings',
       to: route.settings.general,
       label: t('common:appRail.settings'),
       icon: 'sb-settings',
@@ -474,6 +494,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           <span className="text-base font-semibold tracking-[-0.01em]">Flint</span>
         </Link>
         <div className="flex items-center gap-0.5">
+          {!isSidebarItemHidden(hiddenNavItems, 'overview') && (
           <Link
             to={route.overview}
             onClick={onNavigate}
@@ -488,6 +509,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           >
             <Icon name="sb-dashboard" />
           </Link>
+          )}
           {!isMobile && (
             <button
               type="button"
@@ -530,7 +552,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           data-testid="app-sidebar"
           data-tab={tab}
           onKeyDown={moveFocusWithArrows}
-          className="relative -mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 pb-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] hover:[scrollbar-color:var(--border-strong)_transparent] [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border-strong"
+          // The last rows fade out at the bottom edge instead of being cut through
+          // a label; the extra bottom padding lets the final row scroll clear of it.
+          className="relative -mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto scroll-pb-6 px-3 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)] [scrollbar-color:transparent_transparent] [scrollbar-width:thin] hover:[scrollbar-color:var(--border-strong)_transparent] [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border-strong"
         >
           {tab === 'chat' ? (
             <>
@@ -549,8 +573,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                       <span className="flex-1 truncate">{t('common:newChat')}</span>
                     </NavButton>
                   </NavItem>
-                  <LinkRows rows={library} onNavigate={onNavigate} />
-                  <LinkRows rows={shared} onNavigate={onNavigate} />
+                  <LinkRows rows={shown(library)} onNavigate={onNavigate} />
+                  <LinkRows rows={shown(shared)} onNavigate={onNavigate} />
                 </NavList>
               </NavGroup>
               <ChatsNav />
@@ -565,9 +589,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                   after={
                     <>
                       <RoomsNav icon={<Icon name="x-rooms" />} />
-                      <LinkRows rows={destinations} onNavigate={onNavigate} />
-                      <LinkRows rows={shared} onNavigate={onNavigate} />
-                      <FoldedMore rows={leftovers} onNavigate={onNavigate} />
+                      <LinkRows rows={shown(destinations)} onNavigate={onNavigate} />
+                      <LinkRows rows={shown(shared)} onNavigate={onNavigate} />
+                      {shown(leftovers).length > 0 && (
+                        <FoldedMore rows={shown(leftovers)} onNavigate={onNavigate} />
+                      )}
                     </>
                   }
                 />
@@ -590,7 +616,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const loaded = useAppState((s) => s.activeModels.length)
+  const reportedLoaded = useAppState((s) => s.activeModels.length)
+  // A server that stopped answering has no models loaded as far as this page
+  // can tell: the card says so instead of keeping the last count, green.
+  const offline = useServerConnection((s) => s.state === 'offline')
+  const loaded = offline ? 0 : reportedLoaded
   const serverStatus = useAppState((s) => s.serverStatus)
   const serverOn = serverStatus === 'running'
   const go = (to: string) => {
@@ -616,11 +646,19 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
             </span>
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-1">
-            <b className="truncate text-[0.8125rem] leading-none font-medium text-foreground">
+            <b className="descender-safe truncate text-[0.8125rem] leading-none font-medium text-foreground">
               {t('common:shell.local')}
             </b>
-            <small className="truncate text-[11px] leading-none text-muted-foreground">
-              {t('common:statusBar.modelsLoaded', { count: loaded })}
+            <small
+              data-testid="shell-status-detail"
+              className={cn(
+                'descender-safe truncate text-[11px] leading-none',
+                offline ? 'text-warning' : 'text-muted-foreground'
+              )}
+            >
+              {offline
+                ? t('common:serverConnection.statusOffline')
+                : t('common:statusBar.modelsLoaded', { count: loaded })}
             </small>
           </span>
           <Icon name="chevron-selector" />
@@ -635,6 +673,7 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
             {t('common:statusBar.modelsLoaded', { count: loaded })}
           </span>
         </DropdownMenuItem>
+{!isServedByFlint() && (
         <DropdownMenuItem onSelect={() => go(route.settings.local_api_server)}>
           <Server />
           <span className="flex-1">{t('common:shell.localApi')}</span>
@@ -642,6 +681,7 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
             {serverOn ? t('common:shell.on') : t('common:shell.off')}
           </span>
         </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => go(route.settings.general)}>
           <Settings />
@@ -651,6 +691,14 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
     </DropdownMenu>
   )
 }
+
+const DESKTOP_ONLY_ROWS: ReadonlySet<string> = new Set([
+  'discover',
+  'archive',
+  'extensions',
+  'schedules',
+  'local-api',
+])
 
 export function AppSidebar() {
   const { t } = useTranslation()
@@ -791,7 +839,7 @@ export function ResizableSidebar({
           <span
             aria-hidden
             className={cn(
-              'h-full w-0.5 bg-transparent transition-colors duration-150 group-hover/resize:bg-border-strong group-focus-visible/resize:bg-ring',
+              'h-full w-0.5 bg-transparent transition-colors duration-150 group-hover/resize:bg-border-strong group-focus-visible/resize:w-[3px] group-focus-visible/resize:bg-ring',
               resizing && 'bg-ring'
             )}
           />

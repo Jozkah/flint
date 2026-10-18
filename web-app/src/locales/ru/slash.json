@@ -9,7 +9,8 @@
     "plugin": "плагин",
     "pluginNamed": "плагин {{plugin}}",
     "skill": "навык",
-    "builtin": "встроенная"
+    "builtin": "встроенная",
+    "prompt": "промпт"
   },
   "scope": {
     "project": "проект",

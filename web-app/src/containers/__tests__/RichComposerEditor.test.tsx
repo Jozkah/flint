@@ -14,7 +14,7 @@ describe('RichComposerEditor', () => {
         placeholder="Message"
       />
     )
-    const input = await screen.findByRole('textbox', { name: 'Message' })
+    const input = await screen.findByRole('textbox', { name: 'common:composer.messageLabel' })
     expect(input.querySelector('strong')?.textContent).toBe('Bold')
     expect(input.querySelector('code')?.textContent).toBe('code')
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -32,7 +32,7 @@ describe('RichComposerEditor', () => {
         placeholder="Message"
       />
     )
-    const input = await screen.findByRole('textbox', { name: 'Message' })
+    const input = await screen.findByRole('textbox', { name: 'common:composer.messageLabel' })
     expect(input.querySelector('blockquote')?.textContent).toContain('quote')
     expect(input.querySelector('pre code')?.textContent).toContain('const x = 1')
     const code = input.querySelector('pre code')!
@@ -53,7 +53,7 @@ describe('RichComposerEditor', () => {
         placeholder="Message"
       />
     )
-    const input = await screen.findByRole('textbox', { name: 'Message' })
+    const input = await screen.findByRole('textbox', { name: 'common:composer.messageLabel' })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onSend).not.toHaveBeenCalled()
     fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
@@ -71,7 +71,7 @@ describe('RichComposerEditor', () => {
         placeholder="Message"
       />
     )
-    fireEvent.keyDown(await screen.findByRole('textbox', { name: 'Message' }), { key: 'Enter' })
+    fireEvent.keyDown(await screen.findByRole('textbox', { name: 'common:composer.messageLabel' }), { key: 'Enter' })
     expect(onSend).toHaveBeenCalledWith('', false)
   })
 })

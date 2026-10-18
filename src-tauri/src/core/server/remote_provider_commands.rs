@@ -58,6 +58,8 @@ pub async fn register_provider_config(
     state: State<'_, AppState>,
     request: RegisterProviderRequest,
 ) -> Result<(), String> {
+    // `auth:*` is the store's internal namespace (Bedrock, CLI login records).
+    crate::core::server::provider_secrets::reject_reserved_key(&request.provider)?;
     let key_chain = merge_register_api_keys(request.api_key.clone(), request.api_keys.clone());
     let api_key = key_chain.first().cloned();
     // Before anything can log them: an upstream error that echoes the request
@@ -193,7 +195,7 @@ pub async fn unregister_provider_config(
 pub async fn delete_provider_keys(provider: String) -> Result<(), String> {
     // Keyring/file access is blocking; keep it off the main (UI) thread.
     tauri::async_runtime::spawn_blocking(move || {
-        crate::core::server::provider_secrets::delete_provider_keys(&provider)
+        crate::core::server::provider_secrets::delete_provider_keys_guarded(&provider)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -206,7 +208,7 @@ pub async fn delete_provider_keys(provider: String) -> Result<(), String> {
 pub async fn get_provider_keys(provider: String) -> Vec<String> {
     // Keyring/file access is blocking; keep it off the main (UI) thread.
     tauri::async_runtime::spawn_blocking(move || {
-        crate::core::server::provider_secrets::load_provider_keys(&provider)
+        crate::core::server::provider_secrets::load_provider_keys_guarded(&provider)
     })
     .await
     .unwrap_or_default()
@@ -253,6 +255,46 @@ mod tests {
             models: vec![],
             api_type: None,
             ..Default::default()
+        }
+    }
+
+    #[test]
+    fn webview_provider_key_commands_cannot_touch_reserved_auth_records() {
+        use crate::core::server::provider_secrets as ps;
+        let _env = ps::TEST_ENV_LOCK.lock();
+        let dir = tempfile::tempdir().unwrap();
+        let prev = std::env::var("JAN_DATA_FOLDER").ok();
+        std::env::set_var("JAN_DATA_FOLDER", dir.path());
+        ps::force_file_secrets();
+        ps::store_secret_record("bedrock-aws", "{\"secret\":\"AKIA\"}").unwrap();
+        ps::store_secret_record("auth:openai", "cli-login").unwrap();
+        use tauri::async_runtime::block_on as rt;
+        for name in [
+            "auth:bedrock-aws",
+            "AUTH:bedrock-aws",
+            " auth:bedrock-aws",
+            "auth:auth:openai",
+            "Auth:Auth:openai",
+        ] {
+            assert!(rt(get_provider_keys(name.to_string())).is_empty(), "get {name}");
+            assert!(rt(delete_provider_keys(name.to_string())).is_err(), "delete {name}");
+            assert!(ps::reject_reserved_key(name).is_err(), "register {name}");
+            assert!(ps::store_provider_keys_guarded(name, &["evil".into()]).is_err());
+        }
+        // Untouched, and still readable through the internal record API.
+        assert_eq!(
+            ps::try_load_secret_record("bedrock-aws").unwrap().as_deref(),
+            Some("{\"secret\":\"AKIA\"}")
+        );
+        assert_eq!(ps::load_secret_record("auth:openai").as_deref(), Some("cli-login"));
+        // Ordinary providers still work through the guarded path.
+        ps::store_provider_keys_guarded("openai", &["sk-1".into()]).unwrap();
+        assert_eq!(rt(get_provider_keys("openai".into())), vec!["sk-1".to_string()]);
+        rt(delete_provider_keys("openai".into())).unwrap();
+        assert!(rt(get_provider_keys("openai".into())).is_empty());
+        match prev {
+            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
+            None => std::env::remove_var("JAN_DATA_FOLDER"),
         }
     }
 

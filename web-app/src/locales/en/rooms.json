@@ -12,8 +12,10 @@
     "open": "Open {{title}}",
     "delete": "Delete",
     "deleteLabel": "Delete {{title}}",
-    "participants": "{{count}} participants",
-    "turns": "{{count}} turns",
+    "participants_one": "{{count}} participant",
+    "participants_other": "{{count}} participants",
+    "turns_one": "{{count}} turn",
+    "turns_other": "{{count}} turns",
     "updated": "Updated {{time}}",
     "untitled": "Untitled room",
     "moreLabel": "More actions for {{title}}",
@@ -54,7 +56,9 @@
     "user-selected": "You choose",
     "user-selectedHint": "After each turn the room waits for you to pick the next speaker.",
     "moderator-selected": "Moderator chooses",
-    "moderator-selectedHint": "A moderator model picks each speaker and can close the discussion."
+    "moderator-selectedHint": "A moderator model picks each speaker and can close the discussion.",
+    "compare": "Compare models",
+    "compareHint": "Each message goes to every participant at once; they answer on their own, without seeing each other, side by side."
   },
   "clear": {
     "command": "Clear this room: its chat, what it learned, its scratch files",
@@ -74,6 +78,9 @@
     "heading": "Room settings",
     "sectionGeneral": "General",
     "sectionDiscussion": "Discussion & moderator",
+    "sectionIdentity": "Identity",
+    "sectionModel": "Model & reasoning",
+    "sectionTools": "Tools",
     "lockedWhileRunning": "Pause the room to change settings.",
     "title": "Title",
     "objective": "Objective",
@@ -152,7 +159,47 @@
     "sections": "Settings section",
     "tabGeneral": "General",
     "tabDiscussion": "Discussion",
-    "tabLimits": "Limits"
+    "tabLimits": "Limits",
+    "compareRun": "Run models",
+    "compareRunHint": "One at a time is slower, but loads one local model at a time and spares rate limits.",
+    "compareRunOption": {
+      "together": "All at once",
+      "one-by-one": "One at a time"
+    },
+    "compareRunSuggest": "Two or more local models are selected: running them one at a time keeps them from competing for memory.",
+    "tools": {
+      "heading": "Tools",
+      "summary": "{{on}} of {{total}} on · ~{{tokens}} tokens",
+      "loading": "Loading tools…",
+      "empty": "No tools are available with this access.",
+      "group": {
+        "files": "Files and commands",
+        "web": "Web",
+        "mcp": "MCP servers",
+        "other": "Other"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Tool definitions use about {{pct}}% of this model's context window.",
+      "warn": "Tool definitions use about {{pct}}% of this model's context window (over {{limit}}%). Switch some off to leave room for the discussion.",
+      "windowUnknown": "This model's context window is not known, so the share cannot be shown.",
+      "notStarted": "not started",
+      "toolsUnknown": "tools unknown until it starts"
+    },
+    "budget": {
+      "heading": "Tool budget per turn",
+      "hint": "Caps for each participant turn that uses tools. Leave a field empty for the default.",
+      "maxToolCalls": "Max tool calls",
+      "maxSteps": "Max steps",
+      "toolTimeoutSec": "Tool timeout (seconds)",
+      "default": "Default: {{value}}"
+    },
+    "isolation": {
+      "active": "Each participant that can edit works in its own isolated workspace, so they cannot overwrite each other or your folder.",
+      "unavailable": "Isolated workspace unavailable: {{reason}}. Participants that can edit only read in this room.",
+      "untrusted": "the folder is not trusted",
+      "trust": "Trust this folder"
+    },
+    "saving": "Saving…"
   },
   "limits": {
     "maxRounds": "Rounds",
@@ -216,6 +263,7 @@
     "moderatorNote": "Moderator note",
     "disagreements": "Disagreements",
     "jumpToLatest": "Jump to latest",
+    "compareRow": "{{count}} answers side by side",
     "toolDetails": "Details",
     "toolHide": "Hide",
     "toolArgs": "Input",
@@ -225,7 +273,30 @@
     "toolFailed": "failed",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} tokens",
-    "speedTitle": "Tokens written in this reply, and how fast"
+    "speedTitle": "Tokens written in this reply, and how fast",
+    "budgetHit": {
+      "tool-calls": "This turn reached its tool call budget.",
+      "steps": "This turn reached its step budget.",
+      "timeout": "A tool call in this turn ran past the tool timeout and was stopped."
+    },
+    "rawToolCall": "This looks like a tool call written as text. It was not run.",
+    "emptyReply": {
+      "length": "The model used its whole reply limit ({{count}} tokens) without writing an answer. Raise the reply limit in the room settings, or turn this participant's reasoning off, then run again.",
+      "tools": "Used tools, but wrote no text reply.",
+      "none": "No text reply."
+    },
+    "thought": "Thinking",
+    "answerFrom": "Answer from {{name}}",
+    "expandAnswer": "Show all of the answer from {{name}}",
+    "collapseAnswer": "Shorten the answer from {{name}}",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "linkScroll": "Link scrolling",
+    "linkScrollHint": "Scroll the answers to one question together",
+    "continuePrompt": "Continue your previous answer from where it was cut off.",
+    "catchUp": "Catch-up: also answered {{count}} earlier questions",
+    "catchUp_one": "Catch-up: also answered 1 earlier question",
+    "catchUpHint": "This participant joined after these questions, so this reply answers them as well:"
   },
   "unknownWindow": {
     "title": "Context window unknown",
@@ -268,17 +339,24 @@
     "finalPositionsHint": "Each participant states where they stand",
     "synthesizeHint": "Summary of the outcome, with dissent",
     "cancelTurnHint": "Stop only the reply in progress",
-    "steerLocked": "These unlock once the discussion is running."
+    "steerLocked": "These unlock once the discussion is running.",
+    "answering": "Answering",
+    "models": "Models"
   },
   "stage": {
     "speaking": "{{name}} is speaking",
     "compacting": "{{name}} is catching up",
     "draft": "Ready to start",
-    "draftHint": "{{count}} participants · {{mode}}",
+    "draftHint_one": "{{count}} participant · {{mode}}",
+    "draftHint_other": "{{count}} participants · {{mode}}",
     "running": "Discussion running",
     "runningHint": "The next speaker is getting ready.",
     "awaiting-user": "Your turn to choose",
     "awaitingHint": "Pick who speaks next, or write to the room.",
+    "comparing": "{{count}} models answering",
+    "comparingHint": "Each answers on its own; the answers appear side by side.",
+    "compareAwaiting": "Your turn",
+    "compareAwaitingHint": "Write a message and every participant answers it.",
     "paused": "Paused",
     "pausedHint": "Resume to continue from here.",
     "stopped": "Stopped",
@@ -289,7 +367,8 @@
     "failedHint": "Start again to retry.",
     "round": "Round",
     "turn": "Turn",
-    "of": "of"
+    "of": "of",
+    "question": "Question"
   },
   "usage": {
     "label": "Usage",
@@ -302,7 +381,8 @@
     "time": "Time",
     "of": "{{value}} / {{max}}",
     "noLimit": "no limit",
-    "stopReason": "Stopped: {{reason}}"
+    "stopReason": "Stopped: {{reason}}",
+    "questions": "Questions"
   },
   "stopReason": {
     "user": "stopped by you",
@@ -331,7 +411,9 @@
     "toShort": "To",
     "placeholderTo": "Write to {{name}}…",
     "mention": "Mention a participant",
-    "dropSkipped": "Not added (not text, a folder, or past the message limit): {{files}}"
+    "dropSkipped": "Not added (not text, a folder, or past the message limit): {{files}}",
+    "placeholderShort": "Message the room… @ to mention",
+    "extendByQuestions": "More questions"
   },
   "kpi": {
     "running": "Running",
@@ -340,7 +422,8 @@
     "waitingHint": "Needs your pick or reply",
     "waitingNone": "Nothing needs you",
     "turns": "Turns this week",
-    "turnsHint": "Across {{count}} rooms",
+    "turnsHint_one": "Across {{count}} room",
+    "turnsHint_other": "Across {{count}} rooms",
     "models": "Models taking part",
     "modelsNone": "No participants yet"
   },
@@ -383,5 +466,132 @@
     "panes": "Room view",
     "talk": "Discussion",
     "controls": "Controls"
+  },
+  "compare": {
+    "title": "Compare runs",
+    "modeTogether": "All at once",
+    "modeOneByOne": "One at a time",
+    "include": "Include in next run",
+    "includeFor": "Include {{name}} in the next run",
+    "run": "Run",
+    "runAgain": "Run again",
+    "runFor": "Run {{name}} on the current question",
+    "runAgainFor": "Run {{name}} again on the current question",
+    "runAll": "Run all",
+    "answerEarlier": "Answer the earlier questions",
+    "answerEarlierHint": "Every model that missed an earlier question answers it now, in order, as if it had been there.",
+    "export": "Export comparison",
+    "saveMarkdown": "Save as Markdown…",
+    "copyMarkdown": "Copy as Markdown",
+    "copyJson": "Copy as JSON",
+    "saved": "Comparison saved.",
+    "copied": "Copied to the clipboard.",
+    "copyFailed": "Could not copy to the clipboard.",
+    "notAnswered": "Has not answered this question.",
+    "state": {
+      "off": "Left out of the next run",
+      "unavailable": "Unavailable",
+      "running": "Answering…",
+      "queued": "Queued",
+      "done": "Answered",
+      "failed": "Failed",
+      "idle": "Not answered yet",
+      "waitingSlot": "Queued: waiting for the local model slot"
+    },
+    "retry": "Retry",
+    "retryFor": "Retry {{name}}"
+  },
+  "changes": {
+    "summaryOne": "{{count}} file changed",
+    "summaryMany": "{{count}} files changed",
+    "workspace": "Isolated workspace: {{path}}",
+    "binary": "Binary file",
+    "noExcerpt": "No excerpt.",
+    "openDiff": "Open diff",
+    "keep": "Keep",
+    "discard": "Discard changes",
+    "apply": "Apply to my folder",
+    "state": {
+      "kept": "Kept",
+      "discarded": "Discarded",
+      "applied": "Applied",
+      "idle": "Not applied"
+    },
+    "diffTitle": "Changes in the workspace",
+    "diffHint": "Everything this participant changed in its isolated workspace.",
+    "discardTitle": "Discard these changes?",
+    "discardHint": "The participant's workspace goes back to how it started. Your folder is not touched.",
+    "loading": "Loading the diff…",
+    "empty": "Nothing to apply.",
+    "discardConfirm": "Discard",
+    "scopeTurn": "This turn",
+    "scopeAll": "Since the workspace was made",
+    "applyShort": "Apply",
+    "scopeAllShort": "All",
+    "scope": "Which changes to show",
+    "showAll": "Show all files ({{count}})",
+    "partial_one": "Applied {{count}} file",
+    "partial_other": "Applied {{count}} files",
+    "applyIncludesEarlier_one": "Apply also includes {{count}} earlier file not applied yet",
+    "applyIncludesEarlier_other": "Apply also includes {{count}} earlier files not applied yet"
+  },
+  "apply": {
+    "title_one": "Apply {{count}} change to your folder",
+    "title_other": "Apply {{count}} changes to your folder",
+    "copyPath": "Copy the folder path {{path}}",
+    "pathCopied": "Folder path copied",
+    "files_one": "{{count}} file",
+    "files_other": "{{count}} files",
+    "source": "From {{name}} · round {{round}}",
+    "safety": "Nothing is applied if the patch does not apply cleanly. You can undo right after.",
+    "checking": "Checking whether it applies to your folder…",
+    "clean": "Applies cleanly",
+    "checkFailed": "Could not check the patch: {{message}}",
+    "conflict_one": "{{count}} file does not apply to your folder",
+    "conflict_other": "{{count}} files do not apply to your folder",
+    "conflictHint": "Leave them out, or ask the participant to redo them against your folder as it is now.",
+    "notChecked": "not checked on its own (too many files)",
+    "fileConflict": "Does not apply",
+    "leaveOut": "Leave out conflicting files",
+    "details": "Details",
+    "fileDirty": "Your edits",
+    "dirtyTitle_one": "You have uncommitted changes in {{count}} of these files",
+    "dirtyTitle_other": "You have uncommitted changes in {{count}} of these files",
+    "dirtyHint": "The patch is written on top of your edits. Commit or stash first if you want an easy way back.",
+    "selectAll": "Select all files",
+    "include": "Include {{path}}",
+    "renamedFrom": "(renamed from {{path}})",
+    "status": {
+      "added": "Added",
+      "modified": "Modified",
+      "deleted": "Deleted",
+      "renamed": "Renamed"
+    },
+    "binary": "Binary file changed. Its content is not shown.",
+    "noLines": "No line changes (mode or name only).",
+    "showMore_one": "Show {{count}} more line",
+    "showMore_other": "Show {{count}} more lines",
+    "hiddenLines_one": "({{count}} hidden)",
+    "hiddenLines_other": "({{count}} hidden)",
+    "blockedConflict": "Apply is off: some selected files do not apply cleanly.",
+    "blockedNothing": "Select at least one file to apply.",
+    "blockedFailed": "Apply is off until the check succeeds.",
+    "copyPatch": "Copy patch",
+    "patchCopied": "Patch copied",
+    "confirm_one": "Apply {{count}} file",
+    "confirm_other": "Apply {{count}} files",
+    "applied_one": "Applied {{count}} file to your folder",
+    "applied_other": "Applied {{count}} files to your folder",
+    "undo": "Undo",
+    "undone": "The change was taken back out of your folder",
+    "undoFailed": "Could not undo: {{message}}"
+  },
+  "approvals": {
+    "held": "Room paused",
+    "heldHint": "The room was paused while this was waiting, so it can no longer be allowed. Resume the room and the participant will ask again if it still needs it.",
+    "dismiss": "Dismiss",
+    "heldBanner": "Room paused: this request can no longer be allowed. Resume to ask again.",
+    "wantsToRun": "{{origin}} wants to run {{tool}}",
+    "details": "Details"
   }
 }

@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useProviderModels } from '@/hooks/useProviderModels'
+import { canListProviderModels } from '@/lib/provider-api-keys'
 import { ModelCombobox } from '@/containers/ModelCombobox'
 import { ExternalLink, Plus } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
@@ -31,9 +32,10 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
   const [open, setOpen] = useState(false)
   const [isComboboxOpen, setIsComboboxOpen] = useState(false)
 
-  // Fetch models from provider API (API key is optional)
+  // The list is fetched when the dialog opens, never with the page behind
+  // it, and not at all from a public endpoint that has no key to send.
   const { models, loading, error, refetch } = useProviderModels(
-    provider.base_url ? provider : undefined
+    open && canListProviderModels(provider) ? provider : undefined
   )
 
   // Handle form submission

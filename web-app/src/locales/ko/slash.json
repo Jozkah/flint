@@ -9,7 +9,8 @@
     "plugin": "플러그인",
     "pluginNamed": "플러그인 {{plugin}}",
     "skill": "스킬",
-    "builtin": "기본 제공"
+    "builtin": "기본 제공",
+    "prompt": "프롬프트"
   },
   "scope": {
     "project": "프로젝트",

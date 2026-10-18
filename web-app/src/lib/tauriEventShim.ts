@@ -111,4 +111,9 @@ export async function emit(event: string, payload?: unknown): Promise<void> {
   dispatch(event, payload)
 }
 
+/** A browser tab is a single window, so a targeted emit reaches this page. */
+export async function emitTo(_target: unknown, event: string, payload?: unknown): Promise<void> {
+  dispatch(event, payload)
+}
+
 export const TauriEvent = {} as Record<string, string>

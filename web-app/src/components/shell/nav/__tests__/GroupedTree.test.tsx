@@ -121,6 +121,70 @@ describe('Cowork and Rooms groups on the sidebar', () => {
     expect(handled).toHaveBeenCalledTimes(1)
   })
 
+  it('renders a sub-folder inside its parent and keeps its chats', async () => {
+    await act(async () => {
+      const parent = (await store().createGroup('cowork', 'Work'))!
+      const child = (await store().createGroup('cowork', 'Deep', { parentId: parent }))!
+      await store().moveItem('cowork', 's2', child)
+    })
+    tree()
+    const groups = screen.getAllByTestId('nav-group')
+    expect(groups).toHaveLength(2)
+    const outer = groups[0]
+    expect(within(outer).getByText('Work')).toBeInTheDocument()
+    // the child group and its chat render inside the parent's element
+    expect(within(outer).getByText('Deep')).toBeInTheDocument()
+    expect(within(outer).getByText('Session s2')).toBeInTheDocument()
+    expect(within(screen.getByTestId('nav-ungrouped')).queryByText('Session s2')).toBeNull()
+  })
+
+  it('keeps a running session visible in a nested group when its parent is collapsed', async () => {
+    await act(async () => {
+      const parent = (await store().createGroup('cowork', 'Work'))!
+      const child = (await store().createGroup('cowork', 'Deep', { parentId: parent }))!
+      await store().moveItem('cowork', 's1', child)
+      await store().moveItem('cowork', 's2', child)
+      await store().setCollapsed('cowork', parent, true)
+    })
+    tree()
+    // s1 is kept (running), s2 is not: only s1 stays, under its own folder
+    expect(screen.getByText('Session s1')).toBeInTheDocument()
+    expect(screen.getByText('Deep')).toBeInTheDocument()
+    expect(screen.queryByText('Session s2')).toBeNull()
+  })
+
+  it("hides a collapsed parent's nested group when nothing in it is kept", async () => {
+    await act(async () => {
+      const parent = (await store().createGroup('cowork', 'Work'))!
+      const child = (await store().createGroup('cowork', 'Deep', { parentId: parent }))!
+      await store().moveItem('cowork', 's2', child)
+      await store().setCollapsed('cowork', parent, true)
+    })
+    tree()
+    expect(screen.queryByText('Deep')).toBeNull()
+    expect(screen.queryByText('Session s2')).toBeNull()
+  })
+
+  it('moving a group into another nests it and refuses a cycle', async () => {
+    let a = ''
+    let b = ''
+    await act(async () => {
+      a = (await store().createGroup('cowork', 'A'))!
+      b = (await store().createGroup('cowork', 'B', { parentId: a }))!
+    })
+    let ok = true
+    await act(async () => {
+      ok = await store().setGroupParent('cowork', a, b)
+    })
+    expect(ok).toBe(false)
+    expect(store().state.surfaces.cowork.groups.find((g) => g.id === a)?.parentId).toBeNull()
+    await act(async () => {
+      ok = await store().setGroupParent('cowork', b, null)
+    })
+    expect(ok).toBe(true)
+    expect(store().state.surfaces.cowork.groups.find((g) => g.id === b)?.parentId).toBeNull()
+  })
+
   it("the group's + starts a new item in it", async () => {
     let id = ''
     await act(async () => {
@@ -130,5 +194,24 @@ describe('Cowork and Rooms groups on the sidebar', () => {
     tree(onNew)
     fireEvent.click(screen.getByTestId('group-new-item'))
     expect(onNew).toHaveBeenCalledWith(id)
+  })
+  it('scopes the hover group to a folder header so nested folders do not light up together', async () => {
+    await act(async () => {
+      const parent = (await store().createGroup('cowork', 'Parent'))!
+      await store().createGroup('cowork', 'Child', parent)
+    })
+    tree()
+    const groups = screen.getAllByTestId('nav-group')
+    expect(groups).toHaveLength(2)
+    for (const g of groups) {
+      // no hover group on the whole item (it would cover its sub-folders)...
+      expect(g.className).not.toMatch(/group\/cg/)
+    }
+    // ...only on each header row, whose controls are the ones that reveal
+    const parentNew = within(groups[0]).getAllByTestId('group-new-item')[0]
+    const header = parentNew.closest('[class*="group/cg"]') as HTMLElement
+    expect(header).not.toBeNull()
+    expect(groups[0].contains(header)).toBe(true)
+    expect(within(header).queryByText('Child')).toBeNull()
   })
 })

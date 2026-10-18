@@ -1,0 +1,2182 @@
+{
+  "activate_mcp_server": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "agent_approval_rule_add": [
+    "web-app/src/hooks/useToolApprovalRequests.ts (via addScopedRule)",
+    "web-app/src/lib/approvalScopes.ts"
+  ],
+  "agent_approval_rule_check": [
+    "web-app/src/lib/approvalScopes.ts",
+    "web-app/src/lib/coworkDispatch.ts (via checkScopedRule)"
+  ],
+  "agent_approval_rule_revoke": [
+    "web-app/src/containers/ApprovalRulesCard.tsx (via revokeScopedRule)",
+    "web-app/src/lib/approvalScopes.ts"
+  ],
+  "agent_approval_rules_list": [
+    "web-app/src/containers/ApprovalRulesCard.tsx (via listScopedRules)",
+    "web-app/src/lib/approvalScopes.ts"
+  ],
+  "agent_approval_scope_options": [
+    "web-app/src/hooks/useToolApprovalRequests.ts (via approvalScopeOptions)",
+    "web-app/src/lib/approvalScopes.ts"
+  ],
+  "agent_bundle_abandon": [
+    "web-app/src/containers/CoworkBundleImport.tsx (via abandonImport)",
+    "web-app/src/lib/bundleImport.ts"
+  ],
+  "agent_bundle_apply": [
+    "web-app/src/containers/CoworkBundleImport.tsx (via applyImport)",
+    "web-app/src/lib/bundleImport.ts"
+  ],
+  "agent_bundle_import": [
+    "web-app/src/containers/CoworkBundleImport.tsx (via importBundle)",
+    "web-app/src/lib/bundleImport.ts"
+  ],
+  "agent_bundle_import_cancel": [
+    "web-app/src/containers/CoworkBundleImport.tsx (via cancelImport)",
+    "web-app/src/lib/bundleImport.ts"
+  ],
+  "agent_bundle_imports_list": [
+    "web-app/src/containers/CoworkBundleImport.tsx (via listImports)",
+    "web-app/src/lib/bundleImport.ts"
+  ],
+  "agent_campaign_create": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_decisions_append": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_integrate": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_list_with_skipped": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_merge_task": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_next_actions": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_notified": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_skipped": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_task_settle": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_verify_finish": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_campaign_verify_prepare": [
+    "web-app/src/components/campaign/Board.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ProposalPanel.tsx (via campaignApi)",
+    "web-app/src/components/campaign/ServerPlanApproval.tsx (via campaignApi)",
+    "web-app/src/containers/CampaignRunHost.tsx (via campaignApi)",
+    "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
+    "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
+    "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/campaignApi.ts",
+    "web-app/src/lib/campaignHost.ts (via campaignApi)",
+    "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
+    "web-app/src/lib/campaignRunner.ts (via campaignApi)",
+    "web-app/src/lib/remote/appCampaigns.ts (via campaignApi)"
+  ],
+  "agent_cc_import": [
+    "web-app/src/containers/extensions/ImportFromClaudeCodeDialog.tsx (via ccImport)",
+    "web-app/src/lib/extensionsStore.ts"
+  ],
+  "agent_cc_scan": [
+    "web-app/src/containers/extensions/ImportFromClaudeCodeDialog.tsx (via ccScan)",
+    "web-app/src/lib/extensionsStore.ts"
+  ],
+  "agent_checkpoint_capture": [
+    "web-app/src/hooks/useCoworkCheckpoints.ts",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
+    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+  ],
+  "agent_checkpoint_forget": [
+    "web-app/src/hooks/useCoworkCheckpoints.ts",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
+    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+  ],
+  "agent_checkpoint_plan": [
+    "web-app/src/hooks/useCoworkCheckpoints.ts",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
+    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+  ],
+  "agent_checkpoint_preview_diff": [
+    "web-app/src/hooks/useCoworkCheckpoints.ts",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
+    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+  ],
+  "agent_checkpoint_restore": [
+    "web-app/src/hooks/useCoworkCheckpoints.ts",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkCheckpoints)",
+    "web-app/src/routes/cowork.tsx (via useCoworkCheckpoints)"
+  ],
+  "agent_copy_apply": [
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via copyApi)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via copyApi)",
+    "web-app/src/lib/coworkParallel.ts"
+  ],
+  "agent_copy_changes": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via copyApi)",
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via copyApi)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkParallel.ts",
+    "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
+    "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
+  ],
+  "agent_copy_create": [
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via copyApi)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via copyApi)",
+    "web-app/src/lib/coworkParallel.ts"
+  ],
+  "agent_copy_discard": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
+    "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
+  ],
+  "agent_copy_file_pair": [
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via copyApi)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via copyApi)",
+    "web-app/src/lib/coworkParallel.ts"
+  ],
+  "agent_deferred_answer": [
+    "web-app/src/containers/ApprovalRulesCard.tsx (via answerDeferred)",
+    "web-app/src/lib/approvalScopes.ts"
+  ],
+  "agent_deferred_discard": [
+    "web-app/src/containers/ApprovalRulesCard.tsx (via discardDeferred)",
+    "web-app/src/lib/approvalScopes.ts"
+  ],
+  "agent_deferred_list": [
+    "web-app/src/containers/ApprovalRulesCard.tsx (via listDeferred)",
+    "web-app/src/lib/approvalScopes.ts"
+  ],
+  "agent_destructive_reason": [
+    "web-app/src/lib/chatToolGuard.ts"
+  ],
+  "agent_emergency_stop": [
+    "web-app/src/containers/CoworkStopMenu.tsx",
+    "web-app/src/containers/EmergencyStop.tsx",
+    "web-app/src/lib/remote/appActions.ts",
+    "web-app/src/routes/cowork.tsx (via CoworkStopMenu)"
+  ],
+  "agent_events_export": [
+    "web-app/src/containers/CoworkEventExport.tsx (via exportEvents)",
+    "web-app/src/lib/eventLog.ts"
+  ],
+  "agent_events_export_cancel": [
+    "web-app/src/containers/CoworkEventExport.tsx (via cancelEventExport)",
+    "web-app/src/lib/eventLog.ts"
+  ],
+  "agent_events_inspect": [
+    "web-app/src/containers/CoworkEventExport.tsx (via inspectEventExport)",
+    "web-app/src/lib/eventLog.ts"
+  ],
+  "agent_events_list": [
+    "web-app/src/containers/CoworkTimelinePanel.tsx (via listEvents)",
+    "web-app/src/lib/eventLog.ts",
+    "web-app/src/lib/prClaimBackfill.ts (via listEvents)"
+  ],
+  "agent_events_record": [
+    "web-app/src/lib/chatRun.ts (via recordEvents)",
+    "web-app/src/lib/coworkChildRunner.ts (via recordEvents)",
+    "web-app/src/lib/eventLog.ts",
+    "web-app/src/routes/cowork.tsx (via recordEvents)"
+  ],
+  "agent_events_run": [
+    "web-app/src/containers/CoworkTimelinePanel.tsx (via loadRunRecording)",
+    "web-app/src/lib/runReplay.ts"
+  ],
+  "agent_events_runs": [
+    "web-app/src/containers/CoworkTimelinePanel.tsx (via listFinishedRuns)",
+    "web-app/src/lib/runReplay.ts"
+  ],
+  "agent_extensions_matrix_get": [
+    "web-app/src/containers/extensions/EnablementGrid.tsx (via getMatrix)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via getMatrix)",
+    "web-app/src/lib/extensionsStore.ts"
+  ],
+  "agent_extensions_matrix_set": [
+    "web-app/src/lib/extensionsStore.ts"
+  ],
+  "agent_extensions_matrix_set_item": [
+    "web-app/src/containers/extensions/EnablementGrid.tsx (via setItemSurfaces)",
+    "web-app/src/lib/extensionsStore.ts"
+  ],
+  "agent_git_pr_for_commit": [
+    "web-app/src/containers/CodeGitOverlays.tsx (via loadCommitPr)",
+    "web-app/src/lib/coworkGit.ts"
+  ],
+  "agent_plugin_details": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via getPluginDetails)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via getPluginDetails)",
+    "web-app/src/lib/pluginInventory.ts (via getPluginDetails)",
+    "web-app/src/lib/pluginStore.ts"
+  ],
+  "agent_plugin_install": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via installPlugin)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via installPlugin)",
+    "web-app/src/lib/pluginStore.ts"
+  ],
+  "agent_plugin_install_cancel": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via cancelPluginInstall)",
+    "web-app/src/lib/pluginStore.ts"
+  ],
+  "agent_plugin_list": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via listPlugins)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via listPlugins)",
+    "web-app/src/lib/pluginInventory.ts (via listPlugins)",
+    "web-app/src/lib/pluginStore.ts",
+    "web-app/src/routes/settings/extensions.tsx (via listPlugins)"
+  ],
+  "agent_plugin_remove": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via removePlugin)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via removePlugin)",
+    "web-app/src/lib/pluginStore.ts"
+  ],
+  "agent_plugin_search": [
+    "web-app/src/containers/extensions/PluginsTab.tsx (via searchPlugins)",
+    "web-app/src/lib/pluginStore.ts"
+  ],
+  "agent_plugin_set_enabled": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via setPluginEnabled)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via setPluginEnabled)",
+    "web-app/src/lib/pluginStore.ts",
+    "web-app/src/routes/settings/extensions.tsx (via setPluginEnabled)"
+  ],
+  "agent_plugin_sources": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via getPluginSources)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via getPluginSources)",
+    "web-app/src/lib/pluginStore.ts"
+  ],
+  "agent_pr_check_log": [
+    "web-app/src/containers/PrBar.tsx"
+  ],
+  "agent_pr_status": [
+    "web-app/src/containers/PrBar.tsx (via usePrStatusStore)",
+    "web-app/src/hooks/useSessionPrList.ts (via usePrStatusStore)",
+    "web-app/src/lib/coworkDispatch.ts (via usePrStatusStore)",
+    "web-app/src/lib/hydrateStores.ts (via usePrStatusStore)",
+    "web-app/src/lib/prClaimBackfill.ts (via usePrStatusStore)",
+    "web-app/src/lib/remote/push.ts (via usePrStatusStore)",
+    "web-app/src/lib/remote/sources.ts (via usePrStatusStore)",
+    "web-app/src/stores/pr-status-store.ts"
+  ],
+  "agent_projects_list": [
+    "web-app/src/containers/extensions/EnablementGrid.tsx (via listProjects)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via listProjects)",
+    "web-app/src/containers/extensions/SkillsTab.tsx (via listProjects)",
+    "web-app/src/lib/extensionsStore.ts"
+  ],
+  "agent_projects_register": [
+    "web-app/src/lib/extensionsStore.ts"
+  ],
+  "agent_prompt_snapshots": [
+    "web-app/src/containers/PromptSnapshotView.tsx",
+    "web-app/src/containers/ThreadConversation.tsx (via WhatJanIsUsingPanel)",
+    "web-app/src/containers/WhatJanIsUsing.tsx",
+    "web-app/src/containers/WhatJanIsUsing.tsx (via PromptSnapshotView)",
+    "web-app/src/routes/cowork.tsx (via PromptSnapshotView)"
+  ],
+  "agent_prompt_snapshots_delete": [
+    "web-app/src/hooks/useCoworkSessions.ts (via deletePromptSnapshots)",
+    "web-app/src/lib/promptSnapshotRetention.ts"
+  ],
+  "agent_proposal_from_worktree": [
+    "web-app/src/containers/CoworkProposalReview.tsx (via proposeFromWorktree)",
+    "web-app/src/lib/proposals.ts"
+  ],
+  "agent_replay_begin": [
+    "web-app/src/containers/PromptSnapshotView.tsx (via startReplay)",
+    "web-app/src/lib/contextReplay.ts"
+  ],
+  "agent_replay_settle": [
+    "web-app/src/containers/PromptSnapshotView.tsx (via listReplays)",
+    "web-app/src/lib/contextReplay.ts"
+  ],
+  "agent_replays_list": [
+    "web-app/src/containers/PromptSnapshotView.tsx (via listReplays)",
+    "web-app/src/lib/contextReplay.ts"
+  ],
+  "agent_sandbox_apply_file": [
+    "web-app/src/lib/coworkSandboxApply.ts",
+    "web-app/src/routes/cowork.tsx (via applySandboxFile)"
+  ],
+  "agent_sandbox_apply_hunk": [
+    "web-app/src/lib/coworkSandboxApply.ts",
+    "web-app/src/routes/cowork.tsx (via applySandboxHunk)"
+  ],
+  "agent_sandbox_apply_probe": [
+    "web-app/src/lib/coworkApplyAll.ts",
+    "web-app/src/routes/cowork.tsx (via probeSandboxFile)"
+  ],
+  "agent_skill_delete": [
+    "web-app/src/containers/extensions/SkillsTab.tsx (via deleteSkill)",
+    "web-app/src/lib/skillStore.ts"
+  ],
+  "agent_skill_enabled_get": [
+    "web-app/src/containers/SkillSelector.tsx (via useSkills)",
+    "web-app/src/containers/dialogs/SkillsManagerDialog.tsx (via useSkills)",
+    "web-app/src/hooks/useSkills.ts",
+    "web-app/src/routes/cowork.tsx (via useSkills)"
+  ],
+  "agent_skill_enabled_set": [
+    "web-app/src/containers/SkillSelector.tsx (via useSkills)",
+    "web-app/src/containers/dialogs/SkillsManagerDialog.tsx (via useSkills)",
+    "web-app/src/hooks/useSkills.ts",
+    "web-app/src/routes/cowork.tsx (via useSkills)"
+  ],
+  "agent_skill_hub_import": [
+    "web-app/src/containers/SkillSelector.tsx (via useSkills)",
+    "web-app/src/containers/dialogs/SkillsManagerDialog.tsx (via useSkills)",
+    "web-app/src/hooks/useSkills.ts",
+    "web-app/src/routes/cowork.tsx (via useSkills)"
+  ],
+  "agent_skill_hub_list": [
+    "web-app/src/containers/SkillSelector.tsx (via useSkills)",
+    "web-app/src/containers/dialogs/SkillsManagerDialog.tsx (via useSkills)",
+    "web-app/src/hooks/useSkills.ts",
+    "web-app/src/routes/cowork.tsx (via useSkills)"
+  ],
+  "agent_skill_list": [
+    "web-app/src/containers/extensions/SkillsTab.tsx (via listSkills)",
+    "web-app/src/lib/skillCatalog.ts (via listSkills)",
+    "web-app/src/lib/skillStore.ts"
+  ],
+  "agent_skill_read": [
+    "web-app/src/containers/extensions/SkillsTab.tsx (via readSkill)",
+    "web-app/src/lib/rooms/roomTools.ts (via readSkill)",
+    "web-app/src/lib/skillActivation.ts (via readSkill)",
+    "web-app/src/lib/skillStore.ts"
+  ],
+  "agent_skill_write": [
+    "web-app/src/containers/extensions/SkillsTab.tsx (via writeSkill)",
+    "web-app/src/lib/skillStore.ts"
+  ],
+  "agent_slash_invoke_skill": [
+    "web-app/src/hooks/useSlashCommands.ts (via invokeSlashSkill)",
+    "web-app/src/lib/slashCatalog.ts"
+  ],
+  "agent_subagent_list": [
+    "web-app/src/lib/chatDelegation.ts (via listSubagents)",
+    "web-app/src/lib/coworkSubagentRegistry.ts",
+    "web-app/src/lib/surfaceDelegation.ts (via listSubagents)",
+    "web-app/src/routes/cowork.tsx (via listSubagents)"
+  ],
+  "agent_team_child_begin": [
+    "web-app/src/lib/teamChildren.ts",
+    "web-app/src/routes/cowork.tsx (via beginTeamChild)"
+  ],
+  "agent_team_child_propose": [
+    "web-app/src/containers/CoworkTeamReviews.tsx (via proposeTeamChild)",
+    "web-app/src/lib/teamChildren.ts"
+  ],
+  "agent_team_child_settle": [
+    "web-app/src/lib/teamChildren.ts",
+    "web-app/src/routes/cowork.tsx (via settleTeamChild)"
+  ],
+  "agent_team_children_list": [
+    "web-app/src/containers/CoworkTeamReviews.tsx (via listTeamChildren)",
+    "web-app/src/lib/teamChildren.ts"
+  ],
+  "agent_worktree_ensure": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
+    "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
+  ],
+  "agent_worktree_export": [
+    "web-app/src/containers/CoworkProposalReview.tsx (via exportWorktree)",
+    "web-app/src/lib/proposals.ts"
+  ],
+  "agent_worktree_optimize": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
+    "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
+  ],
+  "allow_asset_path": [
+    "web-app/src/lib/assetPath.ts"
+  ],
+  "app_token": [
+    "web-app/src/services/core/tauri.ts"
+  ],
+  "archive_disk_usage": [
+    "web-app/src/containers/archive/ArchivePanel.tsx (via archiveApi)",
+    "web-app/src/containers/archive/ArchivePreviewDialog.tsx (via archiveApi)",
+    "web-app/src/hooks/useThreadManagement.ts (via archiveApi)",
+    "web-app/src/lib/archive.ts",
+    "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
+    "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
+  ],
+  "archive_empty": [
+    "web-app/src/containers/archive/ArchivePanel.tsx (via archiveApi)",
+    "web-app/src/containers/archive/ArchivePreviewDialog.tsx (via archiveApi)",
+    "web-app/src/hooks/useThreadManagement.ts (via archiveApi)",
+    "web-app/src/lib/archive.ts",
+    "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
+    "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
+  ],
+  "archive_list": [
+    "web-app/src/containers/archive/ArchivePanel.tsx (via archiveApi)",
+    "web-app/src/containers/archive/ArchivePreviewDialog.tsx (via archiveApi)",
+    "web-app/src/hooks/useThreadManagement.ts (via archiveApi)",
+    "web-app/src/lib/archive.ts",
+    "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
+    "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
+  ],
+  "archive_preview": [
+    "web-app/src/containers/archive/ArchivePanel.tsx (via archiveApi)",
+    "web-app/src/containers/archive/ArchivePreviewDialog.tsx (via archiveApi)",
+    "web-app/src/hooks/useThreadManagement.ts (via archiveApi)",
+    "web-app/src/lib/archive.ts",
+    "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
+    "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
+  ],
+  "archive_purge": [
+    "web-app/src/containers/archive/ArchivePanel.tsx (via archiveApi)",
+    "web-app/src/containers/archive/ArchivePreviewDialog.tsx (via archiveApi)",
+    "web-app/src/hooks/useThreadManagement.ts (via archiveApi)",
+    "web-app/src/lib/archive.ts",
+    "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
+    "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
+  ],
+  "archive_put": [
+    "web-app/src/containers/archive/ArchivePanel.tsx (via archiveApi)",
+    "web-app/src/containers/archive/ArchivePreviewDialog.tsx (via archiveApi)",
+    "web-app/src/hooks/useThreadManagement.ts (via archiveApi)",
+    "web-app/src/lib/archive.ts",
+    "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
+    "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
+  ],
+  "archive_restore": [
+    "web-app/src/containers/archive/ArchivePanel.tsx (via archiveApi)",
+    "web-app/src/containers/archive/ArchivePreviewDialog.tsx (via archiveApi)",
+    "web-app/src/hooks/useThreadManagement.ts (via archiveApi)",
+    "web-app/src/lib/archive.ts",
+    "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
+    "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
+  ],
+  "archive_set_settings": [
+    "web-app/src/containers/archive/ArchivePanel.tsx (via archiveApi)",
+    "web-app/src/containers/archive/ArchivePreviewDialog.tsx (via archiveApi)",
+    "web-app/src/hooks/useThreadManagement.ts (via archiveApi)",
+    "web-app/src/lib/archive.ts",
+    "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
+    "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
+    "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
+  ],
+  "attribute_git_call": [
+    "web-app/src/containers/ThreadConversation.tsx (via attributeGitInput)",
+    "web-app/src/lib/coworkDispatch.ts (via attributeGitInput)",
+    "web-app/src/lib/gitAttribution.ts"
+  ],
+  "audit_export": [
+    "web-app/src/lib/toolActivity.ts"
+  ],
+  "authorize_mcp_server": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "autostart_get": [
+    "web-app/src/containers/StartupItems.tsx (via autostartGet)",
+    "web-app/src/lib/autostart.ts"
+  ],
+  "autostart_set": [
+    "web-app/src/containers/StartupItems.tsx (via autostartSet)",
+    "web-app/src/lib/autostart.ts"
+  ],
+  "bedrock_credential_status": [
+    "web-app/src/containers/BedrockCredentials.tsx (via getBedrockCredentialStatus)",
+    "web-app/src/hooks/useBedrockCredentials.ts (via getBedrockCredentialStatus)",
+    "web-app/src/lib/bedrock.ts"
+  ],
+  "bedrock_set_credential": [
+    "web-app/src/containers/BedrockCredentials.tsx (via setBedrockCredential)",
+    "web-app/src/lib/bedrock.ts"
+  ],
+  "bedrock_sign": [
+    "web-app/src/lib/bedrock.ts",
+    "web-app/src/lib/model-factory.ts (via createBedrockSigningFetch)"
+  ],
+  "browser_agent_block": [
+    "web-app/src/containers/WebPreviewHost.tsx (via applyAnswer)",
+    "web-app/src/lib/browserAgent.ts"
+  ],
+  "browser_agent_call": [
+    "web-app/src/lib/agentTools.ts (via runBrowserAgentTool)",
+    "web-app/src/lib/browserAgent.ts"
+  ],
+  "browser_agent_clear_grants": [
+    "web-app/src/containers/BrowserAgentSettings.tsx (via clearBrowserGrants)",
+    "web-app/src/lib/browserAgentRules.ts"
+  ],
+  "browser_agent_grant": [
+    "web-app/src/containers/WebPreviewHost.tsx (via applyAnswer)",
+    "web-app/src/lib/browserAgent.ts"
+  ],
+  "browser_agent_grants": [
+    "web-app/src/containers/BrowserAgentSettings.tsx (via listBrowserGrants)",
+    "web-app/src/lib/browserAgentRules.ts"
+  ],
+  "browser_agent_resume": [
+    "web-app/src/containers/WebPreviewHost.tsx (via resumeBrowserAgent)",
+    "web-app/src/hooks/useBrowserAgentPane.ts"
+  ],
+  "browser_agent_rule_remove": [
+    "web-app/src/containers/BrowserAgentSettings.tsx (via removeBrowserRule)",
+    "web-app/src/lib/browserAgentRules.ts"
+  ],
+  "browser_agent_rule_set": [
+    "web-app/src/containers/BrowserAgentSettings.tsx (via setBrowserRule)",
+    "web-app/src/lib/browserAgentRules.ts"
+  ],
+  "browser_agent_rules": [
+    "web-app/src/containers/BrowserAgentSettings.tsx (via listBrowserRules)",
+    "web-app/src/lib/browserAgentRules.ts"
+  ],
+  "browser_agent_stop": [
+    "web-app/src/containers/WebPreviewHost.tsx (via stopBrowserAgent)",
+    "web-app/src/hooks/useBrowserAgentPane.ts"
+  ],
+  "browser_tool_close": [
+    "web-app/src/containers/ThreadConversation.tsx (via closeBrowserSession)",
+    "web-app/src/lib/agentTools.ts (via closeBrowserSession)",
+    "web-app/src/lib/browserTool.ts",
+    "web-app/src/routes/cowork.tsx (via closeBrowserSession)"
+  ],
+  "browser_tool_describe": [
+    "web-app/src/lib/agentTools.ts (via describeBrowserCall)",
+    "web-app/src/lib/browserTool.ts"
+  ],
+  "browser_tool_watch": [
+    "web-app/src/containers/AgentBrowserWindow.tsx (via isLive)",
+    "web-app/src/hooks/useBrowserToolMirror.ts"
+  ],
+  "browser_verify_cancel": [
+    "web-app/src/hooks/useBrowserVerify.ts (via cancelBrowserVerify)",
+    "web-app/src/lib/browserVerify.ts"
+  ],
+  "browser_verify_detect": [
+    "web-app/src/containers/BrowserVerifyPanel.tsx (via detectBrowser)",
+    "web-app/src/lib/browserVerify.ts"
+  ],
+  "browser_verify_run": [
+    "web-app/src/hooks/useBrowserVerify.ts (via runBrowserVerify)",
+    "web-app/src/lib/browserVerify.ts"
+  ],
+  "browser_verify_set_browser": [
+    "web-app/src/containers/BrowserVerifyPanel.tsx (via setBrowserPath)",
+    "web-app/src/lib/browserVerify.ts"
+  ],
+  "cancel_exit": [
+    "web-app/src/containers/dialogs/LlamacppBusyOnExitDialog.tsx"
+  ],
+  "capture_desktop_preview": [
+    "web-app/src/containers/ComputerExclusionSettings.tsx (via captureDesktopPreview)",
+    "web-app/src/lib/computerExclusions.ts"
+  ],
+  "check_jan_browser_extension_connected": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "check_jan_cli_installed": [
+    "web-app/src/routes/settings/general.tsx"
+  ],
+  "clear_claude_code_env": [
+    "web-app/src/routes/settings/claude-code.tsx"
+  ],
+  "clear_mcp_auth": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "confirm_exit": [
+    "web-app/src/containers/dialogs/LlamacppBusyOnExitDialog.tsx"
+  ],
+  "consolidate_memory": [
+    "web-app/src/hooks/useMemoryConsolidation.ts (via consolidateMemory)",
+    "web-app/src/lib/agentWorkspace.ts"
+  ],
+  "deactivate_mcp_server": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "delete_provider_keys": [
+    "web-app/src/services/providers/browser.ts",
+    "web-app/src/services/providers/tauri.ts"
+  ],
+  "delete_thread_permanently": [
+    "web-app/src/services/threads/default.ts"
+  ],
+  "detect_claude_code_overrides": [
+    "web-app/src/routes/settings/claude-code.tsx"
+  ],
+  "diffusion_add_custom_model": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_cancel": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_delete": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_download_model": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_families": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_gallery": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_generate_image": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_generate_video": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_guess_family": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_import_lora": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_install_engine": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_list_loras": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_load": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_media": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_remove_custom_model": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_save_external_images": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_status": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts"
+  ],
+  "diffusion_unload": [
+    "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
+    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/hooks/useStudio.ts (via studioApi)",
+    "web-app/src/lib/chatImageTools.ts (via studioApi)",
+    "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
+    "web-app/src/lib/exportImage.ts (via studioApi)",
+    "web-app/src/lib/remote/appStudio.ts (via studioApi)",
+    "web-app/src/lib/studio/arbiter.ts",
+    "web-app/src/lib/studio/cloud.ts (via studioApi)",
+    "web-app/src/lib/studio/studio.ts",
+    "web-app/src/services/models/default.ts (via releaseImageModelForChat)"
+  ],
+  "export_redacted_logs": [
+    "web-app/src/services/app/tauri.ts"
+  ],
+  "export_save_file": [
+    "web-app/src/containers/rooms/CompareRunPanel.tsx",
+    "web-app/src/containers/rooms/RoomControls.tsx (via CompareRunPanel)",
+    "web-app/src/lib/exportAction.ts (via exportDocument)",
+    "web-app/src/lib/exportFile.ts",
+    "web-app/src/lib/exportImage.ts"
+  ],
+  "factory_reset": [
+    "web-app/src/services/app/tauri.ts"
+  ],
+  "folder_trust_grandfather": [
+    "web-app/src/lib/grandfatherFolderTrust.ts",
+    "web-app/src/providers/DataProvider.tsx (via grandfatherFolderTrust)"
+  ],
+  "folder_trust_grant": [
+    "web-app/src/containers/TrustedFoldersCard.tsx (via trustFolder)",
+    "web-app/src/containers/rooms/RoomEditor.tsx (via trustFolder)",
+    "web-app/src/hooks/useFolderTrust.ts (via trustFolder)",
+    "web-app/src/lib/folderTrust.ts"
+  ],
+  "folder_trust_list": [
+    "web-app/src/containers/TrustedFoldersCard.tsx (via listTrustedFolders)",
+    "web-app/src/lib/folderTrust.ts"
+  ],
+  "folder_trust_revoke": [
+    "web-app/src/containers/TrustedFoldersCard.tsx (via revokeFolderTrust)",
+    "web-app/src/lib/folderTrust.ts"
+  ],
+  "get_attribution_settings": [
+    "web-app/src/containers/AttributionSettings.tsx (via getAttributionSettings)",
+    "web-app/src/lib/gitAttribution.ts"
+  ],
+  "get_compaction_policy": [
+    "web-app/src/components/TokenCounter.tsx (via getCompactionPolicy)",
+    "web-app/src/containers/ChatDetailsCards.tsx (via getCompactionPolicy)",
+    "web-app/src/containers/CompactionPolicySettings.tsx (via getCompactionPolicy)",
+    "web-app/src/containers/ThreadConversation.tsx (via getCompactionPolicy)",
+    "web-app/src/containers/WhatJanIsUsing.tsx (via getCompactionPolicy)",
+    "web-app/src/lib/compactionPolicy.ts",
+    "web-app/src/lib/custom-chat-transport.ts (via getCompactionPolicy)",
+    "web-app/src/lib/remote/appExtras.ts (via getCompactionPolicy)",
+    "web-app/src/lib/rooms/compactionSettings.ts (via getCompactionPolicy)",
+    "web-app/src/routes/cowork.tsx (via getCompactionPolicy)"
+  ],
+  "get_computer_exclusions": [
+    "web-app/src/containers/ComputerExclusionSettings.tsx (via getComputerExclusions)",
+    "web-app/src/lib/computerExclusions.ts"
+  ],
+  "get_mcp_auth_status": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "get_mcp_server_log": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "get_mcp_server_statuses": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "get_provider_keys": [
+    "web-app/src/containers/SettingsBackupCard.tsx",
+    "web-app/src/providers/DataProvider.tsx"
+  ],
+  "get_server_status": [
+    "web-app/src/services/app/tauri.ts"
+  ],
+  "get_server_summaries": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "get_system_theme": [
+    "web-app/src/components/solo/SoloRoot.tsx (via ThemeProvider)",
+    "web-app/src/providers/ThemeProvider.tsx",
+    "web-app/src/shell/MainRoot.tsx (via ThemeProvider)"
+  ],
+  "get_titlebar_layout": [
+    "web-app/src/components/WindowControls.tsx",
+    "web-app/src/components/solo/SoloRoot.tsx (via WindowControls)",
+    "web-app/src/shell/MainRoot.tsx (via WindowControls)"
+  ],
+  "get_tools": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "get_tools_for_servers": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "get_usage_ceilings": [
+    "web-app/src/containers/UsageCeilingsCard.tsx",
+    "web-app/src/routes/settings/local-api-server.tsx (via UsageCeilingsCard)"
+  ],
+  "inspect_group_folders": [
+    "web-app/src/components/shell/nav/GroupFoldersDialog.tsx (via inspectFolders)",
+    "web-app/src/lib/groups/folders.ts"
+  ],
+  "install_jan_cli": [
+    "web-app/src/routes/settings/general.tsx"
+  ],
+  "jev_key_clear": [
+    "web-app/src/containers/JevSettingsCard.tsx (via jevClearKey)",
+    "web-app/src/lib/jev.ts"
+  ],
+  "jev_key_set": [
+    "web-app/src/containers/JevSettingsCard.tsx (via jevSetKey)",
+    "web-app/src/lib/jev.ts"
+  ],
+  "jev_receipts": [
+    "web-app/src/containers/JevSettingsCard.tsx (via jevReceipts)",
+    "web-app/src/lib/jev.ts"
+  ],
+  "jev_rerank": [
+    "web-app/src/containers/JevSkillSuggestion.tsx (via eligibleSkills)",
+    "web-app/src/lib/jev.ts"
+  ],
+  "jev_status": [
+    "web-app/src/containers/JevSettingsCard.tsx (via jevStatus)",
+    "web-app/src/lib/jev.ts"
+  ],
+  "jev_suggest_model": [
+    "web-app/src/lib/jev.ts",
+    "web-app/src/lib/jevModelRouting.ts (via jevSuggestModel)"
+  ],
+  "jev_suggest_skill": [
+    "web-app/src/containers/JevSkillSuggestion.tsx (via jevSuggestSkill)",
+    "web-app/src/lib/jev.ts",
+    "web-app/src/lib/jevRouting.ts (via jevSuggestSkill)",
+    "web-app/src/lib/skillActivation.ts (via jevSuggestSkill)"
+  ],
+  "launch_claude_code_with_config": [
+    "web-app/src/routes/settings/claude-code.tsx"
+  ],
+  "list_open_apps": [
+    "web-app/src/containers/ComputerExclusionSettings.tsx (via listOpenApps)",
+    "web-app/src/lib/computerExclusions.ts"
+  ],
+  "mailbox_auto_reply": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_claim": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_list_sessions": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_mark_read": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_pending": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_reply": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_session_heartbeat": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_session_register": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_session_remove": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_session_revive": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_session_status": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_session_waiting": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_stop_approve": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_stop_pending": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_stop_resolve": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_take_for_delivery": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mcp_allow_once": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "mcp_forget_server": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "mcp_revoke_server": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "mcp_server_fingerprints": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "mcp_trust_report": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "mcp_trust_server": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "mcp_trusted_servers": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "migration_detect": [
+    "web-app/src/containers/MigrationAssistant.tsx (via migrationDetect)",
+    "web-app/src/lib/migration.ts"
+  ],
+  "migration_dismiss": [
+    "web-app/src/containers/MigrationAssistant.tsx (via migrationDismiss)",
+    "web-app/src/lib/migration.ts"
+  ],
+  "migration_execute": [
+    "web-app/src/containers/MigrationAssistant.tsx (via migrationExecute)",
+    "web-app/src/lib/migration.ts"
+  ],
+  "migration_plan": [
+    "web-app/src/containers/MigrationAssistant.tsx (via migrationPlan)",
+    "web-app/src/lib/migration.ts"
+  ],
+  "migration_rollback": [
+    "web-app/src/containers/MigrationAssistant.tsx (via migrationRollback)",
+    "web-app/src/lib/migration.ts"
+  ],
+  "migration_status": [
+    "web-app/src/lib/migration.ts"
+  ],
+  "network_ca_check": [
+    "web-app/src/routes/settings/https-proxy.tsx"
+  ],
+  "open_dialog": [
+    "web-app/src/services/dialog/tauri.ts"
+  ],
+  "open_session_path": [
+    "web-app/src/containers/CoworkCodePanel.tsx",
+    "web-app/src/containers/RenderMarkdown.tsx (via InlinePathLink)",
+    "web-app/src/containers/message/AgentToolWidget.tsx (via InlinePathLink)",
+    "web-app/src/containers/message/InlinePathLink.tsx",
+    "web-app/src/routes/cowork.tsx (via CoworkCodePanel)",
+    "web-app/src/services/opener/tauri.ts"
+  ],
+  "payload_usage_lookup": [
+    "web-app/src/lib/payloadUsage.ts"
+  ],
+  "payload_usage_record": [
+    "web-app/src/lib/custom-chat-transport.ts (via recordPayloadUsage)",
+    "web-app/src/lib/payloadUsage.ts",
+    "web-app/src/routes/cowork.tsx (via recordPayloadUsage)"
+  ],
+  "plugin:agent-tools|advertised_tool_schemas": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/SandboxToolchainGrants.tsx (via getSandboxToolchains)",
+    "web-app/src/lib/agentTools.ts",
+    "web-app/src/lib/agentTools.ts (via advertisedToolSchemas)",
+    "web-app/src/routes/cowork.tsx (via getSandboxToolchains)"
+  ],
+  "plugin:agent-tools|bash_job_kill": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/coworkCancel.ts (via bashJobKill)"
+  ],
+  "plugin:agent-tools|bash_jobs_list": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/coworkJobsPoller.ts (via bashJobsList)"
+  ],
+  "plugin:agent-tools|direct_edit_authorize": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/hooks/useDirectEditGrants.ts (via directEditAuthorize)",
+    "web-app/src/lib/rooms/fullTools.ts (via directEditAuthorize)",
+    "web-app/src/lib/rooms/roomTools.ts (via directEditAuthorize)"
+  ],
+  "plugin:agent-tools|direct_edit_capability": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/hooks/useDirectEditGrants.ts (via directEditCapability)"
+  ],
+  "plugin:agent-tools|direct_edit_revoke": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/hooks/useDirectEditGrants.ts (via directEditRevoke)"
+  ],
+  "plugin:agent-tools|direct_edit_revoke_session": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/hooks/useDirectEditGrants.ts (via directEditRevokeSession)"
+  ],
+  "plugin:agent-tools|environment_readiness": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkEnvironmentReadiness.tsx (via environmentReadiness)"
+  ],
+  "plugin:agent-tools|environment_readiness_retry": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkEnvironmentReadiness.tsx (via environmentReadinessRetry)"
+  ],
+  "plugin:agent-tools|execute_tool": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via executeTool)"
+  ],
+  "plugin:agent-tools|execute_tool_streaming": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via executeToolStreaming)"
+  ],
+  "plugin:agent-tools|execute_tool_unsandboxed_retry": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via executeToolUnsandboxedRetry)"
+  ],
+  "plugin:agent-tools|execute_tool_unsandboxed_withdraw": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via executeToolUnsandboxedWithdraw)"
+  ],
+  "plugin:agent-tools|fire_post_tool_batch": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via firePostToolBatch)"
+  ],
+  "plugin:agent-tools|managed_worktree_capability": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/hooks/useDirectEditGrants.ts (via managedWorktreeCapability)"
+  ],
+  "plugin:agent-tools|memory_conflicts": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryConflicts)"
+  ],
+  "plugin:agent-tools|memory_delete": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentWorkspace.ts (via memoryDelete)"
+  ],
+  "plugin:agent-tools|memory_export": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryExport)"
+  ],
+  "plugin:agent-tools|memory_import": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryImport)"
+  ],
+  "plugin:agent-tools|memory_list": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentWorkspace.ts (via memoryList)"
+  ],
+  "plugin:agent-tools|memory_proposal_resolve": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/MemoryProposalCard.tsx (via memoryProposalResolve)"
+  ],
+  "plugin:agent-tools|memory_proposals_list": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/hooks/useMemoryProposals.ts (via memoryProposalsList)"
+  ],
+  "plugin:agent-tools|memory_read": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentWorkspace.ts (via memoryRead)"
+  ],
+  "plugin:agent-tools|memory_record_commit": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryRecordCommit)"
+  ],
+  "plugin:agent-tools|memory_record_edit": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryRecordEdit)"
+  ],
+  "plugin:agent-tools|memory_record_forget": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryRecordForget)"
+  ],
+  "plugin:agent-tools|memory_record_get": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/WhatJanIsUsing.tsx (via memoryRecordGet)"
+  ],
+  "plugin:agent-tools|memory_record_move_scope": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts"
+  ],
+  "plugin:agent-tools|memory_record_pin": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryRecordPin)"
+  ],
+  "plugin:agent-tools|memory_record_propose": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryRecordPropose)"
+  ],
+  "plugin:agent-tools|memory_record_restore": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryRecordRestore)"
+  ],
+  "plugin:agent-tools|memory_record_set_expiration": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts"
+  ],
+  "plugin:agent-tools|memory_record_uses": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/memoryUses.ts (via memoryRecordUses)"
+  ],
+  "plugin:agent-tools|memory_records_list": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryRecordsList)"
+  ],
+  "plugin:agent-tools|memory_retrieve": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/custom-chat-transport.ts (via memoryRetrieve)"
+  ],
+  "plugin:agent-tools|memory_scope_clear": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryScopeClear)"
+  ],
+  "plugin:agent-tools|memory_settings_get": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memorySettingsGet)"
+  ],
+  "plugin:agent-tools|memory_settings_update": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/memoryBinding.ts",
+    "web-app/src/routes/settings/memory.tsx (via memorySettingsUpdate)",
+    "web-app/src/routes/settings/memory.tsx (via setMemoryEnabled)"
+  ],
+  "plugin:agent-tools|memory_storage_summary": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/settings/memory.tsx (via memoryStorageSummary)"
+  ],
+  "plugin:agent-tools|memory_write": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentWorkspace.ts (via memoryWrite)"
+  ],
+  "plugin:agent-tools|permission_audit_recent": [
+    "web-app/src/lib/permissionAudit.ts",
+    "web-app/src/routes/settings/permissions.tsx (via permissionAuditRecent)"
+  ],
+  "plugin:agent-tools|preview_change": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via previewChange)"
+  ],
+  "plugin:agent-tools|project_init_accept": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkProjectInit.tsx (via projectInitAccept)"
+  ],
+  "plugin:agent-tools|project_list_dir": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkCodePanel.tsx (via projectListDir)",
+    "web-app/src/hooks/useCompatManifest.ts (via projectListDir)",
+    "web-app/src/lib/remote/appExtras.ts (via projectListDir)",
+    "web-app/src/lib/safeReferences.ts (via projectListDir)",
+    "web-app/src/routes/cowork.tsx (via projectListDir)"
+  ],
+  "plugin:agent-tools|project_read_file": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkCodePanel.tsx (via projectReadFile)",
+    "web-app/src/hooks/useCompatManifest.ts (via projectReadFile)",
+    "web-app/src/lib/remote/appExtras.ts (via projectReadFile)",
+    "web-app/src/lib/safeReferences.ts (via projectReadFile)",
+    "web-app/src/routes/cowork.tsx (via projectReadFile)"
+  ],
+  "plugin:agent-tools|project_survey": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkProjectInit.tsx (via projectSurvey)"
+  ],
+  "plugin:agent-tools|redo_turn": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkTurnUndo.tsx (via redoTurn)"
+  ],
+  "plugin:agent-tools|sandbox_status": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via sandboxStatus)"
+  ],
+  "plugin:agent-tools|sandbox_toolchain_grant": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/SandboxToolchainGrants.tsx (via sandboxToolchainGrant)"
+  ],
+  "plugin:agent-tools|sandbox_toolchain_grants": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/SandboxToolchainGrants.tsx (via sandboxToolchainGrants)"
+  ],
+  "plugin:agent-tools|sandbox_toolchain_revoke": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/SandboxToolchainGrants.tsx (via sandboxToolchainRevoke)"
+  ],
+  "plugin:agent-tools|sandbox_toolchains": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via sandboxToolchains)"
+  ],
+  "plugin:agent-tools|secrets_redact": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/redactToolOutput.ts (via secretsRedact)"
+  ],
+  "plugin:agent-tools|session_workspace_delete": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts"
+  ],
+  "plugin:agent-tools|session_workspace_path": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/hooks/useSessionWorkspacePath.ts (via sessionWorkspacePath)",
+    "web-app/src/routes/artifacts.tsx (via sessionWorkspacePath)"
+  ],
+  "plugin:agent-tools|session_workspace_sweep": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts"
+  ],
+  "plugin:agent-tools|skill_delete": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/skillStore.ts (via skillDelete)"
+  ],
+  "plugin:agent-tools|skill_list": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/skillStore.ts (via skillList)"
+  ],
+  "plugin:agent-tools|skill_read": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/skillStore.ts (via skillRead)"
+  ],
+  "plugin:agent-tools|skill_write": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/skillStore.ts (via skillWrite)"
+  ],
+  "plugin:agent-tools|thread_workspace_delete": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via threadWorkspaceDelete)"
+  ],
+  "plugin:agent-tools|thread_workspace_path": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/chatToolGuard.ts (via threadWorkspacePath)"
+  ],
+  "plugin:agent-tools|thread_workspace_sweep": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via threadWorkspaceSweep)"
+  ],
+  "plugin:agent-tools|tool_resources_finish_run": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/routes/cowork.tsx (via finishRunResources)"
+  ],
+  "plugin:agent-tools|tool_schemas": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts"
+  ],
+  "plugin:agent-tools|undo_journal": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkTurnUndo.tsx (via undoJournal)"
+  ],
+  "plugin:agent-tools|undo_turn": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/containers/CoworkTurnUndo.tsx (via undoTurn)"
+  ],
+  "plugin:agent-tools|workspace_path": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentWorkspace.ts (via workspacePath)"
+  ],
+  "plugin:hardware|get_system_snapshot": [
+    "web-app/src/services/hardware/tauri.ts"
+  ],
+  "plugin:hardware|refresh_system_info": [
+    "web-app/src/services/hardware/tauri.ts"
+  ],
+  "plugin:llamacpp|cancel_model_load": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts",
+    "web-app/src/lib/custom-chat-transport.ts (via cancelModelLoad)"
+  ],
+  "plugin:llamacpp|cleanup_llama_processes": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts"
+  ],
+  "plugin:llamacpp|engine_addon_cancel": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts",
+    "web-app/src/services/engineAddon.ts (via engineAddonCancel)"
+  ],
+  "plugin:llamacpp|engine_addon_check": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts",
+    "web-app/src/services/engineAddon.ts (via engineAddonCheck)"
+  ],
+  "plugin:llamacpp|engine_addon_download": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts",
+    "web-app/src/services/engineAddon.ts (via engineAddonDownload)"
+  ],
+  "plugin:llamacpp|engine_addon_install_file": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts",
+    "web-app/src/services/engineAddon.ts (via engineAddonInstallFile)"
+  ],
+  "plugin:llamacpp|engine_addon_remove": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts",
+    "web-app/src/services/engineAddon.ts (via engineAddonRemove)"
+  ],
+  "plugin:llamacpp|engine_addon_restart_pending": [
+    "extensions/llamacpp-extension/src/index.ts (via engineAddonRestartPending)",
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts"
+  ],
+  "plugin:llamacpp|engine_addon_status": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts",
+    "web-app/src/services/engineAddon.ts (via engineAddonStatus)"
+  ],
+  "plugin:llamacpp|engine_addon_verify": [
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts",
+    "web-app/src/services/engineAddon.ts (via engineAddonVerify)"
+  ],
+  "plugin:llamacpp|sha256_file": [
+    "extensions/llamacpp-extension/src/index.ts (via sha256File)",
+    "src-tauri/plugins/tauri-plugin-llamacpp/guest-js/index.ts"
+  ],
+  "plugin:mlx|find_mlx_session_by_model": [
+    "extensions/mlx-extension/src/index.ts",
+    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts",
+    "web-app/src/lib/model-factory.ts"
+  ],
+  "plugin:mlx|get_mlx_all_sessions": [
+    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts"
+  ],
+  "plugin:mlx|get_mlx_loaded_models": [
+    "extensions/mlx-extension/src/index.ts",
+    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts"
+  ],
+  "plugin:mlx|get_mlx_random_port": [
+    "extensions/mlx-extension/src/index.ts",
+    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts"
+  ],
+  "plugin:mlx|is_mlx_process_running": [
+    "extensions/mlx-extension/src/index.ts",
+    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts"
+  ],
+  "plugin:mlx|load_mlx_model": [
+    "extensions/mlx-extension/src/index.ts (via loadMlxModel)",
+    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts"
+  ],
+  "plugin:mlx|unload_mlx_model": [
+    "extensions/mlx-extension/src/index.ts (via unloadMlxModel)",
+    "src-tauri/plugins/tauri-plugin-mlx/guest-js/index.ts"
+  ],
+  "plugin:rag|parse_document": [
+    "src-tauri/plugins/tauri-plugin-rag/guest-js/index.ts"
+  ],
+  "plugin:vector-db|chunk_text": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|create_collection": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|create_file": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|delete_chunks": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|delete_collection": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|delete_file": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|get_chunks": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|get_status": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|insert_chunks": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|list_attachments": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|memory_clear": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|memory_index": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|memory_search": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:vector-db|search_collection": [
+    "src-tauri/plugins/tauri-plugin-vector-db/guest-js/index.ts"
+  ],
+  "plugin:websearch|image_search": [
+    "src-tauri/plugins/tauri-plugin-websearch/guest-js/index.ts",
+    "web-app/src/lib/webSearchTool.ts (via imageSearch)"
+  ],
+  "plugin:websearch|web_fetch": [
+    "src-tauri/plugins/tauri-plugin-websearch/guest-js/index.ts",
+    "web-app/src/lib/webSearchTool.ts (via webFetch)"
+  ],
+  "plugin:websearch|web_search": [
+    "src-tauri/plugins/tauri-plugin-websearch/guest-js/index.ts",
+    "web-app/src/lib/webSearchTool.ts (via webSearch)"
+  ],
+  "preview_register": [
+    "web-app/src/components/HtmlArtifact.tsx (via usePreviewSource)",
+    "web-app/src/containers/CoworkPreviewPanel.tsx (via usePreviewSource)",
+    "web-app/src/containers/message/WidgetFrame.tsx (via usePreviewSource)",
+    "web-app/src/hooks/usePreviewSource.ts"
+  ],
+  "preview_release": [
+    "web-app/src/components/HtmlArtifact.tsx (via usePreviewSource)",
+    "web-app/src/containers/CoworkPreviewPanel.tsx (via usePreviewSource)",
+    "web-app/src/containers/message/WidgetFrame.tsx (via usePreviewSource)",
+    "web-app/src/hooks/usePreviewSource.ts"
+  ],
+  "provider_endpoint_diagnostics": [
+    "web-app/src/hooks/useEndpointLocations.ts (via endpointDiagnostics)",
+    "web-app/src/lib/providerFetch.ts"
+  ],
+  "provider_endpoint_refresh": [
+    "web-app/src/hooks/useEndpointLocations.ts (via refreshEndpoint)",
+    "web-app/src/lib/providerFetch.ts"
+  ],
+  "provider_http_cancel": [
+    "web-app/src/lib/hostInvoke.ts (via hasTauriRuntime)",
+    "web-app/src/lib/providerFetch.ts"
+  ],
+  "provider_http_request": [
+    "web-app/src/lib/huggingface.ts"
+  ],
+  "provider_http_stream": [
+    "web-app/src/lib/hostInvoke.ts (via hasTauriRuntime)",
+    "web-app/src/lib/providerFetch.ts"
+  ],
+  "read_logs": [
+    "web-app/src/services/app/tauri.ts"
+  ],
+  "read_logs_since": [
+    "web-app/src/services/app/tauri.ts"
+  ],
+  "register_provider_config": [
+    "web-app/src/lib/migrateLocalStorageSettings.ts",
+    "web-app/src/providers/DataProvider.tsx"
+  ],
+  "register_secret_values": [
+    "web-app/src/lib/providerHeaderSecrets.ts"
+  ],
+  "remote_cancel_pairing": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_confirm_pairing": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_emit_event": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_get_status": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_list_devices": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_revoke_device": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_rpc_respond": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_set_config": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_set_preview": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_start_pairing": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "remote_upload_take": [
+    "web-app/src/containers/RemoteAccessSettings.tsx (via remoteApi)",
+    "web-app/src/containers/RemotePairingConfirm.tsx (via remoteApi)",
+    "web-app/src/hooks/useRemoteAccess.ts (via remoteApi)",
+    "web-app/src/hooks/useRemoteBridge.ts (via remoteApi)",
+    "web-app/src/lib/remote/api.ts",
+    "web-app/src/lib/remote/appActions.ts (via remoteApi)",
+    "web-app/src/lib/remote/sources.ts (via remoteApi)"
+  ],
+  "rename_mcp_server": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "room_workspace_apply": [
+    "web-app/src/containers/rooms/RoomTranscript.tsx (via applyRoomWorkspace)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "room_workspace_apply_preview": [
+    "web-app/src/containers/rooms/RoomTranscript.tsx (via roomWorkspaceApplyPreview)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "room_workspace_changes": [
+    "web-app/src/lib/rooms/controller.ts (via roomWorkspaceChanges)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "room_workspace_ensure": [
+    "web-app/src/lib/rooms/controller.ts (via ensureRoomWorkspace)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "room_workspace_mark_turn": [
+    "web-app/src/lib/rooms/controller.ts (via markRoomWorkspaceTurn)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "room_workspace_patch": [
+    "web-app/src/containers/rooms/RoomTranscript.tsx (via roomWorkspacePatch)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "room_workspace_remove": [
+    "web-app/src/lib/rooms/controller.ts (via removeRoomWorkspaces)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "room_workspace_reset": [
+    "web-app/src/containers/rooms/RoomTranscript.tsx (via resetRoomWorkspace)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "room_workspace_undo_apply": [
+    "web-app/src/containers/rooms/RoomTranscript.tsx (via undoRoomWorkspaceApply)",
+    "web-app/src/services/rooms.ts"
+  ],
+  "run_cc_context_hooks": [
+    "web-app/src/lib/ccContextHooks.ts",
+    "web-app/src/lib/custom-chat-transport.ts (via runCcContextHooks)"
+  ],
+  "save_attachment_file": [
+    "web-app/src/services/uploads/default.ts"
+  ],
+  "save_dialog": [
+    "web-app/src/services/dialog/tauri.ts"
+  ],
+  "scan_local_models": [
+    "web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx (via scanLocalModels)",
+    "web-app/src/lib/localModelScan.ts"
+  ],
+  "schedule_cancel_run": [
+    "web-app/src/containers/schedules/ScheduleRunHistory.tsx (via scheduleCancelRun)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_delete": [
+    "web-app/src/containers/schedules/useSchedules.ts (via scheduleDelete)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_os_disable": [
+    "web-app/src/containers/schedules/OsSchedulerCard.tsx (via scheduleOsDisable)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_os_enable": [
+    "web-app/src/containers/schedules/OsSchedulerCard.tsx (via scheduleOsEnable)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_os_status": [
+    "web-app/src/containers/schedules/OsSchedulerCard.tsx (via scheduleOsStatus)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_preview": [
+    "web-app/src/containers/schedules/ScheduleEditor.tsx (via schedulePreview)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_run_now": [
+    "web-app/src/containers/schedules/useSchedules.ts (via scheduleRunNow)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_runs": [
+    "web-app/src/containers/schedules/ScheduleRunHistory.tsx (via scheduleRuns)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_save": [
+    "web-app/src/containers/schedules/useSchedules.ts (via scheduleSave)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_set_enabled": [
+    "web-app/src/containers/schedules/useSchedules.ts (via scheduleSetEnabled)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_time_zones": [
+    "web-app/src/containers/schedules/ScheduleEditor.tsx (via scheduleTimeZones)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedule_tools": [
+    "web-app/src/containers/schedules/ScheduleEditor.tsx (via scheduleTools)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "schedules_list": [
+    "web-app/src/containers/schedules/useSchedules.ts (via schedulesList)",
+    "web-app/src/lib/schedules.ts"
+  ],
+  "session_export_save": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via exportBundle)",
+    "web-app/src/lib/sessionBundle.ts"
+  ],
+  "session_folder_identity": [
+    "web-app/src/containers/CoworkHandoffNotice.tsx (via folderIdentity)",
+    "web-app/src/lib/sessionHandoff.ts"
+  ],
+  "session_handoff_save": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via exportHandoff)",
+    "web-app/src/lib/sessionHandoff.ts"
+  ],
+  "session_import_open": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via openBundle)",
+    "web-app/src/lib/sessionBundle.ts"
+  ],
+  "set_attribution_settings": [
+    "web-app/src/containers/AttributionSettings.tsx (via setAttributionSettings)",
+    "web-app/src/lib/gitAttribution.ts"
+  ],
+  "set_close_to_tray": [
+    "web-app/src/services/app/tauri.ts"
+  ],
+  "set_compaction_policy": [
+    "web-app/src/containers/ChatDetailsCards.tsx (via setCompactionPolicy)",
+    "web-app/src/containers/CompactionPolicySettings.tsx (via setCompactionPolicy)",
+    "web-app/src/lib/compactionPolicy.ts"
+  ],
+  "set_computer_exclusions": [
+    "web-app/src/containers/ComputerExclusionSettings.tsx (via setComputerExclusions)",
+    "web-app/src/lib/computerExclusions.ts"
+  ],
+  "set_download_speed_limit": [
+    "web-app/src/services/app/tauri.ts"
+  ],
+  "set_gtk_prefer_dark": [
+    "web-app/src/components/solo/SoloRoot.tsx (via ThemeProvider)",
+    "web-app/src/providers/ThemeProvider.tsx",
+    "web-app/src/shell/MainRoot.tsx (via ThemeProvider)"
+  ],
+  "set_model_param_defaults": [
+    "web-app/src/providers/DataProvider.tsx"
+  ],
+  "set_provider_tls_trust": [
+    "web-app/src/providers/DataProvider.tsx"
+  ],
+  "set_server_run_in_background": [
+    "web-app/src/services/app/tauri.ts"
+  ],
+  "set_titlebar_colors": [
+    "web-app/src/components/solo/SoloRoot.tsx (via ThemeProvider)",
+    "web-app/src/providers/ThemeProvider.tsx",
+    "web-app/src/shell/MainRoot.tsx (via ThemeProvider)"
+  ],
+  "set_usage_ceilings": [
+    "web-app/src/containers/UsageCeilingsCard.tsx",
+    "web-app/src/routes/settings/local-api-server.tsx (via UsageCeilingsCard)"
+  ],
+  "settings_backup_load": [
+    "web-app/src/containers/SettingsBackupCard.tsx",
+    "web-app/src/routes/settings/general.tsx (via SettingsBackupCard)"
+  ],
+  "settings_backup_save": [
+    "web-app/src/containers/SettingsBackupCard.tsx",
+    "web-app/src/routes/settings/general.tsx (via SettingsBackupCard)"
+  ],
+  "settings_backup_store_provider_keys": [
+    "web-app/src/containers/SettingsBackupCard.tsx"
+  ],
+  "start_mcp_server_now": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "stop_mcp_server_now": [
+    "web-app/src/services/mcp/tauri.ts"
+  ],
+  "take_pending_webdata_reset": [
+    "web-app/src/main.tsx"
+  ],
+  "take_settings_recovery_notice": [
+    "web-app/src/lib/settingsRecoveryNotice.ts"
+  ],
+  "thin_client_connect": [
+    "web-app/src/mobile/main.tsx (via connectDesktop)",
+    "web-app/src/mobile/shell.ts"
+  ],
+  "thin_client_default": [
+    "web-app/src/mobile/main.tsx (via defaultDesktop)",
+    "web-app/src/mobile/shell.ts"
+  ],
+  "thin_client_forget": [
+    "web-app/src/mobile/main.tsx (via forgetPin)",
+    "web-app/src/mobile/shell.ts"
+  ],
+  "tool_activity_diff": [
+    "web-app/src/containers/CoworkTimelinePanel.tsx (via loadToolDiff)",
+    "web-app/src/lib/toolActivity.ts"
+  ],
+  "tool_activity_items": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via loadToolActivity)",
+    "web-app/src/hooks/useCampaignTaskSteps.ts (via loadToolActivity)",
+    "web-app/src/lib/toolActivity.ts",
+    "web-app/src/routes/cowork.tsx (via loadToolActivity)"
+  ],
+  "tool_activity_record": [
+    "web-app/src/containers/ThreadConversation.tsx (via recordToolActivity)",
+    "web-app/src/lib/coworkChildRunner.ts (via recordToolActivity)",
+    "web-app/src/lib/coworkDispatch.ts (via recordToolActivity)",
+    "web-app/src/lib/coworkRunner.ts (via recordToolActivity)",
+    "web-app/src/lib/sessionStopGate.ts (via recordToolActivity)",
+    "web-app/src/lib/toolActivity.ts"
+  ],
+  "uninstall_jan_cli": [
+    "web-app/src/routes/settings/general.tsx"
+  ],
+  "unregister_provider_config": [
+    "web-app/src/providers/DataProvider.tsx"
+  ],
+  "utility_agent_record": [
+    "web-app/src/lib/utilityAgents.ts"
+  ],
+  "web_preview_back": [
+    "web-app/src/hooks/useNativeWebPreview.ts (via hasBlockingOverlay)",
+    "web-app/src/lib/nativeWebPreview.ts"
+  ],
+  "web_preview_create": [
+    "web-app/src/hooks/useNativeWebPreview.ts (via hasBlockingOverlay)",
+    "web-app/src/lib/nativeWebPreview.ts"
+  ],
+  "web_preview_forward": [
+    "web-app/src/hooks/useNativeWebPreview.ts (via hasBlockingOverlay)",
+    "web-app/src/lib/nativeWebPreview.ts"
+  ],
+  "web_preview_navigate": [
+    "web-app/src/hooks/useNativeWebPreview.ts (via hasBlockingOverlay)",
+    "web-app/src/lib/nativeWebPreview.ts"
+  ],
+  "web_preview_reload": [
+    "web-app/src/hooks/useNativeWebPreview.ts (via hasBlockingOverlay)",
+    "web-app/src/lib/nativeWebPreview.ts"
+  ]
+}

@@ -24,7 +24,7 @@
     "embeddingSub": "임베딩 모델 {{count}}개",
     "addedSub": "Flint에 추가됨",
     "repliesToday": "오늘의 답변",
-    "repliesSub": "측정된 답변 {{count}}개",
+    "repliesSub_other": "측정된 응답 {{count}}개",
     "apiKeys": "API 키",
     "fallbackSub": "대체 키 {{count}}개",
     "noFallbackSub": "대체 키 없음",
@@ -34,7 +34,8 @@
     "title": "현재 로드됨",
     "empty": "로드된 모델이 없습니다",
     "emptyHint": "아래 표에서 로컬 모델을 시작하거나 메시지를 보내 보세요.",
-    "unload": "언로드"
+    "unload": "언로드",
+    "speedBar": "평균 속도(로드된 가장 빠른 모델 대비)"
   },
   "speed": {
     "title": "생성 속도",
@@ -66,7 +67,8 @@
     "loaded": "로드됨",
     "ready": "준비됨",
     "noKey": "API 키 없음",
-    "keyless": "키 필요 없음"
+    "keyless": "키 필요 없음",
+    "noCredentials": "AWS 자격 증명 없음"
   },
   "installed": {
     "title": "설치된 모델",
@@ -106,7 +108,10 @@
     "connection": "연결",
     "engineSettings": "엔진 설정",
     "memorySettings": "메모리 및 캐시",
-    "danger": "위험 영역"
+    "settingNotSaved": "\"{{setting}}\" 설정을 저장하지 못했습니다",
+    "danger": "위험 영역",
+    "networkNote": "내 네트워크 · {{host}}(으)로 전송",
+    "reachUnknownNote": "이 공급자가 실행되는 위치 확인 중"
   },
   "mcp": {
     "title": "도구 및 MCP",
@@ -125,7 +130,8 @@
     "kpiApprovedAll": "모든 도구 호출이 허용됩니다",
     "tabServers": "서버",
     "tabRouting": "라우팅 및 제한",
-    "toolsCount": "도구 {{count}}개",
+    "toolsCount_one": "도구 {{count}}개",
+    "toolsCount_other": "도구 {{count}}개",
     "filterLabel": "서버 표시",
     "filterAll": "전체",
     "filterOn": "켜짐",
@@ -135,7 +141,7 @@
     "viewList": "목록",
     "callsPerMin": "호출/분",
     "window": "최근 {{count}}분",
-    "needsExtension": "Jan Browser Extension이 필요합니다",
+    "needsExtension": "브라우저 확장 프로그램이 필요합니다",
     "moreActions": "{{serverName}} 추가 작업",
     "addTile": "MCP 서버 추가",
     "addTileHint": "STDIO, HTTP 또는 SSE"
@@ -179,5 +185,46 @@
     "kindAudio": "오디오",
     "kindVideo": "비디오",
     "htmlPage": "HTML 페이지"
+  },
+  "addon": {
+    "offerTitle": "NVIDIA GPU에서 더 빠르게",
+    "offerBody": "이 GPU에서는 로컬 모델이 보통 Vulkan보다 CUDA 엔진에서 더 빠릅니다. 초당 토큰이 흔히 10-70% 늘고, 모델이 VRAM에 다 들어가지 않을 때는 차이가 더 큽니다. 약 {{size}} 크기의 한 번만 받는 다운로드입니다.",
+    "download": "다운로드",
+    "notNow": "나중에",
+    "dontRemind": "다시 알리지 않기",
+    "gettingTitle": "CUDA 엔진 받는 중",
+    "downloading": "{{total}} 중 {{received}} 다운로드됨",
+    "verifying": "다운로드 확인 중...",
+    "installing": "설치 중...",
+    "vulkanMeanwhile": "그동안은 Vulkan을 사용합니다. 다음 모델 로드부터 CUDA로 바뀝니다.",
+    "cancel": "취소",
+    "installedTitle": "CUDA 엔진 설치됨",
+    "installedBody": "다음 모델 로드부터 사용됩니다.",
+    "ok": "확인",
+    "failedTitle": "CUDA 엔진을 받지 못했습니다",
+    "retry": "다시 시도",
+    "driverTitle": "NVIDIA 드라이버를 업데이트하세요",
+    "driverBody": "더 빠른 CUDA 엔진을 쓰려면 NVIDIA 드라이버를 업데이트하세요. 설치됨: {{current}}, 필요: R{{min}} 이상. 그때까지는 Vulkan을 사용합니다.",
+    "close": "닫기",
+    "panelTitle": "엔진 애드온",
+    "panelDesc": "요청할 때만 받는 추가 GPU 엔진입니다. Vulkan은 대체 수단으로 남습니다.",
+    "cudaName": "NVIDIA CUDA 엔진",
+    "inUse": "사용 중",
+    "unavailableBuild": "이 빌드에서는 엔진 애드온을 사용할 수 없습니다.",
+    "installedVersion": "설치됨: {{version}}, {{size}}",
+    "repairNeeded": "손상되어 Vulkan을 사용 중입니다. 복구하려면 다시 다운로드하세요.",
+    "notInstalledOffer": "설치되지 않음. 이 GPU에서 보통 Vulkan보다 빠릅니다(약 {{size}}).",
+    "repair": "복구",
+    "remove": "제거",
+    "installFile": "파일에서 설치...",
+    "checkAgain": "다시 확인",
+    "remindSetting": "모델을 불러올 때 CUDA 엔진 제안",
+    "errors": {
+      "offline": "GitHub에 연결할 수 없습니다. 나중에 다시 시도하거나 파일에서 애드온을 설치하세요.",
+      "notPublished": "이 버전용 CUDA 엔진이 아직 게시되지 않았습니다.",
+      "diskSpace": "CUDA 엔진을 위한 디스크 여유 공간이 부족합니다.",
+      "verify": "다운로드가 검증을 통과하지 못해 설치하지 않았습니다.",
+      "mismatch": "이 애드온은 다른 Flint 버전용으로 빌드되었습니다."
+    }
   }
 }

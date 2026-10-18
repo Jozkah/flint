@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { route } from '@/constants/routes'
 import {
   SettingsPageBody,
@@ -25,8 +26,9 @@ import {
   withTimeout,
 } from '@/lib/utils'
 import { ApiKeyInput } from '@/containers/ApiKeyInput'
+import { LocalModelSelect } from '@/containers/LocalModelSelect'
 import { UsageCeilingsCard } from '@/containers/UsageCeilingsCard'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { LogViewer } from '@/components/LogViewer'
 import { ensureModelForServer } from '@/utils/ensureModelForServer'
@@ -37,22 +39,14 @@ import {
   PopoverContent,
 } from '@/components/ui/popover'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
   LoaderCircle,
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
-import { BrandMark } from '@/containers/engine/BrandMark'
-import { modelLogo } from '@/lib/brandLogos'
 import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.local_api_server as any)({
-  component: LocalAPIServerContent,
+  component: desktopOnlyRoute(LocalAPIServerContent, 'common:local_api_server'),
 })
 
 function LocalAPIServerContent() {
@@ -81,15 +75,6 @@ function LocalAPIServerContent() {
     defaultModelLocalApiServer,
     setDefaultModelLocalApiServer,
   } = useLocalApiServer()
-
-  const providers = useModelProvider((state) => state.providers)
-  const localModels = useMemo(
-    () =>
-      providers
-        .filter((p) => p.provider === 'llamacpp' || p.provider === 'mlx')
-        .flatMap((p) => p.models.map((m) => ({ id: m.id, provider: p.provider }))),
-    [providers]
-  )
 
   const { serverStatus, setServerStatus } = useAppState()
   const [showApiKeyError, setShowApiKeyError] = useState(false)
@@ -121,8 +106,8 @@ function LocalAPIServerContent() {
     // Validate API key before starting server
     if (serverStatus === 'stopped') {
       console.log('Starting server with port:', serverPort)
-      toast.info('Starting server...', {
-        description: `Attempting to start server on port ${serverPort}`,
+      toast.info(t('uiLeftovers:localApi.starting'), {
+        description: t('uiLeftovers:localApi.startingDesc', { port: serverPort }),
       })
 
       // if (!apiKey || apiKey.toString().trim().length === 0) {
@@ -291,7 +276,7 @@ function LocalAPIServerContent() {
             <PopoverTrigger asChild>
               <Button variant="outline" className="pointer-coarse:h-11">
                 <Icon name="x-sliders" size={14} />
-                Configuration
+                {t('uiLeftovers:configuration')}
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -487,90 +472,34 @@ function LocalAPIServerContent() {
                   />
                 )}
                 <CardItem
+                  anchor="settings-local-api-server-default-model"
                   title={t('settings:localApiServer.defaultModel')}
                   description={t('settings:localApiServer.defaultModelDesc')}
                   actions={
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full min-w-[220px] justify-between pointer-coarse:h-11 sm:w-auto"
-                        >
-                          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                            {defaultModelLocalApiServer ? (
-                              <>
-                                <span className="inline-flex h-[18px] shrink-0 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium">
-                                  Local
-                                </span>
-                                <BrandMark
-                                  logo={modelLogo(defaultModelLocalApiServer.model)}
-                                  name={defaultModelLocalApiServer.model}
-                                  size={16}
-                                  className="rounded-full"
-                                />
-                                <span className="min-w-0 flex-1 truncate text-left">
-                                  {providers
-                                    .find(
-                                      (p) =>
-                                        p.provider ===
-                                        defaultModelLocalApiServer.provider
-                                    )
-                                    ?.models.find(
-                                      (m) =>
-                                        m.id === defaultModelLocalApiServer.model
-                                    )?.name ?? defaultModelLocalApiServer.model}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="truncate">
-                                {t(
-                                  'settings:localApiServer.defaultModelPlaceholder'
-                                )}
-                              </span>
-                            )}
-                          </span>
-                          <Icon name="arrow-down" size={12} className="opacity-70" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-64 max-h-60 overflow-y-auto">
-                        {localModels.map(({ id: modelId, provider }) => (
-                          <DropdownMenuItem
-                            key={`${provider}/${modelId}`}
-                            className={cn(
-                              'cursor-pointer my-0.5',
-                              defaultModelLocalApiServer?.model === modelId &&
-                                defaultModelLocalApiServer?.provider ===
-                                  provider &&
-                                'bg-accent'
-                            )}
-                            onClick={() =>
-                              setDefaultModelLocalApiServer({
-                                model: modelId,
-                                provider,
-                              })
-                            }
-                          >
-                            <span className="truncate font-mono text-xs">{modelId}</span>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="w-full min-w-0 sm:w-64 sm:max-w-full">
+                      <LocalModelSelect
+                        value={defaultModelLocalApiServer}
+                        onChange={setDefaultModelLocalApiServer}
+                      />
+                    </div>
                   }
                 />
               </Card>
 
               <Card>
                 <CardItem
-                  title="Server Status"
+                  title={t('uiLeftovers:localApi.status')}
                   description={
                     isServerRunning
-                      ? 'The server is currently running.'
-                      : 'The server is stopped.'
+                      ? t('uiLeftovers:localApi.runningDesc')
+                      : t('uiLeftovers:localApi.stoppedDesc')
                   }
                   actions={
                     <>
                       <Chip tone={isServerRunning ? 'ok' : 'neutral'} dot live={isServerRunning}>
-                        {isServerRunning ? 'Running' : 'Stopped'}
+                        {isServerRunning
+                          ? t('uiLeftovers:localApi.running')
+                          : t('uiLeftovers:localApi.stopped')}
                       </Chip>
                       {isServerRunning && (
                         <code className="inline-flex h-[30px] items-center rounded-lg bg-muted px-2.5 font-mono text-[11.5px] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
@@ -609,14 +538,14 @@ function LocalAPIServerContent() {
               <UsageCeilingsCard />
 
               <Card
-                title="Server Log"
+                title={t('settings:localApiServer.serverLog')}
                 aside={
                   <Button
                     variant="outline"
                     onClick={handleOpenLogs}
                     className="pointer-coarse:h-11"
                   >
-                    Open in New Window
+                    {t('settings:localApiServer.openInNewWindow')}
                   </Button>
                 }
               >

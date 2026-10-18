@@ -29,6 +29,8 @@ type Props = {
   onChange: (mode: CoworkMode) => void
   /** `pill` in a split-pane composer row; `quiet` under the composer. */
   variant?: 'pill' | 'quiet'
+  /** The modes offered; all of them unless the session's runner limits it. */
+  options?: readonly CoworkMode[]
 }
 
 /**
@@ -40,7 +42,12 @@ type Props = {
  * here, and every option carries the sentence that says what it does, because
  * a person choosing Autonomous should be choosing it deliberately.
  */
-export function CoworkModeSelector({ mode, onChange, variant = 'pill' }: Props) {
+export function CoworkModeSelector({
+  mode,
+  onChange,
+  variant = 'pill',
+  options = COWORK_MODES,
+}: Props) {
   const quiet = variant === 'quiet'
   const { t } = useTranslation()
   const Icon = ICONS[mode]
@@ -84,7 +91,7 @@ export function CoworkModeSelector({ mode, onChange, variant = 'pill' }: Props) 
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-80 p-1.5">
           <DropdownMenuLabel>{t('common:coworkMode.label')}</DropdownMenuLabel>
-          {COWORK_MODES.map((option) => {
+          {options.map((option) => {
             const OptionIcon = ICONS[option]
             return (
               <DropdownMenuItem

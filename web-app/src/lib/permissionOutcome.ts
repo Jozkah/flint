@@ -13,6 +13,15 @@ import type { PermissionMessage } from '@/lib/permissionRequest'
 /** What the chat loop records when the user answers "deny". */
 export const APPROVAL_DENIED_TEXT = 'Tool execution denied by user'
 
+/**
+ * The denied text, with the reason the person typed when they gave one. The
+ * model reads it, so it learns what to do differently. The outcome rules below
+ * match the start of the text, so the added sentence changes nothing there.
+ */
+export function approvalDeniedText(reason?: string): string {
+  return reason ? `${APPROVAL_DENIED_TEXT}. Their reason: ${reason}` : APPROVAL_DENIED_TEXT
+}
+
 /** What the chat loop records when the prompt was withdrawn unanswered. */
 export const APPROVAL_CANCELLED_TEXT =
   'Tool call cancelled: the conversation stopped before the request was answered'

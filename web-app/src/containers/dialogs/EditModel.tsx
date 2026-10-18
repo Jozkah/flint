@@ -210,11 +210,11 @@ export const DialogEditModel = ({
       if (capabilitiesChanged) setOriginalCapabilities(capabilities)
 
       // Show success toast and close dialog
-      toast.success('Model updated successfully')
+      toast.success(t('sweep:editModel.updated'))
       setIsOpen(false)
     } catch (error) {
       console.error('Failed to update model:', error)
-      toast.error('Failed to update model. Please try again.')
+      toast.error(t('sweep:editModel.updateFailed'))
     } finally {
       setIsLoading(false)
     }
@@ -374,9 +374,19 @@ export const DialogEditModel = ({
               />
             </div>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t('providers:editModel.costHelp')}
-          </p>
+          {costsValid ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('providers:editModel.costHelp')}
+            </p>
+          ) : (
+            <p
+              role="alert"
+              className="mt-1 inline-flex items-start gap-1 text-xs text-destructive"
+            >
+              <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
+              {t('providers:editModel.costInvalid')}
+            </p>
+          )}
         </div>
 
         {/* Warning Banner */}

@@ -29,7 +29,7 @@ import { resolvePricing, type Pricing } from '@/lib/modelPricing'
 import { ContextWindowCard } from '@/components/ContextWindowCard'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { reconcileBreakdown } from '@/lib/contextBreakdown'
+import { fixedPromptTokens, reconcileBreakdown } from '@/lib/contextBreakdown'
 import { contextUsage, type ContextUsage } from '@/lib/contextUsage'
 import {
   DEFAULT_COMPACTION_POLICY,
@@ -148,6 +148,8 @@ export const TokenCounter = memo(function TokenCounter({
 
   // What the last request carried, by kind, for the context card.
   const stored = useContextBreakdown((s) => (scope ? s.byId[scope] : undefined))
+  // System prompt and tool schemas: paid on every request before any message.
+  const fixedTokens = fixedPromptTokens(stored)
   const [policy, setPolicy] = useState<CompactionPolicy>(DEFAULT_COMPACTION_POLICY)
   useEffect(() => {
     let alive = true
@@ -404,6 +406,14 @@ export const TokenCounter = memo(function TokenCounter({
                 autoCompactBuffer={effectiveReserve(tokenData.maxTokens, policy)}
                 onCompact={onCompact}
               />
+              {fixedTokens > 0 && (
+                <p
+                  data-testid="context-fixed-prompt"
+                  className="px-4 pb-3 text-[11px] leading-snug text-muted-foreground"
+                >
+                  {t('common:usage.counter.fixedPrompt', { count: formatExact(fixedTokens) })}
+                </p>
+              )}
             </div>
           ) : (
             <>

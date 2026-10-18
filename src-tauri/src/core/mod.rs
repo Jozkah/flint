@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod automation;
 // Archive instead of delete; desktop-only like rooms.
 #[cfg(not(feature = "cli"))]
 pub mod archive;
@@ -8,6 +9,9 @@ pub mod archive {
     pub mod store;
 }
 pub mod app;
+// Uses the Tauri runtime for its commands, so it is not part of the CLI build.
+#[cfg(not(feature = "cli"))]
+pub mod autostart;
 // Saving files dropped onto the chat so they can be attached; desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod attachments;
@@ -63,6 +67,8 @@ pub mod rooms;
 pub mod rooms {
     #[path = "../rooms/store.rs"]
     pub mod store;
+    #[path = "../rooms/workspace.rs"]
+    pub mod workspace;
 }
 // Remote access for a paired phone; desktop-only (the WebSocket stack is not
 // built for mobile targets, and the CLI has no window to bridge to).
@@ -89,3 +95,4 @@ pub mod web_preview;
 pub mod thin_client;
 pub mod solo_window;
 pub mod window_state;
+pub mod webview_paint;

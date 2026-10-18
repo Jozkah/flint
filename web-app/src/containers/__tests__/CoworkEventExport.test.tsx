@@ -4,6 +4,7 @@
  * can be stopped, and an export read back through the inspector.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 

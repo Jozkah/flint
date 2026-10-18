@@ -111,6 +111,18 @@ describe('context projection', () => {
     expect(buildSystemPrompt(withFolder, editor)).toContain('Do not delete, overwrite or move files')
   })
 
+  it('tells a writer in a compare room that it reads only, and why', () => {
+    const room = makeRoom({ folder: '/work', mode: 'compare' })
+    const speaker = {
+      kind: 'participant' as const,
+      participant: { ...room.participants[0], toolAccess: 'full' as const },
+    }
+    const s = buildSystemPrompt(room, speaker)
+    expect(s).toContain('(read-only)')
+    expect(s).toContain('compare')
+    expect(s).not.toContain('work like a Cowork agent')
+  })
+
   it('renderSkillsCatalog keeps a large library within the budget, standalone skills first', () => {
     const long = `${'Does a thing. '.repeat(40)}\nSecond line.`
     const skills = [

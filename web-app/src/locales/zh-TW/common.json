@@ -7,7 +7,7 @@
     "rename": "重新命名",
     "deleteGroup": "刪除群組",
     "deleteTitle": "刪除 {{name}}？",
-    "deleteBody": "群組將被刪除。其中的項目會移出群組，不會被刪除。",
+    "deleteBody": "群組將被刪除。其中的項目會移出群組，不會被刪除。所有子資料夾會上移一層。",
     "folders": "資料夾…",
     "foldersTitle": "「{{name}}」的資料夾",
     "foldersBodyHome": "在此群組中開始或移入此群組的聊天會附加這些資料夾，聊天工具只能讀取。",
@@ -53,7 +53,43 @@
     "chatFoldersBody": "聊天的工具可以讀取這些資料夾。寫入仍留在聊天自己的沙盒中。",
     "chatFoldersEmpty": "未附加資料夾。",
     "addFolder": "新增資料夾",
-    "chatFolderCount": "資料夾：{{count}}"
+    "chatFolderCount": "資料夾：{{count}}",
+    "newSubfolder": "新增子資料夾",
+    "moveInto": "移入資料夾",
+    "topLevel": "最上層",
+    "errors": {
+      "nameEmpty": "群組名稱不能為空",
+      "notFound": "找不到該群組",
+      "tooDeep": "群組巢狀層級不能這麼深",
+      "intoItself": "不能將群組移入其自身"
+    },
+    "failed": {
+      "create": "無法建立群組",
+      "rename": "無法重新命名群組",
+      "moveFolder": "無法移動資料夾",
+      "saveState": "無法儲存群組狀態",
+      "reorder": "無法重新排序群組",
+      "moveItem": "無法移動該項目",
+      "delete": "無法刪除群組",
+      "saveFolders": "無法儲存群組資料夾",
+      "updateContext": "無法更新資料夾脈絡",
+      "update": "無法更新群組",
+      "import": "無法匯入群組",
+      "unreadable": "{{failure}}：無法讀取已儲存的群組",
+      "restored": "{{failure}}。已還原先前的順序。"
+    },
+    "announce": {
+      "created": "已建立群組 {{name}}",
+      "collapsed": "已摺疊 {{name}}",
+      "expanded": "已展開 {{name}}",
+      "reordered": "{{name}} 已移至第 {{position}} 位（共 {{total}} 個）",
+      "movedToPosition": "已移至 {{name}}，第 {{position}} 位",
+      "movedToRecents": "已移至「最近」",
+      "deleted": "已刪除群組 {{name}}。其中的項目已移至「最近」",
+      "ctxReplaced": "{{base}}。資料夾脈絡已替換為群組資料夾；存取仍需核准",
+      "ctxMerged": "{{base}}。已將群組資料夾加入資料夾脈絡；存取仍需核准",
+      "foldersAdded": "{{base}}。已將項目資料夾加入群組"
+    }
   },
   "htmlArtifact": {
     "code": "程式碼",
@@ -186,7 +222,7 @@
   "profile": "個人資料",
   "reset": "重設",
   "search": "搜尋",
-  "searchThreads": "搜尋對話串...",
+  "searchThreads": "搜尋聊天...",
   "toNavigate": "導覽",
   "toSelect": "選取",
   "toClose": "關閉",
@@ -212,6 +248,7 @@
   "preview": {
     "title": "預覽",
     "empty": "開啟已產生的成品以在此預覽。",
+    "emptyHint": "Flint 在此工作階段建立的檔案會在這裡開啟。",
     "loading": "正在開啟…",
     "unsupported": "Flint 無法顯示此類檔案。請開啟它以在其他應用程式中檢視。",
     "outside": "此檔案已不在工作階段工作區中。",
@@ -276,7 +313,7 @@
     "searchThreads": "搜尋對話",
     "toggleSidebar": "切換側邊欄",
     "openCowork": "開啟 Cowork",
-    "openArtifacts": "開啟成品",
+    "openArtifacts": "開啟 媒體庫",
     "openSystemMonitor": "開啟系統監視器",
     "openLogs": "開啟應用程式記錄",
     "section": {
@@ -290,11 +327,18 @@
       "navigation": "前往",
       "settings": "設定",
       "threads": "對話"
-    }
+    },
+    "openItem": "開啟 {{item}}"
   },
   "searchGroup": {
+    "pages": "頁面",
+    "settings": "設定",
     "inProjects": "在專案中",
-    "conversations": "對話"
+    "conversations": "對話",
+    "messages": "在訊息中",
+    "work": "房間和工作階段",
+    "room": "房間",
+    "session": "Cowork 工作階段"
   },
   "rail": {
     "label": "Cowork 面板",
@@ -607,7 +651,8 @@
       "add": "新增",
       "cancel": "取消",
       "remove": "移除"
-    }
+    },
+    "ctxAutoFitHint": "自動適配已開啟：留空則由自動適配選擇上下文，並在需要時縮小以符合記憶體。此處填寫的數字會按原樣使用。"
   },
   "dialogs": {
     "changeDataFolder": {
@@ -650,6 +695,14 @@
     "showRawLibraries": "顯示 {{count}} 個缺少的程式庫名稱"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "建立專案",
+      "editTitle": "編輯專案",
+      "namePlaceholder": "輸入專案名稱...",
+      "alreadyExists": "專案「{{projectName}}」已存在",
+      "createSuccess": "已建立專案「{{projectName}}」",
+      "updateSuccess": "已更新專案「{{projectName}}」"
+    },
     "title": "專案",
     "new": "新專案",
     "addProject": "新增專案",
@@ -745,7 +798,8 @@
     "openCodeFolderInCowork": "在 Cowork 中開啟程式碼資料夾",
     "openCodeFolder": "開啟程式碼資料夾",
     "openCodeFolderDescription": "選擇你電腦上供 Flint 工作的資料夾。",
-    "deleteProjectConfirm": "您確定要刪除此專案嗎？此操作無法復原。"
+    "deleteProjectConfirm": "您確定要刪除此專案嗎？此操作無法復原。",
+    "setUpEmbeddingModel": "設定嵌入模型"
   },
   "attachmentsIngestion": {
     "title": "選擇如何擷取附件",
@@ -877,7 +931,8 @@
       "unsupportedType": "不支援檔案類型「{{type}}」。",
       "ioError": "無法讀取 {{subject}}：{{message}}",
       "parseGeneric": "{{subject}} 無法剖析：{{message}}",
-      "fallback": "無法處理 {{subject}}。"
+      "fallback": "無法處理 {{subject}}。",
+      "noEmbeddingModel": "{{subject}} 未加入：沒有安裝用於建立索引的嵌入模型。請在 Llama.cpp 中設定一個，然後重新加入檔案。"
     },
     "fileDeleted": {
       "title": "檔案已刪除",
@@ -937,6 +992,7 @@
     "missing": "已無法使用：{{model}}",
     "use": "使用此模型",
     "thisChat": "此聊天",
+    "thisRoom": "此房間",
     "thisSession": "此工作階段"
   },
   "skillsUsedCount_one": "使用了 {{count}} 個技能",
@@ -958,6 +1014,28 @@
   "artifactsCount_other": "{{count}} 個項目",
   "previewMessageCount_one": "{{count}} 則訊息",
   "previewMessageCount_other": "{{count}} 則訊息",
+  "rowPreview": {
+    "status": {
+      "running": "執行中",
+      "waiting": "需要你處理",
+      "idle": "閒置",
+      "error": "錯誤"
+    },
+    "prState": {
+      "open": "開啟",
+      "draft": "草稿",
+      "merged": "已合併",
+      "closed": "已關閉"
+    },
+    "pullRequests": "拉取請求",
+    "morePrs_one": "另外 {{count}} 個",
+    "morePrs_other": "另外 {{count}} 個",
+    "noChecks": "沒有檢查",
+    "empty": "這裡還沒有內容。",
+    "noMessages": "還沒有訊息",
+    "summarizing": "正在撰寫摘要…",
+    "openHint": "開啟"
+  },
   "artifactDetails": "項目詳細資料",
   "artifactBack": "返回媒體庫",
   "artifactClose": "關閉詳細資料",
@@ -1001,7 +1079,10 @@
     "branchLabel": "分支",
     "actionsLabel": "資料夾動作",
     "copyPath": "複製路徑",
-    "copied": "路徑已複製"
+    "copied": "路徑已複製",
+    "footnoteEmptyEdit": "附加一個資料夾，讓代理處理你的專案。",
+    "a11yWithFolderEditable": "專案資料夾 {{folder}}，已附加為可編輯。可變更或卸離。",
+    "a11yWithFolderWorktree": "專案資料夾 {{folder}}，透過獨立的 worktree 編輯。可變更或卸離。"
   },
   "coworkEmpty": {
     "title": "我們要做什麼？",
@@ -1017,7 +1098,15 @@
       "first": "說明 {{folder}} 是如何組成的",
       "second": "找出 {{folder}} 中的所有 TODO 並依區域分組",
       "third": "為 {{folder}} 中我指定的部分撰寫測試"
-    }
+    },
+    "vault": {
+      "badge": "Obsidian 保險庫",
+      "hint": "這個資料夾是 Obsidian 保險庫。Flint 會像讀取任何 Markdown 筆記資料夾一樣讀取它，並略過 Obsidian 的 .obsidian 設定和 .trash。",
+      "add": "新增我的 Obsidian 保險庫",
+      "addHint": "Obsidian 保險庫就是一個資料夾。像選擇其他資料夾一樣選擇它即可。"
+    },
+    "subtitleFolderEdit": "給 Flint 一個任務。它會直接讀取並修改 {{folder}} 中的檔案，然後自行完成後續工作。",
+    "subtitleFolderWorktree": "給 Flint 一個任務。它在 {{folder}} 的 git worktree 中工作，只有在你合併時資料夾才會改變。"
   },
   "sandbox": {
     "noTerminal": "沒有終端機",
@@ -1185,7 +1274,8 @@
     "sensitiveRefused": "{{name}} 看起來像憑證或金鑰，因此未被開啟",
     "binaryRefused": "{{name}} 不是文字檔案，無論其副檔名如何",
     "chooseAgainAction": "重新選擇",
-    "externalGone": "此檔案是從專案之外開啟的，該存取權限未能保留。請重新選擇它以再次開啟。"
+    "externalGone": "此檔案是從專案之外開啟的，該存取權限未能保留。請重新選擇它以再次開啟。",
+    "oneFolderAtATime": "一次只能新增一個資料夾。未新增「{{name}}」。"
   },
   "settingsSearch": {
     "label": "搜尋設定",
@@ -1194,7 +1284,9 @@
     "count_one": "1 個結果",
     "count_other": "{{count}} 個結果",
     "empty": "沒有符合的設定。",
-    "clear": "清除搜尋"
+    "clear": "清除搜尋",
+    "emptyHint": "換個詞試試，或依用途搜尋：主題、代理、記憶。",
+    "pageCrumb": "頁面"
   },
   "tasks": {
     "title": "活動",
@@ -1368,7 +1460,14 @@
     "recommended": "建議",
     "reset": "重設為全域設定",
     "resetAll": "重設為全域預設值",
-    "overridden": "已為此聊天設定"
+    "overridden": "已為此聊天設定",
+    "levels": {
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "極高",
+      "unlimited": "無限制"
+    }
   },
   "modelOffline": {
     "badge": "無法連線",
@@ -2120,10 +2219,12 @@
   },
   "browserVerify": {
     "title": "在瀏覽器中驗證",
+    "about": "運作方式",
     "explain": "在獨立的暫時瀏覽器設定檔中開啟你的本機應用程式（不是 Flint 的預覽，無 cookie），僅限於應用程式自身的來源。對其他地方的請求會被封鎖並列出。",
     "url": "本機應用程式 URL",
     "notLocal": "只能驗證這台機器上的應用程式（localhost、127.0.0.1）。",
-    "steps": "步驟（選填）：open、click、type、expect、wait、screenshot — 每行一個",
+    "stepsLabel": "步驟（選填）",
+    "stepsHint": "每行一條：open、click、type、expect、wait、screenshot",
     "run": "驗證",
     "cancel": "停止",
     "using": "正在使用 {{browser}}",
@@ -2483,12 +2584,17 @@
       "slots": "{{count}} 個槽位",
       "vision": "視覺",
       "audio": "音訊",
+      "fixedPrompt": "每次請求都會傳送:{{count}} 個權杖(系統提示詞和工具結構描述)。",
       "tokenUsage": "Token 用量",
       "tokenUsageSr": "Token 用量 {{value}}"
     }
   },
   "voicePill": {
-    "cancel": "取消"
+    "cancel": "取消",
+    "dictate": "語音輸入",
+    "stop": "停止語音輸入",
+    "working": "處理中…",
+    "setup": "設定語音輸入"
   },
   "motionMedia": {
     "queued": "排隊中",
@@ -2509,11 +2615,26 @@
     "previewLoading": "正在載入預覽…",
     "previewNone": "沒有可用的預覽"
   },
+  "fileViewer": {
+    "openFull": "開啟完整預覽",
+    "loadMore": "載入更多",
+    "showingFirst": "顯示 {{total}} 中的前 {{loaded}}",
+    "lines_other": "{{count}} 行",
+    "wrap": "自動換行",
+    "copy": "複製",
+    "copied": "已複製",
+    "binary": "這似乎是二進位檔案，因此沒有文字預覽。",
+    "expandLine": "顯示整行",
+    "collapseLine": "收合該行",
+    "truncatedOnAdd": "顯示 {{total}} 中的前 {{shown}}（附件在加入時已被截斷）"
+  },
   "dropAttachFailed": "無法附加拖放的檔案",
+  "sampler": {
+    "label": "取樣參數",
+    "notSupported": "{{provider}} 不支援"
+  },
   "translate": {
     "title": "翻譯",
-    "usingModel": "正在使用 {{model}}",
-    "noModel": "請在模型選擇器中選擇模型",
     "from": "來源語言",
     "to": "目標語言",
     "detect": "偵測語言",
@@ -2525,12 +2646,201 @@
     "copyFailed": "無法複製譯文",
     "failed": "翻譯失敗",
     "inputPlaceholder": "要翻譯的文字",
-    "outputPlaceholder": "譯文會顯示在這裡"
+    "outputPlaceholder": "譯文會顯示在這裡",
+    "description": "使用你選擇的模型在不同語言之間翻譯文字。不會儲存任何內容。",
+    "sourceTitle": "原文",
+    "targetTitle": "譯文",
+    "paste": "從剪貼簿貼上",
+    "pasteFailed": "無法讀取剪貼簿",
+    "clear": "清除",
+    "characters_other": "{{count}} 個字元",
+    "translating": "正在翻譯…",
+    "retry": "重試",
+    "shortcut": "翻譯 (Ctrl/Cmd+Enter)",
+    "searchLanguages": "搜尋語言",
+    "noLanguages": "沒有相符的語言",
+    "errorAuth": "供應商拒絕了你的 API 金鑰。請在供應商設定中檢查。",
+    "errorQuota": "供應商表示你的額度已用完或受到速率限制。請稍候片刻，或檢查你的方案。",
+    "errorModelNotFound": "供應商沒有這個模型。請選擇其他模型，或檢查供應商設定。",
+    "errorNetwork": "無法連線到供應商。請檢查網路連線，或確認伺服器正在執行。",
+    "errorEngine": "執行此模型的引擎無法使用。請重新啟動 Flint 後再試一次。",
+    "openProvider": "開啟供應商設定",
+    "errorDetails": "詳細資料",
+    "pasteHint": "剪貼簿存取遭到封鎖。請點擊文字方塊並按 {{keys}}。",
+    "swapNeedsSource": "選擇來源語言後才能互換"
   },
   "markdownImage": {
     "load": "從 {{host}} 載入圖片"
   },
   "messageSaveFailed": "無法儲存訊息，重新啟動後可能遺失。",
   "threadSaveFailed": "無法儲存對此對話的變更，已還原。",
-  "attachmentsProcessFailed": "無法準備附件，因此訊息未傳送"
+  "attachmentsProcessFailed": "無法準備附件，因此訊息未傳送",
+  "settingsRecovered": {
+    "title": "無法讀取設定檔",
+    "withBackup": "{{file}} 已損毀，因此 Flint 以預設設定啟動。損毀的檔案已保留為 {{backup}}。",
+    "noBackup": "{{file}} 已損毀，因此 Flint 以預設設定啟動。無法儲存損毀檔案的副本。"
+  },
+  "promptLibrary": {
+    "title": "提示詞庫",
+    "description": "你常重複使用的提示詞。在輸入框中輸入 @ 或 / 即可插入。對每次需要填寫的部分使用 {{name}} 或 {{name:default}}。",
+    "manage": "你的提示詞",
+    "add": "新增提示詞",
+    "editTitle": "編輯提示詞",
+    "import": "匯入",
+    "export": "匯出",
+    "imported_other": "已新增 {{count}} 則提示詞",
+    "importedNone": "未找到新的提示詞",
+    "search": "搜尋提示詞",
+    "empty": "還沒有提示詞。",
+    "edit": "編輯 {{name}}",
+    "delete": "刪除 {{name}}",
+    "deleted": "已刪除提示詞",
+    "undo": "復原",
+    "name": "名稱",
+    "folder": "資料夾（選填）",
+    "tags": "標籤，以逗號分隔",
+    "body": "提示詞內容",
+    "bodyHint": "撰寫提示詞。空白處可使用 {{topic}} 或 {{tone:friendly}}。",
+    "variables": "需要填寫：{{names}}",
+    "defaultValue": "預設值：{{value}}",
+    "requiredField": "必填",
+    "fillNeeded": "請填寫 {{names}} 後再插入",
+    "insert": "插入",
+    "errors": {
+      "nameRequired": "提示詞需要名稱",
+      "nameTooLong": "名稱太長",
+      "bodyRequired": "提示詞需要有內容",
+      "bodyTooLong": "提示詞太長",
+      "gone": "該提示詞已不存在",
+      "invalidJson": "該檔案不是有效的 JSON",
+      "noPrompts": "該檔案中找不到提示詞"
+    },
+    "noResults": "沒有符合「{{query}}」的提示詞。",
+    "clearSearch": "清除搜尋"
+  },
+  "memoryProposal": {
+    "title": "要記住這個嗎？",
+    "wouldApply": "將套用於{{where}}。",
+    "remember": "記住",
+    "discard": "捨棄",
+    "reviewBoth": "檢視兩者",
+    "saving": "儲存中…",
+    "discarding": "正在捨棄…",
+    "scope": {
+      "session": "此對話",
+      "project": "此專案",
+      "user": "所有地方"
+    }
+  },
+  "picker": {
+    "filter": "篩選",
+    "source": "來源",
+    "sourceAll": "全部",
+    "sourceLocal": "本機",
+    "sourceCloud": "雲端",
+    "capabilities": "能力",
+    "cap": {
+      "vision": "視覺",
+      "tools": "工具",
+      "reasoning": "推理",
+      "embeddings": "嵌入"
+    },
+    "loadedNow": "目前已載入",
+    "sort": "排序",
+    "sortDefault": "預設順序",
+    "sortName": "名稱 (A–Z)",
+    "sortRecent": "最近使用",
+    "sortSize": "大小",
+    "clearFilters": "清除篩選",
+    "noMatch": "沒有符合的模型",
+    "noMatchFilters": "沒有符合的模型：{{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "聊天",
+      "session": "工作階段",
+      "room": "聊天室"
+    },
+    "heading": "對話",
+    "empty": "沒有其他對話",
+    "noMatch": "沒有符合的對話",
+    "messages": "訊息數：{{n}}",
+    "included": "已包含：{{title}}（訊息 {{n}} 則，約 {{size}} 字元）",
+    "group": "提及的對話",
+    "summarize": "摘要",
+    "summarizeHint": "以摘要取代最近的訊息",
+    "remove": "移除對 {{title}} 的提及",
+    "mentioned": "已提及：{{title}}",
+    "open": "開啟 {{title}}",
+    "status": {
+      "missing": "找不到：{{title}}",
+      "self": "{{title}} 就是目前的對話，因此不包含",
+      "over-cap": "{{title}} 未包含：每則訊息最多提及 {{max}} 個對話"
+    },
+    "excerpt": "摘錄",
+    "summary": "摘要",
+    "modeGroup": "從 {{title}} 包含的內容",
+    "excerptHint": "最新訊息，約 {{tokens}} 個 token",
+    "summaryHint": "由模型撰寫的摘要，最多約 {{tokens}} 個 token",
+    "needsModel": "載入模型後可改為包含摘要",
+    "totals_other": "{{count}} 則訊息 · 已包含約 {{tokens}} 個 token",
+    "readOnly": "以引用的唯讀上下文傳送。模型無法變更那段對話。",
+    "tooLarge": "這已超過模型上下文視窗的四分之一。",
+    "useSummary": "改用摘要",
+    "resolving": "正在尋找 {{title}}",
+    "chipStatus": {
+      "missing": "找不到",
+      "self": "目前的對話",
+      "over-cap": "超出上限"
+    },
+    "preview": {
+      "empty": "還沒有訊息",
+      "you": "你",
+      "assistant": "助理"
+    },
+    "messagesCount_other": "{{count}} 則訊息",
+    "compact_other": "{{count}} 個提及 · {{mode}}",
+    "mixed": "混合"
+  },
+  "campaignList": {
+    "timeout": "應用程式未在時限內回應。",
+    "unreadableRecord": "後端傳送了此頁面無法讀取的記錄"
+  },
+  "composer": {
+    "messageLabel": "訊息"
+  },
+  "routeLoading": {
+    "slow": "此頁面開啟的時間比平常久。",
+    "reload": "重新載入",
+    "retry": "重試",
+    "failed": "無法開啟此頁面"
+  },
+  "replyCutOff": {
+    "withTokens": "在回覆上限處被截斷（{{tokens}} 個 token）",
+    "plain": "在回覆上限處被截斷"
+  },
+  "routeNotFound": {
+    "title": "找不到頁面",
+    "body": "{{path}} 沒有頁面。它可能已被移動，或者連結已過期。",
+    "home": "返回首頁",
+    "settings": "開啟設定"
+  },
+  "waitingForYou": "等待你處理",
+  "dnd": {
+    "anItem": "該項目",
+    "aGroup": "一個群組",
+    "picked": "已拿起 {{item}}。",
+    "over": "{{item}} 位於 {{group}} 上方。",
+    "notOver": "{{item}} 不在任何群組上方。",
+    "dropped": "已將 {{item}} 移到 {{group}}。",
+    "cancelled": "{{item}} 已放回原處。"
+  },
+  "searchEverything": "搜尋聊天、房間、頁面和設定…",
+  "noResultsFoundEverywhere": "在聊天、房間、Cowork 工作階段、頁面或設定中找不到相符項目。請換個關鍵字。",
+  "selectModelNoKey": "此工作階段尚未選擇模型，且 {{provider}} 沒有 API 金鑰。請先在模型選單中選擇一個模型。",
+  "serverConnection": {
+    "offlineTitle": "無法連線到 Flint 伺服器。",
+    "offlineBody": "正在重新連線… 伺服器恢復前，現在的操作可能不會儲存。",
+    "statusOffline": "伺服器無法存取"
+  }
 }

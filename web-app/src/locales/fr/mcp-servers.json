@@ -9,7 +9,9 @@
       "title": "Flint accomplit des tâches dans votre navigateur",
       "description": "Installez l'extension pour donner à Flint l'accès au navigateur",
       "getExtension": "Obtenir l'extension"
-    }
+    },
+    "requires": "Nécessite l'installation de l'extension de navigateur dans votre navigateur basé sur Chrome.",
+    "install": "Installer l'extension →"
   },
   "serverName": "Nom du serveur",
   "enterServerName": "Entrez le nom du serveur",
@@ -173,7 +175,9 @@
     "selectRouterModelPlaceholder": "Sélectionner un modèle de routage…",
     "routerModelSearchPlaceholder": "Rechercher des modèles…",
     "routerModelEmptyList": "Aucun modèle léger disponible. Ajoutez un modèle plus petit ou configurez les clés API dans Modèles.",
-    "routerModelEmptySearch": "Aucun résultat pour « {{query}} »."
+    "routerModelEmptySearch": "Aucun résultat pour « {{query}} ».",
+    "idleShutdown": "Arrêter les serveurs inactifs après (minutes)",
+    "idleShutdownDesc": "Un serveur MCP sans appel d'outil pendant cette durée est arrêté pour libérer de la mémoire, puis redémarré à la prochaine utilisation. Les serveurs réglés pour démarrer avec Flint restent actifs. Mettez 0 pour ne jamais les arrêter."
   },
   "auth": {
     "label": "Auth :",
@@ -262,7 +266,8 @@
   "lifecycle": {
     "startWithFlint": "Démarrer avec Flint",
     "start": "Démarrer",
-    "stop": "Arrêter"
+    "stop": "Arrêter",
+    "toolTimeout": "Délai d'expiration de l'outil (s)"
   },
   "cwd": "Répertoire de travail",
   "cwdPlaceholder": "Facultatif, p. ex. C:\\tools\\my-server",

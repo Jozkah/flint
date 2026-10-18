@@ -1,4 +1,5 @@
 {
+  "vramUsed": "已用 VRAM",
   "title": "系統監視器",
   "cpuUsage": "CPU 使用率",
   "model": "模型",
@@ -71,5 +72,6 @@
   "processor": "處理器",
   "graphics": "圖形",
   "freeVram": "可用 VRAM",
-  "apiVersion": "API 版本"
+  "apiVersion": "API 版本",
+  "measuring": "正在測量…"
 }

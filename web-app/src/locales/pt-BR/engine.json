@@ -24,7 +24,9 @@
     "embeddingSub": "{{count}} modelos de embedding",
     "addedSub": "adicionados ao Flint",
     "repliesToday": "Respostas hoje",
-    "repliesSub": "{{count}} respostas medidas",
+    "repliesSub_one": "{{count}} resposta medida",
+    "repliesSub_many": "{{count}} respostas medidas",
+    "repliesSub_other": "{{count}} respostas medidas",
     "apiKeys": "Chaves de API",
     "fallbackSub": "{{count}} chaves de fallback",
     "noFallbackSub": "sem chave de fallback",
@@ -34,7 +36,8 @@
     "title": "Carregados agora",
     "empty": "Nenhum modelo carregado",
     "emptyHint": "Inicie um modelo local pela tabela abaixo ou envie uma mensagem a ele.",
-    "unload": "Descarregar"
+    "unload": "Descarregar",
+    "speedBar": "Velocidade média, comparada ao modelo carregado mais rápido"
   },
   "speed": {
     "title": "Velocidade de geração",
@@ -67,7 +70,8 @@
     "loaded": "Carregado",
     "ready": "Pronto",
     "noKey": "Sem chave de API",
-    "keyless": "Sem necessidade de chave"
+    "keyless": "Sem necessidade de chave",
+    "noCredentials": "Sem credenciais da AWS"
   },
   "installed": {
     "title": "Modelos instalados",
@@ -107,7 +111,10 @@
     "connection": "Conexão",
     "engineSettings": "Configurações do motor",
     "memorySettings": "Memória e cache",
-    "danger": "Zona de perigo"
+    "settingNotSaved": "\"{{setting}}\" não foi salvo",
+    "danger": "Zona de perigo",
+    "networkNote": "Na sua rede · enviado para {{host}}",
+    "reachUnknownNote": "Verificando onde este provedor roda"
   },
   "mcp": {
     "title": "Ferramentas e MCP",
@@ -126,7 +133,8 @@
     "kpiApprovedAll": "Todas as chamadas de ferramenta são permitidas",
     "tabServers": "Servidores",
     "tabRouting": "Roteamento e limites",
-    "toolsCount": "{{count}} ferramentas",
+    "toolsCount_one": "{{count}} ferramenta",
+    "toolsCount_other": "{{count}} ferramentas",
     "filterLabel": "Mostrar servidores",
     "filterAll": "Todos",
     "filterOn": "Ativados",
@@ -136,7 +144,7 @@
     "viewList": "Lista",
     "callsPerMin": "chamadas / min",
     "window": "últimos {{count}} min",
-    "needsExtension": "Requer a Extensão de Navegador do Jan",
+    "needsExtension": "Requer a extensão do navegador",
     "moreActions": "Mais ações para {{serverName}}",
     "addTile": "Adicionar servidor MCP",
     "addTileHint": "STDIO, HTTP ou SSE"
@@ -183,5 +191,46 @@
     "kindAudio": "Áudio",
     "kindVideo": "Vídeo",
     "htmlPage": "Página HTML"
+  },
+  "addon": {
+    "offerTitle": "Mais rápido na sua GPU NVIDIA",
+    "offerBody": "Nesta GPU, os modelos locais costumam rodar mais rápido com o motor CUDA do que com Vulkan: muitas vezes 10-70% mais tokens por segundo, e mais quando um modelo não cabe inteiro na VRAM. É um download único de cerca de {{size}}.",
+    "download": "Baixar",
+    "notNow": "Agora não",
+    "dontRemind": "Não lembrar de novo",
+    "gettingTitle": "Obtendo o motor CUDA",
+    "downloading": "Baixados {{received}} de {{total}}",
+    "verifying": "Verificando o download...",
+    "installing": "Instalando...",
+    "vulkanMeanwhile": "Enquanto isso, o Vulkan é usado. O CUDA assume no próximo carregamento de modelo.",
+    "cancel": "Cancelar",
+    "installedTitle": "Motor CUDA instalado",
+    "installedBody": "Ele será usado a partir do próximo carregamento de modelo.",
+    "ok": "Entendi",
+    "failedTitle": "Não foi possível obter o motor CUDA",
+    "retry": "Tentar de novo",
+    "driverTitle": "Atualize seu driver NVIDIA",
+    "driverBody": "Atualize seu driver NVIDIA para usar o motor CUDA, mais rápido. Instalado: {{current}}, necessário: R{{min}} ou mais recente. Até lá, o Vulkan é usado.",
+    "close": "Fechar",
+    "panelTitle": "Complementos do motor",
+    "panelDesc": "Motores de GPU extras, baixados só quando você pede. O Vulkan continua como alternativa.",
+    "cudaName": "Motor NVIDIA CUDA",
+    "inUse": "em uso",
+    "unavailableBuild": "Complementos do motor não estão disponíveis nesta versão.",
+    "installedVersion": "Instalado: {{version}}, {{size}}",
+    "repairNeeded": "Danificado, então o Vulkan é usado. Baixe de novo para reparar.",
+    "notInstalledOffer": "Não instalado. Costuma ser mais rápido que o Vulkan nesta GPU (cerca de {{size}}).",
+    "repair": "Reparar",
+    "remove": "Remover",
+    "installFile": "Instalar de arquivo...",
+    "checkAgain": "Verificar de novo",
+    "remindSetting": "Sugerir o motor CUDA ao carregar um modelo",
+    "errors": {
+      "offline": "Sem conexão com o GitHub. Tente mais tarde ou instale o complemento de um arquivo.",
+      "notPublished": "Ainda não há motor CUDA publicado para esta versão.",
+      "diskSpace": "Espaço livre em disco insuficiente para o motor CUDA.",
+      "verify": "O download não passou na verificação e não foi instalado.",
+      "mismatch": "Este complemento foi feito para outra versão do Flint."
+    }
   }
 }

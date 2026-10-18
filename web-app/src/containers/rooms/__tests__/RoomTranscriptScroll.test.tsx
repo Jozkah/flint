@@ -79,6 +79,9 @@ describe('RoomTranscript scrolling', () => {
     const el = riggedScroller()
     scrolledUp(el)
     expect(screen.getByTestId('room-jump-latest')).toBeInTheDocument()
+    // Its own row outside the scroll port, above the dock: never over a message.
+    expect(screen.getByTestId('room-jump-latest').getAttribute('data-placement')).toBe('above-dock')
+    expect(el.contains(screen.getByTestId('room-jump-latest'))).toBe(false)
 
     // Several streamed tokens arrive; position must not move.
     for (const tok of ['ab', 'abc', 'abcd']) {

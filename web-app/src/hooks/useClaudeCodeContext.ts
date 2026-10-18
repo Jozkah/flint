@@ -10,6 +10,8 @@ import {
 } from '@/lib/claudeCodeContext'
 import {
   kvArchitectureFromGguf,
+  resolveFitKvSettings,
+  settingValues,
   type KvArchitecture,
 } from '@/lib/modelCompatibility'
 import { settingsFromModel } from '@/lib/modelEvidence'
@@ -76,20 +78,19 @@ export function useClaudeCodeContextPlans(
       if (!model) continue
       const { sizeBytes, architecture } = facts[id]
       const settings = settingsFromModel(model)
+      const kv = resolveFitKvSettings(
+        settingValues(model.settings as never),
+        settingValues(llamacpp.settings as never)
+      )
       const fitsAt =
         hardware && sizeBytes
           ? fitCheckFor({
               weightsBytes: sizeBytes,
               hardware,
               architecture,
-              cacheTypeK:
-                typeof settings.cache_type_k === 'string'
-                  ? settings.cache_type_k
-                  : undefined,
-              cacheTypeV:
-                typeof settings.cache_type_v === 'string'
-                  ? settings.cache_type_v
-                  : undefined,
+              cacheTypeK: kv.cacheTypeK,
+              cacheTypeV: kv.cacheTypeV,
+              noKvOffload: kv.noKvOffload,
               gpuLayers:
                 typeof settings.ngl === 'number' ? settings.ngl : undefined,
             })

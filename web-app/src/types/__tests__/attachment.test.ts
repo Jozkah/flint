@@ -3,7 +3,27 @@ import {
   createImageAttachment,
   createDocumentAttachment,
   createAudioAttachment,
+  attachmentsToIngestAsImages,
 } from '../attachment'
+
+// C025: a large paste becomes an inline text attachment; sending it to the
+// image ingest raised "attachment is not image" on every paste.
+describe('attachmentsToIngestAsImages', () => {
+  it('keeps only images', () => {
+    const img = createImageAttachment({
+      name: 'a.png',
+      size: 1,
+      mimeType: 'image/png',
+      base64: 'x',
+      dataUrl: 'data:image/png;base64,x',
+    })
+    const doc = createDocumentAttachment({
+      name: 'pasted-text-1.txt',
+      path: 'pasted-text-1.txt',
+    })
+    expect(attachmentsToIngestAsImages([doc, img])).toEqual([img])
+  })
+})
 
 describe('createImageAttachment', () => {
   it('returns an image-typed attachment with all provided fields', () => {

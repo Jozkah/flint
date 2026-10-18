@@ -1,5 +1,14 @@
 import { FadeText } from '@/components/ui/fade-text'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { groupDragAnnouncements } from '@/lib/dndAnnouncements'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { startHomeProjectsMirror } from '@/lib/groups/homeMirror'
 import { useConversationGroups } from '@/lib/groups/store'
 import { chatFolderAdapter } from '@/lib/chatFolders'
@@ -45,10 +54,11 @@ import {
   NavGroupAction,
   NavGroupLabel,
   NavList,
+  useCloseDrawer,
   useShellNav,
 } from '@/components/shell/nav-kit'
 import { Skeleton } from '@/components/ui/skeleton'
-import ThreadList from '@/containers/ThreadList'
+import ThreadList, { type ThreadSelection } from '@/containers/ThreadList'
 import { ThreadStatusMark, updatedMs } from '@/containers/ThreadStatusMark'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import type { ProjectModel } from '@/services/projects/types'
@@ -83,19 +93,307 @@ type Group = {
 }
 
 /** A group header a chat can be dropped on; it lights up while hovered. */
-function DropTarget({ id, children }: { id: string; children: ReactNode }) {
-  const { setNodeRef, isOver, active } = useDroppable({ id: `group:${id}` })
+function DropTarget({
+  id,
+  label,
+  children,
+}: {
+  id: string
+  /** The group's name, for the drag announcements. */
+  label: string
+  children: ReactNode
+}) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: `group:${id}`, data: { label } })
   return (
     <div
       ref={setNodeRef}
       className={cn(
         'rounded-md transition-[background-color,box-shadow] duration-150',
-        active && 'ring-1 ring-transparent',
-        isOver && 'bg-acc-tint ring-acc/40'
+        active && 'ring-2 ring-transparent ring-inset',
+        isOver && 'bg-acc-tint ring-2 ring-acc/70 ring-inset'
       )}
     >
       {children}
     </div>
+  )
+}
+
+type ChatGroupSectionProps = {
+  group: Group
+  isOpen: boolean
+  /** The chat open when the group was collapsed (collapsed groups only). */
+  collapsedFor: string | null | undefined
+  currentThreadId: string | undefined
+  streaming: ReadonlySet<string> | undefined
+  showAll: boolean
+  selection: ThreadSelection | undefined
+  isMobile: boolean
+  onToggle: (id: string, isOpen: boolean) => void
+  onShowMore: (id: string, more: boolean) => void
+  onOpenGroup: (projectId: string) => void
+  onEdit: (folder: ThreadFolder) => void
+  onFolders: (id: string) => void
+  onDelete: (folder: ThreadFolder) => void
+}
+
+/** One chat group: header, its rows, Show more/less. */
+const ChatGroupSection = memo(function ChatGroupSection({
+  group: g,
+  isOpen,
+  collapsedFor,
+  currentThreadId,
+  streaming,
+  showAll,
+  selection,
+  isMobile,
+  onToggle,
+  onShowMore,
+  onOpenGroup,
+  onEdit,
+  onFolders,
+  onDelete,
+}: ChatGroupSectionProps) {
+  const { t } = useTranslation()
+  // A collapsed group still lists the chat that was open when it was
+  // collapsed and any chat that is running, until it stops.
+  const visible = useMemo(
+    () =>
+      isOpen
+        ? showAll
+          ? g.threads
+          : g.threads.slice(0, PAGE)
+        : g.threads.filter(
+            (th) =>
+              (collapsedFor === currentThreadId && th.id === currentThreadId) ||
+              !!streaming?.has(th.id)
+          ),
+    [g.threads, isOpen, showAll, collapsedFor, currentThreadId, streaming]
+  )
+  const hidden = isOpen ? g.threads.length - visible.length : 0
+  return (
+    <div className="flex flex-col" data-testid="chat-group">
+      <DropTarget id={g.id} label={g.name}>
+      {/* The hover group is the header row only: hovering a chat below must not reveal the folder's controls. */}
+      <div className="group/cg flex h-7 items-center gap-0.5" data-testid="chat-group-header">
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          onClick={() => onToggle(g.id, isOpen)}
+          className="flex h-[26px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40"
+        >
+          {g.pinned && <Pin className="size-3 shrink-0" aria-hidden />}
+          <FadeText>{g.name}</FadeText>
+          <span className="text-[10.5px] font-normal text-subtle-foreground tabular-nums">
+            {g.threads.length}
+          </span>
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              'ml-auto size-3 shrink-0 transition-transform duration-300 ease-expo',
+              !isOpen && '-rotate-90'
+            )}
+          />
+        </button>
+        {g.folder && (
+          <>
+            <NavGroupAction
+              className="opacity-0 group-hover/cg:opacity-100 group-has-[:focus-visible]/cg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+              aria-label={t('common:shell.newChatIn', { name: g.name })}
+              title={t('common:shell.newChatIn', { name: g.name })}
+              onClick={() => onOpenGroup(g.folder!.id)}
+            >
+              <Plus />
+            </NavGroupAction>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <NavGroupAction
+                  className="opacity-0 group-hover/cg:opacity-100 group-has-[:focus-visible]/cg:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
+                  aria-label={t('common:shell.groupOptions')}
+                >
+                  <MoreHorizontal />
+                </NavGroupAction>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side={isMobile ? 'bottom' : 'right'} className="w-48">
+                <DropdownMenuItem
+                  onSelect={() => onOpenGroup(g.folder!.id)}
+                >
+                  <FolderOpen />
+                  <span>{t('common:shell.openGroup')}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onEdit(g.folder!)}>
+                  <Pencil />
+                  <span>{t('common:shell.editGroup')}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onFolders(g.folder!.id)}>
+                  <Folders />
+                  <span>{t('common:groups.folders')}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onSelect={() => onDelete(g.folder!)}>
+                  <Trash2 />
+                  <span>{t('common:shell.deleteGroup')}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+      </div>
+      </DropTarget>
+      <NavCollapse open={visible.length > 0}>
+        <NavList>
+          <ThreadList threads={visible} draggable selection={selection} />
+        </NavList>
+        {hidden > 0 && (
+          <button
+            type="button"
+            onClick={() => onShowMore(g.id, true)}
+            className="mt-0.5 ml-[26px] cursor-pointer self-start rounded-md px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t('common:shell.showMore', { count: hidden })}
+          </button>
+        )}
+        {showAll && g.threads.length > PAGE && (
+          <button
+            type="button"
+            onClick={() => onShowMore(g.id, false)}
+            className="mt-0.5 ml-[26px] cursor-pointer self-start rounded-md px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t('common:shell.showLess')}
+          </button>
+        )}
+      </NavCollapse>
+    </div>
+  )
+})
+
+type ChatGroupListProps = Omit<
+  ChatGroupSectionProps,
+  'group' | 'isOpen' | 'collapsedFor' | 'showAll' | 'streaming'
+> & {
+  filter: ChatFilter
+  collapsed: Record<string, string | null>
+  expandedMore: Record<string, boolean>
+}
+
+/** Every chat group, grouped and sorted from the threads store. */
+function ChatGroupList({
+  filter,
+  collapsed,
+  expandedMore,
+  currentThreadId,
+  selection,
+  isMobile,
+  onToggle,
+  onShowMore,
+  onOpenGroup,
+  onEdit,
+  onFolders,
+  onDelete,
+}: ChatGroupListProps) {
+  const { t } = useTranslation()
+  const threads = useThreads((s) => s.threads)
+  const getFilteredThreads = useThreads((s) => s.getFilteredThreads)
+  const folders = useThreadManagement((s) => s.folders)
+  const pendingDeletes = usePendingDeletes((s) => s.ids)
+  // The running chats as one string: token-by-token session updates leave it
+  // unchanged, so they never re-render the sidebar.
+  const streamingKey = useChatSessions((s) =>
+    Object.keys(s.sessions)
+      .filter((id) => s.sessions[id]?.isStreaming)
+      .sort()
+      .join('\n')
+  )
+  const streaming = useMemo(
+    () => new Set(streamingKey ? streamingKey.split('\n') : []),
+    [streamingKey]
+  )
+
+  const computedGroups = useMemo<Group[]>(() => {
+    const now = Date.now()
+    const all = getFilteredThreads('').filter((th) => {
+      if (pendingDeletes[th.id]) return false
+      if (filter === 'all') return true
+      return (
+        streaming.has(th.id) ||
+        now - updatedMs(th.updated) < RECENT_MS
+      )
+    })
+    const byUpdated = (a: Thread, b: Thread) =>
+      (b.updated || 0) - (a.updated || 0)
+    const pinned = all.filter((th) => th.isFavorite).sort(byUpdated)
+    const rest = all.filter((th) => !th.isFavorite)
+    const out: Group[] = []
+    if (pinned.length)
+      out.push({ id: 'pinned', name: t('common:shell.pinned'), threads: pinned, pinned: true })
+    for (const folder of folders) {
+      const list = rest
+        .filter((th) => th.metadata?.project?.id === folder.id)
+        .sort(byUpdated)
+      if (list.length || filter === 'all')
+        out.push({ id: folder.id, name: folder.name, threads: list, folder })
+    }
+    const ungrouped = rest
+      .filter(
+        (th) =>
+          !th.metadata?.project ||
+          !folders.some((f) => f.id === th.metadata?.project?.id)
+      )
+      .sort(byUpdated)
+    if (ungrouped.length)
+      out.push({ id: 'ungrouped', name: t('common:shell.ungrouped'), threads: ungrouped })
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads, folders, filter, streaming, getFilteredThreads, t, pendingDeletes])
+
+  // A group whose rows did not change keeps its object, so its section (a
+  // memo component) skips rendering: a title change re-renders one group.
+  const prevGroups = useRef(new Map<string, Group>())
+  const groups = useMemo(() => {
+    const prev = prevGroups.current
+    const next = new Map<string, Group>()
+    const out = computedGroups.map((g) => {
+      const old = prev.get(g.id)
+      const same =
+        old &&
+        old.name === g.name &&
+        old.folder === g.folder &&
+        old.pinned === g.pinned &&
+        old.threads.length === g.threads.length &&
+        old.threads.every((th, i) => th === g.threads[i])
+      const kept = same ? old : g
+      next.set(g.id, kept)
+      return kept
+    })
+    prevGroups.current = next
+    return out
+  }, [computedGroups])
+
+  return (
+    <>
+    {groups.map((g) => {
+      const isOpen = collapsed[g.id] === undefined
+      return (
+        <ChatGroupSection
+          key={g.id}
+          group={g}
+          isOpen={isOpen}
+          collapsedFor={isOpen ? undefined : collapsed[g.id]}
+          // Only a collapsed group shows the open and running chats.
+          currentThreadId={isOpen ? undefined : currentThreadId}
+          streaming={isOpen ? undefined : streaming}
+          showAll={!!expandedMore[g.id]}
+          selection={selection}
+          isMobile={isMobile}
+          onToggle={onToggle}
+          onShowMore={onShowMore}
+          onOpenGroup={onOpenGroup}
+          onEdit={onEdit}
+          onFolders={onFolders}
+          onDelete={onDelete}
+        />
+      )
+    })}
+    </>
   )
 }
 
@@ -112,23 +410,27 @@ export function ChatsNav() {
   useEffect(() => startHomeProjectsMirror(), [])
   const navigate = useNavigate()
   const { isMobile } = useShellNav()
-  const threads = useThreads((s) => s.threads)
-  const getFilteredThreads = useThreads((s) => s.getFilteredThreads)
+  const closeDrawer = useCloseDrawer()
+  // Only what the header needs; the rows subscribe in ChatGroupList, so a
+  // title or timestamp change never re-renders the drag context around them.
+  const hasSeveralThreads = useThreads((s) => Object.keys(s.threads).length > 1)
+  const hasNoThreads = useThreads((s) => Object.keys(s.threads).length === 0)
   const isLoadingThreads = useThreads((s) => s.isLoadingThreads)
   const deleteAllThreads = useThreads((s) => s.deleteAllThreads)
   const deleteThread = useThreads((s) => s.deleteThread)
   const folders = useThreadManagement((s) => s.folders)
   const addFolder = useThreadManagement((s) => s.addFolder)
   const updateFolder = useThreadManagement((s) => s.updateFolder)
-  const streaming = useChatSessions((s) => s.sessions)
-  const { open: projectDialogOpen, setOpen: setProjectDialogOpen } =
-    useProjectDialog()
+  const {
+    open: projectDialogOpen,
+    noun: projectDialogNoun,
+    setOpen: setProjectDialogOpen,
+  } = useProjectDialog()
   const currentThreadId = useParams({
     strict: false,
     select: (params) => params.threadId as string | undefined,
   })
 
-  const pendingDeletes = usePendingDeletes((s) => s.ids)
   const toggleFavorite = useThreads((s) => s.toggleFavorite)
   // A small movement starts a drag, so a click on a row still opens it.
   const sensors = useSensors(
@@ -171,49 +473,12 @@ export function ChatsNav() {
   )
   const moveChat = useMoveToGroup('home', chatFolderAdapter)
 
-  const groups = useMemo<Group[]>(() => {
-    const now = Date.now()
-    const all = getFilteredThreads('').filter((th) => {
-      if (pendingDeletes[th.id]) return false
-      if (filter === 'all') return true
-      return (
-        streaming[th.id]?.isStreaming ||
-        now - updatedMs(th.updated) < RECENT_MS
-      )
-    })
-    const byUpdated = (a: Thread, b: Thread) =>
-      (b.updated || 0) - (a.updated || 0)
-    const pinned = all.filter((th) => th.isFavorite).sort(byUpdated)
-    const rest = all.filter((th) => !th.isFavorite)
-    const out: Group[] = []
-    if (pinned.length)
-      out.push({ id: 'pinned', name: t('common:shell.pinned'), threads: pinned, pinned: true })
-    for (const folder of folders) {
-      const list = rest
-        .filter((th) => th.metadata?.project?.id === folder.id)
-        .sort(byUpdated)
-      if (list.length || filter === 'all')
-        out.push({ id: folder.id, name: folder.name, threads: list, folder })
-    }
-    const ungrouped = rest
-      .filter(
-        (th) =>
-          !th.metadata?.project ||
-          !folders.some((f) => f.id === th.metadata?.project?.id)
-      )
-      .sort(byUpdated)
-    if (ungrouped.length)
-      out.push({ id: 'ungrouped', name: t('common:shell.ungrouped'), threads: ungrouped })
-    return out
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threads, folders, filter, streaming, getFilteredThreads, t, pendingDeletes])
-
   /** Dropping a chat on a group moves it there; on Pinned it pins it. */
   const onDragEnd = (e: DragEndEvent) => {
     const threadId = e.active.data.current?.threadId as string | undefined
     const target = typeof e.over?.id === 'string' ? e.over.id.replace(/^group:/, '') : null
     if (!threadId || !target) return
-    const thread = threads[threadId]
+    const thread = useThreads.getState().threads[threadId]
     if (!thread) return
     if (target === 'pinned') {
       if (!thread.isFavorite) toggleFavorite(threadId)
@@ -231,16 +496,32 @@ export function ChatsNav() {
     void moveChat(threadId, folder.id)
   }
 
-  const toggleGroup = (id: string, isOpen: boolean) =>
-    setCollapsed((c) => ({
-      ...c,
-      // Collapsing remembers the chat open right now, so it stays visible.
-      [id]: isOpen ? (currentThreadId ?? null) : undefined!,
-    }))
+  const currentRef = useRef(currentThreadId)
+  currentRef.current = currentThreadId
+  const toggleGroup = useCallback(
+    (id: string, isOpen: boolean) =>
+      setCollapsed((c) => ({
+        ...c,
+        // Collapsing remembers the chat open right now, so it stays visible.
+        [id]: isOpen ? (currentRef.current ?? null) : undefined!,
+      })),
+    []
+  )
+  const showMore = useCallback(
+    (id: string, more: boolean) => setExpandedMore((m) => ({ ...m, [id]: more })),
+    []
+  )
+  const openRef = useRef<(projectId: string) => void>(() => {})
+  openRef.current = (projectId: string) => {
+    navigate({ to: '/project/$projectId', params: { projectId } })
+    closeDrawer()
+  }
+  const openGroup = useCallback((projectId: string) => openRef.current(projectId), [])
 
   const newChat = () => {
     useAgentMode.getState().removeThread(TEMPORARY_CHAT_ID)
     navigate({ to: route.home })
+    closeDrawer()
   }
 
   const handleCreateProject = async (
@@ -251,9 +532,9 @@ export function ChatsNav() {
     const created = await addFolder(name, assistantId, model)
     setProjectDialogOpen(false)
     navigate({ to: '/project/$projectId', params: { projectId: created.id } })
+    closeDrawer()
   }
 
-  const empty = groups.every((g) => g.threads.length === 0)
 
   return (
     <NavGroup data-testid="nav-chats">
@@ -271,9 +552,9 @@ export function ChatsNav() {
                 <MessageSquarePlus />
                 <span>{t('common:newChat')}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setProjectDialogOpen(true)}>
+              <DropdownMenuItem onSelect={() => setProjectDialogOpen(true, 'group')}>
                 <FolderPlus />
-                <span>{t('common:projects.new')}</span>
+                <span>{t('common:projects.newGroup')}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -317,7 +598,7 @@ export function ChatsNav() {
                   <span>{t('common:shell.status.none')}</span>
                 </div>
               </div>
-              {Object.keys(threads).length > 1 && (
+              {hasSeveralThreads && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => setSelecting(true)}>
@@ -358,140 +639,42 @@ export function ChatsNav() {
         </div>
       )}
 
-      {empty && isLoadingThreads ? (
+      {hasNoThreads && isLoadingThreads ? (
         <div className="flex flex-col gap-1.5 px-1" aria-busy>
           {[70, 55, 80].map((w) => (
             <Skeleton key={w} className="h-5 rounded-md" style={{ width: `${w}%` }} />
           ))}
         </div>
       ) : (
-        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+        <DndContext
+          sensors={sensors}
+          onDragEnd={onDragEnd}
+          accessibility={{ announcements: groupDragAnnouncements(t) }}
+        >
         <div className="flex flex-col gap-1">
-          {groups.map((g) => {
-            const isOpen = collapsed[g.id] === undefined
-            // A collapsed group still lists the chat that was open when it
-            // was collapsed and any chat that is running, until it stops.
-            const kept = isOpen
-              ? []
-              : g.threads.filter(
-                  (th) =>
-                    (collapsed[g.id] === currentThreadId &&
-                      th.id === currentThreadId) ||
-                    streaming[th.id]?.isStreaming
-                )
-            const showAll = expandedMore[g.id]
-            const visible = isOpen
-              ? showAll
-                ? g.threads
-                : g.threads.slice(0, PAGE)
-              : kept
-            const hidden = isOpen ? g.threads.length - visible.length : 0
-            return (
-              <div key={g.id} className="group/cg flex flex-col" data-testid="chat-group">
-                <DropTarget id={g.id}>
-                <div className="flex h-7 items-center gap-0.5">
-                  <button
-                    type="button"
-                    aria-expanded={isOpen}
-                    onClick={() => toggleGroup(g.id, isOpen)}
-                    className="flex h-[26px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40"
-                  >
-                    {g.pinned && <Pin className="size-3 shrink-0" aria-hidden />}
-                    <FadeText>{g.name}</FadeText>
-                    <span className="text-[10.5px] font-normal text-subtle-foreground tabular-nums">
-                      {g.threads.length}
-                    </span>
-                    <ChevronDown
-                      aria-hidden
-                      className={cn(
-                        'ml-auto size-3 shrink-0 transition-transform duration-300 ease-expo',
-                        !isOpen && '-rotate-90'
-                      )}
-                    />
-                  </button>
-                  {g.folder && (
-                    <>
-                      <NavGroupAction
-                        className="opacity-0 group-hover/cg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
-                        aria-label={t('common:shell.newChatIn', { name: g.name })}
-                        title={t('common:shell.newChatIn', { name: g.name })}
-                        onClick={() =>
-                          navigate({ to: '/project/$projectId', params: { projectId: g.folder!.id } })
-                        }
-                      >
-                        <Plus />
-                      </NavGroupAction>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <NavGroupAction
-                            className="opacity-0 group-hover/cg:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
-                            aria-label={t('common:shell.groupOptions')}
-                          >
-                            <MoreHorizontal />
-                          </NavGroupAction>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" side={isMobile ? 'bottom' : 'right'} className="w-48">
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              navigate({ to: '/project/$projectId', params: { projectId: g.folder!.id } })
-                            }
-                          >
-                            <FolderOpen />
-                            <span>{t('common:shell.openGroup')}</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setEditing(g.folder!)}>
-                            <Pencil />
-                            <span>{t('common:shell.editGroup')}</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setFoldersOf(g.folder!.id)}>
-                            <Folders />
-                            <span>{t('common:groups.folders')}</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(g.folder!)}>
-                            <Trash2 />
-                            <span>{t('common:shell.deleteGroup')}</span>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </>
-                  )}
-                </div>
-                </DropTarget>
-                <NavCollapse open={visible.length > 0}>
-                  <NavList>
-                    <ThreadList threads={visible} draggable selection={selection} />
-                  </NavList>
-                  {hidden > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setExpandedMore((m) => ({ ...m, [g.id]: true }))}
-                      className="mt-0.5 ml-[26px] cursor-pointer self-start rounded-md px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      {t('common:shell.showMore', { count: hidden })}
-                    </button>
-                  )}
-                  {showAll && g.threads.length > PAGE && (
-                    <button
-                      type="button"
-                      onClick={() => setExpandedMore((m) => ({ ...m, [g.id]: false }))}
-                      className="mt-0.5 ml-[26px] cursor-pointer self-start rounded-md px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      {t('common:shell.showLess')}
-                    </button>
-                  )}
-                </NavCollapse>
-              </div>
-            )
-          })}
+          <ChatGroupList
+            filter={filter}
+            collapsed={collapsed}
+            expandedMore={expandedMore}
+            currentThreadId={currentThreadId}
+            selection={selection}
+            isMobile={isMobile}
+            onToggle={toggleGroup}
+            onShowMore={showMore}
+            onOpenGroup={openGroup}
+            onEdit={setEditing}
+            onFolders={setFoldersOf}
+            onDelete={setDeleting}
+          />
         </div>
         </DndContext>
       )}
 
       <AddProjectDialog
         open={projectDialogOpen}
-        onOpenChange={setProjectDialogOpen}
+        onOpenChange={(o) => setProjectDialogOpen(o, projectDialogNoun)}
         editingKey={null}
+        noun={projectDialogNoun}
         onSave={handleCreateProject}
       />
       <AddProjectDialog
@@ -499,6 +682,7 @@ export function ChatsNav() {
         onOpenChange={(o) => !o && setEditing(null)}
         editingKey={editing?.id ?? null}
         initialData={editing ?? undefined}
+        noun="group"
         onSave={async (name: string, assistantId?: string, model?: ProjectModel) => {
           if (editing) await updateFolder(editing.id, name, assistantId, model)
           setEditing(null)

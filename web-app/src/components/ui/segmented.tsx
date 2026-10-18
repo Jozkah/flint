@@ -21,6 +21,7 @@ function Segmented<T extends string>({
   onValueChange,
   className,
   size = 'default',
+  wrap = false,
   'aria-label': ariaLabel,
 }: {
   options: SegmentedOption<T>[]
@@ -28,6 +29,8 @@ function Segmented<T extends string>({
   onValueChange: (value: T) => void
   className?: string
   size?: 'default' | 'sm'
+  /** Long labels wrap onto a second line instead of being cut off. */
+  wrap?: boolean
   'aria-label'?: string
 }) {
   const index = Math.max(
@@ -53,7 +56,7 @@ function Segmented<T extends string>({
       role="radiogroup"
       aria-label={ariaLabel}
       data-slot="segmented"
-      className={cn('relative flex w-full items-start gap-2', className)}
+      className={cn('relative grid w-full auto-cols-fr grid-flow-col gap-2', wrap ? 'items-stretch' : 'items-start', className)}
     >
       <span
         aria-hidden
@@ -64,7 +67,7 @@ function Segmented<T extends string>({
         }}
         className={cn(
           'pointer-events-none absolute top-0 rounded-lg border border-primary bg-grad transition-[left] duration-300 ease-expo',
-          size === 'sm' ? 'h-6' : 'h-7'
+          wrap ? 'bottom-0' : size === 'sm' ? 'h-6' : 'h-7'
         )}
       />
       {options.map((o, i) => {
@@ -93,15 +96,15 @@ function Segmented<T extends string>({
               }
             }}
             className={cn(
-              'relative z-10 flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs leading-none font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] disabled:pointer-events-none disabled:opacity-45 [&_svg:not([class*="size-"])]:size-3.5',
-              size === 'sm' ? 'h-6' : 'h-7',
+              'relative z-10 flex min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs leading-none font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] disabled:pointer-events-none disabled:opacity-45 [&_svg:not([class*="size-"])]:size-3.5',
+              wrap ? 'min-h-6 py-1 text-center leading-tight' : size === 'sm' ? 'h-6' : 'h-7',
               on
                 ? 'border-transparent bg-transparent text-on-grad'
                 : 'border-border bg-card text-secondary-foreground hover:bg-hover-row'
             )}
           >
             {o.icon}
-            <span className="truncate">{o.label}</span>
+            <span className={wrap ? undefined : 'truncate'}>{o.label}</span>
           </button>
         )
       })}

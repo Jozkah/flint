@@ -21,7 +21,15 @@
     "alwaysAllow": "Permitir siempre",
     "approvalNeeded": "Se necesita aprobación",
     "permissionDetails": "Detalles del permiso",
-    "moreOptions": "Más opciones"
+    "moreOptions": "Más opciones",
+    "denyWithReason": "Denegar con un motivo",
+    "denyReasonLabel": "¿Por qué lo deniegas?",
+    "denyReasonPlaceholder": "Dile al agente qué hacer en su lugar",
+    "denyAndSend": "Denegar y enviar",
+    "editCommand": "Editar comando",
+    "editCommandLabel": "Comando que se ejecutará",
+    "editCommandHint": "Cambia el comando y elige Permitir una vez para ejecutar tu versión.",
+    "editCommandNote": "Permitir una vez ejecuta tu comando editado. No se guarda ningún permiso permanente para él."
   },
   "toolCall": {
     "awaitingApproval": "Esperando aprobación: {{tool}}",
@@ -71,6 +79,8 @@
     "reading": "Leyendo...",
     "workspaceRoot": "raíz del espacio de trabajo",
     "matches": "{{count}} coincidencias",
-    "testsPassed": "{{count}} superadas"
+    "testsPassed": "{{count}} superadas",
+    "runningStatus": "Ejecutando {{tool}}…",
+    "stillRunning": "Aún ejecutando {{tool}}…"
   }
 }

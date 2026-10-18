@@ -1,7 +1,7 @@
 {
   "limitedSupport": "Nhà cung cấp này có thể chưa được hỗ trợ đầy đủ. Các khả năng (công cụ, thị giác, âm thanh) không được tự động phát hiện - hãy thêm mô hình thủ công và cấu hình khả năng cho từng mô hình.",
   "mlxExperimental": "Hỗ trợ MLX còn mang tính thử nghiệm. Không có embedding, công tắc suy luận chưa được nối, và một số kiến trúc mô hình mới hơn có thể không tải được. Hãy báo lỗi trên GitHub để chúng tôi ưu tiên xử lý.",
-  "engineBundled": "Engine suy luận được tích hợp sẵn trong Jan, nên không có gì cần tải xuống hay cập nhật riêng. Hãy nêu phiên bản này khi báo cáo một mô hình không tải được.",
+  "engineBundled": "Engine suy luận được tích hợp sẵn trong Flint, nên không có gì cần tải xuống hay cập nhật riêng. Hãy nêu phiên bản này khi báo cáo một mô hình không tải được.",
   "engineOtherVersion": "Cần phiên bản llama.cpp khác? Hãy tự chạy llama-server và thêm nó làm nhà cung cấp tùy chỉnh tương thích OpenAI.",
   "engineReleaseNotes": "Ghi chú phát hành",
   "engineBuild": "Bản dựng",
@@ -14,6 +14,7 @@
   "models": "Mô hình",
   "filterModels": "Lọc {{count}} mô hình",
   "modelsShown": "Đang hiện {{shown}} trên {{total}}",
+  "noModelsMatch": "Không có mô hình nào khớp với \"{{query}}\"",
   "showMoreModels": "Hiện thêm",
   "backendInstalled": "Đã cài",
   "backendHistoryShow": "Hiện lịch sử cập nhật",
@@ -38,6 +39,12 @@
   "importedTooltip": "Được nhập từ một tệp cục bộ. Gỡ nó khỏi Flint sẽ không xóa tệp trên đĩa.",
   "importModelSuccess": "Mô hình {{provider}} đã được nhập thành công.",
   "importModelError": "Không thể nhập mô hình:",
+
+  "importScanHint": "Tìm trong LM Studio, Ollama, bộ nhớ đệm Hugging Face, llama.cpp và GPT4All. Không có gì được sao chép cho đến khi bạn nhập.",
+
+  "importAddFolder": "Thêm thư mục mô hình",
+
+  "importRemoveFolder": "Xóa thư mục {{folder}}",
   "stop": "Dừng",
   "start": "Bắt đầu",
   "status": {
@@ -49,6 +56,10 @@
     "connected": "Đã kết nối"
   },
   "table": {
+    "contextAutoFit": "tự khớp",
+    "contextAuto": "tự động",
+    "contextAutoFitTitle": "Kích thước ngữ cảnh để trống, nên công cụ đã chọn cửa sổ này theo bộ nhớ khi tải mô hình.",
+    "contextAutoTitle": "Kích thước ngữ cảnh để trống: công cụ sẽ chọn cửa sổ khi tải mô hình.",
     "name": "Tên",
     "file": "Tệp",
     "size": "Kích thước",
@@ -122,6 +133,7 @@
     "cachedInputCost": "Chi phí đầu vào được lưu đệm (USD mỗi 1M token)",
     "cacheWriteCost": "Chi phí ghi bộ đệm (USD mỗi 1M token)",
     "costHelp": "Để trống để dùng giá tích hợp cho các mô hình phổ biến; mô hình cục bộ miễn phí. Giá đầu vào được lưu đệm hoặc giá ghi bộ đệm để trống sẽ được tính theo giá đầu vào.",
+    "costInvalid": "Giá phải là một số từ 0 trở lên. Để trống ô để dùng giá tích hợp sẵn.",
     "displayName": "Tên hiển thị",
     "displayNamePlaceholder": "Nhập tên hiển thị",
     "displayNameHelp": "Hiển thị ở mọi nơi mô hình này được liệt kê. Các yêu cầu vẫn dùng mã định danh gốc, {{modelId}}.",
@@ -143,12 +155,17 @@
   "addProvider": "Thêm nhà cung cấp",
   "addOpenAIProvider": "Thêm nhà cung cấp OpenAI",
   "enterNameForProvider": "Nhập tên cho nhà cung cấp",
+  "apiVersion": {
+    "title": "Phiên bản API",
+    "description": "Chỉ dành cho điểm cuối Azure kiểu deployments (/openai/deployments/<name>) có URL không chứa ?api-version=. Điểm cuối /openai/v1 không cần."
+  },
   "baseUrl": {
     "title": "URL gốc",
     "openaiDescription": "Dùng proxy hoặc cổng kết nối tương thích với API OpenAI. Mặc định là https://api.openai.com/v1.",
     "azureDescription": "Điểm cuối Azure OpenAI của bạn. Thay YOUR-RESOURCE-NAME bằng tên tài nguyên Azure của bạn.",
     "litellmDescription": "Địa chỉ proxy LiteLLM của bạn, bao gồm /v1. Mặc định là http://localhost:4000/v1.",
-    "qwenDescription": "Điểm cuối Model Studio của bạn. Một khóa chỉ hoạt động ở khu vực nó được tạo: dùng https://dashscope-intl.aliyuncs.com/compatible-mode/v1 cho Singapore hoặc https://dashscope.aliyuncs.com/compatible-mode/v1 cho Trung Quốc đại lục."
+    "qwenDescription": "Điểm cuối Model Studio của bạn. Một khóa chỉ hoạt động ở khu vực nó được tạo: dùng https://dashscope-intl.aliyuncs.com/compatible-mode/v1 cho Singapore hoặc https://dashscope.aliyuncs.com/compatible-mode/v1 cho Trung Quốc đại lục.",
+    "bedrockDescription": "Điểm cuối runtime Amazon Bedrock của khu vực bạn, ví dụ https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "Khóa API",
@@ -219,5 +236,18 @@
     "label": "Tên nhà cung cấp",
     "cancel": "Hủy",
     "save": "Lưu"
+  },
+  "bedrock": {
+    "title": "Thông tin xác thực AWS",
+    "description": "Flint ký mỗi yêu cầu Amazon Bedrock bằng khóa AWS của bạn. Các khóa được lưu trong chuỗi khóa của hệ điều hành và không bao giờ hiển thị lại. Hãy thêm ID mô hình thủ công (ví dụ anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "ID khóa truy cập",
+    "secretAccessKey": "Khóa truy cập bí mật",
+    "sessionToken": "Token phiên (không bắt buộc)",
+    "secretHint": "Cần một người dùng hoặc vai trò IAM được phép gọi bedrock:InvokeModel.",
+    "sessionTokenHint": "Chỉ dành cho thông tin xác thực tạm thời (STS hoặc SSO).",
+    "saved": "Đã lưu",
+    "remove": "Xóa",
+    "replace": "Đã lưu. Nhập để thay thế.",
+    "enter": "Chưa đặt"
   }
 }

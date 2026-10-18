@@ -53,3 +53,37 @@ describe('browser stand-in for the Tauri bridge', () => {
     expect(() => JSON.stringify(new Channel())).toThrow(/not available/)
   })
 })
+
+describe('commands the server does not answer', () => {
+  it('makes no request for desktop-only commands a chat touches', async () => {
+    vi.resetModules()
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    const shim = await import('@/lib/tauriBridgeShim')
+    for (const command of [
+      'agent_events_record',
+      'plugin:agent-tools|memory_retrieve',
+      'payload_usage_record',
+      'agent_deferred_list',
+      'bedrock_credential_status',
+    ]) {
+      await expect(shim.invoke(command, {})).rejects.toThrow('Unknown command')
+    }
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('asks the server once per unknown command, then answers locally', async () => {
+    vi.resetModules()
+    const fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      redirected: false,
+      text: async () => 'Unknown command',
+    })
+    vi.stubGlobal('fetch', fetch)
+    const shim = await import('@/lib/tauriBridgeShim')
+    await expect(shim.invoke('some_new_command')).rejects.toThrow('Unknown command')
+    await expect(shim.invoke('some_new_command')).rejects.toThrow('Unknown command')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+})

@@ -187,3 +187,18 @@ describe('useTheme', () => {
     })
   })
 })
+
+describe('themeStorageFor', () => {
+  it('lets only the main window save the theme', async () => {
+    const { themeStorageFor } = await import('../useTheme')
+    const base = { getItem: vi.fn(() => 'v'), setItem: vi.fn(), removeItem: vi.fn() }
+    const chat = themeStorageFor(base, true)
+    chat.setItem('theme', '{"activeTheme":"auto"}')
+    chat.removeItem('theme')
+    expect(base.setItem).not.toHaveBeenCalled()
+    expect(base.removeItem).not.toHaveBeenCalled()
+    expect(chat.getItem('theme')).toBe('v')
+    themeStorageFor(base, false).setItem('theme', '{"activeTheme":"light"}')
+    expect(base.setItem).toHaveBeenCalledWith('theme', '{"activeTheme":"light"}')
+  })
+})

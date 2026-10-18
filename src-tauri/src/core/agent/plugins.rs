@@ -465,7 +465,7 @@ fn plugins_section_for_scope(scope: &PluginScope) -> PluginsSection {
 /// the same store `plugin_root_dir`'s `Global` arm and `user_plugins_dir`
 /// resolve under (`<jan_data_folder>/agent-workspace` outside tests, or the
 /// `set_test_user_plugins` override inside them).
-fn global_agent_toml_path() -> PathBuf {
+pub(crate) fn global_agent_toml_path() -> PathBuf {
     match skills::user_plugin_store_root() {
         Some(store) => store.join("agent.toml"),
         None => {

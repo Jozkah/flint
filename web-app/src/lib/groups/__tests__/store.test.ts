@@ -7,6 +7,7 @@ import { configureGroups, handleGroupsChanged, useConversationGroups, WINDOW_ORI
 import { emptyGroupsState, layoutSurface } from '../domain'
 import { migrateProjects } from '../migrateProjects'
 import { lastAnnouncement } from '../announce'
+import i18n from '@/i18n/setup'
 import type { GroupsChangedPayload, GroupsPort } from '../persistence'
 import type { GroupSurface } from '../types'
 
@@ -80,6 +81,22 @@ describe('persistence', () => {
     expect(store().state.surfaces.home).toBe(before)
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('previous order was restored'))
     expect(lastAnnouncement()).toContain('previous order was restored')
+  })
+
+  it('reports a domain refusal in the app language, not as raw English', async () => {
+    const a = (await store().createGroup('home', 'A'))!
+    expect(await store().setGroupParent('home', a, a)).toBe(false)
+    expect(toast.error).toHaveBeenLastCalledWith('A group cannot be moved into itself')
+    await i18n.changeLanguage('de-DE')
+    try {
+      await store().setGroupParent('home', a, a)
+      expect(toast.error).toHaveBeenLastCalledWith(
+        'Eine Gruppe kann nicht in sich selbst verschoben werden'
+      )
+      expect(lastAnnouncement()).toBe('Eine Gruppe kann nicht in sich selbst verschoben werden')
+    } finally {
+      await i18n.changeLanguage('en')
+    }
   })
 
   it('recovers from corrupt storage without hiding items', async () => {

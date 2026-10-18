@@ -10,6 +10,8 @@ import {
   kvArchitectureFromGguf,
   kvCacheBytesFromArchitecture,
   parseFileSize,
+  resolveFitKvSettings,
+  settingValues,
   SYSTEM_RESERVE_BYTES,
   UNIFIED_SYSTEM_RESERVE_BYTES,
 } from '../modelCompatibility'
@@ -484,5 +486,60 @@ describe('assessModelFit across real machines', () => {
         hardware: baseHardware(),
       }).verdict
     ).toBe('unknown')
+  })
+})
+
+describe('KV offload and per-model cache types in the fit estimate', () => {
+  const arch = { layers: 32, kvHeads: 8, keyLength: 128, valueLength: 128 }
+  const base = {
+    weightsBytes: 8 * GB,
+    ctxLength: 131072,
+    hardware: withDiscreteGpu(64, 16),
+    architecture: arch,
+    cacheTypeK: 'f16',
+    cacheTypeV: 'f16',
+  }
+
+  it('needs only the weights on the GPU when the KV cache stays in RAM', () => {
+    expect(assessModelFit(base).verdict).toBe('fits-partial-offload')
+    const noOffload = assessModelFit({ ...base, noKvOffload: true })
+    expect(noOffload.verdict).toBe('fits')
+    expect(noOffload.assumptions).toContain('kv-offload-disabled')
+  })
+
+  it('still rejects a cache that does not fit the overall memory', () => {
+    const r = assessModelFit({
+      ...base,
+      hardware: withDiscreteGpu(8, 16),
+      noKvOffload: true,
+    })
+    expect(r.verdict).toBe('exceeds')
+  })
+
+  it('uses the model cache type, else the global one, with auto resolved', () => {
+    expect(
+      resolveFitKvSettings({ cache_type_k: 'q4_0' }, { cache_type_k: 'f16' })
+        .cacheTypeK
+    ).toBe('q4_0')
+    expect(
+      resolveFitKvSettings({ cache_type_k: 'auto' }, { cache_type_k: 'f16' })
+        .cacheTypeK
+    ).toBe('f16')
+    const auto = resolveFitKvSettings({}, { cache_type_k: 'auto', flash_attn: 'on' })
+    expect(auto).toMatchObject({ cacheTypeK: 'q8_0', cacheTypeV: 'q8_0' })
+    expect(
+      resolveFitKvSettings({}, { cache_type_v: 'auto', flash_attn: 'off' })
+        .cacheTypeV
+    ).toBe('f16')
+    expect(resolveFitKvSettings({ no_kv_offload: true }, {}).noKvOffload).toBe(true)
+  })
+
+  it('flattens setting bags', () => {
+    expect(
+      settingValues({ a: { controller_props: { value: 1 } } })
+    ).toEqual({ a: 1 })
+    expect(settingValues([{ key: 'b', controller_props: { value: 'x' } }])).toEqual({
+      b: 'x',
+    })
   })
 })

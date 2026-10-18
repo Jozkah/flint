@@ -60,7 +60,7 @@ pub fn attachment_file_name(raw: &str) -> Result<String, String> {
             .filter(|e| e.chars().count() <= 20)
             .unwrap_or_default();
         let keep = MAX_NAME_CHARS - ext.chars().count();
-        name = name.chars().take(keep).collect::<String>() + &ext;
+        name = name.chars().take(keep).collect::<String>() + ext.as_str();
     }
     let stem = name.split('.').next().unwrap_or_default().to_uppercase();
     if WINDOWS_RESERVED.contains(&stem.as_str()) {

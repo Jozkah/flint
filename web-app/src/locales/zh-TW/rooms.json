@@ -12,8 +12,8 @@
     "open": "開啟 {{title}}",
     "delete": "刪除",
     "deleteLabel": "刪除 {{title}}",
-    "participants": "{{count}} 名參與者",
-    "turns": "{{count}} 輪",
+    "participants_other": "{{count}} 位參與者",
+    "turns_other": "{{count}} 輪",
     "updated": "更新於 {{time}}",
     "untitled": "未命名房間",
     "moreLabel": "{{title}} 的更多操作",
@@ -54,7 +54,9 @@
     "user-selected": "由你選擇",
     "user-selectedHint": "每輪之後，房間會等待你選擇下一位發言者。",
     "moderator-selected": "由主持人選擇",
-    "moderator-selectedHint": "由主持人模型選擇每位發言者，並可結束討論。"
+    "moderator-selectedHint": "由主持人模型選擇每位發言者，並可結束討論。",
+    "compare": "比較模型",
+    "compareHint": "每則訊息會同時傳給所有參與者；他們各自獨立作答，彼此看不到，並排顯示。"
   },
   "clear": {
     "command": "清空此房間：它的聊天、它學到的內容、它的暫存檔案",
@@ -74,6 +76,9 @@
     "heading": "房間設定",
     "sectionGeneral": "一般",
     "sectionDiscussion": "討論與主持人",
+    "sectionIdentity": "身分",
+    "sectionModel": "模型與推理",
+    "sectionTools": "工具",
     "lockedWhileRunning": "暫停房間以變更設定。",
     "title": "標題",
     "objective": "目標",
@@ -152,7 +157,47 @@
     "sections": "設定區段",
     "tabGeneral": "一般",
     "tabDiscussion": "討論",
-    "tabLimits": "限制"
+    "tabLimits": "限制",
+    "compareRun": "執行模型",
+    "compareRunHint": "逐一執行較慢，但一次只載入一個本機模型，也更省請求額度。",
+    "compareRunOption": {
+      "together": "全部同時",
+      "one-by-one": "逐一執行"
+    },
+    "compareRunSuggest": "已選擇兩個以上的本機模型：逐一執行可避免它們爭搶記憶體。",
+    "tools": {
+      "heading": "工具",
+      "summary": "已開啟 {{on}}/{{total}} · 約 {{tokens}} 個權杖",
+      "loading": "正在載入工具…",
+      "empty": "此權限下沒有可用的工具。",
+      "group": {
+        "files": "檔案與指令",
+        "web": "網頁",
+        "mcp": "MCP 伺服器",
+        "other": "其他"
+      },
+      "tokens": "約 {{tokens}} tok",
+      "share": "工具定義約佔此模型脈絡視窗的 {{pct}}%。",
+      "warn": "工具定義約佔此模型脈絡視窗的 {{pct}}%（超過 {{limit}}%）。請關閉一些，為討論留出空間。",
+      "windowUnknown": "此模型的脈絡視窗未知，無法顯示占比。",
+      "notStarted": "未啟動",
+      "toolsUnknown": "啟動前工具未知"
+    },
+    "budget": {
+      "heading": "每輪工具預算",
+      "hint": "每個使用工具的參與者輪次的上限。留空則使用預設值。",
+      "maxToolCalls": "最多工具呼叫次數",
+      "maxSteps": "最多步數",
+      "toolTimeoutSec": "工具逾時（秒）",
+      "default": "預設：{{value}}"
+    },
+    "isolation": {
+      "active": "每個可編輯的參與者都在自己的隔離工作區中工作，因此無法互相覆寫或覆寫你的資料夾。",
+      "unavailable": "隔離工作區無法使用：{{reason}}。可編輯的參與者在此房間中只讀。",
+      "untrusted": "該資料夾未受信任",
+      "trust": "信任此資料夾"
+    },
+    "saving": "正在儲存…"
   },
   "limits": {
     "maxRounds": "輪數",
@@ -216,6 +261,7 @@
     "moderatorNote": "主持人備註",
     "disagreements": "分歧",
     "jumpToLatest": "跳到最新",
+    "compareRow": "並排顯示 {{count}} 個回答",
     "toolDetails": "詳細資料",
     "toolHide": "隱藏",
     "toolArgs": "輸入",
@@ -225,7 +271,30 @@
     "toolFailed": "失敗",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} 個 token",
-    "speedTitle": "此回覆中寫出的 token 數及速度"
+    "speedTitle": "此回覆中寫出的 token 數及速度",
+    "budgetHit": {
+      "tool-calls": "本輪已達工具呼叫預算。",
+      "steps": "本輪已達步數預算。",
+      "timeout": "本輪中的一次工具呼叫超過逾時，已被停止。"
+    },
+    "rawToolCall": "這看起來是以文字形式寫出的工具呼叫，它沒有被執行。",
+    "emptyReply": {
+      "length": "模型用完了全部回覆上限（{{count}} 個 token），卻沒有寫出回答。請在房間設定中提高上限，或關閉此參與者的推理，然後重新執行。",
+      "tools": "使用了工具，但沒有寫文字回覆。",
+      "none": "沒有文字回覆。"
+    },
+    "thought": "思考",
+    "answerFrom": "{{name}} 的回答",
+    "expandAnswer": "顯示 {{name}} 的完整回答",
+    "collapseAnswer": "縮短 {{name}} 的回答",
+    "expand": "展開",
+    "collapse": "收合",
+    "linkScroll": "連動捲動",
+    "linkScrollHint": "同步捲動同一問題的各個回答",
+    "continuePrompt": "請從被截斷的地方繼續你之前的回答。",
+    "catchUp": "補答：還回答了之前的 {{count}} 個問題",
+    "catchUp_one": "補答：還回答了之前的 1 個問題",
+    "catchUpHint": "該參與者在這些問題之後才加入，因此這則回覆也回答了它們："
   },
   "unknownWindow": {
     "title": "上下文視窗未知",
@@ -268,17 +337,23 @@
     "finalPositionsHint": "每位參與者陳述自己的立場",
     "synthesizeHint": "結果摘要，附帶異議",
     "cancelTurnHint": "僅停止正在進行的回覆",
-    "steerLocked": "討論開始後才會解鎖這些功能。"
+    "steerLocked": "討論開始後才會解鎖這些功能。",
+    "answering": "正在回答",
+    "models": "模型"
   },
   "stage": {
     "speaking": "{{name}} 正在發言",
     "compacting": "{{name}} 正在跟進",
     "draft": "準備開始",
-    "draftHint": "{{count}} 名參與者 · {{mode}}",
+    "draftHint_other": "{{count}} 位參與者 · {{mode}}",
     "running": "討論進行中",
     "runningHint": "下一位發言者正在準備。",
     "awaiting-user": "輪到你選擇",
     "awaitingHint": "選擇誰下一個發言，或向房間傳送訊息。",
+    "comparing": "{{count}} 個模型正在回答",
+    "comparingHint": "各自獨立作答；回答會並排顯示。",
+    "compareAwaiting": "輪到你了",
+    "compareAwaitingHint": "寫一則訊息，每位參與者都會回答。",
     "paused": "已暫停",
     "pausedHint": "繼續以從這裡接著進行。",
     "stopped": "已停止",
@@ -289,7 +364,8 @@
     "failedHint": "重新開始以重試。",
     "round": "輪次",
     "turn": "發言",
-    "of": "/"
+    "of": "/",
+    "question": "問題"
   },
   "usage": {
     "label": "用量",
@@ -302,7 +378,8 @@
     "time": "時間",
     "of": "{{value}} / {{max}}",
     "noLimit": "無限制",
-    "stopReason": "已停止：{{reason}}"
+    "stopReason": "已停止：{{reason}}",
+    "questions": "問題"
   },
   "stopReason": {
     "user": "由你停止",
@@ -331,7 +408,9 @@
     "toShort": "發給",
     "placeholderTo": "給 {{name}} 傳訊息…",
     "mention": "提及參與者",
-    "dropSkipped": "未加入（不是文字、是資料夾，或超出訊息限制）：{{files}}"
+    "dropSkipped": "未加入（不是文字、是資料夾，或超出訊息限制）：{{files}}",
+    "placeholderShort": "傳送到房間… 用 @ 提及",
+    "extendByQuestions": "更多問題"
   },
   "kpi": {
     "running": "進行中",
@@ -340,7 +419,7 @@
     "waitingHint": "需要你選擇或回覆",
     "waitingNone": "沒有需要你處理的事項",
     "turns": "本週發言次數",
-    "turnsHint": "涉及 {{count}} 個房間",
+    "turnsHint_other": "共 {{count}} 個房間",
     "models": "參與的模型",
     "modelsNone": "還沒有參與者"
   },
@@ -383,5 +462,130 @@
     "panes": "房間檢視",
     "talk": "討論",
     "controls": "控制"
+  },
+  "compare": {
+    "title": "比較執行",
+    "modeTogether": "全部同時",
+    "modeOneByOne": "逐一執行",
+    "include": "納入下次執行",
+    "includeFor": "將 {{name}} 納入下次執行",
+    "run": "執行",
+    "runAgain": "再次執行",
+    "runFor": "用 {{name}} 回答目前的問題",
+    "runAgainFor": "用 {{name}} 再次回答目前的問題",
+    "runAll": "全部執行",
+    "answerEarlier": "回答先前的問題",
+    "answerEarlierHint": "錯過先前問題的每個模型現在依序回答，就像它一開始就在場。",
+    "export": "匯出比較",
+    "saveMarkdown": "另存為 Markdown…",
+    "copyMarkdown": "複製為 Markdown",
+    "copyJson": "複製為 JSON",
+    "saved": "已儲存比較。",
+    "copied": "已複製到剪貼簿。",
+    "copyFailed": "無法複製到剪貼簿。",
+    "notAnswered": "尚未回答這個問題。",
+    "state": {
+      "off": "下次執行時略過",
+      "unavailable": "無法使用",
+      "running": "正在回答…",
+      "queued": "排隊中",
+      "done": "已回答",
+      "failed": "失敗",
+      "idle": "尚未回答",
+      "waitingSlot": "排隊中：等待本機模型槽位"
+    },
+    "retry": "重試",
+    "retryFor": "重試 {{name}}"
+  },
+  "changes": {
+    "summaryOne": "{{count}} 個檔案已變更",
+    "summaryMany": "{{count}} 個檔案已變更",
+    "workspace": "隔離工作區：{{path}}",
+    "binary": "二進位檔案",
+    "noExcerpt": "無摘錄。",
+    "openDiff": "開啟差異",
+    "keep": "保留",
+    "discard": "捨棄變更",
+    "apply": "套用到我的資料夾",
+    "state": {
+      "kept": "已保留",
+      "discarded": "已捨棄",
+      "applied": "已套用",
+      "idle": "未套用"
+    },
+    "diffTitle": "工作區中的變更",
+    "diffHint": "此參與者在其隔離工作區中所做的全部變更。",
+    "discardTitle": "捨棄這些變更？",
+    "discardHint": "參與者的工作區會回到初始狀態。你的資料夾不受影響。",
+    "loading": "正在載入差異…",
+    "empty": "沒有可套用的內容。",
+    "discardConfirm": "捨棄",
+    "scopeTurn": "本輪",
+    "scopeAll": "自工作區建立以來",
+    "applyShort": "套用",
+    "scopeAllShort": "全部",
+    "scope": "顯示哪些變更",
+    "showAll": "顯示全部檔案（{{count}}）",
+    "partial_other": "已套用 {{count}} 個檔案",
+    "applyIncludesEarlier_other": "套用也會包含 {{count}} 個先前尚未套用的檔案"
+  },
+  "apply": {
+    "title_one": "將 {{count}} 項變更套用到你的資料夾",
+    "title_other": "將 {{count}} 項變更套用到你的資料夾",
+    "copyPath": "複製資料夾路徑 {{path}}",
+    "pathCopied": "已複製資料夾路徑",
+    "files_one": "{{count}} 個檔案",
+    "files_other": "{{count}} 個檔案",
+    "source": "來自 {{name}} · 第 {{round}} 輪",
+    "safety": "若修補檔無法乾淨套用，就不會套用任何內容。套用後可立即復原。",
+    "checking": "正在檢查能否套用到你的資料夾…",
+    "clean": "可以乾淨套用",
+    "checkFailed": "無法檢查修補檔：{{message}}",
+    "conflict_one": "{{count}} 個檔案無法套用到你的資料夾",
+    "conflict_other": "{{count}} 個檔案無法套用到你的資料夾",
+    "conflictHint": "排除它們，或請參與者依資料夾目前的狀態重新修改。",
+    "notChecked": "未個別檢查（檔案太多）",
+    "fileConflict": "無法套用",
+    "leaveOut": "排除衝突檔案",
+    "details": "詳細資訊",
+    "fileDirty": "你的編輯",
+    "dirtyTitle_one": "其中 {{count}} 個檔案有你尚未提交的變更",
+    "dirtyTitle_other": "其中 {{count}} 個檔案有你尚未提交的變更",
+    "dirtyHint": "修補檔會寫在你的修改之上。若想方便回復，請先 commit 或 stash。",
+    "selectAll": "選取所有檔案",
+    "include": "包含 {{path}}",
+    "renamedFrom": "（由 {{path}} 重新命名）",
+    "status": {
+      "added": "新增",
+      "modified": "修改",
+      "deleted": "刪除",
+      "renamed": "重新命名"
+    },
+    "binary": "二進位檔已變更，不顯示其內容。",
+    "noLines": "沒有行變更（僅模式或名稱）。",
+    "showMore_one": "再顯示 {{count}} 行",
+    "showMore_other": "再顯示 {{count}} 行",
+    "hiddenLines_one": "（已隱藏 {{count}} 行）",
+    "hiddenLines_other": "（已隱藏 {{count}} 行）",
+    "blockedConflict": "無法套用：部分選取的檔案無法乾淨套用。",
+    "blockedNothing": "請至少選取一個檔案。",
+    "blockedFailed": "檢查成功前無法套用。",
+    "copyPatch": "複製修補檔",
+    "patchCopied": "已複製修補檔",
+    "confirm_one": "套用 {{count}} 個檔案",
+    "confirm_other": "套用 {{count}} 個檔案",
+    "applied_one": "已將 {{count}} 個檔案套用到你的資料夾",
+    "applied_other": "已將 {{count}} 個檔案套用到你的資料夾",
+    "undo": "復原",
+    "undone": "已從你的資料夾撤回這項變更",
+    "undoFailed": "無法復原：{{message}}"
+  },
+  "approvals": {
+    "held": "房間已暫停",
+    "heldHint": "此請求等待期間房間被暫停，因此無法再允許。恢復房間後，如仍需要，參與者會再次詢問。",
+    "dismiss": "關閉",
+    "heldBanner": "房間已暫停：此請求已無法允許。繼續後會再次詢問。",
+    "wantsToRun": "{{origin}} 想要執行 {{tool}}",
+    "details": "詳細資料"
   }
 }

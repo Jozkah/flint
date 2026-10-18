@@ -1,3 +1,4 @@
+import { missingKeyLabelKey } from '@/lib/providerKeyStatus'
 /**
  * The one status a model row shows, derived from state the app already holds.
  *
@@ -77,7 +78,7 @@ export function modelStatusTone(status: ModelStatus): ModelStatusTone {
  * The `providers:` locale key for a status label. Literal keys, so a scan of
  * the source finds every one of them.
  */
-export function modelStatusLabelKey(status: ModelStatus): string {
+export function modelStatusLabelKey(status: ModelStatus, provider?: string): string {
   switch (status) {
     case 'loading':
       return 'providers:status.loading'
@@ -88,7 +89,8 @@ export function modelStatusLabelKey(status: ModelStatus): string {
     case 'available':
       return 'providers:status.available'
     case 'needs-api-key':
-      return 'providers:status.needsApiKey'
+      // The provider header's words, so one state has one name.
+      return missingKeyLabelKey(provider)
     case 'connected':
       return 'providers:status.connected'
   }

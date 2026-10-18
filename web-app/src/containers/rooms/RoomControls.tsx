@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import type { LiveTurn, Participant, Room } from '@/lib/rooms/types'
+import { isCompareRoom } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -49,6 +50,7 @@ import { RoomAvatar } from './RoomAvatar'
 import { findModel } from './RoomModelSelect'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { RoomStatusBadge } from './RoomStatusBadge'
+import { CompareRunPanel } from './CompareRunPanel'
 import './rooms.css'
 
 type T = (key: string, options?: Record<string, unknown>) => string
@@ -60,8 +62,18 @@ function stageFor(
   room: Room,
   live: LiveTurn | null,
   t: T,
-  modelName: (p: Participant) => string
+  modelName: (p: Participant) => string,
+  /** Turns in flight in this room (several at once in a compare room). */
+  liveCount = live ? 1 : 0
 ) {
+  if (room.mode === 'compare' && live && liveCount > 1) {
+    return {
+      title: t('rooms:stage.comparing', { count: liveCount }),
+      hint: t('rooms:stage.comparingHint'),
+      speaker: undefined,
+      speakerName: '',
+    }
+  }
   if (live && live.author.kind !== 'system') {
     const p =
       live.author.kind === 'participant'
@@ -82,14 +94,20 @@ function stageFor(
   const hint: Record<Room['status'], string> = {
     draft: t('rooms:stage.draftHint', { count, mode: t(`rooms:mode.${room.mode}`) }),
     running: t('rooms:stage.runningHint'),
-    'awaiting-user': t('rooms:stage.awaitingHint'),
+    'awaiting-user': t(
+      room.mode === 'compare' ? 'rooms:stage.compareAwaitingHint' : 'rooms:stage.awaitingHint'
+    ),
     paused: t('rooms:stage.pausedHint'),
     stopped: t('rooms:stage.stoppedHint'),
     completed: t('rooms:stage.completedHint'),
     failed: t('rooms:stage.failedHint'),
   }
   return {
-    title: t(`rooms:stage.${room.status}`),
+    title: t(
+      room.mode === 'compare' && room.status === 'awaiting-user'
+        ? 'rooms:stage.compareAwaiting'
+        : `rooms:stage.${room.status}`
+    ),
     hint: hint[room.status],
     speaker: undefined,
     speakerName: '',
@@ -169,7 +187,7 @@ export function RoomControls({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
   const providers = useModelProvider((s) => s.providers)
-  const { liveTurn, pendingAction, lastError } = useRoomsState()
+  const { liveTurn, liveTurns, pendingAction, lastError, journal } = useRoomsState()
   const [localError, setLocalError] = useState<RoomsUiError | null>(null)
   const [voteOpen, setVoteOpen] = useState(false)
   const [proposal, setProposal] = useState('')
@@ -221,14 +239,24 @@ export function RoomControls({ room }: { room: Room }) {
   }
 
   const speakers = availableParticipants(room)
-  const stage = stageFor(room, live, t, (p) => {
-    const m = findModel(providers, p.model)
-    return m?.displayName || m?.name || p.model.id
-  })
-  const queue = speakingQueue(
+  const stage = stageFor(
     room,
-    live?.author.kind === 'participant' ? live.author.participantId : null
-  ).slice(0, 4)
+    live,
+    t,
+    (p) => {
+      const m = findModel(providers, p.model)
+      return m?.displayName || m?.name || p.model.id
+    },
+    (liveTurns ?? []).filter((l) => l.roomId === room.id).length || (live ? 1 : 0)
+  )
+  // A compare room answers everyone at once: there is no order and no "next".
+  const compare = room.mode === 'compare'
+  const queue = compare
+    ? activeParticipants(room)
+    : speakingQueue(
+        room,
+        live?.author.kind === 'participant' ? live.author.participantId : null
+      ).slice(0, 4)
   const { usage, limits } = room
   const turnShare = limits.maxTurns > 0 ? Math.min(100, (usage.turns / limits.maxTurns) * 100) : 0
   const onStage = room.status === 'running' && live !== null
@@ -328,7 +356,7 @@ export function RoomControls({ room }: { room: Room }) {
           <div className="mt-3 flex flex-col gap-1.5">
             <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
               <span>
-                {t('rooms:stage.round')}{' '}
+                {t(isCompareRoom(room) ? 'rooms:stage.question' : 'rooms:stage.round')}{' '}
                 <b className="font-semibold text-foreground">{usage.rounds}</b>{' '}
                 {t('rooms:stage.of')} {limits.maxRounds}
               </span>
@@ -346,40 +374,47 @@ export function RoomControls({ room }: { room: Room }) {
             </div>
           </div>
 
-          <div className="mt-3.5 grid grid-cols-[1.6fr_1fr_1fr] gap-2">
+          <div
+            className={cn(
+              'mt-3.5 grid gap-2',
+              compare ? 'grid-cols-[1.6fr_1fr]' : 'grid-cols-[1.6fr_1fr_1fr]'
+            )}
+          >
             {main}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <TransportButton
-                  aria-label={t('rooms:controls.selectNext')}
-                  disabled={!avail.selectNext || busy}
-                >
-                  <SkipForward fill="currentColor" aria-hidden />
-                  <span>{t('rooms:controls.next')}</span>
-                </TransportButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-52">
-                <DropdownMenuLabel>{t('rooms:controls.whoNext')}</DropdownMenuLabel>
-                {speakers.length === 0 ? (
-                  <DropdownMenuItem disabled>{t('rooms:controls.noSpeakers')}</DropdownMenuItem>
-                ) : (
-                  speakers.map((p) => (
-                    <DropdownMenuItem
-                      key={p.id}
-                      onSelect={() => run(() => c.selectNext(room.id, p.id))}
-                    >
-                      <RoomAvatar
-                        model={p.model}
-                        name={p.name}
-                        color={participantColor(p.id)}
-                        size={16}
-                      />
-                      {p.role ? `${p.name} · ${p.role}` : p.name}
-                    </DropdownMenuItem>
-                  ))
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {!compare && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <TransportButton
+                    aria-label={t('rooms:controls.selectNext')}
+                    disabled={!avail.selectNext || busy}
+                  >
+                    <SkipForward fill="currentColor" aria-hidden />
+                    <span>{t('rooms:controls.next')}</span>
+                  </TransportButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-52">
+                  <DropdownMenuLabel>{t('rooms:controls.whoNext')}</DropdownMenuLabel>
+                  {speakers.length === 0 ? (
+                    <DropdownMenuItem disabled>{t('rooms:controls.noSpeakers')}</DropdownMenuItem>
+                  ) : (
+                    speakers.map((p) => (
+                      <DropdownMenuItem
+                        key={p.id}
+                        onSelect={() => run(() => c.selectNext(room.id, p.id))}
+                      >
+                        <RoomAvatar
+                          model={p.model}
+                          name={p.name}
+                          color={participantColor(p.id)}
+                          size={16}
+                        />
+                        {p.role ? `${p.name} · ${p.role}` : p.name}
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <TransportButton
               className="text-destructive hover:border-destructive/40 hover:bg-destructive/8 hover:text-destructive"
               disabled={!avail.stop || busy}
@@ -393,21 +428,34 @@ export function RoomControls({ room }: { room: Room }) {
           {queue.length > 0 ? (
             <div className="mt-3.5 flex flex-col gap-2">
               <span className={sectionHeading}>
-                {t(active ? 'rooms:controls.upNext' : 'rooms:controls.order')}
+                {t(
+                  compare
+                    ? active
+                      ? 'rooms:controls.answering'
+                      : 'rooms:controls.models'
+                    : active
+                      ? 'rooms:controls.upNext'
+                      : 'rooms:controls.order'
+                )}
               </span>
               <div className="flex flex-wrap items-center gap-1">
                 {queue.map((p, i) => {
                   const canPick =
-                    avail.selectNext && !busy && p.availability.state !== 'unavailable'
+                    !compare &&
+                    avail.selectNext &&
+                    !busy &&
+                    p.availability.state !== 'unavailable'
                   return (
                     <span key={p.id} className="contents">
-                      {i > 0 && (
+                      {i > 0 && !compare && (
                         <ChevronRight aria-hidden className="size-3 text-subtle-foreground" />
                       )}
                       <button
                         type="button"
                         disabled={!canPick}
-                        aria-label={t('rooms:controls.pickNext', { name: p.name })}
+                        aria-label={
+                          compare ? p.name : t('rooms:controls.pickNext', { name: p.name })
+                        }
                         onClick={() => run(() => c.selectNext(room.id, p.id))}
                         className={cn(
                           'inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] border-border bg-card pr-2.5 pl-1 text-xs text-secondary-foreground outline-hidden transition-[border-color,color,transform] duration-150 ease-expo hover:border-border-strong hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] disabled:cursor-default disabled:active:scale-100',
@@ -439,6 +487,20 @@ export function RoomControls({ room }: { room: Room }) {
           )}
         </FrameBody>
       </Frame>
+
+      {compare && (
+        <CompareRunPanel
+          room={room}
+          journal={journal}
+          liveTurns={liveTurns ?? (live ? [live] : [])}
+          busy={busy}
+          run={(fn) => void run(fn)}
+          onToggle={(p, include) =>
+            api.updateRoomSettings(room, { participants: [{ ...p, compareSkip: !include }] })
+          }
+          onRun={(ids, scope) => startAfterModelCheck(() => c.compareRun(room.id, ids, scope))}
+        />
+      )}
 
       <Frame className="motion-safe:animate-rise-in [animation-delay:50ms]">
         <FrameHeader icon={<Sparkles />} title={t('rooms:controls.steer')} />

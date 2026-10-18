@@ -28,6 +28,8 @@ export function useHideUnavailable(): (provider: ProviderLike) => boolean {
               baseUrl: provider.base_url,
               builtInEngine: Boolean(isLocalProvider(provider.provider)),
             }) !== 'remote',
+          endpointMissing:
+            !isLocalProvider(provider.provider) && !provider.base_url?.trim(),
           providerActive: provider.active !== false,
           hasApiKey: Boolean(providerHasRemoteApiKeys(provider)),
           baseUrl: provider.base_url,

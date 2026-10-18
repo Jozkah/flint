@@ -1,13 +1,55 @@
 {
+  "promptLibrary": {
+    "title": "Prompt library",
+    "description": "Prompts you reuse. Type @ or / in the composer to insert one. Use {{name}} or {{name:default}} for parts you fill in each time.",
+    "manage": "Your prompts",
+    "add": "Add prompt",
+    "editTitle": "Edit prompt",
+    "import": "Import",
+    "export": "Export",
+    "imported_one": "Added {{count}} prompt",
+    "imported_other": "Added {{count}} prompts",
+    "importedNone": "No new prompts found",
+    "search": "Search prompts",
+    "empty": "No prompts yet.",
+    "edit": "Edit {{name}}",
+    "delete": "Delete {{name}}",
+    "deleted": "Prompt deleted",
+    "undo": "Undo",
+    "name": "Name",
+    "folder": "Folder (optional)",
+    "tags": "Tags, comma separated",
+    "body": "Prompt text",
+    "bodyHint": "Write the prompt. Use {{topic}} or {{tone:friendly}} for blanks.",
+    "variables": "Asks for: {{names}}",
+    "defaultValue": "Default: {{value}}",
+    "requiredField": "Required",
+    "fillNeeded": "Fill in {{names}} to insert",
+    "insert": "Insert",
+    "errors": {
+      "nameRequired": "A prompt needs a name",
+      "nameTooLong": "That name is too long",
+      "bodyRequired": "A prompt needs some text",
+      "bodyTooLong": "That prompt is too long",
+      "gone": "That prompt no longer exists",
+      "invalidJson": "That file is not valid JSON",
+      "noPrompts": "No prompts found in that file"
+    },
+    "noResults": "No prompts match “{{query}}”.",
+    "clearSearch": "Clear search"
+  },
   "groups": {
     "newGroup": "New group",
+    "newSubfolder": "New subfolder",
+    "moveInto": "Move into folder",
+    "topLevel": "Top level",
     "groupName": "Group name",
     "createGroup": "Create group",
     "renameGroup": "Rename group",
     "rename": "Rename",
     "deleteGroup": "Delete group",
     "deleteTitle": "Delete {{name}}?",
-    "deleteBody": "The group is removed. Its items move out of it and are not deleted.",
+    "deleteBody": "The group is removed. Its items move out of it and are not deleted. Any subfolders move up one level.",
     "folders": "Folders…",
     "foldersTitle": "Folders for “{{name}}”",
     "foldersBodyHome": "Chats started in this group or moved into it get these folders attached, read-only for the chat's tools.",
@@ -53,7 +95,40 @@
     "chatFoldersBody": "The chat's tools can read these folders. Writes stay in the chat's own sandbox.",
     "chatFoldersEmpty": "No folders attached.",
     "addFolder": "Add folder",
-    "chatFolderCount": "Folders: {{count}}"
+    "chatFolderCount": "Folders: {{count}}",
+    "errors": {
+      "nameEmpty": "Group name cannot be empty",
+      "notFound": "Group not found",
+      "tooDeep": "Groups cannot be nested that deep",
+      "intoItself": "A group cannot be moved into itself"
+    },
+    "failed": {
+      "create": "Could not create the group",
+      "rename": "Could not rename the group",
+      "moveFolder": "Could not move the folder",
+      "saveState": "Could not save the group state",
+      "reorder": "Could not reorder groups",
+      "moveItem": "Could not move the item",
+      "delete": "Could not delete the group",
+      "saveFolders": "Could not save group folders",
+      "updateContext": "Could not update the folder context",
+      "update": "Could not update groups",
+      "import": "Could not import groups",
+      "unreadable": "{{failure}}: the saved groups could not be read",
+      "restored": "{{failure}}. Your previous order was restored."
+    },
+    "announce": {
+      "created": "Group {{name}} created",
+      "collapsed": "{{name}} collapsed",
+      "expanded": "{{name}} expanded",
+      "reordered": "{{name}} moved to position {{position}} of {{total}}",
+      "movedToPosition": "Moved to {{name}}, position {{position}}",
+      "movedToRecents": "Moved to Recents",
+      "deleted": "Group {{name}} deleted. Its items moved to Recents",
+      "ctxReplaced": "{{base}}. Folder context replaced by group folders; access still needs approval",
+      "ctxMerged": "{{base}}. Group folders added to folder context; access still needs approval",
+      "foldersAdded": "{{base}}. Item folders added to the group"
+    }
   },
   "htmlArtifact": {
     "code": "Code",
@@ -186,7 +261,7 @@
   "profile": "Profile",
   "reset": "Reset",
   "search": "Search",
-  "searchThreads": "Search threads...",
+  "searchThreads": "Search chats...",
   "toNavigate": "to navigate",
   "toSelect": "to select",
   "toClose": "to close",
@@ -212,6 +287,7 @@
   "preview": {
     "title": "Preview",
     "empty": "Open a generated artifact to preview it here.",
+    "emptyHint": "Files Flint creates in this session open here.",
     "loading": "Opening…",
     "unsupported": "Flint can't show this kind of file. Open it to see it in another app.",
     "outside": "This file is no longer in the session workspace.",
@@ -276,7 +352,7 @@
     "searchThreads": "Search conversations",
     "toggleSidebar": "Toggle sidebar",
     "openCowork": "Open Cowork",
-    "openArtifacts": "Open artifacts",
+    "openArtifacts": "Open Library",
     "openSystemMonitor": "Open system monitor",
     "openLogs": "Open app logs",
     "section": {
@@ -290,11 +366,18 @@
       "navigation": "Go to",
       "settings": "Settings",
       "threads": "Conversations"
-    }
+    },
+    "openItem": "Open {{item}}"
   },
   "searchGroup": {
+    "pages": "Pages",
+    "settings": "Settings",
     "inProjects": "In projects",
-    "conversations": "Conversations"
+    "conversations": "Conversations",
+    "messages": "In messages",
+    "work": "Rooms and sessions",
+    "room": "Room",
+    "session": "Cowork session"
   },
   "rail": {
     "label": "Cowork panels",
@@ -608,7 +691,8 @@
       "add": "Add",
       "cancel": "Cancel",
       "remove": "Remove"
-    }
+    },
+    "ctxAutoFitHint": "Auto-fit is on: leave this empty and Auto-fit picks the context, shrinking it if needed to fit memory. A number here is used as set."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -651,6 +735,14 @@
     "showRawLibraries": "Show {{count}} missing library names"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Create project",
+      "editTitle": "Edit project",
+      "namePlaceholder": "Enter project name...",
+      "alreadyExists": "Project \"{{projectName}}\" already exists",
+      "createSuccess": "Project \"{{projectName}}\" created",
+      "updateSuccess": "Project \"{{projectName}}\" updated"
+    },
     "title": "Collections",
     "new": "New collection",
     "addProject": "New collection",
@@ -744,7 +836,8 @@
     "pathNameNotice": "This names a chat collection; it does not open that folder.",
     "openCodeFolderInCowork": "Open code folder in Cowork",
     "openCodeFolder": "Open code folder",
-    "openCodeFolderDescription": "Choose a folder on your computer for Flint to work in."
+    "openCodeFolderDescription": "Choose a folder on your computer for Flint to work in.",
+    "setUpEmbeddingModel": "Set up an embedding model"
   },
   "attachmentsIngestion": {
     "title": "Choose how to ingest attachments",
@@ -876,7 +969,8 @@
       "unsupportedType": "File type \"{{type}}\" is not supported.",
       "ioError": "Could not read {{subject}}: {{message}}",
       "parseGeneric": "{{subject}} could not be parsed: {{message}}",
-      "fallback": "Failed to process {{subject}}."
+      "fallback": "Failed to process {{subject}}.",
+      "noEmbeddingModel": "{{subject}} was not added: no embedding model is installed to index it. Set one up in Llama.cpp, then add the file again."
     },
     "fileDeleted": {
       "title": "File Deleted",
@@ -936,6 +1030,7 @@
     "missing": "No longer available: {{model}}",
     "use": "Use this model",
     "thisChat": "This chat",
+    "thisRoom": "This room",
     "thisSession": "This session"
   },
   "skillsUsedCount_one": "Used {{count}} skill",
@@ -957,6 +1052,28 @@
   "artifactsCount_other": "{{count}} items",
   "previewMessageCount_one": "{{count}} message",
   "previewMessageCount_other": "{{count}} messages",
+  "rowPreview": {
+    "status": {
+      "running": "Running",
+      "waiting": "Needs you",
+      "idle": "Idle",
+      "error": "Error"
+    },
+    "prState": {
+      "open": "Open",
+      "draft": "Draft",
+      "merged": "Merged",
+      "closed": "Closed"
+    },
+    "pullRequests": "Pull requests",
+    "morePrs_one": "+{{count}} more",
+    "morePrs_other": "+{{count}} more",
+    "noChecks": "No checks",
+    "empty": "Nothing here yet.",
+    "noMessages": "No messages yet",
+    "summarizing": "Writing a summary…",
+    "openHint": "Open"
+  },
   "artifactDetails": "Item details",
   "artifactBack": "Back to Library",
   "artifactClose": "Close details",
@@ -1000,7 +1117,10 @@
     "branchLabel": "Branch",
     "actionsLabel": "Folder actions",
     "copyPath": "Copy path",
-    "copied": "Path copied"
+    "copied": "Path copied",
+    "footnoteEmptyEdit": "Attach a folder to let the agent work on your project.",
+    "a11yWithFolderEditable": "Project folder {{folder}}, attached for editing. Change or detach it.",
+    "a11yWithFolderWorktree": "Project folder {{folder}}, edited through a separate worktree. Change or detach it."
   },
   "coworkEmpty": {
     "title": "What are we working on?",
@@ -1012,11 +1132,19 @@
       "second": "Build a single-page dashboard from a CSV I'll paste in",
       "third": "Draft a README for a project I describe to you"
     },
+    "vault": {
+      "badge": "Obsidian vault",
+      "hint": "This folder is an Obsidian vault. Flint reads it like any folder of Markdown notes, and leaves out Obsidian's .obsidian settings and .trash.",
+      "add": "Add my Obsidian vault",
+      "addHint": "An Obsidian vault is just a folder. Choose it like any other folder."
+    },
     "folder": {
       "first": "Explain how {{folder}} is put together",
       "second": "Find every TODO in {{folder}} and group them by area",
       "third": "Write tests for the part of {{folder}} I point you at"
-    }
+    },
+    "subtitleFolderEdit": "Give Flint a task. It reads and changes files in {{folder}} directly, and works on its own from there.",
+    "subtitleFolderWorktree": "Give Flint a task. It works on a git worktree of {{folder}}, so your folder only changes when you merge."
   },
   "sandbox": {
     "noTerminal": "No terminal",
@@ -1184,7 +1312,8 @@
     "sensitiveRefused": "{{name}} looks like credentials or a key, so it was not opened",
     "binaryRefused": "{{name}} is not a text file, whatever its extension says",
     "chooseAgainAction": "Choose again",
-    "externalGone": "This file was opened from outside the project, and that access did not survive. Choose it again to reopen it."
+    "externalGone": "This file was opened from outside the project, and that access did not survive. Choose it again to reopen it.",
+    "oneFolderAtATime": "Only one folder at a time. \"{{name}}\" was not added."
   },
   "settingsSearch": {
     "label": "Search settings",
@@ -1193,7 +1322,9 @@
     "count_one": "1 result",
     "count_other": "{{count}} results",
     "empty": "No matching settings.",
-    "clear": "Clear search"
+    "clear": "Clear search",
+    "emptyHint": "Try another word, or search by what it does: theme, proxy, memory.",
+    "pageCrumb": "Page"
   },
   "tasks": {
     "title": "Activity",
@@ -1367,7 +1498,14 @@
     "recommended": "Recommended",
     "reset": "Reset to global",
     "resetAll": "Reset to global defaults",
-    "overridden": "Set for this chat"
+    "overridden": "Set for this chat",
+    "levels": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "XHigh",
+      "unlimited": "Unlimited"
+    }
   },
   "modelOffline": {
     "badge": "Unreachable",
@@ -1478,7 +1616,11 @@
     "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "voicePill": {
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "dictate": "Dictate",
+    "stop": "Stop dictating",
+    "working": "Working…",
+    "setup": "Set up voice input"
   },
   "coworkRunSettings": {
     "label": "Run settings",
@@ -1927,10 +2069,12 @@
       "interrupted": "Interrupted"
     }
   },
+  "sampler": {
+    "label": "Sampling parameters",
+    "notSupported": "Not supported by {{provider}}"
+  },
   "translate": {
     "title": "Translate",
-    "usingModel": "Using {{model}}",
-    "noModel": "Pick a model in the model selector",
     "from": "Translate from",
     "to": "Translate to",
     "detect": "Detect language",
@@ -1942,7 +2086,29 @@
     "copyFailed": "Could not copy the translation",
     "failed": "Translation failed",
     "inputPlaceholder": "Text to translate",
-    "outputPlaceholder": "The translation appears here"
+    "outputPlaceholder": "The translation appears here",
+    "description": "Translate text between languages with your selected model. Nothing is saved.",
+    "sourceTitle": "Source text",
+    "targetTitle": "Translation",
+    "paste": "Paste from clipboard",
+    "pasteFailed": "Could not read the clipboard",
+    "clear": "Clear",
+    "characters_one": "{{count}} character",
+    "characters_other": "{{count}} characters",
+    "translating": "Translating…",
+    "retry": "Retry",
+    "shortcut": "Translate (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Search languages",
+    "noLanguages": "No matching language",
+    "errorAuth": "The provider rejected your API key. Check it in the provider settings.",
+    "errorQuota": "The provider says you are out of quota or rate limited. Wait a bit or check your plan.",
+    "errorModelNotFound": "The provider does not have this model. Pick another model or check the provider settings.",
+    "errorNetwork": "Could not reach the provider. Check your connection or that the server is running.",
+    "errorEngine": "The engine that runs this model is not available. Restart Flint and try again.",
+    "openProvider": "Open provider settings",
+    "errorDetails": "Details",
+    "pasteHint": "Clipboard access was blocked. Click the text box and press {{keys}}.",
+    "swapNeedsSource": "Pick a source language to swap"
   },
   "appRail": {
     "label": "Global navigation",
@@ -2139,10 +2305,12 @@
   },
   "browserVerify": {
     "title": "Verify in browser",
+    "about": "How this works",
     "explain": "Opens your local app in a separate, temporary browser profile (not Flint's preview, no cookies), limited to the app's own origin. Requests elsewhere are blocked and listed.",
     "url": "Local app URL",
     "notLocal": "Only an app on this machine (localhost, 127.0.0.1) can be verified.",
-    "steps": "Steps (optional): open, click, type, expect, wait, screenshot — one per line",
+    "stepsLabel": "Steps (optional)",
+    "stepsHint": "One per line: open, click, type, expect, wait, screenshot",
     "run": "Verify",
     "cancel": "Stop",
     "using": "Using {{browser}}",
@@ -2502,6 +2670,7 @@
       "slots": "{{count}} slots",
       "vision": "Vision",
       "audio": "Audio",
+      "fixedPrompt": "Sent with every request: {{count}} tokens (system prompt and tool schemas).",
       "tokenUsage": "Token usage",
       "tokenUsageSr": "Token usage {{value}}"
     }
@@ -2525,10 +2694,157 @@
     "previewLoading": "Loading preview…",
     "previewNone": "No preview available"
   },
+  "fileViewer": {
+    "openFull": "Open full preview",
+    "loadMore": "Load more",
+    "showingFirst": "Showing first {{loaded}} of {{total}}",
+    "lines_one": "{{count}} line",
+    "lines_other": "{{count}} lines",
+    "wrap": "Wrap lines",
+    "copy": "Copy",
+    "copied": "Copied",
+    "binary": "This looks like a binary file, so there is no text preview.",
+    "expandLine": "Show full line",
+    "collapseLine": "Shorten line",
+    "truncatedOnAdd": "Showing the first {{shown}} of {{total}} (the attachment was truncated when it was added)"
+  },
   "markdownImage": {
     "load": "Load image from {{host}}"
   },
   "messageSaveFailed": "Could not save the message. It may be lost after a restart.",
   "threadSaveFailed": "Could not save the change to this thread. It was reverted.",
-  "attachmentsProcessFailed": "Couldn't prepare the attachments, so the message was not sent"
+  "attachmentsProcessFailed": "Couldn't prepare the attachments, so the message was not sent",
+  "settingsRecovered": {
+    "title": "Settings file could not be read",
+    "withBackup": "{{file}} was damaged, so Flint started with default settings. The damaged file was kept as {{backup}}.",
+    "noBackup": "{{file}} was damaged, so Flint started with default settings. A copy of the damaged file could not be saved."
+  },
+  "memoryProposal": {
+    "title": "Remember this?",
+    "wouldApply": "Would apply to {{where}}.",
+    "remember": "Remember",
+    "discard": "Discard",
+    "reviewBoth": "Review both",
+    "saving": "Saving…",
+    "discarding": "Discarding…",
+    "scope": {
+      "session": "this conversation",
+      "project": "this project",
+      "user": "everywhere"
+    }
+  },
+  "picker": {
+    "filter": "Filter",
+    "source": "Source",
+    "sourceAll": "All",
+    "sourceLocal": "Local",
+    "sourceCloud": "Cloud",
+    "capabilities": "Capabilities",
+    "cap": {
+      "vision": "Vision",
+      "tools": "Tools",
+      "reasoning": "Reasoning",
+      "embeddings": "Embedding"
+    },
+    "loadedNow": "Loaded now",
+    "sort": "Sort",
+    "sortDefault": "Default order",
+    "sortName": "Name (A–Z)",
+    "sortRecent": "Recently used",
+    "sortSize": "Size",
+    "clearFilters": "Clear filters",
+    "noMatch": "No models match",
+    "noMatchFilters": "No models match: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Session",
+      "room": "Room"
+    },
+    "heading": "Conversations",
+    "empty": "No other conversations",
+    "noMatch": "No conversation matches",
+    "messages": "Messages: {{n}}",
+    "included": "Included: {{title}} (messages: {{n}}, ~{{size}} chars)",
+    "group": "Mentioned conversations",
+    "summarize": "Summarize",
+    "summarizeHint": "Include a summary instead of the latest messages",
+    "remove": "Remove mention of {{title}}",
+    "mentioned": "Mentioned: {{title}}",
+    "open": "Open {{title}}",
+    "status": {
+      "missing": "Not found: {{title}}",
+      "self": "{{title}} is this conversation, so it is left out",
+      "over-cap": "{{title}} is left out: at most {{max}} conversations per message"
+    },
+    "excerpt": "Excerpt",
+    "summary": "Summary",
+    "modeGroup": "What to include from {{title}}",
+    "excerptHint": "The latest messages, about {{tokens}} tokens",
+    "summaryHint": "A summary written by the model, up to about {{tokens}} tokens",
+    "needsModel": "Load a model to include a summary instead",
+    "totals_one": "{{count}} message · ~{{tokens}} tokens included",
+    "totals_other": "{{count}} messages · ~{{tokens}} tokens included",
+    "readOnly": "Sent as quoted, read-only context. The model cannot change that conversation.",
+    "tooLarge": "This is over a quarter of the model’s context window.",
+    "useSummary": "Use a summary",
+    "resolving": "Looking up {{title}}",
+    "chipStatus": {
+      "missing": "Not found",
+      "self": "This conversation",
+      "over-cap": "Over the limit"
+    },
+    "preview": {
+      "empty": "No messages yet",
+      "you": "You",
+      "assistant": "Assistant"
+    },
+    "messagesCount_one": "{{count}} message",
+    "messagesCount_other": "{{count}} messages",
+    "compact_one": "{{count}} mention · {{mode}}",
+    "compact_other": "{{count}} mentions · {{mode}}",
+    "mixed": "Mixed"
+  },
+  "campaignList": {
+    "timeout": "The app did not answer in time.",
+    "unreadableRecord": "the backend sent a record this page cannot read"
+  },
+  "composer": {
+    "messageLabel": "Message"
+  },
+  "routeLoading": {
+    "slow": "This page is taking longer than usual to open.",
+    "reload": "Reload",
+    "retry": "Try again",
+    "failed": "This page could not be opened"
+  },
+  "replyCutOff": {
+    "withTokens": "Cut off at the reply limit ({{tokens}} tokens)",
+    "plain": "Cut off at the reply limit"
+  },
+  "routeNotFound": {
+    "title": "Page not found",
+    "body": "There is no page at {{path}}. It may have moved, or the link is out of date.",
+    "home": "Go home",
+    "settings": "Open settings"
+  },
+  "waitingForYou": "Waiting for you",
+  "dnd": {
+    "anItem": "the item",
+    "aGroup": "a group",
+    "picked": "Picked up {{item}}.",
+    "over": "{{item}} is over {{group}}.",
+    "notOver": "{{item}} is not over a group.",
+    "dropped": "Moved {{item}} to {{group}}.",
+    "cancelled": "{{item}} was put back."
+  },
+  "searchEverything": "Search chats, rooms, pages and settings…",
+  "noResultsFoundEverywhere": "Nothing matches in chats, rooms, Cowork sessions, pages or settings. Try a different keyword.",
+  "selectModelNoKey": "No model is chosen for this session, and {{provider}} has no API key. Pick a model in the model menu first.",
+  "serverConnection": {
+    "offlineTitle": "Can't reach the Flint server.",
+    "offlineBody": "Reconnecting… What you do now may not be saved until it is back.",
+    "statusOffline": "Server unreachable"
+  }
 }

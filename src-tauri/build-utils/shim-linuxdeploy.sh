@@ -55,8 +55,20 @@ EXCLUDED_LIBRARIES="libvulkan.so*"
 # toolkit, and linuxdeploy fails on any dependency it cannot resolve. Resolve it
 # to the toolkit's stub, and exclude it so the stub never lands in the AppImage:
 # at runtime it has to be the user's driver.
-CUDA_STUB="${CUDA_PATH:-}/lib/stubs/libcuda.so"
-if [ -f "$CUDA_STUB" ]; then
+# The redist prefix keeps it in lib/stubs; a full toolkit (/usr/local/cuda, as
+# on the self-hosted pool, where the release workflow sets no CUDA_PATH) in
+# lib64/stubs or targets/*/lib/stubs.
+CUDA_ROOT="${CUDA_PATH:-${CUDA_HOME:-}}"
+if [ -z "$CUDA_ROOT" ] && command -v nvcc >/dev/null 2>&1; then
+  CUDA_ROOT="$(dirname "$(dirname "$(readlink -f "$(command -v nvcc)")")")"
+fi
+CUDA_STUB=""
+if [ -n "$CUDA_ROOT" ]; then
+  for c in "$CUDA_ROOT/lib/stubs/libcuda.so" "$CUDA_ROOT/lib64/stubs/libcuda.so" "$CUDA_ROOT"/targets/*/lib/stubs/libcuda.so; do
+    if [ -f "$c" ]; then CUDA_STUB="$c"; break; fi
+  done
+fi
+if [ -n "$CUDA_STUB" ]; then
   mkdir -p "$XDG_CACHE_HOME/cuda-stubs"
   cp "$CUDA_STUB" "$XDG_CACHE_HOME/cuda-stubs/libcuda.so.1"
   export LD_LIBRARY_PATH="$XDG_CACHE_HOME/cuda-stubs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

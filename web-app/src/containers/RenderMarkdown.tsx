@@ -1,6 +1,6 @@
 
 import { Components, ExtraProps } from 'react-markdown'
-import { memo, useDeferredValue, useMemo } from 'react'
+import { memo, useDeferredValue, useMemo, useRef } from 'react'
 import {
   cn,
   disableIndentedCodeBlockPlugin,
@@ -17,6 +17,8 @@ import {
 } from 'streamdown'
 import { cjk } from '@streamdown/cjk'
 import { code } from '@streamdown/code'
+import { guardCodePlugin } from '@/lib/guardedCodePlugin'
+import { CodeWrapToggles } from '@/components/CodeWrapToggles'
 import { mermaid } from '@streamdown/mermaid'
 
 import remarkGfm from 'remark-gfm'
@@ -33,7 +35,10 @@ import { remarkFileRefs, FILE_REF_HREF_PREFIX } from '@/lib/coworkFileRefs'
 import { MarkdownTable } from '@/components/MarkdownTable'
 import { MarkdownImage } from '@/components/MarkdownImage'
 import { rehypeSafeInlineHtml } from '@/lib/rehypeSafeInlineHtml'
+import { rehypeStripFlankingZwsp } from '@/lib/rehypeStripFlankingZwsp'
 import { decodeWebCiteHref } from '@/lib/webUrl'
+import { mermaidConfigFor } from '@/lib/mermaidTheme'
+import { useTheme } from '@/hooks/useTheme'
 
 const WEB_CITE_MARKER = /\[\[cite:\s*([^\]\s]+?)\s*\]\]/g
 
@@ -76,20 +81,24 @@ const REMARK_PLUGINS = [
   // plain text) wherever no code-panel opener is provided, e.g. the chat route.
   remarkFileRefs,
 ]
-const REHYPE_PLUGINS_USER = [rehypeKatex, defaultRehypePlugins.harden]
+const REHYPE_PLUGINS_USER = [
+  rehypeStripFlankingZwsp,
+  rehypeKatex,
+  defaultRehypePlugins.harden,
+]
 // Model output may carry inline HTML (e.g. <span style="color:...">); it is
 // parsed, then cut down to an allowlist before KaTeX/harden run. User text stays
 // literal so pasted markup is never reinterpreted.
 const REHYPE_PLUGINS_MODEL = [
   defaultRehypePlugins.raw,
   rehypeSafeInlineHtml,
+  rehypeStripFlankingZwsp,
   rehypeKatex,
   defaultRehypePlugins.harden,
 ]
-const STREAMDOWN_PLUGINS = { code, mermaid, cjk }
+const STREAMDOWN_PLUGINS = { code: guardCodePlugin(code), mermaid, cjk }
 const STREAMDOWN_CONTROLS = { mermaid: { fullscreen: false } }
 const LINK_SAFETY = { enabled: false }
-const EMPTY_MERMAID = {}
 
 // While streaming, the active (unclosed) code block would be re-highlighted by
 // Shiki over its whole contents on every commit — O(n) per render, and the
@@ -211,6 +220,14 @@ const maskInlineMath = (content: string, store: string[]): string => {
     .join('\n')
 }
 
+// Inline math sets fractions in text style, which shrinks a quadratic formula
+// to unreadable. A leading \displaystyle gives them display size; it stays
+// inline, so the line is only as tall as the fraction needs.
+export const inlineFractions = (expr: string): string =>
+  /\\[dt]?frac(?![a-zA-Z])/.test(expr) && !/^\s*\\displaystyle(?![a-zA-Z])/.test(expr)
+    ? `\\displaystyle ${expr}`
+    : expr
+
 // Cache for normalized LaTeX content
 const latexCache = new Map<string, string>()
 
@@ -229,11 +246,21 @@ const normalizeLatex = (input: string): string => {
   s = s.replace(/\$(?=\d)/g, '\\$') // leftover currency renders literally
   s = fixEmphasisFlanking(s)
 
+  // A `$$...$$` that is alone on its line is display math. Left on one line,
+  // remark-math reads it as inline math, which shrinks fractions and sums.
+  s = s.replace(/^([ \t]*)\uE000L(\d+)\uE000[ \t]*$/gm, (whole, indent, n) => {
+    const expr = math[Number(n)]
+    if (!expr.startsWith('$$') || expr.includes('\n')) return whole
+    return `${indent}$$\n${expr.slice(2, -2).trim()}\n${indent}$$`
+  })
+
   // Restore math, converting bracket delimiters to $… / $$… for remark-math.
   s = s.replace(/\uE000L(\d+)\uE000/g, (_, n) => {
     const expr = math[Number(n)]
     if (expr.startsWith('\\[')) return `$$\n${expr.slice(2, -2).trim()}\n$$`
-    if (expr.startsWith('\\(')) return `$${expr.slice(2, -2).trim()}$`
+    if (expr.startsWith('\\(')) return `$${inlineFractions(expr.slice(2, -2).trim())}$`
+    if (!expr.startsWith('$$') && expr.length > 2)
+      return `$${inlineFractions(expr.slice(1, -1))}$`
     return expr
   })
   s = s.replace(/\uE000C(\d+)\uE000/g, (_, n) => code[Number(n)])
@@ -295,6 +322,8 @@ function RenderMarkdownComponent({
     (s) => s.renderHtmlArtifacts
   )
   const showInlineCitations = useInterfaceSettings((s) => s.showInlineCitations)
+  const wrapCodeLines = useInterfaceSettings((s) => s.wrapCodeLines)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   // Coalesce rapid streamed updates: React renders the deferred (older) value
   // while new tokens arrive and skips intermediates under load, so the memoized
@@ -383,8 +412,15 @@ function RenderMarkdownComponent({
         isUser && 'is-user',
         className
       )}
+      ref={rootRef}
+      data-code-wrap={wrapCodeLines ? 'on' : undefined}
       onClickCapture={(event) => saveNamedCodeBlock(event, normalizedContent)}
     >
+      <CodeWrapToggles
+        root={rootRef}
+        active={!isStreaming}
+        blockKey={messageId}
+      />
       {segments
         ? segments.map((seg, i) =>
             seg.type === 'html' ? (
@@ -443,16 +479,19 @@ function StreamdownViewComponent({
   messageId,
   isUser,
 }: StreamdownViewProps) {
+  const isDark = useTheme((s) => s.isDark)
   const mermaidOptions = useMemo(
-    () =>
-      messageId
+    () => ({
+      config: mermaidConfigFor(isDark),
+      ...(messageId
         ? {
             errorComponent: (props: MermaidErrorComponentProps) => (
               <MermaidError messageId={messageId} {...props} />
             ),
           }
-        : EMPTY_MERMAID,
-    [messageId]
+        : {}),
+    }),
+    [messageId, isDark]
   )
 
   const mergedClassName = useMemo(

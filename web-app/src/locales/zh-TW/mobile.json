@@ -395,7 +395,8 @@
     "mode": {
       "roundRobin": "輪流",
       "userSelected": "由你選擇",
-      "moderatorSelected": "由主持人選擇"
+      "moderatorSelected": "由主持人選擇",
+      "compare": "比較模型"
     },
     "untitled": "未命名房間",
     "menu": "房間選單",

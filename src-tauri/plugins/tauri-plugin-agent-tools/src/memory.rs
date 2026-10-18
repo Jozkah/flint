@@ -15,6 +15,7 @@
 
 #[cfg(feature = "tauri")]
 pub mod commands;
+pub mod audit;
 pub mod create;
 pub mod identity;
 /// The decision an inferred proposal gets, shared by the command the
@@ -24,6 +25,7 @@ pub mod inferred;
 pub mod migrate;
 pub mod record;
 pub mod precedence;
+pub mod ranking;
 pub mod retrieve;
 pub mod service;
 pub mod settings;

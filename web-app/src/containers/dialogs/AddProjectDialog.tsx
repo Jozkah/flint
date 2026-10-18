@@ -47,7 +47,7 @@ interface AddProjectDialogProps {
    * creates a sidebar group, so it says "group"; other callers keep the
    * collection wording.
    */
-  noun?: 'collection' | 'group'
+  noun?: 'collection' | 'group' | 'project'
 }
 
 export default function AddProjectDialog({
@@ -60,7 +60,11 @@ export default function AddProjectDialog({
 }: AddProjectDialogProps) {
   const { t } = useTranslation()
   const dialogKey =
-    noun === 'group' ? 'projects.addGroupDialog' : 'projects.addProjectDialog'
+    noun === 'group'
+      ? 'projects.addGroupDialog'
+      : noun === 'project'
+        ? 'projects.newProjectDialog'
+        : 'projects.addProjectDialog'
   const navigate = useNavigate()
   const [name, setName] = useState(initialData?.name || '')
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | undefined>(initialData?.assistantId)

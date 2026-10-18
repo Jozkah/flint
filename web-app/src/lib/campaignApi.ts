@@ -38,6 +38,9 @@ export type PlanEdit = {
   tokenBudget?: number
 }
 
+/** A campaign folder the list left out, and why (`agent_campaign_skipped`). */
+export type SkippedRecord = { id: string; reason: string }
+
 /** What `agent_campaign_resolve` returns: the resolver's seed and worktree. */
 export type ResolvePlan = {
   taskId: string
@@ -204,6 +207,13 @@ export const campaignApi = {
     invoke<Campaign>('agent_campaign_create', { input }),
   get: (id: string) => invoke<Campaign>('agent_campaign_get', { id }),
   list: () => invoke<Campaign[]>('agent_campaign_list'),
+  /** Campaign folders `list` skipped because their record is unreadable. */
+  skipped: () => invoke<SkippedRecord[]>('agent_campaign_skipped'),
+  /** `list` and `skipped` from one read of the records (desktop app only). */
+  listWithSkipped: () =>
+    invoke<{ campaigns: Campaign[]; skipped: SkippedRecord[] }>(
+      'agent_campaign_list_with_skipped'
+    ),
   transition: (id: string, input: CampaignTransition) =>
     invoke<Campaign>('agent_campaign_transition', { id, input }),
   settle: (id: string, taskId: string, input: SettleInput) =>

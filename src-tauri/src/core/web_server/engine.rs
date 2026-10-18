@@ -131,14 +131,21 @@ pub async fn start(
     data_folder: &Path,
     request: StartRequest,
 ) -> Result<Info, String> {
+    let preset = confine_preset(data_folder, &request.preset_path)?;
     let mut guard = supervisor.state.engine.lock().await;
     if let Some(existing) = guard.as_mut() {
         if existing.exited().is_none() {
-            return Ok(info_of(existing, &supervisor.fault));
+            // The client rewrote the preset (a model was added or removed)
+            // and asks to start again: hand the running worker the new
+            // preset, or a model added since spawn stays an unknown route
+            // until the server restarts.
+            let mut info = info_of(existing, &supervisor.fault);
+            drop(guard);
+            info.models = sync_preset(info.port, &info.api_key, &preset, info.models).await?;
+            return Ok(info);
         }
         *guard = None;
     }
-    let preset = confine_preset(data_folder, &request.preset_path)?;
     let envs = clean_envs(request.envs)?;
     let exe = resolve_exe(supervisor)?;
     *supervisor.fault.lock().unwrap() = None;
@@ -169,6 +176,27 @@ pub async fn start(
     let info = info_of(&handle, &supervisor.fault);
     *guard = Some(handle);
     Ok(info)
+}
+
+/// Reload the running worker's models from `preset`; the models it now knows.
+async fn sync_preset(port: u16, key: &str, preset: &Path, before: Vec<String>) -> Result<Vec<String>, String> {
+    let report = tauri_plugin_llamacpp::engine::commands::reload_models_on(
+        port,
+        key,
+        preset.to_string_lossy().into_owned(),
+        None,
+        None,
+        None,
+    )
+    .await
+    .map_err(|e| format!("could not apply the updated model list to the running engine: {e}"))?;
+    let mut models: Vec<String> = report.kept.into_iter().chain(report.changed).chain(report.added).collect();
+    if models.is_empty() && report.removed.is_empty() {
+        models = before;
+    }
+    models.sort();
+    models.dedup();
+    Ok(models)
 }
 
 fn info_of(handle: &WorkerHandle, fault: &StdMutex<Option<String>>) -> Info {
@@ -276,6 +304,65 @@ mod tests {
         let traversal = data.path().join("..").join(outside.path().file_name().unwrap()).join("evil.ini");
         assert!(confine_preset(data.path(), traversal.to_str().unwrap()).is_err());
         assert!(confine_preset(data.path(), data.path().to_str().unwrap()).is_err());
+    }
+
+    /// A worker on `port` that answers one `/models/reload` with `report`
+    /// and hands back the request it got.
+    async fn fake_worker(report: &'static str) -> (u16, tokio::task::JoinHandle<String>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let task = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut got = Vec::new();
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = sock.read(&mut buf).await.unwrap();
+                got.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&got).to_string();
+                if let Some(head_end) = text.find("\r\n\r\n") {
+                    let len = text[..head_end]
+                        .lines()
+                        .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap()))
+                        .unwrap_or(0);
+                    if got.len() >= head_end + 4 + len || n == 0 {
+                        break;
+                    }
+                }
+            }
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{report}",
+                report.len()
+            );
+            sock.write_all(resp.as_bytes()).await.unwrap();
+            String::from_utf8_lossy(&got).to_string()
+        });
+        (port, task)
+    }
+
+    #[tokio::test]
+    async fn a_running_worker_learns_models_added_to_the_preset() {
+        let (port, request) = fake_worker(
+            r#"{"added":["new-model"],"changed":[],"removed":[],"kept":["old-model"],"models_max":1}"#,
+        )
+        .await;
+        let preset = Path::new("C:/data/router.preset.ini");
+        let models = sync_preset(port, "k", preset, vec!["old-model".into()]).await.unwrap();
+        assert_eq!(models, vec!["new-model".to_string(), "old-model".to_string()]);
+        let request = request.await.unwrap();
+        assert!(request.starts_with("POST /models/reload"), "{request}");
+        assert!(request.contains("router.preset.ini"), "{request}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_reload_says_why() {
+        // Nothing listens on a port just released.
+        let port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let err = sync_preset(port, "k", Path::new("p.ini"), vec![]).await.unwrap_err();
+        assert!(err.contains("updated model list"), "{err}");
     }
 
     #[tokio::test]

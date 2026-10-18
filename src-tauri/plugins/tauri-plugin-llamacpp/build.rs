@@ -13,10 +13,10 @@
 // vendor/llama.cpp and with engine::PINNED_* on the Rust side; the shim
 // re-exports llama_version()/llama_build_number() so a mismatch is caught at
 // runtime instead of producing a silently wrong engine.
-pub const LLAMA_CPP_TAG: &str = "b11627";
-pub const LLAMA_CPP_BUILD_NUMBER: u32 = 11627;
-pub const LLAMA_CPP_COMMIT: &str = "8c2134a8755d8a9792af513dab20282affe903e4";
-pub const LLAMA_CPP_VERSION: &str = "0.6.0";
+pub const LLAMA_CPP_TAG: &str = "b11716";
+pub const LLAMA_CPP_BUILD_NUMBER: u32 = 11716;
+pub const LLAMA_CPP_COMMIT: &str = "797de63b2fa7396dcc8caca76834c699ac84e1c3";
+pub const LLAMA_CPP_VERSION: &str = "0.7.0";
 
 const COMMANDS: &[&str] = &[
     // Cleanup command
@@ -40,12 +40,43 @@ const COMMANDS: &[&str] = &[
     "force_stop_engine",
     "engine_slots_idle",
     "erase_thread_slot_state",
+    // Engine add-ons (the CUDA pack)
+    "engine_addon_status",
+    "engine_addon_check",
+    "engine_addon_download",
+    "engine_addon_cancel",
+    "engine_addon_install_file",
+    "engine_addon_remove",
+    "engine_addon_verify",
+    "engine_addon_restart_pending",
     // GGUF commands
     "read_gguf_metadata",
     "find_gguf_tensors",
     "is_model_supported",
     "sha256_file",
 ];
+
+/// The Ed25519 key engine add-on packs are verified with (engine/addon.rs):
+/// `FLINT_ADDON_PUBKEY` at build time, else `addon-signing.pub` beside this
+/// file. Empty means this build offers no add-ons. `FLINT_RELEASE_TAG` is the
+/// release the build is published under, so the app fetches its own pack.
+fn emit_addon_pins() {
+    println!("cargo:rerun-if-env-changed=FLINT_ADDON_PUBKEY");
+    println!("cargo:rerun-if-env-changed=FLINT_RELEASE_TAG");
+    println!("cargo:rerun-if-changed=addon-signing.pub");
+    let key = std::env::var("FLINT_ADDON_PUBKEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())
+        .or_else(|| std::fs::read_to_string("addon-signing.pub").ok())
+        .unwrap_or_default();
+    let key: String = key
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .unwrap_or("")
+        .to_string();
+    println!("cargo:rustc-env=FLINT_ADDON_PUBKEY_BUILD={key}");
+}
 
 fn main() {
     tauri_plugin::Builder::new(COMMANDS).build();
@@ -54,6 +85,7 @@ fn main() {
     println!("cargo:rustc-env=JAN_LLAMA_CPP_BUILD_NUMBER={LLAMA_CPP_BUILD_NUMBER}");
     println!("cargo:rustc-env=JAN_LLAMA_CPP_COMMIT={LLAMA_CPP_COMMIT}");
     println!("cargo:rustc-env=JAN_LLAMA_CPP_VERSION={LLAMA_CPP_VERSION}");
+    emit_addon_pins();
 
     // Features reach a build script only as CARGO_FEATURE_* env vars -- a
     // `#[cfg(feature = ...)]` here would silently never fire.
@@ -261,6 +293,9 @@ mod engine {
         ("engine-vulkan", "-DGGML_VULKAN=ON"),
         ("engine-hip", "-DGGML_HIP=ON"),
         ("engine-metal", "-DGGML_METAL=ON"),
+        // Intel oneAPI SYCL. Build plumbing only: never compiled or run on
+        // Intel hardware by this project, so it is not a supported backend.
+        ("engine-sycl", "-DGGML_SYCL=ON"),
     ];
 
     /// The GPUs a HIP build targets when JAN_ENGINE_HIP_TARGETS is unset: the
@@ -281,6 +316,16 @@ mod engine {
         println!("cargo:rerun-if-env-changed=JAN_ENGINE_HIP_TARGETS");
         println!("cargo:rerun-if-env-changed=JAN_ENGINE_BUILD_LOG");
         println!("cargo:rerun-if-env-changed=JAN_ENGINE_BUILD_DIR");
+
+        // The worker reports this in its handshake so the app can set it
+        // against the NVIDIA driver (janhq/jan#9189). Read on the prebuilt path
+        // too: the prebuilt key includes the full nvcc version, so a cache hit
+        // is built with the toolkit that is on this host.
+        if feature_enabled("engine-cuda") {
+            if let Some((_, v)) = nvcc_version() {
+                println!("cargo:rustc-env=JAN_ENGINE_CUDA_TOOLKIT={}.{}", v.0, v.1);
+            }
+        }
 
         // Headers are always needed: the shim is our code and is compiled
         // here even when the archives come prebuilt, so it cannot drift from
@@ -561,7 +606,8 @@ mod engine {
         // "the provided PTX was compiled with an unsupported toolchain". RTX
         // 30/40/50 have SASS and never JIT; Turing (GTX 16xx, RTX 20xx, T4) had
         // only the PTX. The list is mirrored per toolkit version because a
-        // cuda12 build keeps 50/61/70 and cannot emit 120a/121a before 12.8/12.9.
+        // cuda12 build keeps 50/61/70 and cannot emit 120a before 12.8. 121a is
+        // left out: see default_cuda_archs.
         // arm64 keeps upstream's default.
         let archs = compat_var("ENGINE_CUDA_ARCHS").unwrap_or_default();
         let archs = archs.trim();
@@ -613,6 +659,19 @@ mod engine {
             // rocWMMA flash attention, as the previous engine shipped it; needs
             // rocwmma-dev, which check-engine-toolchain.sh asserts.
             cfg.arg("-DGGML_HIP_ROCWMMA_FATTN=ON");
+        }
+        if feature_enabled("engine-sycl") {
+            // llama.cpp's SYCL guide: the oneAPI DPC++ compilers. Linux only:
+            // the Windows recipe (cl for C, icx for C++, under Ninja) conflicts
+            // with the clang pinning in `windows_generator` and has not been
+            // worked out.
+            assert!(
+                env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "windows",
+                "engine-sycl is wired for Linux only; the Windows SYCL toolchain is not set up"
+            );
+            cfg.arg("-DCMAKE_C_COMPILER=icx");
+            cfg.arg("-DCMAKE_CXX_COMPILER=icpx");
+            cfg.arg("-DGGML_SYCL_TARGET=INTEL");
         }
         if feature_enabled("engine-cuda") {
             // NCCL is multi-GPU collective communication for distributed
@@ -899,7 +958,8 @@ mod engine {
     }
 
     /// ggml/src/ggml-cuda/CMakeLists.txt's non-native default as of b11146,
-    /// with 75-virtual changed to 75-real (see the call site).
+    /// with 75-virtual changed to 75-real (see the call site) and 121a-real
+    /// dropped (below).
     /// check_upstream_cuda_archs fails the build if a tag bump changes it.
     fn default_cuda_archs(v: (u32, u32)) -> String {
         let mut a = Vec::new();
@@ -913,9 +973,10 @@ mod engine {
         if v >= (12, 8) {
             a.push("120a-real");
         }
-        if v >= (12, 9) {
-            a.push("121a-real");
-        }
+        // Upstream also adds 121a-real from 12.9. An `a` cubin runs on that
+        // exact chip only, and sm_121 is GB10 (DGX Spark), which is arm64:
+        // this list is x86_64-only, so it was ~1/7 of the CUDA compile time
+        // and ~18 MB of ggml-cuda for no GPU it could run on.
         a.join(";")
     }
 
@@ -953,6 +1014,8 @@ mod engine {
                     .collect::<Vec<_>>()
             })
             .collect();
+        // Dropped on purpose; see default_cuda_archs.
+        ours.push("121a-real".to_string());
         ours.sort_unstable();
         ours.dedup();
         assert!(

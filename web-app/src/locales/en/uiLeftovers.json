@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "Slate",
+    "vermilion": "Vermilion",
+    "ink": "Ink",
+    "moss": "Moss",
+    "slate": "Slate blue",
+    "violet": "Violet"
+  },
+  "fontSizeNames": {
+    "small": "Small",
+    "medium": "Medium",
+    "large": "Large",
+    "extraLarge": "Extra large"
+  },
+  "unknownSize": "Unknown size",
+  "official": "Official",
+  "configuration": "Configuration",
+  "modelCombobox": {
+    "refresh": "Refresh models",
+    "placeholder": "Type or select a model..."
+  },
+  "hubTasks": {
+    "moreAria": "More ways to browse",
+    "more": "More",
+    "all": "All",
+    "chat": "Chat",
+    "coding": "Coding",
+    "reasoning": "Reasoning",
+    "vision": "Vision",
+    "small": "Small & fast",
+    "tools": "Tool use",
+    "multilingual": "Multilingual",
+    "speech": "Speech",
+    "embeddings": "Embeddings",
+    "summaries": "Summaries",
+    "translation": "Translation"
+  },
+  "tokenSpeed": {
+    "aria": "Token usage for this message",
+    "tooltip": "Token usage",
+    "generation": "Generation",
+    "reading": "Reading",
+    "draftAccepted": "Draft accepted",
+    "tokens": "Tokens",
+    "memoryInRequest": "Memory in this request",
+    "memoriesSent": "Memories sent",
+    "withheld": "Withheld as conflicting: {{ids}}",
+    "perSec": "{{n}} tokens/sec",
+    "count": "{{n}} tokens"
+  },
+  "serverHost": {
+    "edit": "Edit Server Host"
+  },
+  "extensions": {
+    "plugins": "Plugins",
+    "global": "Global",
+    "workspace": "Workspace",
+    "toggle": "Toggle {{name}}",
+    "enable": "Enable",
+    "disable": "Disable",
+    "workspaceOnly": "Workspace only",
+    "globalAll": "Global (all workspaces)",
+    "enabledToast": "{{name}} enabled",
+    "disabledToast": "{{name}} disabled"
+  },
+  "scope": "Scope",
+  "localApi": {
+    "starting": "Starting server...",
+    "startingDesc": "Attempting to start server on port {{port}}",
+    "status": "Server Status",
+    "runningDesc": "The server is currently running.",
+    "stoppedDesc": "The server is stopped.",
+    "running": "Running",
+    "stopped": "Stopped"
+  },
+  "toolOutputAlt": "Tool output",
+  "memory": {
+    "exportFilter": "Flint memory export",
+    "why": "Why Flint remembers this",
+    "writtenBy": "Written by",
+    "created": "Created",
+    "updated": "Updated",
+    "fromConversation": "From conversation",
+    "fromMessage": "From message",
+    "projectIdentity": "Project identity",
+    "replaces": "Replaces",
+    "redacted": "Redacted",
+    "expires": "Expires",
+    "version": "Version",
+    "source": "Source",
+    "importedFrom": "Imported from",
+    "originally": "Originally",
+    "fromRun": "From run",
+    "savedInProject": "Saved in project",
+    "contentHash": "Content hash",
+    "earlierVersions": "Earlier versions",
+    "usedIn": "Used in",
+    "notRecorded": "not recorded",
+    "deletedSince": "(deleted since)",
+    "yes": "yes",
+    "no": "no",
+    "versionUnknown": "unknown (saved before versions were kept)",
+    "unknown": "unknown",
+    "importedExport": "export {{id}} ({{scope}}, {{when}})",
+    "createdWhen": "created {{when}}",
+    "conversationId": "conversation {{id}}",
+    "runId": "run {{id}}",
+    "turnId": "turn {{id}}",
+    "snapshotId": "snapshot {{id}}",
+    "noRequests": "no recorded request yet"
+  }
+}

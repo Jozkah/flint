@@ -86,6 +86,14 @@ describe('ProviderCustomHeaders', () => {
     expect(h.updateProvider).not.toHaveBeenCalled()
   })
 
+  // C033: its description was text-sm beside the API keys' text-xs.
+  it('uses the same description size as the API keys section', () => {
+    render(<ProviderCustomHeaders provider={provider()} />)
+    const desc = screen.getByText('providers:customHeaders.description')
+    expect(desc.className).toContain('text-xs')
+    expect(desc.className).not.toContain('text-sm')
+  })
+
   it('names the duplicate row, not the first', () => {
     render(
       <ProviderCustomHeaders

@@ -26,6 +26,7 @@ export type ReferenceRefusal =
   | 'escapes'
   | 'empty'
   | 'refused'
+  | 'not-found'
 
 export type NormalizedReference =
   | { ok: true; rel: string }
@@ -138,6 +139,33 @@ const REFUSAL_TEXT: Record<ReferenceRefusal, string> = {
   'escapes': 'it leads outside the attached folder',
   'empty': 'it names nothing',
   'refused': 'it could not be read inside the attached folder',
+  'not-found': 'there is no such file or folder in the attached folder',
+}
+
+/**
+ * The backend's "nothing there" failures: the path does not exist (os error
+ * 2/3, or the platform's wording of it). Anything else -- a sensitive file,
+ * a permission denial -- is a refusal the model should hear about.
+ */
+function isNotFoundError(e: unknown): boolean {
+  return /os error [23]\b|no such file|cannot find the (file|path)|not found/i.test(
+    errorText(e)
+  )
+}
+
+/**
+ * The line telling the model a reference was not included, or null when the
+ * reference simply matched nothing. An `@name` that is not a file in the
+ * folder is usually not a reference at all (a decorator in pasted code, an
+ * email address), so it stays silent; policy refusals and too-large files are
+ * still reported.
+ */
+export function unresolvedReferenceNote(
+  ref: string,
+  resolved: Extract<ResolvedReference, { ok: false }>
+): string | null {
+  if (resolved.reason === 'not-found') return null
+  return `[Reference @${ref} was not included: ${resolved.message}]`
 }
 
 /**
@@ -267,7 +295,7 @@ export async function resolveReference(
       return {
         ok: false,
         raw,
-        reason: 'refused',
+        reason: isNotFoundError(fileError) ? 'not-found' : 'refused',
         message: errorText(fileError),
       }
     }

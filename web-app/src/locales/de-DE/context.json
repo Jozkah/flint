@@ -3,6 +3,7 @@
   "title": "Was Flint in dieser Unterhaltung verwendet",
   "description": "Was Flint zur Verfügung steht, was für eine Anfrage ausgewählt wurde und was in der bereinigten Kopie der letzten Anfrage belegt ist. Änderungen hier wirken sich auf künftige Nachrichten aus, nicht auf eine Antwort, die gerade geschrieben wird.",
   "refresh": "Aktualisieren",
+  "retry": "Erneut versuchen",
   "details": "Details",
   "closeDetails": "Details schließen",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Läuft auf diesem Gerät oder in deinem Netzwerk. Nachrichten verlassen es nicht.",
+      "local": "Läuft auf diesem Gerät. Nachrichten verlassen es nicht.",
       "remote": "Remote-Anbieter: Deine Nachrichten und enthaltenen Dateien werden an ihn gesendet.",
       "checking": "Es wird noch geprüft, wo dieser Anbieter läuft.",
-      "unknown": "Wo dieser Anbieter läuft, konnte nicht ermittelt werden."
+      "unknown": "Wo dieser Anbieter läuft, konnte nicht ermittelt werden.",
+      "network": "Wird an {{host}} in deinem Netzwerk gesendet. Nachrichten und enthaltene Dateien verlassen dieses Gerät, aber nicht dein Netzwerk.",
+      "remoteHost": "Wird an {{host}} gesendet: Deine Nachrichten und enthaltenen Dateien verlassen diesen Computer."
     },
     "assistantInstructions": "Die Anweisungen des Assistenten werden als System-Prompt gesendet.",
     "pendingInline": "Der Text wird in deine nächste Nachricht eingefügt.",
@@ -119,7 +122,9 @@
     "noModel": "Es ist kein Modell ausgewählt.",
     "noInstructions": "Keine Assistenten-Anweisungen. Normale Unterhaltungen lesen keine Projekt-Anweisungsdateien wie Flint.md; Cowork schon.",
     "noAttachments": "An diese Unterhaltung sind keine Dateien angehängt.",
+    "noAttachmentsHint": "Angehängte Dateien erscheinen hier, zusammen mit der Art, wie Flint sie nutzt.",
     "indexUnavailable": "Indizierte Dateien konnten nicht aufgelistet werden.",
+    "indexUnavailableHint": "Flint konnte den Dateiindex dieser Unterhaltung nicht lesen. Versuche es gleich noch einmal.",
     "noMemory": "Auf die letzte Nachricht wurde keine gespeicherte Erinnerung angewendet.",
     "noTools": "Es sind keine Tools verfügbar."
   },
@@ -137,6 +142,8 @@
     "noProject": "kein Projekt"
   },
   "inspect": "Bereinigte Anfrage untersuchen (erweitert)",
+  "why": "Warum",
+  "verifiedMeaning": "Was „verifiziert“ bedeutet",
   "showAll": "Alle {{count}} anzeigen",
   "showFewer": "Weniger anzeigen",
   "cards": {

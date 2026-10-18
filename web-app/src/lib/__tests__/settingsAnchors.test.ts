@@ -43,7 +43,11 @@ function renderedAnchors(): Set<string> {
   const rendered = new Set<string>()
   const registry = readFileSync(REGISTRY, 'utf8')
 
-  for (const file of pageSources(join(SRC, 'routes/settings'))) {
+  // Cards a settings page mounts live under containers/.
+  for (const file of [
+    ...pageSources(join(SRC, 'routes/settings')),
+    ...pageSources(join(SRC, 'containers')),
+  ]) {
     const source = readFileSync(file, 'utf8')
     for (const match of source.matchAll(ANCHOR)) rendered.add(match[0])
 
@@ -90,6 +94,8 @@ describe('settings anchors', () => {
     expect(hostless).toEqual([
       'settings-local-api-server-host',
       'settings-local-api-server-port',
+      // Sits inside each server's own card, so there is no single target.
+      'settings-mcp-servers-server-tool-timeout',
     ])
   })
 })

@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "Łupkowy",
+    "vermilion": "Cynobrowy",
+    "ink": "Atramentowy",
+    "moss": "Mchowy",
+    "slate": "Łupkowy niebieski",
+    "violet": "Fioletowy"
+  },
+  "fontSizeNames": {
+    "small": "Mała",
+    "medium": "Średnia",
+    "large": "Duża",
+    "extraLarge": "Bardzo duża"
+  },
+  "unknownSize": "Nieznany rozmiar",
+  "official": "Oficjalny",
+  "configuration": "Konfiguracja",
+  "modelCombobox": {
+    "refresh": "Odśwież modele",
+    "placeholder": "Wpisz lub wybierz model..."
+  },
+  "hubTasks": {
+    "moreAria": "Inne sposoby przeglądania",
+    "more": "Więcej",
+    "all": "Wszystkie",
+    "chat": "Czat",
+    "coding": "Programowanie",
+    "reasoning": "Rozumowanie",
+    "vision": "Wizja",
+    "small": "Małe i szybkie",
+    "tools": "Używanie narzędzi",
+    "multilingual": "Wielojęzyczne",
+    "speech": "Mowa",
+    "embeddings": "Embeddingi",
+    "summaries": "Streszczenia",
+    "translation": "Tłumaczenie"
+  },
+  "tokenSpeed": {
+    "aria": "Zużycie tokenów w tej wiadomości",
+    "tooltip": "Zużycie tokenów",
+    "generation": "Generowanie",
+    "reading": "Czytanie",
+    "draftAccepted": "Szkic zaakceptowany",
+    "tokens": "Tokeny",
+    "memoryInRequest": "Pamięć w tym żądaniu",
+    "memoriesSent": "Wysłane wspomnienia",
+    "withheld": "Wstrzymane jako sprzeczne: {{ids}}",
+    "perSec": "{{n}} tokenów/s",
+    "count": "{{n}} tokenów"
+  },
+  "serverHost": {
+    "edit": "Edytuj hosta serwera"
+  },
+  "extensions": {
+    "plugins": "Wtyczki",
+    "global": "Globalny",
+    "workspace": "Obszar roboczy",
+    "toggle": "Przełącz {{name}}",
+    "enable": "Włącz",
+    "disable": "Wyłącz",
+    "workspaceOnly": "Tylko obszar roboczy",
+    "globalAll": "Globalny (wszystkie obszary robocze)",
+    "enabledToast": "Włączono {{name}}",
+    "disabledToast": "Wyłączono {{name}}"
+  },
+  "scope": "Zakres",
+  "localApi": {
+    "starting": "Uruchamianie serwera...",
+    "startingDesc": "Próba uruchomienia serwera na porcie {{port}}",
+    "status": "Stan serwera",
+    "runningDesc": "Serwer jest uruchomiony.",
+    "stoppedDesc": "Serwer jest zatrzymany.",
+    "running": "Działa",
+    "stopped": "Zatrzymany"
+  },
+  "toolOutputAlt": "Wynik narzędzia",
+  "memory": {
+    "exportFilter": "Eksport pamięci Flint",
+    "why": "Dlaczego Flint to pamięta",
+    "writtenBy": "Autor wpisu",
+    "created": "Utworzono",
+    "updated": "Zaktualizowano",
+    "fromConversation": "Z rozmowy",
+    "fromMessage": "Z wiadomości",
+    "projectIdentity": "Tożsamość projektu",
+    "replaces": "Zastępuje",
+    "redacted": "Zredagowano",
+    "expires": "Wygasa",
+    "version": "Wersja",
+    "source": "Źródło",
+    "importedFrom": "Zaimportowano z",
+    "originally": "Pierwotnie",
+    "fromRun": "Z uruchomienia",
+    "savedInProject": "Zapisano w projekcie",
+    "contentHash": "Skrót zawartości",
+    "earlierVersions": "Wcześniejsze wersje",
+    "usedIn": "Użyto w",
+    "notRecorded": "nie zapisano",
+    "deletedSince": "(od tego czasu usunięta)",
+    "yes": "tak",
+    "no": "nie",
+    "versionUnknown": "nieznana (zapisano, zanim przechowywano wersje)",
+    "unknown": "nieznane",
+    "importedExport": "eksport {{id}} ({{scope}}, {{when}})",
+    "createdWhen": "utworzono {{when}}",
+    "conversationId": "rozmowa {{id}}",
+    "runId": "uruchomienie {{id}}",
+    "turnId": "tura {{id}}",
+    "snapshotId": "migawka {{id}}",
+    "noRequests": "brak jeszcze zapisanych żądań"
+  }
+}

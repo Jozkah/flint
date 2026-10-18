@@ -7,8 +7,10 @@
 import {
   GROUP_SURFACES,
   GROUPS_SCHEMA_VERSION,
+  MAX_GROUP_DEPTH,
   type ConversationGroup,
   type GroupFolderBinding,
+  type GroupLayout,
   type GroupMembership,
   type GroupSurface,
   type GroupsState,
@@ -17,7 +19,14 @@ import {
   type SurfaceLayout,
 } from './types'
 
-export class GroupError extends Error {}
+export type GroupErrorCode = 'nameEmpty' | 'notFound' | 'tooDeep' | 'intoItself'
+
+/** Carries a code, not prose: the store turns it into the user's language. */
+export class GroupError extends Error {
+  constructor(readonly code: GroupErrorCode) {
+    super(code)
+  }
+}
 
 export const emptySurface = (): SurfaceGroups => ({ groups: [], memberships: {}, contexts: {} })
 
@@ -29,7 +38,7 @@ export const emptyGroupsState = (): GroupsState => ({
 /** Trimmed name; empty names are rejected, duplicates are allowed. */
 export function normalizeGroupName(name: string): string {
   const trimmed = name.replace(/\s+/g, ' ').trim()
-  if (!trimmed) throw new GroupError('Group name cannot be empty')
+  if (!trimmed) throw new GroupError('nameEmpty')
   return trimmed.slice(0, 120)
 }
 
@@ -57,20 +66,74 @@ function membersOf(s: SurfaceGroups, groupId: string): GroupMembership[] {
 
 function requireGroup(s: SurfaceGroups, groupId: string): ConversationGroup {
   const g = s.groups.find((x) => x.id === groupId)
-  if (!g) throw new GroupError('Group not found')
+  if (!g) throw new GroupError('notFound')
   return g
+}
+
+/** Depth of a group: 1 for top-level. Walks parents; stops on a cycle. */
+export function groupDepth(s: SurfaceGroups, groupId: string): number {
+  const byId = new Map(s.groups.map((g) => [g.id, g]))
+  const seen = new Set<string>()
+  let depth = 0
+  let cur = byId.get(groupId)
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id)
+    depth++
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined
+  }
+  return depth
+}
+
+/** Ids of a group's descendants (not the group itself). */
+export function descendantIds(s: SurfaceGroups, groupId: string): Set<string> {
+  const out = new Set<string>()
+  const queue = [groupId]
+  while (queue.length) {
+    const id = queue.pop() as string
+    for (const g of s.groups) {
+      if (g.parentId === id && !out.has(g.id) && g.id !== groupId) {
+        out.add(g.id)
+        queue.push(g.id)
+      }
+    }
+  }
+  return out
+}
+
+/** Height of the subtree under a group: 1 for a leaf. */
+function subtreeHeight(s: SurfaceGroups, groupId: string, guard = 0): number {
+  if (guard > MAX_GROUP_DEPTH + 1) return 1
+  let best = 0
+  for (const g of s.groups) {
+    if (g.parentId === groupId && g.id !== groupId)
+      best = Math.max(best, subtreeHeight(s, g.id, guard + 1))
+  }
+  return best + 1
 }
 
 export function createGroup(
   state: GroupsState,
   surface: GroupSurface,
-  input: { id: string; name: string; now: number; folderBindings?: GroupFolderBinding[] }
+  input: {
+    id: string
+    name: string
+    now: number
+    folderBindings?: GroupFolderBinding[]
+    parentId?: string | null
+  }
 ): GroupsState {
   const s = state.surfaces[surface]
+  const parentId = input.parentId ?? null
+  if (parentId !== null) {
+    requireGroup(s, parentId)
+    if (groupDepth(s, parentId) + 1 > MAX_GROUP_DEPTH)
+      throw new GroupError('tooDeep')
+  }
   const group: ConversationGroup = {
     id: input.id,
     surface,
     name: normalizeGroupName(input.name),
+    parentId,
     position: s.groups.length,
     collapsed: false,
     folderBindings: dedupeBindings(input.folderBindings ?? []),
@@ -106,6 +169,31 @@ export function renameGroup(
 ): GroupsState {
   const clean = normalizeGroupName(name)
   return patchGroup(state, surface, groupId, (g) => ({ ...g, name: clean, updatedAt: now }))
+}
+
+/**
+ * Moves a group under another group, or to the top level (null). Refuses a
+ * move into itself or its own descendant (a cycle) and one that would push
+ * any group past MAX_GROUP_DEPTH. Members stay with their group.
+ */
+export function setGroupParent(
+  state: GroupsState,
+  surface: GroupSurface,
+  groupId: string,
+  parentId: string | null,
+  now: number
+): GroupsState {
+  const s = state.surfaces[surface]
+  const g = requireGroup(s, groupId)
+  if (parentId !== null) {
+    requireGroup(s, parentId)
+    if (parentId === groupId || descendantIds(s, groupId).has(parentId))
+      throw new GroupError('intoItself')
+    if (groupDepth(s, parentId) + subtreeHeight(s, groupId) > MAX_GROUP_DEPTH)
+      throw new GroupError('tooDeep')
+  }
+  if (g.parentId === parentId) return state
+  return patchGroup(state, surface, groupId, (x) => ({ ...x, parentId, updatedAt: now }))
 }
 
 export function setGroupCollapsed(
@@ -166,7 +254,7 @@ export function reorderGroup(
   const s = state.surfaces[surface]
   const groups = sortedGroups(s)
   const from = groups.findIndex((g) => g.id === groupId)
-  if (from < 0) throw new GroupError('Group not found')
+  if (from < 0) throw new GroupError('notFound')
   const [moved] = groups.splice(from, 1)
   groups.splice(clamp(toIndex, 0, groups.length), 0, moved)
   return withSurface(state, surface, { ...s, groups: renumberGroups(groups) })
@@ -206,20 +294,27 @@ export function moveItem(
   return withSurface(state, surface, { ...s, memberships })
 }
 
-/** Deletes a group; its members move to Recents. Items are never deleted. */
+/**
+ * Deletes a group; its members move to Recents and its sub-groups move up to
+ * its parent. Items are never deleted.
+ */
 export function deleteGroup(
   state: GroupsState,
   surface: GroupSurface,
   groupId: string
 ): GroupsState {
   const s = state.surfaces[surface]
-  requireGroup(s, groupId)
+  const doomed = requireGroup(s, groupId)
   const memberships = Object.fromEntries(
     Object.entries(s.memberships).filter(([, m]) => m.groupId !== groupId)
   )
   return withSurface(state, surface, {
     ...s,
-    groups: renumberGroups(sortedGroups(s).filter((g) => g.id !== groupId)),
+    groups: renumberGroups(
+      sortedGroups(s)
+        .filter((g) => g.id !== groupId)
+        .map((g) => (g.parentId === groupId ? { ...g, parentId: doomed.parentId } : g))
+    ),
     memberships,
   })
 }
@@ -300,15 +395,29 @@ export function layoutSurface<T>(
     const m = s.memberships[idOf(item)]
     if (!m || !groupIds.has(m.groupId)) recents.push(item)
   }
-  return {
-    groups: groups.map((group) => ({
-      group,
-      children: membersOf(s, group.id)
+  const kids = new Map<string | null, ConversationGroup[]>()
+  for (const g of groups) {
+    // A missing or self parent shows the group at the top level.
+    const parent = g.parentId && g.parentId !== g.id && groupIds.has(g.parentId) ? g.parentId : null
+    const list = kids.get(parent) ?? []
+    list.push(g)
+    kids.set(parent, list)
+  }
+  const placed = new Set<string>()
+  const build = (g: ConversationGroup): GroupLayout<T> => {
+    placed.add(g.id)
+    return {
+      group: g,
+      children: membersOf(s, g.id)
         .map((m) => byId.get(m.itemId))
         .filter((x): x is T => x !== undefined),
-    })),
-    recents,
+      subgroups: (kids.get(g.id) ?? []).filter((c) => !placed.has(c.id)).map(build),
+    }
   }
+  const top = (kids.get(null) ?? []).map(build)
+  // A cycle with no top-level entry would otherwise vanish; surface it.
+  for (const g of groups) if (!placed.has(g.id)) top.push(build(g))
+  return { groups: top, recents }
 }
 
 function clamp(n: number, lo: number, hi: number) {
@@ -357,6 +466,7 @@ export function sanitizeSurface(surface: GroupSurface, raw: unknown): SurfaceGro
       id: g.id,
       surface,
       name,
+      parentId: typeof g.parentId === 'string' && g.parentId ? g.parentId : null,
       position: typeof g.position === 'number' && Number.isFinite(g.position) ? g.position : i,
       collapsed: g.collapsed === true,
       folderBindings: dedupeBindings(
@@ -368,6 +478,27 @@ export function sanitizeSurface(surface: GroupSurface, raw: unknown): SurfaceGro
       updatedAt: typeof g.updatedAt === 'number' ? g.updatedAt : 0,
     })
   })
+  // Drop parents that are missing, self-referencing, cyclic or too deep so a
+  // damaged file can never hide a group.
+  const ids = new Set(groups.map((g) => g.id))
+  const byId = new Map(groups.map((g) => [g.id, g]))
+  for (const g of groups) {
+    if (g.parentId !== null && (!ids.has(g.parentId) || g.parentId === g.id)) g.parentId = null
+  }
+  for (const g of groups) {
+    const chain = new Set<string>([g.id])
+    let cur = g.parentId ? byId.get(g.parentId) : undefined
+    let depth = 1
+    while (cur) {
+      if (chain.has(cur.id) || depth + 1 > MAX_GROUP_DEPTH) {
+        g.parentId = null
+        break
+      }
+      chain.add(cur.id)
+      depth++
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined
+    }
+  }
   const ordered = renumberGroups(
     groups.sort((a, b) => a.position - b.position)
   )

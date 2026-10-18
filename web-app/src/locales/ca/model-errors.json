@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "L'última sol·licitud ha desbordat la finestra de context.",
   "contextOverflowDetail": "Aquesta sol·licitud necessitava {{request}} tokens, però la finestra de context del model només en té {{context}}.",
   "contextOverflowGeneric": "La sol·licitud supera la mida de context disponible.",
+  "refusal": "El model s'ha negat a respondre. Prova de reformular la petició.",
   "engine": {
     "unknown": "El motor del model ha informat d'un error inesperat.",
     "MODEL_LOAD_FAILED": "No s'ha pogut carregar el model.",
@@ -14,7 +15,7 @@
     "MODEL_LOAD_TIMED_OUT": "El model ha trigat massa a carregar-se i s'ha aturat. Normalment ajuda un model més petit o una mida de context més petita.",
     "MISSING_SHARED_LIBRARY": "Falta una biblioteca que el motor necessita, de manera que no es pot iniciar.",
     "GPU_DRIVER_TOO_OLD": "El controlador de la teva GPU és massa antic per a aquest motor. Actualitzar el controlador, o canviar al motor de CPU a la Configuració, ho solucionarà.",
-    "CPU_NOT_SUPPORTED": "El processador d'aquest ordinador no té les instruccions que necessita el motor (cal una CPU x86 amb AVX), per això el motor s'ha bloquejat en iniciar-se.",
+    "CPU_NOT_SUPPORTED": "El processador d'aquest ordinador no té les instruccions que necessita el motor (cal una CPU x86 amb AVX), per això el motor s'ha bloquejat. Flint ja ha tornat a provar el model una vegada només amb la CPU; si encara ho veus, aquest segon intent també s'ha bloquejat, o el motor ja estava configurat només per a CPU.",
     "OS_VERSION_UNSUPPORTED": "Aquesta versió de macOS és massa antiga per al motor. Actualitzar macOS ho solucionarà.",
     "MODEL_QUANT_NOT_SUPPORTED": "Aquest model utilitza un tipus de quantització que el backend de GPU no pot executar. Descarrega una altra quantització, com ara Q4_K_M, o desactiva la descàrrega a la GPU.",
     "ENGINE_STOPPED": "El motor s'ha aturat de manera inesperada. Torna a carregar el model per reiniciar-lo; si continua passant, l'última sortida del motor a continuació n'explica el motiu.",

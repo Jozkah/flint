@@ -29,6 +29,8 @@ import {
   assessModelFit,
   DEFAULT_CTX_LENGTH,
   kvArchitectureFromGguf,
+  resolveFitKvSettings,
+  settingValues,
   tierForVerdict,
   type FitAssessment,
   type FitTier,
@@ -182,6 +184,15 @@ export const ModelSupportStatus = ({
     .filter((id) => id !== modelId)
     .reduce((sum, id) => sum + (sizes[id] ?? 0), 0)
 
+  const kvSettings = useMemo(
+    () =>
+      resolveFitKvSettings(
+        settingValues(modelConfig?.settings as never),
+        settingValues(providerObject?.settings as never)
+      ),
+    [modelConfig, providerObject]
+  )
+
   const assessment = useMemo(
     () =>
       assessModelFit({
@@ -189,18 +200,14 @@ export const ModelSupportStatus = ({
         ctxLength: contextSize || DEFAULT_CTX_LENGTH,
         hardware: hardwareData,
         architecture,
-        cacheTypeK:
-          typeof settings.cache_type_k === 'string'
-            ? settings.cache_type_k
-            : undefined,
-        cacheTypeV:
-          typeof settings.cache_type_v === 'string'
-            ? settings.cache_type_v
-            : undefined,
+        cacheTypeK: kvSettings.cacheTypeK,
+        cacheTypeV: kvSettings.cacheTypeV,
+        noKvOffload: kvSettings.noKvOffload,
         gpuLayers: typeof settings.ngl === 'number' ? settings.ngl : undefined,
         otherLoadedBytes,
       }),
     [
+      kvSettings,
       sizeBytes,
       contextSize,
       hardwareData,
@@ -357,6 +364,9 @@ export const ModelSupportStatus = ({
     preferredModel?.provider === provider && preferredModel?.model === modelId
   const running = testState.phase === 'running'
 
+  const fitLabel = t('model-fit:triggerLabel', {
+    status: dismissed ? estimate : `${headline}. ${estimate}`,
+  })
   return (
     // The picker's trigger wraps this; keep clicks and keys from toggling it.
     <div
@@ -369,9 +379,9 @@ export const ModelSupportStatus = ({
           <button
             type="button"
             className="flex size-5 items-center justify-center rounded-full hover:bg-muted focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-8"
-            aria-label={t('model-fit:triggerLabel', {
-              status: dismissed ? estimate : `${headline}. ${estimate}`,
-            })}
+            aria-label={fitLabel}
+            // The dot alone says nothing; hovering names what it means.
+            title={fitLabel}
           >
             <span
               className={cn('size-2 rounded-full', DOT_CLASS[tier])}

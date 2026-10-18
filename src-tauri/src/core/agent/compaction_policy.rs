@@ -219,8 +219,133 @@ impl Default for MicrocompactConfig {
 pub struct MicrocompactStats {
     /// Number of tool results condensed.
     pub condensed: usize,
+    /// Number of tool results moved to a file and replaced by a pointer.
+    pub offloaded: usize,
     /// Estimated tokens removed (before minus after).
     pub tokens_removed: u64,
+}
+
+/// A stale tool result at least this long (chars) is moved to a file rather
+/// than condensed, when the run has somewhere to put it.
+pub const OFFLOAD_MIN_CHARS: usize = 4_000;
+/// The most results one run moves to files, and their total size.
+pub const OFFLOAD_MAX_FILES: usize = 200;
+pub const OFFLOAD_MAX_BYTES: u64 = 50 * 1024 * 1024;
+/// Where offloaded results go, under the run's scratch directory.
+pub const OFFLOAD_DIR: &str = ".flint-outputs";
+
+const POINTER_PREFIX: &str = "[output of ";
+const POINTER_SUFFIX: &str = "; read it with the read tool if you need it]";
+const CONDENSED_MARKER: &str = "[... tool output condensed to save context ...]";
+
+/// Moves stale, large tool results into the run's scratch directory so the
+/// conversation carries a one-line pointer instead of the text. One per run:
+/// it holds the run's file and byte budget.
+#[derive(Debug)]
+pub struct Offloader {
+    scratch: std::path::PathBuf,
+    max_files: usize,
+    max_bytes: u64,
+    files: usize,
+    bytes: u64,
+}
+
+impl Offloader {
+    pub fn new(scratch_root: &std::path::Path) -> Self {
+        Self {
+            scratch: scratch_root.to_path_buf(),
+            max_files: OFFLOAD_MAX_FILES,
+            max_bytes: OFFLOAD_MAX_BYTES,
+            files: 0,
+            bytes: 0,
+        }
+    }
+
+    pub fn with_limits(mut self, max_files: usize, max_bytes: u64) -> Self {
+        self.max_files = max_files;
+        self.max_bytes = max_bytes;
+        self
+    }
+
+    /// Write `content` to `<scratch>/.flint-outputs/<call-id>.txt` and return
+    /// the pointer line that replaces it, or `None` (the caller condenses in
+    /// place instead) when the budget is spent or the write fails. Never
+    /// overwrites a file: a name already taken gets a numeric suffix, so an
+    /// earlier pointer keeps naming the text it was written for.
+    fn offload(&mut self, call_id: &str, tool: &str, content: &str) -> Option<String> {
+        use std::io::Write;
+        let len = content.len() as u64;
+        if self.files >= self.max_files || self.bytes.saturating_add(len) > self.max_bytes {
+            return None;
+        }
+        let dir = self.scratch.join(OFFLOAD_DIR);
+        std::fs::create_dir_all(&dir).ok()?;
+        let stem: String = call_id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .take(64)
+            .collect();
+        let stem = if stem.is_empty() { "result".to_string() } else { stem };
+        for n in 0..1_000u32 {
+            let name = if n == 0 {
+                format!("{stem}.txt")
+            } else {
+                format!("{stem}-{n}.txt")
+            };
+            let path = dir.join(name);
+            let mut file = match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => return None,
+            };
+            if file.write_all(content.as_bytes()).and_then(|_| file.flush()).is_err() {
+                drop(file);
+                let _ = std::fs::remove_file(&path);
+                return None;
+            }
+            self.files += 1;
+            self.bytes += len;
+            let shown = tauri_plugin_agent_tools::tools::sandbox::scratch_display_path(
+                Some(self.scratch.as_path()),
+                &path,
+            );
+            return Some(format!(
+                "{POINTER_PREFIX}{tool} ({} chars) saved to {shown}{POINTER_SUFFIX}",
+                content.chars().count()
+            ));
+        }
+        None
+    }
+}
+
+fn is_pointer(content: &str) -> bool {
+    content.starts_with(POINTER_PREFIX) && content.ends_with(POINTER_SUFFIX)
+}
+
+/// A failed tool result: what the loop itself reports as one. Never moved to a
+/// file -- the failure is what the model most needs in front of it.
+fn is_error_result(tool: &str, content: &str) -> bool {
+    tauri_plugin_agent_tools::harness_error::classify_tool(tool, content).is_some()
+        || content.trim_start().starts_with("ERROR")
+        || (tool == "bash" && tauri_plugin_agent_tools::tools::handlers::bash_result_failed(content))
+}
+
+/// Tool name of each call id, from the assistant messages that made the calls.
+fn call_names(messages: &[Value]) -> std::collections::HashMap<&str, &str> {
+    messages
+        .iter()
+        .filter_map(|m| m.get("tool_calls").and_then(|c| c.as_array()))
+        .flatten()
+        .filter_map(|c| {
+            let id = c.get("id")?.as_str()?;
+            let name = c.get("function")?.get("name")?.as_str()?;
+            Some((id, name))
+        })
+        .collect()
 }
 
 /// Condense stale, bulky tool results in place, returning the rewritten
@@ -234,6 +359,20 @@ pub struct MicrocompactStats {
 /// approval prompts), and the most recent results are left exactly as they were:
 /// this never removes a message, only shrinks the body of an old bulky result.
 pub fn microcompact(messages: &[Value], cfg: &MicrocompactConfig) -> (Vec<Value>, MicrocompactStats) {
+    microcompact_offloading(messages, cfg, None)
+}
+
+/// [`microcompact`], first moving each stale result of [`OFFLOAD_MIN_CHARS`] or
+/// more to a file through `offloader` and leaving a pointer to it. Error
+/// results, results that are already pointers or already condensed, and the
+/// protected recent ones stay; a result that cannot be written is condensed
+/// in place as before.
+pub fn microcompact_offloading(
+    messages: &[Value],
+    cfg: &MicrocompactConfig,
+    mut offloader: Option<&mut Offloader>,
+) -> (Vec<Value>, MicrocompactStats) {
+    let names = call_names(messages);
     // Index of the tool results protected as "recent", counted from the end.
     let mut result_positions: Vec<usize> = messages
         .iter()
@@ -250,7 +389,30 @@ pub fn microcompact(messages: &[Value], cfg: &MicrocompactConfig) -> (Vec<Value>
     let before = estimate_tokens(messages);
     let mut out = Vec::with_capacity(messages.len());
     let mut condensed = 0usize;
+    let mut offloaded = 0usize;
     for (i, msg) in messages.iter().enumerate() {
+        if role(msg) == "tool" && !protected.contains(&i) {
+            if let (Some(off), Some(content)) = (
+                offloader.as_deref_mut(),
+                msg.get("content").and_then(|c| c.as_str()),
+            ) {
+                let id = msg.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("");
+                let tool = names.get(id).copied().unwrap_or("tool");
+                if content.chars().count() >= OFFLOAD_MIN_CHARS
+                    && !is_pointer(content)
+                    && !content.contains(CONDENSED_MARKER)
+                    && !is_error_result(tool, content)
+                {
+                    if let Some(pointer) = off.offload(id, tool, content) {
+                        let mut new_msg = msg.clone();
+                        new_msg["content"] = Value::String(pointer);
+                        out.push(new_msg);
+                        offloaded += 1;
+                        continue;
+                    }
+                }
+            }
+        }
         if role(msg) == "tool"
             && !protected.contains(&i)
             && estimate_message_tokens(msg) >= cfg.bulky_result_tokens
@@ -268,6 +430,7 @@ pub fn microcompact(messages: &[Value], cfg: &MicrocompactConfig) -> (Vec<Value>
         out,
         MicrocompactStats {
             condensed,
+            offloaded,
             tokens_removed: before.saturating_sub(after),
         },
     )
@@ -281,7 +444,8 @@ fn condense_tool_result(msg: &Value, keep_head_chars: usize) -> Option<Value> {
     let head: String = content.chars().take(keep_head_chars).collect();
     let mut condensed = head;
     if content.chars().count() > keep_head_chars {
-        condensed.push_str("\n[... tool output condensed to save context ...]");
+        condensed.push('\n');
+        condensed.push_str(CONDENSED_MARKER);
     }
     if !salient.is_empty() {
         condensed.push_str("\n[kept lines]\n");
@@ -641,6 +805,135 @@ mod tests {
         }
         let (_out, stats) = microcompact(&msgs, &MicrocompactConfig::default());
         assert_eq!(stats.condensed, 0);
+    }
+
+    // --- offloading ---
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "flint_offload_{tag}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn call(id: &str, name: &str) -> Value {
+        json!({
+            "role": "assistant", "content": Value::Null,
+            "tool_calls": [{ "id": id, "type": "function", "function": { "name": name, "arguments": "{}" } }]
+        })
+    }
+
+    /// One old large result, one old small one, one old error, then the
+    /// protected recent four.
+    fn offload_convo(big: &str) -> Vec<Value> {
+        let mut msgs = vec![json!({ "role": "user", "content": "go" })];
+        msgs.push(call("big-1", "read"));
+        msgs.push(bulky("big-1", big));
+        msgs.push(call("small-1", "read"));
+        msgs.push(bulky("small-1", "tiny"));
+        msgs.push(call("err-1", "bash"));
+        msgs.push(bulky("err-1", &format!("{}\n[exit 2]", "compile noise\n".repeat(600))));
+        for i in 0..4 {
+            msgs.push(call(&format!("r{i}"), "read"));
+            msgs.push(bulky(&format!("r{i}"), &"recent ".repeat(1_000)));
+        }
+        msgs
+    }
+
+    #[test]
+    fn offload_moves_a_large_stale_result_to_a_file_and_leaves_a_pointer() {
+        let root = scratch("ok");
+        let big = format!("{}\nthe end", "line of real output\n".repeat(400));
+        let msgs = offload_convo(&big);
+        let mut off = Offloader::new(&root);
+        let (out, stats) =
+            microcompact_offloading(&msgs, &MicrocompactConfig::default(), Some(&mut off));
+        assert_eq!(stats.offloaded, 1);
+        let pointer = out[2]["content"].as_str().unwrap();
+        assert!(is_pointer(pointer), "{pointer}");
+        assert!(pointer.starts_with("[output of read ("), "{pointer}");
+        assert!(pointer.contains(&format!("({} chars)", big.chars().count())));
+        assert_eq!(out[2]["tool_call_id"], "big-1");
+        let file = root.join(OFFLOAD_DIR).join("big-1.txt");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), big, "full text written");
+        // Small, error and recent results are not offloaded.
+        assert_eq!(out[4], msgs[4], "small untouched");
+        let err = out[6]["content"].as_str().unwrap();
+        assert!(!is_pointer(err) && err.contains("[exit 2]"), "error never offloaded");
+        assert_eq!(&out[7..], &msgs[7..], "recent results untouched");
+
+        // A second pass changes nothing and writes nothing new.
+        let (again, stats2) =
+            microcompact_offloading(&out, &MicrocompactConfig::default(), Some(&mut off));
+        assert_eq!(stats2.offloaded, 0);
+        assert_eq!(again, out);
+        assert_eq!(std::fs::read_dir(root.join(OFFLOAD_DIR)).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn offload_never_overwrites_an_existing_file() {
+        let root = scratch("clash");
+        std::fs::create_dir_all(root.join(OFFLOAD_DIR)).unwrap();
+        std::fs::write(root.join(OFFLOAD_DIR).join("big-1.txt"), "earlier").unwrap();
+        let big = "x".repeat(OFFLOAD_MIN_CHARS + 10);
+        let mut off = Offloader::new(&root);
+        let (out, _) = microcompact_offloading(
+            &offload_convo(&big),
+            &MicrocompactConfig::default(),
+            Some(&mut off),
+        );
+        assert!(out[2]["content"].as_str().unwrap().contains("big-1-1.txt"));
+        assert_eq!(std::fs::read_to_string(root.join(OFFLOAD_DIR).join("big-1.txt")).unwrap(), "earlier");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A scratch that cannot hold the directory (here: it is a file) falls
+    /// back to condensing in place, as without an offloader.
+    #[test]
+    fn offload_falls_back_to_condensing_when_the_directory_cannot_be_written() {
+        let root = scratch("blocked");
+        let not_a_dir = root.join("scratch-is-a-file");
+        std::fs::write(&not_a_dir, "x").unwrap();
+        let big = format!("{}\nError: boom in src/lib.rs", "noise line\n".repeat(600));
+        let msgs = offload_convo(&big);
+        let mut off = Offloader::new(&not_a_dir);
+        let (out, stats) =
+            microcompact_offloading(&msgs, &MicrocompactConfig::default(), Some(&mut off));
+        assert_eq!(stats.offloaded, 0);
+        let content = out[2]["content"].as_str().unwrap();
+        assert!(content.contains(CONDENSED_MARKER), "condensed instead");
+        assert!(content.contains("src/lib.rs"));
+        let (plain, _) = microcompact(&msgs, &MicrocompactConfig::default());
+        assert_eq!(out, plain, "same as no offloader at all");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn offload_respects_the_run_budget() {
+        let root = scratch("budget");
+        let big = "y".repeat(OFFLOAD_MIN_CHARS);
+        let mut msgs = vec![json!({ "role": "user", "content": "go" })];
+        for i in 0..3 {
+            msgs.push(call(&format!("b{i}"), "read"));
+            msgs.push(bulky(&format!("b{i}"), &big));
+        }
+        let cfg = MicrocompactConfig {
+            protect_recent_results: 0,
+            ..MicrocompactConfig::default()
+        };
+        let mut off = Offloader::new(&root).with_limits(2, u64::MAX);
+        let (out, stats) = microcompact_offloading(&msgs, &cfg, Some(&mut off));
+        assert_eq!(stats.offloaded, 2);
+        assert_eq!(stats.condensed, 1, "past the budget, condensed in place");
+        assert!(out[6]["content"].as_str().unwrap().contains(CONDENSED_MARKER));
+        let mut tight = Offloader::new(&root).with_limits(10, (OFFLOAD_MIN_CHARS as u64) - 1);
+        let (_, stats) = microcompact_offloading(&msgs, &cfg, Some(&mut tight));
+        assert_eq!(stats.offloaded, 0, "byte budget too");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     // --- structured summary contract ---

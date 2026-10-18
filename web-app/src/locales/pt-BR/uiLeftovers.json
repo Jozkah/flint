@@ -1,0 +1,113 @@
+{
+  "accentNames": {
+    "neutral": "Ardósia",
+    "vermilion": "Vermelhão",
+    "ink": "Tinta",
+    "moss": "Musgo",
+    "slate": "Azul-ardósia",
+    "violet": "Violeta"
+  },
+  "fontSizeNames": {
+    "small": "Pequena",
+    "medium": "Média",
+    "large": "Grande",
+    "extraLarge": "Muito grande"
+  },
+  "unknownSize": "Tamanho desconhecido",
+  "official": "Oficial",
+  "configuration": "Configuração",
+  "modelCombobox": {
+    "refresh": "Atualizar modelos",
+    "placeholder": "Digite ou selecione um modelo..."
+  },
+  "hubTasks": {
+    "moreAria": "Mais formas de explorar",
+    "more": "Mais",
+    "all": "Todos",
+    "chat": "Chat",
+    "coding": "Programação",
+    "reasoning": "Raciocínio",
+    "vision": "Visão",
+    "small": "Pequenos e rápidos",
+    "tools": "Uso de ferramentas",
+    "multilingual": "Multilíngue",
+    "speech": "Fala",
+    "embeddings": "Embeddings",
+    "summaries": "Resumos",
+    "translation": "Tradução"
+  },
+  "tokenSpeed": {
+    "aria": "Uso de tokens desta mensagem",
+    "tooltip": "Uso de tokens",
+    "generation": "Geração",
+    "reading": "Leitura",
+    "draftAccepted": "Rascunho aceito",
+    "tokens": "Tokens",
+    "memoryInRequest": "Memória nesta solicitação",
+    "memoriesSent": "Memórias enviadas",
+    "withheld": "Retidas por conflito: {{ids}}",
+    "perSec": "{{n}} tokens/s",
+    "count": "{{n}} tokens"
+  },
+  "serverHost": {
+    "edit": "Editar host do servidor"
+  },
+  "extensions": {
+    "plugins": "Plugins",
+    "global": "Global",
+    "workspace": "Espaço de trabalho",
+    "toggle": "Alternar {{name}}",
+    "enable": "Ativar",
+    "disable": "Desativar",
+    "workspaceOnly": "Somente o espaço de trabalho",
+    "globalAll": "Global (todos os espaços de trabalho)",
+    "enabledToast": "{{name}} ativado",
+    "disabledToast": "{{name}} desativado"
+  },
+  "scope": "Escopo",
+  "localApi": {
+    "starting": "Iniciando o servidor...",
+    "startingDesc": "Tentando iniciar o servidor na porta {{port}}",
+    "status": "Status do servidor",
+    "runningDesc": "O servidor está em execução.",
+    "stoppedDesc": "O servidor está parado.",
+    "running": "Em execução",
+    "stopped": "Parado"
+  },
+  "toolOutputAlt": "Saída da ferramenta",
+  "memory": {
+    "exportFilter": "Exportação de memória do Flint",
+    "why": "Por que o Flint lembra disso",
+    "writtenBy": "Escrito por",
+    "created": "Criado",
+    "updated": "Atualizado",
+    "fromConversation": "Da conversa",
+    "fromMessage": "Da mensagem",
+    "projectIdentity": "Identidade do projeto",
+    "replaces": "Substitui",
+    "redacted": "Ocultado",
+    "expires": "Expira",
+    "version": "Versão",
+    "source": "Origem",
+    "importedFrom": "Importado de",
+    "originally": "Originalmente",
+    "fromRun": "Da execução",
+    "savedInProject": "Salvo no projeto",
+    "contentHash": "Hash do conteúdo",
+    "earlierVersions": "Versões anteriores",
+    "usedIn": "Usado em",
+    "notRecorded": "não registrado",
+    "deletedSince": "(excluída desde então)",
+    "yes": "sim",
+    "no": "não",
+    "versionUnknown": "desconhecida (salvo antes de as versões serem mantidas)",
+    "unknown": "desconhecido",
+    "importedExport": "exportação {{id}} ({{scope}}, {{when}})",
+    "createdWhen": "criado {{when}}",
+    "conversationId": "conversa {{id}}",
+    "runId": "execução {{id}}",
+    "turnId": "turno {{id}}",
+    "snapshotId": "snapshot {{id}}",
+    "noRequests": "nenhuma solicitação registrada ainda"
+  }
+}

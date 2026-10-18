@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint möchte {{command}} in {{workspace}} ausführen",
     "gitRemote": "Flint möchte {{command}} ausführen, was {{target}} ändert",
     "gitDestructive": "Flint möchte {{command}} ausführen, was Arbeit verlieren kann",
-    "approveCampaign": "Flint möchte die Kampagne „{{title}}“ starten ({{count}} Aufgaben)"
+    "approveCampaign": "Flint möchte die Kampagne „{{title}}“ starten ({{count}} Aufgaben)",
+    "spendPause": "Flint möchte diesen Lauf über seine Ausgabenpause hinaus fortsetzen"
   },
   "consequence": {
     "fileChange": "Es kann Dateien erstellen, überschreiben oder deren Inhalt ändern.",
@@ -57,7 +58,8 @@
     "gitLocal": "Es ändert die Dateien, Branches oder den Verlauf dieses Repositorys auf diesem Computer.",
     "gitRemote": "Es sendet Änderungen an ein Remote-Repository, das andere Personen sehen können. Flint fragt jedes Mal nach, es sei denn, du erlaubst gewöhnliche Remote-Git-Aktionen vorübergehend für diese Unterhaltung.",
     "gitDestructive": "Was es entfernt oder überschreibt, lässt sich möglicherweise nicht wiederherstellen.",
-    "campaignPlan": "Sie startet getrennte Sitzungen, jede auf ihrem eigenen Worktree-Branch, die Dateien lesen und ändern und parallel das Kontingent deines Modells nutzen. Die Genehmigung des Plans genehmigt keinen Aufruf, den eine Aufgabe ausführt. Flint fragt jedes Mal nach."
+    "campaignPlan": "Sie startet getrennte Sitzungen, jede auf ihrem eigenen Worktree-Branch, die Dateien lesen und ändern und parallel das Kontingent deines Modells nutzen. Die Genehmigung des Plans genehmigt keinen Aufruf, den eine Aufgabe ausführt. Flint fragt jedes Mal nach.",
+    "spendPause": "Der Lauf verbraucht weiter kostenpflichtiges Modellkontingent, bis er endet oder sein Limit erreicht. Ablehnen beendet den Lauf."
   },
   "repeat": {
     "allowedOnceBefore": "Du hast diesen Befehl in dieser Unterhaltung bereits einmal erlaubt."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Künftige Einzelprozess-Aufrufe, die {{action}} entsprechen, laufen ohne Nachfrage, auch mit anderen Prozess-IDs. Andere Skripte fragen weiterhin nach. Widerrufe das unter Einstellungen > Berechtigungen.",
     "allowClipboardReadExplanation": "Flint kann künftigen Inhalt der Zwischenablage in jeder Unterhaltung ohne Nachfrage lesen, bis du das unter Einstellungen > Berechtigungen widerrufst. Das Schreiben in die Zwischenablage fragt weiterhin nach.",
     "allowSimilarThreadExplanation": "Künftige Aufrufe, die {{action}} entsprechen, laufen in dieser Unterhaltung ohne Nachfrage. Widerrufe das unter Einstellungen > Berechtigungen.",
-    "broader": "Umfassender"
+    "broader": "Umfassender",
+    "editedRunsOnce": "Bearbeitete Befehle werden nur einmal ausgeführt."
   },
   "request": {
     "title": "Berechtigungsanfrage",
@@ -217,10 +220,110 @@
     "gitDestructive": "Destruktiv: {{why}}. Prüfe Befehl, Remote und Branch, bevor du es erlaubst.",
     "selfApproval": "{{tool}} genehmigt Befehle auf {{server}} selbst, wodurch das Modell für dich antworten könnte. Flint fragt jedes Mal nach und merkt sich die Antwort nie."
   },
+  "folderTrust": {
+    "title": "Diesem Ordner vertrauen?",
+    "bodyHooks": "{{folder}} enthält eigene Hooks. Sie führen Befehle aus und bleiben deaktiviert, bis du dem Ordner vertraust.",
+    "bodySubagents": "{{folder}} enthält eigene Agentendefinitionen. Sie bleiben deaktiviert, bis du dem Ordner vertraust.",
+    "bodyBoth": "{{folder}} enthält eigene Hooks und Agentendefinitionen. Sie bleiben deaktiviert, bis du dem Ordner vertraust.",
+    "keepsOff": "Vertraue nur Ordnern, die du selbst geschrieben oder gelesen hast. Das Vertrauen bleibt dauerhaft bestehen; du kannst es später widerrufen.",
+    "trust": "Ordner vertrauen",
+    "later": "Nicht jetzt",
+    "failed": "Dem Ordner konnte nicht vertraut werden",
+    "kept_one": "Hooks bleiben für {{count}} bereits genutzten Ordner aktiviert. Prüfe ihn unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner.",
+    "kept_other": "Hooks bleiben für {{count}} bereits genutzte Ordner aktiviert. Prüfe sie unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner."
+  },
+  "trustedFolders": {
+    "title": "Vertrauenswürdige Ordner",
+    "description": "Ordner, deren eigene Hooks und Agentendefinitionen ausgeführt werden dürfen. Das Vertrauen bleibt bestehen, bis du es widerrufst. Dateien, die ein Agent lesen oder ändern darf, stehen unter Ordnerzugriff.",
+    "empty": "Noch keine vertrauenswürdigen Ordner; Flint fragt beim ersten Mal nach, wenn ein Ordner Hooks oder Agentendefinitionen enthält.",
+    "add": "Einem Ordner vertrauen…",
+    "stop": "Nicht mehr vertrauen",
+    "stopLabel": "{{folder}} nicht mehr vertrauen",
+    "confirm": "{{folder}} nicht mehr vertrauen? Seine Hooks und Agentendefinitionen bleiben deaktiviert, bis du ihm erneut vertraust.",
+    "confirmYes": "Nicht mehr vertrauen",
+    "cancel": "Abbrechen",
+    "loadFailed": "Die vertrauenswürdigen Ordner konnten nicht gelesen werden",
+    "grantFailed": "Dem Ordner konnte nicht vertraut werden",
+    "revokeFailed": "Das Vertrauen konnte nicht entzogen werden"
+  },
+  "scopeForm": {
+    "question": "Wenn du Immer wählst, merke dir das für:",
+    "folder": "In {{dir}}",
+    "folderHint": "Nur Dateien in diesem Ordner, egal wie der Pfad geschrieben ist. Ein Link aus dem Ordner heraus zählt nicht.",
+    "prefix": "Befehle, die mit {{prefix}} beginnen",
+    "prefixHint": "Nur ein einzelner einfacher Befehl. Verkettete, weitergeleitete oder umgeleitete Befehle werden erneut abgefragt.",
+    "everywhere": "Jeder {{tool}}-Aufruf, in jedem Projekt",
+    "everywhereHint": "Die alte Bedeutung von Immer. Sehr weit gefasst; selten das, was du willst.",
+    "saveFailed": "Diese Auswahl konnte nicht gespeichert werden",
+    "alwaysFolder": "Immer: in {{dir}}",
+    "alwaysPrefix": "Immer: Befehle, die mit {{prefix}} beginnen",
+    "alwaysFolderExplanation": "Nur Dateien in diesem Ordner, in diesem Projekt, bis du es unter Einstellungen > Berechtigungen widerrufst.",
+    "alwaysPrefixExplanation": "Nur ein einfacher Befehl, der so beginnt, in diesem Projekt, bis du es unter Einstellungen > Berechtigungen widerrufst. Bei verketteten, weitergeleiteten oder umgeleiteten Befehlen wird erneut gefragt."
+  },
+  "rules": {
+    "title": "Gemerkte Genehmigungen",
+    "description": "Was du mit Immer erlaubt hast, beschränkt auf einen Ordner oder ein Befehlspräfix. Eine Regel gilt nur innerhalb ihres Projekts und setzt nie eine Ablehnung oder eine Frage außer Kraft, die Flint jedes Mal stellt.",
+    "empty": "Noch nichts gemerkt. Wähle bei einer Abfrage Immer und dann einen Ordner oder ein Befehlspräfix.",
+    "folder": "In {{dir}}",
+    "prefix": "Befehle, die mit {{prefix}} beginnen",
+    "run": "Für den Rest dieses Laufs",
+    "once": "Einmal",
+    "project": "In {{project}}",
+    "revoke": "Widerrufen",
+    "revokeLabel": "Genehmigung für {{tool}} widerrufen: {{scope}}",
+    "loadFailed": "Die gemerkten Genehmigungen konnten nicht gelesen werden",
+    "revokeFailed": "Die Genehmigung konnte nicht widerrufen werden"
+  },
+  "deferred": {
+    "title": "Wartende Genehmigungen",
+    "description": "Läufe, die auf eine Frage stießen, während niemand antworten konnte, haben sie notiert und angehalten. Antworte hier und setze dann die Sitzung fort: Der Aufruf wird einmal ausgeführt, wenn er vor Ablauf der Frist erneut vorgeschlagen wird.",
+    "empty": "Nichts wartet auf eine Antwort.",
+    "allow": "Erlauben",
+    "deny": "Ablehnen",
+    "discard": "Entfernen",
+    "session": "Sitzung {{session}}",
+    "deadline": "Antworten bis {{when}}",
+    "status": {
+      "pending": "Wartend",
+      "allowed": "Erlaubt",
+      "denied": "Abgelehnt",
+      "expired": "Abgelaufen",
+      "void": "Ungültig",
+      "consumed": "Verwendet"
+    },
+    "loadFailed": "Die wartenden Genehmigungen konnten nicht gelesen werden",
+    "answerFailed": "Die Antwort konnte nicht gespeichert werden",
+    "allowLabel": "Erlauben: {{summary}}",
+    "denyLabel": "Ablehnen: {{summary}}",
+    "discardLabel": "Entfernen: {{summary}}"
+  },
   "toast": {
     "trustFailed": "Dieser Server konnte nicht gemerkt werden",
     "cancelledOne": "Die Genehmigung für {{names}} wurde abgebrochen",
     "cancelledMany": "{{count}} Genehmigungen ({{names}}) wurden abgebrochen",
     "cancelledDescription": "Der Chat wurde verlassen, bevor du geantwortet hast. Sende die Anfrage erneut, um es noch einmal zu versuchen."
+  },
+  "desktopOnly": "Nur in der Flint-Desktop-App verfügbar.",
+  "folderAccess": {
+    "title": "Ordnerzugriff",
+    "description": "Ordner und Dateien außerhalb des Agenten-Arbeitsbereichs, die ein Agent lesen oder ändern darf. Ob die eigenen Hooks eines Ordners laufen dürfen, wird unter Vertrauenswürdige Ordner festgelegt.",
+    "empty": "Es wurde noch kein Ordnerzugriff gewährt.",
+    "readWrite": "Lesen und Schreiben",
+    "readOnly": "Nur Lesen",
+    "untilRevoked": "Jede Unterhaltung, bis zum Widerruf",
+    "untilDate": "Diese Unterhaltung, bis {{when}}",
+    "revoke": "Widerrufen",
+    "revokeLabel": "Zugriff auf {{path}} widerrufen"
+  },
+  "spendPause": {
+    "preview": "Lauf fortsetzen (bisher etwa {{spent}} ausgegeben)",
+    "previewCeiling": "Lauf bis zum Limit von {{ceiling}} fortsetzen (bisher etwa {{spent}} ausgegeben)"
+  },
+  "remote": {
+    "runsOnServer": "Läuft auf dem Server.",
+    "runsOnServerAt": "Läuft auf dem Server: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Änderungen warten auf deine Freigabe"
   }
 }

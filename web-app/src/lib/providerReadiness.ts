@@ -17,6 +17,16 @@ type ProviderLike = {
 }
 
 /**
+ * Whether the AWS access key id and secret are saved for Amazon Bedrock. Set by
+ * the credentials store; Bedrock has no API key, so without this a provider
+ * that signs its requests with saved AWS keys would never count as usable.
+ */
+let bedrockCredentialsSaved = false
+export function setBedrockCredentialsSaved(saved: boolean): void {
+  bedrockCredentialsSaved = saved
+}
+
+/**
  * Local engines and a self-hosted LiteLLM proxy (which can run without
  * authentication) are usable on models alone; they need no credential.
  */
@@ -50,6 +60,9 @@ export function isProviderUsable(provider: ProviderLike): boolean {
   )
   // A custom provider is a user-configured endpoint, so models alone qualify.
   if (!isPredefined) return hasModels
+
+  // Bedrock signs each request with AWS keys kept in the keyring, not an API key.
+  if (provider.provider === 'bedrock') return bedrockCredentialsSaved && hasModels
 
   return (
     providerHasRemoteApiKeys(provider) ||

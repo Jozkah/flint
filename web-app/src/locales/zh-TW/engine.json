@@ -24,7 +24,7 @@
     "embeddingSub": "{{count}} 個嵌入模型",
     "addedSub": "已新增到 Flint",
     "repliesToday": "今日回覆",
-    "repliesSub": "已測量 {{count}} 則回覆",
+    "repliesSub_other": "已測量 {{count}} 則回覆",
     "apiKeys": "API 金鑰",
     "fallbackSub": "{{count}} 個備用金鑰",
     "noFallbackSub": "無備用金鑰",
@@ -34,7 +34,8 @@
     "title": "目前已載入",
     "empty": "未載入任何模型",
     "emptyHint": "從下表啟動本機模型，或向其傳送訊息。",
-    "unload": "卸載"
+    "unload": "卸載",
+    "speedBar": "平均速度（相對於已載入的最快模型）"
   },
   "speed": {
     "title": "生成速度",
@@ -66,7 +67,8 @@
     "loaded": "已載入",
     "ready": "就緒",
     "noKey": "無 API 金鑰",
-    "keyless": "不需要金鑰"
+    "keyless": "不需要金鑰",
+    "noCredentials": "沒有 AWS 憑證"
   },
   "installed": {
     "title": "已安裝的模型",
@@ -106,7 +108,10 @@
     "connection": "連線",
     "engineSettings": "引擎設定",
     "memorySettings": "記憶體與快取",
-    "danger": "危險區域"
+    "settingNotSaved": "未能儲存「{{setting}}」",
+    "danger": "危險區域",
+    "networkNote": "在你的網路中 · 傳送到 {{host}}",
+    "reachUnknownNote": "正在檢查此供應商的執行位置"
   },
   "mcp": {
     "title": "工具與 MCP",
@@ -125,7 +130,8 @@
     "kpiApprovedAll": "允許所有工具呼叫",
     "tabServers": "伺服器",
     "tabRouting": "路由與限制",
-    "toolsCount": "{{count}} 個工具",
+    "toolsCount_one": "{{count}} 個工具",
+    "toolsCount_other": "{{count}} 個工具",
     "filterLabel": "顯示伺服器",
     "filterAll": "全部",
     "filterOn": "開",
@@ -135,7 +141,7 @@
     "viewList": "清單",
     "callsPerMin": "呼叫 / 分鐘",
     "window": "最近 {{count}} 分鐘",
-    "needsExtension": "需要 Jan 瀏覽器擴充功能",
+    "needsExtension": "需要瀏覽器擴充功能",
     "moreActions": "{{serverName}} 的更多操作",
     "addTile": "新增 MCP 伺服器",
     "addTileHint": "STDIO、HTTP 或 SSE"
@@ -179,5 +185,46 @@
     "kindAudio": "音訊",
     "kindVideo": "影片",
     "htmlPage": "HTML 頁面"
+  },
+  "addon": {
+    "offerTitle": "在你的 NVIDIA GPU 上更快",
+    "offerBody": "在這張 GPU 上，本機模型使用 CUDA 引擎通常比 Vulkan 更快：每秒 token 數常多出 10-70%，模型無法完全放進 VRAM 時差距更大。只需下載一次，約 {{size}}。",
+    "download": "下載",
+    "notNow": "稍後再說",
+    "dontRemind": "不再提醒",
+    "gettingTitle": "正在取得 CUDA 引擎",
+    "downloading": "已下載 {{received}} / {{total}}",
+    "verifying": "正在驗證下載...",
+    "installing": "正在安裝...",
+    "vulkanMeanwhile": "在此期間使用 Vulkan。下次載入模型時改用 CUDA。",
+    "cancel": "取消",
+    "installedTitle": "CUDA 引擎已安裝",
+    "installedBody": "將從下次載入模型時開始使用。",
+    "ok": "知道了",
+    "failedTitle": "無法取得 CUDA 引擎",
+    "retry": "重試",
+    "driverTitle": "請更新 NVIDIA 驅動程式",
+    "driverBody": "請更新 NVIDIA 驅動程式以使用更快的 CUDA 引擎。目前：{{current}}，需要：R{{min}} 或更新版本。在此之前使用 Vulkan。",
+    "close": "關閉",
+    "panelTitle": "引擎附加元件",
+    "panelDesc": "額外的 GPU 引擎，只在你需要時下載。Vulkan 仍作為備援。",
+    "cudaName": "NVIDIA CUDA 引擎",
+    "inUse": "使用中",
+    "unavailableBuild": "此版本不提供引擎附加元件。",
+    "installedVersion": "已安裝：{{version}}，{{size}}",
+    "repairNeeded": "已損壞，因此正在使用 Vulkan。重新下載即可修復。",
+    "notInstalledOffer": "未安裝。在這張 GPU 上通常比 Vulkan 快（約 {{size}}）。",
+    "repair": "修復",
+    "remove": "移除",
+    "installFile": "從檔案安裝...",
+    "checkAgain": "重新檢查",
+    "remindSetting": "載入模型時建議 CUDA 引擎",
+    "errors": {
+      "offline": "無法連線到 GitHub。請稍後再試，或從檔案安裝附加元件。",
+      "notPublished": "此版本尚未發布 CUDA 引擎。",
+      "diskSpace": "磁碟可用空間不足，無法安裝 CUDA 引擎。",
+      "verify": "下載未通過驗證，未安裝。",
+      "mismatch": "此附加元件是為其他 Flint 版本建置的。"
+    }
   }
 }

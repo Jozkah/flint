@@ -23,7 +23,7 @@ function buildCommit(): string {
 const host = process.env.TAURI_DEV_HOST
 
 // https://vite.dev/config/
-export default defineConfig(() => {
+export default defineConfig(({ command }) => {
   return {
     plugins: [
       TanStackRouterVite({
@@ -40,6 +40,19 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        // The dev server pre-bundles @tabler/icons-react into ~6000 chunks and
+        // the browser then fetches every one of them before the first screen
+        // (30-45 s cold, and it looks like a hung splash). The package's own
+        // flat ESM entry is one file. Dev only; the production bundle
+        // tree-shakes either way.
+        ...(command === 'serve'
+          ? {
+              '@tabler/icons-react': path.resolve(
+                __dirname,
+                './node_modules/@tabler/icons-react/dist/esm/icons/index.mjs'
+              ),
+            }
+          : {}),
         '@janhq/assistant-extension': path.resolve(__dirname, '../extensions/assistant-extension/dist/index.js'),
         '@janhq/conversational-extension': path.resolve(__dirname, '../extensions/conversational-extension/dist/index.js'),
         '@janhq/llamacpp-extension': path.resolve(__dirname, '../extensions/llamacpp-extension/dist/index.js'),
@@ -114,6 +127,12 @@ export default defineConfig(() => {
     server: {
       port: 1420,
       strictPort: true,
+      // Transform the start-up graph as soon as the server is up, so the
+      // window's first load (which opens a moment later) finds it done instead
+      // of waiting on ~1300 cold transforms, one browser request at a time.
+      warmup: {
+        clientFiles: ['./src/main.tsx', './src/routes/__root.tsx', './src/shell/MainRoot.tsx'],
+      },
       host: host || false,
       hmr: host
         ? {
@@ -131,7 +150,11 @@ export default defineConfig(() => {
           '**/__tests__/**',
           '**/*.test.{ts,tsx}',
         ],
-        usePolling: true
+        // Polling re-stats every watched file ten times a second (~0.8 of a
+        // core, for ever, competing with the transforms the window is waiting
+        // on). Native file events work on a local disk; set FLINT_VITE_POLL=1
+        // for a network or virtual file system that does not report changes.
+        usePolling: process.env.FLINT_VITE_POLL === '1',
       },
     },
   }

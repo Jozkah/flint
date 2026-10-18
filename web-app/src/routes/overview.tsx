@@ -1,3 +1,4 @@
+import { runColumns } from '@/lib/runColumns'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import {
@@ -366,12 +367,12 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
                   )}
                   <div className="flex min-w-0 flex-1 flex-col gap-2.5 pt-0.5 text-xs tracking-[-.01em]">
                     <div className="flex w-full items-center justify-between gap-2 leading-none">
-                      <p className="m-0 truncate font-medium">{it.title}</p>
+                      <p className="descender-safe m-0 truncate font-medium">{it.title}</p>
                       <time className="shrink-0 text-subtle-foreground" dateTime={new Date(it.at).toISOString()}>
                         {new Date(it.at).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' })}
                       </time>
                     </div>
-                    {it.detail && <p className="m-0 truncate leading-none text-subtle-foreground">{it.detail}</p>}
+                    {it.detail && <p className="descender-safe m-0 truncate leading-none text-subtle-foreground">{it.detail}</p>}
                   </div>
                 </li>
               )
@@ -473,6 +474,7 @@ function AgentRuns() {
     useCoworkSessions.getState().selectSession(id)
     navigate({ to: route.cowork })
   }
+  const columns = runColumns(rows)
   return (
     <Frame className="motion-safe:animate-rise-in" style={{ animationDelay: '340ms' }}>
       <FrameHeader
@@ -513,7 +515,7 @@ function AgentRuns() {
           </>
         }
       />
-      <div className="w-full overflow-x-auto rounded-xl bg-card p-1.5 shadow-[inset_0_0_0_.8px_var(--input)] [scrollbar-width:thin]">
+      <div className="@container/runs w-full overflow-x-auto rounded-xl bg-card p-1.5 shadow-[inset_0_0_0_.8px_var(--input)] [scrollbar-width:thin]">
         {rows.length === 0 ? (
           <EmptyState
             icon={<Target />}
@@ -522,18 +524,19 @@ function AgentRuns() {
             action={<Button variant="outline" onClick={() => navigate({ to: route.cowork })}>{t('overview:openCowork')}</Button>}
           />
         ) : (
-          <table className="w-full min-w-[720px] border-separate border-spacing-0 text-[0.8125rem]" aria-label={t('overview:runs')}>
+          <table className="w-full min-w-[560px] border-separate border-spacing-0 text-[0.8125rem]" aria-label={t('overview:runs')}>
             <thead>
               <tr className="text-left text-secondary-foreground">
-                {['run', 'task', 'model', 'status', 'started', 'speed', 'tokens'].map((c, i, a) => (
+                {columns.map((c, i) => (
                   <th
                     key={c}
                     scope="col"
                     className={cn(
                       'h-9 bg-secondary px-3 font-normal whitespace-nowrap',
                       i === 0 && 'rounded-l-lg',
-                      i === a.length - 1 && 'rounded-r-lg',
-                      (c === 'speed' || c === 'tokens') && 'text-right'
+                      // The task name takes the width the other columns leave.
+                      c === 'task' && 'w-full',
+                      (c === 'speed' || c === 'tokens') && 'hidden w-px text-right @min-[900px]/runs:table-cell'
                     )}
                   >
                     <span className="inline-flex items-center gap-1.5">
@@ -555,8 +558,8 @@ function AgentRuns() {
                     onClick={() => open(r.id)}
                   >
                     <td className="border-b border-border/60 px-3 font-medium text-cell tabular-nums">#{1000 + r.index + 1}</td>
-                    <td className="max-w-0 truncate border-b border-border/60 px-3 font-medium text-cell group-hover/row:text-foreground">{r.title}</td>
-                    <td className="truncate border-b border-border/60 px-3 text-cell">
+                    <td className="w-full max-w-0 min-w-28 truncate border-b border-border/60 px-3 font-medium text-cell group-hover/row:text-foreground" title={r.title}>{r.title}</td>
+                    <td className="border-b border-border/60 px-3 text-cell whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
                         <BrandMark logo={modelLogo(r.model)} name={r.model} size={16} tone="bare" />
                         {r.model}
@@ -569,6 +572,7 @@ function AgentRuns() {
                         <span className="text-cell">{t(S.key)}</span>
                       </span>
                     </td>
+                    {columns.includes('started') && (
                     <td className="border-b border-border/60 px-3 text-cell tabular-nums whitespace-nowrap">
                       {r.started ? (
                         <time dateTime={new Date(r.started).toISOString()} title={new Date(r.started).toLocaleString(i18n.language)}>
@@ -583,10 +587,15 @@ function AgentRuns() {
                         '—'
                       )}
                     </td>
-                    <td className="border-b border-border/60 px-3 text-right text-cell tabular-nums whitespace-nowrap">
+                    )}
+                    {columns.includes('speed') && (
+                    <td className="hidden border-b border-border/60 px-3 text-right text-cell tabular-nums whitespace-nowrap @min-[900px]/runs:table-cell">
                       {r.speed ? t('overview:tokensPerSecond', { value: r.speed.toFixed(r.speed >= 100 ? 0 : 1) }) : '—'}
                     </td>
-                    <td className="border-b border-border/60 px-3 text-right text-cell tabular-nums">{r.tokens ? compact(r.tokens) : '—'}</td>
+                    )}
+                    {columns.includes('tokens') && (
+                    <td className="hidden border-b border-border/60 px-3 text-right text-cell tabular-nums whitespace-nowrap @min-[900px]/runs:table-cell">{r.tokens ? compact(r.tokens) : '—'}</td>
+                    )}
                     <td className="border-b border-border/60 px-1 text-right">
                       <Button
                         variant="ghost"
@@ -650,7 +659,7 @@ function Overview() {
   )
 
   return (
-    <div className="h-full overflow-x-hidden overflow-y-auto px-1 pt-2 pb-6 [scrollbar-width:thin]" data-testid="overview-page">
+    <div className="-mr-3 h-full overflow-x-hidden overflow-y-auto pt-2 pr-4 pb-6 pl-1 [scrollbar-width:thin]" data-testid="overview-page">
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-4 leading-none">

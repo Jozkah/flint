@@ -2,7 +2,9 @@
 import { syncListedModels } from '@/lib/providerModelSync'
 import { listedCapabilities } from '@/lib/listedCapabilities'
 import { CardItem } from '@/containers/Card'
-import { classifyModelLocation } from '@/lib/modelLocation'
+import { classifyModelLocation, endpointHost } from '@/lib/modelLocation'
+import { useProviderLocations } from '@/hooks/useEndpointLocations'
+import { endpointScope } from '@/lib/endpointDiagnostics'
 import { providerKeyStatus } from '@/lib/providerKeyStatus'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
@@ -13,10 +15,16 @@ import {
   isLocalProvider,
 } from '@/lib/utils'
 import { sortModels } from '@/lib/modelSort'
+import { groupModelsByFamily } from '@/lib/modelGroups'
+import { useModelLibrary } from '@/hooks/useModelLibrary'
 import { createFileRoute, Link, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
+import {
+  CONTEXT_SIZE_MIN,
+  CONTEXT_SIZE_STEPS,
+} from '@/lib/steppedValue'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
 import { DialogEditModel } from '@/containers/dialogs/EditModel'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
@@ -31,6 +39,7 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
+import { BedrockCredentials } from '@/containers/BedrockCredentials'
 import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
 import { ProviderTlsTrust } from '@/containers/ProviderTlsTrust'
 import { applyCustomHeaders } from '@/lib/customHeaders'
@@ -49,6 +58,7 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
+import { ProviderStatusChip } from '@/components/ProviderStatusChip'
 import {
   useCallback,
   useEffect,
@@ -65,6 +75,8 @@ import {
 import { useModelLoad } from '@/hooks/useModelLoad'
 import { useAppState } from '@/hooks/useAppState'
 import { useShallow } from 'zustand/shallow'
+import { azureApiVersionSetting } from '@/lib/model-factory'
+import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { DialogAddModel } from '@/containers/dialogs/AddModel'
 import {
   providerHasRemoteApiKeys,
@@ -88,8 +100,16 @@ import {
   SettingsWithSections,
 } from '@/containers/SettingsPageHeader'
 import { Chip } from '@/components/ui/chip'
+import { MiddleText } from '@/components/ui/middle-text'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  ENGINE_SETTINGS_WITH_INFO,
+  localizeEngineSetting,
+} from '@/lib/engineSettingsText'
+import { disambiguateModels, parseModelName } from '@/lib/modelDisplayName'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { EngineAddonFrame } from '@/containers/EngineAddon'
 import {
   CapabilityChips,
   EnginePage,
@@ -101,7 +121,12 @@ import {
 import { BrandMark } from '@/containers/engine/BrandMark'
 import { LiveChart } from '@/containers/engine/LiveChart'
 import { modelLogo, providerLogo } from '@/lib/brandLogos'
-import { formatTps, recentSpeeds } from '@/lib/engineModels'
+import { effectiveContextLength, formatTps, recentSpeeds } from '@/lib/engineModels'
+import { providerSettingAnchor } from '@/lib/settingsSearch'
+import {
+  contextColumn,
+  useLoadedContextWindows,
+} from '@/hooks/useLoadedContextWindows'
 import {
   startOfToday,
   useEngineActivity,
@@ -122,6 +147,10 @@ const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: stri
     description: 'providers:baseUrl.azureDescription',
     placeholder: AZURE_BASE_URL_PLACEHOLDER,
   },
+  bedrock: {
+    description: 'providers:baseUrl.bedrockDescription',
+    placeholder: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+  },
   litellm: {
     description: 'providers:baseUrl.litellmDescription',
     placeholder: 'http://localhost:4000/v1',
@@ -134,7 +163,7 @@ const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: stri
 
 // Remote lists longer than this get a filter box; rows render this many at a time.
 const MODEL_FILTER_MIN = 20
-const MODEL_PAGE_SIZE = 50
+const MODEL_PAGE_SIZE = 12
 
 export const Route = createFileRoute('/settings/providers/$providerName')({
   component: ProviderDetail,
@@ -160,7 +189,7 @@ function contextLengthOf(model: Model): number | undefined {
 
 /** Models table columns: mark, name, capabilities, (size, context,) status, actions. */
 const LOCAL_COLS =
-  '30px minmax(110px,1fr) 64px 60px 64px 136px auto'
+  '30px minmax(110px,1fr) 64px 72px 80px 156px 252px'
 const REMOTE_COLS = '30px minmax(140px,1fr) 72px 130px auto'
 
 /** How many recent replies the speed chart shows. */
@@ -201,6 +230,7 @@ function ProviderDetail() {
   const [importingModel, setImportingModel] = useState<string | null>(null)
   const [apiKeysDraft, setApiKeysDraft] = useState('')
   const [baseUrlDraft, setBaseUrlDraft] = useState('')
+  const [apiVersionDraft, setApiVersionDraft] = useState('')
   const [showAdvancedApiKeys, setShowAdvancedApiKeys] = useState(false)
   const [isTestingKeys, setIsTestingKeys] = useState(false)
   const [keyCheckResults, setKeyCheckResults] = useState<
@@ -213,6 +243,22 @@ function ProviderDetail() {
   const isLlamacpp = provider?.provider === 'llamacpp'
   const isEngineProvider =
     provider?.provider === 'llamacpp' || provider?.provider === 'mlx'
+  // Where this provider's requests go, decided the way the chat details decide
+  // it, so a LAN server is not "remote" here and "on this device" there (T7-115).
+  const locateProvider = useProviderLocations(
+    provider ? [provider] : [],
+    (name) => name === 'llamacpp' || name === 'mlx'
+  )
+  const providerLocation = provider ? locateProvider(provider) : 'unknown'
+  const reachNote = isEngineProvider
+    ? t('engine:providers.onDevice')
+    : providerLocation === 'local'
+      ? endpointScope(provider?.base_url) === 'loopback'
+        ? t('engine:providers.onDevice')
+        : t('engine:provider.networkNote', { host: endpointHost(provider?.base_url) ?? '' })
+      : providerLocation === 'remote'
+        ? t('engine:provider.remoteNote')
+        : t('engine:provider.reachUnknownNote')
   // An engine setting change restarts that engine's models, once typing
   // pauses; a remote provider's settings never touch loaded local models.
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -249,6 +295,20 @@ function ProviderDetail() {
       'name-asc'
     ).map((item) => item.model)
   }, [provider])
+  // Rows whose names are near-identical get a short label from what differs.
+  const disambiguation = useMemo(
+    () =>
+      disambiguateModels(
+        allModels.map((model) => ({
+          key: model.id,
+          name: getModelDisplayName(model),
+          fileName: localFiles[model.id]?.fileName ?? model.id,
+          sizeBytes: localFiles[model.id]?.sizeBytes,
+          contextLength: contextLengthOf(model),
+        }))
+      ),
+    [allModels, localFiles]
+  )
   const embeddingModels = useMemo(
     () =>
       isLlamacpp
@@ -265,9 +325,18 @@ function ProviderDetail() {
   )
   // A hosted provider can list hundreds of models, so past a threshold the
   // list gets a filter box and renders in pages instead of all at once.
-  const [modelQuery, setModelQuery] = useState('')
+  // The query is kept per provider, so leaving the page and coming back does
+  // not wipe it.
+  const modelQuery = useModelLibrary((s) => s.filterQuery[providerName] ?? '')
+  const setStoredQuery = useModelLibrary((s) => s.setFilterQuery)
+  const setModelQuery = useCallback(
+    (query: string) => setStoredQuery(providerName, query),
+    [setStoredQuery, providerName]
+  )
+  const expandedGroups = useModelLibrary((s) => s.expandedGroups[providerName])
+  const toggleGroup = useModelLibrary((s) => s.toggleGroup)
   const [modelLimit, setModelLimit] = useState(MODEL_PAGE_SIZE)
-  const canFilterModels = !isEngineProvider && allModels.length > MODEL_FILTER_MIN
+  const canFilterModels = allModels.length > MODEL_FILTER_MIN
   const filteredModels = useMemo(() => {
     const words = modelQuery.toLowerCase().split(/\s+/).filter(Boolean)
     if (!canFilterModels || words.length === 0) return allModels
@@ -277,6 +346,39 @@ function ProviderDetail() {
     })
   }, [allModels, canFilterModels, modelQuery])
   useEffect(() => setModelLimit(MODEL_PAGE_SIZE), [modelQuery, providerName])
+  // A long local list is grouped by model family, collapsed until opened. A
+  // filter in use opens every group so the matches are visible.
+  const listedModels = useMemo(
+    () =>
+      isLlamacpp
+        ? filteredModels.filter((m) => (m as any).embedding !== true)
+        : filteredModels.slice(0, modelLimit),
+    [isLlamacpp, filteredModels, modelLimit]
+  )
+  const groupModels = isEngineProvider && canFilterModels
+  const modelEntries = useMemo(() => {
+    type Entry =
+      | { kind: 'model'; model: (typeof listedModels)[number] }
+      | { kind: 'group'; family: string; count: number; open: boolean }
+    if (!groupModels) {
+      return listedModels.map((model): Entry => ({ kind: 'model', model }))
+    }
+    const entries: Entry[] = []
+    for (const group of groupModelsByFamily(listedModels)) {
+      const open =
+        modelQuery.trim() !== '' || !!expandedGroups?.includes(group.family)
+      entries.push({
+        kind: 'group',
+        family: group.family,
+        count: group.models.length,
+        open,
+      })
+      if (open) {
+        for (const model of group.models) entries.push({ kind: 'model', model })
+      }
+    }
+    return entries
+  }, [groupModels, listedModels, modelQuery, expandedGroups])
   const defaultEmbeddingModelId = useDefaultEmbeddingModel((s) =>
     isLlamacpp ? s.getDefault('llamacpp') : undefined
   )
@@ -557,6 +659,9 @@ function ProviderDetail() {
       settings: newSettings,
       api_key: nextPrimary,
       api_key_fallbacks: nextFallbacks,
+      // Built-in providers start switched off; giving one its first key is
+      // the user asking to use it.
+      ...(nextPrimary && !prevPrimary ? { active: true } : {}),
     })
     // Clearing the key is an explicit user action: purge the keyring secret so
     // it isn't re-seeded into memory on the next launch. (register handles the
@@ -565,6 +670,34 @@ function ProviderDetail() {
       serviceHub.providers().deleteProviderKeys(providerName)
     }
   }, [apiKeysDraft, provider, providerName, serviceHub, updateProvider])
+
+  // Azure's legacy deployments-style endpoints take an api-version the URL may
+  // not carry; it lives in the provider's `api-version` setting.
+  // The draft follows the stored value (provider switch, import, reset), so a
+  // stale draft can never be committed over a newer stored value.
+  const storedApiVersion =
+    provider?.provider === 'azure' ? azureApiVersionSetting(provider) : null
+  useEffect(() => {
+    if (storedApiVersion !== null) setApiVersionDraft(storedApiVersion)
+  }, [providerName, storedApiVersion])
+
+  const commitApiVersionDraft = useCallback(() => {
+    if (!provider || provider.provider !== 'azure') return
+    const next = apiVersionDraft.trim()
+    if (next === azureApiVersionSetting(provider)) return
+    const settings = provider.settings.some((s) => s.key === 'api-version')
+      ? provider.settings.map((s) =>
+          s.key === 'api-version'
+            ? ({
+                ...s,
+                controller_props: { ...s.controller_props, value: next },
+              } as ProviderSetting)
+            : s
+        )
+      : provider.settings
+    serviceHub.providers().updateSettings(providerName, settings)
+    updateProvider(providerName, { ...provider, settings })
+  }, [apiVersionDraft, provider, providerName, serviceHub, updateProvider])
 
   const commitBaseUrlDraft = useCallback(() => {
     if (!provider || !EDITABLE_ENDPOINT[provider.provider]) return
@@ -790,7 +923,11 @@ function ProviderDetail() {
           models: synced.models,
         })
 
+        // Short, and one at a time: a long-lived card sat over the Save button of
+        // a dialog opened right after a refresh.
         toast.success(t('providers:models'), {
+          id: 'providers-models-refresh',
+          duration: 2500,
           description: [
             modelsToAdd.length > 0
               ? t('providers:refreshModelsSuccess', {
@@ -807,6 +944,8 @@ function ProviderDetail() {
         })
       } else {
         toast.success(t('providers:models'), {
+          id: 'providers-models-refresh',
+          duration: 2500,
           description: t('providers:noNewModels'),
         })
       }
@@ -890,12 +1029,19 @@ function ProviderDetail() {
       })
   }
 
+  const bedrockCredentialsSaved = useBedrockCredentials((state) => state.saved)
   const apiKeyMissing =
     !!provider &&
     !isEngineProvider &&
     !!provider.base_url &&
     classifyModelLocation({ baseUrl: provider.base_url }) === 'remote' &&
-    !providerHasRemoteApiKeys(provider)
+    (provider.provider === 'bedrock'
+      ? !bedrockCredentialsSaved
+      : !providerHasRemoteApiKeys(provider))
+
+  const headerKeyStatus = provider
+    ? providerKeyStatus(provider, { bedrockCredentials: bedrockCredentialsSaved })
+    : undefined
 
   const statusFor = (modelId: string) =>
     deriveModelStatus({
@@ -920,13 +1066,23 @@ function ProviderDetail() {
         live={status === 'loading' || status === 'loaded'}
         data-testid={`model-status-${modelId}`}
         data-status={status}
+        // A narrow column ends the label in an ellipsis (C099).
+        className="min-w-0 max-w-full shrink"
+        title={t(modelStatusLabelKey(status, provider?.provider))}
       >
-        {t(modelStatusLabelKey(status))}
+        <span className="min-w-0 truncate">
+          {t(modelStatusLabelKey(status, provider?.provider))}
+        </span>
       </Chip>
     )
   }
 
   /** One model as a row in the models table. */
+  const loadedWindows = useLoadedContextWindows(
+    isEngineProvider ? provider?.provider : undefined,
+    activeModels
+  )
+
   const renderModelRow = (
     model: Model,
     key: string,
@@ -938,7 +1094,25 @@ function ProviderDetail() {
     }
   ) => {
     const file = localFiles[model.id]
-    const contextLength = contextLengthOf(model)
+    // What the model runs with, not "auto" when it inherits the Default
+    // context size (C046).
+    const contextLength = effectiveContextLength(model, provider)
+    const displayName = getModelDisplayName(model)
+    const secondaryLine = isEngineProvider
+      ? (file?.fileName ?? model.id)
+      : model.id
+    const parsed = parseModelName(displayName)
+    const quant = parsed.quant ?? parseModelName(secondaryLine).quant
+    const shownName = parsed.quant ? parsed.base : displayName
+    // A quant difference already shows as the quant chip.
+    const disambiguator = disambiguation.get(model.id)
+    const rowTitle = [
+      displayName,
+      secondaryLine !== displayName ? secondaryLine : null,
+      file?.sizeBytes ? formatBytes(file.sizeBytes) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ')
     return (
       <li
         key={key}
@@ -946,6 +1120,11 @@ function ProviderDetail() {
         className={cn(
           TBOX_ROW,
           'relative',
+          // Below the threshold the row is a two-line card: identity on the
+          // first line, figures + status + actions on the second.
+          isEngineProvider
+            ? '@max-[880px]:flex @max-[880px]:flex-wrap @max-[880px]:gap-y-2'
+            : '@max-[560px]:flex @max-[560px]:flex-wrap @max-[560px]:gap-y-2',
           options.selected && 'bg-accent'
         )}
       >
@@ -958,47 +1137,138 @@ function ProviderDetail() {
             />
           )}
         </span>
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div
+          className={cn(
+            'flex min-w-0 flex-col gap-0.5',
+            isEngineProvider
+              ? '@max-[880px]:min-w-[8rem] @max-[880px]:flex-1'
+              : '@max-[560px]:min-w-[8rem] @max-[560px]:flex-1'
+          )}
+        >
           <span className="flex min-w-0 items-center gap-1.5">
             <span
               className="min-w-0 truncate text-[13px] font-medium text-foreground"
-              title={model.id}
+              title={rowTitle}
+              aria-label={rowTitle}
             >
-              {getModelDisplayName(model)}
+              {shownName}
             </span>
             {options.badges}
             {model.imported && (
               <Chip
-                className="h-[18px]"
+                className="h-[18px] shrink-0"
                 title={t('providers:importedTooltip')}
               >
                 {t('providers:imported')}
               </Chip>
             )}
+            {quant && (
+              <Chip
+                mono
+                className="h-[18px]"
+                data-testid="model-quant-chip"
+              >
+                {quant}
+              </Chip>
+            )}
           </span>
           {/* A renamed model still answers to its own identifier, which is
-              what requests carry; a local one also names its file. */}
-          <small className="truncate font-mono text-[11px] text-subtle-foreground">
-            {isEngineProvider
-              ? (file?.fileName ?? model.id)
-              : model.id}
-          </small>
+              what requests carry; a local one also names its file. The cut
+              is in the middle so the quant and extension stay readable. */}
+          <MiddleText
+            text={secondaryLine}
+            className="font-mono text-[11px] text-subtle-foreground"
+            title={rowTitle}
+            data-testid="model-secondary-line"
+          />
+          {/* What tells this model from its look-alikes, when its name
+              alone would not. On its own line so it never squeezes the name. */}
+          {disambiguator &&
+            disambiguator.kind !== 'quant' &&
+            disambiguator.label !== quant && (
+              <span className="flex min-w-0">
+                <Chip
+                  mono
+                  className="h-[18px] max-w-full min-w-0 overflow-hidden text-ellipsis"
+                  title={file?.fileName ?? model.id}
+                  data-testid="model-disambiguator-chip"
+                >
+                  {disambiguator.label}
+                </Chip>
+              </span>
+            )}
         </div>
-        <CapabilityChips iconOnly capabilities={model.capabilities || []} />
+        {/* Always a cell, even with no capabilities: CapabilityChips renders
+            nothing then, and every later column would slide one place left
+            (the status pill landing in the 80px context column). Collapsed
+            in the two-line card, where there are no columns to hold. */}
+        <span
+          data-testid="model-capabilities-cell"
+          className={cn(
+            'flex min-w-0 items-center',
+            isEngineProvider
+              ? '@max-[880px]:empty:hidden'
+              : '@max-[560px]:empty:hidden'
+          )}
+        >
+          <CapabilityChips iconOnly capabilities={model.capabilities || []} />
+        </span>
+        {/* Line break between the two lines of the narrow card. */}
+        <span
+          aria-hidden
+          className={cn(
+            'hidden h-0 basis-full',
+            isEngineProvider ? '@max-[880px]:block' : '@max-[560px]:block'
+          )}
+        />
         {isEngineProvider && (
           <>
             <span className="tabular-nums text-fg-2">
               {file?.sizeBytes ? formatBytes(file.sizeBytes) : '—'}
             </span>
-            <span className="tabular-nums text-fg-2">
-              {contextLength ? contextLength.toLocaleString() : '—'}
-            </span>
+            {(() => {
+              const ctx = contextColumn(
+                loadedWindows[model.id],
+                contextLength,
+                t
+              )
+              return (
+                <span
+                  className="flex min-w-0 flex-col leading-tight tabular-nums text-fg-2"
+                  title={ctx.title}
+                  data-testid={`model-ctx-${model.id}`}
+                >
+                  <span className="truncate">{ctx.value}</span>
+                  {ctx.note && (
+                    <span className="truncate text-[10px] text-muted-foreground">
+                      {ctx.note}
+                    </span>
+                  )}
+                </span>
+              )
+            })()}
           </>
         )}
-        <span className="flex min-w-0 items-center">
+        <span
+          className={cn(
+            'flex min-w-0 items-center [&>*]:max-w-full [&>*]:truncate',
+            isEngineProvider
+              ? '@max-[880px]:min-w-[7rem] @max-[880px]:flex-1'
+              : '@max-[560px]:min-w-[7rem] @max-[560px]:flex-1'
+          )}
+        >
           {renderStatus(model.id)}
         </span>
-        <div className="flex flex-nowrap items-center justify-end gap-0.5">
+        <div
+          className={cn(
+            'flex flex-nowrap items-center justify-end gap-0.5',
+            // In the two-line card the group may wrap rather than run out
+            // of the row when the page is very narrow.
+            isEngineProvider
+              ? '@max-[880px]:ml-auto @max-[880px]:max-w-full @max-[880px]:flex-wrap'
+              : '@max-[560px]:ml-auto @max-[560px]:max-w-full @max-[560px]:flex-wrap'
+          )}
+        >
           {options.actions}
         </div>
       </li>
@@ -1041,6 +1311,9 @@ function ProviderDetail() {
     .map((setting, settingIndex) => ({ setting, settingIndex }))
     .filter(({ setting }) => {
       if (setting.key === 'api-key' && !isEngineProvider) return false
+      // Azure's api-version has its own field above the key section.
+      if (provider?.provider === 'azure' && setting.key === 'api-version')
+        return false
       if (provider?.provider === 'llamacpp' && setting.key === 'fit_ctx')
         return false
       return true
@@ -1076,18 +1349,31 @@ function ProviderDetail() {
       ]
 
   const renderSetting = ({
-    setting,
+    setting: stored,
     settingIndex,
   }: {
     setting: ProviderSetting
     settingIndex: number
   }) => {
+    // The engine's settings are English in the extension: shown localized.
+    const setting = localizeEngineSetting(t, provider?.provider, stored)
+    const withInfo =
+      isEngineProvider && ENGINE_SETTINGS_WITH_INFO.has(setting.key)
     // Use the DynamicController component
     const actionComponent = (
       <div className="mt-1 sm:mt-0">
         <DynamicControllerSetting
           controllerType={setting.controller_type}
-          controllerProps={setting.controller_props}
+          controllerProps={
+            setting.key === 'ctx_size'
+              ? // From Auto, + goes to a usable window, not 1 token.
+                {
+                  ...setting.controller_props,
+                  min: CONTEXT_SIZE_MIN,
+                  steps: CONTEXT_SIZE_STEPS,
+                }
+              : setting.controller_props
+          }
           className={cn(setting.key === 'device' && 'hidden')}
           onChange={(newValue) => {
             if (provider) {
@@ -1110,6 +1396,7 @@ function ProviderDetail() {
               const settingKey = setting.key
               if (settingKey === 'api-key' && typeof newValue === 'string') {
                 updateObj.api_key = newValue
+                if (newValue && !provider?.api_key) updateObj.active = true
               } else if (
                 settingKey === 'base-url' &&
                 typeof newValue === 'string'
@@ -1117,9 +1404,42 @@ function ProviderDetail() {
                 updateObj.base_url = newValue
               }
 
-              serviceHub
-                .providers()
-                .updateSettings(providerName, updateObj.settings ?? [])
+              const previousValue = changed.controller_props.value
+              void Promise.resolve(
+                serviceHub
+                  .providers()
+                  .updateSettings(providerName, updateObj.settings ?? [])
+              ).catch((error: unknown) => {
+                // The engine refused and rolled the file back: put the control
+                // back on the stored value and say why, so a change that was not
+                // kept is never mistaken for one that was.
+                const latest = useModelProvider.getState().getProviderByName(providerName)
+                if (latest) {
+                  updateProvider(providerName, {
+                    ...latest,
+                    settings: latest.settings.map((s, i) =>
+                      i === settingIndex
+                        ? ({
+                            ...s,
+                            controller_props: {
+                              ...s.controller_props,
+                              value: previousValue,
+                            },
+                          } as ProviderSetting)
+                        : s
+                    ),
+                  })
+                }
+                if (restartTimerRef.current) {
+                  clearTimeout(restartTimerRef.current)
+                  restartTimerRef.current = null
+                  pendingRestartRef.current = null
+                }
+                toast.error(t('engine:provider.settingNotSaved', { setting: setting.title }), {
+                  id: `engine-setting-${providerName}-${setting.key}`,
+                  description: errorText(error),
+                })
+              })
               updateProvider(providerName, {
                 ...provider,
                 ...updateObj,
@@ -1147,7 +1467,33 @@ function ProviderDetail() {
     return (
       <CardItem
         key={settingIndex}
-        title={setting.title}
+        anchor={providerSettingAnchor(provider?.provider ?? '', setting.key)}
+        title={
+          withInfo ? (
+            <span className="inline-flex items-center gap-1.5">
+              {setting.title}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t('engineSettings:_ui.moreInfo', {
+                      setting: setting.title,
+                    })}
+                    data-testid={`engine-setting-info-${setting.key}`}
+                    className="inline-grid size-5 place-items-center rounded-full text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                  >
+                    <Info className="size-3.5" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  {setting.description}
+                </TooltipContent>
+              </Tooltip>
+            </span>
+          ) : (
+            setting.title
+          )
+        }
         className={cn(setting.key === 'device' && 'hidden')}
         column={
           setting.controller_type === 'input' &&
@@ -1156,6 +1502,7 @@ function ProviderDetail() {
             : false
         }
         description={
+          <>
           <RenderMarkdown
             className="![>p]:text-muted-foreground select-none"
             content={setting.description}
@@ -1174,6 +1521,17 @@ function ProviderDetail() {
               p: ({ ...props }) => <p {...props} className="mb-0!" />,
             }}
           />
+          {setting.key === 'ctx_size' && isEngineProvider && (
+            // Each model can set its own size: the Models page has them.
+            <Link
+              to={route.settings.providers}
+              data-testid="engine-ctx-size-per-model"
+              className="mt-1 inline-block text-xs text-acc-text underline-offset-4 hover:underline"
+            >
+              {t('engineSettings:_ui.perModelSettings')}
+            </Link>
+          )}
+          </>
         }
         actions={actionComponent}
       />
@@ -1267,9 +1625,17 @@ function ProviderDetail() {
             />
           </div>
         )}
-        {provider?.models.length ? (
+        {canFilterModels && modelQuery.trim() !== '' && filteredModels.length === 0 ? (
+          <p
+            role="status"
+            data-testid="models-no-match"
+            className="px-2 py-6 text-center text-sm text-muted-foreground"
+          >
+            {t('providers:noModelsMatch', { query: modelQuery.trim() })}
+          </p>
+        ) : provider?.models.length ? (
           <TBox
-            className={isEngineProvider ? 'min-w-[660px]' : 'min-w-[480px]'}
+            className="@container"
             columns={isEngineProvider ? LOCAL_COLS : REMOTE_COLS}
           >
             {isLlamacpp &&
@@ -1277,10 +1643,24 @@ function ProviderDetail() {
               chatModels.length > 0 &&
               sectionDivider(t('providers:chatModels'), 'mt-1 mb-1')}
             <ul className="flex flex-col">
-              {(isLlamacpp
-                ? chatModels
-                : filteredModels.slice(0, modelLimit)
-              ).map((model, modelIndex) => {
+              {modelEntries.map((entry, modelIndex) => {
+                if (entry.kind === 'group') {
+                  return (
+                    <li key={`group-${entry.family}`}>
+                      <button
+                        type="button"
+                        aria-expanded={entry.open}
+                        onClick={() => toggleGroup(providerName, entry.family)}
+                        className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        <span aria-hidden>{entry.open ? '▾' : '▸'}</span>
+                        <span className="capitalize">{entry.family}</span>
+                        <span className="text-xs">({entry.count})</span>
+                      </button>
+                    </li>
+                  )
+                }
+                const model = entry.model
                 const isActive = activeModels.some(
                   (activeModel) => activeModel === model.id
                 )
@@ -1442,7 +1822,7 @@ function ProviderDetail() {
             }
           />
         )}
-        {canFilterModels && (
+        {canFilterModels && filteredModels.length > 0 && (
           <div className="mt-2 flex items-center justify-between gap-2 text-sm text-muted-foreground">
             <span>
               {t('providers:modelsShown', {
@@ -1450,7 +1830,7 @@ function ProviderDetail() {
                 total: filteredModels.length,
               })}
             </span>
-            {filteredModels.length > modelLimit && (
+            {!isLlamacpp && filteredModels.length > modelLimit && (
               <Button
                 size="sm"
                 variant="outline"
@@ -1531,7 +1911,32 @@ function ProviderDetail() {
             />
           </div>
         )}
-        <div className="space-y-3">
+        {provider.provider === 'azure' && (
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <h3 className="text-[13px] font-medium text-foreground">
+                {t('providers:apiVersion.title')}
+              </h3>
+              <p className="text-xs leading-normal text-muted-foreground">
+                {t('providers:apiVersion.description')}
+              </p>
+            </div>
+            <input
+              className="flex h-8 w-full min-w-0 rounded-lg border-[0.8px] border-input bg-card px-2.5 py-1 font-mono text-base text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-xs"
+              placeholder="2024-10-21"
+              data-testid="azure-api-version"
+              value={apiVersionDraft}
+              onChange={(e) => setApiVersionDraft(e.target.value)}
+              onBlur={() => commitApiVersionDraft()}
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </div>
+        )}
+        {provider.provider === 'bedrock' && <BedrockCredentials />}
+        <div
+          className={provider.provider === 'bedrock' ? 'hidden' : 'space-y-3'}
+        >
           <div className="space-y-1">
             <h3 className="text-[13px] font-medium text-foreground">
               {t('providers:apiKeys.title')}
@@ -1613,7 +2018,7 @@ function ProviderDetail() {
               </div>
 
               <div className="text-xs text-muted-foreground">
-                Primary key is <span className="font-medium">#1</span>. Jan
+                Primary key is <span className="font-medium">#1</span>. Flint
                 retries the next key only on{' '}
                 <span className="font-mono">401/403/429</span>.
               </div>
@@ -1773,7 +2178,7 @@ function ProviderDetail() {
               className="rounded-xl shadow-[0_0_0_0.8px_var(--border),0_8px_20px_-12px_rgba(0,0,0,.5)]"
             />
             <div className="min-w-0">
-              <h2 className="mb-2 truncate text-[22px] leading-none font-medium text-foreground">
+              <h2 className="descender-safe mb-2 truncate text-[22px] leading-none font-medium text-foreground">
                 {title}
               </h2>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1782,10 +2187,17 @@ function ProviderDetail() {
                     <Chip tone="ok" live>
                       {t('engine:status.running')}
                     </Chip>
-                  ) : apiKeyMissing ? (
-                    <Chip tone="warn" dot>
-                      {t('engine:status.noKey')}
-                    </Chip>
+                  ) : apiKeyMissing || headerKeyStatus === 'missing' || headerKeyStatus === 'credentials-missing' ? (
+                    // The same words the provider list uses for the same state:
+                    // Bedrock has AWS credentials, not an API key, and a remote
+                    // provider with no endpoint yet is not "connected".
+                    <ProviderStatusChip
+                      status={
+                        provider.provider === 'bedrock' || headerKeyStatus === 'credentials-missing'
+                          ? 'credentials-missing'
+                          : 'missing'
+                      }
+                    />
                   ) : connectionFailed ? (
                     <Chip tone="warn" dot>
                       {t('providers:status.failed')}
@@ -1802,11 +2214,7 @@ function ProviderDetail() {
                 ) : (
                   <Chip dot>{t('engine:status.off')}</Chip>
                 )}
-                <Chip>
-                  {isEngineProvider
-                    ? t('engine:providers.onDevice')
-                    : t('engine:provider.remoteNote')}
-                </Chip>
+                <Chip data-testid="provider-reach-note">{reachNote}</Chip>
                 <Chip>
                   {t('engine:providers.modelsCount', {
                     count: provider?.models.length ?? 0,
@@ -1922,22 +2330,32 @@ function ProviderDetail() {
           </p>
         )}
 
-        <div className="grid items-start gap-4 min-[1150px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-4">
-            {modelsFrame}
-            {!isEngineProvider && speedFrame}
-          </div>
-          <div className="flex min-w-0 flex-col gap-4">
-            {note}
-            {isEngineProvider ? speedFrame : apiFrame}
-            {!isEngineProvider && settingsFrames}
-            {dangerFrame}
-          </div>
-        </div>
-
-        {isEngineProvider && settingsFrames && settingsFrames.length > 0 && (
-          <div className="grid items-start gap-4 min-[1150px]:grid-cols-2">
-            {settingsFrames}
+        {isEngineProvider ? (
+          <>
+            {/* The library is the page: full width, so a long row never
+                squeezes its actions. The cards under it share equal-height
+                rows instead of two ragged columns. */}
+            <div className="min-w-0">{modelsFrame}</div>
+            {/* An odd last card spans the row: no half-empty row at the foot. */}
+            <div className="grid items-stretch gap-4 min-[1000px]:grid-cols-2 [&>*]:min-w-0 [&>*:last-child:nth-child(odd)]:col-span-full">
+              {speedFrame}
+              {note}
+              {isLlamacpp && <EngineAddonFrame />}
+              {settingsFrames}
+            </div>
+          </>
+        ) : (
+          <div className="grid items-start gap-4 min-[1150px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            <div className="flex min-w-0 flex-col gap-4">
+              {modelsFrame}
+              {speedFrame}
+            </div>
+            <div className="flex min-w-0 flex-col gap-4">
+              {note}
+              {apiFrame}
+              {settingsFrames}
+              {dangerFrame}
+            </div>
           </div>
         )}
       </EnginePage>

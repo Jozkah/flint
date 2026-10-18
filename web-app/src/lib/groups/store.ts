@@ -9,6 +9,7 @@
 import { create } from 'zustand'
 import { ulid } from 'ulidx'
 import { toast } from 'sonner'
+import i18n from '@/i18n/setup'
 import * as domain from './domain'
 import {
   GROUPS_CHANGED_EVENT,
@@ -19,6 +20,8 @@ import {
   type GroupsPort,
 } from './persistence'
 import { announce } from './announce'
+
+const t = (key: string, vars?: Record<string, unknown>) => i18n.t(`common:groups.${key}`, vars)
 import {
   GROUP_SURFACES,
   type GroupFolderBinding,
@@ -62,9 +65,11 @@ type GroupsStore = {
   createGroup: (
     surface: GroupSurface,
     name: string,
-    opts?: { id?: string; folderBindings?: GroupFolderBinding[] }
+    opts?: { id?: string; folderBindings?: GroupFolderBinding[]; parentId?: string | null }
   ) => Promise<string | null>
   renameGroup: (surface: GroupSurface, groupId: string, name: string) => Promise<boolean>
+  /** Nests a group under another (or null for top level); false when refused. */
+  setGroupParent: (surface: GroupSurface, groupId: string, parentId: string | null) => Promise<boolean>
   setCollapsed: (surface: GroupSurface, groupId: string, collapsed: boolean) => Promise<boolean>
   reorderGroup: (surface: GroupSurface, groupId: string, toIndex: number) => Promise<boolean>
   moveItem: (
@@ -117,7 +122,7 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
     failure: string
   ): Promise<boolean> {
     if (get().unreadable?.[surface]) {
-      const message = `${failure}: the saved groups could not be read`
+      const message = t('failed.unreadable', { failure })
       toast.error(message)
       announce(message)
       return false
@@ -127,7 +132,7 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
     try {
       next = op(before)
     } catch (error) {
-      const message = error instanceof domain.GroupError ? error.message : failure
+      const message = error instanceof domain.GroupError ? t(`errors.${error.code}`) : failure
       toast.error(message)
       announce(message)
       return false
@@ -146,7 +151,7 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
           state: { ...s.state, surfaces: { ...s.state.surfaces, [surface]: before.surfaces[surface] } },
         }))
       }
-      const message = `${failure}. Your previous order was restored.`
+      const message = t('failed.restored', { failure })
       toast.error(message)
       announce(message)
       return false
@@ -189,24 +194,31 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
       const id = opts?.id ?? env.newId()
       const ok = await commit(
         surface,
-        (s) => domain.createGroup(s, surface, { id, name, now: env.now(), folderBindings: opts?.folderBindings }),
-        'Could not create the group'
+        (s) => domain.createGroup(s, surface, { id, name, now: env.now(), folderBindings: opts?.folderBindings, parentId: opts?.parentId }),
+        t('failed.create')
       )
-      if (ok) announce(`Group ${name.trim()} created`)
+      if (ok) announce(t('announce.created', { name: name.trim() }))
       return ok ? id : null
     },
 
     renameGroup: (surface, groupId, name) =>
-      commit(surface, (s) => domain.renameGroup(s, surface, groupId, name, env.now()), 'Could not rename the group'),
+      commit(surface, (s) => domain.renameGroup(s, surface, groupId, name, env.now()), t('failed.rename')),
+
+    setGroupParent: (surface, groupId, parentId) =>
+      commit(
+        surface,
+        (s) => domain.setGroupParent(s, surface, groupId, parentId, env.now()),
+        t('failed.moveFolder')
+      ),
 
     setCollapsed: async (surface, groupId, collapsed) => {
       const ok = await commit(
         surface,
         (s) => domain.setGroupCollapsed(s, surface, groupId, collapsed),
-        'Could not save the group state'
+        t('failed.saveState')
       )
       const name = get().state.surfaces[surface].groups.find((g) => g.id === groupId)?.name
-      if (ok && name) announce(`${name} ${collapsed ? 'collapsed' : 'expanded'}`)
+      if (ok && name) announce(t(collapsed ? 'announce.collapsed' : 'announce.expanded', { name }))
       return ok
     },
 
@@ -214,11 +226,11 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
       const ok = await commit(
         surface,
         (s) => domain.reorderGroup(s, surface, groupId, toIndex),
-        'Could not reorder groups'
+        t('failed.reorder')
       )
       const groups = get().state.surfaces[surface].groups
       const g = groups.find((x) => x.id === groupId)
-      if (ok && g) announce(`${g.name} moved to position ${g.position + 1} of ${groups.length}`)
+      if (ok && g) announce(t('announce.reordered', { name: g.name, position: g.position + 1, total: groups.length }))
       return ok
     },
 
@@ -226,21 +238,21 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
       const ok = await commit(
         surface,
         (s) => domain.moveItem(s, surface, itemId, groupId, toIndex),
-        'Could not move the item'
+        t('failed.moveItem')
       )
       if (ok) {
         const s = get().state.surfaces[surface]
         const g = groupId ? s.groups.find((x) => x.id === groupId) : null
         const m = s.memberships[itemId]
-        announce(g && m ? `Moved to ${g.name}, position ${m.position + 1}` : 'Moved to Recents')
+        announce(g && m ? t('announce.movedToPosition', { name: g.name, position: m.position + 1 }) : t('announce.movedToRecents'))
       }
       return ok
     },
 
     deleteGroup: async (surface, groupId) => {
       const name = get().state.surfaces[surface].groups.find((g) => g.id === groupId)?.name
-      const ok = await commit(surface, (s) => domain.deleteGroup(s, surface, groupId), 'Could not delete the group')
-      if (ok && name) announce(`Group ${name} deleted. Its items moved to Recents`)
+      const ok = await commit(surface, (s) => domain.deleteGroup(s, surface, groupId), t('failed.delete'))
+      if (ok && name) announce(t('announce.deleted', { name }))
       return ok
     },
 
@@ -248,7 +260,7 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
       commit(
         surface,
         (s) => domain.setGroupFolders(s, surface, groupId, bindings, env.now()),
-        'Could not save group folders'
+        t('failed.saveFolders')
       ),
 
     moveWithPlan: async (surface, itemId, groupId, toIndex, plan) => {
@@ -261,19 +273,20 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
             next = domain.setGroupFolders(next, surface, groupId, plan.groupFolders, env.now())
           return next
         },
-        'Could not move the item'
+        t('failed.moveItem')
       )
       if (ok) {
         const s = get().state.surfaces[surface]
         const g = groupId ? s.groups.find((x) => x.id === groupId) : null
-        const extra = plan.context
+        const base = g ? t('movedTo', { name: g.name }) : t('announce.movedToRecents')
+        const key = plan.context
           ? plan.context.mode === 'inherit'
-            ? '. Folder context replaced by group folders; access still needs approval'
-            : '. Group folders added to folder context; access still needs approval'
+            ? 'announce.ctxReplaced'
+            : 'announce.ctxMerged'
           : plan.groupFolders
-            ? '. Item folders added to the group'
-            : ''
-        announce(`${g ? `Moved to ${g.name}` : 'Moved to Recents'}${extra}`)
+            ? 'announce.foldersAdded'
+            : null
+        announce(key ? t(key, { base }) : base)
       }
       return ok
     },
@@ -282,16 +295,16 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
       commit(
         surface,
         (s) => domain.setItemContext(s, surface, itemId, context),
-        'Could not update the folder context'
+        t('failed.updateContext')
       ),
 
     removeItem: async (surface, itemId) => {
-      await commit(surface, (s) => domain.removeItem(s, surface, itemId), 'Could not update groups')
+      await commit(surface, (s) => domain.removeItem(s, surface, itemId), t('failed.update'))
     },
 
     pruneMissing: async (surface, liveIds) => {
       if (!get().loaded[surface]) return
-      await commit(surface, (s) => domain.pruneMissingItems(s, surface, liveIds), 'Could not update groups')
+      await commit(surface, (s) => domain.pruneMissingItems(s, surface, liveIds), t('failed.update'))
     },
 
     importSurface: async (surface, data, migratedProjects) => {
@@ -303,7 +316,7 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
           ...s,
           surfaces: { ...s.surfaces, [surface]: domain.sanitizeSurface(surface, data) },
         }),
-        'Could not import groups'
+        t('failed.import')
       )
       // The flag only sticks once it is on disk, so a failed import is retried.
       if (!ok && surface === 'home') set({ migratedProjects: previous })

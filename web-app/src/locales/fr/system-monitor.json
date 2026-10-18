@@ -1,4 +1,5 @@
 {
+  "vramUsed": "VRAM utilisée",
   "title": "Moniteur système",
   "cpuUsage": "Utilisation du CPU",
   "model": "Modèle",
@@ -72,5 +73,6 @@
   "graphics": "Graphiques",
   "freeVram": "VRAM libre",
   "apiVersion": "Version de l'API",
-  "showVirtual_many": "Afficher {{count}} d'adaptateurs de bouclage ou virtuels"
+  "showVirtual_many": "Afficher {{count}} d'adaptateurs de bouclage ou virtuels",
+  "measuring": "Mesure en cours…"
 }

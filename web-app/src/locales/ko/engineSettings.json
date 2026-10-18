@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "환경 변수",
+    "description": "llama.cpp용 환경 변수(KEY=VALUE), ';'로 구분",
+    "placeholder": "예: GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "추가 인수",
+    "description": "추가 llama-server 옵션(예: --rope-scaling yarn --no-warmup). 모든 모델에 적용되며 위 설정 뒤에 기록되므로 우선합니다. 서버 주소, 자격 증명, 모델 파일 옵션은 무시됩니다.",
+    "placeholder": "예: --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "동시에 로드할 최대 모델 수",
+    "description": "라우터가 한 번에 로드해 둘 최대 모델 수입니다. 0 = 무제한.",
+    "placeholder": "예: 1"
+  },
+  "idle_unload_minutes": {
+    "title": "유휴 모델 언로드 시간(분)",
+    "description": "지정한 시간(분) 동안 사용하지 않은 로컬 모델을 언로드해 메모리를 확보합니다. 다음 요청 시 다시 로드됩니다. 임베딩 모델과 요청을 처리 중인 모델은 언로드되지 않습니다. 0 = 사용 안 함. 기본값은 30이며, 게임이나 렌더링 중에 VRAM을 점유하지 않도록 합니다.",
+    "placeholder": "예: 10"
+  },
+  "timeout": {
+    "title": "llama.cpp 시간 제한",
+    "description": "llama.cpp 연결 및 로드 시간 제한(초)",
+    "placeholder": "예: 600"
+  },
+  "ctx_size": {
+    "title": "기본 컨텍스트 크기",
+    "description": "자체 값을 지정하지 않은 로컬 모델에 사용할 컨텍스트 창입니다. 클수록 더 많이 기억하지만 메모리가 더 필요합니다. 각 모델은 자체 설정(톱니바퀴 아이콘)에서 이 값을 재정의할 수 있습니다. 모델의 기본 크기(매우 클 수 있음)를 사용하려면 자동으로 두세요. 일반적인 크기: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "자동"
+  },
+  "fit": {
+    "title": "자동 맞춤",
+    "description": "GPU에서 실행할 레이어 수와 컨텍스트 크기를 Flint가 결정해 모델이 메모리에 맞도록 합니다. 끄면 GPU 레이어와 컨텍스트 크기를 직접 설정할 수 있습니다."
+  },
+  "fit_target": {
+    "title": "자동 맞춤: 남겨 둘 메모리",
+    "description": "자동 맞춤이 다른 앱과 디스플레이를 위해 각 GPU에 남겨 두는 메모리 양(MiB)입니다. 모델이 로드된 동안 시스템이 느려지면 값을 늘리세요. 로컬 모델에만 적용됩니다.",
+    "placeholder": "1024 또는 MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "자동 맞춤: 최소 컨텍스트",
+    "description": "모델이 메모리에 맞지 않을 때 자동 맞춤이 줄일 수 있는 최소 컨텍스트 크기(토큰)입니다. 이 값 아래로는 줄이지 않으며, 그래도 맞지 않으면 모델 로드에 실패합니다. 이 값은 컨텍스트 크기가 아닙니다. 컨텍스트 크기는 기본 컨텍스트 크기 또는 모델별 컨텍스트 크기에서 설정하세요. 자동 맞춤이 켜져 있을 때만, 로컬 모델에만 사용됩니다."
+  },
+  "threads": {
+    "title": "스레드",
+    "description": "생성 중 사용할 스레드 수(-1은 논리 코어 수)."
+  },
+  "threads_batch": {
+    "title": "스레드(배치)",
+    "description": "배치 및 프롬프트 처리용 스레드 수(기본값: 스레드와 동일).",
+    "placeholder": "-1 (스레드와 동일)"
+  },
+  "ctx_shift": {
+    "title": "컨텍스트 이동",
+    "description": "새 텍스트를 메모리에 담기 위해 모델이 앞부분의 텍스트를 잘라낼 수 있도록 허용합니다"
+  },
+  "n_predict": {
+    "title": "최대 예측 토큰 수",
+    "description": "생성할 최대 토큰 수(-1 = 무제한)."
+  },
+  "batch_size": {
+    "title": "배치 크기",
+    "description": "프롬프트 처리용 논리적 최대 배치 크기입니다."
+  },
+  "ubatch_size": {
+    "title": "uBatch 크기",
+    "description": "프롬프트 처리용 물리적 최대 배치 크기입니다. 0 = 자동: 모델이 VRAM에 여유 있게 들어가면 1024, 빠듯하면 512, 시스템 RAM으로 넘치면 2048.",
+    "placeholder": "0 (자동)"
+  },
+  "n_cpu_moe": {
+    "title": "CPU의 MoE 레이어",
+    "description": "처음 N개 레이어의 Mixture-of-Experts 가중치를 CPU 메모리에 유지합니다. 큰 MoE 모델을 제한된 VRAM에 맞출 수 있습니다. 0이면 사용하지 않습니다."
+  },
+  "n_cpu_ffn": {
+    "title": "CPU의 Dense FFN 레이어",
+    "description": "처음 N개 레이어의 dense 피드포워드 가중치를 CPU 메모리에 유지합니다. 위 MoE 설정의 dense 모델용 대응 설정입니다. 0이면 사용하지 않습니다."
+  },
+  "no_kv_offload": {
+    "title": "KV 캐시 오프로드 비활성화",
+    "description": "KV 캐시를 GPU 메모리 대신 시스템 RAM에 유지합니다. VRAM이 부족할 때 유용하지만 속도가 느려집니다."
+  },
+  "device": {
+    "title": "오프로드 장치",
+    "description": "오프로드할 가속기를 쉼표로 구분해 입력합니다. 이름은 감지된 하드웨어 목록과 같습니다. 비워 두면 사용 가능한 모든 가속기를 사용하고, \"none\"으로 설정하면 오프로드를 완전히 비활성화합니다.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "GPU 분할 모드",
+    "description": "여러 GPU에 모델을 나누는 방식입니다.",
+    "options": {
+      "none": "없음",
+      "layer": "레이어",
+      "row": "행",
+      "tensor": "텐서(실험적)"
+    }
+  },
+  "main_gpu": {
+    "title": "주 GPU 인덱스",
+    "description": "모델(split-mode=none) 또는 중간 결과(split-mode=row)에 사용할 GPU입니다."
+  },
+  "tensor_split": {
+    "title": "텐서 분할",
+    "description": "장치 간 모델 분할 비율을 쉼표로 구분해 입력합니다(예: \"3,1\"). 비워 두면 균등하게 분할합니다."
+  },
+  "no_op_offload": {
+    "title": "연산 오프로드 비활성화",
+    "description": "호스트 텐서 연산을 가속기로 오프로드하지 않고 CPU에서 수행합니다."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "성능 최적화를 위해 Flash Attention을 활성화합니다.",
+    "options": {
+      "auto": "자동",
+      "on": "켜기",
+      "off": "끄기"
+    }
+  },
+  "parallel": {
+    "title": "병렬 시퀀스",
+    "description": "내 채팅 요청에 대해 병렬로 디코딩할 시퀀스 수입니다(0 = llama.cpp 기본값 4). Flint는 백그라운드 요청(예: 스레드 자동 제목 지정)을 위해 내부 슬롯 하나를 추가로 예약하므로, 이 요청이 채팅의 KV 캐시를 밀어내지 않습니다."
+  },
+  "reserve_background_slots": {
+    "title": "백그라운드 슬롯 예약",
+    "description": "백그라운드 요청(스레드 자동 제목 지정, Cowork, 서브에이전트)을 위해 병렬 시퀀스 외에 내부 슬롯 두 개를 추가로 유지해 채팅의 KV 캐시를 밀어내지 않도록 합니다. 끄면 정확히 병렬 시퀀스 수만큼의 슬롯만 실행합니다(슬롯 하나만 쓰려면 1로 설정). 이 경우 백그라운드 요청이 채팅 슬롯을 공유하며 캐시를 밀어낼 수 있습니다. 모델을 다시 로드합니다."
+  },
+  "ngram_speculation": {
+    "title": "N-gram 추측 디코딩",
+    "description": "대화에 이미 있는 텍스트에서 토큰 초안을 만들고(ngram-mod) 모델이 한 번의 배치로 검증하게 합니다. 출력은 동일하며, 코드 편집이나 인용처럼 반복적인 출력은 3~10배 빠르게 생성되고 다른 텍스트에는 영향이 없습니다. 자체 MTP 초안이 있는 모델은 그것을 대신 사용합니다."
+  },
+  "cont_batching": {
+    "title": "연속 배치",
+    "description": "동시 요청에 대해 연속 배치(동적 배치)를 활성화합니다. llama.cpp와 동일하게 기본적으로 활성화되어 있습니다."
+  },
+  "no_mmap": {
+    "title": "mmap 비활성화",
+    "description": "모델을 메모리 매핑하지 않습니다(로드는 느려지지만 mlock을 사용하지 않을 때 페이지 아웃을 줄일 수 있음)."
+  },
+  "lazy_mode": {
+    "title": "지연 텐서 읽기",
+    "description": "아키텍처에서 지정한 큰 텐서(예: 레이어별 임베딩)의 행을 메모리에 유지하지 않고 필요할 때 디스크에서 읽습니다. 자동은 4 GiB 이상에서 적용합니다. mmap이 필요합니다.",
+    "options": {
+      "auto": "자동",
+      "on": "켜기",
+      "off": "끄기"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "모델을 RAM에 고정해 스왑되지 않도록 합니다. \"mmap 비활성화\"와 함께 사용하면 mmap 없이 가중치를 로드한 뒤 고정합니다."
+  },
+  "cache_type_k": {
+    "title": "KV 캐시 K 유형",
+    "description": "키(Key)용 KV 캐시 데이터 유형입니다. 자동은 q8_0을 사용하며, 품질 손실은 거의 없이 캐시 크기를 절반으로 줄입니다.",
+    "options": {
+      "auto": "자동",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "KV 캐시 V 유형",
+    "description": "값(Value)용 KV 캐시 데이터 유형입니다. 양자화된 V 캐시에는 Flash Attention이 필요하므로, 자동은 Flash Attention이 켜져 있으면 q8_0, 그렇지 않으면 f16을 사용합니다. 이 설정으로 로드에 실패한 모델은 f16으로 한 번 다시 시도합니다.",
+    "options": {
+      "auto": "자동",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "RoPE 스케일링 방식",
+    "description": "RoPE 주파수 스케일링 방식입니다. \"모델 기본값\"은 모델에 맡기고, \"없음\"은 스케일링을 명시적으로 비활성화합니다.",
+    "options": {
+      "auto": "모델 기본값",
+      "none": "없음",
+      "linear": "선형",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "RoPE 기본 주파수",
+    "description": "RoPE 기본 주파수(0 = 모델에서 로드).",
+    "placeholder": "0 (모델 기본값)"
+  },
+  "rope_freq_scale": {
+    "title": "RoPE 주파수 스케일 계수",
+    "description": "RoPE 주파수 스케일링 계수입니다. 0이면 모델에서 값을 로드하고, 1이면 스케일링을 적용하지 않습니다."
+  },
+  "cache_ram": {
+    "title": "프롬프트 캐시 RAM(MiB)",
+    "description": "프롬프트 캐시 크기(MiB): 다른 대화의 컨텍스트를 보관하는 RAM으로, 해당 대화로 돌아갈 때 다시 읽지 않아도 됩니다. 비워 두거나 -2 = RAM에 따라 자동(시스템 RAM의 20%, 여유 메모리의 절반 이하, 1024-8192), 0 = 끄기, -1 = 무제한.",
+    "placeholder": "-2 (자동)"
+  },
+  "persist_thread_cache": {
+    "title": "세션 간 대화 기억",
+    "description": "각 대화의 프롬프트 캐시를 디스크에 저장해 다시 열 때 전체 대화를 다시 읽지 않도록 합니다. 모델, 모델 설정, llama.cpp 빌드가 저장 당시와 모두 일치할 때만 복원됩니다."
+  },
+  "thread_cache_size": {
+    "title": "대화 캐시 디스크 한도(MiB)",
+    "description": "저장된 대화 캐시의 디스크 용량 한도입니다(기본값: 2048). 한도에 도달하면 가장 오래된 캐시부터 삭제됩니다. 긴 대화 하나가 수백 MiB를 차지할 수 있습니다."
+  },
+  "cache_reuse": {
+    "title": "캐시 재사용",
+    "description": "캐시에서 재사용할 일치 접두사 토큰의 최소 청크 크기입니다. 0 = 비활성화."
+  },
+  "ctx_checkpoints": {
+    "title": "컨텍스트 체크포인트",
+    "description": "슬롯당 유지할 최대 컨텍스트 체크포인트 수입니다. 이동된 컨텍스트를 다시 처리하지 않고 복원할 수 있습니다."
+  },
+  "checkpoint_min_step": {
+    "title": "체크포인트 최소 간격",
+    "description": "컨텍스트 체크포인트 사이의 최소 토큰 수입니다."
+  },
+  "swa_full": {
+    "title": "전체 SWA 캐시",
+    "description": "슬라이딩 윈도우 어텐션 모델(예: Gemma)에 전체 크기 KV 캐시를 사용합니다. 이런 모델이 캐시를 재사용하지 않고 매 턴마다 전체 프롬프트를 다시 처리한다면 켜세요. 메모리를 더 사용합니다."
+  },
+  "kv_unified": {
+    "title": "통합 KV 캐시",
+    "description": "모든 슬롯이 공유하는 단일 통합 KV 버퍼를 사용합니다. 여러 병렬 슬롯을 실행할 때 메모리를 절약합니다.",
+    "options": {
+      "auto": "자동",
+      "on": "켜기",
+      "off": "끄기"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "슬롯당 컨텍스트",
+    "description": "슬롯 하나가 사용할 수 있는 통합 KV 캐시의 양을 토큰 단위로 제한합니다. 0이면 슬롯이 전체 캐시를 사용할 수 있습니다. 캐시가 통합된 경우에만 적용됩니다."
+  },
+  "reasoning_preserve": {
+    "title": "추론 기록 유지",
+    "description": "가장 최근 턴뿐 아니라 이전 모든 어시스턴트 턴의 추론을 프롬프트에 유지합니다. 채팅 템플릿이 이를 지원하는 모델에만 적용되며 프롬프트 토큰을 소모합니다."
+  },
+  "keep": {
+    "title": "처음 N개 토큰 유지",
+    "description": "컨텍스트가 이동될 때 초기 프롬프트에서 유지할 토큰 수입니다. -1 = 모두 유지."
+  },
+  "_ui": {
+    "moreInfo": "{{setting}} 자세히 알아보기",
+    "perModelSettings": "모델별 설정",
+    "perModelDefault": "기본값(설정: {{value}})",
+    "perModelDefaultAuto": "기본값(설정: 자동)"
+  }
+}

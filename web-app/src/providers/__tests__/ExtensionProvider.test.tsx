@@ -40,6 +40,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 vi.mock('@tauri-apps/api/event', () => ({ emit: h.emit }))
 
 import { ExtensionProvider } from '../ExtensionProvider'
+import { EXTENSIONS_LOADED_EVENT } from '@/lib/extensionEvents'
 
 const renderProvider = () =>
   render(
@@ -84,6 +85,15 @@ describe('ExtensionProvider', () => {
     expect(await screen.findByTestId('child')).toBeInTheDocument()
     expect(h.registerActive).toHaveBeenCalled()
     expect(h.load).toHaveBeenCalled()
+  })
+
+  it('announces when extensions have finished loading', async () => {
+    const seen = vi.fn()
+    window.addEventListener(EXTENSIONS_LOADED_EVENT, seen)
+    renderProvider()
+    await screen.findByTestId('child')
+    await waitFor(() => expect(seen).toHaveBeenCalledTimes(1))
+    window.removeEventListener(EXTENSIONS_LOADED_EVENT, seen)
   })
 
   it('dismisses the branded loader only after setup completes', async () => {

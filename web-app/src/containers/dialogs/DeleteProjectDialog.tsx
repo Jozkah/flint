@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -29,17 +29,17 @@ export function DeleteProjectDialog({
 }: DeleteProjectDialogProps) {
   const { t } = useTranslation()
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
-  const threads = useThreads((state) => state.threads)
   const { deleteFolderWithThreads } = useThreadManagement()
   const archiveOn = useArchiveEnabled()
 
-  const threadCount = useMemo(() => {
+  // A number, so chats changing elsewhere never re-render the dialog.
+  const threadCount = useThreads((state) => {
     if (!projectId) return 0
-
-    return Object.values(threads).filter(
-      (thread) => thread.metadata?.project?.id === projectId
-    ).length
-  }, [projectId, threads])
+    let n = 0
+    for (const thread of Object.values(state.threads))
+      if (thread.metadata?.project?.id === projectId) n++
+    return n
+  })
 
   const handleConfirm = async () => {
     if (!projectId) return

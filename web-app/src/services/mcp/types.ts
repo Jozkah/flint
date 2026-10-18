@@ -105,6 +105,11 @@ export interface MCPTrustReport {
 
 export interface MCPService {
   updateMCPConfig(configs: string): Promise<void>
+  /**
+   * Rename a stored server in one backend step, carrying its secrets over and
+   * dropping the old entry. `false` when this backend has no such step.
+   */
+  renameMCPServer(oldName: string, newName: string): Promise<boolean>
   restartMCPServers(): Promise<void>
   getMCPConfig(): Promise<MCPConfig>
   getTools(options?: ListToolsOptions): Promise<MCPTool[]>
@@ -130,6 +135,8 @@ export interface MCPService {
      * backend for a server the user has not trusted outright. AH-041.
      */
     approvalTicket?: string
+    /** Lets `cancelToolCall(token)` end this call, and tells the server. */
+    cancellationToken?: string
   }): Promise<MCPToolCallResult>
   /** Servers the user has trusted, as the backend records them. AH-041. */
   trustedServers(): Promise<string[]>

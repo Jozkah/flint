@@ -213,6 +213,11 @@ function answers() {
       createdAt: sec(now - 12 * MIN),
     },
   ])
+  // Answering the 'Remember this?' card: remember returns the saved memory,
+  // discard returns nothing, as the real command does.
+  answer(`${at}memory_proposal_resolve`, (a) =>
+    a.approve ? memory('m_new', 'acme-weather keys cached forecasts by UTC date.', 'agent', 0, 0) : null
+  )
   answer(`${at}permission_audit_recent`, () =>
     [
       ['bash', 'Once', 'allow', 3],
@@ -257,6 +262,32 @@ function answers() {
       persistent: false,
     },
   ])
+  // The Local API Server page's token limits: a 5-hour ceiling part-way
+  // spent, and no weekly one.
+  let ceilings = { tokensPer5h: 250_000 as number | null, tokensPerWeek: null as number | null }
+  const standings = () =>
+    [
+      ceilings.tokensPer5h != null && {
+        ceiling: 'tokens per 5 hours',
+        used: 184_320,
+        limit: ceilings.tokensPer5h,
+        freesInSecs: 2 * 3600 + 41 * 60,
+      },
+      ceilings.tokensPerWeek != null && {
+        ceiling: 'tokens per week',
+        used: 1_204_880,
+        limit: ceilings.tokensPerWeek,
+        freesInSecs: 5 * 86400 + 3 * 3600,
+      },
+    ].filter(Boolean)
+  answer('get_usage_ceilings', () => ({ ...ceilings, standings: standings() }))
+  answer('set_usage_ceilings', (a) => {
+    ceilings = {
+      tokensPer5h: (a.tokensPer5h as number | null) ?? null,
+      tokensPerWeek: (a.tokensPerWeek as number | null) ?? null,
+    }
+    return { ...ceilings, standings: standings() }
+  })
   answer(`${at}memory_list`, () => ['build-notes'])
   answer(`${at}skill_list`, () => [{ name: 'go-testing', description: 'Run and read go tests' }])
   answer(`${at}sandbox_status`, () => ({ backend: 'appcontainer', enforces: true }))
@@ -470,13 +501,13 @@ export function seedSettingsPreview() {
     allowAllMCPPermissions: false,
   } as never)
   const assistants = useAssistant.getState().assistants
-  if (!assistants.some((a) => a.id === 'rust-reviewer')) {
-    useAssistant.setState({
-      assistants: [
-        ...assistants,
-        { id: 'rust-reviewer', avatar: '🦀', name: 'Rust reviewer', description: 'Reviews Rust diffs for correctness and idiom.', instructions: '', parameters: {}, created_at: now },
-        { id: 'changelog', avatar: '✍️', name: 'Changelog writer', description: 'Turns commit lists into short release notes.', instructions: '', parameters: {}, created_at: now },
-      ],
-    } as never)
+  // Only ids the list lacks: previewSeed's assistants() already carries the
+  // changelog writer, and a second copy listed it twice.
+  const extra = [
+    { id: 'rust-reviewer', avatar: '🦀', name: 'Rust reviewer', description: 'Reviews Rust diffs for correctness and idiom.', instructions: '', parameters: {}, created_at: now },
+    { id: 'changelog', avatar: '✍️', name: 'Changelog writer', description: 'Turns commit lists into short release notes.', instructions: '', parameters: {}, created_at: now },
+  ].filter((a) => !assistants.some((x) => x.id === a.id))
+  if (extra.length > 0) {
+    useAssistant.setState({ assistants: [...assistants, ...extra] } as never)
   }
 }

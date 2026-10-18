@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "Variables d'environnement",
+    "description": "Variables d'environnement pour llama.cpp (KEY=VALUE), séparées par ';'",
+    "placeholder": "Ex. GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "Arguments supplémentaires",
+    "description": "Options llama-server supplémentaires, p. ex. --rope-scaling yarn --no-warmup. Appliquées à chaque modèle et ajoutées après les paramètres ci-dessus, elles ont donc la priorité. Les options d'adresse du serveur, d'identifiants et de fichier de modèle sont ignorées.",
+    "placeholder": "Ex. --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "Modèles chargés simultanément (max.)",
+    "description": "Nombre maximal de modèles que le routeur garde chargés en même temps. 0 = illimité.",
+    "placeholder": "ex. 1"
+  },
+  "idle_unload_minutes": {
+    "title": "Décharger les modèles inactifs après (minutes)",
+    "description": "Décharge un modèle local inutilisé depuis ce nombre de minutes pour libérer de la mémoire. Il est rechargé à la requête suivante. Les modèles d'embedding et ceux ayant une requête en cours ne sont jamais déchargés. 0 = jamais. Par défaut 30, pour ne pas monopoliser la VRAM pendant que vous jouez ou faites du rendu.",
+    "placeholder": "ex. 10"
+  },
+  "timeout": {
+    "title": "Délai d'expiration pour llama.cpp",
+    "description": "Délai d'expiration de connexion et de chargement de llama.cpp, en secondes",
+    "placeholder": "ex. 600"
+  },
+  "ctx_size": {
+    "title": "Taille de contexte par défaut",
+    "description": "Fenêtre de contexte utilisée pour les modèles locaux qui ne définissent pas la leur. Plus grande = mémorise davantage mais consomme plus de mémoire. Chaque modèle peut la remplacer dans ses propres paramètres (icône d'engrenage). Laissez sur Auto pour utiliser la taille native du modèle (parfois énorme). Tailles courantes : 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "Auto"
+  },
+  "fit": {
+    "title": "Ajustement automatique",
+    "description": "Laisse Flint décider combien de couches s'exécutent sur le GPU et quelle taille de contexte est possible, afin que le modèle tienne dans votre mémoire. Désactivez-le pour régler vous-même les couches GPU et la taille du contexte."
+  },
+  "fit_target": {
+    "title": "Ajustement automatique : mémoire à garder libre",
+    "description": "Quantité de mémoire (en MiB) que l'ajustement automatique laisse libre sur chaque GPU pour les autres applications et l'affichage. Augmentez-la si votre système ralentit lorsqu'un modèle est chargé. Modèles locaux uniquement.",
+    "placeholder": "1024 ou MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "Ajustement automatique : contexte minimal",
+    "description": "Plus petite taille de contexte (en tokens) à laquelle l'ajustement automatique peut descendre lorsque le modèle ne tient pas en mémoire. Il ne descend jamais en dessous, et le chargement échoue si le modèle ne tient toujours pas. Ce n'est pas la taille du contexte : réglez-la dans Taille de contexte par défaut ou, par modèle, dans Taille du contexte. Utilisé uniquement lorsque l'ajustement automatique est activé, et uniquement pour les modèles locaux."
+  },
+  "threads": {
+    "title": "Threads",
+    "description": "Nombre de threads utilisés pendant la génération (-1 pour les cœurs logiques)."
+  },
+  "threads_batch": {
+    "title": "Threads (batch)",
+    "description": "Nombre de threads pour le traitement par lots et du prompt (par défaut : identique à Threads).",
+    "placeholder": "-1 (identique à Threads)"
+  },
+  "ctx_shift": {
+    "title": "Décalage du contexte",
+    "description": "Permet au modèle de couper le texte du début pour faire de la place au nouveau texte dans sa mémoire"
+  },
+  "n_predict": {
+    "title": "Tokens à prédire (max.)",
+    "description": "Nombre maximal de tokens à générer (-1 = infini)."
+  },
+  "batch_size": {
+    "title": "Taille de lot",
+    "description": "Taille de lot maximale logique pour le traitement des prompts."
+  },
+  "ubatch_size": {
+    "title": "Taille de micro-lot (uBatch)",
+    "description": "Taille de lot maximale physique pour le traitement des prompts. 0 = auto : 1024 si le modèle tient largement en VRAM, 512 si c'est juste, 2048 s'il déborde dans la RAM système.",
+    "placeholder": "0 (auto)"
+  },
+  "n_cpu_moe": {
+    "title": "Couches MoE sur le CPU",
+    "description": "Garde les poids Mixture-of-Experts des N premières couches en mémoire CPU. Permet à un grand modèle MoE de tenir dans une VRAM limitée. 0 désactive cette option."
+  },
+  "n_cpu_ffn": {
+    "title": "Couches FFN denses sur le CPU",
+    "description": "Garde les poids feed-forward denses des N premières couches en mémoire CPU. Équivalent du réglage MoE ci-dessus, pour les modèles denses. 0 désactive cette option."
+  },
+  "no_kv_offload": {
+    "title": "Désactiver le déchargement du cache KV",
+    "description": "Garde le cache KV en RAM système plutôt qu'en mémoire GPU. Utile quand la VRAM est limitée, au prix de la vitesse."
+  },
+  "device": {
+    "title": "Périphériques de déchargement",
+    "description": "Accélérateurs vers lesquels décharger, séparés par des virgules, nommés comme dans la liste du matériel détecté. Laissez vide pour utiliser tous les accélérateurs disponibles, ou indiquez \"none\" pour désactiver complètement le déchargement.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "Mode de répartition GPU",
+    "description": "Manière de répartir le modèle sur plusieurs GPU.",
+    "options": {
+      "none": "Aucun",
+      "layer": "Couche",
+      "row": "Ligne",
+      "tensor": "Tenseur (expérimental)"
+    }
+  },
+  "main_gpu": {
+    "title": "Index du GPU principal",
+    "description": "GPU à utiliser pour le modèle (split-mode=none) ou pour les résultats intermédiaires (split-mode=row)."
+  },
+  "tensor_split": {
+    "title": "Répartition des tenseurs",
+    "description": "Proportions séparées par des virgules pour répartir le modèle entre les périphériques, p. ex. \"3,1\". Laissez vide pour une répartition égale."
+  },
+  "no_op_offload": {
+    "title": "Désactiver le déchargement des opérations",
+    "description": "Garde les opérations sur les tenseurs de l'hôte sur le CPU au lieu de les décharger vers l'accélérateur."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "Active Flash Attention pour de meilleures performances.",
+    "options": {
+      "auto": "Auto",
+      "on": "Activé",
+      "off": "Désactivé"
+    }
+  },
+  "parallel": {
+    "title": "Séquences parallèles",
+    "description": "Nombre de séquences parallèles décodées pour vos propres requêtes de chat (0 = valeur par défaut de llama.cpp, soit 4). Flint réserve en plus un emplacement interne pour les requêtes en arrière-plan (p. ex. titrage automatique des fils) afin qu'elles n'évincent pas le cache KV de votre chat."
+  },
+  "reserve_background_slots": {
+    "title": "Réserver des emplacements d'arrière-plan",
+    "description": "Garde deux emplacements internes supplémentaires au-delà des séquences parallèles pour les requêtes en arrière-plan (titrage automatique des fils, Cowork, sous-agents) afin qu'elles n'évincent pas le cache KV de votre chat. Désactivez pour utiliser exactement autant d'emplacements que de séquences parallèles (réglez sur 1 pour un seul emplacement) ; les requêtes en arrière-plan partagent alors l'emplacement de votre chat et peuvent évincer son cache. Recharge le modèle."
+  },
+  "ngram_speculation": {
+    "title": "Décodage spéculatif N-gramme",
+    "description": "Propose des tokens à partir du texte déjà présent dans la conversation (ngram-mod) et laisse le modèle les vérifier en un seul lot. La sortie est identique ; les sorties répétitives comme les modifications de code ou les citations sont générées 3 à 10 fois plus vite, le reste du texte n'est pas affecté. Les modèles disposant de leur propre brouillon MTP utilisent celui-ci à la place."
+  },
+  "cont_batching": {
+    "title": "Batching continu",
+    "description": "Active le batching continu (ou batching dynamique) pour les requêtes simultanées. Activé par défaut, comme dans llama.cpp."
+  },
+  "no_mmap": {
+    "title": "Désactiver mmap",
+    "description": "Ne pas mapper le modèle en mémoire (chargement plus lent, mais peut réduire la pagination si mlock n'est pas utilisé)."
+  },
+  "lazy_mode": {
+    "title": "Lecture différée des tenseurs",
+    "description": "Lit à la demande depuis le disque les lignes des grands tenseurs marqués par l'architecture (p. ex. embeddings par couche) au lieu de les garder en mémoire. Auto l'applique au-delà de 4 GiB. Nécessite mmap.",
+    "options": {
+      "auto": "Auto",
+      "on": "Activé",
+      "off": "Désactivé"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "Verrouille le modèle en RAM pour qu'il ne soit jamais transféré dans le fichier d'échange. Combiné à \"Désactiver mmap\", les poids sont chargés sans mmap puis verrouillés."
+  },
+  "cache_type_k": {
+    "title": "Type K du cache KV",
+    "description": "Type de données du cache KV pour les clés (K). Auto utilise q8_0, qui divise le cache par deux pour une perte de qualité négligeable.",
+    "options": {
+      "auto": "Auto",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "Type V du cache KV",
+    "description": "Type de données du cache KV pour les valeurs (V). Auto utilise q8_0 lorsque Flash Attention est activé et f16 sinon, car un cache V quantifié nécessite Flash Attention. Un modèle qui ne se charge pas avec ce type est réessayé une fois en f16.",
+    "options": {
+      "auto": "Auto",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "Méthode de mise à l'échelle RoPE",
+    "description": "Méthode de mise à l'échelle des fréquences RoPE. \"Valeur du modèle\" laisse le modèle décider ; \"Aucune\" désactive explicitement la mise à l'échelle.",
+    "options": {
+      "auto": "Valeur du modèle",
+      "none": "Aucune",
+      "linear": "Linéaire",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "Fréquence de base RoPE",
+    "description": "Fréquence de base RoPE (0 = chargée depuis le modèle).",
+    "placeholder": "0 (valeur du modèle)"
+  },
+  "rope_freq_scale": {
+    "title": "Facteur d'échelle de fréquence RoPE",
+    "description": "Facteur de mise à l'échelle des fréquences RoPE. 0 charge la valeur depuis le modèle ; 1 force l'absence de mise à l'échelle."
+  },
+  "cache_ram": {
+    "title": "RAM du cache de prompt (MiB)",
+    "description": "Taille du cache de prompt en MiB : la RAM qui conserve le contexte des autres conversations pour ne pas avoir à le relire lorsque vous y revenez. Vide ou -2 = automatique selon votre RAM (20 % de la RAM système, au plus la moitié de la mémoire libre, 1024-8192) ; 0 = désactivé ; -1 = illimité.",
+    "placeholder": "-2 (auto)"
+  },
+  "persist_thread_cache": {
+    "title": "Mémoriser les conversations entre les sessions",
+    "description": "Conserve sur disque le cache de prompt de chaque conversation pour ne pas relire toute la conversation à sa réouverture. Restauré uniquement si le modèle, ses paramètres et la version de llama.cpp correspondent à ceux de l'enregistrement."
+  },
+  "thread_cache_size": {
+    "title": "Limite disque du cache des conversations (MiB)",
+    "description": "Espace disque alloué aux caches de conversation enregistrés (par défaut : 2048). Une fois la limite atteinte, les plus anciens sont supprimés en premier. Une longue conversation peut occuper des centaines de MiB."
+  },
+  "cache_reuse": {
+    "title": "Réutilisation du cache",
+    "description": "Taille minimale des blocs de tokens de préfixe correspondants à réutiliser depuis le cache. 0 = désactivé."
+  },
+  "ctx_checkpoints": {
+    "title": "Points de contrôle du contexte",
+    "description": "Nombre maximal de points de contrôle du contexte conservés par emplacement, permettant de restaurer un contexte décalé au lieu de le retraiter."
+  },
+  "checkpoint_min_step": {
+    "title": "Pas minimal entre points de contrôle",
+    "description": "Nombre minimal de tokens entre deux points de contrôle du contexte."
+  },
+  "swa_full": {
+    "title": "Cache SWA complet",
+    "description": "Utilise un cache KV de taille complète pour les modèles à attention à fenêtre glissante (p. ex. Gemma). Activez-le si un tel modèle retraite tout le prompt à chaque tour au lieu de réutiliser le cache ; consomme plus de mémoire."
+  },
+  "kv_unified": {
+    "title": "Cache KV unifié",
+    "description": "Utilise un seul tampon KV unifié partagé entre tous les emplacements. Économise de la mémoire avec plusieurs emplacements parallèles.",
+    "options": {
+      "auto": "Auto",
+      "on": "Activé",
+      "off": "Désactivé"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "Contexte par emplacement",
+    "description": "Limite, en tokens, la part du cache KV unifié qu'un emplacement peut utiliser. 0 laisse un emplacement remplir tout le cache. S'applique uniquement si le cache est unifié."
+  },
+  "reasoning_preserve": {
+    "title": "Conserver l'historique du raisonnement",
+    "description": "Conserve dans le prompt le raisonnement de toutes les réponses précédentes de l'assistant, pas seulement la plus récente. N'affecte que les modèles dont le modèle de chat le prend en charge, et consomme des tokens de prompt."
+  },
+  "keep": {
+    "title": "Conserver les N premiers tokens",
+    "description": "Nombre de tokens du prompt initial à conserver lors d'un décalage du contexte. -1 = tout conserver."
+  },
+  "_ui": {
+    "moreInfo": "En savoir plus sur {{setting}}",
+    "perModelSettings": "Paramètres par modèle",
+    "perModelDefault": "Par défaut (paramètres : {{value}})",
+    "perModelDefaultAuto": "Par défaut (paramètres : Auto)"
+  }
+}
