@@ -1,3 +1,4 @@
+import { POPUP_COLLISION_PADDING } from '@/components/ui/popup-edge'
 import {
   useMemo,
   useEffect,
@@ -380,6 +381,7 @@ export const TokenCounter = memo(function TokenCounter({
           side="bottom"
           align="center"
           sideOffset={6}
+          collisionPadding={POPUP_COLLISION_PADDING}
           showArrow={false}
           className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
@@ -605,6 +607,7 @@ function TokenCountOnly({
           side="bottom"
           align="center"
           sideOffset={6}
+          collisionPadding={POPUP_COLLISION_PADDING}
           showArrow={false}
           className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"

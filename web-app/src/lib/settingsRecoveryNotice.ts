@@ -22,6 +22,11 @@ export function notifyToasterMounted(): void {
   again?.()
 }
 
+/** Show one separator style: Windows paths often arrive half `/`, half `\`. */
+export function displayPath(path: string): string {
+  return path.includes('\\') ? path.replace(/\//g, '\\') : path
+}
+
 /**
  * When the backend could not read settings.json it keeps a copy aside and
  * starts empty. Tell the user once, naming the kept copy, instead of letting
@@ -33,14 +38,13 @@ export async function showSettingsRecoveryNotice(): Promise<void> {
       'take_settings_recovery_notice'
     )
     if (!notice) return
+    const file = displayPath(notice.file)
+    const backup = notice.backup ? displayPath(notice.backup) : null
     const show = () =>
       toast.warning(i18n.t('common:settingsRecovered.title'), {
-        description: notice.backup
-          ? i18n.t('common:settingsRecovered.withBackup', {
-              file: notice.file,
-              backup: notice.backup,
-            })
-          : i18n.t('common:settingsRecovered.noBackup', { file: notice.file }),
+        description: backup
+          ? i18n.t('common:settingsRecovered.withBackup', { file, backup })
+          : i18n.t('common:settingsRecovered.noBackup', { file }),
         duration: Infinity,
         closeButton: true,
       })

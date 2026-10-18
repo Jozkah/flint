@@ -1039,7 +1039,9 @@
     "use": "Use this model",
     "thisChat": "This chat",
     "thisRoom": "This room",
-    "thisSession": "This session"
+    "thisSession": "This session",
+    "keyMissingTitle": "An API key is missing",
+    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
   },
   "skillsUsedCount_one": "Used {{count}} skill",
   "skillsUsedCount_other": "Used {{count}} skills",

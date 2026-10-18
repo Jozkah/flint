@@ -90,7 +90,7 @@ export function collapseSteps(
  * the actions that may leave the row have left, before the kept ones lose
  * their labels.
  */
-export function collapsePlan(actions: readonly BarAction[]) {
+export function collapsePlan(actions: readonly BarAction[], keepLead = false) {
   const byRank = [...actions].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
   const current: Record<string, BarActionForm> = {}
   for (const a of actions) current[a.id] = 'label'
@@ -109,7 +109,9 @@ export function collapsePlan(actions: readonly BarAction[]) {
   const squeezeAt = steps.length
   for (const a of byRank)
     if (a.icon && !allows(a, 'menu') && allows(a, 'icon')) step(a, 'icon')
-  return { steps, squeezeAt }
+  // keepLead: the text is read before the kept actions' labels, so they lose
+  // their labels first and the text only squeezes once nothing else can.
+  return { steps, squeezeAt: keepLead ? steps.length : squeezeAt }
 }
 
 /** Whether the row's content is wider than its box. */
@@ -134,6 +136,7 @@ export function BarRow({
   trailing,
   trailingAction,
   compactMeta,
+  keepLead = false,
   className,
   testId,
   ...rest
@@ -153,6 +156,8 @@ export function BarRow({
   trailingAction?: BarAction
   /** `meta` for a compact row (default: `meta`; null drops it). */
   compactMeta?: ReactNode
+  /** Kept actions drop their labels before the text gives up its width. */
+  keepLead?: boolean
   className?: string
   testId?: string
 } & Omit<ComponentProps<'div'>, 'children'>) {
@@ -172,7 +177,7 @@ export function BarRow({
   const ref = useRef<HTMLDivElement>(null)
   const leadRef = useRef<HTMLSpanElement>(null)
   useTextOverflow(leadRef)
-  const { steps, squeezeAt } = collapsePlan(actions)
+  const { steps, squeezeAt } = collapsePlan(actions, keepLead)
   const [stage, setStage] = useState(0)
   // One stage more than there are forms: the text gives up its floor (at
   // `squeezeAt`), so nothing is ever clipped at the row's end.

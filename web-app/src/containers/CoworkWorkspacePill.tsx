@@ -157,7 +157,7 @@ export function CoworkWorkspacePill({
                   'group/ws h-7 min-w-0 max-w-48 shrink gap-2 overflow-hidden px-2 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
                 : 'size-7 shrink-0 text-muted-foreground pointer-coarse:size-11'
               : folderName
-              ? 'group/ws h-[30px] min-w-[2.125rem] shrink gap-2 overflow-hidden px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
+              ? 'group/ws h-[30px] min-w-[2.125rem] shrink justify-start gap-2 overflow-hidden px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
               : 'size-[30px] shrink-0 text-muted-foreground pointer-coarse:size-11'
           }
           title={folderName && (shortName || chipText) ? folderName : undefined}

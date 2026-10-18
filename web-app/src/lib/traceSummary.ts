@@ -39,6 +39,51 @@ const lines = (text: unknown): number => {
   return text.endsWith('\n') ? n - 1 : n
 }
 
+const splitLines = (text: unknown): string[] =>
+  typeof text === 'string' && text !== ''
+    ? text.replace(/\n$/, '').split('\n')
+    : []
+
+/**
+ * Lines an edit really adds and removes: the lines the old and new text share
+ * are neither (a replacement that only grows a block is +3 -0, not +5 -2).
+ */
+export function editLineCounts(
+  oldText: unknown,
+  newText: unknown
+): { added: number; removed: number } {
+  let a = splitLines(oldText)
+  let b = splitLines(newText)
+  let lo = 0
+  while (lo < a.length && lo < b.length && a[lo] === b[lo]) lo++
+  let hi = 0
+  while (
+    hi < a.length - lo &&
+    hi < b.length - lo &&
+    a[a.length - 1 - hi] === b[b.length - 1 - hi]
+  ) {
+    hi++
+  }
+  a = a.slice(lo, a.length - hi)
+  b = b.slice(lo, b.length - hi)
+  // Longest common subsequence of what is left, unless it is too big to be
+  // worth it: then the trimmed counts stand.
+  let common = 0
+  if (a.length > 0 && b.length > 0 && a.length * b.length <= 250_000) {
+    let prev = new Array<number>(b.length + 1).fill(0)
+    for (let i = 1; i <= a.length; i++) {
+      const row = new Array<number>(b.length + 1).fill(0)
+      for (let j = 1; j <= b.length; j++) {
+        row[j] =
+          a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], row[j - 1])
+      }
+      prev = row
+    }
+    common = prev[b.length]
+  }
+  return { added: b.length - common, removed: a.length - common }
+}
+
 const str = (v: unknown): string | undefined =>
   typeof v === 'string' && v ? v : undefined
 
@@ -126,8 +171,9 @@ export function summarizeTrace(parts: TraceSummaryPart[]): TraceSummary {
       if (key === 'edited') {
         const edits = Array.isArray(input.edits) ? input.edits : []
         for (const e of edits as Record<string, unknown>[]) {
-          out.added += lines(e?.new_string)
-          out.removed += lines(e?.old_string)
+          const { added, removed } = editLineCounts(e?.old_string, e?.new_string)
+          out.added += added
+          out.removed += removed
         }
       }
       continue
