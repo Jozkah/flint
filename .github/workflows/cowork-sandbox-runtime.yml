@@ -31,7 +31,12 @@ jobs:
       - name: Install bubblewrap
         run: |
           sudo apt-get update
-          sudo apt-get install -y bubblewrap
+          sudo apt-get install -y bubblewrap libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev librsvg2-dev
+
+      # Ubuntu 24.04 images block unprivileged user namespaces through AppArmor,
+      # so bwrap cannot even configure loopback. Same switch as Linter & Test.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       # Without this, a runner missing bubblewrap would pass every confinement
       # test by skipping it. Fail here instead.
@@ -48,6 +53,12 @@ jobs:
         with:
           toolchain: stable
 
+      # The app's build script requires every bundled sidecar and resource to
+      # exist; none are built here, and no test executes them.
+      - name: Stub bundled resources
+        shell: bash
+        run: ./scripts/stub-tauri-resources.sh
+
       - name: Sandbox policy and real confined processes
         run: |
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml \
@@ -55,9 +66,9 @@ jobs:
 
       - name: Confined MCP launch, and a real handshake
         run: |
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_end_to_end -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib launch -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib mcp_confinement -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib mcp_end_to_end -- --nocapture
 
   windows-fails-closed:
     name: Windows (refusal is the outcome)
@@ -69,6 +80,18 @@ jobs:
         with:
           toolchain: stable
 
+      # rc.exe embeds icon.ico and rejects the PNG copy the stub script makes,
+      # so Windows needs the real icon set first (the stubs never overwrite it).
+      - name: Render the Windows icon
+        shell: bash
+        run: npx --yes @tauri-apps/cli@2.11.4 icon src-tauri/icons/icon.png -o src-tauri/icons
+
+      # The app's build script requires every bundled sidecar and resource to
+      # exist; none are built here, and no test executes them.
+      - name: Stub bundled resources
+        shell: bash
+        run: ./scripts/stub-tauri-resources.sh
+
       - name: Record what this platform can enforce
         run: echo "backend=appcontainer (edit-folder unsupported by design)" >> $env:GITHUB_STEP_SUMMARY
 
@@ -78,8 +101,8 @@ jobs:
       - name: Edit-folder is reported unsupported, and imports fail closed
         run: |
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml mcp_confine -- --nocapture
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib launch -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib mcp_confinement -- --nocapture
 
       - name: Path handling under Windows separators, casing and prefix siblings
         run: |
@@ -95,6 +118,12 @@ jobs:
         with:
           toolchain: stable
 
+      # The app's build script requires every bundled sidecar and resource to
+      # exist; none are built here, and no test executes them.
+      - name: Stub bundled resources
+        shell: bash
+        run: ./scripts/stub-tauri-resources.sh
+
       - name: Confirm the backend is really available
         run: |
           set -euo pipefail
@@ -108,7 +137,7 @@ jobs:
 
       - name: Confined launch, real handshake, and the remote transport
         run: |
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_end_to_end -- --nocapture
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_http_integration -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib launch -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib mcp_confinement -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib mcp_end_to_end -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features test-tauri --lib mcp_http_integration -- --nocapture

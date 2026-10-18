@@ -27,6 +27,15 @@ struct Sandbox {
     scratch: PathBuf,
 }
 
+/// `path` as the confined process reports it: the helper hands the child the
+/// long form, so a temp folder under an 8.3 name (`C:\Users\RUNNER~1` on CI)
+/// shows up expanded. Lowercased for comparison.
+fn long_lower(path: &Path) -> String {
+    let full = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let text = full.to_string_lossy();
+    text.strip_prefix(r"\\?\").unwrap_or(&text).to_lowercase()
+}
+
 impl Sandbox {
     fn new(name: &str) -> Self {
         let root = std::env::temp_dir().join(format!(
@@ -139,7 +148,7 @@ fn the_environment_block_no_longer_fails_process_creation() {
 fn the_sandbox_starts_in_the_workspace() {
     let sandbox = Sandbox::new("cwd");
     let seen = text(&sandbox.cmd("cd"));
-    let workspace = sandbox.workspace.to_string_lossy().to_lowercase();
+    let workspace = long_lower(&sandbox.workspace);
     assert!(
         seen.to_lowercase().contains(&workspace),
         "expected the workspace {workspace} in: {seen}"
@@ -213,11 +222,7 @@ fn the_sandbox_gets_its_own_home() {
     let sandbox = Sandbox::new("synthetic-home");
     let out = sandbox.cmd("echo %USERPROFILE% & echo %HOME% & echo %APPDATA%");
     let seen = text(&out);
-    let expected = sandbox
-        .scratch
-        .join("home")
-        .to_string_lossy()
-        .to_lowercase();
+    let expected = long_lower(&sandbox.scratch.join("home"));
     let real = std::env::var("USERPROFILE")
         .unwrap_or_default()
         .to_lowercase();
@@ -449,9 +454,12 @@ fn the_selected_shell_writes_its_worktree_and_not_the_checkout() {
     std::fs::create_dir_all(&checkout).expect("checkout");
     let inside = worktree.join("made-by-the-shell.txt");
     let outside = checkout.join("must-not-exist.txt");
+    // .NET calls, not cmdlets: on the hosted runner a confined Windows
+    // PowerShell cannot autoload its Management module, and what is under test
+    // here is the ACL, not module loading.
     let script = format!(
-        "Set-Content -LiteralPath '{}' -Value inside; \
-         try {{ Set-Content -LiteralPath '{}' -Value outside -ErrorAction Stop; 'wrote-outside' }} \
+        "[IO.File]::WriteAllText('{}', 'inside'); \
+         try {{ [IO.File]::WriteAllText('{}', 'outside'); 'wrote-outside' }} \
          catch {{ 'refused-outside' }}",
         inside.display(),
         outside.display()
@@ -493,8 +501,9 @@ fn a_worktrees_jan_is_unreadable_from_the_sandbox() {
     std::fs::write(&policy, "policy-marker-124").expect("policy");
     let source = worktree.join("main.rs");
     std::fs::write(&source, "source-marker-124").expect("source");
+    // .NET calls, not cmdlets (see the test above).
     let script = format!(
-        "Get-Content -LiteralPath '{}'; try {{ Get-Content -LiteralPath '{}' -ErrorAction Stop }} catch {{ 'refused-jan' }}",
+        "[IO.File]::ReadAllText('{}'); try {{ [IO.File]::ReadAllText('{}') }} catch {{ 'refused-jan' }}",
         source.display(),
         policy.display()
     );
@@ -646,8 +655,11 @@ fn go_sees_a_writable_build_cache() {
     // Go may add a telemetry warning line after the value.
     let cache = PathBuf::from(seen.lines().next().unwrap_or_default().trim());
     assert!(cache.ends_with(r"AppData\Local\go-build"), "{seen}");
+    // The scratch itself may sit under the host `LOCALAPPDATA\Temp`, so the
+    // check is that the cache is inside the synthetic home.
+    let home = long_lower(&sandbox.scratch.join("home"));
     assert!(
-        !cache.starts_with(std::env::var_os("LOCALAPPDATA").unwrap_or_default()),
+        cache.to_string_lossy().to_lowercase().starts_with(&home),
         "GOCACHE still points at the host profile: {seen}"
     );
 }
