@@ -16,7 +16,7 @@ vi.mock('@/lib/migrateLocalStorageSettings', () => ({
 }))
 vi.mock('@/lib/soloFlag', () => ({ isChatWindow: () => false }))
 
-import { ServiceHubProvider } from '../ServiceHubProvider'
+import { ServiceHubProvider, prestartServiceHub } from '../ServiceHubProvider'
 
 describe('ServiceHubProvider', () => {
   beforeEach(() => {
@@ -24,6 +24,29 @@ describe('ServiceHubProvider', () => {
     hydrate.mockResolvedValue(undefined)
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'log').mockImplementation(() => {})
+  })
+
+  it('takes over a hub prestarted by main.tsx instead of starting another', async () => {
+    const hub = { id: 'early' }
+    h.init.mockResolvedValue(hub)
+    const early = prestartServiceHub()
+    expect(prestartServiceHub()).toBe(early)
+    render(
+      <ServiceHubProvider>
+        <div data-testid="child" />
+      </ServiceHubProvider>
+    )
+    expect(await screen.findByTestId('child')).toBeInTheDocument()
+    expect(h.init).toHaveBeenCalledTimes(1)
+    expect(h.store).toHaveBeenCalledWith(hub)
+    // Taken once: a later mount (a reload of the provider) starts its own.
+    render(
+      <ServiceHubProvider>
+        <div data-testid="child2" />
+      </ServiceHubProvider>
+    )
+    expect(await screen.findByTestId('child2')).toBeInTheDocument()
+    expect(h.init).toHaveBeenCalledTimes(2)
   })
 
   it('tries again after one failed module fetch and then renders the app', async () => {

@@ -13,8 +13,8 @@
 //! The list is a small file under the data folder, written atomically. The app
 //! points this module at it once at startup ([`set_store`]); until then, which
 //! is only so in unit tests and when the library is embedded without an app,
-//! nothing is restricted. The restriction is enforced where the project's code
-//! would be loaded, not here.
+//! nothing is trusted (unit tests of this crate excepted). The restriction is
+//! enforced where the project's code would be loaded, not here.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -145,11 +145,17 @@ fn migrated_marker(store: &Path) -> PathBuf {
 /// from anything a repository can write into itself. Only folders that exist
 /// and carry hooks or subagent definitions are recorded; a folder too broad to
 /// trust is skipped. The marker is written even when nothing was trusted, so
-/// a folder first opened after this point always asks. Returns the folders
-/// trusted now.
+/// a folder first opened after this point always asks -- but not when no
+/// folders were offered at all: an empty list means the caller's history was
+/// not loaded yet, and closing the migration then would switch off the hooks
+/// of every folder the user already works in. Returns the folders trusted now.
 pub fn grandfather_in(store: &Path, folders: impl IntoIterator<Item = PathBuf>) -> Vec<String> {
     let marker = migrated_marker(store);
     if marker.exists() {
+        return Vec::new();
+    }
+    let folders: Vec<PathBuf> = folders.into_iter().collect();
+    if folders.is_empty() {
         return Vec::new();
     }
     let mut trusted = Vec::new();
@@ -218,12 +224,14 @@ fn write(store: &Path, doc: &Doc) -> Result<(), String> {
     crate::atomic_file::write_atomic(store, &bytes)
 }
 
-/// Whether this project may run the code it carries. `true` when trust is not
-/// enforced (see the module docs).
+/// Whether this project may run the code it carries. When the list was never
+/// set up in this process nothing is trusted (fail closed); only this crate's
+/// own unit tests (and the app's, through `test-default-trusted`) default to
+/// trusted.
 pub fn is_trusted(folder: &Path) -> bool {
     match STORE.get() {
         Some(store) => is_trusted_in(store, folder),
-        None => true,
+        None => cfg!(any(test, feature = "test-default-trusted")),
     }
 }
 
@@ -420,10 +428,24 @@ mod tests {
     fn a_first_run_with_nothing_to_trust_still_closes_the_migration() {
         let dir = temp();
         let store = dir.path().join("trust.json");
-        assert!(grandfather_in(&store, Vec::new()).is_empty());
+        let plain = dir.path().join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(grandfather_in(&store, vec![plain]).is_empty());
         let later = with_hooks(dir.path(), "later");
         assert!(grandfather_in(&store, vec![later.clone()]).is_empty());
         assert!(!is_trusted_in(&store, &later));
+    }
+
+    #[test]
+    fn an_empty_folder_list_does_not_burn_the_migration() {
+        // The renderer's history was not loaded yet: nothing was offered.
+        let dir = temp();
+        let store = dir.path().join("trust.json");
+        assert!(grandfather_in(&store, Vec::new()).is_empty());
+        let a = with_hooks(dir.path(), "a");
+        let done = grandfather_in(&store, vec![a.clone()]);
+        assert_eq!(done.len(), 1, "the second call still migrates: {done:?}");
+        assert!(is_trusted_in(&store, &a));
     }
 
     #[test]

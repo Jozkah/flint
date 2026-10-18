@@ -104,9 +104,25 @@ const boot = async () => {
 
   // Dynamic imports keep store hydration AFTER the localStorage prune above.
   bootMark('boot:reset-consumed')
-  const { routeTree } = await import('./routeTree.gen')
+  // Fetch everything the first screen needs at once rather than one chunk
+  // after another: the route tree, the strings, this window's shell and the
+  // services (which ServiceHubProvider picks up instead of starting again).
+  const routeTreeLoad = import('./routeTree.gen')
+  const i18nLoad = import('./i18n')
+  i18nLoad.catch(() => {}) // awaited below; this only keeps an early failure from being "unhandled"
+  void import('./providers/ServiceHubProvider')
+    .then((m) => m.prestartServiceHub())
+    .catch(() => {})
+  void import('./lib/soloFlag').then((m) =>
+    m.isChatWindow()
+      ? import('./components/solo/SoloRoot')
+      : import('./shell/MainRoot')
+  ).catch(() => {
+    // Only a head start; the route loads it again and reports any failure.
+  })
+  const { routeTree } = await routeTreeLoad
   bootMark('boot:routetree')
-  const { default: i18n } = await import('./i18n')
+  const { default: i18n } = await i18nLoad
   try {
     await i18n.ready
   } catch (e) {

@@ -331,13 +331,15 @@ export async function readCapped(
 /** Build the preview for a file's bytes, by extension. Never throws. */
 export async function previewFromBytes(
   ext: string,
-  bytes: Uint8Array
+  bytes: Uint8Array,
+  /** Paragraph/row limit for documents (the full viewer asks for more). */
+  max?: number
 ): Promise<FilePreview | null> {
   try {
     const kind = previewKind(ext)
-    if (kind === 'docx') return await docxPreview(bytes)
-    if (kind === 'xlsx') return await xlsxPreview(bytes)
-    if (kind === 'pptx') return await pptxPreview(bytes)
+    if (kind === 'docx') return await docxPreview(bytes, max)
+    if (kind === 'xlsx') return await xlsxPreview(bytes, max, max ? 30 : undefined)
+    if (kind === 'pptx') return await pptxPreview(bytes, max)
     const text = new TextDecoder().decode(bytes.subarray(0, TEXT_CAP))
     if (kind === 'table')
       return csvPreview(text, ext.toLowerCase() === 'tsv' ? '\t' : ',')

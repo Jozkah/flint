@@ -92,7 +92,7 @@ export function EditMessageDialog({
       tabIndex={0}
       disabled={!selectedModel}
       aria-label={t('common:editMessage')}
-      className="size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
+      className="size-7 text-muted-foreground disabled:opacity-100 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -150,10 +150,7 @@ export function EditMessageDialog({
                     className="relative border border-border rounded-md px-3 py-2 flex items-center gap-2 bg-muted"
                   >
                     <FileIcon className="size-4 text-muted-foreground" />
-                    <span
-                      className="text-sm max-w-32 truncate"
-                      title={file.name}
-                    >
+                    <span className="text-sm max-w-32 truncate">
                       {file.name}
                     </span>
                     <button

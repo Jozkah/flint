@@ -13,6 +13,8 @@ export const localStorageKey = {
   settingWebPreview: 'setting-web-preview',
   settingAgentTools: 'setting-agent-tools',
   settingVisualize: 'setting-visualize',
+  settingLeanTools: 'setting-lean-tools',
+  settingChatMentions: 'setting-chat-mentions',
   settingHardware: 'setting-hardware',
   settingVulkan: 'setting-vulkan',
   toolApproval: 'tool-approval',

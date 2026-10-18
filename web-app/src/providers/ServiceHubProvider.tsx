@@ -37,6 +37,24 @@ export async function initializeServiceHubWithRetry(
   throw last
 }
 
+// Started by main.tsx while the route tree is still loading, so the services'
+// chunks are fetched in parallel with it; the provider takes it over.
+let prestarted: ReturnType<typeof initializeServiceHubWithRetry> | null = null
+
+export function prestartServiceHub() {
+  if (!prestarted) {
+    prestarted = initializeServiceHubWithRetry()
+    prestarted.catch(() => {}) // reported by the provider that takes it over
+  }
+  return prestarted
+}
+
+function takeServiceHubStart() {
+  const started = prestarted ?? initializeServiceHubWithRetry()
+  prestarted = null
+  return started
+}
+
 /**
  * A module that failed to fetch is remembered as failed by the page, so more
  * tries in the same page cannot succeed; a reload can. At most once a minute,
@@ -90,7 +108,7 @@ export function ServiceHubProvider({ children }: ServiceHubProviderProps) {
   }
 
   useEffect(() => {
-    initializeServiceHubWithRetry()
+    takeServiceHubStart()
       .then((hub) => {
         console.log('Services initialized, initializing Zustand store')
         bootMark('hub:initialized')

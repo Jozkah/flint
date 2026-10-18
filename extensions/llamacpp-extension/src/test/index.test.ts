@@ -98,6 +98,24 @@ describe('llamacpp_extension', () => {
     })
   })
 
+  describe('loadConfig', () => {
+    it('reads the settings file once and falls back to defaults', async () => {
+      const getSettings = vi
+        .spyOn(extension, 'getSettings')
+        .mockResolvedValue([
+          { key: 'a', controllerProps: { value: 'saved' } },
+          { key: 'b', controllerProps: {} },
+        ] as never)
+      const config = await extension.loadConfig([
+        { key: 'a', controllerProps: { value: 'default-a' } },
+        { key: 'b', controllerProps: { value: 'default-b' } },
+        { key: 'c', controllerProps: { value: 0 } },
+      ] as never)
+      expect(config).toEqual({ a: 'saved', b: 'default-b', c: 0 })
+      expect(getSettings).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('resolveThreadCacheBudget', () => {
     const budget = (cfg: Record<string, unknown>): number => {
       // `config` is populated by onLoad, which is not run here.

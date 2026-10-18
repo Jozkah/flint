@@ -16,6 +16,8 @@ links = "tauri-plugin-agent-tools"
 [features]
 default = ["tauri"]
 tauri = ["dep:tauri", "dep:tauri-plugin"]
+# Test builds of other crates: folders count as trusted until a store is set.
+test-default-trusted = []
 
 [dependencies]
 base64 = "0.22"
