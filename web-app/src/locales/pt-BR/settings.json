@@ -668,6 +668,8 @@
     "completionSoundApproval": "Somente quando for necessária aprovação",
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Tocar",
+    "increaseContrast": "Aumentar o contraste",
+    "increaseContrastDesc": "Deixa o texto mais nítido para facilitar a leitura. Mais branco no tema escuro, mais escuro no tema claro.",
     "reduceMotion": "Reduzir movimento",
     "reduceMotionDesc": "Desativa as animações no Flint. O Flint não segue a configuração do sistema, então o movimento permanece ativado a menos que você altere isto.",
     "title": "Aparência",

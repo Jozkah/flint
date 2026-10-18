@@ -670,6 +670,8 @@
     "completionSoundApproval": "Tylko gdy potrzebne jest zatwierdzenie",
     "completionSoundVolume": "Głośność",
     "completionSoundPreview": "Odtwórz",
+    "increaseContrast": "Zwiększ kontrast",
+    "increaseContrastDesc": "Rozjaśnia tekst, aby łatwiej było go czytać. Bielszy w ciemnym motywie, ciemniejszy w jasnym.",
     "reduceMotion": "Ogranicz animacje",
     "reduceMotionDesc": "Wyłącza animacje we Flint. Flint nie podąża za ustawieniem systemowym, więc animacje pozostają włączone, dopóki tego nie zmienisz.",
     "completionSoundApproval": "Tylko gdy wymagana jest zgoda"

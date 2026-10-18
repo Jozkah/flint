@@ -670,6 +670,8 @@
     "completionSoundApproval": "Només quan cal aprovació",
     "completionSoundVolume": "Volum",
     "completionSoundPreview": "Reprodueix",
+    "increaseContrast": "Augmenta el contrast",
+    "increaseContrastDesc": "Fa el text més brillant perquè es llegeixi millor. Més blanc al tema fosc, més fosc al tema clar.",
     "reduceMotion": "Redueix el moviment",
     "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs.",
     "completionSoundApproval": "Només quan cal aprovació"

@@ -666,6 +666,8 @@
     "completionSoundApproval": "Nur wenn eine Freigabe nötig ist",
     "completionSoundVolume": "Lautstärke",
     "completionSoundPreview": "Abspielen",
+    "increaseContrast": "Kontrast erhöhen",
+    "increaseContrastDesc": "Macht Text heller, damit er leichter lesbar ist. Weißer im dunklen Design, dunkler im hellen Design.",
     "reduceMotion": "Bewegung reduzieren",
     "reduceMotionDesc": "Schaltet Animationen in Flint aus. Flint folgt nicht der Systemeinstellung, daher bleiben Animationen an, sofern du das nicht umstellst.",
     "completionSoundApproval": "Nur wenn eine Freigabe nötig ist"

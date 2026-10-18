@@ -666,6 +666,8 @@
     "completionSoundApproval": "केवल जब अनुमोदन की आवश्यकता हो",
     "completionSoundVolume": "वॉल्यूम",
     "completionSoundPreview": "चलाएँ",
+    "increaseContrast": "कंट्रास्ट बढ़ाएँ",
+    "increaseContrastDesc": "टेक्स्ट को अधिक चमकदार बनाता है ताकि पढ़ना आसान हो। डार्क थीम में अधिक सफ़ेद, लाइट थीम में अधिक गहरा।",
     "reduceMotion": "गति कम करें",
     "reduceMotionDesc": "Flint में एनिमेशन बंद करें। Flint सिस्टम सेटिंग का पालन नहीं करता, इसलिए जब तक आप इसे नहीं बदलते गति चालू रहती है।",
     "completionSoundApproval": "केवल जब अनुमोदन आवश्यक हो"

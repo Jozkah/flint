@@ -666,6 +666,8 @@
     "completionSoundApproval": "승인이 필요할 때만",
     "completionSoundVolume": "볼륨",
     "completionSoundPreview": "재생",
+    "increaseContrast": "대비 높이기",
+    "increaseContrastDesc": "텍스트를 더 선명하게 해서 읽기 쉽게 합니다. 어두운 테마에서는 더 하얗게, 밝은 테마에서는 더 짙게 표시됩니다.",
     "reduceMotion": "동작 줄이기",
     "reduceMotionDesc": "Flint의 애니메이션을 끕니다. Flint는 시스템 설정을 따르지 않으므로 이 설정을 바꾸지 않으면 동작 효과가 유지됩니다.",
     "completionSoundApproval": "승인이 필요할 때만"

@@ -666,6 +666,8 @@
     "completionSoundApproval": "承認が必要なときのみ",
     "completionSoundVolume": "音量",
     "completionSoundPreview": "再生",
+    "increaseContrast": "コントラストを上げる",
+    "increaseContrastDesc": "文字をはっきりさせて読みやすくします。ダークテーマではより白く、ライトテーマではより濃くなります。",
     "reduceMotion": "視覚効果を減らす",
     "reduceMotionDesc": "Flint のアニメーションをオフにします。Flint はシステム設定に従わないため、これを切り替えない限り、アニメーションはオンのままです。",
     "completionSoundApproval": "承認が必要なときのみ"
