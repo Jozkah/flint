@@ -7,3 +7,5 @@ Cargo.lock -diff
 
 # Generated files that are compared byte-for-byte against their renderer.
 docs/AGENT_HARNESS_FEATURE_REGISTRY.md text eol=lf
+
+src-tauri/vendor/genai/** -whitespace
