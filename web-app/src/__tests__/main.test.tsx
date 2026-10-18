@@ -29,7 +29,9 @@ vi.mock('../routeTree.gen', () => ({
   routeTree: 'mocked-route-tree',
 }))
 vi.mock('../index.css', () => ({}))
-vi.mock('../i18n', () => ({}))
+vi.mock('../i18n', () => ({
+  default: { ready: Promise.resolve(), language: 'en', fallbackLng: 'en' },
+}))
 
 describe('main.tsx', () => {
   let mockGetElementById: any

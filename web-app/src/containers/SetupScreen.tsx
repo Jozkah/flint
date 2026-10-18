@@ -23,10 +23,13 @@ import {
 import { DependencyAdvice } from './dialogs/DependencyAdvice'
 import HeaderPage from './HeaderPage'
 import { ModelSetupCard } from './ModelSetupCard'
+import { ModelSupportStatus } from './ModelSupportStatus'
+import { DEFAULT_CTX_LENGTH } from '@/lib/modelCompatibility'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useThreads } from '@/hooks/useThreads'
 import { destinationFor, INTENTS } from '@/lib/onboarding'
 import { isChatCapable } from '@/lib/providerReadiness'
+import { SidebarItemsPicker } from './SidebarItemsPicker'
 
 /**
  * One page of the setup flow. The last page is not a readiness probe, so it
@@ -56,6 +59,8 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
   const llamaProvider = getProviderByName('llamacpp')
   /** Whichever local model the user picks on the last page, if any. */
   const [chosenModel, setChosenModel] = useState<string | null>(null)
+  /** The finish page's inline sidebar picker, closed until asked for. */
+  const [customizingSidebar, setCustomizingSidebar] = useState(false)
   const guide = useOnboardingGuide()
   const threadCount = useThreads((s) => Object.keys(s.threads ?? {}).length)
   // Where setup was left last time. Read once: resuming is a starting point,
@@ -636,6 +641,38 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
                         {t('onboarding:connectRemote')}
                       </Button>
                     </section>
+                    <section
+                      aria-labelledby="setup-sidebar-heading"
+                      className="mb-4 rounded-md border border-border bg-muted px-3.5 py-3 text-xs leading-relaxed"
+                      data-testid="setup-sidebar"
+                    >
+                      <h2
+                        id="setup-sidebar-heading"
+                        className="text-sm font-semibold text-foreground"
+                      >
+                        {t('onboarding:sidebar.title')}
+                      </h2>
+                      <p className="mt-1.5 text-fg-2">
+                        {t('onboarding:sidebar.body')}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 pointer-coarse:h-11"
+                        data-testid="setup-customize-sidebar"
+                        aria-expanded={customizingSidebar}
+                        onClick={() => setCustomizingSidebar((open) => !open)}
+                      >
+                        {customizingSidebar
+                          ? t('onboarding:sidebar.close')
+                          : t('onboarding:sidebar.customize')}
+                      </Button>
+                      {customizingSidebar && (
+                        <div className="mt-3 rounded-md border border-border bg-card px-3 py-2">
+                          <SidebarItemsPicker preview={false} />
+                        </div>
+                      )}
+                    </section>
                     {localModels.length > 0 ? (
                       <div
                         role="radiogroup"
@@ -676,6 +713,22 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
                         </p>
                         <ModelSetupCard />
                       </>
+                    )}
+
+                    {/* Fit advice for the model just picked, from the same
+                        check the model picker uses; read-only, runs nothing. */}
+                    {chosenModel && (
+                      <div
+                        className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"
+                        data-testid="setup-model-fit"
+                      >
+                        <span>{t('onboarding:fit.heading')}</span>
+                        <ModelSupportStatus
+                          modelId={chosenModel}
+                          provider="llamacpp"
+                          contextSize={DEFAULT_CTX_LENGTH}
+                        />
+                      </div>
                     )}
 
                     <div className="mt-5 flex flex-wrap items-center gap-2">

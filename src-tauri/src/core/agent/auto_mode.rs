@@ -364,7 +364,7 @@ fn recursive_force_delete(c: &str) -> bool {
                     .filter(|a| a.starts_with('-') && !a.starts_with("--"))
                     .map(|a| a.trim_start_matches('-'))
                     .collect();
-                let has = |long: &str| rest.iter().any(|a| *a == long);
+                let has = |long: &str| rest.contains(&long);
                 (short.contains('r') || has("--recursive")) && (short.contains('f') || has("--force"))
             }
             "remove-item" | "ri" => {

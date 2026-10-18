@@ -2024,23 +2024,6 @@ mod win {
         out
     }
 
-    #[cfg(test)]
-    mod handle_list_tests {
-        use super::*;
-
-        #[test]
-        fn handle_list_keeps_only_valid_distinct_handles() {
-            let a = 4usize as HANDLE;
-            let b = 8usize as HANDLE;
-            assert_eq!(unique_valid_handles(&[a, b, a]), vec![a, b]);
-            assert_eq!(
-                unique_valid_handles(&[INVALID_HANDLE_VALUE, std::ptr::null_mut(), b]),
-                vec![b]
-            );
-            assert!(unique_valid_handles(&[INVALID_HANDLE_VALUE; 3]).is_empty());
-        }
-    }
-
     /// Put this process in a kill-on-close job, so the shell -- created inside the
     /// job by inheritance -- dies whenever the helper does. `kill_on_drop` and
     /// `kill_tree` reach the helper, not the extra process layer it adds, so
@@ -2488,6 +2471,23 @@ mod win {
             .with_code(last_error_code()));
         }
         Ok(code as i32)
+    }
+
+    #[cfg(test)]
+    mod handle_list_tests {
+        use super::*;
+
+        #[test]
+        fn handle_list_keeps_only_valid_distinct_handles() {
+            let a = 4usize as HANDLE;
+            let b = 8usize as HANDLE;
+            assert_eq!(unique_valid_handles(&[a, b, a]), vec![a, b]);
+            assert_eq!(
+                unique_valid_handles(&[INVALID_HANDLE_VALUE, std::ptr::null_mut(), b]),
+                vec![b]
+            );
+            assert!(unique_valid_handles(&[INVALID_HANDLE_VALUE; 3]).is_empty());
+        }
     }
 }
 

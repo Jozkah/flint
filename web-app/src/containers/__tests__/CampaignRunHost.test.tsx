@@ -10,9 +10,16 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/campaignApi', () => ({
   campaignApi: {
     list: mocks.list,
+    listWithSkipped: async () => ({ campaigns: await mocks.list(), skipped: [] }),
+    skipped: vi.fn().mockResolvedValue([]),
     refresh: vi.fn(),
     transition: mocks.transition,
   },
+}))
+// the host only asks for campaigns when there is a backend to ask
+vi.mock('@/lib/platform/utils', async (orig) => ({
+  ...(await orig<typeof import('@/lib/platform/utils')>()),
+  isPlatformTauri: () => true,
 }))
 vi.mock('@/lib/campaignHost', () => ({
   getCampaignRunner: () => ({ kick: mocks.kick }),

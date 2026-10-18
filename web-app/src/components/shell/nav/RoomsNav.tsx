@@ -99,7 +99,8 @@ const RoomItem = memo(function RoomItem({
     <NavItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
       <RowPreview
         title={room.title}
-        updated={room.updatedAt}
+        status={status === 'wait' ? 'waiting' : status === 'active' ? 'running' : 'idle'}
+        meta={{ updated: room.updatedAt, messages: room.turns }}
         summary={room.objective}
         summaryKey={`${room.id}\u0000${room.updatedAt}`}
         transcript={() => roomTranscript(room.id)}

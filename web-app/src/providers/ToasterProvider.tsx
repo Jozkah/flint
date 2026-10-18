@@ -3,7 +3,12 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useEffect, useState } from 'react'
 import { useWebPreview } from '@/hooks/useWebPreview'
-import { getToastOffsetAvoidingPane } from '@/utils/toastPlacement'
+import { useDialogOpen } from '@/hooks/useDialogOpen'
+import {
+  getDialogToastPlacement,
+  getToastOffsetAvoidingPane,
+} from '@/utils/toastPlacement'
+import { notifyToasterMounted } from '@/lib/settingsRecoveryNotice'
 
 /** Below the 52px top header on phones, so a toast never sits over the composer. */
 const PHONE_OFFSET = { top: '60px' }
@@ -13,6 +18,11 @@ export function ToasterProvider() {
     (s) => s.notificationPosition
   )
   const isPhone = useMediaQuery('(max-width: 767px)')
+
+  // A toast raised before this mounted is shown again now.
+  useEffect(() => {
+    notifyToasterMounted()
+  }, [])
 
   const open = useWebPreview((s) => s.open)
   const surface = useWebPreview((s) => s.surface)
@@ -35,16 +45,29 @@ export function ToasterProvider() {
     viewport
   )
 
+  // A modal's header and close button sit where a top toast lands.
+  const dialogOpen = useDialogOpen()
+  const dialogPlacement = dialogOpen
+    ? getDialogToastPlacement(viewport.width)
+    : null
+
   return (
     <Toaster
       // A failure message worth reading is worth being able to put away. Some
       // of them name an endpoint, a status and what to do about it, and until
       // now the only way to clear one was to wait for it to time out.
       closeButton
-      position={isPhone ? 'top-center' : notificationPosition}
-      offset={isPhone ? PHONE_OFFSET : offset}
-      mobileOffset={PHONE_OFFSET}
+      position={
+        dialogPlacement?.position ??
+        (isPhone ? 'top-center' : notificationPosition)
+      }
+      offset={dialogPlacement?.offset ?? (isPhone ? PHONE_OFFSET : offset)}
+      mobileOffset={dialogPlacement?.mobileOffset ?? PHONE_OFFSET}
       visibleToasts={5}
+      // Stacked toasts sit one under another with a gap; sonner's collapsed
+      // pile lays them over each other until hovered.
+      expand
+      gap={8}
       toastOptions={{
         style: {
           padding: '0.75rem',

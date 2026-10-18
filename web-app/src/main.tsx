@@ -8,6 +8,7 @@ import {
 } from '@/services/app/reset-localstorage'
 import { installConsoleLogForwarding } from '@/services/app/console-logger'
 import { bootMark } from '@/lib/bootMarks'
+import { noteBootError, startBootWatchdog } from '@/lib/bootWatchdog'
 
 // Inter is bundled under public/fonts (styles/font.css), so nothing is fetched at runtime.
 import './index.css'
@@ -93,6 +94,7 @@ const consumePendingWebdataReset = async () => {
 
 const boot = async () => {
   bootMark('boot:start')
+  startBootWatchdog()
   installConsoleLogForwarding()
   setupMobileViewport()
   preventDefaultFileDrop()
@@ -104,7 +106,15 @@ const boot = async () => {
   bootMark('boot:reset-consumed')
   const { routeTree } = await import('./routeTree.gen')
   bootMark('boot:routetree')
-  await import('./i18n')
+  const { default: i18n } = await import('./i18n')
+  try {
+    await i18n.ready
+  } catch (e) {
+    // The saved language failed to download: start in English rather than
+    // stall the whole window on it. It can be picked again in Settings.
+    noteBootError(e)
+    i18n.language = i18n.fallbackLng
+  }
   bootMark('boot:i18n')
 
   const router = createRouter({ routeTree })
@@ -142,6 +152,12 @@ const boot = async () => {
         <RouterProvider router={router} />
       </StrictMode>
     )
+    // After the Toaster has mounted, so the toast is not dropped.
+    window.setTimeout(() => {
+      void import('@/lib/settingsRecoveryNotice').then((m) =>
+        m.showSettingsRecoveryNotice()
+      )
+    }, 1500)
   }
 }
 

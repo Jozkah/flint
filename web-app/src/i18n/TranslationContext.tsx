@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect, useCallback } from "react"
+import React, { ReactNode, useEffect, useCallback, useState } from "react"
 import i18next, { loadTranslations } from "./setup"
 import { useGeneralSetting } from "@/hooks/useGeneralSetting"
 import { TranslationContext } from "./context"
@@ -7,6 +7,8 @@ import { TranslationContext } from "./context"
 export const TranslationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 	// Get the current language from general settings
 	const { currentLanguage } = useGeneralSetting()
+	// Bumped when a language's strings finish loading, so the tree re-renders.
+	const [, setLoaded] = useState(0)
 
 	// Load translations once when the component mounts
 	useEffect(() => {
@@ -20,7 +22,9 @@ export const TranslationProvider: React.FC<{ children: ReactNode }> = ({ childre
 	// Update language when currentLanguage changes
 	useEffect(() => {
 		if (currentLanguage) {
-			i18next.changeLanguage(currentLanguage)
+			void i18next
+				.changeLanguage(currentLanguage)
+				.then(() => setLoaded((n) => n + 1))
 		}
 	}, [currentLanguage])
 

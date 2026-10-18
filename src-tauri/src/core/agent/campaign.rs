@@ -1171,21 +1171,49 @@ pub fn get(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
     load_reconciled(data_folder, id)
 }
 
-/// Every readable campaign, newest first. Reconciles each as it goes.
-pub fn list(data_folder: &Path) -> Vec<Campaign> {
+/// A campaign folder whose record could not be read. The folder is left as it
+/// is (nothing is moved or deleted); the list skips it and says why.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedRecord {
+    pub id: String,
+    pub reason: String,
+}
+
+/// Every readable campaign, newest first, and the folders that were skipped.
+/// A missing campaigns folder is an empty list, never an error.
+pub fn list_with_skipped(data_folder: &Path) -> (Vec<Campaign>, Vec<SkippedRecord>) {
     let _held = lock(data_folder);
     let Ok(entries) = std::fs::read_dir(root(data_folder)) else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
-    let mut out: Vec<Campaign> = entries
+    let mut out: Vec<Campaign> = Vec::new();
+    let mut skipped: Vec<SkippedRecord> = Vec::new();
+    let mut names: Vec<String> = entries
         .flatten()
         .filter(|e| e.path().is_dir())
         .filter_map(|e| e.file_name().into_string().ok())
         .filter(|name| valid_id(name))
-        .filter_map(|name| load_reconciled(data_folder, &name).ok())
         .collect();
+    names.sort();
+    for name in names {
+        match load_reconciled(data_folder, &name) {
+            Ok(c) => out.push(c),
+            // A folder with no record yet (a create cut short) is not damage.
+            Err(e) if e.kind == CampaignErrorKind::NotFound => {}
+            Err(e) => {
+                log::warn!("campaign {name} skipped: {e}");
+                skipped.push(SkippedRecord { id: name, reason: e.message });
+            }
+        }
+    }
     out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(a.id.cmp(&b.id)));
-    out
+    (out, skipped)
+}
+
+/// Every readable campaign, newest first. Reconciles each as it goes.
+pub fn list(data_folder: &Path) -> Vec<Campaign> {
+    list_with_skipped(data_folder).0
 }
 
 /// Reconcile one campaign explicitly (what `get` and `list` do on the way).
@@ -2068,6 +2096,44 @@ pub(crate) mod tests {
             estimate: None,
             driver: DRIVER_RENDERER.to_string(),
         }
+    }
+
+    #[test]
+    fn list_skips_a_damaged_record_and_names_it() {
+        let d = data_dir("skip");
+        assert!(list_with_skipped(&d).0.is_empty(), "a missing folder is an empty list");
+        let mut c = campaign(vec![plan("a", &[], &[])]);
+        c.process_epoch = epoch();
+        save(&d, &c).unwrap();
+        let bad = root(&d).join("c-bad");
+        std::fs::create_dir_all(&bad).unwrap();
+        std::fs::write(bad.join("campaign.json"), "{ not json").unwrap();
+        let empty = root(&d).join("c-empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let (ok, skipped) = list_with_skipped(&d);
+        assert_eq!(ok.len(), 1);
+        assert_eq!(skipped.len(), 1, "{skipped:?}");
+        assert_eq!(skipped[0].id, "c-bad");
+        assert!(skipped[0].reason.contains("unreadable"));
+        assert!(bad.join("campaign.json").exists(), "the damaged record is left in place");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // `commands` (home of `campaign_listing`) is compiled out of the CLI build.
+    #[cfg(not(feature = "cli"))]
+    #[test]
+    fn one_listing_call_returns_the_list_and_the_skipped_report() {
+        let d = data_dir("listing");
+        let mut c = campaign(vec![plan("a", &[], &[])]);
+        c.process_epoch = epoch();
+        save(&d, &c).unwrap();
+        let bad = root(&d).join("c-bad");
+        std::fs::create_dir_all(&bad).unwrap();
+        std::fs::write(bad.join("campaign.json"), "{ not json").unwrap();
+        let v = serde_json::to_value(crate::core::agent::commands::campaign_listing(&d)).unwrap();
+        assert_eq!(v["campaigns"].as_array().unwrap().len(), 1);
+        assert_eq!(v["skipped"][0]["id"], "c-bad");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     fn data_dir(name: &str) -> PathBuf {

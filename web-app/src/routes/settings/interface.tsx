@@ -8,6 +8,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { FontSizeSwitcher } from '@/containers/FontSizeSwitcher'
 import { AccentSettings } from '@/containers/AccentSettings'
+import { SidebarItemsPicker } from '@/containers/SidebarItemsPicker'
 import { NotificationPositionSwitcher } from '@/containers/NotificationPositionSwitcher'
 import {
   COMPLETION_SOUNDS,
@@ -55,7 +56,7 @@ function ThemeSegmented() {
       role="group"
       aria-label={t('settings:interface.theme')}
       data-testid="theme-segmented"
-      className="relative flex w-[260px] max-w-full gap-2"
+      className="relative grid w-max max-w-full min-w-[260px] grid-cols-3 gap-2"
     >
       <span
         aria-hidden
@@ -75,7 +76,7 @@ function ThemeSegmented() {
               if (!pressed) switchTheme(e.currentTarget, value, setTheme)
             }}
             className={cn(
-              'relative z-10 inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] pointer-coarse:h-11',
+              'relative z-10 inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] pointer-coarse:h-11',
               pressed
                 ? 'border-transparent bg-transparent text-on-grad'
                 : 'border-border bg-card text-secondary-foreground hover:bg-hover-row'
@@ -118,6 +119,7 @@ function InterfaceSettings() {
         title={t('settings:appearance.themeLabel')}
         description={t('settings:appearance.themeHint')}
         actions={<ThemeSegmented />}
+        classNameWrapperAction="sm:max-w-full"
       />
     </Card>
   )
@@ -193,14 +195,13 @@ function InterfaceSettings() {
     </Card>
   )
 
-  const sidebar = (
-    <Card title={t('settings:interface.sidebarLayout')}>
-      <CardItem
-        anchor="settings-appearance-sidebar-layout"
-        title={t('settings:interface.sidebarLayout')}
-        description={t('settings:interface.sidebarLayoutDesc')}
-      />
-      <SidebarLayoutPicker />
+  const sidebarItems = (
+    <Card
+      title={t('settings:sidebarItems.title')}
+      description={t('settings:sidebarItems.description')}
+      anchor="settings-appearance-sidebar-items"
+    >
+      <SidebarItemsPicker />
     </Card>
   )
 
@@ -300,63 +301,23 @@ function InterfaceSettings() {
         title={t('common:appearance')}
         description={t('settings:pageDesc.appearance')}
         // Two columns of about equal height, so neither ends in a long empty
-        // stretch: the everyday settings and Sounds on the left, the tall
-        // pickers (accent, transcript view) and Reset on the right.
-        layout={[0, 1, 0, 1, 1, 0, 1, 0, 0]}
+        // stretch. The Sidebar items card (2) is wide and holds a long list,
+        // so it spans both columns between two balanced rows: theme and
+        // reading against accent and transcript view above it; chat display
+        // against reset, motion and sounds below.
+        layout={[0, 1, 0, 1, 2, 0, 1, 1, 1]}
       >
         {theme}
         <AccentSettings />
         {reading}
         {transcript}
-        {sidebar}
+        {sidebarItems}
         {chatDisplay}
         {reset}
         {motion}
         <CompletionSoundSettings />
       </SettingsPageBody>
     </div>
-  )
-}
-
-/** Trimmed or extended sidebar: two radios, each with its summary. */
-function SidebarLayoutPicker() {
-  const { t } = useTranslation()
-  const value = useInterfaceSettings((s) => s.sidebarLayout)
-  const setValue = useInterfaceSettings((s) => s.setSidebarLayout)
-  return (
-    <RadioGroup
-      value={value}
-      onValueChange={(v) => setValue(v as typeof value)}
-      aria-label={t('settings:interface.sidebarLayout')}
-      data-testid="sidebar-layout-picker"
-      className="gap-2 pb-2"
-    >
-      {(['trimmed', 'extended'] as const).map((mode) => {
-        const id = `sidebar-layout-${mode}`
-        return (
-          <label
-            key={mode}
-            htmlFor={id}
-            className="flex cursor-pointer items-start gap-2.5 rounded-md px-1 py-1.5"
-          >
-            <RadioGroupItem
-              id={id}
-              value={mode}
-              aria-describedby={`${id}-desc`}
-              className="mt-0.5"
-            />
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-sm font-medium text-foreground">
-                {t(`settings:interface.sidebarLayout_${mode}`)}
-              </span>
-              <span id={`${id}-desc`} className="text-xs text-muted-foreground">
-                {t(`settings:interface.sidebarLayout_${mode}Desc`)}
-              </span>
-            </span>
-          </label>
-        )
-      })}
-    </RadioGroup>
   )
 }
 

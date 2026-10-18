@@ -5960,6 +5960,7 @@ export function CoworkPage() {
               <CoworkEmptyState
                 folder={folder}
                 onPick={(text) => usePrompt.getState().setPrompt(text)}
+                onAttachFolder={() => void attachFolder()}
               />
             ) : (
               <Conversation className="absolute inset-0 text-start">
@@ -6586,7 +6587,13 @@ export function CoworkPage() {
 
         {view === 'details' && (
           <div
-            className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-3"
+            className={cn(
+              'flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto py-3',
+              // As a page its scrollbar sits on the pane edge, past the shell's
+              // 12px gutter (-mr-3), the gutter moving inside as padding; in a
+              // split pane the scroller already ends at the pane's edge.
+              paneChrome ? 'px-1' : '-mr-3 pr-4 pl-1'
+            )}
             data-testid="cowork-details-view"
           >
             <Button

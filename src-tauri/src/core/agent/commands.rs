@@ -1129,8 +1129,8 @@ fn worktree_optimize(
     worktree::apply_optimizations(
         std::path::Path::new(&record.path),
         std::path::Path::new(&record.source_root),
-        &symlink_directories,
-        &sparse_paths,
+        symlink_directories,
+        sparse_paths,
     )
 }
 
@@ -1466,6 +1466,39 @@ pub async fn agent_campaign_list(app: tauri::AppHandle) -> Vec<crate::core::agen
     off_the_main_thread(move || Ok(crate::core::agent::campaign::list(&data_folder)))
         .await
         .unwrap_or_default()
+}
+
+/// The campaign folders `agent_campaign_list` skipped because their record is
+/// unreadable, with the reason. Nothing is moved or deleted.
+#[tauri::command]
+pub async fn agent_campaign_skipped(app: tauri::AppHandle) -> Vec<crate::core::agent::campaign::SkippedRecord> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || Ok(crate::core::agent::campaign::list_with_skipped(&data_folder).1))
+        .await
+        .unwrap_or_default()
+}
+
+/// The list and the skipped report from one read of the campaign folders. The
+/// board polls every few seconds; two commands meant loading and reconciling
+/// every record twice per poll.
+#[derive(serde::Serialize)]
+pub struct CampaignListing {
+    pub campaigns: Vec<crate::core::agent::campaign::Campaign>,
+    pub skipped: Vec<crate::core::agent::campaign::SkippedRecord>,
+}
+
+pub(crate) fn campaign_listing(data_folder: &std::path::Path) -> CampaignListing {
+    let (campaigns, skipped) = crate::core::agent::campaign::list_with_skipped(data_folder);
+    CampaignListing { campaigns, skipped }
+}
+
+/// [`agent_campaign_list`] and [`agent_campaign_skipped`] in one call.
+#[tauri::command]
+pub async fn agent_campaign_list_with_skipped(app: tauri::AppHandle) -> CampaignListing {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || Ok(campaign_listing(&data_folder)))
+        .await
+        .unwrap_or(CampaignListing { campaigns: Vec::new(), skipped: Vec::new() })
 }
 
 /// Move the campaign or one of its tasks along its state machine.

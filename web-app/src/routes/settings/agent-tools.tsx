@@ -455,9 +455,11 @@ function AgentToolsContent() {
             title={t('common:coworkReview.finishTitle')}
             description={t('common:coworkReview.finishDescription')}
             align="start"
+            classNameWrapperAction="sm:max-w-full"
             actions={
               <Segmented<ReviewOnlyFinish>
                 size="sm"
+                wrap
                 aria-label={t('common:coworkReview.finishTitle')}
                 value={reviewOnlyFinish}
                 onValueChange={setReviewOnlyFinish}

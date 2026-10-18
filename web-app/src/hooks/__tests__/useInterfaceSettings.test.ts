@@ -66,6 +66,39 @@ describe('useInterfaceSettings', () => {
     expect(result.current.fontSize).toBe('18px')
   })
 
+  describe('hidden sidebar items', () => {
+    const s = () => useInterfaceSettings.getState()
+
+    it('hides and shows an item, once each', () => {
+      act(() => {
+        s().showAllNavItems()
+        s().setNavItemHidden('studio', true)
+        s().setNavItemHidden('studio', true)
+      })
+      expect(s().hiddenNavItems).toEqual(['studio'])
+      act(() => s().setNavItemHidden('studio', false))
+      expect(s().hiddenNavItems).toEqual([])
+    })
+
+    it('refuses ids it does not know and items that cannot be hidden', () => {
+      act(() => {
+        s().setNavItemHidden('settings', true)
+        s().setNavItemHidden('nope', true)
+      })
+      expect(s().hiddenNavItems).toEqual([])
+    })
+
+    it('keeps ids from a newer build, and resets with the interface', () => {
+      act(() => {
+        useInterfaceSettings.setState({ hiddenNavItems: ['future-item', 'logs'] })
+        s().showAllNavItems()
+      })
+      expect(s().hiddenNavItems).toEqual(['future-item'])
+      act(() => s().resetInterface())
+      expect(s().hiddenNavItems).toEqual([])
+    })
+  })
+
   describe('accent', () => {
     it('applies a preset and a custom colour', () => {
       const { result } = renderHook(() => useInterfaceSettings())

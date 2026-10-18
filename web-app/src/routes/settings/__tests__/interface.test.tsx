@@ -39,6 +39,10 @@ vi.mock('@/containers/FontSizeSwitcher', () => ({
   FontSizeSwitcher: () => <div data-testid="font-size-switcher">Font Size Switcher</div>,
 }))
 
+vi.mock('@/containers/SidebarItemsPicker', () => ({
+  SidebarItemsPicker: () => <div data-testid="sidebar-items-picker">Sidebar items</div>,
+}))
+
 vi.mock('@/containers/AccentSettings', () => ({
   AccentSettings: () => <div data-testid="accent-color-picker">Accent Settings</div>,
 }))
@@ -190,7 +194,7 @@ describe('Interface Settings Route', () => {
     expect(setReduceMotion).toHaveBeenCalledWith(true)
   })
 
-  it('reads theme, reading, chat display, motion and reset down the first column', () => {
+  it('reads theme, reading, the full-width sidebar items, chat display, reset and motion in order', () => {
     const Component = InterfaceRoute.component as React.ComponentType
     render(<Component />)
 
@@ -200,9 +204,10 @@ describe('Interface Settings Route', () => {
     const order = [
       'settings:appearance.themeGroup',
       'settings:appearance.readingGroup',
+      'settings:sidebarItems.title',
       'settings:appearance.behaviourGroup',
-      'settings:appearance.motionGroup',
       'settings:appearance.resetGroup',
+      'settings:appearance.motionGroup',
     ].map((title) => titles.indexOf(title))
     expect(order.every((at) => at >= 0)).toBe(true)
     expect([...order].sort((x, y) => x - y)).toEqual(order)

@@ -1,28 +1,48 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePreviewSummary } from '@/hooks/usePreviewSummary'
+import { useSessionPrList } from '@/hooks/useSessionPrList'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card'
+import {
+  PREVIEW_CARD_CLASS,
+  PREVIEW_CLOSE_DELAY,
+  PREVIEW_OPEN_DELAY,
+  PreviewCard,
+  PreviewPullRequests,
+  type PreviewMeta,
+  type PreviewStatus,
+} from '@/components/shell/nav/PreviewCard'
+
+/** The card's gap from the row when no sidebar edge is found (tests, previews). */
+export const PREVIEW_SIDE_OFFSET = 10
 
 /**
- * A peek at a nav row without opening it: its title, when it was last active
- * and a line of what it is about. The same card ThreadList.tsx shows for a
- * chat, for rows (cowork sessions, rooms) that are not chats.
+ * How far right of the row the card starts: 8px past the sidebar (`aside`)
+ * the row sits in, so the card never covers the row's trailing menu button
+ * or the sidebar's scrollbar; the default gap outside a sidebar.
  */
-export function RowPreview({
-  title,
-  updated,
-  summary,
-  summaryKey,
-  transcript,
-  suppressed,
-  children,
-}: {
+export function previewSideOffset(row: HTMLElement): number {
+  const aside = row.closest('aside')
+  if (!aside) return PREVIEW_SIDE_OFFSET
+  const gap = aside.getBoundingClientRect().right - row.getBoundingClientRect().right + 8
+  return Number.isFinite(gap) && gap > 0 ? gap : PREVIEW_SIDE_OFFSET
+}
+
+/** Facts read from disk when the card opens, never to draw the row. */
+export type PreviewFacts = { first?: string; count: number }
+
+export type RowPreviewProps = {
   title: string
-  /** Epoch milliseconds. */
-  updated?: number
+  status?: PreviewStatus
+  /** Where it works, on what, and when; `messages` may come from `facts`. */
+  meta?: PreviewMeta
+  /** The model it runs on, resolved to a display name for the card. */
+  model?: { provider: string; id: string } | null
   /** The plain line shown until (or instead of) a written summary. */
   summary?: string
   /**
@@ -32,10 +52,42 @@ export function RowPreview({
   summaryKey?: string
   /** The conversation as text; called when the card opens. */
   transcript?: () => Promise<string> | string
+  /**
+   * The first thing asked and the message count, read when the card opens
+   * (a chat's messages are on disk, not in the row).
+   */
+  facts?: () => Promise<PreviewFacts>
+  /** The session whose pull requests the card lists. */
+  pullRequests?: { sessionId: string; folder: string | null | undefined }
   /** Shut while the row's menu is open, so the card cannot cover it. */
   suppressed: boolean
   children: ReactNode
-}) {
+}
+
+/**
+ * Closes the card open now, if any. One card at a time: a card opening on
+ * another row shuts the previous one at once instead of fading out under it.
+ */
+let closeOpenCard: (() => void) | null = null
+
+/**
+ * A peek at a nav row without opening it: the same card for chats, Cowork
+ * sessions and rooms (`PreviewCard`), opened by a resting pointer or keyboard
+ * focus and never over the row's own menu.
+ */
+export function RowPreview({
+  title,
+  status,
+  meta,
+  model,
+  summary,
+  summaryKey,
+  transcript,
+  facts,
+  pullRequests,
+  suppressed,
+  children,
+}: RowPreviewProps) {
   const [open, setOpen] = useState(false)
   // Forget a hover that began before the menu or a dialog opened; otherwise the
   // card returns as soon as `suppressed` clears (a picked menu item).
@@ -49,21 +101,73 @@ export function RowPreview({
   // the pointer elsewhere.
   const hovered = useRef(false)
   const pressed = useRef(false)
-  const written = usePreviewSummary(summaryKey, open && !suppressed, transcript)
-  const shown = written.summary ?? summary
+  // Tabbing onto the row opens the card too; a focus that did not come from the
+  // keyboard (focus handed back after a click) does not.
+  const keyboardFocus = useRef(false)
+  const [byKeyboard, setByKeyboard] = useState(false)
+  // The card's links are reachable from the row (ArrowRight moves focus in).
+  // While focus is inside, the card stays open; Escape closes it and returns
+  // focus to the row.
+  const rowEl = useRef<HTMLElement | null>(null)
+  const cardEl = useRef<HTMLElement | null>(null)
+  const focusInside = useRef(false)
+  // The card opens past the sidebar's edge, not the row's: a row ends before
+  // its trailing menu button and the sidebar's own scrollbar, which the card
+  // would otherwise cover.
+  const [sideOffset, setSideOffset] = useState(PREVIEW_SIDE_OFFSET)
+  const measure = (el: HTMLElement) => setSideOffset(previewSideOffset(el))
+  const shown = open && !suppressed
+  useEffect(() => {
+    if (!shown) return
+    closeOpenCard?.()
+    const close = () => setOpen(false)
+    closeOpenCard = close
+    return () => {
+      if (closeOpenCard === close) closeOpenCard = null
+    }
+  }, [shown])
   return (
     <HoverCard
-      openDelay={650}
-      closeDelay={80}
-      open={open && !suppressed}
-      onOpenChange={(next) =>
-        setOpen(next && hovered.current && !pressed.current)
-      }
+      openDelay={PREVIEW_OPEN_DELAY}
+      closeDelay={PREVIEW_CLOSE_DELAY}
+      open={shown}
+      onOpenChange={(next) => {
+        if (!next && focusInside.current) return
+        const allowed =
+          next && (hovered.current || keyboardFocus.current) && !pressed.current
+        setOpen(allowed)
+        if (allowed) setByKeyboard(!hovered.current && keyboardFocus.current)
+      }}
     >
       <HoverCardTrigger
         asChild
-        onPointerEnter={() => {
+        onFocus={(e: React.FocusEvent<HTMLElement>) => {
+          rowEl.current = e.currentTarget
+          measure(e.currentTarget)
+          try {
+            keyboardFocus.current = e.currentTarget.matches(':focus-visible')
+          } catch {
+            keyboardFocus.current = false
+          }
+        }}
+        onBlur={(e: React.FocusEvent<HTMLElement>) => {
+          // Focus moving into the card keeps the peek keyboard-driven.
+          if (!cardEl.current?.contains(e.relatedTarget as Node | null)) {
+            keyboardFocus.current = false
+          }
+        }}
+        onKeyDown={(e: React.KeyboardEvent<HTMLElement>) => {
+          if (e.key !== 'ArrowRight' || !shown || !byKeyboard) return
+          const link = cardEl.current?.querySelector<HTMLElement>(
+            'a[href], button'
+          )
+          if (!link) return
+          e.preventDefault()
+          link.focus()
+        }}
+        onPointerEnter={(e: React.PointerEvent<HTMLElement>) => {
           hovered.current = true
+          measure(e.currentTarget)
         }}
         onPointerLeave={() => {
           hovered.current = false
@@ -79,30 +183,114 @@ export function RowPreview({
       <HoverCardContent
         side="right"
         align="start"
-        sideOffset={10}
-        className="w-80 max-w-[calc(100vw-2rem)] p-3"
+        sideOffset={sideOffset}
+        collisionPadding={12}
+        className={PREVIEW_CARD_CLASS}
+        ref={(el: HTMLDivElement | null) => {
+          cardEl.current = el
+        }}
+        onFocus={() => {
+          focusInside.current = true
+        }}
+        onBlur={(e: React.FocusEvent<HTMLElement>) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            focusInside.current = false
+          }
+        }}
+        onKeyDown={(e: React.KeyboardEvent<HTMLElement>) => {
+          if (e.key !== 'Escape') return
+          e.stopPropagation()
+          focusInside.current = false
+          setOpen(false)
+          rowEl.current?.focus()
+        }}
       >
-        <p className="line-clamp-2 text-[0.8125rem] font-medium text-foreground">
-          {title}
-        </p>
-        <p className="mt-1 text-[11px] text-subtle-foreground">
-          {updated ? new Date(updated).toLocaleString() : ''}
-        </p>
-        {shown && (
-          <p
-            data-testid="row-preview-summary"
-            className={`mt-2 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground${
-              // A written summary is as long as it is; the plain fallback line
-              // can be a whole pasted prompt, so it stays cut short.
-              written.summary ? '' : ' line-clamp-4'
-            }${written.loading && !written.summary ? ' opacity-60' : ''}`}
-          >
-            {shown}
-          </p>
-        )}
+        {/* Mounted only while open, so the summary, the disk read and the
+            pull-request lookups happen on a peek and never for a row. */}
+        <RowPreviewBody
+          title={title}
+          status={status}
+          meta={meta}
+          model={model}
+          summary={summary}
+          summaryKey={summaryKey}
+          transcript={transcript}
+          facts={facts}
+          pullRequests={pullRequests}
+          hint={byKeyboard}
+        />
       </HoverCardContent>
     </HoverCard>
   )
+}
+
+function RowPreviewBody({
+  title,
+  status,
+  meta,
+  model,
+  summary,
+  summaryKey,
+  transcript,
+  facts,
+  pullRequests,
+  hint,
+}: Omit<RowPreviewProps, 'suppressed' | 'children'> & { hint: boolean }) {
+  const written = usePreviewSummary(summaryKey, true, transcript)
+  const [read, setRead] = useState<PreviewFacts>()
+  useEffect(() => {
+    if (!facts) return
+    let current = true
+    void facts().then((f) => {
+      if (current) setRead(f)
+    })
+    return () => {
+      current = false
+    }
+    // Called once per open; the key says which conversation state it is for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryKey])
+  const modelName = useModelProvider((s) =>
+    model
+      ? s.providers
+          .find((p) => p.provider === model.provider)
+          ?.models.find((m) => m.id === model.id)?.displayName
+      : undefined
+  )
+  const messages = meta?.messages ?? read?.count
+  return (
+    <PreviewCard
+      title={title}
+      status={status}
+      meta={{
+        ...meta,
+        model: meta?.model ?? modelName ?? model?.id,
+        messages,
+      }}
+      summary={written.summary ?? summary ?? read?.first}
+      summaryLoading={written.loading && !written.summary}
+      pullRequests={
+        pullRequests ? (
+          <SessionPullRequests
+            sessionId={pullRequests.sessionId}
+            folder={pullRequests.folder}
+          />
+        ) : undefined
+      }
+      hint={hint}
+    />
+  )
+}
+
+function SessionPullRequests({
+  sessionId,
+  folder,
+}: {
+  sessionId: string
+  folder: string | null | undefined
+}) {
+  const { prs, loading, error } = useSessionPrList(sessionId, folder)
+  return <PreviewPullRequests prs={prs} loading={loading} error={error} />
 }
 
 /** The text of the last thing the user asked, from AI SDK UI messages. */
@@ -119,4 +307,15 @@ export function lastUserText(
     if (text) return text
   }
   return undefined
+}
+
+/**
+ * A folder as breadcrumb segments: its last two names, so `C:\Projects\acme-
+ * weather\web` reads "acme-weather › web" and a worktree's own folder names
+ * the repository it was cut from.
+ */
+export function placeOf(folder: string | null | undefined, depth = 2): string[] {
+  if (!folder) return []
+  const parts = folder.split(/[\\/]+/).filter((p) => p && !/^[a-zA-Z]:$/.test(p))
+  return parts.slice(-depth)
 }

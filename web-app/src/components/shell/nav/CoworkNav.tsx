@@ -1,5 +1,5 @@
 import { FadeText } from '@/components/ui/fade-text'
-import { RowPreview, lastUserText } from '@/components/shell/nav/RowPreview'
+import { RowPreview, lastUserText, placeOf } from '@/components/shell/nav/RowPreview'
 import {
   NavAction,
   NavButton,
@@ -143,9 +143,21 @@ const SessionItem = memo(function SessionItem({
   const ledger = useCoworkOrigins((state) => state.bySession[session.id])
   const activity = useFileActivity((s) => s.byConversation[session.id])
   const running = useCoworkRun((s) => !!s.runs[session.id])
+  const waiting = useNeedsApproval(session.id)
+  // The session's own worktree when it has one: the card names the repository
+  // it was cut from and its branch, and the pull requests are its branch's.
+  const worktree = useCoworkWorktrees((s) => s.bySession[session.id])
+  // The last thing asked, from the conversation or (a session saved before
+  // `messages` existed, or seeded without them) from its turns.
   const summary = useMemo(
-    () => lastUserText(session.messages),
-    [session.messages]
+    () =>
+      lastUserText(session.messages) ??
+      session.turns.filter((turn) => turn.role === 'user').at(-1)?.content,
+    [session.messages, session.turns]
+  )
+  const place = useMemo(
+    () => placeOf(worktree?.sourceRoot ?? session.folder),
+    [worktree?.sourceRoot, session.folder]
   )
 
   /**
@@ -169,10 +181,21 @@ const SessionItem = memo(function SessionItem({
     <NavItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
       <RowPreview
         title={session.title}
-        updated={session.updated}
+        status={waiting ? 'waiting' : running ? 'running' : 'idle'}
+        meta={{
+          place,
+          branch: worktree?.branch,
+          updated: session.updated,
+          messages: session.messages.length || session.turns.length,
+        }}
+        model={session.model}
         summary={summary}
         summaryKey={`${session.id}\u0000${session.updated}`}
         transcript={() => coworkTranscript(session.id)}
+        pullRequests={{
+          sessionId: session.id,
+          folder: worktree?.path ?? session.folder,
+        }}
         suppressed={menuOpen || activityOpen}
       >
         <NavButton

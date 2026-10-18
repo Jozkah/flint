@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { render, screen } from '@testing-library/react'
-import { NavButton, NavItem } from '../nav-kit'
+import { NavAction, NavButton, NavItem } from '../nav-kit'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const src = (path: string) =>
   readFileSync(resolve(__dirname, '..', '..', '..', path), 'utf8')
@@ -23,19 +27,69 @@ describe('sidebar row titles fade instead of ending in an ellipsis', () => {
     expect(button.className).not.toContain(':truncate')
   })
 
-  it('the mask is drawn only on overflowing text, widening only under a row action', () => {
+  it('the fade is a long, transitioned mask on the text, wider only when overflowing', () => {
     const css = src('index.css')
     const start = css.indexOf('@utility text-fade')
     const block = css.slice(start, css.indexOf('/* Loading text:', start))
+    expect(css).toMatch(/@property --text-fade-width \{\s*syntax: '<length>'/)
     expect(block).toMatch(/text-overflow:\s*clip/)
-    // No mask on the base rule: short labels are not faded.
-    const base = block.slice(0, block.indexOf('&['))
-    expect(base).not.toMatch(/mask-image/)
+    // Zero width until the text overflows: short labels are not faded.
+    expect(block).toMatch(/--text-fade-width:\s*0px/)
     expect(block).toMatch(
-      /&\[data-overflow='true'\] \{\s*-webkit-mask-image: linear-gradient\(to right/
+      /&\[data-overflow='true'\] \{\s*--text-fade-width:\s*(3\d|4\d)px/
     )
-    expect(block).toContain(
-      "[data-slot='nav-item']:has([data-slot='nav-action']):is(:hover, :focus-within, :has([data-slot='nav-action'][data-state='open'])) &[data-overflow='true']"
+    // No hover-only colour box or reserve: the row pads instead.
+    expect(block).not.toContain('nav-action')
+    expect(block).toContain('&:dir(rtl)')
+    expect(block).toContain('prefers-reduced-motion')
+    // Room for descenders under a tight line-height.
+    expect(block).toMatch(/padding-block:\s*0\.2em/)
+  })
+
+  it('a row with a hover action pads right only while the action shows', () => {
+    render(
+      <ul>
+        <NavItem>
+          <NavButton>
+            <span>t</span>
+          </NavButton>
+          <NavAction showOnHover>x</NavAction>
+        </NavItem>
+      </ul>
+    )
+    const cls = screen.getAllByRole('button')[0].className
+    expect(cls).toContain('group-hover/nav-item:pr-8')
+    expect(cls).toContain('group-focus-within/nav-item:pr-8')
+    expect(cls).not.toMatch(
+      /(^|\s)group-has-data-\[slot=nav-action\]\/nav-item:pr-8/
+    )
+    expect(screen.getAllByRole('button')[1].getAttribute('data-reveal')).toBe(
+      'hover'
+    )
+  })
+
+  it('keeps its nav-action slot when a menu trigger is wrapped around it', () => {
+    // The row only pads for the action while `data-slot=nav-action` exists;
+    // a dropdown trigger's own slot used to replace it, so the padding rule
+    // never matched and the "..." sat on top of the faded title.
+    render(
+      <ul>
+        <NavItem>
+          <NavButton>
+            <span>t</span>
+          </NavButton>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <NavAction showOnHover>x</NavAction>
+            </DropdownMenuTrigger>
+          </DropdownMenu>
+        </NavItem>
+      </ul>
+    )
+    const action = screen.getAllByRole('button')[1]
+    expect(action.getAttribute('data-slot')).toBe('nav-action')
+    expect(action.closest('li')?.querySelector('[data-slot=nav-action]')).toBe(
+      action
     )
   })
 

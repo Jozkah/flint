@@ -358,8 +358,7 @@ fn changes_to_unknown_dir(words: &[String], scope: &Scope) -> bool {
         "cd" | "chdir" | "pushd" | "set-location" | "sl" | "push-location" => {
             let target = words[1..]
                 .iter()
-                .filter(|a| !a.starts_with('-') && !is_cmd_switch(a))
-                .last();
+                .rfind(|a| !a.starts_with('-') && !is_cmd_switch(a));
             match target {
                 None => true,
                 Some(t) => {
