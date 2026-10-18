@@ -125,7 +125,7 @@ export function CoworkRailToolbar({
           className={cn(
             'shrink-0 gap-1.5',
             tabs
-              ? 'h-8 min-w-0 justify-center rounded-lg px-2 text-[12.5px] font-normal pointer-coarse:min-h-11'
+              ? 'h-8 min-w-0 justify-center rounded-lg px-2.5 text-[12.5px] font-normal pointer-coarse:min-h-11'
               : 'pointer-coarse:h-11 pointer-coarse:px-3',
             tabs && active === mode
               ? 'bg-card font-medium text-foreground shadow-lift hover:bg-card'
@@ -135,7 +135,18 @@ export function CoworkRailToolbar({
           )}
         >
           {icon}
-          {tabs && name ? <span>{name}</span> : null}
+          {tabs && name ? (
+            // One row at every width: when the strip is narrow the tabs that
+            // are not open keep only their icon (the name stays on the
+            // tooltip and the accessible name); the open tab keeps its word.
+            <span
+              className={cn(
+                active !== mode && '@max-[30rem]/railtabs:sr-only'
+              )}
+            >
+              {name}
+            </span>
+          ) : null}
           {badge}
         </Button>
       </TooltipTrigger>
@@ -151,7 +162,9 @@ export function CoworkRailToolbar({
       // wraps instead (see ChatInput), which is what stops this group from
       // overflowing to the right and sliding under the send button.
       className={cn(
-        tabs ? 'grid grid-cols-3 gap-1' : 'flex shrink-0 items-center'
+        tabs
+          ? '@container/railtabs flex items-center gap-1 overflow-x-auto [scrollbar-width:none]'
+          : 'flex shrink-0 items-center'
       )}
     >
       {item(

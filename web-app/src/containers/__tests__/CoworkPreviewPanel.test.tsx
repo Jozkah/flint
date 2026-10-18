@@ -90,7 +90,16 @@ describe('CoworkPreviewPanel', () => {
     respondWith('<h1>Report</h1>')
     render(<CoworkPreviewPanel root={ROOT} path="report.html" onClose={vi.fn()} verify={<div data-testid="verify-form" />} />)
     expect(await screen.findByTitle('report.html')).toBeInTheDocument()
-    expect(screen.getByTestId('verify-form').closest('details')).not.toHaveAttribute('open')
+    // The form sits above the file in a capped strip; the panel decides how
+    // folded it starts (BrowserVerifyPanel's `defaultOpen`).
+    expect(screen.getByTestId('verify-form')).toBeInTheDocument()
+  })
+
+  it('shows the empty state with its hint and the verify form when nothing is open', () => {
+    render(<CoworkPreviewPanel root={ROOT} onClose={vi.fn()} verify={<div data-testid="verify-form" />} />)
+    expect(screen.getByTestId('verify-form')).toBeInTheDocument()
+    expect(screen.getByText('common:preview.empty')).toBeInTheDocument()
+    expect(screen.getByText('common:preview.emptyHint')).toBeInTheDocument()
   })
 
   it('runs no scripts for an svg', async () => {

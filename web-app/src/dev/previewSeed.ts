@@ -38,6 +38,7 @@ import { useRoomsStore } from '@/lib/rooms/store'
 import { answer } from './previewTauri'
 import { seedStudioAnswers } from './previewStudio'
 import { seedRooms } from './previewRooms'
+import { seedApplyReviewPreview } from './previewApplyReview'
 import { seedBrowserPane } from './previewBrowser'
 import { seedEngine } from './previewSeedEngine'
 import { seedHuggingFacePreview } from './previewHuggingFace'
@@ -199,6 +200,7 @@ const CHATS: ChatSeed[] = [
   ['vllm', 'Sourdough starter schedule', 9000],
   ['clutter', 'SQL window functions', 12000],
   ['test', 'Regex for ISO dates', 20000],
+  ['mdshow', 'Markdown showcase', 25000],
   // Same title in three places, and one very long title: the @ / # menus tell
   // the first apart and truncate the second.
   ['plan1', 'Weekly planning', 300, 'weather'],
@@ -207,10 +209,53 @@ const CHATS: ChatSeed[] = [
   ['longtitle', 'Investigate why the nightly benchmark regression only reproduces on the Windows runner after the allocator upgrade and compare it with the Linux numbers', 120, 'weather'],
 ]
 
+/** Every markdown feature the renderer styles: lists, tasks, tables, mermaid, long code. */
+const MARKDOWN_SHOWCASE = [
+  '# Markdown showcase',
+  '',
+  'Some **bold**, *italic*, ~~strike~~ and `inline code` with a [link](https://example.com).',
+  '',
+  '## Lists',
+  '1. First ordered item that is long enough to wrap onto a second line so that hanging indent can be inspected properly in the UI',
+  '2. Second item',
+  '   - nested bullet one',
+  '   - nested bullet two with more words to wrap around the container width and show the indentation',
+  '     - third level bullet',
+  '',
+  '- A top-level bullet that is long enough to wrap onto a second line so the hanging indent shows',
+  '- Second bullet',
+  '',
+  '- [x] done task',
+  '- [ ] open task',
+  '',
+  '## Table',
+  '| Name | Role | Team | Location |',
+  '|---|---|---|---|',
+  '| Alice | Engineer | Platform | Amsterdam |',
+  '| Charlie | Designer | Growth | Barcelona |',
+  '| Dana | Manager | Infrastructure | Copenhagen |',
+  '',
+  '## Diagram',
+  '```mermaid',
+  'graph TD',
+  '  A[Start] --> B{Check}',
+  '  B -->|yes| C[Ship]',
+  '  B -->|no| D[Fix]',
+  '  D --> B',
+  '```',
+  '',
+  '## Long code',
+  '```ts',
+  ...Array.from({ length: 72 }, (_, i) => `const line${i} = ${i} // code line ${i} that is fairly long to test wrapping`),
+  '```',
+].join('\n')
+
 /** A short exchange for a seeded chat, so its row can show a count and a preview. */
 function fillerMessages(id: string, title: string): ThreadMessage[] {
   const base = { object: 'thread.message', thread_id: id, status: 'ready' }
-  const lines: [string, string][] = [
+  const lines: [string, string][] = id === 'mdshow'
+    ? [['user', 'Show every markdown feature.'], ['assistant', MARKDOWN_SHOWCASE]]
+    : [
     ['user', `Let's work on: ${title}`],
     ['assistant', 'Sure. Start with the smallest change that shows the problem, then widen it.'],
     ['user', 'Agreed. I will try that tomorrow and report back with the numbers.'],
@@ -1170,7 +1215,16 @@ function seedCowork() {
   }
   const view = useCoworkView.getState()
   const rail = p.get('rail')
-  view.setRail('escape', rail === 'none' ? null : rail === 'browser' ? { kind: 'browser' } : { kind: 'diff' })
+  view.setRail(
+    'escape',
+    rail === 'none'
+      ? null
+      : rail === 'browser'
+        ? { kind: 'browser' }
+        : rail === 'preview'
+          ? { kind: 'preview' }
+          : { kind: 'diff' }
+  )
   if (rail === 'browser') seedBrowserPane('escape')
   view.setRail('dash', { kind: 'code' })
   view.setRail('paths', null)
@@ -1237,7 +1291,7 @@ function patchServices() {
   set('messagesService', 'fetchMessages', async (id: string) => {
     if (id === 'release') return releaseMessages()
     const chat = CHATS.find((c) => c[0] === id)
-    return chat && /^(plan\d|longtitle)$/.test(id) ? fillerMessages(id, chat[1]) : []
+    return chat && /^(plan\d|longtitle|mdshow)$/.test(id) ? fillerMessages(id, chat[1]) : []
   })
   set('projectsService', 'getProjects', async () => FOLDERS)
   set('threadsService', 'fetchThreads', async () => (params().has('empty') ? [] : threads()))
@@ -1291,6 +1345,37 @@ function seedMentionDraft(many: boolean) {
   void import('@/hooks/usePrompt').then((m) => m.usePrompt.getState().setPrompt(prompt))
 }
 
+function seedHeavy() {
+  const n = Number(params().get('heavy')) || 2000
+  const list: Thread[] = []
+  for (let i = 0; i < n; i++) {
+    list.push({
+      id: `heavy-${i}`,
+      title: `Heavy chat ${i} about ${['rust', 'react', 'sql', 'docker'][i % 4]}`,
+      // Spread across the last 60 days; the first 30 inside the "recent" hour.
+      updated: (now - (i < 30 ? i : i * 43) * MIN) / 1000,
+      isFavorite: i % 97 === 0,
+      assistants: [],
+      model: { id: 'claude-sonnet-5', provider: 'anthropic' },
+      metadata: {},
+    } as unknown as Thread)
+  }
+  useThreads.getState().setThreads([...threads(), ...list])
+  const code = '```ts\n' + Array.from({ length: 40 }, (_, k) => `const v${k} = compute(${k}) // line ${k}`).join('\n') + '\n```'
+  const table = '| a | b | c |\n|---|---|---|\n' + Array.from({ length: 20 }, (_, k) => `| ${k} | ${k * 2} | ${k * 3} |`).join('\n')
+  const msgs = Array.from({ length: 300 }, (_, i) => ({
+    id: `heavy-m-${i}`,
+    object: 'thread.message',
+    thread_id: 'heavy-0',
+    role: i % 2 ? 'assistant' : 'user',
+    created_at: now - (300 - i) * MIN,
+    completed_at: now - (300 - i) * MIN,
+    content: [text(i % 2 ? `## Answer ${i}\n\nSome **markdown** text.\n\n${code}\n\n${table}` : `Question ${i}?`)],
+  })) as unknown as ThreadMessage[]
+  useMessages.getState().setMessages('heavy-0', msgs)
+  ;(window as unknown as Record<string, unknown>).__flintPerf = { useThreads, useMessages }
+}
+
 export function seedPreview() {
   seedBackendAnswers()
   patchServices()
@@ -1314,10 +1399,14 @@ export function seedPreview() {
   seedUsage()
   seedCowork()
   seedRooms()
+  seedApplyReviewPreview(params().get('applyseed'))
   seedEngine()
   seedHuggingFacePreview()
   seedSettingsPreview()
   seedRichSearch()
+  // `?heavy`: a big data folder for performance runs (2,000 chats, one
+  // 300-message chat with code and tables), stores exposed on window.
+  if (params().has('heavy')) seedHeavy()
   // `?empty`: no conversation anywhere, to look at the @ / # menus' empty state.
   if (params().has('empty')) {
     useThreads.setState({ threads: {} } as never)

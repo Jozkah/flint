@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { errorText } from '@/lib/errorText'
 import {
@@ -66,6 +67,8 @@ export type PromptSnapshotViewProps = {
   replayDeps?: ReplayDeps
   /** Injectable for tests: every snapshot of a session (AH-086). */
   onList?: (session: string) => Promise<PromptSnapshot[]>
+  /** The disclosure's own words, when the surface has better ones. */
+  summary?: string
 }
 
 const STATE_LABEL: Record<ReplayView['state'], string> = {
@@ -431,18 +434,26 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
 
   return (
     <details
-      className="rounded-md border border-border bg-muted/60 px-3 py-2 text-xs"
+      className="group rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2 text-xs"
       data-testid="prompt-snapshot"
       onToggle={(e) => {
         if ((e.currentTarget as HTMLDetailsElement).open) void load()
       }}
     >
+      {/* Reads as a row that opens, not as a disabled field: the words, and
+          a chevron that turns. */}
       <summary
-        className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm"
+        className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-[12.5px] font-medium text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden"
         aria-controls={panelId}
         data-testid="prompt-snapshot-toggle"
       >
-        What the model received
+        <span className="min-w-0 flex-1">
+          {props.summary ?? 'What the model received'}
+        </span>
+        <ChevronDown
+          aria-hidden
+          className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+        />
       </summary>
 
       <div id={panelId} className="mt-2 flex flex-col gap-2">

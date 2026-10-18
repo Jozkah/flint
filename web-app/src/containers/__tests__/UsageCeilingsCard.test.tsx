@@ -61,10 +61,13 @@ describe('UsageCeilingsCard', () => {
     await waitFor(() => expect(screen.getByTestId('usage-meter')).toBeTruthy())
     expect(screen.getByText('400 / 1,000')).toBeTruthy()
     expect(screen.getByText('Oldest use ages out in 4h 0m')).toBeTruthy()
+    // Nothing to save until a limit is edited.
+    expect(screen.getByText('Save').closest('button')).toBeDisabled()
 
     fireEvent.change(screen.getByLabelText('Tokens per week'), {
       target: { value: '50000' },
     })
+    expect(screen.getByText('Save').closest('button')).not.toBeDisabled()
     fireEvent.click(screen.getByText('Save'))
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('set_usage_ceilings', {

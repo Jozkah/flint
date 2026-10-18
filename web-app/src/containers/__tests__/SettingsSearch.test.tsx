@@ -14,6 +14,12 @@ Object.defineProperty(global, 'IS_MACOS', { value: false, writable: true })
 
 let pathname = '/settings/general'
 
+// The desktop menu: every page is reachable there.
+vi.mock('@/lib/platform/utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/platform/utils')>()),
+  isPlatformTauri: () => true,
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: vi.fn(),
   useLocation: () => ({ pathname }),
@@ -97,6 +103,20 @@ describe('SettingsSearch', () => {
     render(<SettingsSearch />)
     await type('Theme')
     expect(optionTexts()[0]).toContain('Theme')
+  })
+
+  it('marks where the query appears in a result', async () => {
+    render(<SettingsSearch />)
+    await type('Theme')
+    const marks = screen.getAllByRole('option')[0].querySelectorAll('mark')
+    expect(marks.length).toBeGreaterThan(0)
+    expect(marks[0].textContent).toBe('Theme')
+  })
+
+  it('offers a hint when nothing matches', async () => {
+    render(<SettingsSearch />)
+    await type('zzzzzznotasetting')
+    expect(screen.getByText('common:settingsSearch.emptyHint')).toBeInTheDocument()
   })
 
   it('finds a setting by keyword synonym', async () => {

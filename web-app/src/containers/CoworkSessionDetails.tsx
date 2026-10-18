@@ -59,7 +59,7 @@ export function CoworkSessionDetails({
           </p>
         </header>
         <div
-          className="flex min-w-0 flex-col gap-3 [overflow-wrap:anywhere] [&_*]:min-w-0"
+          className="flex min-w-0 flex-col gap-4 [overflow-wrap:anywhere] [&_*]:min-w-0"
           data-testid="session-details-body"
         >
           {children}
@@ -103,7 +103,7 @@ export function CoworkSessionDetails({
             manifest for a panel nobody asked to see. */}
         {open && (
           <div
-            className="flex min-w-0 flex-col gap-3 [overflow-wrap:anywhere] [&_*]:min-w-0"
+            className="flex min-w-0 flex-col gap-4 [overflow-wrap:anywhere] [&_*]:min-w-0"
             data-testid="session-details-body"
           >
             {children}

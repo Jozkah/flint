@@ -262,6 +262,32 @@ function answers() {
       persistent: false,
     },
   ])
+  // The Local API Server page's token limits: a 5-hour ceiling part-way
+  // spent, and no weekly one.
+  let ceilings = { tokensPer5h: 250_000 as number | null, tokensPerWeek: null as number | null }
+  const standings = () =>
+    [
+      ceilings.tokensPer5h != null && {
+        ceiling: 'tokens per 5 hours',
+        used: 184_320,
+        limit: ceilings.tokensPer5h,
+        freesInSecs: 2 * 3600 + 41 * 60,
+      },
+      ceilings.tokensPerWeek != null && {
+        ceiling: 'tokens per week',
+        used: 1_204_880,
+        limit: ceilings.tokensPerWeek,
+        freesInSecs: 5 * 86400 + 3 * 3600,
+      },
+    ].filter(Boolean)
+  answer('get_usage_ceilings', () => ({ ...ceilings, standings: standings() }))
+  answer('set_usage_ceilings', (a) => {
+    ceilings = {
+      tokensPer5h: (a.tokensPer5h as number | null) ?? null,
+      tokensPerWeek: (a.tokensPerWeek as number | null) ?? null,
+    }
+    return { ...ceilings, standings: standings() }
+  })
   answer(`${at}memory_list`, () => ['build-notes'])
   answer(`${at}skill_list`, () => [{ name: 'go-testing', description: 'Run and read go tests' }])
   answer(`${at}sandbox_status`, () => ({ backend: 'appcontainer', enforces: true }))

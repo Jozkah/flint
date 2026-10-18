@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toAssetUrl } from '@/lib/assetPath'
-import { FolderOpen, Globe, RotateCw, SquareArrowOutUpRight } from 'lucide-react'
+import { Eye, FolderOpen, Globe, RotateCw, SquareArrowOutUpRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import {
   Tooltip,
   TooltipContent,
@@ -181,10 +182,15 @@ export function CoworkPreviewPanel({ root, path, onClose, verify }: Props) {
   if (!path) {
     return (
       <CoworkSidePanel title={t('common:preview.title')} onClose={onClose}>
-        {verify}
-        <p className="px-4 py-10 text-center text-xs text-muted-foreground motion-safe:animate-rise-in">
-          {t('common:preview.empty')}
-        </p>
+        <div className="flex h-full min-h-0 flex-col">
+          {verify}
+          <EmptyState
+            className="min-h-48"
+            icon={<Eye />}
+            title={t('common:preview.empty')}
+            description={t('common:preview.emptyHint')}
+          />
+        </div>
       </CoworkSidePanel>
     )
   }
@@ -229,12 +235,11 @@ export function CoworkPreviewPanel({ root, path, onClose, verify }: Props) {
     >
       {verify ? (
         <div className="flex h-full min-h-0 flex-col">
-          <details className="max-h-1/2 shrink-0 overflow-auto border-b border-border">
-            <summary className="cursor-pointer px-3 py-2 text-xs font-medium">
-              {t('common:browserVerify.title')}
-            </summary>
+          {/* The verify disclosure folds itself over a file; capped so a
+              long run's evidence never pushes the artifact out of view. */}
+          <div className="max-h-1/2 shrink-0 overflow-auto [scrollbar-width:thin]">
             {verify}
-          </details>
+          </div>
           <div className="min-h-0 flex-1">
             <PreviewBody state={state} allowNetwork={allowNetwork} />
           </div>
