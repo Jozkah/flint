@@ -14,6 +14,7 @@
   "models": "Mô hình",
   "filterModels": "Lọc {{count}} mô hình",
   "modelsShown": "Đang hiện {{shown}} trên {{total}}",
+  "noModelsMatch": "Không có mô hình nào khớp với \"{{query}}\"",
   "showMoreModels": "Hiện thêm",
   "backendInstalled": "Đã cài",
   "backendHistoryShow": "Hiện lịch sử cập nhật",
@@ -38,6 +39,12 @@
   "importedTooltip": "Được nhập từ một tệp cục bộ. Gỡ nó khỏi Flint sẽ không xóa tệp trên đĩa.",
   "importModelSuccess": "Mô hình {{provider}} đã được nhập thành công.",
   "importModelError": "Không thể nhập mô hình:",
+
+  "importScanHint": "Tìm trong LM Studio, Ollama, bộ nhớ đệm Hugging Face, llama.cpp và GPT4All. Không có gì được sao chép cho đến khi bạn nhập.",
+
+  "importAddFolder": "Thêm thư mục mô hình",
+
+  "importRemoveFolder": "Xóa thư mục {{folder}}",
   "stop": "Dừng",
   "start": "Bắt đầu",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "Thêm nhà cung cấp",
   "addOpenAIProvider": "Thêm nhà cung cấp OpenAI",
   "enterNameForProvider": "Nhập tên cho nhà cung cấp",
+  "apiVersion": {
+    "title": "Phiên bản API",
+    "description": "Chỉ dành cho điểm cuối Azure kiểu deployments (/openai/deployments/<name>) có URL không chứa ?api-version=. Điểm cuối /openai/v1 không cần."
+  },
   "baseUrl": {
     "title": "URL gốc",
     "openaiDescription": "Dùng proxy hoặc cổng kết nối tương thích với API OpenAI. Mặc định là https://api.openai.com/v1.",
     "azureDescription": "Điểm cuối Azure OpenAI của bạn. Thay YOUR-RESOURCE-NAME bằng tên tài nguyên Azure của bạn.",
     "litellmDescription": "Địa chỉ proxy LiteLLM của bạn, bao gồm /v1. Mặc định là http://localhost:4000/v1.",
-    "qwenDescription": "Điểm cuối Model Studio của bạn. Một khóa chỉ hoạt động ở khu vực nó được tạo: dùng https://dashscope-intl.aliyuncs.com/compatible-mode/v1 cho Singapore hoặc https://dashscope.aliyuncs.com/compatible-mode/v1 cho Trung Quốc đại lục."
+    "qwenDescription": "Điểm cuối Model Studio của bạn. Một khóa chỉ hoạt động ở khu vực nó được tạo: dùng https://dashscope-intl.aliyuncs.com/compatible-mode/v1 cho Singapore hoặc https://dashscope.aliyuncs.com/compatible-mode/v1 cho Trung Quốc đại lục.",
+    "bedrockDescription": "Điểm cuối runtime Amazon Bedrock của khu vực bạn, ví dụ https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "Khóa API",
@@ -219,5 +231,18 @@
     "label": "Tên nhà cung cấp",
     "cancel": "Hủy",
     "save": "Lưu"
+  },
+  "bedrock": {
+    "title": "Thông tin xác thực AWS",
+    "description": "Flint ký mỗi yêu cầu Amazon Bedrock bằng khóa AWS của bạn. Các khóa được lưu trong chuỗi khóa của hệ điều hành và không bao giờ hiển thị lại. Hãy thêm ID mô hình thủ công (ví dụ anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "ID khóa truy cập",
+    "secretAccessKey": "Khóa truy cập bí mật",
+    "sessionToken": "Token phiên (không bắt buộc)",
+    "secretHint": "Cần một người dùng hoặc vai trò IAM được phép gọi bedrock:InvokeModel.",
+    "sessionTokenHint": "Chỉ dành cho thông tin xác thực tạm thời (STS hoặc SSO).",
+    "saved": "Đã lưu",
+    "remove": "Xóa",
+    "replace": "Đã lưu. Nhập để thay thế.",
+    "enter": "Chưa đặt"
   }
 }

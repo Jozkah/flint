@@ -173,7 +173,9 @@
     "selectRouterModelPlaceholder": "Seleccioneu el model d'encaminament…",
     "routerModelSearchPlaceholder": "Cercar models…",
     "routerModelEmptyList": "No hi ha models lleugers disponibles. Afegiu un model més petit o configureu les claus API a Models.",
-    "routerModelEmptySearch": "Cap coincidència per a «{{query}}»."
+    "routerModelEmptySearch": "Cap coincidència per a «{{query}}».",
+    "idleShutdown": "Atura els servidors inactius després de (minuts)",
+    "idleShutdownDesc": "Un servidor MCP sense cap crida d'eina durant aquest temps s'atura per alliberar memòria i es torna a iniciar la propera vegada que cal. Els servidors configurats per iniciar-se amb Flint continuen en marxa. Posa 0 per no aturar-los mai."
   },
   "auth": {
     "label": "Autenticació:",
@@ -262,7 +264,8 @@
   "lifecycle": {
     "startWithFlint": "Inicia amb Flint",
     "start": "Inicia",
-    "stop": "Atura"
+    "stop": "Atura",
+    "toolTimeout": "Temps d'espera de l'eina (s)"
   },
   "proactiveMode": "Mode proactiu d’ús del navegador",
   "proactiveModeDesc": "Quan està activat, captura automàticament captures de pantalla del navegador per aportar context addicional a les tasques d’automatització. Requereix l’MCP Flint Browser amb visió i model d’ús d’eines.",

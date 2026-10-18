@@ -14,6 +14,7 @@
   "models": "模型",
   "filterModels": "筛选 {{count}} 个模型",
   "modelsShown": "显示 {{total}} 个中的 {{shown}} 个",
+  "noModelsMatch": "没有与“{{query}}”匹配的模型",
   "showMoreModels": "显示更多",
   "backendInstalled": "已安装",
   "backendHistoryShow": "显示更新历史",
@@ -38,6 +39,12 @@
   "importedTooltip": "从本地文件导入。从 Jan 中移除不会删除磁盘上的文件。",
   "importModelSuccess": "模型 {{provider}} 已成功导入。",
   "importModelError": "导入模型失败：",
+
+  "importScanHint": "会在 LM Studio、Ollama、Hugging Face 缓存、llama.cpp 和 GPT4All 中查找。导入之前不会复制任何内容。",
+
+  "importAddFolder": "添加模型文件夹",
+
+  "importRemoveFolder": "移除文件夹 {{folder}}",
   "stop": "停止",
   "start": "开始",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "添加提供商",
   "addOpenAIProvider": "添加 OpenAI 提供商",
   "enterNameForProvider": "输入提供商名称",
+  "apiVersion": {
+    "title": "API 版本",
+    "description": "仅适用于 URL 中没有 ?api-version= 的部署式 Azure 端点（/openai/deployments/<name>）。/openai/v1 端点不需要。"
+  },
   "baseUrl": {
     "title": "Base URL",
     "openaiDescription": "使用兼容 OpenAI API 的代理或网关。默认值为 https://api.openai.com/v1。",
     "azureDescription": "你的 Azure OpenAI 端点。请将 YOUR-RESOURCE-NAME 替换为你的 Azure 资源名称。",
     "litellmDescription": "你的 LiteLLM 代理地址，包含 /v1。默认为 http://localhost:4000/v1。",
-    "qwenDescription": "你的 Model Studio 端点。密钥只在其创建的区域内有效：新加坡请使用 https://dashscope-intl.aliyuncs.com/compatible-mode/v1，中国大陆请使用 https://dashscope.aliyuncs.com/compatible-mode/v1。"
+    "qwenDescription": "你的 Model Studio 端点。密钥只在其创建的区域内有效：新加坡请使用 https://dashscope-intl.aliyuncs.com/compatible-mode/v1，中国大陆请使用 https://dashscope.aliyuncs.com/compatible-mode/v1。",
+    "bedrockDescription": "你所在区域的 Amazon Bedrock 运行时端点，例如 https://bedrock-runtime.eu-west-1.amazonaws.com。"
   },
   "apiKeys": {
     "title": "API 密钥",
@@ -219,5 +231,18 @@
     "label": "提供商名称",
     "cancel": "取消",
     "save": "保存"
+  },
+  "bedrock": {
+    "title": "AWS 凭证",
+    "description": "Flint 使用你的 AWS 密钥为每个 Amazon Bedrock 请求签名。密钥保存在操作系统的密钥环中，不会再次显示。请手动添加模型 ID（例如 anthropic.claude-3-5-sonnet-20240620-v1:0）。",
+    "accessKeyId": "访问密钥 ID",
+    "secretAccessKey": "秘密访问密钥",
+    "sessionToken": "会话令牌（可选）",
+    "secretHint": "需要有权调用 bedrock:InvokeModel 的 IAM 用户或角色。",
+    "sessionTokenHint": "仅用于临时凭证（STS 或 SSO）。",
+    "saved": "已保存",
+    "remove": "移除",
+    "replace": "已保存。输入内容即可替换。",
+    "enter": "未设置"
   }
 }

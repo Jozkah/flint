@@ -210,5 +210,25 @@
     "description": "Zostanie usuniętych czatów: {{count}}. Tej operacji nie można cofnąć.",
     "descriptionArchive": "Czaty ({{count}}) zostaną przeniesione do archiwum. Możesz je stamtąd przywrócić.",
     "done": "Usunięto czaty: {{count}}"
+  },
+  "find": {
+    "placeholder": "Szukaj w czacie",
+    "none": "Brak wyników",
+    "previous": "Poprzedni wynik",
+    "next": "Następny wynik",
+    "close": "Zamknij wyszukiwanie"
+  },
+  "continueSummary": {
+    "menu": "Kontynuuj w nowym czacie na podstawie podsumowania",
+    "working": "Podsumowuję czat...",
+    "done": "Kontynuowano w nowym czacie.",
+    "cancel": "Anuluj",
+    "errors": {
+      "no-chat": "Tego czatu nie można kontynuować.",
+      "empty": "Nie ma jeszcze czego podsumować.",
+      "no-model": "Najpierw wybierz model dla tego czatu.",
+      "model-not-loaded": "Najpierw wczytaj model czatu. To on pisze podsumowanie.",
+      "summary-failed": "Nie udało się napisać podsumowania. Nic nie zostało utworzone."
+    }
   }
 }

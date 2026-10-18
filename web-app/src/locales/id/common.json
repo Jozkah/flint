@@ -7,7 +7,7 @@
     "rename": "Ganti nama",
     "deleteGroup": "Hapus grup",
     "deleteTitle": "Hapus {{name}}?",
-    "deleteBody": "Grup dihapus. Itemnya keluar dari grup dan tidak dihapus.",
+    "deleteBody": "Grup dihapus. Itemnya keluar dari grup dan tidak dihapus. Subfolder naik satu tingkat.",
     "folders": "Folder…",
     "foldersTitle": "Folder untuk “{{name}}”",
     "foldersBodyHome": "Chat yang dimulai di grup ini atau dipindahkan ke dalamnya mendapat folder ini, hanya-baca untuk alat chat.",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "Alat chat dapat membaca folder ini. Penulisan tetap di sandbox chat sendiri.",
     "chatFoldersEmpty": "Tidak ada folder terlampir.",
     "addFolder": "Tambah folder",
-    "chatFolderCount": "Folder: {{count}}"
+    "chatFolderCount": "Folder: {{count}}",
+    "newSubfolder": "Subfolder baru",
+    "moveInto": "Pindahkan ke folder",
+    "topLevel": "Tingkat teratas"
   },
   "htmlArtifact": {
     "code": "Kode",
@@ -288,11 +291,13 @@
       "navigation": "Buka",
       "settings": "Pengaturan",
       "threads": "Percakapan"
-    }
+    },
+    "openItem": "Buka {{item}}"
   },
   "searchGroup": {
     "inProjects": "Di proyek",
-    "conversations": "Percakapan"
+    "conversations": "Percakapan",
+    "messages": "Di pesan"
   },
   "rail": {
     "label": "Panel Cowork",
@@ -933,6 +938,7 @@
     "missing": "Tidak lagi tersedia: {{model}}",
     "use": "Pakai model ini",
     "thisChat": "Obrolan ini",
+    "thisRoom": "Ruang ini",
     "thisSession": "Sesi ini"
   },
   "skillsUsedCount_other": "Memakai {{count}} skill",
@@ -951,6 +957,28 @@
   "artifactsFilterLabel": "Filter menurut jenis",
   "artifactsCount_other": "{{count}} item",
   "previewMessageCount_other": "{{count}} pesan",
+  "rowPreview": {
+    "status": {
+      "running": "Berjalan",
+      "waiting": "Perlu Anda",
+      "idle": "Diam",
+      "error": "Galat"
+    },
+    "prState": {
+      "open": "Terbuka",
+      "draft": "Draf",
+      "merged": "Digabung",
+      "closed": "Ditutup"
+    },
+    "pullRequests": "Pull request",
+    "morePrs_one": "+{{count}} lagi",
+    "morePrs_other": "+{{count}} lagi",
+    "noChecks": "Tanpa pemeriksaan",
+    "empty": "Belum ada apa pun di sini.",
+    "noMessages": "Belum ada pesan",
+    "summarizing": "Menulis ringkasan…",
+    "openHint": "Buka"
+  },
   "artifactDetails": "Detail item",
   "artifactBack": "Kembali ke Pustaka",
   "artifactClose": "Tutup detail",
@@ -1010,6 +1038,12 @@
       "first": "Jelaskan bagaimana {{folder}} disusun",
       "second": "Temukan setiap TODO di {{folder}} dan kelompokkan menurut area",
       "third": "Tulis tes untuk bagian {{folder}} yang saya tunjukkan"
+    },
+    "vault": {
+      "badge": "Vault Obsidian",
+      "hint": "Folder ini adalah vault Obsidian. Flint membacanya seperti folder catatan Markdown biasa, dan melewati pengaturan .obsidian serta .trash milik Obsidian.",
+      "add": "Tambahkan vault Obsidian saya",
+      "addHint": "Vault Obsidian hanyalah sebuah folder. Pilih seperti folder lainnya."
     }
   },
   "sandbox": {
@@ -2467,10 +2501,12 @@
     "previewNone": "Pratinjau tidak tersedia"
   },
   "dropAttachFailed": "Tidak dapat melampirkan file yang dijatuhkan",
+  "sampler": {
+    "label": "Parameter sampling",
+    "notSupported": "Tidak didukung oleh {{provider}}"
+  },
   "translate": {
     "title": "Penerjemah",
-    "usingModel": "Menggunakan {{model}}",
-    "noModel": "Pilih model di pemilih model",
     "from": "Terjemahkan dari",
     "to": "Terjemahkan ke",
     "detect": "Deteksi bahasa",
@@ -2482,12 +2518,61 @@
     "copyFailed": "Terjemahan tidak dapat disalin",
     "failed": "Terjemahan gagal",
     "inputPlaceholder": "Teks yang akan diterjemahkan",
-    "outputPlaceholder": "Terjemahan muncul di sini"
+    "outputPlaceholder": "Terjemahan muncul di sini",
+    "description": "Terjemahkan teks antarbahasa dengan model pilihan Anda. Tidak ada yang disimpan.",
+    "sourceTitle": "Teks sumber",
+    "targetTitle": "Terjemahan",
+    "paste": "Tempel dari papan klip",
+    "pasteFailed": "Tidak dapat membaca papan klip",
+    "clear": "Bersihkan",
+    "characters": "{{count}} karakter",
+    "translating": "Menerjemahkan…",
+    "retry": "Coba lagi",
+    "shortcut": "Terjemahkan (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Cari bahasa",
+    "noLanguages": "Tidak ada bahasa yang cocok",
+    "errorAuth": "Penyedia menolak kunci API Anda. Periksa di pengaturan penyedia.",
+    "errorQuota": "Penyedia menyatakan kuota Anda habis atau terkena batas laju. Tunggu sebentar atau periksa paket Anda.",
+    "errorModelNotFound": "Penyedia tidak memiliki model ini. Pilih model lain atau periksa pengaturan penyedia.",
+    "errorNetwork": "Tidak dapat menjangkau penyedia. Periksa koneksi Anda atau pastikan server berjalan.",
+    "errorEngine": "Engine yang menjalankan model ini tidak tersedia. Mulai ulang Flint lalu coba lagi.",
+    "openProvider": "Buka pengaturan penyedia",
+    "errorDetails": "Detail",
+    "usingModel": "Menggunakan {{model}}",
+    "noModel": "Pilih model di pemilih model"
   },
   "markdownImage": {
     "load": "Muat gambar dari {{host}}"
   },
   "messageSaveFailed": "Pesan tidak dapat disimpan. Pesan bisa hilang setelah dimulai ulang.",
   "threadSaveFailed": "Perubahan pada utas ini tidak dapat disimpan. Perubahan dibatalkan.",
-  "attachmentsProcessFailed": "Lampiran tidak dapat disiapkan, jadi pesan tidak terkirim"
+  "attachmentsProcessFailed": "Lampiran tidak dapat disiapkan, jadi pesan tidak terkirim",
+  "settingsRecovered": {
+    "title": "File pengaturan tidak dapat dibaca",
+    "withBackup": "{{file}} rusak, jadi Flint dimulai dengan pengaturan default. File yang rusak disimpan sebagai {{backup}}.",
+    "noBackup": "{{file}} rusak, jadi Flint dimulai dengan pengaturan default. Salinan file yang rusak tidak dapat disimpan."
+  },
+  "promptLibrary": {
+    "title": "Pustaka prompt",
+    "description": "Prompt yang sering Anda pakai ulang. Ketik @ atau / di kolom pesan untuk menyisipkannya. Gunakan {{name}} atau {{name:default}} untuk bagian yang Anda isi setiap kali.",
+    "manage": "Prompt Anda",
+    "add": "Tambah prompt",
+    "editTitle": "Edit prompt",
+    "import": "Impor",
+    "export": "Ekspor",
+    "imported": "{{count}} prompt ditambahkan",
+    "search": "Cari prompt",
+    "empty": "Belum ada prompt.",
+    "edit": "Edit {{name}}",
+    "delete": "Hapus {{name}}",
+    "deleted": "Prompt dihapus",
+    "undo": "Urungkan",
+    "name": "Nama",
+    "folder": "Folder (opsional)",
+    "tags": "Tag, pisahkan dengan koma",
+    "body": "Teks prompt",
+    "bodyHint": "Tulis prompt. Gunakan {{topic}} atau {{tone:friendly}} untuk bagian kosong.",
+    "variables": "Meminta: {{names}}",
+    "insert": "Sisipkan"
+  }
 }

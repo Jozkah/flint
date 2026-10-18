@@ -67,7 +67,8 @@
     "loaded": "Caricato",
     "ready": "Pronto",
     "noKey": "Nessuna chiave API",
-    "keyless": "Nessuna chiave richiesta"
+    "keyless": "Nessuna chiave richiesta",
+    "noCredentials": "Nessuna credenziale AWS"
   },
   "installed": {
     "title": "Modelli installati",

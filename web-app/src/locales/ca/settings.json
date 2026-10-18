@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Subagents",
-    "description": "Amb quin assistent, perfil de treball i model s'executen els subagents que inicia Flint. Sense una elecció aquí, un subagent hereta l'assistent i el perfil de treball del seu pare (els personatges llargs s'abreugen). Això mai canvia el que pot fer un subagent: les seves eines i aprovacions continuen sent les que permet l'execució.",
+    "description": "Amb quin assistent, perfil de treball i model s'executen els subagents que inicia Flint. Sense una elecció aquí, un subagent hereta l'assistent i el perfil de treball del seu pare (les instruccions llargues de l'assistent s'abreugen). Això mai canvia el que pot fer un subagent: les seves eines i aprovacions continuen sent les que permet l'execució.",
     "headlessNote": "Els assistents i els perfils de treball només s'apliquen a l'aplicació d'escriptori. Les execucions des de la línia d'ordres segueixen les opcions de model.",
     "defaultsTitle": "Per a tots els subagents",
     "defaultsDesc": "Cadascun hereta de l'execució que l'ha iniciat tret que triïs alguna cosa aquí.",
@@ -10,7 +10,7 @@
     "model": "Model",
     "inherit": "Hereta",
     "inheritDesc": "Usa el que usi l'execució que ha iniciat el subagent.",
-    "assistantDesc": "El personatge amb què treballa un subagent.",
+    "assistantDesc": "L'assistent amb què treballa un subagent.",
     "profileDesc": "Com enfoca la feina un subagent.",
     "modelDesc": "Executa els subagents amb un altre model, per exemple un de més ràpid per a estudis de només lectura.",
     "groupAssistants": "Assistents",
@@ -64,9 +64,6 @@
   "reportAnIssue": "Informa d’un problema",
   "reportAnIssueDesc": "Has trobat un error? Ajuda’ns enviant una incidència a GitHub.",
   "reportIssue": "Informa del problema",
-  "credits": "Crèdits",
-  "creditsDesc1": "👋 Flint el construeix amb ❤️ Jozkah.",
-  "creditsDesc2": "Agraïments especials a les nostres dependències de codi obert — especialment llama.cpp i Tauri — i a la nostra comunitat d’IA.",
   "appVersion": "Versió de l’app",
   "dataFolder": {
     "appData": "Dades de l’app",
@@ -81,7 +78,8 @@
     "enterKeyNewline": "Intro afegeix una línia nova",
     "enterKeyNewlineDesc": "Prémer Intro al quadre del xat afegeix una línia nova en lloc d'enviar. Envia amb el botó d'enviar o Ctrl/Cmd+Intro. Útil si escrius amb un mètode d'entrada (IME), on Intro confirma una conversió.",
     "resetFactory": "Restableix als valors d’origen",
-    "resetFactoryDesc": "Restaura l’aplicació a l’estat inicial, suprimint tots els models i l’historial de xats. Aquesta acció és irreversible i només es recomana si l’aplicació està malmesa."
+    "resetFactoryDesc": "Restaura l’aplicació a l’estat inicial, suprimint tots els models i l’historial de xats. Aquesta acció és irreversible i només es recomana si l’aplicació està malmesa.",
+    "spellCheckHint": "L'idioma de la correcció ortogràfica el tria el sistema, no Flint. Afegeix un idioma a la configuració d'idioma i teclat del sistema (Windows: Idioma i regió; macOS: Teclat > Entrada de text; Linux: instal·la un diccionari hunspell)."
   },
   "shortcuts": {
     "change": "Canvia",
@@ -123,7 +121,9 @@
     "nextPane": "Panell següent",
     "nextPaneDesc": "Passa al panell següent de la vista dividida.",
     "previousPane": "Panell anterior",
-    "previousPaneDesc": "Passa al panell anterior de la vista dividida."
+    "previousPaneDesc": "Passa al panell anterior de la vista dividida.",
+    "findInChat": "Cerca al xat",
+    "findInChatDesc": "Cerca a la conversa que es veu a la pantalla."
   },
   "interface": {
     "title": "Interfície",
@@ -178,12 +178,6 @@
     "resetCodeBlockSuccess": "S’ha restablert l’estil del bloc de codi",
     "resetCodeBlockSuccessDesc": "L’estil del bloc de codi s’ha restaurat al valor per defecte.",
     "transcriptView": "Vista de la transcripció",
-    "sidebarLayout": "Barra lateral",
-    "sidebarLayoutDesc": "Quant de la barra lateral esquerra es llista.",
-    "sidebarLayout_trimmed": "Reduïda",
-    "sidebarLayout_trimmedDesc": "Xat nou, Cowork, Descobreix i els teus xats. Sales, Biblioteca, Studio i les pàgines del motor es pleguen sota Més i Avançat.",
-    "sidebarLayout_extended": "Ampliada",
-    "sidebarLayout_extendedDesc": "Tot llistat alhora: Més i Avançat es mantenen oberts.",
     "transcriptViewDesc": "Quant de cada torn mostren Xat, Cowork i Sales. Les aprovacions, preguntes i errors sempre es mostren.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "La resposta i el que necessita la teva acció. Les crides d'eines es plegan en una fila de passos.",
@@ -194,7 +188,13 @@
     "chatWidth": "Amplada del xat",
     "chatWidthDesc": "Tria una amplada predefinida que s’adapti al teu espai.",
     "inlineCitations": "Icones de font en línia",
-    "inlineCitationsDesc": "Mostra una icona petita del lloc després d'una frase que prové d'una font web. Desactiva-ho per llegir la resposta sense icones; les fonts continuen llistades a sota."
+    "inlineCitationsDesc": "Mostra una icona petita del lloc després d'una frase que prové d'una font web. Desactiva-ho per llegir la resposta sense icones; les fonts continuen llistades a sota.",
+    "sidebarLayout": "Barra lateral",
+    "sidebarLayoutDesc": "Quant de la barra lateral esquerra es llista.",
+    "sidebarLayout_trimmed": "Reduïda",
+    "sidebarLayout_trimmedDesc": "Xat nou, Cowork, Descobreix i els teus xats. Sales, Biblioteca, Studio i les pàgines del motor es pleguen sota Més i Avançat.",
+    "sidebarLayout_extended": "Ampliada",
+    "sidebarLayout_extendedDesc": "Tot llistat alhora: Més i Avançat es mantenen oberts."
   },
   "hardware": {
     "os": "Sistema operatiu",
@@ -384,6 +384,9 @@
     "usageWeek": "Per setmana",
     "usageWeekDesc": "Tokens, d'entrada més sortida, en els darrers 7 dies. Buit vol dir sense límit.",
     "usageNow": "Usat ara",
+    "usageNoLimitPlaceholder": "Sense límit",
+    "serverLog": "Registre del servidor",
+    "openInNewWindow": "Obre en una finestra nova",
     "usageNoLimit": "Sense límit definit",
     "usageResets": "L'ús més antic caduca d'aquí a {{wait}}",
     "startServer": "Inicia el servidor",
@@ -421,7 +424,7 @@
     "verboseLogsDesc": "Activa registres detallats del servidor per fer depuració.",
     "proxyTimeout": "Temps d’espera de la sol·licitud",
     "proxyTimeoutDesc": "Temps d’espera d’una resposta del model local, en segons.",
-    "defaultModel": "Model per defecte del servidor d'API local",
+    "defaultModel": "Model per defecte",
     "defaultModelDesc": "Model local que es carrega automàticament quan s'inicia el servidor.",
     "defaultModelPlaceholder": "Selecciona un model local"
   },
@@ -460,7 +463,7 @@
     "updateError": "No s’han pogut cercar actualitzacions",
     "appVersion": "Versió de l’app",
     "buildUpdate": "Cerca compilacions més noves",
-    "buildUpdateDesc": "Flint 0.9.0 és una compilació nocturna: es torna a compilar a partir del codi més recent i el número de versió continua igual. Activat, Flint pregunta a GitHub una vegada en iniciar (com a màxim dues vegades al dia) si existeix una compilació més nova. Desactivat per defecte; no s'envia res en cap dels dos casos, tret d'aquesta sol·licitud.",
+    "buildUpdateDesc": "Les compilacions nocturnes mantenen el mateix número de versió. Si s'activa, Flint pregunta a GitHub una vegada en iniciar (com a màxim dues vegades al dia) si hi ha una compilació més nova. Desactivat per defecte.",
     "buildCheckNow": "Comprova ara",
     "buildChecking": "Comprovant…",
     "buildNewer": "Hi ha una compilació més nova disponible. Torna-la a baixar de la pàgina de versions per actualitzar.",
@@ -673,8 +676,7 @@
     "increaseContrast": "Augmenta el contrast",
     "increaseContrastDesc": "Fa el text més brillant perquè es llegeixi millor. Més blanc al tema fosc, més fosc al tema clar.",
     "reduceMotion": "Redueix el moviment",
-    "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs.",
-    "completionSoundApproval": "Només quan cal aprovació"
+    "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs."
   },
   "pageDesc": {
     "general": "Idioma, carpeta de dades, registres i opcions de tota l'aplicació.",
@@ -1076,7 +1078,13 @@
       "updated": "Actualitzada {{when}}",
       "loading": "Carregant les campanyes",
       "loadFailed": "No s'han pogut carregar les campanyes.",
-      "retry": "Torna-ho a provar"
+      "skipped_one": "S'ha omès {{count}} registre de campanya il·legible. Els fitxers s'han deixat al seu lloc.",
+      "skipped_other": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
+      "skipped_many": "S'han omès {{count}} registres de campanya il·legibles. Els fitxers s'han deixat al seu lloc.",
+      "retry": "Torna-ho a provar",
+      "needsDesktop": "Les campanyes necessiten l'aplicació d'escriptori",
+      "needsDesktopHint": "Obre l'aplicació d'escriptori de Flint per veure i iniciar campanyes. Una pestanya del navegador no pot llegir-les.",
+      "staleApp": "Aquesta còpia de l'aplicació és més antiga que la pàgina. Tanca-la i torna-la a iniciar perquè agafi l'última versió."
     },
     "plan": {
       "edit": "Edita el pla",
@@ -1132,5 +1140,35 @@
     "storeToolApproval": "aprovació automàtica d'eines",
     "storeMcpTrust": "confiança en servidors MCP",
     "storeProxy": "servidor intermediari de xarxa"
-  }
+  },
+  "startup": {
+    "title": "Inicia amb l'ordinador",
+    "on": "Activat. Flint s'inicia quan inicies la sessió, mitjançant {{platform}}.",
+    "off": "Desactivat. Flint només s'inicia quan l'obres. Activar-ho primer ho pregunta i mostra exactament què s'escriu.",
+    "minimized": "Inicia minimitzat",
+    "minimizedDesc": "S'inicia ocult i només es veu la icona de la safata; fes-hi clic per obrir la finestra.",
+    "confirmTitle": "Vols afegir Flint a {{platform}}?",
+    "confirmBody": "Això escriu exactament l'entrada de sota al teu compte d'usuari, i res més. No cal ser administrador.",
+    "confirmUndo": "Si desactives l'interruptor, aquesta entrada s'elimina.",
+    "confirm": "Afegeix l'entrada",
+    "failed": "No s'ha pogut canviar l'entrada d'inici"
+  },
+  "sidebarItems": {
+    "title": "Elements de la barra lateral",
+    "description": "Tria quins elements apareixen a la barra lateral esquerra. Amagar-ne un només n'elimina la drecera; la pàgina continua funcionant.",
+    "section": {
+      "workspace": "Espai de treball",
+      "cowork": "Cowork",
+      "more": "Més",
+      "header": "A dalt i a baix"
+    },
+    "showItem": "Mostra {{item}} a la barra lateral",
+    "alwaysShown": "Sempre visible",
+    "showAll": "Mostra-ho tot",
+    "preview": "Vista prèvia",
+    "reachable": "Els elements amagats continuen accessibles des de la paleta d'ordres i des de Configuració."
+  },
+  "credits": "Crèdits",
+  "creditsDesc1": "👋 Flint el construeix amb ❤️ Jozkah.",
+  "creditsDesc2": "Agraïments especials a les nostres dependències de codi obert — especialment llama.cpp i Tauri — i a la nostra comunitat d’IA."
 }

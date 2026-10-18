@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Podagenti",
-    "description": "S jakým asistentem, pracovním profilem a modelem běží podagenti, které Flint spouští. Bez volby zde podagent zdědí asistenta a pracovní profil svého rodiče (dlouhé persony se zkracují). Tím se nikdy nemění, co smí podagent dělat: jeho nástroje a schvalování zůstávají takové, jaké běh povoluje.",
+    "description": "S jakým asistentem, pracovním profilem a modelem běží podagenti, které Flint spouští. Bez volby zde podagent zdědí asistenta a pracovní profil svého rodiče (dlouhé instrukce asistenta se zkracují). Tím se nikdy nemění, co smí podagent dělat: jeho nástroje a schvalování zůstávají takové, jaké běh povoluje.",
     "headlessNote": "Asistenti a pracovní profily platí jen v desktopové aplikaci. Běhy z příkazového řádku se řídí volbou modelů.",
     "defaultsTitle": "Pro všechny podagenty",
     "defaultsDesc": "Každý zdědí hodnoty od běhu, který jej spustil, pokud zde nevyberete něco jiného.",
@@ -10,7 +10,7 @@
     "model": "Model",
     "inherit": "Zdědit",
     "inheritDesc": "Použít to, co používá běh, který podagenta spustil.",
-    "assistantDesc": "Persona, pod kterou podagent pracuje.",
+    "assistantDesc": "Asistent, pod kterým podagent pracuje.",
     "profileDesc": "Jak podagent přistupuje k práci.",
     "modelDesc": "Spouštět podagenty na jiném modelu, například rychlejším pro průzkumy jen pro čtení.",
     "groupAssistants": "Asistenti",
@@ -65,9 +65,6 @@
   "reportAnIssue": "Nahlásit problém",
   "reportAnIssueDesc": "Našli jste chybu? Pomozte nám nahlášením problému na GitHubu.",
   "reportIssue": "Nahlásit problém",
-  "credits": "Poděkování",
-  "creditsDesc1": "👋 Flint vytváří s ❤️ Jozkah.",
-  "creditsDesc2": "Speciální poděkování našim open-source závislostem—zejména llama.cpp a Tauri—a naší úžasné AI komunitě.",
   "appVersion": "Verze aplikace",
   "dataFolder": {
     "appData": "Data aplikace",
@@ -82,7 +79,8 @@
     "enterKeyNewline": "Enter vloží nový řádek",
     "enterKeyNewlineDesc": "Stisk Enter v poli chatu vloží nový řádek místo odeslání. Odesílejte tlačítkem odeslat nebo Ctrl/Cmd+Enter. Hodí se při psaní pomocí vstupní metody (IME), kde Enter potvrzuje převod.",
     "resetFactory": "Obnovit tovární nastavení",
-    "resetFactoryDesc": "Obnoví aplikaci do původního stavu, vymaže všechny modely a historii chatů. Tato akce je nevratná a doporučuje se pouze v případě, že je aplikace poškozena."
+    "resetFactoryDesc": "Obnoví aplikaci do původního stavu, vymaže všechny modely a historii chatů. Tato akce je nevratná a doporučuje se pouze v případě, že je aplikace poškozena.",
+    "spellCheckHint": "Jazyk kontroly pravopisu vybírá váš systém, ne Flint. Přidejte jazyk v nastavení jazyka a klávesnice systému (Windows: Jazyk a oblast; macOS: Klávesnice > Zadávání textu; Linux: nainstalujte slovník hunspell)."
   },
   "shortcuts": {
     "change": "Změnit",
@@ -124,7 +122,9 @@
     "nextPane": "Další panel",
     "nextPaneDesc": "Přejít na další panel rozděleného zobrazení.",
     "previousPane": "Předchozí panel",
-    "previousPaneDesc": "Přejít na předchozí panel rozděleného zobrazení."
+    "previousPaneDesc": "Přejít na předchozí panel rozděleného zobrazení.",
+    "findInChat": "Hledat v chatu",
+    "findInChatDesc": "Prohledá konverzaci na obrazovce."
   },
   "interface": {
     "title": "Rozhraní",
@@ -179,12 +179,6 @@
     "resetCodeBlockSuccess": "Styl bloku kódu úspěšně obnoven",
     "resetCodeBlockSuccessDesc": "Styl bloku kódu byl obnoven na výchozí.",
     "transcriptView": "Zobrazení přepisu",
-    "sidebarLayout": "Postranní panel",
-    "sidebarLayoutDesc": "Kolik položek levého postranního panelu se zobrazuje.",
-    "sidebarLayout_trimmed": "Zkrácený",
-    "sidebarLayout_trimmedDesc": "Nový chat, Cowork, Objevovat a vaše chaty. Místnosti, Knihovna, Studio a stránky enginu jsou sbaleny pod Více a Pokročilé.",
-    "sidebarLayout_extended": "Rozšířený",
-    "sidebarLayout_extendedDesc": "Vše zobrazeno najednou: Více a Pokročilé zůstávají rozbalené.",
     "transcriptViewDesc": "Kolik z každého tahu ukazují Chat, Cowork a Místnosti. Schválení, dotazy a chyby se zobrazují vždy.",
     "transcriptViewNormal": "Normální",
     "transcriptViewNormalDesc": "Odpověď a vše, co vyžaduje vás. Volání nástrojů se sbalí do jednoho řádku kroků.",
@@ -193,7 +187,13 @@
     "transcriptViewVerbose": "Podrobné",
     "transcriptViewVerboseDesc": "Vše: celé uvažování a každé volání nástroje otevřené s parametry a výstupem.",
     "inlineCitations": "Ikony zdrojů v textu",
-    "inlineCitationsDesc": "Za větou, která pochází z webového zdroje, zobrazí malou ikonu webu. Vypněte, chcete-li odpověď číst bez nich; zdroje zůstanou uvedeny pod ní."
+    "inlineCitationsDesc": "Za větou, která pochází z webového zdroje, zobrazí malou ikonu webu. Vypněte, chcete-li odpověď číst bez nich; zdroje zůstanou uvedeny pod ní.",
+    "sidebarLayout": "Postranní panel",
+    "sidebarLayoutDesc": "Kolik položek levého postranního panelu se zobrazuje.",
+    "sidebarLayout_trimmed": "Zkrácený",
+    "sidebarLayout_trimmedDesc": "Nový chat, Cowork, Objevovat a vaše chaty. Místnosti, Knihovna, Studio a stránky enginu jsou sbaleny pod Více a Pokročilé.",
+    "sidebarLayout_extended": "Rozšířený",
+    "sidebarLayout_extendedDesc": "Vše zobrazeno najednou: Více a Pokročilé zůstávají rozbalené."
   },
   "hardware": {
     "os": "Operační systém",
@@ -384,6 +384,9 @@
     "usageWeek": "Za týden",
     "usageWeekDesc": "Tokeny, vstup plus výstup, za posledních 7 dní. Prázdné znamená bez limitu.",
     "usageNow": "Aktuálně využito",
+    "usageNoLimitPlaceholder": "Bez limitu",
+    "serverLog": "Log serveru",
+    "openInNewWindow": "Otevřít v novém okně",
     "usageNoLimit": "Limit není nastaven",
     "usageResets": "Nejstarší využití vyprší za {{wait}}",
     "startServer": "Spustit server",
@@ -421,7 +424,7 @@
     "verboseLogsDesc": "Povolit detailní záznamy serveru pro ladění.",
     "proxyTimeout": "Časový limit požadavku",
     "proxyTimeoutDesc": "Doba čekání na odpověď od lokálního modelu, sekundy.",
-    "defaultModel": "Výchozí model lokálního serveru API",
+    "defaultModel": "Výchozí model",
     "defaultModelDesc": "Lokální model, který se automaticky načte při spuštění serveru.",
     "defaultModelPlaceholder": "Vyberte lokální model"
   },
@@ -460,7 +463,7 @@
     "updateError": "Nepodařilo se zkontrolovat aktualizace",
     "appVersion": "Verze aplikace",
     "buildUpdate": "Kontrolovat novější sestavení",
-    "buildUpdateDesc": "Flint 0.9.0 je noční sestavení: přestavuje se z nejnovějšího kódu a číslo verze zůstává stejné. Když je zapnuto, Flint se při spuštění jednou (nejvýše dvakrát denně) zeptá GitHubu, zda existuje novější sestavení. Ve výchozím stavu vypnuto; kromě tohoto dotazu se nic neodesílá.",
+    "buildUpdateDesc": "Noční sestavení mají stále stejné číslo verze. Když je zapnuto, Flint se při spuštění jednou (nejvýše dvakrát denně) zeptá GitHubu, zda existuje novější sestavení. Ve výchozím stavu vypnuto.",
     "buildCheckNow": "Zkontrolovat nyní",
     "buildChecking": "Kontrola…",
     "buildNewer": "Je dostupné novější sestavení. Pro aktualizaci jej znovu stáhněte ze stránky vydání.",
@@ -667,14 +670,13 @@
     "completionSoundOff": "Vypnuto",
     "completionSoundBackground": "Při běhu na pozadí",
     "completionSoundAlways": "Vždy",
-    "completionSoundApproval": "Pouze když je potřeba schválení",
+    "completionSoundApproval": "Jen když je potřeba schválení",
     "completionSoundVolume": "Hlasitost",
     "completionSoundPreview": "Přehrát",
     "increaseContrast": "Zvýšit kontrast",
     "increaseContrastDesc": "Zjasní text, aby se lépe četl. Bělejší na tmavém motivu, tmavší na světlém.",
     "reduceMotion": "Omezit animace",
-    "reduceMotionDesc": "Vypne animace ve Flintu. Flint se neřídí systémovým nastavením, takže animace zůstávají zapnuté, dokud to nepřepnete.",
-    "completionSoundApproval": "Jen když je potřeba schválení"
+    "reduceMotionDesc": "Vypne animace ve Flintu. Flint se neřídí systémovým nastavením, takže animace zůstávají zapnuté, dokud to nepřepnete."
   },
   "pageDesc": {
     "general": "Jazyk, datová složka, protokoly a možnosti celé aplikace.",
@@ -1089,7 +1091,14 @@
       "updated": "Aktualizováno {{when}}",
       "loading": "Načítání kampaní",
       "loadFailed": "Kampaně se nepodařilo načíst.",
-      "retry": "Zkusit znovu"
+      "skipped_one": "Přeskočen {{count}} nečitelný záznam kampaně. Soubory zůstaly na místě.",
+      "skipped_few": "Přeskočeny {{count}} nečitelné záznamy kampaní. Soubory zůstaly na místě.",
+      "skipped_other": "Přeskočeno {{count}} nečitelných záznamů kampaní. Soubory zůstaly na místě.",
+      "skipped_many": "Přeskočeno {{count}} nečitelných záznamů kampaní. Soubory zůstaly na místě.",
+      "retry": "Zkusit znovu",
+      "needsDesktop": "Kampaně vyžadují desktopovou aplikaci",
+      "needsDesktopHint": "Otevřete desktopovou aplikaci Flint, abyste kampaně viděli a spouštěli. Obyčejná karta prohlížeče je nemá odkud číst.",
+      "staleApp": "Tato kopie aplikace je starší než stránka. Zavřete ji a spusťte znovu, aby se načetla nejnovější verze."
     },
     "plan": {
       "edit": "Upravit plán",
@@ -1145,5 +1154,35 @@
     "storeToolApproval": "automatické schvalování nástrojů",
     "storeMcpTrust": "důvěra serverům MCP",
     "storeProxy": "síťová proxy"
-  }
+  },
+  "startup": {
+    "title": "Spouštět s počítačem",
+    "on": "Zapnuto. Flint se spustí při přihlášení pomocí {{platform}}.",
+    "off": "Vypnuto. Flint se spustí, jen když ho otevřete. Zapnutí se nejdřív zeptá a ukáže přesně, co se zapíše.",
+    "minimized": "Spustit minimalizovaně",
+    "minimizedDesc": "Spustí se skrytě, takže je vidět jen ikona v oznamovací oblasti; kliknutím na ni otevřete okno.",
+    "confirmTitle": "Přidat Flint do {{platform}}?",
+    "confirmBody": "Zapíše přesně níže uvedený záznam do vašeho uživatelského účtu a nic dalšího. Nejsou potřeba práva správce.",
+    "confirmUndo": "Vypnutím přepínače se tento záznam odebere.",
+    "confirm": "Přidat záznam",
+    "failed": "Záznam o spuštění se nepodařilo změnit"
+  },
+  "sidebarItems": {
+    "title": "Položky postranního panelu",
+    "description": "Vyberte, které položky se zobrazí v levém postranním panelu. Skrytí odebere jen zástupce; samotná stránka funguje dál.",
+    "section": {
+      "workspace": "Pracovní prostor",
+      "cowork": "Cowork",
+      "more": "Více",
+      "header": "Nahoře a dole"
+    },
+    "showItem": "Zobrazit {{item}} v postranním panelu",
+    "alwaysShown": "Vždy zobrazeno",
+    "showAll": "Zobrazit vše",
+    "preview": "Náhled",
+    "reachable": "Skryté položky zůstávají dostupné z palety příkazů a z Nastavení."
+  },
+  "credits": "Poděkování",
+  "creditsDesc1": "👋 Flint vytváří s ❤️ Jozkah.",
+  "creditsDesc2": "Speciální poděkování našim open-source závislostem—zejména llama.cpp a Tauri—a naší úžasné AI komunitě."
 }

@@ -9,7 +9,8 @@
     "plugin": "plugin",
     "pluginNamed": "plugin {{plugin}}",
     "skill": "dovednost",
-    "builtin": "vestavěný"
+    "builtin": "vestavěný",
+    "prompt": "prompt"
   },
   "scope": {
     "project": "projekt",

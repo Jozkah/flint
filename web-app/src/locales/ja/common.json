@@ -7,7 +7,7 @@
     "rename": "名前を変更",
     "deleteGroup": "グループを削除",
     "deleteTitle": "{{name}} を削除しますか？",
-    "deleteBody": "グループは削除されます。中の項目はグループから外れ、削除はされません。",
+    "deleteBody": "グループは削除されます。中の項目はグループから外れ、削除はされません。サブフォルダは1階層上に移動します。",
     "folders": "フォルダー…",
     "foldersTitle": "「{{name}}」のフォルダー",
     "foldersBodyHome": "このグループで始めた、またはこのグループに移動したチャットには、これらのフォルダーが読み取り専用で追加されます。",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "チャットのツールはこれらのフォルダーを読み取れます。書き込みはチャット専用のサンドボックスに残ります。",
     "chatFoldersEmpty": "フォルダーは追加されていません。",
     "addFolder": "フォルダーを追加",
-    "chatFolderCount": "フォルダー: {{count}}"
+    "chatFolderCount": "フォルダー: {{count}}",
+    "newSubfolder": "新しいサブフォルダ",
+    "moveInto": "フォルダに移動",
+    "topLevel": "最上位"
   },
   "htmlArtifact": {
     "code": "コード",
@@ -290,11 +293,13 @@
       "navigation": "移動",
       "settings": "設定",
       "threads": "会話"
-    }
+    },
+    "openItem": "{{item}} を開く"
   },
   "searchGroup": {
     "inProjects": "プロジェクト内",
-    "conversations": "会話"
+    "conversations": "会話",
+    "messages": "メッセージ内"
   },
   "rail": {
     "label": "Cowork パネル",
@@ -935,6 +940,7 @@
     "missing": "利用できなくなりました: {{model}}",
     "use": "このモデルを使用",
     "thisChat": "このチャット",
+    "thisRoom": "このルーム",
     "thisSession": "このセッション"
   },
   "skillsUsedCount_one": "{{count}} 個のスキルを使用",
@@ -956,6 +962,28 @@
   "artifactsCount_other": "{{count}} 件",
   "previewMessageCount_one": "{{count}} 件のメッセージ",
   "previewMessageCount_other": "{{count}} 件のメッセージ",
+  "rowPreview": {
+    "status": {
+      "running": "実行中",
+      "waiting": "対応が必要",
+      "idle": "待機中",
+      "error": "エラー"
+    },
+    "prState": {
+      "open": "オープン",
+      "draft": "ドラフト",
+      "merged": "マージ済み",
+      "closed": "クローズ済み"
+    },
+    "pullRequests": "プルリクエスト",
+    "morePrs_one": "他 {{count}} 件",
+    "morePrs_other": "他 {{count}} 件",
+    "noChecks": "チェックなし",
+    "empty": "まだ何もありません。",
+    "noMessages": "メッセージはまだありません",
+    "summarizing": "要約を作成中…",
+    "openHint": "開く"
+  },
   "artifactDetails": "項目の詳細",
   "artifactBack": "ライブラリに戻る",
   "artifactClose": "詳細を閉じる",
@@ -1015,6 +1043,12 @@
       "first": "{{folder}} の構成を説明して",
       "second": "{{folder}} 内の TODO をすべて見つけて、領域ごとにまとめて",
       "third": "{{folder}} の指定した部分のテストを書いて"
+    },
+    "vault": {
+      "badge": "Obsidian Vault",
+      "hint": "このフォルダは Obsidian の Vault です。Flint は Markdown ノートのフォルダと同じように読み取り、Obsidian の .obsidian 設定と .trash は除外します。",
+      "add": "自分の Obsidian Vault を追加",
+      "addHint": "Obsidian の Vault は単なるフォルダです。ほかのフォルダと同じように選んでください。"
     }
   },
   "sandbox": {
@@ -2505,10 +2539,12 @@
     "previewNone": "プレビューはありません"
   },
   "dropAttachFailed": "ドロップしたファイルを添付できませんでした",
+  "sampler": {
+    "label": "サンプリングパラメータ",
+    "notSupported": "{{provider}} では未対応"
+  },
   "translate": {
     "title": "翻訳",
-    "usingModel": "{{model}} を使用中",
-    "noModel": "モデルセレクターでモデルを選択してください",
     "from": "翻訳元",
     "to": "翻訳先",
     "detect": "言語を検出",
@@ -2520,12 +2556,61 @@
     "copyFailed": "翻訳をコピーできませんでした",
     "failed": "翻訳に失敗しました",
     "inputPlaceholder": "翻訳するテキスト",
-    "outputPlaceholder": "ここに翻訳が表示されます"
+    "outputPlaceholder": "ここに翻訳が表示されます",
+    "description": "選択中のモデルで言語間のテキストを翻訳します。何も保存されません。",
+    "sourceTitle": "原文",
+    "targetTitle": "翻訳",
+    "paste": "クリップボードから貼り付け",
+    "pasteFailed": "クリップボードを読み取れませんでした",
+    "clear": "クリア",
+    "characters": "{{count}} 文字",
+    "translating": "翻訳中…",
+    "retry": "再試行",
+    "shortcut": "翻訳(Ctrl/Cmd+Enter)",
+    "searchLanguages": "言語を検索",
+    "noLanguages": "一致する言語がありません",
+    "errorAuth": "プロバイダーが API キーを拒否しました。プロバイダー設定で確認してください。",
+    "errorQuota": "プロバイダーから、クォータ超過またはレート制限と通知されました。しばらく待つか、プランを確認してください。",
+    "errorModelNotFound": "プロバイダーにこのモデルがありません。別のモデルを選ぶか、プロバイダー設定を確認してください。",
+    "errorNetwork": "プロバイダーに接続できませんでした。接続状態とサーバーの起動を確認してください。",
+    "errorEngine": "このモデルを実行するエンジンを利用できません。Flint を再起動してもう一度お試しください。",
+    "openProvider": "プロバイダー設定を開く",
+    "errorDetails": "詳細",
+    "usingModel": "{{model}} を使用中",
+    "noModel": "モデルセレクターでモデルを選択してください"
   },
   "markdownImage": {
     "load": "{{host}} から画像を読み込む"
   },
   "messageSaveFailed": "メッセージを保存できませんでした。再起動後に失われる可能性があります。",
   "threadSaveFailed": "このスレッドの変更を保存できませんでした。元に戻しました。",
-  "attachmentsProcessFailed": "添付ファイルを準備できなかったため、メッセージは送信されませんでした"
+  "attachmentsProcessFailed": "添付ファイルを準備できなかったため、メッセージは送信されませんでした",
+  "settingsRecovered": {
+    "title": "設定ファイルを読み取れませんでした",
+    "withBackup": "{{file}} が破損していたため、Flint は既定の設定で起動しました。破損したファイルは {{backup}} として保存されています。",
+    "noBackup": "{{file}} が破損していたため、Flint は既定の設定で起動しました。破損したファイルのコピーは保存できませんでした。"
+  },
+  "promptLibrary": {
+    "title": "プロンプトライブラリ",
+    "description": "繰り返し使うプロンプトです。入力欄で @ または / を入力すると挿入できます。毎回入力する部分には {{name}} または {{name:default}} を使います。",
+    "manage": "自分のプロンプト",
+    "add": "プロンプトを追加",
+    "editTitle": "プロンプトを編集",
+    "import": "インポート",
+    "export": "エクスポート",
+    "imported": "{{count}} 件のプロンプトを追加しました",
+    "search": "プロンプトを検索",
+    "empty": "プロンプトはまだありません。",
+    "edit": "{{name}} を編集",
+    "delete": "{{name}} を削除",
+    "deleted": "プロンプトを削除しました",
+    "undo": "元に戻す",
+    "name": "名前",
+    "folder": "フォルダ(任意)",
+    "tags": "タグ(カンマ区切り)",
+    "body": "プロンプト本文",
+    "bodyHint": "プロンプトを書きます。空欄には {{topic}} や {{tone:friendly}} を使います。",
+    "variables": "入力が必要: {{names}}",
+    "insert": "挿入"
+  }
 }

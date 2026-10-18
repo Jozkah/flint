@@ -173,7 +173,9 @@
     "selectRouterModelPlaceholder": "Seleccionar modelo de enrutado…",
     "routerModelSearchPlaceholder": "Buscar modelos…",
     "routerModelEmptyList": "No hay modelos ligeros disponibles. Añada un modelo más pequeño o configure las claves API en Modelos.",
-    "routerModelEmptySearch": "No hay coincidencias para «{{query}}»."
+    "routerModelEmptySearch": "No hay coincidencias para «{{query}}».",
+    "idleShutdown": "Detener servidores inactivos tras (minutos)",
+    "idleShutdownDesc": "Un servidor MCP sin llamadas a herramientas durante este tiempo se detiene para liberar memoria y se vuelve a iniciar la próxima vez que haga falta. Los servidores configurados para iniciarse con Flint siguen en marcha. Pon 0 para no detenerlos nunca."
   },
   "auth": {
     "label": "Autenticación:",
@@ -262,7 +264,8 @@
   "lifecycle": {
     "startWithFlint": "Iniciar con Flint",
     "start": "Iniciar",
-    "stop": "Detener"
+    "stop": "Detener",
+    "toolTimeout": "Tiempo límite de herramienta (s)"
   },
   "cwd": "Directorio de trabajo",
   "cwdPlaceholder": "Opcional, p. ej. C:\\tools\\my-server",

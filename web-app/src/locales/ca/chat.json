@@ -203,5 +203,25 @@
     "description": "Se suprimiran {{count}} xats. Aquesta acció no es pot desfer.",
     "descriptionArchive": "{{count}} xats es mouran a l'arxiu. Els pots restaurar des d'allà.",
     "done": "S'han suprimit {{count}} xats"
+  },
+  "find": {
+    "placeholder": "Cerca al xat",
+    "none": "Cap coincidència",
+    "previous": "Coincidència anterior",
+    "next": "Coincidència següent",
+    "close": "Tanca la cerca"
+  },
+  "continueSummary": {
+    "menu": "Continua en un xat nou a partir d'un resum",
+    "working": "S'està resumint el xat...",
+    "done": "S'ha continuat en un xat nou.",
+    "cancel": "Cancel·la",
+    "errors": {
+      "no-chat": "Aquest xat no es pot continuar.",
+      "empty": "Encara no hi ha res per resumir.",
+      "no-model": "Primer tria un model per a aquest xat.",
+      "model-not-loaded": "Primer carrega el model del xat. És el que escriu el resum.",
+      "summary-failed": "No s'ha pogut escriure el resum. No s'ha creat res."
+    }
   }
 }

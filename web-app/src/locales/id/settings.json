@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Subagen",
-    "description": "Asisten, profil kerja, dan model mana yang dipakai subagen yang dimulai Flint. Tanpa pilihan di sini, subagen mewarisi asisten dan profil kerja induknya (persona panjang dipersingkat). Ini tidak pernah mengubah apa yang boleh dilakukan subagen: alat dan persetujuannya tetap seperti yang diizinkan eksekusi.",
+    "description": "Asisten, profil kerja, dan model yang dipakai subagen yang dimulai Flint. Tanpa pilihan di sini, subagen mewarisi asisten dan profil kerja induknya (instruksi asisten yang panjang dipersingkat). Ini tidak pernah mengubah apa yang boleh dilakukan subagen: alat dan persetujuannya tetap sesuai yang diizinkan proses tersebut.",
     "headlessNote": "Asisten dan profil kerja hanya berlaku di aplikasi desktop. Eksekusi dari baris perintah mengikuti pilihan model.",
     "defaultsTitle": "Untuk semua subagen",
     "defaultsDesc": "Masing-masing mewarisi dari eksekusi yang memulainya kecuali Anda memilih sesuatu di sini.",
@@ -10,7 +10,7 @@
     "model": "Model",
     "inherit": "Warisi",
     "inheritDesc": "Pakai apa pun yang dipakai eksekusi yang memulai subagen.",
-    "assistantDesc": "Persona tempat subagen bekerja.",
+    "assistantDesc": "Asisten tempat subagen bekerja.",
     "profileDesc": "Cara subagen mendekati pekerjaan.",
     "modelDesc": "Jalankan subagen pada model lain, misalnya yang lebih cepat untuk survei hanya-baca.",
     "groupAssistants": "Asisten",
@@ -62,9 +62,6 @@
   "reportAnIssue": "Laporkan Masalah",
   "reportAnIssueDesc": "Menemukan bug? Bantu kami dengan mengajukan masalah di GitHub.",
   "reportIssue": "Laporkan Masalah",
-  "credits": "Kredit",
-  "creditsDesc1": "Flint dibuat dengan ❤️ oleh Jozkah.",
-  "creditsDesc2": "Terima kasih khusus kepada dependensi sumber terbuka kami—terutama llama.cpp dan Tauri—dan kepada komunitas AI kami yang luar biasa.",
   "appVersion": "Versi Aplikasi",
   "dataFolder": {
     "appData": "Data Aplikasi",
@@ -79,7 +76,8 @@
     "enterKeyNewline": "Enter Menambah Baris Baru",
     "enterKeyNewlineDesc": "Menekan Enter di kotak obrolan menambah baris baru, bukan mengirim. Kirim dengan tombol kirim atau Ctrl/Cmd+Enter. Berguna saat mengetik dengan metode input (IME), di mana Enter mengonfirmasi konversi.",
     "resetFactory": "Setel Ulang ke Pengaturan Pabrik",
-    "resetFactoryDesc": "Kembalikan aplikasi ke keadaan semula, menghapus semua model dan riwayat obrolan. Tindakan ini tidak dapat diurungkan dan hanya disarankan jika aplikasi rusak."
+    "resetFactoryDesc": "Kembalikan aplikasi ke keadaan semula, menghapus semua model dan riwayat obrolan. Tindakan ini tidak dapat diurungkan dan hanya disarankan jika aplikasi rusak.",
+    "spellCheckHint": "Bahasa ejaan dipilih oleh sistem Anda, bukan oleh Flint. Tambahkan bahasa di pengaturan bahasa dan keyboard sistem Anda (Windows: Bahasa & wilayah; macOS: Keyboard > Input Teks; Linux: pasang kamus hunspell)."
   },
   "shortcuts": {
     "change": "Ubah",
@@ -121,7 +119,9 @@
     "nextPane": "Panel berikutnya",
     "nextPaneDesc": "Pindah ke panel berikutnya di tampilan terbagi.",
     "previousPane": "Panel sebelumnya",
-    "previousPaneDesc": "Pindah ke panel sebelumnya di tampilan terbagi."
+    "previousPaneDesc": "Pindah ke panel sebelumnya di tampilan terbagi.",
+    "findInChat": "Cari di obrolan",
+    "findInChatDesc": "Cari di percakapan yang tampil di layar."
   },
   "interface": {
     "title": "Tampilan",
@@ -176,12 +176,6 @@
     "resetCodeBlockSuccess": "Gaya blok kode berhasil diatur ulang",
     "resetCodeBlockSuccessDesc": "Gaya blok kode telah dikembalikan ke default.",
     "transcriptView": "Tampilan transkrip",
-    "sidebarLayout": "Bilah sisi",
-    "sidebarLayoutDesc": "Seberapa banyak bilah sisi kiri yang ditampilkan.",
-    "sidebarLayout_trimmed": "Diringkas",
-    "sidebarLayout_trimmedDesc": "Obrolan baru, Cowork, Jelajahi, dan obrolan Anda. Ruang, Pustaka, Studio, dan halaman engine dilipat di bawah Lainnya dan Lanjutan.",
-    "sidebarLayout_extended": "Diperluas",
-    "sidebarLayout_extendedDesc": "Semuanya ditampilkan sekaligus: Lainnya dan Lanjutan tetap terbuka.",
     "transcriptViewDesc": "Seberapa banyak tiap giliran yang ditampilkan Chat, Cowork, dan Rooms. Persetujuan, pertanyaan, dan galat selalu tampil.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "Jawaban dan hal yang memerlukan Anda. Panggilan alat dilipat menjadi satu baris langkah.",
@@ -190,7 +184,13 @@
     "transcriptViewVerbose": "Lengkap",
     "transcriptViewVerboseDesc": "Semuanya: penalaran penuh dan setiap panggilan alat terbuka dengan parameter dan keluarannya.",
     "inlineCitations": "Ikon sumber sebaris",
-    "inlineCitationsDesc": "Tampilkan ikon situs kecil setelah kalimat yang berasal dari sumber web. Matikan untuk membaca jawaban tanpa ikon; sumber tetap tercantum di bawahnya."
+    "inlineCitationsDesc": "Tampilkan ikon situs kecil setelah kalimat yang berasal dari sumber web. Matikan untuk membaca jawaban tanpa ikon; sumber tetap tercantum di bawahnya.",
+    "sidebarLayout": "Bilah sisi",
+    "sidebarLayoutDesc": "Seberapa banyak bilah sisi kiri yang ditampilkan.",
+    "sidebarLayout_trimmed": "Diringkas",
+    "sidebarLayout_trimmedDesc": "Obrolan baru, Cowork, Jelajahi, dan obrolan Anda. Ruang, Pustaka, Studio, dan halaman engine dilipat di bawah Lainnya dan Lanjutan.",
+    "sidebarLayout_extended": "Diperluas",
+    "sidebarLayout_extendedDesc": "Semuanya ditampilkan sekaligus: Lainnya dan Lanjutan tetap terbuka."
   },
   "hardware": {
     "os": "Sistem Operasi",
@@ -378,6 +378,9 @@
     "usageWeek": "Per minggu",
     "usageWeekDesc": "Token, input ditambah output, dalam 7 hari terakhir. Kosong berarti tanpa batas.",
     "usageNow": "Terpakai saat ini",
+    "usageNoLimitPlaceholder": "Tanpa batas",
+    "serverLog": "Log server",
+    "openInNewWindow": "Buka di jendela baru",
     "usageNoLimit": "Batas belum ditetapkan",
     "usageResets": "Penggunaan tertua kedaluwarsa dalam {{wait}}",
     "startServer": "Mulai Server",
@@ -415,7 +418,7 @@
     "verboseLogsDesc": "Aktifkan log server terperinci untuk debugging.",
     "proxyTimeout": "Permintaan melebihi batas waktu",
     "proxyTimeoutDesc": "Waktu tunggu untuk respons dari model lokal dalam detik.",
-    "defaultModel": "Model Default Server API Lokal",
+    "defaultModel": "Model default",
     "defaultModelDesc": "Model lokal yang dimuat otomatis saat server dimulai.",
     "defaultModelPlaceholder": "Pilih model lokal"
   },
@@ -454,7 +457,7 @@
     "updateError": "Gagal memeriksa pembaruan",
     "appVersion": "Versi Aplikasi",
     "buildUpdate": "Periksa build yang lebih baru",
-    "buildUpdateDesc": "Flint 0.9.0 adalah build nightly: dibangun ulang dari kode terbaru dan nomor versinya tetap sama. Saat aktif, Flint bertanya ke GitHub sekali saat mulai (paling banyak dua kali sehari) apakah ada build yang lebih baru. Mati secara default; tidak ada yang dikirim selain permintaan itu.",
+    "buildUpdateDesc": "Build nightly memakai nomor versi yang sama. Jika aktif, Flint bertanya ke GitHub sekali saat mulai (maksimal dua kali sehari) apakah ada build yang lebih baru. Nonaktif secara default.",
     "buildCheckNow": "Periksa sekarang",
     "buildChecking": "Memeriksa…",
     "buildNewer": "Build yang lebih baru tersedia. Unduh lagi dari halaman rilis untuk memperbarui.",
@@ -667,8 +670,7 @@
     "increaseContrast": "Tingkatkan kontras",
     "increaseContrastDesc": "Membuat teks lebih terang agar mudah dibaca. Lebih putih pada tema gelap, lebih gelap pada tema terang.",
     "reduceMotion": "Kurangi gerakan",
-    "reduceMotionDesc": "Matikan animasi di Flint. Flint tidak mengikuti pengaturan sistem, jadi gerakan tetap aktif kecuali Anda mengubahnya.",
-    "completionSoundApproval": "Hanya saat persetujuan diperlukan"
+    "reduceMotionDesc": "Matikan animasi di Flint. Flint tidak mengikuti pengaturan sistem, jadi gerakan tetap aktif kecuali Anda mengubahnya."
   },
   "pageDesc": {
     "general": "Bahasa, folder data, log, dan opsi seluruh aplikasi.",
@@ -1070,7 +1072,11 @@
       "updated": "Diperbarui {{when}}",
       "loading": "Memuat campaign",
       "loadFailed": "Campaign tidak dapat dimuat.",
-      "retry": "Coba lagi"
+      "skipped_other": "{{count}} catatan kampanye yang tidak terbaca dilewati. Berkas dibiarkan di tempatnya.",
+      "retry": "Coba lagi",
+      "needsDesktop": "Kampanye memerlukan aplikasi desktop",
+      "needsDesktopHint": "Buka aplikasi desktop Flint untuk melihat dan memulai kampanye. Tab browser biasa tidak bisa membacanya.",
+      "staleApp": "Salinan aplikasi ini lebih lama dari halamannya. Tutup lalu mulai ulang agar memuat versi terbaru."
     },
     "plan": {
       "edit": "Edit rencana",
@@ -1126,5 +1132,35 @@
     "storeToolApproval": "persetujuan otomatis alat",
     "storeMcpTrust": "kepercayaan server MCP",
     "storeProxy": "proksi jaringan"
-  }
+  },
+  "startup": {
+    "title": "Mulai bersama komputer",
+    "on": "Aktif. Flint dimulai saat Anda masuk, menggunakan {{platform}}.",
+    "off": "Nonaktif. Flint hanya dimulai saat Anda membukanya. Mengaktifkan ini akan bertanya dulu dan menunjukkan persis apa yang ditulis.",
+    "minimized": "Mulai diminimalkan",
+    "minimizedDesc": "Mulai tersembunyi sehingga hanya ikon baki yang tampil; klik untuk membuka jendela.",
+    "confirmTitle": "Add a startup entry ({{platform}})?",
+    "confirmBody": "Ini menulis persis entri di bawah ke akun pengguna Anda, dan tidak ada yang lain. Tidak perlu hak administrator.",
+    "confirmUndo": "Mematikan sakelar akan menghapus entri ini.",
+    "confirm": "Tambah entri",
+    "failed": "Tidak dapat mengubah entri startup"
+  },
+  "sidebarItems": {
+    "title": "Item sidebar",
+    "description": "Pilih item yang tampil di sidebar kiri. Menyembunyikan item hanya menghapus pintasannya; halamannya tetap berfungsi.",
+    "section": {
+      "workspace": "Ruang kerja",
+      "cowork": "Cowork",
+      "more": "Lainnya",
+      "header": "Atas dan bawah"
+    },
+    "showItem": "Tampilkan {{item}} di sidebar",
+    "alwaysShown": "Selalu tampil",
+    "showAll": "Tampilkan semua",
+    "preview": "Pratinjau",
+    "reachable": "Item tersembunyi tetap dapat dijangkau dari palet perintah dan dari Pengaturan."
+  },
+  "credits": "Kredit",
+  "creditsDesc1": "Flint dibuat dengan ❤️ oleh Jozkah.",
+  "creditsDesc2": "Terima kasih khusus kepada dependensi sumber terbuka kami—terutama llama.cpp dan Tauri—dan kepada komunitas AI kami yang luar biasa."
 }

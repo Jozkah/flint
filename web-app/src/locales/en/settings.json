@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Subagents",
-    "description": "Which assistant, work profile and model the subagents Flint starts run with. Without a choice here a subagent inherits its parent's assistant and work profile (long personas are shortened). This never changes what a subagent may do: its tools and approvals stay what the run allows.",
+    "description": "Which assistant, work profile and model the subagents Flint starts run with. Without a choice here a subagent inherits its parent's assistant and work profile (long assistant instructions are shortened). This never changes what a subagent may do: its tools and approvals stay what the run allows.",
     "headlessNote": "Assistants and work profiles apply in the desktop app only. Runs from the command line follow the model choices.",
     "defaultsTitle": "For all subagents",
     "defaultsDesc": "Each one inherits from the run that started it unless you pick something here.",
@@ -10,7 +10,7 @@
     "model": "Model",
     "inherit": "Inherit",
     "inheritDesc": "Use whatever the run that started the subagent uses.",
-    "assistantDesc": "The persona a subagent works under.",
+    "assistantDesc": "The assistant a subagent works under.",
     "profileDesc": "How a subagent approaches the work.",
     "modelDesc": "Run subagents on another model, for example a faster one for read-only surveys.",
     "groupAssistants": "Assistants",
@@ -63,9 +63,6 @@
   "reportAnIssue": "Report an Issue",
   "reportAnIssueDesc": "Found a bug? Help us out by filing an issue on GitHub.",
   "reportIssue": "Report Issue",
-  "credits": "Credits",
-  "creditsDesc1": "Flint is built with ❤️ by Jozkah, based on Jan from the Menlo Research team.",
-  "creditsDesc2": "Special thanks to our open-source dependencies—especially llama.cpp and Tauri—and to our amazing AI community.",
   "appVersion": "App Version",
   "dataFolder": {
     "appData": "App Data",
@@ -77,6 +74,7 @@
   "others": {
     "spellCheck": "Spell Check",
     "spellCheckDesc": "Enable spell check for your threads.",
+    "spellCheckHint": "The spelling language is chosen by your system, not by Flint. Add a language in your system's language and keyboard settings (Windows: Language & region; macOS: Keyboard > Text Input; Linux: install a hunspell dictionary).",
     "enterKeyNewline": "Enter Adds a New Line",
     "enterKeyNewlineDesc": "Pressing Enter in the chat box adds a new line instead of sending. Send with the send button or Ctrl/Cmd+Enter. Useful when you type with an input method (IME), where Enter confirms a conversion.",
     "resetFactory": "Reset To Factory Settings",
@@ -112,6 +110,8 @@
     "navigation": "Navigation",
     "search": "Search",
     "searchDesc": "Open the search dialog.",
+    "findInChat": "Find in chat",
+    "findInChatDesc": "Search the conversation on screen.",
     "goToSettings": "Go to Settings",
     "goToSettingsDesc": "Open settings.",
     "splitViewSection": "Split view",
@@ -177,12 +177,6 @@
     "resetCodeBlockSuccess": "Code block style reset successfully",
     "resetCodeBlockSuccessDesc": "Code block style has been restored to default.",
     "transcriptView": "Transcript view",
-    "sidebarLayout": "Sidebar",
-    "sidebarLayoutDesc": "How much of the left sidebar is listed.",
-    "sidebarLayout_trimmed": "Trimmed",
-    "sidebarLayout_trimmedDesc": "New chat, Cowork, Discover and your chats. Rooms, Library, Studio and the engine pages fold under More and Advanced.",
-    "sidebarLayout_extended": "Extended",
-    "sidebarLayout_extendedDesc": "Everything listed at once: More and Advanced stay open.",
     "transcriptViewDesc": "How much of each turn Chat, Cowork and Rooms show. Approvals, questions and errors always show.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "The answer and anything that needs you. Tool calls fold into one steps row.",
@@ -191,7 +185,13 @@
     "transcriptViewVerbose": "Verbose",
     "transcriptViewVerboseDesc": "Everything: full reasoning and every tool call open with its parameters and output.",
     "inlineCitations": "Inline source icons",
-    "inlineCitationsDesc": "Show a small site icon after a sentence that comes from a web source. Turn this off to read the answer without them; the sources stay listed below it."
+    "inlineCitationsDesc": "Show a small site icon after a sentence that comes from a web source. Turn this off to read the answer without them; the sources stay listed below it.",
+    "sidebarLayout": "Sidebar",
+    "sidebarLayoutDesc": "How much of the left sidebar is listed.",
+    "sidebarLayout_trimmed": "Trimmed",
+    "sidebarLayout_trimmedDesc": "New chat, Cowork, Discover and your chats. Rooms, Library, Studio and the engine pages fold under More and Advanced.",
+    "sidebarLayout_extended": "Extended",
+    "sidebarLayout_extendedDesc": "Everything listed at once: More and Advanced stay open."
   },
   "hardware": {
     "os": "Operating System",
@@ -380,6 +380,9 @@
     "usageWeek": "Per week",
     "usageWeekDesc": "Tokens, input plus output, in the last 7 days. Empty means no limit.",
     "usageNow": "Used now",
+    "usageNoLimitPlaceholder": "No limit",
+    "serverLog": "Server log",
+    "openInNewWindow": "Open in new window",
     "usageNoLimit": "No limit set",
     "usageResets": "Oldest use ages out in {{wait}}",
     "startServer": "Start Server",
@@ -417,7 +420,7 @@
     "verboseLogsDesc": "Enable detailed server logs for debugging.",
     "proxyTimeout": "Request timeout",
     "proxyTimeoutDesc": "Time to wait for a response from the local model, seconds.",
-    "defaultModel": "Default Model Local API Server",
+    "defaultModel": "Default model",
     "defaultModelDesc": "Local model to load automatically when the server starts.",
     "defaultModelPlaceholder": "Select a local model"
   },
@@ -456,7 +459,7 @@
     "updateError": "Failed to check for updates",
     "appVersion": "App Version",
     "buildUpdate": "Check for newer builds",
-    "buildUpdateDesc": "Flint 0.9.0 is a nightly build: it is rebuilt from the latest code and the version number stays the same. When on, Flint asks GitHub once on start (at most twice a day) whether a newer build exists. Off by default; nothing is sent either way except that request.",
+    "buildUpdateDesc": "Nightly builds keep the same version number. When on, Flint asks GitHub once on start (at most twice a day) whether a newer build exists. Off by default.",
     "buildCheckNow": "Check now",
     "buildChecking": "Checking…",
     "buildNewer": "A newer build is available. Download it again from the release page to update.",
@@ -1071,7 +1074,12 @@
       "updated": "Updated {{when}}",
       "loading": "Loading campaigns",
       "loadFailed": "Couldn't load campaigns.",
-      "retry": "Retry"
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
+      "skipped_other": "Skipped {{count}} unreadable campaign records. The files were left in place.",
+      "retry": "Retry",
+      "needsDesktop": "Campaigns need the desktop app",
+      "needsDesktopHint": "Open Flint's desktop app to see and start campaigns. A plain browser tab has nothing to read them from.",
+      "staleApp": "This copy of the app is older than the page. Close it and restart it so it picks up the latest build."
     },
     "plan": {
       "edit": "Edit plan",
@@ -1127,5 +1135,35 @@
     "storeToolApproval": "tool auto-approval",
     "storeMcpTrust": "MCP server trust",
     "storeProxy": "network proxy"
-  }
+  },
+  "startup": {
+    "title": "Start with the computer",
+    "on": "On. Flint starts when you sign in, using a {{platform}}.",
+    "off": "Off. Flint starts only when you open it. Turning this on asks first and shows exactly what is written.",
+    "minimized": "Start minimized",
+    "minimizedDesc": "Start hidden so only the tray icon shows; click it to open the window.",
+    "confirmTitle": "Add Flint to {{platform}}?",
+    "confirmBody": "This writes exactly the entry below to your user account, and nothing else. It needs no administrator rights.",
+    "confirmUndo": "Turning the switch off removes this entry.",
+    "confirm": "Add entry",
+    "failed": "Could not change the startup entry"
+  },
+  "sidebarItems": {
+    "title": "Sidebar items",
+    "description": "Choose which items appear in the left sidebar. Hiding one only removes its shortcut; the page itself keeps working.",
+    "section": {
+      "workspace": "Workspace",
+      "cowork": "Cowork",
+      "more": "More",
+      "header": "Top and bottom"
+    },
+    "showItem": "Show {{item}} in the sidebar",
+    "alwaysShown": "Always shown",
+    "showAll": "Show all",
+    "preview": "Preview",
+    "reachable": "Hidden items stay reachable from the command palette and from Settings."
+  },
+  "credits": "Credits",
+  "creditsDesc1": "Flint is built with ❤️ by Jozkah, based on Jan from the Menlo Research team.",
+  "creditsDesc2": "Special thanks to our open-source dependencies—especially llama.cpp and Tauri—and to our amazing AI community."
 }

@@ -68,7 +68,8 @@
     "loaded": "Загружена",
     "ready": "Готова",
     "noKey": "Нет API-ключа",
-    "keyless": "Ключ не нужен"
+    "keyless": "Ключ не нужен",
+    "noCredentials": "Нет учётных данных AWS"
   },
   "installed": {
     "title": "Установленные модели",

@@ -14,7 +14,7 @@
     "MODEL_LOAD_TIMED_OUT": "O modelo demorou demais para carregar e foi interrompido. Um modelo menor ou um tamanho de contexto menor geralmente ajuda.",
     "MISSING_SHARED_LIBRARY": "Falta uma biblioteca de que o motor precisa, então ele não consegue iniciar.",
     "GPU_DRIVER_TOO_OLD": "O driver da sua GPU é antigo demais para este motor. Atualizar o driver ou mudar para o motor de CPU em Configurações resolverá isso.",
-    "CPU_NOT_SUPPORTED": "O processador deste computador não tem instruções de que o motor precisa (é necessária uma CPU x86 com AVX), por isso o motor travou ao iniciar.",
+    "CPU_NOT_SUPPORTED": "O processador deste computador não tem instruções de que o mecanismo precisa (é necessária uma CPU x86 com AVX), então o mecanismo travou. O Flint já tentou o modelo mais uma vez só na CPU; se você ainda vê isto, essa nova tentativa também travou, ou o mecanismo já estava configurado só para CPU.",
     "OS_VERSION_UNSUPPORTED": "Esta versão do macOS é antiga demais para o motor. Atualizar o macOS resolve o problema.",
     "MODEL_QUANT_NOT_SUPPORTED": "Este modelo usa um tipo de quantização que o backend de GPU não consegue executar. Baixe outra quantização, como Q4_K_M, ou desative o offload para GPU.",
     "ENGINE_STOPPED": "O motor parou inesperadamente. Carregue o modelo novamente para reiniciá-lo; se continuar acontecendo, a última saída do motor abaixo explica o motivo.",

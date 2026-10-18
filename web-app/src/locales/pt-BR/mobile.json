@@ -135,7 +135,7 @@
   "home": {
     "chatSuggestions": {
       "error": "Explique esta mensagem de erro",
-      "summarise": "Resuma um documento que vou anexar",
+      "summarise": "Resumir um documento que eu anexar",
       "releaseNotes": "Redija notas de versão a partir de uma lista de alterações",
       "compare": "Compare duas abordagens e recomende uma"
     },

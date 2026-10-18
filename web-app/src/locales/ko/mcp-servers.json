@@ -172,7 +172,9 @@
     "selectRouterModelPlaceholder": "라우팅 모델 선택…",
     "routerModelSearchPlaceholder": "모델 검색…",
     "routerModelEmptyList": "사용 가능한 경량 모델이 없습니다. 더 작은 모델을 추가하거나 모델에서 API 키를 설정하세요.",
-    "routerModelEmptySearch": "「{{query}}」에 일치하는 항목이 없습니다."
+    "routerModelEmptySearch": "「{{query}}」에 일치하는 항목이 없습니다.",
+    "idleShutdown": "유휴 서버 중지까지 시간(분)",
+    "idleShutdownDesc": "이 시간 동안 도구 호출이 없는 MCP 서버는 메모리를 확보하기 위해 중지되며, 다시 필요할 때 시작됩니다. Flint와 함께 시작하도록 설정된 서버는 계속 실행됩니다. 0으로 설정하면 중지하지 않습니다."
   },
   "auth": {
     "label": "인증:",
@@ -259,7 +261,8 @@
   "lifecycle": {
     "startWithFlint": "Flint와 함께 시작",
     "start": "시작",
-    "stop": "중지"
+    "stop": "중지",
+    "toolTimeout": "도구 시간 제한(초)"
   },
   "cwd": "작업 디렉터리",
   "cwdPlaceholder": "선택 사항, 예: C:\\tools\\my-server",

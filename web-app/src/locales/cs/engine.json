@@ -68,7 +68,8 @@
     "loaded": "Načteno",
     "ready": "Připraveno",
     "noKey": "Bez klíče API",
-    "keyless": "Klíč není potřeba"
+    "keyless": "Klíč není potřeba",
+    "noCredentials": "Žádné přihlašovací údaje AWS"
   },
   "installed": {
     "title": "Nainstalované modely",

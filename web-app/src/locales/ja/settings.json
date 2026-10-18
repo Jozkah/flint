@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "サブエージェント",
-    "description": "Flint が起動するサブエージェントを、どのアシスタント、作業プロファイル、モデルで実行するかを設定します。ここで選択しない場合、サブエージェントは親のアシスタントと作業プロファイルを継承します (長いペルソナは短縮されます)。これによって、サブエージェントができることが変わることはありません。ツールと承認は、実行が許可するとおりのままです。",
+    "description": "Flint が起動するサブエージェントが使うアシスタント、作業プロファイル、モデルです。ここで選ばない場合、サブエージェントは親のアシスタントと作業プロファイルを引き継ぎます(長いアシスタントの指示は短縮されます)。サブエージェントができることは変わりません。ツールと承認は実行に許可されたままです。",
     "headlessNote": "アシスタントと作業プロファイルは、デスクトップアプリでのみ適用されます。コマンドラインからの実行では、モデルの選択に従います。",
     "defaultsTitle": "すべてのサブエージェント向け",
     "defaultsDesc": "ここで選択しない限り、それぞれ、起動した実行から継承します。",
@@ -10,7 +10,7 @@
     "model": "モデル",
     "inherit": "継承",
     "inheritDesc": "サブエージェントを起動した実行が使用しているものを使います。",
-    "assistantDesc": "サブエージェントが作業する際のペルソナです。",
+    "assistantDesc": "サブエージェントが動作するアシスタント。",
     "profileDesc": "サブエージェントが作業に取り組む方法です。",
     "modelDesc": "サブエージェントを別のモデルで実行します。たとえば、読み取り専用の調査には高速なモデルを使えます。",
     "groupAssistants": "アシスタント",
@@ -63,9 +63,6 @@
   "reportAnIssue": "問題を報告",
   "reportAnIssueDesc": "バグを見つけましたか？GitHubで問題を報告して、私たちを助けてください。",
   "reportIssue": "問題を報告",
-  "credits": "クレジット",
-  "creditsDesc1": "👋 FlintはJozkahが❤️を込めて作っています。",
-  "creditsDesc2": "オープンソースの依存関係、特にllama.cppとTauri、そして素晴らしいAIコミュニティに感謝します。",
   "appVersion": "アプリのバージョン",
   "dataFolder": {
     "appData": "アプリデータ",
@@ -80,7 +77,8 @@
     "enterKeyNewline": "Enter キーで改行する",
     "enterKeyNewlineDesc": "チャット入力で Enter キーを押すと、送信せずに改行します。送信は送信ボタンまたは Ctrl/Cmd+Enter で行います。IME（日本語入力など）で変換を確定する Enter による誤送信を防げます。",
     "resetFactory": "工場出荷時の設定にリセット",
-    "resetFactoryDesc": "アプリケーションを初期状態に戻し、すべてのモデルとチャット履歴を消去します。この操作は元に戻すことができず、アプリケーションが破損している場合にのみ推奨されます。"
+    "resetFactoryDesc": "アプリケーションを初期状態に戻し、すべてのモデルとチャット履歴を消去します。この操作は元に戻すことができず、アプリケーションが破損している場合にのみ推奨されます。",
+    "spellCheckHint": "スペルチェックの言語は Flint ではなくシステムで選択されます。システムの言語とキーボードの設定で言語を追加してください(Windows: 言語と地域、macOS: キーボード > 入力ソース、Linux: hunspell 辞書をインストール)。"
   },
   "shortcuts": {
     "change": "変更",
@@ -122,7 +120,9 @@
     "nextPane": "次のペイン",
     "nextPaneDesc": "分割ビューの次のペインへ移動します。",
     "previousPane": "前のペイン",
-    "previousPaneDesc": "分割ビューの前のペインへ移動します。"
+    "previousPaneDesc": "分割ビューの前のペインへ移動します。",
+    "findInChat": "チャット内を検索",
+    "findInChatDesc": "画面上の会話を検索します。"
   },
   "interface": {
     "title": "外観",
@@ -177,12 +177,6 @@
     "resetCodeBlockSuccess": "コードブロックスタイルが正常にリセットされました",
     "resetCodeBlockSuccessDesc": "コードブロックスタイルがデフォルトに復元されました。",
     "transcriptView": "トランスクリプトの表示",
-    "sidebarLayout": "サイドバー",
-    "sidebarLayoutDesc": "左サイドバーに表示する項目の量です。",
-    "sidebarLayout_trimmed": "簡易",
-    "sidebarLayout_trimmedDesc": "新しいチャット、Cowork、探索、チャットのみ表示します。ルーム、ライブラリ、スタジオ、エンジンのページは「その他」と「詳細設定」にまとめられます。",
-    "sidebarLayout_extended": "拡張",
-    "sidebarLayout_extendedDesc": "すべてを一度に表示します。「その他」と「詳細設定」は開いたままになります。",
     "transcriptViewDesc": "チャット、Cowork、ルームで各ターンをどこまで表示するか。承認、質問、エラーは常に表示されます。",
     "transcriptViewNormal": "標準",
     "transcriptViewNormalDesc": "回答と対応が必要なものだけ。ツール呼び出しは 1 行のステップにまとめます。",
@@ -191,7 +185,13 @@
     "transcriptViewVerbose": "詳細",
     "transcriptViewVerboseDesc": "すべて：推論全体と、パラメーターと出力を開いた各ツール呼び出し。",
     "inlineCitations": "本文中のソースアイコン",
-    "inlineCitationsDesc": "Web ソースに基づく文の後ろに小さなサイトアイコンを表示します。オフにすると回答をアイコンなしで読めます。ソースは下に一覧表示されたままです。"
+    "inlineCitationsDesc": "Web ソースに基づく文の後ろに小さなサイトアイコンを表示します。オフにすると回答をアイコンなしで読めます。ソースは下に一覧表示されたままです。",
+    "sidebarLayout": "サイドバー",
+    "sidebarLayoutDesc": "左サイドバーに表示する項目の量です。",
+    "sidebarLayout_trimmed": "簡易",
+    "sidebarLayout_trimmedDesc": "新しいチャット、Cowork、探索、チャットのみ表示します。ルーム、ライブラリ、スタジオ、エンジンのページは「その他」と「詳細設定」にまとめられます。",
+    "sidebarLayout_extended": "拡張",
+    "sidebarLayout_extendedDesc": "すべてを一度に表示します。「その他」と「詳細設定」は開いたままになります。"
   },
   "hardware": {
     "os": "オペレーティングシステム",
@@ -380,6 +380,9 @@
     "usageWeek": "1 週間あたり",
     "usageWeekDesc": "過去 7 日間の入力と出力を合わせたトークン数です。空欄は無制限を意味します。",
     "usageNow": "現在の使用量",
+    "usageNoLimitPlaceholder": "制限なし",
+    "serverLog": "サーバーログ",
+    "openInNewWindow": "新しいウィンドウで開く",
     "usageNoLimit": "制限なし",
     "usageResets": "最も古い使用分が {{wait}} 後に対象外になります",
     "startServer": "サーバーを開始",
@@ -417,7 +420,7 @@
     "verboseLogsDesc": "デバッグ用に詳細なサーバーログを有効にします。",
     "proxyTimeout": "リクエストタイムアウト",
     "proxyTimeoutDesc": "ローカルモデルからの応答を待機する時間（秒）。",
-    "defaultModel": "ローカルAPIサーバーの既定モデル",
+    "defaultModel": "既定のモデル",
     "defaultModelDesc": "サーバー起動時に自動的に読み込むローカルモデルです。",
     "defaultModelPlaceholder": "ローカルモデルを選択"
   },
@@ -456,7 +459,7 @@
     "updateError": "アップデートの確認に失敗しました",
     "appVersion": "アプリのバージョン",
     "buildUpdate": "新しいビルドを確認",
-    "buildUpdateDesc": "Flint 0.9.0 はナイトリービルドで、最新のコードから再ビルドされ、バージョン番号は変わりません。オンにすると、Flint は起動時に 1 回 (1 日最大 2 回)、新しいビルドがあるかを GitHub に問い合わせます。既定ではオフで、どちらの場合も、そのリクエスト以外は何も送信されません。",
+    "buildUpdateDesc": "ナイトリービルドは同じバージョン番号のままです。オンにすると、Flint は起動時に GitHub へ(1日最大2回)新しいビルドがあるか確認します。既定ではオフです。",
     "buildCheckNow": "今すぐ確認",
     "buildChecking": "確認中…",
     "buildNewer": "新しいビルドがあります。更新するには、リリースページからもう一度ダウンロードしてください。",
@@ -669,8 +672,7 @@
     "increaseContrast": "コントラストを上げる",
     "increaseContrastDesc": "文字をはっきりさせて読みやすくします。ダークテーマではより白く、ライトテーマではより濃くなります。",
     "reduceMotion": "視覚効果を減らす",
-    "reduceMotionDesc": "Flint のアニメーションをオフにします。Flint はシステム設定に従わないため、これを切り替えない限り、アニメーションはオンのままです。",
-    "completionSoundApproval": "承認が必要なときのみ"
+    "reduceMotionDesc": "Flint のアニメーションをオフにします。Flint はシステム設定に従わないため、これを切り替えない限り、アニメーションはオンのままです。"
   },
   "pageDesc": {
     "general": "言語、データフォルダー、ログ、アプリ全体のオプションです。",
@@ -1072,7 +1074,12 @@
       "updated": "{{when}} に更新",
       "loading": "キャンペーンを読み込んでいます",
       "loadFailed": "キャンペーンを読み込めませんでした。",
-      "retry": "再試行"
+      "skipped_one": "読み取れないキャンペーンの記録を {{count}} 件スキップしました。ファイルはそのまま残しています。",
+      "skipped_other": "読み取れないキャンペーンの記録を {{count}} 件スキップしました。ファイルはそのまま残しています。",
+      "retry": "再試行",
+      "needsDesktop": "キャンペーンにはデスクトップアプリが必要です",
+      "needsDesktopHint": "キャンペーンの表示と開始には Flint のデスクトップアプリを開いてください。通常のブラウザタブでは読み込めません。",
+      "staleApp": "このアプリのコピーはページより古い状態です。いったん閉じて再起動し、最新のビルドを読み込んでください。"
     },
     "plan": {
       "edit": "計画を編集",
@@ -1128,5 +1135,35 @@
     "storeToolApproval": "ツールの自動承認",
     "storeMcpTrust": "MCP サーバーの信頼",
     "storeProxy": "ネットワークプロキシ"
-  }
+  },
+  "startup": {
+    "title": "パソコンの起動時に開始",
+    "on": "オン。サインイン時に {{platform}} を使って Flint が起動します。",
+    "off": "オフ。Flint は自分で開いたときだけ起動します。オンにする際は先に確認が表示され、書き込まれる内容がそのまま示されます。",
+    "minimized": "最小化して起動",
+    "minimizedDesc": "非表示で起動し、トレイアイコンだけが表示されます。クリックするとウィンドウが開きます。",
+    "confirmTitle": "Add a startup entry ({{platform}})?",
+    "confirmBody": "下のエントリだけをそのままユーザーアカウントに書き込み、ほかには何も書き込みません。管理者権限は不要です。",
+    "confirmUndo": "スイッチをオフにするとこのエントリは削除されます。",
+    "confirm": "エントリを追加",
+    "failed": "スタートアップのエントリを変更できませんでした"
+  },
+  "sidebarItems": {
+    "title": "サイドバーの項目",
+    "description": "左サイドバーに表示する項目を選びます。非表示にしてもショートカットが消えるだけで、ページ自体は引き続き使えます。",
+    "section": {
+      "workspace": "ワークスペース",
+      "cowork": "Cowork",
+      "more": "その他",
+      "header": "上部と下部"
+    },
+    "showItem": "{{item}} をサイドバーに表示",
+    "alwaysShown": "常に表示",
+    "showAll": "すべて表示",
+    "preview": "プレビュー",
+    "reachable": "非表示の項目も、コマンドパレットと設定から開けます。"
+  },
+  "credits": "クレジット",
+  "creditsDesc1": "👋 FlintはJozkahが❤️を込めて作っています。",
+  "creditsDesc2": "オープンソースの依存関係、特にllama.cppとTauri、そして素晴らしいAIコミュニティに感謝します。"
 }

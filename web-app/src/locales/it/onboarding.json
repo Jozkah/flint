@@ -72,8 +72,29 @@
       "body": "Usa un modello ospitato con il tuo account."
     },
     "import": {
-      "title": "Importa un file",
-      "body": "Aggiungi un file di modello che hai già."
+      "title": "Aggiungi un file modello",
+      "body": "Scegli un file .gguf oppure trova i modelli che Ollama, LM Studio e altri hanno già salvato su questo computer. Non viene scaricato nulla."
     }
+  },
+  "fit": {
+    "heading": "Funzionerà bene qui?"
+  },
+  "sample": {
+    "button": "Prova una domanda di esempio",
+    "hint": "Inserisce una domanda nel campo del messaggio. Premi Invio per inviarla, oppure modificala prima.",
+    "question": "In tre frasi, spiega cos'è un modello linguistico e cosa non sa fare."
+  },
+  "approvalsNote": "Quando Flint vuole modificare un file o eseguire un comando, si ferma e chiede prima. La richiesta compare nella conversazione con esattamente ciò che farà, e tu scegli Consenti o Rifiuta. Non viene eseguito nulla finché non rispondi.",
+  "checklist": {
+    "label": "Avanzamento",
+    "model-added": "Modello aggiunto",
+    "first-chat": "Prima chat",
+    "first-project": "Primo progetto"
+  },
+  "sidebar": {
+    "title": "Personalizza la barra laterale",
+    "body": "Nascondi le voci che non usi. Puoi cambiarlo quando vuoi in Impostazioni, sotto Aspetto.",
+    "customize": "Personalizza barra laterale",
+    "close": "Fatto"
   }
 }

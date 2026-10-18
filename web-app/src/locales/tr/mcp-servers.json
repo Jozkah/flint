@@ -172,7 +172,9 @@
     "selectRouterModelPlaceholder": "Yönlendirme modeli seçin…",
     "routerModelSearchPlaceholder": "Model ara…",
     "routerModelEmptyList": "Kullanılabilir hafif model yok. Daha küçük bir model ekleyin veya Modeller bölümünde API anahtarlarını yapılandırın.",
-    "routerModelEmptySearch": "“{{query}}” için sonuç yok."
+    "routerModelEmptySearch": "“{{query}}” için sonuç yok.",
+    "idleShutdown": "Boştaki sunucuları şu süreden sonra durdur (dakika)",
+    "idleShutdownDesc": "Bu süre boyunca hiç araç çağrısı almayan bir MCP sunucusu belleği boşaltmak için durdurulur ve bir sonraki gerektiğinde yeniden başlar. Flint ile başlayacak şekilde ayarlanan sunucular çalışmaya devam eder. Hiç durdurmamak için 0 yapın."
   },
   "auth": {
     "label": "Kimlik Doğrulama:",
@@ -259,7 +261,8 @@
   "lifecycle": {
     "startWithFlint": "Flint ile başlat",
     "start": "Başlat",
-    "stop": "Durdur"
+    "stop": "Durdur",
+    "toolTimeout": "Araç zaman aşımı (sn)"
   },
   "cwd": "Çalışma dizini",
   "cwdPlaceholder": "İsteğe bağlı, örn. C:\\tools\\my-server",

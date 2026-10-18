@@ -7,7 +7,7 @@
     "rename": "重新命名",
     "deleteGroup": "刪除群組",
     "deleteTitle": "刪除 {{name}}？",
-    "deleteBody": "群組將被刪除。其中的項目會移出群組，不會被刪除。",
+    "deleteBody": "群組將被刪除。其中的項目會移出群組，不會被刪除。所有子資料夾會上移一層。",
     "folders": "資料夾…",
     "foldersTitle": "「{{name}}」的資料夾",
     "foldersBodyHome": "在此群組中開始或移入此群組的聊天會附加這些資料夾，聊天工具只能讀取。",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "聊天的工具可以讀取這些資料夾。寫入仍留在聊天自己的沙盒中。",
     "chatFoldersEmpty": "未附加資料夾。",
     "addFolder": "新增資料夾",
-    "chatFolderCount": "資料夾：{{count}}"
+    "chatFolderCount": "資料夾：{{count}}",
+    "newSubfolder": "新增子資料夾",
+    "moveInto": "移入資料夾",
+    "topLevel": "最上層"
   },
   "htmlArtifact": {
     "code": "程式碼",
@@ -290,11 +293,13 @@
       "navigation": "前往",
       "settings": "設定",
       "threads": "對話"
-    }
+    },
+    "openItem": "開啟 {{item}}"
   },
   "searchGroup": {
     "inProjects": "在專案中",
-    "conversations": "對話"
+    "conversations": "對話",
+    "messages": "在訊息中"
   },
   "rail": {
     "label": "Cowork 面板",
@@ -937,6 +942,7 @@
     "missing": "已無法使用：{{model}}",
     "use": "使用此模型",
     "thisChat": "此聊天",
+    "thisRoom": "此房間",
     "thisSession": "此工作階段"
   },
   "skillsUsedCount_one": "使用了 {{count}} 個技能",
@@ -958,6 +964,28 @@
   "artifactsCount_other": "{{count}} 個項目",
   "previewMessageCount_one": "{{count}} 則訊息",
   "previewMessageCount_other": "{{count}} 則訊息",
+  "rowPreview": {
+    "status": {
+      "running": "執行中",
+      "waiting": "需要你處理",
+      "idle": "閒置",
+      "error": "錯誤"
+    },
+    "prState": {
+      "open": "開啟",
+      "draft": "草稿",
+      "merged": "已合併",
+      "closed": "已關閉"
+    },
+    "pullRequests": "拉取請求",
+    "morePrs_one": "另外 {{count}} 個",
+    "morePrs_other": "另外 {{count}} 個",
+    "noChecks": "沒有檢查",
+    "empty": "這裡還沒有內容。",
+    "noMessages": "還沒有訊息",
+    "summarizing": "正在撰寫摘要…",
+    "openHint": "開啟"
+  },
   "artifactDetails": "項目詳細資料",
   "artifactBack": "返回媒體庫",
   "artifactClose": "關閉詳細資料",
@@ -1017,6 +1045,12 @@
       "first": "說明 {{folder}} 是如何組成的",
       "second": "找出 {{folder}} 中的所有 TODO 並依區域分組",
       "third": "為 {{folder}} 中我指定的部分撰寫測試"
+    },
+    "vault": {
+      "badge": "Obsidian 保險庫",
+      "hint": "這個資料夾是 Obsidian 保險庫。Flint 會像讀取任何 Markdown 筆記資料夾一樣讀取它，並略過 Obsidian 的 .obsidian 設定和 .trash。",
+      "add": "新增我的 Obsidian 保險庫",
+      "addHint": "Obsidian 保險庫就是一個資料夾。像選擇其他資料夾一樣選擇它即可。"
     }
   },
   "sandbox": {
@@ -2510,10 +2544,12 @@
     "previewNone": "沒有可用的預覽"
   },
   "dropAttachFailed": "無法附加拖放的檔案",
+  "sampler": {
+    "label": "取樣參數",
+    "notSupported": "{{provider}} 不支援"
+  },
   "translate": {
     "title": "翻譯",
-    "usingModel": "正在使用 {{model}}",
-    "noModel": "請在模型選擇器中選擇模型",
     "from": "來源語言",
     "to": "目標語言",
     "detect": "偵測語言",
@@ -2525,12 +2561,61 @@
     "copyFailed": "無法複製譯文",
     "failed": "翻譯失敗",
     "inputPlaceholder": "要翻譯的文字",
-    "outputPlaceholder": "譯文會顯示在這裡"
+    "outputPlaceholder": "譯文會顯示在這裡",
+    "description": "使用你選擇的模型在不同語言之間翻譯文字。不會儲存任何內容。",
+    "sourceTitle": "原文",
+    "targetTitle": "譯文",
+    "paste": "從剪貼簿貼上",
+    "pasteFailed": "無法讀取剪貼簿",
+    "clear": "清除",
+    "characters": "{{count}} 個字元",
+    "translating": "正在翻譯…",
+    "retry": "重試",
+    "shortcut": "翻譯 (Ctrl/Cmd+Enter)",
+    "searchLanguages": "搜尋語言",
+    "noLanguages": "沒有相符的語言",
+    "errorAuth": "供應商拒絕了你的 API 金鑰。請在供應商設定中檢查。",
+    "errorQuota": "供應商表示你的額度已用完或受到速率限制。請稍候片刻，或檢查你的方案。",
+    "errorModelNotFound": "供應商沒有這個模型。請選擇其他模型，或檢查供應商設定。",
+    "errorNetwork": "無法連線到供應商。請檢查網路連線，或確認伺服器正在執行。",
+    "errorEngine": "執行此模型的引擎無法使用。請重新啟動 Flint 後再試一次。",
+    "openProvider": "開啟供應商設定",
+    "errorDetails": "詳細資料",
+    "usingModel": "正在使用 {{model}}",
+    "noModel": "請在模型選擇器中選擇模型"
   },
   "markdownImage": {
     "load": "從 {{host}} 載入圖片"
   },
   "messageSaveFailed": "無法儲存訊息，重新啟動後可能遺失。",
   "threadSaveFailed": "無法儲存對此對話的變更，已還原。",
-  "attachmentsProcessFailed": "無法準備附件，因此訊息未傳送"
+  "attachmentsProcessFailed": "無法準備附件，因此訊息未傳送",
+  "settingsRecovered": {
+    "title": "無法讀取設定檔",
+    "withBackup": "{{file}} 已損毀，因此 Flint 以預設設定啟動。損毀的檔案已保留為 {{backup}}。",
+    "noBackup": "{{file}} 已損毀，因此 Flint 以預設設定啟動。無法儲存損毀檔案的副本。"
+  },
+  "promptLibrary": {
+    "title": "提示詞庫",
+    "description": "你常重複使用的提示詞。在輸入框中輸入 @ 或 / 即可插入。對每次需要填寫的部分使用 {{name}} 或 {{name:default}}。",
+    "manage": "你的提示詞",
+    "add": "新增提示詞",
+    "editTitle": "編輯提示詞",
+    "import": "匯入",
+    "export": "匯出",
+    "imported": "已新增 {{count}} 則提示詞",
+    "search": "搜尋提示詞",
+    "empty": "還沒有提示詞。",
+    "edit": "編輯 {{name}}",
+    "delete": "刪除 {{name}}",
+    "deleted": "已刪除提示詞",
+    "undo": "復原",
+    "name": "名稱",
+    "folder": "資料夾（選填）",
+    "tags": "標籤，以逗號分隔",
+    "body": "提示詞內容",
+    "bodyHint": "撰寫提示詞。空白處可使用 {{topic}} 或 {{tone:friendly}}。",
+    "variables": "需要填寫：{{names}}",
+    "insert": "插入"
+  }
 }

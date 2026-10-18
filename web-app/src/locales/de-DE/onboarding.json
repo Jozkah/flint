@@ -72,8 +72,29 @@
       "body": "Nutze ein gehostetes Modell mit deinem eigenen Konto."
     },
     "import": {
-      "title": "Datei importieren",
-      "body": "Füge eine Modelldatei hinzu, die du schon hast."
+      "title": "Modelldatei hinzufügen",
+      "body": "Wähle eine .gguf-Datei oder finde Modelle, die Ollama, LM Studio und andere schon auf diesem Computer gespeichert haben. Es wird nichts heruntergeladen."
     }
+  },
+  "fit": {
+    "heading": "Läuft es hier gut?"
+  },
+  "sample": {
+    "button": "Beispielfrage ausprobieren",
+    "hint": "Legt eine Frage ins Nachrichtenfeld. Drücke Enter zum Senden oder bearbeite sie vorher.",
+    "question": "Erkläre in drei Sätzen, was ein Sprachmodell ist und was es nicht kann."
+  },
+  "approvalsNote": "Wenn Flint eine Datei ändern oder einen Befehl ausführen will, hält es an und fragt zuerst. Die Anfrage erscheint im Gespräch mit genau dem, was passieren wird, und du wählst Erlauben oder Ablehnen. Nichts läuft, bevor du antwortest.",
+  "checklist": {
+    "label": "Fortschritt",
+    "model-added": "Modell hinzugefügt",
+    "first-chat": "Erster Chat",
+    "first-project": "Erstes Projekt"
+  },
+  "sidebar": {
+    "title": "Gestalte die Seitenleiste nach deinem Geschmack",
+    "body": "Blende Einträge aus, die du nicht nutzt. Du kannst das jederzeit in den Einstellungen unter Darstellung ändern.",
+    "customize": "Seitenleiste anpassen",
+    "close": "Fertig"
   }
 }

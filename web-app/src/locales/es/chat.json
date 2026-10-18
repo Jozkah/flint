@@ -203,5 +203,25 @@
     "description": "Se eliminarán {{count}} chats. Esta acción no se puede deshacer.",
     "descriptionArchive": "{{count}} chats se moverán al archivo. Puedes restaurarlos desde allí.",
     "done": "Se eliminaron {{count}} chats"
+  },
+  "find": {
+    "placeholder": "Buscar en el chat",
+    "none": "Sin coincidencias",
+    "previous": "Coincidencia anterior",
+    "next": "Coincidencia siguiente",
+    "close": "Cerrar búsqueda"
+  },
+  "continueSummary": {
+    "menu": "Continuar en un chat nuevo a partir de un resumen",
+    "working": "Resumiendo el chat...",
+    "done": "Se continuó en un chat nuevo.",
+    "cancel": "Cancelar",
+    "errors": {
+      "no-chat": "Este chat no se puede continuar.",
+      "empty": "Aún no hay nada que resumir.",
+      "no-model": "Primero elige un modelo para este chat.",
+      "model-not-loaded": "Primero carga el modelo del chat. Es el que escribe el resumen.",
+      "summary-failed": "No se pudo escribir el resumen. No se creó nada."
+    }
   }
 }

@@ -144,7 +144,7 @@
   "experimental": "実験的",
   "editAllJson": "すべてのサーバーのJSONを編集",
   "findMore": "その他のMCPサーバーは以下で検索してください",
-  "allowPermissions": "すべてのMCPツール権限を許可",
+  "allowPermissions": "MCP ツールの権限をすべて許可",
   "allowPermissionsDesc": "有効にすると、すべてのMCPツール呼び出しは許可ダイアログを表示せずに自動的に承認されます。この設定は、新しいチャットを含むすべての会話にグローバルに適用されます。",
   "autoApproveServer": "このサーバーのツールを自動承認",
   "noServers": "MCPサーバーが見つかりません",
@@ -172,7 +172,9 @@
     "selectRouterModelPlaceholder": "ルーティングモデルを選択…",
     "routerModelSearchPlaceholder": "モデルを検索…",
     "routerModelEmptyList": "利用可能な軽量モデルがありません。より小さなモデルを追加するか、「モデル」でAPIキーを設定してください。",
-    "routerModelEmptySearch": "「{{query}}」に一致するものはありません。"
+    "routerModelEmptySearch": "「{{query}}」に一致するものはありません。",
+    "idleShutdown": "アイドル中のサーバーを停止するまでの時間(分)",
+    "idleShutdownDesc": "ここで指定した時間ツール呼び出しがない MCP サーバーは、メモリを空けるため停止され、必要になったときに再び起動します。Flint と同時に起動する設定のサーバーは動き続けます。0 にすると停止しません。"
   },
   "auth": {
     "label": "認証:",
@@ -259,7 +261,8 @@
   "lifecycle": {
     "startWithFlint": "Flint と一緒に起動",
     "start": "起動",
-    "stop": "停止"
+    "stop": "停止",
+    "toolTimeout": "ツールのタイムアウト(秒)"
   },
   "cwd": "作業ディレクトリ",
   "cwdPlaceholder": "任意。例: C:\\tools\\my-server",

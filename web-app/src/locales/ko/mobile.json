@@ -129,7 +129,7 @@
   "home": {
     "chatSuggestions": {
       "error": "이 오류 메시지를 설명해 줘",
-      "summarise": "첨부한 문서를 요약해 줘",
+      "summarise": "첨부한 문서 요약하기",
       "releaseNotes": "변경 목록으로 릴리스 노트 초안을 작성해 줘",
       "compare": "두 가지 접근 방식을 비교하고 하나를 추천해 줘"
     },

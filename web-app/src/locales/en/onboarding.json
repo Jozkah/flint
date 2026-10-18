@@ -72,8 +72,29 @@
       "body": "Use a hosted model with your own account."
     },
     "import": {
-      "title": "Import a file",
-      "body": "Add a model file you already have."
+      "title": "Add a model file",
+      "body": "Pick a .gguf file, or find models Ollama, LM Studio and others already saved on this computer. Nothing is downloaded."
     }
+  },
+  "fit": {
+    "heading": "Will it run well here?"
+  },
+  "sample": {
+    "button": "Try a sample question",
+    "hint": "Puts a question in the message box. Press Enter to send it, or edit it first.",
+    "question": "In three sentences, explain what a language model is and what it can't do."
+  },
+  "approvalsNote": "When Flint wants to change a file or run a command, it stops and asks first. The request appears in the conversation with exactly what it will do, and you choose Allow or Deny. Nothing runs until you answer.",
+  "checklist": {
+    "label": "Progress",
+    "model-added": "Model added",
+    "first-chat": "First chat",
+    "first-project": "First project"
+  },
+  "sidebar": {
+    "title": "Make the sidebar yours",
+    "body": "Hide the items you don't use. You can change this any time in Settings, under Appearance.",
+    "customize": "Customize sidebar",
+    "close": "Done"
   }
 }

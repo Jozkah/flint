@@ -7,7 +7,7 @@
     "rename": "Canvia el nom",
     "deleteGroup": "Suprimeix el grup",
     "deleteTitle": "Voleu suprimir {{name}}?",
-    "deleteBody": "S'elimina el grup. Els seus elements en surten i no se suprimeixen.",
+    "deleteBody": "S'elimina el grup. Els seus elements en surten i no se suprimeixen. Les subcarpetes pugen un nivell.",
     "folders": "Carpetes…",
     "foldersTitle": "Carpetes de «{{name}}»",
     "foldersBodyHome": "Els xats iniciats en aquest grup o moguts a dins reben aquestes carpetes, de només lectura per a les seves eines.",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "Les eines del xat poden llegir aquestes carpetes. Les escriptures queden a la seva pròpia zona aïllada.",
     "chatFoldersEmpty": "No hi ha carpetes adjuntes.",
     "addFolder": "Afegeix una carpeta",
-    "chatFolderCount": "Carpetes: {{count}}"
+    "chatFolderCount": "Carpetes: {{count}}",
+    "newSubfolder": "Subcarpeta nova",
+    "moveInto": "Mou a la carpeta",
+    "topLevel": "Nivell superior"
   },
   "htmlArtifact": {
     "code": "Codi",
@@ -292,11 +295,13 @@
       "navigation": "Vés a",
       "settings": "Configuració",
       "threads": "Converses"
-    }
+    },
+    "openItem": "Obre {{item}}"
   },
   "searchGroup": {
     "inProjects": "En projectes",
-    "conversations": "Converses"
+    "conversations": "Converses",
+    "messages": "Als missatges"
   },
   "rail": {
     "label": "Panells de Cowork",
@@ -942,6 +947,7 @@
     "missing": "Ja no està disponible: {{model}}",
     "use": "Utilitza aquest model",
     "thisChat": "Aquest xat",
+    "thisRoom": "Aquesta sala",
     "thisSession": "Aquesta sessió"
   },
   "skillsUsedCount_one": "S'ha utilitzat {{count}} habilitat",
@@ -966,6 +972,29 @@
   "previewMessageCount_one": "{{count}} missatge",
   "previewMessageCount_many": "{{count}} de missatges",
   "previewMessageCount_other": "{{count}} missatges",
+  "rowPreview": {
+    "status": {
+      "running": "En execució",
+      "waiting": "Et necessita",
+      "idle": "Inactiu",
+      "error": "Error"
+    },
+    "prState": {
+      "open": "Oberta",
+      "draft": "Esborrany",
+      "merged": "Combinada",
+      "closed": "Tancada"
+    },
+    "pullRequests": "Pull requests",
+    "morePrs_one": "+{{count}} més",
+    "morePrs_other": "+{{count}} més",
+    "morePrs_many": "+{{count}} més",
+    "noChecks": "Sense comprovacions",
+    "empty": "Encara no hi ha res.",
+    "noMessages": "Encara no hi ha missatges",
+    "summarizing": "S'està escrivint un resum…",
+    "openHint": "Obre"
+  },
   "artifactDetails": "Detalls de l'element",
   "artifactBack": "Torna a la biblioteca",
   "artifactClose": "Tanca els detalls",
@@ -1025,6 +1054,12 @@
       "first": "Explica com està organitzat {{folder}}",
       "second": "Troba tots els TODO de {{folder}} i agrupa'ls per àrea",
       "third": "Escriu proves per a la part de {{folder}} que t'indiqui"
+    },
+    "vault": {
+      "badge": "Dipòsit d'Obsidian",
+      "hint": "Aquesta carpeta és un dipòsit d'Obsidian. Flint la llegeix com qualsevol carpeta de notes en Markdown i ignora la configuració .obsidian i la .trash d'Obsidian.",
+      "add": "Afegeix el meu dipòsit d'Obsidian",
+      "addHint": "Un dipòsit d'Obsidian és només una carpeta. Tria'l com qualsevol altra carpeta."
     }
   },
   "sandbox": {
@@ -2555,10 +2590,12 @@
     "previewNone": "No hi ha cap previsualització disponible"
   },
   "dropAttachFailed": "No s'han pogut adjuntar els fitxers deixats anar",
+  "sampler": {
+    "label": "Paràmetres de mostreig",
+    "notSupported": "No compatible amb {{provider}}"
+  },
   "translate": {
     "title": "Traductor",
-    "usingModel": "Amb {{model}}",
-    "noModel": "Tria un model al selector de models",
     "from": "Tradueix de",
     "to": "Tradueix a",
     "detect": "Detecta l'idioma",
@@ -2570,12 +2607,61 @@
     "copyFailed": "No s'ha pogut copiar la traducció",
     "failed": "La traducció ha fallat",
     "inputPlaceholder": "Text per traduir",
-    "outputPlaceholder": "La traducció apareix aquí"
+    "outputPlaceholder": "La traducció apareix aquí",
+    "description": "Tradueix text entre idiomes amb el model seleccionat. No es desa res.",
+    "sourceTitle": "Text original",
+    "targetTitle": "Traducció",
+    "paste": "Enganxa del porta-retalls",
+    "pasteFailed": "No s'ha pogut llegir el porta-retalls",
+    "clear": "Esborra",
+    "characters": "{{count}} caràcters",
+    "translating": "S'està traduint…",
+    "retry": "Torna-ho a provar",
+    "shortcut": "Tradueix (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Cerca idiomes",
+    "noLanguages": "Cap idioma coincident",
+    "errorAuth": "El proveïdor ha rebutjat la teva clau d'API. Comprova-la a la configuració del proveïdor.",
+    "errorQuota": "El proveïdor diu que t'has quedat sense quota o que has superat el límit de peticions. Espera una mica o revisa el teu pla.",
+    "errorModelNotFound": "El proveïdor no té aquest model. Tria'n un altre o revisa la configuració del proveïdor.",
+    "errorNetwork": "No s'ha pogut contactar amb el proveïdor. Comprova la connexió o que el servidor estigui en marxa.",
+    "errorEngine": "El motor que executa aquest model no està disponible. Reinicia Flint i torna-ho a provar.",
+    "openProvider": "Obre la configuració del proveïdor",
+    "errorDetails": "Detalls",
+    "usingModel": "Amb {{model}}",
+    "noModel": "Tria un model al selector de models"
   },
   "markdownImage": {
     "load": "Carrega la imatge de {{host}}"
   },
   "messageSaveFailed": "No s'ha pogut desar el missatge. Es pot perdre després de reiniciar.",
   "threadSaveFailed": "No s'ha pogut desar el canvi d'aquest fil. S'ha revertit.",
-  "attachmentsProcessFailed": "No s'han pogut preparar els adjunts, així que el missatge no s'ha enviat"
+  "attachmentsProcessFailed": "No s'han pogut preparar els adjunts, així que el missatge no s'ha enviat",
+  "settingsRecovered": {
+    "title": "No s'ha pogut llegir el fitxer de configuració",
+    "withBackup": "{{file}} estava malmès, així que Flint ha començat amb la configuració per defecte. El fitxer malmès s'ha conservat com a {{backup}}.",
+    "noBackup": "{{file}} estava malmès, així que Flint ha començat amb la configuració per defecte. No s'ha pogut desar una còpia del fitxer malmès."
+  },
+  "promptLibrary": {
+    "title": "Biblioteca de consignes",
+    "description": "Consignes que reutilitzes. Escriu @ o / al compositor per inserir-ne una. Fes servir {{name}} o {{name:default}} per a les parts que omples cada vegada.",
+    "manage": "Les teves consignes",
+    "add": "Afegeix una consigna",
+    "editTitle": "Edita la consigna",
+    "import": "Importa",
+    "export": "Exporta",
+    "imported": "S'han afegit {{count}} consignes",
+    "search": "Cerca consignes",
+    "empty": "Encara no hi ha consignes.",
+    "edit": "Edita {{name}}",
+    "delete": "Suprimeix {{name}}",
+    "deleted": "Consigna suprimida",
+    "undo": "Desfés",
+    "name": "Nom",
+    "folder": "Carpeta (opcional)",
+    "tags": "Etiquetes, separades per comes",
+    "body": "Text de la consigna",
+    "bodyHint": "Escriu la consigna. Fes servir {{topic}} o {{tone:friendly}} per als buits.",
+    "variables": "Demana: {{names}}",
+    "insert": "Insereix"
+  }
 }

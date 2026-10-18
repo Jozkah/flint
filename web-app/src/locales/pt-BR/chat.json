@@ -203,5 +203,25 @@
     "description": "{{count}} chats serão excluídos. Esta ação não pode ser desfeita.",
     "descriptionArchive": "{{count}} chats serão movidos para o Arquivo. Você pode restaurá-los de lá.",
     "done": "{{count}} chats excluídos"
+  },
+  "find": {
+    "placeholder": "Buscar no chat",
+    "none": "Nenhuma correspondência",
+    "previous": "Correspondência anterior",
+    "next": "Próxima correspondência",
+    "close": "Fechar busca"
+  },
+  "continueSummary": {
+    "menu": "Continuar em um novo chat a partir de um resumo",
+    "working": "Resumindo o chat...",
+    "done": "Continuado em um novo chat.",
+    "cancel": "Cancelar",
+    "errors": {
+      "no-chat": "Este chat não pode ser continuado.",
+      "empty": "Ainda não há nada para resumir.",
+      "no-model": "Escolha primeiro um modelo para este chat.",
+      "model-not-loaded": "Carregue primeiro o modelo do chat. Ele escreve o resumo.",
+      "summary-failed": "Não foi possível escrever o resumo. Nada foi criado."
+    }
   }
 }

@@ -7,7 +7,7 @@
     "rename": "重命名",
     "deleteGroup": "删除分组",
     "deleteTitle": "删除 {{name}}？",
-    "deleteBody": "分组将被删除。其中的项目会移出分组，不会被删除。",
+    "deleteBody": "该分组将被移除。其中的项目会移出分组，不会被删除。所有子文件夹会上移一级。",
     "folders": "文件夹…",
     "foldersTitle": "“{{name}}”的文件夹",
     "foldersBodyHome": "在此分组中开始或移入此分组的聊天会附加这些文件夹，聊天工具只能读取。",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "聊天的工具可以读取这些文件夹。写入仍留在聊天自己的沙盒中。",
     "chatFoldersEmpty": "未附加文件夹。",
     "addFolder": "添加文件夹",
-    "chatFolderCount": "文件夹：{{count}}"
+    "chatFolderCount": "文件夹：{{count}}",
+    "newSubfolder": "新建子文件夹",
+    "moveInto": "移入文件夹",
+    "topLevel": "顶层"
   },
   "htmlArtifact": {
     "code": "代码",
@@ -290,11 +293,13 @@
       "navigation": "前往",
       "settings": "设置",
       "threads": "对话"
-    }
+    },
+    "openItem": "打开 {{item}}"
   },
   "searchGroup": {
     "inProjects": "在项目中",
-    "conversations": "对话"
+    "conversations": "对话",
+    "messages": "在消息中"
   },
   "rail": {
     "label": "Cowork 面板",
@@ -937,6 +942,7 @@
     "missing": "已不可用：{{model}}",
     "use": "使用此模型",
     "thisChat": "此聊天",
+    "thisRoom": "此房间",
     "thisSession": "此会话"
   },
   "skillsUsedCount_one": "使用了 {{count}} 个技能",
@@ -958,6 +964,28 @@
   "artifactsCount_other": "{{count}} 项",
   "previewMessageCount_one": "{{count}} 条消息",
   "previewMessageCount_other": "{{count}} 条消息",
+  "rowPreview": {
+    "status": {
+      "running": "运行中",
+      "waiting": "需要你处理",
+      "idle": "空闲",
+      "error": "错误"
+    },
+    "prState": {
+      "open": "打开",
+      "draft": "草稿",
+      "merged": "已合并",
+      "closed": "已关闭"
+    },
+    "pullRequests": "拉取请求",
+    "morePrs_one": "另外 {{count}} 个",
+    "morePrs_other": "另外 {{count}} 个",
+    "noChecks": "没有检查",
+    "empty": "这里还没有内容。",
+    "noMessages": "还没有消息",
+    "summarizing": "正在撰写摘要…",
+    "openHint": "打开"
+  },
   "artifactDetails": "项目详情",
   "artifactBack": "返回库",
   "artifactClose": "关闭详情",
@@ -1017,6 +1045,12 @@
       "first": "解释 {{folder}} 的整体结构",
       "second": "找出 {{folder}} 中所有 TODO，并按模块分组",
       "third": "为我指定的 {{folder}} 中的部分编写测试"
+    },
+    "vault": {
+      "badge": "Obsidian 库",
+      "hint": "此文件夹是 Obsidian 库。Flint 会像读取任何 Markdown 笔记文件夹一样读取它，并忽略 Obsidian 的 .obsidian 设置和 .trash。",
+      "add": "添加我的 Obsidian 库",
+      "addHint": "Obsidian 库就是一个文件夹。像选择其他文件夹一样选择它即可。"
     }
   },
   "sandbox": {
@@ -2510,10 +2544,12 @@
     "previewNone": "没有可用的预览"
   },
   "dropAttachFailed": "无法附加拖放的文件",
+  "sampler": {
+    "label": "采样参数",
+    "notSupported": "{{provider}} 不支持"
+  },
   "translate": {
     "title": "翻译",
-    "usingModel": "正在使用 {{model}}",
-    "noModel": "请在模型选择器中选择模型",
     "from": "源语言",
     "to": "目标语言",
     "detect": "检测语言",
@@ -2525,12 +2561,61 @@
     "copyFailed": "无法复制译文",
     "failed": "翻译失败",
     "inputPlaceholder": "要翻译的文本",
-    "outputPlaceholder": "译文显示在这里"
+    "outputPlaceholder": "译文显示在这里",
+    "description": "使用你选择的模型在不同语言之间翻译文本。不会保存任何内容。",
+    "sourceTitle": "原文",
+    "targetTitle": "译文",
+    "paste": "从剪贴板粘贴",
+    "pasteFailed": "无法读取剪贴板",
+    "clear": "清除",
+    "characters": "{{count}} 个字符",
+    "translating": "正在翻译…",
+    "retry": "重试",
+    "shortcut": "翻译 (Ctrl/Cmd+Enter)",
+    "searchLanguages": "搜索语言",
+    "noLanguages": "没有匹配的语言",
+    "errorAuth": "提供商拒绝了你的 API 密钥。请在提供商设置中检查。",
+    "errorQuota": "提供商提示你的额度已用完或被限速。请稍等片刻，或检查你的套餐。",
+    "errorModelNotFound": "提供商没有此模型。请选择其他模型，或检查提供商设置。",
+    "errorNetwork": "无法连接到提供商。请检查网络连接，或确认服务器正在运行。",
+    "errorEngine": "运行此模型的引擎不可用。请重启 Flint 后重试。",
+    "openProvider": "打开提供商设置",
+    "errorDetails": "详情",
+    "usingModel": "正在使用 {{model}}",
+    "noModel": "请在模型选择器中选择模型"
   },
   "markdownImage": {
     "load": "从 {{host}} 加载图片"
   },
   "messageSaveFailed": "无法保存消息，重启后可能丢失。",
   "threadSaveFailed": "无法保存对此对话的更改，已还原。",
-  "attachmentsProcessFailed": "无法准备附件，因此消息未发送"
+  "attachmentsProcessFailed": "无法准备附件，因此消息未发送",
+  "settingsRecovered": {
+    "title": "无法读取设置文件",
+    "withBackup": "{{file}} 已损坏，因此 Flint 使用默认设置启动。损坏的文件已保留为 {{backup}}。",
+    "noBackup": "{{file}} 已损坏，因此 Flint 使用默认设置启动。无法保存损坏文件的副本。"
+  },
+  "promptLibrary": {
+    "title": "提示词库",
+    "description": "你反复使用的提示词。在输入框中输入 @ 或 / 即可插入。对每次需要填写的部分使用 {{name}} 或 {{name:default}}。",
+    "manage": "你的提示词",
+    "add": "添加提示词",
+    "editTitle": "编辑提示词",
+    "import": "导入",
+    "export": "导出",
+    "imported": "已添加 {{count}} 条提示词",
+    "search": "搜索提示词",
+    "empty": "还没有提示词。",
+    "edit": "编辑 {{name}}",
+    "delete": "删除 {{name}}",
+    "deleted": "提示词已删除",
+    "undo": "撤销",
+    "name": "名称",
+    "folder": "文件夹（可选）",
+    "tags": "标签，用逗号分隔",
+    "body": "提示词内容",
+    "bodyHint": "撰写提示词。空白处可使用 {{topic}} 或 {{tone:friendly}}。",
+    "variables": "需要填写：{{names}}",
+    "insert": "插入"
+  }
 }

@@ -7,7 +7,7 @@
     "rename": "Đổi tên",
     "deleteGroup": "Xóa nhóm",
     "deleteTitle": "Xóa {{name}}?",
-    "deleteBody": "Nhóm sẽ bị xóa. Các mục trong nhóm được đưa ra ngoài và không bị xóa.",
+    "deleteBody": "Nhóm sẽ bị xóa. Các mục trong nhóm được chuyển ra ngoài và không bị xóa. Các thư mục con được chuyển lên một cấp.",
     "folders": "Thư mục…",
     "foldersTitle": "Thư mục của “{{name}}”",
     "foldersBodyHome": "Cuộc trò chuyện bắt đầu trong nhóm này hoặc được chuyển vào sẽ được gắn các thư mục này, chỉ đọc cho công cụ của cuộc trò chuyện.",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "Công cụ của cuộc trò chuyện có thể đọc các thư mục này. Việc ghi vẫn nằm trong hộp cát riêng.",
     "chatFoldersEmpty": "Chưa gắn thư mục nào.",
     "addFolder": "Thêm thư mục",
-    "chatFolderCount": "Thư mục: {{count}}"
+    "chatFolderCount": "Thư mục: {{count}}",
+    "newSubfolder": "Thư mục con mới",
+    "moveInto": "Chuyển vào thư mục",
+    "topLevel": "Cấp cao nhất"
   },
   "htmlArtifact": {
     "code": "Mã",
@@ -290,11 +293,13 @@
       "navigation": "Đi đến",
       "settings": "Cài đặt",
       "threads": "Cuộc trò chuyện"
-    }
+    },
+    "openItem": "Mở {{item}}"
   },
   "searchGroup": {
     "inProjects": "Trong dự án",
-    "conversations": "Cuộc trò chuyện"
+    "conversations": "Cuộc trò chuyện",
+    "messages": "Trong tin nhắn"
   },
   "rail": {
     "label": "Bảng Cowork",
@@ -937,6 +942,7 @@
     "missing": "Không còn khả dụng: {{model}}",
     "use": "Dùng mô hình này",
     "thisChat": "Cuộc trò chuyện này",
+    "thisRoom": "Phòng này",
     "thisSession": "Phiên này"
   },
   "skillsUsedCount_one": "Đã dùng {{count}} kỹ năng",
@@ -958,6 +964,28 @@
   "artifactsCount_other": "{{count}} mục",
   "previewMessageCount_one": "{{count}} tin nhắn",
   "previewMessageCount_other": "{{count}} tin nhắn",
+  "rowPreview": {
+    "status": {
+      "running": "Đang chạy",
+      "waiting": "Cần bạn",
+      "idle": "Đang nghỉ",
+      "error": "Lỗi"
+    },
+    "prState": {
+      "open": "Đang mở",
+      "draft": "Bản nháp",
+      "merged": "Đã hợp nhất",
+      "closed": "Đã đóng"
+    },
+    "pullRequests": "Pull request",
+    "morePrs_one": "+{{count}} nữa",
+    "morePrs_other": "+{{count}} nữa",
+    "noChecks": "Không có kiểm tra",
+    "empty": "Chưa có gì ở đây.",
+    "noMessages": "Chưa có tin nhắn",
+    "summarizing": "Đang viết bản tóm tắt…",
+    "openHint": "Mở"
+  },
   "artifactDetails": "Chi tiết mục",
   "artifactBack": "Quay lại Thư viện",
   "artifactClose": "Đóng chi tiết",
@@ -1017,6 +1045,12 @@
       "first": "Giải thích cách {{folder}} được tổ chức",
       "second": "Tìm mọi TODO trong {{folder}} và nhóm chúng theo khu vực",
       "third": "Viết kiểm thử cho phần của {{folder}} mà tôi chỉ ra"
+    },
+    "vault": {
+      "badge": "Kho Obsidian",
+      "hint": "Thư mục này là một kho Obsidian. Flint đọc nó như mọi thư mục ghi chú Markdown và bỏ qua phần cài đặt .obsidian và .trash của Obsidian.",
+      "add": "Thêm kho Obsidian của tôi",
+      "addHint": "Kho Obsidian chỉ là một thư mục. Hãy chọn nó như mọi thư mục khác."
     }
   },
   "sandbox": {
@@ -2510,10 +2544,12 @@
     "previewNone": "Không có bản xem trước"
   },
   "dropAttachFailed": "Không thể đính kèm các tệp đã thả",
+  "sampler": {
+    "label": "Tham số lấy mẫu",
+    "notSupported": "{{provider}} không hỗ trợ"
+  },
   "translate": {
     "title": "Dịch",
-    "usingModel": "Đang dùng {{model}}",
-    "noModel": "Chọn một mô hình trong bộ chọn mô hình",
     "from": "Dịch từ",
     "to": "Dịch sang",
     "detect": "Phát hiện ngôn ngữ",
@@ -2525,12 +2561,61 @@
     "copyFailed": "Không thể sao chép bản dịch",
     "failed": "Dịch thất bại",
     "inputPlaceholder": "Văn bản cần dịch",
-    "outputPlaceholder": "Bản dịch xuất hiện ở đây"
+    "outputPlaceholder": "Bản dịch xuất hiện ở đây",
+    "description": "Dịch văn bản giữa các ngôn ngữ bằng mô hình bạn đã chọn. Không có gì được lưu.",
+    "sourceTitle": "Văn bản gốc",
+    "targetTitle": "Bản dịch",
+    "paste": "Dán từ bộ nhớ tạm",
+    "pasteFailed": "Không thể đọc bộ nhớ tạm",
+    "clear": "Xóa",
+    "characters": "{{count}} ký tự",
+    "translating": "Đang dịch…",
+    "retry": "Thử lại",
+    "shortcut": "Dịch (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Tìm ngôn ngữ",
+    "noLanguages": "Không có ngôn ngữ phù hợp",
+    "errorAuth": "Nhà cung cấp đã từ chối khóa API của bạn. Hãy kiểm tra trong cài đặt nhà cung cấp.",
+    "errorQuota": "Nhà cung cấp báo bạn đã hết hạn mức hoặc bị giới hạn tốc độ. Hãy chờ một lát hoặc kiểm tra gói của bạn.",
+    "errorModelNotFound": "Nhà cung cấp không có mô hình này. Hãy chọn mô hình khác hoặc kiểm tra cài đặt nhà cung cấp.",
+    "errorNetwork": "Không thể kết nối tới nhà cung cấp. Hãy kiểm tra kết nối của bạn hoặc xem máy chủ có đang chạy không.",
+    "errorEngine": "Engine chạy mô hình này không khả dụng. Hãy khởi động lại Flint rồi thử lại.",
+    "openProvider": "Mở cài đặt nhà cung cấp",
+    "errorDetails": "Chi tiết",
+    "usingModel": "Đang dùng {{model}}",
+    "noModel": "Chọn một mô hình trong bộ chọn mô hình"
   },
   "markdownImage": {
     "load": "Tải hình ảnh từ {{host}}"
   },
   "messageSaveFailed": "Không thể lưu tin nhắn. Tin nhắn có thể bị mất sau khi khởi động lại.",
   "threadSaveFailed": "Không thể lưu thay đổi cho cuộc trò chuyện này. Đã hoàn tác.",
-  "attachmentsProcessFailed": "Không thể chuẩn bị tệp đính kèm nên tin nhắn chưa được gửi"
+  "attachmentsProcessFailed": "Không thể chuẩn bị tệp đính kèm nên tin nhắn chưa được gửi",
+  "settingsRecovered": {
+    "title": "Không thể đọc tệp cài đặt",
+    "withBackup": "{{file}} bị hỏng nên Flint khởi động với cài đặt mặc định. Tệp hỏng được giữ lại với tên {{backup}}.",
+    "noBackup": "{{file}} bị hỏng nên Flint khởi động với cài đặt mặc định. Không thể lưu bản sao của tệp hỏng."
+  },
+  "promptLibrary": {
+    "title": "Thư viện lời nhắc",
+    "description": "Những lời nhắc bạn dùng lại. Gõ @ hoặc / trong ô soạn tin để chèn một lời nhắc. Dùng {{name}} hoặc {{name:default}} cho những phần bạn điền mỗi lần.",
+    "manage": "Lời nhắc của bạn",
+    "add": "Thêm lời nhắc",
+    "editTitle": "Sửa lời nhắc",
+    "import": "Nhập",
+    "export": "Xuất",
+    "imported": "Đã thêm {{count}} lời nhắc",
+    "search": "Tìm lời nhắc",
+    "empty": "Chưa có lời nhắc nào.",
+    "edit": "Sửa {{name}}",
+    "delete": "Xóa {{name}}",
+    "deleted": "Đã xóa lời nhắc",
+    "undo": "Hoàn tác",
+    "name": "Tên",
+    "folder": "Thư mục (không bắt buộc)",
+    "tags": "Thẻ, phân tách bằng dấu phẩy",
+    "body": "Nội dung lời nhắc",
+    "bodyHint": "Viết lời nhắc. Dùng {{topic}} hoặc {{tone:friendly}} cho chỗ trống.",
+    "variables": "Sẽ hỏi: {{names}}",
+    "insert": "Chèn"
+  }
 }

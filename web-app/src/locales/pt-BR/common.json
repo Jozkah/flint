@@ -7,7 +7,7 @@
     "rename": "Renomear",
     "deleteGroup": "Excluir grupo",
     "deleteTitle": "Excluir {{name}}?",
-    "deleteBody": "O grupo é removido. Seus itens saem dele e não são excluídos.",
+    "deleteBody": "O grupo é removido. Seus itens saem dele e não são excluídos. Subpastas sobem um nível.",
     "folders": "Pastas…",
     "foldersTitle": "Pastas de “{{name}}”",
     "foldersBodyHome": "Chats iniciados neste grupo ou movidos para ele recebem estas pastas, somente leitura para as ferramentas do chat.",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "As ferramentas do chat podem ler estas pastas. As gravações ficam na sandbox própria do chat.",
     "chatFoldersEmpty": "Nenhuma pasta anexada.",
     "addFolder": "Adicionar pasta",
-    "chatFolderCount": "Pastas: {{count}}"
+    "chatFolderCount": "Pastas: {{count}}",
+    "newSubfolder": "Nova subpasta",
+    "moveInto": "Mover para a pasta",
+    "topLevel": "Nível superior"
   },
   "htmlArtifact": {
     "code": "Código",
@@ -292,11 +295,13 @@
       "navigation": "Ir para",
       "settings": "Configurações",
       "threads": "Conversas"
-    }
+    },
+    "openItem": "Abrir {{item}}"
   },
   "searchGroup": {
     "inProjects": "Em projetos",
-    "conversations": "Conversas"
+    "conversations": "Conversas",
+    "messages": "Nas mensagens"
   },
   "rail": {
     "label": "Painéis do Cowork",
@@ -941,6 +946,7 @@
     "missing": "Não está mais disponível: {{model}}",
     "use": "Usar este modelo",
     "thisChat": "Este chat",
+    "thisRoom": "Esta sala",
     "thisSession": "Esta sessão"
   },
   "skillsUsedCount_one": "Usou {{count}} skill",
@@ -964,6 +970,28 @@
   "artifactsCount_many": "{{count}} de itens",
   "previewMessageCount_one": "{{count}} mensagem",
   "previewMessageCount_other": "{{count}} mensagens",
+  "rowPreview": {
+    "status": {
+      "running": "Em execução",
+      "waiting": "Precisa de você",
+      "idle": "Ocioso",
+      "error": "Erro"
+    },
+    "prState": {
+      "open": "Aberto",
+      "draft": "Rascunho",
+      "merged": "Mesclado",
+      "closed": "Fechado"
+    },
+    "pullRequests": "Pull requests",
+    "morePrs_one": "+{{count}} mais",
+    "morePrs_other": "+{{count}} mais",
+    "noChecks": "Sem verificações",
+    "empty": "Nada aqui ainda.",
+    "noMessages": "Nenhuma mensagem ainda",
+    "summarizing": "Escrevendo um resumo…",
+    "openHint": "Abrir"
+  },
   "previewMessageCount_many": "{{count}} de mensagens",
   "artifactDetails": "Detalhes do item",
   "artifactBack": "Voltar à Biblioteca",
@@ -1024,6 +1052,12 @@
       "first": "Explique como {{folder}} está estruturada",
       "second": "Encontre todos os TODO em {{folder}} e agrupe-os por área",
       "third": "Escreva testes para a parte de {{folder}} que eu indicar"
+    },
+    "vault": {
+      "badge": "Cofre do Obsidian",
+      "hint": "Esta pasta é um cofre do Obsidian. O Flint a lê como qualquer pasta de notas Markdown e ignora as configurações .obsidian e a .trash do Obsidian.",
+      "add": "Adicionar meu cofre do Obsidian",
+      "addHint": "Um cofre do Obsidian é só uma pasta. Escolha-o como qualquer outra pasta."
     }
   },
   "sandbox": {
@@ -2553,10 +2587,12 @@
     "previewNone": "Nenhuma pré-visualização disponível"
   },
   "dropAttachFailed": "Não foi possível anexar os arquivos soltos",
+  "sampler": {
+    "label": "Parâmetros de amostragem",
+    "notSupported": "Não suportado por {{provider}}"
+  },
   "translate": {
     "title": "Tradutor",
-    "usingModel": "Usando {{model}}",
-    "noModel": "Escolha um modelo no seletor de modelos",
     "from": "Traduzir de",
     "to": "Traduzir para",
     "detect": "Detectar idioma",
@@ -2568,12 +2604,61 @@
     "copyFailed": "Não foi possível copiar a tradução",
     "failed": "A tradução falhou",
     "inputPlaceholder": "Texto para traduzir",
-    "outputPlaceholder": "A tradução aparece aqui"
+    "outputPlaceholder": "A tradução aparece aqui",
+    "description": "Traduza texto entre idiomas com o modelo selecionado. Nada é salvo.",
+    "sourceTitle": "Texto de origem",
+    "targetTitle": "Tradução",
+    "paste": "Colar da área de transferência",
+    "pasteFailed": "Não foi possível ler a área de transferência",
+    "clear": "Limpar",
+    "characters": "{{count}} caracteres",
+    "translating": "Traduzindo…",
+    "retry": "Tentar novamente",
+    "shortcut": "Traduzir (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Buscar idiomas",
+    "noLanguages": "Nenhum idioma correspondente",
+    "errorAuth": "O provedor rejeitou sua chave de API. Verifique-a nas configurações do provedor.",
+    "errorQuota": "O provedor diz que sua cota acabou ou que há limite de taxa. Aguarde um pouco ou verifique seu plano.",
+    "errorModelNotFound": "O provedor não tem este modelo. Escolha outro modelo ou verifique as configurações do provedor.",
+    "errorNetwork": "Não foi possível alcançar o provedor. Verifique sua conexão ou se o servidor está em execução.",
+    "errorEngine": "O motor que executa este modelo não está disponível. Reinicie o Flint e tente novamente.",
+    "openProvider": "Abrir configurações do provedor",
+    "errorDetails": "Detalhes",
+    "usingModel": "Usando {{model}}",
+    "noModel": "Escolha um modelo no seletor de modelos"
   },
   "markdownImage": {
     "load": "Carregar imagem de {{host}}"
   },
   "messageSaveFailed": "Não foi possível salvar a mensagem. Ela pode ser perdida após reiniciar.",
   "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida.",
-  "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada"
+  "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada",
+  "settingsRecovered": {
+    "title": "Não foi possível ler o arquivo de configurações",
+    "withBackup": "{{file}} estava danificado, então o Flint iniciou com as configurações padrão. O arquivo danificado foi mantido como {{backup}}.",
+    "noBackup": "{{file}} estava danificado, então o Flint iniciou com as configurações padrão. Não foi possível salvar uma cópia do arquivo danificado."
+  },
+  "promptLibrary": {
+    "title": "Biblioteca de prompts",
+    "description": "Prompts que você reutiliza. Digite @ ou / no campo de mensagem para inserir um. Use {{name}} ou {{name:default}} para as partes que você preenche a cada vez.",
+    "manage": "Seus prompts",
+    "add": "Adicionar prompt",
+    "editTitle": "Editar prompt",
+    "import": "Importar",
+    "export": "Exportar",
+    "imported": "{{count}} prompts adicionados",
+    "search": "Buscar prompts",
+    "empty": "Nenhum prompt ainda.",
+    "edit": "Editar {{name}}",
+    "delete": "Excluir {{name}}",
+    "deleted": "Prompt excluído",
+    "undo": "Desfazer",
+    "name": "Nome",
+    "folder": "Pasta (opcional)",
+    "tags": "Tags, separadas por vírgula",
+    "body": "Texto do prompt",
+    "bodyHint": "Escreva o prompt. Use {{topic}} ou {{tone:friendly}} para os espaços em branco.",
+    "variables": "Pede: {{names}}",
+    "insert": "Inserir"
+  }
 }

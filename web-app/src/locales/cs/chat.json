@@ -210,5 +210,25 @@
     "description": "Chaty k smazání: {{count}}. Tuto akci nelze vrátit zpět.",
     "descriptionArchive": "Chaty přesunuté do archivu: {{count}}. Odtud je můžete obnovit.",
     "done": "Smazáno chatů: {{count}}"
+  },
+  "find": {
+    "placeholder": "Hledat v chatu",
+    "none": "Žádné shody",
+    "previous": "Předchozí shoda",
+    "next": "Další shoda",
+    "close": "Zavřít hledání"
+  },
+  "continueSummary": {
+    "menu": "Pokračovat v novém chatu ze shrnutí",
+    "working": "Shrnuji chat...",
+    "done": "Pokračuje se v novém chatu.",
+    "cancel": "Zrušit",
+    "errors": {
+      "no-chat": "V tomto chatu nelze pokračovat.",
+      "empty": "Zatím není co shrnout.",
+      "no-model": "Nejprve pro tento chat vyberte model.",
+      "model-not-loaded": "Nejprve načtěte model chatu. Shrnutí píše on.",
+      "summary-failed": "Shrnutí se nepodařilo napsat. Nic nebylo vytvořeno."
+    }
   }
 }

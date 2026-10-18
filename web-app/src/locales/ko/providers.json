@@ -14,6 +14,7 @@
   "models": "모델",
   "filterModels": "모델 {{count}}개 필터링",
   "modelsShown": "{{total}}개 중 {{shown}}개 표시 중",
+  "noModelsMatch": "\"{{query}}\"와 일치하는 모델이 없습니다",
   "showMoreModels": "더 보기",
   "backendInstalled": "설치됨",
   "backendHistoryShow": "업데이트 기록 보기",
@@ -38,6 +39,12 @@
   "importedTooltip": "로컬 파일에서 가져왔습니다. Flint에서 제거해도 디스크의 파일은 삭제되지 않습니다.",
   "importModelSuccess": "모델 {{provider}}을(를) 성공적으로 가져왔습니다.",
   "importModelError": "모델 가져오기 실패:",
+
+  "importScanHint": "LM Studio, Ollama, Hugging Face 캐시, llama.cpp, GPT4All에서 찾습니다. 가져오기 전에는 아무것도 복사되지 않습니다.",
+
+  "importAddFolder": "모델 폴더 추가",
+
+  "importRemoveFolder": "폴더 {{folder}} 제거",
   "stop": "중지",
   "start": "시작",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "공급자 추가",
   "addOpenAIProvider": "OpenAI 공급자 추가",
   "enterNameForProvider": "공급자 이름 입력",
+  "apiVersion": {
+    "title": "API 버전",
+    "description": "URL에 ?api-version=이 없는 deployments 방식의 Azure 엔드포인트(/openai/deployments/<name>)에만 해당합니다. /openai/v1 엔드포인트에는 필요하지 않습니다."
+  },
   "baseUrl": {
     "title": "기본 URL",
     "openaiDescription": "OpenAI API와 호환되는 프록시나 게이트웨이를 사용합니다. 기본값은 https://api.openai.com/v1입니다.",
     "azureDescription": "Azure OpenAI 엔드포인트입니다. YOUR-RESOURCE-NAME을 Azure 리소스 이름으로 바꾸세요.",
     "litellmDescription": "/v1을 포함한 LiteLLM 프록시 주소입니다. 기본값은 http://localhost:4000/v1입니다.",
-    "qwenDescription": "Model Studio 엔드포인트입니다. 키는 생성된 리전에서만 동작합니다. 싱가포르는 https://dashscope-intl.aliyuncs.com/compatible-mode/v1, 중국 본토는 https://dashscope.aliyuncs.com/compatible-mode/v1을 사용하세요."
+    "qwenDescription": "Model Studio 엔드포인트입니다. 키는 생성된 리전에서만 동작합니다. 싱가포르는 https://dashscope-intl.aliyuncs.com/compatible-mode/v1, 중국 본토는 https://dashscope.aliyuncs.com/compatible-mode/v1을 사용하세요.",
+    "bedrockDescription": "사용 중인 리전의 Amazon Bedrock 런타임 엔드포인트입니다. 예: https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "API 키",
@@ -219,5 +231,18 @@
     "label": "공급자 이름",
     "cancel": "취소",
     "save": "저장"
+  },
+  "bedrock": {
+    "title": "AWS 자격 증명",
+    "description": "Flint는 Amazon Bedrock 요청마다 AWS 키로 서명합니다. 키는 운영 체제의 키링에 보관되며 다시 표시되지 않습니다. 모델 ID는 직접 추가하세요(예: anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "액세스 키 ID",
+    "secretAccessKey": "비밀 액세스 키",
+    "sessionToken": "세션 토큰(선택 사항)",
+    "secretHint": "bedrock:InvokeModel을 호출할 수 있는 IAM 사용자 또는 역할이 필요합니다.",
+    "sessionTokenHint": "임시 자격 증명(STS 또는 SSO)에만 해당합니다.",
+    "saved": "저장됨",
+    "remove": "제거",
+    "replace": "저장됨. 입력하면 교체됩니다.",
+    "enter": "설정 안 됨"
   }
 }

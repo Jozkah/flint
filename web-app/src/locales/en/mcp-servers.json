@@ -144,7 +144,7 @@
   "experimental": "Experimental",
   "editAllJson": "Edit All Servers JSON",
   "findMore": "Find more MCP servers at",
-  "allowPermissions": "Allow All MCP Tool Permissions",
+  "allowPermissions": "Allow all MCP tool permissions",
   "allowPermissionsDesc": "When enabled, all MCP tool calls will be automatically approved without showing permission dialogs. This setting applies globally to all conversations, including new chats.",
   "autoApproveServer": "Auto-approve this server's tools",
   "noServers": "No MCP servers found",
@@ -161,6 +161,8 @@
     "description": "Configure how Flint manages and retries MCP servers.",
     "toolCallTimeout": "Tool call timeout (seconds)",
     "toolCallTimeoutDesc": "Maximum time to wait for an MCP tool response before timing out.",
+    "idleShutdown": "Stop idle servers after (minutes)",
+    "idleShutdownDesc": "An MCP server with no tool calls for this long is stopped to free memory, and starts again the next time it is needed. Servers set to start with Flint stay running. Set to 0 to never stop them.",
     "maxToolOutputChars": "Max tool output characters",
     "maxToolOutputCharsDesc": "Longest tool result kept in the conversation. Anything past this is trimmed and marked as truncated, so one large result cannot exhaust the model's context. Set to 0 to keep results whole.",
     "smartToolRouting": "Smart MCP tool routing",
@@ -258,6 +260,7 @@
   },
   "lifecycle": {
     "startWithFlint": "Start with Flint",
+    "toolTimeout": "Tool timeout (s)",
     "start": "Start",
     "stop": "Stop"
   },

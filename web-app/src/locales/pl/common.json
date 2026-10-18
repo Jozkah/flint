@@ -7,7 +7,7 @@
     "rename": "Zmień nazwę",
     "deleteGroup": "Usuń grupę",
     "deleteTitle": "Usunąć {{name}}?",
-    "deleteBody": "Grupa zostanie usunięta. Jej elementy z niej wyjdą i nie zostaną usunięte.",
+    "deleteBody": "Grupa zostanie usunięta. Jej elementy z niej wyjdą i nie zostaną usunięte. Podfoldery przesuną się o jeden poziom wyżej.",
     "folders": "Foldery…",
     "foldersTitle": "Foldery grupy „{{name}}”",
     "foldersBodyHome": "Czaty rozpoczęte w tej grupie lub do niej przeniesione otrzymują te foldery, tylko do odczytu dla narzędzi czatu.",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "Narzędzia czatu mogą czytać te foldery. Zapisy pozostają w jego własnej piaskownicy.",
     "chatFoldersEmpty": "Brak dołączonych folderów.",
     "addFolder": "Dodaj folder",
-    "chatFolderCount": "Foldery: {{count}}"
+    "chatFolderCount": "Foldery: {{count}}",
+    "newSubfolder": "Nowy podfolder",
+    "moveInto": "Przenieś do folderu",
+    "topLevel": "Najwyższy poziom"
   },
   "htmlArtifact": {
     "code": "Kod",
@@ -294,11 +297,13 @@
       "navigation": "Przejdź do",
       "settings": "Ustawienia",
       "threads": "Rozmowy"
-    }
+    },
+    "openItem": "Otwórz: {{item}}"
   },
   "searchGroup": {
     "inProjects": "W projektach",
-    "conversations": "Rozmowy"
+    "conversations": "Rozmowy",
+    "messages": "W wiadomościach"
   },
   "rail": {
     "label": "Panele Cowork",
@@ -379,6 +384,8 @@
     },
     "truncated": "Nie pokazano jeszcze {{count}} linii",
     "truncated_other": "Nie pokazano jeszcze {{count}} linii",
+    "truncated_few": "Nie pokazano jeszcze {{count}} linii",
+    "truncated_many": "Nie pokazano jeszcze {{count}} linii",
     "openFile": "Otwórz",
     "applyToFolder": "Zastosuj w folderze",
     "applyHint": "Skopiuj ten plik z piaskownicy sesji do {{folder}} jako {{path}}",
@@ -947,6 +954,7 @@
     "missing": "Już niedostępny: {{model}}",
     "use": "Użyj tego modelu",
     "thisChat": "Ten czat",
+    "thisRoom": "Ten pokój",
     "thisSession": "Ta sesja"
   },
   "skillsUsedCount_one": "Użyto {{count}} umiejętności",
@@ -972,6 +980,30 @@
   "artifactsCount_many": "{{count}} elementów",
   "previewMessageCount_one": "{{count}} wiadomość",
   "previewMessageCount_other": "{{count}} wiadomości",
+  "rowPreview": {
+    "status": {
+      "running": "Działa",
+      "waiting": "Wymaga Ciebie",
+      "idle": "Bezczynny",
+      "error": "Błąd"
+    },
+    "prState": {
+      "open": "Otwarty",
+      "draft": "Wersja robocza",
+      "merged": "Scalony",
+      "closed": "Zamknięty"
+    },
+    "pullRequests": "Pull requesty",
+    "morePrs_one": "+{{count}} więcej",
+    "morePrs_other": "+{{count}} więcej",
+    "morePrs_few": "+{{count}} więcej",
+    "morePrs_many": "+{{count}} więcej",
+    "noChecks": "Brak sprawdzeń",
+    "empty": "Nic tu jeszcze nie ma.",
+    "noMessages": "Brak wiadomości",
+    "summarizing": "Piszę podsumowanie…",
+    "openHint": "Otwórz"
+  },
   "previewMessageCount_few": "{{count}} wiadomości",
   "previewMessageCount_many": "{{count}} wiadomości",
   "artifactDetails": "Szczegóły elementu",
@@ -1033,6 +1065,12 @@
       "first": "Wyjaśnij, jak zbudowany jest {{folder}}",
       "second": "Znajdź każde TODO w {{folder}} i pogrupuj je według obszaru",
       "third": "Napisz testy dla tej części {{folder}}, którą wskażę"
+    },
+    "vault": {
+      "badge": "Skarbiec Obsidian",
+      "hint": "Ten folder jest skarbcem Obsidian. Flint czyta go jak każdy folder z notatkami Markdown i pomija ustawienia .obsidian oraz .trash z Obsidiana.",
+      "add": "Dodaj mój skarbiec Obsidian",
+      "addHint": "Skarbiec Obsidian to zwykły folder. Wybierz go tak jak każdy inny folder."
     }
   },
   "sandbox": {
@@ -1432,6 +1470,8 @@
     "failed": "niepowodzenie",
     "eventCount": "{{count}} zdarzenie",
     "eventCount_other": "{{count}} zdarzenia",
+    "eventCount_few": "{{count}} zdarzenia",
+    "eventCount_many": "{{count}} zdarzeń",
     "filter": {
       "all": "Wszystkie",
       "read": "Odczytane",
@@ -1889,6 +1929,8 @@
     "hideCompletedToolsDescription": "Ukrywa aktywność narzędzi zakończoną pomyślnie. Aktywność trwająca, nieudana, odrzucona, anulowana i nieaktualna jest zawsze pokazywana, a nic nie jest usuwane.",
     "hiddenCount": "Ukryto zakończone aktywności narzędzi: {{count}}",
     "hiddenCount_one": "Ukryto 1 zakończoną aktywność narzędzia",
+    "hiddenCount_few": "Ukryto zakończone aktywności narzędzi: {{count}}",
+    "hiddenCount_many": "Ukryto zakończone aktywności narzędzi: {{count}}",
     "showAgain": "Pokaż je ponownie",
     "showModelReceived": "Pokazuj „Co otrzymał model”",
     "showModelReceivedDescription": "Zapis żądania i liczba tokenów przy każdej turze. Jest zapisywany zawsze i dostępny w szczegółach sesji oraz na osi czasu."
@@ -2598,10 +2640,12 @@
     "previewNone": "Podgląd niedostępny"
   },
   "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików",
+  "sampler": {
+    "label": "Parametry próbkowania",
+    "notSupported": "Nieobsługiwane przez {{provider}}"
+  },
   "translate": {
     "title": "Tłumacz",
-    "usingModel": "Używa {{model}}",
-    "noModel": "Wybierz model w selektorze modeli",
     "from": "Tłumacz z",
     "to": "Tłumacz na",
     "detect": "Wykryj język",
@@ -2613,12 +2657,61 @@
     "copyFailed": "Nie udało się skopiować tłumaczenia",
     "failed": "Tłumaczenie nie powiodło się",
     "inputPlaceholder": "Tekst do przetłumaczenia",
-    "outputPlaceholder": "Tłumaczenie pojawi się tutaj"
+    "outputPlaceholder": "Tłumaczenie pojawi się tutaj",
+    "description": "Tłumacz tekst między językami wybranym modelem. Nic nie jest zapisywane.",
+    "sourceTitle": "Tekst źródłowy",
+    "targetTitle": "Tłumaczenie",
+    "paste": "Wklej ze schowka",
+    "pasteFailed": "Nie udało się odczytać schowka",
+    "clear": "Wyczyść",
+    "characters": "Znaki: {{count}}",
+    "translating": "Tłumaczę…",
+    "retry": "Spróbuj ponownie",
+    "shortcut": "Tłumacz (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Szukaj języków",
+    "noLanguages": "Brak pasującego języka",
+    "errorAuth": "Dostawca odrzucił Twój klucz API. Sprawdź go w ustawieniach dostawcy.",
+    "errorQuota": "Dostawca informuje, że wyczerpano limit lub przekroczono limit żądań. Poczekaj chwilę lub sprawdź swój plan.",
+    "errorModelNotFound": "Dostawca nie ma tego modelu. Wybierz inny model lub sprawdź ustawienia dostawcy.",
+    "errorNetwork": "Nie udało się połączyć z dostawcą. Sprawdź połączenie lub czy serwer działa.",
+    "errorEngine": "Silnik uruchamiający ten model jest niedostępny. Uruchom Flint ponownie i spróbuj jeszcze raz.",
+    "openProvider": "Otwórz ustawienia dostawcy",
+    "errorDetails": "Szczegóły",
+    "usingModel": "Używa {{model}}",
+    "noModel": "Wybierz model w selektorze modeli"
   },
   "markdownImage": {
     "load": "Wczytaj obraz z {{host}}"
   },
   "messageSaveFailed": "Nie udało się zapisać wiadomości. Może zostać utracona po restarcie.",
   "threadSaveFailed": "Nie udało się zapisać zmiany w tym wątku. Została cofnięta.",
-  "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana"
+  "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana",
+  "settingsRecovered": {
+    "title": "Nie udało się odczytać pliku ustawień",
+    "withBackup": "Plik {{file}} był uszkodzony, więc Flint uruchomił się z ustawieniami domyślnymi. Uszkodzony plik zachowano jako {{backup}}.",
+    "noBackup": "Plik {{file}} był uszkodzony, więc Flint uruchomił się z ustawieniami domyślnymi. Nie udało się zapisać kopii uszkodzonego pliku."
+  },
+  "promptLibrary": {
+    "title": "Biblioteka promptów",
+    "description": "Prompty, których używasz wielokrotnie. Wpisz @ lub / w polu wiadomości, aby wstawić jeden z nich. Użyj {{name}} lub {{name:default}} dla części, które uzupełniasz za każdym razem.",
+    "manage": "Twoje prompty",
+    "add": "Dodaj prompt",
+    "editTitle": "Edytuj prompt",
+    "import": "Importuj",
+    "export": "Eksportuj",
+    "imported": "Dodano prompty: {{count}}",
+    "search": "Szukaj promptów",
+    "empty": "Brak promptów.",
+    "edit": "Edytuj: {{name}}",
+    "delete": "Usuń: {{name}}",
+    "deleted": "Prompt usunięty",
+    "undo": "Cofnij",
+    "name": "Nazwa",
+    "folder": "Folder (opcjonalnie)",
+    "tags": "Tagi, oddzielone przecinkami",
+    "body": "Treść promptu",
+    "bodyHint": "Napisz prompt. Użyj {{topic}} lub {{tone:friendly}} dla pustych miejsc.",
+    "variables": "Pyta o: {{names}}",
+    "insert": "Wstaw"
+  }
 }

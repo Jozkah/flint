@@ -7,7 +7,7 @@
     "rename": "Umbenennen",
     "deleteGroup": "Gruppe löschen",
     "deleteTitle": "{{name}} löschen?",
-    "deleteBody": "Die Gruppe wird entfernt. Ihre Elemente werden herausgenommen, nicht gelöscht.",
+    "deleteBody": "Die Gruppe wird entfernt. Ihre Elemente werden herausgenommen, nicht gelöscht. Unterordner rücken eine Ebene nach oben.",
     "folders": "Ordner…",
     "foldersTitle": "Ordner für „{{name}}“",
     "foldersBodyHome": "Chats, die in dieser Gruppe gestartet oder hineinverschoben werden, erhalten diese Ordner – für die Werkzeuge des Chats schreibgeschützt.",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "Die Werkzeuge des Chats können diese Ordner lesen. Schreibvorgänge bleiben in der eigenen Sandbox des Chats.",
     "chatFoldersEmpty": "Keine Ordner verbunden.",
     "addFolder": "Ordner hinzufügen",
-    "chatFolderCount": "Ordner: {{count}}"
+    "chatFolderCount": "Ordner: {{count}}",
+    "newSubfolder": "Neuer Unterordner",
+    "moveInto": "In Ordner verschieben",
+    "topLevel": "Oberste Ebene"
   },
   "htmlArtifact": {
     "code": "Code",
@@ -290,11 +293,13 @@
       "navigation": "Gehe zu",
       "settings": "Einstellungen",
       "threads": "Unterhaltungen"
-    }
+    },
+    "openItem": "{{item}} öffnen"
   },
   "searchGroup": {
     "inProjects": "In Projekten",
-    "conversations": "Unterhaltungen"
+    "conversations": "Unterhaltungen",
+    "messages": "In Nachrichten"
   },
   "rail": {
     "label": "Cowork-Bereiche",
@@ -937,6 +942,7 @@
     "missing": "Nicht mehr verfügbar: {{model}}",
     "use": "Dieses Modell verwenden",
     "thisChat": "Dieser Chat",
+    "thisRoom": "Dieser Raum",
     "thisSession": "Diese Sitzung"
   },
   "skillsUsedCount_one": "{{count}} Skill verwendet",
@@ -958,6 +964,28 @@
   "artifactsCount_other": "{{count}} Elemente",
   "previewMessageCount_one": "{{count}} Nachricht",
   "previewMessageCount_other": "{{count}} Nachrichten",
+  "rowPreview": {
+    "status": {
+      "running": "Läuft",
+      "waiting": "Braucht dich",
+      "idle": "Inaktiv",
+      "error": "Fehler"
+    },
+    "prState": {
+      "open": "Offen",
+      "draft": "Entwurf",
+      "merged": "Gemergt",
+      "closed": "Geschlossen"
+    },
+    "pullRequests": "Pull Requests",
+    "morePrs_one": "+{{count}} weiterer",
+    "morePrs_other": "+{{count}} weitere",
+    "noChecks": "Keine Prüfungen",
+    "empty": "Noch nichts hier.",
+    "noMessages": "Noch keine Nachrichten",
+    "summarizing": "Zusammenfassung wird geschrieben…",
+    "openHint": "Öffnen"
+  },
   "artifactDetails": "Elementdetails",
   "artifactBack": "Zurück zur Bibliothek",
   "artifactClose": "Details schließen",
@@ -1017,6 +1045,12 @@
       "first": "Erkläre, wie {{folder}} aufgebaut ist",
       "second": "Finde jedes TODO in {{folder}} und gruppiere sie nach Bereich",
       "third": "Schreibe Tests für den Teil von {{folder}}, auf den ich dich hinweise"
+    },
+    "vault": {
+      "badge": "Obsidian-Vault",
+      "hint": "Dieser Ordner ist ein Obsidian-Vault. Flint liest ihn wie jeden Ordner mit Markdown-Notizen und lässt die Obsidian-Einstellungen in .obsidian sowie .trash aus.",
+      "add": "Meinen Obsidian-Vault hinzufügen",
+      "addHint": "Ein Obsidian-Vault ist einfach ein Ordner. Wähle ihn wie jeden anderen Ordner."
     }
   },
   "sandbox": {
@@ -2510,10 +2544,12 @@
     "previewNone": "Keine Vorschau verfügbar"
   },
   "dropAttachFailed": "Die abgelegten Dateien konnten nicht angehängt werden",
+  "sampler": {
+    "label": "Sampling-Parameter",
+    "notSupported": "Wird von {{provider}} nicht unterstützt"
+  },
   "translate": {
     "title": "Übersetzer",
-    "usingModel": "Verwendet {{model}}",
-    "noModel": "Wähle ein Modell in der Modellauswahl",
     "from": "Übersetzen aus",
     "to": "Übersetzen nach",
     "detect": "Sprache erkennen",
@@ -2525,12 +2561,61 @@
     "copyFailed": "Die Übersetzung konnte nicht kopiert werden",
     "failed": "Übersetzung fehlgeschlagen",
     "inputPlaceholder": "Zu übersetzender Text",
-    "outputPlaceholder": "Die Übersetzung erscheint hier"
+    "outputPlaceholder": "Die Übersetzung erscheint hier",
+    "description": "Übersetze Text zwischen Sprachen mit deinem ausgewählten Modell. Nichts wird gespeichert.",
+    "sourceTitle": "Ausgangstext",
+    "targetTitle": "Übersetzung",
+    "paste": "Aus Zwischenablage einfügen",
+    "pasteFailed": "Zwischenablage konnte nicht gelesen werden",
+    "clear": "Leeren",
+    "characters": "{{count}} Zeichen",
+    "translating": "Wird übersetzt…",
+    "retry": "Erneut versuchen",
+    "shortcut": "Übersetzen (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Sprachen suchen",
+    "noLanguages": "Keine passende Sprache",
+    "errorAuth": "Der Anbieter hat deinen API-Schlüssel abgelehnt. Prüfe ihn in den Anbieter-Einstellungen.",
+    "errorQuota": "Der Anbieter meldet, dass dein Kontingent aufgebraucht oder du ratenbegrenzt bist. Warte kurz oder prüfe deinen Tarif.",
+    "errorModelNotFound": "Der Anbieter hat dieses Modell nicht. Wähle ein anderes Modell oder prüfe die Anbieter-Einstellungen.",
+    "errorNetwork": "Der Anbieter ist nicht erreichbar. Prüfe deine Verbindung oder ob der Server läuft.",
+    "errorEngine": "Die Engine, die dieses Modell ausführt, ist nicht verfügbar. Starte Flint neu und versuche es erneut.",
+    "openProvider": "Anbieter-Einstellungen öffnen",
+    "errorDetails": "Details",
+    "usingModel": "Verwendet {{model}}",
+    "noModel": "Wähle ein Modell in der Modellauswahl"
   },
   "markdownImage": {
     "load": "Bild von {{host}} laden"
   },
   "messageSaveFailed": "Die Nachricht konnte nicht gespeichert werden. Sie geht nach einem Neustart eventuell verloren.",
   "threadSaveFailed": "Die Änderung an diesem Thread konnte nicht gespeichert werden. Sie wurde zurückgesetzt.",
-  "attachmentsProcessFailed": "Die Anhänge konnten nicht vorbereitet werden, daher wurde die Nachricht nicht gesendet"
+  "attachmentsProcessFailed": "Die Anhänge konnten nicht vorbereitet werden, daher wurde die Nachricht nicht gesendet",
+  "settingsRecovered": {
+    "title": "Einstellungsdatei konnte nicht gelesen werden",
+    "withBackup": "{{file}} war beschädigt, daher hat Flint mit den Standardeinstellungen gestartet. Die beschädigte Datei wurde als {{backup}} aufbewahrt.",
+    "noBackup": "{{file}} war beschädigt, daher hat Flint mit den Standardeinstellungen gestartet. Eine Kopie der beschädigten Datei konnte nicht gespeichert werden."
+  },
+  "promptLibrary": {
+    "title": "Prompt-Bibliothek",
+    "description": "Prompts, die du wiederverwendest. Tippe @ oder / im Eingabefeld, um einen einzufügen. Nutze {{name}} oder {{name:default}} für Teile, die du jedes Mal ausfüllst.",
+    "manage": "Deine Prompts",
+    "add": "Prompt hinzufügen",
+    "editTitle": "Prompt bearbeiten",
+    "import": "Importieren",
+    "export": "Exportieren",
+    "imported": "{{count}} Prompts hinzugefügt",
+    "search": "Prompts suchen",
+    "empty": "Noch keine Prompts.",
+    "edit": "{{name}} bearbeiten",
+    "delete": "{{name}} löschen",
+    "deleted": "Prompt gelöscht",
+    "undo": "Rückgängig",
+    "name": "Name",
+    "folder": "Ordner (optional)",
+    "tags": "Tags, durch Kommas getrennt",
+    "body": "Prompt-Text",
+    "bodyHint": "Schreibe den Prompt. Nutze {{topic}} oder {{tone:friendly}} für Platzhalter.",
+    "variables": "Fragt nach: {{names}}",
+    "insert": "Einfügen"
+  }
 }

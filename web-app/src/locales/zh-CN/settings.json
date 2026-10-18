@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "子智能体",
-    "description": "Flint 启动的子智能体使用哪个助手、工作配置和模型运行。此处不做选择时，子智能体会继承其父级的助手和工作配置（较长的人设会被缩短）。这绝不会改变子智能体的权限：其工具和批准保持为该次运行所允许的范围。",
+    "description": "Flint 启动的子智能体使用哪个助手、工作配置和模型运行。此处未选择时，子智能体沿用其父级的助手和工作配置（过长的助手指令会被缩短）。这不会改变子智能体被允许做什么：它的工具和审批仍以本次运行允许的为准。",
     "headlessNote": "助手和工作配置仅适用于桌面应用。从命令行运行时遵循模型选择。",
     "defaultsTitle": "适用于所有子智能体",
     "defaultsDesc": "除非你在此处选择其他内容，否则每个子智能体都会继承启动它的那次运行。",
@@ -10,7 +10,7 @@
     "model": "模型",
     "inherit": "继承",
     "inheritDesc": "使用启动该子智能体的运行所使用的内容。",
-    "assistantDesc": "子智能体所采用的人设。",
+    "assistantDesc": "子智能体所使用的助手。",
     "profileDesc": "子智能体处理工作的方式。",
     "modelDesc": "在另一个模型上运行子智能体，例如用更快的模型进行只读调查。",
     "groupAssistants": "助手",
@@ -63,9 +63,6 @@
   "reportAnIssue": "报告问题",
   "reportAnIssueDesc": "发现错误？通过在 GitHub 上提交问题来帮助我们。",
   "reportIssue": "报告问题",
-  "credits": "致谢",
-  "creditsDesc1": "Flint 由 Jozkah 用 ❤️ 构建。",
-  "creditsDesc2": "特别感谢我们的开源依赖项——尤其是 llama.cpp 和 Tauri——以及我们出色的 AI 社区。",
   "appVersion": "应用版本",
   "dataFolder": {
     "appData": "应用数据",
@@ -80,7 +77,8 @@
     "enterKeyNewline": "回车键换行",
     "enterKeyNewlineDesc": "在聊天输入框中按回车键将换行而不是发送。使用发送按钮或 Ctrl/Cmd+回车发送。适合使用输入法（IME）时，回车用于确认转换的情况。",
     "resetFactory": "恢复出厂设置",
-    "resetFactoryDesc": "将应用程序恢复到其初始状态，清除所有模型和聊天记录。此操作不可逆，仅在应用程序损坏时建议使用。"
+    "resetFactoryDesc": "将应用程序恢复到其初始状态，清除所有模型和聊天记录。此操作不可逆，仅在应用程序损坏时建议使用。",
+    "spellCheckHint": "拼写检查语言由你的系统决定，而不是 Flint。请在系统的语言和键盘设置中添加语言（Windows：语言和区域；macOS：键盘 > 文本输入；Linux：安装 hunspell 词典）。"
   },
   "shortcuts": {
     "change": "更改",
@@ -122,7 +120,9 @@
     "nextPane": "下一个窗格",
     "nextPaneDesc": "切换到分屏视图中的下一个窗格。",
     "previousPane": "上一个窗格",
-    "previousPaneDesc": "切换到分屏视图中的上一个窗格。"
+    "previousPaneDesc": "切换到分屏视图中的上一个窗格。",
+    "findInChat": "在聊天中查找",
+    "findInChatDesc": "搜索屏幕上的对话。"
   },
   "interface": {
     "title": "外观",
@@ -177,12 +177,6 @@
     "resetCodeBlockSuccess": "代码块样式重置成功",
     "resetCodeBlockSuccessDesc": "代码块样式已恢复为默认值。",
     "transcriptView": "对话记录视图",
-    "sidebarLayout": "侧边栏",
-    "sidebarLayoutDesc": "左侧边栏列出多少内容。",
-    "sidebarLayout_trimmed": "精简",
-    "sidebarLayout_trimmedDesc": "新建聊天、Cowork、发现和您的聊天。房间、库、Studio 和引擎页面折叠在“更多”和“高级”下。",
-    "sidebarLayout_extended": "展开",
-    "sidebarLayout_extendedDesc": "一次列出所有内容：“更多”和“高级”保持展开。",
     "transcriptViewDesc": "聊天、Cowork 和房间中每轮显示多少内容。审批、提问和错误始终显示。",
     "transcriptViewNormal": "标准",
     "transcriptViewNormalDesc": "只显示回答和需要你处理的内容。工具调用折叠为一行步骤。",
@@ -191,7 +185,13 @@
     "transcriptViewVerbose": "详细",
     "transcriptViewVerboseDesc": "全部显示：完整推理，以及展开参数和输出的每个工具调用。",
     "inlineCitations": "行内来源图标",
-    "inlineCitationsDesc": "在来自网络来源的句子后显示小型网站图标。关闭后可无图标阅读回答,来源仍会列在下方。"
+    "inlineCitationsDesc": "在来自网络来源的句子后显示小型网站图标。关闭后可无图标阅读回答,来源仍会列在下方。",
+    "sidebarLayout": "侧边栏",
+    "sidebarLayoutDesc": "左侧边栏列出多少内容。",
+    "sidebarLayout_trimmed": "精简",
+    "sidebarLayout_trimmedDesc": "新建聊天、Cowork、发现和您的聊天。房间、库、Studio 和引擎页面折叠在“更多”和“高级”下。",
+    "sidebarLayout_extended": "展开",
+    "sidebarLayout_extendedDesc": "一次列出所有内容：“更多”和“高级”保持展开。"
   },
   "hardware": {
     "os": "操作系统",
@@ -380,6 +380,9 @@
     "usageWeek": "每周",
     "usageWeekDesc": "过去 7 天内的令牌数（输入加输出）。留空表示不限制。",
     "usageNow": "当前已用",
+    "usageNoLimitPlaceholder": "无限制",
+    "serverLog": "服务器日志",
+    "openInNewWindow": "在新窗口中打开",
     "usageNoLimit": "未设置限额",
     "usageResets": "最早的用量将在 {{wait}} 后移出统计",
     "startServer": "启动服务器",
@@ -417,7 +420,7 @@
     "verboseLogsDesc": "启用详细服务器日志以进行调试。",
     "proxyTimeout": "请求超时",
     "proxyTimeoutDesc": "等待本地模型响应的时间（单位：秒）。",
-    "defaultModel": "默认模型 Local API Server",
+    "defaultModel": "默认模型",
     "defaultModelDesc": "服务器启动时自动加载的本地模型。",
     "defaultModelPlaceholder": "选择一个本地模型"
   },
@@ -456,7 +459,7 @@
     "updateError": "检查更新失败",
     "appVersion": "应用版本",
     "buildUpdate": "检查更新的构建",
-    "buildUpdateDesc": "Flint 0.9.0 是每夜构建：它会根据最新代码重新构建，版本号保持不变。开启后，Flint 会在启动时向 GitHub 询问一次（每天最多两次）是否存在更新的构建。默认关闭；无论哪种情况，除该请求外不会发送任何内容。",
+    "buildUpdateDesc": "每夜构建保持相同的版本号。开启后，Flint 会在启动时向 GitHub 询问一次（每天最多两次）是否有更新的构建。默认关闭。",
     "buildCheckNow": "立即检查",
     "buildChecking": "正在检查…",
     "buildNewer": "有更新的构建可用。请从发布页面重新下载以更新。",
@@ -669,8 +672,7 @@
     "increaseContrast": "提高对比度",
     "increaseContrastDesc": "让文字更醒目，更易阅读。深色主题下更白，浅色主题下更深。",
     "reduceMotion": "减少动效",
-    "reduceMotionDesc": "关闭 Flint 中的动画。Flint 不会跟随系统设置，因此除非你切换此项，否则动效保持开启。",
-    "completionSoundApproval": "仅在需要批准时"
+    "reduceMotionDesc": "关闭 Flint 中的动画。Flint 不会跟随系统设置，因此除非你切换此项，否则动效保持开启。"
   },
   "pageDesc": {
     "general": "语言、数据文件夹、日志和应用范围的选项。",
@@ -1072,7 +1074,12 @@
       "updated": "{{when}}更新",
       "loading": "正在加载战役",
       "loadFailed": "无法加载战役。",
-      "retry": "重试"
+      "skipped_one": "已跳过 {{count}} 条无法读取的战役记录。文件保持原样。",
+      "skipped_other": "已跳过 {{count}} 条无法读取的战役记录。文件保持原样。",
+      "retry": "重试",
+      "needsDesktop": "战役需要桌面应用",
+      "needsDesktopHint": "请打开 Flint 桌面应用来查看和启动战役。普通浏览器标签页无法读取它们。",
+      "staleApp": "此应用副本比页面旧。请关闭后重新启动，以加载最新构建。"
     },
     "plan": {
       "edit": "编辑计划",
@@ -1128,5 +1135,35 @@
     "storeToolApproval": "工具自动批准",
     "storeMcpTrust": "MCP 服务器信任",
     "storeProxy": "网络代理"
-  }
+  },
+  "startup": {
+    "title": "随电脑启动",
+    "on": "已开启。登录时 Flint 通过 {{platform}} 启动。",
+    "off": "已关闭。Flint 仅在你打开时才启动。开启前会先询问，并显示将写入的确切内容。",
+    "minimized": "最小化启动",
+    "minimizedDesc": "隐藏启动，只显示托盘图标；点击图标即可打开窗口。",
+    "confirmTitle": "将 Flint 添加到 {{platform}}？",
+    "confirmBody": "这只会向你的用户账户写入下面这一条内容，不会写入其他任何内容。不需要管理员权限。",
+    "confirmUndo": "关闭开关会移除此条目。",
+    "confirm": "添加条目",
+    "failed": "无法更改启动项"
+  },
+  "sidebarItems": {
+    "title": "侧边栏项目",
+    "description": "选择在左侧边栏中显示哪些项目。隐藏某一项只会移除它的快捷入口，页面本身仍可正常使用。",
+    "section": {
+      "workspace": "工作区",
+      "cowork": "Cowork",
+      "more": "更多",
+      "header": "顶部和底部"
+    },
+    "showItem": "在侧边栏中显示 {{item}}",
+    "alwaysShown": "始终显示",
+    "showAll": "全部显示",
+    "preview": "预览",
+    "reachable": "隐藏的项目仍可从命令面板和“设置”中访问。"
+  },
+  "credits": "致谢",
+  "creditsDesc1": "Flint 由 Jozkah 用 ❤️ 构建。",
+  "creditsDesc2": "特别感谢我们的开源依赖项——尤其是 llama.cpp 和 Tauri——以及我们出色的 AI 社区。"
 }

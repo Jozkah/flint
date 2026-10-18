@@ -72,8 +72,29 @@
       "body": "Gunakan model yang di-hosting dengan akun Anda sendiri."
     },
     "import": {
-      "title": "Impor file",
-      "body": "Tambahkan file model yang sudah Anda miliki."
+      "title": "Tambahkan file model",
+      "body": "Pilih file .gguf, atau temukan model yang sudah disimpan Ollama, LM Studio, dan lainnya di komputer ini. Tidak ada yang diunduh."
     }
+  },
+  "fit": {
+    "heading": "Apakah akan berjalan lancar di sini?"
+  },
+  "sample": {
+    "button": "Coba contoh pertanyaan",
+    "hint": "Menaruh pertanyaan di kotak pesan. Tekan Enter untuk mengirim, atau edit dulu.",
+    "question": "Dalam tiga kalimat, jelaskan apa itu model bahasa dan apa yang tidak bisa dilakukannya."
+  },
+  "approvalsNote": "Saat Flint ingin mengubah file atau menjalankan perintah, ia berhenti dan bertanya dulu. Permintaan muncul di percakapan beserta persis apa yang akan dilakukan, lalu Anda memilih Izinkan atau Tolak. Tidak ada yang berjalan sebelum Anda menjawab.",
+  "checklist": {
+    "label": "Kemajuan",
+    "model-added": "Model ditambahkan",
+    "first-chat": "Obrolan pertama",
+    "first-project": "Proyek pertama"
+  },
+  "sidebar": {
+    "title": "Buat sidebar sesuai gaya Anda",
+    "body": "Sembunyikan item yang tidak Anda pakai. Anda bisa mengubahnya kapan saja di Pengaturan, di bawah Tampilan.",
+    "customize": "Sesuaikan sidebar",
+    "close": "Selesai"
   }
 }

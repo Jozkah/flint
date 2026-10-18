@@ -14,6 +14,7 @@
   "models": "Modeller",
   "filterModels": "{{count}} modeli filtrele",
   "modelsShown": "{{total}} içinden {{shown}} gösteriliyor",
+  "noModelsMatch": "\"{{query}}\" ile eşleşen model yok",
   "showMoreModels": "Daha fazla göster",
   "backendInstalled": "Kurulu",
   "backendHistoryShow": "Güncelleme geçmişini göster",
@@ -38,6 +39,12 @@
   "importedTooltip": "Yerel bir dosyadan içe aktarıldı. Jan'den kaldırmak, dosyayı diskten silmez.",
   "importModelSuccess": "{{provider}} modeli başarıyla içe aktarıldı.",
   "importModelError": "Model içe aktarılamadı:",
+
+  "importScanHint": "LM Studio, Ollama, Hugging Face önbelleği, llama.cpp ve GPT4All içinde arar. İçe aktarana kadar hiçbir şey kopyalanmaz.",
+
+  "importAddFolder": "Model klasörü ekle",
+
+  "importRemoveFolder": "{{folder}} klasörünü kaldır",
   "stop": "Durdur",
   "start": "Başlat",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "Sağlayıcı Ekle",
   "addOpenAIProvider": "OpenAI Sağlayıcısı Ekle",
   "enterNameForProvider": "Sağlayıcı için ad girin",
+  "apiVersion": {
+    "title": "API sürümü",
+    "description": "Yalnızca URL'sinde ?api-version= bulunmayan, dağıtım tarzı bir Azure uç noktası (/openai/deployments/<name>) için. /openai/v1 uç noktası buna ihtiyaç duymaz."
+  },
   "baseUrl": {
     "title": "Temel URL",
     "openaiDescription": "OpenAI API'sini konuşan bir proxy veya ağ geçidi kullanın. Varsayılan https://api.openai.com/v1 adresidir.",
     "azureDescription": "Azure OpenAI uç noktanız. YOUR-RESOURCE-NAME'i Azure kaynak adınızla değiştirin.",
     "litellmDescription": "LiteLLM proxy adresiniz, /v1 dahil. Varsayılan http://localhost:4000/v1'dir.",
-    "qwenDescription": "Model Studio uç noktanız. Bir anahtar yalnızca oluşturulduğu bölgede çalışır: Singapur için https://dashscope-intl.aliyuncs.com/compatible-mode/v1, anakara Çin için https://dashscope.aliyuncs.com/compatible-mode/v1 kullanın."
+    "qwenDescription": "Model Studio uç noktanız. Bir anahtar yalnızca oluşturulduğu bölgede çalışır: Singapur için https://dashscope-intl.aliyuncs.com/compatible-mode/v1, anakara Çin için https://dashscope.aliyuncs.com/compatible-mode/v1 kullanın.",
+    "bedrockDescription": "Bölgenizin Amazon Bedrock çalışma zamanı uç noktası, örneğin https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "API anahtarları",
@@ -219,5 +231,18 @@
     "label": "Sağlayıcı adı",
     "cancel": "İptal",
     "save": "Kaydet"
+  },
+  "bedrock": {
+    "title": "AWS kimlik bilgileri",
+    "description": "Flint her Amazon Bedrock isteğini AWS anahtarlarınızla imzalar. Anahtarlar işletim sisteminizin anahtar zincirinde saklanır ve bir daha gösterilmez. Model kimliklerini elle ekleyin (örneğin anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "Erişim anahtarı kimliği",
+    "secretAccessKey": "Gizli erişim anahtarı",
+    "sessionToken": "Oturum belirteci (isteğe bağlı)",
+    "secretHint": "bedrock:InvokeModel çağrısına izinli bir IAM kullanıcısı veya rolü gerekir.",
+    "sessionTokenHint": "Yalnızca geçici kimlik bilgileri için (STS veya SSO).",
+    "saved": "Kaydedildi",
+    "remove": "Kaldır",
+    "replace": "Kaydedildi. Değiştirmek için yazın.",
+    "enter": "Ayarlanmadı"
   }
 }

@@ -14,7 +14,7 @@
     "MODEL_LOAD_TIMED_OUT": "模型加载时间过长，已被停止。使用较小的模型或较小的上下文大小通常可以解决。",
     "MISSING_SHARED_LIBRARY": "引擎所需的某个库缺失，因此无法启动。",
     "GPU_DRIVER_TOO_OLD": "您的 GPU 驱动程序对于此引擎来说太旧了。更新驱动程序，或在设置中切换到 CPU 引擎，即可解决此问题。",
-    "CPU_NOT_SUPPORTED": "这台电脑的处理器缺少引擎所需的指令（需要支持 AVX 的 x86 CPU），因此引擎在启动时崩溃。",
+    "CPU_NOT_SUPPORTED": "这台电脑的处理器缺少引擎所需的指令（需要支持 AVX 的 x86 CPU），因此引擎崩溃了。Flint 已经仅用 CPU 重试过一次该模型；如果仍看到此消息，说明那次重试也崩溃了，或引擎本来就设为仅用 CPU。",
     "OS_VERSION_UNSUPPORTED": "此版本的 macOS 对引擎来说太旧。更新 macOS 即可解决。",
     "MODEL_QUANT_NOT_SUPPORTED": "此模型使用的量化类型无法在 GPU 后端运行。请下载其他量化版本（例如 Q4_K_M），或关闭 GPU 卸载。",
     "ENGINE_STOPPED": "引擎意外停止。请重新加载模型以重启引擎；如果问题持续出现，下方显示的引擎最后输出会说明原因。",

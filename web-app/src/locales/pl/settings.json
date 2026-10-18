@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Podagenci",
-    "description": "Z jakim asystentem, profilem pracy i modelem działają podagenci uruchamiani przez Flint. Bez wyboru tutaj podagent dziedziczy asystenta i profil pracy rodzica (długie persony są skracane). To nigdy nie zmienia tego, co podagent może robić: jego narzędzia i zatwierdzenia pozostają takie, na jakie pozwala uruchomienie.",
+    "description": "Z jakim asystentem, profilem pracy i modelem działają subagenci uruchamiani przez Flint. Bez wyboru tutaj subagent dziedziczy asystenta i profil pracy rodzica (długie instrukcje asystenta są skracane). To nigdy nie zmienia tego, co subagent może robić: jego narzędzia i zatwierdzenia pozostają takie, jakie dopuszcza dane uruchomienie.",
     "headlessNote": "Asystenci i profile pracy dotyczą tylko aplikacji desktopowej. Uruchomienia z wiersza poleceń stosują się do wyborów modelu.",
     "defaultsTitle": "Dla wszystkich podagentów",
     "defaultsDesc": "Każdy dziedziczy z uruchomienia, które go rozpoczęło, chyba że wybierzesz tutaj coś innego.",
@@ -10,7 +10,7 @@
     "model": "Model",
     "inherit": "Dziedzicz",
     "inheritDesc": "Użyj tego, czego używa uruchomienie, które rozpoczęło podagenta.",
-    "assistantDesc": "Persona, pod którą pracuje podagent.",
+    "assistantDesc": "Asystent, z którym pracuje subagent.",
     "profileDesc": "Jak podagent podchodzi do pracy.",
     "modelDesc": "Uruchamiaj podagentów na innym modelu, na przykład szybszym do przeglądów tylko do odczytu.",
     "groupAssistants": "Asystenci",
@@ -65,9 +65,6 @@
   "reportAnIssue": "Zgłoś Problem",
   "reportAnIssueDesc": "Znalazłeś/-aś błąd? Pomóż nam, zgłaszając go na GitHubie.",
   "reportIssue": "Zgłoś Problem",
-  "credits": "Podziękowania",
-  "creditsDesc1": "Aplikacja Flint jest rozwijana z ❤️ przez Jozkah.",
-  "creditsDesc2": "Szczególne podziękowania dla naszych otwartoźródłowych zależności - zwłaszcza llama.cpp i Tauri - oraz dla naszej wspaniałej społeczności SI.",
   "appVersion": "Wersja Aplikacji",
   "dataFolder": {
     "appData": "Katalog Danych",
@@ -82,7 +79,8 @@
     "enterKeyNewline": "Enter dodaje nowy wiersz",
     "enterKeyNewlineDesc": "Naciśnięcie Enter w polu czatu dodaje nowy wiersz zamiast wysyłać. Wysyłaj przyciskiem wysyłania lub Ctrl/Cmd+Enter. Przydatne przy pisaniu metodą wprowadzania (IME), gdzie Enter zatwierdza konwersję.",
     "resetFactory": "Przywróć Ustawienia Fabryczne",
-    "resetFactoryDesc": "Przywróć aplikację do stanu początkowego, wymazując wszystkie modele i historię czatów. Tej operacji nie można cofnąć. Zalecane tylko przy uszkodzeniach danych aplikacji."
+    "resetFactoryDesc": "Przywróć aplikację do stanu początkowego, wymazując wszystkie modele i historię czatów. Tej operacji nie można cofnąć. Zalecane tylko przy uszkodzeniach danych aplikacji.",
+    "spellCheckHint": "Język sprawdzania pisowni wybiera system, nie Flint. Dodaj język w ustawieniach języka i klawiatury systemu (Windows: Język i region; macOS: Klawiatura > Źródła wprowadzania; Linux: zainstaluj słownik hunspell)."
   },
   "shortcuts": {
     "change": "Zmień",
@@ -124,7 +122,9 @@
     "nextPane": "Następny panel",
     "nextPaneDesc": "Przejdź do następnego panelu widoku podzielonego.",
     "previousPane": "Poprzedni panel",
-    "previousPaneDesc": "Przejdź do poprzedniego panelu widoku podzielonego."
+    "previousPaneDesc": "Przejdź do poprzedniego panelu widoku podzielonego.",
+    "findInChat": "Szukaj w czacie",
+    "findInChatDesc": "Przeszukaj rozmowę widoczną na ekranie."
   },
   "interface": {
     "title": "Wygląd",
@@ -179,12 +179,6 @@
     "resetCodeBlockSuccess": "Pomyślnie Przywrócono Styl Bloku Kodu",
     "resetCodeBlockSuccessDesc": "Styl bloku kodu został przywrócony do ustawień domyślnych.",
     "transcriptView": "Widok transkrypcji",
-    "sidebarLayout": "Pasek boczny",
-    "sidebarLayoutDesc": "Ile pozycji pokazywać na lewym pasku bocznym.",
-    "sidebarLayout_trimmed": "Skrócony",
-    "sidebarLayout_trimmedDesc": "Nowy czat, Cowork, Odkrywaj i Twoje czaty. Pokoje, Biblioteka, Studio i strony silnika są zwinięte w Więcej i Zaawansowane.",
-    "sidebarLayout_extended": "Rozszerzony",
-    "sidebarLayout_extendedDesc": "Wszystko widoczne naraz: Więcej i Zaawansowane pozostają otwarte.",
     "transcriptViewDesc": "Ile z każdej tury pokazują Czat, Cowork i Pokoje. Zatwierdzenia, pytania i błędy są zawsze widoczne.",
     "transcriptViewNormal": "Normalny",
     "transcriptViewNormalDesc": "Odpowiedź i to, co wymaga Twojej reakcji. Wywołania narzędzi zwijają się w jeden wiersz kroków.",
@@ -193,7 +187,13 @@
     "transcriptViewVerbose": "Szczegółowy",
     "transcriptViewVerboseDesc": "Wszystko: pełne rozumowanie i każde wywołanie narzędzia rozwinięte z parametrami i wynikiem.",
     "inlineCitations": "Ikony źródeł w tekście",
-    "inlineCitationsDesc": "Po zdaniu pochodzącym ze źródła internetowego pokazuje małą ikonę witryny. Wyłącz, aby czytać odpowiedź bez nich; źródła nadal są wymienione pod spodem."
+    "inlineCitationsDesc": "Po zdaniu pochodzącym ze źródła internetowego pokazuje małą ikonę witryny. Wyłącz, aby czytać odpowiedź bez nich; źródła nadal są wymienione pod spodem.",
+    "sidebarLayout": "Pasek boczny",
+    "sidebarLayoutDesc": "Ile pozycji pokazywać na lewym pasku bocznym.",
+    "sidebarLayout_trimmed": "Skrócony",
+    "sidebarLayout_trimmedDesc": "Nowy czat, Cowork, Odkrywaj i Twoje czaty. Pokoje, Biblioteka, Studio i strony silnika są zwinięte w Więcej i Zaawansowane.",
+    "sidebarLayout_extended": "Rozszerzony",
+    "sidebarLayout_extendedDesc": "Wszystko widoczne naraz: Więcej i Zaawansowane pozostają otwarte."
   },
   "hardware": {
     "os": "System Operacyjny",
@@ -384,6 +384,9 @@
     "usageWeek": "Na tydzień",
     "usageWeekDesc": "Tokeny, wejście plus wyjście, z ostatnich 7 dni. Puste oznacza brak limitu.",
     "usageNow": "Aktualne zużycie",
+    "usageNoLimitPlaceholder": "Bez limitu",
+    "serverLog": "Dziennik serwera",
+    "openInNewWindow": "Otwórz w nowym oknie",
     "usageNoLimit": "Brak limitu",
     "usageResets": "Najstarsze zużycie przestanie się liczyć za {{wait}}",
     "startServer": "Uruchom Serwer",
@@ -421,7 +424,7 @@
     "verboseLogsDesc": "Włącz szczegółowe wpisy dzienników serwera na potrzeby rozwiązywania problemów.",
     "proxyTimeout": "Przekroczenie limitu czasu żądania",
     "proxyTimeoutDesc": "Czas oczekiwania na odpowiedź od lokalnego modelu w sekundach.",
-    "defaultModel": "Domyślny model lokalnego serwera API",
+    "defaultModel": "Model domyślny",
     "defaultModelDesc": "Model lokalny wczytywany automatycznie przy uruchomieniu serwera.",
     "defaultModelPlaceholder": "Wybierz model lokalny"
   },
@@ -460,7 +463,7 @@
     "updateError": "Nie udało się sprawdzić dostępności aktualizacji",
     "appVersion": "Wersja Aplikacji",
     "buildUpdate": "Sprawdzaj nowsze kompilacje",
-    "buildUpdateDesc": "Flint 0.9.0 to kompilacja nightly: jest przebudowywana z najnowszego kodu, a numer wersji pozostaje ten sam. Po włączeniu Flint pyta GitHub raz przy starcie (najwyżej dwa razy dziennie), czy istnieje nowsza kompilacja. Domyślnie wyłączone; poza tym żądaniem nic nie jest wysyłane.",
+    "buildUpdateDesc": "Kompilacje nightly zachowują ten sam numer wersji. Po włączeniu Flint raz przy starcie pyta GitHub (najwyżej dwa razy dziennie), czy istnieje nowsza kompilacja. Domyślnie wyłączone.",
     "buildCheckNow": "Sprawdź teraz",
     "buildChecking": "Sprawdzanie…",
     "buildNewer": "Dostępna jest nowsza kompilacja. Pobierz ją ponownie ze strony wydania, aby zaktualizować.",
@@ -667,14 +670,13 @@
     "completionSoundOff": "Wyłączone",
     "completionSoundBackground": "Gdy w tle",
     "completionSoundAlways": "Zawsze",
-    "completionSoundApproval": "Tylko gdy potrzebne jest zatwierdzenie",
+    "completionSoundApproval": "Tylko gdy wymagana jest zgoda",
     "completionSoundVolume": "Głośność",
     "completionSoundPreview": "Odtwórz",
     "increaseContrast": "Zwiększ kontrast",
     "increaseContrastDesc": "Rozjaśnia tekst, aby łatwiej było go czytać. Bielszy w ciemnym motywie, ciemniejszy w jasnym.",
     "reduceMotion": "Ogranicz animacje",
-    "reduceMotionDesc": "Wyłącza animacje we Flint. Flint nie podąża za ustawieniem systemowym, więc animacje pozostają włączone, dopóki tego nie zmienisz.",
-    "completionSoundApproval": "Tylko gdy wymagana jest zgoda"
+    "reduceMotionDesc": "Wyłącza animacje we Flint. Flint nie podąża za ustawieniem systemowym, więc animacje pozostają włączone, dopóki tego nie zmienisz."
   },
   "pageDesc": {
     "general": "Język, folder danych, dzienniki i opcje całej aplikacji.",
@@ -808,6 +810,8 @@
         "working": "W toku: ukończono {{done}} z {{total}} zadań",
         "attention_one": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
         "attention_other": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
+        "attention_few": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
+        "attention_many": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
         "review": "Gotowe do Twojego przeglądu",
         "merging": "Łączenie wyników",
         "paused": "Wstrzymano: ukończono {{done}} z {{total}} zadań",
@@ -871,8 +875,12 @@
       "story": {
         "wrote_one": "Zapisano plików: {{count}}, +{{added}} −{{removed}} wierszy",
         "wrote_other": "Zapisano plików: {{count}}, +{{added}} −{{removed}} wierszy",
+        "wrote_few": "Zapisano plików: {{count}}, +{{added}} −{{removed}} wierszy",
+        "wrote_many": "Zapisano plików: {{count}}, +{{added}} −{{removed}} wierszy",
         "wroteUncounted_one": "Zapisano plików: {{count}}",
         "wroteUncounted_other": "Zapisano plików: {{count}}",
+        "wroteUncounted_few": "Zapisano plików: {{count}}",
+        "wroteUncounted_many": "Zapisano plików: {{count}}",
         "stop": {
           "none": "Zatrzymało się przed ukończeniem.",
           "one": "Zatrzymało się po nieudanym poleceniu.",
@@ -884,6 +892,8 @@
           "finishedNoFiles": "Zakończono bez zmian w plikach.",
           "working_one": "W trakcie pracy, dotąd kroków: {{count}}.",
           "working_other": "W trakcie pracy, dotąd kroków: {{count}}.",
+          "working_few": "W trakcie pracy, dotąd kroków: {{count}}.",
+          "working_many": "W trakcie pracy, dotąd kroków: {{count}}.",
           "starting": "Dopiero się zaczyna.",
           "conflict": "Zakończone, ale zmiany kolidują z tym, co zapisały inne zadania.",
           "waiting": "Najpierw czeka na zakończenie: {{tasks}}.",
@@ -902,15 +912,23 @@
         "noRecord": "Brak zapisu krok po kroku dla tego zadania.",
         "more_one": "i kroków więcej: {{count}}",
         "more_other": "i kroków więcej: {{count}}",
+        "more_few": "i kroków więcej: {{count}}",
+        "more_many": "i kroków więcej: {{count}}",
         "step": {
           "read": "Odczytano {{label}}",
           "readMany_one": "Odczytano plików: {{count}}",
           "readMany_other": "Odczytano plików: {{count}}",
+          "readMany_few": "Odczytano plików: {{count}}",
+          "readMany_many": "Odczytano plików: {{count}}",
           "search_one": "Przeszukano projekt",
           "search_other": "Przeszukano projekt, razy: {{count}}",
+          "search_few": "Przeszukano projekt, razy: {{count}}",
+          "search_many": "Przeszukano projekt, razy: {{count}}",
           "write": "Zapisano {{label}}",
           "writeMany_one": "Zapisano plików: {{count}}",
           "writeMany_other": "Zapisano plików: {{count}}",
+          "writeMany_few": "Zapisano plików: {{count}}",
+          "writeMany_many": "Zapisano plików: {{count}}",
           "ran": "Uruchomiono {{label}}",
           "ranFailed": "Uruchomiono {{label}}, zakończyło się błędem"
         },
@@ -932,6 +950,8 @@
         "plan": "Jak to podzielono",
         "sideBySide_one": "Zadanie wykonane osobno: {{count}}",
         "sideBySide_other": "Zadania wykonane równolegle: {{count}}",
+        "sideBySide_few": "Zadania wykonane równolegle: {{count}}",
+        "sideBySide_many": "Zadania wykonane równolegle: {{count}}",
         "waitsFor": "{{task}} czeka na: {{tasks}}",
         "time": "Czas",
         "timeSoFar": "Dotąd {{time}}",
@@ -1002,8 +1022,12 @@
         "title": "Pominąć „{{task}}”?",
         "body_one": "Zadań czekających na to: {{count}}. Pominąć je też, czy pozwolić im działać bez tego zadania?",
         "body_other": "Zadań czekających na to: {{count}}. Pominąć je też, czy pozwolić im działać bez tego zadania?",
+        "body_few": "Zadań czekających na to: {{count}}. Pominąć je też, czy pozwolić im działać bez tego zadania?",
+        "body_many": "Zadań czekających na to: {{count}}. Pominąć je też, czy pozwolić im działać bez tego zadania?",
         "cascade_one": "Pomiń je i zadanie, które na nie czeka",
         "cascade_other": "Pomiń je i zadania, które na nie czekają (liczba: {{count}})",
+        "cascade_few": "Pomiń je i zadania, które na nie czekają (liczba: {{count}})",
+        "cascade_many": "Pomiń je i zadania, które na nie czekają (liczba: {{count}})",
         "release": "Pomiń, resztę uruchom bez niego"
       },
       "gate": {
@@ -1033,6 +1057,8 @@
       "none": "To zadanie nie zmieniło żadnych plików.",
       "files_one": "Plików: {{count}}",
       "files_other": "Plików: {{count}}",
+      "files_few": "Plików: {{count}}",
+      "files_many": "Plików: {{count}}",
       "namesOnly": "Dla tego zadania znane są tylko nazwy plików.",
       "uncommitted": "Część tej pracy nie jest jeszcze zapisana w branchu zadania.",
       "cut": "Długą listę skrócono.",
@@ -1047,6 +1073,8 @@
       "renamedFrom": "Poprzednia nazwa: {{from}}",
       "showMore_one": "Pokaż więcej wierszy: {{count}}",
       "showMore_other": "Pokaż więcej wierszy: {{count}}",
+      "showMore_few": "Pokaż więcej wierszy: {{count}}",
+      "showMore_many": "Pokaż więcej wierszy: {{count}}",
       "fileCut": "Ta zmiana jest długa, więc pokazano tylko początek.",
       "noPatch": "Dla tego pliku nie ma widoku wiersz po wierszu."
     },
@@ -1076,7 +1104,14 @@
       "updated": "Zaktualizowano {{when}}",
       "loading": "Wczytywanie kampanii",
       "loadFailed": "Nie udało się wczytać kampanii.",
-      "retry": "Ponów"
+      "skipped_one": "Pominięto {{count}} nieczytelny wpis kampanii. Pliki zostały na miejscu.",
+      "skipped_few": "Pominięto {{count}} nieczytelne wpisy kampanii. Pliki zostały na miejscu.",
+      "skipped_other": "Pominięto {{count}} nieczytelnych wpisów kampanii. Pliki zostały na miejscu.",
+      "skipped_many": "Pominięto {{count}} nieczytelnych wpisów kampanii. Pliki zostały na miejscu.",
+      "retry": "Ponów",
+      "needsDesktop": "Kampanie wymagają aplikacji komputerowej",
+      "needsDesktopHint": "Otwórz aplikację komputerową Flint, aby zobaczyć i uruchamiać kampanie. Zwykła karta przeglądarki nie może ich odczytać.",
+      "staleApp": "Ta kopia aplikacji jest starsza niż strona. Zamknij ją i uruchom ponownie, aby wczytać najnowszą wersję."
     },
     "plan": {
       "edit": "Edytuj plan",
@@ -1132,5 +1167,35 @@
     "storeToolApproval": "automatyczne zatwierdzanie narzędzi",
     "storeMcpTrust": "zaufanie do serwerów MCP",
     "storeProxy": "serwer proxy"
-  }
+  },
+  "startup": {
+    "title": "Uruchamiaj z komputerem",
+    "on": "Włączone. Flint uruchamia się po zalogowaniu, używając: {{platform}}.",
+    "off": "Wyłączone. Flint uruchamia się tylko po jego otwarciu. Włączenie najpierw pyta o zgodę i pokazuje dokładnie, co zostanie zapisane.",
+    "minimized": "Uruchamiaj zminimalizowany",
+    "minimizedDesc": "Uruchamia się ukryty, więc widać tylko ikonę w zasobniku; kliknij ją, aby otworzyć okno.",
+    "confirmTitle": "Add a startup entry ({{platform}})?",
+    "confirmBody": "Zapisuje dokładnie poniższy wpis w Twoim koncie użytkownika i nic więcej. Nie wymaga uprawnień administratora.",
+    "confirmUndo": "Wyłączenie przełącznika usuwa ten wpis.",
+    "confirm": "Dodaj wpis",
+    "failed": "Nie udało się zmienić wpisu autostartu"
+  },
+  "sidebarItems": {
+    "title": "Pozycje paska bocznego",
+    "description": "Wybierz, które pozycje pojawiają się na lewym pasku bocznym. Ukrycie pozycji usuwa tylko jej skrót; sama strona nadal działa.",
+    "section": {
+      "workspace": "Obszar roboczy",
+      "cowork": "Cowork",
+      "more": "Więcej",
+      "header": "Góra i dół"
+    },
+    "showItem": "Pokaż „{{item}}” na pasku bocznym",
+    "alwaysShown": "Zawsze widoczne",
+    "showAll": "Pokaż wszystko",
+    "preview": "Podgląd",
+    "reachable": "Ukryte pozycje pozostają dostępne z palety poleceń i z Ustawień."
+  },
+  "credits": "Podziękowania",
+  "creditsDesc1": "Aplikacja Flint jest rozwijana z ❤️ przez Jozkah.",
+  "creditsDesc2": "Szczególne podziękowania dla naszych otwartoźródłowych zależności - zwłaszcza llama.cpp i Tauri - oraz dla naszej wspaniałej społeczności SI."
 }

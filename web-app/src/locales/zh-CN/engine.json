@@ -66,7 +66,8 @@
     "loaded": "已加载",
     "ready": "就绪",
     "noKey": "无 API 密钥",
-    "keyless": "无需密钥"
+    "keyless": "无需密钥",
+    "noCredentials": "没有 AWS 凭证"
   },
   "installed": {
     "title": "已安装的模型",

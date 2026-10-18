@@ -14,6 +14,7 @@
   "models": "モデル",
   "filterModels": "{{count}} 件のモデルを絞り込む",
   "modelsShown": "{{total}} 件中 {{shown}} 件を表示",
+  "noModelsMatch": "\"{{query}}\" に一致するモデルはありません",
   "showMoreModels": "さらに表示",
   "backendInstalled": "インストール済み",
   "backendHistoryShow": "更新履歴を表示",
@@ -38,6 +39,12 @@
   "importedTooltip": "ローカルファイルからインポートされています。Janから削除しても、ディスク上のファイルは削除されません。",
   "importModelSuccess": "モデル{{provider}}は正常にインポートされました。",
   "importModelError": "モデルのインポートに失敗しました:",
+
+  "importScanHint": "LM Studio、Ollama、Hugging Face キャッシュ、llama.cpp、GPT4All を探します。インポートするまで何もコピーされません。",
+
+  "importAddFolder": "モデルのフォルダを追加",
+
+  "importRemoveFolder": "フォルダ {{folder}} を削除",
   "stop": "停止",
   "start": "開始",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "プロバイダーを追加",
   "addOpenAIProvider": "OpenAIプロバイダーを追加",
   "enterNameForProvider": "プロバイダーの名前を入力してください",
+  "apiVersion": {
+    "title": "API バージョン",
+    "description": "URL に ?api-version= がない、deployments 形式の Azure エンドポイント(/openai/deployments/<name>)の場合のみ。/openai/v1 エンドポイントでは不要です。"
+  },
   "baseUrl": {
     "title": "ベースURL",
     "openaiDescription": "OpenAI API 互換のプロキシまたはゲートウェイを使用します。デフォルトは https://api.openai.com/v1 です。",
     "azureDescription": "あなたのAzure OpenAIエンドポイント。YOUR-RESOURCE-NAMEをAzureリソース名に置き換えてください。",
     "litellmDescription": "LiteLLM プロキシのアドレス（/v1 を含む）。デフォルトは http://localhost:4000/v1 です。",
-    "qwenDescription": "Model Studio のエンドポイントです。キーは、作成されたリージョンでのみ機能します。シンガポールの場合は https://dashscope-intl.aliyuncs.com/compatible-mode/v1、中国本土の場合は https://dashscope.aliyuncs.com/compatible-mode/v1 を使用してください。"
+    "qwenDescription": "Model Studio のエンドポイントです。キーは、作成されたリージョンでのみ機能します。シンガポールの場合は https://dashscope-intl.aliyuncs.com/compatible-mode/v1、中国本土の場合は https://dashscope.aliyuncs.com/compatible-mode/v1 を使用してください。",
+    "bedrockDescription": "お使いのリージョンの Amazon Bedrock ランタイムエンドポイント(例: https://bedrock-runtime.eu-west-1.amazonaws.com)。"
   },
   "apiKeys": {
     "title": "APIキー",
@@ -219,5 +231,18 @@
     "label": "プロバイダー名",
     "cancel": "キャンセル",
     "save": "保存"
+  },
+  "bedrock": {
+    "title": "AWS 認証情報",
+    "description": "Flint は Amazon Bedrock へのリクエストごとに AWS キーで署名します。キーはお使いの OS のキーリングに保存され、再表示されることはありません。モデル ID は手動で追加してください(例: anthropic.claude-3-5-sonnet-20240620-v1:0)。",
+    "accessKeyId": "アクセスキー ID",
+    "secretAccessKey": "シークレットアクセスキー",
+    "sessionToken": "セッショントークン(任意)",
+    "secretHint": "bedrock:InvokeModel の呼び出しを許可された IAM ユーザーまたはロールが必要です。",
+    "sessionTokenHint": "一時的な認証情報(STS または SSO)の場合のみ。",
+    "saved": "保存済み",
+    "remove": "削除",
+    "replace": "保存済み。入力すると置き換えます。",
+    "enter": "未設定"
   }
 }

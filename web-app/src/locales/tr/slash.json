@@ -9,7 +9,8 @@
     "plugin": "eklenti",
     "pluginNamed": "{{plugin}} eklentisi",
     "skill": "beceri",
-    "builtin": "yerleşik"
+    "builtin": "yerleşik",
+    "prompt": "istem"
   },
   "scope": {
     "project": "proje",

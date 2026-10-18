@@ -9,7 +9,7 @@
     "suggestionsLabel": "Suggestions",
     "suggestions": {
       "explain": "Explain this error message",
-      "summarise": "Summarise a document I attach",
+      "summarise": "Summarize a document I attach",
       "draft": "Draft release notes from a list of changes",
       "compare": "Compare two approaches and recommend one"
     }
@@ -158,6 +158,26 @@
     "copy": "Copy link",
     "copied": "Link copied.",
     "failed": "Could not open the browser."
+  },
+  "find": {
+    "placeholder": "Find in chat",
+    "none": "No matches",
+    "previous": "Previous match",
+    "next": "Next match",
+    "close": "Close find"
+  },
+  "continueSummary": {
+    "menu": "Continue in a new chat from a summary",
+    "working": "Summarizing the chat...",
+    "done": "Continued in a new chat.",
+    "cancel": "Cancel",
+    "errors": {
+      "no-chat": "This chat cannot be continued.",
+      "empty": "Nothing to summarize yet.",
+      "no-model": "Pick a model for this chat first.",
+      "model-not-loaded": "Load the chat's model first. It writes the summary.",
+      "summary-failed": "Could not write the summary. Nothing was created."
+    }
   },
   "regenerateTitle": {
     "menu": "Regenerate title",

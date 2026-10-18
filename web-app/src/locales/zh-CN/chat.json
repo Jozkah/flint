@@ -196,5 +196,25 @@
     "description": "将删除 {{count}} 个对话。此操作无法撤销。",
     "descriptionArchive": "{{count}} 个对话将移入归档。你可以从那里恢复。",
     "done": "已删除 {{count}} 个对话"
+  },
+  "find": {
+    "placeholder": "在聊天中查找",
+    "none": "没有匹配项",
+    "previous": "上一个匹配项",
+    "next": "下一个匹配项",
+    "close": "关闭查找"
+  },
+  "continueSummary": {
+    "menu": "根据摘要在新聊天中继续",
+    "working": "正在总结聊天……",
+    "done": "已在新聊天中继续。",
+    "cancel": "取消",
+    "errors": {
+      "no-chat": "无法继续此聊天。",
+      "empty": "还没有可总结的内容。",
+      "no-model": "请先为此聊天选择模型。",
+      "model-not-loaded": "请先加载此聊天的模型，由它来撰写摘要。",
+      "summary-failed": "无法撰写摘要，未创建任何内容。"
+    }
   }
 }

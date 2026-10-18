@@ -203,5 +203,25 @@
     "description": "{{count}} chat verranno eliminate. Questa azione non può essere annullata.",
     "descriptionArchive": "{{count}} chat verranno spostate nell'archivio. Puoi ripristinarle da lì.",
     "done": "{{count}} chat eliminate"
+  },
+  "find": {
+    "placeholder": "Cerca nella chat",
+    "none": "Nessun risultato",
+    "previous": "Risultato precedente",
+    "next": "Risultato successivo",
+    "close": "Chiudi ricerca"
+  },
+  "continueSummary": {
+    "menu": "Continua in una nuova chat da un riassunto",
+    "working": "Riassunto della chat in corso...",
+    "done": "Continuato in una nuova chat.",
+    "cancel": "Annulla",
+    "errors": {
+      "no-chat": "Questa chat non può essere continuata.",
+      "empty": "Non c'è ancora nulla da riassumere.",
+      "no-model": "Scegli prima un modello per questa chat.",
+      "model-not-loaded": "Carica prima il modello della chat: è lui a scrivere il riassunto.",
+      "summary-failed": "Impossibile scrivere il riassunto. Non è stato creato nulla."
+    }
   }
 }

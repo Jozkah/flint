@@ -14,7 +14,7 @@
     "MODEL_LOAD_TIMED_OUT": "Načítání modelu trvalo příliš dlouho a bylo zastaveno. Obvykle pomůže menší model nebo menší velikost kontextu.",
     "MISSING_SHARED_LIBRARY": "Chybí knihovna, kterou engine potřebuje, takže se nemůže spustit.",
     "GPU_DRIVER_TOO_OLD": "Ovladač vaší grafické karty je pro tento engine příliš starý. Pomůže aktualizace ovladače nebo přepnutí na engine pro CPU v Nastavení.",
-    "CPU_NOT_SUPPORTED": "Procesoru tohoto počítače chybí instrukce, které engine potřebuje (je nutný procesor x86 s AVX), proto engine při spuštění spadl.",
+    "CPU_NOT_SUPPORTED": "Procesoru tohoto počítače chybí instrukce, které engine potřebuje (je nutný procesor x86 s AVX), proto engine spadl. Flint už model jednou zkusil znovu jen na procesoru; pokud to stále vidíte, spadl i tento pokus, nebo byl engine už nastaven jen na procesor.",
     "OS_VERSION_UNSUPPORTED": "Tato verze macOS je pro engine příliš stará. Aktualizace macOS to vyřeší.",
     "MODEL_QUANT_NOT_SUPPORTED": "Tento model používá typ kvantizace, který backend GPU nedokáže spustit. Stáhněte jinou kvantizaci, například Q4_K_M, nebo vypněte offload na GPU.",
     "ENGINE_STOPPED": "Engine se neočekávaně zastavil. Načtěte model znovu, aby se restartoval; pokud se to bude opakovat, důvod uvádí poslední výstup enginu níže.",

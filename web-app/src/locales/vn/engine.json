@@ -66,7 +66,8 @@
     "loaded": "Đã tải",
     "ready": "Sẵn sàng",
     "noKey": "Không có khóa API",
-    "keyless": "Không cần khóa"
+    "keyless": "Không cần khóa",
+    "noCredentials": "Không có thông tin xác thực AWS"
   },
   "installed": {
     "title": "Mô hình đã cài",

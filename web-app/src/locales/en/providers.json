@@ -1,4 +1,17 @@
 {
+  "bedrock": {
+    "title": "AWS credentials",
+    "description": "Flint signs each Amazon Bedrock request with your AWS keys. They are kept in your operating system's keyring and are never shown again. Add model IDs by hand (for example anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "Access key ID",
+    "secretAccessKey": "Secret access key",
+    "sessionToken": "Session token (optional)",
+    "secretHint": "Needs an IAM user or role allowed to call bedrock:InvokeModel.",
+    "sessionTokenHint": "Only for temporary credentials (STS or SSO).",
+    "saved": "Saved",
+    "remove": "Remove",
+    "replace": "Saved. Type to replace it.",
+    "enter": "Not set"
+  },
   "limitedSupport": "This provider may not be fully supported. Capabilities (tools, vision, audio) are not auto-detected - add models manually and configure capabilities per model.",
   "mlxExperimental": "MLX support is experimental. Embeddings are unavailable, the reasoning toggle is not yet wired through, and some newer model architectures may fail to load. Report issues on GitHub so we can prioritize them.",
   "engineBundled": "The inference engine is built into Jan, so there is nothing to download or update separately. Quote this version when reporting a model that fails to load.",
@@ -14,6 +27,7 @@
   "models": "Models",
   "filterModels": "Filter {{count}} models",
   "modelsShown": "Showing {{shown}} of {{total}}",
+  "noModelsMatch": "No models match \"{{query}}\"",
   "showMoreModels": "Show more",
   "backendInstalled": "Installed",
   "backendHistoryShow": "Show update history",
@@ -38,6 +52,12 @@
   "importedTooltip": "Imported from a local file. Removing it from Flint will not delete the file on disk.",
   "importModelSuccess": "Model {{provider}} has been imported successfully.",
   "importModelError": "Failed to import model:",
+
+  "importScanHint": "Looks in LM Studio, Ollama, the Hugging Face cache, llama.cpp and GPT4All. Nothing is copied until you import.",
+
+  "importAddFolder": "Add a folder of models",
+
+  "importRemoveFolder": "Remove folder {{folder}}",
   "stop": "Stop",
   "start": "Start",
   "status": {
@@ -143,10 +163,15 @@
   "addProvider": "Add Provider",
   "addOpenAIProvider": "Add OpenAI Provider",
   "enterNameForProvider": "Enter name for provider",
+  "apiVersion": {
+    "title": "API version",
+    "description": "Only for a deployments-style Azure endpoint (/openai/deployments/<name>) whose URL has no ?api-version=. The /openai/v1 endpoint needs none."
+  },
   "baseUrl": {
     "title": "Base URL",
     "openaiDescription": "Use a proxy or gateway that speaks the OpenAI API. The default is https://api.openai.com/v1.",
     "azureDescription": "Your Azure OpenAI endpoint. Replace YOUR-RESOURCE-NAME with your Azure resource name.",
+    "bedrockDescription": "The Amazon Bedrock runtime endpoint of your region, for example https://bedrock-runtime.eu-west-1.amazonaws.com.",
     "litellmDescription": "The address of your LiteLLM proxy, including /v1. The default is http://localhost:4000/v1.",
     "qwenDescription": "Your Model Studio endpoint. A key only works in the region it was created in: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1 for Singapore or https://dashscope.aliyuncs.com/compatible-mode/v1 for mainland China."
   },

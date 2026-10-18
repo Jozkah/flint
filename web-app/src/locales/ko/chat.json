@@ -9,7 +9,7 @@
     "suggestionsLabel": "추천",
     "suggestions": {
       "explain": "이 오류 메시지 설명해 줘",
-      "summarise": "첨부한 문서 요약해 줘",
+      "summarise": "첨부한 문서 요약하기",
       "draft": "변경 사항 목록으로 릴리스 노트 초안 작성해 줘",
       "compare": "두 가지 방식을 비교하고 하나 추천해 줘"
     }
@@ -196,5 +196,25 @@
     "description": "채팅 {{count}}개가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
     "descriptionArchive": "채팅 {{count}}개가 보관함으로 이동합니다. 보관함에서 복원할 수 있습니다.",
     "done": "채팅 {{count}}개를 삭제했습니다"
+  },
+  "find": {
+    "placeholder": "채팅에서 찾기",
+    "none": "일치하는 항목 없음",
+    "previous": "이전 일치 항목",
+    "next": "다음 일치 항목",
+    "close": "찾기 닫기"
+  },
+  "continueSummary": {
+    "menu": "요약으로 새 채팅에서 이어가기",
+    "working": "채팅을 요약하는 중...",
+    "done": "새 채팅에서 이어갔습니다.",
+    "cancel": "취소",
+    "errors": {
+      "no-chat": "이 채팅은 이어갈 수 없습니다.",
+      "empty": "아직 요약할 내용이 없습니다.",
+      "no-model": "먼저 이 채팅에 사용할 모델을 선택하세요.",
+      "model-not-loaded": "먼저 채팅의 모델을 불러오세요. 요약은 그 모델이 작성합니다.",
+      "summary-failed": "요약을 작성하지 못했습니다. 아무것도 만들어지지 않았습니다."
+    }
   }
 }

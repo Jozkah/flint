@@ -172,7 +172,9 @@
     "selectRouterModelPlaceholder": "选择路由模型…",
     "routerModelSearchPlaceholder": "搜索模型…",
     "routerModelEmptyList": "没有可用的轻量模型。请添加更小的模型，或在「模型」中配置 API 密钥。",
-    "routerModelEmptySearch": "没有与「{{query}}」匹配的结果。"
+    "routerModelEmptySearch": "没有与「{{query}}」匹配的结果。",
+    "idleShutdown": "空闲多久后停止服务器（分钟）",
+    "idleShutdownDesc": "超过这段时间没有工具调用的 MCP 服务器会被停止以释放内存，下次需要时再重新启动。设为随 Flint 启动的服务器会一直运行。设为 0 表示永不停止。"
   },
   "auth": {
     "label": "认证：",
@@ -259,7 +261,8 @@
   "lifecycle": {
     "startWithFlint": "随 Flint 启动",
     "start": "启动",
-    "stop": "停止"
+    "stop": "停止",
+    "toolTimeout": "工具超时（秒）"
   },
   "cwd": "工作目录",
   "cwdPlaceholder": "可选,例如 C:\\tools\\my-server",

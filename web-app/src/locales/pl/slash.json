@@ -9,7 +9,8 @@
     "plugin": "wtyczka",
     "pluginNamed": "wtyczka {{plugin}}",
     "skill": "umiejętność",
-    "builtin": "wbudowane"
+    "builtin": "wbudowane",
+    "prompt": "prompt"
   },
   "scope": {
     "project": "projekt",

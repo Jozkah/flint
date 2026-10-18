@@ -72,8 +72,29 @@
       "body": "Barındırılan bir modeli kendi hesabınızla kullanın."
     },
     "import": {
-      "title": "Dosya içe aktar",
-      "body": "Zaten sahip olduğunuz bir model dosyasını ekleyin."
+      "title": "Model dosyası ekle",
+      "body": "Bir .gguf dosyası seçin veya Ollama, LM Studio ve diğerlerinin bu bilgisayara zaten kaydettiği modelleri bulun. Hiçbir şey indirilmez."
     }
+  },
+  "fit": {
+    "heading": "Burada iyi çalışır mı?"
+  },
+  "sample": {
+    "button": "Örnek bir soru dene",
+    "hint": "Mesaj kutusuna bir soru koyar. Göndermek için Enter'a basın veya önce düzenleyin.",
+    "question": "Üç cümleyle bir dil modelinin ne olduğunu ve neleri yapamadığını açıkla."
+  },
+  "approvalsNote": "Flint bir dosyayı değiştirmek veya bir komut çalıştırmak istediğinde durur ve önce sorar. İstek, tam olarak ne yapacağıyla birlikte konuşmada görünür ve İzin ver ya da Reddet'i siz seçersiniz. Siz yanıtlayana kadar hiçbir şey çalışmaz.",
+  "checklist": {
+    "label": "İlerleme",
+    "model-added": "Model eklendi",
+    "first-chat": "İlk sohbet",
+    "first-project": "İlk proje"
+  },
+  "sidebar": {
+    "title": "Kenar çubuğunu kendinize göre düzenleyin",
+    "body": "Kullanmadığınız öğeleri gizleyin. Bunu istediğiniz zaman Ayarlar'da, Görünüm altında değiştirebilirsiniz.",
+    "customize": "Kenar çubuğunu özelleştir",
+    "close": "Bitti"
   }
 }

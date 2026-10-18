@@ -72,8 +72,29 @@
       "body": "Używaj modelu hostowanego na własnym koncie."
     },
     "import": {
-      "title": "Zaimportuj plik",
-      "body": "Dodaj plik modelu, który już masz."
+      "title": "Dodaj plik modelu",
+      "body": "Wybierz plik .gguf albo znajdź modele, które Ollama, LM Studio i inne zapisały już na tym komputerze. Nic nie jest pobierane."
     }
+  },
+  "fit": {
+    "heading": "Czy będzie tu dobrze działać?"
+  },
+  "sample": {
+    "button": "Wypróbuj przykładowe pytanie",
+    "hint": "Wstawia pytanie do pola wiadomości. Naciśnij Enter, aby je wysłać, lub najpierw je zmień.",
+    "question": "W trzech zdaniach wyjaśnij, czym jest model językowy i czego nie potrafi."
+  },
+  "approvalsNote": "Gdy Flint chce zmienić plik lub uruchomić polecenie, zatrzymuje się i najpierw pyta. Prośba pojawia się w rozmowie razem z dokładnym opisem tego, co zrobi, a Ty wybierasz Zezwól lub Odmów. Nic nie jest uruchamiane, dopóki nie odpowiesz.",
+  "checklist": {
+    "label": "Postęp",
+    "model-added": "Dodano model",
+    "first-chat": "Pierwszy czat",
+    "first-project": "Pierwszy projekt"
+  },
+  "sidebar": {
+    "title": "Dostosuj pasek boczny",
+    "body": "Ukryj pozycje, których nie używasz. Możesz to zmienić w każdej chwili w Ustawieniach, w sekcji Wygląd.",
+    "customize": "Dostosuj pasek boczny",
+    "close": "Gotowe"
   }
 }

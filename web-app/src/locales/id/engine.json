@@ -65,7 +65,8 @@
     "loaded": "Dimuat",
     "ready": "Siap",
     "noKey": "Tanpa kunci API",
-    "keyless": "Tidak perlu kunci"
+    "keyless": "Tidak perlu kunci",
+    "noCredentials": "Tidak ada kredensial AWS"
   },
   "installed": {
     "title": "Model terpasang",

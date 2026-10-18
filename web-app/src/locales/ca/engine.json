@@ -67,7 +67,8 @@
     "loaded": "Carregat",
     "ready": "A punt",
     "noKey": "Sense clau d'API",
-    "keyless": "No cal clau"
+    "keyless": "No cal clau",
+    "noCredentials": "Sense credencials d'AWS"
   },
   "installed": {
     "title": "Models instal·lats",

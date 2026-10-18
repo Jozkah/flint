@@ -145,7 +145,7 @@
   "experimental": "Experimental",
   "editAllJson": "Editar JSON de Todos os Servidores",
   "findMore": "Encontre mais servidores MCP em",
-  "allowPermissions": "Permitir Todas as Permissões de Ferramentas MCP",
+  "allowPermissions": "Permitir todas as permissões de ferramentas MCP",
   "allowPermissionsDesc": "Quando habilitado, todas as chamadas de ferramentas MCP serão automaticamente aprovadas sem mostrar diálogos de permissão. Esta configuração se aplica globalmente a todas as conversas, incluindo novos chats.",
   "autoApproveServer": "Aprovar automaticamente as ferramentas deste servidor",
   "noServers": "Nenhum servidor MCP encontrado",
@@ -173,7 +173,9 @@
     "selectRouterModelPlaceholder": "Selecionar modelo de roteamento…",
     "routerModelSearchPlaceholder": "Pesquisar modelos…",
     "routerModelEmptyList": "Nenhum modelo leve disponível. Adicione um modelo menor ou configure chaves de API em Modelos.",
-    "routerModelEmptySearch": "Nenhum resultado para “{{query}}”."
+    "routerModelEmptySearch": "Nenhum resultado para “{{query}}”.",
+    "idleShutdown": "Parar servidores ociosos após (minutos)",
+    "idleShutdownDesc": "Um servidor MCP sem chamadas de ferramenta por esse tempo é parado para liberar memória e inicia de novo quando for necessário. Servidores configurados para iniciar com o Flint continuam em execução. Defina 0 para nunca pará-los."
   },
   "auth": {
     "label": "Autenticação:",
@@ -262,7 +264,8 @@
   "lifecycle": {
     "startWithFlint": "Iniciar com o Flint",
     "start": "Iniciar",
-    "stop": "Parar"
+    "stop": "Parar",
+    "toolTimeout": "Tempo limite da ferramenta (s)"
   },
   "cwd": "Diretório de trabalho",
   "cwdPlaceholder": "Opcional, ex.: C:\\tools\\my-server",

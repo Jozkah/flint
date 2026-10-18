@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Sous-agents",
-    "description": "Assistant, profil de travail et modèle avec lesquels s'exécutent les sous-agents lancés par Flint. Sans choix ici, un sous-agent hérite de l'assistant et du profil de travail de son parent (les longues personas sont raccourcies). Cela ne change jamais ce qu'un sous-agent a le droit de faire : ses outils et ses approbations restent ceux que l'exécution autorise.",
+    "description": "Assistant, profil de travail et modèle avec lesquels s'exécutent les sous-agents lancés par Flint. Sans choix ici, un sous-agent hérite de l'assistant et du profil de travail de son parent (les longues instructions d'assistant sont raccourcies). Cela ne change jamais ce qu'un sous-agent a le droit de faire : ses outils et ses approbations restent ceux que l'exécution autorise.",
     "headlessNote": "Les assistants et les profils de travail ne s'appliquent que dans l'application de bureau. Les exécutions en ligne de commande suivent les choix de modèle.",
     "defaultsTitle": "Pour tous les sous-agents",
     "defaultsDesc": "Chacun hérite de l'exécution qui l'a lancé, sauf si vous choisissez autre chose ici.",
@@ -10,7 +10,7 @@
     "model": "Modèle",
     "inherit": "Hériter",
     "inheritDesc": "Utiliser ce qu'utilise l'exécution qui a lancé le sous-agent.",
-    "assistantDesc": "La persona sous laquelle travaille un sous-agent.",
+    "assistantDesc": "L'assistant sous lequel travaille un sous-agent.",
     "profileDesc": "La manière dont un sous-agent aborde le travail.",
     "modelDesc": "Exécuter les sous-agents sur un autre modèle, par exemple un modèle plus rapide pour des enquêtes en lecture seule.",
     "groupAssistants": "Assistants",
@@ -64,9 +64,6 @@
   "reportAnIssue": "Signaler un problème",
   "reportAnIssueDesc": "Vous avez trouvé un bug ? Aidez-nous en signalant un problème sur GitHub.",
   "reportIssue": "Signaler un problème",
-  "credits": "Crédits",
-  "creditsDesc1": "👋 Flint est construit avec ❤️ par Jozkah.",
-  "creditsDesc2": "Remerciements spéciaux à nos dépendances open-source, en particulier llama.cpp et Tauri, ainsi qu'à notre incroyable communauté IA.",
   "appVersion": "Version de l'application",
   "dataFolder": {
     "appData": "Données de l'application",
@@ -81,7 +78,8 @@
     "enterKeyNewline": "Entrée ajoute un retour à la ligne",
     "enterKeyNewlineDesc": "Appuyer sur Entrée dans la zone de discussion ajoute un retour à la ligne au lieu d'envoyer. Envoyez avec le bouton d'envoi ou Ctrl/Cmd+Entrée. Utile avec une méthode de saisie (IME), où Entrée confirme une conversion.",
     "resetFactory": "Réinitialiser aux paramètres d'usine",
-    "resetFactoryDesc": "Restaurez l'application à son état initial, en effaçant tous les modèles et l'historique des discussions. Cette action est irréversible et recommandée uniquement si l'application est corrompue."
+    "resetFactoryDesc": "Restaurez l'application à son état initial, en effaçant tous les modèles et l'historique des discussions. Cette action est irréversible et recommandée uniquement si l'application est corrompue.",
+    "spellCheckHint": "La langue de la correction orthographique est choisie par votre système, pas par Flint. Ajoutez une langue dans les paramètres de langue et de clavier de votre système (Windows : Langue et région ; macOS : Clavier > Saisie de texte ; Linux : installez un dictionnaire hunspell)."
   },
   "shortcuts": {
     "change": "Modifier",
@@ -123,7 +121,9 @@
     "nextPane": "Panneau suivant",
     "nextPaneDesc": "Passer au panneau suivant de la vue partagée.",
     "previousPane": "Panneau précédent",
-    "previousPaneDesc": "Passer au panneau précédent de la vue partagée."
+    "previousPaneDesc": "Passer au panneau précédent de la vue partagée.",
+    "findInChat": "Rechercher dans la discussion",
+    "findInChatDesc": "Cherche dans la conversation affichée à l'écran."
   },
   "interface": {
     "title": "Interface",
@@ -178,12 +178,6 @@
     "resetCodeBlockSuccess": "Style du bloc de code réinitialisé avec succès",
     "resetCodeBlockSuccessDesc": "Le style du bloc de code a été restauré par défaut.",
     "transcriptView": "Affichage de la transcription",
-    "sidebarLayout": "Barre latérale",
-    "sidebarLayoutDesc": "Quelle part de la barre latérale gauche est affichée.",
-    "sidebarLayout_trimmed": "Réduite",
-    "sidebarLayout_trimmedDesc": "Nouvelle conversation, Cowork, Découvrir et vos conversations. Les salons, la bibliothèque, Studio et les pages du moteur sont repliés sous Plus et Avancé.",
-    "sidebarLayout_extended": "Étendue",
-    "sidebarLayout_extendedDesc": "Tout est listé en une fois : Plus et Avancé restent ouverts.",
     "transcriptViewDesc": "Ce que Chat, Cowork et Salons montrent de chaque tour. Les approbations, questions et erreurs restent toujours visibles.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "La réponse et ce qui demande votre action. Les appels d'outils sont regroupés en une ligne d'étapes.",
@@ -192,7 +186,13 @@
     "transcriptViewVerbose": "Détaillé",
     "transcriptViewVerboseDesc": "Tout : le raisonnement complet et chaque appel d'outil ouvert avec ses paramètres et sa sortie.",
     "inlineCitations": "Icônes de sources dans le texte",
-    "inlineCitationsDesc": "Affiche une petite icône du site après une phrase issue d'une source web. Désactivez-la pour lire la réponse sans ; les sources restent listées en dessous."
+    "inlineCitationsDesc": "Affiche une petite icône du site après une phrase issue d'une source web. Désactivez-la pour lire la réponse sans ; les sources restent listées en dessous.",
+    "sidebarLayout": "Barre latérale",
+    "sidebarLayoutDesc": "Quelle part de la barre latérale gauche est affichée.",
+    "sidebarLayout_trimmed": "Réduite",
+    "sidebarLayout_trimmedDesc": "Nouvelle conversation, Cowork, Découvrir et vos conversations. Les salons, la bibliothèque, Studio et les pages du moteur sont repliés sous Plus et Avancé.",
+    "sidebarLayout_extended": "Étendue",
+    "sidebarLayout_extendedDesc": "Tout est listé en une fois : Plus et Avancé restent ouverts."
   },
   "hardware": {
     "os": "Système d'exploitation",
@@ -382,6 +382,9 @@
     "usageWeek": "Par semaine",
     "usageWeekDesc": "Jetons, entrée plus sortie, au cours des 7 derniers jours. Vide signifie aucune limite.",
     "usageNow": "Utilisé actuellement",
+    "usageNoLimitPlaceholder": "Aucune limite",
+    "serverLog": "Journal du serveur",
+    "openInNewWindow": "Ouvrir dans une nouvelle fenêtre",
     "usageNoLimit": "Aucune limite définie",
     "usageResets": "L'utilisation la plus ancienne expire dans {{wait}}",
     "startServer": "Démarrer le serveur",
@@ -419,7 +422,7 @@
     "verboseLogsDesc": "Activez les journaux de serveur détaillés pour le débogage.",
     "proxyTimeout": "Délai d'attente de la requête",
     "proxyTimeoutDesc": "Temps d'attente pour une réponse du modèle local, en secondes.",
-    "defaultModel": "Modèle par défaut du serveur API local",
+    "defaultModel": "Modèle par défaut",
     "defaultModelDesc": "Modèle local à charger automatiquement au démarrage du serveur.",
     "defaultModelPlaceholder": "Sélectionner un modèle local"
   },
@@ -458,7 +461,7 @@
     "updateError": "Échec de la vérification des mises à jour",
     "appVersion": "Version de l'application",
     "buildUpdate": "Rechercher des builds plus récents",
-    "buildUpdateDesc": "Flint 0.9.0 est un build nocturne : il est reconstruit à partir du dernier code et le numéro de version reste le même. Activé, Flint demande à GitHub une fois au démarrage (au plus deux fois par jour) si un build plus récent existe. Désactivé par défaut ; rien n'est envoyé dans les deux cas hormis cette requête.",
+    "buildUpdateDesc": "Les builds nocturnes gardent le même numéro de version. Activé, Flint demande à GitHub une fois au démarrage (au plus deux fois par jour) si un build plus récent existe. Désactivé par défaut.",
     "buildCheckNow": "Vérifier maintenant",
     "buildChecking": "Vérification…",
     "buildNewer": "Un build plus récent est disponible. Téléchargez-le à nouveau depuis la page des versions pour mettre à jour.",
@@ -665,14 +668,13 @@
     "completionSoundOff": "Désactivé",
     "completionSoundBackground": "En arrière-plan",
     "completionSoundAlways": "Toujours",
-    "completionSoundApproval": "Seulement quand une approbation est requise",
+    "completionSoundApproval": "Uniquement lorsqu'une approbation est requise",
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Lire",
     "increaseContrast": "Augmenter le contraste",
     "increaseContrastDesc": "Rend le texte plus marqué pour faciliter la lecture. Plus blanc sur le thème sombre, plus foncé sur le thème clair.",
     "reduceMotion": "Réduire les animations",
-    "reduceMotionDesc": "Désactiver les animations dans Flint. Flint ne suit pas le réglage du système : les animations restent actives tant que vous ne changez pas ceci.",
-    "completionSoundApproval": "Uniquement lorsqu'une approbation est requise"
+    "reduceMotionDesc": "Désactiver les animations dans Flint. Flint ne suit pas le réglage du système : les animations restent actives tant que vous ne changez pas ceci."
   },
   "pageDesc": {
     "general": "Langue, dossier de données, journaux et options de toute l'application.",
@@ -1074,7 +1076,13 @@
       "updated": "Mise à jour {{when}}",
       "loading": "Chargement des campagnes",
       "loadFailed": "Impossible de charger les campagnes.",
-      "retry": "Réessayer"
+      "skipped_one": "{{count}} fiche de campagne illisible ignorée. Les fichiers sont restés en place.",
+      "skipped_other": "{{count}} fiches de campagne illisibles ignorées. Les fichiers sont restés en place.",
+      "skipped_many": "{{count}} fiches de campagne illisibles ignorées. Les fichiers sont restés en place.",
+      "retry": "Réessayer",
+      "needsDesktop": "Les campagnes nécessitent l'application de bureau",
+      "needsDesktopHint": "Ouvrez l'application de bureau Flint pour voir et lancer des campagnes. Un onglet de navigateur ne peut pas les lire.",
+      "staleApp": "Cette copie de l'application est plus ancienne que la page. Fermez-la et relancez-la pour qu'elle charge la dernière version."
     },
     "plan": {
       "edit": "Modifier le plan",
@@ -1130,5 +1138,35 @@
     "storeToolApproval": "approbation automatique des outils",
     "storeMcpTrust": "confiance envers les serveurs MCP",
     "storeProxy": "proxy réseau"
-  }
+  },
+  "startup": {
+    "title": "Démarrer avec l'ordinateur",
+    "on": "Activé. Flint démarre à l'ouverture de session, via {{platform}}.",
+    "off": "Désactivé. Flint ne démarre que lorsque vous l'ouvrez. L'activer demande d'abord confirmation et montre exactement ce qui est écrit.",
+    "minimized": "Démarrer réduit",
+    "minimizedDesc": "Démarre masqué : seule l'icône de la zone de notification s'affiche ; cliquez dessus pour ouvrir la fenêtre.",
+    "confirmTitle": "Ajouter Flint à {{platform}} ?",
+    "confirmBody": "Cela écrit exactement l'entrée ci-dessous dans votre compte utilisateur, et rien d'autre. Aucun droit d'administrateur n'est requis.",
+    "confirmUndo": "Désactiver l'interrupteur supprime cette entrée.",
+    "confirm": "Ajouter l'entrée",
+    "failed": "Impossible de modifier l'entrée de démarrage"
+  },
+  "sidebarItems": {
+    "title": "Éléments de la barre latérale",
+    "description": "Choisissez les éléments qui apparaissent dans la barre latérale gauche. Masquer un élément ne retire que son raccourci ; la page continue de fonctionner.",
+    "section": {
+      "workspace": "Espace de travail",
+      "cowork": "Cowork",
+      "more": "Plus",
+      "header": "Haut et bas"
+    },
+    "showItem": "Afficher {{item}} dans la barre latérale",
+    "alwaysShown": "Toujours affiché",
+    "showAll": "Tout afficher",
+    "preview": "Aperçu",
+    "reachable": "Les éléments masqués restent accessibles depuis la palette de commandes et depuis Configurations."
+  },
+  "credits": "Crédits",
+  "creditsDesc1": "👋 Flint est construit avec ❤️ par Jozkah.",
+  "creditsDesc2": "Remerciements spéciaux à nos dépendances open-source, en particulier llama.cpp et Tauri, ainsi qu'à notre incroyable communauté IA."
 }

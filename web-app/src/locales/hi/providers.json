@@ -14,6 +14,7 @@
   "models": "मॉडल",
   "filterModels": "{{count}} मॉडल फ़िल्टर करें",
   "modelsShown": "{{total}} में से {{shown}} दिखाए जा रहे हैं",
+  "noModelsMatch": "कोई मॉडल \"{{query}}\" से मेल नहीं खाता",
   "showMoreModels": "और दिखाएँ",
   "backendInstalled": "इंस्टॉल किया हुआ",
   "backendHistoryShow": "अपडेट इतिहास दिखाएँ",
@@ -38,6 +39,12 @@
   "importedTooltip": "लोकल फ़ाइल से इम्पोर्ट किया गया। इसे Flint से हटाने पर डिस्क की फ़ाइल नहीं हटेगी।",
   "importModelSuccess": "मॉडल {{provider}} सफलतापूर्वक आयात किया गया है।",
   "importModelError": "मॉडल आयात करने में विफल रहा:",
+
+  "importScanHint": "LM Studio, Ollama, Hugging Face कैश, llama.cpp और GPT4All में देखता है। इंपोर्ट करने तक कुछ भी कॉपी नहीं होता।",
+
+  "importAddFolder": "मॉडल का फ़ोल्डर जोड़ें",
+
+  "importRemoveFolder": "फ़ोल्डर {{folder}} हटाएँ",
   "stop": "रोकें",
   "start": "शुरू करें",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "प्रदाता जोड़ें",
   "addOpenAIProvider": "OpenAI प्रदाता जोड़ें",
   "enterNameForProvider": "कृपया प्रदाता का नाम दर्ज करें",
+  "apiVersion": {
+    "title": "API संस्करण",
+    "description": "केवल deployments-शैली वाले Azure एंडपॉइंट (/openai/deployments/<name>) के लिए, जिसके URL में ?api-version= नहीं है। /openai/v1 एंडपॉइंट को इसकी ज़रूरत नहीं।"
+  },
   "baseUrl": {
     "title": "बेस URL",
     "openaiDescription": "OpenAI API के साथ काम करने वाला प्रॉक्सी या गेटवे इस्तेमाल करें। डिफ़ॉल्ट https://api.openai.com/v1 है।",
     "azureDescription": "आपका Azure OpenAI एंडपॉइंट। YOUR-RESOURCE-NAME की जगह अपने Azure रिसोर्स का नाम डालें।",
     "litellmDescription": "आपके LiteLLM प्रॉक्सी का पता, /v1 सहित। डिफ़ॉल्ट http://localhost:4000/v1 है।",
-    "qwenDescription": "आपका Model Studio एंडपॉइंट। कुंजी केवल उसी क्षेत्र में काम करती है जहाँ बनाई गई थी: सिंगापुर के लिए https://dashscope-intl.aliyuncs.com/compatible-mode/v1 या मुख्य भूमि चीन के लिए https://dashscope.aliyuncs.com/compatible-mode/v1 उपयोग करें।"
+    "qwenDescription": "आपका Model Studio एंडपॉइंट। कुंजी केवल उसी क्षेत्र में काम करती है जहाँ बनाई गई थी: सिंगापुर के लिए https://dashscope-intl.aliyuncs.com/compatible-mode/v1 या मुख्य भूमि चीन के लिए https://dashscope.aliyuncs.com/compatible-mode/v1 उपयोग करें।",
+    "bedrockDescription": "आपके क्षेत्र का Amazon Bedrock रनटाइम एंडपॉइंट, उदाहरण: https://bedrock-runtime.eu-west-1.amazonaws.com।"
   },
   "apiKeys": {
     "title": "API कुंजियाँ",
@@ -219,5 +231,18 @@
     "label": "प्रदाता का नाम",
     "cancel": "रद्द करें",
     "save": "सहेजें"
+  },
+  "bedrock": {
+    "title": "AWS क्रेडेंशियल",
+    "description": "Flint हर Amazon Bedrock अनुरोध पर आपकी AWS कुंजियों से हस्ताक्षर करता है। वे आपके ऑपरेटिंग सिस्टम की कीरिंग में रखी जाती हैं और दोबारा कभी नहीं दिखाई जातीं। मॉडल ID हाथ से जोड़ें (उदाहरण: anthropic.claude-3-5-sonnet-20240620-v1:0)।",
+    "accessKeyId": "एक्सेस कुंजी ID",
+    "secretAccessKey": "गुप्त एक्सेस कुंजी",
+    "sessionToken": "सेशन टोकन (वैकल्पिक)",
+    "secretHint": "ऐसा IAM उपयोगकर्ता या रोल चाहिए जिसे bedrock:InvokeModel कॉल करने की अनुमति हो।",
+    "sessionTokenHint": "केवल अस्थायी क्रेडेंशियल के लिए (STS या SSO)।",
+    "saved": "सेव किया गया",
+    "remove": "हटाएँ",
+    "replace": "सेव किया गया। बदलने के लिए टाइप करें।",
+    "enter": "सेट नहीं"
   }
 }

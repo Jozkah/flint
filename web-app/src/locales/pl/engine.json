@@ -68,7 +68,8 @@
     "loaded": "Wczytany",
     "ready": "Gotowy",
     "noKey": "Brak klucza API",
-    "keyless": "Klucz niepotrzebny"
+    "keyless": "Klucz niepotrzebny",
+    "noCredentials": "Brak danych uwierzytelniających AWS"
   },
   "installed": {
     "title": "Zainstalowane modele",

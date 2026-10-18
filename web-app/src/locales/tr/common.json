@@ -7,7 +7,7 @@
     "rename": "Yeniden adlandır",
     "deleteGroup": "Grubu sil",
     "deleteTitle": "{{name}} silinsin mi?",
-    "deleteBody": "Grup kaldırılır. Öğeleri gruptan çıkar ve silinmez.",
+    "deleteBody": "Grup kaldırılır. Öğeleri gruptan çıkar ve silinmez. Alt klasörler bir seviye yukarı taşınır.",
     "folders": "Klasörler…",
     "foldersTitle": "“{{name}}” klasörleri",
     "foldersBodyHome": "Bu grupta başlatılan veya gruba taşınan sohbetler bu klasörleri alır; sohbetin araçları için salt okunurdur.",
@@ -53,7 +53,10 @@
     "chatFoldersBody": "Sohbetin araçları bu klasörleri okuyabilir. Yazmalar sohbetin kendi korumalı alanında kalır.",
     "chatFoldersEmpty": "Bağlı klasör yok.",
     "addFolder": "Klasör ekle",
-    "chatFolderCount": "Klasörler: {{count}}"
+    "chatFolderCount": "Klasörler: {{count}}",
+    "newSubfolder": "Yeni alt klasör",
+    "moveInto": "Klasöre taşı",
+    "topLevel": "Üst düzey"
   },
   "htmlArtifact": {
     "code": "Kod",
@@ -290,11 +293,13 @@
       "navigation": "Git",
       "settings": "Ayarlar",
       "threads": "Konuşmalar"
-    }
+    },
+    "openItem": "{{item}} öğesini aç"
   },
   "searchGroup": {
     "inProjects": "Projelerde",
-    "conversations": "Konuşmalar"
+    "conversations": "Konuşmalar",
+    "messages": "Mesajlarda"
   },
   "rail": {
     "label": "Cowork panelleri",
@@ -935,6 +940,7 @@
     "missing": "Artık kullanılamıyor: {{model}}",
     "use": "Bu modeli kullan",
     "thisChat": "Bu sohbet",
+    "thisRoom": "Bu oda",
     "thisSession": "Bu oturum"
   },
   "skillsUsedCount_one": "{{count}} beceri kullanıldı",
@@ -956,6 +962,28 @@
   "artifactsCount_other": "{{count}} öğe",
   "previewMessageCount_one": "{{count}} mesaj",
   "previewMessageCount_other": "{{count}} mesaj",
+  "rowPreview": {
+    "status": {
+      "running": "Çalışıyor",
+      "waiting": "Sizi bekliyor",
+      "idle": "Boşta",
+      "error": "Hata"
+    },
+    "prState": {
+      "open": "Açık",
+      "draft": "Taslak",
+      "merged": "Birleştirildi",
+      "closed": "Kapatıldı"
+    },
+    "pullRequests": "Çekme istekleri",
+    "morePrs_one": "+{{count}} daha",
+    "morePrs_other": "+{{count}} daha",
+    "noChecks": "Kontrol yok",
+    "empty": "Burada henüz bir şey yok.",
+    "noMessages": "Henüz mesaj yok",
+    "summarizing": "Özet yazılıyor…",
+    "openHint": "Aç"
+  },
   "artifactDetails": "Öğe ayrıntıları",
   "artifactBack": "Kitaplığa dön",
   "artifactClose": "Ayrıntıları kapat",
@@ -1015,6 +1043,12 @@
       "first": "{{folder}} klasörünün nasıl yapılandırıldığını açıkla",
       "second": "{{folder}} içindeki tüm TODO'ları bul ve alana göre grupla",
       "third": "{{folder}} klasörünün işaret ettiğim bölümü için testler yaz"
+    },
+    "vault": {
+      "badge": "Obsidian kasası",
+      "hint": "Bu klasör bir Obsidian kasasıdır. Flint onu herhangi bir Markdown not klasörü gibi okur ve Obsidian'ın .obsidian ayarlarını ve .trash klasörünü dışarıda bırakır.",
+      "add": "Obsidian kasamı ekle",
+      "addHint": "Obsidian kasası sadece bir klasördür. Onu başka herhangi bir klasör gibi seçin."
     }
   },
   "sandbox": {
@@ -2508,10 +2542,12 @@
     "previewNone": "Önizleme yok"
   },
   "dropAttachFailed": "Bırakılan dosyalar eklenemedi",
+  "sampler": {
+    "label": "Örnekleme parametreleri",
+    "notSupported": "{{provider}} tarafından desteklenmiyor"
+  },
   "translate": {
     "title": "Çevirmen",
-    "usingModel": "{{model}} kullanılıyor",
-    "noModel": "Model seçicisinden bir model seçin",
     "from": "Şu dilden çevir",
     "to": "Şu dile çevir",
     "detect": "Dili algıla",
@@ -2523,12 +2559,61 @@
     "copyFailed": "Çeviri kopyalanamadı",
     "failed": "Çeviri başarısız oldu",
     "inputPlaceholder": "Çevrilecek metin",
-    "outputPlaceholder": "Çeviri burada görünür"
+    "outputPlaceholder": "Çeviri burada görünür",
+    "description": "Seçtiğiniz modelle metni diller arasında çevirin. Hiçbir şey kaydedilmez.",
+    "sourceTitle": "Kaynak metin",
+    "targetTitle": "Çeviri",
+    "paste": "Panodan yapıştır",
+    "pasteFailed": "Pano okunamadı",
+    "clear": "Temizle",
+    "characters": "{{count}} karakter",
+    "translating": "Çevriliyor…",
+    "retry": "Yeniden dene",
+    "shortcut": "Çevir (Ctrl/Cmd+Enter)",
+    "searchLanguages": "Dillerde ara",
+    "noLanguages": "Eşleşen dil yok",
+    "errorAuth": "Sağlayıcı API anahtarınızı reddetti. Sağlayıcı ayarlarından kontrol edin.",
+    "errorQuota": "Sağlayıcı kotanızın bittiğini veya istek sınırına takıldığınızı bildiriyor. Biraz bekleyin veya planınızı kontrol edin.",
+    "errorModelNotFound": "Sağlayıcıda bu model yok. Başka bir model seçin veya sağlayıcı ayarlarını kontrol edin.",
+    "errorNetwork": "Sağlayıcıya ulaşılamadı. Bağlantınızı ve sunucunun çalıştığını kontrol edin.",
+    "errorEngine": "Bu modeli çalıştıran motor kullanılamıyor. Flint'i yeniden başlatıp tekrar deneyin.",
+    "openProvider": "Sağlayıcı ayarlarını aç",
+    "errorDetails": "Ayrıntılar",
+    "usingModel": "{{model}} kullanılıyor",
+    "noModel": "Model seçicisinden bir model seçin"
   },
   "markdownImage": {
     "load": "Görseli {{host}} adresinden yükle"
   },
   "messageSaveFailed": "Mesaj kaydedilemedi. Yeniden başlatmadan sonra kaybolabilir.",
   "threadSaveFailed": "Bu konudaki değişiklik kaydedilemedi. Geri alındı.",
-  "attachmentsProcessFailed": "Ekler hazırlanamadı, bu yüzden mesaj gönderilmedi"
+  "attachmentsProcessFailed": "Ekler hazırlanamadı, bu yüzden mesaj gönderilmedi",
+  "settingsRecovered": {
+    "title": "Ayar dosyası okunamadı",
+    "withBackup": "{{file}} bozulmuştu, bu yüzden Flint varsayılan ayarlarla başladı. Bozuk dosya {{backup}} olarak saklandı.",
+    "noBackup": "{{file}} bozulmuştu, bu yüzden Flint varsayılan ayarlarla başladı. Bozuk dosyanın bir kopyası kaydedilemedi."
+  },
+  "promptLibrary": {
+    "title": "İstem kitaplığı",
+    "description": "Tekrar tekrar kullandığınız istemler. Eklemek için mesaj alanına @ veya / yazın. Her seferinde doldurduğunuz bölümler için {{name}} veya {{name:default}} kullanın.",
+    "manage": "İstemleriniz",
+    "add": "İstem ekle",
+    "editTitle": "İstemi düzenle",
+    "import": "İçe aktar",
+    "export": "Dışa aktar",
+    "imported": "{{count}} istem eklendi",
+    "search": "İstemlerde ara",
+    "empty": "Henüz istem yok.",
+    "edit": "{{name}} öğesini düzenle",
+    "delete": "{{name}} öğesini sil",
+    "deleted": "İstem silindi",
+    "undo": "Geri al",
+    "name": "Ad",
+    "folder": "Klasör (isteğe bağlı)",
+    "tags": "Etiketler, virgülle ayrılmış",
+    "body": "İstem metni",
+    "bodyHint": "İstemi yazın. Boşluklar için {{topic}} veya {{tone:friendly}} kullanın.",
+    "variables": "Sorulanlar: {{names}}",
+    "insert": "Ekle"
+  }
 }

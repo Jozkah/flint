@@ -9,7 +9,8 @@
     "plugin": "प्लगइन",
     "pluginNamed": "प्लगइन {{plugin}}",
     "skill": "स्किल",
-    "builtin": "बिल्ट-इन"
+    "builtin": "बिल्ट-इन",
+    "prompt": "प्रॉम्प्ट"
   },
   "scope": {
     "project": "प्रोजेक्ट",

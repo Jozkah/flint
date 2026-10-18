@@ -14,6 +14,7 @@
   "models": "Models",
   "filterModels": "Filtra {{count}} models",
   "modelsShown": "Es mostren {{shown}} de {{total}}",
+  "noModelsMatch": "Cap model coincideix amb «{{query}}»",
   "showMoreModels": "Mostra'n més",
   "backendInstalled": "Instal·lat",
   "backendHistoryShow": "Mostra l'historial d'actualitzacions",
@@ -38,6 +39,12 @@
   "importedTooltip": "Importat des d'un fitxer local. Eliminar-lo de Flint no suprimirà el fitxer del disc.",
   "importModelSuccess": "El model {{provider}} s’ha importat correctament.",
   "importModelError": "No s’ha pogut importar el model:",
+
+  "importScanHint": "Cerca a LM Studio, Ollama, la memòria cau de Hugging Face, llama.cpp i GPT4All. No es copia res fins que importis.",
+
+  "importAddFolder": "Afegeix una carpeta de models",
+
+  "importRemoveFolder": "Elimina la carpeta {{folder}}",
   "stop": "Atura",
   "start": "Inicia",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "Afegeix un proveïdor",
   "addOpenAIProvider": "Afegeix un proveïdor d’OpenAI",
   "enterNameForProvider": "Introdueix el nom del proveïdor",
+  "apiVersion": {
+    "title": "Versió de l'API",
+    "description": "Només per a un punt final d'Azure de tipus desplegaments (/openai/deployments/<name>) l'URL del qual no té ?api-version=. El punt final /openai/v1 no en necessita."
+  },
   "baseUrl": {
     "title": "URL base",
     "openaiDescription": "Usa un servidor intermediari o una passarel·la que parli l'API d'OpenAI. El valor per defecte és https://api.openai.com/v1.",
     "azureDescription": "El teu endpoint d'Azure OpenAI. Substitueix YOUR-RESOURCE-NAME pel nom del teu recurs d'Azure.",
     "litellmDescription": "L'adreça del teu servidor intermediari LiteLLM, amb /v1. El valor per defecte és http://localhost:4000/v1.",
-    "qwenDescription": "El teu endpoint de Model Studio. Una clau només funciona a la regió on es va crear: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 per a Singapur o https://dashscope.aliyuncs.com/compatible-mode/v1 per a la Xina continental."
+    "qwenDescription": "El teu endpoint de Model Studio. Una clau només funciona a la regió on es va crear: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 per a Singapur o https://dashscope.aliyuncs.com/compatible-mode/v1 per a la Xina continental.",
+    "bedrockDescription": "El punt final d'execució d'Amazon Bedrock de la teva regió, per exemple https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "Claus d'API",
@@ -220,5 +232,18 @@
     "label": "Nom del proveïdor",
     "cancel": "Cancel·la",
     "save": "Desa"
+  },
+  "bedrock": {
+    "title": "Credencials d'AWS",
+    "description": "Flint signa cada petició d'Amazon Bedrock amb les teves claus d'AWS. Es guarden al clauer del sistema operatiu i no es tornen a mostrar. Afegeix els ID de model a mà (per exemple anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "ID de la clau d'accés",
+    "secretAccessKey": "Clau d'accés secreta",
+    "sessionToken": "Token de sessió (opcional)",
+    "secretHint": "Cal un usuari o rol d'IAM amb permís per cridar bedrock:InvokeModel.",
+    "sessionTokenHint": "Només per a credencials temporals (STS o SSO).",
+    "saved": "Desat",
+    "remove": "Elimina",
+    "replace": "Desat. Escriu per substituir-lo.",
+    "enter": "Sense definir"
   }
 }

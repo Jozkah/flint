@@ -129,7 +129,7 @@
   "home": {
     "chatSuggestions": {
       "error": "Jelaskan pesan error ini",
-      "summarise": "Ringkas dokumen yang saya lampirkan",
+      "summarise": "Rangkum dokumen yang saya lampirkan",
       "releaseNotes": "Susun catatan rilis dari daftar perubahan",
       "compare": "Bandingkan dua pendekatan dan rekomendasikan satu"
     },

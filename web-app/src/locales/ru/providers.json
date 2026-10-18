@@ -14,6 +14,7 @@
   "models": "Модели",
   "filterModels": "Фильтр по моделям: {{count}}",
   "modelsShown": "Показано {{shown}} из {{total}}",
+  "noModelsMatch": "Нет моделей, подходящих под «{{query}}»",
   "showMoreModels": "Показать ещё",
   "backendInstalled": "Установлено",
   "backendHistoryShow": "Показать историю обновлений",
@@ -38,6 +39,12 @@
   "importedTooltip": "Импортировано из локального файла. Удаление из Flint не удалит файл на диске.",
   "importModelSuccess": "Модель {{provider}} успешно импортирована.",
   "importModelError": "Не удалось импортировать модель:",
+
+  "importScanHint": "Ищет в LM Studio, Ollama, кэше Hugging Face, llama.cpp и GPT4All. Ничего не копируется, пока вы не импортируете.",
+
+  "importAddFolder": "Добавить папку с моделями",
+
+  "importRemoveFolder": "Убрать папку {{folder}}",
   "stop": "Остановить",
   "start": "Начать",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "Добавить поставщика",
   "addOpenAIProvider": "Добавить поставщика OpenAI",
   "enterNameForProvider": "Введите имя поставщика",
+  "apiVersion": {
+    "title": "Версия API",
+    "description": "Только для конечной точки Azure в стиле развёртываний (/openai/deployments/<name>), в URL которой нет ?api-version=. Конечной точке /openai/v1 она не нужна."
+  },
   "baseUrl": {
     "title": "Базовый URL",
     "openaiDescription": "Используйте прокси или шлюз, поддерживающий API OpenAI. По умолчанию: https://api.openai.com/v1.",
     "azureDescription": "Ваша конечная точка Azure OpenAI. Замените YOUR-RESOURCE-NAME на имя вашего ресурса Azure.",
     "litellmDescription": "Адрес вашего прокси LiteLLM, включая /v1. По умолчанию http://localhost:4000/v1.",
-    "qwenDescription": "Ваша конечная точка Model Studio. Ключ работает только в регионе, где он был создан: используйте https://dashscope-intl.aliyuncs.com/compatible-mode/v1 для Сингапура или https://dashscope.aliyuncs.com/compatible-mode/v1 для материкового Китая."
+    "qwenDescription": "Ваша конечная точка Model Studio. Ключ работает только в регионе, где он был создан: используйте https://dashscope-intl.aliyuncs.com/compatible-mode/v1 для Сингапура или https://dashscope.aliyuncs.com/compatible-mode/v1 для материкового Китая.",
+    "bedrockDescription": "Конечная точка среды выполнения Amazon Bedrock вашего региона, например https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "API-ключи",
@@ -221,5 +233,18 @@
     "label": "Имя поставщика",
     "cancel": "Отмена",
     "save": "Сохранить"
+  },
+  "bedrock": {
+    "title": "Учётные данные AWS",
+    "description": "Flint подписывает каждый запрос к Amazon Bedrock вашими ключами AWS. Они хранятся в связке ключей вашей операционной системы и больше не показываются. Добавляйте идентификаторы моделей вручную (например, anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "Идентификатор ключа доступа",
+    "secretAccessKey": "Секретный ключ доступа",
+    "sessionToken": "Токен сеанса (необязательно)",
+    "secretHint": "Нужен пользователь или роль IAM с правом вызывать bedrock:InvokeModel.",
+    "sessionTokenHint": "Только для временных учётных данных (STS или SSO).",
+    "saved": "Сохранено",
+    "remove": "Удалить",
+    "replace": "Сохранено. Введите новое значение, чтобы заменить.",
+    "enter": "Не задано"
   }
 }

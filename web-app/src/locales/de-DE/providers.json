@@ -14,6 +14,7 @@
   "models": "Modelle",
   "filterModels": "{{count}} Modelle filtern",
   "modelsShown": "{{shown}} von {{total}} angezeigt",
+  "noModelsMatch": "Kein Modell passt zu „{{query}}“",
   "showMoreModels": "Mehr anzeigen",
   "backendInstalled": "Installiert",
   "backendHistoryShow": "Update-Verlauf anzeigen",
@@ -38,6 +39,12 @@
   "importedTooltip": "Aus einer lokalen Datei importiert. Das Entfernen aus Flint löscht die Datei auf dem Datenträger nicht.",
   "importModelSuccess": "Modell von {{provider}} wurde erfolgreich importiert.",
   "importModelError": "Modellimport ist fehlgeschlagen:",
+
+  "importScanHint": "Sucht in LM Studio, Ollama, dem Hugging-Face-Cache, llama.cpp und GPT4All. Nichts wird kopiert, bis du importierst.",
+
+  "importAddFolder": "Ordner mit Modellen hinzufügen",
+
+  "importRemoveFolder": "Ordner {{folder}} entfernen",
   "stop": "Stop",
   "start": "Start",
   "status": {
@@ -143,12 +150,17 @@
   "addProvider": "Anbieter hinzufügen",
   "addOpenAIProvider": "OpenAI Anbieter hinzufügen",
   "enterNameForProvider": "Namen für den Anbieter eingeben",
+  "apiVersion": {
+    "title": "API-Version",
+    "description": "Nur für einen Azure-Endpunkt im Deployments-Stil (/openai/deployments/<name>), dessen URL kein ?api-version= enthält. Der Endpunkt /openai/v1 braucht keine."
+  },
   "baseUrl": {
     "title": "Basis-URL",
     "openaiDescription": "Verwende einen Proxy oder ein Gateway, das die OpenAI-API spricht. Standard ist https://api.openai.com/v1.",
     "azureDescription": "Dein Azure-OpenAI-Endpunkt. Ersetze YOUR-RESOURCE-NAME durch den Namen deiner Azure-Ressource.",
     "litellmDescription": "Die Adresse deines LiteLLM-Proxys, einschließlich /v1. Standard ist http://localhost:4000/v1.",
-    "qwenDescription": "Dein Model-Studio-Endpunkt. Ein Schlüssel funktioniert nur in der Region, in der er erstellt wurde: Verwende https://dashscope-intl.aliyuncs.com/compatible-mode/v1 für Singapur oder https://dashscope.aliyuncs.com/compatible-mode/v1 für das chinesische Festland."
+    "qwenDescription": "Dein Model-Studio-Endpunkt. Ein Schlüssel funktioniert nur in der Region, in der er erstellt wurde: Verwende https://dashscope-intl.aliyuncs.com/compatible-mode/v1 für Singapur oder https://dashscope.aliyuncs.com/compatible-mode/v1 für das chinesische Festland.",
+    "bedrockDescription": "Der Amazon-Bedrock-Runtime-Endpunkt deiner Region, zum Beispiel https://bedrock-runtime.eu-west-1.amazonaws.com."
   },
   "apiKeys": {
     "title": "API-Schlüssel",
@@ -219,5 +231,18 @@
     "label": "Anbietername",
     "cancel": "Abbrechen",
     "save": "Speichern"
+  },
+  "bedrock": {
+    "title": "AWS-Zugangsdaten",
+    "description": "Flint signiert jede Amazon-Bedrock-Anfrage mit deinen AWS-Schlüsseln. Sie liegen im Schlüsselbund deines Betriebssystems und werden nie wieder angezeigt. Füge Modell-IDs von Hand hinzu (zum Beispiel anthropic.claude-3-5-sonnet-20240620-v1:0).",
+    "accessKeyId": "Zugriffsschlüssel-ID",
+    "secretAccessKey": "Geheimer Zugriffsschlüssel",
+    "sessionToken": "Sitzungstoken (optional)",
+    "secretHint": "Braucht einen IAM-Benutzer oder eine Rolle mit Recht zum Aufruf von bedrock:InvokeModel.",
+    "sessionTokenHint": "Nur für temporäre Zugangsdaten (STS oder SSO).",
+    "saved": "Gespeichert",
+    "remove": "Entfernen",
+    "replace": "Gespeichert. Tippe, um zu ersetzen.",
+    "enter": "Nicht gesetzt"
   }
 }

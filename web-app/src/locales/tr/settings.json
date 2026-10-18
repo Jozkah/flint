@@ -1,7 +1,7 @@
 {
   "subagents": {
     "title": "Alt ajanlar",
-    "description": "Flint'in başlattığı alt ajanların hangi asistan, çalışma profili ve modelle çalıştığı. Burada bir seçim yapılmazsa alt ajan, üst öğesinin asistanını ve çalışma profilini devralır (uzun kişilikler kısaltılır). Bu, bir alt ajanın yapabileceklerini asla değiştirmez: araçları ve onayları çalıştırmanın izin verdiği gibi kalır.",
+    "description": "Flint'in başlattığı alt ajanların hangi asistan, çalışma profili ve modelle çalışacağı. Burada seçim yapılmazsa alt ajan üst ajanının asistanını ve çalışma profilini devralır (uzun asistan yönergeleri kısaltılır). Bu, alt ajanın ne yapabileceğini değiştirmez: araçları ve onayları çalıştırmanın izin verdiği gibi kalır.",
     "headlessNote": "Asistanlar ve çalışma profilleri yalnızca masaüstü uygulamasında geçerlidir. Komut satırından yapılan çalıştırmalar model seçimlerini izler.",
     "defaultsTitle": "Tüm alt ajanlar için",
     "defaultsDesc": "Burada bir şey seçmedikçe her biri, kendisini başlatan çalıştırmadan devralır.",
@@ -10,7 +10,7 @@
     "model": "Model",
     "inherit": "Devral",
     "inheritDesc": "Alt ajanı başlatan çalıştırmanın kullandığını kullan.",
-    "assistantDesc": "Bir alt ajanın çalıştığı kişilik.",
+    "assistantDesc": "Alt ajanın çalıştığı asistan.",
     "profileDesc": "Bir alt ajanın işe nasıl yaklaştığı.",
     "modelDesc": "Alt ajanları başka bir modelde çalıştırın; örneğin salt okunur incelemeler için daha hızlı bir model.",
     "groupAssistants": "Asistanlar",
@@ -63,9 +63,6 @@
   "reportAnIssue": "Sorun Bildir",
   "reportAnIssueDesc": "Bir hata mı buldunuz? GitHub'da bir sorun kaydederek bize yardımcı olun.",
   "reportIssue": "Sorun Bildir",
-  "credits": "Katkılar",
-  "creditsDesc1": "👋 Flint, Jozkah tarafından ❤️ ile geliştirilmiştir.",
-  "creditsDesc2": "Açık kaynak bağımlılıklarımıza — özellikle llama.cpp ve Tauri'ye — ve muhteşem yapay zeka topluluğumuza özel teşekkürler.",
   "appVersion": "Uygulama Sürümü",
   "dataFolder": {
     "appData": "Uygulama Verileri",
@@ -80,7 +77,8 @@
     "enterKeyNewline": "Enter Yeni Satır Ekler",
     "enterKeyNewlineDesc": "Sohbet kutusunda Enter'a basmak göndermek yerine yeni satır ekler. Gönder düğmesi veya Ctrl/Cmd+Enter ile gönderin. Enter'ın dönüştürmeyi onayladığı bir giriş yöntemiyle (IME) yazarken kullanışlıdır.",
     "resetFactory": "Fabrika Ayarlarına Sıfırla",
-    "resetFactoryDesc": "Uygulamayı ilk durumuna geri yükleyin, tüm modelleri ve sohbet geçmişini silin. Bu işlem geri alınamaz ve yalnızca uygulama bozulduysa önerilir."
+    "resetFactoryDesc": "Uygulamayı ilk durumuna geri yükleyin, tüm modelleri ve sohbet geçmişini silin. Bu işlem geri alınamaz ve yalnızca uygulama bozulduysa önerilir.",
+    "spellCheckHint": "Yazım dili Flint tarafından değil, sisteminiz tarafından seçilir. Sisteminizin dil ve klavye ayarlarından bir dil ekleyin (Windows: Dil ve bölge; macOS: Klavye > Metin Girişi; Linux: bir hunspell sözlüğü yükleyin)."
   },
   "shortcuts": {
     "change": "Değiştir",
@@ -122,7 +120,9 @@
     "nextPane": "Sonraki bölme",
     "nextPaneDesc": "Bölünmüş görünümde sonraki bölmeye geç.",
     "previousPane": "Önceki bölme",
-    "previousPaneDesc": "Bölünmüş görünümde önceki bölmeye geç."
+    "previousPaneDesc": "Bölünmüş görünümde önceki bölmeye geç.",
+    "findInChat": "Sohbette bul",
+    "findInChatDesc": "Ekrandaki konuşmada ara."
   },
   "interface": {
     "title": "Arayüz",
@@ -177,12 +177,6 @@
     "resetCodeBlockSuccess": "Kod bloğu stili başarıyla sıfırlandı",
     "resetCodeBlockSuccessDesc": "Kod bloğu stili varsayılanına geri yüklendi.",
     "transcriptView": "Döküm görünümü",
-    "sidebarLayout": "Kenar çubuğu",
-    "sidebarLayoutDesc": "Sol kenar çubuğunda ne kadarının listeleneceği.",
-    "sidebarLayout_trimmed": "Kısaltılmış",
-    "sidebarLayout_trimmedDesc": "Yeni sohbet, Cowork, Keşfet ve sohbetleriniz. Odalar, Kitaplık, Studio ve motor sayfaları Daha fazla ve Gelişmiş altında toplanır.",
-    "sidebarLayout_extended": "Genişletilmiş",
-    "sidebarLayout_extendedDesc": "Her şey bir arada listelenir: Daha fazla ve Gelişmiş açık kalır.",
     "transcriptViewDesc": "Sohbet, Cowork ve Odalar her turun ne kadarını gösterir. Onaylar, sorular ve hatalar her zaman görünür.",
     "transcriptViewNormal": "Normal",
     "transcriptViewNormalDesc": "Yanıt ve sizi bekleyen her şey. Araç çağrıları tek bir adım satırına katlanır.",
@@ -191,7 +185,13 @@
     "transcriptViewVerbose": "Ayrıntılı",
     "transcriptViewVerboseDesc": "Her şey: tam akıl yürütme ve parametreleri ile çıktısı açık her araç çağrısı.",
     "inlineCitations": "Metin içi kaynak simgeleri",
-    "inlineCitationsDesc": "Bir web kaynağından gelen cümlenin ardından küçük bir site simgesi gösterir. Yanıtı simgesiz okumak için kapatın; kaynaklar altında listelenmeye devam eder."
+    "inlineCitationsDesc": "Bir web kaynağından gelen cümlenin ardından küçük bir site simgesi gösterir. Yanıtı simgesiz okumak için kapatın; kaynaklar altında listelenmeye devam eder.",
+    "sidebarLayout": "Kenar çubuğu",
+    "sidebarLayoutDesc": "Sol kenar çubuğunda ne kadarının listeleneceği.",
+    "sidebarLayout_trimmed": "Kısaltılmış",
+    "sidebarLayout_trimmedDesc": "Yeni sohbet, Cowork, Keşfet ve sohbetleriniz. Odalar, Kitaplık, Studio ve motor sayfaları Daha fazla ve Gelişmiş altında toplanır.",
+    "sidebarLayout_extended": "Genişletilmiş",
+    "sidebarLayout_extendedDesc": "Her şey bir arada listelenir: Daha fazla ve Gelişmiş açık kalır."
   },
   "hardware": {
     "os": "İşletim Sistemi",
@@ -380,6 +380,9 @@
     "usageWeek": "Haftada",
     "usageWeekDesc": "Son 7 gündeki girdi artı çıktı belirteçleri. Boş, sınır yok demektir.",
     "usageNow": "Şu an kullanılan",
+    "usageNoLimitPlaceholder": "Sınır yok",
+    "serverLog": "Sunucu günlüğü",
+    "openInNewWindow": "Yeni pencerede aç",
     "usageNoLimit": "Sınır belirlenmedi",
     "usageResets": "En eski kullanım {{wait}} içinde hesaptan düşer",
     "startServer": "Sunucuyu Başlat",
@@ -417,7 +420,7 @@
     "verboseLogsDesc": "Hata ayıklama için ayrıntılı sunucu günlüklerini etkinleştirin.",
     "proxyTimeout": "İstek zaman aşımı",
     "proxyTimeoutDesc": "Yerel modelden yanıt beklenme süresi, saniye.",
-    "defaultModel": "Yerel API Sunucusunun Varsayılan Modeli",
+    "defaultModel": "Varsayılan model",
     "defaultModelDesc": "Sunucu başladığında otomatik olarak yüklenecek yerel model.",
     "defaultModelPlaceholder": "Bir yerel model seçin"
   },
@@ -456,7 +459,7 @@
     "updateError": "Güncellemeler kontrol edilemedi",
     "appVersion": "Uygulama Sürümü",
     "buildUpdate": "Daha yeni derlemeleri kontrol et",
-    "buildUpdateDesc": "Flint 0.9.0 gecelik bir derlemedir: en son koddan yeniden derlenir ve sürüm numarası aynı kalır. Açıkken Flint, başlangıçta bir kez (günde en fazla iki kez) GitHub'a daha yeni bir derleme olup olmadığını sorar. Varsayılan olarak kapalı; her iki durumda da bu istek dışında hiçbir şey gönderilmez.",
+    "buildUpdateDesc": "Gecelik derlemeler aynı sürüm numarasını korur. Açıkken Flint başlangıçta GitHub'a daha yeni bir derleme olup olmadığını bir kez sorar (günde en fazla iki kez). Varsayılan olarak kapalıdır.",
     "buildCheckNow": "Şimdi kontrol et",
     "buildChecking": "Kontrol ediliyor…",
     "buildNewer": "Daha yeni bir derleme mevcut. Güncellemek için sürüm sayfasından yeniden indirin.",
@@ -669,8 +672,7 @@
     "increaseContrast": "Karşıtlığı artır",
     "increaseContrastDesc": "Metni daha belirgin yaparak okumayı kolaylaştırır. Koyu temada daha beyaz, açık temada daha koyu.",
     "reduceMotion": "Hareketi azalt",
-    "reduceMotionDesc": "Flint'teki animasyonları kapatın. Flint sistem ayarını izlemez, bu nedenle bunu değiştirmediğiniz sürece hareket açık kalır.",
-    "completionSoundApproval": "Yalnızca onay gerektiğinde"
+    "reduceMotionDesc": "Flint'teki animasyonları kapatın. Flint sistem ayarını izlemez, bu nedenle bunu değiştirmediğiniz sürece hareket açık kalır."
   },
   "pageDesc": {
     "general": "Dil, veri klasörü, günlükler ve uygulama genelindeki seçenekler.",
@@ -1072,7 +1074,12 @@
       "updated": "Güncellendi: {{when}}",
       "loading": "Kampanyalar yükleniyor",
       "loadFailed": "Kampanyalar yüklenemedi.",
-      "retry": "Yeniden dene"
+      "skipped_one": "Okunamayan {{count}} kampanya kaydı atlandı. Dosyalar yerinde bırakıldı.",
+      "skipped_other": "Okunamayan {{count}} kampanya kaydı atlandı. Dosyalar yerinde bırakıldı.",
+      "retry": "Yeniden dene",
+      "needsDesktop": "Kampanyalar masaüstü uygulamasını gerektirir",
+      "needsDesktopHint": "Kampanyaları görmek ve başlatmak için Flint masaüstü uygulamasını açın. Sıradan bir tarayıcı sekmesinin bunları okuyabileceği bir kaynak yok.",
+      "staleApp": "Uygulamanın bu kopyası sayfadan daha eski. Kapatıp yeniden başlatın ki en son derlemeyi alsın."
     },
     "plan": {
       "edit": "Planı düzenle",
@@ -1128,5 +1135,35 @@
     "storeToolApproval": "araç otomatik onayı",
     "storeMcpTrust": "MCP sunucu güveni",
     "storeProxy": "ağ proxy'si"
-  }
+  },
+  "startup": {
+    "title": "Bilgisayarla birlikte başlat",
+    "on": "Açık. Flint oturum açtığınızda {{platform}} kullanarak başlar.",
+    "off": "Kapalı. Flint yalnızca siz açtığınızda başlar. Açmadan önce sorar ve tam olarak neyin yazılacağını gösterir.",
+    "minimized": "Simge durumunda başlat",
+    "minimizedDesc": "Gizli başlar, yalnızca tepsi simgesi görünür; pencereyi açmak için ona tıklayın.",
+    "confirmTitle": "Flint {{platform}} içine eklensin mi?",
+    "confirmBody": "Bu işlem aşağıdaki girdiyi kullanıcı hesabınıza yazar, başka hiçbir şey yazmaz. Yönetici hakkı gerekmez.",
+    "confirmUndo": "Anahtarı kapatmak bu girdiyi kaldırır.",
+    "confirm": "Girdiyi ekle",
+    "failed": "Başlangıç girdisi değiştirilemedi"
+  },
+  "sidebarItems": {
+    "title": "Kenar çubuğu öğeleri",
+    "description": "Sol kenar çubuğunda hangi öğelerin görüneceğini seçin. Bir öğeyi gizlemek yalnızca kısayolunu kaldırır; sayfanın kendisi çalışmaya devam eder.",
+    "section": {
+      "workspace": "Çalışma alanı",
+      "cowork": "Cowork",
+      "more": "Diğer",
+      "header": "Üst ve alt"
+    },
+    "showItem": "{{item}} öğesini kenar çubuğunda göster",
+    "alwaysShown": "Her zaman gösterilir",
+    "showAll": "Tümünü göster",
+    "preview": "Önizleme",
+    "reachable": "Gizli öğelere komut paletinden ve Ayarlar'dan yine ulaşılabilir."
+  },
+  "credits": "Katkılar",
+  "creditsDesc1": "👋 Flint, Jozkah tarafından ❤️ ile geliştirilmiştir.",
+  "creditsDesc2": "Açık kaynak bağımlılıklarımıza — özellikle llama.cpp ve Tauri'ye — ve muhteşem yapay zeka topluluğumuza özel teşekkürler."
 }
