@@ -364,6 +364,13 @@
     "showFewer": "Afficher moins",
     "moreActions": "Plus d'actions"
   },
+  "coworkStrip": {
+    "label": "État de la session",
+    "open": "Afficher les barres de la session",
+    "waiting": "En attente de vous : {{count}}",
+    "files": "Fichiers prêts à relire : {{count}}",
+    "branch": "Branche : {{branch}}"
+  },
   "coworkLayout": {
     "views": "Vue Cowork",
     "content": "Contenu",

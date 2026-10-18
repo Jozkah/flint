@@ -407,6 +407,7 @@ import {
 import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
 import {
   accessOf,
+  accessShortLabelKey,
   effectiveAccess,
   effectiveDowngradeKey,
   runCarries,
@@ -562,6 +563,15 @@ import { runStatus } from '@/lib/runStatus'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
 import { CoworkBarStack } from '@/containers/CoworkBarStack'
+import {
+  EMPTY_SUMMARY,
+  NarrowBarsSheet,
+  NarrowStatusStrip,
+  attentionCount,
+  type NarrowBarsSummary,
+} from '@/containers/NarrowStatusStrip'
+import { scrollToApproval } from '@/lib/approvalDestination'
+import { CoworkRunChip } from '@/containers/CoworkRunChip'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { workProfileAsker } from '@/lib/jev'
@@ -2749,6 +2759,21 @@ export function CoworkPage() {
   const waitingForUser = useToolApprovalRequests((s) =>
     Object.values(s.pending).some((p) => p.threadId === session?.id)
   )
+  // The approvals waiting in this session, as one key so the selector is
+  // stable: the strip counts them and goes to the first.
+  const waitingRequestIds = useToolApprovalRequests((s) =>
+    Object.values(s.pending)
+      .filter((p) => p.threadId === session?.id)
+      .map((p) => p.requestId)
+      .join('\n')
+  )
+  const [barsSheetOpen, setBarsSheetOpen] = useState(false)
+  const [barsSummary, setBarsSummary] = useState<NarrowBarsSummary>(EMPTY_SUMMARY)
+  const waitingIds = waitingRequestIds ? waitingRequestIds.split('\n') : []
+  // At every width: one thing over the composer shows as its bar; two or
+  // more (waiting for you counts) fold into one strip of chips, the bars
+  // themselves one tap away in a sheet.
+  const stripMode = attentionCount(waitingIds.length, barsSummary) >= 2
 
 
   /**
@@ -5472,6 +5497,13 @@ export function CoworkPage() {
   const windowPhone = useMediaQuery('(max-width: 767px)')
   const narrow = paneWidth != null ? paneWidth < 1100 : windowNarrow
   const phone = paneWidth != null ? paneWidth < 768 : windowPhone
+  // Up to 900px of pane (or window) the run's folder, access and mode fold
+  // into one Run chip under the composer.
+  const windowCompact = useMediaQuery('(max-width: 900px)')
+  const compactRun = paneWidth != null ? paneWidth <= 900 : windowCompact
+  // A phone (640px and below): the status strip names only its most urgent item.
+  const windowPhoneStrip = useMediaQuery('(max-width: 640px)')
+  const phoneStrip = paneWidth != null ? paneWidth <= 640 : windowPhoneStrip
   const [phoneView, setPhoneView] = useState<CoworkPhoneView>('content')
   const view: CoworkPhoneView = phone ? phoneView : 'content'
   const transcriptScroll = useRef<number | null>(null)
@@ -5781,7 +5813,17 @@ export function CoworkPage() {
   // A pane or a phone has no header row for its folder, so the folder joins
   // the quiet row under the composer, before what the run may do; the row
   // inside the box keeps only attach, options and skills.
-  const belowComposerControls = paneChrome || phone ? (
+  const belowComposerControls = compactRun ? (
+    // Up to 900px: one Run chip, its folder, access and mode behind it, so
+    // the row under the composer holds the chip, the effort and the model.
+    <CoworkRunChip
+      accessLabel={t(accessShortLabelKey(effective.access))}
+      access={effective.access}
+    >
+      {workspacePillOf('quiet')}
+      {runControls('quiet')}
+    </CoworkRunChip>
+  ) : paneChrome || phone ? (
     <>
       {workspacePillOf('quiet')}
       {runControls('quiet')}
@@ -6363,7 +6405,7 @@ export function CoworkPage() {
                         }
                       />
                     )}
-                  {running && (
+                  {running && !(stripMode && waitingForUser) && (
                     // Row wrapper as in the chat route: the transcript is a
                     // column flex, which stretches the indicator's own
                     // `inline-flex` box across the whole column.
@@ -6499,10 +6541,13 @@ export function CoworkPage() {
                   over the composer, so it cannot scroll away. Outside the
                   stack so it never pushes the session's own bars behind
                   "Show N more". */}
+              {(() => {
+                const bars = (
+                  <>
               <FolderTrustBanner folder={folder} />
               {/* The bars over the composer stack: two at a time, the rest
                   behind "Show N more". */}
-              <CoworkBarStack>
+              <CoworkBarStack max={Infinity}>
                 {folder &&
                   !recoveryHiddenHere &&
                   ((!worktree && (session?.turns.length ?? 0) === 0) ||
@@ -6617,6 +6662,38 @@ export function CoworkPage() {
                 ) : null}
                 <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
               </CoworkBarStack>
+                  </>
+                )
+                return (
+                  <>
+                    {stripMode && (
+                    <NarrowStatusStrip
+                      waiting={waitingIds.length}
+                      summary={barsSummary}
+                      files={{
+                        count: changeCounts.fileCount,
+                        additions: changeCounts.additions,
+                        deletions: changeCounts.deletions,
+                      }}
+                      branch={worktree?.branch ?? gitBranch ?? null}
+                      onWaiting={() => {
+                        if (waitingIds[0]) void scrollToApproval(waitingIds[0])
+                      }}
+                      onOpen={() => setBarsSheetOpen(true)}
+                      condensed={phoneStrip}
+                    />
+                    )}
+                    <NarrowBarsSheet
+                      inline={!stripMode}
+                      open={barsSheetOpen && stripMode}
+                      onOpenChange={setBarsSheetOpen}
+                      onSummary={setBarsSummary}
+                    >
+                      {bars}
+                    </NarrowBarsSheet>
+                  </>
+                )
+              })()}
               {/* The FLINT.md dialog; the folder menu opens it. */}
               <CoworkProjectInit
                 hideTrigger
@@ -6700,8 +6777,10 @@ export function CoworkPage() {
                     <CoworkSandboxChip />
                     {/* On a phone the composer is out of view while the
                         output is, so it keeps one set there. */}
+                    {/* On a phone the box keeps only attach, options and
+                        skills: the views are one tap away in the view switch. */}
                     {showComposerRailButtons &&
-                      (!phone || !inspectorVisible) &&
+                      !phone &&
                       railToolbar('toolbar')}
                     <div className="ml-auto flex items-center">
                       <SkillSelector folder={folder} />

@@ -366,6 +366,13 @@
     "showFewer": "Показать меньше",
     "moreActions": "Другие действия"
   },
+  "coworkStrip": {
+    "label": "Состояние сеанса",
+    "open": "Показать панели сеанса",
+    "waiting": "Ждёт вас: {{count}}",
+    "files": "Файлы для проверки: {{count}}",
+    "branch": "Ветка: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Вид Cowork",
     "content": "Содержимое",

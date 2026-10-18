@@ -51,7 +51,12 @@ export function CoworkPinnedProgress({
             </span>
             <ProgressBar pct={pct} className="w-16" />
             {current ? (
-              <span className="min-w-0 truncate text-fg-2">
+              // Fades out rather than ending in "…": a narrow row still
+              // reads as one line of text, the full step is in the title.
+              <span
+                title={cleanTaskLabel(current.content)}
+                className="min-w-0 overflow-hidden whitespace-nowrap text-fg-2 [mask-image:linear-gradient(to_right,#000_calc(100%-24px),transparent)]"
+              >
                 {cleanTaskLabel(current.content)}
               </span>
             ) : null}

@@ -362,6 +362,13 @@
     "showFewer": "Weniger anzeigen",
     "moreActions": "Weitere Aktionen"
   },
+  "coworkStrip": {
+    "label": "Sitzungsstatus",
+    "open": "Leisten der Sitzung anzeigen",
+    "waiting": "Wartet auf dich: {{count}}",
+    "files": "Dateien bereit zur Prüfung: {{count}}",
+    "branch": "Zweig: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Cowork-Ansicht",
     "content": "Inhalt",

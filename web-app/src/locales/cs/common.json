@@ -366,6 +366,13 @@
     "showFewer": "Zobrazit méně",
     "moreActions": "Další akce"
   },
+  "coworkStrip": {
+    "label": "Stav relace",
+    "open": "Zobrazit lišty relace",
+    "waiting": "Čeká na vás: {{count}}",
+    "files": "Soubory k revizi: {{count}}",
+    "branch": "Větev: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Zobrazení Cowork",
     "content": "Obsah",

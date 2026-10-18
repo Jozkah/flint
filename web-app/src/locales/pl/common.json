@@ -366,6 +366,13 @@
     "showFewer": "Pokaż mniej",
     "moreActions": "Więcej działań"
   },
+  "coworkStrip": {
+    "label": "Stan sesji",
+    "open": "Pokaż paski sesji",
+    "waiting": "Czeka na Ciebie: {{count}}",
+    "files": "Pliki gotowe do przeglądu: {{count}}",
+    "branch": "Gałąź: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Widok Cowork",
     "content": "Treść",

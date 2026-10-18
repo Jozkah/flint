@@ -43,7 +43,7 @@ describe('FolderTrustBanner', () => {
     expect(chat.indexOf('<FolderTrustBanner')).toBeGreaterThan(chat.indexOf('Chat Input - Fixed at bottom'))
     const cowork = src('../../routes/cowork.tsx')
     const at = cowork.indexOf('<FolderTrustBanner')
-    const stack = cowork.indexOf('<CoworkBarStack>')
+    const stack = cowork.indexOf('<CoworkBarStack')
     // Directly above the bar stack that sits over the composer.
     expect(at).toBeGreaterThan(-1)
     expect(at).toBeLessThan(stack)

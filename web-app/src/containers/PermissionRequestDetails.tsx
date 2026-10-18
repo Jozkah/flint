@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useId, useRef, useState } from 'react'
-import { ChevronDownIcon } from 'lucide-react'
+import { ChevronDownIcon, InfoIcon } from 'lucide-react'
 import {
   Collapsible,
   CollapsibleContent,
@@ -102,12 +102,18 @@ export function PermissionRequestDetails({
   const { technicalDetails } = request
 
   if (layout === 'rows') {
+    const consequencesText = request.consequences
+      .map((msg) => formatPermissionMessage(t, msg))
+      .join(' ')
     return (
       <>
         <RequestFlags request={request} t={t} />
+        {/* Below 480px of its own width the label sits above its value, so
+            the value never shrinks to a word per line. */}
+        <div className="@container/permrows min-w-0">
         <dl
           className={cn(
-            'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-[length:calc(var(--ui-font-base)*0.78125)] text-foreground',
+            'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-[length:calc(var(--ui-font-base)*0.78125)] text-foreground @max-[30rem]/permrows:grid-cols-1 @max-[30rem]/permrows:gap-y-0 @max-[30rem]/permrows:[&>dd]:mb-1.5',
             className
           )}
         >
@@ -126,7 +132,23 @@ export function PermissionRequestDetails({
               <dt className="text-muted-foreground">
                 {t('permissions:request.reason')}
               </dt>
-              <dd className="min-w-0 break-words">{request.reason}</dd>
+              <dd className="min-w-0 break-words">
+                {request.reason}
+                {/* With a reason given, what allowing it means is one
+                    hover (or one screen-reader line) away, not a row. */}
+                {consequencesText && (
+                  <span
+                    data-testid="permission-consequences-hint"
+                    title={consequencesText}
+                    className="ml-1 inline-flex translate-y-0.5 text-muted-foreground"
+                  >
+                    <InfoIcon aria-hidden className="size-3.5" />
+                    <span className="sr-only">
+                      {t('permissions:request.consequences')}: {consequencesText}
+                    </span>
+                  </span>
+                )}
+              </dd>
             </>
           )}
           {request.script && (
@@ -154,7 +176,7 @@ export function PermissionRequestDetails({
               </dd>
             </>
           )}
-          {request.consequences.length > 0 && (
+          {request.consequences.length > 0 && !request.reason && (
             <>
               <dt className="text-muted-foreground">
                 {t('permissions:request.consequences')}
@@ -167,6 +189,7 @@ export function PermissionRequestDetails({
             </>
           )}
         </dl>
+        </div>
       </>
     )
   }
