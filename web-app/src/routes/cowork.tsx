@@ -499,7 +499,11 @@ import {
   getSandboxToolchains,
   sandboxEnforces,
 } from '@/lib/agentTools'
-import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import {
+  coworkWebSearchScope,
+  useWebSearchOn,
+  webSearchOnFor,
+} from '@/hooks/useWebSearchChoice'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
   abortRun,
@@ -1079,7 +1083,10 @@ export function CoworkPage() {
     [selectedModel, selectedProvider, modelCapabilities, settingsMcpServers, doctorResults]
   )
   const workspacePath = useSessionWorkspacePath(session?.id)
-  const webSearchEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
+  // Settings decide the default; the session's own switch, once flipped, wins.
+  const webSearchEnabled = useWebSearchOn(
+    session?.id ? coworkWebSearchScope(session.id) : null
+  )
   const hasTurns = (session?.turns?.length ?? 0) > 0
   // A Settings toggle applies at the next run, like a mode change: the run's
   // advertised set is frozen for its lifetime, so the toggle is pushed to the
@@ -3360,7 +3367,9 @@ export function CoworkPage() {
     if (toolchains === STOPPED) return
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
-    const webSearch = useWebSearchConfig.getState().webSearchEnabled
+    const webSearch = webSearchOnFor(
+      current?.id ? coworkWebSearchScope(current.id) : null
+    )
     // Read once, with the session this run is bound to: a mode flipped
     // mid-run would leave the advertised tools and the dispatcher disagreeing.
     const storedMode = modeOf(current ?? {})
@@ -6668,6 +6677,16 @@ export function CoworkPage() {
                 // Assistant, sampling, web search and reasoning behind one
                 // Options button: the Cowork row stays quiet.
                 groupOptions
+                // Web search is per session; a choice made before the first
+                // message creates the session it belongs to, like the mode.
+                webSearchScope={
+                  session?.id ? coworkWebSearchScope(session.id) : null
+                }
+                ensureWebSearchScope={() =>
+                  coworkWebSearchScope(
+                    ensureCurrentSession(paneSessionIdRef.current)
+                  )
+                }
                 // Under the composer, as Claude lays it out: what the run may
                 // do on the left; the effort and the model on the right.
                 // A split pane uses the same row (its folder included).

@@ -1170,11 +1170,17 @@ describe('ChatInput', () => {
 
     // Web access is a global capability both surfaces honour -- Cowork reads
     // the same store when it builds its tool set -- so the toggle travels.
-    it('offers the web-search toggle on every surface', () => {
+    // Web search is a row inside the parameters panel now: no globe button
+    // beside it, on any surface.
+    // (The panel row itself: SamplerPopover.remote / ComposerOptionsMenu tests.)
+    it('has no separate web-search button; the parameters button is reachable', () => {
       renderInput()
-      expect(icons('globe')).toBe(1)
-      renderInput({ ownsToolSet: false })
-      expect(icons('globe')).toBeGreaterThan(0)
+      expect(icons('globe')).toBe(0)
+      expect(screen.queryByRole('button', { name: 'common:web_search' })).toBeNull()
+      const trigger = screen.getAllByRole('button', {
+        name: 'common:sampler.label',
+      })[0]
+      expect(trigger).not.toBeDisabled()
     })
 
     // Its only switch is Settings > Agent Tools now. In the composer it read as

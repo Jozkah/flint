@@ -2,16 +2,20 @@ import { SlidersHorizontal } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { WebSearchToggleRow, type WebSearchToggle } from '@/containers/WebSearchToggleRow'
 
 /** The composer's less-used controls behind one compact icon button. */
 export function ComposerOptionsMenu({
   label,
   children,
+  webSearch,
 }: {
   label: string
   /** Kept at call sites for compatibility; active state is visible in the panel. */
   active: readonly string[]
   children: ReactNode
+  /** Web search for this session, as a row above the other options. */
+  webSearch?: WebSearchToggle
 }) {
   // The panel opens above the whole composer box, not above its own trigger:
   // anchored to the trigger it floated over the input text.
@@ -54,10 +58,11 @@ export function ComposerOptionsMenu({
           event.preventDefault()
           ;(event.target as HTMLElement | null)?.focus?.()
         }}
-        className="flex w-auto flex-wrap items-center gap-1 p-1.5"
+        className="flex w-auto min-w-64 flex-col gap-1 p-1.5"
         data-testid="composer-options-panel"
       >
-        {children}
+        {webSearch && <WebSearchToggleRow {...webSearch} />}
+        <div className="flex flex-wrap items-center gap-1">{children}</div>
       </PopoverContent>
     </Popover>
   )

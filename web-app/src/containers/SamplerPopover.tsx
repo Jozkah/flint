@@ -36,6 +36,10 @@ import { useDraftSampling } from '@/hooks/useDraftSampling'
 import { paramsSettings, type ParamDef } from '@/lib/predefinedParams'
 import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { cn, getProviderTitle } from '@/lib/utils'
+import {
+  WebSearchToggleRow,
+  type WebSearchToggle,
+} from '@/containers/WebSearchToggleRow'
 
 interface SamplerPopoverProps {
   /** Provider ID of the currently-selected model, if any. Used to scope the
@@ -56,6 +60,8 @@ interface SamplerPopoverProps {
   /** Off-thread edits wait in a draft for the new chat instead of changing
    *  the assistant itself. Off for surfaces that read the assistant directly. */
   draftOffThread?: boolean
+  /** Web search for this chat, as a row in the panel (no separate button). */
+  webSearch?: WebSearchToggle
 }
 
 export function SamplerPopover({
@@ -63,6 +69,7 @@ export function SamplerPopover({
   modelId,
   assistantSwitcher,
   draftOffThread = false,
+  webSearch,
 }: SamplerPopoverProps) {
   const { t } = useTranslation()
   const currentAssistant = useAssistant((s) => s.currentAssistant)
@@ -169,6 +176,44 @@ export function SamplerPopover({
       providers.find((x) => x.provider === providerId)?.displayName ||
       getProviderTitle(providerId as string)
     const reason = t('common:sampler.notSupported', { provider: providerName })
+    // Web search still lives behind this button, so it opens; the panel says
+    // why sampling is not there.
+    if (webSearch) {
+      return (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t('common:sampler.label')}
+              title={t('common:sampler.label')}
+              className="size-7 rounded-[7px] pointer-coarse:size-11"
+            >
+              <SlidersHorizontal className="size-[15px] text-muted-foreground" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            side="top"
+            sideOffset={8}
+            collisionPadding={12}
+            onOpenAutoFocus={(event) => {
+              event.preventDefault()
+              ;(event.target as HTMLElement | null)?.focus?.()
+            }}
+            className="w-[320px] p-1"
+          >
+            <WebSearchToggleRow {...webSearch} />
+            <p
+              data-testid="sampler-unsupported"
+              className="border-t px-2 py-1.5 text-xs text-muted-foreground"
+            >
+              {reason}
+            </p>
+          </PopoverContent>
+        </Popover>
+      )
+    }
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -208,7 +253,8 @@ export function SamplerPopover({
               size="icon-xs"
               aria-label={t('common:sampler.label')}
               className="relative size-7 rounded-[7px] pointer-coarse:size-11"
-              disabled={assistantsLoading}
+              // Web search in the panel is reachable while assistants load.
+              disabled={assistantsLoading && !webSearch}
             >
               <SlidersHorizontal
                 className={cn(
@@ -270,6 +316,11 @@ export function SamplerPopover({
             </Tooltip>
           </div>
         </div>
+        {webSearch && (
+          <div className="border-b px-2 py-1">
+            <WebSearchToggleRow {...webSearch} />
+          </div>
+        )}
         {activeAssistant ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
             <ParametersSection
