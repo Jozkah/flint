@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react'
 import type { EventEnvelope } from '@/lib/eventLog'
 
 const h = vi.hoisted(() => ({
@@ -45,6 +45,14 @@ const env = (session: string, kind: string, payload: Record<string, unknown>, in
   kind,
   payload,
   redactions: [],
+})
+
+// The list's virtualizer debounces its scroll state with a timer: unmount and let it
+// fire here, or it fires after the test environment is torn down and fails the run.
+afterEach(async () => {
+  vi.useRealTimers()
+  cleanup()
+  await new Promise((r) => setTimeout(r, 200))
 })
 
 beforeEach(() => {
