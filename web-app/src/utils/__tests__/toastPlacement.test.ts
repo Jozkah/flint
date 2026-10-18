@@ -103,10 +103,10 @@ describe('getDialogToastPlacement', () => {
 })
 
 describe('composerClearanceFor', () => {
-  it('keeps settings toasts at the corner, where no composer sits', async () => {
-    const { composerClearanceFor, COMPOSER_CLEARANCE_PX } = await import('../toastPlacement')
-    expect(composerClearanceFor('/settings/local-api-server')).toBe(16)
-    expect(composerClearanceFor('/threads/abc')).toBe(COMPOSER_CLEARANCE_PX)
-    expect(composerClearanceFor('/')).toBe(COMPOSER_CLEARANCE_PX)
+  it('puts toasts in the very corner', async () => {
+    const { composerClearanceFor } = await import('../toastPlacement')
+    expect(composerClearanceFor()).toBe(16)
+    expect(composerClearanceFor()).toBe(16)
+    expect(composerClearanceFor()).toBe(16)
   })
 })

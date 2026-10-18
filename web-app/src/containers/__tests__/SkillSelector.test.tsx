@@ -59,6 +59,26 @@ describe('SkillSelector', () => {
     expect(setEnabled).not.toHaveBeenCalled()
   })
 
+  // No count text on the button: a dot marks "some skill is on", and the
+  // numbers live in the accessible name; same size as the plus / options.
+  it('shows no count on the button, a dot and the numbers in its name', () => {
+    useSkills.mockReturnValue({
+      skills: [skill('git')],
+      enabled: [],
+      setEnabled: vi.fn(),
+    })
+    render(<SkillSelector folder="/home/u/repo" />)
+    const btn = screen.getByRole('button')
+    expect(btn.textContent).toBe('')
+    expect(btn).toHaveAccessibleName(
+      'common:skillsInContext: connections:skills.summary'
+    )
+    expect(btn.className).toContain('size-7')
+    expect(btn.className).toContain('rounded-[7px]')
+    expect(btn.querySelector('[data-testid="skill-selector-dot"]')).not.toBeNull()
+    expect(btn).toHaveAttribute('aria-haspopup', 'dialog')
+  })
+
   it('keeps the toggle live when a folder is attached', async () => {
     const setEnabled = vi.fn()
     useSkills.mockReturnValue({

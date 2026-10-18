@@ -77,9 +77,9 @@ export function getToastOffsetAvoidingPane(
   return { ...(base as object), right }
 }
 
-/** Settings has no composer: its toasts sit at the corner, not above a dock that is not there. */
-export function composerClearanceFor(pathname: string): number {
-  return pathname.startsWith('/settings') ? BASE_MARGIN * 2 : COMPOSER_CLEARANCE_PX
+/** Toasts sit in the very corner of the window on every page (phones keep their own placement above the composer). */
+export function composerClearanceFor(): number {
+  return BASE_MARGIN * 2
 }
 
 export function getToastOffset(

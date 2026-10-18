@@ -547,7 +547,7 @@
       "on": "Recherche web activée",
       "off": "Recherche web désactivée",
       "provider": "Fournisseur de recherche",
-      "providerFoot": "Si DuckDuckGo affiche une vérification anti-robot, Flint se rabat sur la lecture de la page de résultats. Les fournisseurs se choisissent sur l'ordinateur.",
+      "providerFoot": "Si DuckDuckGo affiche une vérification anti-robot, patientez une minute puis relancez la recherche. Les fournisseurs se choisissent sur l'ordinateur.",
       "ddg": "DuckDuckGo ne nécessite aucune configuration",
       "noKey": "Aucune clé requise",
       "keySet": "Clé définie",

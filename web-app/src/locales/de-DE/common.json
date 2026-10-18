@@ -1049,6 +1049,8 @@
   "artifactPath": "Pfad",
   "artifactShowDetails": "Details zu {{name}} anzeigen",
   "workspace": {
+    "worktreeBadge": "Isolierter Worktree: Branch {{branch}}",
+    "worktreeBadgeNoBranch": "Isolierter Worktree",
     "readsFrom": "Liest aus",
     "alsoAttached": "Ebenfalls angehängt",
     "addFolder": "Weiteren Ordner hinzufügen",

@@ -1087,6 +1087,8 @@
   "artifactPath": "Path",
   "artifactShowDetails": "Show details for {{name}}",
   "workspace": {
+    "worktreeBadge": "Isolated worktree: branch {{branch}}",
+    "worktreeBadgeNoBranch": "Isolated worktree",
     "readsFrom": "Reads from",
     "alsoAttached": "Also attached",
     "addFolder": "Add another folder",

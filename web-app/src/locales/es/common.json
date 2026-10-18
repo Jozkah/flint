@@ -1057,6 +1057,8 @@
   "artifactPath": "Ruta",
   "artifactShowDetails": "Mostrar detalles de {{name}}",
   "workspace": {
+    "worktreeBadge": "Worktree aislado: rama {{branch}}",
+    "worktreeBadgeNoBranch": "Worktree aislado",
     "readsFrom": "Lee de",
     "alsoAttached": "También adjuntas",
     "addFolder": "Añadir otra carpeta",

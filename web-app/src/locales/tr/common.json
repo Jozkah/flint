@@ -1047,6 +1047,8 @@
   "artifactPath": "Yol",
   "artifactShowDetails": "{{name}} için ayrıntıları göster",
   "workspace": {
+    "worktreeBadge": "Yalıtılmış worktree: dal {{branch}}",
+    "worktreeBadgeNoBranch": "Yalıtılmış worktree",
     "readsFrom": "Şurada çalışır",
     "alsoAttached": "Ayrıca eklenenler",
     "addFolder": "Başka bir klasör ekle",

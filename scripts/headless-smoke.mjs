@@ -107,7 +107,10 @@ const port = await freePort()
 const base = `http://127.0.0.1:${port}`
 const server = spawn(
   binary,
-  ['serve', '--listen', `127.0.0.1:${port}`, '--assets-dir', assets, '--data-dir', data, '--llama-worker', fakeWorker],
+  ['serve', '--listen', `127.0.0.1:${port}`, '--assets-dir', assets, '--data-dir', data, '--llama-worker', fakeWorker,
+    // The smoke plays several clients from one loopback address via
+    // X-Forwarded-For, which the server honours only behind a trusted proxy.
+    '--trust-proxy'],
   { stdio: ['ignore', 'pipe', 'pipe'] }
 )
 let log = ''

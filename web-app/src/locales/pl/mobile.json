@@ -554,7 +554,7 @@
       "on": "Wyszukiwanie w sieci włączone",
       "off": "Wyszukiwanie w sieci wyłączone",
       "provider": "Dostawca wyszukiwania",
-      "providerFoot": "Jeśli DuckDuckGo pokaże weryfikację bota, Flint przechodzi na odczyt strony wyników. Dostawców wybiera się na komputerze.",
+      "providerFoot": "Jeśli DuckDuckGo pokaże weryfikację bota, odczekaj minutę i wyszukaj ponownie. Dostawców wybiera się na komputerze.",
       "ddg": "DuckDuckGo nie wymaga konfiguracji",
       "noKey": "Klucz niepotrzebny",
       "keySet": "Klucz ustawiony",

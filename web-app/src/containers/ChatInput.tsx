@@ -32,7 +32,7 @@ import {
   memo,
 } from 'react'
 import type { ReactNode } from 'react'
-import { Separator } from '@/components/ui/separator'
+import { COMPOSER_ICON, COMPOSER_ICON_BUTTON } from '@/containers/composerIconButton'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -188,7 +188,7 @@ import {
   createVideoAttachment,
 } from '@/types/attachment'
 import { useAgentMode } from '@/hooks/useAgentMode'
-import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { useWebSearchChoice, useWebSearchOn } from '@/hooks/useWebSearchChoice'
 import {
   formatPathReferenceText,
   parsePromptForReferences,
@@ -297,6 +297,14 @@ type ChatInputProps = {
   /** Put the assistant, sampling, tools, web search and reasoning controls
    * behind one Options button (Cowork), for a quieter row. */
   groupOptions?: boolean
+  /**
+   * Where this composer's web search choice is kept (useWebSearchChoice).
+   * Absent: the chat shown (or the new-chat draft). `null`: nothing yet, so
+   * the default from Settings shows until `ensureWebSearchScope` makes one.
+   */
+  webSearchScope?: string | null
+  /** Makes the scope a choice is written to (Cowork creates its session). */
+  ensureWebSearchScope?: () => string
   /**
    * The model selector, docked under the composer at the right. The reasoning
    * effort control, when the model has one, sits to its left. Absent, the
@@ -433,6 +441,8 @@ const ChatInput = memo(function ChatInput({
   referenceSources,
   surfaceControls,
   groupOptions = false,
+  webSearchScope,
+  ensureWebSearchScope,
   modelControl,
   belowLeft,
   belowLeftWithEffort,
@@ -608,8 +618,19 @@ const ChatInput = memo(function ChatInput({
   const effectiveAgentMode = isAgentMode && !projectId
   // Gate for the controls that shape which tools the model is offered.
   const showToolControls = ownsToolSet && !effectiveAgentMode
-  const webSearchEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
-  const setWebSearchEnabled = useWebSearchConfig((s) => s.setWebSearchEnabled)
+  // Web search per chat: on by default when Settings has it on; the chat's
+  // own switch, once flipped, wins (useWebSearchChoice). The new-chat draft
+  // keeps its choice under the same key agent mode uses, and hands it on.
+  const resolvedWebSearchScope =
+    webSearchScope !== undefined ? webSearchScope : agentModeKey
+  const webSearchEnabled = useWebSearchOn(resolvedWebSearchScope)
+  const setWebSearchEnabled = useCallback(
+    (on: boolean) => {
+      const scope = ensureWebSearchScope?.() ?? resolvedWebSearchScope
+      if (scope) useWebSearchChoice.getState().set(scope, on)
+    },
+    [ensureWebSearchScope, resolvedWebSearchScope]
+  )
 
   const [filePickerOpen, setFilePickerOpen] = useState(false)
   // The image viewer over the composer's attachments: which image is open.
@@ -1601,6 +1622,10 @@ const ChatInput = memo(function ChatInput({
         if (isAgentMode) {
           useAgentMode.getState().setAgentMode(newThread.id, true)
           useAgentMode.getState().removeThread(agentModeKey)
+        }
+        // And the web search choice made on the home screen, if any.
+        if (webSearchScope === undefined) {
+          useWebSearchChoice.getState().move(agentModeKey, newThread.id)
         }
 
         // Store the initial message for the new thread
@@ -3678,25 +3703,26 @@ const ChatInput = memo(function ChatInput({
             {/* One row, never two: when the pane is narrow the controls give
                 up their text labels (ComposerDensity) and, past that, clip
                 here, so the send button at the right is never pushed out. */}
-            <div className="flex flex-nowrap items-center gap-x-1 flex-1 min-w-0 overflow-hidden">
+            <div className="flex flex-nowrap items-center gap-x-0.5 flex-1 min-w-0 overflow-hidden">
               {/* Assistant, sampling, tools, web search and reasoning stay
                   live while a reply streams: they configure the *next*
                   message (each request reads them when it is sent), so
                   freezing them only made the user wait. Attachments are the
                   exception: a message queued behind a run carries text only. */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 {/* Dropdown for attachments — hidden in agent mode */}
                 {!effectiveAgentMode && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="outline"
-                      size="icon-sm"
+                      variant="ghost"
+                      size="icon-xs"
                       aria-label={t('common:attachments')}
                       disabled={isStreaming}
-                      className="mr-0.5 size-7 rounded-[7px] text-secondary-foreground pointer-coarse:size-11"
+                      data-testid="composer-attach"
+                      className={COMPOSER_ICON_BUTTON}
                     >
-                      <PlusIcon className="size-[15px]" />
+                      <PlusIcon className={COMPOSER_ICON} aria-hidden />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
@@ -3771,6 +3797,15 @@ const ChatInput = memo(function ChatInput({
                 {(() => {
                   // The model's less-used knobs: inline in a chat, behind one
                   // Options button where the surface asks for a quieter row.
+                  // Web search is a row in the parameters panel, not a
+                  // button of its own.
+                  const webSearchToggle =
+                    !effectiveAgentMode && toolsEnabled
+                      ? {
+                          enabled: webSearchEnabled,
+                          onChange: setWebSearchEnabled,
+                        }
+                      : undefined
                   const options = (
                     <>
                 <AssistantSwitcher
@@ -3786,6 +3821,7 @@ const ChatInput = memo(function ChatInput({
                   providerId={selectedProvider}
                   modelId={selectedModel?.id}
                   draftOffThread={slashSurface !== 'cowork'}
+                  webSearch={groupOptions ? undefined : webSearchToggle}
                   assistantSwitcher={{
                     assistants,
                     currentThread: slashSurface === 'cowork' ? undefined : currentThread,
@@ -3885,43 +3921,6 @@ const ChatInput = memo(function ChatInput({
                       </TooltipContent>
                     </Tooltip>
                   ))}
-
-                      {!effectiveAgentMode &&
-                        toolsEnabled && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={t('common:web_search')}
-                        aria-pressed={webSearchEnabled}
-                        className={cn(
-                          'size-7 rounded-[7px] pointer-coarse:size-11',
-                                  webSearchEnabled &&
-                                    'bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-foreground hover:bg-[color-mix(in_oklab,var(--primary)_16%,transparent)]'
-                        )}
-                                onClick={() =>
-                                  setWebSearchEnabled(!webSearchEnabled)
-                                }
-                      >
-                        <Globe
-                          className={cn(
-                            'size-4 text-muted-foreground',
-                            webSearchEnabled && 'text-foreground'
-                          )}
-                        />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        {webSearchEnabled
-                                  ? t('common:web_search') +
-                                    t('common:activeSuffix')
-                          : t('common:web_search')}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
 
                 {/* Cowork has no chat agent mode of its own; the flag read
                     above belongs to whichever chat thread was last open. */}
@@ -4132,6 +4131,7 @@ const ChatInput = memo(function ChatInput({
                   return (
                     <ComposerOptionsMenu
                       label={t('common:composerOptions')}
+                      webSearch={webSearchToggle}
                       active={
                         webSearchEnabled && !effectiveAgentMode
                           ? [t('common:web_search')]
@@ -4144,11 +4144,8 @@ const ChatInput = memo(function ChatInput({
                 })()}
               </div>
               {surfaceControls && (
-                <div className="flex min-w-0 flex-nowrap items-center gap-1">
-                  <Separator
-                    orientation="vertical"
-                    className="mx-1 h-4 shrink-0"
-                  />
+                // Same 2px rhythm as the buttons before it: one group.
+                <div className="flex min-w-0 flex-nowrap items-center gap-0.5">
                   <ComposerDensityProvider width={controlsWidth}>
                     {surfaceControls}
                   </ComposerDensityProvider>
@@ -4258,7 +4255,10 @@ const ChatInput = memo(function ChatInput({
           className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1"
         >
           {(belowLeft || belowLeftWithEffort) && (
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div
+              data-testid="composer-below-left"
+              className="flex min-w-0 max-w-full flex-wrap items-center gap-0.5"
+            >
               {belowLeft}
               {belowLeftWithEffort?.({
                 effort: effortControl,

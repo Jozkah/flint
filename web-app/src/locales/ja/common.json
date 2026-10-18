@@ -1047,6 +1047,8 @@
   "artifactPath": "パス",
   "artifactShowDetails": "{{name}} の詳細を表示",
   "workspace": {
+    "worktreeBadge": "分離された worktree: ブランチ {{branch}}",
+    "worktreeBadgeNoBranch": "分離された worktree",
     "readsFrom": "読み取り元",
     "alsoAttached": "その他の添付",
     "addFolder": "フォルダーを追加",

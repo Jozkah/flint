@@ -1,17 +1,23 @@
 use crate::provider::{clamp_count, create_provider, FetchedPage, ImageResult, SearchResult};
+use crate::ratelimit::is_gate_message;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, thiserror::Error)]
 #[error("WebSearchError: {message}")]
 pub struct WebSearchError {
     pub message: String,
+    /// `"rate_limited"` when the provider's rate-limit gate refused or closed
+    /// on this call. The frontend uses it so a limit is never remembered as a
+    /// failure of the URL itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<&'static str>,
 }
 
 impl WebSearchError {
     fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-        }
+        let message = message.into();
+        let kind = is_gate_message(&message).then_some("rate_limited");
+        Self { message, kind }
     }
 }
 

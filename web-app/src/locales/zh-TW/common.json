@@ -1049,6 +1049,8 @@
   "artifactPath": "路徑",
   "artifactShowDetails": "顯示 {{name}} 的詳細資料",
   "workspace": {
+    "worktreeBadge": "隔離的 worktree：分支 {{branch}}",
+    "worktreeBadgeNoBranch": "隔離的 worktree",
     "readsFrom": "讀取自",
     "alsoAttached": "其他附加",
     "addFolder": "新增其他資料夾",

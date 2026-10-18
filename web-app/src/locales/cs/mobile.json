@@ -554,7 +554,7 @@
       "on": "Webové vyhledávání zapnuto",
       "off": "Webové vyhledávání vypnuto",
       "provider": "Poskytovatel vyhledávání",
-      "providerFoot": "Pokud DuckDuckGo zobrazí kontrolu robota, Flint přejde na čtení stránky s výsledky. Poskytovatelé se vybírají na počítači.",
+      "providerFoot": "Pokud DuckDuckGo zobrazí kontrolu robota, počkejte minutu a hledejte znovu. Poskytovatelé se vybírají na počítači.",
       "ddg": "DuckDuckGo nepotřebuje nastavení",
       "noKey": "Klíč není potřeba",
       "keySet": "Klíč nastaven",

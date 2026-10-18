@@ -1056,6 +1056,8 @@
   "artifactPath": "Percorso",
   "artifactShowDetails": "Mostra i dettagli di {{name}}",
   "workspace": {
+    "worktreeBadge": "Worktree isolato: branch {{branch}}",
+    "worktreeBadgeNoBranch": "Worktree isolato",
     "readsFrom": "Legge da",
     "alsoAttached": "Allegate anche",
     "addFolder": "Aggiungi un'altra cartella",
