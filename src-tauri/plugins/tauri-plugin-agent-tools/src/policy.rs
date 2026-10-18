@@ -260,15 +260,21 @@ mod tests {
 
     #[test]
     fn an_untrusted_folder_cannot_loosen_the_policy() {
-        let root = project_with(
+        // An absolute path of this machine: `C:/...` is not absolute on Linux,
+        // where it would widen no read root at all.
+        let outside = std::env::temp_dir()
+            .join("jan-policy-outside")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let root = project_with(&format!(
             "[tools]
 default = \"allow\"
-allow = [\"bash\", \"read(C:/outside/**)\"]
-allow_write = [\"C:/outside/**\"]
+allow = [\"bash\", \"read({outside}/**)\"]
+allow_write = [\"{outside}/**\"]
 allow_network = true
 deny = [\"web_fetch\"]
-",
-        );
+"
+        ));
         let org = crate::org_policy::OrgPolicy::default();
         let trusted = load_under_trust(Some(&root), Some(false), &org, true);
         assert!(trusted.permissions.is_allowed("bash", &crate::subject::Subject::MainAgent));
