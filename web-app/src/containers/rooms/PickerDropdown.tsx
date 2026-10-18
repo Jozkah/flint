@@ -275,14 +275,14 @@ export function PickerDropdown({
                   <span className="flex min-w-0 flex-1 flex-col gap-px">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span
-                        className="truncate text-[13px] font-medium"
+                        className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium"
                         title={item.label}
                       >
                         {middleTruncate(item.label, 38)}
                       </span>
                       {disambiguation.has(item.value) && (
                         <span
-                          className="shrink-0 rounded bg-muted px-1 font-mono text-[10.5px] text-muted-foreground"
+                          className="shrink-0 rounded bg-muted px-1 font-mono text-[length:calc(var(--ui-font-base)*0.65625)] text-muted-foreground"
                           title={item.label}
                           data-testid="picker-disambiguator"
                         >
@@ -291,10 +291,10 @@ export function PickerDropdown({
                       )}
                     </span>
                     {item.hint && (
-                      <span className="text-[11px] leading-[1.35] text-muted-foreground">{item.hint}</span>
+                      <span className="text-[length:calc(var(--ui-font-base)*0.6875)] leading-[1.35] text-muted-foreground">{item.hint}</span>
                     )}
                     {item.secondary && (
-                      <span className="text-[11px] leading-[1.35] text-muted-foreground">{item.secondary}</span>
+                      <span className="text-[length:calc(var(--ui-font-base)*0.6875)] leading-[1.35] text-muted-foreground">{item.secondary}</span>
                     )}
                   </span>
                   {selected ? (
@@ -312,7 +312,7 @@ export function PickerDropdown({
                     value={inlineInput.value}
                     placeholder={inlineInput.placeholder}
                     aria-label={inlineInput.placeholder}
-                    className="h-8 w-full rounded-lg border-[0.8px] border-border bg-card px-2 text-[13px] text-foreground outline-hidden placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+                    className="h-8 w-full rounded-lg border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.8125)] text-foreground outline-hidden placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
                     onChange={(e) => inlineInput.onChange(e.target.value)}
                     // Typing is typing: no row-by-first-letter jumps, and Enter
                     // settles the menu instead of submitting the form behind it.
@@ -332,7 +332,7 @@ export function PickerDropdown({
             {footer.map((f) => (
               <DropdownMenuItem key={f.label} onSelect={f.onSelect} className="gap-2.5 px-2.5 py-1.5">
                 {f.icon}
-                <span className="text-[13px] font-medium">{f.label}</span>
+                <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">{f.label}</span>
               </DropdownMenuItem>
             ))}
           </>

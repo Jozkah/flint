@@ -518,7 +518,7 @@ export const MessageItem = memo(
                 {metadata?.steered === true && partIndex === 0 && (
                   <div
                     data-testid="steered-label"
-                    className="mb-1 text-[11px] text-muted-foreground"
+                    className="mb-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
                   >
                     {t('common:steering.delivered')}
                   </div>
@@ -836,7 +836,7 @@ export const MessageItem = memo(
         {message.role === 'assistant' && !continuation && (
           <div
             data-testid="assistant-message-header"
-            className="mb-2 flex min-w-0 items-center gap-2 text-[12.5px] leading-5 text-subtle-foreground"
+            className="mb-2 flex min-w-0 items-center gap-2 text-[length:calc(var(--ui-font-base)*0.78125)] leading-5 text-subtle-foreground"
           >
             {/* The model's avatar: the Flint mark on a quiet tile. */}
             <span

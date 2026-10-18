@@ -179,7 +179,7 @@ export function CoworkBundleImport({
     >
       <div className="flex items-center gap-2">
         <PackageOpen size={14} className="text-muted-foreground" />
-        <p className="flex-1 text-[12.5px] font-medium text-foreground">
+        <p className="flex-1 text-[length:calc(var(--ui-font-base)*0.78125)] font-medium text-foreground">
           {t('sweep:cowork.projectBundles')}
         </p>
         {running ? (

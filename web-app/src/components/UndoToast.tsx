@@ -104,7 +104,7 @@ export function UndoToast({
       className="relative flex w-[356px] max-w-full items-center gap-3 rounded-xl bg-popover px-3.5 py-3 text-popover-foreground shadow-pop"
     >
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium leading-snug">{message}</p>
+        <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium leading-snug">{message}</p>
         {description ? (
           <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
             {description}

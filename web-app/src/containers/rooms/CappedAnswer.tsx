@@ -110,7 +110,7 @@ export function CappedAnswer({
           aria-expanded={expanded}
           data-testid="room-answer-expand"
           aria-label={t(expanded ? 'rooms:transcript.collapseAnswer' : 'rooms:transcript.expandAnswer', { name })}
-          className="mt-1 inline-flex h-6 cursor-pointer items-center gap-1 self-start rounded-md px-1 text-[11.5px] text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+          className="mt-1 inline-flex h-6 cursor-pointer items-center gap-1 self-start rounded-md px-1 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
           <ChevronDown aria-hidden className={cn('size-3 transition-transform', expanded && 'rotate-180')} />
           {t(expanded ? 'rooms:transcript.collapse' : 'rooms:transcript.expand')}

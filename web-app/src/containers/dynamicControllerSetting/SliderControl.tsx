@@ -79,7 +79,7 @@ export function SliderControl({
     <div className="w-full">
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+          <span className="text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground tabular-nums shrink-0">
             {min}
           </span>
           <Slider
@@ -96,7 +96,7 @@ export function SliderControl({
             }`}
             aria-label={title}
           />
-          <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+          <span className="text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground tabular-nums shrink-0">
             {max}
           </span>
         </div>

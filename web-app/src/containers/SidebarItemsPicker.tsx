@@ -42,7 +42,7 @@ export function SidebarItemsPicker({ preview = true }: { preview?: boolean }) {
             <section key={section} aria-labelledby={`sidebar-items-${section}`}>
               <h4
                 id={`sidebar-items-${section}`}
-                className="px-1 text-[11px] font-medium tracking-wide text-subtle-foreground"
+                className="px-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground"
               >
                 {t(`settings:sidebarItems.section.${section}`)}
               </h4>
@@ -132,7 +132,7 @@ function SidebarPreview({ hidden }: { hidden: string[] }) {
       data-testid="sidebar-items-preview"
       className="grid w-full grid-cols-2 content-start gap-x-3 gap-y-0.5 rounded-lg border-[0.8px] border-border bg-muted/50 p-2 @min-[46rem]:sticky @min-[46rem]:top-2 @min-[46rem]:grid-cols-1"
     >
-      <div className="col-span-full flex w-full items-center justify-between px-1.5 pb-1 text-[11px] font-medium tracking-wide text-subtle-foreground">
+      <div className="col-span-full flex w-full items-center justify-between px-1.5 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground">
         <span>{t('settings:sidebarItems.preview')}</span>
         {overviewShown && <Icon name="sb-dashboard" />}
       </div>
@@ -145,7 +145,7 @@ function SidebarPreview({ hidden }: { hidden: string[] }) {
               <div
                 key={item.id}
                 data-testid={`sidebar-preview-${item.id}`}
-                className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[0.8125rem] text-secondary-foreground [&>span>svg]:size-3.5"
+                className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground [&>span>svg]:size-3.5"
               >
                 <span className="grid size-3.5 shrink-0 place-items-center text-muted-foreground">
                   <SidebarItemIcon item={item} />
@@ -159,7 +159,7 @@ function SidebarPreview({ hidden }: { hidden: string[] }) {
       {settings && (
         <div
           data-testid="sidebar-preview-settings"
-          className="col-span-full flex items-center gap-2 px-1.5 py-1 text-[0.8125rem] text-secondary-foreground"
+          className="col-span-full flex items-center gap-2 px-1.5 py-1 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground"
         >
           <span className="grid size-3.5 shrink-0 place-items-center text-muted-foreground [&>svg]:size-3.5">
             <Icon name={settings.icon} />

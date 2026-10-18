@@ -95,7 +95,7 @@ export function ParticipantToolsField({
           if (!list.length) return null
           return (
             <div key={g} className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium uppercase tracking-wide text-muted-foreground">
                 {t(`rooms:editor.tools.group.${g}`)}
               </span>
               <ul className="flex flex-col">
@@ -118,7 +118,7 @@ export function ParticipantToolsField({
                           e.server && <span className="text-muted-foreground"> · {e.server}</span>
                         )}
                       </label>
-                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                      <span className="shrink-0 text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-muted-foreground">
                         {e.notStarted
                           ? t('rooms:editor.tools.toolsUnknown')
                           : t('rooms:editor.tools.tokens', { tokens: e.tokens.toLocaleString() })}

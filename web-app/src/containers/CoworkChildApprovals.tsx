@@ -117,7 +117,7 @@ export function CoworkChildApprovals({
           data-origin={entry.origin}
           data-tool={entry.toolName}
         >
-          <div className="flex items-start gap-2 border-b border-dashed border-warning/30 bg-warning-tint px-3 py-2.5 text-[13px] font-medium text-foreground">
+          <div className="flex items-start gap-2 border-b border-dashed border-warning/30 bg-warning-tint px-3 py-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
             <ShieldAlertIcon
               className="mt-0.5 size-4 shrink-0 text-warning"
               aria-hidden
@@ -129,7 +129,7 @@ export function CoworkChildApprovals({
             {entry.held && (
               <span
                 data-testid="approval-held"
-                className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground"
               >
                 {t('rooms:approvals.held')}
               </span>
@@ -318,7 +318,7 @@ function CompactApproval({
             </span>
             {command && (
               <code
-                className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-fg-2"
+                className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-fg-2"
                 title={command}
                 data-testid="approval-command"
               >
@@ -378,7 +378,7 @@ function CompactApproval({
             <dd className="text-foreground">{t('tools:toolApproval.childDeny')}</dd>
           </dl>
           {command && (
-            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-2 font-mono text-[11px]">
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)]">
               {command}
             </pre>
           )}

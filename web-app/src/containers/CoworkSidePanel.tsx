@@ -482,7 +482,7 @@ export function CoworkSidePanel({
         // Inside the output frame the panel's own row is a quiet sub-header:
         // what is shown, its totals, and one fact on the right. Expand and
         // close are on the frame.
-        <div className="flex min-h-[41px] shrink-0 items-center gap-2 border-b border-dashed border-border px-3 py-2 text-[13px] pointer-coarse:min-h-12">
+        <div className="flex min-h-[41px] shrink-0 items-center gap-2 border-b border-dashed border-border px-3 py-2 text-[length:calc(var(--ui-font-base)*0.8125)] pointer-coarse:min-h-12">
           {leading}
           <span className="min-w-0 truncate font-semibold text-foreground">
             {title}
@@ -492,9 +492,9 @@ export function CoworkSidePanel({
           {aside}
         </div>
       ) : (
-        <div className="flex min-h-[41px] shrink-0 items-center gap-2 border-b border-dashed border-border px-3 py-1.5 text-[13px] pointer-coarse:h-12">
+        <div className="flex min-h-[41px] shrink-0 items-center gap-2 border-b border-dashed border-border px-3 py-1.5 text-[length:calc(var(--ui-font-base)*0.8125)] pointer-coarse:h-12">
           {leading}
-          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
+          <span className="min-w-0 flex-1 truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
             {title}
           </span>
           {summary}

@@ -70,7 +70,7 @@ export function HubTaskChips({ value, onChange }: Props) {
                 onChange(id)
                 setOpen(false)
               }}
-              className="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[13px] hover:bg-accent"
+              className="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] hover:bg-accent"
             >
               {labelOf(id)}
               {value === id && <Check className="size-3.5" />}

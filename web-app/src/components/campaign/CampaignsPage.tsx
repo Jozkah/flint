@@ -58,10 +58,10 @@ export function CampaignsPage() {
         <div className="flex w-full flex-col gap-5 px-1 py-4">
           <div className="flex flex-wrap items-end gap-3 motion-safe:animate-rise-in">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <h1 className="text-[22px] leading-tight font-semibold tracking-[-0.01em] text-foreground">
+              <h1 className="text-[length:calc(var(--ui-font-base)*1.375)] leading-tight font-semibold tracking-[-0.01em] text-foreground">
                 {t('settings:campaigns.nav')}
               </h1>
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
                 {t('settings:campaigns.list.subtitle')}
               </p>
             </div>

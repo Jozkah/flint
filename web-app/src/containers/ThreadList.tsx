@@ -284,7 +284,7 @@ const ThreadItem = memo(
           <Link
             to="/threads/$threadId"
             params={{ threadId: thread.id }}
-            className="group/lrow relative flex max-w-full items-center gap-3 overflow-hidden border-b border-dashed border-border px-0.5 py-3 pr-10 text-[13px] text-foreground outline-hidden transition-colors duration-150 hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+            className="group/lrow relative flex max-w-full items-center gap-3 overflow-hidden border-b border-dashed border-border px-0.5 py-3 pr-10 text-[length:calc(var(--ui-font-base)*0.8125)] text-foreground outline-hidden transition-colors duration-150 hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
           >
             <span className="grid size-8 shrink-0 place-items-center rounded-lg border-[0.8px] border-input bg-card transition-[transform,box-shadow] duration-200 ease-expo group-hover/lrow:-translate-y-px group-hover/lrow:shadow-lift">
               <Icon name="comment" size={16} />

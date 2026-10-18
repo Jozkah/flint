@@ -36,7 +36,7 @@ const LetterIcon = ({ url }: { url: string }) => (
   <span
     aria-hidden
     style={{ background: toneOf(url) }}
-    className="grid size-[18px] shrink-0 place-items-center rounded-[5px] text-[10px] font-semibold uppercase text-white"
+    className="grid size-[18px] shrink-0 place-items-center rounded-[5px] text-[length:calc(var(--ui-font-base)*0.625)] font-semibold uppercase text-white"
   >
     {siteInitial(url)}
   </span>

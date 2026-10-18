@@ -110,9 +110,9 @@ export function LiveChart({
       className={cn('flex flex-col gap-1.5', className)}
     >
       {!compact && (
-        <div className="flex items-baseline justify-between text-[11.5px] text-muted-foreground">
+        <div className="flex items-baseline justify-between text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
           <span>{label}</span>
-          <b className="text-[15px] font-semibold text-foreground tabular-nums motion-safe:animate-fade-in" key={hasData ? format(current) : 'none'}>
+          <b className="text-[length:calc(var(--ui-font-base)*0.9375)] font-semibold text-foreground tabular-nums motion-safe:animate-fade-in" key={hasData ? format(current) : 'none'}>
             {hasData ? format(current) : dash}
           </b>
         </div>
@@ -189,7 +189,7 @@ export function LiveChart({
         )}
       </div>
       {compact ? null : (
-        <div className="flex gap-3.5 text-[11.5px] text-muted-foreground">
+        <div className="flex gap-3.5 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
           <span>
             {peakLabel}{' '}
             <b className="font-medium text-fg-2 tabular-nums">

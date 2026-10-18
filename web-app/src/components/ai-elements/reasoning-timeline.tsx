@@ -59,7 +59,7 @@ export const StepRow = ({ text, children, marker, index = 0 }: StepRowProps) => 
       ) : (
         <div
           dir="auto"
-          className="select-text whitespace-pre-wrap wrap-break-word text-[13px] leading-[1.55] text-muted-foreground"
+          className="select-text whitespace-pre-wrap wrap-break-word text-[length:calc(var(--ui-font-base)*0.8125)] leading-[1.55] text-muted-foreground"
         >
           {text}
         </div>
@@ -92,7 +92,7 @@ export const ReasoningActiveStep = memo(
         key={index}
         dir="auto"
         className={cn(
-          'select-text whitespace-pre-wrap wrap-break-word text-[13px] leading-[1.55] text-muted-foreground',
+          'select-text whitespace-pre-wrap wrap-break-word text-[length:calc(var(--ui-font-base)*0.8125)] leading-[1.55] text-muted-foreground',
           'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 duration-300 ease-out'
         )}
       >

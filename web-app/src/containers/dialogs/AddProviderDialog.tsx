@@ -177,11 +177,11 @@ export function AddProviderDialog({
               onValueChange={(v) => setApiType(v as ProviderApiType)}
               className="flex flex-col gap-1"
             >
-              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-border px-2.5 py-2 text-[13px] font-medium text-foreground transition-colors hover:bg-hover-row has-[[data-state=checked]]:border-border-strong has-[[data-state=checked]]:bg-hover-btn sm:min-h-9">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-border px-2.5 py-2 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground transition-colors hover:bg-hover-row has-[[data-state=checked]]:border-border-strong has-[[data-state=checked]]:bg-hover-btn sm:min-h-9">
                 <RadioGroupItem value="openai" />
                 {t('provider:apiTypeOpenAI')}
               </label>
-              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-border px-2.5 py-2 text-[13px] font-medium text-foreground transition-colors hover:bg-hover-row has-[[data-state=checked]]:border-border-strong has-[[data-state=checked]]:bg-hover-btn sm:min-h-9">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-border px-2.5 py-2 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground transition-colors hover:bg-hover-row has-[[data-state=checked]]:border-border-strong has-[[data-state=checked]]:bg-hover-btn sm:min-h-9">
                 <RadioGroupItem value="anthropic" />
                 {t('provider:apiTypeAnthropic')}
               </label>

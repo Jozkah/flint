@@ -42,7 +42,7 @@ export function BudgetBar({
           style={{ width: `${budget.budget == null ? 0 : budget.percent}%` }}
         />
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">{text}</p>
+      <p className="mt-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">{text}</p>
     </div>
   )
 }

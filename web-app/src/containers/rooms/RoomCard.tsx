@@ -65,7 +65,7 @@ export function AvatarStack({ room, size = 24, max = 5 }: { room: Room; size?: n
         />
       ))}
       {people.length > max && (
-        <span className="-ml-2 grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1 text-[10.5px] font-medium text-muted-foreground ring-2 ring-card">
+        <span className="-ml-2 grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1 text-[length:calc(var(--ui-font-base)*0.65625)] font-medium text-muted-foreground ring-2 ring-card">
           +{people.length - max}
         </span>
       )}
@@ -123,7 +123,7 @@ export function RoomCard({
             to={route.roomDetail}
             params={{ roomId: summary.id }}
             aria-label={t('rooms:list.open', { title: name })}
-            className="min-w-0 truncate text-[15px] leading-tight font-semibold text-foreground outline-hidden after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
+            className="min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.9375)] leading-tight font-semibold text-foreground outline-hidden after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
           >
             {name}
           </Link>
@@ -175,7 +175,7 @@ export function RoomCard({
       </div>
 
       {summary.objective && (
-        <p className="line-clamp-2 min-h-[2lh] text-[13px] leading-normal text-muted-foreground">
+        <p className="line-clamp-2 min-h-[2lh] text-[length:calc(var(--ui-font-base)*0.8125)] leading-normal text-muted-foreground">
           {summary.objective}
         </p>
       )}
@@ -219,7 +219,7 @@ export function RoomCard({
       <div className="mt-auto flex min-h-[54px] min-w-0 flex-col gap-1 rounded-lg bg-muted px-2.5 py-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
         {last && speaker ? (
           <>
-            <span className="flex min-w-0 items-center gap-1.5 text-[11.5px]">
+            <span className="flex min-w-0 items-center gap-1.5 text-[length:calc(var(--ui-font-base)*0.71875)]">
               {speaker.model ? (
                 <RoomAvatar model={speaker.model} name={speaker.name} color={speaker.color} size={16} />
               ) : (
@@ -230,10 +230,10 @@ export function RoomCard({
               </b>
               <span className="ml-auto shrink-0 text-subtle-foreground">{timeAgo(last.createdAt, lang)}</span>
             </span>
-            <p className="line-clamp-2 text-[12.5px] leading-snug text-fg-2">{plain(last.text)}</p>
+            <p className="line-clamp-2 text-[length:calc(var(--ui-font-base)*0.78125)] leading-snug text-fg-2">{plain(last.text)}</p>
           </>
         ) : (
-          <p className="my-auto text-[12.5px] text-muted-foreground">
+          <p className="my-auto text-[length:calc(var(--ui-font-base)*0.78125)] text-muted-foreground">
             {detail ? t('rooms:transcript.empty') : t('rooms:list.noPreview')}
           </p>
         )}

@@ -103,7 +103,7 @@ function LinkRows({ rows, onNavigate }: { rows: LinkRow[]; onNavigate?: () => vo
                 <SidebarItemIcon item={getSidebarItem(row.id) ?? row} />
                 <span className="flex-1 truncate">{row.label}</span>
                 {row.count !== undefined && row.count > 0 && (
-                  <span className="mr-1.5 text-[11px] text-muted-foreground tabular-nums">
+                  <span className="mr-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
                     {row.count}
                   </span>
                 )}
@@ -232,7 +232,7 @@ function SidebarTabs({
             data-testid={`sidebar-tab-${id}`}
             onClick={() => onChange(id)}
             className={cn(
-              'flex cursor-pointer items-center justify-center gap-1.5 rounded-md text-[0.8125rem] font-medium transition-[background-color,color,box-shadow] duration-150 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40',
+              'flex cursor-pointer items-center justify-center gap-1.5 rounded-md text-[length:calc(var(--ui-font-base)*0.8125)] font-medium transition-[background-color,color,box-shadow] duration-150 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40',
               selected
                 ? 'bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]'
                 : 'text-muted-foreground hover:text-foreground'
@@ -242,7 +242,7 @@ function SidebarTabs({
             {id === 'cowork' && running > 0 && (
               <span
                 data-testid="sidebar-tab-running"
-                className="text-[11px] font-normal tabular-nums"
+                className="text-[length:calc(var(--ui-font-base)*0.6875)] font-normal tabular-nums"
               >
                 {running}
               </span>
@@ -536,8 +536,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           className="flex h-8 w-full shrink-0 cursor-text items-center gap-2 overflow-clip rounded-lg border-[0.8px] border-border bg-card py-2 pr-2 pl-2.5 text-left text-muted-foreground shadow-[0_4px_14px_rgba(0,0,0,.04)] transition-[border-color,box-shadow] duration-150 outline-hidden hover:border-border-strong focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
           <Icon name="search" />
-          <span className="flex-1 truncate text-[0.8125rem]">{t('common:shell.searchAnything')}</span>
-          <span className="flex items-center gap-1 text-[11px] font-medium" aria-hidden>
+          <span className="flex-1 truncate text-[length:calc(var(--ui-font-base)*0.8125)]">{t('common:shell.searchAnything')}</span>
+          <span className="flex items-center gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium" aria-hidden>
             <PlatformMetaKey />
             <span>K</span>
           </span>
@@ -559,7 +559,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           {tab === 'chat' ? (
             <>
               <NavGroup>
-                <NavGroupLabel className="px-2.5 text-[11px] font-medium tracking-wide text-subtle-foreground">
+                <NavGroupLabel className="px-2.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground">
                   {t('common:appRail.navWorkspace')}
                 </NavGroupLabel>
                 <NavList>
@@ -581,7 +581,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             </>
           ) : (
             <NavGroup>
-              <NavGroupLabel className="px-2.5 text-[11px] font-medium tracking-wide text-subtle-foreground">
+              <NavGroupLabel className="px-2.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground">
                   {t('common:appRail.navWorkspace')}
                 </NavGroupLabel>
               <NavList>
@@ -646,13 +646,13 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
             </span>
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-1">
-            <b className="descender-safe truncate text-[0.8125rem] leading-none font-medium text-foreground">
+            <b className="descender-safe truncate text-[length:calc(var(--ui-font-base)*0.8125)] leading-none font-medium text-foreground">
               {t('common:shell.local')}
             </b>
             <small
               data-testid="shell-status-detail"
               className={cn(
-                'descender-safe truncate text-[11px] leading-none',
+                'descender-safe truncate text-[length:calc(var(--ui-font-base)*0.6875)] leading-none',
                 offline ? 'text-warning' : 'text-muted-foreground'
               )}
             >

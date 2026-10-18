@@ -57,7 +57,7 @@ export function CoworkRunSettings({ children, exceptions }: Props) {
           key={e.id}
           data-testid={`cowork-run-exception-${e.id}`}
           className={cn(
-            'inline-flex h-5 shrink-0 items-center rounded-full border px-2 text-[11px] font-medium',
+            'inline-flex h-5 shrink-0 items-center rounded-full border px-2 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium',
             e.warn
               ? 'border-warning/35 bg-warning-tint text-warning'
               : 'border-border text-muted-foreground'

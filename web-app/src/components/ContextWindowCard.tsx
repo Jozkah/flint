@@ -159,7 +159,7 @@ export function ContextWindowCard({
             <button
               type="button"
               onClick={onCompact}
-              className="ml-auto shrink-0 whitespace-nowrap rounded-md bg-muted px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+              className="ml-auto shrink-0 whitespace-nowrap rounded-md bg-muted px-2 py-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-foreground transition-colors hover:bg-accent"
             >
               Compact session
             </button>
@@ -225,14 +225,14 @@ export function ContextWindowCard({
 
       {!hasWindow && (
         <p
-          className="px-4 pt-3 text-[11px] leading-snug text-muted-foreground"
+          className="px-4 pt-3 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-muted-foreground"
           data-testid="window-unknown"
         >
           This server does not report its window size.
         </p>
       )}
 
-      <p className="flex items-center gap-1 px-4 pb-4 pt-3 text-[11px] leading-snug text-muted-foreground">
+      <p className="flex items-center gap-1 px-4 pb-4 pt-3 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-muted-foreground">
         <span>Estimated</span>
         <InfoTip
           testId="context-estimated-note"

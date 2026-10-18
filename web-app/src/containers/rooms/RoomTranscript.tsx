@@ -117,7 +117,7 @@ function AuthorName({
 /** Model output is untrusted: always plain text, whitespace preserved. */
 function PlainText({ text, className }: { text: string; className?: string }) {
   return (
-    <p className={cn('whitespace-pre-wrap break-words text-[13px] text-fg-2', className)}>
+    <p className={cn('whitespace-pre-wrap break-words text-[length:calc(var(--ui-font-base)*0.8125)] text-fg-2', className)}>
       {text}
     </p>
   )
@@ -127,7 +127,7 @@ function Badge({ tone, children }: { tone: 'warn' | 'error' | 'info'; children: 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-[7px] py-px text-[11px]',
+        'inline-flex items-center rounded-full px-[7px] py-px text-[length:calc(var(--ui-font-base)*0.6875)]',
         tone === 'error' && 'bg-destructive-tint font-medium text-destructive',
         tone === 'warn' && 'bg-warning-tint font-medium text-warning',
         tone === 'info' && 'bg-accent text-muted-foreground'
@@ -179,7 +179,7 @@ function ToolDuration({ ms }: { ms?: number }) {
   return (
     <span
       data-testid="tool-duration"
-      className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground"
+      className="ml-auto font-mono text-[length:calc(var(--ui-font-base)*0.625)] tabular-nums text-muted-foreground"
     >
       {formatToolDuration(ms)}
     </span>
@@ -231,20 +231,20 @@ function ToolCallBody({
     <>
       {rows.length > 0 && (
         <div className="space-y-1">
-          <p className="text-[11px] font-medium text-muted-foreground">
+          <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground">
             {t('rooms:transcript.toolArgs')}
           </p>
           <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-card px-3 py-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
             {rows.map(([k, v], r) => (
               <div key={`${k}-${r}`} className="col-span-2 grid grid-cols-subgrid">
                 {k ? (
-                  <dt className="truncate font-mono text-[11px] text-muted-foreground">{k}</dt>
+                  <dt className="truncate font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">{k}</dt>
                 ) : (
                   <dt className="sr-only">value</dt>
                 )}
                 <dd
                   className={cn(
-                    'min-w-0 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-foreground',
+                    'min-w-0 overflow-auto whitespace-pre-wrap break-words font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-foreground',
                     compact ? 'max-h-16' : 'max-h-24',
                     k ? '' : 'col-span-2'
                   )}
@@ -258,12 +258,12 @@ function ToolCallBody({
       )}
       {c.output && (
         <div className="space-y-1">
-          <p className="text-[11px] font-medium text-muted-foreground">
+          <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground">
             {isError ? t('rooms:transcript.toolError') : t('rooms:transcript.toolOutput')}
           </p>
           <pre
             className={cn(
-              'overflow-auto whitespace-pre-wrap break-words rounded-md px-3 py-2 font-mono text-[11px]',
+              'overflow-auto whitespace-pre-wrap break-words rounded-md px-3 py-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)]',
               compact ? 'max-h-32' : 'max-h-40',
               isError
                 ? 'border border-destructive/30 bg-destructive-tint text-destructive'
@@ -353,7 +353,7 @@ function ToolTrace({
                     tabIndex={0}
                     data-testid="tool-chip"
                     className={cn(
-                      'inline-flex h-[22px] cursor-default items-center gap-[5px] rounded-md px-2 font-mono text-[11.5px] outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40',
+                      'inline-flex h-[22px] cursor-default items-center gap-[5px] rounded-md px-2 font-mono text-[length:calc(var(--ui-font-base)*0.71875)] outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40',
                       c.ok ? 'bg-accent text-secondary-foreground' : 'bg-destructive-tint text-destructive'
                     )}
                   >
@@ -376,7 +376,7 @@ function ToolTrace({
                     <span
                       className={cn(
                         c.ms === undefined && 'ml-auto',
-                        'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                        'rounded px-1.5 py-0.5 text-[length:calc(var(--ui-font-base)*0.625)] font-medium',
                         c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
                       )}
                     >
@@ -429,7 +429,7 @@ function ToolTrace({
                     c.ok ? 'border-border bg-accent/40' : 'border-destructive/30 bg-destructive-tint'
                   )}
                 >
-                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-card font-mono text-[10px] tabular-nums text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-card font-mono text-[length:calc(var(--ui-font-base)*0.625)] tabular-nums text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
                     {i + 1}
                   </span>
                   <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
@@ -438,7 +438,7 @@ function ToolTrace({
                   <span
                     className={cn(
                       c.ms === undefined && 'ml-auto',
-                      'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                      'rounded-full px-2 py-0.5 text-[length:calc(var(--ui-font-base)*0.625)] font-medium',
                       c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
                     )}
                   >
@@ -587,7 +587,7 @@ function MessageBody({
       <RoomMessageText
         text={stripConclusion(message.text).text}
         mentionColors={mentionColors}
-        className="text-[13.5px] leading-[1.6] text-fg-2"
+        className="text-[length:calc(var(--ui-font-base)*0.84375)] leading-[1.6] text-fg-2"
       />
       <EmptyReply message={message} t={t} />
       {message.author.kind === 'participant' &&
@@ -626,7 +626,7 @@ function MessageBody({
       {message.kind === 'moderator-note' &&
         message.directive &&
         message.directive.disagreements.length > 0 && (
-          <div className="text-[12.5px]">
+          <div className="text-[length:calc(var(--ui-font-base)*0.78125)]">
             <p className="font-semibold text-foreground">{t('rooms:transcript.disagreements')}</p>
             <ul className="mt-1 ml-[18px] list-disc text-muted-foreground">
               {message.directive.disagreements.map((d, i) => (
@@ -641,7 +641,7 @@ function MessageBody({
         <section
           aria-label={t('rooms:transcript.dissent')}
           data-testid="synthesis-dissent"
-          className="rounded-lg bg-warning-tint px-2.5 py-2 text-[12.5px]"
+          className="rounded-lg bg-warning-tint px-2.5 py-2 text-[length:calc(var(--ui-font-base)*0.78125)]"
         >
           <h4 className="mb-1 text-xs font-semibold text-foreground">
             {t('rooms:transcript.dissent')}
@@ -743,7 +743,7 @@ function TranscriptMessage({
                 : undefined
             }
             className={cn(
-              'rounded-full px-[7px] py-px text-[11px]',
+              'rounded-full px-[7px] py-px text-[length:calc(var(--ui-font-base)*0.6875)]',
               m.to.kind !== 'participant' && 'bg-accent text-muted-foreground'
             )}
           >
@@ -758,7 +758,7 @@ function TranscriptMessage({
           <Badge tone="error">{t('rooms:transcript.failed')}</Badge>
         )}
         {toUser && (
-          <span className="text-[11.5px] font-medium text-foreground">
+          <span className="text-[length:calc(var(--ui-font-base)*0.71875)] font-medium text-foreground">
             {t('rooms:transcript.addressedToYou')}
           </span>
         )}
@@ -822,7 +822,7 @@ function CompareAnswerMeta({ m, t }: { m: RoomMessage; t: T }) {
   return (
     <div
       data-testid="answer-meta"
-      className="-mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[24px] text-[11px] tabular-nums text-muted-foreground"
+      className="-mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[24px] text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-muted-foreground"
     >
       {items.map((item, i) => (
         // The separator trails its item, so a wrapped line never starts with one.
@@ -871,13 +871,13 @@ function LiveCard({
       <CappedAnswer name={authorLabel(live.author, room, t)} streamedLength={live.text.length} t={t}>
       {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
       {live.compacting ? (
-        <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
+        <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
       ) : live.text ? (
         <RoomMessageText
           text={stripConclusion(live.text).text}
           mentionColors={mentionColors}
           isStreaming
-          className="text-[13.5px] leading-[1.6] text-fg-2"
+          className="text-[length:calc(var(--ui-font-base)*0.84375)] leading-[1.6] text-fg-2"
         />
       ) : null}
       </CappedAnswer>
@@ -997,7 +997,7 @@ function CompareRow({
               <button
                 type="button"
                 onClick={() => onRun(c.empty!.id, latest ? 'latest' : 'missing')}
-                className="inline-flex h-7 cursor-pointer items-center rounded-full border-[0.8px] border-border bg-card px-2.5 text-[11.5px] text-foreground outline-hidden hover:border-border-strong focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                className="inline-flex h-7 cursor-pointer items-center rounded-full border-[0.8px] border-border bg-card px-2.5 text-[length:calc(var(--ui-font-base)*0.71875)] text-foreground outline-hidden hover:border-border-strong focus-visible:ring-[3px] focus-visible:ring-ring/40"
               >
                 {t(latest ? 'rooms:compare.run' : 'rooms:compare.answerEarlier')}
               </button>
@@ -1031,7 +1031,7 @@ function LinkScrollToggle({ t }: { t: T }) {
       onClick={() => set(!on)}
       className={cn(
         // Stacked columns (a narrow transcript) have nothing to scroll side by side.
-        '@max-[520px]:hidden inline-flex h-7 cursor-pointer items-center gap-1.5 self-end rounded-full border-[0.8px] px-2.5 text-[11.5px] outline-hidden transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40',
+        '@max-[520px]:hidden inline-flex h-7 cursor-pointer items-center gap-1.5 self-end rounded-full border-[0.8px] px-2.5 text-[length:calc(var(--ui-font-base)*0.71875)] outline-hidden transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40',
         on ? 'border-border-strong bg-accent text-foreground' : 'border-border text-muted-foreground hover:text-foreground'
       )}
     >
@@ -1206,7 +1206,7 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
         className="flex flex-col gap-3"
       >
         {messages.length === 0 && !live && (
-          <p className="mt-10 text-center text-[13px] text-muted-foreground">
+          <p className="mt-10 text-center text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
             {t('rooms:transcript.empty')}
           </p>
         )}

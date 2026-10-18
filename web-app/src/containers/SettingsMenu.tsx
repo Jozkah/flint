@@ -179,7 +179,7 @@ function GroupLabel({
   return (
     <p
       className={cn(
-        'mx-1 mt-2.5 mb-1 text-[11px] leading-[14px] font-medium tracking-[.025em] text-subtle-foreground uppercase first:mt-0.5',
+        'mx-1 mt-2.5 mb-1 text-[length:calc(var(--ui-font-base)*0.6875)] leading-[calc(var(--ui-font-base)*0.875)] font-medium tracking-[.025em] text-subtle-foreground uppercase first:mt-0.5',
         className
       )}
     >
@@ -191,7 +191,7 @@ function GroupLabel({
 // Selected rows are a raised neutral card: the accent means "selected" on
 // tabs and markers, never a whole row.
 const menuLinkClass =
-  'relative flex h-[30px] pointer-coarse:h-11 w-full cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-transparent px-2.5 text-[13px] text-secondary-foreground outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo hover:bg-nav-hover hover:text-foreground active:scale-[.985] focus-visible:ring-[3px] focus-visible:ring-ring/40 [&.active]:border-border [&.active]:bg-card [&.active]:font-medium [&.active]:text-foreground [&.active]:shadow-[0_4px_7px_rgba(0,0,0,.04)]'
+  'relative flex h-[30px] pointer-coarse:h-11 w-full cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-transparent px-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo hover:bg-nav-hover hover:text-foreground active:scale-[.985] focus-visible:ring-[3px] focus-visible:ring-ring/40 [&.active]:border-border [&.active]:bg-card [&.active]:font-medium [&.active]:text-foreground [&.active]:shadow-[0_4px_7px_rgba(0,0,0,.04)]'
 
 const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
   const { t } = useTranslation()
@@ -257,7 +257,7 @@ export function SettingsSectionPicker({ className }: { className?: string }) {
           data-testid="settings-section-picker"
           aria-label={t('common:shell.sections')}
           className={cn(
-            'inline-flex h-8 w-full items-center gap-2.5 sm:max-w-xs rounded-lg border-[0.8px] border-border bg-card px-2.5 text-[13px] font-medium text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)] transition-[background-color,transform] duration-150 ease-expo outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985] pointer-coarse:h-11',
+            'inline-flex h-8 w-full items-center gap-2.5 sm:max-w-xs rounded-lg border-[0.8px] border-border bg-card px-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)] transition-[background-color,transform] duration-150 ease-expo outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985] pointer-coarse:h-11',
             className
           )}
         >
@@ -274,7 +274,7 @@ export function SettingsSectionPicker({ className }: { className?: string }) {
       >
         {groups.map((group) => (
           <div key={group.key}>
-            <DropdownMenuLabel className="text-[11px] tracking-[.025em] text-subtle-foreground uppercase">
+            <DropdownMenuLabel className="text-[length:calc(var(--ui-font-base)*0.6875)] tracking-[.025em] text-subtle-foreground uppercase">
               {t(group.labelKey)}
             </DropdownMenuLabel>
             {group.entries.map((entry) => (
@@ -295,7 +295,7 @@ export function SettingsSectionPicker({ className }: { className?: string }) {
                     {t(entry.titleKey)}
                   </span>
                   {entry.experimental && (
-                    <span className="shrink-0 text-[10.5px] text-subtle-foreground">
+                    <span className="shrink-0 text-[length:calc(var(--ui-font-base)*0.65625)] text-subtle-foreground">
                       {t('common:experimental')}
                     </span>
                   )}

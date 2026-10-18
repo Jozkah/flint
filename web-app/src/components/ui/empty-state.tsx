@@ -71,7 +71,7 @@ function EmptyState({
           )}
         </span>
       )}
-      <p className="text-[0.8125rem] font-medium text-foreground motion-safe:animate-rise-in">
+      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground motion-safe:animate-rise-in">
         {title}
       </p>
       {description && (

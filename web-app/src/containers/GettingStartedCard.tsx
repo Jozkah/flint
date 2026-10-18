@@ -84,7 +84,7 @@ export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
         <FrameBody className="gap-1 px-3 py-2.5">
           {allDone ? (
             <div className="space-y-2 py-1.5">
-              <p role="status" className="text-[13px] text-fg-2">
+              <p role="status" className="text-[length:calc(var(--ui-font-base)*0.8125)] text-fg-2">
                 {t('onboarding:guideComplete')}
               </p>
               <Button size="sm" onClick={guide.complete}>
@@ -222,7 +222,7 @@ export function ResumeRecentLink({ className }: { className?: string }) {
     <div className={cn('text-center', className)}>
       <button
         type="button"
-        className="text-[12.5px] whitespace-normal text-secondary-foreground underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="text-[length:calc(var(--ui-font-base)*0.78125)] whitespace-normal text-secondary-foreground underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
         onClick={() =>
           navigate({
             to: route.threadsDetail,
@@ -263,7 +263,7 @@ function GuideStep({
   return (
     <li
       data-current={current || undefined}
-      className="flex items-center gap-3 px-0.5 py-2 text-[13px]"
+      className="flex items-center gap-3 px-0.5 py-2 text-[length:calc(var(--ui-font-base)*0.8125)]"
     >
       <span
         className="flex size-4 shrink-0 items-center justify-center"

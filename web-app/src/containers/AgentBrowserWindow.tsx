@@ -75,7 +75,7 @@ export function AgentBrowserWindow({
         <span
           data-testid="abw-live"
           data-live={live ? 'true' : 'false'}
-          className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground"
+          className="flex shrink-0 items-center gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
         >
           <span
             aria-hidden

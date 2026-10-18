@@ -65,7 +65,7 @@ function Tile({
 }) {
   return (
     <div className="min-w-0" data-testid={testId} {...data}>
-      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
         <span className="truncate">{label}</span>
         {note && <InfoTip note={note} testId={`${testId}-note`} />}
       </div>
@@ -164,7 +164,7 @@ function CostBlock({ usage, pricing, prefix }: { usage: TokenUsage; pricing: Pri
           .filter((r) => r.show)
           .map((r) => (
             <div key={r.id} data-testid={`${prefix}-cost-${r.id}`} data-value={r.value}>
-              <div className="text-[11px] text-muted-foreground">{r.label}</div>
+              <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">{r.label}</div>
               <div className="font-mono text-xs tabular-nums text-foreground">{formatUsd(r.value)}</div>
             </div>
           ))}
@@ -178,14 +178,14 @@ function CostBlock({ usage, pricing, prefix }: { usage: TokenUsage; pricing: Pri
         <span className="font-mono tabular-nums text-foreground">{formatUsd(cost.total)}</span>
       </div>
       {(fullRate || writeFullRate) && (
-        <div className="text-[11px] leading-snug text-muted-foreground" data-testid={`${prefix}-cost-fullrate`}>
+        <div className="text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-muted-foreground" data-testid={`${prefix}-cost-fullrate`}>
           {fullRate
             ? t('common:usage.cost.fullRateCached')
             : t('common:usage.cost.fullRateWriteShort')}
         </div>
       )}
       {cost.savings > 0 && (
-        <div className="text-[11px] text-muted-foreground" data-testid={`${prefix}-cost-saved`} data-value={cost.savings}>
+        <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground" data-testid={`${prefix}-cost-saved`} data-value={cost.savings}>
           {t('common:usage.cost.saved', { amount: formatUsd(cost.savings), percent: formatPercent(cost.savingsPercent) })}
           <span className="ml-1 inline-flex align-middle">
             <InfoTip
@@ -281,7 +281,7 @@ function CacheLine({
       )}
       {cached !== undefined && whole > 0 && (
         <div
-          className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground"
+          className="flex flex-wrap gap-x-4 gap-y-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
           data-testid={`${prefix}-cache-split`}
         >
           <SplitItem testId={`${prefix}-cache-split-cached`} swatch="bg-chart-1" label={t('common:usage.cache.cached')} tokens={cached} percent={share(cached)} />

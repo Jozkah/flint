@@ -151,7 +151,7 @@ function highlightFor(isDark: boolean): Extension {
 const baseTheme = EditorView.theme({
   '&': {
     height: '100%',
-    fontSize: '12px',
+    fontSize: 'calc(var(--ui-font-base) * 0.75)',
     backgroundColor: 'transparent',
     color: 'var(--color-foreground)',
   },

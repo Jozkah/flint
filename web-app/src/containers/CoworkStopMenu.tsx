@@ -194,7 +194,7 @@ export function CoworkStopMenu({
           onClick={() => void run('current')}
           className="flex w-full flex-col items-start gap-[3px] rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent disabled:opacity-50 motion-safe:animate-mi-in"
         >
-          <span className="text-[13px] leading-5 font-medium">
+          <span className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-medium">
             {t('common:stopMenu.current')}
           </span>
           <span className="text-xs leading-[1.4] text-muted-foreground">
@@ -215,7 +215,7 @@ export function CoworkStopMenu({
             onClick={() => setConfirming(true)}
             className="flex w-full flex-col items-start gap-[3px] rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent disabled:opacity-50 motion-safe:animate-mi-in"
           >
-            <span className="text-[13px] leading-5 font-medium text-destructive">
+            <span className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-medium text-destructive">
               {t('common:stopMenu.all')}
             </span>
             <span className="text-xs leading-[1.4] text-muted-foreground">
@@ -233,7 +233,7 @@ export function CoworkStopMenu({
             )}
             data-testid="stop-all-confirm"
           >
-            <span className="text-[13px] leading-5 font-semibold">
+            <span className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-semibold">
               {t('common:stopMenu.confirm')}
             </span>
             <div className="flex items-center gap-1.5">

@@ -231,7 +231,7 @@ export function LogsDashboard({
           className="max-h-[60vh] min-h-[240px] overflow-auto px-3 py-2 font-mono text-xs leading-[1.7] select-text [scrollbar-width:thin]"
         >
           {newest.length === 0 ? (
-            <p className="p-5 font-sans text-[13px] text-muted-foreground">
+            <p className="p-5 font-sans text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
               {logs.length === 0 ? t('logs:noLogs') : t('logs:noMatch')}
             </p>
           ) : (
@@ -240,7 +240,7 @@ export function LogsDashboard({
                 <LogLine key={shown.length - i} log={log} />
               ))}
               {shown.length > newest.length && (
-                <p className="py-2 font-sans text-[12px] text-muted-foreground">
+                <p className="py-2 font-sans text-[length:calc(var(--ui-font-base)*0.75)] text-muted-foreground">
                   {t('logs:olderHidden', {
                     count: shown.length - newest.length,
                   })}
@@ -275,7 +275,7 @@ export function LogsDashboard({
       <SystemPageHeader title={title} icon={<Icon name="sb-file" size={16} />} actions={actions} />
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 pb-8 [scrollbar-width:thin]">
         <div className="flex w-full min-w-0 flex-col gap-4">
-          <p className="text-[13px] text-muted-foreground">{description}</p>
+          <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">{description}</p>
           {viewer}
         </div>
       </div>

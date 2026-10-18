@@ -199,7 +199,7 @@ export function ChangeExcerptDiff({
           }
           if (r.kind === 'hunk') {
             return (
-              <div key={i} className="select-none bg-muted/50 px-3 py-0.5 text-[11px] text-muted-foreground">
+              <div key={i} className="select-none bg-muted/50 px-3 py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                 {r.text}
               </div>
             )
@@ -211,7 +211,7 @@ export function ChangeExcerptDiff({
                 aria-hidden
                 style={gutter}
                 className={cn(
-                  'shrink-0 select-none self-stretch pr-1.5 text-right text-[11px] tabular-nums',
+                  'shrink-0 select-none self-stretch pr-1.5 text-right text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums',
                   GUTTER_TONE[r.kind]
                 )}
               >

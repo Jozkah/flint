@@ -76,7 +76,7 @@ function FileFlags({
           {flag.details.length > 0 ? (
             <ul className="ml-4 list-disc text-fg-2">
               {flag.details.map((d) => (
-                <li key={d} className="font-mono text-[11px]">
+                <li key={d} className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)]">
                   {d}
                 </li>
               ))}
@@ -437,7 +437,7 @@ export function CoworkProposalReview({
 
   return (
     <section
-      className="m-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] px-3 py-2.5 text-[12.5px] motion-safe:animate-rise-in"
+      className="m-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] px-3 py-2.5 text-[length:calc(var(--ui-font-base)*0.78125)] motion-safe:animate-rise-in"
       data-testid="proposal-review"
     >
       {/* Before a proposal exists this is one row: the icon carries the
@@ -446,7 +446,7 @@ export function CoworkProposalReview({
       {proposal ? (
         <>
           <GitBranch size={14} className="mb-2 shrink-0 text-muted-foreground" />
-          <p className="mb-2 min-w-0 text-[12.5px] text-foreground">
+          <p className="mb-2 min-w-0 text-[length:calc(var(--ui-font-base)*0.78125)] text-foreground">
             {`${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`}
           </p>
         </>
@@ -520,7 +520,7 @@ export function CoworkProposalReview({
         <>
           {proposal.scope.subject ? (
             <p
-              className="mt-1 text-[11px] text-muted-foreground"
+              className="mt-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
               data-testid="proposal-subject"
             >
               {proposal.scope.subject}
@@ -558,7 +558,7 @@ export function CoworkProposalReview({
                 <ul className="mt-1 flex flex-col">{source.map(row)}</ul>
                 {locks.length > 0 ? (
                   <div className="mt-2" data-testid="proposal-lockfiles">
-                    <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                    <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                       Lock files ({locks.length}), kept apart from the source
                       changes above
                     </p>

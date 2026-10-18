@@ -480,7 +480,7 @@ export default function PluginsTab({
                 {t('plugins:version', { version: p.version })}
               </Chip>
             </button>
-            <p className="m-0 line-clamp-2 text-[12.5px] leading-normal text-muted-foreground">
+            <p className="m-0 line-clamp-2 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
               {p.description || t('plugins:details.noDescription')}
             </p>
             {counts.length > 0 && (
@@ -493,7 +493,7 @@ export default function PluginsTab({
             )}
             {matrix && (
               <div className="flex flex-wrap items-center gap-1">
-                <span className="mr-1 text-[11px] font-medium text-subtle-foreground uppercase">
+                <span className="mr-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase">
                   {t('common:extensionsManager.enablement.title', undefined) ?? 'Enabled on'}
                 </span>
                 {surfaceColumns.slice(0, 4).map((c) => {
@@ -502,7 +502,7 @@ export default function PluginsTab({
                     <span
                       key={c.key}
                       className={cn(
-                        'rounded-full border-[0.8px] px-2 py-0.5 text-[11px] transition-colors',
+                        'rounded-full border-[0.8px] px-2 py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] transition-colors',
                         on
                           ? 'border-transparent bg-[color-mix(in_oklab,var(--success)_14%,transparent)] text-success'
                           : 'border-dashed border-border-strong text-subtle-foreground'
@@ -513,7 +513,7 @@ export default function PluginsTab({
                   )
                 })}
                 {surfaceColumns.length > 4 && (
-                  <span className="text-[11px] text-subtle-foreground">
+                  <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground">
                     +{surfaceColumns.length - 4}
                   </span>
                 )}
@@ -594,7 +594,7 @@ export default function PluginsTab({
           </div>
           <div className="relative flex flex-1 flex-col gap-2.5 rounded-b-[9px] bg-card p-3.5 pt-6">
             <b className="truncate text-sm font-semibold text-foreground">{entry.name}</b>
-            <p className="m-0 line-clamp-2 text-[12.5px] leading-normal text-muted-foreground">
+            <p className="m-0 line-clamp-2 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
               {entry.description}
             </p>
             <div className="mt-auto flex items-center justify-between gap-2 text-xs text-subtle-foreground">
@@ -745,7 +745,7 @@ export default function PluginsTab({
               <dd className="break-all">{details.installedPath}</dd>
             </dl>
             <div>
-              <div className="mb-1.5 text-[11px] font-medium uppercase text-subtle-foreground">
+              <div className="mb-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium uppercase text-subtle-foreground">
                 {t('common:extensionsManager.enablement.title', undefined) ?? 'Enabled on'}
               </div>
               <EnablementGrid kind="plugin" id={plugin.id} />

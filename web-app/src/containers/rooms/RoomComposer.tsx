@@ -373,7 +373,7 @@ export function RoomComposer({ room }: { room: Room }) {
             }
           }}
           data-testid="room-composer-text"
-          className="block min-h-[calc(2lh+0.75rem)] w-full resize-none border-0 bg-transparent px-3 pt-1.5 pb-1.5 text-[13.5px] leading-normal text-foreground outline-hidden placeholder:truncate placeholder:text-muted-foreground"
+          className="block min-h-[calc(2lh+0.75rem)] w-full resize-none border-0 bg-transparent px-3 pt-1.5 pb-1.5 text-[length:calc(var(--ui-font-base)*0.84375)] leading-normal text-foreground outline-hidden placeholder:truncate placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
           <button
@@ -389,7 +389,7 @@ export function RoomComposer({ room }: { room: Room }) {
             {/* One footer row: the shortcut hint only shows where it fits. */}
             <span
               id={`${id}-hint`}
-              className="hidden whitespace-nowrap text-[11.5px] text-subtle-foreground sm:inline"
+              className="hidden whitespace-nowrap text-[length:calc(var(--ui-font-base)*0.71875)] text-subtle-foreground sm:inline"
               hidden={Boolean(limitStop) || undefined}
             >
               {t('rooms:composer.hint')}

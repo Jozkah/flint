@@ -27,7 +27,7 @@ export function CaBundleStatus({ status }: { status: CaBundleState | null }) {
         <p className="text-xs text-success">
           {t('settings:httpsProxy.caBundleInUse', { count: status.certificates })}
         </p>
-        <ul className="text-[11px] font-mono text-muted-foreground break-all">
+        <ul className="text-[length:calc(var(--ui-font-base)*0.6875)] font-mono text-muted-foreground break-all">
           {status.sha256.map((fingerprint) => (
             <li key={fingerprint}>SHA-256 {fingerprint}</li>
           ))}

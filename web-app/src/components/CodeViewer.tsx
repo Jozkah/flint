@@ -313,7 +313,7 @@ export function CodeViewer({
         {/* Truthful about capability: this surface never writes. */}
         {(readOnlyHint !== undefined || !isWritableOrigin(origin)) && (
           <span
-            className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-[11px] font-medium text-secondary-foreground"
+            className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-secondary-foreground"
             title={readOnlyHint ?? t('common:codePanel.readOnlyHint')}
             data-testid="code-readonly-badge"
           >
@@ -322,12 +322,12 @@ export function CodeViewer({
           </span>
         )}
         <span
-          className="min-w-0 flex-1 truncate px-1 font-mono text-[11px] text-muted-foreground"
+          className="min-w-0 flex-1 truncate px-1 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
           title={relPath}
         >
           {relPath}
         </span>
-        <span className="shrink-0 pr-1 text-[11px] text-subtle-foreground">
+        <span className="shrink-0 pr-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground">
           {language.label}
         </span>
         {iconButton(

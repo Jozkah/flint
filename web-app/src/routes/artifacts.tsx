@@ -704,9 +704,9 @@ function ThumbBody({
           <p
             key={i}
             className={cn(
-              'shrink-0 truncate text-[10.5px] leading-[15px] text-fg-2',
-              mono && 'font-mono text-[10px]',
-              l.heading && 'text-[11.5px] font-semibold text-foreground'
+              'shrink-0 truncate text-[length:calc(var(--ui-font-base)*0.65625)] leading-[calc(var(--ui-font-base)*0.9375)] text-fg-2',
+              mono && 'font-mono text-[length:calc(var(--ui-font-base)*0.625)]',
+              l.heading && 'text-[length:calc(var(--ui-font-base)*0.71875)] font-semibold text-foreground'
             )}
           >
             {l.text}
@@ -1040,7 +1040,7 @@ function ArtifactInspector({
           >
             <Info className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
             <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-foreground">
+              <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
                 {t('common:artifactFileMissingTitle')}
               </p>
               <p className="mt-0.5 text-xs leading-relaxed text-fg-2">
@@ -1050,7 +1050,7 @@ function ArtifactInspector({
           </div>
         )}
 
-        <dl className="grid grid-cols-[140px_minmax(0,1fr)] items-baseline gap-x-3.5 gap-y-1.5 text-[12.5px] lg:grid-cols-[96px_minmax(0,1fr)]">
+        <dl className="grid grid-cols-[140px_minmax(0,1fr)] items-baseline gap-x-3.5 gap-y-1.5 text-[length:calc(var(--ui-font-base)*0.78125)] lg:grid-cols-[96px_minmax(0,1fr)]">
           <dt className="text-muted-foreground">{t('common:artifactType')}</dt>
           <dd className="min-w-0 truncate text-foreground">{typeText}</dd>
           <dt className="text-muted-foreground">
@@ -1088,7 +1088,7 @@ function ArtifactInspector({
         >
           <div className="flex min-w-0 flex-col gap-0.5">
             <b
-              className="truncate text-[13px] font-medium text-foreground"
+              className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground"
               title={row.sessionTitle}
             >
               {row.sessionTitle}

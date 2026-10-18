@@ -127,7 +127,7 @@ function DiffRow({
     <tr className={ROW_TONE[line.kind]}>
       <td
         className={cn(
-          'select-none px-1.5 text-right align-top text-[11px] tabular-nums',
+          'select-none px-1.5 text-right align-top text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums',
           GUTTER_TONE[line.kind]
         )}
         style={gutter}
@@ -136,7 +136,7 @@ function DiffRow({
       </td>
       <td
         className={cn(
-          'select-none px-1.5 text-right align-top text-[11px] tabular-nums',
+          'select-none px-1.5 text-right align-top text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums',
           GUTTER_TONE[line.kind]
         )}
         style={gutter}

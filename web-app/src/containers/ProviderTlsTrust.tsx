@@ -22,7 +22,7 @@ export function ProviderTlsTrust({ provider }: { provider: ModelProvider }) {
     >
       <label className="flex items-start justify-between gap-3">
         <span className="space-y-1">
-          <span className="block text-[13px] font-semibold text-foreground">
+          <span className="block text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
             {t('providers:tlsTrust.title')}
           </span>
           <span className="block text-sm leading-normal text-muted-foreground">

@@ -195,10 +195,10 @@ function PrRow({ pr }: { pr: PrStatus }) {
           e.preventDefault()
           void getServiceHub().opener().openUrl(pr.url)
         }}
-        className="flex flex-col gap-0.5 px-3 py-1.5 text-[11px] leading-4 outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:ring-inset"
+        className="flex flex-col gap-0.5 px-3 py-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] leading-4 outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:ring-inset"
       >
       <div className="flex min-w-0 items-center gap-1.5">
-        <Chip tone={PR_TONE[pr.state]} dot className="h-[18px] px-1.5 text-[10px]">
+        <Chip tone={PR_TONE[pr.state]} dot className="h-[18px] px-1.5 text-[length:calc(var(--ui-font-base)*0.625)]">
           {t(`common:rowPreview.prState.${pr.state}`)}
         </Chip>
         <span className="min-w-0 truncate text-muted-foreground">
@@ -264,10 +264,10 @@ export function PreviewPullRequests({
       aria-label={t('common:rowPreview.pullRequests')}
       className="border-t border-border/70 pb-1"
     >
-      <header className="flex items-center gap-2 px-3 pt-2 pb-0.5 text-[10px] font-medium tracking-wide text-subtle-foreground uppercase">
+      <header className="flex items-center gap-2 px-3 pt-2 pb-0.5 text-[length:calc(var(--ui-font-base)*0.625)] font-medium tracking-wide text-subtle-foreground uppercase">
         {t('common:rowPreview.pullRequests')}
         {prs.length > 0 && (
-          <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums normal-case">
+          <span className="rounded-full bg-muted px-1.5 text-[length:calc(var(--ui-font-base)*0.625)] tabular-nums normal-case">
             {prs.length}
           </span>
         )}
@@ -279,7 +279,7 @@ export function PreviewPullRequests({
             <Skeleton className="h-3 w-5/6" />
           </div>
         ) : (
-          <p data-testid="preview-prs-error" className="px-3 py-1.5 text-[11px] text-muted-foreground" title={error}>
+          <p data-testid="preview-prs-error" className="px-3 py-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground" title={error}>
             {t('common:pr.statusUnavailable')}
           </p>
         )
@@ -294,7 +294,7 @@ export function PreviewPullRequests({
         <button
           type="button"
           data-testid="preview-prs-more"
-          className="mx-3 mb-0.5 cursor-pointer text-[11px] text-info hover:underline"
+          className="mx-3 mb-0.5 cursor-pointer text-[length:calc(var(--ui-font-base)*0.6875)] text-info hover:underline"
           onClick={() => setAll(true)}
         >
           {t('common:rowPreview.morePrs', { count: hidden })}
@@ -378,7 +378,7 @@ export function PreviewCard({
         <div className="flex items-start gap-2">
           <p
             data-testid="row-preview-title"
-            className="line-clamp-2 min-w-0 flex-1 break-words text-[0.8125rem] leading-snug font-medium text-foreground"
+            className="line-clamp-2 min-w-0 flex-1 break-words text-[length:calc(var(--ui-font-base)*0.8125)] leading-snug font-medium text-foreground"
           >
             {shownTitle}
           </p>
@@ -386,7 +386,7 @@ export function PreviewCard({
             <Chip
               data-testid="row-preview-fork"
               tone="neutral"
-              className="mt-px h-[18px] shrink-0 gap-1 px-1.5 text-[10px]"
+              className="mt-px h-[18px] shrink-0 gap-1 px-1.5 text-[length:calc(var(--ui-font-base)*0.625)]"
             >
               <GitFork className="size-2.5" aria-hidden />
               {t('chat:fork.chat')}
@@ -408,7 +408,7 @@ export function PreviewCard({
         {(place.length > 0 || meta?.branch) && (
           <p
             data-testid="row-preview-place"
-            className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-muted-foreground"
+            className="flex min-w-0 items-center gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] leading-4 text-muted-foreground"
           >
             {place.map((seg, i) => (
               <span key={`${seg}-${i}`} className="inline-flex min-w-0 items-center gap-1">
@@ -428,7 +428,7 @@ export function PreviewCard({
         {facts.length > 0 && (
           <p
             data-testid="row-preview-meta"
-            className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-subtle-foreground"
+            className="flex min-w-0 items-center gap-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] leading-4 text-subtle-foreground"
           >
             {facts.map((f, i) => (
               <span key={i} className="inline-flex min-w-0 items-center gap-1.5">
@@ -464,7 +464,7 @@ export function PreviewCard({
       {hint && (
         <footer
           data-testid="row-preview-hint"
-          className="flex items-center gap-1.5 border-t border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-subtle-foreground"
+          className="flex items-center gap-1.5 border-t border-border/70 bg-muted/40 px-3 py-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground"
         >
           <Kbd>↵</Kbd>
           {t('common:rowPreview.openHint')}

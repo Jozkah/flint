@@ -140,7 +140,7 @@ export function CompareRunPanel({
         icon={<Rows3 />}
         title={t('rooms:compare.title')}
         actions={
-          <span className="text-[11.5px] text-muted-foreground" data-testid="compare-run-mode">
+          <span className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground" data-testid="compare-run-mode">
             {t(
               compareRunOf(room) === 'one-by-one'
                 ? 'rooms:compare.modeOneByOne'
@@ -183,19 +183,19 @@ export function CompareRunPanel({
                       {p.name}
                     </TooltipContent>
                   </Tooltip>
-                  <span className={cn('truncate text-[11px]', STATE_TONE[state])}>
+                  <span className={cn('truncate text-[length:calc(var(--ui-font-base)*0.6875)]', STATE_TONE[state])}>
                     {t(`rooms:compare.state.${state}`)}
                   </span>
                   {p.availability.state === 'unavailable' && (
                     <span
                       data-testid="compare-unavailable-reason"
-                      className="text-[11px] break-words text-muted-foreground"
+                      className="text-[length:calc(var(--ui-font-base)*0.6875)] break-words text-muted-foreground"
                     >
                       {p.availability.message}
                     </span>
                   )}
                 </div>
-                <label className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                <label className="flex shrink-0 items-center gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                   <input
                     type="checkbox"
                     className="size-3.5 accent-[var(--primary)]"
@@ -209,7 +209,7 @@ export function CompareRunPanel({
                 <Button
                   size="sm"
                   variant="surface"
-                  className="h-7 shrink-0 px-2 text-[11.5px]"
+                  className="h-7 shrink-0 px-2 text-[length:calc(var(--ui-font-base)*0.71875)]"
                   disabled={busy || roomRunning || !hasQuestion}
                   aria-label={t(
                     unavailable

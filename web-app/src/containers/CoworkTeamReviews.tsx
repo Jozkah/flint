@@ -111,7 +111,7 @@ function ChildRow({
         </WorkStatus>
         {proposal ? (
           <span
-            className="inline-flex h-[18px] items-center rounded-[5px] border-[0.8px] border-border bg-card px-1.5 text-[10.5px] text-secondary-foreground"
+            className="inline-flex h-[18px] items-center rounded-[5px] border-[0.8px] border-border bg-card px-1.5 text-[length:calc(var(--ui-font-base)*0.65625)] text-secondary-foreground"
             data-testid="team-child-proposal"
           >
             {proposal.state === 'pending'
@@ -126,11 +126,11 @@ function ChildRow({
         <span className="ml-auto font-mono font-medium text-diff-add">+{adds}</span>
         <span className="font-mono font-medium text-diff-del">-{dels}</span>
       </div>
-      <p className="mt-1 line-clamp-2 text-[11px] text-fg-2">
+      <p className="mt-1 line-clamp-2 text-[length:calc(var(--ui-font-base)*0.6875)] text-fg-2">
         {view.description}
       </p>
       <p
-        className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-[10px] text-muted-foreground"
+        className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground"
         data-testid="team-child-identity"
       >
         <GitBranch size={10} />
@@ -144,7 +144,7 @@ function ChildRow({
       </p>
       {view.overrides.length > 0 ? (
         <p
-          className="mt-1 text-[11px] text-warning"
+          className="mt-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-warning"
           data-testid="team-child-override"
         >
           Ran side by side with{' '}
@@ -161,7 +161,7 @@ function ChildRow({
           {view.files.map((f) => (
             <li
               key={f.path}
-              className="flex items-center gap-2 font-mono text-[11px]"
+              className="flex items-center gap-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)]"
               data-testid="team-child-file"
               data-path={f.path}
             >
@@ -185,7 +185,7 @@ function ChildRow({
         </p>
       ) : null}
       {warn ? (
-        <label className="mt-1 flex items-center gap-2 text-[11px]">
+        <label className="mt-1 flex items-center gap-2 text-[length:calc(var(--ui-font-base)*0.6875)]">
           <input
             type="checkbox"
             checked={acknowledged}
@@ -267,7 +267,7 @@ export function CoworkTeamReviews({
     >
       <div className="flex items-center gap-2">
         <Users size={14} className="text-muted-foreground" />
-        <p className="flex-1 text-[12.5px] font-medium text-foreground">
+        <p className="flex-1 text-[length:calc(var(--ui-font-base)*0.78125)] font-medium text-foreground">
           Team tasks that worked in checkouts of their own. Nothing reaches
           your folder until you apply it.
         </p>

@@ -191,7 +191,7 @@ function Throughput({
       <FrameHeader icon={<Icon name="analytics" />} title={t('overview:throughput')} actions={rangePicker} />
       <FrameBody className="gap-6 px-3.5 pt-4 pb-3.5">
         <div className="flex items-end gap-3 leading-none whitespace-nowrap">
-          <p className="text-[32px] font-medium tabular-nums">
+          <p className="text-[length:calc(var(--ui-font-base)*2)] font-medium tabular-nums">
             <CountUp value={summary.tokens.toLocaleString('en-US')} delayMs={400} />
           </p>
           <p className="flex items-center gap-1.5 text-xs">
@@ -339,10 +339,10 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
             onChange={(e) => setQ(e.target.value)}
             placeholder={t('overview:searchActivity')}
             aria-label={t('overview:searchActivity')}
-            className="min-w-0 flex-1 bg-transparent text-[0.8125rem] outline-hidden placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-[length:calc(var(--ui-font-base)*0.8125)] outline-hidden placeholder:text-muted-foreground"
           />
         </label>
-        <p className="m-0 text-[0.8125rem] text-muted-foreground">
+        <p className="m-0 text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
           <b className="font-medium text-foreground tabular-nums">{list.length}</b>{' '}
           {t(`overview:newActivities.${range}`, { count: list.length })}
         </p>
@@ -490,7 +490,7 @@ function AgentRuns() {
                 onChange={(e) => setQ(e.target.value)}
                 placeholder={t('overview:searchRuns')}
                 aria-label={t('overview:searchRuns')}
-                className="min-w-0 flex-1 bg-transparent text-[0.8125rem] outline-hidden placeholder:text-muted-foreground"
+                className="min-w-0 flex-1 bg-transparent text-[length:calc(var(--ui-font-base)*0.8125)] outline-hidden placeholder:text-muted-foreground"
               />
             </label>
             <DropdownMenu>
@@ -499,7 +499,7 @@ function AgentRuns() {
                   <Icon name="filter" />
                   {t('overview:filter')}
                   {filter !== 'all' && (
-                    <span className="-mr-1 ml-0.5 grid size-4 place-items-center rounded-full bg-primary text-[10px] text-on-grad">1</span>
+                    <span className="-mr-1 ml-0.5 grid size-4 place-items-center rounded-full bg-primary text-[length:calc(var(--ui-font-base)*0.625)] text-on-grad">1</span>
                   )}
                 </Button>
               </DropdownMenuTrigger>
@@ -524,7 +524,7 @@ function AgentRuns() {
             action={<Button variant="outline" onClick={() => navigate({ to: route.cowork })}>{t('overview:openCowork')}</Button>}
           />
         ) : (
-          <table className="w-full min-w-[560px] border-separate border-spacing-0 text-[0.8125rem]" aria-label={t('overview:runs')}>
+          <table className="w-full min-w-[560px] border-separate border-spacing-0 text-[length:calc(var(--ui-font-base)*0.8125)]" aria-label={t('overview:runs')}>
             <thead>
               <tr className="text-left text-secondary-foreground">
                 {columns.map((c, i) => (
@@ -680,7 +680,7 @@ function Overview() {
               />
             </h1>
             <p
-              className="m-0 text-[0.8125rem] text-secondary-foreground motion-safe:animate-[rise-in_.7s_var(--expo)_var(--sub-delay)_both]"
+              className="m-0 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground motion-safe:animate-[rise-in_.7s_var(--expo)_var(--sub-delay)_both]"
               style={{
                 ['--sub-delay' as string]: `${blurWordsDelay(greeting) + 450}ms`,
               }}
@@ -710,7 +710,7 @@ function Overview() {
             data-testid="overview-usage-toggle"
             aria-expanded={usageOpen}
             onClick={() => setUsageOpen((v) => !v)}
-            className="flex w-fit cursor-pointer items-center gap-1.5 rounded-md text-[0.8125rem] font-medium text-secondary-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+            className="flex w-fit cursor-pointer items-center gap-1.5 rounded-md text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-secondary-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
           >
             <ChevronRight
               aria-hidden
@@ -721,7 +721,7 @@ function Overview() {
           {usageOpen && (
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="m-0 text-[0.8125rem] text-secondary-foreground">
+                <p className="m-0 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground">
                   {range === 7 ? t('overview:subWeek') : t('overview:subMonth')}
                 </p>
                 <div className="flex items-center gap-2">

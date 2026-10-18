@@ -93,7 +93,7 @@ function NotifRow({
     <DropdownMenuItem onSelect={onSelect} className="items-start gap-2.5 p-2">
       <Icon name={icon} />
       <span className="flex min-w-0 flex-col gap-0.5">
-        <b className="text-[0.8125rem] font-medium text-foreground">{title}</b>
+        <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">{title}</b>
         {detail && <small className="truncate text-xs text-muted-foreground">{detail}</small>}
       </span>
     </DropdownMenuItem>

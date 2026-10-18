@@ -122,7 +122,7 @@ export function JevModelRoutingCard() {
                               useModelRouting.getState().setIncluded(p.provider, m.id, on)
                             }
                           />
-                          <span className="min-w-0 flex-1 basis-40 truncate text-[13px] text-foreground" title={name}>
+                          <span className="min-w-0 flex-1 basis-40 truncate text-[length:calc(var(--ui-font-base)*0.8125)] text-foreground" title={name}>
                             {name}
                           </span>
                           {entry && (

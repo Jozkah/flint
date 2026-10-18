@@ -50,7 +50,7 @@ export function LlamacppEngineInfo() {
   if (!engine) return null
 
   return (
-    <div className="rounded-xl bg-muted bg-[repeating-linear-gradient(-62deg,transparent_0_10px,rgba(127,127,127,.06)_10px_10.8px)] px-3.5 py-3 text-[13px] shadow-[inset_0_0_0_0.8px_var(--border)]">
+    <div className="rounded-xl bg-muted bg-[repeating-linear-gradient(-62deg,transparent_0_10px,rgba(127,127,127,.06)_10px_10.8px)] px-3.5 py-3 text-[length:calc(var(--ui-font-base)*0.8125)] shadow-[inset_0_0_0_0.8px_var(--border)]">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-2">
           <IconCpu size={18} className="shrink-0 text-muted-foreground" />
@@ -69,12 +69,12 @@ export function LlamacppEngineInfo() {
           <IconExternalLink size={14} />
         </a>
       </div>
-      <p className="mt-1 mb-2 text-[12.5px] leading-normal text-muted-foreground">
+      <p className="mt-1 mb-2 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
         {t('providers:engineBundled')}
       </p>
       {/* The way out when the bundled version regresses a model: the user's
           own llama-server, added as a custom provider. */}
-      <p className="mb-2 text-[12.5px] leading-normal text-muted-foreground">
+      <p className="mb-2 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
         {t('providers:engineOtherVersion')}
       </p>
       <dl className="flex flex-wrap gap-x-6 gap-y-1">

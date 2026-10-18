@@ -5627,7 +5627,7 @@ export function CoworkPage() {
     <span
       data-testid="cowork-server-model"
       className={cn(
-        'min-w-0 shrink truncate rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground',
+        'min-w-0 shrink truncate rounded-full border px-2 py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground',
         // On a phone it shares the row with the view switch, which keeps its room.
         phone ? 'max-w-24' : 'max-w-56'
       )}
@@ -5913,7 +5913,7 @@ export function CoworkPage() {
             onClick={() => showView(option)}
             className={cn(
               'flex min-w-0 items-center justify-center rounded-md font-medium outline-none transition-[background-color,color,box-shadow] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40',
-              paneChrome ? 'px-2 text-xs' : 'flex-1 px-2 text-[12.5px]',
+              paneChrome ? 'px-2 text-xs' : 'flex-1 px-2 text-[length:calc(var(--ui-font-base)*0.78125)]',
               compact && 'w-7 px-0',
               view === option
                 ? 'bg-card text-foreground shadow-lift'

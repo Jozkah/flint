@@ -125,7 +125,7 @@ export function CoworkRailToolbar({
           className={cn(
             'shrink-0 gap-1.5',
             tabs
-              ? 'h-8 min-w-0 justify-center rounded-lg px-2.5 text-[12.5px] font-normal pointer-coarse:min-h-11'
+              ? 'h-8 min-w-0 justify-center rounded-lg px-2.5 text-[length:calc(var(--ui-font-base)*0.78125)] font-normal pointer-coarse:min-h-11'
               : 'pointer-coarse:h-11 pointer-coarse:px-3',
             tabs && active === mode
               ? 'bg-card font-medium text-foreground shadow-lift hover:bg-card'
@@ -188,7 +188,7 @@ export function CoworkRailToolbar({
           : t('common:rail.changes'),
         <Diff className="size-3.5 shrink-0" aria-hidden />,
         changeCount > 0 ? (
-          <span className="flex items-center gap-1 font-mono text-[10.5px] tabular-nums">
+          <span className="flex items-center gap-1 font-mono text-[length:calc(var(--ui-font-base)*0.65625)] tabular-nums">
             <span className="text-diff-add">+{additions}</span>
             <span className="text-diff-del">−{deletions}</span>
           </span>
@@ -207,7 +207,7 @@ export function CoworkRailToolbar({
           <Activity className="size-3.5 shrink-0" aria-hidden />
         ),
         hasActivity ? (
-          <span className="grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10.5px] tabular-nums text-muted-foreground">
+          <span className="grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[length:calc(var(--ui-font-base)*0.65625)] tabular-nums text-muted-foreground">
             {inFlight > 0 ? inFlight : activity.finished}
           </span>
         ) : undefined,
@@ -245,7 +245,7 @@ export function CoworkRailToolbar({
             background.running > 0 ? (
               <span
                 data-testid="background-tab-count"
-                className="grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10.5px] tabular-nums text-muted-foreground"
+                className="grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[length:calc(var(--ui-font-base)*0.65625)] tabular-nums text-muted-foreground"
               >
                 {background.running}
               </span>

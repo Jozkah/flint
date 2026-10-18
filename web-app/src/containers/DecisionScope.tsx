@@ -26,7 +26,7 @@ export function DecisionScope({
   if (!resource) {
     return reason ? (
       <span
-        className="line-clamp-2 text-[12.5px] text-foreground"
+        className="line-clamp-2 text-[length:calc(var(--ui-font-base)*0.78125)] text-foreground"
         title={reason}
       >
         {reason}

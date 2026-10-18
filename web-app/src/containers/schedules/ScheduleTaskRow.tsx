@@ -31,7 +31,7 @@ export function ScheduleTaskRow({ view, onToggle, onRunNow, onEdit, onDelete }: 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="truncate text-[13px] font-medium text-foreground">{task.name}</span>
+            <span className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">{task.name}</span>
             {running && (
               <Chip tone="info" live dot>
                 {t('schedules:list.running')}

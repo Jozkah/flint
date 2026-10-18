@@ -121,7 +121,7 @@ function WindowRow({
       className="grid grid-cols-[minmax(0,1fr)_7.5rem] items-center gap-x-3 gap-y-1.5 border-b border-dashed border-border py-2.5 last:border-b-0 @md:grid-cols-[minmax(7rem,1fr)_8rem_minmax(9rem,1.2fr)]"
     >
       <div className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate text-[13px] font-medium text-foreground">
+        <span className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
           {label}
         </span>
         <Tooltip>
@@ -269,7 +269,7 @@ export function UsageCeilingsCard() {
     )
   }
 
-  const headCell = 'text-[11px] font-medium tracking-[.02em] text-subtle-foreground uppercase'
+  const headCell = 'text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.02em] text-subtle-foreground uppercase'
 
   return (
     <Card

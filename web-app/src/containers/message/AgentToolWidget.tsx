@@ -214,7 +214,7 @@ export const TerminalWidget = memo(
               title={t('tools:toolCall.exitCode', { code: result.exit })}
               data-testid="terminal-status-dot"
               className={cn(
-                'shrink-0 rounded-[5px] px-1.5 py-px text-[11px] tabular-nums',
+                'shrink-0 rounded-[5px] px-1.5 py-px text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums',
                 failed
                   ? 'bg-[#f85149]/15 text-[#f85149]'
                   : 'bg-[#3fb950]/15 text-[#3fb950]'
@@ -226,13 +226,13 @@ export const TerminalWidget = memo(
           {!running && ranUnsandboxed && (
             <span
               data-testid="terminal-ran-unsandboxed"
-              className="shrink-0 rounded-[5px] bg-[#d29922]/15 px-1.5 py-px text-[11px] text-[#d29922]"
+              className="shrink-0 rounded-[5px] bg-[#d29922]/15 px-1.5 py-px text-[length:calc(var(--ui-font-base)*0.6875)] text-[#d29922]"
             >
               {t('tools:toolCall.ranUnsandboxed')}
             </span>
           )}
           {result?.signaled && (
-            <span className="shrink-0 rounded-[5px] bg-[#f85149]/15 px-1.5 py-px text-[11px] text-[#f85149]">
+            <span className="shrink-0 rounded-[5px] bg-[#f85149]/15 px-1.5 py-px text-[length:calc(var(--ui-font-base)*0.6875)] text-[#f85149]">
               {t('tools:toolCall.terminated')}
             </span>
           )}

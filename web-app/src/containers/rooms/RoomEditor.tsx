@@ -191,7 +191,7 @@ function ParticipantReasoningField({
     <div className="flex flex-col gap-2" data-testid="room-participant-reasoning">
       {modes && (
         <div className="flex flex-col gap-1.5">
-          <span id={`${pid}-reasoning`} className="text-[12.5px] font-medium">
+          <span id={`${pid}-reasoning`} className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">
             {t('rooms:editor.reasoning')}
           </span>
           <Segmented<'auto' | 'on' | 'off'>
@@ -209,7 +209,7 @@ function ParticipantReasoningField({
       )}
       {thinkingBudget && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-[12.5px] font-medium">
+          <span className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">
             {t('rooms:editor.thinkingBudget')}
           </span>
           {/* Wraps: five labels in a 360px panel must not be cut to "Unli…". */}
@@ -231,7 +231,7 @@ function ParticipantReasoningField({
       )}
       {effortLevels.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-[12.5px] font-medium">
+          <span className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">
             {t('rooms:editor.reasoningEffort')}
           </span>
           <Segmented<string>
@@ -805,12 +805,12 @@ export function RoomEditor({ room }: { room: Room }) {
                     />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <b
-                        className="truncate text-[13px] font-semibold"
+                        className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold"
                         style={{ color: participantColor(p.id) }}
                       >
                         {p.name || t('rooms:editor.unnamed')}
                       </b>
-                      <small className="truncate text-[11.5px] text-muted-foreground">
+                      <small className="truncate text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                         {[p.role.trim(), model?.displayName || model?.name || p.model.id]
                           .filter(Boolean)
                           .join(' · ')}
@@ -821,7 +821,7 @@ export function RoomEditor({ room }: { room: Room }) {
                     )}
                     <span
                       className={cn(
-                        'shrink-0 rounded-full px-[7px] py-0.5 text-[10.5px] whitespace-nowrap',
+                        'shrink-0 rounded-full px-[7px] py-0.5 text-[length:calc(var(--ui-font-base)*0.65625)] whitespace-nowrap',
                         TOOL_PILL[access]
                       )}
                     >
@@ -896,7 +896,7 @@ export function RoomEditor({ room }: { room: Room }) {
 
                     <ParticipantSection title={t('rooms:editor.sectionTools')}>
                       <div className="flex flex-col gap-1.5">
-                        <span id={`${pid}-tools`} className="text-[12.5px] font-medium">
+                        <span id={`${pid}-tools`} className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">
                           {t('rooms:editor.toolAccess')}
                         </span>
                         <Segmented<ToolAccess>
@@ -1146,7 +1146,7 @@ export function RoomEditor({ room }: { room: Room }) {
                 <Label>{t('rooms:editor.workingFolder')}</Label>
                 {room.folder ? (
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-[11.5px]">
+                    <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)]">
                       {room.folder}
                     </code>
                     <Button type="button" size="xs" variant="outline" onClick={() => void attachFolder()}>
@@ -1169,7 +1169,7 @@ export function RoomEditor({ room }: { room: Room }) {
                 )}
                 {(room.extraFolders ?? []).map((f) => (
                   <div key={f} className="flex flex-wrap items-center gap-1.5">
-                    <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-[11.5px]">
+                    <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)]">
                       {f}
                     </code>
                     <Button
@@ -1199,7 +1199,7 @@ export function RoomEditor({ room }: { room: Room }) {
             </div>
 
             <div hidden={tab !== 'discussion'} className="flex min-w-0 flex-col gap-2.5">
-              <span id={`${uid}-mode`} className="text-[12.5px] font-medium">
+              <span id={`${uid}-mode`} className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">
                 {t('rooms:editor.speakingMode')}
               </span>
               <RadioGroup
@@ -1227,7 +1227,7 @@ export function RoomEditor({ room }: { room: Room }) {
                       className="mt-0.5"
                     />
                     <span className="min-w-0">
-                      <span id={`${uid}-mode-${m}-name`} className="block text-[13px] font-medium">
+                      <span id={`${uid}-mode-${m}-name`} className="block text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                         {t(`rooms:mode.${m}`)}
                       </span>
                       <span id={`${uid}-mode-${m}-hint`} className="block text-xs text-muted-foreground">
@@ -1248,7 +1248,7 @@ export function RoomEditor({ room }: { room: Room }) {
               )}
               {mode === 'compare' && (
                 <div data-testid="compare-run-setting" className="flex min-w-0 flex-col gap-1.5 pt-1">
-                  <span id={`${uid}-run`} className="text-[12.5px] font-medium">
+                  <span id={`${uid}-run`} className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">
                     {t('rooms:editor.compareRun')}
                   </span>
                   <p className="text-xs text-muted-foreground">{t('rooms:editor.compareRunHint')}</p>
@@ -1264,7 +1264,7 @@ export function RoomEditor({ room }: { room: Room }) {
                         key={r}
                         htmlFor={`${uid}-run-${r}`}
                         className={cn(
-                          'flex cursor-pointer items-center gap-2.5 rounded-[10px] border-[0.8px] border-transparent p-2 text-[13px] transition-colors hover:bg-hover-row',
+                          'flex cursor-pointer items-center gap-2.5 rounded-[10px] border-[0.8px] border-transparent p-2 text-[length:calc(var(--ui-font-base)*0.8125)] transition-colors hover:bg-hover-row',
                           compareRun === r && 'border-border bg-card shadow-lift'
                         )}
                       >
@@ -1351,7 +1351,7 @@ export function RoomEditor({ room }: { room: Room }) {
                         onChange={(e) => edit(setLimits)({ ...limits, [key]: e.target.value })}
                         onBlur={() => edit(setLimits)({ ...limits, [key]: showLimit(key, parsed.value) })}
                       />
-                      <p id={`${lid}-hint`} className="text-[11.5px] text-muted-foreground">
+                      <p id={`${lid}-hint`} className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                         {parsed.capped && ceiling !== null ? (
                           <span className="text-destructive">{t('rooms:editor.clamped', { max: ceiling })}</span>
                         ) : parsed.raised ? (
@@ -1374,7 +1374,7 @@ export function RoomEditor({ room }: { room: Room }) {
                 })}
               </div>
               <div data-testid="tool-budget" className="flex min-w-0 flex-col gap-2 pt-2">
-                <span className="text-[12.5px] font-medium">{t('rooms:editor.budget.heading')}</span>
+                <span className="text-[length:calc(var(--ui-font-base)*0.78125)] font-medium">{t('rooms:editor.budget.heading')}</span>
                 <p className="text-xs text-muted-foreground">{t('rooms:editor.budget.hint')}</p>
                 <div className="grid gap-x-2.5 gap-y-3 sm:grid-cols-3">
                   {BUDGET_KEYS.map((key) => {
@@ -1392,7 +1392,7 @@ export function RoomEditor({ room }: { room: Room }) {
                           placeholder={t('rooms:editor.budget.default', { value: budgetDefault(key) })}
                           onChange={(e) => edit(setBudget)({ ...budget, [key]: e.target.value })}
                         />
-                        <p className="text-[11.5px] text-muted-foreground">
+                        <p className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                           {t('rooms:editor.ceiling', { max: ROOM_TOOL_BUDGET_CEILINGS[key] })}
                         </p>
                       </div>

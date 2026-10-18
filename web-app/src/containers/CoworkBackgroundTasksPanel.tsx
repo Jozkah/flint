@@ -121,7 +121,7 @@ export function CoworkBackgroundTasksPanel({
             type="button"
             aria-expanded={!isClosed}
             onClick={() => toggleSection(sessionId, which)}
-            className="flex items-center gap-1 text-[12px] font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground"
+            className="flex items-center gap-1 text-[length:calc(var(--ui-font-base)*0.75)] font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground"
           >
             {label}
             <ChevronDown
@@ -215,14 +215,14 @@ function BackgroundRow({
         <div className="min-w-0 flex-1">
           <p
             className={cn(
-              'text-[13px] font-medium break-words text-foreground',
+              'text-[length:calc(var(--ui-font-base)*0.8125)] font-medium break-words text-foreground',
               !isAgent && 'font-mono text-xs font-normal'
             )}
             title={task.title}
           >
             {task.title}
           </p>
-          <p className="mt-0.5 flex flex-wrap gap-x-2 text-[11.5px] text-muted-foreground tabular-nums">
+          <p className="mt-0.5 flex flex-wrap gap-x-2 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground tabular-nums">
             <span className="rounded-md border-[0.8px] border-border px-1.5 text-foreground">
               {isAgent && task.agentName
                 ? task.agentName
@@ -256,7 +256,7 @@ function BackgroundRow({
           {isAgent && task.status !== 'queued' && (
             <StatStrip stats={stats} testId="background-stats" className="mt-1.5" />
           )}
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
             <span
               data-testid="background-status-line"
               className={cn(
@@ -280,7 +280,7 @@ function BackgroundRow({
               type="button"
               onClick={onToggle}
               aria-expanded={expanded}
-              className="text-[11.5px] text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
+              className="text-[length:calc(var(--ui-font-base)*0.71875)] text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
             >
               {isAgent
                 ? t('common:tasks.viewTranscript')
@@ -343,25 +343,25 @@ function CommandOutput({ task }: { task: ActivityTask }) {
   return (
     <div data-testid="background-output">
       {task.command && (
-        <p className="mb-1 font-mono text-[11px] break-all text-muted-foreground">
+        <p className="mb-1 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] break-all text-muted-foreground">
           {redactSecrets(task.command)}
         </p>
       )}
       {shown.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
           {running ? t('common:tasks.noOutput') : t('common:tasks.detailsUnavailable')}
         </p>
       ) : (
         <>
           {cut && (
-            <p className="mb-1 text-[11px] text-muted-foreground">
+            <p className="mb-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
               {t('common:tasks.outputTruncated', { lines: MAX_OUTPUT_LINES })}
             </p>
           )}
           <pre
             ref={scroller}
             tabIndex={0}
-            className="max-h-48 overflow-auto rounded-lg border-[0.8px] border-term-border bg-term-bg p-2.5 font-mono text-[11px] leading-[1.55] break-words whitespace-pre-wrap text-term-fg [scrollbar-width:thin]"
+            className="max-h-48 overflow-auto rounded-lg border-[0.8px] border-term-border bg-term-bg p-2.5 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] leading-[1.55] break-words whitespace-pre-wrap text-term-fg [scrollbar-width:thin]"
           >
             {shown.join('\n')}
           </pre>

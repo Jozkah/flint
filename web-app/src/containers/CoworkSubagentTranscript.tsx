@@ -52,7 +52,7 @@ export function MiddleEllipsis({
   return (
     <span
       title={text}
-      className={cn('flex min-w-0 items-baseline overflow-hidden font-mono text-[11.5px]', className)}
+      className={cn('flex min-w-0 items-baseline overflow-hidden font-mono text-[length:calc(var(--ui-font-base)*0.71875)]', className)}
       data-testid="middle-ellipsis"
     >
       {head ? <span className="min-w-0 truncate">{head}</span> : null}
@@ -92,7 +92,7 @@ function Bounded({
       <pre
         data-testid={testId}
         className={cn(
-          'max-h-60 overflow-auto rounded-lg border-[0.8px] border-border bg-muted/50 p-2 pr-8 font-mono text-[11px] leading-[1.55] break-words whitespace-pre-wrap text-foreground [scrollbar-width:thin]',
+          'max-h-60 overflow-auto rounded-lg border-[0.8px] border-border bg-muted/50 p-2 pr-8 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] leading-[1.55] break-words whitespace-pre-wrap text-foreground [scrollbar-width:thin]',
           className
         )}
       >
@@ -112,7 +112,7 @@ function Bounded({
         <button
           type="button"
           onClick={() => setAll((v) => !v)}
-          className="mt-1 text-[11px] text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:underline"
+          className="mt-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:underline"
         >
           {all
             ? t('common:tasks.showLess')
@@ -129,14 +129,14 @@ function Bounded({
 function StepLine({ info }: { info: StepInfo }) {
   const { t } = useTranslation()
   return (
-    <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden text-[12px] text-foreground">
+    <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden text-[length:calc(var(--ui-font-base)*0.75)] text-foreground">
       <span className="shrink-0 font-medium text-(--tk)">{t(`common:tasks.step.${info.verb}`)}</span>
       {info.pathLike ? (
         <MiddleEllipsis text={info.subject || '.'} className="flex-1" />
       ) : (
         <span
           title={info.subject}
-          className={cn('min-w-0 truncate', info.kind === 'run' && 'font-mono text-[11.5px]')}
+          className={cn('min-w-0 truncate', info.kind === 'run' && 'font-mono text-[length:calc(var(--ui-font-base)*0.71875)]')}
         >
           {info.kind === 'search' || info.kind === 'web' ? `“${info.subject}”` : info.subject}
         </span>
@@ -148,7 +148,7 @@ function StepLine({ info }: { info: StepInfo }) {
         </>
       ) : null}
       {info.range ? (
-        <span className="shrink-0 text-[11px] text-muted-foreground">
+        <span className="shrink-0 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
           {t('common:tasks.stepLines', { range: info.range })}
         </span>
       ) : null}
@@ -183,7 +183,7 @@ function StepCard({ turn, info }: { turn: CoworkTurn; info: StepInfo }) {
         <ToolKindTile name={turn.name ?? ''} running={state === 'active'} />
         <StepLine info={info} />
         {ms !== undefined && state !== 'active' && (
-          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+          <span className="shrink-0 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
             {formatStepDuration(ms)}
           </span>
         )}
@@ -211,7 +211,7 @@ function StepCard({ turn, info }: { turn: CoworkTurn; info: StepInfo }) {
               copy
             />
           ) : (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
               {state === 'active' ? t('common:tasks.noOutput') : t('common:tasks.stepNoResult')}
             </p>
           )}
@@ -248,12 +248,12 @@ function StepGroup({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] outline-none hover:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[length:calc(var(--ui-font-base)*0.75)] outline-none hover:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ToolKindTile name={steps[0]?.turn.name ?? ''} running={active} />
         <span className="flex-1 font-medium text-(--tk)">{label}</span>
         {failed > 0 && (
-          <span className="shrink-0 text-[11px] text-destructive">
+          <span className="shrink-0 text-[length:calc(var(--ui-font-base)*0.6875)] text-destructive">
             {t('common:tasks.toolCallsFailed', { count: failed })}
           </span>
         )}
@@ -375,7 +375,7 @@ export function CoworkSubagentTranscript({
         {!embedded && (
         <div
           data-testid="transcript-header"
-          className="sticky top-0 z-10 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-card/95 px-2.5 py-1.5 text-[11.5px] backdrop-blur"
+          className="sticky top-0 z-10 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-card/95 px-2.5 py-1.5 text-[length:calc(var(--ui-font-base)*0.71875)] backdrop-blur"
         >
           {task.agentName && (
             <span className="rounded-md border-[0.8px] border-border px-1.5 py-0.5 font-medium text-foreground">
@@ -417,14 +417,14 @@ export function CoworkSubagentTranscript({
           {task.description && (
             <div className="rounded-lg border-[0.8px] border-border bg-muted/40 px-2.5 py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-medium tracking-[0.02em] text-muted-foreground uppercase">
+                <span className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.02em] text-muted-foreground uppercase">
                   {t('common:tasks.taskLabel')}
                 </span>
                 <button
                   type="button"
                   aria-expanded={briefOpen}
                   onClick={() => setBriefOpen((v) => !v)}
-                  className="text-[11px] text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
+                  className="text-[length:calc(var(--ui-font-base)*0.6875)] text-primary underline-offset-2 outline-none hover:underline focus-visible:underline"
                 >
                   {briefOpen ? t('common:tasks.hideBrief') : t('common:tasks.showBrief')}
                 </button>
@@ -432,7 +432,7 @@ export function CoworkSubagentTranscript({
               <p
                 data-testid="transcript-brief"
                 className={cn(
-                  'mt-1 text-[12.5px] leading-[1.5] break-words whitespace-pre-wrap text-foreground',
+                  'mt-1 text-[length:calc(var(--ui-font-base)*0.78125)] leading-[1.5] break-words whitespace-pre-wrap text-foreground',
                   !briefOpen && 'line-clamp-2'
                 )}
               >
@@ -442,7 +442,7 @@ export function CoworkSubagentTranscript({
           )}
 
           {nothingYet && (
-            <p className="px-0.5 text-[12px] text-muted-foreground" data-testid="transcript-empty">
+            <p className="px-0.5 text-[length:calc(var(--ui-font-base)*0.75)] text-muted-foreground" data-testid="transcript-empty">
               {queued
                 ? task.waiting != null
                   ? t('common:tasks.waitingPosition', { position: task.waiting })
@@ -456,7 +456,7 @@ export function CoworkSubagentTranscript({
           {items.map((item, i) => {
             if (item.type === 'text') {
               return (
-                <div key={item.key} data-testid="transcript-assistant" className="px-0.5 text-[13px]">
+                <div key={item.key} data-testid="transcript-assistant" className="px-0.5 text-[length:calc(var(--ui-font-base)*0.8125)]">
                   <RenderMarkdown
                     content={redactSecrets(item.text)}
                     isStreaming={running && i === items.length - 1}
@@ -480,7 +480,7 @@ export function CoworkSubagentTranscript({
             >
               <p
                 className={cn(
-                  'mb-1.5 text-[11px] font-medium tracking-[0.02em] uppercase',
+                  'mb-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.02em] uppercase',
                   failedTask ? 'text-destructive' : 'text-muted-foreground'
                 )}
               >
@@ -490,7 +490,7 @@ export function CoworkSubagentTranscript({
               </p>
               <Bounded text={redactSecrets(task.output)} copy className="bg-transparent" />
               {task.resultCapped && (
-                <p className="mt-1.5 text-[11px] text-muted-foreground" data-testid="transcript-capped">
+                <p className="mt-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground" data-testid="transcript-capped">
                   {t('common:tasks.resultCapped')}
                 </p>
               )}
@@ -503,7 +503,7 @@ export function CoworkSubagentTranscript({
           type="button"
           onClick={jump}
           data-testid="transcript-jump"
-          className="absolute right-3 bottom-3 inline-flex items-center gap-1 rounded-full border-[0.8px] border-border bg-card px-2.5 py-1 text-[11.5px] text-foreground shadow-lift outline-none hover:bg-hover-btn focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute right-3 bottom-3 inline-flex items-center gap-1 rounded-full border-[0.8px] border-border bg-card px-2.5 py-1 text-[length:calc(var(--ui-font-base)*0.71875)] text-foreground shadow-lift outline-none hover:bg-hover-btn focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowDown size={12} aria-hidden />
           {t('common:tasks.jumpToLatest')}

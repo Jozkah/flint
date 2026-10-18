@@ -290,7 +290,7 @@ export function ArchivePanel() {
                 className="flex flex-wrap items-center gap-3 border-t border-dashed border-border px-3 py-2.5"
               >
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-[13px] font-medium text-foreground">
+                  <span className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                     {item.title || t('archive:untitled')}
                   </span>
                   <span className="text-xs text-muted-foreground">

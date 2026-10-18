@@ -41,7 +41,7 @@ export function CoworkPinnedProgress({
             aria-expanded={expanded}
             onClick={onToggle}
             data-testid="cowork-pinned-progress-toggle"
-            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left text-[12.5px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:h-11"
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left text-[length:calc(var(--ui-font-base)*0.78125)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:h-11"
           >
             <span className="shrink-0 font-semibold text-foreground">
               {t('common:todoPanelTitle')}

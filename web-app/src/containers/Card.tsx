@@ -115,7 +115,7 @@ export function CardItem({
             )}
           >
             {title && (
-              <div id={titleId} className="text-[13px] leading-tight font-medium text-foreground">
+              <div id={titleId} className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-tight font-medium text-foreground">
                 {title}
               </div>
             )}
@@ -143,7 +143,7 @@ export function CardItem({
           <div
             data-slot="setting-control"
             className={cn(
-              'flex w-full min-w-0 max-w-full shrink-0 flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:w-auto sm:max-w-[58%] sm:justify-end',
+              'flex w-full min-w-0 max-w-full shrink-0 flex-wrap items-center gap-2 text-[length:calc(var(--ui-font-base)*0.8125)] text-fg-2 sm:w-auto sm:max-w-[58%] sm:justify-end',
               classNameWrapperAction,
               column && 'w-full sm:max-w-none sm:justify-start'
             )}
@@ -224,7 +224,7 @@ export function Card({
         )}
       >
         {description && (
-          <p className="mb-1.5 text-[12.5px] leading-normal text-muted-foreground">
+          <p className="mb-1.5 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
             {description}
           </p>
         )}

@@ -106,7 +106,7 @@ interface SearchableModel {
 
 /** A section heading in the picker: Favorites, local, cloud. */
 const SECTION_HEADING =
-  'px-2 pt-2.5 pb-1 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase'
+  'px-2 pt-2.5 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground uppercase'
 
 /** The menu entry for each order. */
 const SORT_LABEL_KEYS: Record<ModelSortOption, string> = {
@@ -125,7 +125,7 @@ const SORT_LABEL_KEYS: Record<ModelSortOption, string> = {
  */
 const OfflineBadge = ({ label, tooltip }: { label: string; tooltip: string }) => (
   <span
-    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 px-1.5 py-0.5 text-[length:calc(var(--ui-font-base)*0.625)] font-medium text-destructive"
     title={tooltip}
   >
     <span className={cn('size-1.5 rounded-full', OFFLINE_DOT_CLASS)} aria-hidden />
@@ -146,7 +146,7 @@ const ProcessingLocationLabel = ({ provider }: { provider: ModelProvider }) => {
   if (location !== 'local' && location !== 'remote') return null
   const text = t(`model-fit:location.${location}`)
   return (
-    <span className="truncate text-[10px] text-muted-foreground" title={text}>
+    <span className="truncate text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground" title={text}>
       · {text}
     </span>
   )
@@ -910,7 +910,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="min-w-0 flex-1">
-              <span className="flex items-center text-[13px] font-medium text-foreground">
+              <span className="flex items-center text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                 <MiddleText
                   text={modelName}
                   tail={modelNameTail(modelName)}
@@ -918,7 +918,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                 />
                 {disambiguator && (
                   <span
-                    className="ml-1.5 shrink-0 rounded bg-muted px-1 font-mono text-[10.5px] font-normal text-muted-foreground"
+                    className="ml-1.5 shrink-0 rounded bg-muted px-1 font-mono text-[length:calc(var(--ui-font-base)*0.65625)] font-normal text-muted-foreground"
                     data-testid="model-disambiguator"
                   >
                     {disambiguator.label}
@@ -935,7 +935,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                 <span
                   className={cn(
                     'block truncate text-subtle-foreground',
-                    list === 'flat' ? 'text-[11px]' : 'font-mono text-[11px]'
+                    list === 'flat' ? 'text-[length:calc(var(--ui-font-base)*0.6875)]' : 'font-mono text-[length:calc(var(--ui-font-base)*0.6875)]'
                   )}
                 >
                   {middleTruncate(secondary, 44)}
@@ -984,7 +984,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               'relative z-20 flex min-w-0 max-w-full shrink items-center pointer-coarse:h-11',
               quiet
                 ? 'h-7 gap-1.5 rounded-md px-2 text-xs transition-colors duration-150 hover:bg-hover-row data-[state=open]:bg-hover-row'
-                : 'h-[30px] gap-[7px] rounded-lg border-[0.8px] border-border bg-card px-2 text-[12.5px] transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:shadow-lift'
+                : 'h-[30px] gap-[7px] rounded-lg border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.78125)] transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:shadow-lift'
             )}
           >
             <PopoverTrigger asChild>
@@ -1085,7 +1085,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder={t('common:searchModels')}
-              className="min-w-0 flex-1 bg-transparent text-base font-normal text-foreground outline-0 placeholder:text-muted-foreground md:text-[13px]"
+              className="min-w-0 flex-1 bg-transparent text-base font-normal text-foreground outline-0 placeholder:text-muted-foreground md:text-[length:calc(var(--ui-font-base)*0.8125)]"
             />
             {searchValue.length > 0 && (
               <button

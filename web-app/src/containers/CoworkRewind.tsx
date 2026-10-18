@@ -213,7 +213,7 @@ export function CoworkRewind(props: RewindProps) {
       aria-label={t('common:rewind.title')}
       className="border-t border-dashed border-border px-3 py-2.5 text-xs"
     >
-      <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+      <p className="mb-1.5 flex items-center gap-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
         <History aria-hidden className="size-3 shrink-0" />
         {t('common:rewind.title')}
       </p>
@@ -276,7 +276,7 @@ export function CoworkRewind(props: RewindProps) {
                 className="mt-3 grid gap-1.5"
                 data-testid="cowork-rewind-scope"
               >
-                <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('results:rewind.scopeTitle')}
                 </p>
                 <p className="break-all font-mono text-fg-2">

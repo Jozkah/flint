@@ -19,7 +19,7 @@ import {
 
 const ROW =
   'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 [&>:first-child]:flex-[1_1_10rem]'
-const EMPTY = 'py-3 text-[13px] text-muted-foreground'
+const EMPTY = 'py-3 text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground'
 const ACTION = 'shrink-0 pointer-coarse:h-11'
 
 /** A deadline in the app's language, not the system's. */
@@ -112,7 +112,7 @@ export function ApprovalRulesCard() {
               return (
                 <li key={rule.id} className={ROW} data-testid="approval-rule-row">
                   <div className="min-w-0 space-y-1">
-                    <p className="text-[13px] break-words text-foreground">
+                    <p className="text-[length:calc(var(--ui-font-base)*0.8125)] break-words text-foreground">
                       <code>{rule.tool}</code> · {text}
                     </p>
                     <MiddleText
@@ -165,7 +165,7 @@ export function ApprovalRulesCard() {
                   </p>
                   {item.detail ? (
                     <pre
-                      className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[11px] text-muted-foreground"
+                      className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
                       data-testid="deferred-approval-detail"
                     >
                       {item.detail}

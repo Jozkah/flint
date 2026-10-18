@@ -1196,7 +1196,7 @@ export function CoworkCodePanel({
                   type="button"
                   onClick={() => onStateChange(toggleDir(state, entry.relPath))}
                   aria-expanded={expanded}
-                  className="flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[12.5px] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row"
+                  className="flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row"
                   style={indent(depth)}
                 >
                   {expanded ? (
@@ -1249,7 +1249,7 @@ export function CoworkCodePanel({
                   : undefined
               }
               className={cn(
-                'flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[12.5px] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row',
+                'flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row',
                 !viewable && 'text-muted-foreground',
                 state.activeTabId ===
                   tabId(projectTab(entry.relPath, projectKey ?? '')) &&
@@ -1572,7 +1572,7 @@ export function CoworkCodePanel({
                     <div className="flex h-10 shrink-0 items-center gap-1 px-3 pointer-coarse:h-11">
                       <span
                         data-testid="code-edit-badge"
-                        className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-[11px] font-medium text-secondary-foreground"
+                        className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-secondary-foreground"
                         title={
                           writable.kind === 'sandbox' &&
                           active.origin.kind === 'project'
@@ -1587,7 +1587,7 @@ export function CoworkCodePanel({
                           : t('common:codePanel.editing')}
                       </span>
                       <span
-                        className="min-w-0 flex-1 truncate px-1 font-mono text-[11px] text-muted-foreground"
+                        className="min-w-0 flex-1 truncate px-1 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
                         title={active.path}
                       >
                         {active.path}
@@ -1597,7 +1597,7 @@ export function CoworkCodePanel({
                           </span>
                         )}
                       </span>
-                      <span className="shrink-0 pr-1 text-[11px] text-subtle-foreground">
+                      <span className="shrink-0 pr-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground">
                         {detectLanguage(active.path).label}
                       </span>
                       <Button

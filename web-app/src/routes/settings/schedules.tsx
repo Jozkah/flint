@@ -54,7 +54,7 @@ function SchedulesContent() {
             </p>
           ) : loading ? null : views.length === 0 ? (
             <div className="flex flex-col gap-1 px-3.5 py-5" data-testid="schedules-empty">
-              <p className="text-[13px] font-medium text-foreground">{t('schedules:empty')}</p>
+              <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">{t('schedules:empty')}</p>
               <p className="text-xs text-muted-foreground">{t('schedules:emptyHint')}</p>
             </div>
           ) : (

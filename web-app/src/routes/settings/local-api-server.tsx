@@ -285,14 +285,14 @@ function LocalAPIServerContent() {
             >
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+                  <h2 className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                     {t('settings:localApiServer.serverConfiguration')}
                   </h2>
                 </div>
                 <div className="space-y-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-[13px] font-medium">
+                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                         {t('settings:localApiServer.serverHost')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -313,7 +313,7 @@ function LocalAPIServerContent() {
                   )}
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-[13px] font-medium">
+                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                         {t('settings:localApiServer.serverPort')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -324,7 +324,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-[13px] font-medium">
+                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                         {t('settings:localApiServer.apiPrefix')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -334,7 +334,7 @@ function LocalAPIServerContent() {
                     <ApiPrefixInput isServerRunning={isServerRunning} />
                   </div>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-[13px] font-medium">
+                    <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                       {t('settings:localApiServer.apiKey')}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -348,7 +348,7 @@ function LocalAPIServerContent() {
                     </div>
                   </div>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-[13px] font-medium">
+                    <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                       {t('settings:localApiServer.trustedHosts')}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -360,7 +360,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-[13px] font-medium">
+                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                         {t('settings:localApiServer.proxyTimeout')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -372,14 +372,14 @@ function LocalAPIServerContent() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <h2 className="text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+                  <h2 className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                     {t('settings:localApiServer.advancedSettings')}
                   </h2>
                 </div>
                 <div className="space-y-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-[13px] font-medium">
+                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                         Execute tools on server
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -394,7 +394,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-[13px] font-medium">
+                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                         {t('settings:localApiServer.cors')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -409,7 +409,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-[13px] font-medium">
+                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                         {t('settings:localApiServer.verboseLogs')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -502,7 +502,7 @@ function LocalAPIServerContent() {
                           : t('uiLeftovers:localApi.stopped')}
                       </Chip>
                       {isServerRunning && (
-                        <code className="inline-flex h-[30px] items-center rounded-lg bg-muted px-2.5 font-mono text-[11.5px] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
+                        <code className="inline-flex h-[30px] items-center rounded-lg bg-muted px-2.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
                           {serverUrl}
                           {apiPrefix}
                         </code>

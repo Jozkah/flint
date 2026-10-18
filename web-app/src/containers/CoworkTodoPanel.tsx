@@ -104,7 +104,7 @@ export function CoworkTodoPanel({
                       <span className="truncate text-xs font-semibold text-fg-2">
                         {phase.name}
                       </span>
-                      <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                      <span className="ml-auto shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-muted-foreground">
                         {phaseDone}/{phase.tasks.length}
                       </span>
                     </button>
@@ -122,7 +122,7 @@ export function CoworkTodoPanel({
                             <StatusDot status={task.status} />
                             <span
                               className={cn(
-                                'text-[13px] leading-5',
+                                'text-[length:calc(var(--ui-font-base)*0.8125)] leading-5',
                                 resolved && 'text-muted-foreground line-through',
                                 task.status === 'in_progress' && 'font-medium'
                               )}

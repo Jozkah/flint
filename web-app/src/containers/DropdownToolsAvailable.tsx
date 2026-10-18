@@ -121,7 +121,7 @@ export default memo(function DropdownToolsAvailable({
         className="w-[300px] overflow-hidden!"
         onClick={(e) => e.stopPropagation()}
       >
-        <DropDrawerLabel className="sticky -top-1 z-10 flex items-center gap-2 px-2 py-1.5 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase">
+        <DropDrawerLabel className="sticky -top-1 z-10 flex items-center gap-2 px-2 py-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground uppercase">
           {t('common:availableTools')}
         </DropDrawerLabel>
         <div className="max-h-64 overflow-y-auto">
@@ -135,7 +135,7 @@ export default memo(function DropdownToolsAvailable({
                   {/* The design's `.trow2`: the server, how many of its tools
                       are on, and one switch for all of them. */}
                   <div className="flex w-full min-w-0 items-center gap-2.5">
-                    <b className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                    <b className="min-w-0 flex-1 truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                       {serverName}
                     </b>
                     <span className="text-xs whitespace-nowrap text-muted-foreground">

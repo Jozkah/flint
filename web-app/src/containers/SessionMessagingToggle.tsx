@@ -33,7 +33,7 @@ export function SessionMessagingToggle({ sessionId }: { sessionId: string }) {
     onChange: (checked: boolean) => void
   ) => (
     <div className="flex min-h-8 items-center gap-2">
-      <label htmlFor={id} className="min-w-0 flex-1 text-[12.5px] leading-5 text-foreground">
+      <label htmlFor={id} className="min-w-0 flex-1 text-[length:calc(var(--ui-font-base)*0.78125)] leading-5 text-foreground">
         {label}
       </label>
       <HelpTip id={describedBy} label={label}>

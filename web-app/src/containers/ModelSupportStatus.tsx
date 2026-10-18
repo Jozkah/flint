@@ -409,7 +409,7 @@ export const ModelSupportStatus = ({
             aria-labelledby="model-fit-measured"
             className="space-y-1 rounded-md border border-border bg-card p-2.5"
           >
-            <h4 id="model-fit-measured" className="text-[13px] font-semibold text-foreground">
+            <h4 id="model-fit-measured" className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
               {t('model-fit:measuredHeading')}
             </h4>
             <p>{headline}</p>
@@ -449,7 +449,7 @@ export const ModelSupportStatus = ({
             >
               <h4
                 id="model-fit-offload"
-                className="text-[13px] font-semibold text-foreground"
+                className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground"
               >
                 {t('model-fit:offload.heading')}
               </h4>
@@ -482,7 +482,7 @@ export const ModelSupportStatus = ({
             aria-labelledby="model-fit-estimate"
             className="space-y-1 rounded-md border border-dashed border-border-strong bg-muted p-2.5"
           >
-            <h4 id="model-fit-estimate" className="text-[13px] font-semibold text-foreground">
+            <h4 id="model-fit-estimate" className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
               {t('model-fit:estimateHeading')}
             </h4>
             <p>{estimate}</p>

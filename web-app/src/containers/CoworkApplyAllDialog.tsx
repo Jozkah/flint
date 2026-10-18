@@ -159,12 +159,12 @@ export function CoworkApplyAllDialog({
                       {entry.plan?.source ?? entry.path}
                     </span>
                     {entry.plan ? (
-                      <span className="truncate text-[11px] text-muted-foreground">
+                      <span className="truncate text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                         → {where(entry.plan)}
                       </span>
                     ) : null}
                     {entry.kind === 'skip' ? (
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                         {t('common:changes.applyAllSkipped', {
                           reason: skipText(entry),
                         })}
@@ -175,8 +175,8 @@ export function CoworkApplyAllDialog({
                         role="status"
                         className={
                           result.ok
-                            ? 'text-[11px] text-diff-add'
-                            : 'text-[11px] text-destructive'
+                            ? 'text-[length:calc(var(--ui-font-base)*0.6875)] text-diff-add'
+                            : 'text-[length:calc(var(--ui-font-base)*0.6875)] text-destructive'
                         }
                       >
                         {resultText(result)}
@@ -184,7 +184,7 @@ export function CoworkApplyAllDialog({
                     ) : null}
                   </span>
                   {entry.kind === 'apply' && entry.probe === 'differs' ? (
-                    <span className="shrink-0 rounded-[5px] border-[0.8px] border-border bg-card px-1.5 text-[10px] text-destructive">
+                    <span className="shrink-0 rounded-[5px] border-[0.8px] border-border bg-card px-1.5 text-[length:calc(var(--ui-font-base)*0.625)] text-destructive">
                       {t('common:changes.applyAllOverwrites')}
                     </span>
                   ) : null}

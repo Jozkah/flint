@@ -129,7 +129,7 @@ export function CoworkWorkspacePill({
     const Icon = BADGE[kind].icon
     return (
       <span
-        className="inline-flex h-5 shrink-0 items-center gap-1 rounded-md border-[0.8px] border-border bg-card px-1.5 text-[10.5px] font-medium text-secondary-foreground"
+        className="inline-flex h-5 shrink-0 items-center gap-1 rounded-md border-[0.8px] border-border bg-card px-1.5 text-[length:calc(var(--ui-font-base)*0.65625)] font-medium text-secondary-foreground"
         title={t(BADGE[kind].title)}
         data-access={kind}
       >
@@ -221,7 +221,7 @@ export function CoworkWorkspacePill({
           <>
             {/* What is attached */}
             <section className="p-2.5">
-              <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+              <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                 {t('common:workspace.readsFrom')}
               </p>
               <div className="mt-1.5 flex items-start gap-2">
@@ -231,7 +231,7 @@ export function CoworkWorkspacePill({
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold">
+                  <p className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold">
                     {folderName}
                   </p>
                   <p
@@ -260,7 +260,7 @@ export function CoworkWorkspacePill({
               <section className="px-2.5 pb-2.5">
                 {extraFolders.length > 0 ? (
                   <>
-                    <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                    <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                       {t('common:workspace.alsoAttached')}
                     </p>
                     <ul className="mt-1.5 space-y-1">
@@ -315,7 +315,7 @@ export function CoworkWorkspacePill({
             {/* Where the agent's changes actually land. The folder above is
                 read-only, so saying "writable project" would be a lie. */}
             <section className="p-2.5">
-              <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+              <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                 {t('common:workspace.writesTo')}
               </p>
               <div className="mt-1.5 flex items-start gap-2">
@@ -325,7 +325,7 @@ export function CoworkWorkspacePill({
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold">
+                  <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold">
                     {primaryAccess === 'editable'
                       ? t('common:workspace.writesFolder')
                       : primaryAccess === 'worktree'

@@ -102,7 +102,7 @@ export function ScheduleRunHistory({ taskId, version }: Props) {
             <div className="rounded-md border-[0.8px] border-border bg-card px-2.5 py-2">
               <p className="font-medium text-foreground">{t('schedules:run.blockedOn')}</p>
               <p className="mb-1 text-muted-foreground">{t('schedules:run.blockedOnHint')}</p>
-              <ul className="list-disc pl-4 font-mono text-[11px] text-secondary-foreground">
+              <ul className="list-disc pl-4 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-secondary-foreground">
                 {run.blockedOn.map((line, i) => (
                   <li key={i} className="break-all">
                     {line}

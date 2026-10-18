@@ -100,7 +100,7 @@ function ConflictRow({
   )
   const reviseField = (id: string, value: Choice) =>
     choice === value ? (
-      <label className="ml-5 flex flex-col gap-1 text-[11px] text-fg-2">
+      <label className="ml-5 flex flex-col gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-fg-2">
         What {id} may change (comma-separated)
         <input
           className="h-8 rounded-lg border-[0.8px] border-input bg-card px-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
@@ -126,7 +126,7 @@ function ConflictRow({
         {conflict.overlaps.map((o) => (
           <li
             key={`${o.paths[0]}>${o.paths[1]}`}
-            className="font-mono text-[11px] text-fg-2"
+            className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-fg-2"
             data-testid="team-conflict-path"
             data-kind={o.kind}
           >
@@ -134,7 +134,7 @@ function ConflictRow({
           </li>
         ))}
       </ul>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
         {a}: {describe(a)}
         <br />
         {b}: {describe(b)}
@@ -211,7 +211,7 @@ function ConflictForm({ request }: { request: ConflictRequest }) {
           Nothing has run yet.
         </p>
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
         Compared by the paths each task declared, not by reading the code: no
         overlap here does not mean the changes fit together.
       </p>

@@ -138,14 +138,14 @@ export function ReasoningEffortSlider({
           <button
             type="button"
             onClick={onReset}
-            className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+            className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground underline-offset-2 hover:underline"
           >
             {t('common:reasoningEffort.reset')}
           </button>
         )}
       </div>
 
-      <div className="flex justify-between text-[11px] text-muted-foreground">
+      <div className="flex justify-between text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
         <span>{t('common:reasoningEffort.faster')}</span>
         <span>{t('common:reasoningEffort.smarter')}</span>
       </div>
@@ -199,7 +199,7 @@ export function ReasoningEffortSlider({
         />
       </div>
 
-      <div className="relative h-4 text-[11px] text-muted-foreground">
+      <div className="relative h-4 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
         {recommendedAt >= 0 && (
           <span
             data-testid="effort-recommended"

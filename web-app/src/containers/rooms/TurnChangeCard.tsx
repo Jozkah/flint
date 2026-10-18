@@ -66,7 +66,7 @@ function PatchView({ patch, t }: { patch: string; t: T }) {
     <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto" data-testid="workspace-diff">
       {files.map((f) => (
         <section key={f.path} className="overflow-hidden rounded-lg border-[0.8px] border-border">
-          <header className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 font-mono text-[11.5px]">
+          <header className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)]">
             <FilePath path={f.path} />
             <Counts additions={f.additions} deletions={f.deletions} />
           </header>
@@ -90,7 +90,7 @@ function FilePath({ path }: { path: string }) {
 
 function Counts({ additions, deletions }: { additions: number; deletions: number }) {
   return (
-    <span className="shrink-0 font-mono text-[11px] tabular-nums">
+    <span className="shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums">
       <span className="text-diff-add">+{additions}</span>{' '}
       <span className="text-diff-del">−{deletions}</span>
     </span>
@@ -116,7 +116,7 @@ function FileRow({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="flex min-h-8 w-full cursor-pointer items-center gap-1.5 px-2 py-1 text-left font-mono text-[11.5px] hover:bg-hover-row"
+        className="flex min-h-8 w-full cursor-pointer items-center gap-1.5 px-2 py-1 text-left font-mono text-[length:calc(var(--ui-font-base)*0.71875)] hover:bg-hover-row"
       >
         <ChevronDown
           aria-hidden
@@ -129,11 +129,11 @@ function FileRow({
       {open && (
         <div className="border-t border-border">
           {file.binary ? (
-            <p className="px-3 py-2 text-[11.5px] text-muted-foreground">{t('rooms:changes.binary')}</p>
+            <p className="px-3 py-2 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">{t('rooms:changes.binary')}</p>
           ) : file.excerpt ? (
             <ChangeExcerptDiff excerpt={file.excerpt} path={file.path} />
           ) : (
-            <p className="px-3 py-2 text-[11.5px] text-muted-foreground">{t('rooms:changes.noExcerpt')}</p>
+            <p className="px-3 py-2 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">{t('rooms:changes.noExcerpt')}</p>
           )}
         </div>
       )}
@@ -274,7 +274,7 @@ export function TurnChangeCard({
         </button>
         {earlier > 0 && (
           <span
-            className="order-last basis-full px-3 pb-1.5 text-[11px] text-muted-foreground"
+            className="order-last basis-full px-3 pb-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
             data-testid="turn-changes-earlier"
           >
             {t('rooms:changes.applyIncludesEarlier', { count: earlier })}
@@ -287,7 +287,7 @@ export function TurnChangeCard({
                 {t('rooms:changes.partial', { count: partial })}
               </Chip>
             ) : state === 'idle' ? (
-              <span className="text-[11px] text-muted-foreground">{t('rooms:changes.state.idle')}</span>
+              <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">{t('rooms:changes.state.idle')}</span>
             ) : (
               <Chip tone={DECISION_TONE[state]} dot>
                 {t(`rooms:changes.state.${state}`)}
@@ -331,7 +331,7 @@ export function TurnChangeCard({
                 <div
                   role="group"
                   aria-label={t('rooms:changes.scope')}
-                  className="inline-flex w-fit max-w-full shrink-0 gap-0.5 rounded-lg bg-muted p-0.5 text-[11.5px]"
+                  className="inline-flex w-fit max-w-full shrink-0 gap-0.5 rounded-lg bg-muted p-0.5 text-[length:calc(var(--ui-font-base)*0.71875)]"
                   data-testid="change-scope"
                 >
                   {([false, true] as const).map((all) => (
@@ -360,7 +360,7 @@ export function TurnChangeCard({
                   aria-label={t('rooms:changes.workspace', { path: workspace })}
                   data-testid="change-workspace"
                   onClick={() => void copyWorkspace()}
-                  className="flex h-6 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-[11px] text-muted-foreground hover:border-border-strong hover:text-foreground"
+                  className="flex h-6 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground hover:border-border-strong hover:text-foreground"
                 >
                   <FolderOpen aria-hidden className="size-3 shrink-0" />
                   {/* Whole segments go, never half a word; the title has it all. */}

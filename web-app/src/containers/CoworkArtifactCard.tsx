@@ -47,7 +47,7 @@ export function CoworkArtifactCard({
         </span>
         <span className="min-w-0">
           <span
-            className="block truncate text-[13px] font-semibold"
+            className="block truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold"
             title={artifact.title}
           >
             {artifact.title}

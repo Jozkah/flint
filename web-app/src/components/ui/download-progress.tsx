@@ -75,7 +75,7 @@ export function DownloadProgress({
   return (
     <div
       className={cn(
-        'dlp-root flex min-w-0 flex-col gap-1 text-[11px] text-muted-foreground',
+        'dlp-root flex min-w-0 flex-col gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground',
         className
       )}
       data-state={state}

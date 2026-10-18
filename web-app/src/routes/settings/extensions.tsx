@@ -73,7 +73,7 @@ function PluginRow({
         <Icon name="x-puzzle" size={16} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] leading-[1.2] font-medium text-foreground">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[length:calc(var(--ui-font-base)*0.8125)] leading-[1.2] font-medium text-foreground">
           <span>{p.name}</span>
           <span className={VERSION_CHIP}>v{p.version}</span>
           <span className="font-normal text-muted-foreground">

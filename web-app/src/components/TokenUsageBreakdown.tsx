@@ -65,7 +65,7 @@ export function TokenUsageBreakdown({
       )}
       {usage.requests !== undefined && usage.requests > 1 && (
         <div
-          className="text-[11px] text-muted-foreground"
+          className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
           data-testid={id('cache-requests')}
           data-requests={usage.requests}
           data-cache-hit-requests={usage.cacheHitRequests}
@@ -167,7 +167,7 @@ export function TokenUsageBreakdown({
 
       {usage.reported && (
         <div
-          className="text-[11px] leading-snug text-warning"
+          className="text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-warning"
           data-testid={id('clamped')}
           role="note"
         >
@@ -185,7 +185,7 @@ export function TokenUsageBreakdown({
 
       {source && (
         <div
-          className="text-[10px] leading-snug text-muted-foreground break-words"
+          className="text-[length:calc(var(--ui-font-base)*0.625)] leading-snug text-muted-foreground break-words"
           data-testid={id('source')}
         >
           {t('common:usage.reportedVia', { source })}

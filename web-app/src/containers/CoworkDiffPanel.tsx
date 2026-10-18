@@ -269,7 +269,7 @@ function FileRow({
         {badge ? (
           <span
             className={cn(
-              'grid size-[18px] shrink-0 place-items-center rounded-[4px] font-mono text-[10.5px] font-semibold',
+              'grid size-[18px] shrink-0 place-items-center rounded-[4px] font-mono text-[length:calc(var(--ui-font-base)*0.65625)] font-semibold',
               badgeColor
             )}
             title={badge}
@@ -305,18 +305,18 @@ function FileRow({
             <span className="truncate font-mono text-xs text-fg-2">{path}</span>
           )}
           {subtitle ? (
-            <span className="truncate text-[11px] text-muted-foreground">
+            <span className="truncate text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
               {subtitle}
             </span>
           ) : null}
         </span>
         {note ? (
-          <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-subtle-foreground max-[479px]:hidden">
+          <span className="max-w-[40%] shrink-0 truncate text-[length:calc(var(--ui-font-base)*0.65625)] text-subtle-foreground max-[479px]:hidden">
             {note}
           </span>
         ) : null}
         {indicator ? (
-          <span className="inline-flex h-[18px] shrink-0 items-center rounded-[5px] border-[0.8px] border-border bg-card px-1.5 text-[10px] text-muted-foreground">
+          <span className="inline-flex h-[18px] shrink-0 items-center rounded-[5px] border-[0.8px] border-border bg-card px-1.5 text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground">
             {indicator}
           </span>
         ) : null}
@@ -333,7 +333,7 @@ function FileRow({
             <button
               type="button"
               onClick={onOpen}
-              className="rounded-md bg-card px-1.5 py-0.5 text-[10.5px] text-secondary-foreground shadow-lift hover:text-foreground"
+              className="rounded-md bg-card px-1.5 py-0.5 text-[length:calc(var(--ui-font-base)*0.65625)] text-secondary-foreground shadow-lift hover:text-foreground"
             >
               {openLabel}
             </button>
@@ -398,7 +398,7 @@ function SandboxApply({
   }
 
   const button =
-    'rounded-md border-[0.8px] border-border bg-card px-1.5 py-0.5 text-[10.5px] text-secondary-foreground hover:text-foreground disabled:opacity-50'
+    'rounded-md border-[0.8px] border-border bg-card px-1.5 py-0.5 text-[length:calc(var(--ui-font-base)*0.65625)] text-secondary-foreground hover:text-foreground disabled:opacity-50'
 
   const folderName = basenameOf(plan.folder) || plan.folder
   const hint = t('common:changes.applyHint', {
@@ -407,7 +407,7 @@ function SandboxApply({
   })
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pl-8 text-[11px] text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pl-8 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
       {state.kind === 'where' ? (
         <>
           <span role="alert">
@@ -670,7 +670,7 @@ export function CoworkDiffPanel({
       aside={
         showProject && branchName ? (
           <span
-            className="inline-flex h-[22px] min-w-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-[11px] text-secondary-foreground"
+            className="inline-flex h-[22px] min-w-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-secondary-foreground"
             title={branchName}
           >
             <GitBranch size={12} className="shrink-0" />
@@ -680,7 +680,7 @@ export function CoworkDiffPanel({
       }
       summary={
         <span
-          className="flex shrink-0 gap-1 font-mono text-[10.5px] font-medium tabular-nums"
+          className="flex shrink-0 gap-1 font-mono text-[length:calc(var(--ui-font-base)*0.65625)] font-medium tabular-nums"
           data-testid="changes-total"
         >
           <span className="text-diff-add">+{additions}</span>
@@ -762,7 +762,7 @@ export function CoworkDiffPanel({
           {showProjectSection ? (
             <section>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                <h3 className="sticky top-0 z-[1] bg-card px-3 pt-2 pb-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('common:changes.projectWorkingTree')}
                 </h3>
               ) : null}
@@ -869,7 +869,7 @@ export function CoworkDiffPanel({
             <section key={group.key}>
               {labelled || applyAll ? (
                 <div className="sticky top-0 z-[1] flex items-center gap-2 bg-card px-3 pt-2 pb-1.5">
-                  <h3 className="min-w-0 flex-1 truncate text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase" title={group.title}>
+                  <h3 className="min-w-0 flex-1 truncate text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase" title={group.title}>
                     {labelled ? group.title : null}
                   </h3>
                   {applyAll ? (
@@ -877,7 +877,7 @@ export function CoworkDiffPanel({
                       type="button"
                       data-testid="apply-all"
                       onClick={() => setApplyAllOpen(true)}
-                      className="shrink-0 rounded-md border-[0.8px] border-border bg-card px-2 py-0.5 text-[11px] font-medium text-secondary-foreground hover:text-foreground"
+                      className="shrink-0 rounded-md border-[0.8px] border-border bg-card px-2 py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-secondary-foreground hover:text-foreground"
                     >
                       {t('common:changes.applyAll')}
                     </button>

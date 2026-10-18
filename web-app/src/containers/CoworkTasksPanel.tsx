@@ -267,7 +267,7 @@ export function CoworkTasksPanel({
           <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]">
             {running.length > 0 && (
               <>
-                <p className="px-3 pt-3 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                <p className="px-3 pt-3 pb-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('common:tasks.running', { count: running.length })}
                 </p>
                 {running.map(section)}
@@ -290,7 +290,7 @@ export function CoworkTasksPanel({
                         !showFinished && '-rotate-90'
                       )}
                     />
-                    <span className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                    <span className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                       {t('common:tasks.finished', { count: finished.length })}
                     </span>
                   </button>
@@ -421,7 +421,7 @@ function WorkflowSection({
             ) : null}
             <span
               className={cn(
-                'min-w-0 truncate text-[13px] text-foreground',
+                'min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.8125)] text-foreground',
                 live ? 'font-semibold' : 'flex-1 font-medium'
               )}
               title={workflow.title}
@@ -491,7 +491,7 @@ function WorkflowSection({
         <div className="pb-1">
           {view.phases.map(({ phase, tasks }) => (
             <div key={phase.id}>
-              <p className="px-3 pt-2 pb-1 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+              <p className="px-3 pt-2 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                 {t('common:tasks.phase', { name: phase.name })}
               </p>
               {tasks.map(taskRow)}
@@ -500,7 +500,7 @@ function WorkflowSection({
           {view.unphased.length > 0 && (
             <div>
               {view.phases.length > 0 && (
-                <p className="px-3 pt-2 pb-1 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                <p className="px-3 pt-2 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('common:tasks.unphased')}
                 </p>
               )}
@@ -652,14 +652,14 @@ export function TeamMemberControls({ task, control }: { task: ActivityTask; cont
           <textarea
             aria-label={t('common:tasks.replaceBrief')}
             data-testid="team-member-replace-brief"
-            className="min-h-12 rounded-lg border-[0.8px] border-input bg-card px-2 py-1 text-[11px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+            className="min-h-12 rounded-lg border-[0.8px] border-input bg-card px-2 py-1 text-[length:calc(var(--ui-font-base)*0.6875)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
           />
           <input
             aria-label={t('common:tasks.replaceAgent')}
             data-testid="team-member-replace-agent"
-            className="rounded-lg border-[0.8px] border-input bg-card px-2 py-1 text-[11px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+            className="rounded-lg border-[0.8px] border-input bg-card px-2 py-1 text-[length:calc(var(--ui-font-base)*0.6875)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
             value={agent}
             onChange={(e) => setAgent(e.target.value)}
           />
@@ -726,7 +726,7 @@ function TaskItem({
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-2 pl-3 text-left text-[12.5px] outline-none pointer-coarse:min-h-11"
+          className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-2 pl-3 text-left text-[length:calc(var(--ui-font-base)*0.78125)] outline-none pointer-coarse:min-h-11"
         >
           {/* Status first, in a fixed column, so a list of rows reads down
               one edge: the design's task row. */}
@@ -750,7 +750,7 @@ function TaskItem({
                 {task.title}
               </span>
             </span>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[11.5px] text-muted-foreground [&>span+span]:before:mr-1 [&>span+span]:before:content-['·']">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground [&>span+span]:before:mr-1 [&>span+span]:before:content-['·']">
               {/* Kind in words as well as the icon, so it is read out and
                 does not rest on telling two glyphs apart. */}
               <span>
@@ -835,7 +835,7 @@ function TaskItem({
             {task.cancelError && (
               <span
                 role="status"
-                className="mt-0.5 block text-[11px] text-destructive"
+                className="mt-0.5 block text-[length:calc(var(--ui-font-base)*0.6875)] text-destructive"
               >
                 {t('common:tasks.stopFailedOnRow', { error: task.cancelError })}
               </span>
@@ -872,7 +872,7 @@ function TaskItem({
 
       {teamControl && <TeamMemberControls task={task} control={teamControl} />}
       {(task.attempts ?? 0) > 0 && (
-        <p className="pb-2 pl-5 text-[11px] text-muted-foreground" data-testid="team-member-attempts">
+        <p className="pb-2 pl-5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground" data-testid="team-member-attempts">
           {task.replacedWith
             ? t('common:tasks.replacedAttempts', { count: task.attempts })
             : t('common:tasks.restartedAttempts', { count: task.attempts })}
@@ -880,7 +880,7 @@ function TaskItem({
       )}
       {expanded && (
         <div className="border-t border-dashed border-border bg-muted/30 px-3 py-2.5 motion-safe:animate-tree-in">
-          <p className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
+          <p className="mb-2 flex flex-wrap gap-x-3 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
             <span>{t('common:tasks.startedAt', { time: clockTime(task.startedAt) })}</span>
             {task.endedAt != null && (
               <span>{t('common:tasks.finishedAt', { time: clockTime(task.endedAt) })}</span>
@@ -893,19 +893,19 @@ function TaskItem({
             <StatStrip stats={stats} className="mb-2" />
           )}
           {task.description && task.kind !== 'agent' && (
-            <p className="mb-2 text-[11px] text-fg-2">
+            <p className="mb-2 text-[length:calc(var(--ui-font-base)*0.6875)] text-fg-2">
               {redactSecrets(task.description)}
             </p>
           )}
           {task.detail && (
-            <p className="mb-2 text-[11px] text-muted-foreground">
+            <p className="mb-2 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
               {reasonLabel(task.detail, t)}
             </p>
           )}
           <TaskCheckoutLink task={task} />
           {task.stoppedAtLimit && (
             <p
-              className="mb-2 text-[11px] text-destructive"
+              className="mb-2 text-[length:calc(var(--ui-font-base)*0.6875)] text-destructive"
               data-testid="subagent-stopped-at-limit"
             >
               {t('common:tasks.stoppedAtLimit')}
@@ -928,7 +928,7 @@ function TaskItem({
                 {task.transcript.map((turn, i) => (
                   <li
                     key={`${task.id}-${i}`}
-                    className="flex items-baseline gap-2 text-[11px]"
+                    className="flex items-baseline gap-2 text-[length:calc(var(--ui-font-base)*0.6875)]"
                   >
                     <span className="w-14 shrink-0 text-muted-foreground">
                       {turn.role === 'tool' ? turn.name : turn.role}
@@ -970,7 +970,7 @@ function TaskOutput({ task }: { task: ActivityTask }) {
     // A subagent's transcript already says what it is waiting on.
     if (task.kind === 'agent' && (task.status === 'queued' || task.status === 'running')) return null
     return (
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
         {task.status === 'queued' || task.status === 'running'
           ? t('common:tasks.noOutput')
           : t('common:tasks.detailsUnavailable')}
@@ -993,7 +993,7 @@ function TaskOutput({ task }: { task: ActivityTask }) {
   return (
     <>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
           {task.outputTruncated && t('common:tasks.outputPartial')}{' '}
           {task.resultCapped && (
             <span data-testid="task-result-capped">
@@ -1015,7 +1015,7 @@ function TaskOutput({ task }: { task: ActivityTask }) {
           </span>
         </Button>
       </div>
-      <pre className="max-h-48 overflow-auto rounded-lg border-[0.8px] border-term-border bg-term-bg p-2.5 font-mono text-[11px] leading-[1.55] break-words whitespace-pre-wrap text-term-fg [scrollbar-width:thin]">
+      <pre className="max-h-48 overflow-auto rounded-lg border-[0.8px] border-term-border bg-term-bg p-2.5 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] leading-[1.55] break-words whitespace-pre-wrap text-term-fg [scrollbar-width:thin]">
         {shown.join('\n')}
       </pre>
     </>

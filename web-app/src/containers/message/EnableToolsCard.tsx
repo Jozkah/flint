@@ -34,7 +34,7 @@ export const EnableToolsCard = memo(
         aria-labelledby={titleId}
         className="mt-2 flex min-w-0 flex-col gap-2.5 rounded-lg border border-border p-3 text-foreground sm:p-3.5"
       >
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px]">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[length:calc(var(--ui-font-base)*0.8125)]">
           <span className="font-medium">
             {t('common:modelCapability.toolsOff')}
           </span>
@@ -42,7 +42,7 @@ export const EnableToolsCard = memo(
         </div>
         <h3
           id={titleId}
-          className="min-w-0 text-[15px] leading-snug font-semibold wrap-break-word text-foreground"
+          className="min-w-0 text-[length:calc(var(--ui-font-base)*0.9375)] leading-snug font-semibold wrap-break-word text-foreground"
         >
           {t('common:modelCapability.toolsOffTitle')}
         </h3>
@@ -106,7 +106,7 @@ export const EnableToolsCard = memo(
                   className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset pointer-coarse:min-h-11"
                   onClick={onEnableAlways}
                 >
-                  <b className="text-[13px] font-medium text-foreground">
+                  <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                     {t('common:modelCapability.enableAlways')}
                   </b>
                   <Chip tone="warn">{t('permissions:scope.broader')}</Chip>

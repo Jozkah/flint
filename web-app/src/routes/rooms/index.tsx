@@ -252,7 +252,7 @@ function RoomsList() {
               <Icon name={tpl.icon} size={18} />
             </span>
             <span className="flex min-w-0 flex-col gap-0.5">
-              <b className="text-[13px] font-semibold text-foreground">
+              <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
                 {t(`rooms:templates.${tpl.id}.name`)}
               </b>
               <small className="text-xs leading-snug text-muted-foreground">
@@ -272,10 +272,10 @@ function RoomsList() {
         <div className="flex w-full flex-col gap-5 px-1 py-4">
           <div className="flex flex-wrap items-end gap-3 motion-safe:animate-rise-in">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <h1 className="text-[22px] leading-tight font-semibold tracking-[-0.01em] text-foreground">
+              <h1 className="text-[length:calc(var(--ui-font-base)*1.375)] leading-tight font-semibold tracking-[-0.01em] text-foreground">
                 {t('rooms:title')}
               </h1>
-              <p className="text-[13px] text-muted-foreground">{t('rooms:subtitle')}</p>
+              <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">{t('rooms:subtitle')}</p>
             </div>
             <Button
               size="sm"
@@ -415,7 +415,7 @@ function RoomsList() {
                         >
                           {d && <AvatarStack room={d.room} size={26} />}
                           <div className="flex min-w-0 flex-1 basis-60 flex-col gap-0.5">
-                            <b className="truncate text-[13px] font-semibold text-foreground">
+                            <b className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
                               {s.title || t('rooms:list.untitled')}
                             </b>
                             <span className="truncate text-xs text-muted-foreground">
@@ -442,7 +442,7 @@ function RoomsList() {
 
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-[15px] font-semibold text-foreground">
+                  <h2 className="text-[length:calc(var(--ui-font-base)*0.9375)] font-semibold text-foreground">
                     {t('rooms:list.yours')}
                   </h2>
                   <span className="flex-1" />
@@ -459,7 +459,7 @@ function RoomsList() {
                   />
                 </div>
                 {shown.length === 0 ? (
-                  <p className="rounded-xl border-[0.8px] border-dashed border-border-strong px-4 py-8 text-center text-[13px] text-muted-foreground">
+                  <p className="rounded-xl border-[0.8px] border-dashed border-border-strong px-4 py-8 text-center text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
                     {t('rooms:filter.none')}
                   </p>
                 ) : (

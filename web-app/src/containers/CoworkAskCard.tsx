@@ -65,7 +65,7 @@ function PlanSteps({ plan }: { plan?: TodoList | null }) {
   return (
     <div
       data-testid="ask-plan-steps"
-      className="mb-1 max-h-64 overflow-y-auto rounded-lg border-[0.8px] border-border bg-muted/40 px-3 py-2 text-[12.5px] leading-5"
+      className="mb-1 max-h-64 overflow-y-auto rounded-lg border-[0.8px] border-border bg-muted/40 px-3 py-2 text-[length:calc(var(--ui-font-base)*0.78125)] leading-5"
     >
       {phases.map((phase, pi) => (
         <div key={pi} className={cn(pi > 0 && 'mt-1.5')}>
@@ -229,7 +229,7 @@ export function CoworkAskCard({
       {/* Header: the question, with paging and dismiss kept out of its column
           so a long question wraps against the card edge, not the controls. */}
       <div className="mb-1 flex items-start gap-2">
-        <p className="min-w-0 flex-1 text-[13.5px] font-semibold leading-5 text-pretty">
+        <p className="min-w-0 flex-1 text-[length:calc(var(--ui-font-base)*0.84375)] font-semibold leading-5 text-pretty">
           {question.question}
         </p>
         <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
@@ -294,10 +294,10 @@ export function CoworkAskCard({
               >
                 <OptionMark checked={checked} multi={Boolean(question.multi)} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] leading-5 font-medium">
+                  <span className="block text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-medium">
                     {row.label}
                     {question.recommended === i && row.fromModel && (
-                      <span className="ml-1.5 inline-flex h-[18px] items-center rounded-[5px] bg-success-tint px-1.5 align-[1px] text-[10.5px] font-medium text-success">
+                      <span className="ml-1.5 inline-flex h-[18px] items-center rounded-[5px] bg-success-tint px-1.5 align-[1px] text-[length:calc(var(--ui-font-base)*0.65625)] font-medium text-success">
                         {t('common:askRecommended')}
                       </span>
                     )}

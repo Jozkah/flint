@@ -57,8 +57,8 @@ export function StatStrip({
     >
       {cells.map((c) => (
         <div key={c.key} title={c.title} data-stat={c.key} className="min-w-0">
-          <dt className="text-[10.5px] leading-tight text-muted-foreground">{c.label}</dt>
-          <dd className="m-0 text-[12.5px] leading-tight font-medium text-foreground">{c.value}</dd>
+          <dt className="text-[length:calc(var(--ui-font-base)*0.65625)] leading-tight text-muted-foreground">{c.label}</dt>
+          <dd className="m-0 text-[length:calc(var(--ui-font-base)*0.78125)] leading-tight font-medium text-foreground">{c.value}</dd>
         </div>
       ))}
     </dl>
@@ -94,7 +94,7 @@ export function ToolChips({
               data-tool={name}
               data-failed={bad > 0 ? 'true' : undefined}
               className={cn(
-                'inline-flex items-center gap-1 rounded-md border-[0.8px] px-1.5 py-px text-[11px]',
+                'inline-flex items-center gap-1 rounded-md border-[0.8px] px-1.5 py-px text-[length:calc(var(--ui-font-base)*0.6875)]',
                 bad > 0
                   ? 'border-destructive/60 text-destructive'
                   : 'border-border text-muted-foreground'
@@ -109,7 +109,7 @@ export function ToolChips({
         })}
       </ul>
       {(active > 0 || failed > 0) && (
-        <p className="m-0 text-[11px] text-muted-foreground" data-testid="subagent-tools-status">
+        <p className="m-0 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground" data-testid="subagent-tools-status">
           {[
             active > 0 ? t('common:tasks.stepsRunning', { count: active }) : '',
             failed > 0 ? t('common:tasks.stepsFailed', { count: failed }) : '',

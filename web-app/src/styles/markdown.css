@@ -252,13 +252,13 @@
     background: var(--color-muted);
     border-bottom: 1px dashed var(--color-border);
     color: var(--color-muted-foreground);
-    font-size: 11.5px;
+    font-size: calc(var(--ui-font-base) * 0.71875);
   }
   [data-streamdown="code-block-body"] {
     background: var(--color-code-bg);
     border: 0;
     border-radius: 0;
-    font-size: 12px;
+    font-size: calc(var(--ui-font-base) * 0.75);
     line-height: 1.6;
   }
   [data-streamdown="code-block"] pre {

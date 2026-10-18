@@ -90,7 +90,7 @@ export function CoworkEventExport({
     >
       <label className="flex cursor-pointer items-center gap-3">
         <span className="min-w-0 flex-1">
-          <span className="block text-[12.5px] leading-5 text-foreground">
+          <span className="block text-[length:calc(var(--ui-font-base)*0.78125)] leading-5 text-foreground">
             {t('sweep:cowork.includeContent')}
           </span>
           {includeContent ? (

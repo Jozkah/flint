@@ -25,7 +25,7 @@ export function CoworkCollapseHeader({
   className?: string
 }) {
   const heading = (
-    <h3 className="text-[13px] font-medium text-foreground">{title}</h3>
+    <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">{title}</h3>
   )
   if (!onToggle) {
     return (

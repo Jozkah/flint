@@ -64,7 +64,7 @@ const RagCitationItem = memo(
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center gap-2 text-left"
       >
-        <span className="inline-flex size-5 shrink-0 items-center justify-center rounded bg-muted font-mono text-[10px] text-muted-foreground">
+        <span className="inline-flex size-5 shrink-0 items-center justify-center rounded bg-muted font-mono text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground">
           {index + 1}
         </span>
         <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -72,7 +72,7 @@ const RagCitationItem = memo(
         {typeof c.chunk_file_order === 'number' && (
           <span className="text-muted-foreground">#{c.chunk_file_order}</span>
         )}
-        <span className="ml-auto rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+        <span className="ml-auto rounded bg-muted px-1.5 py-0.5 font-mono text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground">
           {formatScore(c.score)}
         </span>
         <ChevronRightIcon
@@ -122,11 +122,11 @@ const WebCitationItem = memo(({ c }: { c: WebCitation }) => {
         >
           {c.title || host}
         </a>
-        <span className="ml-auto truncate text-[10px] text-muted-foreground">
+        <span className="ml-auto truncate text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground">
           {host}
         </span>
         {typeof c.score === 'number' && (
-          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground">
             {formatScore(c.score)}
           </span>
         )}

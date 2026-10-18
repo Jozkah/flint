@@ -70,7 +70,7 @@ export function CoworkWorkflowCard({
   return (
     <div
       data-testid="workflow-card"
-      className="my-2 flex flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-[13px] motion-safe:animate-rise-in"
+      className="my-2 flex flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] motion-safe:animate-rise-in"
     >
       <div className="flex flex-wrap items-center gap-2">
         <StatusIcon status={status} size="size-[15px]" />
@@ -161,7 +161,7 @@ export function CoworkWorkflowCard({
               <button
                 type="button"
                 onClick={() => onOpenTask(task)}
-                className="flex h-[26px] w-full items-center gap-2 rounded-md px-1.5 text-left text-[12.5px] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+                className="flex h-[26px] w-full items-center gap-2 rounded-md px-1.5 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
               >
                 {isCheckFailure(task) ? (
                   <TriangleAlert
@@ -189,11 +189,11 @@ export function CoworkWorkflowCard({
                   {task.title}
                 </span>
                 {isCheckFailure(task) && (
-                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-warning">
+                  <span className="shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-warning">
                     {t('common:tasks.exitCode', { code: task.exitCode })}
                   </span>
                 )}
-                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                <span className="shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-muted-foreground">
                   {formatCompactDuration(taskElapsedMs(task, now) / 1000, t)}
                 </span>
               </button>

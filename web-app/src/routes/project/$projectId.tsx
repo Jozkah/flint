@@ -136,7 +136,7 @@ function ProjectPageContent() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
               {t('projects.collectionHint')}
             </p>
           </div>
@@ -200,7 +200,7 @@ function ProjectPageContent() {
                         projectName: project.name,
                       })}
                     </h3>
-                    <p className="text-[13px] text-muted-foreground">
+                    <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
                       {t('projects.startNewConversation', {
                         projectName: project.name,
                       })}
@@ -217,7 +217,7 @@ function ProjectPageContent() {
             <FrameBody className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 border-b border-dashed border-border px-3 py-3">
                 <div className="flex min-w-0 flex-col gap-1">
-                  <h3 className="text-[13px] font-medium text-foreground">
+                  <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                     {t('projects.addProjectDialog.assistant')}
                   </h3>
                   {projectAssistant ? (

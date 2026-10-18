@@ -211,7 +211,7 @@ export function SettingsPageBody({
                   </h2>
                 )}
                 {description && (
-                  <p className="text-[13px] leading-[1.35] text-muted-foreground">
+                  <p className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-[1.35] text-muted-foreground">
                     {description}
                   </p>
                 )}

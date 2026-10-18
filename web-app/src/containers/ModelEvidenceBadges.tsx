@@ -12,7 +12,7 @@ import { runtimeVersion } from '@/containers/ModelSupportStatus'
 
 /** The design's `.evb`: a quiet tag, the same for every measured fact. */
 const EVIDENCE_BADGE =
-  'rounded-[5px] bg-accent px-1.5 py-px text-[10.5px] leading-4 whitespace-nowrap text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]'
+  'rounded-[5px] bg-accent px-1.5 py-px text-[length:calc(var(--ui-font-base)*0.65625)] leading-4 whitespace-nowrap text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]'
 
 /**
  * Small, text-only labels on a model picker row: whether the model has been
@@ -64,7 +64,7 @@ export function ModelEvidenceBadges({
         </span>
       )}
       {unsupported && (
-        <span className="rounded-md bg-destructive-tint px-1.5 text-[11px] font-medium leading-5 text-destructive">
+        <span className="rounded-md bg-destructive-tint px-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium leading-5 text-destructive">
           {t('model-fit:badge.unsupported')}
         </span>
       )}

@@ -178,7 +178,7 @@ function AssistantContent() {
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5 @min-[40rem]:flex-row @min-[40rem]:items-center @min-[40rem]:gap-4">
                   <div className="flex min-w-0 items-center gap-2 @min-[40rem]:w-56 @min-[40rem]:shrink-0">
                     <span
-                      className="truncate text-[13px] leading-[1.2] font-medium text-foreground"
+                      className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] leading-[1.2] font-medium text-foreground"
                       title={assistant.name}
                     >
                       {assistant.name}

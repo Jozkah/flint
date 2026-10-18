@@ -57,7 +57,7 @@ export function CoworkAskEntry({
     >
       <div
         className={cn(
-          'flex items-start gap-2.5 rounded-xl border-[0.8px] border-dashed border-border-strong bg-card px-3 py-2.5 text-[13px] motion-safe:animate-fade-in',
+          'flex items-start gap-2.5 rounded-xl border-[0.8px] border-dashed border-border-strong bg-card px-3 py-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] motion-safe:animate-fade-in',
           state === 'stale' && 'opacity-70'
         )}
       >
@@ -71,7 +71,7 @@ export function CoworkAskEntry({
                   {question.question}
                 </span>
                 <span
-                  className="text-[12.5px] text-muted-foreground text-pretty"
+                  className="text-[length:calc(var(--ui-font-base)*0.78125)] text-muted-foreground text-pretty"
                   data-testid="ask-entry-answer"
                 >
                   {state === 'answered'

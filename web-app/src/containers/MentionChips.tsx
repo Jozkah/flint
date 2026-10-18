@@ -133,7 +133,7 @@ export function MentionChips({
           aria-expanded
           onClick={() => setExpanded(false)}
           className={cn(
-            'flex items-center gap-1 self-start rounded px-1 text-[11px] text-muted-foreground hover:text-foreground',
+            'flex items-center gap-1 self-start rounded px-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground hover:text-foreground',
             focusRing
           )}
         >
@@ -199,7 +199,7 @@ export function MentionChips({
                 </TooltipContent>
               </Tooltip>
               {!ok && (
-                <span className="shrink-0 text-[11px] opacity-90">
+                <span className="shrink-0 text-[length:calc(var(--ui-font-base)*0.6875)] opacity-90">
                   · {t(`common:mentions.chipStatus.${p.status}`)}
                   <span className="sr-only">: {longStatus}</span>
                 </span>
@@ -235,7 +235,7 @@ export function MentionChips({
                             aria-description={hint}
                             data-testid={testId}
                             className={cn(
-                              'h-4 rounded-full px-1.5 text-[10px] leading-none font-medium transition-colors',
+                              'h-4 rounded-full px-1.5 text-[length:calc(var(--ui-font-base)*0.625)] leading-none font-medium transition-colors',
                               focusRing,
                               on
                                 ? 'bg-background text-foreground shadow-xs'
@@ -298,7 +298,7 @@ export function MentionChips({
           data-warn={tooLarge}
           aria-live="polite"
           className={cn(
-            'flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 pb-1 text-[11px] leading-4',
+            'flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] leading-4',
             tooLarge ? 'text-warning' : 'text-muted-foreground'
           )}
         >

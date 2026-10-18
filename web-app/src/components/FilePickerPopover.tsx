@@ -187,7 +187,7 @@ export function FilePickerPopover({
             </span>
           </span>
         )}
-        <span className="block text-[10px] opacity-60">
+        <span className="block text-[length:calc(var(--ui-font-base)*0.625)] opacity-60">
           ↑↓ choose · Enter/Tab insert · Alt+A name a file as an alias · Esc
           close
         </span>
@@ -268,7 +268,7 @@ export function FilePickerPopover({
                 <div
                   role="presentation"
                   data-testid="reference-group-chats"
-                  className="mt-1 border-t border-border/50 px-2 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                  className="mt-1 border-t border-border/50 px-2 pb-0.5 pt-1.5 text-[length:calc(var(--ui-font-base)*0.625)] font-medium uppercase tracking-wide text-muted-foreground"
                 >
                   {t('common:mentions.heading')}
                 </div>
@@ -300,7 +300,7 @@ export function FilePickerPopover({
                 {entry.conversation?.label && (
                   <span
                     data-testid="mention-label"
-                    className="shrink-0 rounded bg-accent px-1 text-[10px] text-muted-foreground"
+                    className="shrink-0 rounded bg-accent px-1 text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground"
                   >
                     {entry.conversation.label}
                   </span>
@@ -317,7 +317,7 @@ export function FilePickerPopover({
                 <>
                   <div
                     data-testid="mention-meta"
-                    className="text-[11px] text-muted-foreground truncate whitespace-nowrap"
+                    className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground truncate whitespace-nowrap"
                   >
                     {[
                       entry.detail,
@@ -336,14 +336,14 @@ export function FilePickerPopover({
                       .join(' · ')}
                   </div>
                   {entry.conversation.preview && (
-                    <div className="text-[11px] text-muted-foreground/80 truncate whitespace-nowrap">
+                    <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground/80 truncate whitespace-nowrap">
                       {entry.conversation.preview}
                     </div>
                   )}
                 </>
               ) : (
                 entry.detail && (
-                  <div className="text-[11px] text-muted-foreground truncate whitespace-nowrap">
+                  <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground truncate whitespace-nowrap">
                     {entry.detail}
                   </div>
                 )

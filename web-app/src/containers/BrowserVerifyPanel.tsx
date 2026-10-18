@@ -190,7 +190,7 @@ export function BrowserVerifyPanel({
       className="group/bv shrink-0 border-b border-dashed border-border px-4 py-2 text-xs"
     >
       <summary className="flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
-        <h3 className="text-[13px] leading-5 font-medium text-foreground">
+        <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-medium text-foreground">
           {t('common:browserVerify.title')}
         </h3>
         <HelpTip label={t('common:browserVerify.about')}>

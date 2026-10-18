@@ -170,7 +170,7 @@ export function StudioDiscover({
             Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.
           </div>
         )}
-        <p className="text-[13px] text-secondary-foreground">
+        <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground">
           Picture models in the GGUF format that Studio can run. Pick a weights
           file and what kind of model it is; the text encoder and VAE it needs
           are downloaded with it and checked like every other download.
@@ -225,7 +225,7 @@ export function StudioDiscover({
                   <HuggingFaceAvatar author={author} modelId={model.id} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="truncate text-[15px] font-semibold">
+                      <span className="truncate text-[length:calc(var(--ui-font-base)*0.9375)] font-semibold">
                         <span className="font-normal text-muted-foreground">
                           {rest.length ? `${author} / ` : ''}
                         </span>
@@ -315,14 +315,14 @@ export function StudioDiscover({
                             className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-[0.8px] border-border bg-card px-3 py-2"
                           >
                             <div className="min-w-0">
-                              <span className="font-mono text-[13px] font-semibold">
+                              <span className="font-mono text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold">
                                 {quantizationFromFilename(file.name) ??
                                   file.name}
                               </span>
                               <span className="ml-2 text-xs text-muted-foreground tabular-nums">
                                 {formatModelBytes(file.size)}
                               </span>
-                              <div className="truncate text-[11.5px] text-muted-foreground">
+                              <div className="truncate text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                                 {file.name}
                               </div>
                             </div>

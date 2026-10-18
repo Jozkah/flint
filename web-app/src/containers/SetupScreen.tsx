@@ -577,7 +577,7 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
                     {/* The engine's asset name: a caption, never the sentence. */}
                     {engineBackendName && (
                       <p
-                        className="mt-3 truncate font-mono text-[11px] text-muted-foreground"
+                        className="mt-3 truncate font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
                         title={engineBackendName}
                       >
                         {engineBackendName}
