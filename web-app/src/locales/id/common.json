@@ -357,7 +357,8 @@
   "composerOptions": "Opsi",
   "coworkBars": {
     "showMore": "Tampilkan {{count}} lagi",
-    "showFewer": "Tampilkan lebih sedikit"
+    "showFewer": "Tampilkan lebih sedikit",
+    "moreActions": "Tindakan lainnya"
   },
   "coworkLayout": {
     "views": "Tampilan Cowork",

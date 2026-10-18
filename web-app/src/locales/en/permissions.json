@@ -230,7 +230,11 @@
     "later": "Not now",
     "failed": "Could not trust the folder",
     "kept_one": "Kept hooks on for {{count}} folder you already use. Review it in Settings > Permissions > Trusted folders.",
-    "kept_other": "Kept hooks on for {{count}} folders you already use. Review them in Settings > Permissions > Trusted folders."
+    "kept_other": "Kept hooks on for {{count}} folders you already use. Review them in Settings > Permissions > Trusted folders.",
+    "summaryHooks": "Trust this folder? Its hooks run commands",
+    "summarySubagents": "Trust this folder? Its agent definitions can run",
+    "summaryBoth": "Trust this folder? Its hooks and agents can run",
+    "details": "What trusting means"
   },
   "trustedFolders": {
     "title": "Trusted folders",

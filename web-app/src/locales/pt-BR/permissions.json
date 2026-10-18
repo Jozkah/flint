@@ -230,7 +230,11 @@
     "later": "Agora não",
     "failed": "Não foi possível confiar na pasta",
     "kept_one": "Hooks mantidos ativos em {{count}} pasta que você já usa. Revise-a em Configurações > Permissões > Pastas confiáveis.",
-    "kept_other": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis."
+    "kept_other": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis.",
+    "summaryHooks": "Confiar nesta pasta? Os hooks dela executam comandos",
+    "summarySubagents": "Confiar nesta pasta? As definições de agentes dela podem ser executadas",
+    "summaryBoth": "Confiar nesta pasta? Os hooks e agentes dela podem ser executados",
+    "details": "O que significa confiar"
   },
   "trustedFolders": {
     "title": "Pastas confiáveis",

@@ -363,7 +363,8 @@
   "composerOptions": "Параметры",
   "coworkBars": {
     "showMore": "Показать ещё {{count}}",
-    "showFewer": "Показать меньше"
+    "showFewer": "Показать меньше",
+    "moreActions": "Другие действия"
   },
   "coworkLayout": {
     "views": "Вид Cowork",

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileDiff, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Eye, FileDiff, X } from 'lucide-react'
+import { BarRow } from '@/components/ui/bar-row'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { readyBarSignature, useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import {
@@ -105,37 +105,46 @@ export function CoworkReviewReady({
       <section
         aria-label={t('common:coworkReview.ready', { count: fileCount })}
         data-testid="cowork-review-ready"
-        className="mb-1.5 flex min-h-[38px] flex-wrap items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[length:calc(var(--ui-font-base)*0.8125)] shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
+        className="mb-1.5 min-w-0 motion-safe:animate-rise-in"
       >
-        <FileDiff className="size-4 shrink-0 text-fg-2" aria-hidden />
-        <span className="font-semibold text-foreground">
-          {t('common:coworkReview.ready', { count: fileCount })}
-        </span>
-        <span className="flex-1 font-mono text-[length:calc(var(--ui-font-base)*0.65625)] tabular-nums">
-          <span className="text-diff-add">+{additions}</span>{' '}
-          <span className="text-diff-del">−{deletions}</span>
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 pointer-coarse:h-11"
-          onClick={onReview}
-          data-testid="cowork-review-ready-open"
-        >
-          {t('common:coworkReview.open')}
-        </Button>
-        {sessionId ? (
-          <button
-            type="button"
-            onClick={() => hideReadyBar(sessionId, signature)}
-            aria-label={t('common:coworkReview.hide')}
-            title={t('common:coworkReview.hideHint')}
-            data-testid="cowork-review-ready-hide"
-            className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-hover-btn hover:text-foreground pointer-coarse:size-11"
-          >
-            <X size={14} />
-          </button>
-        ) : null}
+        <BarRow
+          className="bg-muted shadow-[inset_0_0_0_0.8px_var(--border)]"
+          icon={<FileDiff className="size-4 shrink-0 text-fg-2" aria-hidden />}
+          lead={t('common:coworkReview.ready', { count: fileCount })}
+          leadClassName="font-semibold text-foreground"
+          meta={
+            <span className="shrink-0 font-mono text-xs tabular-nums">
+              <span className="text-diff-add">+{additions}</span>{' '}
+              <span className="text-diff-del">−{deletions}</span>
+            </span>
+          }
+          actions={[
+            {
+              id: 'review',
+              label: t('common:coworkReview.open'),
+              onSelect: onReview,
+              testId: 'cowork-review-ready-open',
+              icon: <Eye className="size-3.5" />,
+              iconOnlyCollapsed: true,
+              variant: 'outline',
+              floor: 'icon',
+            },
+          ]}
+          trailing={
+            sessionId ? (
+              <button
+                type="button"
+                onClick={() => hideReadyBar(sessionId, signature)}
+                aria-label={t('common:coworkReview.hide')}
+                title={t('common:coworkReview.hideHint')}
+                data-testid="cowork-review-ready-hide"
+                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-hover-btn hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none pointer-coarse:size-11"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : null
+          }
+        />
       </section>
     </>
   )

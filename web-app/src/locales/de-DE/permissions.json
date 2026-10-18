@@ -230,7 +230,11 @@
     "later": "Nicht jetzt",
     "failed": "Dem Ordner konnte nicht vertraut werden",
     "kept_one": "Hooks bleiben für {{count}} bereits genutzten Ordner aktiviert. Prüfe ihn unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner.",
-    "kept_other": "Hooks bleiben für {{count}} bereits genutzte Ordner aktiviert. Prüfe sie unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner."
+    "kept_other": "Hooks bleiben für {{count}} bereits genutzte Ordner aktiviert. Prüfe sie unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner.",
+    "summaryHooks": "Diesem Ordner vertrauen? Seine Hooks führen Befehle aus",
+    "summarySubagents": "Diesem Ordner vertrauen? Seine Agentendefinitionen können laufen",
+    "summaryBoth": "Diesem Ordner vertrauen? Seine Hooks und Agenten können laufen",
+    "details": "Was Vertrauen bedeutet"
   },
   "trustedFolders": {
     "title": "Vertrauenswürdige Ordner",

@@ -359,7 +359,8 @@
   "composerOptions": "विकल्प",
   "coworkBars": {
     "showMore": "{{count}} और दिखाएँ",
-    "showFewer": "कम दिखाएँ"
+    "showFewer": "कम दिखाएँ",
+    "moreActions": "और कार्रवाइयाँ"
   },
   "coworkLayout": {
     "views": "Cowork व्यू",
