@@ -244,6 +244,9 @@ pub enum JudgeError {
 
 /// The seam a model-powered review attaches to. The deterministic gate and the
 /// rules above are the floor; a judge only adds refusals on top of them.
+// async_trait marks the boxed-future method #[must_use], which newer clippy
+// flags as doubled on an already must_use return type.
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait Classifier: Send + Sync {
     async fn judge(&self, input: &JudgeInput) -> Result<Verdict, JudgeError>;
