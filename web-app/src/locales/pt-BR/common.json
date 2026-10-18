@@ -1055,6 +1055,8 @@
   "artifactPath": "Caminho",
   "artifactShowDetails": "Mostrar detalhes de {{name}}",
   "workspace": {
+    "worktreeBadge": "Worktree isolado: branch {{branch}}",
+    "worktreeBadgeNoBranch": "Worktree isolado",
     "readsFrom": "Lê de",
     "alsoAttached": "Também anexadas",
     "addFolder": "Adicionar outra pasta",

@@ -65,7 +65,7 @@ import { useThreads } from '@/hooks/useThreads'
 import { chatFoldersOf } from '@/lib/chatFolders'
 import { useAttachments } from '@/hooks/useAttachments'
 import { useMCPServers } from '@/hooks/useMCPServers'
-import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { webSearchOnFor } from '@/hooks/useWebSearchChoice'
 import {
   WEB_SEARCH_DESCRIPTION,
   WEB_SEARCH_INPUT_SCHEMA,
@@ -1749,7 +1749,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       ragFeatureAvailable,
       disabledToolKeys,
       deadTools: deadTools(this.threadId),
-      webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
+      webSearchEnabled: webSearchOnFor(this.threadId),
       agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
       chatDelegation: chatDelegationEnabled(),
       visualizeEnabled: useVisualizeConfig.getState().enabled,
@@ -1913,7 +1913,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
       // Native web tools, provided by the websearch plugin (not an MCP server).
       // Advertised whenever the user has web search enabled.
-      if (useWebSearchConfig.getState().webSearchEnabled) {
+      if (webSearchOnFor(this.threadId)) {
         toolsRecord['web_search'] = {
           description: WEB_SEARCH_DESCRIPTION,
           inputSchema: jsonSchema(WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
@@ -4029,7 +4029,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * a model without them was taught to cite pages it never read (C051).
    */
   buildWebSearchSystemInstruction(): string {
-    if (!useWebSearchConfig.getState().webSearchEnabled) return ''
+    if (!webSearchOnFor(this.threadId)) return ''
     if (!this.tools || !('web_search' in this.tools || 'web_fetch' in this.tools))
       return ''
     return [

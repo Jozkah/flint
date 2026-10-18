@@ -1170,11 +1170,29 @@ describe('ChatInput', () => {
 
     // Web access is a global capability both surfaces honour -- Cowork reads
     // the same store when it builds its tool set -- so the toggle travels.
-    it('offers the web-search toggle on every surface', () => {
+    // Web search is a row inside the parameters panel now: no globe button
+    // beside it, on any surface.
+    // (The panel row itself: SamplerPopover.remote / ComposerOptionsMenu tests.)
+    it('has no separate web-search button; the parameters button is reachable', () => {
       renderInput()
-      expect(icons('globe')).toBe(1)
-      renderInput({ ownsToolSet: false })
-      expect(icons('globe')).toBeGreaterThan(0)
+      expect(icons('globe')).toBe(0)
+      expect(screen.queryByRole('button', { name: 'common:web_search' })).toBeNull()
+      const trigger = screen.getAllByRole('button', {
+        name: 'common:sampler.label',
+      })[0]
+      expect(trigger).not.toBeDisabled()
+    })
+
+    // Attach, options and skills read as one group of identical buttons.
+    it('gives the attach and options buttons identical classes', () => {
+      renderInput({ groupOptions: true })
+      const attach = screen.getByTestId('composer-attach')
+      const options = screen.getByTestId('composer-options')
+      expect(attach.className).toBe(options.className)
+      expect(attach.className).not.toContain('border-[0.8px]')
+      const iconSize = (b: Element) =>
+        b.querySelector('svg')!.getAttribute('class')!.replace(/lucide-\S+/g, '')
+      expect(iconSize(attach)).toBe(iconSize(options))
     })
 
     // Its only switch is Settings > Agent Tools now. In the composer it read as

@@ -287,3 +287,37 @@ describe('ReasoningEffortSlider', () => {
     })
   })
 })
+
+describe('ReasoningEffortSlider dots', () => {
+  const dots = () => document.querySelectorAll('[data-dot]').length
+  // Visible dots = stops above the selection; the thumb is the chosen one's mark.
+  it.each([
+    ['low', 3],
+    ['medium', 2],
+    ['high', 1],
+    ['xhigh', 0],
+  ] as const)('with %s chosen shows %i dots past it, plus the thumb', (value, n) => {
+    render(<Slider value={value} />)
+    expect(dots()).toBe(n)
+    expect(screen.getAllByTestId('effort-thumb')).toHaveLength(1)
+    // Passed stops keep their position but draw nothing.
+    expect(screen.getAllByTestId(/^effort-stop-/)).toHaveLength(4)
+  })
+
+  it('moves the dots with the keyboard and keeps slider semantics', () => {
+    const onChange = vi.fn()
+    const { rerender } = render(<Slider value="low" onChange={onChange} />)
+    const slider = screen.getByRole('slider')
+    expect(slider).toHaveAttribute('aria-valuenow', '1')
+    fireEvent.keyDown(slider, { key: 'ArrowRight' })
+    expect(onChange).toHaveBeenCalledWith('medium')
+    rerender(<Slider value="medium" onChange={onChange} />)
+    expect(dots()).toBe(2)
+    expect(slider).toHaveAttribute('aria-valuenow', '2')
+  })
+
+  it('with Off available and chosen, every level keeps its dot', () => {
+    render(<Slider canDisable value="off" />)
+    expect(dots()).toBe(4)
+  })
+})
