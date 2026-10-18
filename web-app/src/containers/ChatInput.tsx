@@ -32,7 +32,7 @@ import {
   memo,
 } from 'react'
 import type { ReactNode } from 'react'
-import { Separator } from '@/components/ui/separator'
+import { COMPOSER_ICON, COMPOSER_ICON_BUTTON } from '@/containers/composerIconButton'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -3703,25 +3703,26 @@ const ChatInput = memo(function ChatInput({
             {/* One row, never two: when the pane is narrow the controls give
                 up their text labels (ComposerDensity) and, past that, clip
                 here, so the send button at the right is never pushed out. */}
-            <div className="flex flex-nowrap items-center gap-x-1 flex-1 min-w-0 overflow-hidden">
+            <div className="flex flex-nowrap items-center gap-x-0.5 flex-1 min-w-0 overflow-hidden">
               {/* Assistant, sampling, tools, web search and reasoning stay
                   live while a reply streams: they configure the *next*
                   message (each request reads them when it is sent), so
                   freezing them only made the user wait. Attachments are the
                   exception: a message queued behind a run carries text only. */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 {/* Dropdown for attachments — hidden in agent mode */}
                 {!effectiveAgentMode && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="outline"
-                      size="icon-sm"
+                      variant="ghost"
+                      size="icon-xs"
                       aria-label={t('common:attachments')}
                       disabled={isStreaming}
-                      className="mr-0.5 size-7 rounded-[7px] text-secondary-foreground pointer-coarse:size-11"
+                      data-testid="composer-attach"
+                      className={COMPOSER_ICON_BUTTON}
                     >
-                      <PlusIcon className="size-[15px]" />
+                      <PlusIcon className={COMPOSER_ICON} aria-hidden />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
@@ -4143,11 +4144,8 @@ const ChatInput = memo(function ChatInput({
                 })()}
               </div>
               {surfaceControls && (
-                <div className="flex min-w-0 flex-nowrap items-center gap-1">
-                  <Separator
-                    orientation="vertical"
-                    className="mx-1 h-4 shrink-0"
-                  />
+                // Same 2px rhythm as the buttons before it: one group.
+                <div className="flex min-w-0 flex-nowrap items-center gap-0.5">
                   <ComposerDensityProvider width={controlsWidth}>
                     {surfaceControls}
                   </ComposerDensityProvider>

@@ -5778,9 +5778,10 @@ export function CoworkPage() {
     )
   }
 
-  // A pane has no header row for its folder, so the folder joins the quiet
-  // row under the composer, before what the run may do.
-  const belowComposerControls = paneChrome ? (
+  // A pane or a phone has no header row for its folder, so the folder joins
+  // the quiet row under the composer, before what the run may do; the row
+  // inside the box keeps only attach, options and skills.
+  const belowComposerControls = paneChrome || phone ? (
     <>
       {workspacePillOf('quiet')}
       {runControls('quiet')}
@@ -6696,7 +6697,6 @@ export function CoworkPage() {
                 modelControl={quietModelSelector}
                 surfaceControls={
                   <>
-                    {!paneChrome && phone ? workspacePill : null}
                     <CoworkSandboxChip />
                     {/* On a phone the composer is out of view while the
                         output is, so it keeps one set there. */}

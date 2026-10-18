@@ -1183,6 +1183,18 @@ describe('ChatInput', () => {
       expect(trigger).not.toBeDisabled()
     })
 
+    // Attach, options and skills read as one group of identical buttons.
+    it('gives the attach and options buttons identical classes', () => {
+      renderInput({ groupOptions: true })
+      const attach = screen.getByTestId('composer-attach')
+      const options = screen.getByTestId('composer-options')
+      expect(attach.className).toBe(options.className)
+      expect(attach.className).not.toContain('border-[0.8px]')
+      const iconSize = (b: Element) =>
+        b.querySelector('svg')!.getAttribute('class')!.replace(/lucide-\S+/g, '')
+      expect(iconSize(attach)).toBe(iconSize(options))
+    })
+
     // Its only switch is Settings > Agent Tools now. In the composer it read as
     // a per-message choice while actually flipping a global.
     it('no longer offers the agent-tools toggle', () => {

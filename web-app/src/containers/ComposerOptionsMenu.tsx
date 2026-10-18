@@ -2,6 +2,7 @@ import { SlidersHorizontal } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { COMPOSER_ICON, COMPOSER_ICON_BUTTON } from '@/containers/composerIconButton'
 import { WebSearchToggleRow, type WebSearchToggle } from '@/containers/WebSearchToggleRow'
 
 /** The composer's less-used controls behind one compact icon button. */
@@ -42,9 +43,9 @@ export function ComposerOptionsMenu({
           aria-label={label}
           title={label}
           data-testid="composer-options"
-          className="size-7 rounded-[7px] text-muted-foreground pointer-coarse:size-11"
+          className={COMPOSER_ICON_BUTTON}
         >
-          <SlidersHorizontal className="size-4" aria-hidden />
+          <SlidersHorizontal className={COMPOSER_ICON} aria-hidden />
         </Button>
       </PopoverTrigger>
       <PopoverContent

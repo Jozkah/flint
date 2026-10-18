@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useSkills, effectiveEnabled, storedEnabled } from '@/hooks/useSkills'
-import { cn } from '@/lib/utils'
+import { COMPOSER_ICON, COMPOSER_ICON_BUTTON } from '@/containers/composerIconButton'
 import { isPluginSkill } from '@/lib/skillStore'
 
 /**
@@ -53,16 +53,15 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
           variant="ghost"
           size="icon-xs"
           // The size, radius and icon of the plus and options buttons beside it.
-          className="relative size-7 shrink-0 rounded-[7px] text-muted-foreground pointer-coarse:size-11"
+          className={COMPOSER_ICON_BUTTON}
           title={label}
           aria-label={label}
           data-testid="skill-selector"
           data-active={anyOn ? 'true' : undefined}
         >
-          <Sparkles
-            aria-hidden
-            className={cn('size-4 shrink-0', anyOn && 'text-foreground')}
-          />
+          {/* Same colour as its siblings whether on or off: the dot is the
+              only accent. */}
+          <Sparkles aria-hidden className={COMPOSER_ICON} />
           {anyOn && (
             <span
               aria-hidden
