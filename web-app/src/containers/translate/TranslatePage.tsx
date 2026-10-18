@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { LanguagePicker } from './LanguagePicker'
 import { Textarea } from '@/components/ui/textarea'
@@ -293,18 +294,35 @@ export function TranslatePage() {
         </Frame>
 
         <div className="flex items-center justify-center">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={swap}
-            disabled={source === AUTO_LANGUAGE || running}
-            aria-label={t('common:translate.swap')}
-            title={t('common:translate.swap')}
-            className="rotate-90 md:rotate-0"
-            data-testid="translate-swap"
-          >
-            <ArrowLeftRight />
-          </Button>
+          {/* With "Detect language" there is nothing to swap to: the button
+              stays focusable (aria-disabled) so its tooltip can say why. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={swap}
+                disabled={running}
+                aria-disabled={source === AUTO_LANGUAGE || undefined}
+                aria-label={t('common:translate.swap')}
+                aria-describedby={source === AUTO_LANGUAGE ? 'translate-swap-why' : undefined}
+                className="rotate-90 md:rotate-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                data-testid="translate-swap"
+              >
+                <ArrowLeftRight />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {source === AUTO_LANGUAGE
+                ? t('common:translate.swapNeedsSource')
+                : t('common:translate.swap')}
+            </TooltipContent>
+          </Tooltip>
+          {source === AUTO_LANGUAGE ? (
+            <span id="translate-swap-why" className="sr-only">
+              {t('common:translate.swapNeedsSource')}
+            </span>
+          ) : null}
         </div>
 
         <Frame

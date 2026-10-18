@@ -6,7 +6,9 @@
  * how much is included in all, and warns when that is a large share of the
  * model's window. Shown only while the draft has a mention.
  */
-import { AlertTriangle, Info, X } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, AtSign, ChevronDown, ChevronUp, Info, X } from 'lucide-react'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { useMentionPreview } from '@/hooks/useMentionPreview'
@@ -34,6 +36,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+
+/** What the folded row says is included: all excerpts, all summaries, or both. */
+function compactMode(
+  previews: readonly MentionPreview[],
+  t: (key: string) => string
+): string {
+  const ok = previews.filter((p) => p.status === 'ok')
+  const summaries = ok.filter((p) => p.summary).length
+  if (summaries === 0) return t('common:mentions.excerpt')
+  if (summaries === ok.length) return t('common:mentions.summary')
+  return t('common:mentions.mixed')
+}
 
 const focusRing =
   'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-ring'
@@ -63,7 +77,12 @@ export function MentionChips({
   const typed = parsePromptForReferences(prompt).filter((r) => parseMention(r))
   const known = new Set(previews.map((p) => p.token))
   const pending = typed.filter((tok) => !known.has(tok))
+  // On a narrow composer the chips repeat the editor's pills and eat the
+  // height, so they fold into one line that opens on tap.
+  const narrow = useMediaQuery('(max-width: 520px)')
+  const [expanded, setExpanded] = useState(false)
   if (previews.length === 0 && pending.length === 0) return null
+  const compact = narrow && !expanded
 
   const totals = mentionTotals(previews)
   const tooLarge = mentionsTooLarge(totals.tokens, contextWindow)
@@ -79,13 +98,55 @@ export function MentionChips({
   }
 
   return (
+    <TooltipProvider>
     <div
       className="mb-1 flex flex-col gap-2 px-3 pt-3"
       data-testid="mention-chips"
       role="group"
       aria-label={t('common:mentions.group')}
     >
-      <ul className="m-0 flex max-h-[4.75rem] list-none flex-wrap gap-2 overflow-y-auto p-0 [scrollbar-width:thin]">
+      {compact ? (
+        <button
+          type="button"
+          data-testid="mention-chips-compact"
+          aria-expanded={false}
+          onClick={() => setExpanded(true)}
+          className={cn(
+            'flex h-7 min-w-0 items-center gap-1.5 self-start rounded-full border border-border bg-card px-2.5 text-xs text-foreground shadow-xs hover:bg-accent',
+            focusRing
+          )}
+        >
+          <AtSign aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">
+            {t('common:mentions.compact', {
+              count: previews.length + pending.length,
+              mode: compactMode(previews, t),
+            })}
+          </span>
+          <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+        </button>
+      ) : null}
+      {narrow && expanded ? (
+        <button
+          type="button"
+          data-testid="mention-chips-collapse"
+          aria-expanded
+          onClick={() => setExpanded(false)}
+          className={cn(
+            'flex items-center gap-1 self-start rounded px-1 text-[11px] text-muted-foreground hover:text-foreground',
+            focusRing
+          )}
+        >
+          <ChevronUp aria-hidden className="size-3" />
+          {t('common:collapse')}
+        </button>
+      ) : null}
+      {/* Two whole rows at most (chips are h-7 with a gap-2: 2 * 1.75rem +
+          0.5rem), scrolling a row at a time so no half row ever shows. */}
+      <ul
+        hidden={compact}
+        className="m-0 flex max-h-[4rem] snap-y snap-mandatory list-none flex-wrap gap-2 overflow-y-auto p-0 [scrollbar-width:thin] [&>li]:snap-start"
+      >
         {previews.map((p) => {
           const Icon = MENTION_ICON[p.kind]
           const title = p.title ?? slugTitle(p.token)
@@ -104,7 +165,6 @@ export function MentionChips({
               data-testid="mention-chip"
               data-status={p.status}
               data-mode={p.summary ? 'summary' : 'excerpt'}
-              title={longStatus}
               className={cn(
                 'inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border pr-0.5 pl-2 text-xs shadow-xs transition-colors',
                 ok && 'border-border bg-card text-foreground',
@@ -123,14 +183,21 @@ export function MentionChips({
                   ok ? 'text-muted-foreground' : 'opacity-80'
                 )}
               />
-              <span
-                className={cn(
-                  'max-w-[9rem] min-w-0 truncate font-medium sm:max-w-[16rem]',
-                  !ok && p.status !== 'over-cap' && 'line-through decoration-1'
-                )}
-              >
-                {title}
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className={cn(
+                      'max-w-[9rem] min-w-0 truncate font-medium sm:max-w-[16rem]',
+                      !ok && p.status !== 'over-cap' && 'line-through decoration-1'
+                    )}
+                  >
+                    {title}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-64 leading-snug">
+                  {longStatus}
+                </TooltipContent>
+              </Tooltip>
               {!ok && (
                 <span className="shrink-0 text-[11px] opacity-90">
                   · {t(`common:mentions.chipStatus.${p.status}`)}
@@ -155,29 +222,36 @@ export function MentionChips({
                     ] as const
                   ).map(([mode, summary, tokens, testId]) => {
                     const on = p.summary === summary
+                    const hint = t(`common:mentions.${mode}Hint`, {
+                      tokens: compactCount(tokens, lang),
+                    })
                     return (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="radio"
-                        aria-checked={on}
-                        data-testid={testId}
-                        title={t(`common:mentions.${mode}Hint`, {
-                          tokens: compactCount(tokens, lang),
-                        })}
-                        className={cn(
-                          'h-4 rounded-full px-1.5 text-[10px] leading-none font-medium transition-colors',
-                          focusRing,
-                          on
-                            ? 'bg-background text-foreground shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground'
-                        )}
-                        onClick={() => {
-                          if (!on) onChange(toggleSummary(prompt, p.token))
-                        }}
-                      >
-                        {t(`common:mentions.${mode}`)}
-                      </button>
+                      <Tooltip key={mode}>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            aria-description={hint}
+                            data-testid={testId}
+                            className={cn(
+                              'h-4 rounded-full px-1.5 text-[10px] leading-none font-medium transition-colors',
+                              focusRing,
+                              on
+                                ? 'bg-background text-foreground shadow-xs'
+                                : 'text-muted-foreground hover:text-foreground'
+                            )}
+                            onClick={() => {
+                              if (!on) onChange(toggleSummary(prompt, p.token))
+                            }}
+                          >
+                            {t(`common:mentions.${mode}`)}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-64 leading-snug">
+                          {hint}
+                        </TooltipContent>
+                      </Tooltip>
                     )
                   })}
                 </span>
@@ -288,5 +362,6 @@ export function MentionChips({
         </div>
       )}
     </div>
+    </TooltipProvider>
   )
 }

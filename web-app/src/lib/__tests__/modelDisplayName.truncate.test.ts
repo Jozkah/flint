@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseModelName,
   middleTruncate,
+  modelNameTail,
   truncateDistinct,
 } from '../modelDisplayName'
 
@@ -57,5 +58,18 @@ describe('truncateDistinct', () => {
     expect(new Set(out).size).toBe(names.length)
     expect(out[0].endsWith('IQ4_XS.gguf')).toBe(true)
     expect(out[1].endsWith('Q4_K_M.gguf')).toBe(true)
+  })
+})
+
+describe('modelNameTail', () => {
+  it('keeps the version suffix of a long Bedrock id', () => {
+    const name = 'anthropic.claude-sonnet-5-5'
+    const tail = modelNameTail(name)
+    expect(name.slice(name.length - tail)).toContain('-5-5')
+    expect(tail).toBeLessThanOrEqual(name.length / 2)
+  })
+  it('keeps a quant suffix', () => {
+    const name = 'Qwen3-30B-A3B-Instruct-Q4_K_M'
+    expect(name.slice(name.length - modelNameTail(name))).toContain('Q4_K_M')
   })
 })

@@ -21,8 +21,19 @@ function MiddleText({
       className={cn('flex min-w-0 whitespace-nowrap', className)}
       {...props}
     >
-      <span className="min-w-0 truncate">{text.slice(0, cut)}</span>
-      <span className="shrink-0">{text.slice(cut)}</span>
+      {/* The split halves are drawn from attributes, so the page text (what
+          assistive tech, find-in-page and copy see) is the whole name once. */}
+      <span className="sr-only">{text}</span>
+      <span
+        aria-hidden
+        data-text={text.slice(0, cut)}
+        className="min-w-0 overflow-hidden text-ellipsis whitespace-pre before:content-[attr(data-text)]"
+      />
+      <span
+        aria-hidden
+        data-text={text.slice(cut)}
+        className="shrink-0 whitespace-pre before:content-[attr(data-text)]"
+      />
     </span>
   )
 }

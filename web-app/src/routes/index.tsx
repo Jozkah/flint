@@ -55,7 +55,7 @@ function Index() {
   const { providers } = useModelProvider()
   const search = useSearch({ from: route.home as any })
   const threadModel = search.threadModel
-  const { setCurrentThreadId } = useThreads()
+  const setCurrentThreadId = useThreads((s) => s.setCurrentThreadId)
   useTools()
 
   useBedrockCredentials((state) => state.saved)
@@ -117,11 +117,11 @@ function Index() {
           }
         />
         <FrameBody className="min-h-0 overflow-hidden">
-          <div className="flex min-h-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto px-[18px] py-8 [scrollbar-width:thin]">
+          <div className="flex min-h-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto px-[18px] py-8 [scrollbar-width:thin] max-[431px]:py-4">
             {/* Centred when it fits, top-aligned (and scrolling) when not. */}
-            <div className="my-auto flex w-full max-w-[780px] flex-col gap-[18px]">
+            <div className="my-auto flex w-full max-w-[780px] flex-col gap-[18px] max-[431px]:gap-3">
               <div className="flex flex-col gap-2.5 text-center">
-                <h1 className="text-[30px] leading-tight font-semibold tracking-[-0.02em] text-foreground motion-safe:animate-rise-in">
+                <h1 className="text-[30px] leading-tight font-semibold max-[431px]:text-[21px] tracking-[-0.02em] text-foreground motion-safe:animate-rise-in">
                   {t('chat:description')}
                 </h1>
                 <p className="text-[13px] text-muted-foreground motion-safe:animate-rise-in motion-safe:[animation-delay:60ms]">
@@ -142,7 +142,7 @@ function Index() {
                       type="button"
                       data-testid={`suggestion-${key}`}
                       onClick={() => fillComposer(text)}
-                      className="w-full rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-left text-[13px] text-secondary-foreground transition-[box-shadow,color,transform] duration-150 outline-hidden hover:-translate-y-px hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                      className="w-full rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-left text-[13px] max-[431px]:py-2 text-secondary-foreground transition-[box-shadow,color,transform] duration-150 outline-hidden hover:-translate-y-px hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40"
                     >
                       {text}
                     </button>

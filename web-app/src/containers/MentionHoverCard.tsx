@@ -3,6 +3,7 @@
  * it names, how much of it goes with the message, and its last few messages
  * (docs/CHAT_MENTIONS.md). Read-only and pointer-transparent to the editor.
  */
+import { RichSnippet } from '@/components/RichSnippet'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { MENTION_LIMITS, parseMention } from '@/lib/chatMentions'
@@ -94,7 +95,7 @@ export function MentionHoverCard({
                   t(`common:mentions.preview.${m.role === 'user' ? 'you' : 'assistant'}`)}
                 :
               </span>{' '}
-              <span>{m.text}</span>
+              <RichSnippet text={m.text} query="" className="line-clamp-none inline" />
             </li>
           ))}
         </ul>

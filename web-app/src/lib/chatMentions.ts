@@ -14,6 +14,7 @@
  * conversation is just text.
  */
 import { redactSecrets } from '@/lib/redact'
+import { stripSummaryScaffolding } from '@/lib/summaryText'
 
 export type MentionKind = 'chat' | 'session' | 'room'
 
@@ -278,7 +279,7 @@ export function buildExcerpt(
   }
   if (opts.summary !== undefined) {
     const s = clip(
-      defangMentionText(redactSecrets(opts.summary.trim())),
+      defangMentionText(redactSecrets(stripSummaryScaffolding(opts.summary))),
       Math.max(0, budget - used)
     )
     body.push(`Summary of the conversation (written by the app's model, not the user):\n${s}`)

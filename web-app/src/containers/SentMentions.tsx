@@ -49,7 +49,6 @@ export function SentMentions({ mentions }: { mentions: MentionRecord[] }) {
             disabled={!exists}
             aria-label={t('common:mentions.open', { title: m.titleAtSend })}
             onClick={() => open(m)}
-            title={m.titleAtSend}
             className={cn(
               'group/mention inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs text-foreground shadow-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid focus-visible:outline-ring',
               exists ? 'hover:bg-accent' : 'cursor-default border-dashed opacity-60 shadow-none'

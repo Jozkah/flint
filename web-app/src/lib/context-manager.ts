@@ -7,6 +7,7 @@ import {
   outputForEstimate,
 } from './toolOutputImages'
 import { stripToolImageSentinels } from './tool-image-sentinel'
+import { stripSummaryScaffolding } from './summaryText'
 
 /**
  * Approximate token count using a character-based heuristic.
@@ -41,6 +42,32 @@ export function inlineFilesText(metadata: unknown): string {
     .filter((file) => file?.content)
     .map((file) => `File: ${file.name || 'attachment'}\n${file.content}`)
     .join('\n')
+}
+
+/**
+ * What the composer will add to the next request before it is sent: the
+ * typed text and the inline documents staged with it (a pasted 30K-token
+ * text is one), counted the way the sent message's metadata is counted, so
+ * the context ring moves while composing instead of after send (K-011).
+ */
+export function pendingComposerTokens(
+  prompt: string,
+  attachments: ReadonlyArray<{
+    type?: string
+    name?: string
+    injectionMode?: string
+    inlineContent?: string
+  }> = []
+): number {
+  const inline = inlineFilesText({
+    inline_file_contents: attachments
+      .filter(
+        (a) =>
+          a.type === 'document' && a.injectionMode === 'inline' && a.inlineContent
+      )
+      .map((a) => ({ name: a.name, content: a.inlineContent })),
+  })
+  return estimateTokens([prompt.trim(), inline].filter(Boolean).join('\n'))
 }
 
 /** One tool schema as it is sent: name, description and input schema. */
@@ -280,9 +307,7 @@ const COMPACT_SYSTEM_PROMPT =
  * back.
  */
 export function extractSummary(raw: string): string {
-  const summary = /<summary>([\s\S]*?)(?:<\/summary>|$)/i.exec(raw)
-  if (summary) return summary[1].trim()
-  return raw.replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/gi, '').trim()
+  return stripSummaryScaffolding(raw)
 }
 
 export interface MicrocompactOptions {

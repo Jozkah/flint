@@ -130,6 +130,17 @@ export function middleTruncate(text: string, max: number, tail = 0): string {
 }
 
 /**
+ * How many trailing characters a width-driven middle ellipsis (MiddleText)
+ * keeps for a model name: the last version / quant segment ("-5-5",
+ * "Q4_K_M") plus a little context, never more than half the name.
+ */
+export function modelNameTail(name: string): number {
+  const segment = /[-_.:/]([^-_.:/]*\d[^-_.:/]*(?:[-_.:/][^-_.:/]*\d[^-_.:/]*)*)$/.exec(name)
+  const want = Math.max(10, (segment?.[1].length ?? 0) + 4)
+  return Math.min(want, Math.floor(name.length / 2), 18)
+}
+
+/**
  * Middle-truncate a list of names so no two entries look the same. Names that
  * still collide at `max` keep more of their tail until they differ.
  */

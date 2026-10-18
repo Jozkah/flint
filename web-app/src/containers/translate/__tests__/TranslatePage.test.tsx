@@ -154,6 +154,17 @@ describe('TranslatePage', () => {
     expect(streamText).toHaveBeenCalledTimes(1)
   })
 
+  it('explains why swap is unavailable while detecting the language', () => {
+    render(<TranslatePage />)
+    const swap = screen.getByTestId('translate-swap')
+    expect(swap).toHaveAttribute('aria-disabled', 'true')
+    expect(swap).not.toHaveAttribute('title')
+    expect(swap.getAttribute('aria-describedby')).toBe('translate-swap-why')
+    const before = (screen.getByTestId('translate-target') as HTMLSelectElement).value
+    fireEvent.click(swap)
+    expect(screen.getByTestId('translate-target')).toHaveValue(before)
+  })
+
   it('swaps languages and content', async () => {
     streamText.mockReturnValue(streamOf('Hello'))
     render(<TranslatePage />)

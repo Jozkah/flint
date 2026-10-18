@@ -112,7 +112,12 @@ export function PromptLibraryCard() {
   const importFile = async (file: File | undefined) => {
     if (!file) return
     const out = usePromptLibrary.getState().importJson(await file.text())
-    if (out.ok) toast.success(t('common:promptLibrary.imported', { count: out.added }))
+    if (out.ok)
+      toast.success(
+        out.added > 0
+          ? t('common:promptLibrary.imported', { count: out.added })
+          : t('common:promptLibrary.importedNone')
+      )
     else toast.error(t(`common:promptLibrary.errors.${out.code}`))
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -210,6 +215,20 @@ export function PromptLibraryCard() {
         ))}
         {prompts.length === 0 && (
           <CardItem description={t('common:promptLibrary.empty')} />
+        )}
+        {prompts.length > 0 && shown.length === 0 && (
+          <div
+            role="status"
+            data-testid="prompt-no-results"
+            className="flex flex-col items-center gap-2 px-4 py-6 text-center"
+          >
+            <p className="text-sm text-muted-foreground">
+              {t('common:promptLibrary.noResults', { query: search.trim() })}
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setSearch('')}>
+              {t('common:promptLibrary.clearSearch')}
+            </Button>
+          </div>
         )}
       </Card>
 

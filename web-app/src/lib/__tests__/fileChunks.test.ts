@@ -129,3 +129,22 @@ describe('windowing', () => {
     expect(capLine(long, true).cut).toBe(false)
   })
 })
+
+describe('createChunkReader with a capped range server', () => {
+  it('keeps going after a short read while the known size is not reached', async () => {
+    const bytes = new TextEncoder().encode('a\n'.repeat(3000))
+    // The server returns at most 1000 bytes per request, like Tauri's asset protocol.
+    const src = {
+      size: bytes.length,
+      read: async (offset: number, length: number) =>
+        bytes.slice(offset, offset + Math.min(length, 1000)),
+    }
+    const r = createChunkReader(src, 4096)
+    await r.next()
+    expect(r.done).toBe(false)
+    expect(r.loaded).toBe(1000)
+    while (!r.done) await r.next()
+    expect(r.loaded).toBe(bytes.length)
+    expect(r.state.lines).toHaveLength(3000)
+  })
+})

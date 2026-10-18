@@ -168,7 +168,12 @@ export function createChunkReader(src: ChunkSource, chunk = CHUNK_SIZE): ChunkRe
         return
       }
       loaded += part.length
-      done = part.length < chunk || (src.size !== null && loaded >= src.size)
+      // A known size decides the end: servers may answer a range with less
+      // than asked (Tauri's asset protocol caps one response near 1 MB), and
+      // a short read there is not the end of the file.
+      done =
+        part.length === 0 ||
+        (src.size !== null ? loaded >= src.size : part.length < chunk)
       const text =
         typeof part === 'string' ? part : decoder.decode(part, { stream: !done })
       pushText(state, text, done)

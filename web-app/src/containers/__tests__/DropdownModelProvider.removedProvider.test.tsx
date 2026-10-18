@@ -120,7 +120,7 @@ describe('a chat or session whose provider was removed', () => {
     await flush()
 
     const label = screen.getAllByText('common:modelUnavailable')
-    expect(label[0]).toHaveAttribute('data-unavailable')
+    expect(label[0].closest('[data-unavailable]')).not.toBeNull()
     const state = useModelProvider.getState()
     expect(state.selectedModel).toBeNull()
     expect(state.selectedProvider).not.toBe('openai')
