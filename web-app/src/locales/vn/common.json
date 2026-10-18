@@ -1001,7 +1001,9 @@
     "use": "Dùng mô hình này",
     "thisChat": "Cuộc trò chuyện này",
     "thisRoom": "Phòng này",
-    "thisSession": "Phiên này"
+    "thisSession": "Phiên này",
+    "keyMissingTitle": "An API key is missing",
+    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
   },
   "skillsUsedCount_one": "Đã dùng {{count}} kỹ năng",
   "skillsUsedCount_other": "Đã dùng {{count}} kỹ năng",

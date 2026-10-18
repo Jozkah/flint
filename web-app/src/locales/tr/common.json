@@ -999,7 +999,9 @@
     "use": "Bu modeli kullan",
     "thisChat": "Bu sohbet",
     "thisRoom": "Bu oda",
-    "thisSession": "Bu oturum"
+    "thisSession": "Bu oturum",
+    "keyMissingTitle": "An API key is missing",
+    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
   },
   "skillsUsedCount_one": "{{count}} beceri kullanıldı",
   "skillsUsedCount_other": "{{count}} beceri kullanıldı",

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FolderOpen, GitMerge, GitPullRequest, Trash2 } from 'lucide-react'
-import { BarRow, collapseSteps, type BarAction } from '../bar-row'
+import { BarRow, collapsePlan, collapseSteps, type BarAction } from '../bar-row'
 
 // jsdom lays nothing out, so the row's widths are modelled: the box is the
 // container's width, the content is what its children would take.
@@ -85,6 +85,20 @@ function forms() {
 }
 
 const menu = () => screen.queryByTestId('bar-more')
+
+describe('collapsePlan', () => {
+  const kept: BarAction[] = [
+    { id: 'review', label: 'Review', icon: <Trash2 />, floor: 'icon', onSelect: () => {} },
+  ]
+  it('squeezes the text before the kept actions lose labels by default', () => {
+    const plan = collapsePlan(kept)
+    expect(plan.squeezeAt).toBeLessThan(plan.steps.length)
+  })
+  it('keepLead squeezes the text only after every action has collapsed', () => {
+    const plan = collapsePlan(kept, true)
+    expect(plan.squeezeAt).toBe(plan.steps.length)
+  })
+})
 
 describe('BarRow', () => {
   it('collapses the actions that may leave the row first, the kept ones last', () => {

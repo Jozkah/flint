@@ -1012,7 +1012,9 @@
     "use": "Použít tento model",
     "thisChat": "Tento chat",
     "thisRoom": "Tato místnost",
-    "thisSession": "Tato relace"
+    "thisSession": "Tato relace",
+    "keyMissingTitle": "An API key is missing",
+    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
   },
   "skillsUsedCount_one": "Použita {{count}} dovednost",
   "skillsUsedCount_few": "Použity {{count}} dovednosti",

@@ -999,7 +999,9 @@
     "use": "이 모델 사용",
     "thisChat": "이 채팅",
     "thisRoom": "이 룸",
-    "thisSession": "이 세션"
+    "thisSession": "이 세션",
+    "keyMissingTitle": "An API key is missing",
+    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
   },
   "skillsUsedCount_one": "스킬 {{count}}개 사용",
   "skillsUsedCount_other": "스킬 {{count}}개 사용",

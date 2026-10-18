@@ -46,4 +46,20 @@ describe('message times survive a restart', () => {
     useCoworkSessions.getState().setMessages(sid, [msg('a', { createdAt: at })])
     expect(timeOf(sid, 'a')).toEqual(at)
   })
+
+  // The run's own commit is how almost every message reaches the store, and it
+  // used to write the run's messages as they were, unstamped (live final test).
+  it('stamps and keeps times when a run commits its messages', () => {
+    const sid = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().commitTurns(sid, [], [msg('a')], [])
+    const first = timeOf(sid, 'a')
+    expect(new Date(first as string).toISOString()).toBe('2026-10-18T19:48:00.000Z')
+
+    vi.setSystemTime(new Date('2026-10-18T20:36:00Z'))
+    useCoworkSessions.getState().commitTurns(sid, [], [msg('a'), msg('b')], [])
+    expect(timeOf(sid, 'a')).toEqual(first)
+    expect(new Date(timeOf(sid, 'b') as string).toISOString()).toBe(
+      '2026-10-18T20:36:00.000Z'
+    )
+  })
 })

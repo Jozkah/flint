@@ -1001,7 +1001,9 @@
     "use": "使用此模型",
     "thisChat": "此聊天",
     "thisRoom": "此房间",
-    "thisSession": "此会话"
+    "thisSession": "此会话",
+    "keyMissingTitle": "An API key is missing",
+    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
   },
   "skillsUsedCount_one": "使用了 {{count}} 个技能",
   "skillsUsedCount_other": "使用了 {{count}} 个技能",

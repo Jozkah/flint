@@ -1013,7 +1013,9 @@
     "use": "Użyj tego modelu",
     "thisChat": "Ten czat",
     "thisRoom": "Ten pokój",
-    "thisSession": "Ta sesja"
+    "thisSession": "Ta sesja",
+    "keyMissingTitle": "An API key is missing",
+    "keyMissingDescription": "{{subject}} uses a provider that has no API key yet. Add the key in Settings, or choose another model to continue."
   },
   "skillsUsedCount_one": "Użyto {{count}} umiejętności",
   "skillsUsedCount_other": "Użyto {{count}} umiejętności",

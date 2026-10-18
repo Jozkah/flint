@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { route } from '@/constants/routes'
 import {
   SettingsPageBody,
@@ -45,7 +46,7 @@ import { ModelFilterButton } from '@/containers/ModelFilterButton'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.claude_code as any)({
-  component: ClaudeCodeIntegration,
+  component: desktopOnlyRoute(ClaudeCodeIntegration, 'common:claude_code'),
 })
 
 type ClaudeCodeOverride = {

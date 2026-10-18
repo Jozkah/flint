@@ -889,7 +889,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ? {
                   ...x,
                   turns: [...x.turns, ...turns],
-                  messages,
+                  messages: withStoredTimes(x.messages ?? [], messages, now()),
                   inFlight: undefined,
                   // The dead run's budget is not this one's.
                   runBudget: undefined,
@@ -957,7 +957,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             return {
               ...x,
               turns: [...x.turns, ...turns],
-              messages,
+              messages: withStoredTimes(x.messages ?? [], messages, now()),
               subagents: [
                 ...(x.subagents ?? []).filter((r) => !incoming.has(r.runId)),
                 ...subagents,

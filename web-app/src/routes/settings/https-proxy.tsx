@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { route } from '@/constants/routes'
 import {
   SettingsPageBody,
@@ -17,7 +18,7 @@ import { isPlatformTauri } from '@/lib/platform/utils'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.https_proxy as any)({
-  component: HTTPSProxyContent,
+  component: desktopOnlyRoute(HTTPSProxyContent, 'common:https_proxy'),
 })
 
 function HTTPSProxyContent() {

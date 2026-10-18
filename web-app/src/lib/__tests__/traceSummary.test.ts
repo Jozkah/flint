@@ -58,6 +58,16 @@ describe('summarizeTrace', () => {
     })
   })
 
+  it('counts only the lines an edit really changes', () => {
+    const s = summarizeTrace([
+      tool('edit', {
+        path: 'a.ts',
+        edits: [{ old_string: 'one\ntwo', new_string: 'one\nnew1\nnew2\nnew3\ntwo' }],
+      }),
+    ])
+    expect(s).toMatchObject({ added: 3, removed: 0 })
+  })
+
   it('treats a command that exited non-zero as failed', () => {
     expect(partFailed({ ...tool('bash'), output: 'ok\n[exit 0]' })).toBe(false)
     expect(partFailed({ ...tool('bash'), output: 'no\n[exit 2]' })).toBe(true)

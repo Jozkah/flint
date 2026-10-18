@@ -12,6 +12,7 @@ import { RoomModelSelect } from '@/containers/rooms/RoomModelSelect'
 import { useModelReplacePrompt } from '@/hooks/useModelReplacePrompt'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { modelKey, type ModelRef } from '@/lib/modelReplace'
+import { checkModel, defaultProviderLookup } from '@/lib/rooms/availability'
 
 /**
  * Asks for a replacement when a model a room, chat or session was using is gone:
@@ -30,15 +31,27 @@ export function ModelReplaceDialog() {
   }, [request])
 
   if (!request) return null
+  // A provider that is present but not ready (no API key) is a missing key, not
+  // a model that went away: say so.
+  const keyMissing = request.missing.every(
+    (m) => checkModel(m, defaultProviderLookup)?.reason === 'provider-not-configured'
+  )
   const ready = request.missing.every((m) => choices[modelKey(m)])
 
   return (
     <Dialog open onOpenChange={(open) => !open && answer(null)}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t('common:modelReplace.title')}</DialogTitle>
+          <DialogTitle>
+            {t(keyMissing ? 'common:modelReplace.keyMissingTitle' : 'common:modelReplace.title')}
+          </DialogTitle>
           <DialogDescription>
-            {t('common:modelReplace.description', { subject: request.subject })}
+            {t(
+              keyMissing
+                ? 'common:modelReplace.keyMissingDescription'
+                : 'common:modelReplace.description',
+              { subject: request.subject }
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">

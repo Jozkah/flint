@@ -112,6 +112,7 @@ export function CoworkReviewReady({
           icon={<FileDiff className="size-4 shrink-0 text-fg-2" aria-hidden />}
           lead={t('common:coworkReview.ready', { count: fileCount })}
           leadClassName="font-semibold text-foreground"
+          keepLead
           meta={
             <span className="shrink-0 font-mono text-xs tabular-nums">
               <span className="text-diff-add">+{additions}</span>{' '}
