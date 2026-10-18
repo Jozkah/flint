@@ -101,6 +101,7 @@ export type MailboxErrorCode =
   | 'timeout'
   | 'target_unavailable'
   | 'chain_limit_reached'
+  | 'session_archived'
   | 'invalid_session_id'
   | 'unknown_message'
   | 'invalid_timeout'
@@ -137,6 +138,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<MailboxErrorCode>([
   'timeout',
   'target_unavailable',
   'chain_limit_reached',
+  'session_archived',
   'invalid_session_id',
   'unknown_message',
   'invalid_timeout',
@@ -298,6 +300,13 @@ export const sessionMailbox = {
       displayName: input.displayName,
       folder: input.folder ?? null,
     }),
+
+  /**
+   * The session was archived (or restored). The backend refuses mail to an
+   * archived session and leaves it out of `list_sessions`.
+   */
+  setArchived: (sessionId: string, archived: boolean) =>
+    call<null>('mailbox_session_archive', { sessionId, archived }),
 
   takeForDelivery: (sessionId: string) =>
     call<MailEnvelope[]>('mailbox_take_for_delivery', { sessionId }),

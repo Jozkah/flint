@@ -1920,6 +1920,17 @@ pub async fn mailbox_session_remove(
     Mailbox::open(Path::new(&data_folder)).remove(&session_id)
 }
 
+/// The session was archived (`true`) or restored (`false`). Archived
+/// sessions get no mail and are left out of `list_sessions`.
+#[tauri::command]
+pub async fn mailbox_session_archive(
+    data_folder: String,
+    session_id: String,
+    archived: bool,
+) -> Result<(), MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).set_archived(&session_id, archived)
+}
+
 /// Clear a session's deleted mark and register it: the restore path of an
 /// archived Cowork session (also recovers ones archived by older builds).
 #[tauri::command]
@@ -1992,8 +2003,10 @@ pub async fn mailbox_reply(
 pub async fn mailbox_list_sessions(
     data_folder: String,
     session_id: String,
+    include_archived: Option<bool>,
 ) -> Result<Vec<SessionSummary>, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).list_sessions(&session_id)
+    Mailbox::open(Path::new(&data_folder))
+        .list_sessions_with(&session_id, include_archived.unwrap_or(false))
 }
 
 /// The user of `session_id` approved one `stop_session` call. Recorded in

@@ -332,3 +332,25 @@ async fn tool_arguments_cannot_forge_or_reset_the_chain() {
     assert_eq!(e.origin, Origin::Agent);
     assert_ne!(e.chain_id, "fresh");
 }
+
+#[test]
+fn archived_sessions_get_no_mail_and_are_not_listed_until_restored() {
+    let fx = Fx::new("archive");
+    let (mb, _) = ring_mailbox(&fx, 2);
+    mb.set_archived("r2", true).unwrap();
+    assert_eq!(
+        mb.send("r1", "r2", "hi", None, Origin::Agent)
+            .unwrap_err()
+            .code,
+        code::SESSION_ARCHIVED
+    );
+    assert!(mb.list_sessions("r1").unwrap().is_empty());
+    let all = mb.list_sessions_with("r1", true).unwrap();
+    assert_eq!(all.len(), 1);
+    assert!(all[0].archived);
+
+    // A restore registers the session again.
+    mb.register("r2", "Ring2", fx.folder()).unwrap();
+    assert_eq!(mb.list_sessions("r1").unwrap().len(), 1);
+    mb.send("r1", "r2", "hi", None, Origin::Agent).unwrap();
+}

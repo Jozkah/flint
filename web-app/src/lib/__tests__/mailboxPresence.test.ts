@@ -21,6 +21,7 @@ const fake = () => ({
   remove: vi.fn(async () => undefined),
   revive: vi.fn(async () => undefined),
   setWaiting: vi.fn(async () => undefined),
+  setArchived: vi.fn(async () => undefined),
 })
 
 describe('mailbox presence', () => {
@@ -111,8 +112,11 @@ describe('mailbox presence', () => {
     useCoworkSessions.getState().deleteSession('A', { keepRecords: true })
     vi.advanceTimersByTime(100)
     expect(mailbox.remove).not.toHaveBeenCalled()
+    // The backend is told, so mail to it is refused and discovery hides it.
+    expect(mailbox.setArchived).toHaveBeenCalledWith('A', true)
 
     notifySessionRestored('A')
+    expect(mailbox.setArchived).toHaveBeenLastCalledWith('A', false)
     useCoworkSessions.getState().restoreSession(archived)
     vi.advanceTimersByTime(100)
     expect(mailbox.register).toHaveBeenCalledWith({

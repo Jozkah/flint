@@ -51,7 +51,8 @@ reads as `unavailable`.
 
 Refusals are typed (`rate_limited`, `pair_limit_exceeded`,
 `reply_depth_exceeded`, `chain_limit_reached`, `self_target`,
-`recipient_opted_out`, ...). A session cannot message itself.
+`recipient_opted_out`, `session_archived`, ...). A session cannot message
+itself.
 
 ### Chains (loop guard)
 
@@ -93,8 +94,9 @@ turned it off is still listed, but sends to it are refused with
 
 ## Tools (Cowork sessions only)
 
-- `list_sessions` -- other sessions: id, title, folder, status, accepts
-  messages, last activity.
+- `list_sessions({include_archived?})` -- other sessions: id, title, folder,
+  status, accepts messages, last activity. Archived sessions are left out
+  unless asked for.
 - `send_message({to, message, wait_seconds?})` -- `to` is a title or id. Fire
   and forget by default; with `wait_seconds` it waits for the answer and returns
   it as the tool result.
@@ -109,6 +111,9 @@ Chat threads and subagents do not get these tools.
   shown as a "from <title>" card in the target thread. The user can see it and
   stop it like any run.
 - Running target: delivered at the next step boundary of the run.
+- Archived target: refused with `session_archived` until the session is
+  restored (the app reports archive with `mailbox_session_archive`; a restore
+  registers it again).
 - A run that handled a message and ended without replying has its final answer
   sent back as the reply.
 
