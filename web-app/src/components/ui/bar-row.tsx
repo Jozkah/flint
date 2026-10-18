@@ -1,4 +1,6 @@
 import {
+  createContext,
+  useContext,
   useLayoutEffect,
   useRef,
   useState,
@@ -41,6 +43,32 @@ export type BarAction = {
   rank?: number
   /** The furthest this action collapses (default: into the menu). */
   floor?: BarActionForm
+  /** The one action a compact row keeps (default: the highest rank). */
+  primary?: boolean
+}
+
+const CompactCtx = createContext(false)
+
+/**
+ * Bars inside draw compactly: one line of text, one action, and everything
+ * else (including the dismissal) behind "...". The phone's status sheet.
+ */
+export const BarRowCompact = CompactCtx.Provider
+
+/** Whether the bars around are drawn compactly. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useBarRowCompact(): boolean {
+  return useContext(CompactCtx)
+}
+
+/** The action a compact row keeps: the marked one, else the highest rank. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function primaryAction(actions: readonly BarAction[]): BarAction | undefined {
+  const marked = actions.find((a) => a.primary)
+  if (marked) return marked
+  let best: BarAction | undefined
+  for (const a of actions) if (!best || (a.rank ?? 0) > (best.rank ?? 0)) best = a
+  return best
 }
 
 const ORDER: Record<BarActionForm, number> = { label: 0, icon: 1, menu: 2 }
@@ -102,8 +130,10 @@ export function BarRow({
   leadTestId,
   leadClassName,
   meta,
-  actions,
+  actions: allActions,
   trailing,
+  trailingAction,
+  compactMeta,
   className,
   testId,
   ...rest
@@ -119,10 +149,26 @@ export function BarRow({
   actions: readonly BarAction[]
   /** After the actions and the menu (a dismiss button). */
   trailing?: ReactNode
+  /** What `trailing` does, for a compact row's menu (which drops `trailing`). */
+  trailingAction?: BarAction
+  /** `meta` for a compact row (default: `meta`; null drops it). */
+  compactMeta?: ReactNode
   className?: string
   testId?: string
 } & Omit<ComponentProps<'div'>, 'children'>) {
   const { t } = useTranslation()
+  const compact = useBarRowCompact()
+  // Compact: the primary action keeps its label, the rest (and the
+  // dismissal) live in the menu, whatever the width.
+  const primary = compact ? primaryAction(allActions) : undefined
+  const actions: readonly BarAction[] = compact
+    ? [
+        ...allActions.map((a) =>
+          a === primary ? { ...a, floor: 'label' as const } : { ...a, floor: 'menu' as const, rank: -1 }
+        ),
+        ...(trailingAction ? [{ ...trailingAction, floor: 'menu' as const, rank: -1 }] : []),
+      ]
+    : allActions
   const ref = useRef<HTMLDivElement>(null)
   const leadRef = useRef<HTMLSpanElement>(null)
   useTextOverflow(leadRef)
@@ -133,7 +179,11 @@ export function BarRow({
   const last = steps.length
   const at = Math.min(stage, last)
   const squeezed = at >= squeezeAt
-  const forms = steps[squeezed ? at - 1 : at]
+  const forms = compact
+    ? Object.fromEntries(
+        actions.map((a) => [a.id, a === actions.find((b) => b.floor === 'label') ? 'label' : 'menu'])
+      ) as Record<string, BarActionForm>
+    : steps[squeezed ? at - 1 : at]
   // What the actions say: a new label measures again from the widest form.
   const signature = actions
     .map((a) => `${a.id}:${a.label}:${a.disabled ? 1 : 0}`)
@@ -180,7 +230,9 @@ export function BarRow({
       data-bar-row=""
       data-bar-stage={at}
       className={cn(
-        'flex h-9 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-[10px] pr-1 pl-3 text-sm pointer-coarse:h-12',
+        // Even padding: the last action keeps 10px from the edge.
+        'flex h-9 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-[10px] px-2.5 text-sm pointer-coarse:h-12',
+        compact && 'h-11 px-3',
         className
       )}
       {...rest}
@@ -196,7 +248,7 @@ export function BarRow({
       >
         {lead}
       </span>
-      {meta}
+      {compact && compactMeta !== undefined ? compactMeta : meta}
       {actions.map((a) => {
         const form = forms[a.id]
         if (form === 'menu') return null
@@ -268,7 +320,7 @@ export function BarRow({
           </DropdownMenuContent>
         </DropdownMenu>
       ) : null}
-      {trailing}
+      {compact && trailingAction ? null : trailing}
     </div>
   )
 }

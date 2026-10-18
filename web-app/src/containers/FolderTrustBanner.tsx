@@ -1,6 +1,7 @@
 import { InfoIcon, ShieldCheckIcon, ShieldQuestionIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { BarRow } from '@/components/ui/bar-row'
+import { useState } from 'react'
+import { BarRow, useBarRowCompact } from '@/components/ui/bar-row'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFolderTrust } from '@/hooks/useFolderTrust'
@@ -19,6 +20,10 @@ import { carriesKind } from '@/lib/folderTrust'
 export function FolderTrustBanner({ folder }: { folder: string | null }) {
   const { t } = useTranslation()
   const { status, ask, trust, later } = useFolderTrust(folder)
+  // Compact (the phone's status sheet): the explanation opens under the row
+  // from the row's menu instead of an info button.
+  const compact = useBarRowCompact()
+  const [showBody, setShowBody] = useState(false)
   if (!ask || !status || !folder) return null
   const kind = carriesKind(status.carries)
   const body =
@@ -49,6 +54,7 @@ export function FolderTrustBanner({ folder }: { folder: string | null }) {
         leadTitle={t(body, { folder })}
         leadClassName="font-medium text-foreground"
         leadTestId="folder-trust-summary"
+        compactMeta={null}
         meta={
           <Popover>
             <PopoverTrigger asChild>
@@ -93,6 +99,7 @@ export function FolderTrustBanner({ folder }: { folder: string | null }) {
             label: t('permissions:folderTrust.trust'),
             onSelect: () => void trust(),
             testId: 'folder-trust-grant',
+            primary: true,
             variant: 'default',
             icon: <ShieldCheckIcon className="size-4" />,
             iconOnlyCollapsed: true,
@@ -100,8 +107,27 @@ export function FolderTrustBanner({ folder }: { folder: string | null }) {
             // Its label goes only once nothing else is left to give up.
             floor: 'icon',
           },
+          ...(compact
+            ? [
+                {
+                  id: 'details',
+                  label: t('permissions:folderTrust.details'),
+                  icon: <InfoIcon className="size-4" />,
+                  onSelect: () => setShowBody((v) => !v),
+                  testId: 'folder-trust-info',
+                },
+              ]
+            : []),
         ]}
       />
+      {compact && showBody && (
+        <p
+          data-testid="folder-trust-details"
+          className="px-3 pt-1.5 text-xs wrap-break-word text-muted-foreground"
+        >
+          {t(body, { folder })} {t('permissions:folderTrust.keepsOff')}
+        </p>
+      )}
     </section>
   )
 }

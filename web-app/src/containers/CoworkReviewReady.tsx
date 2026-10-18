@@ -130,6 +130,17 @@ export function CoworkReviewReady({
               floor: 'icon',
             },
           ]}
+          trailingAction={
+            sessionId
+              ? {
+                  id: 'hide',
+                  label: t('common:coworkReview.hide'),
+                  icon: <X className="size-3.5" />,
+                  onSelect: () => hideReadyBar(sessionId, signature),
+                  testId: 'cowork-review-ready-hide',
+                }
+              : undefined
+          }
           trailing={
             sessionId ? (
               <button

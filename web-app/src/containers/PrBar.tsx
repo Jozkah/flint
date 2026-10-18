@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ExternalLink, GitMerge, RefreshCw, Wrench, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { useBarRowCompact } from '@/components/ui/bar-row'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -156,6 +157,7 @@ export function PrBar({
   const view = usePrStatusView(folder, sessionId)
   const pr = view?.pr
   const [dismissed, setDismissed] = useState<string | null>(null)
+  const compact = useBarRowCompact()
   if (!pr || !folder || dismissed === `${folder}#${pr.number}`) return null
 
   // Opened outside Flint on a checkout this session only shares: named, muted,
@@ -188,6 +190,7 @@ export function PrBar({
     folder.split(/[\\/]/).filter(Boolean).pop() ??
     folder
   const open = () => void getServiceHub().opener().openUrl(pr.url)
+  const dismiss = () => setDismissed(`${folder}#${pr.number}`)
   const listed = orderedChecks(pr.check_runs).slice(0, MAX_LISTED_CHECKS)
   const status = pr.state === 'open' ? 'pr' : pr.state
 
@@ -196,7 +199,7 @@ export function PrBar({
       data-testid="pr-bar"
       data-state={pr.state}
       className={cn(
-        'flex min-h-[38px] items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[length:calc(var(--ui-font-base)*0.78)] shadow-[inset_0_0_0_.8px_var(--border)] motion-safe:animate-rise-in',
+        'flex min-h-[38px] items-center gap-2.5 rounded-[10px] bg-muted px-2.5 py-1 text-[length:calc(var(--ui-font-base)*0.78)] shadow-[inset_0_0_0_.8px_var(--border)] motion-safe:animate-rise-in',
         pr.state === 'open' && 'shadow-[inset_0_0_0_.8px_color-mix(in_oklab,var(--success)_35%,var(--border))]',
         // Conflicts outrank an open PR's green edge: it cannot merge as is.
         pr.merge === 'conflicting' &&
@@ -219,13 +222,19 @@ export function PrBar({
       >
         #{pr.number}
       </button>
-      <span className={cn('text-muted-foreground', pr.state === 'merged' && 'text-merged/70')}>{repo}</span>
-      <span
-        className={cn('min-w-0 truncate font-mono text-xs text-secondary-foreground', pr.state === 'merged' && 'text-merged')}
-        title={pr.head}
-      >
-        {pr.head}
-      </span>
+      {/* Compact (the phone's status sheet): the number, CI and one menu;
+          the branch is named once, on the worktree row above. */}
+      {!compact && (
+        <>
+          <span className={cn('text-muted-foreground', pr.state === 'merged' && 'text-merged/70')}>{repo}</span>
+          <span
+            className={cn('min-w-0 truncate font-mono text-xs text-secondary-foreground', pr.state === 'merged' && 'text-merged')}
+            title={pr.head}
+          >
+            {pr.head}
+          </span>
+        </>
+      )}
       {pr.statusError && (
         <span data-testid="pr-bar-status-error" className="shrink-0 text-xs text-destructive" title={pr.statusError}>
           {t('common:pr.statusUnavailable')}
@@ -236,7 +245,7 @@ export function PrBar({
         <span className="text-[length:calc(var(--ui-font-base)*0.78)] font-medium text-merged">{t('common:pr.merged')}</span>
       ) : (
         <>
-          {(pr.merge === 'conflicting' || pr.merge === 'behind') && (
+          {(pr.merge === 'conflicting' || (!compact && pr.merge === 'behind')) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -285,10 +294,12 @@ export function PrBar({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {!compact && (
           <span className="inline-flex h-[26px] items-center gap-1.5 rounded-md bg-card px-2 font-mono text-xs font-medium shadow-[inset_0_0_0_.8px_var(--border)]">
             <span className="text-success">+{fmt(pr.additions)}</span>
             <span className="text-destructive">−{fmt(pr.deletions)}</span>
           </span>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="group/ci gap-1.5">
@@ -375,18 +386,26 @@ export function PrBar({
                 <ExternalLink />
                 <span>{t('common:pr.open')}</span>
               </DropdownMenuItem>
+              {compact && (
+                <DropdownMenuItem onSelect={dismiss}>
+                  <X />
+                  <span>{t('common:pr.dismiss')}</span>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </>
       )}
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label={t('common:pr.dismiss')}
-        onClick={() => setDismissed(`${folder}#${pr.number}`)}
-      >
-        <X />
-      </Button>
+      {(!compact || pr.state === 'merged') && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={t('common:pr.dismiss')}
+          onClick={dismiss}
+        >
+          <X />
+        </Button>
+      )}
     </div>
   )
 }
