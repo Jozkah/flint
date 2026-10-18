@@ -12,6 +12,9 @@
   --normal-bg: var(--popover);
   --normal-text: var(--popover-foreground);
   --normal-border: var(--border);
+  /* The list itself never catches a click meant for what is under it (the
+     gaps between stacked toasts, the empty strip sonner keeps for hover). */
+  pointer-events: none;
 }
 /* A Radix modal sets pointer-events: none on <body>, and sonner's cards inherit
    it, so a toast raised while a dialog is open (an approval, an error with a
@@ -27,6 +30,7 @@
 @import '@/styles/motion-chat.css';
 @import '@/styles/motion-voice.css';
 @import '@/styles/motion-controls.css';
+@import '@/styles/perf.css';
 @import '@/styles/motion-media.css';
 @import '@/styles/motion-status.css';
 @source '../node_modules/streamdown/dist/**/*.js';
@@ -69,6 +73,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-tint: var(--destructive-tint);
+  --color-destructive-text: var(--destructive-text);
   --color-success: var(--success);
   --color-success-tint: var(--success-tint);
   --color-warning: var(--warning);
@@ -646,4 +651,16 @@ html.resizing *::after {
 ::highlight(conv-find-active) {
   background-color: #f59e0b;
   color: #000;
+}
+
+/* Touch-only devices: iOS zooms into a focused text field under 16px, and the
+   composer is a contenteditable, not an input (C079). Desktop (a fine or
+   hovering pointer) keeps its sizes. */
+@media (pointer: coarse) and (hover: none) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select,
+  [contenteditable='true'] {
+    font-size: 16px !important;
+  }
 }

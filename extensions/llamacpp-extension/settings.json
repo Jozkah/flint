@@ -1,8 +1,8 @@
 [
   {
     "key": "llamacpp_env",
-    "title": "Environmental variables",
-    "description": "Environmental variables for llama.cpp(KEY=VALUE), separated by ';'",
+    "title": "Environment variables",
+    "description": "Environment variables for llama.cpp (KEY=VALUE), separated by ';'",
     "controllerType": "input",
     "controllerProps": {
       "value": "",
@@ -60,9 +60,22 @@
     }
   },
   {
+    "key": "ctx_size",
+    "title": "Default context size",
+    "description": "The context window used for local models that do not set their own. Larger = remembers more but needs more memory. Each model can override this in its own settings (gear icon). Leave on Auto to use the model's native size (can be huge). Common sizes: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "controllerType": "input",
+    "controllerProps": {
+      "value": "",
+      "placeholder": "Auto",
+      "type": "number",
+      "textAlign": "right",
+      "min": 0
+    }
+  },
+  {
     "key": "fit",
-    "title": "Auto-fit to device memory",
-    "description": "Auto-fit: adjust unset arguments (such as GPU layers) so the model fits in device memory. Turn off Auto-fit to set them by hand. (env: LLAMA_ARG_FIT)",
+    "title": "Auto-fit",
+    "description": "Let Flint decide how many layers run on the GPU and how large the context can be, so the model fits in your memory. Turn it off to set GPU layers and Context Size yourself.",
     "controllerType": "checkbox",
     "controllerProps": {
       "value": true
@@ -70,8 +83,8 @@
   },
   {
     "key": "fit_target",
-    "title": "Auto-fit target per device (MiB)",
-    "description": "Free memory Auto-fit leaves on each device, comma-separated list of MiB values. Single value is broadcast across all devices. (env: LLAMA_ARG_FIT_TARGET)",
+    "title": "Auto-fit: memory to keep free",
+    "description": "How much memory (in MiB) auto-fit leaves free on each GPU for other apps and the display. Raise it if your system gets sluggish while a model is loaded. Local models only.",
     "controllerType": "input",
     "controllerProps": {
       "value": "1024",
@@ -83,7 +96,7 @@
   {
     "key": "fit_ctx",
     "title": "Auto-fit: smallest context",
-    "description": "Only used while Auto-fit is on. If the model does not fit in memory, Auto-fit may shrink the context, but never below this many tokens. This is NOT the context size: pick that per model (Context Size in the model settings).",
+    "description": "The smallest context size (in tokens) auto-fit may shrink to when the model does not fit in memory. It never goes below this, and the model fails to load if it still does not fit. This is not the context size: set that in Default context size or per model in Context Size. Only used while Auto-fit is on, and only for local models.",
     "controllerType": "input",
     "controllerProps": {
       "value": 4096,
@@ -290,7 +303,7 @@
   {
     "key": "parallel",
     "title": "Parallel Sequences",
-    "description": "Number of parallel sequences to decode for your own chat requests (0 = llama.cpp default of 4). Jan reserves one additional internal slot beyond this for background requests (e.g. thread auto-titling), so they don't evict your chat's KV cache.",
+    "description": "Number of parallel sequences to decode for your own chat requests (0 = llama.cpp default of 4). Flint reserves one additional internal slot beyond this for background requests (e.g. thread auto-titling), so they don't evict your chat's KV cache.",
     "controllerType": "input",
     "controllerProps": {
       "value": 1,
@@ -526,11 +539,11 @@
   {
     "key": "cache_ram",
     "title": "Prompt Cache RAM (MiB)",
-    "description": "Prompt cache size in MiB (default: 4096; llama.cpp itself defaults to 8192, which can crowd out the OS on a 16 GB machine). -1 is unlimited, 0 disables it.",
+    "description": "Prompt cache size in MiB: the RAM that keeps other conversations' context so switching back to one does not re-read it. Blank or -2 = automatic from your RAM (20% of system RAM, at most half of what is free, 1024-8192); 0 = off; -1 = unlimited.",
     "controllerType": "input",
     "controllerProps": {
-      "value": 4096,
-      "placeholder": "4096",
+      "value": -2,
+      "placeholder": "-2 (auto)",
       "type": "number",
       "textAlign": "right"
     }

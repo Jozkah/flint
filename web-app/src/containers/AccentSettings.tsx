@@ -330,9 +330,11 @@ export function AccentSettings() {
     [setAccent]
   )
 
+  // A solid foreground outline when focused by keyboard: the 40% ring was
+  // about 1.5:1 against the card (C107).
   const swatchClass = (checked: boolean) =>
     cn(
-      'group/sw relative inline-flex h-9 items-center gap-2 rounded-[9px] border-[0.8px] border-border bg-card py-1.5 pr-2.5 pl-1.5 text-[12.5px] font-medium text-foreground transition-[border-color,box-shadow,transform] duration-150 ease-expo outline-hidden hover:-translate-y-px hover:border-border-strong focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:h-11',
+      'group/sw relative inline-flex h-9 items-center gap-2 rounded-[9px] border-[0.8px] border-border bg-card py-1.5 pr-2.5 pl-1.5 text-[12.5px] font-medium text-foreground transition-[border-color,box-shadow,transform] duration-150 ease-expo outline-hidden hover:-translate-y-px hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-foreground pointer-coarse:h-11',
       checked && 'border-border-strong shadow-lift'
     )
   const chipClass =
@@ -367,9 +369,14 @@ export function AccentSettings() {
     >
       <div className="flex flex-col gap-1.5 px-0.5 pt-[11px] pb-1">
         <div className="text-[13px] leading-tight font-medium text-foreground">
-          {t('settings:accent.current', { name: base.name })}
+          {t('settings:accent.current', {
+            name:
+              'preset' in accent
+                ? t(`uiLeftovers:accentNames.${accent.preset}`, { defaultValue: base.name })
+                : base.name,
+          })}
         </div>
-        <div className="font-mono text-xs text-muted-foreground">
+        <div className={cn('text-xs text-muted-foreground', isCustom && 'font-mono')}>
           {isCustom
             ? base.hex
             : isDefault
@@ -408,7 +415,7 @@ export function AccentSettings() {
                 className={chipClass}
                 style={{ backgroundColor: p[theme] }}
               />
-              {p.name}
+              {t(`uiLeftovers:accentNames.${p.id}`, { defaultValue: p.name })}
               {p.id === defaultPresetId && (
                 <small className="text-[11px] font-normal text-muted-foreground">
                   {t('settings:accent.presetDefault')}
@@ -428,17 +435,23 @@ export function AccentSettings() {
               data-testid="accent-custom"
               className={cn(swatchClass(isCustom), 'isolate')}
             >
-              <span aria-hidden className="relative">
+              {/* Inset by the ring's own width so it stays inside the chip. */}
+              <span aria-hidden className="relative ml-1">
                 {/* A slowly turning colour ring says "any colour" before the
                     picker is even open. */}
                 <span
-                  className="absolute -inset-1 -z-10 rounded-[9px] bg-[conic-gradient(from_0deg,#ff4d4d,#ffb84d,#f6ff4d,#4dff88,#4dd2ff,#6a4dff,#ff4dd8,#ff4d4d)] motion-safe:animate-[spin_6s_linear_infinite]"
+                  data-testid="accent-custom-ring"
+                  className="absolute -inset-1 -z-10 overflow-hidden rounded-[9px]"
                   style={{
                     WebkitMask:
                       'radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px))',
                     mask: 'radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px))',
                   }}
-                />
+                >
+                  {/* The colours turn, not the ring: a turning square poked
+                      its corners out of the tile (C109). */}
+                  <span className="absolute -inset-1/2 bg-[conic-gradient(from_0deg,#ff4d4d,#ffb84d,#f6ff4d,#4dff88,#4dd2ff,#6a4dff,#ff4dd8,#ff4d4d)] motion-safe:animate-[spin_6s_linear_infinite]" />
+                </span>
                 <span
                   className={cn(chipClass, 'block shadow-[0_0_0_2px_var(--card)]')}
                   style={{ backgroundColor: lastCustom }}

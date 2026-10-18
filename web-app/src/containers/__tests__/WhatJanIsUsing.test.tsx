@@ -41,7 +41,7 @@ vi.mock('@/lib/utils', async (importOriginal) => ({
   isLocalProvider: (name: string) => name === 'llamacpp',
 }))
 
-import { WhatJanIsUsing } from '../WhatJanIsUsing'
+import { WhatJanIsUsing, WhatJanIsUsingToggle } from '../WhatJanIsUsing'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -247,10 +247,58 @@ describe('WhatJanIsUsing', () => {
         'm9'
       )
     )
-    expect(await screen.findByText('Alpha')).toBeInTheDocument()
+    expect(await screen.findByText(/Alpha/)).toBeInTheDocument()
     const inspect = screen.getByTestId('context-inspect-request')
     expect(within(inspect).getByTestId('prompt-snapshot')).toBeInTheDocument()
+    // The caveat on "verified" is there, behind its disclosure.
     expect(screen.getByTestId('context-notice-adapterBoundary')).toBeInTheDocument()
+    expect(screen.getByTestId('context-notice-adapterBoundary').closest('details')).not.toHaveAttribute('open')
+  })
+
+  it('shows the request once as status and the token usage as a line of fact, not a second chip', async () => {
+    withTransport({
+      memoryUsed: () => selection(),
+      lastAttribution: () => attribution({ usageReported: true }),
+    })
+    render(<WhatJanIsUsing threadId="t1" messages={[]} />)
+    await openPanel()
+    const payload = screen.getByTestId('context-section-payload')
+    expect(within(payload).getAllByText('context:state.response-started')).toHaveLength(1)
+    const usage = within(payload).getByTestId('context-item-payload:usage')
+    expect(usage).toHaveTextContent('context:label.usage')
+    expect(usage).toHaveTextContent('context:reason.usageRecorded')
+    // The request's own reason is status: in view without a click.
+    const request = within(payload).getByTestId('context-item-payload:request')
+    expect(within(request).getByText(/context:reason\./)).toBeVisible()
+    expect(within(request).queryByTestId(/context-why-/)).toBeNull()
+  })
+
+  it('keeps the reason behind an item one click away', async () => {
+    render(<WhatJanIsUsing threadId="t1" messages={[]} />)
+    await openPanel()
+    const model = screen.getByTestId('context-section-model')
+    const reason = within(model).getByText('context:reason.location.local')
+    expect(reason).not.toBeVisible()
+    const why = within(model).getByTestId(/context-why-/)
+    expect(why).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(why)
+    expect(why).toHaveAttribute('aria-expanded', 'true')
+    expect(reason).toBeVisible()
+  })
+
+  it('says why the Files tab is empty and offers to try again', async () => {
+    useChatAttachments.setState({ attachmentsByThread: {} })
+    listAttachments.mockRejectedValue(new Error('index starting'))
+    render(<WhatJanIsUsing threadId="t1" messages={[]} />)
+    await openPanel()
+    fireEvent.click(screen.getByTestId('context-tab-files'))
+    const empty = await screen.findByTestId('context-empty-indexUnavailable')
+    expect(empty).toHaveTextContent('context:empty.indexUnavailable')
+    expect(empty).toHaveTextContent('context:empty.indexUnavailableHint')
+    listAttachments.mockResolvedValue([{ id: 'f2', name: 'handbook.pdf', chunk_count: 40 }])
+    fireEvent.click(screen.getByTestId('context-files-retry'))
+    expect(await screen.findByText('handbook.pdf')).toBeInTheDocument()
+    expect(listAttachments).toHaveBeenCalledTimes(2)
   })
 
   it('does not claim inclusion when no snapshot was captured', async () => {
@@ -389,5 +437,14 @@ describe('WhatJanIsUsing', () => {
     fireEvent.click(within(window).getByTestId('abw-hide'))
     expect(within(panel).queryByTestId('agent-browser-window')).toBeNull()
     expect(panel.children.length).toBeGreaterThan(1)
+  })
+})
+
+// C068: at 800px the Details label was cut in half by the header slot.
+describe('WhatJanIsUsingToggle', () => {
+  it('drops its label to screen readers in a narrow header', () => {
+    render(<WhatJanIsUsingToggle open={false} onToggle={() => {}} />)
+    const label = screen.getByText('context:details')
+    expect(label.className).toContain('@max-[24rem]/hslot:sr-only')
   })
 })

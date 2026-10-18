@@ -7,7 +7,9 @@ import { useTheme } from '@/hooks/useTheme'
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, string>) =>
-      opts?.value ? `${key}:${opts.value}` : opts?.name ? `${key}:${opts.name}` : key,
+      opts?.defaultValue
+        ? opts.defaultValue
+        : opts?.value ? `${key}:${opts.value}` : opts?.name ? `${key}:${opts.name}` : key,
   }),
 }))
 
@@ -50,6 +52,17 @@ describe('AccentSettings', () => {
     expect(primary()).toBe('#3B6EA5')
     act(() => useInterfaceSettings.getState().setAccent({ custom: '#F4F1A0' }))
     expect(document.documentElement.style.getPropertyValue('--primary-foreground')).toBe('#141210')
+  })
+
+  // C109: the turning ring poked out of the tile; C107: the focus ring was faint.
+  it('turns the custom ring inside a clipped frame, with a solid focus outline', () => {
+    render(<AccentSettings />)
+    const ring = screen.getByTestId('accent-custom-ring')
+    expect(ring.className).toContain('overflow-hidden')
+    expect(ring.className).not.toContain('animate-')
+    expect(screen.getByTestId('accent-custom').className).toContain(
+      'focus-visible:outline-foreground'
+    )
   })
 
   it('has no separate hex field: custom lives in the picker', () => {

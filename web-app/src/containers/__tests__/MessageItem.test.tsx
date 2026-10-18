@@ -377,6 +377,23 @@ describe('MessageItem', () => {
     expect(onRegenerate).toHaveBeenCalledWith('msg-1')
   })
 
+  // C092: after the last reply is deleted the user message is last and had no
+  // way to get a new reply.
+  it('offers Regenerate on a user message left last with no reply', () => {
+    const onRegenerate = vi.fn()
+    render(
+      <MessageItem
+        message={makeMsg({ role: 'user', parts: [{ type: 'text', text: 'Hi' }] }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+        onRegenerate={onRegenerate}
+      />
+    )
+    fireEvent.click(screen.getByLabelText('chat:actions.regenerate'))
+    expect(onRegenerate).toHaveBeenCalledWith('msg-1')
+  })
+
   it('does not render regenerate button when not last message', () => {
     const onRegenerate = vi.fn()
     render(
@@ -407,6 +424,32 @@ describe('MessageItem', () => {
     const btn = screen.getByLabelText('chat:actions.continue')
     fireEvent.click(btn)
     expect(onContinue).toHaveBeenCalledWith('msg-1')
+  })
+
+  it('marks a reply cut at the reply limit, with Continue (L-002)', () => {
+    const onContinue = vi.fn()
+    render(
+      <MessageItem
+        message={
+          makeMsg({
+            metadata: { createdAt: new Date(), stopped: true, finishReason: 'length', usage: { outputTokens: 12 } },
+          }) as any
+        }
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+        onContinue={onContinue}
+      />
+    )
+    const note = screen.getByTestId('reply-cut-off')
+    expect(note).toHaveTextContent('common:replyCutOff.withTokens 12')
+    fireEvent.click(within(note).getByRole('button', { name: 'common:continue' }))
+    expect(onContinue).toHaveBeenCalledWith('msg-1')
+  })
+
+  it('has no cut-off note on a reply that ended normally', () => {
+    render(<MessageItem message={makeMsg() as any} isFirstMessage isLastMessage status={'ready' as any} />)
+    expect(screen.queryByTestId('reply-cut-off')).toBeNull()
   })
 
   it('hides Continue button when the turn finished normally', () => {

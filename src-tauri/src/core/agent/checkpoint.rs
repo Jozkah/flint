@@ -66,7 +66,7 @@
 //!
 //! A checkpoint is only as good as the object it names. At capture, the
 //! snapshot's commit id, the tree it points at and the checkpoint's own record
-//! are written to a manifest inside the repository (`jan-agent-checkpoints/`,
+//! are written to a manifest inside the repository (`flint-agent-checkpoints/`,
 //! beside the objects). Before anything is planned or restored from a
 //! checkpoint, [`verify`] reads the object back and hashes what it got: the
 //! commit and its root tree must hash to the ids they are filed under, every
@@ -201,13 +201,29 @@ impl Manifest {
     }
 }
 
-const MANIFEST_DIR: &str = "jan-agent-checkpoints";
+const MANIFEST_DIR: &str = "flint-agent-checkpoints";
+/// Where older builds wrote manifests; still read so their checkpoints verify.
+const LEGACY_MANIFEST_DIR: &str = "jan-agent-checkpoints";
 
-fn manifest_file(root: &Path, sha: &str) -> Result<PathBuf, String> {
+fn manifest_in(root: &Path, sha: &str, dir: &str) -> Result<PathBuf, String> {
     if sha.is_empty() || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(format!("{sha:?} is not a commit id"));
     }
-    Ok(git::common_git_dir(root)?.join(MANIFEST_DIR).join(format!("{sha}.json")))
+    Ok(git::common_git_dir(root)?.join(dir).join(format!("{sha}.json")))
+}
+
+fn manifest_file(root: &Path, sha: &str) -> Result<PathBuf, String> {
+    manifest_in(root, sha, MANIFEST_DIR)
+}
+
+/// The manifest to read: the current name, else one an older build wrote.
+fn existing_manifest(root: &Path, sha: &str) -> Result<PathBuf, String> {
+    let current = manifest_file(root, sha)?;
+    if current.exists() {
+        return Ok(current);
+    }
+    let legacy = manifest_in(root, sha, LEGACY_MANIFEST_DIR)?;
+    Ok(if legacy.exists() { legacy } else { current })
 }
 
 fn write_manifest(cp: &Checkpoint) -> Result<(), String> {
@@ -290,7 +306,7 @@ pub fn verify(checkpoint: &Checkpoint) -> Result<Integrity, String> {
             count(absent.len())
         )));
     }
-    let file = manifest_file(&root, sha).map_err(refuse)?;
+    let file = existing_manifest(&root, sha).map_err(refuse)?;
     let Ok(raw) = std::fs::read(&file) else { return Ok(Integrity::ObjectOnly) };
     let manifest: Manifest = serde_json::from_slice(&raw)
         .map_err(|e| refuse(format!("its integrity record cannot be read ({e})")))?;
@@ -1707,6 +1723,30 @@ mod tests {
         let (_d, root) = repo();
         let point = managed(&root, &thread_id("cp-verify"), None, "before");
         assert!(manifest_of(&root, &point.sha).exists(), "capture writes a record");
+        assert_eq!(verify(&point), Ok(Integrity::Verified));
+    }
+
+    #[test]
+    fn records_use_flint_names_and_older_jan_records_still_verify() {
+        let (_d, root) = repo();
+        let id = thread_id("cp-brand");
+        let point = managed(&root, &id, None, "before");
+        let current = manifest_of(&root, &point.sha);
+        assert!(current.to_string_lossy().contains("flint-agent-checkpoints"));
+        assert!(!root.join(".git").join("jan-agent-checkpoints").exists());
+        let refs = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["for-each-ref", "--format=%(refname)"])
+            .output()
+            .unwrap();
+        let refs = String::from_utf8_lossy(&refs.stdout);
+        assert!(refs.contains("refs/flint/agent/snapshots/"), "{refs}");
+        assert!(!refs.contains("refs/jan/"), "{refs}");
+        // A record an older build wrote under the old name is still read.
+        let legacy = root.join(".git").join("jan-agent-checkpoints");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::rename(&current, legacy.join(format!("{}.json", point.sha))).unwrap();
         assert_eq!(verify(&point), Ok(Integrity::Verified));
     }
 

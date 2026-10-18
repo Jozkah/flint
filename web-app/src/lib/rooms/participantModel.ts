@@ -29,6 +29,7 @@ import { NO_ROOM_NOTICE, estimateToolTokens, guardStepMessages } from './stepCon
 import {
   RoomCallError,
   cleanErrorMessage,
+  isSlotBusyMessage,
   toRoomCallError,
   type RoomToolActivity,
   type StreamReplyInput,
@@ -149,6 +150,10 @@ export async function streamParticipantReply(
     )
   } catch (e) {
     if (isAbortLike(e, input.signal)) throw toRoomCallError(e, input.signal)
+    // Every slot of the local engine is taken: a wait, never a load failure.
+    if (isSlotBusyMessage(cleanErrorMessage(e))) {
+      throw new RoomCallError('busy', 'busy', cleanErrorMessage(e))
+    }
     throw new RoomCallError('load-failed', 'load-failed', cleanErrorMessage(e))
   }
 

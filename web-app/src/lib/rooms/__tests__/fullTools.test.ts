@@ -89,6 +89,19 @@ describe('buildFullFolderTools', () => {
     expect(dctx.activity.agent).toBe('Ada')
   })
 
+  it('reports how long each call took, for the tool details', async () => {
+    dispatch.mockResolvedValue({ output: 'done', isError: false })
+    const activity = vi.fn()
+    const tools = await buildFullFolderTools(ctx, activity)
+    await (tools.bash as unknown as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
+      { command: 'ls' },
+      {}
+    )
+    expect(activity).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'bash', ms: expect.any(Number) })
+    )
+  })
+
   it('reports a refused call as an error the model can read', async () => {
     dispatch.mockResolvedValue({ output: 'The user did not allow `bash`.', isError: true })
     const tools = await buildFullFolderTools(ctx)

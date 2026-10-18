@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { useSecondClock } from '@/lib/sharedClock'
+import { citationsForCopy } from '@/lib/webUrl'
 import { memo, useState, useCallback, useEffect, useMemo } from 'react'
 import { SlashInvocation } from '@/components/SlashInvocation'
 import { parseSlashMarker } from '@/lib/slashCommands'
@@ -108,6 +110,7 @@ import { CompactionDivider } from '@/containers/CompactionDivider'
 import { AttachedImages } from '@/components/AttachedImages'
 import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
 import type { CompactionRecord } from '@/lib/compaction'
+import { ReplyCutOff } from '@/components/ReplyCutOff'
 
 export type MessageItemProps = {
   message: UIMessage
@@ -336,12 +339,7 @@ export const MessageItem = memo(
 
     // Re-render once a second while a label is showing, purely to advance the
     // elapsed-time readout -- no state carried, just a tick.
-    const [, forceTick] = useState(0)
-    useEffect(() => {
-      if (!activityLabel) return
-      const id = setInterval(() => forceTick((n) => n + 1), 1000)
-      return () => clearInterval(id)
-    }, [activityLabel])
+    useSecondClock(!!activityLabel)
 
     const isStreaming =
       (isLastMessage &&
@@ -452,14 +450,16 @@ export const MessageItem = memo(
 
     // Get full text content for copy button
     const getFullTextContent = useCallback(() => {
-      return message.parts
+      const text = message.parts
         .filter(
           (part): part is { type: 'text'; text: string } =>
             part.type === CONTENT_TYPE.TEXT
         )
         .map((part) => part.text)
         .join('\n')
-    }, [message.parts])
+      // A reply's cite markers are chips on screen; copied, they are links.
+      return message.role === 'assistant' ? citationsForCopy(text) : text
+    }, [message.parts, message.role])
 
     const renderTextPart = (
       part: { type: 'text'; text: string },
@@ -977,8 +977,49 @@ export const MessageItem = memo(
               status !== CHAT_STATUS.SUBMITTED && (
                 <DeleteMessageDialog onDelete={handleDelete} />
               )}
+
+            {/* Last with no reply (the reply was deleted, or never came):
+                ask for one (C092). */}
+            {selectedModel &&
+              onRegenerate &&
+              isLastMessage &&
+              status !== CHAT_STATUS.STREAMING &&
+              status !== CHAT_STATUS.SUBMITTED && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className={ACTION_BUTTON}
+                      onClick={handleRegenerate}
+                      aria-label={t('chat:actions.regenerate')}
+                    >
+                      <RefreshCw className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t('chat:actions.regenerate')}</TooltipContent>
+                </Tooltip>
+              )}
           </div>
         )}
+
+        {/* A reply cut at the output limit ends mid-sentence: say so (L-002). */}
+        {message.role === 'assistant' &&
+          !isStreaming &&
+          metadata?.finishReason === 'length' && (
+            <ReplyCutOff
+              className="mt-1.5"
+              tokens={
+                (metadata.usage as { outputTokens?: number } | undefined)
+                  ?.outputTokens
+              }
+              onContinue={
+                selectedModel && onContinue && isLastMessage && canContinue
+                  ? handleContinue
+                  : undefined
+              }
+            />
+          )}
 
         {/* Message actions for assistant messages (non-tool) */}
         {message.role === 'assistant' && !(hideActions && midReply) && (

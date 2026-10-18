@@ -416,4 +416,21 @@ describe('Dialog Components', () => {
     expect(screen.getByText('Dialog description')).toHaveAttribute('data-slot', 'dialog-description')
     expect(screen.getByText('Footer button').closest('div')).toHaveAttribute('data-slot', 'dialog-footer')
   })
+
+  // C127: the title was 0.9375em of a 14px dialog (13.1px), smaller than the
+  // 14px body under it.
+  it('sizes the title in rem, at least the body size', () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Title</DialogTitle>
+            <DialogDescription>Body</DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+    )
+    expect(screen.getByText('Title').className).toContain('text-[0.9375rem]')
+    expect(screen.getByText('Title').className).not.toContain('0.9375em')
+  })
 })

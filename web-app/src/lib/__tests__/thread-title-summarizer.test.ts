@@ -41,6 +41,12 @@ vi.mock('@/hooks/useGeneralSetting', () => ({
 }))
 
 describe('cleanTitle', () => {
+  it('rejects a bare answer with no words, such as "35"', () => {
+    expect(cleanTitle('35')).toBeNull()
+    expect(cleanTitle(' 3.14 ')).toBeNull()
+    expect(cleanTitle('Math 35')).toBe('Math 35')
+  })
+
   it('keeps the punctuation that is part of a name', () => {
     expect(cleanTitle('Reading hello.txt File Contents')).toBe(
       'Reading hello.txt File Contents'
@@ -81,7 +87,9 @@ describe('cleanTitle', () => {
     const longTitle =
       'One Two Three Four Five Six Seven Eight Nine Ten Eleven Twelve'
     const result = cleanTitle(longTitle)
-    expect(result).toBe('One Two Three Four Five Six Seven Eight Nine Ten')
+    // C031: a cut title says it was cut.
+    expect(result).toBe('One Two Three Four Five Six Seven Eight Nine Ten…')
+    expect(cleanTitle('One Two Three')).toBe('One Two Three')
   })
 
   it('keeps unicode characters', () => {
@@ -331,7 +339,8 @@ describe('fallbackTitle', () => {
   it('keeps the first few words of a long prompt', () => {
     expect(
       fallbackTitle('Count from 1 to 600, one number per line, no other text.')
-    ).toBe('Count from 1 to 600, one')
+    ).toBe('Count from 1 to 600, one…')
+    expect(fallbackTitle('hello there')).toBe('hello there')
     expect(fallbackTitle('  ')).toBeNull()
     expect(fallbackTitle('a'.repeat(100))!.length).toBeLessThanOrEqual(60)
   })

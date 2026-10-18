@@ -42,6 +42,18 @@ describe('TokenSpeedIndicator', () => {
     )
     expect(screen.getByText('42 tokens/sec')).toBeTruthy()
   })
+  // C069: at 430px the count was cut mid-word with no ellipsis.
+  it('ends a narrow row in an ellipsis instead of a cut figure', () => {
+    render(
+      <TokenSpeedIndicator
+        metadata={{
+          tokenSpeed: { tokenSpeed: 234, tokenCount: 1116, durationMs: 4770 },
+        }}
+      />
+    )
+    expect(screen.getByTestId('message-token-figures').className).toContain('overflow-hidden')
+    expect(screen.getByText('(1116 tokens)').className).toContain('truncate')
+  })
 })
 
 describe('a short reply still gets a speed', () => {

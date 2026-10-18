@@ -142,6 +142,8 @@ describe('useLargePaste', () => {
     result.current.handlePaste(pasteEvent({ text: big }))
     await flush()
     expect(showUndoToast).toHaveBeenCalledTimes(1)
+    // Shown at the top: at the bottom it covered the composer it is about.
+    expect((showUndoToast.mock.calls[0] as unknown as [{ position?: string }])[0].position).toBe('top-center')
     result.current.handlePaste(pasteEvent({ text: big }))
     await flush()
     expect(showUndoToast).toHaveBeenCalledTimes(1)

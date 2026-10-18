@@ -121,6 +121,8 @@ export function useLargePaste(options: Options) {
         message: t('common:largePaste.attached', { name: file.name }),
         description: t('common:largePaste.hint'),
         undoLabel: t('common:largePaste.undo'),
+        // Not over the composer the paste went into.
+        position: 'top-center',
         onUndo: () => {
           detach(file.name)
           insertText(text)

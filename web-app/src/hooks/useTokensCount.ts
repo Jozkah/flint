@@ -79,6 +79,15 @@ export interface TokenUsageSource {
   loadingModel?: boolean
   /** Generation speed of the latest reply and the session's average. */
   speed?: { last?: number; average?: number }
+  /**
+   * The model this surface talks to, when it is not the global picker's: a
+   * Cowork session or a chat with its own model. Without it a remote session
+   * model was measured against the global (local) model's window (C-006).
+   */
+  selection?: Pick<
+    ReturnType<typeof useModelProvider.getState>,
+    'selectedProvider' | 'selectedModel'
+  >
 }
 
 // The token-usage popup normally reflects the last *successful* turn. When a
@@ -164,8 +173,14 @@ export const useTokensCount = (
   messages: ThreadMessage[] = [],
   source?: TokenUsageSource
 ) => {
-  const { selectedModel, selectedProvider, getProviderByName } =
-    useModelProvider()
+  const global = useModelProvider()
+  const { getProviderByName } = global
+  const selectedModel = source?.selection
+    ? source.selection.selectedModel
+    : global.selectedModel
+  const selectedProvider = source?.selection
+    ? source.selection.selectedProvider
+    : global.selectedProvider
   const [modelProps, setModelProps] = useState<ModelProps | undefined>(
     undefined
   )
@@ -365,7 +380,12 @@ export const useTokensCount = (
           cacheSource: 'engine-timings',
         })
       : (source?.usage ?? getLatestServerUsage(messages))
-    const tokenCount = overflow?.requestTokens ?? usage.totalTokens ?? 0
+    // A stopped reply never gets a usage record; count what came after the
+    // last measured request, as the remote branch does (C012).
+    const unmeasured =
+      liveStats || source?.usage ? 0 : estimateUnmeasuredTokens(messages, fixedTokens)
+    const tokenCount =
+      overflow?.requestTokens ?? (usage.totalTokens ?? 0) + unmeasured
     // A runtime that reports `n_ctx: 0`, or a server whose overflow error
     // carried a zero limit, has told us nothing about the window. Left as `0`
     // it renders as `0 / 0` and reads as a model with no room at all.

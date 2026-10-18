@@ -192,4 +192,15 @@ describe('mentionedServers — one-word names', () => {
     expect(mentionedServers('use the email server to send it', servers)).toEqual(['email'])
     expect(mentionedServers('with the code tools, list commits', servers)).toEqual(['code'])
   })
+
+  // C029: the built-in web_fetch tool is not the "fetch" MCP server.
+  it('does not match a name inside a longer identifier', () => {
+    const fetch: ServerSummary[] = [{ name: 'fetch', description: '', capabilities: [] }]
+    expect(mentionedServers('use the web_fetch tool on example.com', fetch)).toEqual([])
+    expect(mentionedServers('call web-fetch tools', fetch)).toEqual([])
+    expect(mentionedServers('use the fetch tool', fetch)).toEqual(['fetch'])
+    expect(mentionedServers('Fetch server, please', fetch)).toEqual(['fetch'])
+    const multi: ServerSummary[] = [{ name: 'ida-multi-mcp', description: '', capabilities: [] }]
+    expect(mentionedServers('my_ida_multi_mcp_wrapper', multi)).toEqual([])
+  })
 })

@@ -36,18 +36,22 @@ describe('restart recovery', () => {
     expect(messages[1].seq).toBeGreaterThan(messages[0].seq)
   })
 
-  it('pauses running and awaiting-user rooms with interrupted-by-restart, idempotently', async () => {
+  it('pauses running rooms with interrupted-by-restart, idempotently; an idle waiting room is left alone', async () => {
     const p = memoryPersistence()
     await seedRoom(p, makeRoom({ id: 'r-run', status: 'running', updatedAt: 5 }))
     p.journals.set('r-run', journalWithOrphan().map((r) => (r.type === 'message' ? { ...r, message: { ...r.message, roomId: 'r-run' } } : r)))
     await seedRoom(p, makeRoom({ id: 'r-wait', status: 'awaiting-user', updatedAt: 4 }))
+    await seedRoom(p, makeRoom({ id: 'r-wait-mid', status: 'awaiting-user', updatedAt: 4 }))
+    p.journals.set('r-wait-mid', journalWithOrphan().map((r) => (r.type === 'message' ? { ...r, message: { ...r.message, roomId: 'r-wait-mid' } } : r)))
     await seedRoom(p, makeRoom({ id: 'r-paused', status: 'paused', updatedAt: 3 }))
     await seedRoom(p, makeRoom({ id: 'r-done', status: 'completed', updatedAt: 2 }))
 
     const recovered = await recoverRoomsOnLoad(p, () => 99)
-    expect(recovered.sort()).toEqual(['r-run', 'r-wait'])
+    expect(recovered.sort()).toEqual(['r-run', 'r-wait-mid'])
     expect(p.rooms.get('r-run')).toMatchObject({ status: 'paused', stopReason: { kind: 'interrupted-by-restart' } })
-    expect(p.rooms.get('r-wait')).toMatchObject({ status: 'paused', stopReason: { kind: 'interrupted-by-restart' } })
+    // Nothing was in flight: still waiting for the user, not rewritten.
+    expect(p.rooms.get('r-wait')).toMatchObject({ status: 'awaiting-user', rev: 0 })
+    expect(p.rooms.get('r-wait-mid')).toMatchObject({ status: 'paused', stopReason: { kind: 'interrupted-by-restart' } })
     expect(p.rooms.get('r-paused')!.rev).toBe(0)
     expect(p.rooms.get('r-done')!.status).toBe('completed')
 

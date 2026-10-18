@@ -35,12 +35,16 @@
   --muted: #F6F6F6;
   --muted-foreground: #6B7280;
   --subtle-foreground: #687080;
+  /* Rim around a pale built-in icon on a light tile (AvatarEmoji). */
+  --icon-rim: rgb(0 0 0 / 0.5);
   --cell-fg: #52525B;
   --accent: #F3F4F6;
   --accent-foreground: #1F2937;
   --destructive: #EF4444;
   --destructive-foreground: #FFFFFF;
   --destructive-tint: #FEF2F2;
+  /* Destructive words on a destructive tint: >=4.5:1 where #EF4444 is ~3.6:1. */
+  --destructive-text: #B91C1C;
   --success: #059669;
   --success-tint: #ECFDF5;
   --warning: #B45309;
@@ -120,12 +124,14 @@
   --muted: #0F1114;
   --muted-foreground: #8A909A;
   --subtle-foreground: #646A74;
+  --icon-rim: transparent;
   --cell-fg: #C3C8CF;
   --accent: #1D2025;
   --accent-foreground: #E6E8EB;
   --destructive: #F87171;
   --destructive-foreground: #111318;
   --destructive-tint: rgba(248, 113, 113, 0.1);
+  --destructive-text: #FCA5A5;
   --success: #34D399;
   --success-tint: rgba(52, 211, 153, 0.1);
   --warning: #FBBF24;

@@ -86,6 +86,16 @@ export function createVideoAttachment(data: {
 }
 
 /**
+ * The attachments that go through the image ingest. Text and documents carry
+ * their content inline and take their own path; the image ingest rejects them.
+ */
+export function attachmentsToIngestAsImages(
+  attachments: readonly Attachment[]
+): Attachment[] {
+  return attachments.filter((a) => a.type === 'image')
+}
+
+/**
  * Helper to create document attachment
  */
 export function createDocumentAttachment(data: {

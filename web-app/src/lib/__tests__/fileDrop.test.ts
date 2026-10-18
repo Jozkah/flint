@@ -4,6 +4,7 @@ import {
   fileUriPaths,
   inlineDroppedTexts,
   pastedPath,
+  withoutPastedPath,
   dragHasFiles,
   DROP_ZONE_CLASS,
   dropLabelKey,
@@ -126,6 +127,21 @@ describe('inlineDroppedTexts', () => {
   it('uses a longer fence when the file contains one', () => {
     const r = inlineDroppedTexts([{ name: 'a.md', text: '```js\n```' }], 1000)
     expect(r.text.startsWith('a.md\n~~~~\n')).toBe(true)
+  })
+})
+
+// C021: after "Attach", the pasted path must not stay behind as message text.
+describe('withoutPastedPath', () => {
+  it('removes the pasted path, quoted or markdown-escaped', () => {
+    expect(withoutPastedPath('C:\\Users\\me\\notes.txt', 'C:\\Users\\me\\notes.txt')).toBe('')
+    expect(withoutPastedPath('see "D:/a/b.txt"', 'D:/a/b.txt')).toBe('see')
+    expect(
+      withoutPastedPath('read C:\\\\Users\\\\me\\\\my\\_notes.txt now', 'C:\\Users\\me\\my_notes.txt')
+    ).toBe('read now')
+  })
+  it('removes only the last copy and leaves other text alone', () => {
+    expect(withoutPastedPath('/a/b and /a/b', '/a/b')).toBe('/a/b and')
+    expect(withoutPastedPath('nothing here', '/a/b')).toBe('nothing here')
   })
 })
 

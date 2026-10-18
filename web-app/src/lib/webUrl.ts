@@ -8,6 +8,17 @@ export const hostOf = (url: string): string => {
 }
 
 /**
+ * A reply as copied text: each model-emitted `[[cite:URL]]` marker (drawn as a
+ * chip in chat) becomes a plain " (URL)" after the statement it backs.
+ */
+export const citationsForCopy = (text: string): string =>
+  text.includes('[[cite:')
+    ? text.replace(/\s*\[\[cite:\s*([^\]\s]+?)\s*\]\]/g, (_m, url: string) =>
+        ` (${/^https?:\/\//i.test(url) ? url : `https://${url}`})`
+      )
+    : text
+
+/**
  * The letter shown in place of a site's icon.
  *
  * Flint used to fetch favicons from Google, which meant every domain a search

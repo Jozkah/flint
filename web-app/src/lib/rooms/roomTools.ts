@@ -30,10 +30,11 @@ import {
   WEB_SEARCH_INPUT_SCHEMA,
   executeWebTool,
 } from '@/lib/webSearchTool'
-import type { RoomToolActivity, RoomToolContext } from './callError'
+import { grantSessionId, type RoomToolActivity, type RoomToolContext } from './callError'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { executeVisualizeTool, visualizeSchemas } from '@/lib/visualize/tools'
 import { READ_ME_TOOL } from '@/lib/visualize/constants'
+import { callMcpToolCancellable } from '@/lib/mcpCancellable'
 
 import { ROOM_READ_TOOLS, ROOM_WRITE_TOOLS, disabledMcpServers } from './toolCatalog'
 export { ROOM_READ_TOOLS, ROOM_WRITE_TOOLS }
@@ -106,7 +107,7 @@ function timed(
     }
     const queue = started.get(a.name)
     const t0 = queue?.shift()
-    onActivity(t0 === undefined ? a : { ...a, ms: Date.now() - t0 })
+    onActivity(t0 === undefined || a.ms !== undefined ? a : { ...a, ms: Date.now() - t0 })
   }
 }
 
@@ -156,8 +157,8 @@ export async function buildRoomTools(
         const dataFolder = await getServiceHub().app().getJanDataFolder()
         if (dataFolder) {
           writeGrant = extras.length
-            ? await directEditAuthorize(dataFolder, ctx.roomId, ctx.folder, extras)
-            : await directEditAuthorize(dataFolder, ctx.roomId, ctx.folder)
+            ? await directEditAuthorize(dataFolder, grantSessionId(ctx), ctx.folder, extras)
+            : await directEditAuthorize(dataFolder, grantSessionId(ctx), ctx.folder)
         }
       } catch (e) {
         // No grant -> no write tools; reads still work. Said out loud: a
@@ -339,15 +340,16 @@ export async function buildMcpTools(
     out[t.name] = {
       description: t.description,
       inputSchema: jsonSchema(t.inputSchema),
-      execute: async (input: unknown) => {
+      execute: async (input: unknown, options?: { abortSignal?: AbortSignal }) => {
         try {
           // Route to the exact server the tool was advertised from, so a bare
-          // name shared by another server cannot redirect the call.
-          const res = await mcp.callTool({
-            toolName: t.name,
-            serverName: t.server,
-            arguments: input as object,
-          })
+          // name shared by another server cannot redirect the call. Stopping
+          // the room cancels it at the server at once (M-011).
+          const res = await callMcpToolCancellable(
+            mcp,
+            { toolName: t.name, serverName: t.server, arguments: input as object },
+            options?.abortSignal
+          )
           const output = res.error
             ? `ERROR: ${res.error}`
             : (res.content ?? []).map((c) => c.text).join('\n')

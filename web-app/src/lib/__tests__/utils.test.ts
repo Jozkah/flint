@@ -45,10 +45,15 @@ describe('getProviderTitle', () => {
     expect(getProviderTitle('nvidia')).toBe('NVIDIA NIM')
   })
 
-  it('capitalizes first letter for unknown providers', () => {
+  it('capitalizes first letter for built-in providers without a set title', () => {
     expect(getProviderTitle('anthropic')).toBe('Anthropic')
     expect(getProviderTitle('mistral')).toBe('Mistral')
-    expect(getProviderTitle('test')).toBe('Test')
+  })
+
+  // C034: a custom provider named "v100" was shown as "V100".
+  it('keeps the casing the user gave a custom provider', () => {
+    expect(getProviderTitle('v100')).toBe('v100')
+    expect(getProviderTitle('myLab')).toBe('myLab')
   })
 
   it('handles empty strings', () => {

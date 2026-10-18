@@ -23,7 +23,8 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
 }))
 
 const getTools = vi.fn(async () => [] as unknown[])
-const callTool = vi.fn(async () => ({ error: '', content: [{ text: '' }] }))
+const callTool = vi.fn(async (_args?: unknown) => ({ error: '', content: [{ text: '' }] }))
+const cancelToolCall = vi.fn(async (_token?: string) => {})
 let trustedServers: string[] = []
 vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({
@@ -31,6 +32,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
     mcp: () => ({
       getTools,
       callTool,
+      cancelToolCall,
       trustReport: async () => ({
         trusted: trustedServers.map((name) => ({ name, fingerprint: 'fp', currentFingerprint: 'fp' })),
         invalidated: [],
@@ -186,6 +188,14 @@ describe('buildRoomTools', () => {
     expect(directEditAuthorize).toHaveBeenCalledWith('/data', 'r1', '/work')
     expect(Object.keys(tools).sort()).toEqual(['edit', 'read', 'skill_read', 'write'])
 
+    // Two editing participants each hold their own grant: a grant is one per
+    // session, so keyed by the room alone the second replaced the first.
+    directEditAuthorize.mockClear()
+    await buildRoomTools({ roomId: 'r1', participantId: 'pa', folder: '/ws/pa', access: 'edit' })
+    await buildRoomTools({ roomId: 'r1', participantId: 'pb', folder: '/ws/pb', access: 'edit' })
+    const sessions = directEditAuthorize.mock.calls.map((c) => (c as unknown[])[1])
+    expect(sessions).toEqual(['r1--pa', 'r1--pb'])
+
     await (tools.write as { execute: (i: unknown) => Promise<string> }).execute({
       path: 'a.txt',
       content: 'x',
@@ -230,10 +240,38 @@ describe('buildRoomTools', () => {
       toolName: 'search_docs',
       serverName: 'docs',
       arguments: { q: 'x' },
+      cancellationToken: expect.stringMatching(/^tool_call_/),
     })
     expect(activity).toMatchObject([
       { name: 'search_docs', ok: true, args: { q: 'x' }, output: 'RESULT A\nRESULT B', mcp: true },
     ])
+  })
+
+  it('stopping the room cancels a running MCP call at the server (M-011)', async () => {
+    trustedServers = ['docs']
+    getAgentToolSchemas.mockResolvedValue([])
+    getTools.mockResolvedValue([
+      { name: 'slow', description: 'slow', inputSchema: { type: 'object' }, server: 'docs' },
+    ])
+    let started!: () => void
+    const running = new Promise<void>((r) => (started = r))
+    callTool.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          started()
+          cancelToolCall.mockImplementationOnce(async () => resolve({ error: 'cancelled', content: [] }))
+        })
+    )
+    const tools = await buildRoomTools(ctx)
+    const ac = new AbortController()
+    const out = (
+      tools.slow as { execute: (i: unknown, o: { abortSignal: AbortSignal }) => Promise<string> }
+    ).execute({ seconds: 25 }, { abortSignal: ac.signal })
+    await running
+    ac.abort()
+    expect(await out).toBe('ERROR: cancelled')
+    const token = (callTool.mock.calls.at(-1)![0] as { cancellationToken: string }).cancellationToken
+    expect(cancelToolCall).toHaveBeenCalledWith(token)
   })
 
   it('surfaces an MCP tool error and never shadows a built-in of the same name', async () => {

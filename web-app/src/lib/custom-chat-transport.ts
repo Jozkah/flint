@@ -4025,10 +4025,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * Static instruction teaching the model to use the native web tools and cite
    * sources inline with [[cite:URL]] markers (rendered as favicon chips). Only
    * added when web search is enabled so it doesn't affect prompt caching for
-   * users who keep it off.
+   * users who keep it off, and only when this request really offers a web tool:
+   * a model without them was taught to cite pages it never read (C051).
    */
   buildWebSearchSystemInstruction(): string {
     if (!useWebSearchConfig.getState().webSearchEnabled) return ''
+    if (!this.tools || !('web_search' in this.tools || 'web_fetch' in this.tools))
+      return ''
     return [
       '# Web Access',
       'You can search the web with web_search and read pages with web_fetch.',

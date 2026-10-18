@@ -116,6 +116,20 @@ describe('CustomChatTransport', () => {
       expect(prompt).toMatch(/\n\nToday's date is \d{4}-\d{2}-\d{2}\.$/)
     })
 
+    // C051: a model without web tools invented [[cite:URL]] markers because it
+    // was taught to cite pages it could not fetch.
+    it('teaches web citations only when the web tools are offered', async () => {
+      const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
+      const { useWebSearchConfig } = await import('@/hooks/useWebSearchConfig')
+      useAgentToolsConfig.setState({ agentToolsEnabled: false })
+      useWebSearchConfig.setState({ webSearchEnabled: true })
+      internals().tools = {}
+      expect(internals().buildSystemPrompt([])).not.toContain('[[cite:')
+      internals().tools = { web_fetch: {} }
+      expect(internals().buildSystemPrompt([])).toContain('[[cite:')
+      useWebSearchConfig.setState({ webSearchEnabled: false })
+    })
+
     it('adds nothing to a chat with no assistant text, tools, files, web or memory', async () => {
       const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
       const { useWebSearchConfig } = await import('@/hooks/useWebSearchConfig')

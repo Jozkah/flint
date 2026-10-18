@@ -5,6 +5,11 @@ const h = vi.hoisted(() => ({
   getByLabel: vi.fn().mockResolvedValue(null),
   emitTo: vi.fn().mockResolvedValue(undefined),
   handlers: new Map<string, (e: { payload: unknown }) => void>(),
+  windows: [] as Array<{ label: string; isVisible: () => Promise<boolean>; close: ReturnType<typeof vi.fn> }>,
+}))
+
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+  getAllWebviewWindows: vi.fn(async () => h.windows),
 }))
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -121,6 +126,24 @@ describe('warm window assignment', () => {
     expect(planOpen({ label: 'chat-window-spare-a', ready: true })).toBe(
       'warm'
     )
+  })
+
+  it('closes hidden spares a reload left behind before building a new one', async () => {
+    const win = (label: string, visible: boolean) => ({
+      label,
+      isVisible: async () => visible,
+      close: vi.fn(async () => {}),
+    })
+    const old = win(`${SPARE_LABEL_PREFIX}old`, false)
+    const shown = win(`${SPARE_LABEL_PREFIX}shown`, true)
+    const main = win('main', false)
+    h.windows = [old, shown, main]
+    await prewarmSoloWindow()
+    expect(old.close).toHaveBeenCalled()
+    expect(shown.close).not.toHaveBeenCalled()
+    expect(main.close).not.toHaveBeenCalled()
+    expect(h.create).toHaveBeenCalledTimes(1)
+    h.windows = []
   })
 
   it('builds the spare hidden, on the idle entry, at most one', async () => {

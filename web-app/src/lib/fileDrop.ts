@@ -79,6 +79,29 @@ export function pastedPath(text: string): string | null {
 }
 
 /**
+ * `draft` without the last pasted copy of `path` (as pasted, quoted, or with
+ * the composer's Markdown escapes), for when the path was attached instead.
+ * Returns the draft unchanged when the path is not in it.
+ */
+export function withoutPastedPath(draft: string, path: string): string {
+  if (!path) return draft
+  const body = Array.from(path)
+    .map((c) =>
+      /[\\`*_{}[\]()#+\-.!|<>~]/.test(c)
+        ? `\\\\?${c.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')}`
+        : c.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')
+    )
+    .join('')
+  const re = new RegExp(`(["']?)${body}\\1`, 'g')
+  let last: RegExpExecArray | null = null
+  for (let m = re.exec(draft); m; m = re.exec(draft)) last = m
+  if (!last) return draft
+  const before = draft.slice(0, last.index).replace(/[ \t]+$/, '')
+  const after = draft.slice(last.index + last[0].length).replace(/^[ \t]+/, '')
+  return (before && after ? `${before} ${after}` : before + after).trim()
+}
+
+/**
  * The local paths in a `file://` URI list, when that is all `text` is.
  *
  * Linux file managers put dragged or copied files on the clipboard and drag

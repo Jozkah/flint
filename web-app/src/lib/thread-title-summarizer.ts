@@ -52,8 +52,13 @@ export function cleanTitle(raw: string): string | null {
     .filter(Boolean)
     .join(' ')
     .trim()
-  // Enforce word limit
-  text = text.split(/\s+/).slice(0, MAX_TITLE_WORDS).join(' ')
+  // Enforce word limit; a cut title ends in an ellipsis (C031).
+  const all = text.split(/\s+/)
+  text = all.slice(0, MAX_TITLE_WORDS).join(' ')
+  // A title names a topic: a bare number is the model answering the question
+  // ("35") instead of titling it, so the first message is used instead.
+  if (!/\p{L}/u.test(text)) return null
+  if (all.length > MAX_TITLE_WORDS && text) text = `${text}…`
   return !text || text.length < 2 ? null : text
 }
 
@@ -66,18 +71,17 @@ const FALLBACK_TITLE_CHARS = 60
  * becomes the chat's title.
  */
 export function fallbackTitle(source: string): string | null {
-  const words = source
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, FALLBACK_TITLE_WORDS)
-  let text = words.join(' ')
-  if (text.length > FALLBACK_TITLE_CHARS) {
-    text = text.slice(0, FALLBACK_TITLE_CHARS).replace(/\s+\S*$/, '')
+  const all = source.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
+  let text = all.slice(0, FALLBACK_TITLE_WORDS).join(' ')
+  let cut = all.length > FALLBACK_TITLE_WORDS
+  // One character is kept for the ellipsis a cut title ends in (C031).
+  if (text.length > FALLBACK_TITLE_CHARS - 1) {
+    text = text.slice(0, FALLBACK_TITLE_CHARS - 1).replace(/\s+\S*$/, '')
+    cut = true
   }
   text = text.replace(/[\s,.;:!?-]+$/, '')
-  return text.length >= 2 ? text : null
+  if (text.length < 2) return null
+  return cut ? `${text}…` : text
 }
 
 /**

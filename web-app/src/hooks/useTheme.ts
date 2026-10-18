@@ -4,6 +4,21 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { backendStorage } from '@/lib/backendStorage'
 import type { ThemeMode } from '@/services/theme/types'
 import { localStorageKey } from '@/constants/localStorage'
+import { isChatWindow } from '@/lib/soloFlag'
+import type { StateStorage } from 'zustand/middleware'
+
+/**
+ * The theme storage a window may write. Only the main window saves the theme:
+ * a chat window (or a hidden spare) still holding 'auto' saved it over the
+ * user's Light/Dark choice. Others read it and never write.
+ */
+export function themeStorageFor(
+  storage: StateStorage,
+  chatWindow: boolean = isChatWindow()
+): StateStorage {
+  if (!chatWindow) return storage
+  return { ...storage, setItem: () => {}, removeItem: () => {} }
+}
 
 // Function to check if OS prefers dark mode
 export const checkOSDarkMode = (): boolean => {
@@ -56,7 +71,7 @@ export const useTheme = create<ThemeState>()(
     },
     {
       name: localStorageKey.theme,
-      storage: createJSONStorage(() => backendStorage),
+      storage: createJSONStorage(() => themeStorageFor(backendStorage)),
       // Backend storage is async; hydrate explicitly after ServiceHub init
       // (see hydrateBackendStores). getServiceHub() throws before that.
       skipHydration: true,

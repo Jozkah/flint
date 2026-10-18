@@ -1,5 +1,6 @@
 import { canModelSummarize } from '@/lib/continueFromSummary'
-import { unescapeComposerMarkdown } from '@/lib/composerText'
+import { refusedDraftToRestore, unescapeComposerMarkdown } from '@/lib/composerText'
+import { pendingComposerTokens } from '@/lib/context-manager'
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
 import { toAssetUrl } from '@/lib/assetPath'
 import {
@@ -7,6 +8,7 @@ import {
   pasteFilePaths,
   pastedPath,
   transferText,
+  withoutPastedPath,
 } from '@/lib/fileDrop'
 import { readDroppedPaths } from '@/lib/droppedPaths'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
@@ -179,6 +181,7 @@ import {
 } from '@/lib/attachmentSupport'
 import {
   Attachment,
+  attachmentsToIngestAsImages,
   createImageAttachment,
   createDocumentAttachment,
   createAudioAttachment,
@@ -540,6 +543,19 @@ const ChatInput = memo(function ChatInput({
   )
   const routeThreadId = useThreads((state) => state.currentThreadId)
   const currentThreadId = threadIdProp ?? routeThreadId
+  // The main composer's draft is per chat: leaving a chat keeps its unsent
+  // text for it, and the chat shown gets back its own (or nothing).
+  const draftKey =
+    scopeKey ??
+    threadIdProp ??
+    // Home and New Chat keep the last chat id in the store: key them apart.
+    (routeThreadId && /\/threads\//.test(window.location.pathname)
+      ? routeThreadId
+      : '__new__')
+  const switchDraft = usePrompt((state) => state.switchDraft)
+  useEffect(() => {
+    if (!draftScope) switchDraft?.(draftKey)
+  }, [draftKey, draftScope, switchDraft])
   // The SDK reports "ready" before the previous turn's tool loop has run
   // (onFinish fires after the status flips), so streaming status alone says
   // nothing about tools still awaiting approval or executing. The thread is
@@ -1006,8 +1022,21 @@ const ChatInput = memo(function ChatInput({
     (state) => state.selectModelProvider
   )
   const updateProvider = useModelProvider((state) => state.updateProvider)
+  // The counter measures this conversation's model, not the global picker's
+  // (a Cowork session on a remote model was read against a local window, C-006).
+  const counterSource = useMemo<TokenUsageSource>(
+    () => ({
+      ...tokenSource,
+      selection: tokenSource?.selection ?? {
+        selectedProvider: conversationModel.selectedProvider,
+        selectedModel: conversationModel.selectedModel,
+      },
+    }),
+    [tokenSource, conversationModel.selectedProvider, conversationModel.selectedModel]
+  )
   const { maxTokens: liveMaxTokens, configuredCtxLen } = useTokensCount(
-    threadMessages || []
+    threadMessages || [],
+    counterSource
   )
   const [message, setMessage] = useState('')
   // A send held back because it needs the web and web search is off.
@@ -1115,6 +1144,12 @@ const ChatInput = memo(function ChatInput({
     (a) =>
       (a.type === 'image' || a.type === 'audio' || a.type === 'video') &&
       !!a.dataUrl
+  )
+  // The draft and its inline documents, so the context ring counts them
+  // before send.
+  const pendingTokens = useMemo(
+    () => pendingComposerTokens(prompt, attachments),
+    [prompt, attachments]
   )
 
   const [, setFileIngestProgress] = useState<{
@@ -1432,10 +1467,13 @@ const ChatInput = memo(function ChatInput({
         queueMicrotask(() => {
           // Not over something typed since. The render that follows the clear
           // may not have happened yet, so the sent text counts as empty too.
-          const now = latestPromptRef.current
-          if (!now || now === typed) {
-            restoredDraftRef.current = typed
-            setPrompt(typed)
+          const restore = refusedDraftToRestore(
+            latestPromptRef.current,
+            typedRaw
+          )
+          if (restore !== null) {
+            restoredDraftRef.current = restore
+            setPrompt(restore)
           }
           if (sentAttachments.length > 0) {
             setAttachmentsForThread(attachmentsKey, (prev) =>
@@ -2037,7 +2075,13 @@ const ChatInput = memo(function ChatInput({
 
   const processImageFiles = useCallback(
     async (inputFiles: File[], options?: ProcessImageOptions) => {
-    const maxSize = 10 * 1024 * 1024 // 10MB in bytes
+    // The user's "max file size" setting, in bytes, when there is one.
+    const userMaxBytes =
+      typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
+        ? maxFileSizeMB * 1024 * 1024
+        : undefined
+    // A large screenshot is re-encoded down to this, never above the setting.
+    const maxSize = Math.min(10 * 1024 * 1024, userMaxBytes ?? Infinity)
     // A large screenshot is re-encoded to fit rather than refused.
     const files = await Promise.all(
       Array.from(inputFiles).map((file) => fitImageFileToLimit(file, maxSize))
@@ -2054,8 +2098,11 @@ const ChatInput = memo(function ChatInput({
       audio: Boolean(selectedModel?.capabilities?.includes('audio')),
       video: Boolean(selectedModel?.capabilities?.includes('video')),
     }
+    // The size a file may be is the user's "max file size" setting, not the
+    // image re-encode target above: 10MB here refused a 50MB text or code file
+    // for people who had set 200MB.
     const limits = {
-      maxBytes: maxSize,
+      maxBytes: userMaxBytes ?? DEFAULT_ATTACHMENT_LIMITS.maxBytes,
       maxCount: DEFAULT_ATTACHMENT_LIMITS.maxCount,
     }
 
@@ -2186,13 +2233,16 @@ const ChatInput = memo(function ChatInput({
       newFiles.length > 0 ? [...prev, ...newFiles] : prev
     )
 
-    if (currentThreadId && newFiles.length > 0) {
-      const ingestTotal = newFiles.length
+    // Only images go to the image ingest: an inline text or document
+    // attachment is already complete and the ingest rejects it (C025).
+    const imagesToIngest = attachmentsToIngestAsImages(newFiles)
+    if (currentThreadId && imagesToIngest.length > 0) {
+      const ingestTotal = imagesToIngest.length
       void (async () => {
         setFileIngestProgress({ completed: 0, total: ingestTotal })
         try {
-          for (let i = 0; i < newFiles.length; i++) {
-            const img = newFiles[i]
+          for (let i = 0; i < imagesToIngest.length; i++) {
+            const img = imagesToIngest[i]
             const matchImg = (a: Attachment) =>
               a.type === 'image' &&
               (img.contentHash
@@ -2288,6 +2338,7 @@ const ChatInput = memo(function ChatInput({
     setFileIngestProgress,
     selectedModel?.capabilities,
     openVisionPrompt,
+    maxFileSizeMB,
     t,
     ]
   )
@@ -2873,9 +2924,15 @@ const ChatInput = memo(function ChatInput({
     paths?: string[]
     /** The text that was held back, put in the composer if the offer is declined. */
     raw?: string
+    /** The path was pasted into the composer as text; accepting removes it. */
+    inComposer?: boolean
   } | null>(null)
   const pathOfferRef = useRef(pathOffer)
   pathOfferRef.current = pathOffer
+  // The offer, like the draft, belongs to the chat it was pasted in.
+  useEffect(() => {
+    setPathOffer(null)
+  }, [attachmentsKey])
 
   /** Decline the offer; the text it held back goes into the composer instead. */
   const declinePathOffer = () => {
@@ -2900,9 +2957,9 @@ const ChatInput = memo(function ChatInput({
           a.replace(/[\\/]+$/, '').toLowerCase() ===
           candidate.replace(/[\\/]+$/, '').toLowerCase()
         if (pastedFolder.attached.some(same)) return
-        setPathOffer({ path: candidate, kind: 'folder' })
+        setPathOffer({ path: candidate, kind: 'folder', inComposer: true })
       } else {
-        setPathOffer({ path: candidate, kind: 'file' })
+        setPathOffer({ path: candidate, kind: 'file', inComposer: true })
       }
     } catch {
       // Not a path that exists: it was only text.
@@ -2913,6 +2970,13 @@ const ChatInput = memo(function ChatInput({
     const offer = pathOffer
     setPathOffer(null)
     if (!offer) return
+    // The path was pasted as text too; once it is attached it is not part of
+    // the message (C021).
+    if (offer.inComposer) {
+      const draft = latestPromptRef.current
+      const cleaned = withoutPastedPath(draft, offer.path)
+      if (cleaned !== draft) setPrompt(cleaned)
+    }
     if (offer.kind === 'folder') {
       pastedFolder?.onAttach(offer.path)
       return
@@ -3189,6 +3253,9 @@ const ChatInput = memo(function ChatInput({
   // What this chat will actually send: its own override where it has one, the
   // global model setting otherwise.
   const resolvedForEffort = resolveModel(selectedModel, chatOverrides)
+  // A llama.cpp model is offered an effort only when it reasons (C052).
+  const localModelWithoutReasoning =
+    selectedProvider === 'llamacpp' && effortLevels.length === 0
   const currentEffort: EffortChoice | null =
     effortCanDisable && isThinkingOff(resolvedForEffort)
       ? 'off'
@@ -3863,6 +3930,8 @@ const ChatInput = memo(function ChatInput({
                     that size their own thinking and so have no bar. */}
                 {(!effectiveAgentMode || slashSurface === 'cowork') &&
                   effortLevels.length === 0 &&
+                  // A local model with no effort bar does not reason (C052).
+                  !localModelWithoutReasoning &&
                   (selectedProvider === 'llamacpp' ||
                     selectedProvider === 'google' ||
                     selectedProvider === 'gemini' ||
@@ -4092,7 +4161,8 @@ const ChatInput = memo(function ChatInput({
                 <div className="flex-1 flex justify-center">
                   <TokenCounter
                     messages={threadMessages || []}
-                    source={tokenSource}
+                    source={counterSource}
+                    additionalTokens={pendingTokens}
                     compact={true}
                     onCompact={compactFromCounter}
                     onSetPrice={openPriceSettings}
@@ -4276,7 +4346,8 @@ const ChatInput = memo(function ChatInput({
         <div className="flex-1 w-full flex justify-start px-2">
           <TokenCounter
             messages={threadMessages || []}
-            source={tokenSource}
+            source={counterSource}
+            additionalTokens={pendingTokens}
             onCompact={compactFromCounter}
             onSetPrice={openPriceSettings}
           />

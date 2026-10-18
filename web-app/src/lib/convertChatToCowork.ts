@@ -13,9 +13,12 @@ import type { CoworkTurn } from '@/types/coworkSession'
  */
 
 /** The user and assistant turns of a chat's shown branch. Empty rows are dropped. */
-export function chatToTurns(messages: readonly ThreadMessage[]): CoworkTurn[] {
+export function chatToTurns(
+  messages: readonly ThreadMessage[],
+  threadMetadata?: Record<string, unknown> | null
+): CoworkTurn[] {
   const turns: CoworkTurn[] = []
-  for (const m of messagesToFork(messages)) {
+  for (const m of messagesToFork(messages, undefined, threadMetadata)) {
     if (m.role !== 'user' && m.role !== 'assistant') continue
     const texts: string[] = []
     const images: string[] = []
@@ -50,7 +53,7 @@ export async function convertChatToCowork(
   let stored = useMessages.getState().getMessages(threadId)
   if (stored.length === 0) stored = await loadMessages(threadId)
 
-  const turns = chatToTurns(stored)
+  const turns = chatToTurns(stored, thread.metadata)
   if (turns.length === 0) return null
   return useCoworkSessions.getState().createFromTurns(thread.title ?? '', turns)
 }

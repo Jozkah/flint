@@ -8,6 +8,7 @@
 import Fuse from 'fuse.js'
 import { route } from '@/constants/routes'
 import { getProviderTitle } from '@/lib/utils'
+import { isPlatformTauri } from '@/lib/platform/utils'
 
 /** One searchable entry of the registry, as specified for the search index. */
 export type SettingsSearchItem = {
@@ -294,6 +295,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:appearance.reduceMotionDesc',
     keywords: ['animation', 'motion', 'accessibility', 'transitions'],
   }),
+  item('appearance', 'performance-mode', 'settings:appearance.performanceMode', {
+    descriptionKey: 'settings:appearance.performanceModeDesc',
+    keywords: ['performance', 'slow', 'lag', 'blur', 'battery', 'reduced', 'speed'],
+  }),
   item('appearance', 'composer-rail-buttons', 'settings:interface.composerRailButtons', {
     descriptionKey: 'settings:interface.composerRailButtonsDesc',
     keywords: ['cowork', 'output', 'preview', 'changes', 'activity', 'timeline', 'composer', 'buttons'],
@@ -333,9 +338,13 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     'settings:interface.renderHtmlArtifacts',
     {
       descriptionKey: 'settings:interface.renderHtmlArtifactsDesc',
-      keywords: ['html', 'preview', 'artifacts'],
+      keywords: ['html', 'preview', 'artifacts', 'library'],
     }
   ),
+  item('appearance', 'wrap-code-lines', 'settings:interface.wrapCodeLines', {
+    descriptionKey: 'settings:interface.wrapCodeLinesDesc',
+    keywords: ['code', 'wrap', 'line', 'scroll'],
+  }),
   item('appearance', 'inline-citations', 'settings:interface.inlineCitations', {
     descriptionKey: 'settings:interface.inlineCitationsDesc',
     keywords: ['sources', 'favicon', 'web search', 'links'],
@@ -432,6 +441,8 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('agent-tools', 'compaction', 'settings:compaction.title', {
     descriptionKey: 'settings:compaction.autoDescription',
     keywords: [
+      'compaction',
+      'auto-compact',
       'compact',
       'summarize',
       'context window',
@@ -662,6 +673,32 @@ const stripMarkdown = (text: string): string =>
   text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
 
 /**
+ * Pages whose controls drive this machine through desktop-only commands (the
+ * local API server, phone pairing, the HTTPS proxy, coding CLIs, OS schedules,
+ * extensions). The browser client of `flint serve` has no route for them, so
+ * they are left out of its menu and search rather than shown as dead controls.
+ */
+const DESKTOP_ONLY_PAGES: ReadonlySet<string> = new Set([
+  'local-api-server',
+  'remote-access',
+  'https-proxy',
+  'claude-code',
+  'schedules',
+  'extensions',
+  'agent-tools',
+])
+
+/** Whether a settings page works on this platform. */
+export function isSettingsPageAvailable(id: string): boolean {
+  return isPlatformTauri() || !DESKTOP_ONLY_PAGES.has(id)
+}
+
+/** The anchor a provider page puts on one setting's row. */
+export function providerSettingAnchor(provider: string, key: string): string {
+  return `provider-setting-${provider}-${key}`.replace(/[^A-Za-z0-9_-]/g, '-')
+}
+
+/**
  * Resolve the static registry plus the currently active providers into a flat,
  * translated index. Rebuilt whenever providers or the language change, so
  * providers added or removed at runtime appear and disappear with them.
@@ -671,7 +708,13 @@ export function buildSettingsIndex(
   providers: ProviderForIndex[] = []
 ): SettingsIndexEntry[] {
   const entries: SettingsIndexEntry[] = []
+  const hiddenRoutes = new Set<string>(
+    SETTINGS_PAGES.filter((p) => !isSettingsPageAvailable(p.id)).map(
+      (p) => p.route
+    )
+  )
   for (const page of SETTINGS_PAGES) {
+    if (hiddenRoutes.has(page.route)) continue
     entries.push({
       kind: 'page',
       id: `page-${page.id}`,
@@ -682,6 +725,7 @@ export function buildSettingsIndex(
     })
   }
   for (const setting of SETTINGS_ITEMS) {
+    if (hiddenRoutes.has(setting.route)) continue
     entries.push({
       kind: 'setting',
       id: setting.id,
@@ -724,6 +768,7 @@ export function buildSettingsIndex(
           : undefined,
         keywords: [setting.key.replace(/-/g, ' ')],
         providerName: provider.provider,
+        anchor: providerSettingAnchor(provider.provider, setting.key),
       })
     }
   }

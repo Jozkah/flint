@@ -19,8 +19,8 @@
 //!
 //! Snapshots are kept OUT of the user's branch, HEAD, and index: we stage into a
 //! throwaway index file (`GIT_INDEX_FILE`) and build commit objects with
-//! `commit-tree`, reachable only from a hidden `refs/jan/agent/snapshots/<id>`
-//! ref. The user's `git status`, current branch, and staged changes are never
+//! `commit-tree`, reachable only from a hidden `refs/flint/agent/snapshots/<id>`
+//! ref (older builds wrote `refs/jan/...`; dropping a thread removes both). The user's `git status`, current branch, and staged changes are never
 //! touched. Shelling out keeps us free of a libgit2 dependency.
 
 use std::path::{Path, PathBuf};
@@ -249,6 +249,11 @@ fn snapshot_index(repo: &Path, thread_id: &str) -> PathBuf {
 /// Hidden ref that keeps a thread's snapshot chain reachable across GC. One ref
 /// per thread; each snapshot parents the previous, so the whole chain is live.
 pub(crate) fn snapshot_ref(thread_id: &str) -> String {
+    format!("refs/flint/agent/snapshots/{thread_id}")
+}
+
+/// The name older builds used; dropped alongside the current one.
+fn legacy_snapshot_ref(thread_id: &str) -> String {
     format!("refs/jan/agent/snapshots/{thread_id}")
 }
 
@@ -789,12 +794,11 @@ pub(crate) fn restore_worktree(
 /// Idempotent: a ref that is already gone is success, because the caller's
 /// intent — that nothing keeps this chain alive — is already satisfied.
 pub(crate) fn drop_ref(repo: &Path, thread_id: &str) -> Result<(), String> {
-    let name = snapshot_ref(thread_id);
-    match run(repo, None, &["update-ref", "-d", &name]) {
-        Ok(_) => Ok(()),
-        // `update-ref -d` on a missing ref is not a failure worth surfacing.
-        Err(_) => Ok(()),
+    // `update-ref -d` on a missing ref is not a failure worth surfacing.
+    for name in [snapshot_ref(thread_id), legacy_snapshot_ref(thread_id)] {
+        let _ = run(repo, None, &["update-ref", "-d", &name]);
     }
+    Ok(())
 }
 
 /// Restore the working tree to snapshot `target`, discarding changes made after

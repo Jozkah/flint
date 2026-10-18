@@ -53,10 +53,20 @@ export async function enableMcpServer(name: string): Promise<void> {
   const config = store.getServerConfig(name)
   if (!config) throw new Error(`No MCP server named ${name}`)
   const mcp = getServiceHub().mcp()
-  await mcp.activateMCPServer(name, { ...config, active: true })
+  // The backend registers the server as enabled before it starts it, so a
+  // failed start must be undone too: left registered, it was started "on
+  // demand" on every later send although it was never turned on (C030).
+  const turnBackOff = () =>
+    void Promise.resolve(mcp.deactivateMCPServer(name)).catch(() => {})
+  try {
+    await mcp.activateMCPServer(name, { ...config, active: true })
+  } catch (error) {
+    turnBackOff()
+    throw error
+  }
   const connected = await mcp.getConnectedServers()
   if (!connected.includes(name)) {
-    void Promise.resolve(mcp.deactivateMCPServer(name)).catch(() => {})
+    turnBackOff()
     throw new Error(i18n.t('mcp-servers:connection.notListedAfterStart'))
   }
   store.editServer(name, { ...config, active: true })

@@ -9,7 +9,7 @@ import { chatDelegationEnabled } from '@/lib/chatDelegation'
 import { createSurfaceDelegation } from '@/lib/surfaceDelegation'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
 import type { TodoList } from '@/types/coworkSession'
-import type { RoomToolActivity, RoomToolContext } from './callError'
+import { grantSessionId, type RoomToolActivity, type RoomToolContext } from './callError'
 import { withheld } from './toolCatalog'
 
 /**
@@ -85,8 +85,8 @@ export async function buildFullFolderTools(
     const dataFolder = await getServiceHub().app().getJanDataFolder()
     if (dataFolder) {
       writeGrant = extras.length
-        ? await directEditAuthorize(dataFolder, ctx.roomId, folder, extras)
-        : await directEditAuthorize(dataFolder, ctx.roomId, folder)
+        ? await directEditAuthorize(dataFolder, grantSessionId(ctx), folder, extras)
+        : await directEditAuthorize(dataFolder, grantSessionId(ctx), folder)
     }
   } catch {
     // No grant: reads and commands still work, writes are refused by the gate.
@@ -145,6 +145,9 @@ export async function buildFullFolderTools(
       description: schema.function.description,
       inputSchema: jsonSchema(schema.function.parameters as Record<string, unknown>),
       execute: async (input: unknown, options?: { toolCallId?: string; abortSignal?: AbortSignal }) => {
+        // Timed here: these calls report only when they settle, so the room's
+        // running-to-settled timer never sees them start.
+        const t0 = Date.now()
         const outcome = await dispatchCoworkTool(
           {
             toolCallId: options?.toolCallId ?? `${ctx.roomId}:${name}:${Date.now()}`,
@@ -158,6 +161,7 @@ export async function buildFullFolderTools(
         onActivity?.({
           name,
           ok: !outcome.isError,
+          ms: Date.now() - t0,
           args: input,
           output: output.length > OUTPUT_CAP ? `${output.slice(0, OUTPUT_CAP)}\n… (truncated)` : output,
         })
@@ -197,6 +201,7 @@ export async function buildFullFolderTools(
           input: unknown,
           options?: { toolCallId?: string; abortSignal?: AbortSignal }
         ) => {
+          const t0 = Date.now()
           const outcome = await room.run(
             {
               toolCallId: options?.toolCallId ?? `${ctx.roomId}:task:${Date.now()}`,
@@ -209,6 +214,7 @@ export async function buildFullFolderTools(
           onActivity?.({
             name: 'task',
             ok: !outcome.isError,
+            ms: Date.now() - t0,
             args: input,
             output: output.length > OUTPUT_CAP ? `${output.slice(0, OUTPUT_CAP)}\n… (truncated)` : output,
           })

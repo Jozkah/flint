@@ -30,6 +30,15 @@ export { turnToolAccess } from './types'
  * folder. Kept as plain data so the engine need not load the AI SDK or the tool
  * plumbing.
  */
+/**
+ * The session a participant's write grant belongs to. A session holds one
+ * grant, so two editing participants keyed by the room alone replaced each
+ * other's: each gets its own.
+ */
+export function grantSessionId(ctx: { roomId: string; participantId?: string }): string {
+  return ctx.participantId ? `${ctx.roomId}--${ctx.participantId}` : ctx.roomId
+}
+
 export type RoomToolContext = {
   roomId: string
   /** The folder file-read tools resolve against, or null for none. */
@@ -106,6 +115,15 @@ export type RoomCallErrorKind =
   | 'load-failed'
   | 'unavailable'
   | 'provider'
+  | 'busy'
+
+/**
+ * A local engine refused because every model slot is taken ("all N model slots
+ * are busy; retry shortly"). It is a wait, not a failure of the model.
+ */
+export function isSlotBusyMessage(message: string): boolean {
+  return /model slots? (are|is) busy|retry shortly/i.test(message)
+}
 
 export class RoomCallError extends Error {
   readonly kind: RoomCallErrorKind
@@ -168,6 +186,7 @@ export function toRoomCallError(e: unknown, signal?: AbortSignal): RoomCallError
     retryAfter: retryAfterOf(e),
     message,
   }
+  if (isSlotBusyMessage(message)) return new RoomCallError('busy', 'busy', message, facts)
   let serverLimit = null
   try {
     serverLimit = parseServerContextLimit((e as { data?: unknown } | null)?.data ?? null, message)

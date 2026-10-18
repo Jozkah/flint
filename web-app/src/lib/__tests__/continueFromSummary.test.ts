@@ -204,6 +204,13 @@ describe('continueFromSummary', () => {
 })
 
 describe('tidySummaryMarkdown', () => {
+  it('cleans the <analysis> scaffolding out of a stored seed (M-033)', async () => {
+    const { tidySummaryMarkdown } = await import('@/lib/continueFromSummary')
+    expect(
+      tidySummaryMarkdown('<analysis>a</analysis>\n<summary>\n- point\n</summary>')
+    ).toBe('- point')
+  })
+
   it('turns a cramped model summary into well-formed Markdown', async () => {
     const { tidySummaryMarkdown } = await import('@/lib/continueFromSummary')
     const raw = [

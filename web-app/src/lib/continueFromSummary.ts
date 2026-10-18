@@ -7,6 +7,7 @@ import { useThreads } from '@/hooks/useThreads'
 import { useAppState } from '@/hooks/useAppState'
 import { transcriptForSummary } from '@/lib/compaction'
 import { extractSummary } from '@/lib/context-manager'
+import { stripSummaryScaffolding } from '@/lib/summaryText'
 import { modelSummarizer } from '@/lib/compactionSummarizer'
 import { defangMentionText } from '@/lib/chatMentions'
 import { messagesToFork } from '@/lib/forkThread'
@@ -85,7 +86,8 @@ export function tidySummaryMarkdown(summary: string): string {
   const out: string[] = []
   let inFence = false
   let prevList = false
-  for (const raw of summary.trim().split(/\r?\n/)) {
+  // Seeds stored before the scaffolding was stripped are cleaned here too.
+  for (const raw of stripSummaryScaffolding(summary).split(/\r?\n/)) {
     let line = raw.replace(/\s+$/, '')
     if (/^\s*(```|~~~)/.test(line)) {
       inFence = !inFence
@@ -139,7 +141,11 @@ export async function continueFromSummary(
   const model = source.model
   if (!model?.id || !model.provider) throw new ContinueFromSummaryError('no-model')
 
-  const shown = messagesToFork(useMessages.getState().getMessages(threadId))
+  const shown = messagesToFork(
+    useMessages.getState().getMessages(threadId),
+    undefined,
+    source.metadata
+  )
   const transcript = transcriptForSummary(convertThreadMessagesToUIMessages(shown))
   if (!transcript.trim()) throw new ContinueFromSummaryError('empty')
 

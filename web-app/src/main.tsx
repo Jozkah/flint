@@ -1,4 +1,5 @@
 import { StrictMode } from 'react'
+import { shouldBlockDocumentDrop } from '@/lib/documentDrop'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { invoke } from '@tauri-apps/api/core'
@@ -9,6 +10,8 @@ import {
 import { installConsoleLogForwarding } from '@/services/app/console-logger'
 import { bootMark } from '@/lib/bootMarks'
 import { noteBootError, startBootWatchdog } from '@/lib/bootWatchdog'
+import { routerDefaults } from '@/components/RoutePending'
+import { installWindowIdleMarker } from '@/lib/windowIdle'
 
 // Inter is bundled under public/fonts (styles/font.css), so nothing is fetched at runtime.
 import './index.css'
@@ -42,22 +45,20 @@ const setupMobileViewport = () => {
         min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
       }
 
-      /* Prevent zoom on input focus */
-      input, textarea, select {
-        font-size: 16px !important;
-      }
+      /* Fields at 16px on touch devices (no focus zoom): index.css. */
     `
     document.head.appendChild(style)
   }
 }
 
-// Prevent browser from opening dropped files
+// Prevent the webview from opening dropped files (or navigating to a dropped
+// link), while text/URL drops onto editable fields still insert.
 const preventDefaultFileDrop = () => {
   document.addEventListener('dragover', (e) => {
     e.preventDefault()
   })
   document.addEventListener('drop', (e) => {
-    e.preventDefault()
+    if (shouldBlockDocumentDrop(e)) e.preventDefault()
   })
 }
 
@@ -95,6 +96,7 @@ const consumePendingWebdataReset = async () => {
 const boot = async () => {
   bootMark('boot:start')
   startBootWatchdog()
+  installWindowIdleMarker()
   installConsoleLogForwarding()
   setupMobileViewport()
   preventDefaultFileDrop()
@@ -133,7 +135,7 @@ const boot = async () => {
   }
   bootMark('boot:i18n')
 
-  const router = createRouter({ routeTree })
+  const router = createRouter({ routeTree, ...routerDefaults })
   // The app opens on the Overview once the first-run setup is done; until
   // then the new-chat page carries the setup guide. Only the main window's
   // start: a deep link or a logs window keeps its own path.

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { shownAssistantDescription } from '@/lib/assistantDescription'
 import { route } from '@/constants/routes'
 import { useState } from 'react'
 
@@ -191,9 +192,9 @@ function AssistantContent() {
                   {assistant.description && (
                     <p
                       className="min-w-0 flex-1 truncate text-xs leading-[1.35] text-muted-foreground"
-                      title={assistant.description}
+                      title={shownAssistantDescription(assistant, t)}
                     >
-                      {assistant.description}
+                      {shownAssistantDescription(assistant, t)}
                     </p>
                   )}
                 </div>

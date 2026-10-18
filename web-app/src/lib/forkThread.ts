@@ -1,9 +1,9 @@
-import { ulid } from 'ulidx'
+import { monotonicFactory } from 'ulidx'
 import type { ThreadMessage } from '@janhq/core'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useMessages } from '@/hooks/useMessages'
 import { useThreads } from '@/hooks/useThreads'
-import { computeActivePath } from '@/lib/message-branching'
+import { activePathOf } from '@/lib/message-branching'
 
 /**
  * Fork a chat: a new conversation that starts as a copy of this one, up to a
@@ -29,22 +29,36 @@ export function forkTitle(title: string | undefined): string {
   return base.endsWith(FORK_TITLE_SUFFIX) ? base : `${base}${FORK_TITLE_SUFFIX}`
 }
 
-/** The messages a fork copies: the shown branch, cut after `upToMessageId` when given. */
+/** The message to fork from is not on the branch the user is viewing. */
+export class ForkBranchError extends Error {
+  constructor(messageId: string) {
+    super(`Message ${messageId} is not on the shown branch`)
+    this.name = 'ForkBranchError'
+  }
+}
+
+/**
+ * The messages a fork copies: the shown branch (the thread's selected root,
+ * then each message's active version), cut after `upToMessageId` when given.
+ * A message that is not on that branch throws rather than copying another
+ * branch in its place (C019).
+ */
 export function messagesToFork(
   all: readonly ThreadMessage[],
-  upToMessageId?: string
+  upToMessageId?: string,
+  threadMetadata?: Record<string, unknown> | null
 ): ThreadMessage[] {
-  let path = computeActivePath([...all])
-  if (upToMessageId) {
-    const at = path.findIndex((m) => m.id === upToMessageId)
-    if (at >= 0) path = path.slice(0, at + 1)
-  }
-  return path
+  const path = activePathOf([...all], threadMetadata)
+  if (!upToMessageId) return path
+  const at = path.findIndex((m) => m.id === upToMessageId)
+  if (at < 0) throw new ForkBranchError(upToMessageId)
+  return path.slice(0, at + 1)
 }
 
 /**
  * Returns the new thread's id, or `null` when there is nothing to fork (a
- * temporary chat, an unknown thread, no messages).
+ * temporary chat, an unknown thread, no messages). Throws ForkBranchError when
+ * `upToMessageId` is not on the shown branch.
  */
 export async function forkThread(
   threadId: string,
@@ -56,7 +70,11 @@ export async function forkThread(
   // A chat that never picked a model has nothing for the copy to run on.
   if (!source || !source.model || source.metadata?.isTemporary) return null
 
-  const copied = messagesToFork(useMessages.getState().getMessages(threadId), upToMessageId)
+  const copied = messagesToFork(
+    useMessages.getState().getMessages(threadId),
+    upToMessageId,
+    source.metadata
+  )
   if (copied.length === 0) return null
 
   const project = source.metadata?.project as
@@ -79,12 +97,15 @@ export async function forkThread(
     metadata: { ...(created.metadata ?? {}), ...kept },
   })
 
+  // Ids sort in copy order: plain ulid() is random within one millisecond, and
+  // a tight loop scrambled the fork's message order (T7-023).
+  const nextId = monotonicFactory()
   for (const message of copied) {
     const metadata = { ...((message.metadata ?? {}) as Record<string, unknown>) }
     for (const key of MESSAGE_METADATA_DROPPED) delete metadata[key]
     useMessages.getState().addMessage({
       ...message,
-      id: ulid(),
+      id: nextId(),
       thread_id: created.id,
       metadata,
     })

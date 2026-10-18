@@ -6,6 +6,7 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import { Copy, Eye, EyeOff, CopyCheck, Minus, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DecimalInput } from '@/containers/dynamicControllerSetting/DecimalInput'
+import { steppedValue } from '@/lib/steppedValue'
 
 type InputControl = {
   type?: string
@@ -17,6 +18,8 @@ type InputControl = {
   min?: number
   max?: number
   step?: number
+  /** Values the +/- buttons move between (ascending), instead of `step`. */
+  steps?: number[]
 }
 
 export function InputControl({
@@ -29,6 +32,7 @@ export function InputControl({
   min,
   max,
   step = 1,
+  steps,
 }: InputControl) {
   const { t } = useTranslation()
   const [showPassword, setShowPassword] = useState(false)
@@ -52,14 +56,9 @@ export function InputControl({
     ? (typeof value === 'number' ? value : Number(value) || 0)
     : (min ?? 0)
 
-  const handleNumberAdjustment = (delta: number) => {
-    let newValue = numericValue + delta
-    // Round to avoid floating point issues
-    const decimals = (step.toString().split('.')[1] || '').length
-    newValue = Number(newValue.toFixed(decimals))
-    if (min !== undefined && newValue < min) newValue = min
-    if (max !== undefined && newValue > max) newValue = max
-    onChange(newValue.toString())
+  const handleNumberAdjustment = (dir: 1 | -1) => {
+    const current = hasValue || !steps ? numericValue : null
+    onChange(steppedValue(current, dir, { min, max, step, steps }).toString())
   }
 
   if (type === 'number') {
@@ -79,7 +78,7 @@ export function InputControl({
           type="button"
           aria-label={t('common:a11y.decrement')}
           className='h-8 w-8 shrink-0 rounded-none'
-          onClick={() => handleNumberAdjustment(-step)}
+          onClick={() => handleNumberAdjustment(-1)}
           disabled={min !== undefined && numericValue <= min}
         >
           <Minus className='size-3! text-muted-foreground' aria-hidden />
@@ -90,7 +89,7 @@ export function InputControl({
           type="button"
           aria-label={t('common:a11y.increment')}
           className='h-8 w-8 shrink-0 rounded-r-md'
-          onClick={() => handleNumberAdjustment(step)}
+          onClick={() => handleNumberAdjustment(1)}
           disabled={max !== undefined && numericValue >= max}
         >
           <Plus className='size-3! text-muted-foreground' aria-hidden />
@@ -111,8 +110,11 @@ export function InputControl({
         placeholder={placeholder}
         value={stringValue}
         onChange={(e) => onChange(e.target.value)}
+        // A long URL ends in an ellipsis rather than a hard cut, and the full
+        // value is on hover.
+        title={type === 'password' ? undefined : stringValue || undefined}
         className={cn(
-          'w-full',
+          'w-full min-w-0 text-ellipsis',
           hasInputActions && 'pr-16'
         )}
       />

@@ -302,7 +302,7 @@ describe('useModelProvider - coverage', () => {
       }, (migrated: any) => {
         expect(migrated.providers[0].models[0].settings.auto_increase_ctx_len).toBeUndefined()
       }],
-      [12, 'v12 resets legacy 8192 to auto, v16 re-seeds 8192 default', {
+      [12, 'v12 resets legacy 8192 to auto, v24 leaves it unset', {
         providers: [{
           provider: 'llamacpp',
           models: [{
@@ -316,9 +316,9 @@ describe('useModelProvider - coverage', () => {
       }, (migrated: any) => {
         expect(
           migrated.providers[0].models[0].settings.ctx_len.controller_props.value
-        ).toBe(8192)
+        ).toBe('')
       }],
-      [16, 'v16 seeds empty ctx_len with 8192 default', {
+      [16, 'v16 seeds 8192, v24 clears it back to unset', {
         providers: [{
           provider: 'llamacpp',
           models: [{
@@ -332,7 +332,7 @@ describe('useModelProvider - coverage', () => {
       }, (migrated: any) => {
         expect(
           migrated.providers[0].models[0].settings.ctx_len.controller_props.value
-        ).toBe(8192)
+        ).toBe('')
       }],
       [14, 'v14 → v15 strips orphan auto_increase_ctx_len', {
         providers: [{

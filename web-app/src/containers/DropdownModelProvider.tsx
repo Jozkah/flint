@@ -16,9 +16,11 @@ import {
 import {
   disambiguateModels,
   middleTruncate,
+  modelNameTail,
   type Disambiguation,
 } from '@/lib/modelDisplayName'
-import { contextLengthOf } from '@/lib/engineModels'
+import { MiddleText } from '@/components/ui/middle-text'
+import { contextLengthOf, effectiveContextLength } from '@/lib/engineModels'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import Capabilities from './Capabilities'
 import { ArrowUpDown, Search, Settings, X } from 'lucide-react'
@@ -192,11 +194,17 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     updateProvider,
   } = useModelProvider()
   const [displayModel, setDisplayModel] = useState<string>('')
-  const { updateCurrentThreadModel, updateThreadModel, threads } = useThreads()
+  const updateCurrentThreadModel = useThreads((s) => s.updateCurrentThreadModel)
+  const updateThreadModel = useThreads((s) => s.updateThreadModel)
   // In a split conversation each pane shows, and changes, its own thread's
   // model only. No pane moves the global picker, which new chats and a
   // conversation shown on its own read.
   const pane = useConversationPane()
+  // Only the pane's own thread model: a title change elsewhere must not
+  // re-render every picker.
+  const paneThreadModelRaw = useThreads((s) =>
+    pane?.isSplit ? s.threads[pane.threadId]?.model : undefined
+  )
   const inSplitPane = Boolean(pane?.isSplit)
   // A caller that passes `onModelChange` keeps the choice itself (Cowork
   // records it on its session). Such a picker shows and changes that caller's
@@ -205,9 +213,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const ownsSelection = Boolean(onModelChange)
   const drivesGlobalSelection =
     !ownsSelection && !pane?.isSplit
-  const paneThreadModel = pane?.isSplit
-    ? threads?.[pane.threadId]?.model
-    : undefined
+  const paneThreadModel = paneThreadModelRaw
   const { selectedProvider, selectedModel } = useMemo(
     () =>
       inSplitPane || ownsSelection
@@ -277,12 +283,15 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   )
 
   // Helper function to get context size from model settings
+  // The window the model runs with: its own, else the provider's Default
+  // context size (C043), else the engine's 8192 cap.
   const getContextSize = useCallback((): number => {
-    if (!selectedModel?.settings?.ctx_len?.controller_props?.value) {
-      return 8192 // Default context size
-    }
-    return selectedModel.settings.ctx_len.controller_props.value as number
-  }, [selectedModel?.settings?.ctx_len?.controller_props?.value])
+    if (!selectedModel) return 8192
+    return (
+      effectiveContextLength(selectedModel, getProviderByName(selectedProvider)) ??
+      8192
+    )
+  }, [selectedModel, selectedProvider, getProviderByName])
 
   // Function to check if a llamacpp model has vision capabilities and update model capabilities
   const checkAndUpdateModelVisionCapability = useCallback(
@@ -885,6 +894,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       <div
         key={`${list}-${item.value}`}
         {...selectableRow(item, isSelected)}
+        aria-label={secondary ? `${modelName}, ${secondary}` : modelName}
         className={cn(
           'group/mrow flex min-h-9 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-[background-color,transform] duration-150 motion-safe:animate-mi-in motion-safe:active:scale-[.985]',
           'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
@@ -901,11 +911,14 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           <TooltipTrigger asChild>
             <div className="min-w-0 flex-1">
               <span className="flex items-center text-[13px] font-medium text-foreground">
-                <span className="truncate">{middleTruncate(modelName, 38)}</span>
+                <MiddleText
+                  text={modelName}
+                  tail={modelNameTail(modelName)}
+                  data-testid="model-row-name"
+                />
                 {disambiguator && (
                   <span
                     className="ml-1.5 shrink-0 rounded bg-muted px-1 font-mono text-[10.5px] font-normal text-muted-foreground"
-                    title={item.model.id}
                     data-testid="model-disambiguator"
                   >
                     {disambiguator.label}
@@ -1002,7 +1015,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                       !selectedModel?.id && unavailableModel ? '' : undefined
                     }
                   >
-                    {middleTruncate(displayModel, 30)}
+                    <MiddleText
+                      text={displayModel}
+                      tail={modelNameTail(displayModel)}
+                    />
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>{displayModel}</TooltipContent>
@@ -1044,10 +1060,12 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
 
       <PopoverContent
         className={cn(
-          // Use auto width to fit long model names; keep a sensible minimum.
+          // Width rule: the popover matches the pill it opens from. A pill
+          // narrower than 280px (a short name under the composer) gets the
+          // 280px floor so rows stay readable; never wider than the viewport.
           // Cap height so the popover never overflows the viewport even when
           // it cannot flip to the other side.
-          'w-[360px] max-w-[calc(100vw-24px)] max-h-[calc(100vh-16px)] p-1.5',
+          'w-[max(280px,var(--radix-popover-trigger-width))] max-w-[calc(100vw-24px)] max-h-[calc(100vh-16px)] p-1.5',
           searchValue.length === 0 && 'h-[26rem]'
         )}
         align="end"

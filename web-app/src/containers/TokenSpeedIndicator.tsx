@@ -195,7 +195,12 @@ export const TokenSpeedIndicator = memo(
 
     if (showTokenSpeed) {
       return (
-        <div className="flex min-w-0 items-center gap-x-1 whitespace-nowrap text-muted-foreground text-xs">
+        // A narrow row (a phone) ends in an ellipsis rather than a cut-off
+        // figure (C069).
+        <div
+          data-testid="message-token-figures"
+          className="flex min-w-0 items-center gap-x-1 overflow-hidden whitespace-nowrap text-muted-foreground text-xs"
+        >
           <Popover>
             {trigger}
             {details}
@@ -204,9 +209,13 @@ export const TokenSpeedIndicator = memo(
           {cacheFlag &&
             cacheStatus(usage) !== 'not-reported' &&
             displaySpeed > 0 && <span aria-hidden>·</span>}
-          {displaySpeed > 0 && <span>{t('uiLeftovers:tokenSpeed.perSec', { n: displaySpeed })}</span>}
+          {displaySpeed > 0 && (
+            <span className="min-w-0 truncate">
+              {t('uiLeftovers:tokenSpeed.perSec', { n: displaySpeed })}
+            </span>
+          )}
           {displayTokenCount > 0 && (
-            <span className="text-muted-foreground">
+            <span className="min-w-0 truncate text-muted-foreground">
               ({t('uiLeftovers:tokenSpeed.count', { n: displayTokenCount })})
             </span>
           )}

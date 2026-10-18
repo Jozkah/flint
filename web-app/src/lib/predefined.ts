@@ -10,8 +10,10 @@ export const modelSettings = {
       'Size of the prompt context. Leave empty to auto-fit when --fit is on.',
     controller_type: 'input',
     controller_props: {
-      value: 8192,
-      placeholder: '8192',
+      // Blank: the provider's Default context size applies until the user
+      // sets one for this model (C043).
+      value: '',
+      placeholder: 'auto',
       type: 'number',
     },
   },

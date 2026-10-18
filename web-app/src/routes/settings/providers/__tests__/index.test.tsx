@@ -242,6 +242,23 @@ describe('Models page (/settings/providers)', () => {
     expect(row).toHaveTextContent(/llama/i)
   })
 
+  // C147/C150: the loaded card's bar had no label and no progressbar role.
+  it('labels the loaded model speed bar as a progressbar', async () => {
+    const { useEngineActivity } = await import('@/stores/engine-activity-store')
+    useEngineActivity.setState({
+      generations: [{ model: 'gemma-3-4b-it:Q4_K_M', tps: 120, at: 1 } as never],
+    })
+    h.appState.activeModels = ['gemma-3-4b-it:Q4_K_M']
+    await renderPage().finally(() => {
+      h.appState.activeModels = []
+    })
+    const row = await screen.findByTestId('loaded-row-gemma-3-4b-it:Q4_K_M')
+    const bar = within(row).getByRole('progressbar')
+    expect(bar).toHaveAttribute('aria-label', 'engine:loaded.speedBar')
+    expect(bar).toHaveAttribute('aria-valuenow', '120')
+    useEngineActivity.setState({ generations: [] })
+  })
+
   it("opens a real menu from a model row's three dots", async () => {
     const user = userEvent.setup()
     await renderPage()
@@ -362,6 +379,16 @@ describe('Models page (/settings/providers)', () => {
     expect(head.className).toContain('grid-cols-[var(--tbox-cols)]')
     // Fits the frame: no forced minimum width that makes it scroll sideways.
     expect(tbox.className).not.toMatch(/min-w-\[/)
+  })
+
+  it('never lets the model name column collapse to nothing (T7-003, T7-089)', async () => {
+    await renderPage()
+    const tbox = screen.getByTestId('models-row-gpt-5').closest('[data-slot="tbox"]') as HTMLElement
+    const nameTrack = tbox.style.getPropertyValue('--tbox-cols').trim().split(/\s+(?![^(]*\))/)[1]
+    expect(nameTrack).toMatch(/^minmax\((\d+)px,\s*1fr\)$/)
+    expect(Number(/\d+/.exec(nameTrack)![0])).toBeGreaterThanOrEqual(120)
+    // Columns that no longer fit scroll sideways instead of being cut off.
+    expect(tbox.className).toContain('overflow-x-auto')
   })
 
   it('renames a provider for display only, keeping its internal key', async () => {

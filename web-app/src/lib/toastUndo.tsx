@@ -12,6 +12,8 @@ export interface UndoToastOptions {
   onUndo: () => void
   durationMs?: number
   id?: string | number
+  /** Where the card shows; the app's default corner when unset. */
+  position?: 'top-center' | 'top-right' | 'bottom-center' | 'bottom-right'
 }
 
 /** A toast that offers Undo while an amber outline burns away around it. */
@@ -36,6 +38,7 @@ export function showUndoToast(opts: UndoToastOptions): string | number {
     // handed back (and to the card) named no toast -- dismiss(id) did nothing.
     {
       ...(opts.id !== undefined ? { id: opts.id } : {}),
+      ...(opts.position ? { position: opts.position } : {}),
       duration: durationMs + UNDO_TOAST_BACKSTOP_MS,
     }
   )

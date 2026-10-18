@@ -794,13 +794,27 @@ describe('ChatInput', () => {
     renderInput({
       modelSelection: {
         selectedProvider: 'llamacpp',
-        selectedModel: { id: 'model-a', capabilities: ['tools'] },
+        selectedModel: { id: 'model-a', capabilities: ['tools', 'reasoning'] },
       },
       slashSurface: 'cowork',
       modelOverrideScope: 'session-1',
     })
     expect(screen.queryByRole('button', { name: /^Reasoning:/ })).toBeNull()
     expect(screen.getByTestId('composer-effort')).toBeInTheDocument()
+  })
+
+  // C052: a local model that does not reason gets no reasoning control at all.
+  it('has no effort bar and no Reasoning menu for a local model that does not reason', () => {
+    renderInput({
+      modelSelection: {
+        selectedProvider: 'llamacpp',
+        selectedModel: { id: 'gemma-3-4b', capabilities: ['tools'] },
+      },
+      slashSurface: 'cowork',
+      modelOverrideScope: 'session-1',
+    })
+    expect(screen.queryByRole('button', { name: /^Reasoning:/ })).toBeNull()
+    expect(screen.queryByTestId('composer-effort')).toBeNull()
   })
 
   it('shows "please select a model" inline message when no model selected', () => {

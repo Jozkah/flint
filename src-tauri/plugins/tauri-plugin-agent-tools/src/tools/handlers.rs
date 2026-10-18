@@ -2206,7 +2206,14 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // No confinement available means no shell either: running unsandboxed
         // would give the command the whole machine, which is never what the
         // caller asked for.
-        let mut selected = match jail::select_shell(&policy) {
+        // Probing launches the sandbox helper (and, the first time, sets up
+        // the container and its folder ACLs): seconds of blocking work that
+        // must not hold an async runtime thread.
+        let probe_policy = policy.clone();
+        let probed = tokio::task::spawn_blocking(move || jail::select_shell(&probe_policy))
+            .await
+            .unwrap_or_else(|e| Err(format!("the shell probe failed: {e}")));
+        let mut selected = match probed {
             Ok(selected) => selected,
             Err(detail) => {
                 return format!(
@@ -2257,7 +2264,14 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         if proc::requires_and_or_chaining(command).is_some()
             && !proc::supports_and_or_chaining(&selected.report.cfg)
         {
-            match jail::select_chaining_capable(&policy) {
+            let probe_policy = policy.clone();
+            let capable = tokio::task::spawn_blocking(move || {
+                jail::select_chaining_capable(&probe_policy)
+            })
+            .await
+            .ok()
+            .flatten();
+            match capable {
                 Some(capable) => selected = capable,
                 None => {
                     // Unreachable in practice on Windows -- `cmd.exe` is always a
@@ -4021,6 +4035,8 @@ async fn grep(
             for entry in WalkBuilder::new(&base)
                 .hidden(false)
                 .require_git(false)
+                // Git's own database is never project content.
+                .filter_entry(|e| e.file_name() != ".git")
                 .build()
                 .flatten()
             {
@@ -7103,6 +7119,20 @@ on_failure = \"warn\"
             !out.contains("agent.toml"),
             "must not grep agent config: {out}"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn grep_skips_git_internals_but_searches_other_hidden_files() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join(".git/hooks")).unwrap();
+        std::fs::write(root.join(".git/hooks/pre-rebase.sample"), b"def NEEDLE\n").unwrap();
+        std::fs::write(root.join(".prettierrc"), b"def NEEDLE\n").unwrap();
+        std::fs::write(root.join("main.py"), b"def NEEDLE\n").unwrap();
+        let out = execute_builtin(lookup("grep").unwrap(), &json!({"pattern": "NEEDLE"}), &root).await;
+        assert!(out.contains("main.py"), "{out}");
+        assert!(out.contains(".prettierrc"), "hidden files still searched: {out}");
+        assert!(!out.contains("pre-rebase"), "must skip .git: {out}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

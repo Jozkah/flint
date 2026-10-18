@@ -188,7 +188,12 @@ export function effortProfile(
     case 'openai':
       return openaiProfile(model?.id ?? '')
     case 'llamacpp':
-      return { levels: EFFORT_LEVELS, recommended: 'xhigh', canDisable: true }
+      // Only a model that reasons: an effort chip on one that does not is a
+      // control that does nothing (C052).
+      return (model?.capabilities?.includes('reasoning') ?? false) ||
+        REASONING_MODEL_ID.test(model?.id ?? '')
+        ? { levels: EFFORT_LEVELS, recommended: 'xhigh', canDisable: true }
+        : NO_EFFORT
     case 'anthropic':
       return anthropicTakesAnExplicitBudget(model?.id ?? '')
         ? { levels: EFFORT_LEVELS, recommended: 'medium', canDisable: true }

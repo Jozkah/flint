@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   SETTINGS_PAGES,
+  isSettingsPageAvailable,
   type SettingsPage,
   type SettingsPageId,
 } from '@/lib/settingsSearch'
@@ -134,7 +135,12 @@ const MODEL_PROVIDERS_ENTRY: MenuEntry = {
 }
 
 function buildGroups() {
-  const byId = new Map(SETTINGS_PAGES.map((p) => [p.id as string, p]))
+  const byId = new Map(
+    SETTINGS_PAGES.filter((p) => isSettingsPageAvailable(p.id)).map((p) => [
+      p.id as string,
+      p,
+    ])
+  )
   const placed = new Set<string>(GROUPS.flatMap((g) => [...g.ids]))
   return GROUPS.map((group) => {
     const pages = group.ids
@@ -143,6 +149,7 @@ function buildGroups() {
     const unplaced = SETTINGS_PAGES.filter(
       (p) =>
         !placed.has(p.id) &&
+        isSettingsPageAvailable(p.id) &&
         (group.key === 'tools'
           ? p.group === 'integrations'
           : group.key === 'general' && p.group === 'core')
@@ -153,7 +160,7 @@ function buildGroups() {
       entries:
         group.key === 'tools' ? [MODEL_PROVIDERS_ENTRY, ...entries] : entries,
     }
-  })
+  }).filter((group) => group.entries.length > 0) // no heading over nothing
 }
 
 type SettingsMenuProps = {

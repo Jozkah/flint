@@ -56,7 +56,9 @@ import {
 import {
   generatePreset,
   threadCacheDir,
+  contextSizeToPersist,
   DEFAULT_EMBEDDING_UBATCH,
+  CACHE_RAM_AUTO,
 } from './preset'
 import {
   kvDefaultsInEffect,
@@ -95,6 +97,7 @@ import {
   getEngineVersion as pluginGetEngineVersion,
   reloadEngineModels,
   engineDevices,
+  engineAddonRestartPending,
   generateApiKey as pluginGenerateApiKey,
   findSessionByModel as pluginFindSessionByModel,
   ensureSessionReady as pluginEnsureSessionReady,
@@ -122,6 +125,7 @@ const TEMPLATE_KWARGS_CHECK_VERSION = 1
 // value is read; cosmetic / process-only keys (models_max, timeout,
 // llamacpp_env, idle_unload_minutes) are handled separately or not at all.
 const PRESET_AFFECTING_KEYS = new Set<string>([
+  'ctx_size',
   'fit',
   'fit_target',
   'fit_ctx',
@@ -522,6 +526,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
     await this.migrateUbatchAuto()
 
+    await this.migrateCacheRamAuto()
+
     this.timeout = asI32(this.config.timeout, DEFAULT_TIMEOUT) || DEFAULT_TIMEOUT
     this.llamacpp_env = this.config.llamacpp_env
 
@@ -747,6 +753,17 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           }
           return arr
         })()
+    // A setting added after the file was written (ngram_speculation, a new
+    // ubatch mode) is not in it: without this its change was dropped, so the
+    // preset kept the old value until something else rewrote it.
+    if (current.length) {
+      for (const p of componentProps) {
+        if (!p.key || current.some((s) => s.key === p.key)) continue
+        const value = (p.controllerProps as { value?: unknown } | undefined)?.value
+        updated.push(p as SettingComponentProps)
+        changed.push({ key: p.key, value })
+      }
+    }
     await writeSettingsFile(updated)
     const previousConfig = { ...this.config }
     const previousTimeout = this.timeout
@@ -852,6 +869,18 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
   }
 
+  /** True when models can only run on the CPU: device `none`, or no GPU. */
+  private async cpuOnly(): Promise<boolean> {
+    const dev = (this.config as { device?: unknown }).device
+    if (typeof dev === 'string' && dev.trim() === 'none') return true
+    try {
+      const gpus = (await getSystemInfo())?.gpus
+      return Array.isArray(gpus) && gpus.length === 0
+    } catch {
+      return false
+    }
+  }
+
   /** Lowest NVIDIA compute capability on this machine, if any. */
   private async gpuComputeCapability(): Promise<number | undefined> {
     try {
@@ -888,6 +917,21 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
   }
 
+  /** Total and free system RAM in MiB, for the `auto` prompt cache size. */
+  private async systemMemoryMiB(): Promise<{ total?: number; free?: number }> {
+    try {
+      const u = await getSystemUsage()
+      const total = Number(u?.total_memory) || undefined
+      const used = Number(u?.used_memory)
+      return {
+        total,
+        free: total && Number.isFinite(used) ? Math.max(0, total - used) : undefined,
+      }
+    } catch {
+      return {}
+    }
+  }
+
   private async runStartEngine(): Promise<void> {
     const providerPath = await this.getProviderPath()
     const janDataFolderPath = await getJanDataFolderPath()
@@ -901,6 +945,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         knownDeviceIds: await this.knownDeviceIds(),
         gpuComputeCapability: await this.gpuComputeCapability(),
         gpuMemoryMiB: await this.gpuMemoryMiB(),
+        systemMemoryMiB: await this.systemMemoryMiB(),
+        cpuOnly: await this.cpuOnly(),
       }
     )
 
@@ -1029,6 +1075,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         knownDeviceIds: await this.knownDeviceIds(),
         gpuComputeCapability: await this.gpuComputeCapability(),
         gpuMemoryMiB: await this.gpuMemoryMiB(),
+        systemMemoryMiB: await this.systemMemoryMiB(),
+        cpuOnly: await this.cpuOnly(),
       }
     )
     this.presetPath = presetPath
@@ -1126,11 +1174,16 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           params?: Record<string, unknown>
         }
         total_slots?: number
+        n_ctx?: number
         model_alias?: string
         is_sleeping?: boolean
         modalities?: { vision?: boolean; video?: boolean; audio?: boolean }
       }
-      const n = json?.default_generation_settings?.n_ctx
+      // Per-slot window first; a build that reports it only at the top
+      // level (as an auto-fit load can) still has a real answer.
+      const perSlot = json?.default_generation_settings?.n_ctx
+      const n =
+        typeof perSlot === 'number' && perSlot > 0 ? perSlot : json?.n_ctx
       if (typeof n !== 'number' || n <= 0) return undefined
       const m = json.modalities
       return {
@@ -1244,6 +1297,32 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       )
       this.config.ubatch_size = 0
       logger.info(`Migrated ubatch_size=${v} -> 0 (auto)`)
+    }
+
+    await setBackendSetting(MIGRATION_KEY, '1')
+  }
+
+  /**
+   * Prompt Cache RAM gained `-2 = auto` (sized from system RAM). Installs saved
+   * the old default 4096 as a value, so that moves to auto once; anything else
+   * was typed by the user and stays.
+   */
+  private async migrateCacheRamAuto(): Promise<void> {
+    const MIGRATION_KEY = 'llamacpp_cache_ram_auto_v1'
+    if (await getBackendSetting(MIGRATION_KEY)) return
+
+    if (Number(this.config.cache_ram) === 4096) {
+      const settings = await this.getSettings()
+      await this.updateSettings(
+        settings.map((item) => {
+          if (item.key === 'cache_ram') {
+            item.controllerProps.value = CACHE_RAM_AUTO
+          }
+          return item
+        })
+      )
+      this.config.cache_ram = CACHE_RAM_AUTO
+      logger.info(`Migrated cache_ram=4096 -> ${CACHE_RAM_AUTO} (auto)`)
     }
 
     await setBackendSetting(MIGRATION_KEY, '1')
@@ -1448,6 +1527,23 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     this.enginePort = undefined
     this.engineApiKey = undefined
     await this.startEngine()
+  }
+
+  /**
+   * An engine add-on (the CUDA pack) installed or removed since the worker
+   * started only loads when the worker restarts: do that before this load,
+   * while nothing is generating. Best-effort; on any doubt the load goes on
+   * with the running engine.
+   */
+  private async applyEngineAddonChange(): Promise<void> {
+    try {
+      const pending = await engineAddonRestartPending()
+      if (!pending) return
+      logger.info('Engine add-on changed since the engine started; restarting it before this load')
+      await this.restartEngineForEnv()
+    } catch (e) {
+      logger.debug('engine add-on check skipped:', e)
+    }
   }
 
   private presetRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -2336,12 +2432,16 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
   override async load(
     modelId: string,
-    _settings?: unknown,
+    settings?: unknown,
     isEmbedding: boolean = false
   ): Promise<SessionInfo> {
     const sInfo = await this.findSessionByModel(modelId)
     if (sInfo) {
       throw new Error('Model already loaded!!')
+    }
+
+    if (!isEmbedding && !this.loadingModels.has(modelId)) {
+      await this.persistShownContextSize(modelId, settings)
     }
 
     if (this.loadingModels.has(modelId)) {
@@ -2355,6 +2455,37 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       return await loadingPromise
     } finally {
       this.loadingModels.delete(modelId)
+    }
+  }
+
+  /**
+   * The context the model settings show is the one the engine must run: write
+   * it to model.yml (and so the preset's ctx-size) before loading when the two
+   * disagree. A failure only logs; the load goes on with what model.yml says.
+   */
+  private async persistShownContextSize(
+    modelId: string,
+    settings: unknown
+  ): Promise<void> {
+    if (!settings || typeof settings !== 'object') return
+    try {
+      const configPath = await joinPath([
+        await this.getProviderPath(),
+        'models',
+        modelId,
+        'model.yml',
+      ])
+      if (!(await fs.existsSync(configPath))) return
+      const cfg = (await invoke<ModelConfig>('read_yaml', {
+        path: configPath,
+      })) as ModelConfig
+      const ctx = contextSizeToPersist(settings as Record<string, unknown>, cfg)
+      if (ctx !== undefined) {
+        // null removes model.yml's ctx_size so the Default context size applies.
+        await this.updateModelSettings(modelId, { ctx_len: ctx })
+      }
+    } catch (e) {
+      logger.warn(`Could not apply the context size for ${modelId}`, e)
     }
   }
 
@@ -2372,6 +2503,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     modelId: string,
     isEmbedding: boolean = false
   ): Promise<SessionInfo> {
+    await this.applyEngineAddonChange()
     await this.ensureEngineReady()
     if (!(await this.getEngineInfo())) {
       throw new Error(
