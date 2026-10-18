@@ -50,8 +50,22 @@ function byAge(steps: Array<[number, string]>) {
   }
 }
 
-export function runStatus(running: boolean, turns: readonly CoworkTurn[]): RunStatus | null {
+/** i18next-style translate; the tool lines below take it so they follow the UI language. */
+export type StatusTranslate = (key: string, options: { tool: string }) => string
+
+const ENGLISH: Record<string, (tool: string) => string> = {
+  'tools:toolCall.runningStatus': (tool) => `Running ${tool}…`,
+  'tools:toolCall.stillRunning': (tool) => `Still running ${tool}…`,
+}
+
+export function runStatus(
+  running: boolean,
+  turns: readonly CoworkTurn[],
+  t?: StatusTranslate
+): RunStatus | null {
   if (!running) return null
+  const say = (key: string, tool: string) =>
+    t ? t(key, { tool }) : ENGLISH[key](tool)
   const last = turns.at(-1)
   if (!last || last.role === 'user') {
     return {
@@ -71,8 +85,8 @@ export function runStatus(running: boolean, turns: readonly CoworkTurn[]): RunSt
         phase: 'tool',
         key: `tool:${last.callId ?? name}`,
         label: byAge([
-          [0, `Running ${name}…`],
-          [30 * S, `Still running ${name}…`],
+          [0, say('tools:toolCall.runningStatus', name)],
+          [30 * S, say('tools:toolCall.stillRunning', name)],
         ]),
       }
     }

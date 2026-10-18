@@ -144,8 +144,13 @@ const READ_TOOLS = new Set([
   'read_file',
   'list_directory',
   'search_files',
+  'ocr',
+  // Another conversation, read from the app's own stores (docs/CHAT_MENTIONS.md).
+  'chat_read',
 ])
 const HELPER_TOOLS = new Set(['task', 'team'])
+/** The run's own question when it reaches its spend pause (not a tool call). */
+const SPEND_PAUSE_TOOL_NAME = 'spend_pause'
 
 export const MAX_RESOURCE_LENGTH = 160
 const MAX_ARG_STRING_LENGTH = 500
@@ -517,6 +522,8 @@ function actionFor(
           },
         }
       }
+      if (toolName === SPEND_PAUSE_TOOL_NAME)
+        return { key: 'permissions:action.spendPause' }
       if (HELPER_TOOLS.has(toolName)) return { key: 'permissions:action.startHelper' }
       return { key: 'permissions:action.useTool', values: { tool: toolName } }
   }
@@ -565,6 +572,9 @@ function consequencesFor(
       }
       if (toolName === CAMPAIGN_PLAN_TOOL_NAME) {
         return [{ key: 'permissions:consequence.campaignPlan' }]
+      }
+      if (toolName === SPEND_PAUSE_TOOL_NAME) {
+        return [{ key: 'permissions:consequence.spendPause' }]
       }
       return HELPER_TOOLS.has(toolName)
         ? [{ key: 'permissions:consequence.helper' }]

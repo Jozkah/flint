@@ -24,14 +24,23 @@ import {
   type PendingProposal,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
 import { cn } from '@/lib/utils'
 
-/** What a scope means, in the words the user chose it in. */
-const SCOPE_LABEL: Record<string, string> = {
-  session: 'this conversation',
-  project: 'this project',
-  user: 'everywhere',
+/** The scopes the backend names, each with its words in the locale files. */
+const KNOWN_SCOPES = new Set(['session', 'project', 'user'])
+
+/** "Would apply to <where>." with the place in bold, wherever the locale puts it. */
+function WouldApply({ text, where }: { text: string; where: string }) {
+  const [before, after = ''] = text.split('\u0000')
+  return (
+    <>
+      {before}
+      <b className="font-semibold text-foreground">{where}</b>
+      {after}
+    </>
+  )
 }
 
 export function MemoryProposalCard({
@@ -52,6 +61,7 @@ export function MemoryProposalCard({
   /** `settings`: the design's dashed proposal box on Settings > Memory. */
   variant?: 'card' | 'settings'
 }) {
+  const { t } = useTranslation()
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -74,10 +84,13 @@ export function MemoryProposalCard({
     [busy, location, proposal.id, proposal.scope, onResolved]
   )
 
+  const scopeLabel = KNOWN_SCOPES.has(proposal.scope)
+    ? t(`common:memoryProposal.scope.${proposal.scope}`)
+    : proposal.scope
   const where =
-    proposal.scope === 'project' && projectName
-      ? projectName
-      : (SCOPE_LABEL[proposal.scope] ?? proposal.scope)
+    proposal.scope === 'project' && projectName ? projectName : scopeLabel
+  const saving = t('common:memoryProposal.saving')
+  const discarding = t('common:memoryProposal.discarding')
 
   if (variant === 'settings')
     return (
@@ -98,7 +111,7 @@ export function MemoryProposalCard({
             className="mt-1 text-xs text-subtle-foreground"
             data-testid="memory-proposal-explanation"
           >
-            Would apply to {SCOPE_LABEL[proposal.scope] ?? proposal.scope}.{' '}
+            {t('common:memoryProposal.wouldApply', { where: scopeLabel })}{' '}
             {proposal.explanation}
           </p>
           {error && (
@@ -115,7 +128,7 @@ export function MemoryProposalCard({
               onClick={() => void answer(true)}
               data-testid="memory-proposal-approve"
             >
-              {busy === 'approve' ? 'Saving…' : 'Remember'}
+              {busy === 'approve' ? saving : t('common:memoryProposal.remember')}
             </Button>
           ) : (
             <Button
@@ -124,7 +137,7 @@ export function MemoryProposalCard({
               onClick={onOpenSettings}
               data-testid="memory-proposal-resolve-conflict"
             >
-              Review both
+              {t('common:memoryProposal.reviewBoth')}
             </Button>
           )}
           <Button
@@ -134,7 +147,7 @@ export function MemoryProposalCard({
             onClick={() => void answer(false)}
             data-testid="memory-proposal-reject"
           >
-            {busy === 'reject' ? 'Discarding…' : 'Discard'}
+            {busy === 'reject' ? discarding : t('common:memoryProposal.discard')}
           </Button>
         </div>
       </div>
@@ -150,12 +163,17 @@ export function MemoryProposalCard({
       data-reason={proposal.reason}
     >
       <div className="w-full min-w-0">
-        <b className="font-semibold text-foreground">Remember this?</b>
+        <b className="font-semibold text-foreground">
+          {t('common:memoryProposal.title')}
+        </b>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
           <span data-testid="memory-proposal-content">
             “{proposal.content}”
           </span>{' '}
-          Would apply to <b className="font-semibold text-foreground">{where}</b>.
+          <WouldApply
+            text={t('common:memoryProposal.wouldApply', { where: '\u0000' })}
+            where={where}
+          />
         </p>
         {/* The reason, from the backend. Never a generic prompt. */}
         <p
@@ -180,7 +198,7 @@ export function MemoryProposalCard({
             data-testid="memory-proposal-approve"
             className="pointer-coarse:h-11"
           >
-            {busy === 'approve' ? 'Saving…' : 'Remember'}
+            {busy === 'approve' ? saving : t('common:memoryProposal.remember')}
           </Button>
         ) : (
           // No Approve. Resolving the disagreement is the action, and it
@@ -192,7 +210,7 @@ export function MemoryProposalCard({
             data-testid="memory-proposal-resolve-conflict"
             className="pointer-coarse:h-11"
           >
-            Review both
+            {t('common:memoryProposal.reviewBoth')}
           </Button>
         )}
         <Button
@@ -203,7 +221,7 @@ export function MemoryProposalCard({
           data-testid="memory-proposal-reject"
           className="pointer-coarse:h-11"
         >
-          {busy === 'reject' ? 'Discarding…' : 'Discard'}
+          {busy === 'reject' ? discarding : t('common:memoryProposal.discard')}
         </Button>
       </div>
     </div>

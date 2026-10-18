@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { ApprovalRulesCard } from '../ApprovalRulesCard'
 import * as scopes from '@/lib/approvalScopes'
@@ -58,12 +58,42 @@ const WAITING: scopes.DeferredApproval = {
 
 describe('ApprovalRulesCard', () => {
   beforeEach(() => {
+    // The desktop backend is present (a page served to a browser has none).
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      value: {},
+      configurable: true,
+    })
     vi.mocked(scopes.listScopedRules).mockReset().mockResolvedValue([])
     vi.mocked(scopes.revokeScopedRule).mockReset()
     vi.mocked(scopes.listDeferred).mockReset().mockResolvedValue([])
     vi.mocked(scopes.answerDeferred).mockReset()
     vi.mocked(scopes.discardDeferred).mockReset()
     vi.mocked(toast.error).mockReset()
+  })
+
+  afterEach(() => {
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  })
+
+  it('does not call the backend on a page served to a browser', async () => {
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+    render(<ApprovalRulesCard />)
+    expect(await screen.findByTestId('approval-rules-desktop-only')).toBeTruthy()
+    expect(screen.getByTestId('deferred-approvals-desktop-only')).toBeTruthy()
+    expect(scopes.listScopedRules).not.toHaveBeenCalled()
+    expect(scopes.listDeferred).not.toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('names the item on each waiting approval button', async () => {
+    vi.mocked(scopes.listDeferred).mockResolvedValue([WAITING])
+    render(<ApprovalRulesCard />)
+    expect(
+      await screen.findByRole('button', { name: new RegExp(`^Allow: ${WAITING.summary}`) })
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: new RegExp(`^Deny: ${WAITING.summary}`) })
+    ).toBeTruthy()
   })
 
   it('lists each rule with its scope in words and its project', async () => {
@@ -124,7 +154,7 @@ describe('ApprovalRulesCard', () => {
     vi.mocked(scopes.listDeferred).mockResolvedValue([WAITING])
     vi.mocked(scopes.answerDeferred).mockResolvedValue({ ...WAITING, status: 'denied' })
     render(<ApprovalRulesCard />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Deny' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Deny: bash: make deploy/ }))
     await waitFor(() => expect(scopes.answerDeferred).toHaveBeenCalledWith('defer-1', false))
   })
 
@@ -132,7 +162,7 @@ describe('ApprovalRulesCard', () => {
     vi.mocked(scopes.listDeferred).mockResolvedValue([WAITING])
     vi.mocked(scopes.answerDeferred).mockRejectedValue('defer-1 expired before it was answered')
     render(<ApprovalRulesCard />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Allow: bash: make deploy/ }))
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     expect(vi.mocked(toast.error).mock.calls[0][0]).toContain('expired')
   })

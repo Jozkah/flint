@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import { Card } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import { hasDesktopBackend } from '@/lib/desktopBackend'
 import { errorText } from '@/lib/errorText'
 import {
   listAccessGrants,
@@ -15,9 +17,17 @@ const ROW =
 const EMPTY = 'py-3 text-[13px] text-muted-foreground'
 const REVOKE = 'shrink-0 pointer-coarse:h-11'
 
-function lifetime(g: AccessGrant): string {
-  if (g.persistent || g.expiresAt === null) return 'Every conversation, until revoked'
-  return `This conversation, until ${new Date(g.expiresAt * 1000).toLocaleString()}`
+type Translate = (key: string, values?: Record<string, unknown>) => string
+
+function lifetime(g: AccessGrant, t: Translate, language?: string): string {
+  if (g.persistent || g.expiresAt === null)
+    return t('permissions:folderAccess.untilRevoked')
+  return t('permissions:folderAccess.untilDate', {
+    when: new Intl.DateTimeFormat(language, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(g.expiresAt * 1000)),
+  })
 }
 
 /**
@@ -25,9 +35,13 @@ function lifetime(g: AccessGrant): string {
  * way to take each one back. Revoking takes effect on the next tool call.
  */
 export function FolderAccessCard() {
+  const { t, i18n } = useTranslation()
   const [grants, setGrants] = useState<AccessGrant[] | null>(null)
+  // A page served to a browser has no backend to ask.
+  const desktop = hasDesktopBackend()
 
   const reload = useCallback(async () => {
+    if (!desktop) return
     try {
       const dataFolder = await getServiceHub().app().getJanDataFolder()
       if (!dataFolder) return setGrants([])
@@ -36,7 +50,7 @@ export function FolderAccessCard() {
       toast.error(errorText(e))
       setGrants([])
     }
-  }, [])
+  }, [desktop])
 
   useEffect(() => {
     void reload()
@@ -55,13 +69,17 @@ export function FolderAccessCard() {
   return (
     <Card
       anchor="settings-permissions-folder-access"
-      title="Folder access"
-      description="Folders and files outside the agent workspace that you let an agent read or change."
+      title={t('permissions:folderAccess.title')}
+      description={t('permissions:folderAccess.description')}
       aside={<span className="tabular-nums">{grants?.length ?? 0}</span>}
       data-testid="folder-access-card"
     >
-      {!grants || grants.length === 0 ? (
-        <p className={EMPTY}>No folder access has been granted.</p>
+      {!desktop ? (
+        <p className={EMPTY} data-testid="folder-access-desktop-only">
+          {t('permissions:desktopOnly')}
+        </p>
+      ) : !grants || grants.length === 0 ? (
+        <p className={EMPTY}>{t('permissions:folderAccess.empty')}</p>
       ) : (
         <ul className="flex flex-col">
           {grants.map((g) => (
@@ -71,8 +89,10 @@ export function FolderAccessCard() {
                   {g.display}
                 </p>
                 <p className="text-xs leading-[1.4] text-muted-foreground">
-                  {g.mode === 'write' ? 'Read and write' : 'Read only'} ·{' '}
-                  {lifetime(g)}
+                  {g.mode === 'write'
+                    ? t('permissions:folderAccess.readWrite')
+                    : t('permissions:folderAccess.readOnly')}{' '}
+                  · {lifetime(g, t, i18n?.language)}
                 </p>
                 {g.reason && (
                   <p className="break-words text-xs leading-[1.4] text-muted-foreground">
@@ -83,10 +103,12 @@ export function FolderAccessCard() {
               <Button
                 variant="destructive"
                 className={REVOKE}
-                aria-label={`Revoke access to ${g.display}`}
+                aria-label={t('permissions:folderAccess.revokeLabel', {
+                  path: g.display,
+                })}
                 onClick={() => void revoke(g)}
               >
-                Revoke
+                {t('permissions:folderAccess.revoke')}
               </Button>
             </li>
           ))}

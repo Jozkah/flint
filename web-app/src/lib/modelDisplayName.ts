@@ -155,3 +155,146 @@ export function truncateDistinct(names: readonly string[], max: number) {
   }
   return out
 }
+
+/** What one model needs to be told apart from its look-alikes. */
+export type DisambiguationInput = {
+  /** Stable key the result is returned under (the model id). */
+  key: string
+  /** The name on screen (a custom name, else the id). */
+  name: string
+  /** The file it comes from, when known; read for the differing segments. */
+  fileName?: string
+  sizeBytes?: number
+  contextLength?: number
+}
+
+export type Disambiguation = {
+  label: string
+  /** What the label was read from; a `quant` label repeats the quant chip. */
+  kind: 'quant' | 'segment' | 'size' | 'context' | 'index'
+}
+
+/** Longest distinguishing label; longer ones are cut in the middle. */
+export const DISAMBIGUATION_MAX = 18
+
+/** How much of a name a narrow list still shows before it cuts it. */
+const VISIBLE_PREFIX = 17
+
+const sizeLabel = (bytes: number) => {
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`
+}
+
+const contextText = (n: number) =>
+  `${n >= 1024 && n % 1024 === 0 ? `${n / 1024}k` : n} ctx`
+
+/** Is every value present and no two equal? */
+const allDistinct = (values: (string | undefined)[]): values is string[] =>
+  values.every((v) => !!v) && new Set(values).size === values.length
+
+/**
+ * Short labels for models that would be hard to tell apart in a list.
+ *
+ * Models collide when their names (quantization removed) are identical or
+ * agree on the first characters a narrow list shows. Each colliding model gets
+ * the smallest thing that differs, in this order: its quant, the file-name
+ * segments left after the siblings' shared head and tail, its size, its
+ * context length, and finally its place (`#2`). Text is only ever read from the
+ * file name, size or context; unique names get nothing. The result does not
+ * depend on the order of `models`.
+ */
+export function disambiguateModels(
+  models: readonly DisambiguationInput[]
+): Map<string, Disambiguation> {
+  const out = new Map<string, Disambiguation>()
+  const items = [...models]
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    .map((m) => {
+      const parsedName = parseModelName(m.name)
+      const full = (m.fileName ?? m.name).replace(/\.gguf$/i, '')
+      const quant = parsedName.quant ?? parseModelName(m.fileName ?? '').quant
+      const lower = parsedName.base.toLowerCase()
+      return {
+        m,
+        quant,
+        base: parsedName.base,
+        stem: parseModelName(full).base.toLowerCase(),
+        full,
+        group:
+          lower.length > VISIBLE_PREFIX ? lower.slice(0, VISIBLE_PREFIX) : lower,
+      }
+    })
+
+  const groups = new Map<string, typeof items>()
+  for (const it of items)
+    groups.set(it.group, [...(groups.get(it.group) ?? []), it])
+
+  for (const members of groups.values()) {
+    if (members.length < 2) continue
+    const put = (i: number, label: string, kind: Disambiguation['kind']) =>
+      out.set(members[i].m.key, {
+        label: middleTruncate(label, DISAMBIGUATION_MAX),
+        kind,
+      })
+
+    // 1. Same name and same file apart from the quant: the quant says it.
+    if (
+      new Set(members.map((x) => x.base)).size === 1 &&
+      new Set(members.map((x) => x.stem)).size === 1 &&
+      allDistinct(members.map((x) => x.quant))
+    ) {
+      members.forEach((x, i) => put(i, x.quant!, 'quant'))
+      continue
+    }
+
+    // 2. Segments that differ once the shared head and tail are stripped.
+    const tokens = members.map((x) => x.full.split('-'))
+    const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+    const shortest = Math.min(...tokens.map((t) => t.length))
+    let head = 0
+    while (
+      head < shortest &&
+      tokens.every((t) => same(t[head], tokens[0][head]))
+    )
+      head++
+    let tail = 0
+    while (
+      tail < shortest - head &&
+      tokens.every((t) =>
+        same(t[t.length - 1 - tail], tokens[0][tokens[0].length - 1 - tail])
+      )
+    )
+      tail++
+    const segments = tokens.map((t) => t.slice(head, t.length - tail).join('-'))
+    if (allDistinct(segments)) {
+      segments.forEach((s, i) => put(i, s, 'segment'))
+      continue
+    }
+
+    // 3. Size, 4. context length.
+    const sizes = members.map((x) =>
+      x.m.sizeBytes ? sizeLabel(x.m.sizeBytes) : undefined
+    )
+    if (allDistinct(sizes)) {
+      sizes.forEach((s, i) => put(i, s, 'size'))
+      continue
+    }
+    const ctxs = members.map((x) =>
+      x.m.contextLength ? contextText(x.m.contextLength) : undefined
+    )
+    if (allDistinct(ctxs)) {
+      ctxs.forEach((s, i) => put(i, s, 'context'))
+      continue
+    }
+
+    // 5. Nothing differs: number them in key order, which is stable.
+    members.forEach((_, i) => put(i, `#${i + 1}`, 'index'))
+  }
+  return out
+}

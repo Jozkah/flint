@@ -40,6 +40,14 @@ describe('the first-run folder trust migration', () => {
     expect(toast.info).toHaveBeenCalledTimes(1)
   })
 
+  it('says "1 folder", not "1 folders"', async () => {
+    await grandfatherFolderTrust(['C:/code/app'], async () => ['c:/code/app'])
+    expect(vi.mocked(toast.info).mock.calls[0][0]).toMatch(/for 1 folder you/)
+    vi.mocked(toast.info).mockClear()
+    await grandfatherFolderTrust(['a', 'b'], async () => ['a', 'b'])
+    expect(vi.mocked(toast.info).mock.calls[0][0]).toMatch(/for 2 folders you/)
+  })
+
   it('says nothing when nothing was kept, and never throws', async () => {
     expect(await grandfatherFolderTrust(['x'], async () => [])).toEqual([])
     expect(await grandfatherFolderTrust(['x'], async () => { throw new Error('no backend') })).toEqual([])

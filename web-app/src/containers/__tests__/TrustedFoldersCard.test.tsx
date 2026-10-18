@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   render,
   screen,
@@ -40,11 +40,29 @@ const B = 'C:/work/site'
 
 describe('TrustedFoldersCard', () => {
   beforeEach(() => {
+    // The desktop backend is present (a page served to a browser has none).
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      value: {},
+      configurable: true,
+    })
     vi.mocked(trust.listTrustedFolders).mockReset()
     vi.mocked(trust.revokeFolderTrust).mockReset()
     vi.mocked(trust.trustFolder).mockReset()
     vi.mocked(toast.error).mockReset()
     open.mockReset()
+  })
+
+  afterEach(() => {
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  })
+
+  it('does not call the backend on a page served to a browser', async () => {
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+    render(<TrustedFoldersCard />)
+    expect(await screen.findByTestId('trusted-folders-desktop-only')).toBeTruthy()
+    expect(trust.listTrustedFolders).not.toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(screen.queryByText('Trust a folder…')).toBeNull()
   })
 
   it('lists every trusted folder', async () => {

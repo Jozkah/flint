@@ -21,6 +21,14 @@ describe('runStatus', () => {
     expect(runStatus(true, [user, tool])?.key).toBe('tool:c1')
   })
 
+  it('builds the tool line through the translator, not a template literal', () => {
+    const tool: CoworkTurn = { role: 'tool', content: '', name: 'bash', status: 'running', callId: 'c1' }
+    const t = (key: string, o: { tool: string }) => `[${key}|${o.tool}]`
+    const status = runStatus(true, [user, tool], t)
+    expect(status?.label(0)).toBe('[tools:toolCall.runningStatus|bash]')
+    expect(status?.label(40_000)).toBe('[tools:toolCall.stillRunning|bash]')
+  })
+
   it('reads results after a tool finishes', () => {
     const tool: CoworkTurn = { role: 'tool', content: 'ok', name: 'bash', status: 'done', callId: 'c1' }
     expect(at([user, tool])).toBe('Reading tool results…')

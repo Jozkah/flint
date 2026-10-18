@@ -111,7 +111,9 @@ pub fn request_to_chat(req: &Value) -> Result<Value, Unsupported> {
                         // Consecutive calls from one turn share an assistant message.
                         match messages.last_mut() {
                             Some(last) if last["role"] == "assistant" && last.get("tool_calls").is_some() => {
-                                last["tool_calls"].as_array_mut().map(|a| a.push(call));
+                                if let Some(a) = last["tool_calls"].as_array_mut() {
+                                    a.push(call);
+                                }
                             }
                             _ => messages.push(json!({ "role": "assistant", "content": null, "tool_calls": [call] })),
                         }
@@ -227,6 +229,7 @@ fn echo(req: &Value) -> Map<String, Value> {
     m
 }
 
+#[allow(clippy::too_many_arguments)]
 fn response_object(req: &Value, id: &str, created: u64, model: &str, status: &str, output: Vec<Value>, usage: Option<Value>, incomplete: Option<&str>) -> Value {
     let mut o = echo(req);
     o.insert("id".into(), json!(id));

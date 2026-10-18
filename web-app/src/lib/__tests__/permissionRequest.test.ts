@@ -39,6 +39,7 @@ describe('categorizeTool', () => {
     ['read', 'read'],
     ['grep', 'read'],
     ['screenshot', 'read'],
+    ['ocr', 'read'],
     ['task', 'other'],
     ['something_new', 'other'],
   ])('%s is %s', (tool, category) => {
@@ -48,6 +49,28 @@ describe('categorizeTool', () => {
   it('treats any tool with a server as an external tool, whatever its name', () => {
     expect(categorizeTool('write_file', 'filesystem')).toBe('external-tool')
     expect(categorizeTool('bash', 'remote')).toBe('external-tool')
+  })
+})
+
+describe('the spend pause of a run', () => {
+  it('has its own words, not the generic unknown-tool ones', () => {
+    const d = describePermissionRequest({
+      toolName: 'spend_pause',
+      input: undefined,
+      alwaysAsk: true,
+    })
+    expect(d.action.key).toBe('permissions:action.spendPause')
+    expect(d.consequences).toEqual([{ key: 'permissions:consequence.spendPause' }])
+    expect(d.scopesOffered).toEqual(['allow-once'])
+  })
+
+  it('names ocr as a read of the file it is given', () => {
+    const d = describePermissionRequest({
+      toolName: 'ocr',
+      input: { path: 'C:/scans/receipt.png' },
+    })
+    expect(d.category).toBe('read')
+    expect(d.consequences).toEqual([{ key: 'permissions:consequence.read' }])
   })
 })
 

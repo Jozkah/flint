@@ -147,7 +147,7 @@ export function CoworkWorkspacePill({
           size={folderName ? 'xs' : 'icon-xs'}
           className={
             folderName
-              ? 'h-[30px] min-w-0 shrink gap-1.5 px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
+              ? 'h-[30px] min-w-[2.125rem] shrink gap-1.5 overflow-hidden px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
               : 'size-[30px] shrink-0 text-muted-foreground pointer-coarse:size-11'
           }
           title={folderName && (shortName || chipText) ? folderName : undefined}

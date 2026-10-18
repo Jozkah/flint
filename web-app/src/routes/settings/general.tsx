@@ -342,15 +342,15 @@ function General() {
         <Card title={t('common:dataFolder')}>
           <CardItem
             anchor="settings-general-migrate-from-jan"
-            title="Migrate from JAN"
-            description="Bring data from an existing JAN installation into Flint — copy, reuse in place, move, or start fresh."
+            title={t('settings:general.migrateJan.title')}
+            description={t('settings:general.migrateJan.desc')}
             actions={
               <Button
                 variant="outline"
                 data-testid="open-migration-assistant"
                 onClick={() => openMigrationAssistant()}
               >
-                Open migration assistant
+                {t('settings:general.migrateJan.open')}
               </Button>
             }
           />
@@ -519,14 +519,14 @@ function General() {
         {IS_TAURI && <SettingsBackupCard />}
 
         {/* Advanced - Desktop only */}
-        <Card title="Advanced">
+        <Card title={t('settings:general.advanced')}>
           {IS_TAURI && (
             <CardItem
               title="Flint CLI"
               description={
                 cliInstalled && cliPath
-                  ? `Installed at ${cliPath} — use flint from your terminal to serve models.`
-                  : 'Use flint from your terminal to serve models without opening the app.'
+                  ? t('settings:general.cli.installedDesc', { path: cliPath })
+                  : t('settings:general.cli.desc')
               }
               actions={
                 cliInstalled ? (
@@ -535,7 +535,9 @@ function General() {
                     onClick={handleUninstallCli}
                     disabled={isCliLoading || cliInstalled === null}
                   >
-                    {isCliLoading ? 'Uninstalling…' : 'Uninstall'}
+                    {isCliLoading
+                      ? t('settings:general.cli.uninstalling')
+                      : t('settings:general.cli.uninstall')}
                   </Button>
                 ) : (
                   <Button
@@ -543,7 +545,9 @@ function General() {
                     onClick={handleInstallCli}
                     disabled={isCliLoading || cliInstalled === null}
                   >
-                    {isCliLoading ? 'Installing…' : 'Install'}
+                    {isCliLoading
+                      ? t('settings:general.cli.installing')
+                      : t('settings:general.cli.install')}
                   </Button>
                 )
               }
@@ -729,7 +733,7 @@ function General() {
                     }
                   }}
                 >
-                  Verify
+                  {t('settings:general.verify')}
                 </Button>
               </div>
             }

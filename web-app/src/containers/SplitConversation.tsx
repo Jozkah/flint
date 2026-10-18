@@ -146,7 +146,7 @@ export function SplitToggleButton() {
           data-testid="split-conversation-open"
         >
           <Columns2 className="size-4" aria-hidden />
-          <span className="max-sm:sr-only">{t('chat:split.openShort')}</span>
+          <span className="max-lg:sr-only">{t('chat:split.openShort')}</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent>{hint}</TooltipContent>

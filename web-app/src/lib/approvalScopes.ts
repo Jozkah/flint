@@ -8,7 +8,7 @@
  * it only for calls inside that scope. Nothing here decides what a rule
  * covers: that is `scoped_rules` in the Rust plugin, and this file only asks it.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/previewInvoke'
 import { i18n } from '@/i18n/react-i18next-compat'
 import type { ApprovalChoice } from '@/hooks/useToolApprovalRequests'
 

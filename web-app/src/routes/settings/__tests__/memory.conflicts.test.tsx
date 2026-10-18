@@ -30,9 +30,7 @@ vi.mock('@/containers/SettingsMenu', () => ({ default: () => null }))
 vi.mock('@/containers/HeaderPage', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
-vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
-}))
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 vi.mock('@/containers/MemoryProposalCard', () => ({ MemoryProposalList: () => null }))
 vi.mock('@/hooks/useMemoryProposals', () => ({
   useMemoryProposals: () => ({

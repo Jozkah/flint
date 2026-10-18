@@ -38,6 +38,8 @@ import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
 import { RustSubagentFeed } from '@/lib/rustSubagentFeed'
 import { useRemoteWorktrees } from '@/lib/remoteWorktree'
 import { isServerTransport } from '@/lib/serverTransportFlag'
+import { describeSpendPause } from '@/lib/spendPause'
+import { i18n } from '@/i18n/react-i18next-compat'
 import {
   answerRunAsk,
   approveRun,
@@ -473,6 +475,8 @@ class RemoteRun {
     const command = typeof p.command === 'string' ? p.command : undefined
     const diff = typeof p.diff === 'string' ? p.diff : undefined
     const offersAlways = p.offers_always === true
+    const spend =
+      tool === 'spend_pause' ? describeSpendPause(command) : undefined
     let chosen: ApprovalDecision = 'deny'
     const entry: { local: PendingApproval; settled: boolean } = {
       settled: false,
@@ -486,8 +490,14 @@ class RemoteRun {
         // The command and the change are shown, but never passed as `input`:
         // a recognised input could be turned into a standing grant on this
         // machine for a call that runs on another.
-        ...(diff ? { preview: diff } : command ? { preview: command } : {}),
-        taskContext: `Runs on the server${where ? `: ${where}` : ''}.`,
+        ...(diff
+          ? { preview: diff }
+          : (spend ?? command)
+            ? { preview: (spend ?? command)! }
+            : {}),
+        taskContext: where
+          ? i18n.t('permissions:remote.runsOnServerAt', { where })
+          : i18n.t('permissions:remote.runsOnServer'),
         // Prompt only: `resolveApproval` records no standing grant for it.
         alwaysAsk: true,
         requestedAt: Date.now(),

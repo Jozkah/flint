@@ -190,7 +190,9 @@ export function UsageCeilingsCard() {
             placeholder={noLimitPlaceholder}
             value={fiveHour}
             onChange={(e) => setFiveHour(e.target.value)}
-            aria-label="Tokens per 5 hours"
+            aria-label={t('settings:localApiServer.usage5hAria', {
+              defaultValue: 'Tokens per 5 hours',
+            })}
             className="h-8 w-36 text-sm"
           />
         }
@@ -207,7 +209,9 @@ export function UsageCeilingsCard() {
             placeholder={noLimitPlaceholder}
             value={week}
             onChange={(e) => setWeek(e.target.value)}
-            aria-label="Tokens per week"
+            aria-label={t('settings:localApiServer.usageWeekAria', {
+              defaultValue: 'Tokens per week',
+            })}
             className="h-8 w-36 text-sm"
           />
         }

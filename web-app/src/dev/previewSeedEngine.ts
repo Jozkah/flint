@@ -435,6 +435,58 @@ function previewInvoke(
           ref: null,
         }))
       )
+    case 'agent_approval_rules_list': {
+      const sec = Math.floor(Date.now() / 1000)
+      return ok([
+        {
+          id: 'rule-1',
+          project: 'C:\\Users\\dev\\projects\\acme-weather\\services\\forecast-cache',
+          tool: 'bash',
+          kind: 'command',
+          scope: { type: 'command_prefix', prefix: 'git commit' },
+          createdAt: sec - 3600,
+        },
+        {
+          id: 'rule-2',
+          project: 'acme-weather',
+          tool: 'write',
+          kind: 'file',
+          scope: { type: 'folder', dir: 'C:\\Projects\\acme-weather\\docs' },
+          createdAt: sec - 86_400,
+        },
+      ])
+    }
+    case 'agent_deferred_list': {
+      const sec = Math.floor(Date.now() / 1000)
+      return ok([
+        {
+          id: 'def-1',
+          project: 'acme-weather',
+          session: 'nightly-release',
+          tool: 'bash',
+          kind: 'command',
+          summary: 'gh pr create --title "fix(forecast): key the cache by UTC date" --base main',
+          argsDigest: 'd1',
+          status: 'pending',
+          createdAt: sec - 3600,
+          expiresAt: sec + 5 * 86_400,
+          answeredAt: null,
+        },
+        {
+          id: 'def-2',
+          project: 'acme-weather',
+          session: '',
+          tool: 'write',
+          kind: 'file',
+          summary: 'write C:\\Projects\\acme-weather\\CHANGELOG.md',
+          argsDigest: 'd2',
+          status: 'expired',
+          createdAt: sec - 9 * 86_400,
+          expiresAt: sec - 2 * 86_400,
+          answeredAt: null,
+        },
+      ])
+    }
     case 'folder_trust_list':
       return ok([...previewTrusted])
     case 'folder_trust_status':

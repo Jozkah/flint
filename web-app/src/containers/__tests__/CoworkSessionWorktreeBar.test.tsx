@@ -58,6 +58,14 @@ describe('the session worktree bar', () => {
     expect(branch.getAttribute('title')).toContain('a-very-long-branch-name')
   })
 
+  it('keeps a floor under the branch so a narrow bar wraps its actions instead of squeezing it', () => {
+    render(bar(record([])))
+    // A flex-1 box with min-w-0 shrinks to nothing before the row wraps.
+    const cls = screen.getByTestId('session-worktree-branch').className
+    expect(cls).toContain('min-w-[min(12rem,100%)]')
+    expect(cls).not.toMatch(/(^|\s)min-w-0(\s|$)/)
+  })
+
   it('says what was not carried over in one line, with at most 20 paths behind Details', async () => {
     render(bar(record(paths)))
     const line = screen.getByTestId('worktree-not-carried')

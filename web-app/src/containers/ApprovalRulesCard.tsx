@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import { Card } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { MiddleText } from '@/components/ui/middle-text'
+import { hasDesktopBackend } from '@/lib/desktopBackend'
 import { errorText } from '@/lib/errorText'
 import {
   answerDeferred,
@@ -20,18 +22,26 @@ const ROW =
 const EMPTY = 'py-3 text-[13px] text-muted-foreground'
 const ACTION = 'shrink-0 pointer-coarse:h-11'
 
-const whenText = (secs: number) => new Date(secs * 1000).toLocaleString()
+/** A deadline in the app's language, not the system's. */
+const whenText = (secs: number, language?: string) =>
+  new Intl.DateTimeFormat(language, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(secs * 1000))
 
 /**
  * What "Always" was narrowed to, one row per rule with a way to take it back,
  * and the questions runs put off to be answered later.
  */
 export function ApprovalRulesCard() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [rules, setRules] = useState<ScopedRule[] | null>(null)
   const [waiting, setWaiting] = useState<DeferredApproval[]>([])
+  // A page served to a browser has no backend to ask.
+  const desktop = hasDesktopBackend()
 
   const reload = useCallback(async () => {
+    if (!desktop) return
     try {
       setRules(await listScopedRules())
     } catch (e) {
@@ -44,7 +54,7 @@ export function ApprovalRulesCard() {
       toast.error(`${t('permissions:deferred.loadFailed')}: ${errorText(e)}`)
       setWaiting([])
     }
-  }, [t])
+  }, [t, desktop])
 
   useEffect(() => {
     void reload()
@@ -86,7 +96,11 @@ export function ApprovalRulesCard() {
         aside={<span className="tabular-nums">{rules?.length ?? 0}</span>}
         data-testid="approval-rules-card"
       >
-        {!rules || rules.length === 0 ? (
+        {!desktop ? (
+          <p className={EMPTY} data-testid="approval-rules-desktop-only">
+            {t('permissions:desktopOnly')}
+          </p>
+        ) : !rules || rules.length === 0 ? (
           <p className={EMPTY} data-testid="approval-rules-empty">
             {t('permissions:rules.empty')}
           </p>
@@ -98,12 +112,16 @@ export function ApprovalRulesCard() {
               return (
                 <li key={rule.id} className={ROW} data-testid="approval-rule-row">
                   <div className="min-w-0 space-y-1">
-                    <p className="break-all text-[13px] text-foreground">
+                    <p className="text-[13px] break-words text-foreground">
                       <code>{rule.tool}</code> · {text}
                     </p>
-                    <p className="break-all font-mono text-xs text-muted-foreground">
-                      {t('permissions:rules.project', { project: rule.project })}
-                    </p>
+                    <MiddleText
+                      text={t('permissions:rules.project', {
+                        project: rule.project,
+                      })}
+                      title={rule.project}
+                      className="font-mono text-xs text-muted-foreground"
+                    />
                   </div>
                   <Button
                     variant="destructive"
@@ -129,7 +147,11 @@ export function ApprovalRulesCard() {
         aside={<span className="tabular-nums">{waiting.length}</span>}
         data-testid="deferred-approvals-card"
       >
-        {waiting.length === 0 ? (
+        {!desktop ? (
+          <p className={EMPTY} data-testid="deferred-approvals-desktop-only">
+            {t('permissions:desktopOnly')}
+          </p>
+        ) : waiting.length === 0 ? (
           <p className={EMPTY} data-testid="deferred-approvals-empty">
             {t('permissions:deferred.empty')}
           </p>
@@ -138,7 +160,7 @@ export function ApprovalRulesCard() {
             {waiting.map((item) => (
               <li key={item.id} className={ROW} data-testid="deferred-approval-row">
                 <div className="min-w-0 space-y-1">
-                  <p className="break-all font-mono text-xs text-foreground">
+                  <p className="font-mono text-xs break-words text-foreground">
                     {item.summary}
                   </p>
                   <p className="break-words text-xs text-muted-foreground">
@@ -148,7 +170,7 @@ export function ApprovalRulesCard() {
                       : ''}
                     {' · '}
                     {t('permissions:deferred.deadline', {
-                      when: whenText(item.expiresAt),
+                      when: whenText(item.expiresAt, i18n?.language),
                     })}
                   </p>
                 </div>
@@ -158,12 +180,18 @@ export function ApprovalRulesCard() {
                       <Button
                         variant="outline"
                         className={ACTION}
+                        aria-label={t('permissions:deferred.denyLabel', {
+                          summary: item.summary,
+                        })}
                         onClick={() => void answer(item, false)}
                       >
                         {t('permissions:deferred.deny')}
                       </Button>
                       <Button
                         className={ACTION}
+                        aria-label={t('permissions:deferred.allowLabel', {
+                          summary: item.summary,
+                        })}
                         onClick={() => void answer(item, true)}
                       >
                         {t('permissions:deferred.allow')}
@@ -173,6 +201,9 @@ export function ApprovalRulesCard() {
                     <Button
                       variant="outline"
                       className={ACTION}
+                      aria-label={t('permissions:deferred.discardLabel', {
+                        summary: item.summary,
+                      })}
                       onClick={() => void discard(item)}
                     >
                       {t('permissions:deferred.discard')}

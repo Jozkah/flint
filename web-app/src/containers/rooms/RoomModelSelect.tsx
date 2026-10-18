@@ -10,6 +10,7 @@ import { ModelAvatar } from '@/containers/ModelAvatar'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterToggle } from '@/containers/ModelFilterButton'
+import { usePickerModelMeta } from '@/hooks/usePickerModelMeta'
 
 type ProviderLike = Pick<ModelProvider, 'provider' | 'models'> &
   Partial<Pick<ModelProvider, 'api_key' | 'api_key_fallbacks'>>
@@ -70,6 +71,7 @@ export function RoomModelSelect({
   // that `offersModels` would surface, with embedding models excluded. Shared
   // so the Rooms picker cannot drift from the rest of the app.
   const hideProvider = useHideUnavailable()
+  const metaOf = usePickerModelMeta()
   const groups = providers
     .filter((p) => p.active && offersModels(p))
     .map((p) => {
@@ -125,6 +127,7 @@ export function RoomModelSelect({
       items: models.map((m) => ({
         value: encode({ provider: provider.provider, id: m.id }),
         label: optionLabel(m, provider.provider),
+        ...metaOf(m, provider.provider),
         icon: (
           <ModelAvatar
             modelId={m.id}

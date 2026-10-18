@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { errorText } from '@/lib/errorText'
+import { hasDesktopBackend } from '@/lib/desktopBackend'
 import {
   listTrustedFolders,
   revokeFolderTrust,
@@ -24,8 +25,11 @@ export function TrustedFoldersCard() {
   const { t } = useTranslation()
   const [folders, setFolders] = useState<string[] | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
+  // A page served to a browser has no backend to ask.
+  const desktop = hasDesktopBackend()
 
   const reload = useCallback(async () => {
+    if (!desktop) return
     try {
       setFolders(await listTrustedFolders())
     } catch (e) {
@@ -34,7 +38,7 @@ export function TrustedFoldersCard() {
       )
       setFolders([])
     }
-  }, [t])
+  }, [t, desktop])
 
   useEffect(() => {
     void reload()
@@ -74,7 +78,11 @@ export function TrustedFoldersCard() {
       aside={<span className="tabular-nums">{folders?.length ?? 0}</span>}
       data-testid="trusted-folders-card"
     >
-      {!folders || folders.length === 0 ? (
+      {!desktop ? (
+        <p className={EMPTY} data-testid="trusted-folders-desktop-only">
+          {t('permissions:desktopOnly')}
+        </p>
+      ) : !folders || folders.length === 0 ? (
         <p className={EMPTY} data-testid="trusted-folders-empty">
           {t('permissions:trustedFolders.empty')}
         </p>
@@ -128,11 +136,13 @@ export function TrustedFoldersCard() {
           ))}
         </ul>
       )}
-      <div className="pt-3">
-        <Button variant="outline" onClick={() => void add()}>
-          {t('permissions:trustedFolders.add')}
-        </Button>
-      </div>
+      {desktop && (
+        <div className="pt-3">
+          <Button variant="outline" onClick={() => void add()}>
+            {t('permissions:trustedFolders.add')}
+          </Button>
+        </div>
+      )}
     </Card>
   )
 }
