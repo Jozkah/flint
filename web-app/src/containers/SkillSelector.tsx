@@ -38,38 +38,44 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
     setEnabled(storedEnabled(next, allNames))
   }
 
+  // No count on the button: a dot says some skill is on; the numbers are in
+  // the accessible name and the tooltip.
+  const summary = t('connections:skills.summary', {
+    enabled: effective.size,
+    installed: allNames.length,
+  })
+  const label = `${t('common:skillsInContext')}: ${summary}`
+  const anyOn = effective.size > 0
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
-          size={effective.size > 0 ? 'xs' : 'icon-xs'}
-          className="shrink-0 text-muted-foreground"
-          title={t('common:skillsInContext')}
-          aria-label={t('common:skillsInContext')}
+          size="icon-xs"
+          // The size, radius and icon of the plus and options buttons beside it.
+          className="relative size-7 shrink-0 rounded-[7px] text-muted-foreground pointer-coarse:size-11"
+          title={label}
+          aria-label={label}
+          data-testid="skill-selector"
+          data-active={anyOn ? 'true' : undefined}
         >
           <Sparkles
-            className={cn(
-              'shrink-0',
-              effective.size > 0 ? 'size-3.5' : 'size-[18px]'
-            )}
+            aria-hidden
+            className={cn('size-4 shrink-0', anyOn && 'text-foreground')}
           />
-          {effective.size > 0 && (
-            <span className="tabular-nums text-foreground">
-              {effective.size}/{allNames.length}
-            </span>
+          {anyOn && (
+            <span
+              aria-hidden
+              data-testid="skill-selector-dot"
+              className="absolute top-1 right-1 size-[5px] rounded-full bg-primary"
+            />
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-1">
         <div className="px-2 py-1.5 text-xs text-muted-foreground">
           <div>{t('common:skillsInContext')}</div>
-          <div>
-            {t('connections:skills.summary', {
-              enabled: effective.size,
-              installed: allNames.length,
-            })}
-          </div>
+          <div>{summary}</div>
         </div>
         {!scoped && (
           <div className="px-2 pb-1.5 text-xs text-muted-foreground">
