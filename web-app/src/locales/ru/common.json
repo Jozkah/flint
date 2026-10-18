@@ -1067,6 +1067,8 @@
   "artifactPath": "Путь",
   "artifactShowDetails": "Показать сведения о {{name}}",
   "workspace": {
+    "worktreeBadge": "Изолированный worktree: ветка {{branch}}",
+    "worktreeBadgeNoBranch": "Изолированный worktree",
     "readsFrom": "Читает из",
     "alsoAttached": "Также подключены",
     "addFolder": "Добавить ещё папку",

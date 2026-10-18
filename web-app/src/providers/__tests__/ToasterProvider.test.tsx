@@ -41,12 +41,12 @@ describe('ToasterProvider with a modal open', () => {
     document.body.innerHTML = ''
   })
 
-  it('never puts toasts at the top: bottom-right, at most 3, above the composer', () => {
+  it('never puts toasts at the top: bottom-right, at most 3, in the corner', () => {
     render(<ToasterProvider />)
     expect(last().position).toBe('bottom-right')
     expect(last().visibleToasts).toBe(3)
     expect(String((last().offset as { bottom: string }).bottom)).toMatch(
-      /164px.*safe-area-inset-bottom/
+      /16px.*safe-area-inset-bottom/
     )
   })
 

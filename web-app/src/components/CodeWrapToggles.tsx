@@ -30,7 +30,6 @@ export function WrapCodeLinesButton({ className }: { className?: string }) {
       onClick={() => setWrap(!wrap)}
       className={cn(
         'cursor-pointer rounded p-1 text-muted-foreground transition-all hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring',
-        wrap && 'text-foreground',
         className
       )}
     >

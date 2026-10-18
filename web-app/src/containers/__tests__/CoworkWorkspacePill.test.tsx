@@ -23,6 +23,51 @@ describe('CoworkWorkspacePill', () => {
     revealItemInDir.mockReset()
   })
 
+  // One quiet chip: folder icon, name, and at most one trailing mark at rest.
+  describe('the chip itself', () => {
+    const chip = (access: 'review-only' | 'managed-worktree' | 'edit-folder') => {
+      render(
+        <CoworkWorkspacePill
+          folder="/home/u/acme-weather"
+          gitBranch="flint/radar-retry"
+          access={access}
+          variant="quiet"
+          onAttach={vi.fn()}
+          onDetach={vi.fn()}
+        />
+      )
+      return screen.getByRole('button')
+    }
+
+    it('shows a worktree as a separated badge naming the branch in its tooltip', () => {
+      const btn = chip('managed-worktree')
+      const badge = btn.querySelector('[data-worktree-badge]')!
+      expect(badge).toHaveAttribute(
+        'title',
+        'common:workspace.worktreeBadge flint/radar-retry'
+      )
+      expect(btn).not.toHaveTextContent('flint/radar-retry')
+      // folder icon + fork glyph; no pencil, no branch icon
+      expect(btn.querySelectorAll('svg')).toHaveLength(2)
+      expect(btn.querySelector('.lucide-git-branch')).toBeNull()
+    })
+
+    it('shows the pencil of an editable folder only on hover or focus', () => {
+      const btn = chip('edit-folder')
+      const pencil = btn.querySelector('[data-access="editable"]')!
+      expect(pencil.getAttribute('class')).toContain('opacity-0')
+      expect(pencil.getAttribute('class')).toContain('group-hover/ws:opacity-100')
+      expect(btn.querySelector('[data-worktree-badge]')).toBeNull()
+    })
+
+    it('is borderless and 28px tall in the quiet row', () => {
+      const btn = chip('review-only')
+      expect(btn.className).toContain('h-7')
+      expect(btn.className).toContain('gap-2')
+      expect(btn.className).not.toContain('border-[0.8px]')
+    })
+  })
+
   it('invites attaching a folder when none is attached', async () => {
     render(
       <CoworkWorkspacePill folder={null} onAttach={vi.fn()} onDetach={vi.fn()} />
