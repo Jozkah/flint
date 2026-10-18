@@ -1,12 +1,14 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, GitBranch } from 'lucide-react'
+import { ChevronRight, GitBranch, GitFork } from 'lucide-react'
 import { Chip } from '@/components/ui/chip'
+import { ModelAvatar } from '@/containers/ModelAvatar'
 import { Kbd } from '@/components/ui/kbd'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { cn } from '@/lib/utils'
+import { splitTitleTail } from '@/lib/titleTail'
 import type { PrState, PrStatus } from '@/stores/pr-status-store'
 
 /** How long the pointer rests on a row before its preview card opens. */
@@ -38,6 +40,8 @@ export type PreviewMeta = {
   branch?: string
   /** The model's display name. */
   model?: string
+  /** Which model and provider that is, for its mark. */
+  modelRef?: { provider: string; id: string }
   /** Last active, epoch milliseconds. */
   updated?: number
   /** How many messages the conversation holds; left out when unknown. */
@@ -275,7 +279,7 @@ export function PreviewPullRequests({
             <Skeleton className="h-3 w-5/6" />
           </div>
         ) : (
-          <p data-testid="preview-prs-error" className="px-3 py-1.5 text-[11px] text-destructive" title={error}>
+          <p data-testid="preview-prs-error" className="px-3 py-1.5 text-[11px] text-muted-foreground" title={error}>
             {t('common:pr.statusUnavailable')}
           </p>
         )
@@ -327,13 +331,29 @@ export function PreviewCard({
   hint?: boolean
 }) {
   const { t } = useTranslation()
+  // A fork says so with a mark of its own, as a pull request does, not with a
+  // "(fork)" tail on the title.
+  const [titleHead, titleTail] = splitTitleTail(title)
+  const isFork = titleTail.trim() === '(fork)'
+  const shownTitle = isFork ? titleHead : title
   const relative = meta?.updated ? formatRelativeTime(meta.updated) : undefined
   const absolute = meta?.updated ? formatPreviewTime(meta.updated) : undefined
   const place = meta?.place?.filter(Boolean) ?? []
   // A summary that only repeats the title says nothing: the empty state instead.
-  const about = summary?.trim() === title.trim() ? undefined : summary
+  const about = summary?.trim() === title.trim() || summary?.trim() === shownTitle.trim() ? undefined : summary
   const facts: ReactNode[] = []
-  if (meta?.model) facts.push(<span key="model" className="truncate">{meta.model}</span>)
+  if (meta?.model)
+    facts.push(
+      <span key="model" className="inline-flex min-w-0 items-center gap-1.5">
+        <ModelAvatar
+          modelId={meta.modelRef?.id ?? meta.model}
+          name={meta.model}
+          provider={meta.modelRef?.provider}
+          size={14}
+        />
+        <span className="truncate">{meta.model}</span>
+      </span>
+    )
   if (absolute)
     facts.push(
       <time
@@ -360,8 +380,18 @@ export function PreviewCard({
             data-testid="row-preview-title"
             className="line-clamp-2 min-w-0 flex-1 break-words text-[0.8125rem] leading-snug font-medium text-foreground"
           >
-            {title}
+            {shownTitle}
           </p>
+          {isFork && (
+            <Chip
+              data-testid="row-preview-fork"
+              tone="neutral"
+              className="mt-px h-[18px] shrink-0 gap-1 px-1.5 text-[10px]"
+            >
+              <GitFork className="size-2.5" aria-hidden />
+              {t('chat:fork.chat')}
+            </Chip>
+          )}
           {status !== 'idle' && (
             <Chip
               data-testid="row-preview-status"

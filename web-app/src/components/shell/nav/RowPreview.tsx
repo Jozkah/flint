@@ -17,6 +17,7 @@ import {
   type PreviewMeta,
   type PreviewStatus,
 } from '@/components/shell/nav/PreviewCard'
+import { COMPOSER_CLEARANCE_PX } from '@/utils/toastPlacement'
 
 /** The card's gap from the row when no sidebar edge is found (tests, previews). */
 export const PREVIEW_SIDE_OFFSET = 10
@@ -26,6 +27,13 @@ export const PREVIEW_SIDE_OFFSET = 10
  * the row sits in, so the card never covers the row's trailing menu button
  * or the sidebar's scrollbar; the default gap outside a sidebar.
  */
+const PREVIEW_COLLISION_PADDING = {
+  top: 12,
+  right: 12,
+  left: 12,
+  bottom: COMPOSER_CLEARANCE_PX,
+}
+
 export function previewSideOffset(row: HTMLElement): number {
   const aside = row.closest('aside')
   if (!aside) return PREVIEW_SIDE_OFFSET
@@ -196,7 +204,9 @@ export function RowPreview({
         side="right"
         align="start"
         sideOffset={sideOffset}
-        collisionPadding={12}
+        // The bottom keeps clear of the composer dock: a tall peek from a low
+        // row shifts up instead of covering what is being typed.
+        collisionPadding={PREVIEW_COLLISION_PADDING}
         className={PREVIEW_CARD_CLASS}
         ref={(el: HTMLDivElement | null) => {
           cardEl.current = el
@@ -276,6 +286,7 @@ function RowPreviewBody({
       meta={{
         ...meta,
         model: meta?.model ?? modelName ?? picked?.id,
+        modelRef: meta?.modelRef ?? picked ?? undefined,
         messages,
       }}
       summary={written.summary ?? summary ?? read?.first}

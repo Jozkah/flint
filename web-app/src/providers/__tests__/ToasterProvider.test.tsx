@@ -11,7 +11,12 @@ vi.mock('@/components/ui/sonner', () => ({
 vi.mock('@/lib/settingsRecoveryNotice', () => ({
   notifyToasterMounted: vi.fn(),
 }))
-vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => false }))
+let phone = false
+let pathname = '/'
+vi.mock('@tanstack/react-router', () => ({
+  useLocation: ({ select }: { select: (l: { pathname: string }) => string }) => select({ pathname }),
+}))
+vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => phone }))
 
 import { ToasterProvider } from '../ToasterProvider'
 
@@ -32,25 +37,41 @@ async function openModal(role: string, slot?: string) {
 describe('ToasterProvider with a modal open', () => {
   beforeEach(() => {
     props.length = 0
+    phone = false
     document.body.innerHTML = ''
+  })
+
+  it('never puts toasts at the top: bottom-right, at most 3, above the composer', () => {
+    render(<ToasterProvider />)
+    expect(last().position).toBe('bottom-right')
+    expect(last().visibleToasts).toBe(3)
+    expect(String((last().offset as { bottom: string }).bottom)).toMatch(
+      /164px.*safe-area-inset-bottom/
+    )
+  })
+
+  it('uses bottom-center on phones', () => {
+    phone = true
+    render(<ToasterProvider />)
+    expect(last().position).toBe('bottom-center')
   })
 
   it('moves toasts to the bottom edge while a dialog is open, then back', async () => {
     render(<ToasterProvider />)
-    expect(String(last().position)).toMatch(/^top-/)
+    expect(String(last().position)).toMatch(/^bottom-/)
     const dlg = await openModal('dialog', 'dialog-content')
     await waitFor(() => expect(String(last().position)).toMatch(/^bottom-/))
     await act(async () => {
       dlg.setAttribute('data-state', 'closed')
       await new Promise((r) => setTimeout(r, 40))
     })
-    expect(String(last().position)).toMatch(/^top-/)
+    expect(String(last().position)).toBe('bottom-right')
   })
 
   it('leaves toasts alone while a popover (role=dialog too) is open', async () => {
     render(<ToasterProvider />)
     await openModal('dialog', 'popover-content')
-    expect(String(last().position)).toMatch(/^top-/)
+    expect(String(last().position)).toBe('bottom-right')
   })
 
   it('treats an alertdialog the same', async () => {

@@ -1,5 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { GitFork } from 'lucide-react'
+import { useMinuteClock } from '@/lib/minuteClock'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { useSeen } from '@/stores/seen-store'
@@ -56,15 +58,13 @@ export function useThreadStatus(
   waiting = false,
   seenAs?: { id: string; selected?: boolean }
 ): ThreadStatus {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 60_000)
-    return () => window.clearInterval(id)
-  }, [])
+  const updated = updatedMs(thread.updated)
+  // One shared minute clock; the row re-renders only when it leaves the
+  // "recent" hour, not on every tick.
+  const inRecentHour = useMinuteClock((now) => now - updated < RECENT_MS)
   const seenId = seenAs?.id
   const selected = Boolean(seenAs?.selected)
   const seenMs = useSeen((s) => (seenId ? (s.seen[seenId] ?? 0) : 0))
-  const updated = updatedMs(thread.updated)
   // Re-run when the run ends too, so a reply finishing while the item is
   // open is marked seen rather than lighting the dot.
   useEffect(() => {
@@ -72,6 +72,9 @@ export function useThreadStatus(
       useSeen.getState().markSeen(seenId, Math.max(Date.now(), updated))
   }, [seenId, selected, updated, working])
   if (selected && !working && !waiting) return 'none'
+  // statusFor only compares `now` against the recent hour: pass a time
+  // that lands on the same side of it.
+  const now = inRecentHour ? updated : updated + RECENT_MS
   return statusFor(thread, working, now, waiting, seenId ? seenMs : 0)
 }
 
@@ -98,14 +101,32 @@ const COLOR: Record<ThreadStatus, string> = {
 export function ThreadStatusMark({
   status,
   detail,
+  fork,
   className,
 }: {
   status: ThreadStatus
   /** Extra tooltip text, such as a pull request number. */
   detail?: string
+  /** A forked chat: shown in this same slot while nothing else marks the row. */
+  fork?: boolean
   className?: string
 }) {
   const { t } = useTranslation()
+  if (status === 'none' && fork) {
+    const forkLabel = t('chat:fork.chat')
+    return (
+      <span
+        data-status="fork"
+        data-testid="thread-fork-mark"
+        title={forkLabel}
+        aria-label={forkLabel}
+        role="img"
+        className={cn('relative grid size-3.5 shrink-0 place-items-center text-muted-foreground', className)}
+      >
+        <GitFork className="size-3.5" aria-hidden />
+      </span>
+    )
+  }
   const label =
     status === 'none' ? undefined : t(`common:shell.status.${status}`)
   const title = label && detail ? `${label} · ${detail}` : label

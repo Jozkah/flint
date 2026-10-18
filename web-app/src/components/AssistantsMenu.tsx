@@ -1,4 +1,5 @@
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { User } from 'lucide-react'
 import { useAssistant } from '@/hooks/useAssistant'
@@ -76,8 +77,9 @@ export function AssistantsMenu({
             ? currentThread?.assistants?.some((a) => a.id === assistant.id)
             : selectedAssistant === assistant.id
           return (
+            <HoverCard key={assistant.id} openDelay={250} closeDelay={80}>
+            <HoverCardTrigger asChild>
             <DropdownMenuItem
-              key={assistant.id}
               className={isSelected ? 'bg-accent' : ''}
               onClick={() => {
                 if (currentThread) {
@@ -106,6 +108,38 @@ export function AssistantsMenu({
                 )}
               </div>
             </DropdownMenuItem>
+            </HoverCardTrigger>
+            <HoverCardContent
+              side="right"
+              align="start"
+              sideOffset={8}
+              data-testid="assistant-hover-card"
+              className="flex w-64 flex-col gap-2 p-3"
+            >
+              <div className="flex items-center gap-2">
+                <AvatarEmoji
+                  avatar={assistant.avatar}
+                  imageClassName="w-5 h-5 object-contain"
+                  textClassName="text-base"
+                />
+                <p className="min-w-0 truncate text-[13px] font-medium text-foreground">
+                  {assistant.name || 'Unnamed Assistant'}
+                </p>
+              </div>
+              {assistant.description?.trim() && (
+                <p className="text-xs leading-relaxed text-secondary-foreground">
+                  {assistant.description.trim()}
+                </p>
+              )}
+              {assistant.instructions?.trim() && (
+                <p
+                  className="line-clamp-4 border-t border-border/70 pt-2 text-[11px] leading-relaxed text-muted-foreground [mask-image:linear-gradient(to_bottom,#000_70%,transparent)]"
+                >
+                  {assistant.instructions.trim()}
+                </p>
+              )}
+            </HoverCardContent>
+            </HoverCard>
           )
         })
       ) : (

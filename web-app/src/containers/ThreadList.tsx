@@ -1,4 +1,5 @@
 import { FadeText } from '@/components/ui/fade-text'
+import { splitTitleTail } from '@/lib/titleTail'
 import {
   Check,
   Copy,
@@ -91,7 +92,10 @@ const ThreadItem = memo(
     // and a short press is still a click (the sensor waits for movement).
     const drag = useDraggable({
       id: thread.id,
-      data: { threadId: thread.id },
+      data: {
+        threadId: thread.id,
+        label: (thread.title || '').replace(/<span[^>]*>|<\/span>/g, ''),
+      },
       disabled: !draggable || !!selection,
     })
     const deleteThread = useThreads((state) => state.deleteThread)
@@ -355,9 +359,23 @@ const ThreadItem = memo(
                       {selection.selected.has(thread.id) && <Check className="size-3" />}
                     </span>
                   ) : (
-                    <ThreadStatusMark status={status} />
+                    <ThreadStatusMark
+                      status={status}
+                      fork={splitTitleTail(thread.title || '')[1].trim() === '(fork)'}
+                    />
                   )}
-                  <FadeText className={isSelected ? 'font-medium' : undefined}>{thread.title || t('common:newThread')}</FadeText>
+                  {(() => {
+                    const [head, tail] = splitTitleTail(thread.title || t('common:newThread'))
+                    const isFork = tail.trim() === '(fork)'
+                    return (
+                      <>
+                        <FadeText className={isSelected ? 'font-medium' : undefined}>{head}</FadeText>
+                        {tail && !isFork && (
+                          <span className={cn('-ml-1 shrink-0', isSelected && 'font-medium')}>{tail.trim()}</span>
+                        )}
+                      </>
+                    )
+                  })()}
                 </Link>
               </NavButton>
           </RowPreview>

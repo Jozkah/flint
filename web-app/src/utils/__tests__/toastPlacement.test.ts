@@ -12,8 +12,8 @@ import {
  */
 describe('toastPlacement', () => {
   describe('getDefaultNotificationPosition', () => {
-    it('returns top-right when not Windows Tauri (vitest env)', () => {
-      expect(getDefaultNotificationPosition()).toBe('top-right')
+    it('defaults to bottom-right, away from the header controls', () => {
+      expect(getDefaultNotificationPosition()).toBe('bottom-right')
     })
   })
 
@@ -22,10 +22,10 @@ describe('toastPlacement', () => {
       expect(getToastOffset('top-right')).toEqual({ top: 60, right: 8 })
     })
 
-    it('clears the header for top-left and uses the base margin at the bottom', () => {
+    it('clears the header at the top and the composer dock (+ safe area) at the bottom', () => {
       expect(getToastOffset('top-left')).toEqual({ top: 60, left: 8 })
-      expect(getToastOffset('bottom-right')).toEqual({ bottom: 8, right: 8 })
-      expect(getToastOffset('bottom-left')).toEqual({ bottom: 8, left: 8 })
+      expect(getToastOffset('bottom-right')).toEqual({ bottom: 'calc(164px + env(safe-area-inset-bottom, 0px))', right: 16 })
+      expect(getToastOffset('bottom-left')).toEqual({ bottom: 'calc(164px + env(safe-area-inset-bottom, 0px))', left: 16 })
     })
   })
 
@@ -48,7 +48,7 @@ describe('toastPlacement', () => {
         right: 416,
       })
       expect(getToastOffsetAvoidingPane('bottom-right', side, vp)).toEqual({
-        bottom: 8,
+        bottom: 'calc(164px + env(safe-area-inset-bottom, 0px))',
         right: 416,
       })
     })
@@ -70,7 +70,7 @@ describe('toastPlacement', () => {
         right: 8,
       })
       expect(getToastOffsetAvoidingPane('bottom-right', pip, vp)).toEqual({
-        bottom: 8,
+        bottom: 'calc(164px + env(safe-area-inset-bottom, 0px))',
         right: 516,
       })
     })
@@ -91,6 +91,22 @@ describe('getDialogToastPlacement', () => {
   it('uses full-width bottom-center above the composer when narrow', () => {
     const p = getDialogToastPlacement(480)
     expect(p.position).toBe('bottom-center')
-    expect(p.offset).toMatchObject({ bottom: '96px', left: '16px', right: '16px' })
+    expect(p.offset).toMatchObject({
+      bottom: 'calc(164px + env(safe-area-inset-bottom, 0px))',
+      left: '12px',
+      right: '12px',
+    })
+  })
+  it('treats exactly 640 as narrow', () => {
+    expect(getDialogToastPlacement(640).position).toBe('bottom-center')
+  })
+})
+
+describe('composerClearanceFor', () => {
+  it('keeps settings toasts at the corner, where no composer sits', async () => {
+    const { composerClearanceFor, COMPOSER_CLEARANCE_PX } = await import('../toastPlacement')
+    expect(composerClearanceFor('/settings/local-api-server')).toBe(16)
+    expect(composerClearanceFor('/threads/abc')).toBe(COMPOSER_CLEARANCE_PX)
+    expect(composerClearanceFor('/')).toBe(COMPOSER_CLEARANCE_PX)
   })
 })

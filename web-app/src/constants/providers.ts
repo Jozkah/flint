@@ -60,7 +60,7 @@ export const AZURE_BASE_URL_PLACEHOLDER =
 
 export const predefinedProviders = [
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.openai.com/v1',
     explore_models_url: 'https://platform.openai.com/docs/models',
@@ -83,7 +83,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     // Azure endpoints are per resource, so there is no usable default: an
     // example URL here would receive requests (and the key) before the user
@@ -131,7 +131,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     // The region is part of the host. Requests are signed (SigV4) by the
     // backend from AWS credentials kept in the OS keyring.
@@ -154,7 +154,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.anthropic.com/v1',
     provider: 'anthropic',
@@ -189,7 +189,7 @@ export const predefinedProviders = [
     ]
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://openrouter.ai/api/v1',
     explore_models_url: 'https://openrouter.ai/models',
@@ -227,7 +227,7 @@ export const predefinedProviders = [
     ],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.mistral.ai/v1',
     explore_models_url:
@@ -251,7 +251,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.groq.com/openai/v1',
     explore_models_url: 'https://console.groq.com/docs/models',
@@ -274,7 +274,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.x.ai/v1',
     explore_models_url: 'https://docs.x.ai/overview',
@@ -297,7 +297,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     // The native Gemini API: the factory talks to it directly (thought
     // signatures need it), so the stored URL says so.
@@ -322,7 +322,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.minimax.io/v1',
     explore_models_url: 'https://platform.minimax.io/docs/api-reference/text-openai-api',
@@ -367,7 +367,7 @@ export const predefinedProviders = [
     ],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://router.huggingface.co/v1',
     explore_models_url:
@@ -416,7 +416,7 @@ export const predefinedProviders = [
     ],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://integrate.api.nvidia.com/v1',
     explore_models_url: 'https://build.nvidia.com/models',
@@ -439,7 +439,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.deepseek.com',
     explore_models_url: 'https://api-docs.deepseek.com/',
@@ -462,7 +462,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.moonshot.ai/v1',
     explore_models_url: 'https://platform.kimi.ai/docs/models',
@@ -485,7 +485,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.cohere.ai/compatibility/v1',
     explore_models_url: 'https://docs.cohere.com/docs/models',
@@ -508,7 +508,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.perplexity.ai',
     explore_models_url: 'https://docs.perplexity.ai/getting-started/models',
@@ -531,7 +531,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.together.ai/v1',
     explore_models_url: 'https://docs.together.ai/docs/serverless/models',
@@ -554,7 +554,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.fireworks.ai/inference/v1',
     explore_models_url: 'https://app.fireworks.ai/models',
@@ -577,7 +577,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.cerebras.ai/v1',
     explore_models_url: 'https://inference-docs.cerebras.ai/models/overview',
@@ -600,7 +600,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.sambanova.ai/v1',
     explore_models_url: 'https://docs.sambanova.ai/docs/en/models/sambacloud-models',
@@ -623,7 +623,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.z.ai/api/paas/v4',
     explore_models_url: 'https://docs.z.ai/guides/overview/overview',
@@ -646,7 +646,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
     explore_models_url: 'https://www.alibabacloud.com/help/en/model-studio/models',
@@ -680,7 +680,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://api.poe.com/v1',
     explore_models_url: 'https://poe.com/explore',
@@ -703,7 +703,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'https://ollama.com/v1',
     explore_models_url: 'https://ollama.com/search?c=cloud',
@@ -726,7 +726,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'http://localhost:17434/v1',
     explore_models_url: 'https://hub.docker.com/catalogs/models',
@@ -747,7 +747,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'http://localhost:11434/v1',
     explore_models_url: 'https://ollama.com/library',
@@ -768,7 +768,7 @@ export const predefinedProviders = [
     models: [],
   },
   {
-    active: true,
+    active: false,
     api_key: '',
     base_url: 'http://localhost:4000/v1',
     explore_models_url: 'https://docs.litellm.ai/docs/proxy/quick_start',

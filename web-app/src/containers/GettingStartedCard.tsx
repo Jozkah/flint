@@ -21,6 +21,7 @@ import {
 import { TermHint } from '@/containers/TermHint'
 import { ModelSetupCard } from '@/containers/ModelSetupCard'
 import { useSettingsSearch } from '@/hooks/useSettingsSearch'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 /**
  * The home screen's guide card, and for returning users a way back into their
@@ -32,18 +33,19 @@ import { useSettingsSearch } from '@/hooks/useSettingsSearch'
 export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const navTrimmed = useInterfaceSettings((s) => s.hiddenNavItems.length > 0)
   const guide = useOnboardingGuide()
   const providers = useModelProvider((s) => s.providers)
-  const threads = useThreads((s) => s.threads)
+  // The count only: a title change must not re-render the card.
+  const threadCount = useThreads((s) => Object.keys(s.threads).length)
 
   const projectCount = useCoworkSessions(
     (s) => s.sessions.filter((session) => session.folder).length
   )
 
-  const threadList = Object.values(threads ?? {})
   const signals = {
     hasUsableModel: hasUsableProvider(providers),
-    threadCount: threadList.length,
+    threadCount,
     projectCount,
   }
 
@@ -161,7 +163,9 @@ export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
                 <b className="font-medium text-foreground">
                   {t('onboarding:sidebar.title')}
                 </b>{' '}
-                {t('onboarding:sidebar.body')}
+                {navTrimmed
+                  ? t('onboarding:sidebar.bodyMinimal')
+                  : t('onboarding:sidebar.body')}
               </span>
               <Button
                 size="sm"
@@ -193,14 +197,27 @@ export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
 }
 
 /** "Continue your last conversation: ..." -- nothing when there is none. */
+function newestThreadId(
+  threads: Record<string, { id: string; updated?: number }> | undefined
+): string | undefined {
+  let best: { id: string; updated?: number } | undefined
+  for (const th of Object.values(threads ?? {})) {
+    if (!best || (th.updated ?? 0) > (best.updated ?? 0)) best = th
+  }
+  return best?.id
+}
+
 export function ResumeRecentLink({ className }: { className?: string }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const threads = useThreads((s) => s.threads)
-  const recent = Object.values(threads ?? {}).sort(
-    (a, b) => (b.updated ?? 0) - (a.updated ?? 0)
-  )[0]
-  if (!recent) return null
+  // The newest chat's id and title, as primitives, so other chats changing
+  // never re-render the link.
+  const recentId = useThreads((s) => newestThreadId(s.threads))
+  const recentTitle = useThreads((s) =>
+    recentId ? s.threads[recentId]?.title : undefined
+  )
+  if (!recentId) return null
+  const recent = { id: recentId, title: recentTitle }
   return (
     <div className={cn('text-center', className)}>
       <button

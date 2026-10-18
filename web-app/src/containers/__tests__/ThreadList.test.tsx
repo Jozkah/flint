@@ -133,3 +133,14 @@ describe('ThreadList — long-URL overflow guard (#7959)', () => {
     expect(titleEl).not.toHaveAttribute('title')
   })
 })
+
+describe('ThreadList — fork mark (T7-026)', () => {
+  it('shows a fork icon before the fading title instead of a (fork) suffix', async () => {
+    render(<ThreadList threads={[makeThread({ title: 'Number Sequence Generation (fork)' })]} />)
+    await flushEffects()
+    const head = screen.getAllByText('Number Sequence Generation').find((el) => el.tagName === 'SPAN')!
+    expect(head).toHaveClass('text-fade')
+    expect(screen.queryByText('(fork)', { normalizer: (s) => s.trim() })).toBeNull()
+    expect(screen.getByTestId('thread-fork-mark')).toBeInTheDocument()
+  })
+})
