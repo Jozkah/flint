@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
 import {
@@ -448,6 +449,30 @@ function PaneTabs({
   const { t } = useTranslation()
   const setActivePane = useSplitConversation((s) => s.setActivePane)
   const listRef = useRef<HTMLDivElement>(null)
+  const [edges, setEdges] = useState({ start: false, end: false })
+  const measure = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    const start = el.scrollLeft > 1
+    const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+    setEdges((prev) =>
+      prev.start === start && prev.end === end ? prev : { start, end }
+    )
+  }, [])
+  // The active tab stays in view, and the fades follow the strip's size.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector<HTMLElement>(`#conversation-pane-tab-${activeId}`)
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    measure()
+  }, [activeId, panes.length, measure])
+  useEffect(() => {
+    const el = listRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [measure])
 
   // Arrow keys move between the tabs, as a tab list should.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -469,7 +494,23 @@ function PaneTabs({
       aria-label={t('chat:split.panes')}
       onKeyDown={onKeyDown}
       data-testid="split-pane-switch"
-      className="flex w-full min-w-0 max-w-2xl overflow-hidden rounded-md border border-border bg-muted"
+      // More tabs than fit (a phone-wide window): the strip scrolls, its
+      // edges fade where tabs continue, and the active tab is kept in view.
+      data-overflow-start={edges.start}
+      data-overflow-end={edges.end}
+      onScroll={measure}
+      className={cn(
+        'flex w-full min-w-0 max-w-2xl overflow-x-auto overscroll-x-contain rounded-md border border-border bg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        edges.start &&
+          edges.end &&
+          '[mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)]',
+        edges.start &&
+          !edges.end &&
+          '[mask-image:linear-gradient(to_right,transparent,black_1.5rem)]',
+        !edges.start &&
+          edges.end &&
+          '[mask-image:linear-gradient(to_left,transparent,black_1.5rem)]'
+      )}
     >
       {panes.map((pane, index) => (
         <PaneTab
