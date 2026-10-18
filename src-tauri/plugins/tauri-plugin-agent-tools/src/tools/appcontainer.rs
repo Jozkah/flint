@@ -2167,9 +2167,54 @@ mod win {
         })
     }
 
+    /// `path` with every 8.3 short component expanded (`C:\Users\RUNNER~1`
+    /// becomes `C:\Users\runneradmin`), or unchanged when it cannot be
+    /// resolved. The same object either way, so the grants are unchanged; but a
+    /// confined PowerShell or cmd expands a short name by listing each parent,
+    /// which the container cannot read, and then fails on its own start folder.
+    fn long_path(path: &Path) -> PathBuf {
+        use std::os::windows::ffi::OsStringExt;
+        use windows_sys::Win32::Storage::FileSystem::GetLongPathNameW;
+        let short = wide(path.as_os_str());
+        let mut buf = vec![0u16; 1024];
+        loop {
+            let len = buf.len() as u32;
+            let n = unsafe { GetLongPathNameW(short.as_ptr(), buf.as_mut_ptr(), len) } as usize;
+            if n == 0 {
+                return path.to_path_buf();
+            }
+            if n < buf.len() {
+                return PathBuf::from(std::ffi::OsString::from_wide(&buf[..n]));
+            }
+            buf.resize(n + 1, 0);
+        }
+    }
+
+    /// `req` with its folders in long form (see [`long_path`]).
+    fn with_long_paths(req: &Request) -> Request {
+        let all = |v: &[PathBuf]| v.iter().map(|p| long_path(p)).collect::<Vec<_>>();
+        Request {
+            workspace: long_path(&req.workspace),
+            scratch: req.scratch.as_deref().map(long_path),
+            write_roots: all(&req.write_roots),
+            read_roots: all(&req.read_roots),
+            own_holder: req.own_holder,
+            start_dir: long_path(&req.start_dir),
+            allow_network: req.allow_network,
+            path_dirs: all(&req.path_dirs),
+            program: req.program.clone(),
+            args: req.args.clone(),
+        }
+    }
+
     /// Set up the container, then spawn the shell inside it and wait. Returns the
     /// shell's exit code so the helper is transparent to the caller.
     pub fn run(req: &Request) -> Result<i32, LaunchFailure> {
+        // The container is named after the path exactly as the host passed it,
+        // so `release` and the records keep matching.
+        let name = moniker(&req.workspace);
+        let long = with_long_paths(req);
+        let req = &long;
         if !req.workspace.is_dir() {
             return Err(LaunchFailure::new(
                 Stage::SandboxPolicy,
@@ -2198,7 +2243,6 @@ mod win {
             ));
         }
         reap_children_with_this_process();
-        let name = moniker(&req.workspace);
         let sid = ensure_profile(&name).map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "CreateAppContainerProfile", detail)
         })?;
