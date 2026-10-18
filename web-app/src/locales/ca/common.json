@@ -2626,9 +2626,7 @@
     "errorNetwork": "No s'ha pogut contactar amb el proveïdor. Comprova la connexió o que el servidor estigui en marxa.",
     "errorEngine": "El motor que executa aquest model no està disponible. Reinicia Flint i torna-ho a provar.",
     "openProvider": "Obre la configuració del proveïdor",
-    "errorDetails": "Detalls",
-    "usingModel": "Amb {{model}}",
-    "noModel": "Tria un model al selector de models"
+    "errorDetails": "Detalls"
   },
   "markdownImage": {
     "load": "Carrega la imatge de {{host}}"

@@ -2580,9 +2580,7 @@
     "errorNetwork": "Der Anbieter ist nicht erreichbar. Prüfe deine Verbindung oder ob der Server läuft.",
     "errorEngine": "Die Engine, die dieses Modell ausführt, ist nicht verfügbar. Starte Flint neu und versuche es erneut.",
     "openProvider": "Anbieter-Einstellungen öffnen",
-    "errorDetails": "Details",
-    "usingModel": "Verwendet {{model}}",
-    "noModel": "Wähle ein Modell in der Modellauswahl"
+    "errorDetails": "Details"
   },
   "markdownImage": {
     "load": "Bild von {{host}} laden"

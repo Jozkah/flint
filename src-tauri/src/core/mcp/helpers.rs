@@ -1000,7 +1000,7 @@ where
 /// on it hangs forever. Generous, since `npx`/`uvx` may download on first run.
 pub(super) const MCP_INIT_TIMEOUT: Duration = Duration::from_secs(120);
 
-fn emit_mcp_update_event<R: Runtime>(app: &AppHandle<R>, name: &str) {
+pub(crate) fn emit_mcp_update_event<R: Runtime>(app: &AppHandle<R>, name: &str) {
     if let Err(e) = app.emit(
         "mcp-update",
         serde_json::json!({
@@ -1794,17 +1794,44 @@ pub async fn ensure_mcp_server_started<R: Runtime>(
 
 /// Start every enabled server that is not running, concurrently.
 pub async fn ensure_all_enabled_started<R: Runtime>(app: &AppHandle<R>) {
+    ensure_all_enabled_started_within(app, None).await;
+}
+
+/// [`ensure_all_enabled_started`], waiting at most `cap` when one is given.
+/// Servers still starting then are left to finish in the background (the
+/// start runs on its own task, so giving up the wait does not cancel it) and
+/// returned by name.
+pub async fn ensure_all_enabled_started_within<R: Runtime>(
+    app: &AppHandle<R>,
+    cap: Option<Duration>,
+) -> Vec<String> {
     let names: Vec<String> = {
         let app_state = app.state::<AppState>();
         let active = app_state.mcp_active_servers.lock().await;
         active.keys().cloned().collect()
     };
-    futures_util::future::join_all(names.iter().map(|name| async move {
-        if let Err(e) = ensure_mcp_server_started(app, name).await {
-            log::warn!("{e}");
-        }
-    }))
-    .await;
+    let Some(cap) = cap else {
+        futures_util::future::join_all(names.iter().map(|name| async move {
+            if let Err(e) = ensure_mcp_server_started(app, name).await {
+                log::warn!("{e}");
+            }
+        }))
+        .await;
+        return Vec::new();
+    };
+    let starts = names
+        .into_iter()
+        .map(|name| {
+            let app = app.clone();
+            let label = name.clone();
+            (label, async move {
+                if let Err(e) = ensure_mcp_server_started(&app, &name).await {
+                    log::warn!("{e}");
+                }
+            })
+        })
+        .collect();
+    super::lazy::wait_for_starts(starts, cap).await
 }
 
 /// Stop a running server but keep it enabled (idle stop, manual Stop).

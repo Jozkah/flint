@@ -2627,9 +2627,7 @@
     "errorNetwork": "No se pudo conectar con el proveedor. Revisa tu conexión o que el servidor esté en marcha.",
     "errorEngine": "El motor que ejecuta este modelo no está disponible. Reinicia Flint e inténtalo de nuevo.",
     "openProvider": "Abrir ajustes del proveedor",
-    "errorDetails": "Detalles",
-    "usingModel": "Usando {{model}}",
-    "noModel": "Elige un modelo en el selector de modelos"
+    "errorDetails": "Detalles"
   },
   "markdownImage": {
     "load": "Cargar imagen de {{host}}"

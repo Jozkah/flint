@@ -14,7 +14,7 @@ import type { FilePickerEntry } from '@/types/path-reference'
 import type { ReferenceAlias } from '@/lib/referenceAliases'
 import { typedReference, type TypedReferenceKind } from '@/lib/path-references'
 
-export type ReferenceKind = 'file' | 'directory' | TypedReferenceKind
+export type ReferenceKind = 'file' | 'directory' | 'prompt' | TypedReferenceKind
 
 export type ReferenceEntry = {
   kind: ReferenceKind
@@ -33,20 +33,26 @@ export type NamedSource = { name: string; description?: string }
 export const optionId = (listId: string, index: number) =>
   `${listId}-option-${index}`
 
+/** A library prompt the menu may offer. `id` is what is inserted. */
+export type PromptSource = { id: string; name: string; detail?: string }
+
 export type ReferenceSources = {
   files: FilePickerEntry[]
   skills: NamedSource[]
   agents: NamedSource[]
   aliases: ReferenceAlias[]
+  /** The prompt library. Absent where there is none. */
+  prompts?: PromptSource[]
 }
 
 /** Ties go to the entry most likely meant: a name the user gave, then tools. */
 const KIND_ORDER: Record<ReferenceKind, number> = {
   alias: 0,
-  skill: 1,
-  agent: 2,
-  directory: 3,
-  file: 4,
+  prompt: 1,
+  skill: 2,
+  agent: 3,
+  directory: 4,
+  file: 5,
 }
 
 function score(q: string, name: string, detail = ''): number {
@@ -73,12 +79,20 @@ export function rankReferences(
 ): ReferenceEntry[] {
   let q = query.trim().toLowerCase()
   let only: ReferenceKind | null = null
-  const prefixed = /^(skill|agent|alias):(.*)$/.exec(q)
+  const prefixed = /^(skill|agent|alias|prompt):(.*)$/.exec(q)
   if (prefixed) {
     only = prefixed[1] as ReferenceKind
     q = prefixed[2]
   }
   const candidates: ReferenceEntry[] = [
+    ...(sources.prompts ?? []).map(
+      (prompt): ReferenceEntry => ({
+        kind: 'prompt',
+        token: `prompt:${prompt.id}`,
+        name: prompt.name,
+        detail: prompt.detail,
+      })
+    ),
     ...sources.aliases.map(
       (alias): ReferenceEntry => ({
         kind: 'alias',
@@ -119,7 +133,7 @@ export function rankReferences(
       // A typed token must stay a typed token: a name the pattern cannot carry
       // would insert a reference that reads back as something else.
       .filter((entry) =>
-        entry.kind === 'file' || entry.kind === 'directory'
+        entry.kind === 'file' || entry.kind === 'directory' || entry.kind === 'prompt'
           ? true
           : typedReference(entry.token) !== null
       )

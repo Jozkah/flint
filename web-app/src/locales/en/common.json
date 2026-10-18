@@ -2020,9 +2020,7 @@
     "errorNetwork": "Could not reach the provider. Check your connection or that the server is running.",
     "errorEngine": "The engine that runs this model is not available. Restart Flint and try again.",
     "openProvider": "Open provider settings",
-    "errorDetails": "Details",
-    "usingModel": "Using {{model}}",
-    "noModel": "Pick a model in the model selector"
+    "errorDetails": "Details"
   },
   "appRail": {
     "label": "Global navigation",

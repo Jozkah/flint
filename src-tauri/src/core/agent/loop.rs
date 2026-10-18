@@ -25,7 +25,8 @@ use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 use crate::core::agent::events::{CompactionPhase, CompactionReason, StreamEvent, Usage};
 use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
-    arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
+    arguments_are_executable, collect_mcp_openai_tools_noted,
+    copy_optional_chat_params,
     drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
     load_assistant_config, neutralize_malformed_tool_calls, normalize_tool_call_args,
     parse_openai_messages, parse_tool_args, resolve_api_type_for_model, resolve_upstream_for_model,
@@ -829,7 +830,7 @@ async fn wire_for(
     provider_configs: Arc<Mutex<HashMap<String, ProviderConfig>>>,
 ) -> (Option<Box<dyn UpstreamConverter>>, Option<String>) {
     match resolve_api_type_for_model(model_id, provider_configs).await {
-        Some((api_type, oauth)) => (converter_for(Some(&api_type), oauth), Some(api_type)),
+        Some(api_type) => (converter_for(Some(&api_type)), Some(api_type)),
         None => (None, None),
     }
 }
@@ -6076,8 +6077,13 @@ async fn orchestrate_inner(
         }
     };
 
-    let (mut openai_tools, mut tool_to_server, tool_call_names) =
-        collect_mcp_openai_tools(mcp_servers, mcp_settings).await?;
+    let ((mut openai_tools, mut tool_to_server, tool_call_names), slow_mcp_notice) =
+        collect_mcp_openai_tools_noted(mcp_servers, mcp_settings).await?;
+    // A server still starting is said, not left as a missing tool: the model
+    // can tell the user and try again once it is ready.
+    if let Some(notice) = &slow_mcp_notice {
+        crate::core::agent::reminder::attach(&mut conversation_messages, notice);
+    }
 
     // Optional per-run allowlist: when `allowed_tools` is present, expose only
     // those MCP tools (an empty array means no tools). Absent = all tools.

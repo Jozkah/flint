@@ -185,13 +185,7 @@
     "transcriptViewVerbose": "Verbose",
     "transcriptViewVerboseDesc": "Everything: full reasoning and every tool call open with its parameters and output.",
     "inlineCitations": "Inline source icons",
-    "inlineCitationsDesc": "Show a small site icon after a sentence that comes from a web source. Turn this off to read the answer without them; the sources stay listed below it.",
-    "sidebarLayout": "Sidebar",
-    "sidebarLayoutDesc": "How much of the left sidebar is listed.",
-    "sidebarLayout_trimmed": "Trimmed",
-    "sidebarLayout_trimmedDesc": "New chat, Cowork, Discover and your chats. Rooms, Library, Studio and the engine pages fold under More and Advanced.",
-    "sidebarLayout_extended": "Extended",
-    "sidebarLayout_extendedDesc": "Everything listed at once: More and Advanced stay open."
+    "inlineCitationsDesc": "Show a small site icon after a sentence that comes from a web source. Turn this off to read the answer without them; the sources stay listed below it."
   },
   "hardware": {
     "os": "Operating System",
@@ -516,10 +510,7 @@
     "support": "Support",
     "reportAnIssue": "Report an Issue",
     "reportAnIssueDesc": "Found a bug? Help us out by filing an issue on GitHub.",
-    "reportIssue": "Report Issue",
-    "credits": "Credits",
-    "creditsDesc1": "Flint is built with ❤️ by Jozkah, based on Jan from the Menlo Research team.",
-    "creditsDesc2": "Special thanks to our open-source dependencies—especially llama.cpp and Tauri—and to our amazing AI community."
+    "reportIssue": "Report Issue"
   },
   "extensions": {
     "title": "Extensions"
@@ -1162,8 +1153,5 @@
     "showAll": "Show all",
     "preview": "Preview",
     "reachable": "Hidden items stay reachable from the command palette and from Settings."
-  },
-  "credits": "Credits",
-  "creditsDesc1": "Flint is built with ❤️ by Jozkah, based on Jan from the Menlo Research team.",
-  "creditsDesc2": "Special thanks to our open-source dependencies—especially llama.cpp and Tauri—and to our amazing AI community."
+  }
 }

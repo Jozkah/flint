@@ -48,6 +48,7 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { BrandMark } from '@/containers/engine/BrandMark'
 import { modelLogo } from '@/lib/brandLogos'
+import { middleTruncate } from '@/lib/modelDisplayName'
 import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -508,8 +509,12 @@ function LocalAPIServerContent() {
                                   size={16}
                                   className="rounded-full"
                                 />
-                                <span className="min-w-0 flex-1 truncate text-left">
-                                  {providers
+                                <span
+                                  className="min-w-0 flex-1 truncate text-left"
+                                  title={defaultModelLocalApiServer.model}
+                                >
+                                  {middleTruncate(
+                                    providers
                                     .find(
                                       (p) =>
                                         p.provider ===
@@ -518,7 +523,9 @@ function LocalAPIServerContent() {
                                     ?.models.find(
                                       (m) =>
                                         m.id === defaultModelLocalApiServer.model
-                                    )?.name ?? defaultModelLocalApiServer.model}
+                                    )?.name ?? defaultModelLocalApiServer.model,
+                                    34
+                                  )}
                                 </span>
                               </>
                             ) : (
@@ -550,7 +557,12 @@ function LocalAPIServerContent() {
                               })
                             }
                           >
-                            <span className="truncate font-mono text-xs">{modelId}</span>
+                            <span
+                              className="truncate font-mono text-xs"
+                              title={modelId}
+                            >
+                              {middleTruncate(modelId, 30)}
+                            </span>
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -609,14 +621,14 @@ function LocalAPIServerContent() {
               <UsageCeilingsCard />
 
               <Card
-                title="Server Log"
+                title={t('settings:localApiServer.serverLog')}
                 aside={
                   <Button
                     variant="outline"
                     onClick={handleOpenLogs}
                     className="pointer-coarse:h-11"
                   >
-                    Open in New Window
+                    {t('settings:localApiServer.openInNewWindow')}
                   </Button>
                 }
               >

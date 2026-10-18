@@ -185,13 +185,7 @@
     "transcriptViewVerbose": "Chi tiết",
     "transcriptViewVerboseDesc": "Mọi thứ: toàn bộ suy luận và mỗi lệnh gọi công cụ mở kèm tham số và kết quả.",
     "inlineCitations": "Biểu tượng nguồn trong văn bản",
-    "inlineCitationsDesc": "Hiển thị biểu tượng trang nhỏ sau câu lấy từ nguồn web. Tắt để đọc câu trả lời không có biểu tượng; các nguồn vẫn được liệt kê bên dưới.",
-    "sidebarLayout": "Thanh bên",
-    "sidebarLayoutDesc": "Mức độ hiển thị của thanh bên trái.",
-    "sidebarLayout_trimmed": "Rút gọn",
-    "sidebarLayout_trimmedDesc": "Cuộc trò chuyện mới, Cowork, Khám phá và các cuộc trò chuyện của bạn. Phòng, Thư viện, Studio và các trang engine được gom vào Thêm và Nâng cao.",
-    "sidebarLayout_extended": "Mở rộng",
-    "sidebarLayout_extendedDesc": "Hiển thị mọi thứ cùng lúc: Thêm và Nâng cao luôn mở."
+    "inlineCitationsDesc": "Hiển thị biểu tượng trang nhỏ sau câu lấy từ nguồn web. Tắt để đọc câu trả lời không có biểu tượng; các nguồn vẫn được liệt kê bên dưới."
   },
   "hardware": {
     "os": "Hệ điều hành",
@@ -516,10 +510,7 @@
     "support": "Hỗ trợ",
     "reportAnIssue": "Báo cáo Vấn đề",
     "reportAnIssueDesc": "Tìm thấy lỗi? Hãy giúp chúng tôi bằng cách báo cáo vấn đề trên GitHub.",
-    "reportIssue": "Báo cáo Vấn đề",
-    "credits": "Ghi công",
-    "creditsDesc1": "Flint được xây dựng với ❤️ bởi Jozkah.",
-    "creditsDesc2": "Cảm ơn đặc biệt đến các phụ thuộc mã nguồn mở của chúng tôi—đặc biệt là llama.cpp và Tauri—và đến cộng đồng AI tuyệt vời của chúng tôi."
+    "reportIssue": "Báo cáo Vấn đề"
   },
   "extensions": {
     "title": "Tiện ích mở rộng"
@@ -1162,8 +1153,5 @@
     "showAll": "Hiện tất cả",
     "preview": "Xem trước",
     "reachable": "Các mục bị ẩn vẫn truy cập được từ bảng lệnh và từ Cài đặt."
-  },
-  "credits": "Ghi công",
-  "creditsDesc1": "Flint được xây dựng với ❤️ bởi Jozkah.",
-  "creditsDesc2": "Cảm ơn đặc biệt đến các phụ thuộc mã nguồn mở của chúng tôi—đặc biệt là llama.cpp và Tauri—và đến cộng đồng AI tuyệt vời của chúng tôi."
+  }
 }

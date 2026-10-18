@@ -16,8 +16,8 @@ use crate::skills;
 use crate::tools::jail;
 use crate::tools::proc;
 use crate::tools::sandbox::{
-    canonicalize_lenient, escapes_write_roots, in_scratch, is_hidden_jan_path_in, lexical_normalize, resolve_path,
-    scratch_display_path, symlink_escapes_any_root, symlink_escapes_root,
+    canonicalize_lenient, escapes_write_roots, in_scratch, is_hidden_jan_path_in, lexical_normalize,
+    refuse_windows_name, resolve_path, scratch_display_path, symlink_escapes_any_root, symlink_escapes_root,
 };
 use crate::tools::{BuiltinTool, ImageContentPart, ToolContext};
 
@@ -1756,6 +1756,9 @@ async fn write(
     let Some(content) = arg_str(args, "content") else {
         return "ERROR: missing required argument 'content'".to_string();
     };
+    if let Some((name, why)) = refuse_windows_name(path) {
+        return format!("ERROR: refused to write '{name}' in {path}: the name {why}");
+    }
     // Defense in depth: when the caller confines writes, re-canonicalize on the
     // canonical root (not the raw argument) so `..` and absolute paths are
     // caught even if the gate's decision was made against a stale view.
@@ -1852,6 +1855,9 @@ async fn edit(
     };
     if edits.is_empty() {
         return "ERROR: edits must contain at least one replacement".to_string();
+    }
+    if let Some((name, why)) = refuse_windows_name(path) {
+        return format!("ERROR: refused to edit '{name}' in {path}: the name {why}");
     }
     let target = resolve_path(root, scratch, path);
     if confine && escapes_write_roots(root, scratch, write_roots, path).unwrap_or(true) {
@@ -5049,6 +5055,59 @@ two
         run_in("stale-reader", &root, "read", json!({"path": "a.txt"})).await;
         let other = run_in("stale-other", &root, "edit", one_edit()).await;
         assert!(other.contains("not been read"), "{other}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    async fn edit_file(root: &Path, file: &str, old: &str, new: &str) -> String {
+        execute_builtin(
+            lookup("edit").unwrap(),
+            &json!({"path": file, "edits": [{"old_string": old, "new_string": new}]}),
+            root,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn edit_matches_a_multi_line_old_string_in_a_crlf_file() {
+        let root = unique_root();
+        std::fs::write(root.join("a.txt"), b"one\r\ntwo\r\nthree\r\n").unwrap();
+        let out = edit_file(&root, "a.txt", "one\ntwo", "ONE\nTWO").await;
+        assert_eq!(out, "Applied 1 edit(s) to a.txt");
+        assert_eq!(std::fs::read(root.join("a.txt")).unwrap(), b"ONE\r\nTWO\r\nthree\r\n");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn write_and_edit_refuse_names_windows_cannot_address() {
+        let root = unique_root();
+        for name in ["aux", "con.txt", "NUL", "com1.log", "name.", "name ", "a.txt:stream", "sub/prn.c"] {
+            let w = execute_builtin(
+                lookup("write").unwrap(),
+                &json!({"path": name, "content": "x"}),
+                &root,
+            )
+            .await;
+            assert!(w.starts_with("ERROR: refused to write"), "{name}: {w}");
+            let e = edit_file(&root, name, "a", "b").await;
+            assert!(e.starts_with("ERROR: refused to edit"), "{name}: {e}");
+        }
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn write_still_accepts_ordinary_names_that_resemble_reserved_ones() {
+        let root = unique_root();
+        for name in ["auxiliary.txt", "console.log", "com10.txt", "a.b.c", ".gitignore", "x y.txt"] {
+            let w = execute_builtin(
+                lookup("write").unwrap(),
+                &json!({"path": name, "content": "x"}),
+                &root,
+            )
+            .await;
+            assert!(w.starts_with("Created "), "{name}: {w}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

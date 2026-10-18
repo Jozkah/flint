@@ -1,4 +1,5 @@
 import { Check, ChevronDown, Search } from 'lucide-react'
+import { middleTruncate } from '@/lib/modelDisplayName'
 import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
@@ -108,7 +109,9 @@ export function PickerDropdown({
         >
           <span className="flex min-w-0 items-center gap-1.5">
             {current?.icon}
-            <span className="min-w-0 truncate">{label ?? placeholder}</span>
+            <span className="min-w-0 truncate">
+              {label ? middleTruncate(label, 34) : placeholder}
+            </span>
           </span>
           <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />
         </Button>
@@ -116,7 +119,7 @@ export function PickerDropdown({
       <DropdownMenuContent
         align="start"
         collisionPadding={12}
-        className="max-h-[min(32rem,70vh)] w-(--radix-dropdown-menu-trigger-width) min-w-60 max-w-80 overflow-y-auto p-1.5"
+        className="max-h-[min(20rem,var(--radix-dropdown-menu-content-available-height))] w-(--radix-dropdown-menu-trigger-width) min-w-[280px] max-w-[380px] overflow-y-auto p-1"
       >
         {searchPlaceholder && (
           <div className="mb-1 flex items-center gap-2 border-b border-border px-2 pb-2 pt-1">
@@ -157,13 +160,18 @@ export function PickerDropdown({
                     if (item.keepOpen) e.preventDefault()
                     onChange(item.value)
                   }}
-                  className={cn('items-start gap-2.5 px-2.5 py-2', selected && 'bg-accent')}
+                  className={cn('items-center gap-2.5 px-2.5 py-1.5', selected && 'bg-accent')}
                 >
-                  {item.icon && <span className="mt-px shrink-0">{item.icon}</span>}
-                  <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                    <span className="truncate text-[13px] font-medium">{item.label}</span>
+                  {item.icon && <span className="shrink-0">{item.icon}</span>}
+                  <span className="flex min-w-0 flex-1 flex-col gap-px">
+                    <span
+                      className="truncate text-[13px] font-medium"
+                      title={item.label}
+                    >
+                      {middleTruncate(item.label, 38)}
+                    </span>
                     {item.hint && (
-                      <span className="text-xs leading-[1.4] text-muted-foreground">{item.hint}</span>
+                      <span className="text-[11px] leading-[1.35] text-muted-foreground">{item.hint}</span>
                     )}
                   </span>
                   {selected ? (
@@ -199,7 +207,7 @@ export function PickerDropdown({
           <>
             <DropdownMenuSeparator />
             {footer.map((f) => (
-              <DropdownMenuItem key={f.label} onSelect={f.onSelect} className="gap-2.5 px-2.5 py-2">
+              <DropdownMenuItem key={f.label} onSelect={f.onSelect} className="gap-2.5 px-2.5 py-1.5">
                 {f.icon}
                 <span className="text-[13px] font-medium">{f.label}</span>
               </DropdownMenuItem>

@@ -185,13 +185,7 @@
     "transcriptViewVerbose": "Ausführlich",
     "transcriptViewVerboseDesc": "Alles: vollständige Überlegungen und jeder Tool-Aufruf geöffnet mit Parametern und Ausgabe.",
     "inlineCitations": "Quellensymbole im Text",
-    "inlineCitationsDesc": "Zeigt hinter einem Satz aus einer Webquelle ein kleines Website-Symbol. Schalte es aus, um die Antwort ohne Symbole zu lesen; die Quellen bleiben darunter aufgelistet.",
-    "sidebarLayout": "Seitenleiste",
-    "sidebarLayoutDesc": "Wie viel der linken Seitenleiste aufgelistet wird.",
-    "sidebarLayout_trimmed": "Gekürzt",
-    "sidebarLayout_trimmedDesc": "Neuer Chat, Cowork, Entdecken und deine Chats. Räume, Bibliothek, Studio und die Engine-Seiten werden unter Mehr und Erweitert eingeklappt.",
-    "sidebarLayout_extended": "Ausführlich",
-    "sidebarLayout_extendedDesc": "Alles auf einmal aufgelistet: Mehr und Erweitert bleiben geöffnet."
+    "inlineCitationsDesc": "Zeigt hinter einem Satz aus einer Webquelle ein kleines Website-Symbol. Schalte es aus, um die Antwort ohne Symbole zu lesen; die Quellen bleiben darunter aufgelistet."
   },
   "hardware": {
     "os": "Betriebssystem",
@@ -516,10 +510,7 @@
     "support": "Support",
     "reportAnIssue": "Melde ein Problem",
     "reportAnIssueDesc": "Hast Du einen Bug gefunden? Hilf uns, indem Du ein Problem auf GitHub meldest.",
-    "reportIssue": "Problem melden",
-    "credits": "Credits",
-    "creditsDesc1": "Flint wurde mit ❤️ von Jozkah gebaut.",
-    "creditsDesc2": "Besonderer Dank gilt unseren Open-Source-Abhängigkeiten - insbesondere llama.cpp und Tauri - und unserer großartigen KI-Community."
+    "reportIssue": "Problem melden"
   },
   "extensions": {
     "title": "Erweiterungen"
@@ -1162,8 +1153,5 @@
     "showAll": "Alle anzeigen",
     "preview": "Vorschau",
     "reachable": "Ausgeblendete Einträge bleiben über die Befehlspalette und die Einstellungen erreichbar."
-  },
-  "credits": "Credits",
-  "creditsDesc1": "Flint wurde mit ❤️ von Jozkah gebaut.",
-  "creditsDesc2": "Besonderer Dank gilt unseren Open-Source-Abhängigkeiten - insbesondere llama.cpp und Tauri - und unserer großartigen KI-Community."
+  }
 }

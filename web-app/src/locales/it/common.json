@@ -2625,9 +2625,7 @@
     "errorNetwork": "Impossibile raggiungere il provider. Controlla la connessione o che il server sia in esecuzione.",
     "errorEngine": "Il motore che esegue questo modello non è disponibile. Riavvia Flint e riprova.",
     "openProvider": "Apri impostazioni del provider",
-    "errorDetails": "Dettagli",
-    "usingModel": "Usa {{model}}",
-    "noModel": "Scegli un modello nel selettore dei modelli"
+    "errorDetails": "Dettagli"
   },
   "markdownImage": {
     "load": "Carica immagine da {{host}}"

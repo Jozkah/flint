@@ -186,13 +186,7 @@
     "transcriptViewVerbose": "Detallada",
     "transcriptViewVerboseDesc": "Todo: el razonamiento completo y cada llamada a herramienta abierta con parámetros y resultado.",
     "inlineCitations": "Iconos de fuente en línea",
-    "inlineCitationsDesc": "Muestra un pequeño icono del sitio después de una frase que proviene de una fuente web. Desactívalo para leer la respuesta sin ellos; las fuentes siguen listadas debajo.",
-    "sidebarLayout": "Barra lateral",
-    "sidebarLayoutDesc": "Cuánto de la barra lateral izquierda se muestra.",
-    "sidebarLayout_trimmed": "Reducida",
-    "sidebarLayout_trimmedDesc": "Chat nuevo, Cowork, Descubrir y tus chats. Salas, Biblioteca, Studio y las páginas del motor se pliegan bajo Más y Avanzado.",
-    "sidebarLayout_extended": "Ampliada",
-    "sidebarLayout_extendedDesc": "Todo se muestra a la vez: Más y Avanzado permanecen abiertos."
+    "inlineCitationsDesc": "Muestra un pequeño icono del sitio después de una frase que proviene de una fuente web. Desactívalo para leer la respuesta sin ellos; las fuentes siguen listadas debajo."
   },
   "hardware": {
     "os": "Sistema operativo",
@@ -518,10 +512,7 @@
     "support": "Soporte",
     "reportAnIssue": "Reportar un problema",
     "reportAnIssueDesc": "¿Encontraste un error? Ayúdanos reportando un problema en GitHub.",
-    "reportIssue": "Reportar problema",
-    "credits": "Créditos",
-    "creditsDesc1": "👋 Flint está hecho con ❤️ por Jozkah.",
-    "creditsDesc2": "Un agradecimiento especial a nuestras dependencias de código abierto, especialmente llama.cpp y Tauri, y a nuestra increíble comunidad de IA."
+    "reportIssue": "Reportar problema"
   },
   "extensions": {
     "title": "Extensiones"
@@ -1338,8 +1329,5 @@
     "showAll": "Mostrar todo",
     "preview": "Vista previa",
     "reachable": "Los elementos ocultos siguen accesibles desde la paleta de comandos y desde Configuración."
-  },
-  "credits": "Créditos",
-  "creditsDesc1": "👋 Flint está hecho con ❤️ por Jozkah.",
-  "creditsDesc2": "Un agradecimiento especial a nuestras dependencias de código abierto, especialmente llama.cpp y Tauri, y a nuestra increíble comunidad de IA."
+  }
 }

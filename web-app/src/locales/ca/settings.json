@@ -188,13 +188,7 @@
     "chatWidth": "Amplada del xat",
     "chatWidthDesc": "Tria una amplada predefinida que s’adapti al teu espai.",
     "inlineCitations": "Icones de font en línia",
-    "inlineCitationsDesc": "Mostra una icona petita del lloc després d'una frase que prové d'una font web. Desactiva-ho per llegir la resposta sense icones; les fonts continuen llistades a sota.",
-    "sidebarLayout": "Barra lateral",
-    "sidebarLayoutDesc": "Quant de la barra lateral esquerra es llista.",
-    "sidebarLayout_trimmed": "Reduïda",
-    "sidebarLayout_trimmedDesc": "Xat nou, Cowork, Descobreix i els teus xats. Sales, Biblioteca, Studio i les pàgines del motor es pleguen sota Més i Avançat.",
-    "sidebarLayout_extended": "Ampliada",
-    "sidebarLayout_extendedDesc": "Tot llistat alhora: Més i Avançat es mantenen oberts."
+    "inlineCitationsDesc": "Mostra una icona petita del lloc després d'una frase que prové d'una font web. Desactiva-ho per llegir la resposta sense icones; les fonts continuen llistades a sota."
   },
   "hardware": {
     "os": "Sistema operatiu",
@@ -520,10 +514,7 @@
     "support": "Suport",
     "reportAnIssue": "Informa d’un problema",
     "reportAnIssueDesc": "Has trobat un error? Ajuda’ns enviant una incidència a GitHub.",
-    "reportIssue": "Informa del problema",
-    "credits": "Crèdits",
-    "creditsDesc1": "👋 Flint el construeix amb ❤️ Jozkah.",
-    "creditsDesc2": "Agraïments especials a les nostres dependències de codi obert — especialment llama.cpp i Tauri — i a la nostra comunitat d’IA."
+    "reportIssue": "Informa del problema"
   },
   "extensions": {
     "title": "Extensions"
@@ -1167,8 +1158,5 @@
     "showAll": "Mostra-ho tot",
     "preview": "Vista prèvia",
     "reachable": "Els elements amagats continuen accessibles des de la paleta d'ordres i des de Configuració."
-  },
-  "credits": "Crèdits",
-  "creditsDesc1": "👋 Flint el construeix amb ❤️ Jozkah.",
-  "creditsDesc2": "Agraïments especials a les nostres dependències de codi obert — especialment llama.cpp i Tauri — i a la nostra comunitat d’IA."
+  }
 }

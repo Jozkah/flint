@@ -261,6 +261,9 @@ mod engine {
         ("engine-vulkan", "-DGGML_VULKAN=ON"),
         ("engine-hip", "-DGGML_HIP=ON"),
         ("engine-metal", "-DGGML_METAL=ON"),
+        // Intel oneAPI SYCL. Build plumbing only: never compiled or run on
+        // Intel hardware by this project, so it is not a supported backend.
+        ("engine-sycl", "-DGGML_SYCL=ON"),
     ];
 
     /// The GPUs a HIP build targets when JAN_ENGINE_HIP_TARGETS is unset: the
@@ -281,6 +284,16 @@ mod engine {
         println!("cargo:rerun-if-env-changed=JAN_ENGINE_HIP_TARGETS");
         println!("cargo:rerun-if-env-changed=JAN_ENGINE_BUILD_LOG");
         println!("cargo:rerun-if-env-changed=JAN_ENGINE_BUILD_DIR");
+
+        // The worker reports this in its handshake so the app can set it
+        // against the NVIDIA driver (janhq/jan#9189). Read on the prebuilt path
+        // too: the prebuilt key includes the full nvcc version, so a cache hit
+        // is built with the toolkit that is on this host.
+        if feature_enabled("engine-cuda") {
+            if let Some((_, v)) = nvcc_version() {
+                println!("cargo:rustc-env=JAN_ENGINE_CUDA_TOOLKIT={}.{}", v.0, v.1);
+            }
+        }
 
         // Headers are always needed: the shim is our code and is compiled
         // here even when the archives come prebuilt, so it cannot drift from
@@ -613,6 +626,19 @@ mod engine {
             // rocWMMA flash attention, as the previous engine shipped it; needs
             // rocwmma-dev, which check-engine-toolchain.sh asserts.
             cfg.arg("-DGGML_HIP_ROCWMMA_FATTN=ON");
+        }
+        if feature_enabled("engine-sycl") {
+            // llama.cpp's SYCL guide: the oneAPI DPC++ compilers. Linux only:
+            // the Windows recipe (cl for C, icx for C++, under Ninja) conflicts
+            // with the clang pinning in `windows_generator` and has not been
+            // worked out.
+            assert!(
+                env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "windows",
+                "engine-sycl is wired for Linux only; the Windows SYCL toolchain is not set up"
+            );
+            cfg.arg("-DCMAKE_C_COMPILER=icx");
+            cfg.arg("-DCMAKE_CXX_COMPILER=icpx");
+            cfg.arg("-DGGML_SYCL_TARGET=INTEL");
         }
         if feature_enabled("engine-cuda") {
             // NCCL is multi-GPU collective communication for distributed

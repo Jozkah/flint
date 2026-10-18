@@ -185,13 +185,7 @@
     "transcriptViewVerbose": "Ayrıntılı",
     "transcriptViewVerboseDesc": "Her şey: tam akıl yürütme ve parametreleri ile çıktısı açık her araç çağrısı.",
     "inlineCitations": "Metin içi kaynak simgeleri",
-    "inlineCitationsDesc": "Bir web kaynağından gelen cümlenin ardından küçük bir site simgesi gösterir. Yanıtı simgesiz okumak için kapatın; kaynaklar altında listelenmeye devam eder.",
-    "sidebarLayout": "Kenar çubuğu",
-    "sidebarLayoutDesc": "Sol kenar çubuğunda ne kadarının listeleneceği.",
-    "sidebarLayout_trimmed": "Kısaltılmış",
-    "sidebarLayout_trimmedDesc": "Yeni sohbet, Cowork, Keşfet ve sohbetleriniz. Odalar, Kitaplık, Studio ve motor sayfaları Daha fazla ve Gelişmiş altında toplanır.",
-    "sidebarLayout_extended": "Genişletilmiş",
-    "sidebarLayout_extendedDesc": "Her şey bir arada listelenir: Daha fazla ve Gelişmiş açık kalır."
+    "inlineCitationsDesc": "Bir web kaynağından gelen cümlenin ardından küçük bir site simgesi gösterir. Yanıtı simgesiz okumak için kapatın; kaynaklar altında listelenmeye devam eder."
   },
   "hardware": {
     "os": "İşletim Sistemi",
@@ -516,10 +510,7 @@
     "support": "Destek",
     "reportAnIssue": "Sorun Bildir",
     "reportAnIssueDesc": "Bir hata mı buldunuz? GitHub'da bir sorun kaydederek bize yardımcı olun.",
-    "reportIssue": "Sorun Bildir",
-    "credits": "Katkılar",
-    "creditsDesc1": "👋 Flint, Jozkah tarafından ❤️ ile geliştirilmiştir.",
-    "creditsDesc2": "Açık kaynak bağımlılıklarımıza — özellikle llama.cpp ve Tauri'ye — ve muhteşem yapay zeka topluluğumuza özel teşekkürler."
+    "reportIssue": "Sorun Bildir"
   },
   "extensions": {
     "title": "Uzantılar"
@@ -1162,8 +1153,5 @@
     "showAll": "Tümünü göster",
     "preview": "Önizleme",
     "reachable": "Gizli öğelere komut paletinden ve Ayarlar'dan yine ulaşılabilir."
-  },
-  "credits": "Katkılar",
-  "creditsDesc1": "👋 Flint, Jozkah tarafından ❤️ ile geliştirilmiştir.",
-  "creditsDesc2": "Açık kaynak bağımlılıklarımıza — özellikle llama.cpp ve Tauri'ye — ve muhteşem yapay zeka topluluğumuza özel teşekkürler."
+  }
 }

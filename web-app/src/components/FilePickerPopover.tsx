@@ -9,7 +9,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
  * active row. The one control that takes focus is the alias-name field, and
  * closing it hands focus back to the composer.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   Bot,
@@ -22,6 +22,7 @@ import {
   FileJson,
   FileType,
   Sparkles,
+  MessageSquareText,
 } from 'lucide-react'
 import {
   optionId,
@@ -66,6 +67,7 @@ const KIND_LABEL: Record<ReferenceKind, string> = {
   skill: 'skill',
   agent: 'agent',
   alias: 'alias',
+  prompt: 'prompt',
 }
 
 function EntryIcon({ entry }: { entry: ReferenceEntry }) {
@@ -75,6 +77,8 @@ function EntryIcon({ entry }: { entry: ReferenceEntry }) {
     return <Sparkles aria-hidden className="size-4 shrink-0 text-violet-500" />
   if (entry.kind === 'agent')
     return <Bot aria-hidden className="size-4 shrink-0 text-emerald-600" />
+  if (entry.kind === 'prompt')
+    return <MessageSquareText aria-hidden className="size-4 shrink-0 text-rose-500" />
   if (entry.kind === 'alias')
     return <Bookmark aria-hidden className="size-4 shrink-0 text-sky-600" />
   const Icon = extIconMap[entry.extension?.toLowerCase() ?? '']
@@ -88,7 +92,6 @@ type FilePickerPopoverProps = {
   /** The text after `@`. */
   query: string
   open: boolean
-  position: { top: number; left: number } | null
   /** Owned by the composer, which moves it with the arrow keys. */
   activeIndex: number
   onActiveChange: (index: number) => void
@@ -107,7 +110,6 @@ export function FilePickerPopover({
   entries,
   query,
   open,
-  position,
   activeIndex,
   onActiveChange,
   onSelect,
@@ -128,12 +130,6 @@ export function FilePickerPopover({
     setAliasLines('')
   }, [aliasDraft])
 
-  const popoverStyle = useMemo(() => {
-    // Never hide an open menu: an invisible one still catches clicks.
-    if (!position) return { bottom: '100%', left: 0 }
-    return { top: position.top, left: position.left }
-  }, [position])
-
   useEffect(() => {
     itemRefs.current.get(activeIndex)?.scrollIntoView?.({ block: 'nearest' })
   }, [activeIndex])
@@ -142,8 +138,7 @@ export function FilePickerPopover({
 
   return (
     <div
-      className="absolute z-50 w-[400px] max-h-[300px] overflow-y-auto rounded-lg border border-border bg-popover shadow-popover p-1"
-      style={popoverStyle}
+      className="absolute bottom-full left-0 z-50 mb-2 w-full max-w-[400px] max-h-[300px] overflow-y-auto rounded-lg border border-border bg-popover shadow-popover p-1"
       data-testid="reference-menu"
     >
       <div className="px-2 py-1.5 text-xs text-muted-foreground border-b border-border/50 mb-1">
@@ -240,7 +235,7 @@ export function FilePickerPopover({
             className={cn(
               'flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm transition-colors',
               idx === activeIndex
-                ? 'bg-primary/10 text-primary-foreground ring-1 ring-primary/40'
+                ? 'bg-primary/10 text-foreground ring-1 ring-primary/40'
                 : 'hover:bg-accent'
             )}
             onMouseDown={(e) => e.preventDefault()}
@@ -252,8 +247,8 @@ export function FilePickerPopover({
             data-token={entry.token}
           >
             <EntryIcon entry={entry} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <div className="flex min-w-0 items-center gap-1.5">
                 <span className="font-medium truncate">{entry.name}</span>
                 <span className="text-xs text-muted-foreground uppercase shrink-0">
                   {entry.kind === 'file'
@@ -262,7 +257,7 @@ export function FilePickerPopover({
                 </span>
               </div>
               {entry.detail && (
-                <div className="text-[11px] text-muted-foreground truncate">
+                <div className="text-[11px] text-muted-foreground truncate whitespace-nowrap">
                   {entry.detail}
                 </div>
               )}

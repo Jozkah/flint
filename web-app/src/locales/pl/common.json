@@ -2676,9 +2676,7 @@
     "errorNetwork": "Nie udało się połączyć z dostawcą. Sprawdź połączenie lub czy serwer działa.",
     "errorEngine": "Silnik uruchamiający ten model jest niedostępny. Uruchom Flint ponownie i spróbuj jeszcze raz.",
     "openProvider": "Otwórz ustawienia dostawcy",
-    "errorDetails": "Szczegóły",
-    "usingModel": "Używa {{model}}",
-    "noModel": "Wybierz model w selektorze modeli"
+    "errorDetails": "Szczegóły"
   },
   "markdownImage": {
     "load": "Wczytaj obraz z {{host}}"

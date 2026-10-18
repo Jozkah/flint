@@ -40,6 +40,12 @@ const CTX: Record<string, number> = {
 }
 
 const SIZES: Record<string, number> = {
+  'Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-IQ4_XS': 15 * 1024 ** 3,
+  'Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-Q4_K_M': 17 * 1024 ** 3,
+  'Qwen3.8-27B-TTURBO-Fable-C-Fusion-709-IQ4_NL': 16 * 1024 ** 3,
+  'LFM2.5-2.6B-Q3.8-TBrilliance-NEO-MAX-Q3_K_M': 3 * 1024 ** 3,
+  'LFM2.5-2.6B-Q3.8-TBrilliance-BF16': 5 * 1024 ** 3,
+  'Cydonia-24B-v4.3-absolute-heresy.i1-Q4_1': 14 * 1024 ** 3,
   'qwen3-8b-instruct': 8.4 * GB,
   'gemma-3-12b-it-Q5_K_M': 8.9 * GB,
   'llama-3.1-8b': 7.9 * GB,
@@ -553,6 +559,10 @@ const ENGINE_EXTENSIONS = [
 ]
 
 function seedExtensions() {
+  // The manager lives on window.core, which ExtensionProvider sets up when the
+  // app mounts. Before that there is nothing to seed (the later seedPreview
+  // passes do it); asking for it now threw an unhandled rejection.
+  if (!(window as unknown as { core?: object }).core) return
   void import('@/lib/extension').then(({ ExtensionManager }) => {
     const map = (
       ExtensionManager.getInstance() as unknown as {

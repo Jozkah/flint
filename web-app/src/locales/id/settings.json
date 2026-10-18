@@ -184,13 +184,7 @@
     "transcriptViewVerbose": "Lengkap",
     "transcriptViewVerboseDesc": "Semuanya: penalaran penuh dan setiap panggilan alat terbuka dengan parameter dan keluarannya.",
     "inlineCitations": "Ikon sumber sebaris",
-    "inlineCitationsDesc": "Tampilkan ikon situs kecil setelah kalimat yang berasal dari sumber web. Matikan untuk membaca jawaban tanpa ikon; sumber tetap tercantum di bawahnya.",
-    "sidebarLayout": "Bilah sisi",
-    "sidebarLayoutDesc": "Seberapa banyak bilah sisi kiri yang ditampilkan.",
-    "sidebarLayout_trimmed": "Diringkas",
-    "sidebarLayout_trimmedDesc": "Obrolan baru, Cowork, Jelajahi, dan obrolan Anda. Ruang, Pustaka, Studio, dan halaman engine dilipat di bawah Lainnya dan Lanjutan.",
-    "sidebarLayout_extended": "Diperluas",
-    "sidebarLayout_extendedDesc": "Semuanya ditampilkan sekaligus: Lainnya dan Lanjutan tetap terbuka."
+    "inlineCitationsDesc": "Tampilkan ikon situs kecil setelah kalimat yang berasal dari sumber web. Matikan untuk membaca jawaban tanpa ikon; sumber tetap tercantum di bawahnya."
   },
   "hardware": {
     "os": "Sistem Operasi",
@@ -514,10 +508,7 @@
     "support": "Dukungan",
     "reportAnIssue": "Laporkan Masalah",
     "reportAnIssueDesc": "Menemukan bug? Bantu kami dengan mengajukan masalah di GitHub.",
-    "reportIssue": "Laporkan Masalah",
-    "credits": "Kredit",
-    "creditsDesc1": "Flint dibuat dengan ❤️ oleh Jozkah.",
-    "creditsDesc2": "Terima kasih khusus kepada dependensi sumber terbuka kami—terutama llama.cpp dan Tauri—dan kepada komunitas AI kami yang luar biasa."
+    "reportIssue": "Laporkan Masalah"
   },
   "extensions": {
     "title": "Ekstensi"
@@ -1159,8 +1150,5 @@
     "showAll": "Tampilkan semua",
     "preview": "Pratinjau",
     "reachable": "Item tersembunyi tetap dapat dijangkau dari palet perintah dan dari Pengaturan."
-  },
-  "credits": "Kredit",
-  "creditsDesc1": "Flint dibuat dengan ❤️ oleh Jozkah.",
-  "creditsDesc2": "Terima kasih khusus kepada dependensi sumber terbuka kami—terutama llama.cpp dan Tauri—dan kepada komunitas AI kami yang luar biasa."
+  }
 }

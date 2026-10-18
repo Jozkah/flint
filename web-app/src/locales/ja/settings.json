@@ -185,13 +185,7 @@
     "transcriptViewVerbose": "詳細",
     "transcriptViewVerboseDesc": "すべて：推論全体と、パラメーターと出力を開いた各ツール呼び出し。",
     "inlineCitations": "本文中のソースアイコン",
-    "inlineCitationsDesc": "Web ソースに基づく文の後ろに小さなサイトアイコンを表示します。オフにすると回答をアイコンなしで読めます。ソースは下に一覧表示されたままです。",
-    "sidebarLayout": "サイドバー",
-    "sidebarLayoutDesc": "左サイドバーに表示する項目の量です。",
-    "sidebarLayout_trimmed": "簡易",
-    "sidebarLayout_trimmedDesc": "新しいチャット、Cowork、探索、チャットのみ表示します。ルーム、ライブラリ、スタジオ、エンジンのページは「その他」と「詳細設定」にまとめられます。",
-    "sidebarLayout_extended": "拡張",
-    "sidebarLayout_extendedDesc": "すべてを一度に表示します。「その他」と「詳細設定」は開いたままになります。"
+    "inlineCitationsDesc": "Web ソースに基づく文の後ろに小さなサイトアイコンを表示します。オフにすると回答をアイコンなしで読めます。ソースは下に一覧表示されたままです。"
   },
   "hardware": {
     "os": "オペレーティングシステム",
@@ -516,10 +510,7 @@
     "support": "サポート",
     "reportAnIssue": "問題を報告",
     "reportAnIssueDesc": "バグを見つけましたか？GitHubで問題を報告して、私たちを助けてください。",
-    "reportIssue": "問題を報告",
-    "credits": "クレジット",
-    "creditsDesc1": "👋 FlintはJozkahが❤️を込めて作っています。",
-    "creditsDesc2": "オープンソースの依存関係、特にllama.cppとTauri、そして素晴らしいAIコミュニティに感謝します。"
+    "reportIssue": "問題を報告"
   },
   "extensions": {
     "title": "拡張機能"
@@ -1162,8 +1153,5 @@
     "showAll": "すべて表示",
     "preview": "プレビュー",
     "reachable": "非表示の項目も、コマンドパレットと設定から開けます。"
-  },
-  "credits": "クレジット",
-  "creditsDesc1": "👋 FlintはJozkahが❤️を込めて作っています。",
-  "creditsDesc2": "オープンソースの依存関係、特にllama.cppとTauri、そして素晴らしいAIコミュニティに感謝します。"
+  }
 }

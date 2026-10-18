@@ -388,6 +388,7 @@ vi.mock('@/lib/safeReferences', async (importOriginal) => ({
 
 // Import component AFTER all mocks
 import ChatInput from '../ChatInput'
+import { usePromptLibrary } from '@/lib/promptLibrary'
 
 // Helpers -------------------------------------------------------------------
 
@@ -1426,6 +1427,28 @@ describe('ChatInput', () => {
   })
 })
 
+describe('ChatInput @ menu placement', () => {
+  beforeEach(() => {
+    resetAll()
+    usePromptLibrary.setState({ prompts: [] })
+    usePromptLibrary.getState().add({ name: 'Review code', body: 'Review it', tags: [] })
+  })
+
+  it('anchors the @ menu above the editor, like the slash menu, so it never covers the typed line', async () => {
+    const view = renderInput()
+    promptState = '@'
+    fireEvent.change(getTextarea(), { target: { value: '@' } })
+    view.rerender(<ChatInput />)
+    const menu = await screen.findByTestId('reference-menu')
+    // The popover's `bottom-full` is measured from its anchor. An anchor after
+    // the editor puts the menu's bottom edge inside the line being typed.
+    const editor = getTextarea()
+    expect(
+      menu.compareDocumentPosition(editor) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+})
+
 describe('ChatInput slash commands', () => {
   beforeEach(() => {
     resetAll()
@@ -1492,5 +1515,71 @@ describe('ChatInput slash commands', () => {
         expect.any(Function)
       )
     )
+  })
+})
+
+describe('ChatInput paste', () => {
+  const PNG_B64 = 'iVBORw0KGgo='
+  const visionModel = () => {
+    selectedModelOverride = {
+      id: 'model-a',
+      capabilities: ['tools', 'vision'],
+      provider: 'llamacpp',
+    }
+  }
+  const attachedImages = () =>
+    setAttachmentsMock.mock.calls
+      .flatMap((call) => {
+        const next = typeof call[1] === 'function' ? call[1]([]) : call[1]
+        return next as any[]
+      })
+      .filter((a) => a?.type === 'image')
+
+  beforeEach(() => {
+    resetAll()
+    setAttachmentsMock.mockClear()
+    visionModel()
+  })
+
+  it('turns a pasted image/png clipboard item into an image attachment', async () => {
+    renderInput()
+    const file = new File([Uint8Array.from(atob(PNG_B64), (c) => c.charCodeAt(0))], 'shot.png', {
+      type: 'image/png',
+    })
+    const event = new Event('paste', { bubbles: true, cancelable: true }) as any
+    event.clipboardData = {
+      getData: () => '',
+      items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }],
+    }
+    await act(async () => {
+      getTextarea().dispatchEvent(event)
+    })
+    // The default text paste is suppressed because an image was taken.
+    expect(event.defaultPrevented).toBe(true)
+    await waitFor(() => expect(attachedImages().length).toBe(1))
+    expect(attachedImages()[0]).toMatchObject({ type: 'image', name: 'shot.png' })
+  })
+
+  it('falls back to navigator.clipboard.read when the event carries no files', async () => {
+    renderInput()
+    const blob = new Blob([Uint8Array.from(atob(PNG_B64), (c) => c.charCodeAt(0))], {
+      type: 'image/png',
+    })
+    const read = vi.fn().mockResolvedValue([
+      { types: ['image/png'], getType: async () => blob },
+    ])
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { read },
+      configurable: true,
+    })
+    const event = new Event('paste', { bubbles: true, cancelable: true }) as any
+    event.clipboardData = { getData: () => '', items: [] }
+    await act(async () => {
+      getTextarea().dispatchEvent(event)
+    })
+    await waitFor(() => expect(attachedImages().length).toBe(1))
+    expect(read).toHaveBeenCalled()
+    expect(attachedImages()[0].name).toMatch(/^pasted-image-\d+\.png$/)
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
   })
 })

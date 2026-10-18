@@ -2580,9 +2580,7 @@
     "errorNetwork": "无法连接到提供商。请检查网络连接，或确认服务器正在运行。",
     "errorEngine": "运行此模型的引擎不可用。请重启 Flint 后重试。",
     "openProvider": "打开提供商设置",
-    "errorDetails": "详情",
-    "usingModel": "正在使用 {{model}}",
-    "noModel": "请在模型选择器中选择模型"
+    "errorDetails": "详情"
   },
   "markdownImage": {
     "load": "从 {{host}} 加载图片"

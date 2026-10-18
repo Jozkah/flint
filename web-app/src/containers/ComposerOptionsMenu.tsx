@@ -1,7 +1,7 @@
 import { SlidersHorizontal } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 /** The composer's less-used controls behind one compact icon button. */
 export function ComposerOptionsMenu({
@@ -13,10 +13,26 @@ export function ComposerOptionsMenu({
   active: readonly string[]
   children: ReactNode
 }) {
+  // The panel opens above the whole composer box, not above its own trigger:
+  // anchored to the trigger it floated over the input text.
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [box, setBox] = useState<HTMLElement | null>(null)
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open) =>
+        setBox(
+          open
+            ? (triggerRef.current
+                ?.closest<HTMLElement>('[data-composer-footer]')
+                ?.parentElement?.querySelector<HTMLElement>('[data-composer-box]') ?? null)
+            : null
+        )
+      }
+    >
+      {box && <PopoverAnchor virtualRef={{ current: box }} />}
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           variant="ghost"
           size="icon-xs"
           aria-label={label}
@@ -30,7 +46,14 @@ export function ComposerOptionsMenu({
       <PopoverContent
         align="start"
         side="top"
+        sideOffset={8}
         collisionPadding={12}
+        // Focus the panel itself, not its first control: that control's tooltip
+        // opened on focus and took the first Escape, so closing took two.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          ;(event.target as HTMLElement | null)?.focus?.()
+        }}
         className="flex w-auto flex-wrap items-center gap-1 p-1.5"
         data-testid="composer-options-panel"
       >

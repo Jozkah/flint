@@ -2578,9 +2578,7 @@
     "errorNetwork": "Sağlayıcıya ulaşılamadı. Bağlantınızı ve sunucunun çalıştığını kontrol edin.",
     "errorEngine": "Bu modeli çalıştıran motor kullanılamıyor. Flint'i yeniden başlatıp tekrar deneyin.",
     "openProvider": "Sağlayıcı ayarlarını aç",
-    "errorDetails": "Ayrıntılar",
-    "usingModel": "{{model}} kullanılıyor",
-    "noModel": "Model seçicisinden bir model seçin"
+    "errorDetails": "Ayrıntılar"
   },
   "markdownImage": {
     "load": "Görseli {{host}} adresinden yükle"

@@ -32,9 +32,10 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ParametersSection } from '@/containers/ParametersSection'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useDraftSampling } from '@/hooks/useDraftSampling'
 import { paramsSettings, type ParamDef } from '@/lib/predefinedParams'
 import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
-import { cn } from '@/lib/utils'
+import { cn, getProviderTitle } from '@/lib/utils'
 
 interface SamplerPopoverProps {
   /** Provider ID of the currently-selected model, if any. Used to scope the
@@ -52,13 +53,18 @@ interface SamplerPopoverProps {
     setSelectedAssistantId: (id: string) => void
     updateCurrentThreadAssistant: (assistant: Assistant) => void
   }
+  /** Off-thread edits wait in a draft for the new chat instead of changing
+   *  the assistant itself. Off for surfaces that read the assistant directly. */
+  draftOffThread?: boolean
 }
 
 export function SamplerPopover({
   providerId,
   modelId,
   assistantSwitcher,
+  draftOffThread = false,
 }: SamplerPopoverProps) {
+  const { t } = useTranslation()
   const currentAssistant = useAssistant((s) => s.currentAssistant)
   const updateAssistant = useAssistant((s) => s.updateAssistant)
   const assistantsLoading = useAssistant((s) => s.loading)
@@ -93,12 +99,21 @@ export function SamplerPopover({
       : undefined
     : selectedAssistant
 
-  const params = activeAssistant?.parameters ?? {}
+  const draftParams = useDraftSampling((s) =>
+    activeAssistant ? s.byAssistant[activeAssistant.id] : undefined
+  )
+  const useDraft = draftOffThread && !inThread
+  const params =
+    (useDraft ? draftParams : undefined) ?? activeAssistant?.parameters ?? {}
   const samplerKeys = Object.keys(params).filter((k) => k in paramsSettings)
   const hasOverrides = samplerKeys.length > 0
 
   const writeParams = (next: Record<string, unknown>) => {
     if (!activeAssistant) return
+    if (useDraft) {
+      useDraftSampling.getState().set(activeAssistant.id, next)
+      return
+    }
     const updated = { ...activeAssistant, parameters: next }
     if (isThreadAssistant && assistantSwitcher) {
       // Sampling overrides belong to this thread. Updating the canonical
@@ -147,7 +162,35 @@ export function SamplerPopover({
     writeParams(next)
   }
 
-  if (isPredefinedRemoteProvider(providerId)) return null
+  if (isPredefinedRemoteProvider(providerId)) {
+    // Remote providers manage their own sampling. Keep the control visible
+    // (disabled) so it is discoverable and explains itself.
+    const providerName =
+      providers.find((x) => x.provider === providerId)?.displayName ||
+      getProviderTitle(providerId as string)
+    const reason = t('common:sampler.notSupported', { provider: providerName })
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex" tabIndex={0} data-testid="sampler-unsupported">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t('common:sampler.label')}
+              title={reason}
+              className="size-7 rounded-[7px] pointer-coarse:size-11"
+              disabled
+            >
+              <SlidersHorizontal className="size-[15px] text-muted-foreground" />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{reason}</p>
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
 
   const triggerLabel = assistantsLoading
     ? 'Loading assistant…'
@@ -163,7 +206,7 @@ export function SamplerPopover({
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label="Sampling parameters"
+              aria-label={t('common:sampler.label')}
               className="relative size-7 rounded-[7px] pointer-coarse:size-11"
               disabled={assistantsLoading}
             >

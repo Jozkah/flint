@@ -2537,9 +2537,7 @@
     "errorNetwork": "Tidak dapat menjangkau penyedia. Periksa koneksi Anda atau pastikan server berjalan.",
     "errorEngine": "Engine yang menjalankan model ini tidak tersedia. Mulai ulang Flint lalu coba lagi.",
     "openProvider": "Buka pengaturan penyedia",
-    "errorDetails": "Detail",
-    "usingModel": "Menggunakan {{model}}",
-    "noModel": "Pilih model di pemilih model"
+    "errorDetails": "Detail"
   },
   "markdownImage": {
     "load": "Muat gambar dari {{host}}"

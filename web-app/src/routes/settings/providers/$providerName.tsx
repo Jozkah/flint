@@ -13,6 +13,8 @@ import {
   isLocalProvider,
 } from '@/lib/utils'
 import { sortModels } from '@/lib/modelSort'
+import { groupModelsByFamily } from '@/lib/modelGroups'
+import { useModelLibrary } from '@/hooks/useModelLibrary'
 import { createFileRoute, Link, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -31,6 +33,7 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
+import { BedrockCredentials } from '@/containers/BedrockCredentials'
 import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
 import { ProviderTlsTrust } from '@/containers/ProviderTlsTrust'
 import { applyCustomHeaders } from '@/lib/customHeaders'
@@ -65,6 +68,8 @@ import {
 import { useModelLoad } from '@/hooks/useModelLoad'
 import { useAppState } from '@/hooks/useAppState'
 import { useShallow } from 'zustand/shallow'
+import { azureApiVersionSetting } from '@/lib/model-factory'
+import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { DialogAddModel } from '@/containers/dialogs/AddModel'
 import {
   providerHasRemoteApiKeys,
@@ -88,6 +93,8 @@ import {
   SettingsWithSections,
 } from '@/containers/SettingsPageHeader'
 import { Chip } from '@/components/ui/chip'
+import { MiddleText } from '@/components/ui/middle-text'
+import { parseModelName } from '@/lib/modelDisplayName'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import {
@@ -121,6 +128,10 @@ const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: stri
   azure: {
     description: 'providers:baseUrl.azureDescription',
     placeholder: AZURE_BASE_URL_PLACEHOLDER,
+  },
+  bedrock: {
+    description: 'providers:baseUrl.bedrockDescription',
+    placeholder: 'https://bedrock-runtime.us-east-1.amazonaws.com',
   },
   litellm: {
     description: 'providers:baseUrl.litellmDescription',
@@ -160,7 +171,7 @@ function contextLengthOf(model: Model): number | undefined {
 
 /** Models table columns: mark, name, capabilities, (size, context,) status, actions. */
 const LOCAL_COLS =
-  '30px minmax(110px,1fr) 64px 60px 64px 136px auto'
+  '30px minmax(110px,1fr) 64px 72px 80px 156px 252px'
 const REMOTE_COLS = '30px minmax(140px,1fr) 72px 130px auto'
 
 /** How many recent replies the speed chart shows. */
@@ -201,6 +212,7 @@ function ProviderDetail() {
   const [importingModel, setImportingModel] = useState<string | null>(null)
   const [apiKeysDraft, setApiKeysDraft] = useState('')
   const [baseUrlDraft, setBaseUrlDraft] = useState('')
+  const [apiVersionDraft, setApiVersionDraft] = useState('')
   const [showAdvancedApiKeys, setShowAdvancedApiKeys] = useState(false)
   const [isTestingKeys, setIsTestingKeys] = useState(false)
   const [keyCheckResults, setKeyCheckResults] = useState<
@@ -265,9 +277,18 @@ function ProviderDetail() {
   )
   // A hosted provider can list hundreds of models, so past a threshold the
   // list gets a filter box and renders in pages instead of all at once.
-  const [modelQuery, setModelQuery] = useState('')
+  // The query is kept per provider, so leaving the page and coming back does
+  // not wipe it.
+  const modelQuery = useModelLibrary((s) => s.filterQuery[providerName] ?? '')
+  const setStoredQuery = useModelLibrary((s) => s.setFilterQuery)
+  const setModelQuery = useCallback(
+    (query: string) => setStoredQuery(providerName, query),
+    [setStoredQuery, providerName]
+  )
+  const expandedGroups = useModelLibrary((s) => s.expandedGroups[providerName])
+  const toggleGroup = useModelLibrary((s) => s.toggleGroup)
   const [modelLimit, setModelLimit] = useState(MODEL_PAGE_SIZE)
-  const canFilterModels = !isEngineProvider && allModels.length > MODEL_FILTER_MIN
+  const canFilterModels = allModels.length > MODEL_FILTER_MIN
   const filteredModels = useMemo(() => {
     const words = modelQuery.toLowerCase().split(/\s+/).filter(Boolean)
     if (!canFilterModels || words.length === 0) return allModels
@@ -277,6 +298,39 @@ function ProviderDetail() {
     })
   }, [allModels, canFilterModels, modelQuery])
   useEffect(() => setModelLimit(MODEL_PAGE_SIZE), [modelQuery, providerName])
+  // A long local list is grouped by model family, collapsed until opened. A
+  // filter in use opens every group so the matches are visible.
+  const listedModels = useMemo(
+    () =>
+      isLlamacpp
+        ? filteredModels.filter((m) => (m as any).embedding !== true)
+        : filteredModels.slice(0, modelLimit),
+    [isLlamacpp, filteredModels, modelLimit]
+  )
+  const groupModels = isEngineProvider && canFilterModels
+  const modelEntries = useMemo(() => {
+    type Entry =
+      | { kind: 'model'; model: (typeof listedModels)[number] }
+      | { kind: 'group'; family: string; count: number; open: boolean }
+    if (!groupModels) {
+      return listedModels.map((model): Entry => ({ kind: 'model', model }))
+    }
+    const entries: Entry[] = []
+    for (const group of groupModelsByFamily(listedModels)) {
+      const open =
+        modelQuery.trim() !== '' || !!expandedGroups?.includes(group.family)
+      entries.push({
+        kind: 'group',
+        family: group.family,
+        count: group.models.length,
+        open,
+      })
+      if (open) {
+        for (const model of group.models) entries.push({ kind: 'model', model })
+      }
+    }
+    return entries
+  }, [groupModels, listedModels, modelQuery, expandedGroups])
   const defaultEmbeddingModelId = useDefaultEmbeddingModel((s) =>
     isLlamacpp ? s.getDefault('llamacpp') : undefined
   )
@@ -565,6 +619,34 @@ function ProviderDetail() {
       serviceHub.providers().deleteProviderKeys(providerName)
     }
   }, [apiKeysDraft, provider, providerName, serviceHub, updateProvider])
+
+  // Azure's legacy deployments-style endpoints take an api-version the URL may
+  // not carry; it lives in the provider's `api-version` setting.
+  // The draft follows the stored value (provider switch, import, reset), so a
+  // stale draft can never be committed over a newer stored value.
+  const storedApiVersion =
+    provider?.provider === 'azure' ? azureApiVersionSetting(provider) : null
+  useEffect(() => {
+    if (storedApiVersion !== null) setApiVersionDraft(storedApiVersion)
+  }, [providerName, storedApiVersion])
+
+  const commitApiVersionDraft = useCallback(() => {
+    if (!provider || provider.provider !== 'azure') return
+    const next = apiVersionDraft.trim()
+    if (next === azureApiVersionSetting(provider)) return
+    const settings = provider.settings.some((s) => s.key === 'api-version')
+      ? provider.settings.map((s) =>
+          s.key === 'api-version'
+            ? ({
+                ...s,
+                controller_props: { ...s.controller_props, value: next },
+              } as ProviderSetting)
+            : s
+        )
+      : provider.settings
+    serviceHub.providers().updateSettings(providerName, settings)
+    updateProvider(providerName, { ...provider, settings })
+  }, [apiVersionDraft, provider, providerName, serviceHub, updateProvider])
 
   const commitBaseUrlDraft = useCallback(() => {
     if (!provider || !EDITABLE_ENDPOINT[provider.provider]) return
@@ -890,12 +972,15 @@ function ProviderDetail() {
       })
   }
 
+  const bedrockCredentialsSaved = useBedrockCredentials((state) => state.saved)
   const apiKeyMissing =
     !!provider &&
     !isEngineProvider &&
     !!provider.base_url &&
     classifyModelLocation({ baseUrl: provider.base_url }) === 'remote' &&
-    !providerHasRemoteApiKeys(provider)
+    (provider.provider === 'bedrock'
+      ? !bedrockCredentialsSaved
+      : !providerHasRemoteApiKeys(provider))
 
   const statusFor = (modelId: string) =>
     deriveModelStatus({
@@ -939,6 +1024,20 @@ function ProviderDetail() {
   ) => {
     const file = localFiles[model.id]
     const contextLength = contextLengthOf(model)
+    const displayName = getModelDisplayName(model)
+    const secondaryLine = isEngineProvider
+      ? (file?.fileName ?? model.id)
+      : model.id
+    const parsed = parseModelName(displayName)
+    const quant = parsed.quant ?? parseModelName(secondaryLine).quant
+    const shownName = parsed.quant ? parsed.base : displayName
+    const rowTitle = [
+      displayName,
+      secondaryLine !== displayName ? secondaryLine : null,
+      file?.sizeBytes ? formatBytes(file.sizeBytes) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ')
     return (
       <li
         key={key}
@@ -946,6 +1045,11 @@ function ProviderDetail() {
         className={cn(
           TBOX_ROW,
           'relative',
+          // Below the threshold the row is a two-line card: identity on the
+          // first line, figures + status + actions on the second.
+          isEngineProvider
+            ? '@max-[880px]:flex @max-[880px]:flex-wrap @max-[880px]:gap-y-2'
+            : '@max-[560px]:flex @max-[560px]:flex-wrap @max-[560px]:gap-y-2',
           options.selected && 'bg-accent'
         )}
       >
@@ -958,33 +1062,74 @@ function ProviderDetail() {
             />
           )}
         </span>
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div
+          className={cn(
+            'flex min-w-0 flex-col gap-0.5',
+            isEngineProvider
+              ? '@max-[880px]:min-w-[8rem] @max-[880px]:flex-1'
+              : '@max-[560px]:min-w-[8rem] @max-[560px]:flex-1'
+          )}
+        >
           <span className="flex min-w-0 items-center gap-1.5">
             <span
               className="min-w-0 truncate text-[13px] font-medium text-foreground"
-              title={model.id}
+              title={rowTitle}
+              aria-label={rowTitle}
             >
-              {getModelDisplayName(model)}
+              {shownName}
             </span>
             {options.badges}
             {model.imported && (
               <Chip
-                className="h-[18px]"
+                className="h-[18px] shrink-0"
                 title={t('providers:importedTooltip')}
               >
                 {t('providers:imported')}
               </Chip>
             )}
+            {quant && (
+              <Chip
+                mono
+                className="h-[18px]"
+                data-testid="model-quant-chip"
+              >
+                {quant}
+              </Chip>
+            )}
           </span>
           {/* A renamed model still answers to its own identifier, which is
-              what requests carry; a local one also names its file. */}
-          <small className="truncate font-mono text-[11px] text-subtle-foreground">
-            {isEngineProvider
-              ? (file?.fileName ?? model.id)
-              : model.id}
-          </small>
+              what requests carry; a local one also names its file. The cut
+              is in the middle so the quant and extension stay readable. */}
+          <MiddleText
+            text={secondaryLine}
+            className="font-mono text-[11px] text-subtle-foreground"
+            title={rowTitle}
+            data-testid="model-secondary-line"
+          />
         </div>
-        <CapabilityChips iconOnly capabilities={model.capabilities || []} />
+        {/* Always a cell, even with no capabilities: CapabilityChips renders
+            nothing then, and every later column would slide one place left
+            (the status pill landing in the 80px context column). Collapsed
+            in the two-line card, where there are no columns to hold. */}
+        <span
+          data-testid="model-capabilities-cell"
+          className={cn(
+            'flex min-w-0 items-center',
+            isEngineProvider
+              ? '@max-[880px]:empty:hidden'
+              : '@max-[560px]:empty:hidden'
+          )}
+        >
+          <CapabilityChips iconOnly capabilities={model.capabilities || []} />
+        </span>
+        {/* Line break between the two lines of the narrow card. */}
+        <span
+          aria-hidden
+          className={cn(
+            'hidden h-0 basis-full',
+            isEngineProvider ? '@max-[880px]:block' : '@max-[560px]:block'
+          )}
+        />
         {isEngineProvider && (
           <>
             <span className="tabular-nums text-fg-2">
@@ -995,10 +1140,22 @@ function ProviderDetail() {
             </span>
           </>
         )}
-        <span className="flex min-w-0 items-center">
+        <span
+          className={cn(
+            'flex min-w-0 items-center [&>*]:max-w-full [&>*]:truncate',
+            isEngineProvider
+              ? '@max-[880px]:min-w-[7rem] @max-[880px]:flex-1'
+              : '@max-[560px]:min-w-[7rem] @max-[560px]:flex-1'
+          )}
+        >
           {renderStatus(model.id)}
         </span>
-        <div className="flex flex-nowrap items-center justify-end gap-0.5">
+        <div
+          className={cn(
+            'flex flex-nowrap items-center justify-end gap-0.5',
+            isEngineProvider ? '@max-[880px]:ml-auto' : '@max-[560px]:ml-auto'
+          )}
+        >
           {options.actions}
         </div>
       </li>
@@ -1041,6 +1198,9 @@ function ProviderDetail() {
     .map((setting, settingIndex) => ({ setting, settingIndex }))
     .filter(({ setting }) => {
       if (setting.key === 'api-key' && !isEngineProvider) return false
+      // Azure's api-version has its own field above the key section.
+      if (provider?.provider === 'azure' && setting.key === 'api-version')
+        return false
       if (provider?.provider === 'llamacpp' && setting.key === 'fit_ctx')
         return false
       return true
@@ -1267,9 +1427,17 @@ function ProviderDetail() {
             />
           </div>
         )}
-        {provider?.models.length ? (
+        {canFilterModels && modelQuery.trim() !== '' && filteredModels.length === 0 ? (
+          <p
+            role="status"
+            data-testid="models-no-match"
+            className="px-2 py-6 text-center text-sm text-muted-foreground"
+          >
+            {t('providers:noModelsMatch', { query: modelQuery.trim() })}
+          </p>
+        ) : provider?.models.length ? (
           <TBox
-            className={isEngineProvider ? 'min-w-[660px]' : 'min-w-[480px]'}
+            className="@container"
             columns={isEngineProvider ? LOCAL_COLS : REMOTE_COLS}
           >
             {isLlamacpp &&
@@ -1277,10 +1445,24 @@ function ProviderDetail() {
               chatModels.length > 0 &&
               sectionDivider(t('providers:chatModels'), 'mt-1 mb-1')}
             <ul className="flex flex-col">
-              {(isLlamacpp
-                ? chatModels
-                : filteredModels.slice(0, modelLimit)
-              ).map((model, modelIndex) => {
+              {modelEntries.map((entry, modelIndex) => {
+                if (entry.kind === 'group') {
+                  return (
+                    <li key={`group-${entry.family}`}>
+                      <button
+                        type="button"
+                        aria-expanded={entry.open}
+                        onClick={() => toggleGroup(providerName, entry.family)}
+                        className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        <span aria-hidden>{entry.open ? '▾' : '▸'}</span>
+                        <span className="capitalize">{entry.family}</span>
+                        <span className="text-xs">({entry.count})</span>
+                      </button>
+                    </li>
+                  )
+                }
+                const model = entry.model
                 const isActive = activeModels.some(
                   (activeModel) => activeModel === model.id
                 )
@@ -1442,7 +1624,7 @@ function ProviderDetail() {
             }
           />
         )}
-        {canFilterModels && (
+        {canFilterModels && filteredModels.length > 0 && (
           <div className="mt-2 flex items-center justify-between gap-2 text-sm text-muted-foreground">
             <span>
               {t('providers:modelsShown', {
@@ -1450,7 +1632,7 @@ function ProviderDetail() {
                 total: filteredModels.length,
               })}
             </span>
-            {filteredModels.length > modelLimit && (
+            {!isLlamacpp && filteredModels.length > modelLimit && (
               <Button
                 size="sm"
                 variant="outline"
@@ -1531,7 +1713,32 @@ function ProviderDetail() {
             />
           </div>
         )}
-        <div className="space-y-3">
+        {provider.provider === 'azure' && (
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <h3 className="text-[13px] font-medium text-foreground">
+                {t('providers:apiVersion.title')}
+              </h3>
+              <p className="text-xs leading-normal text-muted-foreground">
+                {t('providers:apiVersion.description')}
+              </p>
+            </div>
+            <input
+              className="flex h-8 w-full min-w-0 rounded-lg border-[0.8px] border-input bg-card px-2.5 py-1 font-mono text-base text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-xs"
+              placeholder="2024-10-21"
+              data-testid="azure-api-version"
+              value={apiVersionDraft}
+              onChange={(e) => setApiVersionDraft(e.target.value)}
+              onBlur={() => commitApiVersionDraft()}
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </div>
+        )}
+        {provider.provider === 'bedrock' && <BedrockCredentials />}
+        <div
+          className={provider.provider === 'bedrock' ? 'hidden' : 'space-y-3'}
+        >
           <div className="space-y-1">
             <h3 className="text-[13px] font-medium text-foreground">
               {t('providers:apiKeys.title')}
@@ -1773,7 +1980,7 @@ function ProviderDetail() {
               className="rounded-xl shadow-[0_0_0_0.8px_var(--border),0_8px_20px_-12px_rgba(0,0,0,.5)]"
             />
             <div className="min-w-0">
-              <h2 className="mb-2 truncate text-[22px] leading-none font-medium text-foreground">
+              <h2 className="descender-safe mb-2 truncate text-[22px] leading-none font-medium text-foreground">
                 {title}
               </h2>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1922,22 +2129,31 @@ function ProviderDetail() {
           </p>
         )}
 
-        <div className="grid items-start gap-4 min-[1150px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-4">
-            {modelsFrame}
-            {!isEngineProvider && speedFrame}
-          </div>
-          <div className="flex min-w-0 flex-col gap-4">
-            {note}
-            {isEngineProvider ? speedFrame : apiFrame}
-            {!isEngineProvider && settingsFrames}
-            {dangerFrame}
-          </div>
-        </div>
-
-        {isEngineProvider && settingsFrames && settingsFrames.length > 0 && (
-          <div className="grid items-start gap-4 min-[1150px]:grid-cols-2">
-            {settingsFrames}
+        {isEngineProvider ? (
+          <>
+            {/* The library is the page: full width, so a long row never
+                squeezes its actions. The cards under it share equal-height
+                rows instead of two ragged columns. */}
+            <div className="min-w-0">{modelsFrame}</div>
+            {/* An odd last card spans the row: no half-empty row at the foot. */}
+            <div className="grid items-stretch gap-4 min-[1000px]:grid-cols-2 [&>*]:min-w-0 [&>*:last-child:nth-child(odd)]:col-span-full">
+              {speedFrame}
+              {note}
+              {settingsFrames}
+            </div>
+          </>
+        ) : (
+          <div className="grid items-start gap-4 min-[1150px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            <div className="flex min-w-0 flex-col gap-4">
+              {modelsFrame}
+              {speedFrame}
+            </div>
+            <div className="flex min-w-0 flex-col gap-4">
+              {note}
+              {apiFrame}
+              {settingsFrames}
+              {dangerFrame}
+            </div>
           </div>
         )}
       </EnginePage>

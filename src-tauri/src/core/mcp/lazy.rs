@@ -250,13 +250,26 @@ pub fn usable_cached_tools(
 
 // ---- Process-wide hook ------------------------------------------------------
 
-type EnsureAllFn = dyn Fn() -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync;
+type EnsureAllFn =
+    dyn Fn(Option<Duration>) -> std::pin::Pin<Box<dyn Future<Output = Vec<String>> + Send>>
+        + Send
+        + Sync;
 
 static ENSURE_ALL_HOOK: OnceLock<Box<EnsureAllFn>> = OnceLock::new();
+
+/// How long an agent turn waits for enabled servers to start before going on
+/// without the slow ones. A server that never answers `initialize` would
+/// otherwise hold the first turn for the whole [`MCP_INIT_TIMEOUT`]
+/// (120 s); the cap leaves it starting in the background instead.
+///
+/// [`MCP_INIT_TIMEOUT`]: super::helpers::MCP_INIT_TIMEOUT
+pub const AGENT_MCP_START_WAIT: Duration = Duration::from_secs(25);
 
 /// Installed by the desktop app at setup: starts every enabled server that is
 /// not running. Paths that only hold `SharedMcpServers` (the Cowork agent
 /// loop, the local API server's tool execution) call [`ensure_enabled_started`].
+/// The hook waits at most the given time (`None` = until all are settled) and
+/// returns the servers still starting when it stopped waiting.
 pub fn install_ensure_all_hook(hook: Box<EnsureAllFn>) {
     let _ = ENSURE_ALL_HOOK.set(hook);
 }
@@ -264,7 +277,52 @@ pub fn install_ensure_all_hook(hook: Box<EnsureAllFn>) {
 /// Start every enabled server that is not running; no-op without the hook.
 pub async fn ensure_enabled_started() {
     if let Some(hook) = ENSURE_ALL_HOOK.get() {
-        hook().await;
+        hook(None).await;
+    }
+}
+
+/// Like [`ensure_enabled_started`] but gives up waiting after `cap`: servers
+/// not settled by then keep starting in the background (they are not
+/// cancelled) and their names are returned.
+pub async fn ensure_enabled_started_within(cap: Duration) -> Vec<String> {
+    match ENSURE_ALL_HOOK.get() {
+        Some(hook) => hook(Some(cap)).await,
+        None => Vec::new(),
+    }
+}
+
+/// Run each start to completion on its own task, waiting at most `cap` for
+/// all of them together. A start that has not finished by then is left
+/// running (dropping a join handle detaches the task) and its name returned.
+pub async fn wait_for_starts<F>(starts: Vec<(String, F)>, cap: Duration) -> Vec<String>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let deadline = tokio::time::Instant::now() + cap;
+    let spawned: Vec<_> = starts
+        .into_iter()
+        .map(|(name, start)| (name, tokio::spawn(start)))
+        .collect();
+    let mut slow = Vec::new();
+    for (name, mut handle) in spawned {
+        if tokio::time::timeout_at(deadline, &mut handle).await.is_err() {
+            slow.push(name);
+        }
+    }
+    slow
+}
+
+/// The one-line notice for servers an agent turn did not wait for.
+pub fn slow_start_notice(names: &[String]) -> Option<String> {
+    match names {
+        [] => None,
+        [one] => Some(format!(
+            "MCP server {one} is still starting; its tools will appear when ready"
+        )),
+        many => Some(format!(
+            "MCP servers {} are still starting; their tools will appear when ready",
+            many.join(", ")
+        )),
     }
 }
 
@@ -410,5 +468,54 @@ mod tests {
         write_tool_cache(&path, &cache).unwrap();
         assert_eq!(read_tool_cache(&path), cache);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_silent_start_does_not_hold_the_wait_and_keeps_running() {
+        let done = Arc::new(AtomicBool::new(false));
+        let late = done.clone();
+        let started = Instant::now();
+        let slow = wait_for_starts(
+            vec![
+                ("quick".to_string(), Box::pin(async {}) as std::pin::Pin<Box<dyn Future<Output = ()> + Send>>),
+                (
+                    "silent".to_string(),
+                    Box::pin(async move {
+                        tokio::time::sleep(Duration::from_millis(400)).await;
+                        late.store(true, Ordering::SeqCst);
+                    }),
+                ),
+            ],
+            Duration::from_millis(50),
+        )
+        .await;
+        assert_eq!(slow, vec!["silent".to_string()]);
+        assert!(started.elapsed() < Duration::from_millis(300));
+        assert!(!done.load(Ordering::SeqCst));
+        // Not killed: it finishes on its own after the wait gave up.
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        assert!(done.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn nothing_is_slow_when_every_start_settles_in_time() {
+        let slow = wait_for_starts(
+            vec![("a".to_string(), std::future::ready(())), ("b".to_string(), std::future::ready(()))],
+            Duration::from_secs(5),
+        )
+        .await;
+        assert!(slow.is_empty());
+    }
+
+    #[test]
+    fn the_notice_names_the_slow_servers() {
+        assert_eq!(slow_start_notice(&[]), None);
+        assert_eq!(
+            slow_start_notice(&["fs".to_string()]).unwrap(),
+            "MCP server fs is still starting; its tools will appear when ready"
+        );
+        assert!(slow_start_notice(&["a".to_string(), "b".to_string()])
+            .unwrap()
+            .starts_with("MCP servers a, b are still starting"));
     }
 }

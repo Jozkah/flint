@@ -63,6 +63,12 @@ function providers(): ModelProvider[] {
         model('llama-3.1-8b', 'Llama 3.1 8B', ['tools', 'vision']),
         model('Mistral-Small-3.2-24B-Q4_K_S', 'Mistral Small 3.2', ['tools']),
         model('phi-4-mini-Q8_0', 'Phi-4 mini', ['tools']),
+        model('Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-IQ4_XS', 'Qwen3.6-27B-IQ4_XS-LORA-Davidau-Fable', ['tools']),
+        model('Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-Q4_K_M', 'Qwen3.6-27B-Q4_K_M-Davidau-Fable', ['tools']),
+        model('Qwen3.8-27B-TTURBO-Fable-C-Fusion-709-IQ4_NL', 'Qwen3.8-27b-IQ4_NL-Davidau', ['tools']),
+        model('LFM2.5-2.6B-Q3.8-TBrilliance-NEO-MAX-Q3_K_M', 'LFM2.5-2.6B', ['tools']),
+        model('LFM2.5-2.6B-Q3.8-TBrilliance-BF16', 'LFM2.5-2.6B', ['tools']),
+        model('Cydonia-24B-v4.3-absolute-heresy.i1-Q4_1', 'Cydonia-24B-Q4_1-v4.3-Absolute-Heresy', ['tools']),
       ],
     },
     {
@@ -119,14 +125,31 @@ const FOLDERS = [
   { id: 'home', name: 'Home lab', updated_at: now - 300 * MIN },
 ]
 
-/** The example assistants: Flint, and two the user made. */
+/**
+ * The built-in and starter assistants the desktop assistant extension seeds
+ * (extensions/assistant-extension), kept to the fields the screens show so the
+ * preview has their icons. Keep in step with builtInAssistants.ts.
+ */
+export const PREVIEW_BUILT_IN_ASSISTANTS = [
+  { id: 'quartz', name: 'Quartz', avatar: '/images/assistants/quartz.png', description: 'A precise research and analysis specialist for evidence, comparisons, calculations, and decision-ready conclusions.' },
+  { id: 'coal', name: 'Coal', avatar: '/images/assistants/coal.png', description: 'A hands-on software engineer for debugging, implementation, refactors, tests, and practical code review.' },
+  { id: 'blaze', name: 'Blaze', avatar: '/images/assistants/blaze.png', description: 'A creative product and writing specialist for bold concepts, naming, UX ideas, copy, and polished creative output.' },
+  { id: 'redstone', name: 'Redstone', avatar: '/images/assistants/redstone.png', description: 'A systems and automation specialist for repeatable workflows, integrations, operations, and reliable multi-step execution.' },
+  { id: 'book-and-quill', name: 'Book and Quill', avatar: '/images/assistants/book-and-quill.png', description: 'A storyteller that writes and continues stories with vivid scenes and consistent characters.' },
+  { id: 'compass', name: 'Compass', avatar: '/images/assistants/compass.png', description: 'A translator that converts text between languages faithfully and flags tricky wording.' },
+  { id: 'emerald', name: 'Emerald', avatar: '/images/assistants/emerald.png', description: 'A money helper for budgeting, concepts and tradeoffs. Educational, not licensed financial advice.' },
+  { id: 'book', name: 'Book', avatar: '/images/assistants/book.png', description: 'A study tutor that teaches step by step and checks understanding with short questions.' },
+] as const
+
+/** The example assistants: Flint, the built-ins, and two the user made. */
 function assistants(): Assistant[] {
   const flint = useAssistant.getState().assistants.find((a) => a.id === 'jan')
   const base = { created_at: now / 1000, description: '', instructions: '', parameters: {} }
   return [
     ...(flint ? [flint] : []),
+    ...PREVIEW_BUILT_IN_ASSISTANTS.map((a) => ({ ...base, ...a })),
     { ...base, id: 'go-reviewer', name: 'Go reviewer', avatar: '🐹' },
-    { ...base, id: 'changelog', name: 'Changelog writer', avatar: '✍️' },
+    { ...base, id: 'changelog', name: 'Changelog writer', avatar: '✍️', description: 'Turns commit lists into short release notes.' },
   ] as unknown as Assistant[]
 }
 
@@ -677,12 +700,62 @@ const pr = (
   loading: false,
 })
 
+/**
+ * A pull request a session recorded from its own `gh` call, with (unless
+ * `lookup` says otherwise) the live status the sidebar card lists it with.
+ */
+const sessionPr = (
+  number: number,
+  title: string,
+  state: 'open' | 'draft' | 'merged' | 'closed',
+  head: string,
+  additions: number,
+  deletions: number,
+  checks: { passed: number; failed: number; pending: number },
+  minutesAgo: number,
+  lookup: 'found' | 'loading' | 'failed' = 'found'
+) => {
+  const url = `https://github.com/acme/weather/pull/${number}`
+  const recorded = { url, number, repo: 'acme/weather', head, at: new Date(now - minutesAgo * MIN).toISOString() }
+  const entry =
+    lookup === 'found'
+      ? { lookup: { kind: 'found' as const, pr: { number, title, url, state, head, base: 'main', additions, deletions, checks } }, at: Date.now(), loading: false }
+      : lookup === 'loading'
+        ? { lookup: null, at: 0, loading: true }
+        : { lookup: { kind: 'failed' as const, message: 'gh: HTTP 502 from the GitHub API' }, at: Date.now(), loading: false }
+  return { recorded, entry }
+}
+
 function seedPrs() {
+  // The changelog session opened three; the review session seven (one still
+  // being looked up, one whose status could not be read), so the sidebar card
+  // shows a short list, a folded one, and both wait states.
+  const bySession: Record<string, ReturnType<typeof sessionPr>[]> = {
+    changelog: [
+      sessionPr(14, 'Changelog for 1.4', 'open', 'flint/changelog-1.4', 61, 3, { passed: 2, failed: 1, pending: 0 }, 40),
+      sessionPr(13, 'Document the units query parameter', 'draft', 'flint/docs-units', 22, 0, { passed: 0, failed: 0, pending: 2 }, 55),
+      sessionPr(9, 'Link the API guide from the README', 'merged', 'flint/readme-guide', 4, 1, { passed: 3, failed: 0, pending: 0 }, 90),
+    ],
+    review: [
+      sessionPr(21, 'Feels-like temperature in the hourly tooltip', 'open', 'flint/feels-like', 48, 6, { passed: 5, failed: 0, pending: 0 }, 5),
+      sessionPr(20, 'Compass points for wind direction', 'open', 'flint/wind-compass', 17, 2, { passed: 4, failed: 0, pending: 1 }, 15, 'loading'),
+      sessionPr(19, 'Round shown temperatures to whole degrees', 'draft', 'flint/round-temps', 9, 9, { passed: 0, failed: 0, pending: 0 }, 25),
+      sessionPr(18, 'Units section in docs', 'merged', 'flint/docs-units-section', 31, 0, { passed: 3, failed: 0, pending: 0 }, 60),
+      sessionPr(17, 'Drop the Kelvin fallback', 'closed', 'flint/no-kelvin', 2, 40, { passed: 1, failed: 2, pending: 0 }, 120),
+      sessionPr(16, 'Tooltip edge clipping', 'merged', 'flint/tooltip-clip', 12, 7, { passed: 3, failed: 0, pending: 0 }, 180),
+      sessionPr(15, 'Cache forecast by UTC date', 'open', 'flint/utc-cache', 26, 11, { passed: 0, failed: 0, pending: 0 }, 240, 'failed'),
+    ],
+  }
+  // Recorded oldest first, as the store keeps them.
+  for (const prs of Object.values(bySession)) prs.reverse()
   usePrStatusStore.setState({
     byFolder: {
       [RADAR_TREE]: pr(12, 'Retry the radar feed with backoff', 'open', 'flint/radar-retry', 35, 4, { passed: 3, failed: 0, pending: 1 }),
       [UNITS_TREE]: pr(11, 'Add imperial units to /v1/forecast', 'merged', 'flint/units-api', 128, 12, { passed: 4, failed: 0, pending: 0 }),
     },
+    byUrl: Object.fromEntries(Object.values(bySession).flat().map((p) => [p.recorded.url, p.entry])),
+    sessionPrs: Object.fromEntries(Object.entries(bySession).map(([id, prs]) => [id, prs.map((p) => p.recorded)])),
+    sessionPrsBackfilled: true,
     claims: { [`${RADAR_TREE}#12`]: 'escape', [`${UNITS_TREE}#11`]: 'paths' },
     backfilled: true,
   } as never)

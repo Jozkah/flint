@@ -187,13 +187,7 @@
     "transcriptViewVerbose": "Szczegółowy",
     "transcriptViewVerboseDesc": "Wszystko: pełne rozumowanie i każde wywołanie narzędzia rozwinięte z parametrami i wynikiem.",
     "inlineCitations": "Ikony źródeł w tekście",
-    "inlineCitationsDesc": "Po zdaniu pochodzącym ze źródła internetowego pokazuje małą ikonę witryny. Wyłącz, aby czytać odpowiedź bez nich; źródła nadal są wymienione pod spodem.",
-    "sidebarLayout": "Pasek boczny",
-    "sidebarLayoutDesc": "Ile pozycji pokazywać na lewym pasku bocznym.",
-    "sidebarLayout_trimmed": "Skrócony",
-    "sidebarLayout_trimmedDesc": "Nowy czat, Cowork, Odkrywaj i Twoje czaty. Pokoje, Biblioteka, Studio i strony silnika są zwinięte w Więcej i Zaawansowane.",
-    "sidebarLayout_extended": "Rozszerzony",
-    "sidebarLayout_extendedDesc": "Wszystko widoczne naraz: Więcej i Zaawansowane pozostają otwarte."
+    "inlineCitationsDesc": "Po zdaniu pochodzącym ze źródła internetowego pokazuje małą ikonę witryny. Wyłącz, aby czytać odpowiedź bez nich; źródła nadal są wymienione pod spodem."
   },
   "hardware": {
     "os": "System Operacyjny",
@@ -520,10 +514,7 @@
     "support": "Obsługa",
     "reportAnIssue": "Zgłoś Problem",
     "reportAnIssueDesc": "Znalazłeś/-aś błąd? Pomóż nam, zgłaszając go na GitHubie.",
-    "reportIssue": "Zgłoś Problem",
-    "credits": "Podziękowania",
-    "creditsDesc1": "Aplikacja Flint jest rozwijana z ❤️ przez Jozkah.",
-    "creditsDesc2": "Szczególne podziękowania dla naszych otwartoźródłowych zależności - zwłaszcza llama.cpp i Tauri - oraz dla naszej wspaniałej społeczności SI."
+    "reportIssue": "Zgłoś Problem"
   },
   "extensions": {
     "title": "Rozszerzenia"
@@ -1194,8 +1185,5 @@
     "showAll": "Pokaż wszystko",
     "preview": "Podgląd",
     "reachable": "Ukryte pozycje pozostają dostępne z palety poleceń i z Ustawień."
-  },
-  "credits": "Podziękowania",
-  "creditsDesc1": "Aplikacja Flint jest rozwijana z ❤️ przez Jozkah.",
-  "creditsDesc2": "Szczególne podziękowania dla naszych otwartoźródłowych zależności - zwłaszcza llama.cpp i Tauri - oraz dla naszej wspaniałej społeczności SI."
+  }
 }

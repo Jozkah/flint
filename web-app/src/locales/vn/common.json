@@ -2580,9 +2580,7 @@
     "errorNetwork": "Không thể kết nối tới nhà cung cấp. Hãy kiểm tra kết nối của bạn hoặc xem máy chủ có đang chạy không.",
     "errorEngine": "Engine chạy mô hình này không khả dụng. Hãy khởi động lại Flint rồi thử lại.",
     "openProvider": "Mở cài đặt nhà cung cấp",
-    "errorDetails": "Chi tiết",
-    "usingModel": "Đang dùng {{model}}",
-    "noModel": "Chọn một mô hình trong bộ chọn mô hình"
+    "errorDetails": "Chi tiết"
   },
   "markdownImage": {
     "load": "Tải hình ảnh từ {{host}}"

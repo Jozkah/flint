@@ -186,13 +186,7 @@
     "transcriptViewVerbose": "Dettagliata",
     "transcriptViewVerboseDesc": "Tutto: il ragionamento completo e ogni chiamata a strumento aperta con parametri e output.",
     "inlineCitations": "Icone delle fonti nel testo",
-    "inlineCitationsDesc": "Mostra una piccola icona del sito dopo una frase che proviene da una fonte web. Disattivala per leggere la risposta senza icone; le fonti restano elencate sotto.",
-    "sidebarLayout": "Barra laterale",
-    "sidebarLayoutDesc": "Quanto della barra laterale sinistra viene mostrato.",
-    "sidebarLayout_trimmed": "Ridotta",
-    "sidebarLayout_trimmedDesc": "Nuova chat, Cowork, Scopri e le tue chat. Stanze, Libreria, Studio e le pagine del motore si raccolgono sotto Altro e Avanzate.",
-    "sidebarLayout_extended": "Estesa",
-    "sidebarLayout_extendedDesc": "Tutto elencato insieme: Altro e Avanzate restano aperti."
+    "inlineCitationsDesc": "Mostra una piccola icona del sito dopo una frase che proviene da una fonte web. Disattivala per leggere la risposta senza icone; le fonti restano elencate sotto."
   },
   "hardware": {
     "os": "Sistema operativo",
@@ -518,10 +512,7 @@
     "support": "Supporto",
     "reportAnIssue": "Segnala un problema",
     "reportAnIssueDesc": "Hai trovato un bug? Aiutaci aprendo una segnalazione su GitHub.",
-    "reportIssue": "Segnala problema",
-    "credits": "Crediti",
-    "creditsDesc1": "👋 Flint è sviluppato con ❤️ da Jozkah.",
-    "creditsDesc2": "Un ringraziamento speciale alle nostre dipendenze open-source — in particolare llama.cpp e Tauri — e alla nostra straordinaria community IA."
+    "reportIssue": "Segnala problema"
   },
   "extensions": {
     "title": "Estensioni"
@@ -1165,8 +1156,5 @@
     "showAll": "Mostra tutto",
     "preview": "Anteprima",
     "reachable": "Le voci nascoste restano raggiungibili dalla palette dei comandi (Ctrl+Maiusc+P per impostazione predefinita) e dalle Impostazioni."
-  },
-  "credits": "Crediti",
-  "creditsDesc1": "👋 Flint è sviluppato con ❤️ da Jozkah.",
-  "creditsDesc2": "Un ringraziamento speciale alle nostre dipendenze open-source — in particolare llama.cpp e Tauri — e alla nostra straordinaria community IA."
+  }
 }

@@ -2674,9 +2674,7 @@
     "errorNetwork": "K poskytovateli se nepodařilo připojit. Zkontrolujte připojení nebo zda server běží.",
     "errorEngine": "Engine, který tento model spouští, není k dispozici. Restartujte Flint a zkuste to znovu.",
     "openProvider": "Otevřít nastavení poskytovatele",
-    "errorDetails": "Podrobnosti",
-    "usingModel": "Používá {{model}}",
-    "noModel": "Vyberte model ve výběru modelů"
+    "errorDetails": "Podrobnosti"
   },
   "markdownImage": {
     "load": "Načíst obrázek z {{host}}"

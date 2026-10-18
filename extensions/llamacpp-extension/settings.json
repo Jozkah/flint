@@ -82,8 +82,8 @@
   },
   {
     "key": "fit_ctx",
-    "title": "Fit Minimum Context Size",
-    "description": "Minimum context size (tokens) that can be set by the auto-fit option.",
+    "title": "Auto-fit: smallest context",
+    "description": "Only used while Auto-fit is on. If the model does not fit in memory, Auto-fit may shrink the context, but never below this many tokens. This is NOT the context size: pick that per model (Context Size in the model settings).",
     "controllerType": "input",
     "controllerProps": {
       "value": 4096,

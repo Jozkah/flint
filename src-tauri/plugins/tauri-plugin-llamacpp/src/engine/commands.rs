@@ -14,7 +14,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 
 #[cfg(feature = "tauri")]
+use super::driver;
+#[cfg(feature = "tauri")]
 use super::worker;
+#[cfg(feature = "tauri")]
+use tauri_plugin_hardware::vendor::nvidia::{nvidia_driver, CudaVersion, NvidiaDriver};
 use super::worker::WorkerHandle;
 use crate::state::LlamacppState;
 
@@ -137,15 +141,54 @@ fn worker_missing_message(tried: &[PathBuf]) -> String {
 /// Forwards a worker fault to the frontend, which turns it into the OOM or
 /// backend-error dialog. A mid-generation `GGML_ASSERT` kills the worker
 /// outright, so its log line is the only account of what happened.
+///
+/// A driver too old for the engine's CUDA code is told apart from a generic
+/// backend crash, and the banner (which shows this text verbatim) says to
+/// update the driver instead of leaving the user with a bare ggml abort.
 #[cfg(feature = "tauri")]
-fn fault_emitter<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) -> worker::FaultCallback {
+fn fault_emitter<R: tauri::Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    versions: Arc<EngineVersions>,
+) -> worker::FaultCallback {
     use tauri::Emitter;
     Arc::new(move |fault: worker::RuntimeFault, line: String| {
         log::error!("flint-llama-worker fault ({fault:?}): {line}");
-        if let Err(e) = app_handle.emit(fault.event_name(), line) {
+        let payload = driver::fault_payload(
+            &line,
+            versions.driver.get(),
+            versions.toolkit.get().copied(),
+        );
+        if let Err(e) = app_handle.emit(fault.event_name(), payload) {
             log::warn!("emit {} failed: {e}", fault.event_name());
         }
     })
+}
+
+/// What the fault callback needs to word a driver error. Filled once, off the
+/// callback's path: it runs on the task draining the worker's stderr, where an
+/// NVML load must not block. A fault before the fill is worded without them.
+#[cfg(feature = "tauri")]
+#[derive(Default)]
+struct EngineVersions {
+    toolkit: std::sync::OnceLock<CudaVersion>,
+    driver: std::sync::OnceLock<NvidiaDriver>,
+}
+
+/// Reads the NVIDIA driver, writes it and the engine's CUDA toolkit to
+/// `app.log`, and warns when the driver is older than the engine. Without this a
+/// CUDA failure on an old driver cannot be told from any other.
+#[cfg(feature = "tauri")]
+async fn record_nvidia_driver(versions: Arc<EngineVersions>) {
+    // NVML loads a shared library and may take a moment on first use.
+    let Ok(Some(driver)) = tokio::task::spawn_blocking(nvidia_driver).await else {
+        return;
+    };
+    let toolkit = versions.toolkit.get().copied();
+    log::info!("{}", driver::startup_line(&driver, toolkit));
+    if let Some(warning) = driver::startup_warning(&driver, toolkit) {
+        log::warn!("{warning}");
+    }
+    let _ = versions.driver.set(driver);
 }
 
 /// Forwards where a load placed its model to the frontend, which shows it in
@@ -181,6 +224,9 @@ pub async fn start_engine<R: tauri::Runtime>(
 
     let exe = resolve_worker_exe(&app_handle)?;
     let api_key = generate_worker_key();
+    // Filled from the handshake, after the worker is up; a fault before then
+    // is worded without it.
+    let versions = Arc::new(EngineVersions::default());
     let handle = worker::spawn_with_offload(
         &exe,
         &PathBuf::from(preset_path),
@@ -189,7 +235,7 @@ pub async fn start_engine<R: tauri::Runtime>(
         models_max,
         slot_cache_mib,
         envs,
-        Some(fault_emitter(app_handle.clone())),
+        Some(fault_emitter(app_handle.clone(), versions.clone())),
         Some(offload_emitter(app_handle.clone())),
     )
     .await
@@ -201,7 +247,21 @@ pub async fn start_engine<R: tauri::Runtime>(
             serde_json::to_string(&err).unwrap_or(err.message)
         }
         other => other.to_string(),
-    })?;
+    });
+    let handle = match handle {
+        Ok(handle) => handle,
+        Err(e) => {
+            // A worker that would not start: the driver it ran against is the
+            // first thing a CUDA failure needs to be read with.
+            record_nvidia_driver(versions).await;
+            return Err(e);
+        }
+    };
+    if let Some(v) = handle.cuda_toolkit {
+        let _ = versions.toolkit.set(v);
+    }
+    // Detached: NVML can be slow to load, and start_engine holds the engine lock.
+    tokio::spawn(record_nvidia_driver(versions));
 
     let info = EngineInfo::from(&handle);
     // Subscribed here rather than lazily: an eviction can happen on the very

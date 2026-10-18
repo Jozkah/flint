@@ -873,29 +873,6 @@ pub(crate) async fn resolve_upstream_for_model(
                     }
                     return Ok((format!("{api_url}{destination_path}"), api_keys));
                 }
-                // A registered account takes its OAuth access token (refreshed if
-                // needed) ahead of any stored API key. Account auth is a `cli`
-                // concern; the desktop resolves credentials through its own
-                // proxy path and falls back to the bearer key chain here.
-                #[cfg(feature = "cli")]
-                let (api_url, api_keys) = {
-                    let account_token =
-                        crate::core::cli::auth::account::access_token(&provider_cfg.provider)
-                            .await?;
-                    let api_url = if provider_cfg.provider == "openai"
-                        && account_token.is_some()
-                        && api_url.trim_end_matches('/') == "https://api.openai.com/v1"
-                    {
-                        "https://chatgpt.com/backend-api".to_string()
-                    } else {
-                        api_url
-                    };
-                    let api_keys = account_token
-                        .map(|token| vec![token])
-                        .unwrap_or_else(|| provider_cfg.bearer_key_chain());
-                    (api_url, api_keys)
-                };
-                #[cfg(not(feature = "cli"))]
                 let api_keys = provider_cfg.bearer_key_chain();
                 let url = format!("{}{}", api_url, destination_path);
                 #[cfg(feature = "cli")]
@@ -903,7 +880,21 @@ pub(crate) async fn resolve_upstream_for_model(
                     if api_keys.is_empty() {
                         let mut provider_cfg = provider_cfg;
                         crate::core::cli::providers::hydrate_provider_keys(&mut provider_cfg);
-                        return Ok((url, provider_cfg.bearer_key_chain()));
+                        let keys = provider_cfg.bearer_key_chain();
+                        // Only a removed account login is stored: say so rather
+                        // than send the request keyless and surface a bare 401.
+                        if keys.is_empty()
+                            && crate::core::cli::auth::has_removed_account_login(
+                                &provider_cfg.provider,
+                            )
+                        {
+                            return Err(format!(
+                                "{}: {}",
+                                provider_cfg.provider,
+                                crate::core::cli::auth::REMOVED_ACCOUNT_LOGIN_NOTICE
+                            ));
+                        }
+                        return Ok((url, keys));
                     }
                     return Ok((url, api_keys));
                 }
@@ -955,14 +946,13 @@ pub(crate) fn strip_provider_prefix(
 
 /// Resolve the wire API for `model_id`'s provider, mirroring the
 /// model-to-provider lookup in [`resolve_upstream_for_model`]. Returns the
-/// provider's `api_type` and whether its credential is an OAuth account token
-/// rather than an API key, when the model maps to a reachable HTTP provider
+/// provider's `api_type` when the model maps to a reachable HTTP provider
 /// that declares a non-default wire API. `None` otherwise (OpenAI
 /// chat/completions or a model with no provider entry).
 pub(crate) async fn resolve_api_type_for_model(
     model_id: &str,
     provider_configs: Arc<Mutex<HashMap<String, ProviderConfig>>>,
-) -> Option<(String, bool)> {
+) -> Option<String> {
     let pc = provider_configs.lock().await;
     let offers = |config: &ProviderConfig| config.models.iter().any(|m| m == model_id);
 
@@ -994,17 +984,7 @@ pub(crate) async fn resolve_api_type_for_model(
     let cfg = provider_name.and_then(|p| pc.get(&p).cloned());
     drop(pc);
 
-    let api_type = cfg.as_ref().and_then(|c| c.api_type.clone())?;
-    // OAuth account login is a `cli` feature; resolve the auth scheme from
-    // the stored credential so a plain API key stays on its key scheme.
-    #[cfg(feature = "cli")]
-    let oauth = cfg
-        .as_ref()
-        .map(|c| crate::core::cli::auth::account::has_oauth_credential(&c.provider))
-        .unwrap_or(false);
-    #[cfg(not(feature = "cli"))]
-    let oauth = false;
-    Some((api_type, oauth))
+    cfg.as_ref().and_then(|c| c.api_type.clone())
 }
 
 pub(crate) fn copy_optional_chat_params(
@@ -1235,9 +1215,39 @@ pub(crate) async fn collect_mcp_openai_tools(
     ),
     String,
 > {
+    collect_mcp_openai_tools_noted(mcp_servers, mcp_settings)
+        .await
+        .map(|(tools, _notice)| tools)
+}
+
+/// [`collect_mcp_openai_tools`] plus a one-line notice when a server was
+/// still starting after the agent's start wait; its tools join the list on a
+/// later turn, once it has finished.
+pub(crate) async fn collect_mcp_openai_tools_noted(
+    mcp_servers: &SharedMcpServers,
+    mcp_settings: &Arc<Mutex<McpSettings>>,
+) -> Result<
+    (
+        (
+            Vec<serde_json::Value>,
+            HashMap<String, String>,
+            HashMap<String, String>,
+        ),
+        Option<String>,
+    ),
+    String,
+> {
     // Lazy start: enabled servers that are not running are started first
-    // (no-op outside the desktop app).
-    crate::core::mcp::lazy::ensure_enabled_started().await;
+    // (no-op outside the desktop app). A silent server is not waited out: the
+    // turn goes on without it and it keeps starting in the background.
+    let slow = crate::core::mcp::lazy::ensure_enabled_started_within(
+        crate::core::mcp::lazy::AGENT_MCP_START_WAIT,
+    )
+    .await;
+    let notice = crate::core::mcp::lazy::slow_start_notice(&slow);
+    if let Some(notice) = &notice {
+        log::warn!("{notice}");
+    }
     let timeout_duration = mcp_settings.lock().await.tool_call_timeout_duration();
     let servers = mcp_servers.lock().await;
 
@@ -1310,7 +1320,7 @@ pub(crate) async fn collect_mcp_openai_tools(
         reuse_last_good_listings(&mut cache, listings)
     };
 
-    Ok(assemble_tool_array(resolved))
+    Ok((assemble_tool_array(resolved), notice))
 }
 
 pub(crate) async fn execute_mcp_tool_calls(
@@ -1330,6 +1340,10 @@ pub(crate) async fn execute_mcp_tool_calls(
     // Handles, not the map: the lock is not held across a tool call, so one
     // slow server cannot stall every other MCP user until it answers.
     let servers = mcp_peers(mcp_servers).await;
+    // Read once per batch: per-server `toolCallTimeoutSeconds` overrides.
+    let server_configs = crate::core::mcp::stall::read_server_configs(
+        &crate::core::app::commands::resolve_jan_data_folder(),
+    );
 
     let mut results = Vec::with_capacity(tool_calls.len());
 
@@ -1410,17 +1424,33 @@ pub(crate) async fn execute_mcp_tool_calls(
             .cloned()
             .unwrap_or_else(|| tool_name.clone());
 
-        let tool_call = service.call_tool(
-            CallToolRequestParams::new(call_name).with_arguments(args_map),
+        // The timeout rides on the request so the server is told to cancel,
+        // and a server that keeps timing out is stopped (it restarts lazily).
+        let call_timeout = crate::core::mcp::stall::server_timeout(
+            server_configs.get(server_name),
+            timeout_duration,
         );
-
-        let result = match tokio::time::timeout(timeout_duration, tool_call).await {
-            Ok(call_result) => call_result.map_err(|e| e.to_string()),
-            Err(_) => Err(format!(
+        let outcome = crate::core::mcp::stall::call_tool_cancellable(
+            service,
+            CallToolRequestParams::new(call_name).with_arguments(args_map),
+            call_timeout,
+        )
+        .await;
+        let stop_stalled = crate::core::mcp::stall::note_outcome(server_name, &outcome);
+        let result = outcome.map_err(|failure| match failure {
+            crate::core::mcp::stall::CallFailure::TimedOut => format!(
                 "Tool call '{tool_name}' timed out after {} seconds",
-                timeout_duration.as_secs()
-            )),
-        };
+                call_timeout.as_secs()
+            ),
+            crate::core::mcp::stall::CallFailure::Other(e) => e,
+        });
+        if stop_stalled {
+            log::warn!(
+                "MCP server {server_name} timed out {} calls in a row; stopping it",
+                crate::core::mcp::stall::STALL_STOP_THRESHOLD
+            );
+            crate::core::mcp::stall::request_stop(server_name).await;
+        }
 
         let tool_result_string = match result {
             // Same cap as the desktop path: this string is appended to the agent's
@@ -3110,73 +3140,12 @@ mod tests {
         assert_eq!(tokens, vec!["hi".to_string()], "streamed once, not twice");
         server.await.expect("server task");
     }
-    #[tokio::test]
-    async fn codex_oauth_request_matches_chatgpt_backend_contract() {
-        use base64::Engine as _;
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind");
-        let addr = listener.local_addr().expect("addr");
-        let server = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.expect("accept");
-            let mut bytes = vec![0u8; 16 * 1024];
-            let read = socket.read(&mut bytes).await.expect("read");
-            bytes.truncate(read);
-            let response = "event: response.completed\n\
-                data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n";
-            let wire = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}",
-                response.len()
-            );
-            socket.write_all(wire.as_bytes()).await.expect("response");
-            String::from_utf8(bytes).expect("request is utf-8")
-        });
-
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(br#"{"https://api.openai.com/auth":{"chatgpt_account_id":"account-123"}}"#);
-        let token = format!("header.{payload}.signature");
-        let converter =
-            crate::core::server::converters::converter_for(Some("openai-responses"), true)
-                .expect("converter");
-        let (tx, _rx) = sink();
-        stream_converted_chat_completions(
-            &Client::new(),
-            &format!("http://{addr}/chat/completions"),
-            &[token],
-            converter.as_ref(),
-            &json!({
-                "model": "gpt-5.6-terra",
-                "messages": [{"role": "user", "content": "hi"}],
-                "max_tokens": 128,
-            }),
-            &tx,
-            None,
-        )
-        .await
-        .expect("request");
-
-        let request = server.await.expect("server task");
-        let lower = request.to_ascii_lowercase();
-        assert!(request.starts_with("POST /codex/responses HTTP/1.1\r\n"));
-        assert!(lower.contains("\r\nchatgpt-account-id: account-123\r\n"));
-        assert!(lower.contains("\r\nopenai-beta: responses=experimental\r\n"));
-        assert!(lower.contains("\r\noriginator: jan\r\n"));
-        let body: serde_json::Value =
-            serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
-        assert_eq!(body["store"], false);
-        assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
-        assert!(body.get("max_output_tokens").is_none());
-    }
-
     /// The correlation id has to actually reach the wire, and the execution id
     /// has to come back off the response headers before the body is consumed.
     /// Both are invisible when broken -- the request still succeeds and only a
     /// later billing lookup comes back empty -- so this asserts the bytes.
     #[tokio::test]
     async fn the_converted_path_sends_the_correlation_id_and_captures_the_execution_id() {
-        use base64::Engine as _;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -3198,12 +3167,9 @@ mod tests {
             String::from_utf8(bytes).expect("request is utf-8")
         });
 
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(br#"{"https://api.openai.com/auth":{"chatgpt_account_id":"account-123"}}"#);
-        let token = format!("header.{payload}.signature");
-        let converter =
-            crate::core::server::converters::converter_for(Some("openai-responses"), true)
-                .expect("converter");
+        let token = "test-key".to_string();
+        let converter = crate::core::server::converters::converter_for(Some("openai-responses"))
+            .expect("converter");
         let (tx, _rx) = sink();
         let completion = stream_converted_chat_completions(
             &Client::new(),
@@ -3239,7 +3205,6 @@ mod tests {
     /// had no session.
     #[tokio::test]
     async fn no_correlation_id_means_no_header() {
-        use base64::Engine as _;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -3261,16 +3226,13 @@ mod tests {
             String::from_utf8(bytes).expect("request is utf-8")
         });
 
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(br#"{"https://api.openai.com/auth":{"chatgpt_account_id":"a"}}"#);
-        let converter =
-            crate::core::server::converters::converter_for(Some("openai-responses"), true)
-                .expect("converter");
+        let converter = crate::core::server::converters::converter_for(Some("openai-responses"))
+            .expect("converter");
         let (tx, _rx) = sink();
         let completion = stream_converted_chat_completions(
             &Client::new(),
             &format!("http://{addr}/chat/completions"),
-            &[format!("header.{payload}.signature")],
+            &["test-key".to_string()],
             converter.as_ref(),
             &json!({"model": "m", "messages": [{"role": "user", "content": "hi"}]}),
             &tx,
@@ -3423,9 +3385,11 @@ mod tests {
         }
     }
 
+    /// A stored account login from the removed Codex sign-in never replaces
+    /// the API key chain and never redirects the request to ChatGPT's backend.
     #[cfg(feature = "cli")]
     #[tokio::test]
-    async fn account_credentials_override_the_api_key_chain() {
+    async fn a_legacy_account_credential_is_ignored_for_the_api_key_chain() {
         use crate::core::cli::auth::{Credential, CredentialStore, OAuthToken};
 
         let _secrets = TempSecretStore::new();
@@ -3457,8 +3421,8 @@ mod tests {
             resolve_upstream_for_model("account-model", Arc::new(Mutex::new(configs)))
                 .await
                 .unwrap();
-        assert_eq!(url, "https://chatgpt.com/backend-api/chat/completions");
-        assert_eq!(keys, vec!["account-access"]);
+        assert_eq!(url, "https://api.openai.com/v1/chat/completions");
+        assert_eq!(keys, vec!["api-key"]);
     }
 
     #[test]

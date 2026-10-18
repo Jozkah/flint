@@ -185,13 +185,7 @@
     "transcriptViewVerbose": "详细",
     "transcriptViewVerboseDesc": "全部显示：完整推理，以及展开参数和输出的每个工具调用。",
     "inlineCitations": "行内来源图标",
-    "inlineCitationsDesc": "在来自网络来源的句子后显示小型网站图标。关闭后可无图标阅读回答,来源仍会列在下方。",
-    "sidebarLayout": "侧边栏",
-    "sidebarLayoutDesc": "左侧边栏列出多少内容。",
-    "sidebarLayout_trimmed": "精简",
-    "sidebarLayout_trimmedDesc": "新建聊天、Cowork、发现和您的聊天。房间、库、Studio 和引擎页面折叠在“更多”和“高级”下。",
-    "sidebarLayout_extended": "展开",
-    "sidebarLayout_extendedDesc": "一次列出所有内容：“更多”和“高级”保持展开。"
+    "inlineCitationsDesc": "在来自网络来源的句子后显示小型网站图标。关闭后可无图标阅读回答,来源仍会列在下方。"
   },
   "hardware": {
     "os": "操作系统",
@@ -516,10 +510,7 @@
     "support": "支持",
     "reportAnIssue": "报告问题",
     "reportAnIssueDesc": "发现错误？通过在 GitHub 上提交问题来帮助我们。",
-    "reportIssue": "报告问题",
-    "credits": "致谢",
-    "creditsDesc1": "Flint 由 Jozkah 用 ❤️ 构建。",
-    "creditsDesc2": "特别感谢我们的开源依赖项——尤其是 llama.cpp 和 Tauri——以及我们出色的 AI 社区。"
+    "reportIssue": "报告问题"
   },
   "extensions": {
     "title": "扩展"
@@ -1162,8 +1153,5 @@
     "showAll": "全部显示",
     "preview": "预览",
     "reachable": "隐藏的项目仍可从命令面板和“设置”中访问。"
-  },
-  "credits": "致谢",
-  "creditsDesc1": "Flint 由 Jozkah 用 ❤️ 构建。",
-  "creditsDesc2": "特别感谢我们的开源依赖项——尤其是 llama.cpp 和 Tauri——以及我们出色的 AI 社区。"
+  }
 }

@@ -63,6 +63,7 @@ import {
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { QueuedMessageList } from '@/containers/QueuedMessageBubble'
 import { SamplerPopover } from '@/containers/SamplerPopover'
+import { useDraftSampling } from '@/hooks/useDraftSampling'
 import { useLargePaste } from '@/hooks/useLargePaste'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -183,7 +184,11 @@ import {
   stripPromptReferences,
   typedReference,
 } from '@/lib/path-references'
-import { resolveReference, searchReferences } from '@/lib/safeReferences'
+import {
+  resolveReference,
+  searchReferences,
+  unresolvedReferenceNote,
+} from '@/lib/safeReferences'
 import {
   optionId,
   rankReferences,
@@ -193,6 +198,14 @@ import {
 import { resolveAlias, useReferenceAliases } from '@/lib/referenceAliases'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
+import { PromptFillDialog } from '@/containers/PromptFillDialog'
+import {
+  fillPrompt,
+  parseVars,
+  promptSlug,
+  usePromptLibrary,
+  type LibraryPrompt,
+} from '@/lib/promptLibrary'
 import { SlashCommandMenu } from '@/components/SlashCommandMenu'
 import { slashOptionId } from '@/lib/slashCommands'
 import { useSlashCommands, type SlashSurface } from '@/hooks/useSlashCommands'
@@ -611,18 +624,50 @@ const ChatInput = memo(function ChatInput({
         : [],
     [slashSurface, t, router, currentThreadId]
   )
+  // Prompt library (AH-prompts): one state for the fill-in dialog, whichever
+  // menu started the insert.
+  const libraryPrompts = usePromptLibrary((s) => s.prompts)
+  const [promptFill, setPromptFill] = useState<{
+    prompt: LibraryPrompt
+    apply: (text: string) => void
+  } | null>(null)
+  /** Insert now when the prompt has no variables, else ask for them first. */
+  const beginPromptInsert = useCallback(
+    (prompt: LibraryPrompt, apply: (text: string) => void) => {
+      if (parseVars(prompt.body).length === 0) {
+        apply(fillPrompt(prompt.body, {}))
+        return
+      }
+      setPromptFill({ prompt, apply })
+    },
+    []
+  )
+  const promptBuiltins = useMemo<SlashBuiltin[]>(() => {
+    const used = new Set<string>()
+    return libraryPrompts.map((p) => {
+      let slug = promptSlug(p.name)
+      for (let n = 2; used.has(slug); n++) slug = `${promptSlug(p.name)}-${n}`
+      used.add(slug)
+      return {
+        name: `prompt:${slug}`,
+        description: p.name,
+        promptId: p.id,
+        // Typed in full and sent: the draft is cleared by the send, so the
+        // insert lands after it.
+        run: () => {
+          setTimeout(() => beginPromptInsert(p, (text) => setPrompt(text)), 0)
+        },
+      }
+    })
+  }, [libraryPrompts, beginPromptInsert, setPrompt])
   const slashCommands = useSlashCommands({
     surface: slashSurface,
     project: slashProject,
-    builtins: slashBuiltins ?? defaultSlashBuiltins,
+    builtins: [...(slashBuiltins ?? defaultSlashBuiltins), ...promptBuiltins],
     helpDescription: t('slash:builtin.help'),
   })
   const referenceSkills = referenceSources?.skills
   const referenceAgents = referenceSources?.agents
-  const [filePickerPosition, setFilePickerPosition] = useState<{
-    top: number
-    left: number
-  } | null>(null)
   const [workingDir, setWorkingDir] = useState<string | undefined>(undefined)
   // Textarea cursor position snapshot at the time @ was typed
   const filePickerCursorPos = useRef<number | null>(null)
@@ -657,7 +702,7 @@ const ChatInput = memo(function ChatInput({
 
       // Only where a folder is attached: it is the only thing a reference can
       // name (AH-204).
-      if (!workingDir) {
+      if (!workingDir && libraryPrompts.length === 0) {
         setFilePickerOpen(false)
         return
       }
@@ -683,6 +728,11 @@ const ChatInput = memo(function ChatInput({
             skills: referenceSkills ?? [],
             agents: referenceAgents ?? [],
             aliases: useReferenceAliases.getState().list(workingDir),
+            prompts: libraryPrompts.map((p) => ({
+              id: p.id,
+              name: p.name,
+              detail: p.folder ?? p.body.slice(0, 80),
+            })),
           })
           setFilePickerEntries(ranked)
           setReferenceActive(0)
@@ -692,22 +742,14 @@ const ChatInput = memo(function ChatInput({
               : `${ranked.length} reference${ranked.length === 1 ? '' : 's'}`
           )
         }
-        const fileQuery = /^(skill|agent|alias):/.test(query) ? null : query
-        if (referenceDataFolder && fileQuery !== null) {
+        const fileQuery = /^(skill|agent|alias|prompt):/.test(query) ? null : query
+        if (workingDir && referenceDataFolder && fileQuery !== null) {
           searchReferences(referenceDataFolder, workingDir, fileQuery)
             .then(rank)
             .catch(() => rank([]))
         } else {
           rank([])
         }
-
-        // Position the picker above the text
-        const lineHeight = 22
-        const lines = beforeCursor.split('\n').length
-        setFilePickerPosition({
-          top: -Math.min(lines * lineHeight + 40, 300),
-          left: 0,
-        })
         setFilePickerOpen(true)
       } else {
         setFilePickerOpen(false)
@@ -719,6 +761,7 @@ const ChatInput = memo(function ChatInput({
       setPrompt,
       referenceSkills,
       referenceAgents,
+      libraryPrompts,
     ]
   )
 
@@ -738,6 +781,21 @@ const ChatInput = memo(function ChatInput({
       // The identifier, not the label: a folder-relative path, or a typed
       // reference. It means the same thing however it is displayed, and a
       // path cannot name anything outside the folder.
+      // A library prompt is pasted as text, not left as a reference.
+      if (entry.kind === 'prompt') {
+        const found = libraryPrompts.find(
+          (p) => `prompt:${p.id}` === entry.token
+        )
+        setFilePickerOpen(false)
+        filePickerCursorPos.current = null
+        if (found) {
+          beginPromptInsert(found, (text) =>
+            setPrompt(textBefore + text + afterCursor)
+          )
+        }
+        setTimeout(() => focusComposer(), 0)
+        return
+      }
       const refText = formatPathReferenceText(entry.token) + ' '
       const newPrompt = textBefore + refText + afterCursor
 
@@ -748,7 +806,7 @@ const ChatInput = memo(function ChatInput({
       // Focus back on textarea
       setTimeout(() => focusComposer(), 0)
     },
-    [prompt, setPrompt]
+    [prompt, setPrompt, libraryPrompts, beginPromptInsert]
   )
 
   const handleFilePickerClose = useCallback(() => {
@@ -857,9 +915,9 @@ const ChatInput = memo(function ChatInput({
           unresolved.add(ref)
           // Said in the message, not dropped: the model should know a
           // reference was refused, and why, rather than miss it silently.
-          parts.push(
-            `[Reference @${ref} was not included: ${resolved.message}]`
-          )
+          // A name that matched no file stays silent (pasted code, emails).
+          const note = unresolvedReferenceNote(ref, resolved)
+          if (note) parts.push(note)
         }
       }
 
@@ -1301,6 +1359,8 @@ const ChatInput = memo(function ChatInput({
           JSON.stringify(messagePayload)
         )
         sessionStorage.setItem('temp-chat-nav', 'true')
+        // Not taken by a temporary chat: forget it so it cannot leak into a later one.
+        useDraftSampling.getState().clearAll()
         // Transfer agent mode from home screen to temporary thread
         if (isAgentMode && agentModeKey !== TEMPORARY_CHAT_ID) {
           useAgentMode.getState().setAgentMode(TEMPORARY_CHAT_ID, true)
@@ -1378,7 +1438,14 @@ const ChatInput = memo(function ChatInput({
             provider: threadProvider,
           },
           slash.kind === 'message' ? slash.display : prompt, // Use prompt as thread title
-          assistant,
+          // Sampling picked in the composer belongs to this chat only; the
+          // assistant itself is never edited from there.
+          assistant
+            ? (() => {
+                const draft = useDraftSampling.getState().take(assistant.id)
+                return draft ? { ...assistant, parameters: draft } : assistant
+              })()
+            : assistant,
           projectMetadata
         )
 
@@ -3028,6 +3095,7 @@ const ChatInput = memo(function ChatInput({
             // wrapped to a second line they grew upward over the textarea. The
             // reserve now follows the row's measured height.
             style={{ paddingBottom: `${footerHeight}px` }}
+            data-composer-box
             className={cn(
               'relative z-20 rounded-xl border-[0.8px] border-border bg-card px-0 shadow-[0_4px_14px_rgba(0,0,0,.04)] motion-safe:transition-[border-color,box-shadow,transform] motion-safe:duration-300 motion-safe:ease-expo',
               // A clear focus: a stronger edge, a soft ring, and the box lifts.
@@ -3145,9 +3213,43 @@ const ChatInput = memo(function ChatInput({
                   help={slashCommands.helpOpen}
                   onActiveChange={slashCommands.setActiveIndex}
                   onSelect={(item) => {
-                    setPrompt(slashCommands.pick(item))
+                    const text = slashCommands.pick(item)
+                    const promptId = item.builtin?.promptId
+                    const lib = promptId
+                      ? libraryPrompts.find((p) => p.id === promptId)
+                      : undefined
+                    if (lib) {
+                      setPrompt('')
+                      beginPromptInsert(lib, (out) => setPrompt(out))
+                    } else {
+                      setPrompt(text)
+                    }
                     focusComposer()
                   }}
+                />
+              </div>
+            )}
+            {/* The menus sit above the editor (their anchor precedes it), so an
+                upward menu never covers the line being typed. */}
+            {/* @path file reference picker popover */}
+            {/* Shown wherever a folder is attached -- Cowork included, which
+                is not "agent mode" -- because that folder is all it offers.
+                Library prompts are offered with or without one. */}
+            {filePickerOpen && (workingDir || libraryPrompts.length > 0) && (
+              <div className="relative">
+                <FilePickerPopover
+                  entries={filePickerEntries}
+                  query={filePickerQuery}
+                  open={filePickerOpen}
+                  activeIndex={referenceActive}
+                  onActiveChange={setReferenceActive}
+                  onSelect={handleFilePickerSelect}
+                  onClose={handleFilePickerClose}
+                  listId={referenceListId}
+                  aliasDraft={aliasDraft}
+                  aliasError={aliasError}
+                  onAliasSave={handleAliasSave}
+                  onAliasCancel={handleAliasCancel}
                 />
               </div>
             )}
@@ -3188,8 +3290,22 @@ const ChatInput = memo(function ChatInput({
                   }
                 }
                 if (slashCommands.open) {
+                  const highlighted =
+                    slashCommands.visible[slashCommands.activeIndex]
                   const selection = slashCommands.onKeyDown(event)
-                  if (typeof selection === 'string') setPrompt(selection)
+                  if (typeof selection === 'string') {
+                    const lib = highlighted?.builtin?.promptId
+                      ? libraryPrompts.find(
+                          (p) => p.id === highlighted.builtin?.promptId
+                        )
+                      : undefined
+                    if (lib) {
+                      setPrompt('')
+                      beginPromptInsert(lib, (out) => setPrompt(out))
+                    } else {
+                      setPrompt(selection)
+                    }
+                  }
                   if (event.defaultPrevented) return
                 }
                 // Prompt history: Up at the very start, Down at the very end.
@@ -3256,28 +3372,18 @@ const ChatInput = memo(function ChatInput({
                 'data-gramm': String(spellCheckChatInput),
               }}
             />
-            {/* @path file reference picker popover */}
-            {/* Shown wherever a folder is attached -- Cowork included, which
-                is not "agent mode" -- because that folder is all it offers. */}
-            {filePickerOpen && workingDir && (
-              <div className="relative">
-                <FilePickerPopover
-                  entries={filePickerEntries}
-                  query={filePickerQuery}
-                  open={filePickerOpen}
-                  position={filePickerPosition}
-                  activeIndex={referenceActive}
-                  onActiveChange={setReferenceActive}
-                  onSelect={handleFilePickerSelect}
-                  onClose={handleFilePickerClose}
-                  listId={referenceListId}
-                  aliasDraft={aliasDraft}
-                  aliasError={aliasError}
-                  onAliasSave={handleAliasSave}
-                  onAliasCancel={handleAliasCancel}
-                />
-              </div>
-            )}
+            <PromptFillDialog
+              prompt={promptFill?.prompt ?? null}
+              onSubmit={(text) => {
+                promptFill?.apply(text)
+                setPromptFill(null)
+                setTimeout(() => focusComposer(), 0)
+              }}
+              onCancel={() => {
+                setPromptFill(null)
+                setTimeout(() => focusComposer(), 0)
+              }}
+            />
             <span
               role="status"
               aria-live="polite"
@@ -3291,6 +3397,7 @@ const ChatInput = memo(function ChatInput({
 
         <div
           ref={footerRef}
+          data-composer-footer
           className="absolute z-20 bg-transparent bottom-0 w-full p-2"
         >
           <div
@@ -3408,6 +3515,7 @@ const ChatInput = memo(function ChatInput({
                 <SamplerPopover
                   providerId={selectedProvider}
                   modelId={selectedModel?.id}
+                  draftOffThread={slashSurface !== 'cowork'}
                   assistantSwitcher={{
                     assistants,
                     currentThread: slashSurface === 'cowork' ? undefined : currentThread,

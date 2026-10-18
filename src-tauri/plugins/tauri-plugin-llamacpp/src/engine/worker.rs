@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
+use tauri_plugin_hardware::vendor::nvidia::CudaVersion;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 
@@ -25,6 +26,9 @@ pub struct Handshake {
     pub port: u16,
     pub pid: u32,
     pub models: Vec<String>,
+    /// The CUDA toolkit the engine was built with, which decides how new an
+    /// NVIDIA driver it needs.
+    pub cuda_toolkit: Option<CudaVersion>,
 }
 
 /// Line reader that survives non-UTF-8 output. `Lines` ends the stream at
@@ -467,7 +471,19 @@ pub fn parse_handshake(line: &str) -> Result<Handshake, WorkerError> {
                 .collect()
         })
         .unwrap_or_default();
-    Ok(Handshake { port, pid, models })
+    // Absent for a worker without CUDA, or one built where nvcc could not be
+    // read. Unreadable is treated the same: the handshake is not the place to
+    // fail over a diagnostic.
+    let cuda_toolkit = v
+        .get("cuda_toolkit")
+        .and_then(serde_json::Value::as_str)
+        .and_then(CudaVersion::parse);
+    Ok(Handshake {
+        port,
+        pid,
+        models,
+        cuda_toolkit,
+    })
 }
 
 impl std::fmt::Debug for WorkerHandle {
@@ -536,6 +552,8 @@ pub struct WorkerHandle {
     pub pid: u32,
     pub api_key: String,
     pub models: Vec<String>,
+    /// The CUDA toolkit the engine was built with, when it reported one.
+    pub cuda_toolkit: Option<CudaVersion>,
     child: Child,
     stderr_tail: StderrTail,
     #[cfg(windows)]
@@ -859,6 +877,7 @@ pub async fn spawn_with_offload(
         pid: hs.pid,
         api_key: api_key.to_string(),
         models: hs.models,
+        cuda_toolkit: hs.cuda_toolkit,
         child,
         stderr_tail,
         #[cfg(windows)]
@@ -1188,13 +1207,17 @@ mod tests {
 
     #[test]
     fn parse_handshake_reads_the_worker_line() {
-        let hs = parse_handshake(r#"{"port":39271,"pid":1234,"models":["a","b"]}"#).unwrap();
+        let hs = parse_handshake(
+            r#"{"port":39271,"pid":1234,"models":["a","b"],"cuda_toolkit":"13.2"}"#,
+        )
+        .unwrap();
         assert_eq!(
             hs,
             Handshake {
                 port: 39271,
                 pid: 1234,
                 models: vec!["a".into(), "b".into()],
+                cuda_toolkit: Some(CudaVersion { major: 13, minor: 2 }),
             }
         );
     }
@@ -1205,6 +1228,22 @@ mod tests {
         assert_eq!(hs.port, 8080);
         assert_eq!(hs.pid, 0);
         assert!(hs.models.is_empty());
+        assert_eq!(hs.cuda_toolkit, None);
+    }
+
+    // A worker built without CUDA, or by a build that could not read nvcc,
+    // reports null; an unreadable value must not fail the whole handshake.
+    #[test]
+    fn parse_handshake_treats_an_absent_or_unreadable_toolkit_as_unknown() {
+        for line in [
+            r#"{"port":8080,"cuda_toolkit":null}"#,
+            r#"{"port":8080,"cuda_toolkit":"thirteen"}"#,
+            r#"{"port":8080,"cuda_toolkit":13}"#,
+        ] {
+            let hs = parse_handshake(line).unwrap();
+            assert_eq!(hs.port, 8080, "{line}");
+            assert_eq!(hs.cuda_toolkit, None, "{line}");
+        }
     }
 
     #[test]

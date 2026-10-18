@@ -10,6 +10,7 @@ import {
   normalizeReference,
   resolveReference,
   searchReferences,
+  unresolvedReferenceNote,
 } from '../safeReferences'
 
 beforeEach(() => {
@@ -100,6 +101,40 @@ describe('resolveReference', () => {
     const out = await resolveReference('/data', '/repo', 'src')
     expect(out).toMatchObject({ ok: true, kind: 'directory' })
     expect(out.ok && out.content).toContain('lib/')
+  })
+})
+
+describe('a reference that names nothing', () => {
+  it.each([
+    'D:/x/dataclass is unreadable: The system cannot find the file specified. (os error 2)',
+    '/r/dataclass is unreadable: No such file or directory (os error 2)',
+    'C:/r/dataclass is unreadable: The system cannot find the path specified. (os error 3)',
+  ])('is reported as not-found, not refused (%s)', async (msg) => {
+    api.projectReadFile.mockRejectedValue(msg)
+    api.projectListDir.mockRejectedValue(msg)
+    const out = await resolveReference('/data', '/repo', 'dataclass')
+    expect(out).toMatchObject({ ok: false, reason: 'not-found' })
+  })
+
+  it('keeps a policy refusal as refused', async () => {
+    const msg = 'SENSITIVE: .env looks like a credentials file'
+    api.projectReadFile.mockRejectedValue(msg)
+    api.projectListDir.mockRejectedValue(msg)
+    const out = await resolveReference('/data', '/repo', '.env')
+    expect(out).toMatchObject({ ok: false, reason: 'refused' })
+  })
+
+  it('is silent for not-found but still notes refusals and oversized files', () => {
+    const base = { ok: false as const, raw: 'x', message: 'because' }
+    expect(
+      unresolvedReferenceNote('dataclass', { ...base, reason: 'not-found' })
+    ).toBeNull()
+    expect(
+      unresolvedReferenceNote('.env', { ...base, reason: 'refused' })
+    ).toBe('[Reference @.env was not included: because]')
+    expect(
+      unresolvedReferenceNote('../x', { ...base, reason: 'escapes' })
+    ).toContain('was not included')
   })
 })
 

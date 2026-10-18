@@ -187,13 +187,7 @@
     "transcriptViewVerbose": "Podrobné",
     "transcriptViewVerboseDesc": "Vše: celé uvažování a každé volání nástroje otevřené s parametry a výstupem.",
     "inlineCitations": "Ikony zdrojů v textu",
-    "inlineCitationsDesc": "Za větou, která pochází z webového zdroje, zobrazí malou ikonu webu. Vypněte, chcete-li odpověď číst bez nich; zdroje zůstanou uvedeny pod ní.",
-    "sidebarLayout": "Postranní panel",
-    "sidebarLayoutDesc": "Kolik položek levého postranního panelu se zobrazuje.",
-    "sidebarLayout_trimmed": "Zkrácený",
-    "sidebarLayout_trimmedDesc": "Nový chat, Cowork, Objevovat a vaše chaty. Místnosti, Knihovna, Studio a stránky enginu jsou sbaleny pod Více a Pokročilé.",
-    "sidebarLayout_extended": "Rozšířený",
-    "sidebarLayout_extendedDesc": "Vše zobrazeno najednou: Více a Pokročilé zůstávají rozbalené."
+    "inlineCitationsDesc": "Za větou, která pochází z webového zdroje, zobrazí malou ikonu webu. Vypněte, chcete-li odpověď číst bez nich; zdroje zůstanou uvedeny pod ní."
   },
   "hardware": {
     "os": "Operační systém",
@@ -520,10 +514,7 @@
     "support": "Podpora",
     "reportAnIssue": "Nahlásit problém",
     "reportAnIssueDesc": "Našli jste chybu? Pomozte nám nahlášením problému na GitHubu.",
-    "reportIssue": "Nahlásit problém",
-    "credits": "Poděkování",
-    "creditsDesc1": "👋 Flint vytváří s ❤️ Jozkah.",
-    "creditsDesc2": "Speciální poděkování našim open-source závislostem—zejména llama.cpp a Tauri—a naší úžasné AI komunitě."
+    "reportIssue": "Nahlásit problém"
   },
   "extensions": {
     "title": "Rozšíření"
@@ -1181,8 +1172,5 @@
     "showAll": "Zobrazit vše",
     "preview": "Náhled",
     "reachable": "Skryté položky zůstávají dostupné z palety příkazů a z Nastavení."
-  },
-  "credits": "Poděkování",
-  "creditsDesc1": "👋 Flint vytváří s ❤️ Jozkah.",
-  "creditsDesc2": "Speciální poděkování našim open-source závislostem—zejména llama.cpp a Tauri—a naší úžasné AI komunitě."
+  }
 }

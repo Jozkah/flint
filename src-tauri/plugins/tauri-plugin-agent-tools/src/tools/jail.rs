@@ -326,13 +326,11 @@ fn detect_cacheable() -> (Backend, bool) {
             crate::compat_env::var_os("AGENT_SANDBOX"),
             Some(f) if f.eq_ignore_ascii_case("none") || f.eq_ignore_ascii_case("off")
         ) {
-            if let Some(path) = bwrap_path() {
-                return match bwrap_probe(&path) {
-                    Probe::Usable => (Backend::Bubblewrap, true),
-                    Probe::Unusable => (Backend::None, true),
-                    Probe::TimedOut => (Backend::None, false),
-                };
+            let (chosen, cacheable) = select_bwrap();
+            if chosen.is_some() {
+                return (Backend::Bubblewrap, true);
             }
+            return (Backend::None, cacheable);
         }
     }
     (detect(), true)
@@ -356,9 +354,10 @@ fn detect() -> Backend {
     }
     #[cfg(target_os = "linux")]
     {
-        match bwrap_path() {
-            Some(path) if bwrap_usable(&path) => Backend::Bubblewrap,
-            _ => Backend::None,
+        if select_bwrap().0.is_some() {
+            Backend::Bubblewrap
+        } else {
+            Backend::None
         }
     }
     #[cfg(windows)]
@@ -471,19 +470,76 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
 /// The fixed FHS locations are preferred so a directory prepended to `PATH`
 /// cannot shadow the system bwrap; `PATH` is the fallback for distros with no
 /// FHS layout at all (NixOS keeps bwrap only at a Nix-store path). A planted
-/// `bwrap` found via `PATH` gains nothing: it runs as the same user, and
-/// [`bwrap_usable`]'s live probe still has to pass before it is trusted.
+/// `bwrap` found via `PATH` gains nothing: it runs as the same user, and the
+/// live probe still has to pass before any candidate is trusted.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const BWRAP_FIXED: [&str; 3] = ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"];
+
+/// Every bwrap worth probing, in order of preference: the fixed locations
+/// that exist, then the one `PATH` finds (unless it is one of them already).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn bwrap_candidates(
+    fixed: &[&str],
+    exists: impl Fn(&Path) -> bool,
+    from_path: Option<PathBuf>,
+) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = fixed
+        .iter()
+        .map(PathBuf::from)
+        .filter(|p| exists(p))
+        .collect();
+    if let Some(p) = from_path {
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// The first candidate whose probe says it works, and whether that answer may
+/// be remembered. An unusable `/usr/bin/bwrap` (a broken or too-old package)
+/// no longer hides a working `/usr/local/bin/bwrap`. A candidate whose probe
+/// timed out is skipped but makes a "none usable" answer uncacheable, since
+/// the timeout says nothing about whether it works.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn pick_bwrap(
+    candidates: &[PathBuf],
+    mut probe: impl FnMut(&Path) -> Probe,
+) -> (Option<PathBuf>, bool) {
+    let mut timed_out = false;
+    for candidate in candidates {
+        match probe(candidate) {
+            Probe::Usable => return (Some(candidate.clone()), true),
+            Probe::Unusable => {}
+            Probe::TimedOut => timed_out = true,
+        }
+    }
+    (None, !timed_out)
+}
+
+/// The usable bwrap, probed once and remembered (see [`pick_bwrap`]).
+#[cfg(target_os = "linux")]
+fn select_bwrap() -> (Option<PathBuf>, bool) {
+    static SLOT: Mutex<Option<Option<PathBuf>>> = Mutex::new(None);
+    let mut slot = SLOT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(cached) = slot.as_ref() {
+        return (cached.clone(), true);
+    }
+    let candidates = bwrap_candidates(
+        &BWRAP_FIXED,
+        |p| p.is_file(),
+        super::proc::which("bwrap"),
+    );
+    let (found, cacheable) = pick_bwrap(&candidates, bwrap_probe);
+    if cacheable {
+        *slot = Some(found.clone());
+    }
+    (found, cacheable)
+}
+
 #[cfg(target_os = "linux")]
 fn bwrap_path() -> Option<PathBuf> {
-    static PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
-    PATH.get_or_init(|| {
-        ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"]
-            .into_iter()
-            .map(PathBuf::from)
-            .find(|p| p.is_file())
-            .or_else(|| super::proc::which("bwrap"))
-    })
-    .clone()
+    select_bwrap().0
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -492,18 +548,13 @@ fn bwrap_path() -> Option<PathBuf> {
 }
 
 /// Result of the bubblewrap probe.
-#[cfg(target_os = "linux")]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Probe {
     Usable,
     Unusable,
     /// The probe did not finish in time; says nothing about usability.
     TimedOut,
-}
-
-#[cfg(target_os = "linux")]
-fn bwrap_usable(path: &Path) -> bool {
-    bwrap_probe(path) == Probe::Usable
 }
 
 /// bubblewrap needs unprivileged user namespaces, which some distros and all of
@@ -3304,5 +3355,74 @@ mod enforcement_tests {
             !out.contains("STORESECRET"),
             "a relocated store root must be unreadable, got: {out}"
         );
+    }
+    // ---- bwrap selection (cfg-independent: injected candidates and probe) ----
+
+    fn paths(list: &[&str]) -> Vec<PathBuf> {
+        list.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn candidates_keep_the_fixed_order_then_path() {
+        let all = ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"];
+        let found = bwrap_candidates(&all, |_| true, Some(PathBuf::from("/nix/bwrap")));
+        assert_eq!(
+            found,
+            paths(&["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap", "/nix/bwrap"])
+        );
+        // Only what exists is offered, and a PATH hit that is already a fixed
+        // location is not probed twice.
+        let found = bwrap_candidates(
+            &all,
+            |p| p == Path::new("/usr/local/bin/bwrap"),
+            Some(PathBuf::from("/usr/local/bin/bwrap")),
+        );
+        assert_eq!(found, paths(&["/usr/local/bin/bwrap"]));
+        assert!(bwrap_candidates(&all, |_| false, None).is_empty());
+    }
+
+    #[test]
+    fn an_unusable_first_bwrap_does_not_hide_a_working_later_one() {
+        let c = paths(&["/usr/bin/bwrap", "/usr/local/bin/bwrap"]);
+        let mut probed = Vec::new();
+        let (chosen, cacheable) = pick_bwrap(&c, |p| {
+            probed.push(p.to_path_buf());
+            if p == Path::new("/usr/bin/bwrap") {
+                Probe::Unusable
+            } else {
+                Probe::Usable
+            }
+        });
+        assert_eq!(chosen, Some(PathBuf::from("/usr/local/bin/bwrap")));
+        assert!(cacheable);
+        assert_eq!(probed, c);
+    }
+
+    #[test]
+    fn the_first_usable_bwrap_wins_and_later_ones_are_not_probed() {
+        let c = paths(&["/usr/bin/bwrap", "/usr/local/bin/bwrap"]);
+        let mut calls = 0;
+        let (chosen, _) = pick_bwrap(&c, |_| {
+            calls += 1;
+            Probe::Usable
+        });
+        assert_eq!(chosen, Some(PathBuf::from("/usr/bin/bwrap")));
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn no_usable_bwrap_is_cacheable_unless_a_probe_timed_out() {
+        let c = paths(&["/usr/bin/bwrap", "/bin/bwrap"]);
+        assert_eq!(pick_bwrap(&c, |_| Probe::Unusable), (None, true));
+        let (chosen, cacheable) = pick_bwrap(&c, |p| {
+            if p == Path::new("/bin/bwrap") {
+                Probe::TimedOut
+            } else {
+                Probe::Unusable
+            }
+        });
+        assert_eq!(chosen, None);
+        assert!(!cacheable);
+        assert_eq!(pick_bwrap(&[], |_| Probe::Usable), (None, true));
     }
 }

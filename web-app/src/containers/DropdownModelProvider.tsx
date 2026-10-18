@@ -13,6 +13,7 @@ import {
   getModelDisplayName,
   isLocalProvider,
 } from '@/lib/utils'
+import { middleTruncate } from '@/lib/modelDisplayName'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import Capabilities from './Capabilities'
 import { ArrowUpDown, Search, Settings, X } from 'lucide-react'
@@ -822,7 +823,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           <TooltipTrigger asChild>
             <div className="min-w-0 flex-1">
               <span className="flex items-center text-[13px] font-medium text-foreground">
-                <span className="truncate">{modelName}</span>
+                <span className="truncate">{middleTruncate(modelName, 38)}</span>
                 {offline && (
                   <OfflineBadge
                     label={t('common:modelOffline.badge')}
@@ -837,7 +838,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                     list === 'flat' ? 'text-[11px]' : 'font-mono text-[11px]'
                   )}
                 >
-                  {secondary}
+                  {middleTruncate(secondary, 44)}
                 </span>
               )}
             </div>
@@ -914,7 +915,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                       !selectedModel?.id && unavailableModel ? '' : undefined
                     }
                   >
-                    {displayModel}
+                    {middleTruncate(displayModel, 30)}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>{displayModel}</TooltipContent>
