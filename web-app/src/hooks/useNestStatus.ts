@@ -50,20 +50,28 @@ export function useChatNestStatus(
     key(ids.filter((id) => s.sessions[id]?.isStreaming))
   )
   const waiting = useApprovalKey(ids)
-  const threads = useThreads((s) => s.threads)
+  // Only `updated` feeds the mark, so subscribe to those ids' stamps alone:
+  // a message in some other chat must not re-render every nested list.
+  const stamps = useThreads((s) =>
+    ids.map((id) => `${id}|${s.threads[id]?.updated ?? ''}`).join(',')
+  )
   const seen = useSeen((s) => s.seen)
   const minute = useMinute()
   return useMemo(() => {
     const working = new Set([...toSet(busy), ...toSet(streaming)])
     const wait = toSet(waiting)
     const now = minute * 60_000
+    const updated = new Map(
+      stamps.split(',').map((l) => l.split('|') as [string, string])
+    )
     return (id: string) => {
-      const thread = threads[id]
-      if (!thread) return 'none'
+      const raw = updated.get(id)
+      if (raw === undefined) return 'none'
+      const thread = { updated: Number(raw) || 0 }
       const s = statusFor(thread, working.has(id), now, wait.has(id), seen[id] ?? 0) as NestStatus
       return id === selectedId && s === 'recent' ? 'none' : s
     }
-  }, [busy, streaming, waiting, threads, seen, minute, selectedId])
+  }, [busy, streaming, waiting, stamps, seen, minute, selectedId])
 }
 
 /** The same for Cowork sessions (server sessions report their own state). */
