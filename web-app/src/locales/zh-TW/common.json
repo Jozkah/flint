@@ -359,7 +359,8 @@
   "composerOptions": "選項",
   "coworkBars": {
     "showMore": "再顯示 {{count}} 個",
-    "showFewer": "顯示較少"
+    "showFewer": "顯示較少",
+    "moreActions": "更多動作"
   },
   "coworkStrip": {
     "label": "工作階段狀態",

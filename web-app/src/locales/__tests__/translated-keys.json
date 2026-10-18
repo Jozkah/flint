@@ -1343,5 +1343,10 @@
   "common:serverConnection.offlineBody",
   "common:serverConnection.statusOffline",
   "common:workspace.worktreeBadge",
-  "common:workspace.worktreeBadgeNoBranch"
+  "common:workspace.worktreeBadgeNoBranch",
+  "common:coworkBars.moreActions",
+  "permissions:folderTrust.summaryHooks",
+  "permissions:folderTrust.summarySubagents",
+  "permissions:folderTrust.summaryBoth",
+  "permissions:folderTrust.details"
 ]

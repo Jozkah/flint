@@ -363,7 +363,8 @@
   "composerOptions": "Možnosti",
   "coworkBars": {
     "showMore": "Zobrazit dalších {{count}}",
-    "showFewer": "Zobrazit méně"
+    "showFewer": "Zobrazit méně",
+    "moreActions": "Další akce"
   },
   "coworkStrip": {
     "label": "Stav relace",

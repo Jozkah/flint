@@ -58,12 +58,15 @@ describe('the session worktree bar', () => {
     expect(branch.getAttribute('title')).toContain('a-very-long-branch-name')
   })
 
-  it('keeps a floor under the branch so a narrow bar wraps its actions instead of squeezing it', () => {
+  it('keeps a floor under the branch and never wraps the row', () => {
     render(bar(record([])))
-    // A flex-1 box with min-w-0 shrinks to nothing before the row wraps.
+    // A flex-1 box with min-w-0 shrinks to nothing before the actions collapse.
     const cls = screen.getByTestId('session-worktree-branch').className
-    expect(cls).toContain('min-w-[min(12rem,100%)]')
+    expect(cls).toContain('min-w-[6em]')
     expect(cls).not.toMatch(/(^|\s)min-w-0(\s|$)/)
+    const row = screen.getByTestId('session-worktree-bar')
+    expect(row).toHaveClass('flex-nowrap', 'overflow-hidden')
+    expect(row.className).not.toMatch(/flex-wrap(\s|$)/)
   })
 
   it('says what was not carried over in one line, with at most 20 paths behind Details', async () => {

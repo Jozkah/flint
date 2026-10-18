@@ -361,7 +361,8 @@
   "composerOptions": "Opções",
   "coworkBars": {
     "showMore": "Mostrar mais {{count}}",
-    "showFewer": "Mostrar menos"
+    "showFewer": "Mostrar menos",
+    "moreActions": "Mais ações"
   },
   "coworkStrip": {
     "label": "Status da sessão",

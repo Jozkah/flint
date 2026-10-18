@@ -232,7 +232,11 @@
     "kept_one": "Hooki pozostawiono włączone dla folderu, którego już używasz: {{count}}. Sprawdź go w Ustawienia > Uprawnienia > Zaufane foldery.",
     "kept_other": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery.",
     "kept_few": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery.",
-    "kept_many": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery."
+    "kept_many": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery.",
+    "summaryHooks": "Zaufać temu folderowi? Jego hooki uruchamiają polecenia",
+    "summarySubagents": "Zaufać temu folderowi? Jego definicje agentów mogą się uruchomić",
+    "summaryBoth": "Zaufać temu folderowi? Jego hooki i agenci mogą się uruchomić",
+    "details": "Co oznacza zaufanie"
   },
   "trustedFolders": {
     "title": "Zaufane foldery",

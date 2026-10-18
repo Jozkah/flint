@@ -229,7 +229,11 @@
     "trust": "Tin cậy thư mục",
     "later": "Để sau",
     "failed": "Không thể tin cậy thư mục",
-    "kept_other": "Đã giữ hook bật cho {{count}} thư mục bạn đang dùng. Xem lại trong Cài đặt > Quyền > Thư mục tin cậy."
+    "kept_other": "Đã giữ hook bật cho {{count}} thư mục bạn đang dùng. Xem lại trong Cài đặt > Quyền > Thư mục tin cậy.",
+    "summaryHooks": "Tin cậy thư mục này? Các hook của nó chạy lệnh",
+    "summarySubagents": "Tin cậy thư mục này? Các định nghĩa agent của nó có thể chạy",
+    "summaryBoth": "Tin cậy thư mục này? Các hook và agent của nó có thể chạy",
+    "details": "Tin cậy nghĩa là gì"
   },
   "trustedFolders": {
     "title": "Thư mục tin cậy",

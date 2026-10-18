@@ -359,7 +359,8 @@
   "composerOptions": "Seçenekler",
   "coworkBars": {
     "showMore": "{{count}} tane daha göster",
-    "showFewer": "Daha az göster"
+    "showFewer": "Daha az göster",
+    "moreActions": "Diğer işlemler"
   },
   "coworkStrip": {
     "label": "Oturum durumu",

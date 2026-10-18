@@ -359,7 +359,8 @@
   "composerOptions": "オプション",
   "coworkBars": {
     "showMore": "さらに {{count}} 件を表示",
-    "showFewer": "表示を減らす"
+    "showFewer": "表示を減らす",
+    "moreActions": "その他の操作"
   },
   "coworkStrip": {
     "label": "セッションの状態",

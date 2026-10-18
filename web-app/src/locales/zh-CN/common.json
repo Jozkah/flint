@@ -359,7 +359,8 @@
   "composerOptions": "选项",
   "coworkBars": {
     "showMore": "再显示 {{count}} 个",
-    "showFewer": "显示更少"
+    "showFewer": "显示更少",
+    "moreActions": "更多操作"
   },
   "coworkStrip": {
     "label": "会话状态",

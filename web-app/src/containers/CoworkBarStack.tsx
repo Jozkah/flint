@@ -77,7 +77,7 @@ export function CoworkBarStack({
           data-testid="cowork-bar-stack-toggle"
           aria-expanded={expanded}
           onClick={() => setExpanded((v) => !v)}
-          className="mb-2 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-hover-row pointer-coarse:py-2"
+          className="mb-1.5 h-6 rounded-md bg-muted px-2 text-xs font-medium whitespace-nowrap text-secondary-foreground transition-colors hover:bg-hover-row pointer-coarse:py-2"
         >
           {expanded
             ? t('common:coworkBars.showFewer')

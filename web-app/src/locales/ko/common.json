@@ -359,7 +359,8 @@
   "composerOptions": "옵션",
   "coworkBars": {
     "showMore": "{{count}}개 더 보기",
-    "showFewer": "간단히 보기"
+    "showFewer": "간단히 보기",
+    "moreActions": "추가 작업"
   },
   "coworkStrip": {
     "label": "세션 상태",
