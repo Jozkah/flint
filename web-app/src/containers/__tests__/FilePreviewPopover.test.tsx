@@ -11,6 +11,8 @@ import { LinesView } from '../FileViewerDialog'
 import { stringSource } from '@/lib/fileChunks'
 import { ComposerAttachmentChips } from '../ComposerAttachmentChips'
 
+vi.mock('@/lib/assetPath', () => ({ toAssetUrl: async (p: string) => `asset://${p}` }))
+
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({
     t: (k: string, o?: Record<string, unknown>) =>
@@ -101,6 +103,40 @@ describe('sentAttachment', () => {
     expect(viewerSpec(att)?.mode).toBe('lines')
   })
 
+  it('a truncated inline attachment with a path reads the file itself (T6-075)', async () => {
+    const spec = viewerSpec({
+      name: 'big.log',
+      path: 'C:/logs/big.log',
+      size: 6_000_000,
+      inlineContent: 'x'.repeat(1_048_576),
+    })
+    expect(spec?.mode).toBe('lines')
+    expect(spec && spec.mode === 'lines' ? spec.truncated : 'none').toBeUndefined()
+    // The whole file, read in chunks, not the 1 MiB that was injected.
+    const src = spec && spec.mode === 'lines' ? await spec.open() : null
+    expect(src?.size).toBe(6_000_000)
+  })
+
+  it('a truncated inline attachment without a path says so (T6-075)', () => {
+    const att = sentAttachment(
+      { id: 'big.log', name: 'big.log', size: 6_000_000 },
+      { inline_file_contents: [{ name: 'big.log', content: 'x'.repeat(1_048_576) }] }
+    )
+    const spec = viewerSpec(att)
+    expect(spec && spec.mode === 'lines' ? spec.truncated : null).toEqual({
+      shown: 1_048_576,
+      total: 6_000_000,
+    })
+  })
+
+  it('a sent attachment keeps the path stored with its inline text', () => {
+    const att = sentAttachment(
+      { id: 'big.log', name: 'big.log', size: 6_000_000 },
+      { inline_file_contents: [{ name: 'big.log', content: 'x', path: 'C:/logs/big.log' }] }
+    )
+    expect(att.path).toBe('C:/logs/big.log')
+  })
+
   it('uses an absolute id as the path; images get no full viewer', () => {
     expect(sentAttachment({ id: 'C:/a/b.log', name: 'b.log' }).path).toBe('C:/a/b.log')
     expect(viewerSpec({ name: 'x.png', path: 'C:/x.png' })).toBeNull()
@@ -128,6 +164,28 @@ describe('full viewer', () => {
     await waitFor(() => expect(within(dlg).queryByTestId('viewer-partial')).toBeNull())
     fireEvent.keyDown(dlg, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByTestId('file-viewer-dialog')).toBeNull())
+  })
+
+  it('says when the attachment text was truncated when it was added', async () => {
+    render(
+      <FilePreviewPopover
+        name="big.log"
+        load={async () => ({ kind: 'text', lines: ['row'] })}
+        viewer={{
+          mode: 'lines',
+          open: async () => stringSource('row\nrow'),
+          truncated: { shown: 1_048_576, total: 6_000_000 },
+        }}
+      >
+        <span>chip</span>
+      </FilePreviewPopover>
+    )
+    await userEvent.click(screen.getByRole('button'))
+    await userEvent.click(await screen.findByTestId('file-preview-open-full'))
+    const dlg = await screen.findByTestId('file-viewer-dialog')
+    expect(await within(dlg).findByTestId('viewer-truncated')).toHaveTextContent(
+      'common:fileViewer.truncatedOnAdd'
+    )
   })
 
   it('LinesView windows 200k lines and caps a huge single line', () => {

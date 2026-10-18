@@ -233,6 +233,27 @@ const SPECS: Spec[] = [
       ['Carol', '', 'llamacpp', 'qwen3-8b', 'edit', 1],
     ],
   },
+  // Three answers of very different lengths, for the capped, scroll-linked
+  // compare cells. Only with `?preview&roomsLong`.
+  {
+    id: 'long-answers',
+    title: 'Explain the retry backoff',
+    objective: 'Each model explains the radar retry backoff in its own words.',
+    status: 'awaiting-user',
+    mode: 'compare',
+    turns: 3,
+    rounds: 1,
+    tokens: 21_400,
+    cost: 0.11,
+    maxCost: null,
+    activeMs: 70 * 1000,
+    ageMin: 3,
+    parts: [
+      ['Sonnet', '', 'anthropic', 'claude-sonnet-5', 'none', 0],
+      ['GPT', '', 'openai', 'gpt-5', 'none', 3],
+      ['Qwen', '', 'llamacpp', 'qwen3-8b-instruct', 'none', 5],
+    ],
+  },
   {
     id: 'naming',
     title: 'Name the mobile app',
@@ -376,6 +397,14 @@ function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
 
 const proposal = 'Retry 3 times with jittered backoff, then serve the cached frame, and add a timeout test before 1.4.'
 
+// `&codeLong` adds a 20k-char minified line to the rich thread, to check the
+// code block keeps scrolling (or wrapping) without a layout blowup. Off by default.
+function longCodeSample(): string {
+  if (!new URLSearchParams(window.location.search).has('codeLong')) return ''
+  const line = 'var a=1,b=[2,3];function f(x){return x*a+b[0]}'.repeat(440)
+  return '\n\n```js\n' + line + '\n```'
+}
+
 const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
   arch: () => [
     { sys: true, text: 'Room started · Round-robin · 3 participants' },
@@ -502,10 +531,18 @@ const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
             path: 'src/radar/retry.test.ts',
             additions: 4,
             deletions: 2,
+            // As git prints it, plumbing and all: the card drops the header lines.
             excerpt:
-              '@@ -18,8 +18,10 @@\n-  await sleep(100)\n-  expect(calls).toBe(3)\n+  vi.useFakeTimers()\n+  const done = retry(fetchFrame)\n+  await vi.runAllTimersAsync()\n+  expect(await done).toBe(frame)',
+              'diff --git a/src/radar/retry.test.ts b/src/radar/retry.test.ts\nindex e794c94..52c450e 100644\n--- a/src/radar/retry.test.ts\n+++ b/src/radar/retry.test.ts\n@@ -18,8 +18,10 @@ describe(\'retry\', () => {\n   it(\'gives up after three tries\', async () => {\n-  await sleep(100)\n-  expect(calls).toBe(3)\n+  vi.useFakeTimers()\n+  const done = retry(fetchFrame)\n+  await vi.runAllTimersAsync()\n+  expect(await done).toBe(frame)\n   })',
           },
           { path: 'src/radar/retry.ts', additions: 1, deletions: 0, excerpt: '+export const RETRY_JITTER_MS = 50' },
+          {
+            path: 'src/radar/jitter.ts',
+            additions: 3,
+            deletions: 0,
+            excerpt:
+              'diff --git a/src/radar/jitter.ts b/src/radar/jitter.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/radar/jitter.ts\n@@ -0,0 +1,3 @@\n+export function jitter(ms: number): number {\n+  return ms + Math.random() * 50\n+}',
+          },
         ],
       },
       text: 'The test slept a fixed 100 ms while the retry waits up to 120 ms with jitter, so it raced. I switched it to fake timers; it no longer depends on the clock.',
@@ -518,6 +555,13 @@ const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
       text: 'I ran the radar tests several times to reproduce the failure but used up my tool calls before changing anything.',
     },
   ],
+  'long-answers': () => [
+    { sys: true, text: 'Room started · Compare models · 3 participants' },
+    { you: true, round: 1, text: 'Explain how the radar retry backoff works, step by step.' },
+    { by: 'Sonnet', round: 1, text: longAnswer('Sonnet', 40) },
+    { by: 'GPT', round: 1, text: longAnswer('GPT', 12) },
+    { by: 'Qwen', round: 1, text: 'It waits a little longer after each failure, with some randomness, up to a cap.' },
+  ],
   'rich-text': () => [
     { sys: true, text: 'Room started · Compare models · 3 participants' },
     { you: true, round: 1, text: 'Edit `src/app.js`: add a function **mul(a, b)** that returns `a*b` and export it.' },
@@ -529,7 +573,8 @@ const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
         { name: 'read', ok: false, args: { path: 'C:\\Projects\\calc\\src\\app.js', offset: 5 }, output: 'ERROR: offset 5 is beyond end of file (2 lines total)', ms: 12 },
       ],
       text:
-        '## Change\n\nAdded `mul` next to `add`:\n\n```js\nfunction add(a, b) { return a + b }\nfunction mul(a, b) { return a * b }\nmodule.exports = { add, mul } // a long line so the block has to scroll sideways inside its own column rather than widen it\n```\n\n| function | before | after |\n|---|---|---|\n| add | yes | yes |\n| mul | no | **yes** |\n\n- exported from `module.exports`\n- no other file touched\n\nSee [Node modules](https://nodejs.org/api/modules.html).',
+        '## Change\n\nAdded `mul` next to `add`:\n\n```js\nfunction add(a, b) { return a + b }\nfunction mul(a, b) { return a * b }\nmodule.exports = { add, mul } // a long line so the block has to scroll sideways inside its own column rather than widen it\n```\n\n| function | before | after |\n|---|---|---|\n| add | yes | yes |\n| mul | no | **yes** |\n\n- exported from `module.exports`\n- no other file touched\n\nSee [Node modules](https://nodejs.org/api/modules.html).' +
+        longCodeSample(),
     },
     {
       by: 'Bob',
@@ -558,15 +603,31 @@ const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
   naming: () => [],
 }
 
+/** A long markdown answer: `sections` headed steps, with a code block now and then. */
+function longAnswer(who: string, sections: number): string {
+  const out = [`## How the backoff works (${who})`]
+  for (let i = 1; i <= sections; i++) {
+    out.push(
+      `### Step ${i}`,
+      `After failure ${i}, the client waits about ${Math.min(2 ** i * 100, 30_000)} ms before trying again. The wait doubles each time, a random jitter of up to a quarter of it is added so many clients do not retry together, and the total is capped so a long outage never leaves the radar silent for more than half a minute.`
+    )
+    if (i % 6 === 0) out.push('```ts\nconst wait = Math.min(base * 2 ** attempt, cap) + Math.random() * jitter // a deliberately long line that has to scroll sideways inside the code block\n```')
+  }
+  return out.join('\n\n')
+}
+
 const LIVE_TEXT =
   'I can add the metric as a flag in `config.Radar`, off by default. It counts each fallback with the age of the cached frame, so we can see how stale the map gets. @Gemini once the timeout test lands I’ll rerun the numbers.'
 
 export function seedRooms() {
   const rooms = new Map<string, Room>()
   const journals = new Map<string, RoomJournalRecord[]>()
-  const rich = new URLSearchParams(window.location.search).has('roomsRich')
+  const query = new URLSearchParams(window.location.search)
+  const rich = query.has('roomsRich')
+  const long = query.has('roomsLong')
   for (const s of SPECS) {
     if (s.id === 'rich-text' && !rich) continue
+    if (s.id === 'long-answers' && !long) continue
     const room = roomOf(s)
     rooms.set(room.id, room)
     journals.set(room.id, journalOf(room, TRANSCRIPTS[room.id](room)))
@@ -614,6 +675,15 @@ export function seedRooms() {
       holdOnAbort: () => 'room paused',
     })
     ctrl.abort()
+  }
+  // `?preview&roomsApproval`: a live prompt too, waiting to be answered.
+  const sonnet = rooms.get('compare-code')?.participants.find((p) => p.name === 'Sonnet')
+  if (sonnet && query.has('roomsApproval') && !useToolApprovalRequests.getState().pending['preview-live-1']) {
+    void useToolApprovalRequests.getState().requestApproval('preview-live-1', 'bash', 'compare-code', undefined, {
+      input: { command: 'npx vitest run src/radar/retry.test.ts --reporter=dot' },
+      origin: sonnet.name,
+      workspaceLabel: 'C:\\Projects\\weather-app',
+    })
   }
 
   // The running room shows GPT's turn streaming in, as the mockup does. The

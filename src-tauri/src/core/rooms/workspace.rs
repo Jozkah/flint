@@ -104,8 +104,6 @@ fn err(message: impl Into<String>) -> RoomError {
 /// no submodule recursion.
 const HARDENED_EXTRA: &[&str] = &[
     "-c",
-    "core.autocrlf=false",
-    "-c",
     "core.quotepath=false",
     "-c",
     "protocol.allow=never",
@@ -135,7 +133,37 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     git_input(dir, args, None)
 }
 
+/// Line endings stay byte-exact inside the isolated workspace.
+const NO_EOL_CONVERSION: &[&str] = &["-c", "core.autocrlf=false"];
+
 fn git_input(dir: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<String, String> {
+    git_run(dir, args, stdin, NO_EOL_CONVERSION)
+}
+
+/// git in the user's own folder: their line-ending settings (core.autocrlf,
+/// .gitattributes eol) are honoured, so a clean CRLF checkout reads as clean
+/// and an LF patch applies onto CRLF files.
+fn git_user(dir: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<String, String> {
+    git_run(dir, args, stdin, &[])
+}
+
+fn git_run(
+    dir: &Path,
+    args: &[&str],
+    stdin: Option<&[u8]>,
+    eol: &[&str],
+) -> Result<String, String> {
+    git_run_bytes(dir, args, stdin, eol).map(|out| String::from_utf8_lossy(&out).into_owned())
+}
+
+/// git's stdout as raw bytes: a patch must round-trip byte-exact, so a
+/// Latin-1/CP1252 text file is never rewritten through a lossy UTF-8 pass.
+fn git_run_bytes(
+    dir: &Path,
+    args: &[&str],
+    stdin: Option<&[u8]>,
+    eol: &[&str],
+) -> Result<Vec<u8>, String> {
     use std::io::Write;
     use std::process::Stdio;
     let mut cmd = Command::new("git");
@@ -146,6 +174,7 @@ fn git_input(dir: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<String, 
         .arg(dir)
         .args(crate::core::agent::vcs::HARDENED)
         .args(HARDENED_EXTRA)
+        .args(eol)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_AUTHOR_NAME", "Flint")
@@ -168,7 +197,7 @@ fn git_input(dir: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<String, 
     }
     let out = child.wait_with_output().map_err(|e| e.to_string())?;
     if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+        Ok(out.stdout)
     } else {
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
         Err(if stderr.is_empty() {
@@ -281,7 +310,7 @@ fn seed_from_working_tree(top: &Path, root: &Path) -> Result<(), String> {
     let mut diff_args = vec!["diff", "--binary"];
     diff_args.extend_from_slice(DIFF_SAFE);
     diff_args.push("HEAD");
-    let diff = git(top, &diff_args)?;
+    let diff = git_user(top, &diff_args, None)?;
     let mut seeded = false;
     if !diff.trim().is_empty() {
         git_input(
@@ -291,7 +320,11 @@ fn seed_from_working_tree(top: &Path, root: &Path) -> Result<(), String> {
         )?;
         seeded = true;
     }
-    let untracked = git(top, &["ls-files", "--others", "--exclude-standard", "-z"])?;
+    let untracked = git_user(
+        top,
+        &["ls-files", "--others", "--exclude-standard", "-z"],
+        None,
+    )?;
     let (mut files, mut bytes) = (0usize, 0u64);
     for rel in untracked.split('\0').filter(|r| !r.is_empty()) {
         let rel_path = Path::new(rel);
@@ -544,43 +577,316 @@ pub fn reset(rooms_root: &Path, room_id: &str, participant_id: &str) -> Result<(
     Ok(())
 }
 
-/// Apply the participant's patch to the user's folder. Only the user's own
-/// "Apply to my folder" action calls this, after previewing `patch`. The patch
-/// is checked first, so a conflict changes nothing.
-pub fn apply(rooms_root: &Path, room_id: &str, participant_id: &str) -> Result<u32, RoomError> {
-    let dir = workspaces_dir(rooms_root, room_id)?;
-    let record = read_record(&dir, participant_id)?;
-    let root = checked_root(&record)?;
-    stage(&root)?;
-    let diff = git(
-        &root,
-        &["diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "HEAD"],
-    )
-    .map_err(err)?;
-    if diff.trim().is_empty() {
-        return Ok(0);
+/// One file of the change, as the review dialog lists it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCheck {
+    /// The path after the change (the old path for a deleted file).
+    pub path: String,
+    /// Whether this file's part of the patch applies to the user's folder.
+    pub ok: bool,
+    /// Why it does not, in git's words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// What the apply dialog shows before the user decides: the patch, where it
+/// would land, whether it applies there, and which of its files the user has
+/// uncommitted edits to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyPreview {
+    pub patch: String,
+    pub target: String,
+    /// The whole patch passes `git apply --check`.
+    pub clean: bool,
+    pub files: Vec<FileCheck>,
+    /// Files the patch touches that have uncommitted changes in the user's folder.
+    pub dirty: Vec<String>,
+}
+
+/// Per-file checks are skipped past this many files: the whole-patch check
+/// still runs, so a conflict is still caught, only not named per file.
+const CHECK_FILES_MAX: usize = 200;
+/// Beside the workspace record: every patch applied since the last Undo, as
+/// `{pid}.applied.{n}.patch` (n counts up from 1). `{pid}.applied.patch` is
+/// the old single-record format and counts as the oldest entry.
+const APPLIED_SUFFIX: &str = ".applied.patch";
+
+/// One lock per folder Apply writes to: stage, check, apply and save of one
+/// target (and its undo) never interleave between concurrent calls.
+fn target_lock(target: &Path) -> std::sync::Arc<std::sync::Mutex<()>> {
+    use std::sync::{Arc, Mutex, OnceLock};
+    type Locks = Mutex<std::collections::HashMap<PathBuf, Arc<Mutex<()>>>>;
+    static LOCKS: OnceLock<Locks> = OnceLock::new();
+    let key = fs::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+    let mut map = LOCKS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    map.entry(key).or_default().clone()
+}
+
+/// The saved applied patches of a participant, oldest first.
+fn applied_stack(dir: &Path, participant_id: &str) -> Vec<(u64, PathBuf)> {
+    let legacy = format!("{participant_id}{APPLIED_SUFFIX}");
+    let prefix = format!("{participant_id}.applied.");
+    let mut out = Vec::new();
+    let Ok(entries) = fs::read_dir(dir) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name == legacy {
+            out.push((0, entry.path()));
+        } else if let Some(n) = name
+            .strip_prefix(&prefix)
+            .and_then(|r| r.strip_suffix(".patch"))
+            .and_then(|n| n.parse::<u64>().ok())
+            .filter(|n| *n > 0)
+        {
+            out.push((n, entry.path()));
+        }
     }
+    out.sort_by_key(|(n, _)| *n);
+    out
+}
+
+/// `(path, old path when renamed)` for every changed file, staged.
+fn changed_paths(root: &Path) -> Result<Vec<(String, Option<String>)>, RoomError> {
+    let mut args = vec!["diff", "--cached", "--name-status", "-z", "-M"];
+    args.extend_from_slice(DIFF_SAFE);
+    args.push("HEAD");
+    let out = git(root, &args).map_err(err)?;
+    let mut parts = out.split('\0').filter(|p| !p.is_empty());
+    let mut files = Vec::new();
+    while let Some(status) = parts.next() {
+        let Some(first) = parts.next() else { break };
+        if status.starts_with('R') || status.starts_with('C') {
+            let Some(second) = parts.next() else { break };
+            files.push((second.to_string(), Some(first.to_string())));
+        } else {
+            files.push((first.to_string(), None));
+        }
+    }
+    Ok(files)
+}
+
+/// The staged patch, limited to `only` (new paths) when given. A rename keeps
+/// both of its paths in the pathspec, so it stays a rename.
+fn staged_patch(root: &Path, only: Option<&[String]>) -> Result<Vec<u8>, RoomError> {
+    let mut args: Vec<String> = ["diff", "--cached", "--binary", "-M"]
+        .iter()
+        .chain(DIFF_SAFE)
+        .map(|s| s.to_string())
+        .collect();
+    args.push("HEAD".into());
+    if let Some(only) = only {
+        if only.is_empty() {
+            return Ok(Vec::new());
+        }
+        let renames: std::collections::HashMap<String, String> = changed_paths(root)?
+            .into_iter()
+            .filter_map(|(p, old)| old.map(|o| (p, o)))
+            .collect();
+        args.push("--".into());
+        for p in only {
+            args.push(format!(":(literal){p}"));
+            if let Some(old) = renames.get(p) {
+                args.push(format!(":(literal){old}"));
+            }
+        }
+    }
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    git_run_bytes(root, &refs, None, NO_EOL_CONVERSION).map_err(err)
+}
+
+fn is_blank(diff: &[u8]) -> bool {
+    diff.iter().all(u8::is_ascii_whitespace)
+}
+
+/// git in the folder Apply writes to: the user's line-ending settings count
+/// in their own repository; a plain folder (scratch copy) is byte-exact.
+fn git_target(
+    record: &WorkspaceRecord,
+    target: &Path,
+    args: &[&str],
+    stdin: Option<&[u8]>,
+) -> Result<(), String> {
+    let eol: &[&str] = match record.kind {
+        WorkspaceKind::Worktree => &[],
+        WorkspaceKind::Copy => NO_EOL_CONVERSION,
+    };
+    git_run_bytes(target, args, stdin, eol).map(|_| ())
+}
+
+fn check(record: &WorkspaceRecord, target: &Path, diff: &[u8]) -> Result<(), String> {
+    git_target(
+        record,
+        target,
+        &["apply", "--check", "--whitespace=nowarn", "-"],
+        Some(diff),
+    )
+}
+
+/// Paths with uncommitted changes in a git folder; empty when it is not one.
+fn uncommitted(target: &Path) -> Vec<String> {
+    let Ok(out) = git_user(
+        target,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        None,
+    ) else {
+        return Vec::new();
+    };
+    let mut paths = Vec::new();
+    let mut parts = out.split('\0').filter(|p| !p.is_empty());
+    while let Some(entry) = parts.next() {
+        if entry.len() < 4 {
+            continue;
+        }
+        let (code, path) = entry.split_at(3);
+        paths.push(path.to_string());
+        if code.starts_with('R') || code.starts_with('C') {
+            let _ = parts.next();
+        }
+    }
+    paths
+}
+
+fn target_of(record: &WorkspaceRecord) -> Result<PathBuf, RoomError> {
     let target = PathBuf::from(&record.apply_root);
     if !target.is_dir() {
         return Err(err("your folder is no longer there"));
     }
-    git_input(
-        &target,
-        &["apply", "--check", "--whitespace=nowarn", "-"],
-        Some(diff.as_bytes()),
-    )
-    .map_err(|e| err(format!("the change does not apply cleanly: {e}")))?;
-    git_input(
+    Ok(target)
+}
+
+/// Everything the review dialog needs before Apply: nothing is written.
+pub fn preview(
+    rooms_root: &Path,
+    room_id: &str,
+    participant_id: &str,
+) -> Result<ApplyPreview, RoomError> {
+    let dir = workspaces_dir(rooms_root, room_id)?;
+    let record = read_record(&dir, participant_id)?;
+    let root = checked_root(&record)?;
+    stage(&root)?;
+    let patch = staged_patch(&root, None)?;
+    let target = target_of(&record)?;
+    let paths = changed_paths(&root)?;
+    let clean = is_blank(&patch) || check(&record, &target, &patch).is_ok();
+    let mut files = Vec::new();
+    for (i, (path, _)) in paths.iter().enumerate() {
+        if clean || i >= CHECK_FILES_MAX {
+            files.push(FileCheck {
+                path: path.clone(),
+                ok: clean,
+                reason: None,
+            });
+            continue;
+        }
+        let one = staged_patch(&root, Some(std::slice::from_ref(path)))?;
+        let result = check(&record, &target, &one);
+        files.push(FileCheck {
+            path: path.clone(),
+            ok: result.is_ok(),
+            reason: result.err(),
+        });
+    }
+    let touched: std::collections::HashSet<&str> = paths
+        .iter()
+        .flat_map(|(p, old)| std::iter::once(p.as_str()).chain(old.as_deref()))
+        .collect();
+    let dirty = uncommitted(&target)
+        .into_iter()
+        .filter(|p| touched.contains(p.as_str()))
+        .collect();
+    Ok(ApplyPreview {
+        // Display text only; Apply re-reads the patch as bytes.
+        patch: String::from_utf8_lossy(&patch).into_owned(),
+        target: record.apply_root.clone(),
+        clean,
+        files,
+        dirty,
+    })
+}
+
+/// Apply the participant's patch to the user's folder -- all of it, or only
+/// the files in `only`. Only the user's own "Apply to my folder" action calls
+/// this, after the review. The patch is checked first, so a conflict changes
+/// nothing; what was applied is pushed on the participant's undo stack so
+/// `undo_apply` can reverse it.
+pub fn apply(
+    rooms_root: &Path,
+    room_id: &str,
+    participant_id: &str,
+    only: Option<&[String]>,
+) -> Result<u32, RoomError> {
+    let dir = workspaces_dir(rooms_root, room_id)?;
+    let record = read_record(&dir, participant_id)?;
+    let root = checked_root(&record)?;
+    let target = target_of(&record)?;
+    let lock = target_lock(&target);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    stage(&root)?;
+    let diff = staged_patch(&root, only)?;
+    if is_blank(&diff) {
+        return Ok(0);
+    }
+    check(&record, &target, &diff).map_err(|e| err(format!("the change does not apply cleanly: {e}")))?;
+    git_target(
+        &record,
         &target,
         &["apply", "--whitespace=nowarn", "-"],
-        Some(diff.as_bytes()),
+        Some(&diff),
     )
     .map_err(|e| err(format!("apply: {e}")))?;
+    let next = applied_stack(&dir, participant_id)
+        .last()
+        .map_or(1, |(n, _)| n + 1);
+    fs::write(dir.join(format!("{participant_id}.applied.{next}.patch")), &diff)
+        .map_err(|e| err(format!("save applied patch: {e}")))?;
     let count = diff
-        .lines()
-        .filter(|l| l.starts_with("diff --git "))
+        .split(|b| *b == b'\n')
+        .filter(|l| l.starts_with(b"diff --git "))
         .count();
     Ok(count as u32)
+}
+
+/// Undo means: reverse ALL applies of this participant made since the last
+/// undo (files A,B applied, then C: Undo takes back A, B and C), newest
+/// first, matching the card's single Undo of what it applied. Each saved
+/// patch is checked before it is reversed and deleted once reversed; if the
+/// folder changed since, undo stops there and the rest stay saved.
+pub fn undo_apply(rooms_root: &Path, room_id: &str, participant_id: &str) -> Result<(), RoomError> {
+    let dir = workspaces_dir(rooms_root, room_id)?;
+    let record = read_record(&dir, participant_id)?;
+    let target = target_of(&record)?;
+    let lock = target_lock(&target);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let stack = applied_stack(&dir, participant_id);
+    if stack.is_empty() {
+        return Err(err("nothing to undo"));
+    }
+    for (_, saved) in stack.iter().rev() {
+        let diff = fs::read(saved).map_err(|e| err(format!("read applied patch: {e}")))?;
+        git_target(
+            &record,
+            &target,
+            &["apply", "-R", "--check", "--whitespace=nowarn", "-"],
+            Some(&diff),
+        )
+        .map_err(|e| err(format!("your folder changed since, so it cannot be undone: {e}")))?;
+        git_target(
+            &record,
+            &target,
+            &["apply", "-R", "--whitespace=nowarn", "-"],
+            Some(&diff),
+        )
+        .map_err(|e| err(format!("undo: {e}")))?;
+        let _ = fs::remove_file(saved);
+    }
+    Ok(())
 }
 
 /// Remove every workspace of a room: unregister worktrees, then delete the
@@ -672,7 +978,7 @@ mod tests {
         fs::write(Path::new(&a.path).join("a.txt"), "changed\n").unwrap();
         assert!(patch(&rooms, "room1", "p1").unwrap().contains("+changed"));
         assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one\n");
-        assert_eq!(apply(&rooms, "room1", "p1").unwrap(), 1);
+        assert_eq!(apply(&rooms, "room1", "p1", None).unwrap(), 1);
         assert_eq!(
             fs::read_to_string(folder.join("a.txt")).unwrap(),
             "changed\n"
@@ -731,6 +1037,9 @@ mod tests {
 
     fn git_project(folder: &Path) {
         sh(folder, &["init", "-q"]);
+        // Byte-exact whatever the machine's git defaults (Git for Windows
+        // sets core.autocrlf=true system-wide); the CRLF test sets its own.
+        sh(folder, &["config", "core.autocrlf", "false"]);
         fs::write(folder.join(".gitignore"), "ignored.txt\n").unwrap();
         sh(folder, &["add", "-A"]);
         sh(folder, &["commit", "-q", "-m", "base"]);
@@ -764,7 +1073,7 @@ mod tests {
         assert!(!git(&folder, &["status", "--porcelain"]).unwrap().is_empty());
         // A participant edit applies onto the user's dirty folder.
         fs::write(ws.join("a.txt"), "one\nlocal\nmore\n").unwrap();
-        assert_eq!(apply(&rooms, "room1", "p1").unwrap(), 1);
+        assert_eq!(apply(&rooms, "room1", "p1", None).unwrap(), 1);
         assert_eq!(
             fs::read_to_string(folder.join("a.txt")).unwrap(),
             "one\nlocal\nmore\n"
@@ -868,5 +1177,218 @@ mod tests {
         let (_t, rooms, folder) = setup();
         assert!(ensure(&rooms, "room1", "../x", &folder, true).is_err());
         assert!(ensure(&rooms, "../room1", "p1", &folder, true).is_err());
+    }
+
+    #[test]
+    fn preview_names_the_conflicting_file_and_selected_apply_skips_it() {
+        let (_t, rooms, folder) = setup();
+        fs::write(folder.join("b.txt"), "bee
+").unwrap();
+        let a = ensure(&rooms, "room1", "p1", &folder, true).unwrap();
+        let ws = Path::new(&a.path);
+        fs::write(ws.join("a.txt"), "one
+two
+").unwrap();
+        fs::write(ws.join("b.txt"), "bee
+sting
+").unwrap();
+        // The user edits b.txt meanwhile, so the participant's b.txt conflicts.
+        fs::write(folder.join("b.txt"), "wasp
+").unwrap();
+        let p = preview(&rooms, "room1", "p1").unwrap();
+        assert!(!p.clean);
+        let a_check = p.files.iter().find(|f| f.path == "a.txt").unwrap();
+        let b_check = p.files.iter().find(|f| f.path == "b.txt").unwrap();
+        assert!(a_check.ok);
+        assert!(!b_check.ok && b_check.reason.is_some());
+        assert!(apply(&rooms, "room1", "p1", None).is_err());
+        assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one
+");
+        let only = vec!["a.txt".to_string()];
+        assert_eq!(apply(&rooms, "room1", "p1", Some(&only)).unwrap(), 1);
+        assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one
+two
+");
+        assert_eq!(fs::read_to_string(folder.join("b.txt")).unwrap(), "wasp
+");
+        undo_apply(&rooms, "room1", "p1").unwrap();
+        assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one
+");
+        assert!(undo_apply(&rooms, "room1", "p1").is_err());
+    }
+
+    #[test]
+    fn undo_reverses_every_apply_since_the_last_undo() {
+        let (_t, rooms, folder) = setup();
+        let a = ensure(&rooms, "room1", "p1", &folder, true).unwrap();
+        let ws = Path::new(&a.path);
+        for f in ["a.txt", "b.txt", "c.txt"] {
+            fs::write(ws.join(f), format!("{f} changed\n")).unwrap();
+        }
+        let ab = vec!["a.txt".to_string(), "b.txt".to_string()];
+        assert_eq!(apply(&rooms, "room1", "p1", Some(&ab)).unwrap(), 2);
+        let c = vec!["c.txt".to_string()];
+        assert_eq!(apply(&rooms, "room1", "p1", Some(&c)).unwrap(), 1);
+        undo_apply(&rooms, "room1", "p1").unwrap();
+        assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one\n");
+        assert!(!folder.join("b.txt").exists());
+        assert!(!folder.join("c.txt").exists());
+        assert!(undo_apply(&rooms, "room1", "p1").is_err());
+    }
+
+    #[test]
+    fn undo_still_reads_a_patch_saved_in_the_old_single_file_format() {
+        let (_t, rooms, folder) = setup();
+        let a = ensure(&rooms, "room1", "p1", &folder, true).unwrap();
+        let ws = Path::new(&a.path);
+        fs::write(ws.join("a.txt"), "old format\n").unwrap();
+        fs::write(ws.join("b.txt"), "new format\n").unwrap();
+        let only_a = vec!["a.txt".to_string()];
+        apply(&rooms, "room1", "p1", Some(&only_a)).unwrap();
+        // Rename what was saved into the old `{pid}.applied.patch` record.
+        let dir = rooms.join("room1").join(WORKSPACES_DIR);
+        let stack = applied_stack(&dir, "p1");
+        assert_eq!(stack.len(), 1);
+        fs::rename(&stack[0].1, dir.join(format!("p1{APPLIED_SUFFIX}"))).unwrap();
+        let only_b = vec!["b.txt".to_string()];
+        apply(&rooms, "room1", "p1", Some(&only_b)).unwrap();
+        undo_apply(&rooms, "room1", "p1").unwrap();
+        assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one\n");
+        assert!(!folder.join("b.txt").exists());
+        assert!(applied_stack(&dir, "p1").is_empty());
+    }
+
+    #[test]
+    fn concurrent_applies_to_one_folder_serialize() {
+        let (_t, rooms, folder) = setup();
+        let a = ensure(&rooms, "room1", "p1", &folder, true).unwrap();
+        let ws = Path::new(&a.path);
+        let names: Vec<String> = (0..8).map(|i| format!("f{i}.txt")).collect();
+        for n in &names {
+            fs::write(ws.join(n), format!("{n}\n")).unwrap();
+        }
+        // Eight threads, one file each, at once.
+        let results: Vec<_> = std::thread::scope(|s| {
+            let handles: Vec<_> = names
+                .iter()
+                .map(|n| {
+                    let rooms = &rooms;
+                    s.spawn(move || {
+                        let only = vec![n.clone()];
+                        apply(rooms, "room1", "p1", Some(&only))
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        for r in &results {
+            assert_eq!(r.as_ref().map_err(|e| e.message.clone()), Ok(&1));
+        }
+        for n in &names {
+            assert_eq!(fs::read_to_string(folder.join(n)).unwrap(), format!("{n}\n"));
+        }
+        let dir = rooms.join("room1").join(WORKSPACES_DIR);
+        assert_eq!(applied_stack(&dir, "p1").len(), names.len());
+        // The same file twice at once: exactly one applies, the other sees it.
+        fs::write(ws.join("a.txt"), "one\nboth\n").unwrap();
+        let only = vec!["a.txt".to_string()];
+        let twice: Vec<_> = std::thread::scope(|s| {
+            let h: Vec<_> = (0..2)
+                .map(|_| s.spawn(|| apply(&rooms, "room1", "p1", Some(&only))))
+                .collect();
+            h.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        assert_eq!(twice.iter().filter(|r| r.is_ok()).count(), 1);
+        assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one\nboth\n");
+        undo_apply(&rooms, "room1", "p1").unwrap();
+        assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one\n");
+        for n in &names {
+            assert!(!folder.join(n).exists());
+        }
+    }
+
+    #[test]
+    fn latin1_text_files_apply_and_undo_byte_exact() {
+        let (_t, rooms, folder) = setup();
+        let old: &[u8] = b"caf\xe9 one\n";
+        fs::write(folder.join("mod.txt"), old).unwrap();
+        let a = ensure(&rooms, "room1", "p1", &folder, true).unwrap();
+        let ws = Path::new(&a.path);
+        let modified: &[u8] = b"caf\xe9 one\nna\xefve \xe0 la \xfc\n";
+        let added: &[u8] = b"r\xe9sum\xe9\n\xa9 \xb5\n";
+        fs::write(ws.join("mod.txt"), modified).unwrap();
+        fs::write(ws.join("new.txt"), added).unwrap();
+        assert_eq!(apply(&rooms, "room1", "p1", None).unwrap(), 2);
+        assert_eq!(fs::read(folder.join("mod.txt")).unwrap(), modified);
+        assert_eq!(fs::read(folder.join("new.txt")).unwrap(), added);
+        undo_apply(&rooms, "room1", "p1").unwrap();
+        assert_eq!(fs::read(folder.join("mod.txt")).unwrap(), old);
+        assert!(!folder.join("new.txt").exists());
+    }
+
+    #[test]
+    fn crlf_checkout_with_autocrlf_previews_clean_and_applies() {
+        let (_t, rooms, folder) = setup();
+        let user = |args: &[&str]| {
+            git_user(&folder, args, None).unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+        };
+        user(&["init", "-q"]);
+        user(&["config", "core.autocrlf", "true"]);
+        fs::write(folder.join("a.txt"), "one\r\n").unwrap();
+        user(&["add", "-A"]);
+        user(&["commit", "-q", "-m", "base"]);
+        // A clean Git for Windows checkout: CRLF on disk, LF in the index.
+        fs::write(folder.join("a.txt"), "one\r\n").unwrap();
+        assert!(git_user(&folder, &["status", "--porcelain"], None)
+            .unwrap()
+            .trim()
+            .is_empty());
+        let a = ensure(&rooms, "room1", "p1", &folder, true).unwrap();
+        let ws = Path::new(&a.path);
+        fs::write(ws.join("a.txt"), "one\ntwo\n").unwrap();
+        let p = preview(&rooms, "room1", "p1").unwrap();
+        assert!(p.clean, "{:?}", p.files);
+        assert!(p.dirty.is_empty(), "{:?}", p.dirty);
+        assert_eq!(apply(&rooms, "room1", "p1", None).unwrap(), 1);
+        assert_eq!(
+            fs::read_to_string(folder.join("a.txt")).unwrap(),
+            "one\r\ntwo\r\n"
+        );
+        undo_apply(&rooms, "room1", "p1").unwrap();
+        assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "one\r\n");
+        remove_all(&rooms, "room1").unwrap();
+    }
+
+    #[test]
+    fn preview_lists_renames_once_and_flags_uncommitted_edits() {
+        let (_t, rooms, folder) = setup();
+        fs::write(folder.join("old.txt"), "keep
+this
+file
+").unwrap();
+        fs::write(folder.join("c.txt"), "c
+").unwrap();
+        git_project(&folder);
+        let a = ensure(&rooms, "room1", "p1", &folder, true).unwrap();
+        let ws = Path::new(&a.path);
+        fs::rename(ws.join("old.txt"), ws.join("new.txt")).unwrap();
+        fs::write(ws.join("c.txt"), "c
+more
+").unwrap();
+        fs::write(folder.join("untracked.txt"), "u
+").unwrap();
+        fs::write(folder.join("c.txt"), "c
+
+").unwrap();
+        let p = preview(&rooms, "room1", "p1").unwrap();
+        let mut paths: Vec<_> = p.files.iter().map(|f| f.path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, ["c.txt", "new.txt"]);
+        assert_eq!(p.dirty, vec!["c.txt".to_string()]);
+        let only = vec!["new.txt".to_string()];
+        assert_eq!(apply(&rooms, "room1", "p1", Some(&only)).unwrap(), 1);
+        assert!(folder.join("new.txt").is_file());
+        assert!(!folder.join("old.txt").exists());
+        remove_all(&rooms, "room1").unwrap();
     }
 }

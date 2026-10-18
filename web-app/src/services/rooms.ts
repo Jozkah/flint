@@ -7,6 +7,7 @@
  */
 import { invoke } from '@tauri-apps/api/core'
 import { trackArchiveWork } from '@/lib/archive'
+import type { ApplyPreview } from '@/lib/rooms/applyReview'
 import type {
   Room,
   RoomChangedFile,
@@ -154,9 +155,22 @@ export async function resetRoomWorkspace(roomId: string, participantId: string):
   await call<null>('room_workspace_reset', { roomId, participantId })
 }
 
-/** Apply the participant's change to the user's folder; resolves with the file count. */
-export function applyRoomWorkspace(roomId: string, participantId: string): Promise<number> {
-  return call('room_workspace_apply', { roomId, participantId })
+/**
+ * Apply the participant's change to the user's folder -- all of it, or only
+ * `paths` (paths after the change); resolves with the file count.
+ */
+export function applyRoomWorkspace(roomId: string, participantId: string, paths?: string[]): Promise<number> {
+  return call('room_workspace_apply', { roomId, participantId, paths: paths ?? null })
+}
+
+/** The review before applying: patch, target, dry-run per file, uncommitted overlaps. */
+export function roomWorkspaceApplyPreview(roomId: string, participantId: string): Promise<ApplyPreview> {
+  return call('room_workspace_apply_preview', { roomId, participantId })
+}
+
+/** Reverse the last apply in the user's folder. */
+export async function undoRoomWorkspaceApply(roomId: string, participantId: string): Promise<void> {
+  await call<null>('room_workspace_undo_apply', { roomId, participantId })
 }
 
 export async function removeRoomWorkspaces(roomId: string): Promise<void> {

@@ -59,7 +59,7 @@ export function sentAttachment(
 ): Pick<Attachment, 'name' | 'path' | 'fileType' | 'inlineContent' | 'size'> {
   const inline = metadata?.inline_file_contents
   const hit = Array.isArray(inline)
-    ? (inline as Array<{ name?: string; content?: string }>).find(
+    ? (inline as Array<{ name?: string; content?: string; path?: string }>).find(
         (f) => f?.name === file.name && typeof f.content === 'string'
       )
     : undefined
@@ -68,8 +68,27 @@ export function sentAttachment(
     fileType: file.type,
     size: file.size,
     inlineContent: hit?.content,
-    path: ABSOLUTE.test(file.id) ? file.id : undefined,
+    path: ABSOLUTE.test(file.id)
+      ? file.id
+      : hit?.path && ABSOLUTE.test(hit.path)
+        ? hit.path
+        : undefined,
   }
+}
+
+/** UTF-8 size of a string, without encoding it. */
+function utf8Bytes(text: string): number {
+  let n = 0
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    if (c < 0x80) n += 1
+    else if (c < 0x800) n += 2
+    else if (c >= 0xd800 && c <= 0xdbff) {
+      n += 4
+      i++
+    } else n += 3
+  }
+  return n
 }
 
 const MEDIA = new Set([
@@ -90,8 +109,21 @@ export function viewerSpec(
   const kind = previewKind(ext)
   const zip = kind === 'docx' || kind === 'xlsx' || kind === 'pptx'
   const inline = att.inlineContent
-  if (!zip && inline) return { mode: 'lines', open: async () => stringSource(inline) }
   const path = att.path
+  if (!zip && inline) {
+    // Inline text is capped when it is added: a file larger than what was kept
+    // is read from disk when it still can be, and otherwise says it is cut.
+    const shown = utf8Bytes(inline)
+    const cut = typeof att.size === 'number' && att.size > shown
+    if (!cut) return { mode: 'lines', open: async () => stringSource(inline) }
+    if (!path || !ABSOLUTE.test(path)) {
+      return {
+        mode: 'lines',
+        open: async () => stringSource(inline),
+        truncated: { shown, total: att.size as number },
+      }
+    }
+  }
   if (!path || !ABSOLUTE.test(path)) return null
   if (zip) {
     if (typeof att.size === 'number' && att.size > ZIP_CAP) return null

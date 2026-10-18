@@ -41,6 +41,21 @@ export function approvalsWaitingTooLong(
   )
 }
 
+/**
+ * Whether the request's own card is already in front of the user: the window
+ * is showing and the card (marked with data-approval-request) is inside the
+ * viewport. Then a reminder would only announce it twice and cover the page.
+ */
+export function approvalCardOnScreen(requestId: string, root: Document = document): boolean {
+  if (typeof root === 'undefined' || root.hidden) return false
+  const el = root.querySelector<HTMLElement>(`[data-approval-request="${CSS.escape(requestId)}"]`)
+  if (!el) return false
+  const r = el.getBoundingClientRect()
+  const h = root.defaultView?.innerHeight ?? 0
+  const w = root.defaultView?.innerWidth ?? 0
+  return r.bottom > 0 && r.right > 0 && r.top < h && r.left < w
+}
+
 function osNotify(title: string, body: string): void {
   try {
     if (typeof document === 'undefined' || !document.hidden) return
@@ -136,8 +151,15 @@ export function useApprovalWaitNotifier(navigate?: ApprovalNavigate): void {
           reminded.delete(id)
         }
       }
+      // A reminder already up whose card has come into view goes away.
+      for (const id of reminded) {
+        if (approvalCardOnScreen(id)) toast.dismiss(`approval-wait-${id}`)
+      }
       const now = Date.now()
       for (const entry of approvalsWaitingTooLong(entries, now, reminded)) {
+        // Its card is on screen: no second announcement. Checked again on the
+        // next tick, so leaving the page still brings the reminder.
+        if (approvalCardOnScreen(entry.requestId)) continue
         reminded.add(entry.requestId)
         const seconds = Math.round((now - (entry.requestedAt ?? now)) / 1000)
         const title = `Waiting for your approval: ${entry.toolName}`

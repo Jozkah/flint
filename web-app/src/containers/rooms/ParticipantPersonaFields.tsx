@@ -50,7 +50,7 @@ export function ParticipantPersonaFields({
   const knownAssistant = assistantId ? assistants.some((a) => a.id === assistantId) : true
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-3 @[26rem]:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor={`${idPrefix}-role`}>{t('rooms:editor.participantRole')}</Label>
         <PickerDropdown

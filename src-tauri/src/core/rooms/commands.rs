@@ -179,9 +179,36 @@ pub async fn room_workspace_apply<R: Runtime>(
     app_handle: AppHandle<R>,
     room_id: String,
     participant_id: String,
+    paths: Option<Vec<String>>,
 ) -> Result<u32, RoomError> {
     let root = store(app_handle).root().to_path_buf();
-    run_blocking(move || super::workspace::apply(&root, &room_id, &participant_id)).await
+    run_blocking(move || {
+        super::workspace::apply(&root, &room_id, &participant_id, paths.as_deref())
+    })
+    .await
+}
+
+/// The review before applying: patch, target folder, a dry-run check per file,
+/// and the user's uncommitted edits to the same files. Writes nothing.
+#[tauri::command]
+pub async fn room_workspace_apply_preview<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+) -> Result<super::workspace::ApplyPreview, RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || super::workspace::preview(&root, &room_id, &participant_id)).await
+}
+
+/// Reverse the last apply in the user's folder (the toast's Undo).
+#[tauri::command]
+pub async fn room_workspace_undo_apply<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+    participant_id: String,
+) -> Result<(), RoomError> {
+    let root = store(app_handle).root().to_path_buf();
+    run_blocking(move || super::workspace::undo_apply(&root, &room_id, &participant_id)).await
 }
 
 #[tauri::command]

@@ -11,12 +11,14 @@ import {
   type CompareGrid,
 } from '@/lib/rooms/compareGrid'
 import { compareExport } from '@/lib/rooms/compareExport'
+import { localEngineOf } from '@/lib/rooms/availability'
 import { copyToClipboard } from '@/lib/clipboard'
 import { exportFileName } from '@/lib/exportMarkdown'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,7 +28,15 @@ import {
 import { RoomAvatar } from './RoomAvatar'
 import { messagesOf, participantColor } from './roomUi'
 
-type CompareCellState = 'off' | 'unavailable' | 'running' | 'queued' | 'done' | 'failed' | 'idle'
+type CompareCellState =
+  | 'off'
+  | 'unavailable'
+  | 'running'
+  | 'queued'
+  | 'waitingSlot'
+  | 'done'
+  | 'failed'
+  | 'idle'
 
 /** Where a participant stands on the newest question. */
 function compareCellState(
@@ -42,10 +52,23 @@ function compareCellState(
   if (latest && hasAnswered(grid, latest.id, p.id)) return 'done'
   if (p.compareSkip) return 'off'
   if (p.availability.state === 'unavailable') return 'unavailable'
-  if (latest && answersBy(grid, latest.id, p.id).some((m) => m.status !== 'complete')) {
-    return room.status === 'running' ? 'queued' : 'failed'
+  const waiting = () => {
+    // Two models on one local engine take turns: say why this one waits.
+    const engine = localEngineOf(p)
+    const holder =
+      engine &&
+      lives.some((l) => {
+        if (l.author.kind !== 'participant') return false
+        const id = l.author.participantId
+        const other = room.participants.find((x) => x.id === id)
+        return !!other && other.id !== p.id && localEngineOf(other) === engine
+      })
+    return holder ? 'waitingSlot' : 'queued'
   }
-  return room.status === 'running' && latest ? 'queued' : 'idle'
+  if (latest && answersBy(grid, latest.id, p.id).some((m) => m.status !== 'complete')) {
+    return room.status === 'running' ? waiting() : 'failed'
+  }
+  return room.status === 'running' && latest ? waiting() : 'idle'
 }
 
 const STATE_TONE: Record<CompareCellState, string> = {
@@ -53,6 +76,7 @@ const STATE_TONE: Record<CompareCellState, string> = {
   unavailable: 'text-destructive',
   running: 'text-primary motion-safe:animate-pulse',
   queued: 'text-muted-foreground',
+  waitingSlot: 'text-muted-foreground',
   done: 'text-foreground',
   failed: 'text-destructive',
   idle: 'text-muted-foreground',
@@ -130,19 +154,46 @@ export function CompareRunPanel({
           {people.map((p) => {
             const state = compareCellState(room, grid, p, lives)
             const answered = grid.questions.some((q) => answersBy(grid, q.id, p.id).length > 0)
+            // A model that failed to load (or found no free slot) is retried
+            // from here: the run clears the failure and checks it again.
+            const unavailable = p.availability.state === 'unavailable'
             return (
               <li
                 key={p.id}
                 data-testid="compare-participant"
                 data-state={state}
-                className="flex min-w-0 items-center gap-2 rounded-[10px] border-[0.8px] border-border bg-card px-2 py-1.5"
+                // Wraps the controls under the name when the panel is narrow, so
+                // the name gets the width instead of being cut to a few letters.
+                className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-[10px] border-[0.8px] border-border bg-card px-2 py-1.5"
               >
                 <RoomAvatar model={p.model} name={p.name} color={participantColor(p.id)} size={22} />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-xs font-medium text-foreground">{p.name}</span>
+                <div className="flex min-w-[min(100%,9rem)] flex-1 basis-[9rem] flex-col">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        tabIndex={0}
+                        data-testid="compare-participant-name"
+                        aria-label={p.name}
+                        className="truncate rounded-sm text-xs font-medium text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40"
+                      >
+                        {p.name}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start">
+                      {p.name}
+                    </TooltipContent>
+                  </Tooltip>
                   <span className={cn('truncate text-[11px]', STATE_TONE[state])}>
                     {t(`rooms:compare.state.${state}`)}
                   </span>
+                  {p.availability.state === 'unavailable' && (
+                    <span
+                      data-testid="compare-unavailable-reason"
+                      className="text-[11px] break-words text-muted-foreground"
+                    >
+                      {p.availability.message}
+                    </span>
+                  )}
                 </div>
                 <label className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
                   <input
@@ -159,14 +210,25 @@ export function CompareRunPanel({
                   size="sm"
                   variant="surface"
                   className="h-7 shrink-0 px-2 text-[11.5px]"
-                  disabled={busy || roomRunning || !hasQuestion || p.availability.state === 'unavailable'}
-                  aria-label={t(answered ? 'rooms:compare.runAgainFor' : 'rooms:compare.runFor', {
-                    name: p.name,
-                  })}
+                  disabled={busy || roomRunning || !hasQuestion}
+                  aria-label={t(
+                    unavailable
+                      ? 'rooms:compare.retryFor'
+                      : answered
+                        ? 'rooms:compare.runAgainFor'
+                        : 'rooms:compare.runFor',
+                    { name: p.name }
+                  )}
                   onClick={() => run(() => onRun([p.id], 'latest'))}
                 >
-                  {answered ? <RotateCcw aria-hidden /> : <Play aria-hidden />}
-                  {t(answered ? 'rooms:compare.runAgain' : 'rooms:compare.run')}
+                  {answered || unavailable ? <RotateCcw aria-hidden /> : <Play aria-hidden />}
+                  {t(
+                    unavailable
+                      ? 'rooms:compare.retry'
+                      : answered
+                        ? 'rooms:compare.runAgain'
+                        : 'rooms:compare.run'
+                  )}
                 </Button>
               </li>
             )
@@ -182,17 +244,23 @@ export function CompareRunPanel({
             {t('rooms:compare.runAll')}
           </Button>
           {missing.length > 0 && (
-            <Button
-              size="sm"
-              variant="surface"
-              data-testid="compare-answer-earlier"
-              disabled={busy || roomRunning}
-              title={t('rooms:compare.answerEarlierHint')}
-              onClick={() => run(() => onRun(null, 'missing'))}
-            >
-              <History aria-hidden />
-              {t('rooms:compare.answerEarlier')}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="surface"
+                  data-testid="compare-answer-earlier"
+                  disabled={busy || roomRunning}
+                  onClick={() => run(() => onRun(null, 'missing'))}
+                >
+                  <History aria-hidden />
+                  {t('rooms:compare.answerEarlier')}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t('rooms:compare.answerEarlierHint')}
+              </TooltipContent>
+            </Tooltip>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

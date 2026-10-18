@@ -19,7 +19,12 @@ import { cn } from '@/lib/utils'
 
 /** What the full viewer shows: text read in chunks, or a parsed document. */
 export type ViewerSpec =
-  | { mode: 'lines'; open: () => Promise<ChunkSource | null> }
+  | {
+      mode: 'lines'
+      open: () => Promise<ChunkSource | null>
+      /** The text was cut when it was added (bytes kept of the file's bytes). */
+      truncated?: { shown: number; total: number }
+    }
   | { mode: 'doc'; load: (signal: AbortSignal) => Promise<FilePreview | null> }
 
 const ROW = 18
@@ -309,6 +314,14 @@ export function FileViewerDialog({
               )}
               {copied ? t('common:fileViewer.copied') : t('common:fileViewer.copy')}
             </Button>
+            {specRef.current.truncated ? (
+              <span data-testid="viewer-truncated" className="text-[11px] text-muted-foreground">
+                {t('common:fileViewer.truncatedOnAdd', {
+                  shown: fmt(specRef.current.truncated.shown),
+                  total: fmt(specRef.current.truncated.total),
+                })}
+              </span>
+            ) : null}
             {r && !r.done ? (
               <span
                 data-testid="viewer-partial"

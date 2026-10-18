@@ -10,6 +10,14 @@ vi.mock('@/i18n/react-i18next-compat', async () => {
   const u = await import('./roomsTestUtils')
   return { useTranslation: () => ({ t: u.t }) }
 })
+const trust = vi.hoisted(() => ({
+  status: vi.fn(async (): Promise<unknown> => null),
+  grant: vi.fn(async (): Promise<unknown> => ({})),
+}))
+vi.mock('@/lib/folderTrust', () => ({
+  folderTrustStatus: trust.status,
+  trustFolder: trust.grant,
+}))
 vi.mock('@/hooks/useModelProvider', async () => {
   const u = await import('./roomsTestUtils')
   return {
@@ -114,7 +122,7 @@ describe('RoomEditor', () => {
     expect(within(alice).queryByRole('radiogroup', { name: 'Thinking Budget' })).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
-    const patch = api.updateRoomSettings.mock.calls[0][1]
+    const patch = api.updateRoomSettings.mock.calls.at(-1)![1]
     expect(patch.participants[0].reasoning).toEqual({ mode: 'on', level: 'high' })
     expect(patch.participants[1].reasoning).toBeNull()
   })
@@ -323,5 +331,72 @@ describe('RoomEditor', () => {
     expect(bare.length).toBeGreaterThan(0)
     for (const el of bare) expect(el).toHaveAttribute('aria-label')
     expect(container.querySelector('button[role="switch"]')).toHaveAttribute('aria-label', 'Use a moderator')
+  })
+
+  it('saves a participant edit by itself, without the Save button (R-041)', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    const alice = participantCard('Alice')
+    await user.click(within(alice).getByRole('radio', { name: 'Read & edit' }))
+    expect(api.updateRoomSettings).not.toHaveBeenCalled()
+    await waitFor(() => expect(api.updateRoomSettings).toHaveBeenCalledTimes(1), { timeout: 3000 })
+    const patch = api.updateRoomSettings.mock.calls[0][1]
+    expect(patch.participants[0].toolAccess).toBe('edit')
+    expect(await screen.findAllByText('Settings saved.')).not.toHaveLength(0)
+  })
+
+  it('autosaves limits and the room title too, but not an invalid draft (R-041)', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    const title = screen.getByLabelText('Title')
+    await user.clear(title)
+    await user.type(title, 'Beta')
+    await waitFor(() => expect(api.updateRoomSettings).toHaveBeenCalled(), { timeout: 3000 })
+    expect(api.updateRoomSettings.mock.calls.at(-1)![1].title).toBe('Beta')
+
+    api.updateRoomSettings.mockClear()
+    const name = within(participantCard('Bob')).getByLabelText('Name')
+    await user.clear(name)
+    await user.type(name, 'alice')
+    await new Promise((r) => setTimeout(r, 1200))
+    expect(api.updateRoomSettings).not.toHaveBeenCalled()
+    expect(name).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('flushes a pending edit when the editor closes (R-041)', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    const { unmount } = renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    await user.click(within(participantCard('Alice')).getByRole('radio', { name: 'Read-only' }))
+    unmount()
+    expect(api.updateRoomSettings).toHaveBeenCalledTimes(1)
+    expect(api.updateRoomSettings.mock.calls[0][1].participants[0].toolAccess).toBe('read')
+  })
+
+  it('warns under tool access when a writer cannot edit an untrusted folder, and trusts it (R-040)', async () => {
+    trust.status.mockResolvedValue({ folder: 'C:/p', trusted: false, carries: { hooks: false, subagents: false } })
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    const room = makeRoom({
+      mode: 'compare',
+      folder: 'C:/p',
+      participants: [
+        makeParticipant('p1', { name: 'Alice', toolAccess: 'edit' }),
+        makeParticipant('p2', { name: 'Bob', order: 1, toolAccess: 'read' }),
+      ],
+    })
+    renderWithApi(<RoomEditor room={room} />, api)
+    const note = await within(participantCard('Alice')).findByTestId('participant-isolation')
+    expect(note).toHaveTextContent('the folder is not trusted')
+    expect(within(participantCard('Bob')).queryByTestId('participant-isolation')).toBeNull()
+
+    trust.status.mockResolvedValue({ folder: 'C:/p', trusted: true, carries: { hooks: false, subagents: false } })
+    await user.click(within(note).getByRole('button', { name: 'Trust this folder' }))
+    expect(trust.grant).toHaveBeenCalledWith('C:/p')
+    await waitFor(() =>
+      expect(within(participantCard('Alice')).queryByRole('button', { name: 'Trust this folder' })).toBeNull()
+    )
   })
 })

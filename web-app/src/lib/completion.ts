@@ -114,6 +114,9 @@ export const newUserThreadContent = (
                   inline_file_contents: inlineDocuments.map((doc) => ({
                     name: doc.name,
                     content: doc.inlineContent,
+                    // The file itself, so the full viewer can read past the
+                    // inline cap.
+                    ...(doc.path ? { path: doc.path } : {}),
                   })),
                 }
               : {}),
