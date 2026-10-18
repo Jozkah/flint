@@ -901,7 +901,7 @@ export const ToolApprovalActions = memo(() => {
             </button>
           )}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1">
+        <div className="ml-auto flex shrink-0 items-center gap-2 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-8 @max-[30rem]/approval:whitespace-normal">
           <Button
             ref={denyRef}
             size="sm"
@@ -909,7 +909,7 @@ export const ToolApprovalActions = memo(() => {
             type="button"
             disabled={!armed || (reasonOpen && reason.trim() === '')}
             data-scope={reasonOpen ? 'deny-with-reason' : 'deny'}
-            className="min-w-20 border-destructive/40 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1"
+            className="min-w-20 border-destructive/40 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-8 @max-[30rem]/approval:whitespace-normal"
             onClick={() =>
               reasonOpen
                 ? resolveApproval(toolCallId, 'deny', pending.requestId, reason)
@@ -927,7 +927,7 @@ export const ToolApprovalActions = memo(() => {
             data-scope="allow-once"
             data-primary="true"
             aria-describedby={once ? `${moreId}-once` : undefined}
-            className="min-w-24 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1"
+            className="min-w-24 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-8 @max-[30rem]/approval:whitespace-normal"
             onClick={() => decide('allow-once')}
           >
             {t('permissions:scope.allowOnce')}

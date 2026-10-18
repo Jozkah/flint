@@ -4271,11 +4271,11 @@ const ChatInput = memo(function ChatInput({
             </div>
           )}
           {/* Takes the room left beside the run controls and shrinks the model
-              name into it, wrapping only when less than 9rem is left. */}
-          <div className="ml-auto flex min-w-0 max-w-full flex-[1_1_9rem] items-center justify-end gap-1">
+              name into it, wrapping only when less than 7rem is left. */}
+          <div className="ml-auto flex min-w-0 max-w-full flex-[1_1_7rem] items-center justify-end gap-1">
             {!belowLeftWithEffort && effortControl}
             {modelControl && (
-              <div className="flex min-w-24 max-w-64 flex-1 basis-24 justify-end">
+              <div className="flex min-w-20 max-w-64 flex-1 basis-20 justify-end">
                 {modelControl}
               </div>
             )}
