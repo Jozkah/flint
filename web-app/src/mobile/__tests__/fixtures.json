@@ -677,7 +677,7 @@
    ]
   },
   "settings.get": {
-   "version": "0.9.0",
+   "version": "1.0.0",
    "theme": "dark",
    "spellCheck": true,
    "language": "en",

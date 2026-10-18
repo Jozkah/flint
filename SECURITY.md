@@ -4,10 +4,10 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.9.x   | Yes       |
+| 1.0.x   | Yes       |
 | < 0.9   | No        |
 
-Security fixes land on `main` and ship in the next 0.9.x release.
+Security fixes land on `main` and ship in the next 1.0.x release.
 
 ## Reporting a vulnerability
 

@@ -7,7 +7,7 @@
   validation there too, so anything this rejects would fail that build.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="Flint" UpgradeCode="{6C1B7A20-3D4F-4E55-9B7A-0F2B8E7D4A11}" Language="1033" Manufacturer="Flint MSI UI Smoke" Version="0.9.0">
+  <Product Id="*" Name="Flint" UpgradeCode="{6C1B7A20-3D4F-4E55-9B7A-0F2B8E7D4A11}" Language="1033" Manufacturer="Flint MSI UI Smoke" Version="1.0.0">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" Keywords="Installer" />
     <Media Id="1" Cabinet="a.cab" EmbedCab="yes" />
     <MajorUpgrade DowngradeErrorMessage="A newer version is installed." AllowSameVersionUpgrades="yes" />

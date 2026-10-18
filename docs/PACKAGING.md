@@ -54,7 +54,7 @@ request by hand. The installer is a portable zip, so no signing is required.
 
 ```bash
 node --test scripts/render-package-manifests.test.mjs scripts/flint-cli-release-workflow.test.mjs
-node scripts/render-package-manifests.mjs --tag v0.9.0 --repo Jozkah/flint \
+node scripts/render-package-manifests.mjs --tag v1.0.0 --repo Jozkah/flint \
   --sums sha256sums.txt --out dist/packaging
 ```
 

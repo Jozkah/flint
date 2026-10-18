@@ -19,14 +19,14 @@ usage() {
 Usage: scripts/install-jan-agent.sh [options]
 
   --dir DIR         Install directory (default: $JAN_INSTALL_DIR or ~/.local/bin)
-  --version VER     Install a specific release (e.g. 0.9.0) instead of the latest
+  --version VER     Install a specific release (e.g. 1.0.0) instead of the latest
   --source          Build from this checkout instead of downloading
   -h, --help        Show this help
 
 Examples:
   scripts/install-jan-agent.sh                      # latest release to ~/.local/bin
   scripts/install-jan-agent.sh --dir /usr/local/bin # needs write access to that dir
-  scripts/install-jan-agent.sh --version 0.9.0      # a specific release
+  scripts/install-jan-agent.sh --version 1.0.0      # a specific release
   scripts/install-jan-agent.sh --source             # compile this working tree
 EOF
 }
