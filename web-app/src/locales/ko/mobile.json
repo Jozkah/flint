@@ -536,7 +536,7 @@
       "on": "웹 검색 켜짐",
       "off": "웹 검색 꺼짐",
       "provider": "검색 제공업체",
-      "providerFoot": "DuckDuckGo가 봇 확인을 표시하면 Flint는 결과 페이지를 읽는 방식으로 전환합니다. 제공업체는 컴퓨터에서 선택합니다.",
+      "providerFoot": "DuckDuckGo가 봇 확인을 표시하면 1분 정도 기다린 뒤 다시 검색하세요. 제공업체는 컴퓨터에서 선택합니다.",
       "ddg": "DuckDuckGo는 설정이 필요 없습니다",
       "noKey": "키 필요 없음",
       "keySet": "키 설정됨",

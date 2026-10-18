@@ -542,7 +542,7 @@
       "on": "Web araması açık",
       "off": "Web araması kapalı",
       "provider": "Arama sağlayıcısı",
-      "providerFoot": "DuckDuckGo bir bot kontrolü gösterirse Flint sonuç sayfasını okumaya geri döner. Sağlayıcılar bilgisayarda seçilir.",
+      "providerFoot": "DuckDuckGo bir bot kontrolü gösterirse bir dakika bekleyip yeniden arayın. Sağlayıcılar bilgisayarda seçilir.",
       "ddg": "DuckDuckGo kurulum gerektirmez",
       "noKey": "Anahtar gerekmez",
       "keySet": "Anahtar ayarlandı",

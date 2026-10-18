@@ -542,7 +542,7 @@
       "on": "網路搜尋已開啟",
       "off": "網路搜尋已關閉",
       "provider": "搜尋供應商",
-      "providerFoot": "如果 DuckDuckGo 顯示機器人檢查，Flint 會改為讀取結果頁面。供應商在電腦上選擇。",
+      "providerFoot": "如果 DuckDuckGo 顯示機器人檢查，請等一分鐘後再搜尋。供應商在電腦上選擇。",
       "ddg": "DuckDuckGo 無需設定",
       "noKey": "無需金鑰",
       "keySet": "已設定金鑰",
