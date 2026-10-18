@@ -8,9 +8,10 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { findSiblingMmproj } from '@/lib/siblingMmproj'
+import { findSiblingMmproj, firstGgufShard } from '@/lib/siblingMmproj'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useState, useCallback } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { normalizeAppError } from '@/utils/appError'
 import {
@@ -27,10 +28,12 @@ import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   groupBySource,
+  modelsOutsideFolder,
   scanLocalModels,
   type ScannedModel,
 } from '@/lib/localModelScan'
 import { formatBytes } from '@/lib/utils'
+import { useModelLibrary } from '@/hooks/useModelLibrary'
 
 type DetectedModalities = { vision: boolean; audio: boolean }
 
@@ -372,7 +375,11 @@ export const ImportLlamacppModelDialog = ({
 
   // Use a model file chosen by path, whether picked in a dialog or found by the
   // scan. The temporary name is replaced by the one in the file's metadata.
-  const chooseModelFile = async (path: string, displayName: string) => {
+  const chooseModelFile = async (picked: string, pickedName: string) => {
+    // Shard 2 of a split model stands for the whole model: use shard 1.
+    const path = firstGgufShard(picked)
+    const displayName =
+      path === picked ? pickedName : (path.split('/').pop() ?? pickedName).replace(/\.gguf$/i, '')
     setModelFile(path)
     setModelName(toModelId(displayName))
     await validateModelFile(path)
@@ -395,12 +402,28 @@ export const ImportLlamacppModelDialog = ({
     | { status: 'failed'; message: string }
   >({ status: 'idle' })
 
-  const runScan = async () => {
+  const { t } = useTranslation()
+  const modelFolders = useModelLibrary((s) => s.folders)
+  const addModelFolder = useModelLibrary((s) => s.addFolder)
+  const removeModelFolder = useModelLibrary((s) => s.removeFolder)
+
+  const runScan = async (folders: string[] = modelFolders) => {
     setScanState({ status: 'scanning' })
     try {
-      setScanState({ status: 'done', models: await scanLocalModels() })
+      setScanState({ status: 'done', models: await scanLocalModels(folders) })
     } catch (error) {
       setScanState({ status: 'failed', message: normalizeAppError(error) })
+    }
+  }
+
+  const handleAddFolder = async () => {
+    const picked = await serviceHub.dialog().open({
+      multiple: false,
+      directory: true,
+    })
+    if (picked && typeof picked === 'string') {
+      addModelFolder(picked)
+      await runScan([...new Set([...modelFolders, picked])])
     }
   }
 
@@ -730,7 +753,7 @@ export const ImportLlamacppModelDialog = ({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={runScan}
+                    onClick={() => void runScan()}
                     disabled={importing || scanState.status === 'scanning'}
                   >
                     {scanState.status === 'scanning' ? (
@@ -742,9 +765,45 @@ export const ImportLlamacppModelDialog = ({
                     Find models already on this computer
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    Looks in LM Studio, Ollama, the Hugging Face cache,
-                    llama.cpp and GPT4All. Nothing is copied until you import.
+                    {t('providers:importScanHint')}
                   </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleAddFolder()}
+                      disabled={importing || scanState.status === 'scanning'}
+                    >
+                      {t('providers:importAddFolder')}
+                    </Button>
+                    {modelFolders.map((folder) => (
+                      <span
+                        key={folder}
+                        className="inline-flex max-w-full items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground"
+                      >
+                        <span className="break-all">{folder}</span>
+                        <button
+                          type="button"
+                          aria-label={t('providers:importRemoveFolder', { folder })}
+                          onClick={() => {
+                            removeModelFolder(folder)
+                            setScanState((s) =>
+                              s.status === 'done'
+                                ? {
+                                    status: 'done',
+                                    models: modelsOutsideFolder(s.models, folder),
+                                  }
+                                : s
+                            )
+                          }}
+                          className="hover:text-foreground"
+                        >
+                          <span aria-hidden>×</span>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
                   {scanState.status === 'failed' && (
                     <p className="text-sm text-destructive">
                       {scanState.message}

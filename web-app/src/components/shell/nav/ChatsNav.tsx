@@ -90,8 +90,8 @@ function DropTarget({ id, children }: { id: string; children: ReactNode }) {
       ref={setNodeRef}
       className={cn(
         'rounded-md transition-[background-color,box-shadow] duration-150',
-        active && 'ring-1 ring-transparent',
-        isOver && 'bg-acc-tint ring-acc/40'
+        active && 'ring-2 ring-transparent ring-inset',
+        isOver && 'bg-acc-tint ring-2 ring-acc/70 ring-inset'
       )}
     >
       {children}
@@ -387,9 +387,10 @@ export function ChatsNav() {
               : kept
             const hidden = isOpen ? g.threads.length - visible.length : 0
             return (
-              <div key={g.id} className="group/cg flex flex-col" data-testid="chat-group">
+              <div key={g.id} className="flex flex-col" data-testid="chat-group">
                 <DropTarget id={g.id}>
-                <div className="flex h-7 items-center gap-0.5">
+                {/* The hover group is the header row only: hovering a chat below must not reveal the folder's controls. */}
+                <div className="group/cg flex h-7 items-center gap-0.5" data-testid="chat-group-header">
                   <button
                     type="button"
                     aria-expanded={isOpen}
@@ -412,7 +413,7 @@ export function ChatsNav() {
                   {g.folder && (
                     <>
                       <NavGroupAction
-                        className="opacity-0 group-hover/cg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                        className="opacity-0 group-hover/cg:opacity-100 group-has-[:focus-visible]/cg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
                         aria-label={t('common:shell.newChatIn', { name: g.name })}
                         title={t('common:shell.newChatIn', { name: g.name })}
                         onClick={() =>
@@ -424,7 +425,7 @@ export function ChatsNav() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <NavGroupAction
-                            className="opacity-0 group-hover/cg:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
+                            className="opacity-0 group-hover/cg:opacity-100 group-has-[:focus-visible]/cg:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
                             aria-label={t('common:shell.groupOptions')}
                           >
                             <MoreHorizontal />

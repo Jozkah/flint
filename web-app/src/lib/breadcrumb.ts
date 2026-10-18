@@ -61,6 +61,12 @@ export function crumbForPath(pathname: string): Crumb {
       parentTo: route.cowork,
       currentKey: 'common:campaign',
     }
+  if (within(path, route.campaigns))
+    return {
+      parentKey: 'common:cowork',
+      parentTo: route.cowork,
+      currentKey: 'settings:campaigns.nav',
+    }
   if (path === route.artifacts) return { ...ws, currentKey: 'common:appRail.library' }
   if (path === route.archive) return { ...ws, currentKey: 'archive:nav' }
   if (path === '/hub' || path.startsWith('/hub/'))

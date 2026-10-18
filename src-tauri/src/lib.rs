@@ -99,6 +99,10 @@ macro_rules! invoke_commands_with_extras {
         core::app::settings_store::settings_get,
         core::app::settings_store::settings_set,
         core::app::settings_store::settings_remove,
+        core::app::settings_store::take_settings_recovery_notice,
+        core::server::bedrock::bedrock_sign,
+        core::server::bedrock::bedrock_credential_status,
+        core::server::bedrock::bedrock_set_credential,
         core::server::provider_secrets::set_secret,
         core::server::provider_secrets::get_secret,
         // System commands
@@ -261,6 +265,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_campaign_create,
         core::agent::commands::agent_campaign_get,
         core::agent::commands::agent_campaign_list,
+        core::agent::commands::agent_campaign_skipped,
+        core::agent::commands::agent_campaign_list_with_skipped,
         core::agent::commands::agent_campaign_transition,
         core::agent::commands::agent_campaign_task_settle,
         core::agent::commands::agent_campaign_cancel,
@@ -342,6 +348,7 @@ macro_rules! invoke_commands_with_extras {
         core::threads::commands::delete_thread,
         core::threads::commands::delete_thread_permanently,
         core::threads::commands::list_messages,
+        core::threads::commands::search_messages,
         core::threads::commands::create_message,
         core::threads::commands::modify_message,
         core::threads::commands::delete_message,
@@ -378,6 +385,8 @@ macro_rules! invoke_commands_with_extras {
         core::schedule::commands::schedule_to_cron,
         core::schedule::commands::schedule_time_zones,
         core::schedule::commands::schedule_tools,
+        core::autostart::autostart_get,
+        core::autostart::autostart_set,
         core::schedule::commands::schedule_os_status,
         core::schedule::commands::schedule_os_enable,
         core::schedule::commands::schedule_os_disable,
@@ -960,10 +969,25 @@ pub fn build_app() -> tauri::App {
             // The Windows window is created hidden and shown here, at the place
             // it was last left, so it never paints at the default spot and then
             // jumps. See core::window_state.
+            // Started by the OS startup entry with `--minimized`: the window
+            // stays hidden and the tray icon is the way back in.
+            let start_minimized =
+                core::autostart::launched_minimized(std::env::args());
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
-                core::window_state::restore_and_show(&window, &data_folder);
+                // Hide only when a tray icon exists to bring the window back;
+                // without one (creation failed, or a non-desktop build) the
+                // window would be unreachable, so show it normally.
+                #[cfg(feature = "desktop")]
+                let hide_to_tray = start_minimized && setup::ensure_tray_now(app.handle());
+                #[cfg(not(feature = "desktop"))]
+                let hide_to_tray = { let _ = start_minimized; false };
+                if hide_to_tray {
+                    let _ = window.hide();
+                } else {
+                    core::window_state::restore_and_show(&window, &data_folder);
+                }
                 core::window_state::install(&window, data_folder);
                 suppress_beforeunload_dialog(&window);
             }
@@ -973,7 +997,18 @@ pub fn build_app() -> tauri::App {
             ))]
             if let Some(window) = app.get_webview_window("main") {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
-                core::window_state::restore_and_show(&window, &data_folder);
+                // Hide only when a tray icon exists to bring the window back;
+                // without one (creation failed, or a non-desktop build) the
+                // window would be unreachable, so show it normally.
+                #[cfg(feature = "desktop")]
+                let hide_to_tray = start_minimized && setup::ensure_tray_now(app.handle());
+                #[cfg(not(feature = "desktop"))]
+                let hide_to_tray = { let _ = start_minimized; false };
+                if hide_to_tray {
+                    let _ = window.hide();
+                } else {
+                    core::window_state::restore_and_show(&window, &data_folder);
+                }
                 core::window_state::install(&window, data_folder);
             }
             // Remote access: off unless the user turned it on; if so the

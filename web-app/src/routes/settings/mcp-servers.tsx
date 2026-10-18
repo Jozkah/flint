@@ -23,6 +23,7 @@ import {
   MCPSettings,
   DEFAULT_MCP_SETTINGS,
 } from '@/hooks/useMCPServers'
+import { IdleShutdownInput } from '@/containers/IdleShutdownInput'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
@@ -758,6 +759,29 @@ function MCPServersDesktop() {
     }
   }
 
+  // Per-server tool call timeout; empty falls back to the global setting.
+  const setServerToolTimeout = async (
+    serverKey: string,
+    config: MCPServerConfig,
+    rawValue: string
+  ) => {
+    const seconds = Math.floor(Number(rawValue))
+    const next = { ...config }
+    if (rawValue.trim() !== '' && Number.isFinite(seconds) && seconds > 0) {
+      next.toolCallTimeoutSeconds = seconds
+    } else {
+      delete next.toolCallTimeoutSeconds
+    }
+    editServer(serverKey, next)
+    syncServers()
+    if (config.active) {
+      await Promise.resolve(
+        serviceHub.mcp().activateMCPServer(serverKey, next, { start: false })
+      ).catch(() => {})
+      refreshConnectedServers()
+    }
+  }
+
   const toggleServer = (
     serverKey: string,
     active: boolean,
@@ -946,6 +970,20 @@ function MCPServersDesktop() {
               void syncServers()
             }}
             className="w-28"
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-mcp-servers-idle-shutdown"
+        title={t('mcp-servers:runtimeSettings.idleShutdown')}
+        description={t('mcp-servers:runtimeSettings.idleShutdownDesc')}
+        actions={
+          <IdleShutdownInput
+            minutes={settings.idleShutdownMinutes ?? 15}
+            onCommit={(minutes) => updateSettings({ idleShutdownMinutes: minutes })}
+            onBlur={() => {
+              void syncServers()
+            }}
           />
         }
       />
@@ -1280,6 +1318,21 @@ function MCPServersDesktop() {
                   }
                 />
                 <span>{t('mcp-servers:lifecycle.startWithFlint')}</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <span>{t('mcp-servers:lifecycle.toolTimeout')}</span>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  defaultValue={config.toolCallTimeoutSeconds ?? ''}
+                  placeholder={String(settings.toolCallTimeoutSeconds)}
+                  aria-label={t('mcp-servers:lifecycle.toolTimeout')}
+                  onBlur={(event) =>
+                    void setServerToolTimeout(key, config, event.target.value)
+                  }
+                  className="h-7 w-20 text-xs"
+                />
               </label>
               {snapshot.connected ? (
                 <button

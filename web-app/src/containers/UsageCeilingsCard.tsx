@@ -157,6 +157,9 @@ export function UsageCeilingsCard() {
       defaultValue: 'Oldest use ages out in {{wait}}',
       wait,
     })
+  const noLimitPlaceholder = t('settings:localApiServer.usageNoLimitPlaceholder', {
+    defaultValue: 'No limit',
+  })
   const label5h = t('settings:localApiServer.usage5h', {
     defaultValue: 'Per 5 hours',
   })
@@ -184,6 +187,7 @@ export function UsageCeilingsCard() {
         actions={
           <Input
             inputMode="numeric"
+            placeholder={noLimitPlaceholder}
             value={fiveHour}
             onChange={(e) => setFiveHour(e.target.value)}
             aria-label="Tokens per 5 hours"
@@ -200,6 +204,7 @@ export function UsageCeilingsCard() {
         actions={
           <Input
             inputMode="numeric"
+            placeholder={noLimitPlaceholder}
             value={week}
             onChange={(e) => setWeek(e.target.value)}
             aria-label="Tokens per week"

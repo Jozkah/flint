@@ -14,8 +14,10 @@ import { promptFromDeepLink } from '@/lib/deepLinkPrompt'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useMCPServers, DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import { useAssistant } from '@/hooks/useAssistant'
+import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { useThreads } from '@/hooks/useThreads'
 import { ExtensionManager } from '@/lib/extension'
+import { whenExtensionsLoaded } from '@/lib/extensionEvents'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { getProviderApiType } from '@/lib/providerCaps'
 import { useAppState } from '@/hooks/useAppState'
@@ -261,6 +263,10 @@ const solo = isChatWindow()
 
 export function DataProvider() {
   const navigate = useNavigate()
+  // Whether Bedrock's AWS credentials are saved decides if it counts as usable.
+  useEffect(() => {
+    void useBedrockCredentials.getState().refresh()
+  }, [])
   const { setProviders, getProviderByName } =
     useModelProvider()
 
@@ -337,21 +343,40 @@ export function DataProvider() {
         setServers(data.mcpServers ?? {})
         setSettings(data.mcpSettings ?? DEFAULT_MCP_SETTINGS)
       })
-    serviceHub
-      .assistants()
-      .getAssistants()
-      .then((data) => {
+    let cancelled = false
+    // Reads can overlap (the mount read, the post-load read, a retry) and a
+    // slow one must never overwrite a newer one, so only the latest applies.
+    let assistantSeq = 0
+    const loadAssistants = async (attempt = 0): Promise<void> => {
+      const seq = ++assistantSeq
+      try {
+        const data = await serviceHub.assistants().getAssistants()
+        if (cancelled || seq !== assistantSeq) return
         // Only update assistants if we have valid data
         if (data && Array.isArray(data) && data.length > 0) {
           setAssistants(data as unknown as Assistant[])
         } else {
           setAssistants(null)
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         console.warn('Failed to load assistants, keeping default:', error)
-      })
-    let cancelled = false
+        // A busy machine can fail a read (a stalled fs call); try again
+        // rather than leaving the list on the default until a reload.
+        if (!cancelled && seq === assistantSeq && attempt < 4) {
+          setTimeout(() => {
+            if (!cancelled && seq === assistantSeq) void loadAssistants(attempt + 1)
+          }, 1000 * 2 ** attempt)
+        }
+      }
+    }
+    void loadAssistants()
+    // First launch seeds the starter assistants inside the extension's
+    // onLoad. If the UI mounted before that finished, the read above saw a
+    // partial folder; read again once loading settles. The wait is latched, so
+    // it also fires when loading finished before this effect subscribed.
+    void whenExtensionsLoaded().then(() => {
+      if (!cancelled) void loadAssistants()
+    })
     let unsubscribeOpenUrl: (() => void) | undefined
     if (solo) {
       return () => {

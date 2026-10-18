@@ -19,6 +19,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Card, CardItem } from '@/containers/Card'
+import { PromptLibraryCard } from '@/containers/PromptLibraryCard'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -90,6 +91,8 @@ function AssistantContent() {
       <SettingsPageBody
         title={t('common:assistants')}
         description={t('settings:pageDesc.assistants')}
+        // Both groups run the page's full width: list rows need the room.
+        layout={[2, 2]}
         actions={
           <Button
             onClick={() => {
@@ -153,13 +156,16 @@ function AssistantContent() {
               </DropdownMenu>
             }
           />
-          <ul className="grid gap-3 pt-3 @min-[40rem]:grid-cols-2 @min-[72rem]:grid-cols-3">
+          <ul
+            className="flex flex-col divide-y divide-border/60"
+            data-testid="assistant-list"
+          >
             {sortedAssistants.map((assistant) => (
               <li
-                className="group flex min-w-0 items-start gap-3 rounded-xl border-[0.8px] border-border bg-card p-3 transition-colors hover:border-border-strong"
+                className="group flex min-w-0 items-center gap-3 py-2.5"
                 key={assistant.id}
               >
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border-[0.8px] border-input bg-card">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border-[0.8px] border-input bg-card">
                   {assistant?.avatar && (
                     <AvatarEmoji
                       avatar={assistant?.avatar}
@@ -168,9 +174,12 @@ function AssistantContent() {
                     />
                   )}
                 </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[13px] leading-[1.2] font-medium text-foreground">
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5 @min-[40rem]:flex-row @min-[40rem]:items-center @min-[40rem]:gap-4">
+                  <div className="flex min-w-0 items-center gap-2 @min-[40rem]:w-56 @min-[40rem]:shrink-0">
+                    <span
+                      className="truncate text-[13px] leading-[1.2] font-medium text-foreground"
+                      title={assistant.name}
+                    >
                       {assistant.name}
                     </span>
                     {defaultAssistantId === assistant.id && (
@@ -180,7 +189,10 @@ function AssistantContent() {
                     )}
                   </div>
                   {assistant.description && (
-                    <p className="line-clamp-3 text-xs leading-[1.35] text-muted-foreground">
+                    <p
+                      className="min-w-0 flex-1 truncate text-xs leading-[1.35] text-muted-foreground"
+                      title={assistant.description}
+                    >
                       {assistant.description}
                     </p>
                   )}
@@ -214,6 +226,7 @@ function AssistantContent() {
             ))}
           </ul>
         </Card>
+        <PromptLibraryCard />
       </SettingsPageBody>
       <AddEditAssistant
         open={open}

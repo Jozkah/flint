@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Switch } from '@/components/ui/switch'
 import { CardItem } from '@/containers/Card'
 import { useBuildUpdate } from '@/hooks/useBuildUpdate'
@@ -38,13 +40,27 @@ export function BuildUpdateItem() {
   return (
     <CardItem
       anchor="settings-general-build-update"
-      title={t('settings:general.buildUpdate')}
-      description={
-        <>
-          {t('settings:general.buildUpdateDesc')}
-          {status ? <span className="mt-1 block text-foreground">{status}</span> : null}
-        </>
+      title={
+        // The explanation is long; it sits in a tooltip so the row stays one line.
+        <span className="inline-flex items-center gap-1.5">
+          {t('settings:general.buildUpdate')}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                aria-label={t('settings:general.buildUpdateDesc')}
+              >
+                <Info className="size-3.5" aria-hidden />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-72">
+              <p>{t('settings:general.buildUpdateDesc')}</p>
+            </TooltipContent>
+          </Tooltip>
+        </span>
       }
+      description={status ? <span className="text-foreground">{status}</span> : undefined}
       actions={
         <div className="flex items-center gap-3">
           <Button variant="outline" size="sm" disabled={busy} onClick={() => void check()}>

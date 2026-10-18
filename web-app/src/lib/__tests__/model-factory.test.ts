@@ -719,3 +719,32 @@ describe('createCustomFetch — llamacpp 500 handling', () => {
     expect(onErr).not.toHaveBeenCalled()
   })
 })
+
+describe('createCustomFetch — seed', () => {
+  const sent = async (parameters: Record<string, unknown>) => {
+    const baseFetch = vi.fn(async (_u: unknown, init?: RequestInit) =>
+      new Response(JSON.stringify({ body: init?.body }), { status: 200 })
+    )
+    const wrapped = createCustomFetch(
+      baseFetch as unknown as typeof fetch,
+      parameters,
+      true
+    )
+    await wrapped('http://x/v1/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({ messages: [] }),
+    })
+    return JSON.parse(baseFetch.mock.calls[0][1]!.body as string)
+  }
+
+  it('sends a fixed seed as a number, even typed as text', async () => {
+    expect((await sent({ seed: '1234' })).seed).toBe(1234)
+    expect((await sent({ seed: 0 })).seed).toBe(0)
+  })
+
+  it('leaves out -1, empty and non-integer seeds', async () => {
+    expect('seed' in (await sent({ seed: -1 }))).toBe(false)
+    expect('seed' in (await sent({ seed: '' }))).toBe(false)
+    expect('seed' in (await sent({ seed: 1.5 }))).toBe(false)
+  })
+})

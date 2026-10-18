@@ -27,6 +27,7 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 }))
 
 import { NewTemporaryChatButton } from '../NewTemporaryChatButton'
+import { useDraftSampling } from '@/hooks/useDraftSampling'
 
 describe('NewTemporaryChatButton', () => {
   beforeEach(() => {
@@ -34,6 +35,14 @@ describe('NewTemporaryChatButton', () => {
     providerState.selectedModel = undefined
     providerState.selectedProvider = 'llamacpp'
     providerState.getProviderByName = vi.fn(() => ({ models: [] }))
+  })
+
+  it('drops a composer sampling draft so it cannot leak into a later chat', async () => {
+    providerState.selectedModel = { id: 'qwen3-8b' }
+    useDraftSampling.getState().set('a1', { temperature: 0.1 })
+    render(<NewTemporaryChatButton />)
+    await userEvent.click(screen.getByRole('button'))
+    expect(useDraftSampling.getState().byAssistant).toEqual({})
   })
 
   it('starts a temporary chat with the selected model', async () => {

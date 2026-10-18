@@ -38,6 +38,8 @@ import {
 } from '@/lib/chatDelegation'
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
 import { forkThread } from '@/lib/forkThread'
+import { ConversationFindBar } from '@/containers/ConversationFindBar'
+import { useConversationFind } from '@/hooks/useConversationFind'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
@@ -417,6 +419,12 @@ export function ThreadConversation({
   const toolApprovalPromises = useRef<Map<string, Promise<boolean>>>(new Map())
 
   const titleAbortRef = useRef<AbortController | null>(null)
+  // Find in chat: the bar belongs to the conversation that is active.
+  const findOpen = useConversationFind((s) => s.open)
+  const findRootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    useConversationFind.getState().setOpen(false)
+  }, [threadId])
 
   // Steering (Steer now / Ctrl+Enter in the composer) is delivered at the
   // tool loop's safe point; see chatFollowUp. Set once `sendMessage` exists.
@@ -3063,7 +3071,10 @@ export function ThreadConversation({
           </div>
         </HeaderPage>
       )}
-      <div className="@container/conv relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        ref={findRootRef}
+        className="@container/conv relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      >
         {detailsOpen && (
           // Narrow panes show one of the two at a time.
           <div className="shrink-0 pb-2 @3xl/conv:hidden">
@@ -3146,6 +3157,14 @@ export function ThreadConversation({
             } as CSSProperties
           }
         >
+          {/* Inside the chat column, so it never covers the Details panel. */}
+          {findOpen && isActive && (
+            <ConversationFindBar
+              messages={chatMessages}
+              root={() => findRootRef.current}
+              onClose={() => useConversationFind.getState().setOpen(false)}
+            />
+          )}
           {/* 13.5px at the default size; the message zoom scales it. */}
           <Conversation className="absolute inset-0 text-start text-[calc(var(--text-base)*0.84375)] leading-[1.6] text-fg-2">
             <ConversationContent

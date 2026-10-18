@@ -48,15 +48,31 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
-import { layoutSurface } from '@/lib/groups/domain'
+import { descendantIds, groupDepth, layoutSurface } from '@/lib/groups/domain'
 import { useConversationGroups } from '@/lib/groups/store'
 import type { FolderAdapter } from '@/lib/groups/inherit'
 import { useMoveToGroup } from '@/hooks/useMoveToGroup'
-import type { ConversationGroup, GroupSurface } from '@/lib/groups/types'
+import {
+  MAX_GROUP_DEPTH,
+  type ConversationGroup,
+  type GroupLayout,
+  type GroupSurface,
+} from '@/lib/groups/types'
 import { GroupFoldersDialog } from './GroupFoldersDialog'
 import { GroupPrompts } from './GroupPrompts'
 
 const UNGROUPED = 'ungrouped'
+
+/** Whether a group or any group under it holds an item `keepVisible` wants. */
+function holdsKept(
+  node: GroupLayout<string>,
+  keepVisible: (id: string) => boolean
+): boolean {
+  return (
+    node.children.some(keepVisible) ||
+    node.subgroups.some((n) => holdsKept(n, keepVisible))
+  )
+}
 
 /** A drop target: a group, or Ungrouped. Lights up while hovered. */
 function DropZone({ id, children }: { id: string; children: ReactNode }) {
@@ -67,7 +83,7 @@ function DropZone({ id, children }: { id: string; children: ReactNode }) {
       data-testid={`group-drop-${id}`}
       className={cn(
         'rounded-md transition-[background-color,box-shadow] duration-150',
-        isOver && 'bg-acc-tint ring-1 ring-acc/40'
+        isOver && 'bg-acc-tint ring-2 ring-acc/70 ring-inset'
       )}
     >
       {children}
@@ -90,7 +106,7 @@ function DraggableRow({ id, children }: { id: string; children: ReactNode }) {
 }
 
 type NameDialog =
-  | { mode: 'create'; itemId?: string }
+  | { mode: 'create'; itemId?: string; parentId?: string }
   | { mode: 'rename'; group: ConversationGroup }
 
 /**
@@ -176,7 +192,7 @@ export function GroupedTree({
       await store.renameGroup(surface, d.group.id, trimmed)
       return
     }
-    const id = await store.createGroup(surface, trimmed)
+    const id = await store.createGroup(surface, trimmed, { parentId: d.parentId })
     if (id && d.itemId) await move(d.itemId, id)
   }
 
@@ -211,6 +227,121 @@ export function GroupedTree({
     )
   const foldersGroup = data.groups.find((g) => g.id === foldersOf)
 
+  const renderGroup = (
+    { group, children, subgroups }: GroupLayout<string>,
+    depth: number,
+    // An ancestor is collapsed: this group only shows its kept items, however
+    // it is set itself.
+    ancestorCollapsed = false
+  ): ReactNode => {
+      const open = !group.collapsed && !ancestorCollapsed
+      const visible = open ? children : children.filter(keepVisible)
+      const shownSubs = open
+        ? subgroups
+        : subgroups.filter((n) => holdsKept(n, keepVisible))
+      const hasSub = shownSubs.length > 0
+      return (
+        <li
+          key={group.id}
+          className="flex list-none flex-col"
+          data-testid="nav-group"
+          data-group-id={group.id}
+        >
+          <DropZone id={group.id}>
+            <div className="group/cg flex h-7 items-center gap-0.5 pl-2">
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={() => toggle(group)}
+                className="flex h-[26px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+              >
+                {group.folderBindings.length > 0 && (
+                  <Folders aria-hidden className="size-3 shrink-0" />
+                )}
+                <FadeText>{group.name}</FadeText>
+                <span className="text-[10.5px] font-normal text-subtle-foreground tabular-nums">
+                  {children.length}
+                </span>
+              </button>
+              {/* The chevron rests at the far right; the row's actions
+                  take its place on hover and push it left. */}
+              <NavGroupAction
+                tabIndex={-1}
+                aria-hidden
+                onClick={() => toggle(group)}
+              >
+                <ChevronDown
+                  className={cn(
+                    'transition-transform duration-300 ease-expo',
+                    !open && '-rotate-90'
+                  )}
+                />
+              </NavGroupAction>
+              <NavGroupAction
+                className="hidden group-focus-within/cg:grid group-hover/cg:grid pointer-coarse:grid"
+                aria-label={t(newInLabelKey, { name: group.name })}
+                title={t(newInLabelKey, { name: group.name })}
+                onClick={() => onNewInGroup(group.id)}
+                data-testid="group-new-item"
+              >
+                <Plus />
+              </NavGroupAction>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <NavGroupAction
+                    className="hidden group-focus-within/cg:grid group-hover/cg:grid data-[state=open]:grid pointer-coarse:grid"
+                    aria-label={t('common:groups.options')}
+                  >
+                    <MoreHorizontal />
+                  </NavGroupAction>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  side={isMobile ? 'bottom' : 'right'}
+                  className="w-48"
+                >
+                  <DropdownMenuItem
+                    onSelect={() => openName({ mode: 'rename', group })}
+                  >
+                    <Pencil />
+                    <span>{t('common:groups.renameGroup')}</span>
+                  </DropdownMenuItem>
+                    {depth < MAX_GROUP_DEPTH && (
+                      <DropdownMenuItem
+                        data-testid="group-new-subfolder"
+                        onSelect={() => openName({ mode: 'create', parentId: group.id })}
+                      >
+                        <FolderPlus />
+                        <span>{t('common:groups.newSubfolder')}</span>
+                      </DropdownMenuItem>
+                    )}
+                    <MoveGroupSub surface={surface} group={group} />
+                  <DropdownMenuItem onSelect={() => setFoldersOf(group.id)}>
+                    <Folders />
+                    <span>{t('common:groups.folders')}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setDeleting(group)}
+                  >
+                    <Trash2 />
+                    <span>{t('common:groups.deleteGroup')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </DropZone>
+          <NavCollapse open={visible.length > 0 || hasSub}>
+          <ul className="flex flex-col gap-0.5 pl-2">
+            {shownSubs.map((n) => renderGroup(n, depth + 1, !open))}
+            {visible.map(row)}
+          </ul>
+        </NavCollapse>
+        </li>
+      )
+  }
+
   return (
     <>
       {showNewGroup && (
@@ -234,97 +365,7 @@ export function GroupedTree({
           onDragEnd(e)
         }}
       >
-        {layout.groups.map(({ group, children }) => {
-          const open = !group.collapsed
-          const visible = open ? children : children.filter(keepVisible)
-          return (
-            <li
-              key={group.id}
-              className="group/cg flex list-none flex-col"
-              data-testid="nav-group"
-              data-group-id={group.id}
-            >
-              <DropZone id={group.id}>
-                <div className="flex h-7 items-center gap-0.5 pl-2">
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    onClick={() => toggle(group)}
-                    className="flex h-[26px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground transition-colors outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
-                  >
-                    {group.folderBindings.length > 0 && (
-                      <Folders aria-hidden className="size-3 shrink-0" />
-                    )}
-                    <FadeText>{group.name}</FadeText>
-                    <span className="text-[10.5px] font-normal text-subtle-foreground tabular-nums">
-                      {children.length}
-                    </span>
-                  </button>
-                  {/* The chevron rests at the far right; the row's actions
-                      take its place on hover and push it left. */}
-                  <NavGroupAction
-                    tabIndex={-1}
-                    aria-hidden
-                    onClick={() => toggle(group)}
-                  >
-                    <ChevronDown
-                      className={cn(
-                        'transition-transform duration-300 ease-expo',
-                        !open && '-rotate-90'
-                      )}
-                    />
-                  </NavGroupAction>
-                  <NavGroupAction
-                    className="hidden group-focus-within/cg:grid group-hover/cg:grid pointer-coarse:grid"
-                    aria-label={t(newInLabelKey, { name: group.name })}
-                    title={t(newInLabelKey, { name: group.name })}
-                    onClick={() => onNewInGroup(group.id)}
-                    data-testid="group-new-item"
-                  >
-                    <Plus />
-                  </NavGroupAction>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <NavGroupAction
-                        className="hidden group-focus-within/cg:grid group-hover/cg:grid data-[state=open]:grid pointer-coarse:grid"
-                        aria-label={t('common:groups.options')}
-                      >
-                        <MoreHorizontal />
-                      </NavGroupAction>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="start"
-                      side={isMobile ? 'bottom' : 'right'}
-                      className="w-48"
-                    >
-                      <DropdownMenuItem
-                        onSelect={() => openName({ mode: 'rename', group })}
-                      >
-                        <Pencil />
-                        <span>{t('common:groups.renameGroup')}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => setFoldersOf(group.id)}>
-                        <Folders />
-                        <span>{t('common:groups.folders')}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onSelect={() => setDeleting(group)}
-                      >
-                        <Trash2 />
-                        <span>{t('common:groups.deleteGroup')}</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </DropZone>
-              <NavCollapse open={visible.length > 0}>
-                <ul className="flex flex-col gap-0.5 pl-2">{visible.map(row)}</ul>
-              </NavCollapse>
-            </li>
-          )
-        })}
+        {layout.groups.map((node) => renderGroup(node, 1))}
         {hasGroups && (layout.recents.length > 0 || dragging) ? (
           <li className="flex list-none flex-col" data-testid="nav-ungrouped">
             <DropZone id={UNGROUPED}>
@@ -412,6 +453,63 @@ export function GroupedTree({
         />
       )}
     </>
+  )
+}
+
+/**
+ * "Move into folder" for a group's menu: top level, or any group that is not
+ * the group itself or one of its own sub-groups and leaves the whole subtree
+ * within the depth cap.
+ */
+function MoveGroupSub({
+  surface,
+  group,
+}: {
+  surface: Extract<GroupSurface, 'cowork' | 'rooms'>
+  group: ConversationGroup
+}) {
+  const { t } = useTranslation()
+  const data = useConversationGroups((s) => s.state.surfaces[surface])
+  const blocked = descendantIds(data, group.id)
+  blocked.add(group.id)
+  // Height of this group's own subtree (1 for a leaf).
+  const height = (id: string, guard = 0): number =>
+    guard > MAX_GROUP_DEPTH
+      ? 1
+      : 1 +
+        Math.max(
+          0,
+          ...data.groups.filter((g) => g.parentId === id).map((g) => height(g.id, guard + 1))
+        )
+  const own = height(group.id)
+  const targets = [...data.groups]
+    .sort((a, b) => a.position - b.position)
+    .filter((g) => !blocked.has(g.id) && groupDepth(data, g.id) + own <= MAX_GROUP_DEPTH)
+  const set = (parentId: string | null) =>
+    void useConversationGroups.getState().setGroupParent(surface, group.id, parentId)
+  if (targets.length === 0 && group.parentId === null) return null
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger data-testid="group-move-into">
+        <FolderInput />
+        <span>{t('common:groups.moveInto')}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-44">
+        {targets.map((g) => (
+          <DropdownMenuItem
+            key={g.id}
+            disabled={g.id === group.parentId}
+            onSelect={() => set(g.id)}
+          >
+            <FadeText>{g.name}</FadeText>
+          </DropdownMenuItem>
+        ))}
+        {targets.length > 0 && <DropdownMenuSeparator />}
+        <DropdownMenuItem disabled={group.parentId === null} onSelect={() => set(null)}>
+          <span>{t('common:groups.topLevel')}</span>
+        </DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   )
 }
 

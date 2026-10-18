@@ -16,6 +16,7 @@ const hoisted = vi.hoisted(() => ({
   },
 }))
 
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 vi.mock('sonner', () => ({ toast: hoisted.toast }))
 
 // Override the global useServiceHub mock from setup.ts with a tailored one.
@@ -39,6 +40,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 import { ImportLlamacppModelDialog } from '../ImportLlamacppModelDialog'
+import { useModelLibrary } from '@/hooks/useModelLibrary'
 
 const provider = { models: [] } as unknown as any
 
@@ -434,5 +436,34 @@ describe('ImportLlamacppModelDialog', () => {
     await waitFor(() =>
       expect(screen.queryByText('Import Model')).not.toBeInTheDocument()
     )
+  })
+
+  it('removing a model folder also drops what the last scan found in it', async () => {
+    useModelLibrary.setState({ folders: ['C:/library/models'] })
+    hoisted.invoke.mockImplementation(async (cmd: string) =>
+      cmd === 'scan_local_models'
+        ? [
+            { path: 'C:/library/models/alpha.gguf', name: 'alpha', source: 'Custom folder', size_bytes: 1000 },
+            { path: 'D:/lm-studio/beta.gguf', name: 'beta', source: 'LM Studio', size_bytes: 2000 },
+          ]
+        : { metadata: { 'general.architecture': 'llama' } }
+    )
+    render(
+      <ImportLlamacppModelDialog
+        provider={provider}
+        trigger={<button>Open</button>}
+      />
+    )
+    openDialog()
+    fireEvent.click(screen.getByText('Find models already on this computer'))
+    expect(await screen.findByText('alpha')).toBeInTheDocument()
+    expect(screen.getByText('beta')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Remove folder C:/library/models'))
+
+    expect(useModelLibrary.getState().folders).toEqual([])
+    expect(screen.queryByText('alpha')).not.toBeInTheDocument()
+    // Other apps' models are not touched.
+    expect(screen.getByText('beta')).toBeInTheDocument()
   })
 })

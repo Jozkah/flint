@@ -294,6 +294,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:interface.composerRailButtonsDesc',
     keywords: ['cowork', 'output', 'preview', 'changes', 'activity', 'timeline', 'composer', 'buttons'],
   }),
+  item('appearance', 'sidebar-items', 'settings:sidebarItems.title', {
+    descriptionKey: 'settings:sidebarItems.description',
+    keywords: ['sidebar', 'navbar', 'navigation', 'hide', 'menu', 'items', 'tabs', 'declutter'],
+  }),
   item('appearance', 'completion-sound', 'settings:appearance.completionSound', {
     descriptionKey: 'settings:appearance.completionSoundDesc',
     keywords: ['sound', 'audio', 'chime', 'notification', 'finished', 'done'],

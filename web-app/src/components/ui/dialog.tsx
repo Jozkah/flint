@@ -3,6 +3,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { ignoreToastPresses } from "@/lib/toastInteractOutside"
 import { Button } from "@/components/ui/button"
 
 function Dialog({
@@ -55,6 +56,7 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onInteractOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -65,6 +67,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         aria-describedby={undefined}
+        onInteractOutside={ignoreToastPresses(onInteractOutside)}
         className={cn(
           // Phone: a bottom sheet within the visual viewport, so the primary
           // action stays above the keyboard and the home indicator.

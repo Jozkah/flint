@@ -1,4 +1,5 @@
 import { ExtensionManager } from '@/lib/extension'
+import { markExtensionsLoaded } from '@/lib/extensionEvents'
 import { APIs } from '@/lib/service'
 import { EventEmitter } from '@/services/events/EventEmitter'
 import { EngineManager, ModelManager } from '@janhq/core'
@@ -65,8 +66,11 @@ export function ExtensionProvider({ children }: PropsWithChildren) {
           setStatus({ key: 'loadingExtensions', vars: { done, total } }),
         only
       )
+      markExtensionsLoaded()
     } catch (e) {
       console.error('Extension setup failed:', e)
+      // Readers waiting on the load must not wait forever on a failed one.
+      markExtensionsLoaded()
     } finally {
       setFinishedSetup(true)
     }
@@ -92,7 +96,12 @@ export function ExtensionProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     const caption = document.getElementById('initial-loader-caption')
-    if (caption) {
+    // A stalled splash keeps its message; a late progress update must not
+    // wipe the explanation the person is reading.
+    const stalled = document
+      .getElementById('initial-loader')
+      ?.hasAttribute('data-stalled')
+    if (caption && !stalled) {
       caption.textContent = status ? t(status.key, status.vars) : t('settingUpJan')
     }
   }, [status, t])

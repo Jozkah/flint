@@ -20,6 +20,7 @@ describe('crumbForPath', () => {
   it('names threads, rooms and providers from the page', () => {
     expect(crumbForPath('/threads/t1')).toMatchObject({ dynamic: 'thread', param: 't1', currentKey: null })
     expect(crumbForPath('/cowork')).toMatchObject({ dynamic: 'session', parentKey: 'common:cowork' })
+    expect(crumbForPath('/campaigns')).toMatchObject({ parentKey: 'common:cowork', currentKey: 'settings:campaigns.nav' })
     expect(crumbForPath('/campaign/abc')).toMatchObject({ parentKey: 'common:cowork', currentKey: 'common:campaign' })
     expect(crumbForPath('/rooms/r1')).toMatchObject({ dynamic: 'room', parentKey: 'common:appRail.rooms' })
     expect(crumbForPath('/settings/providers/llama.cpp')).toMatchObject({ dynamic: 'provider', param: 'llama.cpp' })

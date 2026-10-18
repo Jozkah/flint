@@ -470,13 +470,13 @@ export function seedSettingsPreview() {
     allowAllMCPPermissions: false,
   } as never)
   const assistants = useAssistant.getState().assistants
-  if (!assistants.some((a) => a.id === 'rust-reviewer')) {
-    useAssistant.setState({
-      assistants: [
-        ...assistants,
-        { id: 'rust-reviewer', avatar: '🦀', name: 'Rust reviewer', description: 'Reviews Rust diffs for correctness and idiom.', instructions: '', parameters: {}, created_at: now },
-        { id: 'changelog', avatar: '✍️', name: 'Changelog writer', description: 'Turns commit lists into short release notes.', instructions: '', parameters: {}, created_at: now },
-      ],
-    } as never)
+  // Only ids the list lacks: previewSeed's assistants() already carries the
+  // changelog writer, and a second copy listed it twice.
+  const extra = [
+    { id: 'rust-reviewer', avatar: '🦀', name: 'Rust reviewer', description: 'Reviews Rust diffs for correctness and idiom.', instructions: '', parameters: {}, created_at: now },
+    { id: 'changelog', avatar: '✍️', name: 'Changelog writer', description: 'Turns commit lists into short release notes.', instructions: '', parameters: {}, created_at: now },
+  ].filter((a) => !assistants.some((x) => x.id === a.id))
+  if (extra.length > 0) {
+    useAssistant.setState({ assistants: [...assistants, ...extra] } as never)
   }
 }

@@ -27,11 +27,13 @@ export function CampaignsPage() {
   const { t, i18n } = useTranslation()
   const lang = (i18n as { language?: string } | undefined)?.language || 'en'
   const navigate = useNavigate()
-  const { campaigns, loaded, error, refresh } = useCampaigns()
+  const { campaigns, loaded, error, skipped, refresh, unavailable, staleApp } =
+    useCampaigns()
   const { folder, isRepo } = useCampaignFolderState()
   const [startOpen, setStartOpen] = useState(false)
   // Known not to be a repository: the button says why it cannot start.
   const blocked = isRepo === false
+  const noBackend = unavailable === 'desktop'
   const sorted = [...campaigns].sort(
     (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
   )
@@ -40,7 +42,7 @@ export function CampaignsPage() {
     <Button
       size="sm"
       className="pointer-coarse:h-11"
-      disabled={blocked}
+      disabled={blocked || noBackend}
       onClick={() => setStartOpen(true)}
       data-testid="campaigns-start"
     >
@@ -73,6 +75,22 @@ export function CampaignsPage() {
               {t('settings:campaigns.start.noFolder')}
             </p>
           )}
+          {loaded && skipped.length > 0 && (
+            <div
+              role="status"
+              data-testid="campaigns-skipped"
+              className="rounded-xl border-[0.8px] border-border px-4 py-3 text-xs text-muted-foreground"
+            >
+              <p>{t('settings:campaigns.list.skipped', { count: skipped.length })}</p>
+              <ul className="mt-1 list-disc pl-4">
+                {skipped.map((r) => (
+                  <li key={r.id} className="break-words">
+                    {r.id}: {r.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {!loaded ? (
             <div
@@ -86,6 +104,13 @@ export function CampaignsPage() {
                 <Skeleton key={i} className="h-[74px] rounded-xl" />
               ))}
             </div>
+          ) : noBackend ? (
+            <EmptyState
+              className="rounded-xl border-[0.8px] border-dashed border-border-strong py-12"
+              icon={<Workflow />}
+              title={t('settings:campaigns.list.needsDesktop')}
+              description={t('settings:campaigns.list.needsDesktopHint')}
+            />
           ) : error && sorted.length === 0 ? (
             <div
               role="alert"
@@ -93,6 +118,20 @@ export function CampaignsPage() {
               className="flex flex-col items-start gap-2 rounded-xl border-[0.8px] border-border px-4 py-6 text-sm"
             >
               <p>{t('settings:campaigns.list.loadFailed')}</p>
+              <p
+                data-testid="campaigns-error-reason"
+                className="break-words text-muted-foreground"
+              >
+                {error}
+              </p>
+              {staleApp && (
+                <p
+                  data-testid="campaigns-stale-app"
+                  className="text-xs text-muted-foreground"
+                >
+                  {t('settings:campaigns.list.staleApp')}
+                </p>
+              )}
               <Button
                 size="sm"
                 variant="outline"

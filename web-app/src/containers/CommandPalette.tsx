@@ -28,6 +28,7 @@ import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useProjectDialog } from '@/hooks/useProjectDialog'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { SETTINGS_PAGES } from '@/lib/settingsSearch'
+import { SIDEBAR_ITEMS } from '@/lib/sidebarItems'
 import { runExport } from '@/lib/exportAction'
 import { docFromCowork, docFromThread } from '@/lib/exportDoc'
 import {
@@ -153,6 +154,18 @@ export function CommandPalette() {
         run: go(route.appLogs),
       },
     ]
+    // Anything the sidebar can hide stays one palette entry away.
+    const listed = new Set(out.map((c) => c.id))
+    for (const item of SIDEBAR_ITEMS) {
+      const id = `nav-${item.id}`
+      if (!item.canHide || listed.has(id) || item.id === 'library') continue
+      out.push({
+        id,
+        section: 'navigation',
+        title: t('common:commandPalette.openItem', { item: t(item.labelKey) }),
+        run: go(item.to()),
+      })
+    }
     // What is on screen decides whether there is anything to export.
     const path = typeof window === 'undefined' ? '' : window.location.pathname
     const threadId = /\/threads\/([^/?#]+)/.exec(path)?.[1] ?? null

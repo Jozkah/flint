@@ -15,6 +15,7 @@ import { useVulkan } from '@/hooks/useVulkan'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useModelOrder } from '@/hooks/useModelOrder'
 import { useModelFilter } from '@/hooks/useModelFilter'
+import { useModelLibrary } from '@/hooks/useModelLibrary'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
@@ -34,6 +35,7 @@ import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { useKeybindings } from '@/hooks/useKeybindings'
 import { useReferenceAliases } from '@/lib/referenceAliases'
+import { usePromptLibrary } from '@/lib/promptLibrary'
 import { useProjectInitDrafts } from '@/lib/projectInit'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useModelDoctor } from '@/hooks/useModelDoctor'
@@ -54,6 +56,7 @@ import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useGlobalExtensions } from '@/hooks/useGlobalExtensions'
 import { initConversationGroups } from '@/lib/groups/bootstrap'
 import { isChatWindow } from '@/lib/soloFlag'
+import { backendReadFailures } from '@/lib/backendStorage'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -80,6 +83,7 @@ const secondaryStores = [
   useFavoriteModel,
   useModelOrder,
   useModelFilter,
+  useModelLibrary,
   useDefaultEmbeddingModel,
   useAgentMode,
   useWebSearchConfig,
@@ -96,6 +100,7 @@ const secondaryStores = [
   useCoworkDisplay,
   useKeybindings,
   useReferenceAliases,
+  usePromptLibrary,
   useProjectInitDrafts,
   useModelEvidence,
   useModelDoctor,
@@ -118,6 +123,12 @@ export async function hydrateBackendStores(): Promise<void> {
   await Promise.all(
     secondaryStores.map((store) => Promise.resolve(store.persist.rehydrate()))
   )
+  // A store whose saved settings could not be read stays on defaults and
+  // refuses to write them (see backendStorage); the app must not start on it.
+  const unread = backendReadFailures()
+  if (unread.length > 0) {
+    throw new Error(`Could not read saved settings: ${unread.join(', ')}`)
+  }
   // Secrets are never in the persisted blobs; seed them from the keyring
   // before anything (the server auto-start) reads them.
   await Promise.all([seedLocalApiServerKey(), seedProxyPassword()])

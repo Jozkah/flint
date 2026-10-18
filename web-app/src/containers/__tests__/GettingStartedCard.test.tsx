@@ -11,6 +11,7 @@ import { GettingStartedCard } from '../GettingStartedCard'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useThreads } from '@/hooks/useThreads'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
 import { INITIAL_GUIDE_STATE } from '@/lib/onboarding'
 
 const localProvider = {
@@ -61,6 +62,19 @@ describe('GettingStartedCard', () => {
     expect(useOnboardingGuide.getState().confirmedSteps).toEqual(['add-material'])
   })
 
+  it('points to the sidebar settings and opens them on that group', () => {
+    useOnboardingGuide.getState().start('question', 0)
+    render(<GettingStartedCard />)
+    expect(screen.getByTestId('guide-sidebar-note')).toHaveTextContent(
+      'onboarding:sidebar.title'
+    )
+    fireEvent.click(screen.getByTestId('guide-customize-sidebar'))
+    expect(navigate).toHaveBeenCalledWith({ to: '/settings/interface' })
+    expect(useSettingsSearch.getState().pendingTarget).toBe(
+      'settings-appearance-sidebar-items'
+    )
+  })
+
   it('completes when every step is done, and can be hidden at any time', () => {
     useOnboardingGuide.getState().start('question', 0)
     useThreads.setState({ threads: { a: thread('a', 1) } })
@@ -68,6 +82,50 @@ describe('GettingStartedCard', () => {
     expect(screen.getByRole('status')).toHaveTextContent('onboarding:guideComplete')
     fireEvent.click(screen.getByRole('button', { name: 'onboarding:finish' }))
     expect(useOnboardingGuide.getState().status).toBe('completed')
+  })
+
+  it('ticks the home checklist from real state: model yes, chat and project no', () => {
+    useOnboardingGuide.getState().start('question', 0)
+    render(<GettingStartedCard />)
+    const items = screen
+      .getByTestId('guide-checklist')
+      .querySelectorAll('li')
+    expect([...items].map((li) => li.hasAttribute('data-done'))).toEqual([
+      true,
+      false,
+      false,
+    ])
+  })
+
+  it('offers a sample question that fills the message box and never sends', async () => {
+    const { usePrompt } = await import('@/hooks/usePrompt')
+    usePrompt.getState().setPrompt('')
+    useOnboardingGuide.getState().start('question', 0)
+    render(<GettingStartedCard />)
+    fireEvent.click(screen.getByTestId('guide-sample-question'))
+    expect(usePrompt.getState().prompt).toBe('onboarding:sample.question')
+    expect(useThreads.getState().threads).toEqual({})
+  })
+
+  it('does not overwrite what the user already typed', async () => {
+    const { usePrompt } = await import('@/hooks/usePrompt')
+    usePrompt.getState().setPrompt('my own draft')
+    useOnboardingGuide.getState().start('question', 0)
+    render(<GettingStartedCard />)
+    fireEvent.click(screen.getByTestId('guide-sample-question'))
+    expect(usePrompt.getState().prompt).toBe('my own draft')
+  })
+
+  it('explains where approvals appear only for project work', () => {
+    useOnboardingGuide.getState().start('project', 0)
+    const { unmount } = render(<GettingStartedCard />)
+    expect(screen.getByTestId('guide-approvals-note')).toHaveTextContent(
+      'onboarding:approvalsNote'
+    )
+    unmount()
+    useOnboardingGuide.getState().start('question', 0)
+    render(<GettingStartedCard />)
+    expect(screen.queryByTestId('guide-approvals-note')).not.toBeInTheDocument()
   })
 
   it('hides the guide without changing anything else', () => {

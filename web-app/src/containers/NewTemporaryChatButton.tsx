@@ -5,6 +5,7 @@ import { route } from '@/constants/routes'
 import { resolveThreadModelId } from '@/lib/models'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useThreads } from '@/hooks/useThreads'
+import { useDraftSampling } from '@/hooks/useDraftSampling'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import {
@@ -36,6 +37,9 @@ export function NewTemporaryChatButton() {
       (getProviderByName(selectedProvider)?.models ?? []).map((m) => m.id)
     )
     if (!modelId) return
+    // A temporary chat takes no composer sampling draft; drop it so it does not
+    // surface in a later chat.
+    useDraftSampling.getState().clearAll()
     useThreads.getState().createThread(
       {
         id: modelId,
