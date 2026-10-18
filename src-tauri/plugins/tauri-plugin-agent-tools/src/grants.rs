@@ -206,9 +206,6 @@ pub fn authorize_with_extras(
         .map(|grant| grant.workspace.clone())
         .collect();
     grants.retain(|_, grant| grant.session_id != session_id);
-    // The replaced grant's folders may not be in this one (a folder removed
-    // from the session): their ACEs go now, not at the next command.
-    withdraw_folder_aces(&replaced);
     grants.insert(
         id.clone(),
         Grant {
@@ -218,6 +215,13 @@ pub fn authorize_with_extras(
             workspace: workspace.to_path_buf(),
         },
     );
+    // Released before the ACL work: withdrawing can wait on the sandbox
+    // helper's lock and walk a whole tree, and every other grant check
+    // (including revokes the UI makes) needs this registry meanwhile.
+    drop(grants);
+    // The replaced grant's folders may not be in this one (a folder removed
+    // from the session): their ACEs go now, not at the next command.
+    withdraw_folder_aces(&replaced);
     Ok(id)
 }
 
@@ -350,8 +354,11 @@ pub fn revoke_session(session_id: &str) -> usize {
         }
         keep
     });
+    let removed = before - grants.len();
+    // Not under the registry lock: see `authorize`.
+    drop(grants);
     withdraw_folder_aces(&released);
-    before - grants.len()
+    removed
 }
 
 /// The root this grant authorizes, if it is live and belongs to `session_id`.

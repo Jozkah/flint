@@ -83,6 +83,21 @@ describe('summarizeChatContext', () => {
     ).toBe('location.remote')
   })
 
+  it('says which host a network or remote model sends to (T7-115)', () => {
+    const lan = section(
+      base({ model: { id: 'q', provider: 'v100', location: 'network', host: 'v100:8559' } }),
+      'model'
+    ).items[0]
+    expect(lan.reason).toBe('location.network')
+    expect(lan.reasonParams).toEqual({ host: 'v100:8559' })
+    const cloud = section(
+      base({ model: { id: 'gpt', provider: 'openai', location: 'remote', host: 'api.openai.com' } }),
+      'model'
+    ).items[0]
+    expect(cloud.reason).toBe('location.remoteHost')
+    expect(cloud.reasonParams).toEqual({ host: 'api.openai.com' })
+  })
+
   it('distinguishes inline, indexed and pending attachments', () => {
     const items = section(
       base({

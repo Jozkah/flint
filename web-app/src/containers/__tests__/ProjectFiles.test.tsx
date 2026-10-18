@@ -56,6 +56,12 @@ vi.mock('@/hooks/useServiceHub', () => ({
 const uploadsHoisted = vi.hoisted(() => ({
   ingestMock: vi.fn(),
   progress: {} as Record<string, { current: number; total: number }>,
+  failures: {} as Record<string, { fileName: string; error: unknown }[]>,
+  dismissFailure: vi.fn(),
+  navigate: vi.fn(),
+}))
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => uploadsHoisted.navigate,
 }))
 const { ingestMock } = uploadsHoisted
 vi.mock('@/stores/project-uploads-store', () => ({
@@ -64,6 +70,8 @@ vi.mock('@/stores/project-uploads-store', () => ({
       progress: uploadsHoisted.progress,
       completedTick: {},
       ingest: uploadsHoisted.ingestMock,
+      failures: uploadsHoisted.failures,
+      dismissFailure: uploadsHoisted.dismissFailure,
     }),
 }))
 
@@ -120,6 +128,44 @@ describe('ProjectFiles', () => {
     readdirSyncMock.mockReset().mockResolvedValue([])
     ingestMock.mockReset()
     uploadsHoisted.progress = {}
+    uploadsHoisted.failures = {}
+  })
+
+  it('keeps a row for a file that failed for want of an embedding model (T7-054)', async () => {
+    uploadsHoisted.failures = {
+      p1: [
+        {
+          fileName: 'zorblax.txt',
+          error: new Error(
+            'Failed to determine embedding context size: No embedding model is installed.'
+          ),
+        },
+      ],
+    }
+    render(<ProjectFiles projectId="p1" lng="en" />)
+    const row = await screen.findByTestId('project-file-failure')
+    expect(within(row).getByText('zorblax.txt')).toBeInTheDocument()
+    expect(within(row).getByText('common:toast.uploadFailed.noEmbeddingModel')).toBeInTheDocument()
+    fireEvent.click(within(row).getByText('common:projects.setUpEmbeddingModel'))
+    expect(uploadsHoisted.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { providerName: 'llamacpp' } })
+    )
+    fireEvent.click(within(row).getByLabelText('common:dismiss'))
+    expect(uploadsHoisted.dismissFailure).toHaveBeenCalledWith('p1', 'zorblax.txt')
+  })
+
+  it('toasts the missing embedding model with a setup action', async () => {
+    dialogOpenMock.mockResolvedValue(['C:/f/zorblax.txt'])
+    ingestMock.mockImplementation(async (_p, _a, _fn, handlers) =>
+      handlers.onError(new Error('No embedding model is installed.'), 'zorblax.txt')
+    )
+    render(<ProjectFiles projectId="p1" lng="en" />)
+    await waitFor(() => expect(screen.getByText('common:projects.processButton')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('common:projects.processButton'))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    const opts = toastMock.error.mock.calls[0][1]
+    expect(opts.description).toBe('common:toast.uploadFailed.noEmbeddingModel')
+    expect(opts.action.label).toBe('common:projects.setUpEmbeddingModel')
   })
 
   it('shows loader while files are loading', () => {

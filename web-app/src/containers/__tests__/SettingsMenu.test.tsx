@@ -7,6 +7,12 @@ Object.defineProperty(global, 'IS_IOS', { value: false, writable: true })
 Object.defineProperty(global, 'IS_ANDROID', { value: false, writable: true })
 Object.defineProperty(global, 'IS_WEB_APP', { value: false, writable: true })
 
+// The desktop menu: every page is reachable there.
+vi.mock('@/lib/platform/utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/platform/utils')>()),
+  isPlatformTauri: () => true,
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to, className }: any) => (
     <a href={to} className={className}>

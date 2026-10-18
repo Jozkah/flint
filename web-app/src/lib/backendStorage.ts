@@ -1,5 +1,5 @@
 import type { StateStorage } from 'zustand/middleware'
-import { isPlatformTauri } from '@/lib/platform/utils'
+import { isPlatformTauri, isServedByFlint } from '@/lib/platform/utils'
 import { getServiceHub } from '@/hooks/useServiceHub'
 
 /**
@@ -33,9 +33,12 @@ const failedReads = new Set<string>()
 /** Keys the backend could not be read for; startup stops on any (never runs on defaults). */
 export const backendReadFailures = (): string[] => [...failedReads]
 
+/** Whether a backend keeps settings: the desktop app, or the `flint serve` server. */
+const hasBackend = (): boolean => isPlatformTauri() || isServedByFlint()
+
 export const backendStorage: StateStorage = {
   getItem: async (name) => {
-    if (!isPlatformTauri()) return localStorage.getItem(name)
+    if (!hasBackend()) return localStorage.getItem(name)
     try {
       const value = await getServiceHub().core().invoke<string | null>(
         'settings_get',
@@ -43,6 +46,9 @@ export const backendStorage: StateStorage = {
       )
       failedReads.delete(name)
       if (value != null) lastWritten.set(name, value)
+      // A browser that kept settings itself before the server did: its value
+      // is used once and reaches the server with the next write.
+      if (value == null && !isPlatformTauri()) return localStorage.getItem(name)
       return value ?? null
     } catch (error) {
       console.error(`settings_get failed for '${name}':`, error)
@@ -51,7 +57,7 @@ export const backendStorage: StateStorage = {
     }
   },
   setItem: async (name, value) => {
-    if (!isPlatformTauri()) {
+    if (!hasBackend()) {
       localStorage.setItem(name, value)
       return
     }
@@ -70,7 +76,7 @@ export const backendStorage: StateStorage = {
     await write
   },
   removeItem: async (name) => {
-    if (!isPlatformTauri()) {
+    if (!hasBackend()) {
       localStorage.removeItem(name)
       return
     }

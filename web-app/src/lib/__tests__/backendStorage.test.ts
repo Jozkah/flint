@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const isPlatformTauri = vi.fn()
+const isServedByFlint = vi.fn(() => false)
 const invoke = vi.fn()
 
 vi.mock('@/lib/platform/utils', () => ({
   isPlatformTauri: () => isPlatformTauri(),
+  isServedByFlint: () => isServedByFlint(),
 }))
 
 vi.mock('@/hooks/useServiceHub', () => ({
@@ -30,6 +32,28 @@ describe('backendStorage', () => {
       await backendStorage.removeItem('k')
       expect(await backendStorage.getItem('k')).toBeNull()
       expect(invoke).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('browser served by flint serve', () => {
+    beforeEach(() => {
+      isPlatformTauri.mockReturnValue(false)
+      isServedByFlint.mockReturnValue(true)
+    })
+
+    it('keeps settings on the server so every device sees them', async () => {
+      invoke.mockResolvedValueOnce('stored')
+      expect(await backendStorage.getItem('server-key')).toBe('stored')
+      expect(invoke).toHaveBeenCalledWith('settings_get', { key: 'server-key' })
+      await backendStorage.setItem('server-key', 'next')
+      expect(invoke).toHaveBeenCalledWith('settings_set', { key: 'server-key', value: 'next' })
+      expect(localStorage.getItem('server-key')).toBeNull()
+    })
+
+    it('carries a value this browser kept before over to the server', async () => {
+      localStorage.setItem('old-key', 'local')
+      invoke.mockResolvedValueOnce(null)
+      expect(await backendStorage.getItem('old-key')).toBe('local')
     })
   })
 

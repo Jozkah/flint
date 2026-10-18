@@ -8,6 +8,7 @@ import {
   type BedrockCredentialField,
   type BedrockCredentialStatus,
 } from '@/lib/bedrock'
+import { isPlatformTauri } from '@/lib/platform/utils'
 
 const FIELDS: { field: BedrockCredentialField; label: string; hint?: string }[] = [
   { field: 'access_key_id', label: 'providers:bedrock.accessKeyId' },
@@ -21,6 +22,25 @@ const FIELDS: { field: BedrockCredentialField; label: string; hint?: string }[] 
  * only whether one is saved.
  */
 export function BedrockCredentials() {
+  const { t } = useTranslation()
+  if (!isPlatformTauri()) {
+    // Credentials live in this machine's keyring and requests are signed by the
+    // desktop app; the browser client of `flint serve` has neither.
+    return (
+      <div className="space-y-1" data-testid="bedrock-desktop-only">
+        <h3 className="text-[13px] font-medium text-foreground">
+          {t('providers:bedrock.title')}
+        </h3>
+        <p className="text-xs leading-normal text-muted-foreground">
+          {t('permissions:desktopOnly')}
+        </p>
+      </div>
+    )
+  }
+  return <BedrockCredentialsForm />
+}
+
+function BedrockCredentialsForm() {
   const { t } = useTranslation()
   const [status, setStatus] = useState<BedrockCredentialStatus | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>({})

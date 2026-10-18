@@ -253,14 +253,22 @@ pub async fn direct_edit_authorize(
 
 /// Withdraw one grant. Succeeds whether or not it was still live.
 #[cfg_attr(feature = "tauri", tauri::command)]
-pub fn direct_edit_revoke(grant_id: String) -> bool {
-    crate::grants::revoke(&grant_id)
+pub async fn direct_edit_revoke(grant_id: String) -> bool {
+    // Withdrawing a grant rewrites folder ACLs, which can take seconds on a
+    // big tree and waits on the sandbox helper's lock. A synchronous command
+    // runs on the main thread, where that froze every other IPC call.
+    tokio::task::spawn_blocking(move || crate::grants::revoke(&grant_id))
+        .await
+        .unwrap_or(false)
 }
 
 /// Withdraw every grant a session holds — detaching, switching, deleting.
 #[cfg_attr(feature = "tauri", tauri::command)]
-pub fn direct_edit_revoke_session(session_id: String) -> usize {
-    crate::grants::revoke_session(&session_id)
+pub async fn direct_edit_revoke_session(session_id: String) -> usize {
+    // Off the main thread for the same reason as `direct_edit_revoke`.
+    tokio::task::spawn_blocking(move || crate::grants::revoke_session(&session_id))
+        .await
+        .unwrap_or(0)
 }
 
 /// A `request_access` request resolved to the exact scope a grant would cover,
@@ -3202,7 +3210,7 @@ mod tests {
         assert!(!sibling.join("in-sibling.txt").exists(), "a folder beside them was written");
 
         // Review only: the sibling attached, no grant.
-        direct_edit_revoke(grant);
+        direct_edit_revoke(grant).await;
         let out = bash(
             format!("cat \"{}/notes.txt\"", fwd(&sibling)),
             Some(sibling.to_string_lossy().into()),

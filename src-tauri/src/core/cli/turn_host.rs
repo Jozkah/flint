@@ -28,7 +28,8 @@ pub(crate) fn host_names(set: &HostToolSet) -> Vec<String> {
 }
 
 pub(crate) enum TurnMessage {
-    Event(StreamEvent),
+    // Boxed: a stream event is far larger than the finished result.
+    Event(Box<StreamEvent>),
     Finished(Result<Value, String>),
 }
 
@@ -41,7 +42,7 @@ pub(crate) async fn forward_events(
 ) -> Result<(), String> {
     while let Some(event) = source.recv().await {
         events
-            .send(TurnMessage::Event(event))
+            .send(TurnMessage::Event(Box::new(event)))
             .await
             .map_err(|_| "RPC event queue closed".to_owned())?;
     }
@@ -64,7 +65,7 @@ pub(crate) async fn pump_turn(
             run = &mut engine => return run,
             event = rx.recv() => match event {
                 Some(event) => {
-                    if events.send(TurnMessage::Event(event)).await.is_err() {
+                    if events.send(TurnMessage::Event(Box::new(event))).await.is_err() {
                         return Err("RPC event queue closed".to_owned());
                     }
                 }

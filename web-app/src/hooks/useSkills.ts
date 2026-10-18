@@ -6,6 +6,7 @@ import * as skillStore from '@/lib/skillStore'
 import type { SkillMeta } from '@/lib/skillStore'
 import { invalidateSkillCatalog } from '@/lib/skillCatalog'
 import { clearSkillBodyCache } from '@/lib/skillActivation'
+import { isServerTransport } from '@/lib/serverTransportFlag'
 
 export type { SkillMeta }
 export type HubSkill = { name: string; description: string }
@@ -107,7 +108,9 @@ export function useSkills(folder: string | null) {
   )
 
   const refresh = useCallback(async () => {
-    if (!folder || !scope) {
+    // A page `flint serve` serves has no project skill commands: a server
+    // folder lists none, rather than an "Unknown command" error toast.
+    if (!folder || !scope || isServerTransport()) {
       setSkills([])
       setEnabledState([])
       enabledRef.current = []

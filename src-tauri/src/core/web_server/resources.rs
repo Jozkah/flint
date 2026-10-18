@@ -66,6 +66,30 @@ pub fn delete_provider_keys(name: &str) -> Result<(), String> {
     crate::core::server::provider_secrets::delete_provider_keys(name)
 }
 
+/// One generic secret (web search keys, header secrets, tokens) from the
+/// keyring/encrypted-file store the desktop `get_secret` reads. A reserved
+/// name reads as absent, as on the desktop.
+pub fn get_secret(key: &str) -> Option<String> {
+    use crate::core::server::provider_secrets as secrets;
+    secrets::reject_reserved_key(key).ok()?;
+    secrets::load_provider_keys(key).into_iter().next()
+}
+
+/// The desktop `set_secret`: an empty value deletes the entry.
+pub fn set_secret(key: &str, value: &str) -> Result<(), String> {
+    use crate::core::server::provider_secrets as secrets;
+    secrets::reject_reserved_key(key)?;
+    if key.trim().is_empty() || key.len() > 200 || value.len() > MAX_KEY_LEN * 4 {
+        return Err("invalid secret".into());
+    }
+    if value.is_empty() {
+        secrets::delete_provider_keys(key)
+    } else {
+        crate::core::secret_values::register(value);
+        secrets::store_provider_keys(key, std::slice::from_ref(&value.to_owned()))
+    }
+}
+
 /// Values the user marked secret, redacted from every log from now on.
 pub fn register_secret_values(value: &Value) -> Result<(), String> {
     let list = value
@@ -231,6 +255,25 @@ pub fn delete_assistant(root: &Path, id: &str) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn generic_secrets_round_trip_and_refuse_reserved_keys() {
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+        let dir = tempfile::tempdir().unwrap();
+        let prev = std::env::var("JAN_DATA_FOLDER").ok();
+        std::env::set_var("JAN_DATA_FOLDER", dir.path());
+        crate::core::server::provider_secrets::force_file_secrets();
+        set_secret("web-search-test", "k1").unwrap();
+        assert_eq!(get_secret("web-search-test").as_deref(), Some("k1"));
+        set_secret("web-search-test", "").unwrap();
+        assert_eq!(get_secret("web-search-test"), None);
+        assert!(set_secret("auth:bedrock-aws", "x").is_err());
+        assert_eq!(get_secret("AUTH:bedrock-aws"), None);
+        match &prev {
+            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
+            None => std::env::remove_var("JAN_DATA_FOLDER"),
+        }
+    }
 
     #[test]
     fn projects_round_trip_and_reject_bad_shapes() {

@@ -67,6 +67,8 @@ pub mod rooms;
 pub mod rooms {
     #[path = "../rooms/store.rs"]
     pub mod store;
+    #[path = "../rooms/workspace.rs"]
+    pub mod workspace;
 }
 // Remote access for a paired phone; desktop-only (the WebSocket stack is not
 // built for mobile targets, and the CLI has no window to bridge to).
@@ -93,3 +95,4 @@ pub mod web_preview;
 pub mod thin_client;
 pub mod solo_window;
 pub mod window_state;
+pub mod webview_paint;

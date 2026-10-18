@@ -732,6 +732,7 @@ pub async fn serve() -> Result<(), String> {
                 let turn = active.as_mut().expect("active");
                 match message {
                     TurnMessage::Event(event) => {
+                        let event = *event;
                         if let StreamEvent::MessagesUpdated { messages } = &event { turn.updated_history = Some(messages.clone()); }
                         let wire = serde_json::to_value(&event).map_err(|e| e.to_string())?;
                         let method = format!("item/{}", wire["type"].as_str().ok_or("event has no tag")?);
@@ -805,8 +806,10 @@ mod tests {
         let reader = tokio::spawn(async move {
             let mut seen = Vec::new();
             while let Some(message) = receiver.recv().await {
-                if let TurnMessage::Event(StreamEvent::Token { text }) = message {
-                    seen.push(text);
+                if let TurnMessage::Event(event) = message {
+                    if let StreamEvent::Token { text } = *event {
+                        seen.push(text);
+                    }
                 }
                 tokio::task::yield_now().await;
             }

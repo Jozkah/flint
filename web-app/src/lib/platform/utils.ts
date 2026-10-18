@@ -30,6 +30,11 @@ export const isPlatformTauri = (): boolean => {
   return true
 }
 
+/** The browser build `flint serve` serves: its server keeps settings. */
+export const isServedByFlint = (): boolean =>
+  typeof IS_WEB_APP !== 'undefined' &&
+  (IS_WEB_APP === true || (IS_WEB_APP as unknown as string) === 'true')
+
 export const isPlatformIOS = (): boolean => {
   return IS_IOS
 }

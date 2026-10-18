@@ -340,11 +340,19 @@ export function approveRun(
   requestId: string,
   decision: ApprovalAnswer,
   fetchImpl: FetchLike = defaultFetch(),
-  scope?: ApprovalScopeAnswer
+  scope?: ApprovalScopeAnswer,
+  /** Sent with `deny` only; the run is told why. */
+  reason?: string
 ) {
   return rpc<Record<string, never>>(
     'agent_run_approve',
-    { id, requestId, decision, ...(scope ? { scope } : {}) },
+    {
+      id,
+      requestId,
+      decision,
+      ...(scope ? { scope } : {}),
+      ...(decision === 'deny' && reason ? { reason } : {}),
+    },
     fetchImpl
   )
 }
@@ -515,6 +523,26 @@ export function listServerFolders(
   fetchImpl: FetchLike = defaultFetch()
 ): Promise<{ path: string | null; parent: string | null; entries: ServerFolder[] }> {
   return rpc('agent_server_folders', path ? { path } : {}, fetchImpl)
+}
+
+export type FolderListing = {
+  path: string | null
+  parent: string | null
+  entries: ServerFolder[]
+  /** More folders were there than one listing returns. */
+  truncated?: boolean
+}
+
+/**
+ * The folder chooser's listing (`agent_list_folders`): the server's roots when
+ * `path` is omitted, else the folders under `path`. The server refuses paths
+ * outside its roots, relative or `..` paths, shares and encoded input.
+ */
+export function listAgentFolders(
+  path?: string | null,
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<FolderListing> {
+  return rpc('agent_list_folders', path ? { path } : {}, fetchImpl)
 }
 
 /** One server-sent record: its `event:` name, its `id:` and its data text. */

@@ -1,3 +1,4 @@
+import { isServedByFlint } from '@/lib/platform/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -230,6 +231,8 @@ function PermissionsSettings() {
 
   useEffect(() => {
     let cancelled = false
+    // The audit log is the desktop app's; a browser shows that instead.
+    if (isServedByFlint()) return
     void (async () => {
       try {
         const folder = await getServiceHub().app().getJanDataFolder()
@@ -762,7 +765,11 @@ function PermissionsSettings() {
             count: HISTORY_LIMIT,
           })}
         >
-          {historyError ? (
+          {isServedByFlint() ? (
+            <p className={EMPTY} data-testid="history-desktop-only">
+              {t('permissions:desktopOnly')}
+            </p>
+          ) : historyError ? (
             <p className={EMPTY}>
               {t('permissions:settings.historyUnavailable', {
                 error: historyError,

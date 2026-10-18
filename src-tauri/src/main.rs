@@ -26,6 +26,11 @@ fn main() {
         }
     }
 
+    // WebView2's native occlusion tracker can leave the window white until it
+    // is resized; see core::webview_paint. Must run before any webview starts.
+    #[cfg(windows)]
+    app_lib::core::webview_paint::disable_native_occlusion();
+
     // Fix PATH before anything that may spawn subprocesses, so the engine
     // worker (and any other child) inherits directories added by fix_path_env.
     let _ = fix_path_env::fix();

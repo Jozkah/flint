@@ -428,6 +428,34 @@ describe('llamacpp_extension', () => {
     })
   })
 
+  describe('load context size (T7-123)', () => {
+    it('writes the context the app shows to model.yml before loading', async () => {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const { fs } = await import('@janhq/core')
+      vi.mocked(fs.existsSync).mockResolvedValue(true)
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        if (cmd === 'read_yaml') return {}
+        return undefined
+      })
+      extension['providerPath'] = '/path/to/jan/llamacpp'
+      const update = vi
+        .spyOn(extension, 'updateModelSettings')
+        .mockResolvedValue(undefined)
+      const perform = vi
+        .spyOn(extension as any, 'performLoad')
+        .mockResolvedValue({ model_id: 'm' })
+      vi.spyOn(extension as any, 'findSessionByModel').mockResolvedValue(undefined)
+
+      await extension.load('m', { ctx_size: 8192 })
+      expect(update).toHaveBeenCalledWith('m', { ctx_len: 8192 })
+      expect(perform).toHaveBeenCalled()
+
+      update.mockClear()
+      await extension.load('m', { ctx_size: '' })
+      expect(update).not.toHaveBeenCalled()
+    })
+  })
+
   describe('unload', () => {
     it('should throw error if no active session found', async () => {
       const { invoke } = await import('@tauri-apps/api/core')
@@ -725,6 +753,28 @@ describe('llamacpp_extension', () => {
       }])).rejects.toThrow('engine unavailable')
       expect((await extension.getSettings())[0].controllerProps.value).toBe(false)
       expect(extension['config'].fit).toBe(false)
+    })
+
+    it.each([
+      ['ngram_speculation', false],
+      ['ubatch_size', 512],
+      ['ubatch_size', 0],
+    ])('rewrites the preset when %s changes to %s, even if the saved file predates it (T6-079c)', async (key, value) => {
+      vi.mocked(reloadEngineModels).mockResolvedValue({
+        added: [], changed: [], removed: [], kept: [], models_max: 1,
+      })
+      vi.mocked(generatePreset).mockClear()
+      await extension.updateSettings([{
+        key,
+        title: key,
+        description: '',
+        controllerType: 'input',
+        controllerProps: { value },
+      } as never])
+      await vi.advanceTimersByTimeAsync(600)
+      expect(generatePreset).toHaveBeenCalled()
+      const config = vi.mocked(generatePreset).mock.calls.at(-1)![2] as Record<string, unknown>
+      expect(config[key]).toBe(value)
     })
 
     it('leaves startup migrations to the initial engine load', async () => {

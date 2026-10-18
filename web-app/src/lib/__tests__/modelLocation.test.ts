@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyModelLocation, isLocalModel } from '@/lib/modelLocation'
+import { classifyModelLocation, isLocalModel, modelReach, endpointHost } from '@/lib/modelLocation'
 import type { EndpointDiagnostics } from '@/lib/providerFetch'
 
 const diag = (
@@ -152,5 +152,32 @@ describe('classifyModelLocation', () => {
       expect([location === 'local', location === 'remote'].filter(Boolean).length)
         .toBeLessThanOrEqual(1)
     }
+  })
+})
+
+describe('modelReach (T7-115)', () => {
+  it('tells this device from the network from the internet', () => {
+    expect(modelReach({ builtInEngine: true })).toBe('device')
+    expect(modelReach({ baseUrl: 'http://127.0.0.1:1337/v1' })).toBe('device')
+    expect(modelReach({ baseUrl: 'http://192.168.1.20:8559/v1' })).toBe('network')
+    expect(modelReach({ baseUrl: 'https://api.openai.com/v1' })).toBe('remote')
+    expect(modelReach({ baseUrl: 'http://v100:8559/v1' })).toBe('checking')
+    expect(
+      modelReach({
+        baseUrl: 'http://v100:8559/v1',
+        diagnostics: diag({
+          host: 'v100',
+          candidates: [{ address: '192.168.1.9', class: 'private-lan', eligible: true }] as never,
+          selected: '192.168.1.9',
+        }),
+      })
+    ).toBe('network')
+    expect(modelReach({})).toBe('unknown')
+  })
+
+  it('names the host a request goes to', () => {
+    expect(endpointHost('http://v100:8559/v1')).toBe('v100:8559')
+    expect(endpointHost('https://api.openai.com/v1')).toBe('api.openai.com')
+    expect(endpointHost('nope')).toBeNull()
   })
 })

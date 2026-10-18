@@ -611,7 +611,7 @@ impl Runner {
                     .map(|v| serde_json::from_value::<tauri_plugin_agent_tools::scoped_rules::ApprovalScope>(v.clone()))
                     .transpose()
                     .map_err(|e| fail(400, format!("scope is not valid: {e}")))?;
-                if let Some(scope) = scope {
+                if let Some(scope) = &scope {
                     if scope.is_standing() && decision != PermissionDecision::AllowAlways {
                         return Err(fail(400, "a folder or command-prefix scope goes with allow_always"));
                     }
@@ -747,6 +747,7 @@ impl Runner {
         .await
         .map_err(|_| fail(500, "the provider list did not finish"))?
         .map_err(|m| fail(422, m))?;
+        crate::core::cli::providers::check_server_provider(&model).map_err(|m| fail(422, m))?;
         crate::core::agent::upstream::resolve_upstream_for_model(
             &model,
             Arc::new(tokio::sync::Mutex::new(configs)),
@@ -952,6 +953,11 @@ impl Runner {
             None,
         )
         .map_err(|m| fail(422, m))?;
+        let chosen = agent.model.clone();
+        tokio::task::spawn_blocking(move || crate::core::cli::providers::check_server_provider(&chosen))
+            .await
+            .map_err(|_| fail(500, "the provider check did not finish"))?
+            .map_err(|m| fail(422, m))?;
         let asks: crate::core::agent::interaction::AskRegistry =
             Arc::new(tokio::sync::Mutex::new(HashMap::new()));
         configure(&mut agent, id, &asks, coordinator);
@@ -1351,7 +1357,8 @@ fn models_listing() -> Value {
             })
         })
         .collect();
-    let default = crate::core::agent::global_config::default_model().ok().flatten();
+    let default = providers::server_selected_model()
+        .or_else(|| crate::core::agent::global_config::default_model().ok().flatten());
     json!({ "models": models, "default": default })
 }
 
@@ -1932,6 +1939,7 @@ async fn actor(
                 };
                 match message {
                     TurnMessage::Event(event) => {
+                        let event = *event;
                         let turn = active.as_mut().expect("active");
                         match &event {
                             StreamEvent::MessagesUpdated { messages } => {

@@ -89,12 +89,13 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
       shouldRerenderOnTransaction: false,
       onUpdate: ({ editor }) => onChange(editor.getMarkdown()),
       editorProps: {
-        attributes: {
+        // A function, so the label follows a live language switch.
+        attributes: () => ({
           role: 'textbox',
-          'aria-label': 'Message',
+          'aria-label': tRef.current('common:composer.messageLabel'),
           'aria-multiline': 'true',
           class: 'min-h-10 max-h-60 overflow-y-auto outline-none',
-        },
+        }),
         handleKeyDown: (_view, event) => {
           if (event.defaultPrevented) return true
           if (event.key === 'Escape' && hoverOpenRef.current) {

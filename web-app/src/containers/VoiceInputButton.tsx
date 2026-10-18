@@ -91,12 +91,12 @@ export function VoiceInputButton({
   }
 
   const label = listening
-    ? 'Stop dictating'
+    ? t('common:voicePill.stop')
     : busy
-      ? 'Working…'
+      ? t('common:voicePill.working')
       : installed
-        ? 'Dictate'
-        : 'Set up voice input'
+        ? t('common:voicePill.dictate')
+        : t('common:voicePill.setup')
 
   return (
     <>
