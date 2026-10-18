@@ -509,6 +509,18 @@ describe('buildLlamacppReasoningParams', () => {
 })
 
 describe('coalesceMessagesForAlternation', () => {
+  it('keeps the summary a continued chat opens with ahead of the next question', () => {
+    const seed = {
+      ...userMsg('seed', 'This chat continues an earlier one. Summary: codeword quartz'),
+      metadata: { continuedFrom: { threadId: 't0', title: 'Old' } },
+    } as UIMessage
+    const out = coalesceMessagesForAlternation([seed, userMsg('u1', 'what was the codeword?')])
+    expect(out).toHaveLength(1)
+    const text = out[0].parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n')
+    expect(text).toContain('quartz')
+    expect(text).toContain('what was the codeword?')
+  })
+
   it('drops a failed turn instead of resending it inside the next question', () => {
     const input = [
       userMsg('u1', 'failed question'),

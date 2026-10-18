@@ -1,22 +1,22 @@
 import type { UIMessage } from 'ai'
-import { conversationText, utf8Bytes } from '@/lib/coworkContext'
+import { estimateMessageTokens, estimateTokens, estimateToolTokens } from '@/lib/context-manager'
 
 /**
  * Where a request's context goes, by kind: the conversation, the tools' schemas
  * (Flint's own, and each MCP server's), skills, memory, and the system prompt
  * itself.
  *
- * The figures are estimates of what is in the payload (bytes / 4, the same
- * blunt rule as `coworkContext.ts`), taken when a request is sent. The
+ * The figures are estimates of what is in the payload (the transport's own
+ * pre-flight estimator, `context-manager.ts`), taken when a request is sent. The
  * provider's own count, when there is one, decides the total shown; whatever it
  * counts beyond what was measured here is reported as "Unmeasured" rather than
  * hidden or spread across the categories.
  */
 
-const CHARS_PER_TOKEN = 4
-
+// The same estimator the pre-flight check uses (`context-manager.ts`), so the
+// card and the check that refuses a request never disagree on what it holds.
 const tokensOf = (text: string | null | undefined): number =>
-  text ? Math.round(utf8Bytes(text) / CHARS_PER_TOKEN) : 0
+  text ? estimateTokens(text) : 0
 
 export type ContextChild = { label: string; tokens: number }
 
@@ -80,14 +80,6 @@ export type BreakdownInput = {
   messages: readonly UIMessage[]
 }
 
-function safeJson(value: unknown): string {
-  try {
-    return typeof value === 'string' ? value : (JSON.stringify(value) ?? '')
-  } catch {
-    return ''
-  }
-}
-
 function childrenOf(list: ContextChild[]): ContextChild[] {
   const sorted = [...list].sort((a, b) => b.tokens - a.tokens)
   if (sorted.length <= MAX_CHILDREN) return sorted
@@ -112,7 +104,7 @@ export function buildContextBreakdown(input: BreakdownInput): ContextBreakdown {
   const builtIn: ContextChild[] = []
   const byServer = new Map<string, number>()
   for (const tool of input.tools) {
-    const tokens = tokensOf(tool.name) + tokensOf(safeJson(tool.schema))
+    const tokens = estimateToolTokens(tool.name, tool.schema)
     if (tool.server) byServer.set(tool.server, (byServer.get(tool.server) ?? 0) + tokens)
     else builtIn.push({ label: tool.name, tokens })
   }
@@ -131,7 +123,7 @@ export function buildContextBreakdown(input: BreakdownInput): ContextBreakdown {
   })
 
   const segments: ContextSegment[] = [
-    make('messages', tokensOf(conversationText(input.messages))),
+    make('messages', input.messages.reduce((n, m) => n + estimateMessageTokens(m), 0)),
     make('systemTools', builtIn.reduce((n, c) => n + c.tokens, 0), builtIn),
     make('mcpTools', mcp.reduce((n, c) => n + c.tokens, 0), mcp),
     make('skills', skills),
@@ -200,3 +192,9 @@ export function reconcileBreakdown(
 function make0(id: ContextSegment['id'], tokens: number): ContextSegment {
   return { id, label: LABELS[id], tokens, color: SEGMENT_COLORS[id] }
 }
+
+/** What a request carries besides its messages (system prompt, tool schemas, skills, memory). */
+export const fixedPromptTokens = (breakdown: ContextBreakdown | undefined): number =>
+  (breakdown?.segments ?? [])
+    .filter((s) => s.id !== 'messages' && s.id !== 'unmeasured')
+    .reduce((n, s) => n + s.tokens, 0)

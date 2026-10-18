@@ -23,6 +23,7 @@
 @import '@/styles/font.css';
 @import '@/styles/tokens.css';
 @import '@/styles/markdown.css';
+@import '@/styles/mentions.css';
 @import '@/styles/motion-chat.css';
 @import '@/styles/motion-voice.css';
 @import '@/styles/motion-controls.css';

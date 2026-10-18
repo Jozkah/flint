@@ -82,6 +82,8 @@ import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { isImageTool } from '@/lib/chatImageTools'
 import { studioApi } from '@/lib/studio/studio'
 import { visualizeSchemas } from '@/lib/visualize/tools'
+import { chatReadSchema } from '@/lib/chatReadTool'
+import { chatReadWanted } from '@/lib/chatMentionSources'
 import { truncateStaleWidgetCode } from '@/lib/visualize/history'
 import { SESSION_MESSAGING_TOOLS } from '@/lib/sessionMessagingTools'
 import { errorText } from '@/lib/errorText'
@@ -140,6 +142,7 @@ import {
 import {
   trimMessages,
   estimateTokens,
+  estimateToolSchemaTokens,
   contextSafetyMargin,
   clearStaleToolResults,
   type ContextManagerConfig,
@@ -182,7 +185,9 @@ import {
   writeChatCompaction,
 } from '@/lib/chatCompaction'
 import { recordLifecycle } from '@/lib/toolActivity'
-import { getCompactionPolicy, outputHeadroom, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
+import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
+import { toolsForWindow } from '@/lib/leanTools'
+import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
 import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
@@ -236,6 +241,14 @@ import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
 
 // Built-ins advertised through the websearch plugin.
 const BUILTIN_WEB_TOOLS = new Set(['web_search', 'web_fetch', 'image_search'])
+/** Flint's own chat tools that only read or render: none can change anything. */
+const READ_ONLY_CHAT_TOOLS = new Set([
+  ...BUILTIN_WEB_TOOLS,
+  'list_plugins',
+  'visualize_read_me',
+  'show_widget',
+  'chat_read',
+])
 import {
   createUsageCollector,
   readTokenUsage,
@@ -891,9 +904,15 @@ export function coalesceMessagesForAlternation(
     const prev = out[out.length - 1]
     const cur = filtered[i]
     if (prev.role === 'user' && cur.role === 'user') {
+      // The summary a continued chat opens with is a user turn the model must
+      // still read: keep it ahead of the next question instead of replacing it.
+      const seed = (prev.metadata as Record<string, unknown> | undefined)
+        ?.continuedFrom
       out[out.length - 1] = {
         ...cur,
-        parts: carryAttachmentsForward(prev.parts, cur.parts),
+        parts: seed
+          ? [...(prev.parts ?? []), ...(cur.parts ?? [])]
+          : carryAttachmentsForward(prev.parts, cur.parts),
       }
     } else {
       out.push(cur)
@@ -1145,6 +1164,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
   protected tools: Record<string, Tool> = {}
+  // Every tool refreshTools loaded; `tools` may be the lean subset of it a
+  // small window is offered (lib/leanTools.ts).
+  private loadedTools: Record<string, Tool> | null = null
   /** Saved subagent names the chat's `task` tool offers, for its prompt. */
   protected delegationNames: string[] = []
   private toolsCacheKey: string | null = null
@@ -1531,7 +1553,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         this.systemMessage,
         chatSafetyGuidelines({
           readsExternalContent: Boolean(files || web || agentTools || hasTools),
-          canChangeThings: Boolean(agentTools || hasTools),
+          // Searching, reading a page, listing plugins or drawing a widget
+          // changes nothing: the destructive-action rule (git, pushing,
+          // deleting) is only taught when a tool that can act is offered.
+          canChangeThings: Boolean(
+            agentTools ||
+              Object.keys(this.tools ?? {}).some((name) => !READ_ONLY_CHAT_TOOLS.has(name))
+          ),
         }),
         files,
         web,
@@ -1726,7 +1754,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       chatDelegation: chatDelegationEnabled(),
       visualizeEnabled: useVisualizeConfig.getState().enabled,
     })
-    if (useCache && this.toolsCacheKey === cacheKey) return
+    if (useCache && this.toolsCacheKey === cacheKey) {
+      if (this.loadedTools) this.tools = this.loadedTools
+      return
+    }
 
     // Only load tools if model supports them
     if (modelSupportsTools) {
@@ -1908,6 +1939,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         }
       }
 
+      // Read more of a conversation the user mentioned (docs/CHAT_MENTIONS.md).
+      // Offered only once this chat has a mention (or the user allows reading
+      // any conversation), so an ordinary chat's tool list is unchanged.
+      if (this.threadId && chatReadWanted(this.threadId)) {
+        const schema = chatReadSchema()
+        toolsRecord[schema.function.name] = {
+          description: schema.function.description,
+          inputSchema: jsonSchema(schema.function.parameters),
+        } as Tool
+      }
+
       // Picture tools, offered only while Studio has an image model loaded: they
       // never load one, so without it every call would just fail.
       try {
@@ -1988,6 +2030,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       )
     )
     this.toolServers = toolServers
+    this.loadedTools = this.tools
     this.toolsCacheKey = mcpLoadFailed ? null : cacheKey
   }
 
@@ -3084,12 +3127,6 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         'The turn was stopped while its prompt hooks ran, so the prompt was not submitted.'
       )
     }
-    const effectiveSystem = appendSessionContext(
-      this.buildSystemPrompt(messagesToConvert),
-      ccContext.sessionStart
-    )
-    this.publishContextBreakdown(effectiveSystem, messagesToConvert)
-
     const maxOutputTokens: number | undefined = (() => {
       const raw = inferenceParams.max_output_tokens ?? inferenceParams.max_tokens
       if (raw === undefined || raw === null) return undefined
@@ -3173,6 +3210,24 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       this.noticeUnknownWindow(threadId, modelId)
     }
 
+    // A small window is not spent on tools a small model rarely needs (the
+    // plugin list, image search, widgets), unless the user keeps them on.
+    // Before the prompt is built: the prompt only teaches what is offered.
+    this.tools = toolsForWindow(
+      this.tools,
+      maxContextTokens,
+      useLeanToolsConfig.getState().leanSmallWindows
+    )
+    const effectiveSystem = appendSessionContext(
+      this.buildSystemPrompt(messagesToConvert),
+      ccContext.sessionStart
+    )
+    this.publishContextBreakdown(effectiveSystem, messagesToConvert)
+
+    // Room kept for the reply: a local model keeps only its own reply cap (or
+    // a small share of the window); a hosted one keeps the policy headroom.
+    const localServer = isLocalChatServer(providerId, provider?.base_url)
+    const reserveTokens = replyReserve(maxContextTokens, maxOutputTokens, compaction, localServer)
     let effectiveMessages = messagesToConvert
     const estimateKey = `${provider?.base_url ?? providerId}:${modelId}`
     const estimateRatio = this.contextEstimate.ratio(estimateKey)
@@ -3180,12 +3235,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const toolSchemaTokens =
       Object.keys(this.tools).length > 0 &&
       (selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools)
-        ? Object.entries(this.tools).reduce((total, [name, tool]) =>
-            total + estimateTokens(JSON.stringify({
-              name,
-              description: (tool as { description?: string }).description,
-              inputSchema: (tool as { inputSchema?: unknown }).inputSchema,
-            })) + 4, 0)
+        ? estimateToolSchemaTokens(this.tools)
         : 0
     if (maxContextTokens > 0) {
       const contextConfig: ContextManagerConfig = {
@@ -3194,7 +3244,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         maxContextTokens: estimatedWindow,
         // The reserve is headroom kept free; a model's own output cap, when
         // larger, still wins.
-        maxOutputTokens: Math.ceil(outputHeadroom(maxContextTokens, maxOutputTokens ?? 2048, compaction) / estimateRatio),
+        maxOutputTokens: Math.ceil(reserveTokens / estimateRatio),
         autoCompact: !!autoCompact,
       }
 
@@ -3377,9 +3427,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // The trimmer preserves a newest message even when that one message is
     // larger than the budget. Refuse that payload instead of silently sending
     // it past the chosen cap. Overflow recovery may compact it once more.
-    assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens,
-      outputHeadroom(maxContextTokens, maxOutputTokens && maxOutputTokens > 0 ? maxOutputTokens : 2048, compaction),
-      this.overflowRetry ? 'the last refusal' : resolvedWindow.source)
+    // A local server is asked once even when the estimate says it is tight:
+    // the estimate is a heuristic, and the server's own refusal names the real
+    // window, which the overflow recovery then plans against. Only the resend
+    // after such a refusal is checked here (with no reserve: a request that
+    // fits the window without it is never refused).
+    if (!localServer) {
+      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens,
+        reserveTokens, this.overflowRetry ? 'the last refusal' : resolvedWindow.source)
+    } else if (this.overflowRetry) {
+      assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens, 0, 'the last refusal')
+    }
 
     // Include tools only if we have tools loaded AND model supports them
     const hasTools = Object.keys(this.tools).length > 0
@@ -3939,6 +3997,22 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         )
     )
     if (!hasAttachedFiles) return ''
+    // Files sent inline are already in the message: there is nothing to
+    // retrieve, and on a small model the note is wasted context.
+    const allInline = messages.every(
+      (message) =>
+        message.role !== 'user' ||
+        !Array.isArray(message.parts) ||
+        message.parts.every((part) => {
+          const text = (part as { text?: unknown })?.text
+          if (part?.type !== 'text' || typeof text !== 'string' || !text.includes('[ATTACHED_FILES]')) {
+            return true
+          }
+          const modes = [...text.matchAll(/\bmode:\s*([\w-]+)/g)].map((m) => m[1])
+          return modes.length > 0 && modes.every((mode) => mode === 'inline')
+        })
+    )
+    if (allInline) return ''
     return [
       'Some user messages contain an [ATTACHED_FILES] block listing files',
       'attached to that turn (file_id, name, type, size, chunk count, mode).',
@@ -3958,7 +4032,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return [
       '# Web Access',
       'You can search the web with web_search and read pages with web_fetch.',
-      'Use image_search for a cover, product or place photo when it helps.',
+      ...(this.tools && 'image_search' in this.tools
+        ? ['Use image_search for a cover, product or place photo when it helps.']
+        : []),
       'Use them whenever the request needs current, external, or verifiable',
       'information, then base your answer on what you find. When a statement',
       'relies on a web source, cite it inline immediately after that statement',

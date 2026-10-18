@@ -19,7 +19,54 @@ const CHARS_PER_TOKEN = 3.5
 
 export function estimateTokens(text: string): number {
   if (!text) return 0
-  return Math.ceil(text.length / CHARS_PER_TOKEN)
+  return estimateTokensForChars(text.length)
+}
+
+/** The same estimate when only the length is known. */
+export function estimateTokensForChars(chars: number): number {
+  return chars > 0 ? Math.ceil(chars / CHARS_PER_TOKEN) : 0
+}
+
+/**
+ * The text of a message's inline attachments (`metadata.inline_file_contents`)
+ * as the request carries it. A pasted 20K-token text rides here, not in the
+ * message's parts, so every estimate of a request has to add it.
+ */
+export function inlineFilesText(metadata: unknown): string {
+  const files = (metadata as {
+    inline_file_contents?: Array<{ name?: string; content?: string }>
+  } | null | undefined)?.inline_file_contents
+  if (!Array.isArray(files)) return ''
+  return files
+    .filter((file) => file?.content)
+    .map((file) => `File: ${file.name || 'attachment'}\n${file.content}`)
+    .join('\n')
+}
+
+/** One tool schema as it is sent: name, description and input schema. */
+export function estimateToolTokens(name: string, schema: unknown): number {
+  let json = ''
+  try {
+    json =
+      JSON.stringify({
+        name,
+        ...(schema && typeof schema === 'object' ? schema : { schema }),
+      }) ?? ''
+  } catch {
+    // A schema that cannot be serialised is counted by its name alone.
+  }
+  return estimateTokens(json || name) + 4
+}
+
+/**
+ * Every tool schema a request carries. The pre-flight check, the context
+ * card's breakdown and its ring all count tools with this.
+ */
+export function estimateToolSchemaTokens(tools: Record<string, unknown>): number {
+  return Object.entries(tools).reduce((total, [name, tool]) => {
+    const t = (tool ?? {}) as { description?: unknown; inputSchema?: unknown }
+    return total + estimateToolTokens(name, { description: t.description, inputSchema: t.inputSchema })
+  }, 0)
 }
 
 /**
@@ -111,16 +158,8 @@ function messageToText(message: UIMessage): string {
     }
   }
 
-  const metadata = message.metadata as
-    | { inline_file_contents?: Array<{ name?: string; content?: string }> }
-    | undefined
-  if (Array.isArray(metadata?.inline_file_contents)) {
-    for (const file of metadata.inline_file_contents) {
-      if (file?.content) {
-        parts.push(`File: ${file.name || 'attachment'}\n${file.content}`)
-      }
-    }
-  }
+  const inline = inlineFilesText(message.metadata)
+  if (inline) parts.push(inline)
 
   return parts.join('\n')
 }

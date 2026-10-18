@@ -446,3 +446,92 @@ describe('fixed seed reaches the model parameters', () => {
     expect(seedOf()).toBeUndefined()
   })
 })
+
+describe('CustomChatTransport reply reserve (local vs cloud)', () => {
+  beforeEach(() => {
+    streamTextCalls.length = 0
+    h.disabledTools = []
+    h.servers = []
+    h.assistantParameters = { max_context_tokens: 32_768 }
+    h.getModelProps.mockReset()
+    h.getModelProps.mockResolvedValue({ nCtx: 32_768 })
+    h.getRelevantTools.mockReset()
+    h.getRelevantTools.mockResolvedValue([])
+    provider.settings = []
+    selectedModel.capabilities = ['tools']
+  })
+
+  // About 25,300 estimated tokens: fits 32K, but not 32K minus an 8192 reserve.
+  const big = () => [user('u1', `summarize ${'pasted '.repeat(12_650)}`)]
+
+  it('sends a 25K prompt to a 32K local model instead of refusing it', async () => {
+    h.providerId = 'llamacpp'
+    provider.provider = 'llamacpp'
+    selectedModel.id = 'llama-local'
+    const transport = new CustomChatTransport('you are jan', 'thread-reserve-local')
+    await drain(await send(transport, big()))
+    expect(streamTextCalls).toHaveLength(1)
+  })
+
+  it('still refuses the same prompt on a hosted model with the 8K headroom', async () => {
+    h.providerId = 'openai'
+    provider.provider = 'openai'
+    selectedModel.id = 'gpt'
+    const transport = new CustomChatTransport('you are jan', 'thread-reserve-cloud')
+    await expect(send(transport, big())).rejects.toThrow('exceeds the available context size')
+    expect(streamTextCalls).toHaveLength(0)
+  })
+})
+
+describe('CustomChatTransport plain chat on a small window', () => {
+  beforeEach(() => {
+    streamTextCalls.length = 0
+    h.disabledTools = []
+    h.servers = []
+    h.getModelProps.mockReset()
+    h.getRelevantTools.mockReset()
+    h.getRelevantTools.mockResolvedValue([])
+    provider.settings = []
+    selectedModel.capabilities = ['tools']
+  })
+
+  const local = (window: number) => {
+    h.providerId = 'llamacpp'
+    provider.provider = 'llamacpp'
+    selectedModel.id = 'llama-local'
+    h.assistantParameters = { max_context_tokens: window }
+    h.getModelProps.mockResolvedValue({ nCtx: window })
+  }
+
+  it('leaves the widget tools out of a 32K window', async () => {
+    local(32_768)
+    const transport = new CustomChatTransport('you are jan', 'thread-lean-small')
+    await drain(await send(transport, [user('u1', 'hi')]))
+    const tools = Object.keys((streamTextCalls[0].tools as object | undefined) ?? {})
+    expect(tools).not.toContain('show_widget')
+    expect(tools).not.toContain('visualize_read_me')
+  })
+
+  it('keeps them for a large window', async () => {
+    local(131_072)
+    const transport = new CustomChatTransport('you are jan', 'thread-lean-large')
+    await drain(await send(transport, [user('u1', 'hi')]))
+    expect(Object.keys(streamTextCalls[0].tools as object)).toContain('show_widget')
+  })
+
+  it('does not teach git/push rules when only read-only tools are offered', async () => {
+    local(131_072)
+    const transport = new CustomChatTransport('you are jan', 'thread-lean-rules')
+    await drain(await send(transport, [user('u1', 'hi')]))
+    expect(String(streamTextCalls[0].system)).not.toContain('force-pushing')
+  })
+
+  it('skips the retrieval note when every attached file is inline', () => {
+    const transport = new CustomChatTransport('you are jan', 'thread-lean-files')
+    const block = (mode: string) => [
+      user('u1', `summarize\n\n[ATTACHED_FILES]\n- file_id: a, name: a.txt, type: txt, size: 9, mode: ${mode}\n[/ATTACHED_FILES]`),
+    ]
+    expect(transport.buildFilesSystemInstruction(block('inline'))).toBe('')
+    expect(transport.buildFilesSystemInstruction(block('embeddings'))).toContain('retrieval tools')
+  })
+})

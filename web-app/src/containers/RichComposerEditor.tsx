@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ClipboardEvent, KeyboardEvent, ReactNode } from 'react'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -14,6 +14,10 @@ import {
   Quote,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import type { MentionPreview } from '@/lib/chatMentionPreview'
+import { MentionPills, pillLabels, previewForToken, setMentionLabels } from '@/lib/mentionPills'
+import { MentionHoverCard } from '@/containers/MentionHoverCard'
 
 export type RichComposerHandle = {
   focus: () => void
@@ -36,16 +40,49 @@ type Props = {
   className?: string
   /** Extra attributes for the editable element (aria, spellcheck, test id). */
   domAttributes?: Record<string, string | undefined>
+  /** What the draft's conversation mentions resolve to; drawn as pills. */
+  mentions?: MentionPreview[]
 }
 
 /** Inline formatting with Markdown as the saved and sent message format. */
 export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
-  function RichComposerEditor({ value, onChange, onSend, onPaste, onKeyDownCapture, enterInsertsNewline, placeholder, className, domAttributes }, ref) {
+  function RichComposerEditor({ value, onChange, onSend, onPaste, onKeyDownCapture, enterInsertsNewline, placeholder, className, domAttributes, mentions }, ref) {
+    const { t } = useTranslation()
     // Read at key time: the editor's key handler is created once.
     const enterNewlineRef = useRef(enterInsertsNewline)
     enterNewlineRef.current = enterInsertsNewline
+    const tRef = useRef(t)
+    tRef.current = t
+    const wrapRef = useRef<HTMLDivElement>(null)
+    const [hover, setHover] = useState<{ token: string; rect: DOMRect } | null>(null)
+    const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+    const keepCard = () => clearTimeout(leaveTimer.current)
+    const dropCard = () => {
+      clearTimeout(leaveTimer.current)
+      leaveTimer.current = setTimeout(() => setHover(null), 150)
+    }
+    const hoverOpenRef = useRef(false)
+    hoverOpenRef.current = hover !== null
+    const hoverRef = useRef({ keepCard, dropCard })
+    hoverRef.current = { keepCard, dropCard }
+    const pills = useMemo(
+      () =>
+        MentionPills.configure({
+          describe: (kind, title) =>
+            `${tRef.current(`common:mentions.kind.${kind}`)}: ${title}`,
+          onHover: (token, rect) => {
+            if (token && rect) {
+              hoverRef.current.keepCard()
+              setHover({ token, rect })
+            } else {
+              hoverRef.current.dropCard()
+            }
+          },
+        }),
+      []
+    )
     const editor = useEditor({
-      extensions: [StarterKit, Markdown],
+      extensions: [StarterKit, Markdown, pills],
       content: value,
       contentType: 'markdown',
       immediatelyRender: false,
@@ -60,6 +97,10 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
         },
         handleKeyDown: (_view, event) => {
           if (event.defaultPrevented) return true
+          if (event.key === 'Escape' && hoverOpenRef.current) {
+            setHover(null)
+            return true
+          }
           if (editor?.isActive('codeBlock') && !event.ctrlKey && !event.metaKey) {
             return false
           }
@@ -77,6 +118,18 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
         },
       },
     })
+
+    // Titles arrive after a lookup; the pills redraw with them.
+    useEffect(() => {
+      if (!editor || editor.isDestroyed) return
+      const tokens = (value.match(/@(?:chat|session|room):[A-Za-z0-9][A-Za-z0-9_.-]*(?:#summary)?/g) ?? []).map((m) => m.slice(1))
+      setMentionLabels(editor.view, pillLabels(tokens, mentions ?? []))
+    }, [editor, mentions, value])
+
+    // A pill that went away takes its card with it.
+    useEffect(() => {
+      if (hover && !value.includes(`@${hover.token}`)) setHover(null)
+    }, [hover, value])
 
     useEffect(() => {
       const dom = editor?.view.dom
@@ -148,7 +201,7 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
     )
 
     return (
-      <div className={cn('relative px-3 pt-3 pb-1', className)}>
+      <div ref={wrapRef} className={cn('relative px-3 pt-3 pb-1', className)}>
         {selecting && (
           <div
             role="toolbar"
@@ -173,6 +226,19 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
           {!value.trim() && <span aria-hidden className="pointer-events-none absolute text-muted-foreground">{placeholder}</span>}
           <EditorContent editor={editor} />
         </div>
+        {hover && wrapRef.current && (() => {
+          const box = wrapRef.current.getBoundingClientRect()
+          const left = Math.max(8, Math.min(hover.rect.left - box.left, box.width - 296))
+          return (
+            <MentionHoverCard
+              token={hover.token}
+              preview={previewForToken(hover.token, mentions ?? [])}
+              style={{ left, bottom: box.bottom - hover.rect.top + 6 }}
+              onPointerEnter={keepCard}
+              onPointerLeave={dropCard}
+            />
+          )
+        })()}
       </div>
     )
   }
