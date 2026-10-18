@@ -295,6 +295,30 @@
   [data-streamdown="code-block-header"] > div:last-child {
     flex-shrink: 0;
   }
+  /* Every header action (Streamdown's download / copy, our wrap / expand)
+     shares one colour and one set of states. A toggled-on control is marked
+     by a tinted background, never by a different icon colour. */
+  [data-streamdown="code-block-header"] > div:last-child button {
+    color: var(--color-muted-foreground);
+    background: transparent;
+    border-radius: 4px;
+    opacity: 1;
+    transition: color 120ms, background-color 120ms;
+  }
+  [data-streamdown="code-block-header"] > div:last-child button:hover,
+  [data-streamdown="code-block-header"] > div:last-child button:focus-visible {
+    color: var(--color-foreground);
+    background: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  }
+  [data-streamdown="code-block-header"] > div:last-child button:active {
+    background: color-mix(in oklab, var(--color-foreground) 14%, transparent);
+  }
+  [data-streamdown="code-block-header"] > div:last-child button[aria-pressed="true"] {
+    background: color-mix(in oklab, var(--color-foreground) 12%, transparent);
+  }
+  [data-streamdown="code-block-header"] > div:last-child button:disabled {
+    opacity: 0.5;
+  }
   [data-streamdown="code-block-body"] > code {
     display: inline-block;
     min-width: 100%;

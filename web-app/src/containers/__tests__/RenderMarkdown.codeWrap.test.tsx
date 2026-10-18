@@ -43,6 +43,20 @@ describe('RenderMarkdown code block wrapping', () => {
     expect(container.querySelectorAll(TOGGLE)).toHaveLength(1)
   })
 
+  // Header icons share one colour (markdown.css); toggled-on is marked by
+  // aria-pressed (a background there), never by a different icon colour.
+  it('the toggle keeps the same icon colour when on', async () => {
+    const { container } = render(<RenderMarkdown content={MD} />)
+    await waitFor(() => expect(container.querySelector(TOGGLE)).not.toBeNull())
+    const before = container.querySelector(TOGGLE)!.className
+    fireEvent.click(container.querySelector(TOGGLE)!)
+    await waitFor(() =>
+      expect(container.querySelector(TOGGLE)!.getAttribute('aria-pressed')).toBe('true')
+    )
+    expect(container.querySelector(TOGGLE)!.className).toBe(before)
+    expect(before).toContain('text-muted-foreground')
+  })
+
   it('toggling wraps every block and remembers it in settings', async () => {
     const { container } = render(<RenderMarkdown content={MD} />)
     await waitFor(() => expect(container.querySelector(TOGGLE)).not.toBeNull())
