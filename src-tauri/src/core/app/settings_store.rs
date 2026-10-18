@@ -225,6 +225,12 @@ fn settings_file_path() -> PathBuf {
 /// settings. A file that cannot be parsed at all is copied aside first, since
 /// the next flush will replace it.
 fn read_map(path: &PathBuf) -> BTreeMap<String, String> {
+    // An empty file at startup lost every setting just as a corrupt one did
+    // (an interrupted write, a sync tool): keep it and say so, the same way.
+    if fs::read_to_string(path).is_ok_and(|c| c.trim().is_empty()) {
+        backup_unreadable(path);
+        return BTreeMap::new();
+    }
     match read_map_for_merge(path) {
         Some(map) => map,
         None => {
@@ -599,5 +605,27 @@ mod tests {
         let backup = notice.backup.expect("backup path");
         assert!(backup.contains("settings.json.corrupt-"));
         assert_eq!(fs::read_to_string(&backup).unwrap(), "{ not json");
+    }
+
+    #[test]
+    fn an_empty_or_non_object_file_is_treated_as_corrupt() {
+        for content in ["", "  \n\t", "[]", "42", "\"x\"", "null"] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("settings.json");
+            fs::write(&path, content).unwrap();
+            RECOVERY_NOTICE.lock().unwrap().take();
+            assert!(read_map(&path).is_empty(), "{content:?}");
+            let notice = RECOVERY_NOTICE.lock().unwrap().take();
+            let backup = notice.and_then(|n| n.backup).unwrap_or_else(|| panic!("no notice for {content:?}"));
+            assert_eq!(fs::read_to_string(&backup).unwrap(), content);
+        }
+    }
+
+    #[test]
+    fn a_missing_file_is_a_fresh_start_not_a_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        RECOVERY_NOTICE.lock().unwrap().take();
+        assert!(read_map(&dir.path().join("settings.json")).is_empty());
+        assert!(RECOVERY_NOTICE.lock().unwrap().take().is_none());
     }
 }

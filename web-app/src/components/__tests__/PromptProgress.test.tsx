@@ -231,4 +231,21 @@ describe('PromptProgress loaded state', () => {
     expect(screen.queryByText('Loaded in')).not.toBeInTheDocument()
     vi.useRealTimers()
   })
+
+  it('stops the clock and says who it waits for while blocked on the user', () => {
+    mockUseAppState.mockImplementation((selector) =>
+      selector({
+        promptProgress: undefined,
+        promptProgresses: {},
+        loadingModel: false,
+        loadingModels: {},
+        modelLoadFailures: {},
+        modelLoadProgressByThread: {},
+      })
+    )
+    const status = { phase: 'tool' as const, key: 'tool:1', label: () => 'Running bash…' }
+    render(<PromptProgress status={status} waitingLabel="Waiting for you" />)
+    expect(screen.getByTestId('run-status-label')).toHaveTextContent('Waiting for you')
+    expect(screen.queryByTestId('run-status-elapsed')).toBeNull()
+  })
 })

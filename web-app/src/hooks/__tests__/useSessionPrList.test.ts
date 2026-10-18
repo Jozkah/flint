@@ -72,4 +72,18 @@ describe('useSessionPrList', () => {
     })
     expect(renderHook(() => useSessionPrList('s1', FOLDER)).result.current.error).toBe('gh_signed_out')
   })
+
+  it('shows nothing, not a failure, for a repository with no remote', () => {
+    for (const lookup of [
+      { kind: 'failed' as const, message: 'no git remotes found' },
+      { kind: 'not_a_repository' as const },
+    ]) {
+      usePrStatusStore.setState({
+        sessionPrs: {},
+        byUrl: {},
+        byFolder: { [FOLDER]: { lookup, at: 1, loading: false } },
+      })
+      expect(renderHook(() => useSessionPrList('s1', FOLDER)).result.current.error).toBeUndefined()
+    }
+  })
 })

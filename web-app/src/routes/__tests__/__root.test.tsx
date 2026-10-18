@@ -140,14 +140,18 @@ vi.mock('@/hooks/useLeftPanel', () => ({
   }),
 }))
 
-vi.mock('@/constants/routes', () => ({
-  route: {
-    localApiServerlogs: '/local-api-server/logs',
-    systemMonitor: '/system-monitor',
-    appLogs: '/logs',
-    threadsDetail: '/threads/$threadId',
-  },
-}))
+vi.mock('@/constants/routes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/constants/routes')>()
+  return {
+    route: {
+      ...actual.route,
+      localApiServerlogs: '/local-api-server/logs',
+      systemMonitor: '/system-monitor',
+      appLogs: '/logs',
+      threadsDetail: '/threads/$threadId',
+    },
+  }
+})
 
 import { Route } from '../__root'
 import MainRoot from '@/shell/MainRoot'

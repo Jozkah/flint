@@ -4,6 +4,7 @@ import {
   chatFollowUp,
   holdQueueThenStop,
   nextChatTurn,
+  stopChatTurn,
   withdrawApprovalsForSteering,
 } from '../chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
@@ -244,5 +245,50 @@ describe('steering while a tool call waits for approval', () => {
     expect(resolve).toHaveBeenCalledWith(false)
     expect(useToolApprovalRequests.getState().pending).toEqual({})
     expect(useToolApprovalRequests.getState().refusals.c1).toBe('cancelled')
+  })
+})
+
+describe('stopChatTurn (Stop on a running tool call)', () => {
+  it('ends the turn: the cancelled tool result is not sent back to the model', () => {
+    // A tool is running: the turn's tool loop holds a live controller.
+    const toolAbort = { current: new AbortController() as AbortController | null }
+    const order: string[] = []
+    stopChatTurn({
+      toolAbort,
+      stopDelegation: () => order.push('delegation'),
+      stopStream: () => order.push('stream'),
+    })
+    expect(toolAbort.current?.signal.aborted).toBe(true)
+    expect(order).toEqual(['delegation', 'stream'])
+    // The cancelled call then lands as a finished tool round; the SDK asks
+    // whether to resubmit, as ThreadConversation computes it.
+    const aborted = !toolAbort.current || toolAbort.current.signal.aborted
+    const send = vi.fn()
+    expect(
+      chatFollowUp({
+        messages: answeredToolRound,
+        aborted,
+        takeSteering: () => [],
+        send,
+      })
+    ).toBe(false)
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('cancels the MCP call in flight first, so the server hears it at Stop (M-011)', () => {
+    const order: string[] = []
+    stopChatTurn({
+      toolAbort: { current: new AbortController() },
+      stopDelegation: () => order.push('delegation'),
+      stopStream: () => order.push('stream'),
+      cancelToolCall: () => order.push('cancel'),
+    })
+    expect(order).toEqual(['cancel', 'delegation', 'stream'])
+  })
+
+  it('is safe with no tool loop running', () => {
+    const stopStream = vi.fn()
+    stopChatTurn({ toolAbort: { current: null }, stopDelegation: () => {}, stopStream })
+    expect(stopStream).toHaveBeenCalledOnce()
   })
 })

@@ -365,6 +365,36 @@ describe('room controller', () => {
     expect(persistence.rooms.get(room.id)!).toMatchObject({ status: 'stopped', stopReason: { kind: 'user' } })
   })
 
+  it('Stop on the first press stops a compare run even with a message queued mid-run (R-031)', async () => {
+    let n = 0
+    let release!: () => void
+    const started = new Promise<void>((r) => (release = r))
+    const fn: StreamReply = async (input: StreamReplyInput) => {
+      n++
+      input.onText('partial ')
+      release()
+      return new Promise<never>((_, reject) => {
+        input.signal.addEventListener('abort', () => reject(abortError()), { once: true })
+      })
+    }
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl, { mode: 'compare', compareRun: 'one-by-one', limits: {} })
+    await ctl.sendUserMessage(room.id, 'Q one', { kind: 'room' })
+    await ctl.start(room.id)
+    await started
+    // Sent while the first participant answers: queued for the run.
+    await ctl.sendUserMessage(room.id, 'and another thing', { kind: 'room' })
+    await ctl.stop(room.id)
+    await ctl.whenIdle(room.id)
+    await new Promise((r) => setTimeout(r, 0))
+    await ctl.whenIdle(room.id)
+    expect(persistence.rooms.get(room.id)!.status).toBe('stopped')
+    expect(ctl.isRunning(room.id)).toBe(false)
+    expect(n).toBe(1)
+    // The queued message is still recorded.
+    expect(messagesOf(persistence, room.id).some((m) => m.text === 'and another thing')).toBe(true)
+  })
+
   it('selectNext continues a user-selected room with the chosen speaker', async () => {
     const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
     const { ctl, persistence } = setup(fn)

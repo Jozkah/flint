@@ -1,3 +1,4 @@
+import { useSecondClock } from '@/lib/sharedClock'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAssetUrl } from '@/lib/assetPath'
 import {
@@ -166,11 +167,7 @@ const EMPTY_FORM: Form = {
 /** Time spent waiting on a hosted job, ticking each second, so a slow render shows it is alive. */
 function Elapsed({ since }: { since: number }) {
   const { t } = useTranslation()
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [])
+  const now = useSecondClock()
   const seconds = Math.max(0, Math.floor((now - since) / 1000))
   const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
   return (
@@ -1176,6 +1173,7 @@ function PromptPanel({
   const providerSettings = useModelProvider((s) =>
     hosted ? s.providers.find((p) => p.provider === hosted.provider.provider) : undefined
   )
+  const { t } = useTranslation()
   const status = useStudio((s) => s.status)
   const job = useStudio((s) => s.job)
   const jobPrompt = useStudio((s) => s.jobPrompt)
@@ -1196,7 +1194,6 @@ function PromptPanel({
   const examples = EXAMPLE_PROMPTS[kind].map((_, i) => t(`studio:prompt.example.${kind}.${i}`))
   const mac =
     typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
-  const { t } = useTranslation()
   const storeError = useStudio((s) => s.error)
   // A failed run keeps its Retry on the stage until the next one starts.
   const [failedRun, setFailedRun] = useState(false)

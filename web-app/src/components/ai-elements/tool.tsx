@@ -1056,7 +1056,13 @@ export const ToolApprovalActions = memo(() => {
                     )}
                     <span
                       id={explanationId}
-                      className="w-full text-xs leading-snug text-muted-foreground"
+                      // With the scope radios below, each choice carries its
+                      // own hint: the heading's explanation would repeat it,
+                      // so it stays for assistive tech only.
+                      className={cn(
+                        'w-full text-xs leading-snug text-muted-foreground',
+                        named && 'sr-only'
+                      )}
                     >
                       {named?.explanation ??
                         formatPermissionMessage(t, info.explanation)}

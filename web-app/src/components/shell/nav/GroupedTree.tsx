@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { groupDragAnnouncements } from '@/lib/dndAnnouncements'
 import {
   DndContext,
   PointerSensor,
@@ -75,8 +76,17 @@ function holdsKept(
 }
 
 /** A drop target: a group, or Ungrouped. Lights up while hovered. */
-function DropZone({ id, children }: { id: string; children: ReactNode }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `group:${id}` })
+function DropZone({
+  id,
+  label,
+  children,
+}: {
+  id: string
+  /** The group's name, for the drag announcements. */
+  label: string
+  children: ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `group:${id}`, data: { label } })
   return (
     <div
       ref={setNodeRef}
@@ -93,10 +103,18 @@ function DropZone({ id, children }: { id: string; children: ReactNode }) {
 
 /** One item row that can be dragged onto a group header. */
 function DraggableRow({ id, children }: { id: string; children: ReactNode }) {
-  const drag = useDraggable({ id: `item:${id}`, data: { itemId: id } })
+  const node = useRef<HTMLLIElement | null>(null)
+  const drag = useDraggable({
+    id: `item:${id}`,
+    // Read when announced: the row's visible title.
+    data: { itemId: id, label: () => node.current?.innerText.split('\n')[0] },
+  })
   return (
     <li
-      ref={drag.setNodeRef}
+      ref={(el) => {
+        node.current = el
+        drag.setNodeRef(el)
+      }}
       {...drag.listeners}
       className={cn('list-none', drag.isDragging && 'opacity-40')}
     >
@@ -247,7 +265,7 @@ export function GroupedTree({
           data-testid="nav-group"
           data-group-id={group.id}
         >
-          <DropZone id={group.id}>
+          <DropZone id={group.id} label={group.name}>
             <div className="group/cg flex h-7 items-center gap-0.5 pl-2">
               <button
                 type="button"
@@ -358,6 +376,7 @@ export function GroupedTree({
       )}
       <DndContext
         sensors={sensors}
+        accessibility={{ announcements: groupDragAnnouncements(t) }}
         onDragStart={() => setDragging(true)}
         onDragCancel={() => setDragging(false)}
         onDragEnd={(e) => {
@@ -368,7 +387,7 @@ export function GroupedTree({
         {layout.groups.map((node) => renderGroup(node, 1))}
         {hasGroups && (layout.recents.length > 0 || dragging) ? (
           <li className="flex list-none flex-col" data-testid="nav-ungrouped">
-            <DropZone id={UNGROUPED}>
+            <DropZone id={UNGROUPED} label={t('common:groups.ungrouped')}>
               <div className="flex h-7 items-center px-1 text-xs font-medium text-muted-foreground">
                 {t('common:groups.ungrouped')}
               </div>

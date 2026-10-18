@@ -37,7 +37,7 @@ export function FontSizeSwitcher({
             <Card className="w-full border transition-colors shadow-none">
               <CardContent className="flex flex-row items-center justify-start gap-4 p-4">
                 <RadioGroupItem value={item.value} id={item.value} />
-                <span className="text-sm font-medium">{item.label}</span>
+                <span className="text-sm font-medium">{fontSizeName(t, item.value, item.label)}</span>
               </CardContent>
             </Card>
           </Label>
@@ -51,9 +51,12 @@ export function FontSizeSwitcher({
       <DropdownMenuTrigger asChild>
         <Button variant="outline" className="w-full min-w-36 justify-between font-normal pointer-coarse:h-11" title={t('common:adjustFontSize')}>
           <span>
-            {fontSizeOptions.find(
-              (item: { value: string; label: string }) => item.value === fontSize
-            )?.label || t('common:medium')}{' '}
+            {fontSizeName(
+              t,
+              fontSize,
+              fontSizeOptions.find((item) => item.value === fontSize)?.label ??
+                t('common:medium')
+            )}{' '}
             <span className="text-muted-foreground">{fontSize}</span>
           </span>
           <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
@@ -76,4 +79,21 @@ export function FontSizeSwitcher({
       </DropdownMenuContent>
     </DropdownMenu>
   )
+}
+
+const FONT_SIZE_KEYS: Record<string, string> = {
+  '14px': 'small',
+  '16px': 'medium',
+  '18px': 'large',
+  '20px': 'extraLarge',
+}
+
+/** A font size's localized name; the English label when it has none. */
+function fontSizeName(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  value: string,
+  label: string
+): string {
+  const key = FONT_SIZE_KEYS[value]
+  return key ? t(`uiLeftovers:fontSizeNames.${key}`, { defaultValue: label }) : label
 }

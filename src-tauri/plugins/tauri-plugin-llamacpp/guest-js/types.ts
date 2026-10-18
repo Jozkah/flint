@@ -73,6 +73,8 @@ export type LlamacppConfig = {
   extra_args: string
   models_max: string | number
   timeout: number
+  /** Default context size for models that set none; blank or 0 = auto. */
+  ctx_size?: string | number
   fit: boolean
   fit_target: string
   fit_ctx: string

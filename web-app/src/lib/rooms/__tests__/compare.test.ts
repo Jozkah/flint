@@ -160,7 +160,10 @@ describe('compare mode: engine', () => {
       p,
       makeRoom({ mode: 'compare', participants: three(), round: 1, spokenThisRound: ['p-a'], status: 'paused' })
     )
-    await seedMessages(p, 'room-1', [{ author: { kind: 'user' }, text: 'Q' }])
+    await seedMessages(p, 'room-1', [
+      { author: { kind: 'user' }, text: 'Q' },
+      { author: { kind: 'participant', participantId: 'p-a', name: 'Alice' }, text: 'Alice answered', kind: 'speech' },
+    ])
     const { fn, calls } = scriptedStream((input) => ({ text: reply(nameOf(input), 1) }))
     const room = await runRoom('room-1', engineDeps(p, fn), signal())
     expect(calls.map(nameOf).sort()).toEqual(['Bob', 'Carol'])

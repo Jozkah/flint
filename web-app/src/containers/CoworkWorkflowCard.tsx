@@ -36,6 +36,7 @@ export function CoworkWorkflowCard({
   now,
   onOpenTask,
   onOpenPanel,
+  waiting = false,
 }: {
   view: WorkflowView
   /** Clock for the elapsed labels, ticked by the conversation. */
@@ -44,6 +45,8 @@ export function CoworkWorkflowCard({
   onOpenTask: (task: ActivityTask) => void
   /** Open the panel on this workflow without singling out a task. */
   onOpenPanel: (workflowId: string) => void
+  /** Blocked on the user (approval/question): say so instead of a ticking clock. */
+  waiting?: boolean
 }) {
   const { t } = useTranslation()
   const { workflow, progress, status, tasks } = view
@@ -79,7 +82,12 @@ export function CoworkWorkflowCard({
           data-testid="workflow-summary"
         >
           {[
-            elapsedSeconds != null && (
+            waiting && (
+              <span key="waiting" className="font-medium text-warning" data-testid="workflow-waiting">
+                {t('common:waitingForYou')}
+              </span>
+            ),
+            !waiting && elapsedSeconds != null && (
               <span key="time" className="tabular-nums">
                 {formatCompactDuration(elapsedSeconds, t)}
               </span>
@@ -97,7 +105,7 @@ export function CoworkWorkflowCard({
                     total: progress.total,
                   })}
             </span>,
-            runningTools && <span key="tools">{t('common:tasks.runningTools')}</span>,
+            !waiting && runningTools && <span key="tools">{t('common:tasks.runningTools')}</span>,
           ]
             .filter(Boolean)
             .flatMap((part, i) =>

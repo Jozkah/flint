@@ -44,3 +44,12 @@ export function providerKeyStatus(
   if (classifyModelLocation({ baseUrl: provider.base_url }) === 'local') return 'keyless'
   return 'missing'
 }
+
+/**
+ * The one phrase for "this provider cannot be called yet", used by the
+ * provider header, the providers table and every model row alike: "No AWS
+ * credentials" for Bedrock, "No API key" for the rest.
+ */
+export function missingKeyLabelKey(provider: string | undefined): string {
+  return provider === 'bedrock' ? 'engine:status.noCredentials' : 'engine:status.noKey'
+}

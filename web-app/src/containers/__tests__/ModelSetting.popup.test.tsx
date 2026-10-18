@@ -26,3 +26,29 @@ describe('ModelSetting', () => {
     expect(dialog).toHaveAttribute('data-slot', 'dialog-content')
   })
 })
+
+describe('ModelSetting context size with Auto-fit (T7-014)', () => {
+  it('still shows Context Size, with the Auto-fit hint', () => {
+    const fitProvider = {
+      provider: 'llamacpp',
+      models: [],
+      settings: [{ key: 'fit', controller_props: { value: true } }],
+    } as never
+    const ctxModel = {
+      id: 'm1',
+      name: 'M1',
+      settings: {
+        ctx_len: {
+          key: 'ctx_len',
+          title: 'Context Size',
+          description: 'Tokens the model can see.',
+          controller_type: 'input',
+          controller_props: { value: 8192, type: 'number' },
+        },
+      },
+    } as never
+    render(<ModelSetting provider={fitProvider} model={ctxModel} open />)
+    expect(screen.getByText('Context Size')).toBeInTheDocument()
+    expect(screen.getByText('common:modelSettings.ctxAutoFitHint')).toBeInTheDocument()
+  })
+})

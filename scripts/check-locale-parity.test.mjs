@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { byBaseKey, checkLocales, flatten, placeholders, toBaseline } from './check-locale-parity.mjs'
+import { byBaseKey, checkLocales, flatten, missingPluralForms, placeholders, toBaseline } from './check-locale-parity.mjs'
 
 function locales(files) {
   const root = mkdtempSync(join(tmpdir(), 'locale-parity-'))
@@ -110,5 +110,22 @@ test('writes a baseline that compresses whole subtrees', () => {
     assert.deepEqual(r.errors, [])
   } finally {
     rmSync(root, { recursive: true })
+  }
+})
+
+test('flags a ru/pl/cs plural key missing one of its forms', () => {
+  const en = { 'n_one': '{{count}} item', 'n_other': '{{count}} items' }
+  const ok = { 'n_one': 'a', 'n_few': 'b', 'n_many': 'c', 'n_other': 'd' }
+  const noFew = { 'n_one': 'a', 'n_many': 'c', 'n_other': 'd' }
+  for (const loc of ['ru', 'pl', 'cs']) {
+    assert.deepEqual(missingPluralForms(loc, flatten(en), flatten(ok)), [])
+    assert.deepEqual(missingPluralForms(loc, flatten(en), flatten(noFew)), ['n (missing: few)'])
+  }
+  const root = locales({ 'en/a.json': en, 'cs/a.json': noFew })
+  try {
+    const { errors } = checkLocales(root)
+    assert.ok(errors.some((e) => e.includes('cs/a.json') && e.includes('missing: few')))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })

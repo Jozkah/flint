@@ -9,7 +9,7 @@ const src = readFileSync(resolve(__dirname, '../ChatsNav.tsx'), 'utf8')
 describe('ChatsNav folder hover scope', () => {
   it('puts the hover group on the header row, not the whole folder', () => {
     const container = src.match(
-      /<div key=\{g\.id\} className="([^"]*)" data-testid="chat-group"/
+      /<div className="([^"]*)" data-testid="chat-group"/
     )
     expect(container?.[1]).not.toMatch(/group\/cg/)
     const header = src.match(

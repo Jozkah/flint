@@ -241,6 +241,8 @@ type RoomSlot = {
   run: { controller: AbortController; intent: AbortIntent | null } | null
   override: string | null
   userQueue: Array<{ text: string; to: Address }>
+  /** Bumped by every Stop: work queued before it must not start a run after it. */
+  stops: number
 }
 
 /** Most folders a room may have beside its main one. */
@@ -270,7 +272,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
   const slot = (roomId: string): RoomSlot => {
     let s = slots.get(roomId)
     if (!s) {
-      s = { chain: Promise.resolve(), run: null, override: null, userQueue: [] }
+      s = { chain: Promise.resolve(), run: null, override: null, userQueue: [], stops: 0 }
       slots.set(roomId, s)
     }
     return s
@@ -378,6 +380,9 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         // the room can act on them, it resumes so they are not left unanswered.
         const leftovers = s.userQueue.splice(0)
         if (leftovers.length) {
+          // A Stop that ended (or lands after) this run wins over the messages
+          // it left: they are recorded but do not start the room again (R-031).
+          const stopsSeen = run.intent === 'stop' ? -1 : s.stops
           let resume = false
           void enqueue(roomId, async () => {
             const { room } = await persistence().getRoom(roomId)
@@ -387,7 +392,9 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
             resume = canResumeOnMessage(room, now())
           })
             .then(() => {
-              if (resume) void launch(roomId, { kind: 'discuss' }, (r) => r.status !== 'running')
+              if (resume && s.stops === stopsSeen) {
+                void launch(roomId, { kind: 'discuss' }, (r) => r.status !== 'running')
+              }
             })
             .catch(reportError)
         }
@@ -545,6 +552,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
 
     stop: (roomId) =>
       guarded('stop', async () => {
+        slot(roomId).stops += 1
         if (await abortRun(roomId, 'stop')) return
         await setStatusWhenIdle(roomId, (room) =>
           room.status === 'stopped' || room.status === 'completed' || room.status === 'draft'

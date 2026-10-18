@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { useObsidianVault } from '@/lib/obsidianVault'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { basenameOf } from '@/lib/coworkPreview'
+import { isServedByFlint } from '@/lib/platform/utils'
 
 type Props = {
   /** Attached project folder, or null when nothing is attached. */
@@ -13,6 +14,11 @@ type Props = {
   /** Opens the folder chooser; offered while nothing is attached, so an
    * Obsidian vault (just a folder) can be added from here. */
   onAttachFolder?: () => void
+  /**
+   * What the session may do to the folder. The subtitle says the same thing
+   * the composer's access chip does (C-010); read-only when absent.
+   */
+  access?: 'review-only' | 'managed-worktree' | 'edit-folder'
 }
 
 const EXAMPLE_KEYS = ['first', 'second', 'third'] as const
@@ -26,7 +32,18 @@ const EXAMPLE_KEYS = ['first', 'second', 'third'] as const
  * point of them -- a fixed list of suggestions is wallpaper, but "Find every
  * TODO in jan-app" is a task you might actually run next.
  */
-export function CoworkEmptyState({ folder, onPick, onAttachFolder }: Props) {
+const SUBTITLE_FOLDER = {
+  'review-only': 'common:coworkEmpty.subtitleFolder',
+  'edit-folder': 'common:coworkEmpty.subtitleFolderEdit',
+  'managed-worktree': 'common:coworkEmpty.subtitleFolderWorktree',
+} as const
+
+export function CoworkEmptyState({
+  folder,
+  onPick,
+  onAttachFolder,
+  access = 'review-only',
+}: Props) {
   const { t } = useTranslation()
   const isVault = useObsidianVault(folder)
   const name = folder ? basenameOf(folder) : null
@@ -41,7 +58,7 @@ export function CoworkEmptyState({ folder, onPick, onAttachFolder }: Props) {
         </h1>
         <p className="mb-2.5 text-[13.5px] leading-normal text-muted-foreground">
           {name
-            ? t('common:coworkEmpty.subtitleFolder', { folder: name })
+            ? t(SUBTITLE_FOLDER[access], { folder: name })
             : t('common:coworkEmpty.subtitleSandbox')}
         </p>
 
@@ -54,7 +71,8 @@ export function CoworkEmptyState({ folder, onPick, onAttachFolder }: Props) {
             {t('common:coworkEmpty.vault.badge')}
           </p>
         )}
-        {!folder && onAttachFolder && (
+        {/* A browser picks server folders from the session bar instead. */}
+        {!folder && onAttachFolder && !isServedByFlint() && (
           <Button
             variant="outline"
             size="sm"

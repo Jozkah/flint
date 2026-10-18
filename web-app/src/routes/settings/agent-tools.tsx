@@ -1,3 +1,6 @@
+import { isPlatformTauri } from '@/lib/platform/utils'
+import { isServedByFlint } from '@/lib/platform/utils'
+import { DesktopOnlyPage } from '@/containers/DesktopOnlyPage'
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { route } from '@/constants/routes'
@@ -61,7 +64,9 @@ import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.agent_tools as any)({
-  component: AgentToolsContent,
+  // Everything here is the desktop app's; a browser gets one line instead.
+  component: () =>
+    isServedByFlint() ? <DesktopOnlyTitle /> : <AgentToolsContent />,
 })
 
 type EntryKind = 'memory' | 'skill'
@@ -455,8 +460,9 @@ function AgentToolsContent() {
             anchor="settings-agent-tools-review-only-finish"
             title={t('common:coworkReview.finishTitle')}
             description={t('common:coworkReview.finishDescription')}
-            align="start"
-            classNameWrapperAction="sm:max-w-full"
+            // Full width under the text: beside it the third option's
+            // label had to wrap.
+            column
             actions={
               <Segmented<ReviewOnlyFinish>
                 size="sm"
@@ -565,7 +571,9 @@ function AgentToolsContent() {
 
         {tab === 'behaviour' && <SubagentSettings />}
         {tab === 'behaviour' && <CampaignSettings />}
-        {tab === 'behaviour' && <CompactionPolicySettings />}
+        {tab === 'behaviour' && isPlatformTauri() && (
+          <CompactionPolicySettings />
+        )}
         {tab === 'behaviour' && <BrowserAgentSettings />}
         {tab === 'behaviour' && <VisualizeSettings />}
         {tab === 'behaviour' && <ChatMentionSettings />}
@@ -696,4 +704,9 @@ function AgentToolsContent() {
       </Dialog>
     </div>
   )
+}
+
+function DesktopOnlyTitle() {
+  const { t } = useTranslation()
+  return <DesktopOnlyPage title={t('settings:agentTools.title')} />
 }

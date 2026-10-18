@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { isServedByFlint } from '@/lib/platform/utils'
+import { DesktopOnlyPage } from '@/containers/DesktopOnlyPage'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -25,6 +27,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -35,6 +38,7 @@ import { HuggingFaceLogo } from '@/components/icons/HuggingFaceLogo'
 import { HubVariantList } from '@/containers/HubVariantList'
 import { HubTaskChips } from '@/containers/HubTaskChips'
 import { matchesTask, type HubTaskId } from '@/lib/hubTasks'
+import { formatShortDate } from '@/lib/localeDate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { StudioDiscover } from '@/containers/studio/StudioDiscover'
 import { cn } from '@/lib/utils'
@@ -81,7 +85,9 @@ import {
 import { Select } from '@/components/ui/select'
 
 export const Route = createFileRoute(route.hub.index as any)({
-  component: ModelDiscoverRoute,
+  // Everything here is the desktop app's; a browser gets one line instead.
+  component: () =>
+    isServedByFlint() ? <DesktopOnlyTitle /> : <ModelDiscoverRoute />,
 })
 
 type SortMode = 'downloads' | 'likes' | 'updated' | 'newest'
@@ -117,21 +123,11 @@ function fitTone(verdict: FitVerdict): 'ok' | 'warn' | 'err' | 'neutral' {
   return 'neutral'
 }
 
-function formatUpdated(value?: string | null): string | null {
-  const time = Date.parse(value ?? '')
-  if (Number.isNaN(time)) return null
-  return new Date(time).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
 const SELECT =
   'h-8 cursor-pointer rounded-lg border-[0.8px] border-border bg-card px-2 text-foreground transition-colors hover:border-border-strong'
 
 function ModelDiscoverRoute() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const spotlight = useSpotlight()
   const serviceHub = useServiceHub()
   const navigate = useNavigate()
@@ -140,6 +136,7 @@ function ModelDiscoverRoute() {
   const providers = useModelProvider((state) => state.providers)
   const parentRef = useRef<HTMLDivElement>(null)
 
+  const narrow = useMediaQuery('(max-width: 639px)')
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [models, setModels] = useState<HuggingFaceModel[]>([])
@@ -480,8 +477,10 @@ function ModelDiscoverRoute() {
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('sweep:hub.searchPlaceholder')}
-              className="h-12 rounded-xl pr-10 pl-11 text-[14px] shadow-lift"
+              placeholder={t(
+                narrow ? 'sweep:hub.searchPlaceholderShort' : 'sweep:hub.searchPlaceholder'
+              )}
+              className="h-12 rounded-xl pr-10 pl-11 text-[14px] text-ellipsis shadow-lift"
               data-testid="hub-search"
             />
             {query && (
@@ -499,7 +498,8 @@ function ModelDiscoverRoute() {
           </div>
 
           {source === 'models' && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          // Phones: one row that scrolls sideways, not four rows of chips.
+          <div className="-mx-4 flex flex-nowrap items-center gap-2 overflow-x-auto px-4 pb-0.5 text-xs [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
             <HubTaskChips value={task} onChange={setTask} />
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             {IS_MACOS && (
@@ -683,7 +683,7 @@ function ModelDiscoverRoute() {
                 )
                 const [author, ...rest] = model.id.split('/')
                 const name = rest.join('/') || author
-                const updated = formatUpdated(model.lastModified)
+                const updated = formatShortDate(model.lastModified, i18n.language)
 
                 return (
                   <article
@@ -926,4 +926,9 @@ function ModelDiscoverRoute() {
       )}
     </div>
   )
+}
+
+function DesktopOnlyTitle() {
+  const { t } = useTranslation()
+  return <DesktopOnlyPage title={t('common:shell.discover')} />
 }

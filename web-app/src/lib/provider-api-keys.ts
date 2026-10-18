@@ -1,3 +1,5 @@
+import { classifyModelLocation } from '@/lib/modelLocation'
+
 export const API_KEY_FALLBACKS_SETTING_KEY = 'api-key-fallbacks'
 
 export function serializeApiKeyFallbacks(fallbacks: string[]): string {
@@ -37,6 +39,22 @@ export function providerHasRemoteApiKeys(provider: {
   api_key_fallbacks?: string[]
 }): boolean {
   return providerRemoteApiKeyChain(provider).length > 0
+}
+
+/**
+ * Whether asking this provider for its model list can succeed: a public
+ * endpoint without a key only answers 401/403, so it is not asked at all.
+ */
+export function canListProviderModels(provider: {
+  base_url?: string
+  api_key?: string
+  api_key_fallbacks?: string[]
+}): boolean {
+  if (!provider.base_url) return false
+  return (
+    classifyModelLocation({ baseUrl: provider.base_url }) !== 'remote' ||
+    providerHasRemoteApiKeys(provider)
+  )
 }
 
 /**

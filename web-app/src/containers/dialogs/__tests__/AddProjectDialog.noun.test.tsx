@@ -24,6 +24,7 @@ vi.mock('@/hooks/useCoworkRun', () => ({
 }))
 
 import AddProjectDialog from '../AddProjectDialog'
+import { useProjectDialog } from '@/hooks/useProjectDialog'
 
 describe('AddProjectDialog wording', () => {
   beforeEach(() => success.mockClear())
@@ -43,5 +44,14 @@ describe('AddProjectDialog wording', () => {
   it('keeps collection wording by default', () => {
     render(<AddProjectDialog open onOpenChange={() => {}} editingKey={null} onSave={() => {}} />)
     expect(screen.getByText('projects.addProjectDialog.createTitle')).toBeTruthy()
+  })
+
+  it('says project when opened from New project', () => {
+    useProjectDialog.getState().setOpen(true)
+    expect(useProjectDialog.getState().noun).toBe('project')
+    useProjectDialog.getState().setOpen(true, 'group')
+    expect(useProjectDialog.getState().noun).toBe('group')
+    render(<AddProjectDialog open onOpenChange={() => {}} editingKey={null} noun="project" onSave={() => {}} />)
+    expect(screen.getByText('projects.newProjectDialog.createTitle')).toBeTruthy()
   })
 })

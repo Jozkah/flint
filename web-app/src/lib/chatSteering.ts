@@ -118,3 +118,26 @@ export function nextChatTurn(
   const next = queue.dequeueReady(threadId)
   return next ? { text: next.text, steered: false } : null
 }
+
+/**
+ * Stop for a chat turn: Stop on a running tool call stops everything. The
+ * tool is cancelled (by the stream's own stop) and the turn's tool loop is
+ * aborted, so the cancelled result is never sent back for another reply.
+ */
+export function stopChatTurn({
+  toolAbort,
+  stopDelegation,
+  stopStream,
+  cancelToolCall,
+}: {
+  toolAbort: { current: AbortController | null }
+  stopDelegation: () => void
+  stopStream: () => void
+  /** Cancels the MCP call in flight at the server, now rather than at its timeout. */
+  cancelToolCall?: () => void
+}): void {
+  cancelToolCall?.()
+  toolAbort.current?.abort()
+  stopDelegation()
+  stopStream()
+}

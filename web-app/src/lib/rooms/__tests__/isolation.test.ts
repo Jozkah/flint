@@ -49,16 +49,18 @@ describe('turnToolAccess with isolation', () => {
 })
 
 describe('isolationWanted', () => {
-  it('needs compare mode, a folder and two or more writers', () => {
+  it('needs compare mode, a folder and at least one writer', () => {
     expect(isolationWanted(makeRoom({ mode: 'compare', folder: 'C:/p', participants: writers() }))).toBe(true)
     expect(isolationWanted(makeRoom({ mode: 'compare', participants: writers() }))).toBe(false)
     expect(isolationWanted(makeRoom({ mode: 'round-robin', folder: 'C:/p', participants: writers() }))).toBe(false)
     const one = writers()
     one[1] = { ...one[1], toolAccess: 'read' }
-    expect(isolationWanted(makeRoom({ mode: 'compare', folder: 'C:/p', participants: one }))).toBe(false)
+    expect(isolationWanted(makeRoom({ mode: 'compare', folder: 'C:/p', participants: one }))).toBe(true)
     const removed = writers()
     removed[1] = { ...removed[1], removed: true }
-    expect(isolationWanted(makeRoom({ mode: 'compare', folder: 'C:/p', participants: removed }))).toBe(false)
+    expect(isolationWanted(makeRoom({ mode: 'compare', folder: 'C:/p', participants: removed }))).toBe(true)
+    const none = writers().map((w) => ({ ...w, toolAccess: 'read' as const }))
+    expect(isolationWanted(makeRoom({ mode: 'compare', folder: 'C:/p', participants: none }))).toBe(false)
   })
 })
 

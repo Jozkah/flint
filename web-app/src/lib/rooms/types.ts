@@ -64,6 +64,7 @@ export type ParticipantUnavailableReason =
   | 'provider-not-configured' // e.g. no API key
   | 'model-missing'
   | 'load-failed' // local model could not start
+  | 'busy' // every slot of the local engine stayed taken; checked again next run
   | 'repeated-errors' // suspended after consecutive provider errors
   | 'context-too-small' // cannot fit the minimum room context
 
@@ -170,6 +171,11 @@ export type RoomCompareMeta = {
   replyTo?: string
   /** Wall time of the call, start to finish. */
   durationMs?: number
+  /**
+   * Earlier questions this participant had never answered when it answered
+   * this one (it joined late): the reply covers them too (R-043).
+   */
+  catchUp?: Array<{ id: string; text: string }>
 }
 
 export type ModeratorConfig = {

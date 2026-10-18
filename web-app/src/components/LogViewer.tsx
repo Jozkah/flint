@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useServerLogs, logKey } from '@/hooks/useServerLogs'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { formatLogTimestamp } from '@/lib/logTime'
 
 export function LogViewer() {
   const { t } = useTranslation()
@@ -13,18 +14,6 @@ export function LogViewer() {
     const el = logsContainerRef.current
     if (el) el.scrollTop = 0
   }, [logs])
-
-    // Format timestamp to be more readable
-    const formatTimestamp = (timestamp: string | number) => {
-      const date = new Date(timestamp)
-      return date.toLocaleTimeString('en-US', {
-        hourCycle: 'h23',
-        timeZone: 'UTC',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
-    }
 
   // The design's plain log: time, level and message on one wrapping line;
   // an error line is red throughout, a warning's level amber.
@@ -48,7 +37,7 @@ export function LogViewer() {
             )}
           >
             <span className="text-subtle-foreground">
-              [{formatTimestamp(log.timestamp)}]
+              [{formatLogTimestamp(log.timestamp)}]
             </span>{' '}
             <b
               className={cn(

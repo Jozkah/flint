@@ -96,6 +96,36 @@ describe('AddEditMCPServer', () => {
     expect(screen.getByDisplayValue('bar')).toBeInTheDocument()
   })
 
+  it('masks env and header values until revealed (M-002)', () => {
+    const props = baseProps()
+    props.editingKey = 'srv1'
+    props.initialData = {
+      command: 'node',
+      args: [],
+      env: { API_TOKEN: 'sk-secret-12345' },
+      type: 'stdio',
+    }
+    render(<AddEditMCPServer {...props} />)
+    const value = screen.getByDisplayValue('sk-secret-12345')
+    expect(value).toHaveAttribute('type', 'password')
+    fireEvent.click(screen.getByRole('button', { name: 'common:a11y.reveal' }))
+    expect(value).toHaveAttribute('type', 'text')
+    fireEvent.click(screen.getByRole('button', { name: 'common:a11y.hide' }))
+    expect(value).toHaveAttribute('type', 'password')
+  })
+
+  it('masks header values of a remote server (M-002)', () => {
+    const props = baseProps()
+    props.editingKey = 'remote'
+    props.initialData = {
+      url: 'https://example.com/mcp',
+      headers: { Authorization: 'Bearer abc123' },
+      type: 'http',
+    }
+    render(<AddEditMCPServer {...props} />)
+    expect(screen.getByDisplayValue('Bearer abc123')).toHaveAttribute('type', 'password')
+  })
+
   it('disables Save when server name is empty (form mode)', () => {
     render(<AddEditMCPServer {...baseProps()} />)
     const saveBtn = screen.getByText('mcp-servers:save').closest('button')!

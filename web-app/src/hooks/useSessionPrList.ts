@@ -2,6 +2,7 @@ import {
   useFolderPrView,
   usePrStatusStore,
   useSessionPrs,
+  type PrLookup,
   type PrStatus,
 } from '@/stores/pr-status-store'
 
@@ -13,6 +14,20 @@ import {
  * a hover costs nothing beyond the lookups they already make (cached two
  * minutes per folder and per URL).
  */
+/**
+ * A lookup that simply means "this folder cannot have pull requests" (no
+ * pull request, not a repository, or a repository with no remote): nothing
+ * to show and nothing failed.
+ */
+function noPullRequestsPossible(lookup: PrLookup): boolean {
+  if (lookup.kind === 'found' || lookup.kind === 'no_pull_request') return true
+  if (lookup.kind === 'not_a_repository') return true
+  return lookup.kind === 'failed' && NO_REMOTE.test(lookup.message)
+}
+
+/** git / gh wording for a repository without a remote to ask. */
+const NO_REMOTE = /no (git )?remotes?\b|none of the git remotes|no remote (repository|configured)/i
+
 export function useSessionPrList(
   sessionId: string | null | undefined,
   folder: string | null | undefined
@@ -36,7 +51,7 @@ export function useSessionPrList(
     })
   const lookup = folderEntry?.lookup
   const error =
-    prs.length === 0 && lookup && lookup.kind !== 'found' && lookup.kind !== 'no_pull_request'
+    prs.length === 0 && lookup && !noPullRequestsPossible(lookup)
       ? lookup.kind === 'failed'
         ? lookup.message
         : lookup.kind

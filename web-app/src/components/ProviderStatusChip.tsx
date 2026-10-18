@@ -1,6 +1,6 @@
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Chip } from '@/components/ui/chip'
-import type { ProviderKeyStatus } from '@/lib/providerKeyStatus'
+import { missingKeyLabelKey, type ProviderKeyStatus } from '@/lib/providerKeyStatus'
 
 /**
  * The status chip of a provider that is switched on: running (local engine),
@@ -12,9 +12,7 @@ export function ProviderStatusChip({ status }: { status: ProviderKeyStatus }) {
   if (status === 'missing' || status === 'credentials-missing') {
     return (
       <Chip tone="warn" dot>
-        {status === 'credentials-missing'
-          ? t('engine:status.noCredentials')
-          : t('engine:status.noKey')}
+        {t(missingKeyLabelKey(status === 'credentials-missing' ? 'bedrock' : undefined))}
       </Chip>
     )
   }

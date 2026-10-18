@@ -6,6 +6,7 @@ import type { Address, Room } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
 import { checkLimits } from '@/lib/rooms/limits'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { isCompareRoom } from '@/lib/rooms/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { normalizeError, useRoomsApi, type RoomsUiError } from './roomsBindings'
@@ -26,6 +27,7 @@ import {
 } from '@/lib/fileDrop'
 import { baseName, readDroppedPaths } from '@/lib/droppedPaths'
 import { isPlatformTauri } from '@/lib/platform/utils'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 const toValue = (a: Address) =>
   a.kind === 'participant' ? `participant:${a.participantId}` : a.kind
@@ -38,6 +40,7 @@ function fromValue(value: string): Address {
 }
 
 export function RoomComposer({ room }: { room: Room }) {
+  const compare = isCompareRoom(room)
   const { t } = useTranslation()
   const api = useRoomsApi()
   const id = useId()
@@ -159,11 +162,13 @@ export function RoomComposer({ room }: { room: Room }) {
       avatar: <RoomAvatar model={p.model} name={p.name} color={participantColor(p.id)} size={16} />,
     })),
   ]
+  // A narrow window gets the short hint, so it stays on one line.
+  const narrow = useMediaQuery('(max-width: 640px)')
   const current = targets.find((x) => x.value === to) ?? targets[0]
   const placeholder = limitStop
     ? t('rooms:composer.placeholderExtend')
     : current.value === 'room'
-      ? t('rooms:composer.placeholder')
+      ? t(narrow ? 'rooms:composer.placeholderShort' : 'rooms:composer.placeholder')
       : t('rooms:composer.placeholderTo', { name: current.label })
   const ready = text.trim().length > 0 && !sending
 
@@ -218,7 +223,7 @@ export function RoomComposer({ room }: { room: Room }) {
   return (
     // The fade lets the transcript dissolve into the composer instead of
     // stopping at a hard edge; the composer itself sits above it.
-    <div className="relative shrink-0 px-3.5 pt-2 pb-3.5 before:pointer-events-none before:absolute before:inset-x-0 before:-top-9 before:h-9 before:bg-gradient-to-b before:from-transparent before:to-card">
+    <div className="relative shrink-0 px-3 pt-2 pb-3 before:pointer-events-none before:absolute before:inset-x-0 before:-top-9 before:h-9 before:bg-gradient-to-b before:from-transparent before:to-card">
       <ClearRoomDialog
         open={clearOpen}
         running={room.status === 'running'}
@@ -252,7 +257,7 @@ export function RoomComposer({ room }: { room: Room }) {
           e.preventDefault()
           void dropPaths(paths)
         }}
-        className="relative z-10 mx-auto flex w-full max-w-[780px] flex-col rounded-xl border-[0.8px] border-border bg-card shadow-[0_4px_14px_rgba(0,0,0,.04)] transition-[border-color,box-shadow,transform] duration-300 ease-expo focus-within:border-border-strong focus-within:shadow-[0_0_0_3px_rgba(156,163,175,.18),0_12px_30px_-12px_rgba(0,0,0,.25)] motion-safe:focus-within:-translate-y-0.5"
+        className="relative z-10 mx-auto flex w-full max-w-[780px] flex-col rounded-xl border-[0.8px] border-border bg-card shadow-lift transition-[border-color,box-shadow,transform] duration-300 ease-expo focus-within:border-border-strong focus-within:ring-[3px] focus-within:ring-ring/25 focus-within:shadow-pop motion-safe:focus-within:-translate-y-0.5"
         onSubmit={(e) => {
           e.preventDefault()
           void (limitStop ? extend() : send())
@@ -264,17 +269,24 @@ export function RoomComposer({ room }: { room: Room }) {
             className="mx-2.5 mt-2.5 rounded-lg bg-warning-tint px-2.5 py-1.5 text-xs text-warning"
             data-testid="room-limit-notice"
           >
-            {t('rooms:composer.limitReached', { limit: t(`rooms:limits.${limitStop}`) })}
+            {t('rooms:composer.limitReached', {
+              // A compare room spends one round per question.
+              limit:
+                compare && limitStop === 'maxRounds'
+                  ? t('rooms:usage.questions')
+                  : t(`rooms:limits.${limitStop}`),
+            })}
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-1.5 px-2.5 pt-2 text-xs">
+        <div className="flex min-w-0 items-center gap-1.5 px-2.5 pt-2 text-xs">
           <span aria-hidden className="text-muted-foreground">
             {t('rooms:composer.toShort')}
           </span>
           <div
             role="radiogroup"
             aria-label={t('rooms:composer.to')}
-            className="flex flex-wrap items-center gap-1.5"
+            data-testid="room-composer-to"
+            className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             {targets.map((x) => {
               const on = x.value === current.value
@@ -297,10 +309,10 @@ export function RoomComposer({ room }: { room: Room }) {
                     }
                   }}
                   className={cn(
-                    'inline-flex h-[26px] cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] pr-2.5 pl-[5px] text-xs outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965]',
+                    'inline-flex h-[26px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] pr-2.5 pl-[5px] text-xs outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965]',
                     on
-                      ? 'border-transparent bg-grad text-on-grad'
-                      : 'border-border bg-card text-secondary-foreground hover:border-border-strong'
+                      ? 'border-border-strong bg-accent font-medium text-foreground'
+                      : 'border-border bg-card text-muted-foreground hover:border-border-strong hover:text-foreground'
                   )}
                 >
                   {x.avatar ?? <AtSign aria-hidden className="ml-0.5 size-[13px]" />}
@@ -360,9 +372,10 @@ export function RoomComposer({ room }: { room: Room }) {
               void (limitStop ? extend() : send())
             }
           }}
-          className="block min-h-12 w-full resize-none border-0 bg-transparent px-3 pt-2.5 pb-1 text-base leading-normal text-foreground outline-hidden placeholder:text-muted-foreground md:text-[13px]"
+          data-testid="room-composer-text"
+          className="block min-h-[calc(2lh+0.75rem)] w-full resize-none border-0 bg-transparent px-3 pt-1.5 pb-1.5 text-[13.5px] leading-normal text-foreground outline-hidden placeholder:truncate placeholder:text-muted-foreground"
         />
-        <div className="flex items-center justify-between gap-2 p-2">
+        <div className="flex items-center justify-between gap-2 px-2 pb-2">
           <button
             type="button"
             aria-label={t('rooms:composer.mention')}
@@ -373,13 +386,21 @@ export function RoomComposer({ room }: { room: Room }) {
             <AtSign aria-hidden />
           </button>
           <div className="flex min-w-0 items-center gap-2">
-            <span id={`${id}-hint`} className="hidden text-[11.5px] text-subtle-foreground sm:inline">
+            {/* One footer row: the shortcut hint only shows where it fits. */}
+            <span
+              id={`${id}-hint`}
+              className="hidden whitespace-nowrap text-[11.5px] text-subtle-foreground sm:inline"
+              hidden={Boolean(limitStop) || undefined}
+            >
               {t('rooms:composer.hint')}
             </span>
             {limitStop ? (
               <>
-                <label htmlFor={`${id}-extend`} className="text-xs text-muted-foreground">
-                  {t('rooms:composer.extendBy')}
+                <label
+                  htmlFor={`${id}-extend`}
+                  className="whitespace-nowrap text-xs text-muted-foreground"
+                >
+                  {t(compare ? 'rooms:composer.extendByQuestions' : 'rooms:composer.extendBy')}
                 </label>
                 <input
                   id={`${id}-extend`}
@@ -390,7 +411,12 @@ export function RoomComposer({ room }: { room: Room }) {
                   onChange={(e) => setExtendBy(Math.max(1, Number(e.target.value) || 1))}
                   className={`${selectClassName} h-7 w-16 tabular-nums`}
                 />
-                <Button type="submit" size="sm" disabled={sending}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={sending}
+                  aria-keyshortcuts="Control+Enter"
+                >
                   {t('rooms:composer.continue')}
                 </Button>
               </>
@@ -400,7 +426,7 @@ export function RoomComposer({ room }: { room: Room }) {
                 aria-label={t('rooms:composer.send')}
                 disabled={!ready}
                 data-ready={ready || undefined}
-                className="grid size-7 cursor-pointer place-items-center rounded-lg border border-primary bg-grad text-on-grad outline-hidden transition-[transform,opacity,filter,box-shadow] duration-250 ease-expo hover:brightness-110 focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-95 disabled:cursor-default disabled:opacity-55 data-ready:shadow-[0_4px_14px_-4px_rgba(0,0,0,.35)] motion-safe:data-ready:animate-send-ready dark:border-white/80"
+                className="grid size-7 cursor-pointer place-items-center rounded-lg border border-primary bg-grad text-on-grad outline-hidden transition-[transform,opacity,filter,box-shadow] duration-250 ease-expo hover:brightness-110 focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-95 disabled:cursor-default disabled:opacity-55 data-ready:shadow-pop motion-safe:data-ready:animate-send-ready dark:border-white/80"
               >
                 <ArrowUp aria-hidden className="size-3.5" strokeWidth={2.4} />
               </button>

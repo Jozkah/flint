@@ -1,3 +1,4 @@
+import { MiddleText } from '@/components/ui/middle-text'
 import {
   Dialog,
   DialogContent,
@@ -230,7 +231,11 @@ export const ImportLlamacppModelDialog = ({
               // characters would pass here and then fail the backend's id check.
               setModelName(
                 chosenNameRef.current ||
-                  toModelId(await serviceHub.path().basename(filePath))
+                  // Without the extension: the id a folder scan gives the
+                  // same file, so one model is not two ids (T7-119).
+                  toModelId(
+                    (await serviceHub.path().basename(filePath)).replace(/\.gguf$/i, '')
+                  )
               )
               setModelTokenizerInfo(
                 extractTokenizerInfo(result.metadata.metadata)
@@ -484,7 +489,7 @@ export const ImportLlamacppModelDialog = ({
 
     // Check if model already exists
     const modelExists = provider.models.some(
-      (model) => model.name === modelName
+      (model) => model.id === modelName || model.name === modelName
     )
 
     if (modelExists) {
@@ -832,24 +837,35 @@ export const ImportLlamacppModelDialog = ({
                             <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
                               {group.source}
                             </p>
-                            {group.models.map((found) => (
-                              <button
-                                key={found.path}
-                                type="button"
-                                onClick={() =>
-                                  void chooseModelFile(found.path, found.name, true)
-                                }
-                                disabled={importing}
-                                className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                              >
-                                <span className="min-w-0 break-all">
-                                  {found.name}
-                                </span>
-                                <span className="shrink-0 text-xs text-muted-foreground">
-                                  {formatBytes(found.size_bytes)}
-                                </span>
-                              </button>
-                            ))}
+                            {group.models.map((found) => {
+                              // Already a model here: importing it again only
+                              // fails with "already exists" (T7-118).
+                              const imported = (provider?.models ?? []).some(
+                                (m) => m.id === toModelId(found.name)
+                              )
+                              return (
+                                <button
+                                  key={found.path}
+                                  type="button"
+                                  onClick={() =>
+                                    void chooseModelFile(found.path, found.name, true)
+                                  }
+                                  disabled={importing || imported}
+                                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
+                                >
+                                  <MiddleText
+                                    text={found.name}
+                                    tail={16}
+                                    title={found.path}
+                                    className="flex-1"
+                                  />
+                                  <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                                    {imported && <span>{t('providers:imported')}</span>}
+                                    {formatBytes(found.size_bytes)}
+                                  </span>
+                                </button>
+                              )
+                            })}
                           </div>
                         ))}
                       </div>

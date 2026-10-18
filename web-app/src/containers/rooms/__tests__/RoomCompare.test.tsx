@@ -5,11 +5,12 @@ import '@testing-library/jest-dom'
 import { asJournal, createFakeApi, makeMessage, makeRoom, renderWithApi } from './roomsTestUtils'
 import { RoomTranscript } from '../RoomTranscript'
 import { RoomEditor } from '../RoomEditor'
+import { RoomUsageBar } from '../RoomUsageBar'
 import type { LiveTurn } from '@/lib/rooms/types'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const u = await import('./roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  return { useTranslation: () => ({ t: u.t, i18n: { language: 'en' } }) }
 })
 vi.mock('@/hooks/useModelProvider', async () => {
   const u = await import('./roomsTestUtils')
@@ -25,6 +26,12 @@ vi.mock('@/containers/RenderMarkdown', () => ({
 const bob = { kind: 'participant' as const, participantId: 'p2', name: 'Bob' }
 
 describe('compare rooms in the transcript', () => {
+  it('counts questions, not rounds, in the usage strip', () => {
+    render(<RoomUsageBar room={makeRoom({ mode: 'compare' })} />)
+    expect(screen.getByTestId('room-usage-details')).toHaveTextContent('Questions')
+    expect(screen.getByTestId('room-usage-details')).not.toHaveTextContent('Rounds')
+  })
+
   it("shows a round's answers side by side under the user's message, each with its figures", () => {
     const room = makeRoom({ mode: 'compare', status: 'awaiting-user' })
     const journal = asJournal([

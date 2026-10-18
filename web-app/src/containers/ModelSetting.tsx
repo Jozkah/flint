@@ -305,6 +305,18 @@ export function ModelSetting({
     provider.settings?.find((s) => s.key === 'fit')?.controller_props?.value ===
     true
   const fitCtxSetting = provider.settings?.find((s) => s.key === 'fit_ctx')
+  // A blank Context Size inherits the provider's Default context size.
+  const inheritedCtx = (() => {
+    if (provider.provider !== 'llamacpp') return undefined
+    const raw = provider.settings?.find((s) => s.key === 'ctx_size')
+      ?.controller_props?.value
+    const n = typeof raw === 'number' ? raw : Number(raw)
+    return Number.isFinite(n) && n > 0
+      ? t('engineSettings:_ui.perModelDefault', {
+          value: Math.max(512, Math.floor(n)).toLocaleString(),
+        })
+      : t('engineSettings:_ui.perModelDefaultAuto')
+  })()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -390,7 +402,6 @@ export function ModelSetting({
             // Removed in v15 migration; defend against any pre-migration
             // localStorage state that still carries the orphan entry.
             if (entry[0] === 'auto_increase_ctx_len') return acc
-            if (fitEnabled && entry[0] === 'ctx_len') return acc
             // Sampling params live in the composer popover, not the sidebar.
             if (entry[0] in paramsSettings) return acc
             acc.push(entry)
@@ -429,6 +440,9 @@ export function ModelSetting({
                     controllerProps={{
                       ...config.controller_props,
                       value: config.controller_props?.value,
+                      ...(key === 'ctx_len' && inheritedCtx
+                        ? { placeholder: inheritedCtx }
+                        : {}),
                     }}
                     onChange={(newValue) => handleSettingChange(key, newValue)}
                   />
@@ -436,6 +450,11 @@ export function ModelSetting({
                 <p className="text-muted-foreground leading-normal text-xs">
                   {config.description}
                 </p>
+                {fitEnabled && key === 'ctx_len' && (
+                  <p className="text-muted-foreground leading-normal text-xs">
+                    {t('common:modelSettings.ctxAutoFitHint')}
+                  </p>
+                )}
               </div>
             )
           })

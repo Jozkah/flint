@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import type { LiveTurn, Participant, Room } from '@/lib/rooms/types'
+import { isCompareRoom } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -355,7 +356,7 @@ export function RoomControls({ room }: { room: Room }) {
           <div className="mt-3 flex flex-col gap-1.5">
             <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
               <span>
-                {t('rooms:stage.round')}{' '}
+                {t(isCompareRoom(room) ? 'rooms:stage.question' : 'rooms:stage.round')}{' '}
                 <b className="font-semibold text-foreground">{usage.rounds}</b>{' '}
                 {t('rooms:stage.of')} {limits.maxRounds}
               </span>

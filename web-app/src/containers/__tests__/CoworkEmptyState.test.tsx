@@ -46,6 +46,18 @@ describe('CoworkEmptyState', () => {
     }
   })
 
+  // The hero must not promise read-only while the composer says Edit (C-010).
+  it('says what the session may do to the folder', () => {
+    const { rerender } = render(
+      <CoworkEmptyState folder="/p/repo" access="edit-folder" onPick={vi.fn()} />
+    )
+    expect(screen.getByText('common:coworkEmpty.subtitleFolderEdit[repo]')).toBeInTheDocument()
+    rerender(<CoworkEmptyState folder="/p/repo" access="managed-worktree" onPick={vi.fn()} />)
+    expect(screen.getByText('common:coworkEmpty.subtitleFolderWorktree[repo]')).toBeInTheDocument()
+    rerender(<CoworkEmptyState folder="/p/repo" access="review-only" onPick={vi.fn()} />)
+    expect(screen.getByText('common:coworkEmpty.subtitleFolder[repo]')).toBeInTheDocument()
+  })
+
   // Loaded, not sent: an example is a starting point the user edits.
   it('loads a picked example rather than submitting it', async () => {
     const onPick = vi.fn()

@@ -30,6 +30,7 @@ export type CompareExport = {
 }
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+const minute = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ')
 
 const cellText = (s: string) => s.replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>')
 
@@ -101,7 +102,16 @@ export function compareExport(room: Room, messages: RoomMessage[], now = Date.no
     ]
       .filter(Boolean)
       .join(', ')
-  const header = ordered.map((c) => cellText(`${c.participant} · ${c.model} · ${day(c.firstAt)}`))
+  // A participant re-run on the same model gets one column per run: those
+  // name the time and the run, or the headers would be identical (R-028).
+  const reran = new Set(ordered.filter((c) => c.run > 1).map((c) => c.id.replace(/\|\d+$/, '')))
+  const header = ordered.map((c) =>
+    cellText(
+      reran.has(c.id.replace(/\|\d+$/, ''))
+        ? `${c.participant} · ${c.model} · ${minute(c.firstAt)} (run ${c.run})`
+        : `${c.participant} · ${c.model} · ${day(c.firstAt)}`
+    )
+  )
   const lines = [
     `# ${room.title}`,
     '',

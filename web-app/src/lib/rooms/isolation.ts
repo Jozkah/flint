@@ -2,7 +2,8 @@
  * Isolated workspaces for compare rooms.
  *
  * In compare mode every participant answers the same message at the same time.
- * Two writers in one folder would overwrite each other, so without isolation
+ * Writers are isolated (even a sole one, which compare mode would otherwise
+ * keep read-only). Two writers in one folder would overwrite each other, so without isolation
  * writers only read there (`turnToolAccess`). With it, each writer gets its own
  * checkout under the room's data directory (a detached git worktree, or a
  * scratch copy for a folder that is not a repository), made by the backend on
@@ -32,7 +33,9 @@ const writes = (p: Participant) => p.toolAccess === 'edit' || p.toolAccess === '
 /** Whether a room's writers should each get their own workspace. */
 export function isolationWanted(room: Pick<Room, 'mode' | 'folder' | 'participants'>): boolean {
   if (room.mode !== 'compare' || !room.folder) return false
-  return room.participants.filter((p) => !p.removed && writes(p)).length >= 2
+  // One writer too: compare mode otherwise drops every writer to read-only,
+  // so a sole writer needs its own copy to edit at all (R-040).
+  return room.participants.some((p) => !p.removed && writes(p))
 }
 
 /** Whether this participant would work in a workspace in this room. */

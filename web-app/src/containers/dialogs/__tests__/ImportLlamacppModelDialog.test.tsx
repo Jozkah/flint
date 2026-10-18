@@ -110,7 +110,7 @@ describe('ImportLlamacppModelDialog', () => {
     fireEvent.click(importBtn)
     await waitFor(() =>
       expect(hoisted.pullModel).toHaveBeenCalledWith(
-        'ok.gguf',
+        'ok',
         '/tmp/ok.gguf',
         undefined,
         undefined,
@@ -267,7 +267,7 @@ describe('ImportLlamacppModelDialog', () => {
   it('rejects importing when the model name already exists in the provider', async () => {
     hoisted.dialogOpen.mockResolvedValueOnce('/tmp/dup.gguf')
     const providerWithModel = {
-      models: [{ name: 'dup.gguf' }],
+      models: [{ id: 'dup', name: 'Dup' }],
     } as unknown as any
     render(
       <ImportLlamacppModelDialog
@@ -315,7 +315,7 @@ describe('ImportLlamacppModelDialog', () => {
     fireEvent.click(importBtn)
     await waitFor(() =>
       expect(hoisted.pullModel).toHaveBeenCalledWith(
-        'ok.gguf',
+        'ok',
         '/tmp/ok.gguf',
         undefined,
         undefined,
@@ -331,7 +331,7 @@ describe('ImportLlamacppModelDialog', () => {
         expect.any(Object)
       )
     )
-    expect(onSuccess).toHaveBeenCalledWith('ok.gguf')
+    expect(onSuccess).toHaveBeenCalledWith('ok')
   })
 
   it('imports a file name with spaces and brackets under a sanitized id (#283)', async () => {
@@ -353,7 +353,8 @@ describe('ImportLlamacppModelDialog', () => {
     fireEvent.click(importBtn)
     await waitFor(() => expect(hoisted.pullModel).toHaveBeenCalled())
     const id = hoisted.pullModel.mock.calls[0][0] as string
-    expect(id).toBe('My-Model-1.gguf')
+    // Extensionless, the same id a folder scan gives the file (T7-119).
+    expect(id).toBe('My-Model-1')
     expect(id).toMatch(/^[a-zA-Z0-9/_\-.]+$/)
   })
 
@@ -436,6 +437,29 @@ describe('ImportLlamacppModelDialog', () => {
     await waitFor(() =>
       expect(screen.queryByText('Import Model')).not.toBeInTheDocument()
     )
+  })
+
+  it('marks scanned models that are already imported (T7-118)', async () => {
+    hoisted.invoke.mockImplementation(async (cmd: string) =>
+      cmd === 'scan_local_models'
+        ? [
+            { path: 'C:/m/gemma-3-4b-it-Q4_K_M.gguf', name: 'gemma-3-4b-it-Q4_K_M', source: 'Custom folder', size_bytes: 1000 },
+            { path: 'C:/m/other.gguf', name: 'other', source: 'Custom folder', size_bytes: 2000 },
+          ]
+        : { metadata: { 'general.architecture': 'llama' } }
+    )
+    render(
+      <ImportLlamacppModelDialog
+        provider={{ models: [{ id: 'gemma-3-4b-it-Q4_K_M', name: 'Gemma' }] } as never}
+        trigger={<button>Open</button>}
+      />
+    )
+    openDialog()
+    fireEvent.click(screen.getByText('Find models already on this computer'))
+    const gemma = (await screen.findByTitle('C:/m/gemma-3-4b-it-Q4_K_M.gguf')).closest('button')!
+    expect(gemma).toBeDisabled()
+    expect(gemma).toHaveTextContent('Imported')
+    expect(screen.getByText('other').closest('button')).not.toBeDisabled()
   })
 
   it('removing a model folder also drops what the last scan found in it', async () => {

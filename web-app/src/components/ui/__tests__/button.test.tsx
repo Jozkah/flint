@@ -29,7 +29,7 @@ describe('Button', () => {
     const button = screen.getByRole('button')
     expect(button).toHaveClass(
       'bg-destructive/12',
-      'text-destructive',
+      'text-destructive-text',
       'hover:bg-destructive/18'
     )
   })
@@ -152,7 +152,7 @@ describe('Button', () => {
     )
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('bg-destructive/12', 'text-destructive') // destructive variant
+    expect(button).toHaveClass('bg-destructive/12', 'text-destructive-text') // destructive variant
     expect(button).toHaveClass('h-9', 'px-3.5') // large size
   })
 
