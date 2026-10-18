@@ -8,6 +8,7 @@ import { useAppState } from '@/hooks/useAppState'
 import { transcriptForSummary } from '@/lib/compaction'
 import { extractSummary } from '@/lib/context-manager'
 import { modelSummarizer } from '@/lib/compactionSummarizer'
+import { defangMentionText } from '@/lib/chatMentions'
 import { messagesToFork } from '@/lib/forkThread'
 import { convertThreadMessagesToUIMessages } from '@/lib/messages'
 
@@ -25,6 +26,19 @@ export const SUMMARY_CONTINUE_TITLE_SUFFIX = ' (continued)'
 const THREAD_METADATA_KEPT = ['project', 'folders']
 /** Engines that run the model in this app and need it loaded to answer. */
 const LOCAL_PROVIDERS = new Set(['llamacpp', 'mlx'])
+
+/**
+ * Whether the model can write a summary now: any remote model, or a local one
+ * that is loaded (summarizing must not start an engine load as a side effect).
+ */
+export function canModelSummarize(
+  provider: string | undefined,
+  modelId: string | undefined,
+  activeModels: readonly string[]
+): boolean {
+  if (!modelId) return false
+  return !LOCAL_PROVIDERS.has(provider ?? '') || activeModels.includes(modelId)
+}
 
 export type ContinueFromSummaryErrorCode =
   | 'no-chat'
@@ -55,8 +69,49 @@ export function continuedTitle(title: string | undefined): string {
 export function continuationText(title: string, summary: string): string {
   return (
     `This chat continues an earlier one, "${title.trim() || 'Untitled'}". ` +
-    `Here is a summary of it, for reference. It is not a new request.\n\n${summary.trim()}`
+    `Here is a summary of it, for reference. It is not a new request.\n\n${tidySummaryMarkdown(summary)}`
   )
+}
+
+const LIST_ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s+/
+const CONTINUATION = /^\s+\S/
+
+/**
+ * The summary as well-formed Markdown, so the seed message renders cleanly:
+ * `-` bullets, headings as bold label lines, and a blank line around each
+ * list. Code fences are left as written.
+ */
+export function tidySummaryMarkdown(summary: string): string {
+  const out: string[] = []
+  let inFence = false
+  let prevList = false
+  for (const raw of summary.trim().split(/\r?\n/)) {
+    let line = raw.replace(/\s+$/, '')
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence
+      out.push(line)
+      prevList = false
+      continue
+    }
+    if (inFence) {
+      out.push(line)
+      continue
+    }
+    const heading = /^\s*#{1,6}\s+(.+?)\s*#*$/.exec(line)
+    if (heading) line = `**${heading[1].replace(/^\*\*(.*)\*\*$/, '$1')}**`
+    line = line.replace(/^(\s*)[*+]\s+/, '$1- ')
+    const blank = line.trim() === ''
+    const last = out[out.length - 1]
+    if (blank) {
+      if (last !== undefined && last.trim() !== '') out.push('')
+      continue
+    }
+    const isList: boolean = LIST_ITEM.test(line) || (prevList && CONTINUATION.test(line))
+    if (last !== undefined && last.trim() !== '' && isList !== prevList) out.push('')
+    out.push(line)
+    prevList = isList
+  }
+  return out.join('\n').trim()
 }
 
 export type ContinueFromSummaryOptions = {
@@ -90,10 +145,7 @@ export async function continueFromSummary(
 
   // A local model that is not loaded cannot write the summary; say so rather
   // than starting an engine load as a side effect of a menu click.
-  if (
-    LOCAL_PROVIDERS.has(model.provider) &&
-    !useAppState.getState().activeModels.includes(model.id)
-  ) {
+  if (!canModelSummarize(model.provider, model.id, useAppState.getState().activeModels)) {
     throw new ContinueFromSummaryError('model-not-loaded')
   }
 
@@ -158,7 +210,12 @@ export async function continueFromSummary(
     content: [
       {
         type: ContentType.Text,
-        text: { value: continuationText(source.title ?? '', summary), annotations: [] },
+        // The summary is model-written, so it must not carry a live mention
+        // block that would grant `chat_read` on some other chat.
+        text: {
+          value: continuationText(source.title ?? '', defangMentionText(summary)),
+          annotations: [],
+        },
       },
     ],
     id: ulid(),

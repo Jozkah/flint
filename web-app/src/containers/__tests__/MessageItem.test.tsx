@@ -167,6 +167,42 @@ describe('MessageItem', () => {
     expect(await screen.findByRole('menu')).toBeTruthy()
   })
 
+  it('renders the continue-from-summary seed as Markdown', () => {
+    useInterfaceSettings.setState({ renderUserMarkdown: false })
+    render(
+      <MessageItem
+        message={makeMsg({
+          role: 'user',
+          parts: [{ type: 'text', text: '- **Goal:** ship' }],
+          metadata: { createdAt: new Date(), continuedFrom: { threadId: 't0', title: 'Old' } },
+        }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(screen.getByTestId('user-markdown')).toBeInTheDocument()
+    expect(screen.getByTestId('render-markdown')).toHaveTextContent('- **Goal:** ship')
+  })
+
+  it.each([
+    [false, false],
+    [true, true],
+  ])('a plain user message renders Markdown only with the setting on (%s)', (on, md) => {
+    useInterfaceSettings.setState({ renderUserMarkdown: on })
+    render(
+      <MessageItem
+        message={makeMsg({ role: 'user', parts: [{ type: 'text', text: 'a **b** c' }] }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(!!screen.queryByTestId('user-markdown')).toBe(md)
+    if (!md) expect(screen.getByText('a **b** c')).toBeInTheDocument()
+    useInterfaceSettings.setState({ renderUserMarkdown: false })
+  })
+
   it('renders assistant text via RenderMarkdown', () => {
     render(
       <MessageItem
@@ -293,6 +329,36 @@ describe('MessageItem', () => {
     )
     expect(screen.getByText('doc.txt')).toBeInTheDocument()
     expect(screen.getByText('(inline)')).toBeInTheDocument()
+  })
+
+  it('sent file chip previews inline text from metadata, no native tooltip', async () => {
+    render(
+      <MessageItem
+        message={
+          makeMsg({
+            role: 'user',
+            parts: [{ type: 'text', text: '[FILE:doc.txt] Please summarize' }],
+            metadata: {
+              createdAt: new Date(),
+              inline_file_contents: [
+                { name: 'doc.txt', content: 'first pasted line\nsecond' },
+              ],
+            },
+          }) as any
+        }
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    const chip = screen.getByTestId('sent-file-chip')
+    expect(chip).not.toHaveAttribute('title')
+    expect(chip.querySelector('[title]')).toBeNull()
+    fireEvent.click(within(chip).getByRole('button'))
+    expect(
+      await screen.findByText(/first pasted line/, {}, { timeout: 3000 })
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('file-preview-open-full')).toBeInTheDocument()
   })
 
   it('fires onRegenerate when regenerate button clicked (assistant, last)', () => {

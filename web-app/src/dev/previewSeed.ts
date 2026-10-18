@@ -23,6 +23,7 @@ import { useUsageStats, dayKey } from '@/stores/usage-stats-store'
 import { useServiceStore } from '@/hooks/useServiceHub'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { buildScopeChoice, type ApprovalScopeWire } from '@/lib/approvalScopes'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { usePrStatusStore } from '@/stores/pr-status-store'
@@ -31,12 +32,16 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useConversationGroups } from '@/lib/groups/store'
 import { projectKeyOf } from '@/lib/coworkCode'
+import { buildExcerpt, joinMentionBlocks, mentionToken } from '@/lib/chatMentions'
+import { setRoomPersistence, type RoomPersistence } from '@/lib/rooms/persistence'
+import { useRoomsStore } from '@/lib/rooms/store'
 import { answer } from './previewTauri'
 import { seedStudioAnswers } from './previewStudio'
 import { seedRooms } from './previewRooms'
 import { seedBrowserPane } from './previewBrowser'
 import { seedEngine } from './previewSeedEngine'
 import { seedHuggingFacePreview } from './previewHuggingFace'
+import { seedRichSearch } from './previewRichSearch'
 import {
   PREVIEW_DATA_FOLDER,
   patchSettingsServices,
@@ -194,7 +199,60 @@ const CHATS: ChatSeed[] = [
   ['vllm', 'Sourdough starter schedule', 9000],
   ['clutter', 'SQL window functions', 12000],
   ['test', 'Regex for ISO dates', 20000],
+  // Same title in three places, and one very long title: the @ / # menus tell
+  // the first apart and truncate the second.
+  ['plan1', 'Weekly planning', 300, 'weather'],
+  ['plan2', 'Weekly planning', 800, 'docs'],
+  ['plan3', 'Weekly planning', 5000],
+  ['longtitle', 'Investigate why the nightly benchmark regression only reproduces on the Windows runner after the allocator upgrade and compare it with the Linux numbers', 120, 'weather'],
 ]
+
+/** A short exchange for a seeded chat, so its row can show a count and a preview. */
+function fillerMessages(id: string, title: string): ThreadMessage[] {
+  const base = { object: 'thread.message', thread_id: id, status: 'ready' }
+  const lines: [string, string][] = [
+    ['user', `Let's work on: ${title}`],
+    ['assistant', 'Sure. Start with the smallest change that shows the problem, then widen it.'],
+    ['user', 'Agreed. I will try that tomorrow and report back with the numbers.'],
+    ['assistant', 'Good plan. Keep the before and after side by side so the difference is easy to see.'],
+  ]
+  // plan1 opens with a mention of another chat, as the composer sends it, so
+  // the transcript shows the "Mentioned" chips.
+  if (id === 'plan1') {
+    const mentioned = buildExcerpt({
+      kind: 'chat',
+      id: 'release',
+      title: 'Forecast cache returns stale data',
+      project: 'acme-weather',
+      messages: [
+        { role: 'user', text: 'The /v1/forecast endpoint keeps returning yesterday’s data after midnight UTC.' },
+        { role: 'assistant', text: 'The cache key ignores the date, so it never expires at midnight.' },
+      ],
+    }).block
+    const session = buildExcerpt({
+      kind: 'session',
+      id: 'dash',
+      title: 'Hourly chart tooltip',
+      project: 'acme-weather',
+      messages: [{ role: 'user', text: 'Show the feels-like temperature in the tooltip.' }],
+    }).block
+    lines[0][1] = joinMentionBlocks(
+      `What did we decide in @${mentionToken('chat', 'release', 'Forecast cache returns stale data')} and @${mentionToken('session', 'dash', 'Hourly chart tooltip')}? Let's plan around it.`,
+      [mentioned, session]
+    )
+  }
+  return lines.map(
+    ([role, line], i) =>
+      ({
+        ...base,
+        id: `${id}-m${i}`,
+        role,
+        created_at: now - (60 - i) * MIN,
+        completed_at: now - (60 - i) * MIN,
+        content: [{ type: 'text', text: { value: line, annotations: [] } }],
+      }) as unknown as ThreadMessage
+  )
+}
 
 function threads(): Thread[] {
   return CHATS.map(([id, title, age, folder, pinned]) => {
@@ -225,6 +283,33 @@ const g = (s: string) => `${ESC}1;32m${s}${ESC}0m`
 const r = (s: string) => `${ESC}1;31m${s}${ESC}0m`
 const y = (s: string) => `${ESC}33m${s}${ESC}0m`
 
+// `?preview&attachments`: the first message carries a 200k-line paste and a
+// 5 MB log as inline files, to exercise the full attachment viewer.
+const SEED_ATTACHMENTS =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).has('attachments')
+
+function attachedBlock(): string {
+  return [
+    '',
+    '',
+    '[ATTACHED_FILES]',
+    '- file_id: pasted-text-1.txt, name: pasted-text-1.txt, type: txt, size: 7088890, mode: inline',
+    '- file_id: server.log, name: server.log, type: log, size: 5242880, mode: inline',
+    '[/ATTACHED_FILES]',
+  ].join('\n')
+}
+
+function bigAttachments(): Array<{ name: string; content: string }> {
+  const paste = Array.from({ length: 200_000 }, (_, i) => `${i + 1}. forecast row ${i} temp=${(i % 40) - 5}C`).join('\n')
+  const line = '2026-10-17T00:00:01Z INFO forecast cache refreshed region=eu-west hits=1204 misses=12\n'
+  const log = 'x'.repeat(6000) + ' (one very long line)\n' + line.repeat(Math.ceil((5 * 1024 * 1024) / line.length))
+  return [
+    { name: 'pasted-text-1.txt', content: paste },
+    { name: 'server.log', content: log },
+  ]
+}
+
 function releaseMessages(): ThreadMessage[] {
   const base = { object: 'thread.message', thread_id: 'release', status: 'ready' }
   const t = (m: number) => now - m * MIN
@@ -235,7 +320,8 @@ function releaseMessages(): ThreadMessage[] {
       role: 'user',
       created_at: t(3),
       completed_at: t(3),
-      content: [text('The /v1/forecast endpoint keeps returning yesterday’s data after midnight UTC. Can you find out why and fix it?')],
+      content: [text('The /v1/forecast endpoint keeps returning yesterday’s data after midnight UTC. Can you find out why and fix it?' + (SEED_ATTACHMENTS ? attachedBlock() : ''))],
+      ...(SEED_ATTACHMENTS ? { metadata: { inline_file_contents: bigAttachments() } } : {}),
     },
     {
       ...base,
@@ -335,6 +421,21 @@ function seedToolRuntime() {
           input: { command: 'git commit -am "fix(cache): key forecasts by UTC date"' },
           taskContext: 'Commit the cache fix and the new midnight test.',
           workspaceLabel: '~/projects/acme-weather',
+          // The "Always" form the backend offers for a command: the prefixes.
+          ...(() => {
+            const options: ApprovalScopeWire[] = [
+              { type: 'command_prefix', prefix: 'git' },
+              { type: 'command_prefix', prefix: 'git commit' },
+            ]
+            const choice = buildScopeChoice(options, 'bash')
+            return choice
+              ? {
+                  choice,
+                  chosenId: choice.defaultId,
+                  scopeForm: { root: '~/projects/acme-weather', options },
+                }
+              : {}
+          })(),
           resolve: () => {},
         },
       },
@@ -1133,9 +1234,13 @@ function patchServices() {
     const target = hub[service]
     if (target) target[method] = fn
   }
-  set('messagesService', 'fetchMessages', async (id: string) => (id === 'release' ? releaseMessages() : []))
+  set('messagesService', 'fetchMessages', async (id: string) => {
+    if (id === 'release') return releaseMessages()
+    const chat = CHATS.find((c) => c[0] === id)
+    return chat && /^(plan\d|longtitle)$/.test(id) ? fillerMessages(id, chat[1]) : []
+  })
   set('projectsService', 'getProjects', async () => FOLDERS)
-  set('threadsService', 'fetchThreads', async () => threads())
+  set('threadsService', 'fetchThreads', async () => (params().has('empty') ? [] : threads()))
   set('assistantsService', 'getAssistants', async () => assistants())
   // The Review only session's sandbox copy, readable the way the Code panel
   // reads sandbox files.
@@ -1177,6 +1282,15 @@ function seedBackendAnswers() {
   }
 }
 
+function seedMentionDraft(many: boolean) {
+  const chat = (id: string) => `@${mentionToken('chat', id, CHATS.find((c) => c[0] === id)?.[1] ?? id)}`
+  const session = `@${mentionToken('session', 'dash', 'Hourly chart tooltip')}`
+  const prompt = many
+    ? `Compare ${chat('kravio')} ${chat('escape')} ${session} ${chat('longtitle')} ${chat('toolargs')} ${chat('sandbox')} and @chat:deleted-thread-0badf00d#summary`
+    : `What did we settle in ${chat('kravio')} and ${session}? Use it for the new legend.`
+  void import('@/hooks/usePrompt').then((m) => m.usePrompt.getState().setPrompt(prompt))
+}
+
 export function seedPreview() {
   seedBackendAnswers()
   patchServices()
@@ -1203,6 +1317,18 @@ export function seedPreview() {
   seedEngine()
   seedHuggingFacePreview()
   seedSettingsPreview()
+  seedRichSearch()
+  // `?empty`: no conversation anywhere, to look at the @ / # menus' empty state.
+  if (params().has('empty')) {
+    useThreads.setState({ threads: {} } as never)
+    useCoworkSessions.setState({ sessions: [], currentId: null } as never)
+    setRoomPersistence({ listRooms: async () => [] } as unknown as RoomPersistence)
+    useRoomsStore.setState({ summaries: [] } as never)
+  }
+  // `?mentions`: a draft that mentions conversations, to look at the composer's
+  // mention pills and chips; `?mentions=many` mentions more than the cap, and
+  // one conversation that no longer exists.
+  if (params().has('mentions')) seedMentionDraft(params().get('mentions') === 'many')
   // Folders live in a store the hook reads through the projects service; the
   // hook's own setter is reached from its module.
   void import('@/hooks/useThreadManagement').then((m) => {

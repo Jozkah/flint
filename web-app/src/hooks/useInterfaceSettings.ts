@@ -96,6 +96,8 @@ interface InterfaceSettingsState {
   notificationPosition: NotificationPosition
   showTokenSpeed: boolean
   coloredUserBubble: boolean
+  /** Render Markdown in the user's own messages (off: plain text as typed). */
+  renderUserMarkdown: boolean
   renderHtmlArtifacts: boolean
   /** Favicon chips for the sources a web answer cites, inline in the text. */
   showInlineCitations: boolean
@@ -127,6 +129,7 @@ interface InterfaceSettingsState {
   setNotificationPosition: (position: NotificationPosition) => void
   setShowTokenSpeed: (show: boolean) => void
   setColoredUserBubble: (colored: boolean) => void
+  setRenderUserMarkdown: (render: boolean) => void
   setRenderHtmlArtifacts: (render: boolean) => void
   setShowInlineCitations: (show: boolean) => void
   setAutoGenerateTitle: (auto: boolean) => void
@@ -150,6 +153,7 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'notificationPosition'
   | 'showTokenSpeed'
   | 'coloredUserBubble'
+  | 'renderUserMarkdown'
   | 'renderHtmlArtifacts'
   | 'showInlineCitations'
   | 'autoGenerateTitle'
@@ -181,6 +185,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     notificationPosition: getDefaultNotificationPosition(),
     showTokenSpeed: true,
     coloredUserBubble: false,
+    renderUserMarkdown: false,
     renderHtmlArtifacts: false,
     showInlineCitations: true,
     autoGenerateTitle: true,
@@ -242,6 +247,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             notificationPosition: getDefaultNotificationPosition(),
             showTokenSpeed: true,
             coloredUserBubble: false,
+            renderUserMarkdown: false,
             renderHtmlArtifacts: false,
             showInlineCitations: true,
             autoGenerateTitle: true,
@@ -307,6 +313,9 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           set({ showTokenSpeed: show })
         },
 
+        setRenderUserMarkdown: (render) => {
+          set({ renderUserMarkdown: render })
+        },
         setColoredUserBubble: (colored) => {
           set({ coloredUserBubble: colored })
         },
@@ -394,6 +403,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         notificationPosition: state.notificationPosition,
         showTokenSpeed: state.showTokenSpeed,
         coloredUserBubble: state.coloredUserBubble,
+        renderUserMarkdown: state.renderUserMarkdown,
         renderHtmlArtifacts: state.renderHtmlArtifacts,
         showInlineCitations: state.showInlineCitations,
         autoGenerateTitle: state.autoGenerateTitle,
@@ -449,6 +459,9 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             state.showTokenSpeed = true
           }
 
+          if (typeof state.renderUserMarkdown !== 'boolean') {
+            state.renderUserMarkdown = false
+          }
           if (typeof state.coloredUserBubble !== 'boolean') {
             state.coloredUserBubble = true
           }

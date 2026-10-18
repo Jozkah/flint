@@ -12,6 +12,7 @@ import {
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
 import { Select } from '@/components/ui/select'
+import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 
 /**
  * The shared compaction policy (AH-076), edited at user scope. What is shown is
@@ -22,6 +23,8 @@ export function CompactionPolicySettings() {
   const { t } = useTranslation()
   const [policy, setPolicy] = useState<CompactionPolicy | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const leanSmallWindows = useLeanToolsConfig((s) => s.leanSmallWindows)
+  const setLeanSmallWindows = useLeanToolsConfig((s) => s.setLeanSmallWindows)
 
   useEffect(() => {
     getCompactionPolicy()
@@ -61,7 +64,7 @@ export function CompactionPolicySettings() {
   )
 
   return (
-    <Card title={t('settings:compaction.title')}>
+    <Card anchor="settings-agent-tools-compaction" title={t('settings:compaction.title')}>
       {error && (
         <p
           role="alert"
@@ -118,6 +121,18 @@ export function CompactionPolicySettings() {
           />
         </>
       )}
+      <CardItem
+        title={t('settings:compaction.leanTools')}
+        description={t('settings:compaction.leanToolsDescription')}
+        actions={
+          <Switch
+            aria-label={t('settings:compaction.leanTools')}
+            data-testid="lean-small-window-tools"
+            checked={leanSmallWindows}
+            onCheckedChange={setLeanSmallWindows}
+          />
+        }
+      />
     </Card>
   )
 }

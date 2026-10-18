@@ -124,6 +124,25 @@ describe('SearchDialog', () => {
       )
     })
 
+    it('seeds the find bar when a message hit is opened with Enter, as a click does', async () => {
+      h.searchMessages.mockResolvedValue([hit('z', 'the cache key ignores locale')])
+      render(<SearchDialog open onOpenChange={vi.fn()} />)
+      typeQuery('locale')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300)
+      })
+      fireEvent.keyDown(screen.getByLabelText('common:searchThreads'), { key: 'Enter' })
+      expect(h.navigate).toHaveBeenCalledWith(
+        expect.objectContaining({ params: { threadId: 'z' } })
+      )
+      const { useConversationFind } = await import('@/hooks/useConversationFind')
+      expect(useConversationFind.getState().seed).toMatchObject({
+        threadId: 'z',
+        query: 'locale',
+        messageId: 'm-z',
+      })
+    })
+
     it('debounces fast typing into one scan and drops a stale reply', async () => {
       let release: (v: any[]) => void = () => {}
       h.searchMessages.mockImplementationOnce(

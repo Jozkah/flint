@@ -73,15 +73,23 @@ import {
 } from '@/hooks/useConversationPane'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import { tidySummaryMarkdown } from '@/lib/continueFromSummary'
 import { useMessageErrors } from '@/stores/message-errors'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
 import { AgentMessageHeader } from '@/containers/AgentMessageHeader'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
 import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
 import { extractFilesFromPrompt, FileMetadata } from '@/lib/fileMetadata'
+import { nameMentions, splitMentionBlocks } from '@/lib/chatMentions'
+import { SentMentions } from '@/containers/SentMentions'
 import { displayNameOf } from '@/lib/displayName'
 import { formatChipSize } from '@/lib/attachmentChip'
-import { FilePreviewPopover } from '@/containers/FilePreviewPopover'
+import {
+  FilePreviewPopover,
+  previewLoader,
+  sentAttachment,
+  viewerSpec,
+} from '@/containers/FilePreviewPopover'
 import { Button } from '@/components/ui/button'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -187,6 +195,7 @@ export const MessageItem = memo(
     const toolsEnabled = useModelToolsEnabled(selectedModel, threadId)
     const grantThreadTools = useThreadToolGrants((s) => s.grant)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
+    const renderUserMarkdown = useInterfaceSettings((s) => s.renderUserMarkdown)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
     const createdAt = (metadata?.createdAt as Date) ?? new Date()
@@ -462,10 +471,18 @@ export const MessageItem = memo(
 
       const isLastPart = partIndex === message.parts.length - 1
 
-      // For user messages, extract and clean the text from file metadata
+      // For user messages, extract and clean the text from file metadata, and
+      // fold the mentioned-conversation blocks into chips.
+      const mentioned =
+        message.role === 'user'
+          ? splitMentionBlocks(part.text)
+          : { clean: part.text, mentions: [] }
       const displayText =
         message.role === 'user'
-          ? extractFilesFromPrompt(part.text).cleanPrompt
+          ? nameMentions(
+              extractFilesFromPrompt(mentioned.clean).cleanPrompt,
+              mentioned.mentions
+            )
           : part.text
 
       // A `/command` the user sent reads as typed; the expansion folds away.
@@ -507,19 +524,25 @@ export const MessageItem = memo(
                   </div>
                 )}
                 {partIndex === 0 && <AgentMessageHeader metadata={metadata} />}
+                {mentioned.mentions.length > 0 && (
+                  <SentMentions mentions={mentioned.mentions} />
+                )}
                 {/* Show attached files if any */}
                 {attachedFiles.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
-                    {attachedFiles.map((file: FileMetadata, idx: number) => (
+                    {attachedFiles.map((file: FileMetadata, idx: number) => {
+                      const sent = sentAttachment(file, metadata)
+                      return (
                       <div
                         key={`file-${idx}-${file.id}`}
                         data-testid="sent-file-chip"
-                        title={file.name}
                         className="flex min-w-0 max-w-full items-center rounded-md bg-card text-foreground border-[0.8px] border-border text-xs"
                       >
                         <FilePreviewPopover
                           name={file.name}
                           meta={formatChipSize(file.size)}
+                          load={previewLoader(sent)}
+                          viewer={viewerSpec(sent)}
                           className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-start focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
                         >
                           <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
@@ -533,7 +556,8 @@ export const MessageItem = memo(
                           )}
                         </FilePreviewPopover>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
                 {displayText &&
@@ -542,6 +566,24 @@ export const MessageItem = memo(
                       invocation={slashInvocation.invocation}
                       body={slashInvocation.body}
                     />
+                  ) : renderUserMarkdown || metadata?.continuedFrom ? (
+                    // The continue-from-summary seed is model-written Markdown;
+                    // other messages only when the user opted in, since pasted
+                    // logs and code read better exactly as typed.
+                    <div dir="auto" className="select-text" data-testid="user-markdown">
+                      <RenderMarkdown
+                        content={
+                          // Seeds written before the summary was tidied still
+                          // read well.
+                          metadata?.continuedFrom
+                            ? tidySummaryMarkdown(displayText)
+                            : displayText
+                        }
+                        isUser
+                        isAnimating={false}
+                        messageId={message.id}
+                      />
+                    </div>
                   ) : (
                     <div dir="auto" className="select-text whitespace-pre-wrap">
                       {displayText}

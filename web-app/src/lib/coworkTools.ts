@@ -33,6 +33,7 @@ import type {
 import { isBrowserActionTool } from '@/lib/browserAgent'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { visualizeSchemas } from '@/lib/visualize/tools'
+import { chatReadSchema } from '@/lib/chatReadTool'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { campaignToolSchemas } from '@/lib/campaignToolSchemas'
 import {
@@ -793,6 +794,16 @@ export function coworkToolsFromSchemas(
         inputSchema: jsonSchema(schema.function.parameters),
       } as Tool
     }
+  }
+
+  // Reads a conversation the user mentioned; changes nothing, so review mode
+  // keeps it. It answers only for mentioned conversations (chatReadTool.ts).
+  if (!opts.slim) {
+    const schema = chatReadSchema()
+    tools[schema.function.name] = {
+      description: schema.function.description,
+      inputSchema: jsonSchema(schema.function.parameters),
+    } as Tool
   }
 
   // The coordinator's tools. The caller withholds them in review mode

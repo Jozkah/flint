@@ -56,6 +56,7 @@ import { BrowserAgentSettings } from '@/containers/BrowserAgentSettings'
 import { SubagentSettings } from '@/containers/SubagentSettings'
 import { CampaignSettings } from '@/containers/CampaignSettings'
 import { VisualizeSettings } from '@/containers/VisualizeSettings'
+import { ChatMentionSettings } from '@/containers/ChatMentionSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -567,6 +568,7 @@ function AgentToolsContent() {
         {tab === 'behaviour' && <CompactionPolicySettings />}
         {tab === 'behaviour' && <BrowserAgentSettings />}
         {tab === 'behaviour' && <VisualizeSettings />}
+        {tab === 'behaviour' && <ChatMentionSettings />}
         {tab === 'memories' && (
           <Card
             title={t('settings:agentTools.memories')}

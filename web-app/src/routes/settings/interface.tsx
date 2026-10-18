@@ -98,6 +98,8 @@ function InterfaceSettings() {
     setShowTokenSpeed,
     coloredUserBubble,
     setColoredUserBubble,
+    renderUserMarkdown,
+    setRenderUserMarkdown,
     renderHtmlArtifacts,
     setRenderHtmlArtifacts,
     showInlineCitations,
@@ -170,6 +172,19 @@ function InterfaceSettings() {
           <Switch
             checked={coloredUserBubble}
             onCheckedChange={setColoredUserBubble}
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-appearance-user-markdown"
+        title={t('settings:interface.renderUserMarkdown')}
+        description={t('settings:interface.renderUserMarkdownDesc')}
+        actions={
+          <Switch
+            aria-label={t('settings:interface.renderUserMarkdown')}
+            data-testid="render-user-markdown-switch"
+            checked={renderUserMarkdown}
+            onCheckedChange={setRenderUserMarkdown}
           />
         }
       />

@@ -590,3 +590,18 @@ describe('RenderMarkdown inline HTML colors', () => {
     expect(document.querySelector('.markdown span[style]')).toBeNull()
   })
 })
+
+describe('RenderMarkdown in a user bubble', () => {
+  afterEach(cleanup)
+  it('renders a summary seed list with bold labels', () => {
+    const seed =
+      'This chat continues an earlier one.\n\n**Key Facts:**\n\n- Capital of France: **Paris**\n- Capital of Japan: Tokyo\n\n**Decisions:** None.'
+    const { container } = render(<RenderMarkdown content={seed} isUser />)
+    const items = container.querySelectorAll('li')
+    expect(items.length).toBe(2)
+    expect(Array.from(container.querySelectorAll('[data-streamdown="strong"]')).map((s) => s.textContent)).toEqual(
+      expect.arrayContaining(['Key Facts:', 'Paris', 'Decisions:'])
+    )
+    expect(container.textContent).not.toContain('**')
+  })
+})

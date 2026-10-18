@@ -10,6 +10,11 @@ export type MessageHit = {
   updated: number
 }
 
+/** Development-only stand-in for the backend scan (the browser preview). */
+export const messageSearchDev: {
+  search?: (query: string, limit: number) => MessageHit[]
+} = {}
+
 export const MESSAGE_SEARCH_MIN_CHARS = 2
 export const MESSAGE_SEARCH_LIMIT = 30
 
@@ -24,6 +29,9 @@ export async function searchMessages(
 ): Promise<MessageHit[]> {
   const q = query.trim()
   if (q.length < MESSAGE_SEARCH_MIN_CHARS) return []
+  if (import.meta.env.DEV && messageSearchDev.search) {
+    return messageSearchDev.search(q, limit)
+  }
   if (typeof IS_TAURI === 'undefined' || !IS_TAURI) return []
   try {
     return await invoke<MessageHit[]>('search_messages', { query: q, limit })

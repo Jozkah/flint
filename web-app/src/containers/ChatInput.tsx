@@ -1,7 +1,14 @@
+import { canModelSummarize } from '@/lib/continueFromSummary'
 import { unescapeComposerMarkdown } from '@/lib/composerText'
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
 import { toAssetUrl } from '@/lib/assetPath'
-import { fileUriPaths, pastedPath } from '@/lib/fileDrop'
+import {
+  dropFilePaths,
+  pasteFilePaths,
+  pastedPath,
+  transferText,
+} from '@/lib/fileDrop'
+import { readDroppedPaths } from '@/lib/droppedPaths'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
@@ -100,6 +107,7 @@ import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import {
   THINKING_BUDGET_LEVELS,
+  thinkingBudgetLabel,
   DEFAULT_THINKING_BUDGET_LEVEL,
   tokensForThinkingBudgetLevel,
   isThinkingBudgetLevelKey,
@@ -196,6 +204,13 @@ import {
   type ReferenceEntry,
 } from '@/lib/referenceMenu'
 import { resolveAlias, useReferenceAliases } from '@/lib/referenceAliases'
+import { TRIGGER_TAIL, mentionTrigger } from '@/lib/chatMentions'
+import { listConversations, listConversationsAsync } from '@/lib/chatMentionSources'
+import { resolvePromptMentions, withMentionBlocks } from '@/lib/chatMentionSend'
+import { MentionChips } from '@/containers/MentionChips'
+import { useMentionPreview } from '@/hooks/useMentionPreview'
+import { knownContextWindow } from '@/lib/knownContextWindow'
+import { modelSummarizer } from '@/lib/compactionSummarizer'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
 import { PromptFillDialog } from '@/containers/PromptFillDialog'
@@ -594,6 +609,13 @@ const ChatInput = memo(function ChatInput({
   const [aliasError, setAliasError] = useState<string | null>(null)
   // Announced: how many references match, or what happened to an alias.
   const [referenceStatus, setReferenceStatus] = useState('')
+  // Which character opened the menu: `#` lists conversations only.
+  const [menuTrigger, setMenuTrigger] = useState<'@' | '#'>('@')
+  // Re-ranks the open menu once the conversation counts have loaded.
+  const rerankMenuRef = useRef<(() => void) | null>(null)
+  // Whether the menu is open now, for work that finishes after it closed.
+  const filePickerOpenRef = useRef(false)
+  filePickerOpenRef.current = filePickerOpen
   const referenceListId = useId()
   const slashListId = useId()
   const defaultSlashBuiltins = useMemo<SlashBuiltin[]>(
@@ -630,15 +652,21 @@ const ChatInput = memo(function ChatInput({
   const [promptFill, setPromptFill] = useState<{
     prompt: LibraryPrompt
     apply: (text: string) => void
+    /** Undoes what started the insert (the typed `@query`). */
+    cancel?: () => void
   } | null>(null)
   /** Insert now when the prompt has no variables, else ask for them first. */
   const beginPromptInsert = useCallback(
-    (prompt: LibraryPrompt, apply: (text: string) => void) => {
+    (
+      prompt: LibraryPrompt,
+      apply: (text: string) => void,
+      cancel?: () => void
+    ) => {
       if (parseVars(prompt.body).length === 0) {
         apply(fillPrompt(prompt.body, {}))
         return
       }
-      setPromptFill({ prompt, apply })
+      setPromptFill({ prompt, apply, cancel })
     },
     []
   )
@@ -700,24 +728,20 @@ const ChatInput = memo(function ChatInput({
     (value: string) => {
       setPrompt(value)
 
-      // Only where a folder is attached: it is the only thing a reference can
-      // name (AH-204).
-      if (!workingDir && libraryPrompts.length === 0) {
-        setFilePickerOpen(false)
-        return
-      }
-
       const cursorIdx = filePickerCursorPos.current ?? value.length
 
       // Look backwards from current cursor to find the last word starting with
       // @ (the @ must not be glued to a preceding word char, so `user@host`
-      // never opens the picker)
+      // never opens the picker), or a `#` that begins a word and is followed
+      // by a letter, which lists conversations only. Files need a folder
+      // (AH-204); conversations, skills and prompts do not.
       const beforeCursor = value.slice(0, cursorIdx)
-      const atMatch = beforeCursor.match(/(?:^|[^A-Za-z0-9_])@([\w./:-]*)$/)
+      const atMatch = mentionTrigger(beforeCursor)
 
       if (atMatch) {
-        const query = atMatch[1] ?? ''
+        const query = atMatch.query
         setFilePickerQuery(query)
+        setMenuTrigger(atMatch.char)
 
         // One ranked list. The file index is searched through the backend's
         // confined listing; if it cannot be read the rest are still offered,
@@ -733,7 +757,9 @@ const ChatInput = memo(function ChatInput({
               name: p.name,
               detail: p.folder ?? p.body.slice(0, 80),
             })),
-          })
+            conversations: listConversations(),
+            currentConversationId: scopeKey ?? currentThreadId,
+          }, 50, atMatch.char)
           setFilePickerEntries(ranked)
           setReferenceActive(0)
           setReferenceStatus(
@@ -741,8 +767,22 @@ const ChatInput = memo(function ChatInput({
               ? 'No references match'
               : `${ranked.length} reference${ranked.length === 1 ? '' : 's'}`
           )
+          rerankMenuRef.current = () => rank(files)
         }
-        const fileQuery = /^(skill|agent|alias|prompt):/.test(query) ? null : query
+        // Counts and previews of the chats load once per menu opening, then
+        // the open menu is ranked again with them.
+        if (!filePickerOpen) {
+          void listConversationsAsync().then(() => {
+            // The menu may have closed while this loaded; ranking it again
+            // would announce a status for a menu nobody sees.
+            if (filePickerOpenRef.current) rerankMenuRef.current?.()
+          })
+        }
+        const fileQuery =
+          atMatch.char === '#' ||
+          /^(skill|agent|alias|prompt|chat|session|room):/.test(query)
+            ? null
+            : query
         if (workingDir && referenceDataFolder && fileQuery !== null) {
           searchReferences(referenceDataFolder, workingDir, fileQuery)
             .then(rank)
@@ -762,6 +802,9 @@ const ChatInput = memo(function ChatInput({
       referenceSkills,
       referenceAgents,
       libraryPrompts,
+      scopeKey,
+      currentThreadId,
+      filePickerOpen,
     ]
   )
 
@@ -774,10 +817,7 @@ const ChatInput = memo(function ChatInput({
       const afterCursor = prompt.slice(filePickerCursorPos.current)
 
       // Replace the `@query` with the entry's token
-      const textBefore = beforeCursor.replace(
-        /(^|[^A-Za-z0-9_])@[\w./:-]*$/,
-        '$1'
-      )
+      const textBefore = beforeCursor.replace(TRIGGER_TAIL, '$1')
       // The identifier, not the label: a folder-relative path, or a typed
       // reference. It means the same thing however it is displayed, and a
       // path cannot name anything outside the folder.
@@ -789,8 +829,11 @@ const ChatInput = memo(function ChatInput({
         setFilePickerOpen(false)
         filePickerCursorPos.current = null
         if (found) {
-          beginPromptInsert(found, (text) =>
-            setPrompt(textBefore + text + afterCursor)
+          beginPromptInsert(
+            found,
+            (text) => setPrompt(textBefore + text + afterCursor),
+            // Cancelling leaves no dangling `@query` behind.
+            () => setPrompt(textBefore + afterCursor)
           )
         }
         setTimeout(() => focusComposer(), 0)
@@ -882,6 +925,14 @@ const ChatInput = memo(function ChatInput({
         // A skill reference is acted on by the skill machinery, which reads
         // it from the text; it stays there and needs nothing inlined.
         if (typed?.kind === 'skill') continue
+        // A conversation mention is resolved separately, with or without a
+        // folder (chatMentionSend.ts).
+        if (
+          typed?.kind === 'chat' ||
+          typed?.kind === 'session' ||
+          typed?.kind === 'room'
+        )
+          continue
         if (typed?.kind === 'agent') {
           const agent = referenceAgents?.find((one) => one.name === typed.name)
           parts.push(
@@ -973,6 +1024,13 @@ const ChatInput = memo(function ChatInput({
     ? activeModels.includes(selectedModel.id)
     : false
 
+  // A remote model can always write a summary; a local one only when loaded.
+  const canSummarize = canModelSummarize(
+    selectedProvider,
+    selectedModel?.id,
+    activeModels
+  )
+
   // Reconcile video capability from /props once the model is loaded.
   useReconcileVideoCapability(
     selectedModel?.id,
@@ -1034,6 +1092,18 @@ const ChatInput = memo(function ChatInput({
     (state) => state.transferAttachments
   )
   const getProviderByName = useModelProvider((state) => state.getProviderByName)
+  // What the draft's conversation mentions resolve to: the chips above the
+  // editor and the pills inside it read the same lookup.
+  const mentionPreviews = useMentionPreview(prompt, scopeKey ?? currentThreadId)
+  const mentionContextWindow = useMemo(
+    () =>
+      knownContextWindow(
+        selectedModel as Parameters<typeof knownContextWindow>[0],
+        getProviderByName(selectedProvider ?? '') as Parameters<typeof knownContextWindow>[1]
+      ),
+    [selectedModel, selectedProvider, getProviderByName]
+  )
+
   const allProviders = useModelProvider((state) => state.providers)
   const preferredModel = useModelEvidence((state) => state.preferredModel)
 
@@ -1120,7 +1190,31 @@ const ChatInput = memo(function ChatInput({
     )
   }
 
+  // One send at a time: a mention summary can take minutes before the draft
+  // is cleared, and Enter or Send pressed again meanwhile would send twice.
+  const sendInFlightRef = useRef(false)
+  const [sending, setSending] = useState(false)
   const handleSendMessage = async (
+    typedRaw: string,
+    options: {
+      steer?: boolean
+      allowNoWeb?: boolean
+      capabilityAsked?: boolean
+    } = {}
+  ) => {
+    // A send the user just confirmed (a capability prompt) is the same send.
+    if (sendInFlightRef.current && !options.capabilityAsked) return
+    sendInFlightRef.current = true
+    setSending(true)
+    try {
+      await sendMessage(typedRaw, options)
+    } finally {
+      sendInFlightRef.current = false
+      setSending(false)
+    }
+  }
+
+  const sendMessage = async (
     typedRaw: string,
     {
       steer = false,
@@ -1258,20 +1352,36 @@ const ChatInput = memo(function ChatInput({
     // Resolve @path references before sending
     const { text: resolvedText, resolvedContents } =
       await resolvePromptReferences(prompt)
-    const effectivePrompt = resolvedContents
+    const referencedPrompt = resolvedContents
       ? `${resolvedText}\n\n---\nReferenced file contents:\n\n${resolvedContents}`
       : resolvedText
+    // Mentioned conversations: bounded, redacted excerpts, fenced as data.
+    // A missing one becomes a note; nothing here blocks the send.
+    const mentions = await resolvePromptMentions(prompt, {
+      currentId: scopeKey ?? currentThreadId,
+      agentSurface: !ownsToolSet || effectiveAgentMode,
+      summarize:
+        canSummarize && selectedModel?.id
+          ? (transcript) =>
+              modelSummarizer({
+                provider: selectedProvider ?? '',
+                modelId: selectedModel.id,
+                session: scopeKey ?? currentThreadId ?? 'mention',
+              })(transcript)
+          : undefined,
+    })
+    const effectivePrompt = withMentionBlocks(referencedPrompt, mentions)
 
     if (!effectivePrompt.trim() && !hasSendableMedia) {
       return
     }
     if (ingestingAny) {
-      toast.info('Please wait for attachments to finish processing')
+      toast.info(t('sweep:chat.waitAttachments'))
       return
     }
 
     setMessage('')
-    addToHistory(slash.kind === 'message' ? typed : effectivePrompt)
+    addToHistory(slash.kind === 'message' ? typed : referencedPrompt)
     // Names an MCP server that is off? Offer to turn it on. Never blocks the send.
     void offerToEnableMentionedServers(prompt)
 
@@ -1667,8 +1777,8 @@ const ChatInput = memo(function ChatInput({
         (att) => typeof att.size === 'number' && att.size > maxFileSizeBytes
       )
       if (hasOversized) {
-        toast.error('File too large', {
-          description: `One or more files exceed the ${maxFileSizeMB}MB limit`,
+        toast.error(t('sweep:chat.fileTooLarge'), {
+          description: t('sweep:chat.fileTooLargeDesc', { size: maxFileSizeMB }),
         })
         return
       }
@@ -1701,8 +1811,8 @@ const ChatInput = memo(function ChatInput({
     })
 
     if (duplicates.length > 0) {
-      toast.warning('Files already attached', {
-        description: `${duplicates.join(', ')} ${duplicates.length === 1 ? 'is' : 'are'} already in the list`,
+      toast.warning(t('sweep:chat.filesAlreadyAttached'), {
+        description: t('sweep:chat.alreadyInList', { names: duplicates.join(', '), count: duplicates.length }),
       })
     }
 
@@ -1714,7 +1824,7 @@ const ChatInput = memo(function ChatInput({
   /** Save dropped documents to disk, then attach them like picked files. */
   const attachDroppedDocuments = async (files: File[]) => {
     if (!attachmentsEnabled) {
-      toast.info('Attachments are disabled in Settings')
+      toast.info(t('sweep:chat.attachmentsDisabled'))
       return
     }
     const limitBytes =
@@ -1725,8 +1835,8 @@ const ChatInput = memo(function ChatInput({
       (f) => limitBytes === undefined || f.size <= limitBytes
     )
     if (withinLimit.length < files.length) {
-      toast.error('File too large', {
-        description: `One or more files exceed the ${maxFileSizeMB}MB limit`,
+      toast.error(t('sweep:chat.fileTooLarge'), {
+        description: t('sweep:chat.fileTooLargeDesc', { size: maxFileSizeMB }),
       })
     }
     if (withinLimit.length === 0) return
@@ -1746,7 +1856,7 @@ const ChatInput = memo(function ChatInput({
   const handleAttachDocsIngest = async () => {
     try {
       if (!attachmentsEnabled) {
-        toast.info('Attachments are disabled in Settings')
+        toast.info(t('sweep:chat.attachmentsDisabled'))
         return
       }
       const selection = await serviceHub.dialog().open({
@@ -1898,7 +2008,7 @@ const ChatInput = memo(function ChatInput({
     const pending = capabilityPrompt
     if (!pending) return
     if (!enableCapabilitiesOnSelectedModel(pending.capabilities)) {
-      toast.error('Selected model is no longer available')
+      toast.error(t('sweep:chat.modelUnavailable'))
       return
     }
     setCapabilityPrompt(null)
@@ -1906,13 +2016,13 @@ const ChatInput = memo(function ChatInput({
       const continued = pending.onEnabled()
       if (continued) void Promise.resolve(continued).catch((error) => {
         console.error('Failed to continue after enabling model capability:', error)
-        toast.error('Could not complete that action. Please try again.')
+        toast.error(t('sweep:chat.actionFailed'))
       })
     } catch (error) {
       console.error('Failed to continue after enabling model capability:', error)
-      toast.error('Could not complete that action. Please try again.')
+      toast.error(t('sweep:chat.actionFailed'))
     }
-  }, [capabilityPrompt, enableCapabilitiesOnSelectedModel])
+  }, [capabilityPrompt, enableCapabilitiesOnSelectedModel, t])
 
   type ProcessImageOptions = {
     /**
@@ -2700,19 +2810,16 @@ const ChatInput = memo(function ChatInput({
   // (Linux file managers), which would land in the editor as raw text. Read
   // them from disk and attach them like any other file.
   const attachFileUris = async (paths: string[]) => {
-    const files: File[] = []
-    for (const path of paths) {
-      try {
-        const response = await fetch(await toAssetUrl(path))
-        if (!response.ok) throw new Error(response.statusText)
-        const blob = await response.blob()
-        const name = path.split(/[\\/]/).filter(Boolean).pop() || 'file'
-        files.push(new File([blob], name, { type: blob.type }))
-      } catch (error) {
-        toast.error(t('common:pastedPath.failed'), {
-          description: error instanceof Error ? error.message : String(error),
-        })
-      }
+    const { files, folders, failed } = await readDroppedPaths(paths)
+    for (const { error } of failed) {
+      toast.error(t('common:pastedPath.failed'), { description: error })
+    }
+    // A folder is offered as the project, never read in. Only one offer fits
+    // above the editor; any folder it cannot cover is named, not dropped.
+    const offered = pastedFolder ? folders.slice(0, 1) : []
+    if (offered.length > 0) setPathOffer({ path: offered[0], kind: 'folder' })
+    for (const folder of folders.slice(offered.length)) {
+      toast.error(t('common:pastedPath.failed'), { description: folder })
     }
     const documents = files.filter((f) => isDocumentAttachmentName(f.name))
     const others = files.filter((f) => !documents.includes(f))
@@ -2725,19 +2832,36 @@ const ChatInput = memo(function ChatInput({
     focusComposer()
   }
 
-  // Runs in the capture phase so the editor never inserts the URI as text.
+  // Runs in the capture phase, before the editor's own drop handler, which
+  // inserts text/uri-list or text/plain as text and runs before any bubbling
+  // React handler. The editor leaves an already-cancelled event alone.
   const handleUriDrop = (e: React.DragEvent) => {
     const dt = e.dataTransfer
-    if (!dt || (dt.files?.length ?? 0) > 0 || !isPlatformTauri()) return
-    const paths = fileUriPaths(
-      dt.getData('text/uri-list') || dt.getData('text/plain')
-    )
-    if (!paths) return
+    if (!dt) return
+    if ((dt.files?.length ?? 0) > 0) {
+      // Real File objects: handleDrop attaches them. Only stop the editor
+      // also inserting the URI text WebKitGTK sends alongside them.
+      e.preventDefault()
+      return
+    }
+    if (!isPlatformTauri()) return
+    // Any web page can put a local path in the text a dragged link or image
+    // carries, so only GNOME's own drag type attaches by itself; the rest is
+    // asked about first, as a paste is.
+    const named = dropFilePaths(dt)
+    if (!named) return
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
     setDragCount(0)
-    void attachFileUris(paths)
+    if (named.trusted) void attachFileUris(named.paths)
+    else
+      setPathOffer({
+        path: named.paths[0],
+        kind: 'file',
+        paths: named.paths,
+        raw: transferText(dt),
+      })
   }
 
   // A pasted path is still pasted as text; this only notices it and offers,
@@ -2745,7 +2869,24 @@ const ChatInput = memo(function ChatInput({
   const [pathOffer, setPathOffer] = useState<{
     path: string
     kind: 'file' | 'folder'
+    /** Every file a pasted URI list named, when there was more than a path. */
+    paths?: string[]
+    /** The text that was held back, put in the composer if the offer is declined. */
+    raw?: string
   } | null>(null)
+  const pathOfferRef = useRef(pathOffer)
+  pathOfferRef.current = pathOffer
+
+  /** Decline the offer; the text it held back goes into the composer instead. */
+  const declinePathOffer = () => {
+    const offer = pathOfferRef.current
+    setPathOffer(null)
+    if (offer?.raw) {
+      if (typeof richComposerRef.current?.insertText === 'function')
+        richComposerRef.current.insertText(offer.raw)
+      else setPrompt(latestPromptRef.current + offer.raw)
+    }
+  }
 
   const offerPastedPath = async (candidate: string) => {
     if (!isPlatformTauri()) return
@@ -2774,6 +2915,10 @@ const ChatInput = memo(function ChatInput({
     if (!offer) return
     if (offer.kind === 'folder') {
       pastedFolder?.onAttach(offer.path)
+      return
+    }
+    if (offer.paths) {
+      await attachFileUris(offer.paths)
       return
     }
     try {
@@ -2809,18 +2954,27 @@ const ChatInput = memo(function ChatInput({
   })
 
   const handlePaste = async (e: React.ClipboardEvent) => {
+    // Files copied in a Linux file manager arrive as URIs (text/uri-list,
+    // x-special/gnome-copied-files or a text/plain block), not File objects.
+    // Checked first so a long list never becomes a .txt via largePaste.
+    // Real File objects (macOS Finder) win; only GNOME's own clipboard type
+    // attaches by itself, since a web page can forge the other two.
+    const named = isPlatformTauri() ? pasteFilePaths(e.clipboardData) : null
+    if (named) {
+      e.preventDefault()
+      if (named.trusted) void attachFileUris(named.paths)
+      else
+        setPathOffer({
+          path: named.paths[0],
+          kind: 'file',
+          paths: named.paths,
+          raw: transferText(e.clipboardData),
+        })
+      return
+    }
     // A large text paste becomes a .txt attachment; default is prevented
     // before anything below can await.
     if (largePaste.handlePaste(e)) return
-    const uriPaths =
-      isPlatformTauri() && !e.clipboardData?.files?.length
-        ? fileUriPaths(e.clipboardData?.getData('text/plain') ?? '')
-        : null
-    if (uriPaths) {
-      e.preventDefault()
-      void attachFileUris(uriPaths)
-      return
-    }
     const pasted = pastedPath(e.clipboardData?.getData('text/plain') ?? '')
     if (pasted) void offerPastedPath(pasted)
     const mediaItems = e.clipboardData?.items
@@ -2905,7 +3059,16 @@ const ChatInput = memo(function ChatInput({
     }
 
     // Modern Clipboard API fallback (for Linux, images copied from web, etc.)
+    // Never for plain text: reading the clipboard this way makes WebView2 ask
+    // the user for permission ("wants to see text and images copied...").
+    const pasteTypes = Array.from(e.clipboardData?.types ?? [])
+    const mayHoldImage =
+      pasteTypes.length === 0 ||
+      pasteTypes.includes('Files') ||
+      pasteTypes.some((type) => type.startsWith('image/')) ||
+      (pasteTypes.includes('text/html') && !pasteTypes.includes('text/plain'))
     if (
+      mayHoldImage &&
       navigator.clipboard &&
       'read' in navigator.clipboard &&
       !hasProcessedImage
@@ -2961,9 +3124,16 @@ const ChatInput = memo(function ChatInput({
     .map((a) => ({ url: a.dataUrl as string, name: a.name }))
 
   const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
+  // A tool call in flight (the reply has finished streaming but the tool is
+  // still running) can be cancelled from here.
+  const toolInFlight = useAppState((state) =>
+    currentThreadId ? Boolean(state.cancelToolCalls?.[currentThreadId]) : false
+  )
   // The offer belongs to the draft it was pasted into; sending ends it.
   useEffect(() => {
-    if (isStreaming) setPathOffer(null)
+    // Not dropped silently: what was pasted still lands in the composer.
+    if (isStreaming && pathOfferRef.current) declinePathOffer()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming])
 
   /**
@@ -3137,7 +3307,7 @@ const ChatInput = memo(function ChatInput({
                 <button
                   type="button"
                   aria-label={t('common:pastedPath.dismiss')}
-                  onClick={() => setPathOffer(null)}
+                  onClick={declinePathOffer}
                   className="grid size-5 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
                   <X aria-hidden className="size-3" />
@@ -3235,9 +3405,20 @@ const ChatInput = memo(function ChatInput({
             {/* Shown wherever a folder is attached -- Cowork included, which
                 is not "agent mode" -- because that folder is all it offers.
                 Library prompts are offered with or without one. */}
-            {filePickerOpen && (workingDir || libraryPrompts.length > 0) && (
+            {filePickerOpen && (
               <div className="relative">
                 <FilePickerPopover
+                  triggerChar={menuTrigger}
+                  emptyMessage={
+                    menuTrigger === '#' ||
+                    /^(chat|session|room):/.test(filePickerQuery)
+                      ? listConversations().some(
+                          (c) => c.id !== (scopeKey ?? currentThreadId)
+                        )
+                        ? t('common:mentions.noMatch')
+                        : t('common:mentions.empty')
+                      : undefined
+                  }
                   entries={filePickerEntries}
                   query={filePickerQuery}
                   open={filePickerOpen}
@@ -3253,11 +3434,20 @@ const ChatInput = memo(function ChatInput({
                 />
               </div>
             )}
+            <MentionChips
+              prompt={prompt}
+              currentId={scopeKey ?? currentThreadId}
+              onChange={setPrompt}
+              canSummarize={canSummarize}
+              previews={mentionPreviews}
+              contextWindow={mentionContextWindow}
+            />
             <RichComposerEditor
               ref={richComposerRef}
               value={prompt}
+              mentions={mentionPreviews}
               onChange={(markdown) => {
-                filePickerCursorPos.current = /(?:^|[^A-Za-z0-9_])@[\w./:-]*$/.test(markdown)
+                filePickerCursorPos.current = mentionTrigger(markdown)
                   ? markdown.length
                   : null
                 handlePromptChange(markdown)
@@ -3273,6 +3463,18 @@ const ChatInput = memo(function ChatInput({
               onKeyDownCapture={(event) => {
                 largePaste.noteKeyDown(event)
                 if (event.nativeEvent.isComposing) return
+                // Esc ends a tool call that is running (the Stop button's twin).
+                if (
+                  event.key === 'Escape' &&
+                  toolInFlight &&
+                  !isStreaming &&
+                  !slashCommands.open &&
+                  !filePickerOpen
+                ) {
+                  event.preventDefault()
+                  stopStreaming(currentThreadId ?? '')
+                  return
+                }
                 // Backspace in an empty box takes the last chip back off.
                 if (
                   event.key === 'Backspace' &&
@@ -3380,6 +3582,7 @@ const ChatInput = memo(function ChatInput({
                 setTimeout(() => focusComposer(), 0)
               }}
               onCancel={() => {
+                promptFill?.cancel?.()
                 setPromptFill(null)
                 setTimeout(() => focusComposer(), 0)
               }}
@@ -3729,9 +3932,7 @@ const ChatInput = memo(function ChatInput({
                         level
                       )
                           const currentBudgetLabel =
-                            THINKING_BUDGET_LEVELS.find(
-                      (l) => l.key === currentBudgetLevel
-                    )!.label
+                            thinkingBudgetLabel(currentBudgetLevel)
                     // Best-effort preview only; the request-time value may
                     // differ once the model is loaded and fit settles n_ctx.
                     const approxContextSize =
@@ -3832,7 +4033,7 @@ const ChatInput = memo(function ChatInput({
                                         className="gap-2"
                                       >
                                         <span className="flex-1">
-                                          {level.label}
+                                          {thinkingBudgetLabel(level.key)}
                                         </span>
                                         <span className="w-14 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
                                           {approxTokens === -1
@@ -3921,7 +4122,7 @@ const ChatInput = memo(function ChatInput({
                   so there is never a second stop button beside this one. */}
               {isStreaming && stopControl ? (
                 stopControl
-              ) : isStreaming ? (
+              ) : isStreaming || toolInFlight ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     {/* A quiet red outline: stopping keeps the partial
@@ -3948,7 +4149,7 @@ const ChatInput = memo(function ChatInput({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Stop generating</p>
+                    <p>{isStreaming ? 'Stop generating' : t('chat:stopToolCall')}</p>
                   </TooltipContent>
                 </Tooltip>
               ) : (
@@ -3956,8 +4157,9 @@ const ChatInput = memo(function ChatInput({
                   variant="default"
                   size="icon-sm"
                   disabled={
-                    (!prompt.trim() && !hasSendableMedia) || ingestingAny
+                    (!prompt.trim() && !hasSendableMedia) || ingestingAny || sending
                   }
+                  aria-busy={sending || undefined}
                   data-test-id="send-message-button"
                   aria-label={t('chat:sendMessage')}
                   onClick={() => handleSendMessage(prompt)}

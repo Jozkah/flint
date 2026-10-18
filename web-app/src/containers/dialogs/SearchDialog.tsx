@@ -1,3 +1,4 @@
+import { useConversationFind } from '@/hooks/useConversationFind'
 import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
@@ -15,7 +16,7 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { useThreads } from '@/hooks/useThreads'
 import { searchMessages, type MessageHit } from '@/lib/messageSearch'
-import { splitByMatch } from '@/lib/highlightMatch'
+import { RichSnippet } from '@/components/RichSnippet'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -124,7 +125,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     onOpenChange(false)
   }
 
-  const handleSelectThread = (threadId: string) => {
+  const handleSelectThread = (threadId: string, hit?: { messageId: string }) => {
+    const hitQuery = searchQuery.trim()
     // Save to recent searches
     const stored = localStorage.getItem(localStorageKey.recentSearches)
     let threadIds: string[] = []
@@ -150,6 +152,12 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     )
 
     handleClose()
+    // A hit inside a message opens the chat with the find bar on that phrase.
+    if (hit && hitQuery) {
+      useConversationFind
+        .getState()
+        .openWith({ threadId, query: hitQuery, messageId: hit.messageId })
+    }
     navigate({ to: route.threadsDetail, params: { threadId } })
   }
 
@@ -178,7 +186,12 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
   // Calculate all selectable items for keyboard navigation
   const allItems = useMemo(() => {
-    const items: Array<{ type: 'new' | 'recent' | 'result'; id: string }> = []
+    const items: Array<{
+      type: 'new' | 'recent' | 'result'
+      id: string
+      /** The message a result stands for; Enter seeds the find bar with it. */
+      hit?: (typeof messageHits)[number]
+    }> = []
 
     if (!searchQuery) {
       // Start new chat option
@@ -198,7 +211,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       })
       // Matches inside the chats' messages
       messageHits.forEach((hit) => {
-        items.push({ type: 'result', id: hit.threadId })
+        items.push({ type: 'result', id: hit.threadId, hit })
       })
     }
 
@@ -234,7 +247,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         if (selectedItem.type === 'new') {
           handleStartNewChat()
         } else {
-          handleSelectThread(selectedItem.id)
+          handleSelectThread(selectedItem.id, selectedItem.hit)
         }
       }
     }
@@ -439,7 +452,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                     key={`${hit.threadId}-${hit.messageId}`}
                     data-index={itemIndex}
                     data-selected={selectedIndex === itemIndex}
-                    onClick={() => handleSelectThread(hit.threadId)}
+                    onClick={() => handleSelectThread(hit.threadId, hit)}
                     className={cn(
                       itemClass(selectedIndex === itemIndex),
                       'h-auto min-h-[34px] flex-col items-start gap-0 py-1.5'
@@ -448,20 +461,11 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                     <span className="w-full truncate text-[11px] text-muted-foreground">
                       {hit.threadTitle}
                     </span>
-                    <span className="w-full truncate">
-                      {splitByMatch(hit.snippet, searchQuery).map((part, i) =>
-                        part.match ? (
-                          <mark
-                            key={i}
-                            className="rounded-[3px] bg-mark px-px text-foreground"
-                          >
-                            {part.text}
-                          </mark>
-                        ) : (
-                          part.text
-                        )
-                      )}
-                    </span>
+                    <RichSnippet
+                      text={hit.snippet}
+                      query={searchQuery}
+                      className="w-full text-start"
+                    />
                   </button>
                 )
               })}
