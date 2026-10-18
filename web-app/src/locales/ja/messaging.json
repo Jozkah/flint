@@ -40,7 +40,8 @@
     "notSent": "未送信",
     "open": "開く",
     "openLabel": "{{name}} を開く",
-    "untrusted": "この回答は別のセッションのテキストであり、あなたのものではありません。"
+    "untrusted": "この回答は別のセッションのテキストであり、あなたのものではありません。",
+    "notSentReason": "未送信: {{reason}}"
   },
   "errors": {
     "invalid_text": "返信は 1 文字以上 8000 文字以下にしてください。",
@@ -65,6 +66,19 @@
     "not_available": "ここではメッセージ機能を利用できません。",
     "io": "メールボックスを読み書きできませんでした。",
     "no_data_folder": "Flint のデータフォルダーを利用できません。",
-    "unknown": "返信を送信できませんでした。"
-  }
+    "unknown": "返信を送信できませんでした。",
+    "chain_limit_reached": "メッセージがセッション間で何度も転送されました。続きはご自身で行ってください。",
+    "session_archived": "そのセッションはアーカイブされています。",
+    "unknownRefusal": "メッセージは拒否されました。"
+  },
+  "chainLimitHeld": "チェーンの上限に達したため、あなたの操作を待っています。このメッセージは他のセッションから転送されたため、このセッションを起動しませんでした。",
+  "moreHeld": "他 {{count}} 件",
+  "dismissAll": "すべて閉じる",
+  "waitingNotice": "{{name}} からのメッセージが待機中",
+  "heldBanner_one": "他のセッションからのメッセージ {{count}} 件があなたを待っています",
+  "heldBanner_other": "他のセッションからのメッセージ {{count}} 件があなたを待っています",
+  "waitingCount_one": "待機中のメッセージ {{count}} 件",
+  "waitingCount_other": "待機中のメッセージ {{count}} 件",
+  "waitingIn_one": "{{session}} に {{count}} 件",
+  "waitingIn_other": "{{session}} に {{count}} 件"
 }

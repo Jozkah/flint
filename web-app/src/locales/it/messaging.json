@@ -40,7 +40,8 @@
     "notSent": "Non inviato",
     "open": "Apri",
     "openLabel": "Apri {{name}}",
-    "untrusted": "La risposta è il testo di un'altra sessione, non tuo."
+    "untrusted": "La risposta è il testo di un'altra sessione, non tuo.",
+    "notSentReason": "Non inviato: {{reason}}"
   },
   "errors": {
     "invalid_text": "La risposta deve essere lunga tra 1 e 8000 caratteri.",
@@ -65,6 +66,19 @@
     "not_available": "I messaggi non sono disponibili qui.",
     "io": "Non è stato possibile leggere o scrivere la casella dei messaggi.",
     "no_data_folder": "La cartella dati di Flint non è disponibile.",
-    "unknown": "Non è stato possibile inviare la risposta."
-  }
+    "unknown": "Non è stato possibile inviare la risposta.",
+    "chain_limit_reached": "Il messaggio è passato tra le sessioni troppe volte. Continua tu.",
+    "session_archived": "Quella sessione è archiviata.",
+    "unknownRefusal": "Il messaggio è stato rifiutato."
+  },
+  "chainLimitHeld": "Limite della catena raggiunto, in attesa di te. Questo messaggio è stato inoltrato da altre sessioni, quindi non ha risvegliato questa.",
+  "moreHeld": "Altri {{count}}",
+  "dismissAll": "Ignora tutti",
+  "waitingNotice": "Messaggio da {{name}} in attesa",
+  "heldBanner_one": "{{count}} messaggio da un'altra sessione ti aspetta",
+  "heldBanner_other": "{{count}} messaggi da altre sessioni ti aspettano",
+  "waitingCount_one": "{{count}} messaggio in attesa",
+  "waitingCount_other": "{{count}} messaggi in attesa",
+  "waitingIn_one": "{{count}} messaggio in {{session}}",
+  "waitingIn_other": "{{count}} messaggi in {{session}}"
 }

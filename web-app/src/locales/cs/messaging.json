@@ -40,7 +40,8 @@
     "notSent": "Neodesláno",
     "open": "Otevřít",
     "openLabel": "Otevřít {{name}}",
-    "untrusted": "Odpověď je text jiné relace, ne váš."
+    "untrusted": "Odpověď je text jiné relace, ne váš.",
+    "notSentReason": "Neodesláno: {{reason}}"
   },
   "errors": {
     "invalid_text": "Odpověď musí mít 1 až 8000 znaků.",
@@ -65,6 +66,25 @@
     "not_available": "Zasílání zpráv zde není dostupné.",
     "io": "Schránku se nepodařilo přečíst ani zapsat.",
     "no_data_folder": "Datová složka Flintu není dostupná.",
-    "unknown": "Odpověď se nepodařilo odeslat."
-  }
+    "unknown": "Odpověď se nepodařilo odeslat.",
+    "chain_limit_reached": "Zpráva byla mezi relacemi předána příliš mnohokrát. Pokračujte sami.",
+    "session_archived": "Tato relace je archivovaná.",
+    "unknownRefusal": "Zpráva byla odmítnuta."
+  },
+  "chainLimitHeld": "Dosažen limit řetězce, čeká se na vás. Tuto zprávu předaly jiné relace, proto tuto relaci neprobudila.",
+  "moreHeld": "Další: {{count}}",
+  "dismissAll": "Zavřít vše",
+  "waitingNotice": "Čeká zpráva od {{name}}",
+  "heldBanner_one": "Čeká na vás {{count}} zpráva z jiné relace",
+  "heldBanner_few": "Čekají na vás {{count}} zprávy z jiných relací",
+  "heldBanner_many": "Čeká na vás {{count}} zprávy z jiných relací",
+  "heldBanner_other": "Čeká na vás {{count}} zpráv z jiných relací",
+  "waitingCount_one": "{{count}} čekající zpráva",
+  "waitingCount_few": "{{count}} čekající zprávy",
+  "waitingCount_many": "{{count}} čekající zprávy",
+  "waitingCount_other": "{{count}} čekajících zpráv",
+  "waitingIn_one": "{{count}} zpráva v {{session}}",
+  "waitingIn_few": "{{count}} zprávy v {{session}}",
+  "waitingIn_many": "{{count}} zprávy v {{session}}",
+  "waitingIn_other": "{{count}} zpráv v {{session}}"
 }

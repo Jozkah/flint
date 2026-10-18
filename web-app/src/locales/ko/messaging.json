@@ -40,7 +40,8 @@
     "notSent": "전송되지 않음",
     "open": "열기",
     "openLabel": "{{name}} 열기",
-    "untrusted": "답변은 사용자의 글이 아니라 다른 세션의 텍스트입니다."
+    "untrusted": "답변은 사용자의 글이 아니라 다른 세션의 텍스트입니다.",
+    "notSentReason": "보내지 않음: {{reason}}"
   },
   "errors": {
     "invalid_text": "답장은 1자 이상 8000자 이하여야 합니다.",
@@ -65,6 +66,19 @@
     "not_available": "여기서는 메시지 기능을 사용할 수 없습니다.",
     "io": "메일함을 읽거나 쓸 수 없습니다.",
     "no_data_folder": "Flint의 데이터 폴더를 사용할 수 없습니다.",
-    "unknown": "답장을 보낼 수 없습니다."
-  }
+    "unknown": "답장을 보낼 수 없습니다.",
+    "chain_limit_reached": "메시지가 세션 사이에서 너무 여러 번 전달되었습니다. 직접 이어서 진행하세요.",
+    "session_archived": "해당 세션은 보관되었습니다.",
+    "unknownRefusal": "메시지가 거부되었습니다."
+  },
+  "chainLimitHeld": "체인 한도에 도달하여 사용자를 기다리고 있습니다. 이 메시지는 다른 세션을 거쳐 전달되었으므로 이 세션을 깨우지 않았습니다.",
+  "moreHeld": "{{count}}개 더",
+  "dismissAll": "모두 닫기",
+  "waitingNotice": "{{name}}의 메시지가 대기 중",
+  "heldBanner_one": "다른 세션에서 온 메시지 {{count}}개가 기다리고 있습니다",
+  "heldBanner_other": "다른 세션에서 온 메시지 {{count}}개가 기다리고 있습니다",
+  "waitingCount_one": "대기 중인 메시지 {{count}}개",
+  "waitingCount_other": "대기 중인 메시지 {{count}}개",
+  "waitingIn_one": "{{session}}에 메시지 {{count}}개",
+  "waitingIn_other": "{{session}}에 메시지 {{count}}개"
 }

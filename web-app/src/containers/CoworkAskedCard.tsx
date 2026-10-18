@@ -25,8 +25,18 @@ export function CoworkAskedCard({ asked }: { asked: AskedSession }) {
         <h3 className="font-medium text-foreground">
           {t('messaging:asked.title', { name })}
         </h3>
-        <span data-testid="agent-asked-status" role="status">
-          {t(`messaging:asked.${asked.status}`)}
+        <span
+          data-testid="agent-asked-status"
+          data-reason={asked.reason ?? undefined}
+          role="status"
+        >
+          {asked.status === 'notSent' && asked.reason
+            ? t('messaging:asked.notSentReason', {
+                reason: t(`messaging:errors.${asked.reason}`, {
+                  defaultValue: t('messaging:errors.unknownRefusal'),
+                }),
+              })
+            : t(`messaging:asked.${asked.status}`)}
         </span>
         {exists && asked.sessionId && (
           <Button

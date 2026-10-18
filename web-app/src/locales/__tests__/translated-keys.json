@@ -1336,5 +1336,19 @@
   "engine:loaded.speedBar",
   "common:serverConnection.offlineTitle",
   "common:serverConnection.offlineBody",
-  "common:serverConnection.statusOffline"
+  "common:serverConnection.statusOffline",
+  "messaging:asked.notSentReason",
+  "messaging:errors.chain_limit_reached",
+  "messaging:errors.session_archived",
+  "messaging:errors.unknownRefusal",
+  "messaging:chainLimitHeld",
+  "messaging:moreHeld",
+  "messaging:dismissAll",
+  "messaging:waitingNotice",
+  "messaging:heldBanner_one",
+  "messaging:heldBanner_other",
+  "messaging:waitingCount_one",
+  "messaging:waitingCount_other",
+  "messaging:waitingIn_one",
+  "messaging:waitingIn_other"
 ]

@@ -46,4 +46,40 @@ describe('CoworkAskedCard', () => {
     expect(screen.queryByTestId('agent-asked-answer')).toBeNull()
     expect(screen.getByTestId('agent-asked-status')).toBeTruthy()
   })
+
+  it('says why a send was refused, in plain words', () => {
+    render(
+      <CoworkAskedCard
+        asked={{
+          key: 'c3',
+          name: 'Beta',
+          sessionId: null,
+          status: 'notSent',
+          answer: null,
+          reason: 'chain_limit_reached',
+        }}
+      />
+    )
+    const status = screen.getByTestId('agent-asked-status')
+    expect(status.textContent).toBe('messaging:asked.notSentReason')
+    expect(status.getAttribute('data-reason')).toBe('chain_limit_reached')
+  })
+
+  it('falls back to the plain "Not sent" for an unknown reason', () => {
+    render(
+      <CoworkAskedCard
+        asked={{
+          key: 'c4',
+          name: 'Beta',
+          sessionId: null,
+          status: 'notSent',
+          answer: null,
+          reason: null,
+        }}
+      />
+    )
+    expect(screen.getByTestId('agent-asked-status').textContent).toBe(
+      'messaging:asked.notSent'
+    )
+  })
 })
