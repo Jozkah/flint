@@ -326,7 +326,7 @@ export function CoworkTimelinePanel({
                 })
               }
               className={cn(
-                'h-6 rounded-md border-[0.8px] border-border px-2 text-[11.5px] text-secondary-foreground transition-[opacity,background-color] duration-150 hover:bg-hover-row',
+                'h-6 rounded-md border-[0.8px] border-border px-2 text-[length:calc(var(--ui-font-base)*0.71875)] text-secondary-foreground transition-[opacity,background-color] duration-150 hover:bg-hover-row',
                 !enabled.has(c) && 'line-through opacity-55'
               )}
             >
@@ -335,7 +335,7 @@ export function CoworkTimelinePanel({
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-dashed border-border px-3 pb-2 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-dashed border-border px-3 pb-2 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
           <span
             aria-live="polite"
             data-testid="timeline-live-state"
@@ -364,7 +364,7 @@ export function CoworkTimelinePanel({
               data-testid="timeline-replay"
               disabled={running}
               title={running ? t('common:timeline.replay.whileRunning') : undefined}
-              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[11.5px] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
+              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.71875)] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
               onClick={() => void openRun(null)}
             >
               {t('common:timeline.replay.start')}
@@ -374,7 +374,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-replay-exit"
-              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[11.5px] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
+              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.71875)] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
               onClick={exitReplay}
             >
               {t('common:timeline.replay.exit')}
@@ -384,7 +384,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-follow"
-              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[11.5px] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
+              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.71875)] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
               onClick={() => setFollowing(true)}
             >
               {t('common:timeline.followLive')}
@@ -394,7 +394,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-unlink"
-              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[11.5px] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
+              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[length:calc(var(--ui-font-base)*0.71875)] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
               onClick={() => setLinked(null)}
             >
               {t('common:timeline.clearLink')}
@@ -504,7 +504,7 @@ function ReplayControls({
     <div
       role="group"
       aria-label={t('common:timeline.replay.controls')}
-      className="space-y-1.5 border-b border-dashed border-border px-3 py-2 text-[11px]"
+      className="space-y-1.5 border-b border-dashed border-border px-3 py-2 text-[length:calc(var(--ui-font-base)*0.6875)]"
       data-testid="timeline-replay-controls"
       data-run={replay.recording.run}
       data-step={replay.step}
@@ -658,7 +658,7 @@ function TimelineItem({
           <span className="pt-0.5">{STATUS_ICON[row.status]}</span>
           <span className="min-w-0 flex-1">
             <span className="block truncate font-mono text-xs font-medium">{row.title}</span>
-            <span className="mt-0.5 flex flex-wrap gap-x-1.5 text-[11.5px] text-muted-foreground">
+            <span className="mt-0.5 flex flex-wrap gap-x-1.5 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
               <span data-testid="timeline-row-status">{status}</span>
               <span>{t(`common:timeline.category.${row.primary}`)}</span>
               <span className="font-mono tabular-nums">{time(row.at)}</span>
@@ -697,7 +697,7 @@ function TimelineItem({
             aria-pressed={linked}
             title={t('common:timeline.linkHint')}
             onClick={() => onLink(row.invocation!)}
-            className="inline-flex h-5 shrink-0 items-center rounded-md border-[0.8px] border-border bg-card px-1.5 font-mono text-[10.5px] text-secondary-foreground transition-colors hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
+            className="inline-flex h-5 shrink-0 items-center rounded-md border-[0.8px] border-border bg-card px-1.5 font-mono text-[length:calc(var(--ui-font-base)*0.65625)] text-secondary-foreground transition-colors hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
           >
             {row.invocation.slice(-8)}
           </button>
@@ -711,7 +711,7 @@ function TimelineItem({
 function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: string }) {
   const { t } = useTranslation()
   return (
-    <div className="space-y-1.5 px-3 pb-2.5 pl-9 text-[11px] motion-safe:animate-tree-in" data-testid="timeline-detail">
+    <div className="space-y-1.5 px-3 pb-2.5 pl-9 text-[length:calc(var(--ui-font-base)*0.6875)] motion-safe:animate-tree-in" data-testid="timeline-detail">
       <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-muted-foreground">
         {row.call && (
           <>

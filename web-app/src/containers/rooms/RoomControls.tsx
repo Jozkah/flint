@@ -130,7 +130,7 @@ function speakingQueue(room: Room, speakingId: string | null): Participant[] {
 }
 
 const sectionHeading =
-  'text-[11px] font-medium uppercase tracking-[.025em] text-subtle-foreground'
+  'text-[length:calc(var(--ui-font-base)*0.6875)] font-medium uppercase tracking-[.025em] text-subtle-foreground'
 
 /** One of the two quiet transport buttons: icon over a short word. */
 function TransportButton({
@@ -142,7 +142,7 @@ function TransportButton({
     <button
       type="button"
       className={cn(
-        'flex h-[42px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[10px] border-[0.8px] border-border bg-card text-[11px] font-medium text-secondary-foreground outline-hidden transition-[transform,background-color,border-color,color] duration-150 ease-expo hover:border-border-strong hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] disabled:pointer-events-none disabled:opacity-45 data-[state=open]:border-border-strong [&_svg]:size-3.5',
+        'flex h-[42px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[10px] border-[0.8px] border-border bg-card text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-secondary-foreground outline-hidden transition-[transform,background-color,border-color,color] duration-150 ease-expo hover:border-border-strong hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] disabled:pointer-events-none disabled:opacity-45 data-[state=open]:border-border-strong [&_svg]:size-3.5',
         className
       )}
       {...props}
@@ -175,8 +175,8 @@ function ActionTile({
       <span className="mb-0.5 grid size-[26px] place-items-center rounded-lg bg-muted text-secondary-foreground shadow-[inset_0_0_0_0.8px_var(--border)] [&_svg]:size-3.5">
         {icon}
       </span>
-      <b className="text-[12.5px] font-semibold text-foreground">{label}</b>
-      <small id={`${id}-hint`} className="text-[11.5px] leading-[1.35] text-muted-foreground">
+      <b className="text-[length:calc(var(--ui-font-base)*0.78125)] font-semibold text-foreground">{label}</b>
+      <small id={`${id}-hint`} className="text-[length:calc(var(--ui-font-base)*0.71875)] leading-[1.35] text-muted-foreground">
         {hint}
       </small>
     </button>
@@ -266,7 +266,7 @@ export function RoomControls({ room }: { room: Room }) {
   const main =
     room.status === 'running' || room.status === 'awaiting-user' ? (
       <Button
-        className="h-[42px] rounded-[10px] text-[13px] font-semibold [&_svg]:size-4"
+        className="h-[42px] rounded-[10px] text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold [&_svg]:size-4"
         disabled={!avail.pause || busy}
         onClick={() => run(() => c.pause(room.id))}
       >
@@ -275,7 +275,7 @@ export function RoomControls({ room }: { room: Room }) {
       </Button>
     ) : room.status === 'paused' ? (
       <Button
-        className="h-[42px] rounded-[10px] text-[13px] font-semibold [&_svg]:size-4"
+        className="h-[42px] rounded-[10px] text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold [&_svg]:size-4"
         disabled={!avail.resume || busy}
         onClick={() => run(() => startAfterModelCheck(() => c.resume(room.id)))}
       >
@@ -284,7 +284,7 @@ export function RoomControls({ room }: { room: Room }) {
       </Button>
     ) : (
       <Button
-        className="h-[42px] rounded-[10px] text-[13px] font-semibold [&_svg]:size-4"
+        className="h-[42px] rounded-[10px] text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold [&_svg]:size-4"
         disabled={!avail.start || busy}
         onClick={() => run(() => startAfterModelCheck(() => c.start(room.id)))}
       >

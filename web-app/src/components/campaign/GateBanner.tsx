@@ -111,7 +111,7 @@ export function GateBanner({
           </div>
           <pre
             data-testid="campaign-gate-output"
-            className="max-h-48 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap"
+            className="max-h-48 overflow-auto rounded-md bg-muted p-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug whitespace-pre-wrap"
           >
             <code>{tail}</code>
           </pre>

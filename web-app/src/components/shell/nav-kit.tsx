@@ -155,8 +155,8 @@ const navButtonVariants = cva(
   {
     variants: {
       size: {
-        default: 'h-8 px-2.5 text-[0.8125rem] pointer-coarse:h-11',
-        sm: 'h-[30px] gap-2 px-2 text-[0.8125rem] pointer-coarse:h-11',
+        default: 'h-8 px-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] pointer-coarse:h-11',
+        sm: 'h-[30px] gap-2 px-2 text-[length:calc(var(--ui-font-base)*0.8125)] pointer-coarse:h-11',
         sub: 'h-7 gap-2 px-1.5 text-xs text-muted-foreground data-[active=true]:font-medium pointer-coarse:h-11',
       },
     },

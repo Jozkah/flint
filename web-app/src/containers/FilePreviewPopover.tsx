@@ -147,7 +147,7 @@ function PreviewBody({ preview }: { preview: FilePreview }) {
     return (
       <table
         data-testid="file-preview-table"
-        className="w-full table-fixed border-collapse text-[11px]"
+        className="w-full table-fixed border-collapse text-[length:calc(var(--ui-font-base)*0.6875)]"
       >
         <tbody>
           {preview.rows.map((r, i) => (
@@ -177,7 +177,7 @@ function PreviewBody({ preview }: { preview: FilePreview }) {
   return (
     <pre
       data-testid="file-preview-text"
-      className="max-h-40 overflow-hidden whitespace-pre font-mono text-[11px] leading-snug"
+      className="max-h-40 overflow-hidden whitespace-pre font-mono text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug"
     >
       {preview.lines.join('\n')}
     </pre>
@@ -271,18 +271,18 @@ export function FilePreviewPopover({
           <div className="truncate text-sm font-medium">
             {title}
           </div>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
             {[ext, meta].filter(Boolean).join(' · ')}
           </div>
         </div>
         {state.status === 'ready' ? (
           <PreviewBody preview={state.preview} />
         ) : state.status === 'loading' ? (
-          <div className="text-[11px] text-muted-foreground" role="status">
+          <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground" role="status">
             {t('common:composerChip.previewLoading')}
           </div>
         ) : (
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
             {t('common:composerChip.previewNone')}
           </div>
         )}

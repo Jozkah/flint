@@ -35,7 +35,7 @@ export function PageHead({
           {title}
         </h1>
         {description && (
-          <p className="m-0 text-[13px] leading-snug text-secondary-foreground">
+          <p className="m-0 text-[length:calc(var(--ui-font-base)*0.8125)] leading-snug text-secondary-foreground">
             {description}
           </p>
         )}
@@ -216,7 +216,7 @@ export function CapabilityChips({
           title={c === 'web_search' ? 'web search' : c}
           aria-label={iconOnly ? c : undefined}
           className={cn(
-            'inline-flex h-5 items-center gap-1 rounded-md text-[11px] font-medium [&_svg]:size-[11px]',
+            'inline-flex h-5 items-center gap-1 rounded-md text-[length:calc(var(--ui-font-base)*0.6875)] font-medium [&_svg]:size-[11px]',
             iconOnly ? 'w-5 justify-center' : 'px-[7px]',
             CAP_STYLE[c].cls
           )}
@@ -259,7 +259,7 @@ export function TBox({
         <div
           aria-hidden
           className={cn(
-            'mb-1 grid grid-cols-[var(--tbox-cols)] items-center gap-3 rounded-lg bg-muted px-2 py-1.5 text-[11px] font-medium text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]',
+            'mb-1 grid grid-cols-[var(--tbox-cols)] items-center gap-3 rounded-lg bg-muted px-2 py-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]',
             stackOnPhone && 'max-sm:hidden'
           )}
         >
@@ -317,4 +317,4 @@ export function SearchField({
 
 /** Row classes matching `TBox`: dashed separator, hover tint. */
 export const TBOX_ROW =
-  'grid grid-cols-[var(--tbox-cols)] items-center gap-3 border-b border-dashed border-border px-2 py-2.5 text-[12.5px] transition-colors duration-150 last:border-b-0 hover:bg-hover-row'
+  'grid grid-cols-[var(--tbox-cols)] items-center gap-3 border-b border-dashed border-border px-2 py-2.5 text-[length:calc(var(--ui-font-base)*0.78125)] transition-colors duration-150 last:border-b-0 hover:bg-hover-row'

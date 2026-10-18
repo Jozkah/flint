@@ -50,13 +50,13 @@ interface SearchDialogProps {
  */
 const itemClass = (selected: boolean) =>
   cn(
-    'relative flex h-[34px] w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground active:scale-[.965] pointer-coarse:h-11',
+    'relative flex h-[34px] w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground active:scale-[.965] pointer-coarse:h-11',
     selected && 'bg-accent text-foreground'
   )
 
 function GroupLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="text-[11px] font-medium text-subtle-foreground uppercase">
+    <span className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase">
       {children}
     </span>
   )
@@ -418,7 +418,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           {searchQuery && !hasResults && (
             <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
               <Search className="mb-2 size-5 text-muted-foreground" />
-              <h3 className="mb-1 text-[13px] font-semibold text-foreground">
+              <h3 className="mb-1 text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
                 {t('common:noResultsFound')}
               </h3>
               <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">
@@ -658,7 +658,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                       'h-auto min-h-[34px] flex-col items-start gap-0 py-1.5'
                     )}
                   >
-                    <span className="w-full truncate text-[11px] text-muted-foreground">
+                    <span className="w-full truncate text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                       {hit.threadTitle}
                     </span>
                     <RichSnippet
@@ -674,7 +674,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         </div>
 
         {/* Footer with keyboard hints; phones have no arrow keys to hint at. */}
-        <div className="hidden shrink-0 items-center gap-4 border-t border-dashed border-border px-4 py-2.5 text-[11.5px] text-subtle-foreground sm:flex">
+        <div className="hidden shrink-0 items-center gap-4 border-t border-dashed border-border px-4 py-2.5 text-[length:calc(var(--ui-font-base)*0.71875)] text-subtle-foreground sm:flex">
           <span>↑↓ {t('common:toNavigate')}</span>
           <span>↵ {t('common:toSelect')}</span>
           <span>esc {t('common:toClose')}</span>

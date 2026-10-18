@@ -263,7 +263,7 @@ function unresolvedText(t: TFn, item: UnresolvedItem): string {
 // Semantic chips: the accent never says "passed", and a status is never told by
 // colour alone -- the label is always inside the chip.
 const CHIP =
-  'inline-flex h-5 shrink-0 items-center rounded-md border-[0.8px] px-1.5 text-[10.5px] font-medium leading-none'
+  'inline-flex h-5 shrink-0 items-center rounded-md border-[0.8px] px-1.5 text-[length:calc(var(--ui-font-base)*0.65625)] font-medium leading-none'
 
 const VERDICT_TONE: Record<CheckVerdict, string> = {
   passed: 'border-success/30 bg-success-tint text-success',
@@ -328,7 +328,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
         <Button
           variant="link"
           size="sm"
-          className="h-6 shrink-0 px-1 font-sans text-[12.5px] text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:h-11"
+          className="h-6 shrink-0 px-1 font-sans text-[length:calc(var(--ui-font-base)*0.78125)] text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:h-11"
           aria-label={t('results:location.open', { path })}
           onClick={() => props.onOpenPath?.(path)}
         >
@@ -423,7 +423,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
   const checkRow = (check: (typeof outcome.checks)[number], index: number) => (
     <li
       key={`${check.callId ?? check.command}-${index}`}
-      className="flex min-w-0 flex-wrap items-center gap-2.5 py-1 text-[12.5px]"
+      className="flex min-w-0 flex-wrap items-center gap-2.5 py-1 text-[length:calc(var(--ui-font-base)*0.78125)]"
     >
       <span className={`${CHIP} ${VERDICT_TONE[checkVerdict(check)]}`}>
         {verdictLabel(t, checkVerdict(check))}
@@ -462,7 +462,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
   )
 
   const heading = (text: string) => (
-    <h4 className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+    <h4 className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
       {text}
     </h4>
   )
@@ -479,10 +479,10 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
       data-quiet={interrupted ? undefined : ''}
       className={
         interrupted
-          ? 'my-2 rounded-xl border-[0.8px] border-border bg-card text-[13px] motion-safe:animate-rise-in'
+          ? 'my-2 rounded-xl border-[0.8px] border-border bg-card text-[length:calc(var(--ui-font-base)*0.8125)] motion-safe:animate-rise-in'
           : // A clean finish is one quiet line, like the steps row, until
             // opened: under every run a full card grew tiresome.
-            'my-1 rounded-xl text-[13px] open:border-[0.8px] open:border-border open:bg-card has-[details[open]]:border-[0.8px] has-[details[open]]:border-border has-[details[open]]:bg-card'
+            'my-1 rounded-xl text-[length:calc(var(--ui-font-base)*0.8125)] open:border-[0.8px] open:border-border open:bg-card has-[details[open]]:border-[0.8px] has-[details[open]]:border-border has-[details[open]]:bg-card'
       }
     >
       {/* Collapsed by default after a clean finish: Flint's record of a run is
@@ -493,8 +493,8 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
         <summary
           className={
             interrupted
-              ? 'flex min-h-10 cursor-pointer list-none flex-wrap items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] text-foreground outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden'
-              : 'flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 group-open:px-3 group-open:py-2.5 group-open:text-[13.5px] group-open:text-foreground pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden'
+              ? 'flex min-h-10 cursor-pointer list-none flex-wrap items-center gap-2.5 rounded-xl px-3 py-2.5 text-[length:calc(var(--ui-font-base)*0.84375)] text-foreground outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden'
+              : 'flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 group-open:px-3 group-open:py-2.5 group-open:text-[length:calc(var(--ui-font-base)*0.84375)] group-open:text-foreground pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden'
           }
         >
           {!interrupted && (

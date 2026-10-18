@@ -367,7 +367,7 @@ export function RefineFrame({
         <button
           type="button"
           onClick={onRetry}
-          className="rf-retry absolute top-1/2 left-1/2 inline-flex h-8 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center gap-1.5 rounded-2xl border-0 pr-3.5 pl-3 text-[13px] font-medium focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-hidden"
+          className="rf-retry absolute top-1/2 left-1/2 inline-flex h-8 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center gap-1.5 rounded-2xl border-0 pr-3.5 pl-3 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-hidden"
         >
           <RefreshCw aria-hidden className="size-3.5" /> {text.retry}
         </button>

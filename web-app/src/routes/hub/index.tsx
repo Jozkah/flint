@@ -431,7 +431,7 @@ function ModelDiscoverRoute() {
             <div className="flex min-w-0 items-center gap-3.5">
               <HuggingFaceLogo size={42} className="shrink-0 self-center" />
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+                <div className="flex items-center gap-2 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.14em] text-muted-foreground uppercase">
                   Hugging Face
                   <Chip tone="ok" dot className="tracking-normal normal-case">
                     <ShieldCheck /> {t('sweep:hub.privateUntilUsed')}
@@ -440,7 +440,7 @@ function ModelDiscoverRoute() {
                 <h1 className="mt-1 text-2xl leading-tight font-medium tracking-[-0.01em]">
                   {source === 'studio' ? t('sweep:hub.discoverImage') : t('sweep:hub.discoverLocal')}
                 </h1>
-                <p className="mt-1 hidden max-w-2xl text-[13px] text-secondary-foreground [@media(min-height:700px)]:block">
+                <p className="mt-1 hidden max-w-2xl text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground [@media(min-height:700px)]:block">
                   {t('sweep:hub.intro')}
                 </p>
               </div>
@@ -480,7 +480,7 @@ function ModelDiscoverRoute() {
               placeholder={t(
                 narrow ? 'sweep:hub.searchPlaceholderShort' : 'sweep:hub.searchPlaceholder'
               )}
-              className="h-12 rounded-xl pr-10 pl-11 text-[14px] text-ellipsis shadow-lift"
+              className="h-12 rounded-xl pr-10 pl-11 text-[length:calc(var(--ui-font-base)*0.875)] text-ellipsis shadow-lift"
               data-testid="hub-search"
             />
             {query && (
@@ -709,7 +709,7 @@ function ModelDiscoverRoute() {
                           <HuggingFaceAvatar author={author} modelId={model.id} />
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <span className="truncate text-[15px] font-semibold">
+                              <span className="truncate text-[length:calc(var(--ui-font-base)*0.9375)] font-semibold">
                                 <span className="font-normal text-muted-foreground">
                                   {rest.length ? `${author} / ` : ''}
                                 </span>
@@ -869,7 +869,7 @@ function ModelDiscoverRoute() {
                                   >
                                     <div className="min-w-0 flex-1">
                                       <div className="flex flex-wrap items-center gap-2">
-                                        <span className="font-mono text-[13px] font-semibold">
+                                        <span className="font-mono text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold">
                                           {group.quantization || group.primary.name}
                                         </span>
                                         {isRecommended && (
@@ -895,7 +895,7 @@ function ModelDiscoverRoute() {
                                           {fitLabel(fit.verdict, t)}
                                         </Chip>
                                       </div>
-                                      <div className="mt-1 text-[11.5px] text-muted-foreground">
+                                      <div className="mt-1 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                                         {explainQuantization(group.quantization)}
                                       </div>
                                     </div>

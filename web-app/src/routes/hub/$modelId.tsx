@@ -296,13 +296,13 @@ function HuggingFaceModelDetail() {
                           <td className="px-3 py-3">
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-xs">{group.quantization || group.primary.name}</span>
-                              {isRecommended && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Recommended</span>}
+                              {isRecommended && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[length:calc(var(--ui-font-base)*0.625)] font-medium text-primary">Recommended</span>}
                             </div>
                             <p className="mt-1 max-w-md text-xs text-muted-foreground">{explainQuantization(group.quantization)}</p>
                           </td>
                           <td className="px-3 py-3">
                             <span className="text-xs font-medium" title={fitBasis(fit)}>{summary.title}</span>
-                            <p className="mt-1 max-w-52 text-[11px] text-muted-foreground">{summary.detail}</p>
+                            <p className="mt-1 max-w-52 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">{summary.detail}</p>
                           </td>
                           <td className="px-3 py-3 text-xs tabular-nums text-muted-foreground">{fit.sizeEstimated ? '≈ ' : ''}{formatModelBytes(group.totalSize ?? fit.required.weights)}</td>
                           <td className="px-3 py-3 text-xs text-muted-foreground">{group.multipart ? `${group.files.length} shards` : '1 file'}</td>

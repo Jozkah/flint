@@ -210,7 +210,7 @@ export function RemoteAccessSettings({
             actions={
               <code
                 data-testid="remote-fingerprint"
-                className="w-full break-all font-mono text-[11px]"
+                className="w-full break-all font-mono text-[length:calc(var(--ui-font-base)*0.6875)]"
               >
                 {serving.fingerprint}
               </code>
@@ -221,7 +221,7 @@ export function RemoteAccessSettings({
           <p className="px-4 pb-2 text-xs text-destructive" data-testid="remote-no-phone-app">
             {t('remote:noPhoneApp')}
             {status.phoneAppPaths?.[0] && (
-              <code className="mt-1 block break-all font-mono text-[11px]">{status.phoneAppPaths[0]}</code>
+              <code className="mt-1 block break-all font-mono text-[length:calc(var(--ui-font-base)*0.6875)]">{status.phoneAppPaths[0]}</code>
             )}
           </p>
         )}
@@ -441,14 +441,14 @@ export function PairPhoneDialog({
                   aria-label={t('remote:pairLink')}
                   value={pairing.url}
                   onFocus={(e) => e.currentTarget.select()}
-                  className="w-full rounded border border-border bg-card px-2 py-2 font-mono text-[11px]"
+                  className="w-full rounded border border-border bg-card px-2 py-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)]"
                 />
                 {copyError && (
-                  <span className="text-[11px] text-destructive" role="status">
+                  <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-destructive" role="status">
                     {copyError}
                   </span>
                 )}
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                   {t('remote:pairHint')}
                 </span>
               </div>

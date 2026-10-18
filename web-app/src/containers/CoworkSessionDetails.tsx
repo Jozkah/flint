@@ -50,11 +50,11 @@ export function CoworkSessionDetails({
         <header className="flex flex-col gap-1">
           <h2
             id="cowork-session-details-heading"
-            className="text-[15px] font-semibold text-foreground"
+            className="text-[length:calc(var(--ui-font-base)*0.9375)] font-semibold text-foreground"
           >
             {t('common:sessionDetails.title')}
           </h2>
-          <p className="text-[13px] leading-[1.45] text-muted-foreground">
+          <p className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-[1.45] text-muted-foreground">
             {summary || t('common:sessionDetails.description')}
           </p>
         </header>

@@ -408,7 +408,7 @@ export const DialogEditModel = ({
         </div>
 
         <div className="py-1">
-          <h3 className="mb-2 text-[13px] font-semibold text-foreground">
+          <h3 className="mb-2 text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
             {t('providers:editModel.capabilities')}
           </h3>
           <div className="space-y-4">

@@ -262,7 +262,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: calc(var(--ui-font-base) * 0.8125);
   font-weight: 500;
   color: var(--foreground);
   animation: dr-hint-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;

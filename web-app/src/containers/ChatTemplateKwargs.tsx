@@ -63,10 +63,10 @@ export function ChatTemplateKwargs({
   return (
     <div className="space-y-3">
       <div className="space-y-0.5">
-        <div className="text-[13px] font-semibold text-foreground">
+        <div className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
           {t('common:modelSettings.templateKwargs.section')}
         </div>
-        <p className="text-muted-foreground leading-normal text-[13px]">
+        <p className="text-muted-foreground leading-normal text-[length:calc(var(--ui-font-base)*0.8125)]">
           {t('common:modelSettings.templateKwargs.description')}
         </p>
       </div>

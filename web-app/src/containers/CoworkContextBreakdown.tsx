@@ -68,7 +68,7 @@ export function CoworkContextBreakdown({
       className="group rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-xs"
       aria-label={t('common:readiness.contextBreakdown')}
     >
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-[13px] font-medium text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
         {t('common:readiness.contextBreakdown')}
         <ChevronDown
           aria-hidden

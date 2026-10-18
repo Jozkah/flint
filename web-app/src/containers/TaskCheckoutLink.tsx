@@ -22,7 +22,7 @@ export function TaskCheckoutLink({ task }: { task: ActivityTask }) {
   if (!task.checkout) return null
   return (
     <p
-      className="mt-1 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground"
+      className="mt-1 flex flex-wrap items-center gap-x-2 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground"
       data-testid="task-checkout"
     >
       <GitBranch size={11} aria-hidden className="shrink-0" />

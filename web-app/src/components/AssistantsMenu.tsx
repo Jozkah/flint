@@ -122,7 +122,7 @@ export function AssistantsMenu({
                   imageClassName="w-5 h-5 object-contain"
                   textClassName="text-base"
                 />
-                <p className="min-w-0 truncate text-[13px] font-medium text-foreground">
+                <p className="min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                   {assistant.name || 'Unnamed Assistant'}
                 </p>
               </div>
@@ -133,7 +133,7 @@ export function AssistantsMenu({
               )}
               {assistant.instructions?.trim() && (
                 <p
-                  className="line-clamp-4 border-t border-border/70 pt-2 text-[11px] leading-relaxed text-muted-foreground [mask-image:linear-gradient(to_bottom,#000_70%,transparent)]"
+                  className="line-clamp-4 border-t border-border/70 pt-2 text-[length:calc(var(--ui-font-base)*0.6875)] leading-relaxed text-muted-foreground [mask-image:linear-gradient(to_bottom,#000_70%,transparent)]"
                 >
                   {assistant.instructions.trim()}
                 </p>

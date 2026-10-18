@@ -1147,7 +1147,7 @@ function ProviderDetail() {
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <span
-              className="min-w-0 truncate text-[13px] font-medium text-foreground"
+              className="min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground"
               title={rowTitle}
               aria-label={rowTitle}
             >
@@ -1177,7 +1177,7 @@ function ProviderDetail() {
               is in the middle so the quant and extension stay readable. */}
           <MiddleText
             text={secondaryLine}
-            className="font-mono text-[11px] text-subtle-foreground"
+            className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground"
             title={rowTitle}
             data-testid="model-secondary-line"
           />
@@ -1240,7 +1240,7 @@ function ProviderDetail() {
                 >
                   <span className="truncate">{ctx.value}</span>
                   {ctx.note && (
-                    <span className="truncate text-[10px] text-muted-foreground">
+                    <span className="truncate text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground">
                       {ctx.note}
                     </span>
                   )}
@@ -1280,7 +1280,7 @@ function ProviderDetail() {
       role="separator"
       aria-label={label}
       className={cn(
-        'px-2 text-[11px] font-medium text-subtle-foreground uppercase',
+        'px-2 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase',
         className
       )}
     >
@@ -1893,7 +1893,7 @@ function ProviderDetail() {
         {EDITABLE_ENDPOINT[provider.provider] && (
           <div className="space-y-2">
             <div className="space-y-1">
-              <h3 className="text-[13px] font-medium text-foreground">
+              <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                 {t('providers:baseUrl.title')}
               </h3>
               <p className="text-xs leading-normal text-muted-foreground">
@@ -1914,7 +1914,7 @@ function ProviderDetail() {
         {provider.provider === 'azure' && (
           <div className="space-y-2">
             <div className="space-y-1">
-              <h3 className="text-[13px] font-medium text-foreground">
+              <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                 {t('providers:apiVersion.title')}
               </h3>
               <p className="text-xs leading-normal text-muted-foreground">
@@ -1938,7 +1938,7 @@ function ProviderDetail() {
           className={provider.provider === 'bedrock' ? 'hidden' : 'space-y-3'}
         >
           <div className="space-y-1">
-            <h3 className="text-[13px] font-medium text-foreground">
+            <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
               {t('providers:apiKeys.title')}
             </h3>
             <p className="text-xs leading-normal text-muted-foreground">
@@ -2178,7 +2178,7 @@ function ProviderDetail() {
               className="rounded-xl shadow-[0_0_0_0.8px_var(--border),0_8px_20px_-12px_rgba(0,0,0,.5)]"
             />
             <div className="min-w-0">
-              <h2 className="descender-safe mb-2 truncate text-[22px] leading-none font-medium text-foreground">
+              <h2 className="descender-safe mb-2 truncate text-[length:calc(var(--ui-font-base)*1.375)] leading-none font-medium text-foreground">
                 {title}
               </h2>
               <div className="flex flex-wrap items-center gap-1.5">

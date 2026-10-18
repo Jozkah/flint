@@ -243,7 +243,7 @@ function InterfaceSettings() {
         title={
           <span className="inline-flex flex-wrap items-baseline gap-1.5">
             <span>{t('settings:interface.renderHtmlArtifacts')}</span>
-            <span className="text-[10.5px] font-normal text-subtle-foreground">
+            <span className="text-[length:calc(var(--ui-font-base)*0.65625)] font-normal text-subtle-foreground">
               {t('common:experimental')}
             </span>
           </span>

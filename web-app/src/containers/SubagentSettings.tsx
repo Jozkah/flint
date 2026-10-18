@@ -146,7 +146,7 @@ function Item({
     >
       {Icon ? <Icon aria-hidden className="mt-px size-4 shrink-0 text-secondary-foreground" /> : null}
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
-        <span className="truncate text-[13px] font-medium">{option.label}</span>
+        <span className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">{option.label}</span>
         {option.description ? (
           <span className="text-xs leading-[1.4] text-muted-foreground">{option.description}</span>
         ) : null}
@@ -349,7 +349,7 @@ export function SubagentSettings() {
           <button
             type="button"
             data-testid="subagent-advanced-toggle"
-            className="flex w-full items-center gap-1.5 rounded-md px-3 py-2.5 text-left text-[13px] font-medium text-foreground outline-none hover:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
+            className="flex w-full items-center gap-1.5 rounded-md px-3 py-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground outline-none hover:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
           >
             <ChevronDown
               aria-hidden

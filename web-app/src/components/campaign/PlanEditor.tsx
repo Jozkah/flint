@@ -131,7 +131,7 @@ export function PlanEstimate({ estimate }: { estimate: unknown }) {
   return (
     <div
       data-testid="plan-estimate"
-      className="flex flex-col gap-0.5 text-[13px]"
+      className="flex flex-col gap-0.5 text-[length:calc(var(--ui-font-base)*0.8125)]"
     >
       <p className="font-medium text-foreground">
         {e.low === e.high
@@ -155,7 +155,7 @@ export function PlanEstimate({ estimate }: { estimate: unknown }) {
 }
 
 const FIELD =
-  'w-full rounded-md border-[0.8px] border-border bg-background px-2 py-1.5 text-[13px] outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40'
+  'w-full rounded-md border-[0.8px] border-border bg-background px-2 py-1.5 text-[length:calc(var(--ui-font-base)*0.8125)] outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40'
 
 /** The task editor: one block per task, edits kept in local state. */
 export function PlanEditor({
@@ -282,7 +282,7 @@ export function PlanEditor({
                 onChange={(e) =>
                   edit(patchTask(tasks, task.id, { brief: e.target.value }))
                 }
-                className="min-h-0 text-[13px]"
+                className="min-h-0 text-[length:calc(var(--ui-font-base)*0.8125)]"
               />
               <label
                 htmlFor={`${id}-acc`}
@@ -301,7 +301,7 @@ export function PlanEditor({
                     })
                   )
                 }
-                className="min-h-0 text-[13px]"
+                className="min-h-0 text-[length:calc(var(--ui-font-base)*0.8125)]"
               />
               <label
                 htmlFor={`${id}-paths`}
@@ -491,7 +491,7 @@ export function CampaignPlanCard({
       {!editing && tasks.length > 0 && (
         <ol
           id={listId}
-          className="flex flex-col gap-1 text-[13px]"
+          className="flex flex-col gap-1 text-[length:calc(var(--ui-font-base)*0.8125)]"
           data-testid="plan-task-list"
         >
           {tasks.map((task, i) => {

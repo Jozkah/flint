@@ -267,9 +267,16 @@
   --text-2xl: calc(var(--font-size-base) * 1.5);
   --text-3xl: calc(var(--font-size-base) * 1.875);
   --text-4xl: calc(var(--font-size-base) * 2.25);
+  --ui-font-base: var(--font-size-base);
 }
 
+/* Base for hard-coded text sizes (text-[length:calc(var(--ui-font-base)*N)],
+   see scripts/codemods/scale-font-sizes.mjs): the chosen font size where the
+   page is not zoomed, the design size inside .app-zoom (zoom already scales
+   it there). Redeclared in each zoom scope since :root's value is computed
+   once and inherited. */
 html {
+  --ui-font-base: var(--font-size-base, 16px);
   background: var(--background);
 }
 
@@ -430,6 +437,7 @@ html.reduce-motion *::after {
   html:not(.no-css-zoom) .app-zoom {
     --app-zoom: calc(var(--font-size-base, 16px) / 16px);
     --app-font-base: 16px;
+    --ui-font-base: 16px;
     --text-xs: 0.75rem;
     --text-sm: 0.875rem;
     --text-base: 1rem;
@@ -457,6 +465,7 @@ html.reduce-motion *::after {
   ) {
     --app-zoom: calc(var(--font-size-base, 16px) / 16px);
     --app-font-base: 16px;
+    --ui-font-base: 16px;
     --text-xs: 0.75rem;
     --text-sm: 0.875rem;
     --text-base: 1rem;

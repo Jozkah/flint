@@ -67,7 +67,7 @@ export function FactoryResetDialog({
                 className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
-                <span className="text-[13px] font-medium text-foreground">
+                <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                   {t('settings:general.keepAppData')}
                 </span>
                 <span className="text-xs text-muted-foreground">
@@ -83,7 +83,7 @@ export function FactoryResetDialog({
                 className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
-                <span className="text-[13px] font-medium text-foreground">
+                <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                   {t('settings:general.keepModelsAndConfigs')}
                 </span>
                 <span className="text-xs text-muted-foreground">
@@ -99,7 +99,7 @@ export function FactoryResetDialog({
                 className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
-                <span className="text-[13px] font-medium text-foreground">
+                <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                   {t('settings:general.clearWebData')}
                 </span>
                 <span className="text-xs text-muted-foreground">

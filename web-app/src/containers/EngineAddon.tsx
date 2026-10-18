@@ -170,10 +170,10 @@ export function EngineAddonOffer() {
       aria-live="polite"
       data-testid="engine-addon-offer"
       data-view={view}
-      className="fixed right-4 bottom-4 z-50 flex w-[min(380px,calc(100vw-32px))] flex-col gap-2.5 rounded-2xl border-[0.8px] border-border bg-card p-4 text-[13px] text-secondary-foreground shadow-lift motion-safe:animate-rise-in"
+      className="fixed right-4 bottom-4 z-50 flex w-[min(380px,calc(100vw-32px))] flex-col gap-2.5 rounded-2xl border-[0.8px] border-border bg-card p-4 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground shadow-lift motion-safe:animate-rise-in"
     >
       <div className="flex items-start justify-between gap-3">
-        <b className="text-[14px] font-medium text-foreground">{title}</b>
+        <b className="text-[length:calc(var(--ui-font-base)*0.875)] font-medium text-foreground">{title}</b>
         {view !== 'progress' && (
           <button
             type="button"
@@ -274,14 +274,14 @@ export function EngineAddonPanel({ className }: { className?: string }) {
   return (
     <section
       data-testid="engine-addon-panel"
-      className={cn('flex min-w-0 flex-col gap-3 text-[13px]', className)}
+      className={cn('flex min-w-0 flex-col gap-3 text-[length:calc(var(--ui-font-base)*0.8125)]', className)}
     >
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <b className="text-[14px] font-medium text-foreground">
+          <b className="text-[length:calc(var(--ui-font-base)*0.875)] font-medium text-foreground">
             {t('engine:addon.cudaName')}
             {usable && status.in_use && (
-              <span className="ml-2 rounded-md border-[0.8px] border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+              <span className="ml-2 rounded-md border-[0.8px] border-border px-1.5 py-0.5 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                 {t('engine:addon.inUse')}
               </span>
             )}

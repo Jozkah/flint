@@ -443,7 +443,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
       {/* Reads as a row that opens, not as a disabled field: the words, and
           a chevron that turns. */}
       <summary
-        className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-[12.5px] font-medium text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden"
+        className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-[length:calc(var(--ui-font-base)*0.78125)] font-medium text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden"
         aria-controls={panelId}
         data-testid="prompt-snapshot-toggle"
       >
@@ -555,7 +555,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
             <div className="max-h-80 overflow-auto rounded-md border border-border bg-muted/60 p-2">
               {view === 'json' ? (
                 <pre
-                  className="whitespace-pre-wrap break-words font-mono text-[11px]"
+                  className="whitespace-pre-wrap break-words font-mono text-[length:calc(var(--ui-font-base)*0.6875)]"
                   data-testid="prompt-snapshot-json"
                 >
                   {JSON.stringify(snapshot.payload, null, 2)}

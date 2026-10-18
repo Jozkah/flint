@@ -285,7 +285,7 @@ export function TranslatePage() {
               data-testid="translate-input"
             />
             <div
-              className="px-3 pb-2 text-right text-[11px] text-muted-foreground tabular-nums"
+              className="px-3 pb-2 text-right text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums"
               data-testid="translate-count"
             >
               {t('common:translate.characters', { count: input.length })}
@@ -418,7 +418,7 @@ export function TranslatePage() {
                 </Button>
               </div>
             )}
-            <div className="px-3 pb-2 text-right text-[11px] text-muted-foreground tabular-nums">
+            <div className="px-3 pb-2 text-right text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
               {running
                 ? t('common:translate.translating')
                 : t('common:translate.characters', { count: output.length })}

@@ -114,7 +114,7 @@ function Meter({
   const clamped = clampPercent(percent)
   return (
     <div className={cn('mt-3 flex flex-col gap-2', className)}>
-      <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
+      <div className="flex items-baseline justify-between gap-2 text-[length:calc(var(--ui-font-base)*0.78125)]">
         <span className="text-muted-foreground">{label}</span>
         <b className="font-medium tabular-nums text-foreground">
           {display ?? `${percent.toFixed(2)}%`}
@@ -154,7 +154,7 @@ function UsageLine({
   pending?: string
 }) {
   return (
-    <div className="mt-4 flex items-center justify-between gap-2 text-[13px]">
+    <div className="mt-4 flex items-center justify-between gap-2 text-[length:calc(var(--ui-font-base)*0.8125)]">
       <span className="flex items-center gap-2 text-secondary-foreground">
         <span className="size-2.5 rounded-full" style={{ background: color }} aria-hidden />
         {label}
@@ -202,7 +202,7 @@ function AreaChart({ values, color }: { values: number[]; color: string }) {
           </svg>
         )}
       </div>
-      <div className="flex w-9 shrink-0 flex-col justify-between py-0.5 text-[11px] text-muted-foreground tabular-nums">
+      <div className="flex w-9 shrink-0 flex-col justify-between py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
         <span>100%</span>
         <span>50%</span>
         <span>0%</span>
@@ -214,7 +214,7 @@ function AreaChart({ values, color }: { values: number[]; color: string }) {
 /** Label/value pairs in the design's two-column key table. */
 function Stats({ children }: { children: ReactNode }) {
   return (
-    <dl className="grid grid-cols-[minmax(0,110px)_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5 text-[13px]">
+    <dl className="grid grid-cols-[minmax(0,110px)_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5 text-[length:calc(var(--ui-font-base)*0.8125)]">
       {children}
     </dl>
   )
@@ -301,7 +301,7 @@ function Panel({
       style={{ animationDelay: `${delay}ms` } as CSSProperties}
     >
       <header className="mb-4 flex min-w-0 items-center justify-between gap-3">
-        <h3 className="flex min-w-0 items-center gap-3 text-[17px] font-medium text-foreground">
+        <h3 className="flex min-w-0 items-center gap-3 text-[length:calc(var(--ui-font-base)*1.0625)] font-medium text-foreground">
           <IconTile>{icon}</IconTile>
           <span className="truncate">{title}</span>
         </h3>
@@ -350,7 +350,7 @@ function PerCoreUsage({ values }: { values: number[] }) {
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border-[0.8px] border-border bg-muted/40 px-3.5 text-[13px] text-secondary-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden"
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border-[0.8px] border-border bg-muted/40 px-3.5 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden"
       >
         <span>{t('system-monitor:perCore')}</span>
         <ChevronRight
@@ -375,7 +375,7 @@ function PerCoreUsage({ values }: { values: number[] }) {
                 aria-valuenow={Math.round(clamped)}
                 className="flex flex-col gap-1 rounded-md bg-muted px-2 py-1.5"
               >
-                <div className="flex items-baseline justify-between text-[11px] tabular-nums">
+                <div className="flex items-baseline justify-between text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums">
                   <span className="text-muted-foreground">#{i}</span>
                   <b className="font-medium text-foreground">{Math.round(clamped)}%</b>
                 </div>
@@ -397,7 +397,7 @@ function PerCoreUsage({ values }: { values: number[] }) {
 /** A muted note for data the platform does not expose. */
 function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-xl bg-muted px-3.5 py-3 text-[13px] text-muted-foreground">
+    <div className="rounded-xl bg-muted px-3.5 py-3 text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
       {children}
     </div>
   )
@@ -531,7 +531,7 @@ function DrivesPanel({ snapshot }: { snapshot: SystemSnapshot }) {
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex min-w-0 items-center justify-between gap-2">
                     <span className="flex min-w-0 items-baseline gap-2">
-                      <b className="shrink-0 font-mono text-[14px] font-semibold text-foreground">
+                      <b className="shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.875)] font-semibold text-foreground">
                         {disk.mount_point}
                       </b>
                       {disk.name && (
@@ -556,7 +556,7 @@ function DrivesPanel({ snapshot }: { snapshot: SystemSnapshot }) {
                     color="#4f8cff"
                     className="mt-2"
                   />
-                  <div className="mt-1.5 text-[12px] text-muted-foreground tabular-nums">
+                  <div className="mt-1.5 text-[length:calc(var(--ui-font-base)*0.75)] text-muted-foreground tabular-nums">
                     {t('system-monitor:freeOf', { free: formatBytes(disk.available) })}
                   </div>
                 </div>
@@ -601,7 +601,7 @@ function NetworkPanel({
         hiddenCount > 0 ? (
           <label
             htmlFor={toggleId}
-            className="flex cursor-pointer items-center gap-2 text-[13px] text-secondary-foreground"
+            className="flex cursor-pointer items-center gap-2 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground"
           >
             <input
               id={toggleId}
@@ -616,7 +616,7 @@ function NetworkPanel({
     >
       <div className="flex flex-col gap-3.5">
         {shown.length > 0 && (
-          <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+          <p className="flex items-center gap-2 text-[length:calc(var(--ui-font-base)*0.78125)] text-muted-foreground">
             <Info className="size-3.5 shrink-0" aria-hidden />
             {t('system-monitor:peakScale')}
           </p>
@@ -640,7 +640,7 @@ function NetworkPanel({
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-2.5">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <b className="min-w-0 truncate text-[15px] font-medium text-foreground" title={n.name}>
+                    <b className="min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.9375)] font-medium text-foreground" title={n.name}>
                       {n.name}
                     </b>
                     {isVirtual(n) ? <Chip>{t('system-monitor:virtual')}</Chip> : kind && <Chip>{kind}</Chip>}
@@ -659,7 +659,7 @@ function NetworkPanel({
                     color={ACCENT.up}
                     className="mt-0"
                   />
-                  <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-t border-border/70 pt-2.5 text-[12.5px] text-muted-foreground">
+                  <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-t border-border/70 pt-2.5 text-[length:calc(var(--ui-font-base)*0.78125)] text-muted-foreground">
                     <span>
                       {t('system-monitor:totalReceived')}{' '}
                       <b className="ml-1.5 font-medium text-foreground tabular-nums">
@@ -706,7 +706,7 @@ function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
       ) : (
         <div className="flex flex-col gap-4">
           {IS_WINDOWS && !sensors.some((s) => s.kind === 'cpu') && (
-            <div className="flex items-start gap-3 rounded-xl border-[0.8px] border-border bg-muted/40 p-3.5 text-[13px] leading-snug text-secondary-foreground">
+            <div className="flex items-start gap-3 rounded-xl border-[0.8px] border-border bg-muted/40 p-3.5 text-[length:calc(var(--ui-font-base)*0.8125)] leading-snug text-secondary-foreground">
               <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
               {t('system-monitor:noCpuSensorsWindows')}
             </div>
@@ -719,18 +719,18 @@ function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
             return (
               <div key={`${sensor.label}-${i}`} className="flex min-w-0 flex-col gap-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <b className="min-w-0 truncate text-[14px] font-medium text-foreground" title={sensor.label}>
+                  <b className="min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.875)] font-medium text-foreground" title={sensor.label}>
                     {sensor.label}
                   </b>
                   {kind && <Chip mono>{kind}</Chip>}
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <span className="text-[12.5px] text-muted-foreground">
+                  <span className="text-[length:calc(var(--ui-font-base)*0.78125)] text-muted-foreground">
                     {scale.limit
                       ? t(`system-monitor:${scale.of}`, { value: formatTemperature(scale.limit) })
                       : t('system-monitor:current')}
                   </span>
-                  <b className="text-[15px] font-semibold tabular-nums text-foreground">
+                  <b className="text-[length:calc(var(--ui-font-base)*0.9375)] font-semibold tabular-nums text-foreground">
                     {formatTemperature(temp)}
                   </b>
                 </div>
@@ -756,7 +756,7 @@ function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
                     }}
                   />
                 </div>
-                <div className="text-[11.5px] text-muted-foreground">
+                <div className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                   {sensor.source}
                   {sensor.max != null && scale.of !== 'ofMax' && (
                     <>
@@ -804,7 +804,7 @@ function GpuBlock({
         {/* The name, then the backend chips on the same line: they stay put,
             and visible but disabled, when the GPU is switched off. */}
         <div className="flex min-w-0 items-center gap-2">
-          <b className="min-w-0 truncate text-[14px] font-medium text-foreground" title={gpu.name}>
+          <b className="min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.875)] font-medium text-foreground" title={gpu.name}>
             {gpu.name}
           </b>
           <span className="flex shrink-0 items-center gap-1.5">
@@ -1065,10 +1065,10 @@ function SystemMonitorContent() {
                   <Icon name="x-activity" size={22} />
                 </IconTile>
                 <div className="flex min-w-0 flex-col gap-2">
-                  <h2 className="text-[26px] leading-none font-medium tracking-[-0.01em] text-foreground">
+                  <h2 className="text-[length:calc(var(--ui-font-base)*1.625)] leading-none font-medium tracking-[-0.01em] text-foreground">
                     {t('system-monitor:title')}
                   </h2>
-                  <p className="text-[13px] text-muted-foreground">
+                  <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
                     {t('system-monitor:description')}
                   </p>
                 </div>
@@ -1086,7 +1086,7 @@ function SystemMonitorContent() {
               badge={<Badge color={ACCENT.cpu} percent={systemUsage.cpu} label={t('system-monitor:cpu')}>{measured ? `${systemUsage.cpu.toFixed(2)}%` : measuring}</Badge>}
             >
               <b
-                className="mb-3 block truncate text-[14px] font-medium text-foreground"
+                className="mb-3 block truncate text-[length:calc(var(--ui-font-base)*0.875)] font-medium text-foreground"
                 title={hardwareData.cpu.name}
               >
                 {hardwareData.cpu.name}

@@ -14,7 +14,7 @@ import {
 
 const ROW =
   'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 [&>:first-child]:flex-[1_1_10rem]'
-const EMPTY = 'py-3 text-[13px] text-muted-foreground'
+const EMPTY = 'py-3 text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground'
 const REVOKE = 'shrink-0 pointer-coarse:h-11'
 
 type Translate = (key: string, values?: Record<string, unknown>) => string

@@ -54,7 +54,7 @@ export function HubVariantList({ variants, recommendedId, renderRow }: Props) {
   return (
     <div>
       <div className="max-h-80 overflow-y-auto overscroll-contain rounded-xl [scrollbar-gutter:stable]">
-        <div className="sticky top-0 z-10 flex items-center justify-between bg-muted px-3 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        <div className="sticky top-0 z-10 flex items-center justify-between bg-muted px-3 py-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-muted-foreground uppercase">
           <span>{t('sweep:hub.variant')}</span>
           <span>{t('sweep:hub.sizeAndFit')}</span>
         </div>
@@ -66,7 +66,7 @@ export function HubVariantList({ variants, recommendedId, renderRow }: Props) {
             return (
               <Fragment key={section.title ?? index}>
                 {section.title && (
-                  <div className="px-3 pt-2 text-[11px] font-medium text-muted-foreground">
+                  <div className="px-3 pt-2 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground">
                     {section.title}
                   </div>
                 )}

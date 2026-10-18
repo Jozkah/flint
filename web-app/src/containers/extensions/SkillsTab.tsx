@@ -194,7 +194,7 @@ export default function SkillsTab() {
             </span>
           }
           title={
-            <span className="font-mono text-[13px]" title={s.name}>
+            <span className="font-mono text-[length:calc(var(--ui-font-base)*0.8125)]" title={s.name}>
               {/* A plugin's skill is named `<plugin>:<skill>`; the footer
                   already says which plugin, so the card shows the skill. */}
               {isPluginSkill(s) && s.name.startsWith(`${s.plugin}:`)
@@ -218,7 +218,7 @@ export default function SkillsTab() {
           }
         />
         <FrameBody className="gap-2.5 p-3">
-          <p className="m-0 line-clamp-2 min-h-[2lh] text-[12.5px] leading-normal text-muted-foreground">
+          <p className="m-0 line-clamp-2 min-h-[2lh] text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
             {s.description || '—'}
           </p>
           <div className="flex items-center justify-between gap-2 text-xs text-subtle-foreground">
@@ -247,7 +247,7 @@ export default function SkillsTab() {
 
   const groupHeading = (label: ReactNode, action?: ReactNode) => (
     <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-1.5 text-[11px] font-medium text-subtle-foreground uppercase">
+      <div className="flex items-center gap-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase">
         {label}
       </div>
       {action}
@@ -281,7 +281,7 @@ export default function SkillsTab() {
               onClick={startNew}
               aria-pressed={isNew}
               style={{ animationDelay: `${40 + globalSkills.length * 45}ms` }}
-              className="flex min-h-[118px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong text-[13px] text-muted-foreground transition-colors hover:border-ring hover:bg-hover-row hover:text-foreground motion-safe:animate-rise-in aria-pressed:border-ring aria-pressed:text-foreground"
+              className="flex min-h-[118px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground transition-colors hover:border-ring hover:bg-hover-row hover:text-foreground motion-safe:animate-rise-in aria-pressed:border-ring aria-pressed:text-foreground"
             >
               <Icon name="x-plus" />
               {t('common:skillNew')}
@@ -343,7 +343,7 @@ export default function SkillsTab() {
             />
             {enablementTarget && (
               <div>
-                <div className="mb-1.5 text-[11px] font-medium text-subtle-foreground uppercase">
+                <div className="mb-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-subtle-foreground uppercase">
                   {t('common:extensionsManager.enablement.title', undefined) ??
                     'Enabled on'}
                 </div>

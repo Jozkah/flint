@@ -158,7 +158,7 @@ function Option({
     >
       <OptionIcon aria-hidden className="mt-px size-4 shrink-0 text-secondary-foreground" />
       <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        <span className="text-[13px] font-medium">{label}</span>
+        <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">{label}</span>
         <span className="text-xs leading-[1.4] text-muted-foreground">{description}</span>
       </span>
       {selected ? <Check aria-hidden className="size-4 shrink-0 text-foreground" /> : null}

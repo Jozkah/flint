@@ -119,7 +119,7 @@ export function RemoteWorktreePanel({ sessionId }: { sessionId: string }) {
 
   return (
     <section
-      className="m-3 rounded-[10px] bg-muted px-3 py-2.5 text-[12.5px] shadow-[inset_0_0_0_0.8px_var(--border)]"
+      className="m-3 rounded-[10px] bg-muted px-3 py-2.5 text-[length:calc(var(--ui-font-base)*0.78125)] shadow-[inset_0_0_0_0.8px_var(--border)]"
       data-testid="remote-worktree"
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

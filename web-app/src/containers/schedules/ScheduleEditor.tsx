@@ -421,7 +421,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
                   />
                   {tool.name}
                   {(tool.capability === 'write' || tool.capability === 'exec') && (
-                    <span className="text-[10px] text-warning">{tool.capability}</span>
+                    <span className="text-[length:calc(var(--ui-font-base)*0.625)] text-warning">{tool.capability}</span>
                   )}
                 </label>
               ))}

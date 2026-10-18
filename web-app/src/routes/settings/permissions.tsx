@@ -71,7 +71,7 @@ type RenewalRow = {
 /** One integrated row: what the grant is on the left, its control on the right. */
 const ROW =
   'flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-dashed border-border px-0.5 py-1.5 last:border-b-0 [&>:first-child]:flex-[1_1_10rem]'
-const EMPTY = 'py-3 text-[13px] text-muted-foreground'
+const EMPTY = 'py-3 text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground'
 /** Outlined destructive, never the accent fill. */
 const REVOKE = 'h-7 shrink-0 px-2.5 text-xs pointer-coarse:h-11'
 
@@ -466,13 +466,13 @@ function PermissionsSettings() {
             >
               {conversations.map(({ id: threadId, tools, mcpTools }) => (
                 <li key={threadId} className="py-1.5">
-                  <p className="truncate pt-1 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+                  <p className="truncate pt-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                     {conversationTitle(threadId)}
                   </p>
                   <ul className="flex flex-col">
                     {tools.map((tool) => (
                       <li key={tool} className={ROW}>
-                        <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
+                        <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                           {similarToolCallLabel(tool) ?? t('permissions:settings.toolLabel', { tool })}
                         </span>
                         <Button
@@ -492,7 +492,7 @@ function PermissionsSettings() {
                         key={`${grant.server}::${grant.tool}`}
                         className={ROW}
                       >
-                        <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
+                        <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                           {t('permissions:settings.mcpToolLabel', {
                             server: grant.server,
                             tool: grant.tool,
@@ -540,7 +540,7 @@ function PermissionsSettings() {
             <ul className="flex flex-col">
               {approvedToolsGlobal.map((tool) => (
                 <li key={`tool-${tool}`} className={ROW}>
-                  <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
+                  <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                     {t('permissions:settings.toolLabel', { tool })}
                   </span>
                   <Button
@@ -557,7 +557,7 @@ function PermissionsSettings() {
               ))}
               {approvedSimilarCalls.map((grant) => (
                 <li key={grant.key} className={ROW}>
-                  <span className="min-w-0 text-[13px] font-medium text-foreground">
+                  <span className="min-w-0 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                     {grant.label}
                   </span>
                   <Button
@@ -604,7 +604,7 @@ function PermissionsSettings() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 [&>:first-child]:flex-[1_1_10rem]">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="break-all text-[13px] font-medium text-foreground">
+                      <p className="break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                         {t('permissions:settings.serverLabel', {
                           server: server.name,
                         })}
@@ -673,7 +673,7 @@ function PermissionsSettings() {
             <div className={ROW}>
               <div className="min-w-0 space-y-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[13px] font-medium text-foreground">
+                  <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                     {t('permissions:settings.allowAll')}
                   </p>
                   <StatusChip tone="warning">
@@ -712,7 +712,7 @@ function PermissionsSettings() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 [&>:first-child]:flex-[1_1_10rem]">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="break-all text-[13px] font-medium text-foreground">
+                      <p className="break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                         {t('permissions:settings.needsRenewalLabel', {
                           server: row.name,
                         })}
@@ -790,7 +790,7 @@ function PermissionsSettings() {
               role="region"
               aria-label={t('permissions:settings.history')}
             >
-              <table className="w-full min-w-[26rem] border-collapse text-left text-[12.5px] tabular-nums">
+              <table className="w-full min-w-[26rem] border-collapse text-left text-[length:calc(var(--ui-font-base)*0.78125)] tabular-nums">
                 <thead>
                   <tr className="border-b border-dashed border-border text-xs text-muted-foreground">
                     <th scope="col" className="px-0.5 py-2 pr-3 font-normal">

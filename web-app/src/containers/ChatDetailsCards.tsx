@@ -166,7 +166,7 @@ function useFileChanges(messages: UIMessage[]): FileChange[] {
 
 const Stat = ({ add, del }: { add?: number; del?: number }) =>
   add === undefined ? null : (
-    <span className="inline-flex shrink-0 gap-1.5 font-mono text-[11.5px] font-medium tabular-nums">
+    <span className="inline-flex shrink-0 gap-1.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)] font-medium tabular-nums">
       <span className="text-success">+{add}</span>
       <span className="text-destructive">−{del ?? 0}</span>
     </span>
@@ -218,7 +218,7 @@ export function ChatChangesFrame({
           ))}
         </ul>
         {known.length < changes.length && (
-          <p className="pt-1 pb-1 text-[11px] text-subtle-foreground">
+          <p className="pt-1 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground">
             {t('context:cards.changesSession')}
           </p>
         )}
@@ -277,7 +277,7 @@ export function ChatToolsFrame({ className }: { className?: string }) {
                   <Icon name={SERVER_ICON[server] ?? 'x-puzzle'} size={16} />
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <b className="truncate font-mono text-[12.5px] font-medium text-foreground">
+                  <b className="truncate font-mono text-[length:calc(var(--ui-font-base)*0.78125)] font-medium text-foreground">
                     {server}
                   </b>
                   <small className="text-xs text-muted-foreground">
@@ -298,7 +298,7 @@ export function ChatToolsFrame({ className }: { className?: string }) {
             )
           })}
         </ul>
-        <p className="pb-2 text-[11px] text-subtle-foreground">
+        <p className="pb-2 text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground">
           {t('context:cards.toolsHint')}
         </p>
       </FrameBody>

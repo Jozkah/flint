@@ -709,7 +709,7 @@ function MemorySettings() {
                 ).map(([key, recallScope]) => (
                   <label
                     key={key}
-                    className="flex min-h-11 items-center justify-between gap-3 border-b border-dashed border-border px-0.5 py-[11px] text-[13px] font-medium text-foreground pointer-fine:min-h-0"
+                    className="flex min-h-11 items-center justify-between gap-3 border-b border-dashed border-border px-0.5 py-[11px] text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground pointer-fine:min-h-0"
                   >
                     <span>{t(`settings:memoryPage.scope.${recallScope}.recall`)}</span>
                     <Switch
@@ -802,7 +802,7 @@ function MemorySettings() {
                         {tabCount(tabScope) !== null && (
                           <span
                             className={cn(
-                              'ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] tabular-nums',
+                              'ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums',
                               tabScope === scope
                                 ? 'bg-primary/12 text-foreground'
                                 : 'bg-muted text-muted-foreground'
@@ -1292,7 +1292,7 @@ function MemorySettings() {
                 title={t('settings:memoryPage.waitingTitle')}
                 aside={<span className="tabular-nums">{proposalsPending.length}</span>}
               >
-                <p className="mb-2.5 text-[12.5px] leading-normal text-muted-foreground">
+                <p className="mb-2.5 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
                   {t('settings:memoryPage.waitingBody')}
                 </p>
                 <div>
@@ -1313,7 +1313,7 @@ function MemorySettings() {
             ),
           conflicts.length > 0 && (
               <Card key="conflicts" title={t('settings:memoryPage.conflictsTitle')}>
-                <p className="mb-1.5 text-[12.5px] leading-normal text-muted-foreground">
+                <p className="mb-1.5 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
                   {t('settings:memoryPage.conflictsBody')}
                 </p>
                 <ul className="flex flex-col gap-3" data-testid="memory-conflicts">
@@ -1324,7 +1324,7 @@ function MemorySettings() {
                       data-left-id={conflict.left.id}
                       data-right-id={conflict.right.id}
                     >
-                      <p className="mb-0.5 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+                      <p className="mb-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                         {t('settings:memoryPage.conflictAbout', { subject: conflict.subject })}
                       </p>
                       <div className="grid gap-2.5 sm:grid-cols-2">
@@ -1335,7 +1335,7 @@ function MemorySettings() {
                           ] satisfies Array<[MemoryView, MemoryView]>
                         ).map(([side, other]: [MemoryView, MemoryView]) => (
                           <div key={side.id} className="flex min-w-0 flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-background p-2.5">
-                            <p className="text-[13px] break-words text-foreground">{side.content}</p>
+                            <p className="text-[length:calc(var(--ui-font-base)*0.8125)] break-words text-foreground">{side.content}</p>
                             <p className="font-mono text-xs text-muted-foreground">
                               {scopeLabel(side.scope, t)}
                               {' · '}

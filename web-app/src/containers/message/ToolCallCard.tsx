@@ -294,7 +294,7 @@ export const ToolCallCard = memo(
         .filter((l) => l.trim()).length
       if (lines > 0) {
         badge = (
-          <span className="text-[11px] text-subtle-foreground tabular-nums">
+          <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground tabular-nums">
             {t('tools:toolCall.matches', { count: lines })}
           </span>
         )
@@ -303,7 +303,7 @@ export const ToolCallCard = memo(
       const { add, del } = diffStat(diff)
       badge = (
         <>
-          <span className="inline-flex gap-1.5 font-mono text-[11.5px] font-medium tabular-nums">
+          <span className="inline-flex gap-1.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)] font-medium tabular-nums">
             <span className="text-success">+{add}</span>
             <span className="text-destructive">−{del}</span>
           </span>

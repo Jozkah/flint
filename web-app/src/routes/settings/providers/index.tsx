@@ -437,7 +437,7 @@ function ModelProviders() {
                         size={34}
                       />
                       <div className="flex min-w-0 flex-1 flex-col gap-1">
-                        <b className="truncate text-[13px] font-medium text-foreground">
+                        <b className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                           {model.name || model.id}
                         </b>
                         <small className="truncate text-xs text-muted-foreground">
@@ -475,11 +475,11 @@ function ModelProviders() {
                           <LiveChart series={series} compact format={formatTps} />
                         )}
                         {series.length > 0 && (
-                          <small className="text-[11.5px] text-muted-foreground tabular-nums">
+                          <small className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground tabular-nums">
                             {formatTps(series[series.length - 1])}
                           </small>
                         )}
-                        <small className="text-[11.5px] text-muted-foreground tabular-nums">
+                        <small className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground tabular-nums">
                           {speed ? formatTps(speed.avg) : t('engine:speed.noneYet')}
                         </small>
                       </div>
@@ -606,12 +606,12 @@ function ModelProviders() {
                         type="button"
                         onClick={() => openProvider(provider.provider)}
                         aria-label={t('providers:openProvider', { provider: title })}
-                        className="min-w-0 max-w-full text-left text-[13.5px] font-semibold text-foreground outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
+                        className="min-w-0 max-w-full text-left text-[length:calc(var(--ui-font-base)*0.84375)] font-semibold text-foreground outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
                       >
                         <FadeText>{title}</FadeText>
                       </button>
                     ) : (
-                      <FadeText as="b" className="max-w-full text-[13.5px] font-semibold text-foreground opacity-60">
+                      <FadeText as="b" className="max-w-full text-[length:calc(var(--ui-font-base)*0.84375)] font-semibold text-foreground opacity-60">
                         {title}
                       </FadeText>
                     )}
@@ -643,7 +643,7 @@ function ModelProviders() {
                     className="flex size-full min-h-[132px] flex-col items-center justify-center gap-1 rounded-xl border-[0.8px] border-dashed border-border-strong p-3 text-center text-muted-foreground transition-colors hover:bg-hover-row hover:text-foreground"
                   >
                     <Icon name="x-plus" />
-                    <b className="text-[13px] font-medium">{t('engine:providers.custom')}</b>
+                    <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">{t('engine:providers.custom')}</b>
                     <small className="text-xs">{t('engine:providers.customHint')}</small>
                   </button>
                 </AddProviderDialog>
@@ -733,7 +733,7 @@ function ModelProviders() {
                         size={30}
                       />
                       <div className="flex min-w-0 flex-col gap-0.5 max-sm:basis-[calc(100%-42px)]">
-                        <FadeText as="b" className="text-[13px] font-medium text-foreground" title={model.id}>
+                        <FadeText as="b" className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground" title={model.id}>
                           {model.name || model.id}
                         </FadeText>
                         {/* Middle-truncated: two long ids that share a
@@ -742,7 +742,7 @@ function ModelProviders() {
                           text={model.id}
                           tail={18}
                           title={model.id}
-                          className="font-mono text-[11px] text-subtle-foreground"
+                          className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground"
                         />
                       </div>
                       <span className="min-w-0">
@@ -780,7 +780,7 @@ function ModelProviders() {
                                 style={{ width: `${(speed.avg / maxSpeed) * 100}%` }}
                               />
                             </span>
-                            <small className="text-[11px] text-muted-foreground tabular-nums">
+                            <small className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
                               {formatTps(speed.avg)}
                             </small>
                           </>
@@ -857,7 +857,7 @@ function ModelProviders() {
           <FrameBody className="px-3">
             <div className="flex items-center justify-between gap-6 py-3.5">
               <div className="flex min-w-0 flex-col gap-1.5">
-                <b className="text-[13px] font-medium text-foreground">
+                <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                   {t('provider:stripReasoning')}
                 </b>
                 <small className="max-w-[60ch] text-xs leading-snug text-muted-foreground">

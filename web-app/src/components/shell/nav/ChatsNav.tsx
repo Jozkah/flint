@@ -183,7 +183,7 @@ const ChatGroupSection = memo(function ChatGroupSection({
         >
           {g.pinned && <Pin className="size-3 shrink-0" aria-hidden />}
           <FadeText>{g.name}</FadeText>
-          <span className="text-[10.5px] font-normal text-subtle-foreground tabular-nums">
+          <span className="text-[length:calc(var(--ui-font-base)*0.65625)] font-normal text-subtle-foreground tabular-nums">
             {g.threads.length}
           </span>
           <ChevronDown

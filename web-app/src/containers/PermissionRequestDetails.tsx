@@ -107,7 +107,7 @@ export function PermissionRequestDetails({
         <RequestFlags request={request} t={t} />
         <dl
           className={cn(
-            'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-[12.5px] text-foreground',
+            'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-[length:calc(var(--ui-font-base)*0.78125)] text-foreground',
             className
           )}
         >
@@ -172,7 +172,7 @@ export function PermissionRequestDetails({
   }
 
   return (
-    <div className={cn('space-y-2.5 text-[12.5px] text-fg-2', className)}>
+    <div className={cn('space-y-2.5 text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2', className)}>
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip tone="neutral">
           {formatPermissionMessage(t, request.categoryLabel)}
@@ -404,7 +404,7 @@ export function PermissionScopeChoices({
                 className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row data-primary:border-l-2 data-primary:border-l-primary data-primary:bg-primary/10 data-primary:hover:bg-primary/15 focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-11"
                 onClick={() => onDecision(scope)}
               >
-                <b className="text-[13px] font-medium text-foreground">
+                <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                   {formatPermissionMessage(t, info.label)}
                 </b>
                 {info.broader && (

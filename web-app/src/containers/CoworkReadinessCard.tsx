@@ -115,7 +115,7 @@ export function CoworkReadinessCard({
     <DetailsCard
       aria-label={t('common:readiness.title')}
       title={t('common:readiness.title')}
-      className="text-[12.5px]"
+      className="text-[length:calc(var(--ui-font-base)*0.78125)]"
     >
       {/* One label column and one value column, as the design's key-value
           table: the labels line up down one edge. */}

@@ -100,7 +100,7 @@ export const ModelInfoHoverCard = ({
       type="button"
       className={cn(
         'inline-flex items-center gap-1 rounded-md font-medium cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring',
-        isDefaultVariant ? 'text-xs px-2 py-1' : 'text-[11px] px-1.5 py-0.5',
+        isDefaultVariant ? 'text-xs px-2 py-1' : 'text-[length:calc(var(--ui-font-base)*0.6875)] px-1.5 py-0.5',
         style.pill
       )}
       aria-label={`Device compatibility: ${style.label}`}

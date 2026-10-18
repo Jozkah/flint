@@ -775,7 +775,7 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
                     <span className="flex min-w-0 flex-col">
                       <span>{item.title}</span>
                       {item.hint ? (
-                        <span className="text-[11px] font-normal text-muted-foreground">
+                        <span className="text-[length:calc(var(--ui-font-base)*0.6875)] font-normal text-muted-foreground">
                           {item.hint}
                         </span>
                       ) : null}
@@ -808,7 +808,7 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
       {(campaignGroups.length > 0 || sessions.length > 0) && (
         <li
           aria-hidden
-          className="mt-2 flex h-5 list-none items-center px-2.5 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase"
+          className="mt-2 flex h-5 list-none items-center px-2.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground uppercase"
         >
           {t('common:sessions')}
         </li>

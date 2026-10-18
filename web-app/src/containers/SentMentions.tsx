@@ -64,7 +64,7 @@ export function SentMentions({ mentions }: { mentions: MentionRecord[] }) {
               {m.titleAtSend}
             </span>
             {(m.summary || m.messages !== undefined) && (
-              <span className="shrink-0 text-[11px] text-muted-foreground">
+              <span className="shrink-0 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                 ·{' '}
                 {m.summary
                   ? t('common:mentions.summary')

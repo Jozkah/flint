@@ -1169,7 +1169,7 @@ function MCPServersDesktop() {
         <FrameHeader
           title={
             <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 truncate text-[13px] text-foreground">
+              <span className="min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.8125)] text-foreground">
                 {key}
               </span>
               <Chip mono className="h-5 uppercase">
@@ -1239,7 +1239,7 @@ function MCPServersDesktop() {
             avgLabel={t('engine:chart.avg')}
             format={(v) => (Number.isInteger(v) ? String(v) : v.toFixed(1))}
           />
-          <p className="m-0 line-clamp-2 min-h-[34px] font-mono text-[11.5px] leading-normal text-muted-foreground">
+          <p className="m-0 line-clamp-2 min-h-[34px] font-mono text-[length:calc(var(--ui-font-base)*0.71875)] leading-normal text-muted-foreground">
             {toolNames && toolNames.length > 0
               ? t('mcp-servers:connection.toolsAvailable', {
                   count: toolNames.length,
@@ -1253,7 +1253,7 @@ function MCPServersDesktop() {
             <p
               role="note"
               data-testid={`mcp-self-approval-${idSafe}`}
-              className="m-0 rounded-md bg-warning-tint px-2 py-1 text-[11.5px] leading-normal text-warning"
+              className="m-0 rounded-md bg-warning-tint px-2 py-1 text-[length:calc(var(--ui-font-base)*0.71875)] leading-normal text-warning"
             >
               {t('mcp-servers:selfApproval.note', {
                 names: selfApprovalToolsOf(toolNames).join(', '),
@@ -1496,12 +1496,12 @@ function MCPServersDesktop() {
         <span
           aria-hidden
           style={{ ['--c' as string]: color }}
-          className="grid size-[22px] shrink-0 place-items-center rounded-md bg-[color-mix(in_oklab,var(--c)_16%,transparent)] text-[11px] font-bold text-[var(--c)]"
+          className="grid size-[22px] shrink-0 place-items-center rounded-md bg-[color-mix(in_oklab,var(--c)_16%,transparent)] text-[length:calc(var(--ui-font-base)*0.6875)] font-bold text-[var(--c)]"
         >
           {key.trim().charAt(0).toUpperCase()}
         </span>
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="min-w-0 truncate text-[13px] text-foreground">
+          <span className="min-w-0 truncate text-[length:calc(var(--ui-font-base)*0.8125)] text-foreground">
             {key}
           </span>
           <Chip mono className="h-5 shrink-0 uppercase">
@@ -1802,11 +1802,11 @@ function MCPServersDesktop() {
                 type="button"
                 onClick={() => handleOpenDialog()}
                 style={{ animationDelay: `${60 + filtered.length * 50}ms` }}
-                className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong text-[13px] text-muted-foreground transition-colors hover:bg-hover-row hover:text-foreground motion-safe:animate-rise-in"
+                className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground transition-colors hover:bg-hover-row hover:text-foreground motion-safe:animate-rise-in"
               >
                 <Icon name="x-plus" />
                 {t('engine:mcp.addTile')}
-                <small className="text-[11.5px] text-muted-foreground">
+                <small className="text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
                   {t('engine:mcp.addTileHint')}
                 </small>
               </button>

@@ -360,7 +360,7 @@ function PaneTab({
         title={title}
         onClick={onSelect}
         className={cn(
-          'flex h-full min-w-0 flex-1 items-center gap-1.5 pr-1 pl-2.5 text-left text-[13px] outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring',
+          'flex h-full min-w-0 flex-1 items-center gap-1.5 pr-1 pl-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring',
           selected ? 'font-semibold' : 'font-medium'
         )}
       >
@@ -402,7 +402,7 @@ function PaneTab({
         {state === 'approval' && (
           <span
             aria-hidden
-            className="shrink-0 text-[11px] font-medium text-warning"
+            className="shrink-0 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-warning"
           >
             {t('chat:split.needsApprovalShort')}
           </span>
@@ -643,7 +643,7 @@ function PanePicker({
         type="button"
         onClick={() => choose(target)}
         data-testid={`split-pick-${target.refId}`}
-        className="flex h-[34px] w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-secondary-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring active:scale-[.965] pointer-coarse:h-11"
+        className="flex h-[34px] w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring active:scale-[.965] pointer-coarse:h-11"
       >
         {icon}
         <span className="min-w-0 truncate" title={title}>
@@ -674,7 +674,7 @@ function PanePicker({
           <h2 className="text-lg font-medium text-foreground">
             {t('chat:split.pickTitle')}
           </h2>
-          <p className="text-[13px] leading-normal text-muted-foreground">
+          <p className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-normal text-muted-foreground">
             {t('chat:split.pickDescription')}
           </p>
           <Button
@@ -685,7 +685,7 @@ function PanePicker({
             <Plus className="size-3.5" />
             {t('chat:split.newChat')}
           </Button>
-          <h3 className="mt-2 mb-0.5 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+          <h3 className="mt-2 mb-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
             {t('chat:split.recent')}
           </h3>
         </div>
@@ -709,7 +709,7 @@ function PanePicker({
         </div>
         {recentSessions.length > 0 && (
           <div className="mt-3 w-full">
-            <h3 className="mb-0.5 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+            <h3 className="mb-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
               {t('chat:split.recentCowork')}
             </h3>
             <ul className="flex flex-col">
@@ -726,7 +726,7 @@ function PanePicker({
         )}
         {recentRooms.length > 0 && (
           <div className="mt-3 w-full">
-            <h3 className="mb-0.5 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+            <h3 className="mb-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
               {t('chat:split.recentRooms')}
             </h3>
             <ul className="flex flex-col">

@@ -42,7 +42,7 @@ export function DetailsCard({
         <header className="flex min-w-0 items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-0.5">
             {title && (
-              <Heading className="text-[13px] leading-5 font-medium text-foreground">
+              <Heading className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-medium text-foreground">
                 {title}
               </Heading>
             )}

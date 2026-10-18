@@ -196,7 +196,7 @@ export function PrBar({
       data-testid="pr-bar"
       data-state={pr.state}
       className={cn(
-        'flex min-h-[38px] items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[0.78rem] shadow-[inset_0_0_0_.8px_var(--border)] motion-safe:animate-rise-in',
+        'flex min-h-[38px] items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[length:calc(var(--ui-font-base)*0.78)] shadow-[inset_0_0_0_.8px_var(--border)] motion-safe:animate-rise-in',
         pr.state === 'open' && 'shadow-[inset_0_0_0_.8px_color-mix(in_oklab,var(--success)_35%,var(--border))]',
         // Conflicts outrank an open PR's green edge: it cannot merge as is.
         pr.merge === 'conflicting' &&
@@ -233,7 +233,7 @@ export function PrBar({
       )}
       <span className="flex-1" />
       {pr.state === 'merged' ? (
-        <span className="text-[0.78rem] font-medium text-merged">{t('common:pr.merged')}</span>
+        <span className="text-[length:calc(var(--ui-font-base)*0.78)] font-medium text-merged">{t('common:pr.merged')}</span>
       ) : (
         <>
           {(pr.merge === 'conflicting' || pr.merge === 'behind') && (
@@ -304,17 +304,17 @@ export function PrBar({
                   : t('common:pr.checks')}
               </DropdownMenuLabel>
               {pr.checks.passed > 0 && (
-                <div className="flex items-center gap-2.5 px-2 py-1.5 text-[0.78rem]">
+                <div className="flex items-center gap-2.5 px-2 py-1.5 text-[length:calc(var(--ui-font-base)*0.78)]">
                   <i className="size-2 rounded-full bg-success" /> {t('common:pr.passed', { count: pr.checks.passed })}
                 </div>
               )}
               {pr.checks.failed > 0 && (
-                <div className="flex items-center gap-2.5 px-2 py-1.5 text-[0.78rem]">
+                <div className="flex items-center gap-2.5 px-2 py-1.5 text-[length:calc(var(--ui-font-base)*0.78)]">
                   <i className="size-2 rounded-full bg-destructive" /> {t('common:pr.failed', { count: pr.checks.failed })}
                 </div>
               )}
               {pr.checks.pending > 0 && (
-                <div className="flex items-center gap-2.5 px-2 py-1.5 text-[0.78rem]">
+                <div className="flex items-center gap-2.5 px-2 py-1.5 text-[length:calc(var(--ui-font-base)*0.78)]">
                   <i className="size-2 rounded-full bg-warning" /> {t('common:pr.pending', { count: pr.checks.pending })}
                 </div>
               )}
@@ -326,7 +326,7 @@ export function PrBar({
                     key={`${check.name}-${i}`}
                     data-testid="pr-check"
                     data-verdict={check.verdict}
-                    className="flex flex-col gap-0.5 px-2 py-1 text-[0.78rem]"
+                    className="flex flex-col gap-0.5 px-2 py-1 text-[length:calc(var(--ui-font-base)*0.78)]"
                   >
                     <div className="flex min-w-0 items-center gap-2.5">
                       <i className={cn('size-2 shrink-0 rounded-full', VERDICT_DOT[check.verdict])} />

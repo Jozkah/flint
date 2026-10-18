@@ -479,7 +479,7 @@ export default function SkillsManagerDialog({
             <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2">
               {hubMode ? (
                 <>
-                  <div className="text-[13px] font-semibold text-foreground">
+                  <div className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
                     {t('common:skillHubTitle')}
                   </div>
                   {importError && (

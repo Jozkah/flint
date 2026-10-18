@@ -120,7 +120,7 @@ export function LinesView({
           {cut || (isOpen && lines[i].length > LINE_CAP) ? (
             <button
               type="button"
-              className="ms-2 rounded px-1 text-[11px] text-primary underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+              className="ms-2 rounded px-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-primary underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               onClick={() =>
                 setExpanded((s) => {
                   const n = new Set(s)
@@ -143,7 +143,7 @@ export function LinesView({
       data-testid="viewer-scroll"
       tabIndex={0}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-      className="relative min-h-0 flex-1 overflow-auto rounded-md border border-border bg-popover font-mono text-[12px] leading-[18px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+      className="relative min-h-0 flex-1 overflow-auto rounded-md border border-border bg-popover font-mono text-[length:calc(var(--ui-font-base)*0.75)] leading-[calc(var(--ui-font-base)*1.125)] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
     >
       <span ref={probe} aria-hidden className="invisible absolute whitespace-pre">
         {'0'.repeat(100)}
@@ -288,7 +288,7 @@ export function FileViewerDialog({
       >
         <div className="min-w-0 pe-10">
           <DialogTitle className="truncate text-sm font-medium">{title}</DialogTitle>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
             {[ext.toUpperCase(), meta].filter(Boolean).join(' · ')}
             {r && status === 'ready' ? (
               <> · {t('common:fileViewer.lines', { count: lines.length })}</>
@@ -315,7 +315,7 @@ export function FileViewerDialog({
               {copied ? t('common:fileViewer.copied') : t('common:fileViewer.copy')}
             </Button>
             {specRef.current.truncated ? (
-              <span data-testid="viewer-truncated" className="text-[11px] text-muted-foreground">
+              <span data-testid="viewer-truncated" className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                 {t('common:fileViewer.truncatedOnAdd', {
                   shown: fmt(specRef.current.truncated.shown),
                   total: fmt(specRef.current.truncated.total),
@@ -325,7 +325,7 @@ export function FileViewerDialog({
             {r && !r.done ? (
               <span
                 data-testid="viewer-partial"
-                className="text-[11px] text-muted-foreground"
+                className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
               >
                 {t('common:fileViewer.showingFirst', {
                   loaded: fmt(r.loaded),

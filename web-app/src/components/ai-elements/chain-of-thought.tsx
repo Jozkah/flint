@@ -233,7 +233,7 @@ export const ChainOfThoughtHeader = memo(
         : t(keys.withDuration, { duration: formatCompactDuration(duration, t) })
 
     const rowClassName = cn(
-      '-mx-1 flex min-h-7 w-fit max-w-full min-w-0 items-center gap-2 rounded-md px-1 text-left text-[12.5px] text-muted-foreground transition-colors outline-hidden hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11 [&>svg]:shrink-0',
+      '-mx-1 flex min-h-7 w-fit max-w-full min-w-0 items-center gap-2 rounded-md px-1 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-muted-foreground transition-colors outline-hidden hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11 [&>svg]:shrink-0',
       className
     )
 

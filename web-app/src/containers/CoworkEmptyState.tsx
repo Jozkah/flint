@@ -53,10 +53,10 @@ export function CoworkEmptyState({
     <div className="absolute inset-0 flex overflow-y-auto px-[18px]">
       <div className="m-auto flex w-full max-w-[520px] flex-col items-center gap-2.5 py-10 text-center motion-safe:animate-rise-in">
         <Handshake className="size-9 text-muted-foreground" aria-hidden />
-        <h1 className="text-[22px] font-medium tracking-[-0.01em] text-foreground">
+        <h1 className="text-[length:calc(var(--ui-font-base)*1.375)] font-medium tracking-[-0.01em] text-foreground">
           {t('common:coworkEmpty.title')}
         </h1>
-        <p className="mb-2.5 text-[13.5px] leading-normal text-muted-foreground">
+        <p className="mb-2.5 text-[length:calc(var(--ui-font-base)*0.84375)] leading-normal text-muted-foreground">
           {name
             ? t(SUBTITLE_FOLDER[access], { folder: name })
             : t('common:coworkEmpty.subtitleSandbox')}
@@ -65,7 +65,7 @@ export function CoworkEmptyState({
         {isVault && (
           <p
             data-testid="obsidian-vault-badge"
-            className="mb-1 rounded-full border-[0.8px] border-border bg-card px-2.5 py-0.5 text-[11.5px] text-secondary-foreground"
+            className="mb-1 rounded-full border-[0.8px] border-border bg-card px-2.5 py-0.5 text-[length:calc(var(--ui-font-base)*0.71875)] text-secondary-foreground"
             title={t('common:coworkEmpty.vault.hint')}
           >
             {t('common:coworkEmpty.vault.badge')}
@@ -85,7 +85,7 @@ export function CoworkEmptyState({
           </Button>
         )}
 
-        <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+        <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
           {t('common:coworkEmpty.try')}
         </p>
         <div className="flex w-full flex-col gap-2">
@@ -98,7 +98,7 @@ export function CoworkEmptyState({
                 key={key}
                 type="button"
                 onClick={() => onPick(text)}
-                className="w-full rounded-[10px] border-[0.8px] border-border bg-card px-3.5 py-2.5 text-left text-[13px] text-secondary-foreground outline-none transition-[box-shadow,color,transform] duration-150 ease-expo hover:-translate-y-px hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+                className="w-full rounded-[10px] border-[0.8px] border-border bg-card px-3.5 py-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground outline-none transition-[box-shadow,color,transform] duration-150 ease-expo hover:-translate-y-px hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
               >
                 {text}
               </button>

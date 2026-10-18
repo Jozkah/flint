@@ -220,7 +220,7 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
           </div>
         )}
         <div
-          className="relative text-[13.5px] leading-normal text-foreground [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-code-bg [&_code]:px-1 [&_h2]:text-lg [&_h2]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-code-bg [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
+          className="relative text-[length:calc(var(--ui-font-base)*0.84375)] leading-normal text-foreground [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-code-bg [&_code]:px-1 [&_h2]:text-lg [&_h2]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-code-bg [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
           onPasteCapture={onPaste}
           onKeyDownCapture={onKeyDownCapture}
         >

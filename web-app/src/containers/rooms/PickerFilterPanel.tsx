@@ -40,7 +40,7 @@ export function PickerFilterButton({
       {count > 0 && (
         <span
           data-testid="picker-filter-badge"
-          className="absolute -top-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-primary text-[9px] font-semibold leading-none text-primary-foreground"
+          className="absolute -top-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-primary text-[length:calc(var(--ui-font-base)*0.5625)] font-semibold leading-none text-primary-foreground"
         >
           {count}
         </span>
@@ -78,7 +78,7 @@ function Chip({
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      <span className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground">{label}</span>
       <div className="flex flex-wrap gap-1">{children}</div>
     </div>
   )

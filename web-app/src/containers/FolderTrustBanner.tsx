@@ -29,7 +29,7 @@ export function FolderTrustBanner({ folder }: { folder: string | null }) {
       role="region"
       aria-label={t('permissions:folderTrust.title')}
       data-testid="folder-trust-banner"
-      className="mb-1.5 flex w-full min-w-0 flex-col gap-2 rounded-xl border border-warning/40 bg-card p-3 text-[13px] sm:p-3.5"
+      className="mb-1.5 flex w-full min-w-0 flex-col gap-2 rounded-xl border border-warning/40 bg-card p-3 text-[length:calc(var(--ui-font-base)*0.8125)] sm:p-3.5"
     >
       <div className="flex min-w-0 items-center gap-2 font-medium text-foreground">
         <ShieldQuestionIcon aria-hidden className="size-4 shrink-0 text-warning" />

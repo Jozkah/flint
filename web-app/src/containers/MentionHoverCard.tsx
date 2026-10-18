@@ -44,7 +44,7 @@ export function MentionHoverCard({
         </span>
         <div className="min-w-0">
           <div className="truncate text-xs font-semibold">{title}</div>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
             {t(`common:mentions.kind.${kind}`)}
             {ok && (
               <>
@@ -71,7 +71,7 @@ export function MentionHoverCard({
       {preview && !ok && (
         <p
           className={cn(
-            'mt-2 text-[11px]',
+            'mt-2 text-[length:calc(var(--ui-font-base)*0.6875)]',
             preview.status === 'missing' ? 'text-destructive' : 'text-warning'
           )}
         >
@@ -84,12 +84,12 @@ export function MentionHoverCard({
       {ok && (
         <ul className="m-0 mt-2.5 list-none space-y-1.5 border-t border-border p-0 pt-2.5">
           {(preview.recent ?? []).length === 0 && (
-            <li className="text-[11px] text-muted-foreground">
+            <li className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
               {t('common:mentions.preview.empty')}
             </li>
           )}
           {(preview.recent ?? []).map((m, i) => (
-            <li key={i} className="line-clamp-2 text-[11px] leading-snug">
+            <li key={i} className="line-clamp-2 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug">
               <span className="font-medium text-muted-foreground">
                 {m.speaker ??
                   t(`common:mentions.preview.${m.role === 'user' ? 'you' : 'assistant'}`)}

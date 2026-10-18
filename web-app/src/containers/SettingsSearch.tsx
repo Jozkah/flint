@@ -315,7 +315,7 @@ export function SettingsSearch() {
             <span className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground">
               <SearchX size={16} aria-hidden />
             </span>
-            <p className="text-[13px] font-medium text-foreground">
+            <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
               {t('common:settingsSearch.empty')}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -330,7 +330,7 @@ export function SettingsSearch() {
               aria-label={section}
               className="border-t border-border/70 pt-1 first:border-t-0 first:pt-0"
             >
-              <p className="sticky top-0 z-10 bg-popover px-2.5 pt-1.5 pb-1 text-[11px] font-medium tracking-[.02em] text-subtle-foreground uppercase">
+              <p className="sticky top-0 z-10 bg-popover px-2.5 pt-1.5 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.02em] text-subtle-foreground uppercase">
                 {section}
               </p>
               {items.map((entry, j) => {
@@ -354,7 +354,7 @@ export function SettingsSearch() {
                   >
                     <div className="min-w-0 flex-1">
                       {trail.length > 0 && (
-                        <p className="mb-0.5 flex items-center gap-0.5 text-[11px] text-subtle-foreground">
+                        <p className="mb-0.5 flex items-center gap-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground">
                           {trail.map((crumb, k) => (
                             <Fragment key={k}>
                               {k > 0 && (
@@ -369,7 +369,7 @@ export function SettingsSearch() {
                           ))}
                         </p>
                       )}
-                      <span className="block text-[13px] leading-snug font-medium text-foreground">
+                      <span className="block text-[length:calc(var(--ui-font-base)*0.8125)] leading-snug font-medium text-foreground">
                         {highlightMatches(entry.title, query)}
                       </span>
                       {entry.description && (

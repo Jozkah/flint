@@ -56,7 +56,7 @@ export function SlashCommandMenu({
     >
       <div className="mb-1 border-b border-border/50 px-2 py-1.5 text-xs text-muted-foreground">
         {help ? t('slash:menu.helpTitle') : t('slash:menu.title')}
-        <span className="block text-[10px] opacity-60">{t('slash:menu.keys')}</span>
+        <span className="block text-[length:calc(var(--ui-font-base)*0.625)] opacity-60">{t('slash:menu.keys')}</span>
       </div>
       {items.length === 0 ? (
         <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('slash:menu.empty')}</p>
@@ -106,7 +106,7 @@ export function SlashCommandMenu({
                     </div>
                   )}
                 </div>
-                <span className="shrink-0 text-[10px] text-muted-foreground">
+                <span className="shrink-0 text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground">
                   {item.plugin && item.source === 'plugin'
                     ? t('slash:source.pluginNamed', { plugin: item.plugin })
                     : t(`slash:source.${item.source}`)}

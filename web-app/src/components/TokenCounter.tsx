@@ -390,7 +390,7 @@ export const TokenCounter = memo(function TokenCounter({
               {tier !== 'ok' && (
                 <p
                   data-testid="context-pressure-detail"
-                  className={cn('px-4 pt-3 text-[11px] leading-snug', textCls)}
+                  className={cn('px-4 pt-3 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug', textCls)}
                 >
                   {tier === 'over'
                     ? t('common:usage.counter.over')
@@ -409,7 +409,7 @@ export const TokenCounter = memo(function TokenCounter({
               {fixedTokens > 0 && (
                 <p
                   data-testid="context-fixed-prompt"
-                  className="px-4 pb-3 text-[11px] leading-snug text-muted-foreground"
+                  className="px-4 pb-3 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-muted-foreground"
                 >
                   {t('common:usage.counter.fixedPrompt', { count: formatExact(fixedTokens) })}
                 </p>
@@ -425,7 +425,7 @@ export const TokenCounter = memo(function TokenCounter({
                 {t('common:usage.counter.contextWindow')}
               </div>
               {modelDisplayName && (
-                <div className="text-[11px] text-muted-foreground truncate">
+                <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground truncate">
                   {modelDisplayName}
                 </div>
               )}
@@ -443,7 +443,7 @@ export const TokenCounter = memo(function TokenCounter({
             {tier !== 'ok' && (
               <p
                 data-testid="context-pressure-detail"
-                className={cn('mb-2 text-[11px] leading-snug', textCls)}
+                className={cn('mb-2 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug', textCls)}
               >
                 {tier === 'over'
                   ? t('common:usage.counter.over')
@@ -489,7 +489,7 @@ export const TokenCounter = memo(function TokenCounter({
               />
             </div>
             {tokenData.isOverflow && (
-              <div className="mt-1.5 text-[11px] text-destructive leading-snug">
+              <div className="mt-1.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-destructive leading-snug">
                 {t('model-errors:lastRequestOverflowed')}
               </div>
             )}
@@ -509,7 +509,7 @@ export const TokenCounter = memo(function TokenCounter({
 
           {/* Footer: fit + slots + modalities */}
           {showFooter && (
-            <div className="px-4 py-3 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <div className="px-4 py-3 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
               {showFittedBadge && (
                 <span
                   className="flex items-center gap-1"
@@ -617,7 +617,7 @@ function TokenCountOnly({
                 {t('common:usage.counter.tokenUsage')}
               </div>
               {modelDisplayName && (
-                <div className="text-[11px] text-muted-foreground truncate">
+                <div className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground truncate">
                   {modelDisplayName}
                 </div>
               )}

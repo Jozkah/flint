@@ -43,7 +43,7 @@ export function CoworkPlanStrip({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[12.5px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:h-11"
+        className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[length:calc(var(--ui-font-base)*0.78125)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:h-11"
       >
         <span className="font-semibold text-foreground">
           {t('common:todoPanelTitle')}
@@ -98,7 +98,7 @@ export function PlanSteps({
           data-status={task.status}
           aria-current={task.status === 'in_progress' ? 'step' : undefined}
           className={cn(
-            'flex min-h-7 items-center gap-2.5 text-[12.5px]',
+            'flex min-h-7 items-center gap-2.5 text-[length:calc(var(--ui-font-base)*0.78125)]',
             task.status === 'in_progress' &&
               '-ml-3 pl-3 font-semibold text-foreground shadow-[inset_2px_0_0_#fb923c]',
             task.status === 'pending' && 'text-fg-2',

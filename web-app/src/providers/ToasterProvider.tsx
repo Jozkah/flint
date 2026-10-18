@@ -94,7 +94,7 @@ export function ToasterProvider() {
         // never the accent: an error must not look like a selection.
         classNames: {
           toast: 'toast select-none rounded-lg! shadow-pop! font-sans!',
-          title: 'text-[13px]! leading-snug! text-foreground! font-medium! select-none',
+          title: 'text-[length:calc(var(--ui-font-base)*0.8125)]! leading-snug! text-foreground! font-medium! select-none',
           description: 'text-xs! leading-relaxed! text-fg-2! select-none',
           closeButton:
             'bg-card! border-border! text-muted-foreground! hover:text-foreground!',

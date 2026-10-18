@@ -750,7 +750,7 @@ export function WhatJanIsUsingPanel({
         data-state={item.state}
       >
         <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="text-[12.5px] leading-5 break-words text-foreground">
+          <p className="text-[length:calc(var(--ui-font-base)*0.78125)] leading-5 break-words text-foreground">
             {title}
           </p>
           {meta.length > 0 && (
@@ -811,7 +811,7 @@ export function WhatJanIsUsingPanel({
     >
       <h3
         id={`${tabsId}-context-${section.id}`}
-        className="text-[13px] leading-5 font-medium text-foreground"
+        className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-5 font-medium text-foreground"
       >
         {t(`context:section.${section.id}`)}
       </h3>
@@ -916,7 +916,7 @@ export function WhatJanIsUsingPanel({
           document.getElementById(`${tabsId}-tab-${next}`)?.focus()
         }}
         className={cn(
-          'relative flex h-10 items-center gap-1.5 px-2.5 text-[12.5px] font-medium whitespace-nowrap transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11',
+          'relative flex h-10 items-center gap-1.5 px-2.5 text-[length:calc(var(--ui-font-base)*0.78125)] font-medium whitespace-nowrap transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11',
           selected
             ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-t-full after:bg-primary'
             : 'text-muted-foreground hover:text-foreground'

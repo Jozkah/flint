@@ -282,7 +282,7 @@ export function TaskRow({
       {reason ? (
         <pre
           data-testid={`campaign-error-${task.id}`}
-          className="max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap"
+          className="max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug whitespace-pre-wrap"
         >
           {reason}
         </pre>
@@ -301,7 +301,7 @@ export function TaskRow({
           {conflictFiles.length > 0 && (
             <ul
               aria-label={t('settings:campaigns.board.conflict.files')}
-              className="flex max-h-28 flex-col gap-0.5 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px]"
+              className="flex max-h-28 flex-col gap-0.5 overflow-auto rounded-md bg-muted p-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)]"
               data-testid={`campaign-conflict-files-${task.id}`}
             >
               {conflictFiles.map((f) => (
@@ -725,7 +725,7 @@ export function TaskRow({
           {check && check.passed === false && check.tail ? (
             <pre
               data-testid={`campaign-check-tail-${task.id}`}
-              className="max-h-32 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap"
+              className="max-h-32 overflow-auto rounded-md bg-muted p-2 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] whitespace-pre-wrap"
             >
               {t('settings:campaigns.board.verify.testsFailedTail', {
                 tail: check.tail,

@@ -134,7 +134,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
           <>
             <span
               data-testid="queued-held"
-              className="text-[11px] text-muted-foreground"
+              className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
               title={t('common:queue.heldHint')}
             >
               {t('common:queue.held')}
@@ -143,7 +143,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
               <button
                 type="button"
                 data-testid="queued-send"
-                className="shrink-0 rounded-md px-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                className="shrink-0 rounded-md px-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
                 onClick={() => onRelease(message.id)}
               >
                 {t('common:steering.send')}
@@ -156,7 +156,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
           <span className="group/steer relative flex shrink-0 items-center">
             <span
               data-testid="queued-steering"
-              className="text-[11px] text-muted-foreground group-hover/steer:invisible group-focus-within/steer:invisible"
+              className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground group-hover/steer:invisible group-focus-within/steer:invisible"
               title={t('common:queue.steeringHint')}
             >
               {t('common:queue.steering')}
@@ -166,7 +166,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
                 type="button"
                 data-testid="queued-steer-now"
                 title={t('common:queue.steerNowHint')}
-                className="absolute inset-0 hidden items-center justify-center whitespace-nowrap rounded-md bg-accent text-[11px] font-medium text-foreground group-hover/steer:flex focus-visible:flex focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                className="absolute inset-0 hidden items-center justify-center whitespace-nowrap rounded-md bg-accent text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-foreground group-hover/steer:flex focus-visible:flex focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
                 onClick={() => onSteerNow(message.id)}
               >
                 {t('common:queue.steer')}
@@ -179,7 +179,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
               type="button"
               data-testid="queued-steer"
               title={t('common:queue.steerHint')}
-              className="shrink-0 rounded-md px-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+              className="shrink-0 rounded-md px-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               onClick={() => onSteer(message.id)}
             >
               {t('common:queue.steer')}

@@ -119,7 +119,7 @@ export function CoworkTurnUndo({
       aria-label={t('common:turnUndo.title')}
       data-testid="turn-undo"
     >
-      <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+      <p className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
         {t('common:turnUndo.title')}
       </p>
       {/* The recovery boundary, stated before the buttons rather than learned

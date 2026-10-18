@@ -75,7 +75,7 @@ export const CitationLink = memo(
                 #{citation.chunk_file_order}
               </span>
             )}
-            <span className="ml-auto rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            <span className="ml-auto rounded bg-muted px-1.5 py-0.5 font-mono text-[length:calc(var(--ui-font-base)*0.625)] text-muted-foreground">
               {typeof citation.score === 'number' ? citation.score.toFixed(2) : ''}
             </span>
           </div>

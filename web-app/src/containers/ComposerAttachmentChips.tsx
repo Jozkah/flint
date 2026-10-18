@@ -83,7 +83,7 @@ export function ComposerAttachmentChips({
             >
               {truncateMiddle(label)}
             </span>
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground tabular-nums">
+            <span className="flex items-center gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
               {warn ? (
                 <span
                   className="flex items-center gap-1 text-warning"

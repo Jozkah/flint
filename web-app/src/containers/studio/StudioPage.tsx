@@ -254,7 +254,7 @@ function EnginePicker({
   )
   const providers = [...new Set(hostedShown.map((m) => m.providerId))]
   const heading =
-    'px-2 pt-2.5 pb-1 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase'
+    'px-2 pt-2.5 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-wide text-subtle-foreground uppercase'
   const row = (selected: boolean) =>
     cn(
       'flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
@@ -281,7 +281,7 @@ function EnginePicker({
           className="-ml-1 flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
         >
           <ModelAvatar modelId={modelId} name={label} provider={providerId} />
-          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
+          <span className="min-w-0 flex-1 truncate text-[length:calc(var(--ui-font-base)*0.9375)] font-semibold text-foreground">
             {label}
           </span>
           <ChevronsUpDown className="size-[13px] shrink-0 text-muted-foreground" aria-hidden />
@@ -300,7 +300,7 @@ function EnginePicker({
               placeholder={t('studio:picker.searchPlaceholder')}
               aria-label={t('studio:picker.searchAria')}
               autoFocus
-              className="min-w-0 flex-1 bg-transparent text-base font-normal text-foreground outline-0 placeholder:text-muted-foreground md:text-[13px]"
+              className="min-w-0 flex-1 bg-transparent text-base font-normal text-foreground outline-0 placeholder:text-muted-foreground md:text-[length:calc(var(--ui-font-base)*0.8125)]"
             />
             {search && (
               <button
@@ -328,7 +328,7 @@ function EnginePicker({
                     onClick={() => pick(() => onLocal(m.id))}
                   >
                     <ModelAvatar modelId={m.id} name={m.name} />
-                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                    <span className="min-w-0 flex-1 truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                       {m.name}
                     </span>
                     {value === `local:${m.id}` && <Check className="size-3.5 text-muted-foreground" aria-hidden />}
@@ -345,7 +345,7 @@ function EnginePicker({
                       <ProvidersAvatar provider={{ provider: id } as ProviderObject} />
                     </span>
                     <span className="font-semibold text-foreground">{models[0].provider}</span>
-                    <span className="text-[11px] text-subtle-foreground">· {t('studio:picker.leaves')}</span>
+                    <span className="text-[length:calc(var(--ui-font-base)*0.6875)] text-subtle-foreground">· {t('studio:picker.leaves')}</span>
                   </div>
                   {models.map((m) => (
                     <button
@@ -355,7 +355,7 @@ function EnginePicker({
                       onClick={() => pick(() => onHosted(m.key))}
                     >
                       <ModelAvatar modelId={m.name} name={m.name} provider={m.providerId} />
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                      <span className="min-w-0 flex-1 truncate text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                         {m.name}
                       </span>
                       {value === `cloud:${m.key}` && <Check className="size-3.5 text-muted-foreground" aria-hidden />}
@@ -372,7 +372,7 @@ function EnginePicker({
               onClick={() => pick(() => navigate({ to: route.hub.index }))}
             >
               <Search className="size-3.5 text-muted-foreground" aria-hidden />
-              <span className="text-[13px] text-secondary-foreground">{t('studio:picker.findMore')}</span>
+              <span className="text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground">{t('studio:picker.findMore')}</span>
             </button>
             <button
               type="button"
@@ -380,7 +380,7 @@ function EnginePicker({
               onClick={() => pick(() => navigate({ to: route.settings.model_providers }))}
             >
               <Settings className="size-3.5 text-muted-foreground" aria-hidden />
-              <span className="text-[13px] text-secondary-foreground">
+              <span className="text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground">
                 {hosted.length ? t('studio:picker.manageHosted') : t('studio:picker.addKey')}
               </span>
             </button>
@@ -419,7 +419,7 @@ function EngineSetup() {
       <Frame className="motion-safe:animate-rise-in">
         <FrameHeader title={t('studio:setup.unavailableTitle')} />
         <FrameBody className="p-3.5">
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
             {t('studio:setup.unavailableBody')}
           </p>
         </FrameBody>
@@ -434,7 +434,7 @@ function EngineSetup() {
     <Frame className="motion-safe:animate-rise-in">
       <FrameHeader title={t('studio:setup.title')} />
       <FrameBody className="gap-3 p-3.5">
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
           {t('studio:setup.body')}
         </p>
         <div className="grid gap-2 sm:grid-cols-3">
@@ -445,7 +445,7 @@ function EngineSetup() {
               disabled={!!installing}
               aria-pressed={build === b.id}
               onClick={() => setBuild(b.id)}
-              className="rounded-lg border-[0.8px] border-border p-3 text-left text-[13px] transition-colors duration-150 hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden aria-pressed:border-input aria-pressed:bg-accent disabled:opacity-50"
+              className="rounded-lg border-[0.8px] border-border p-3 text-left text-[length:calc(var(--ui-font-base)*0.8125)] transition-colors duration-150 hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden aria-pressed:border-input aria-pressed:bg-accent disabled:opacity-50"
             >
               <div className="font-medium text-foreground">{t(`studio:builds.${b.label}`)}</div>
               <div className="mt-1 text-xs text-muted-foreground">{t(`studio:builds.note.${b.id}`)}</div>
@@ -907,7 +907,7 @@ function SettingsPanel({
       : null
   const negativeShown = negativeOn || form.negative !== ''
 
-  const label = 'text-[13px] font-medium text-secondary-foreground'
+  const label = 'text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-secondary-foreground'
   const tile = (pressed: boolean) =>
     cn(
       'flex h-10 items-center justify-center gap-2 rounded-lg border-[0.8px] text-xs font-medium transition-colors duration-150 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 pointer-coarse:h-12',
@@ -1048,7 +1048,7 @@ function SettingsPanel({
               type="button"
               aria-expanded={advanced}
               onClick={() => setAdvanced((v) => !v)}
-              className="flex items-center justify-between rounded-md text-[13px] font-medium text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden"
+              className="flex items-center justify-between rounded-md text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden"
             >
               {t('studio:settings.advanced')}
               <ChevronRight
@@ -1095,7 +1095,7 @@ function SettingsPanel({
                     )
                   })}
                 </div>
-                <label className="flex items-center gap-2.5 text-[13px] text-secondary-foreground">
+                <label className="flex items-center gap-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground">
                   <Switch
                     checked={negativeShown}
                     disabled={running}
@@ -1518,7 +1518,7 @@ function PromptPanel({
         >
           <Sparkles className="size-4" aria-hidden />
           {ready ? (kind === 'video' ? t('studio:prompt.generateVideo') : t('studio:prompt.generateImage')) : t('studio:prompt.loadFirst')}
-          <span className="absolute right-3 hidden items-center gap-1 rounded-md bg-white/20 px-2 py-1 text-[11px] font-medium sm:inline-flex">
+          <span className="absolute right-3 hidden items-center gap-1 rounded-md bg-white/20 px-2 py-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium sm:inline-flex">
             {mac ? '⌘' : 'Ctrl'} <CornerDownLeft className="size-3" aria-hidden />
           </span>
         </button>
@@ -1533,7 +1533,7 @@ function PromptPanel({
           <ul className="flex flex-col gap-3">
             {GUIDE.map((id) => (
               <li key={id} className="flex flex-col gap-0.5">
-                <span className="text-[13px] font-medium text-foreground">{t(`studio:prompt.${id}.title`)}</span>
+                <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">{t(`studio:prompt.${id}.title`)}</span>
                 <span className="text-xs leading-snug text-muted-foreground">{t(`studio:prompt.${id}.body`)}</span>
               </li>
             ))}
@@ -1605,7 +1605,7 @@ function ActivityPanel({
                     {job.remote ? <Elapsed since={job.startedAt} /> : null}
                   </span>
                 </div>
-                <p className="line-clamp-2 text-[12.5px] text-foreground">{jobPrompt}</p>
+                <p className="line-clamp-2 text-[length:calc(var(--ui-font-base)*0.78125)] text-foreground">{jobPrompt}</p>
                 <Progress
                   value={job.remote ? 100 : percent}
                   className={cn(job.remote && 'motion-safe:animate-pulse')}
@@ -1629,7 +1629,7 @@ function ActivityPanel({
                     <Thumb item={item} />
                   </span>
                   <span className="flex min-w-0 flex-col gap-1">
-                    <span className="line-clamp-2 text-[13px] leading-snug text-foreground">
+                    <span className="line-clamp-2 text-[length:calc(var(--ui-font-base)*0.8125)] leading-snug text-foreground">
                       {item.recipe.prompt}
                     </span>
                     <span className="text-xs text-muted-foreground">
@@ -1671,7 +1671,7 @@ function ActivityPanel({
                   </Chip>
                   <span className="text-xs text-muted-foreground">{timeAgo(entry.at, t, i18n.language)}</span>
                 </div>
-                <p className="line-clamp-2 text-[12.5px] text-foreground">{entry.prompt}</p>
+                <p className="line-clamp-2 text-[length:calc(var(--ui-font-base)*0.78125)] text-foreground">{entry.prompt}</p>
                 {entry.error && (
                   <p className="line-clamp-3 text-xs break-words text-muted-foreground">
                     {entry.error}
@@ -1793,7 +1793,7 @@ function GenerationsPanel({
           ))}
         </div>
         {items.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
             {t('studio:gens.empty')}
           </p>
         ) : layout === 'grid' ? (
@@ -1839,9 +1839,9 @@ function GenerationsPanel({
                   )}
                   {!selecting && (
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/75 to-transparent p-2 pt-10 text-white opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
-                      <p className="line-clamp-2 text-[11px] leading-snug">{item.recipe.prompt}</p>
+                      <p className="line-clamp-2 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug">{item.recipe.prompt}</p>
                       <div className="flex items-center justify-between gap-1">
-                        <span className="truncate text-[10px] opacity-80 tabular-nums">
+                        <span className="truncate text-[length:calc(var(--ui-font-base)*0.625)] opacity-80 tabular-nums">
                           {timeAgo(item.recipe.createdAtMs, t, i18n.language)}
                         </span>
                         <span className="pointer-events-auto flex shrink-0 gap-1">
@@ -1893,7 +1893,7 @@ function GenerationsPanel({
                       <Thumb item={item} />
                     </span>
                     <span className="flex min-w-0 flex-col gap-0.5">
-                      <span className="truncate text-[13px] text-foreground">{item.recipe.prompt}</span>
+                      <span className="truncate text-[length:calc(var(--ui-font-base)*0.8125)] text-foreground">{item.recipe.prompt}</span>
                       <span className="truncate text-xs text-muted-foreground tabular-nums">
                         {item.recipe.modelName} · {item.recipe.width} × {item.recipe.height} ·{' '}
                         {timeAgo(item.recipe.createdAtMs, t, i18n.language)}
@@ -2058,7 +2058,7 @@ export function StudioPage() {
       {error && (
         <div
           role="alert"
-          className="flex items-start justify-between gap-3 rounded-lg border-[0.8px] border-destructive/30 bg-destructive/5 p-3 text-[13px] motion-safe:animate-rise-in"
+          className="flex items-start justify-between gap-3 rounded-lg border-[0.8px] border-destructive/30 bg-destructive/5 p-3 text-[length:calc(var(--ui-font-base)*0.8125)] motion-safe:animate-rise-in"
         >
           <span className="min-w-0 break-words">{error}</span>
           <button
@@ -2072,7 +2072,7 @@ export function StudioPage() {
         </div>
       )}
       {!status ? (
-        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
           <Loader className="size-4 animate-spin" /> {t('studio:page.loading')}
         </div>
       ) : (

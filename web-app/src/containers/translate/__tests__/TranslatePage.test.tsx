@@ -178,6 +178,10 @@ describe('TranslatePage', () => {
     await waitFor(() =>
       expect(screen.getByTestId('translate-output')).toHaveValue('Hello')
     )
+    // The swap is off while the language is still being detected: wait for it.
+    await waitFor(() =>
+      expect(screen.getByTestId('translate-swap')).not.toHaveAttribute('aria-disabled', 'true')
+    )
     fireEvent.click(screen.getByTestId('translate-swap'))
     expect(screen.getByTestId('translate-source')).toHaveValue('English')
     expect(screen.getByTestId('translate-target')).toHaveValue('Spanish')

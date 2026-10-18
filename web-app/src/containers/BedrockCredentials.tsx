@@ -28,7 +28,7 @@ export function BedrockCredentials() {
     // desktop app; the browser client of `flint serve` has neither.
     return (
       <div className="space-y-1" data-testid="bedrock-desktop-only">
-        <h3 className="text-[13px] font-medium text-foreground">
+        <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
           {t('providers:bedrock.title')}
         </h3>
         <p className="text-xs leading-normal text-muted-foreground">
@@ -77,7 +77,7 @@ function BedrockCredentialsForm() {
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <h3 className="text-[13px] font-medium text-foreground">
+        <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
           {t('providers:bedrock.title')}
         </h3>
         <p className="text-xs leading-normal text-muted-foreground">

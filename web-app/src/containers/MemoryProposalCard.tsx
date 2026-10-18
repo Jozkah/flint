@@ -95,14 +95,14 @@ export function MemoryProposalCard({
   if (variant === 'settings')
     return (
       <div
-        className="flex flex-col gap-2.5 rounded-xl border border-dashed border-border-strong bg-hover-row px-3.5 py-3 text-[13px]"
+        className="flex flex-col gap-2.5 rounded-xl border border-dashed border-border-strong bg-hover-row px-3.5 py-3 text-[length:calc(var(--ui-font-base)*0.8125)]"
         data-testid="memory-proposal-card"
         data-proposal-id={proposal.id}
         data-reason={proposal.reason}
       >
         <div className="min-w-0">
           <p
-            className="text-[12.5px] leading-normal text-muted-foreground"
+            className="text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground"
             data-testid="memory-proposal-content"
           >
             “{proposal.content}”
@@ -157,7 +157,7 @@ export function MemoryProposalCard({
     // A question in the flow of the conversation, not a card among cards: a
     // dashed outline on the row tint.
     <div
-      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border-strong bg-hover-row px-3.5 py-3 text-[13px] motion-safe:animate-rise-in"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border-strong bg-hover-row px-3.5 py-3 text-[length:calc(var(--ui-font-base)*0.8125)] motion-safe:animate-rise-in"
       data-testid="memory-proposal-card"
       data-proposal-id={proposal.id}
       data-reason={proposal.reason}
@@ -166,7 +166,7 @@ export function MemoryProposalCard({
         <b className="font-semibold text-foreground">
           {t('common:memoryProposal.title')}
         </b>
-        <p className="mt-1 text-[12.5px] text-muted-foreground">
+        <p className="mt-1 text-[length:calc(var(--ui-font-base)*0.78125)] text-muted-foreground">
           <span data-testid="memory-proposal-content">
             “{proposal.content}”
           </span>{' '}

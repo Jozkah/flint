@@ -176,7 +176,7 @@ export const ImportMlxModelDialog = ({
           {/* File Selection Area */}
           <div className="border border-border rounded-lg p-3 space-y-3">
             <div className="flex items-center gap-2">
-              <h3 className="text-[13px] font-semibold text-foreground">
+              <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold text-foreground">
                 {t('sweep:mlxImport.modelFolder')}
               </h3>
               <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">

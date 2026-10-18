@@ -65,7 +65,7 @@ export function CoworkSandboxChip() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 p-3">
-        <h3 className="text-[13px] font-semibold">
+        <h3 className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold">
           {t('common:sandbox.title')}
         </h3>
         <p className="mt-1.5 text-xs text-muted-foreground">

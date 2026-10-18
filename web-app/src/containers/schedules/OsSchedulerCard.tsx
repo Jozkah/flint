@@ -84,7 +84,7 @@ export function OsSchedulerCard() {
               )}
               <span>
                 {t('schedules:os.runs')}{' '}
-                <code className="font-mono text-[11px] break-all text-secondary-foreground">
+                <code className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] break-all text-secondary-foreground">
                   {status.tickCommand}
                 </code>
               </span>
@@ -109,7 +109,7 @@ export function OsSchedulerCard() {
           </DialogHeader>
           <ul
             data-testid="os-preview"
-            className="flex flex-col gap-1 rounded-md border-[0.8px] border-border bg-card p-3 font-mono text-[11px] break-all text-secondary-foreground"
+            className="flex flex-col gap-1 rounded-md border-[0.8px] border-border bg-card p-3 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] break-all text-secondary-foreground"
           >
             {status.preview.map((line) => (
               <li key={line}>{line}</li>

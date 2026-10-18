@@ -171,7 +171,7 @@ function EngineExtensions() {
 
   if (extensions.length === 0) {
     return (
-      <p className="py-10 text-center text-[13px] text-muted-foreground">
+      <p className="py-10 text-center text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">
         {t('engine:extensions.engineEmpty')}
       </p>
     )
@@ -199,7 +199,7 @@ function EngineExtensions() {
               }
             />
             <FrameBody className="gap-2.5 p-3">
-              <p className="m-0 text-[12.5px] leading-normal text-muted-foreground">
+              <p className="m-0 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
                 {ext.description}
               </p>
               <div className="flex items-center justify-between gap-2 text-xs text-subtle-foreground">

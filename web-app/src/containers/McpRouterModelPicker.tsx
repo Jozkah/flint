@@ -150,7 +150,7 @@ export function McpRouterModelPicker({
               <>
                 <span
                   className={cn(
-                    'text-[11px] font-medium leading-5 px-1.5 rounded-md shrink-0',
+                    'text-[length:calc(var(--ui-font-base)*0.6875)] font-medium leading-5 px-1.5 rounded-md shrink-0',
                     current.isLocal
                       ? 'bg-success-tint text-success'
                       : 'bg-muted text-fg-2'

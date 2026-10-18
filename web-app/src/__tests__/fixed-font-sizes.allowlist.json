@@ -1,0 +1,20 @@
+{
+  "_doc": "Hard-coded font sizes that intentionally do NOT follow the Font Size setting. Every other text size in web-app/src (outside src/mobile) must scale with --ui-font-base. Read by scripts/codemods/scale-font-sizes.mjs and src/__tests__/fixedFontSizes.guard.test.ts. Each entry: file (relative to web-app), token (the exact class or declaration), reason.",
+  "entries": [
+    {
+      "file": "src/components/WebCitationChip.tsx",
+      "token": "text-[0.5rem]",
+      "reason": "Favicon fallback letter drawn inside a fixed size-3.5/size-4 circle; scaling the glyph without the circle would overflow it."
+    },
+    {
+      "file": "src/components/WebSourcesRow.tsx",
+      "token": "text-[0.5rem]",
+      "reason": "Favicon fallback letter drawn inside a fixed size-4 circle; scaling the glyph without the circle would overflow it."
+    },
+    {
+      "file": "src/index.css",
+      "token": "font-size: 16px !important;",
+      "reason": "Touch-only devices: iOS zooms into any focused field under 16px, so this floor must stay a literal 16px."
+    }
+  ]
+}

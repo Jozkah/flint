@@ -117,7 +117,7 @@ export function CoworkModeSelector({
                   )}
                 />
                 <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                  <span className="text-[13px] font-medium">
+                  <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
                     {t(modeLabelKey(option))}
                   </span>
                   <span className="text-xs leading-[1.4] text-muted-foreground">

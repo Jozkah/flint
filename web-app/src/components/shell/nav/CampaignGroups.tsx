@@ -93,7 +93,7 @@ export function CampaignGroups({
                   />
                 </span>
                 <span
-                  className="truncate pl-5 text-[11px] font-normal tabular-nums"
+                  className="truncate pl-5 text-[length:calc(var(--ui-font-base)*0.6875)] font-normal tabular-nums"
                   data-testid="campaign-group-progress"
                 >
                   {group.finished

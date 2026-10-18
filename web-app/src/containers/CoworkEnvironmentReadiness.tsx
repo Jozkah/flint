@@ -351,7 +351,7 @@ export function CoworkEnvironmentReadiness({
           extra={
             unready > 0 && (
               <span
-                className="rounded-full bg-destructive/10 px-1.5 text-[10px] text-destructive"
+                className="rounded-full bg-destructive/10 px-1.5 text-[length:calc(var(--ui-font-base)*0.625)] text-destructive"
                 data-testid="environment-readiness-unready"
               >
                 {t('sweep:cowork.unavailableCount', { total: unready })}
@@ -471,7 +471,7 @@ export function CoworkEnvironmentReadiness({
               {isOpen && (
                 <div className="space-y-1 px-3 pb-2 pl-[2.1rem]">
                   <p
-                    className="text-[11px] text-muted-foreground"
+                    className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
                     data-testid={`readiness-description-${report.component}`}
                   >
                     {ROW_DESCRIPTION[report.component]}
@@ -486,14 +486,14 @@ export function CoworkEnvironmentReadiness({
                       {report.details.map((detail) => (
                         <li
                           key={detail}
-                          className="font-mono text-[11px] text-muted-foreground"
+                          className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground"
                         >
                           {detail}
                         </li>
                       ))}
                     </ul>
                   )}
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
                     {lastChecked(report.checkedAtMs, now)} · {report.reason}
                   </p>
                   <div className="flex flex-wrap gap-1 pt-0.5">

@@ -430,7 +430,7 @@ describe('Dialog Components', () => {
         </DialogContent>
       </Dialog>
     )
-    expect(screen.getByText('Title').className).toContain('text-[0.9375rem]')
+    expect(screen.getByText('Title').className).toContain('text-[length:calc(var(--ui-font-base)*0.9375)]')
     expect(screen.getByText('Title').className).not.toContain('0.9375em')
   })
 })

@@ -80,7 +80,7 @@ const TOOL_SECTION =
 const MINI_TRACK = 'inline-flex rounded-md bg-accent p-0.5'
 const miniOption = (on: boolean) =>
   cn(
-    'rounded px-[7px] py-0.5 text-[11px] leading-4 transition-colors outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11',
+    'rounded px-[7px] py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] leading-4 transition-colors outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11',
     on
       ? 'bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]'
       : 'text-muted-foreground hover:text-foreground'
@@ -351,7 +351,7 @@ export const ToolHeader = memo(
           <span
             data-slot="tool-sentence"
             data-state={workState}
-            className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground group-hover/tool-row:text-foreground"
+            className="min-w-0 flex-1 truncate text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground group-hover/tool-row:text-foreground"
           >
             {sentence}
           </span>
@@ -370,7 +370,7 @@ export const ToolHeader = memo(
           )}
         </span>
         {origin && (
-          <span className="hidden shrink-0 rounded-[5px] bg-[color-mix(in_oklab,var(--tk)_10%,transparent)] px-1.5 py-px text-[10.5px] text-[color-mix(in_oklab,var(--tk)_80%,var(--foreground))] sm:inline">
+          <span className="hidden shrink-0 rounded-[5px] bg-[color-mix(in_oklab,var(--tk)_10%,transparent)] px-1.5 py-px text-[length:calc(var(--ui-font-base)*0.65625)] text-[color-mix(in_oklab,var(--tk)_80%,var(--foreground))] sm:inline">
             {origin}
           </span>
         )}
@@ -388,7 +388,7 @@ export const ToolHeader = memo(
             {badge}
           </span>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-[11.5px] text-muted-foreground">
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
           {queuePosition > 0 && (
             <span>
               {t('tools:toolCall.queuedPosition', { count: queuePosition })}
@@ -397,7 +397,7 @@ export const ToolHeader = memo(
           <ToolElapsed
             startedAt={startedAt}
             endedAt={endedAt}
-            className="font-mono text-[11px] font-medium text-muted-foreground"
+            className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-muted-foreground"
           />
           <ChevronDownIcon
             aria-hidden
@@ -542,7 +542,7 @@ function ApprovalChoiceRadios({
     >
       <span
         id={questionId}
-        className="text-[13px] font-medium text-foreground"
+        className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground"
       >
         {choice.question}
       </span>
@@ -567,7 +567,7 @@ function ApprovalChoiceRadios({
                 value={option.id}
                 className="mt-0.5"
               />
-              <span className="min-w-0 text-[13px] leading-snug">
+              <span className="min-w-0 text-[length:calc(var(--ui-font-base)*0.8125)] leading-snug">
                 <b className="font-medium text-foreground">{option.label}</b>
                 {option.description && (
                   <span className="block text-xs text-muted-foreground">
@@ -732,7 +732,7 @@ export const ToolApprovalActions = memo(() => {
       aria-labelledby={titleId}
       className="flex min-w-0 flex-col gap-2.5 p-3 text-foreground sm:p-3.5"
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px]">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[length:calc(var(--ui-font-base)*0.8125)]">
         <span className="font-medium text-(--tk)">
           {t('tools:toolApproval.approvalNeeded')}
         </span>
@@ -755,7 +755,7 @@ export const ToolApprovalActions = memo(() => {
       )}
       <h3
         id={titleId}
-        className="min-w-0 text-[15px] leading-snug font-semibold wrap-break-word text-foreground"
+        className="min-w-0 text-[length:calc(var(--ui-font-base)*0.9375)] leading-snug font-semibold wrap-break-word text-foreground"
       >
         {formatPermissionMessage(t, request.action)}
       </h3>
@@ -763,7 +763,7 @@ export const ToolApprovalActions = memo(() => {
         <pre
           data-testid="approval-subject"
           tabIndex={0}
-          className="max-h-48 min-w-0 overflow-auto rounded-lg bg-code-bg px-3 py-2 font-mono text-[12.5px] leading-[1.55] whitespace-pre-wrap break-all text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
+          className="max-h-48 min-w-0 overflow-auto rounded-lg bg-code-bg px-3 py-2 font-mono text-[length:calc(var(--ui-font-base)*0.78125)] leading-[1.55] whitespace-pre-wrap break-all text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
         >
           {subject}
         </pre>
@@ -934,7 +934,7 @@ export const ToolApprovalActions = memo(() => {
               rows={3}
               autoFocus
               spellCheck={false}
-              className="font-mono text-[12.5px]"
+              className="font-mono text-[length:calc(var(--ui-font-base)*0.78125)]"
               onChange={(e) => setDraft(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
@@ -982,7 +982,7 @@ export const ToolApprovalActions = memo(() => {
                   className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-11"
                   onClick={() => decide('allow-git-temporary')}
                 >
-                  <b className="text-[13px] font-medium text-foreground">
+                  <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                     {t('permissions:scope.allowGitTemporary')}
                   </b>
                   <Chip tone="warn">{t('permissions:scope.broader')}</Chip>
@@ -1048,7 +1048,7 @@ export const ToolApprovalActions = memo(() => {
                     className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 data-suggested:border-l-2 data-suggested:border-l-warning pointer-coarse:min-h-11"
                     onClick={() => decide(scope)}
                   >
-                    <b className="text-[13px] font-medium text-foreground">
+                    <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
                       {label}
                     </b>
                     {info.broader && (!formRow || alwaysEverywhere) && (

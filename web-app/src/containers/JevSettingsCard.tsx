@@ -232,7 +232,7 @@ export function JevSettingsCard({
             {receipts.length === 0 ? (
               <span className="text-muted-foreground">{t('common:jev.noReceipts')}</span>
             ) : (
-              <ul data-testid="jev-receipts" className="flex flex-col gap-0.5 font-mono text-[11px]">
+              <ul data-testid="jev-receipts" className="flex flex-col gap-0.5 font-mono text-[length:calc(var(--ui-font-base)*0.6875)]">
                 {receipts.slice(0, 20).map((r, i) => (
                   <li key={i} className="break-words">
                     {new Date(r.at).toLocaleTimeString()} · {r.feature} · {r.mode} · {r.model ?? '—'} ·{' '}

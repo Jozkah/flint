@@ -254,7 +254,7 @@ function CustomColorPicker({
           }}
           onBlur={() => setHexDraft(null)}
         />
-        <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">
+        <span className="ml-auto font-mono text-[length:calc(var(--ui-font-base)*0.71875)] text-muted-foreground">
           {hexToRgb(hex).join(', ')}
         </span>
       </div>
@@ -334,7 +334,7 @@ export function AccentSettings() {
   // about 1.5:1 against the card (C107).
   const swatchClass = (checked: boolean) =>
     cn(
-      'group/sw relative inline-flex h-9 items-center gap-2 rounded-[9px] border-[0.8px] border-border bg-card py-1.5 pr-2.5 pl-1.5 text-[12.5px] font-medium text-foreground transition-[border-color,box-shadow,transform] duration-150 ease-expo outline-hidden hover:-translate-y-px hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-foreground pointer-coarse:h-11',
+      'group/sw relative inline-flex h-9 items-center gap-2 rounded-[9px] border-[0.8px] border-border bg-card py-1.5 pr-2.5 pl-1.5 text-[length:calc(var(--ui-font-base)*0.78125)] font-medium text-foreground transition-[border-color,box-shadow,transform] duration-150 ease-expo outline-hidden hover:-translate-y-px hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-foreground pointer-coarse:h-11',
       checked && 'border-border-strong shadow-lift'
     )
   const chipClass =
@@ -368,7 +368,7 @@ export function AccentSettings() {
       }
     >
       <div className="flex flex-col gap-1.5 px-0.5 pt-[11px] pb-1">
-        <div className="text-[13px] leading-tight font-medium text-foreground">
+        <div className="text-[length:calc(var(--ui-font-base)*0.8125)] leading-tight font-medium text-foreground">
           {t('settings:accent.current', {
             name:
               'preset' in accent
@@ -417,7 +417,7 @@ export function AccentSettings() {
               />
               {t(`uiLeftovers:accentNames.${p.id}`, { defaultValue: p.name })}
               {p.id === defaultPresetId && (
-                <small className="text-[11px] font-normal text-muted-foreground">
+                <small className="text-[length:calc(var(--ui-font-base)*0.6875)] font-normal text-muted-foreground">
                   {t('settings:accent.presetDefault')}
                 </small>
               )}
@@ -461,7 +461,7 @@ export function AccentSettings() {
               {isCustom ? (
                 tick
               ) : (
-                <small className="font-mono text-[11px] font-normal text-muted-foreground">
+                <small className="font-mono text-[length:calc(var(--ui-font-base)*0.6875)] font-normal text-muted-foreground">
                   {lastCustom}
                 </small>
               )}
@@ -502,11 +502,11 @@ export function AccentSettings() {
           {t('settings:accent.previewLink')}
         </Button>
         <span className="rounded-lg bg-muted p-0.5 shadow-[inset_0_0_0_0.8px_var(--border)]">
-          <span className="block rounded-md bg-card px-3 py-1 text-[0.8125rem] font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]">
+          <span className="block rounded-md bg-card px-3 py-1 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]">
             {t('settings:accent.previewTab')}
           </span>
         </span>
-        <span className="rounded-lg border-[0.8px] border-border bg-card px-2.5 py-1.5 text-[0.8125rem] leading-none text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)]">
+        <span className="rounded-lg border-[0.8px] border-border bg-card px-2.5 py-1.5 text-[length:calc(var(--ui-font-base)*0.8125)] leading-none text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)]">
           {t('settings:accent.previewSelected')}
         </span>
         <Switch

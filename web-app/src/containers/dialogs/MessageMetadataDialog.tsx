@@ -66,7 +66,7 @@ export function MessageMetadataDialog({
                 readOnly
                 data-color-mode="dark"
                 style={{
-                  fontSize: 12,
+                  fontSize: 'calc(var(--ui-font-base) * 0.75)',
                   backgroundColor: 'transparent',
                   fontFamily: 'monospace',
                 }}

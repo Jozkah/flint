@@ -105,13 +105,13 @@ export function CoworkReviewReady({
       <section
         aria-label={t('common:coworkReview.ready', { count: fileCount })}
         data-testid="cowork-review-ready"
-        className="mb-1.5 flex min-h-[38px] flex-wrap items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[13px] shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
+        className="mb-1.5 flex min-h-[38px] flex-wrap items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[length:calc(var(--ui-font-base)*0.8125)] shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
       >
         <FileDiff className="size-4 shrink-0 text-fg-2" aria-hidden />
         <span className="font-semibold text-foreground">
           {t('common:coworkReview.ready', { count: fileCount })}
         </span>
-        <span className="flex-1 font-mono text-[10.5px] tabular-nums">
+        <span className="flex-1 font-mono text-[length:calc(var(--ui-font-base)*0.65625)] tabular-nums">
           <span className="text-diff-add">+{additions}</span>{' '}
           <span className="text-diff-del">−{deletions}</span>
         </span>
