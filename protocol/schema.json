@@ -803,6 +803,13 @@
                 "null"
               ]
             },
+            "call_id": {
+              "description": "The model's id for the tool call being asked about, so a client\nshowing parallel calls of one tool ties the prompt to the right one.\n`None` for a prompt not about one tool call.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "type": {
               "type": "string",
               "const": "permission_request"
