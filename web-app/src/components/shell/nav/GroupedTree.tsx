@@ -60,6 +60,7 @@ import {
   type GroupSurface,
 } from '@/lib/groups/types'
 import { GroupFoldersDialog } from './GroupFoldersDialog'
+import { NestedRows, type NestedRowsProps } from './NestedRows'
 import { GroupPrompts } from './GroupPrompts'
 
 const UNGROUPED = 'ungrouped'
@@ -149,7 +150,14 @@ export function GroupedTree({
   showNewGroup,
   newGroupRequest = 0,
   onNewGroupRequestHandled,
+  nest,
 }: {
+  /**
+   * Show an item under its recorded parent when both are in the same list
+   * (one group, or Ungrouped). A row dragged to another group leaves its
+   * parent behind and shows there as an ordinary row.
+   */
+  nest?: Omit<NestedRowsProps, 'ids' | 'renderRow'>
   /**
    * Nonzero: open the New group dialog now, for a control outside the tree
    * (a menu, a right-click). Reported back as handled so a remount does not
@@ -243,6 +251,8 @@ export function GroupedTree({
         <ul>{renderItem(id)}</ul>
       </li>
     )
+  const rows = (ids: string[]) =>
+    nest ? <NestedRows {...nest} ids={ids} renderRow={row} /> : ids.map(row)
   const foldersGroup = data.groups.find((g) => g.id === foldersOf)
 
   const renderGroup = (
@@ -353,7 +363,7 @@ export function GroupedTree({
           <NavCollapse open={visible.length > 0 || hasSub}>
           <ul className="flex flex-col gap-0.5 pl-2">
             {shownSubs.map((n) => renderGroup(n, depth + 1, !open))}
-            {visible.map(row)}
+            {rows(visible)}
           </ul>
         </NavCollapse>
         </li>
@@ -392,10 +402,10 @@ export function GroupedTree({
                 {t('common:groups.ungrouped')}
               </div>
             </DropZone>
-            <ul className="flex flex-col gap-0.5">{layout.recents.map(row)}</ul>
+            <ul className="flex flex-col gap-0.5">{rows(layout.recents)}</ul>
           </li>
         ) : (
-          layout.recents.map(row)
+          rows(layout.recents)
         )}
       </DndContext>
 
