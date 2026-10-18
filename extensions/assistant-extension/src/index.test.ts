@@ -160,7 +160,7 @@ describe('onLoad', () => {
   it('records the current migration version', async () => {
     const ext = makeExt()
     await ext.onLoad()
-    expect(files.get(`${ROOT}/.migration_version`)).toBe('4')
+    expect(files.get(`${ROOT}/.migration_version`)).toBe('5')
   })
 
   it('seeds the default assistant with parameters when none are persisted', async () => {
@@ -183,6 +183,28 @@ describe('onLoad', () => {
         (id) => readAssistant(id).name
       )
     ).toEqual(['Quartz', 'Coal', 'Blaze', 'Redstone'])
+  })
+
+  it('seeds the four starter assistants', async () => {
+    const ext = makeExt()
+    await ext.onLoad()
+    expect(
+      ['book-and-quill', 'compass', 'emerald', 'book'].map(
+        (id) => readAssistant(id).name
+      )
+    ).toEqual(['Book and Quill', 'Compass', 'Emerald', 'Book'])
+  })
+
+  it('adds starters to an install already at v4 without touching edits or deleted specialists', async () => {
+    seedAssistant('jan', { id: 'jan', name: 'Flint' })
+    seedAssistant('compass', { id: 'compass', name: 'My Compass', instructions: 'mine' })
+    files.set(`${ROOT}/.migration_version`, '4')
+    const ext = makeExt()
+    await ext.onLoad()
+    expect(readAssistant('compass')).toMatchObject({ name: 'My Compass', instructions: 'mine' })
+    expect(readAssistant('book').name).toBe('Book')
+    // quartz was not on disk at v4; v5 must not resurrect it
+    expect(files.has(`${ROOT}/quartz/assistant.json`)).toBe(false)
   })
 
   it('does not overwrite an existing persisted assistant on load', async () => {
@@ -282,6 +304,6 @@ describe('migrations', () => {
     files.set(`${ROOT}/.migration_version`, 'garbage')
     const ext = makeExt()
     await ext.onLoad()
-    expect(getVersion()).toBe('4')
+    expect(getVersion()).toBe('5')
   })
 })

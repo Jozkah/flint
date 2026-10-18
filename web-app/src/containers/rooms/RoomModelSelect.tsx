@@ -125,7 +125,6 @@ export function RoomModelSelect({
       items: models.map((m) => ({
         value: encode({ provider: provider.provider, id: m.id }),
         label: optionLabel(m, provider.provider),
-        hint: getProviderTitle(provider.provider),
         icon: (
           <ModelAvatar
             modelId={m.id}

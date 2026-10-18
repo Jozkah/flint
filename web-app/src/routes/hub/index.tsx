@@ -549,7 +549,7 @@ function ModelDiscoverRoute() {
       {source === 'studio' ? (
         <StudioDiscover query={debouncedQuery} token={token} />
       ) : (
-      <main ref={parentRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <main ref={parentRef} className="-mr-3 min-h-0 flex-1 overflow-y-auto py-4 pr-8 pl-5">
         <div className="mx-auto w-full max-w-6xl">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span aria-live="polite">

@@ -14,12 +14,16 @@ import {
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { useThreads } from '@/hooks/useThreads'
+import { searchMessages, type MessageHit } from '@/lib/messageSearch'
+import { splitByMatch } from '@/lib/highlightMatch'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 
 const MAX_RECENT_SEARCHES = 5
+/** Wait for a pause in typing before scanning every chat's messages. */
+const MESSAGE_SEARCH_DEBOUNCE_MS = 250
 
 interface SearchDialogProps {
   open: boolean
@@ -56,6 +60,27 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
   const threads = useThreads((state) => state.threads)
   const getFilteredThreads = useThreads((state) => state.getFilteredThreads)
+
+  // Full-text hits from inside the chats, fetched after typing pauses. A reply
+  // for an earlier query is dropped, never shown under a newer one.
+  const [messageHits, setMessageHits] = useState<MessageHit[]>([])
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!open || !query) {
+      setMessageHits([])
+      return
+    }
+    let stale = false
+    const timer = setTimeout(() => {
+      void searchMessages(query).then((hits) => {
+        if (!stale) setMessageHits(hits)
+      })
+    }, MESSAGE_SEARCH_DEBOUNCE_MS)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
+  }, [open, searchQuery])
 
   // Focus input when dialog opens
   useEffect(() => {
@@ -171,10 +196,14 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       searchResults.withoutProject.forEach((thread) => {
         items.push({ type: 'result', id: thread.id })
       })
+      // Matches inside the chats' messages
+      messageHits.forEach((hit) => {
+        items.push({ type: 'result', id: hit.threadId })
+      })
     }
 
     return items
-  }, [searchQuery, recentSearches, searchResults])
+  }, [searchQuery, recentSearches, searchResults, messageHits])
 
   // Reset selected index when items change
   useEffect(() => {
@@ -219,7 +248,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const showStartNewChat = !searchQuery
   const hasResults =
     searchResults.withProject.length > 0 ||
-    searchResults.withoutProject.length > 0
+    searchResults.withoutProject.length > 0 ||
+    messageHits.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -386,6 +416,52 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                   >
                     <Icon name="comment" size={16} />
                     <span className="truncate">{thread.title}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Matches inside the messages of other chats */}
+          {searchQuery && messageHits.length > 0 && (
+            <div data-testid="search-message-hits">
+              <div className="px-2.5 pt-2 pb-1">
+                <GroupLabel>{t('common:searchGroup.messages')}</GroupLabel>
+              </div>
+              {messageHits.map((hit, index) => {
+                const itemIndex =
+                  searchResults.withProject.length +
+                  searchResults.withoutProject.length +
+                  index
+                return (
+                  <button
+                    type="button"
+                    key={`${hit.threadId}-${hit.messageId}`}
+                    data-index={itemIndex}
+                    data-selected={selectedIndex === itemIndex}
+                    onClick={() => handleSelectThread(hit.threadId)}
+                    className={cn(
+                      itemClass(selectedIndex === itemIndex),
+                      'h-auto min-h-[34px] flex-col items-start gap-0 py-1.5'
+                    )}
+                  >
+                    <span className="w-full truncate text-[11px] text-muted-foreground">
+                      {hit.threadTitle}
+                    </span>
+                    <span className="w-full truncate">
+                      {splitByMatch(hit.snippet, searchQuery).map((part, i) =>
+                        part.match ? (
+                          <mark
+                            key={i}
+                            className="rounded-[3px] bg-mark px-px text-foreground"
+                          >
+                            {part.text}
+                          </mark>
+                        ) : (
+                          part.text
+                        )
+                      )}
+                    </span>
                   </button>
                 )
               })}

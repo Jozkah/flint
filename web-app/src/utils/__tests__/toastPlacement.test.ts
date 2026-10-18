@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getDefaultNotificationPosition,
+  getDialogToastPlacement,
   getToastOffset,
   getToastOffsetAvoidingPane,
   isNotificationPosition,
@@ -80,5 +81,16 @@ describe('toastPlacement', () => {
       expect(isNotificationPosition('bottom-right')).toBe(true)
       expect(isNotificationPosition('top-center')).toBe(false)
     })
+  })
+})
+
+describe('getDialogToastPlacement', () => {
+  it('uses bottom-right on wide screens', () => {
+    expect(getDialogToastPlacement(1100).position).toBe('bottom-right')
+  })
+  it('uses full-width bottom-center above the composer when narrow', () => {
+    const p = getDialogToastPlacement(480)
+    expect(p.position).toBe('bottom-center')
+    expect(p.offset).toMatchObject({ bottom: '96px', left: '16px', right: '16px' })
   })
 })

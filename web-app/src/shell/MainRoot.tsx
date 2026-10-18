@@ -103,7 +103,7 @@ const AppLayout = () => {
             className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-card px-3 shadow-[inset_0_0_0_0.8px_var(--border)]"
           >
             <TopHeader />
-            <div ref={pageRef} className="relative min-h-0 flex-1 overflow-hidden">
+            <div ref={pageRef} className="relative -mr-3 min-h-0 flex-1 overflow-hidden pr-3">
               <Outlet />
             </div>
           </main>

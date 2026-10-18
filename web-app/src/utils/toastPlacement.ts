@@ -87,3 +87,32 @@ export function getToastOffset(
       return { bottom: BASE_MARGIN, right: BASE_MARGIN }
   }
 }
+
+/** Tiny phones: toasts run full width (sonner's own mobile layout kicks in below 600px). */
+export const NARROW_TOAST_PX = 640
+/** Bottom offset on narrow screens, clear of the composer. */
+const NARROW_BOTTOM_OFFSET = '96px'
+
+export type ToasterPlacement = {
+  position: ToasterProps['position']
+  offset: ToasterProps['offset']
+  mobileOffset: ToasterProps['mobileOffset']
+}
+
+/**
+ * While a modal dialog or sheet is open its header and close button sit where
+ * a top toast lands, so toasts move to the bottom edge instead (still above
+ * the dialog layer, so an approval toast stays reachable). Narrow screens get
+ * full-width bottom toasts lifted above the composer.
+ */
+export function getDialogToastPlacement(viewportWidth: number): ToasterPlacement {
+  if (viewportWidth < NARROW_TOAST_PX) {
+    const edge = { bottom: NARROW_BOTTOM_OFFSET, left: '16px', right: '16px' }
+    return { position: 'bottom-center', offset: edge, mobileOffset: edge }
+  }
+  return {
+    position: 'bottom-right',
+    offset: { bottom: '24px', right: '24px' },
+    mobileOffset: { bottom: NARROW_BOTTOM_OFFSET },
+  }
+}

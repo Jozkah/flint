@@ -67,7 +67,9 @@
       .fl-text { display: flex; flex-direction: column; align-items: center; gap: 6px; animation: fl-rise .6s cubic-bezier(.16,1,.3,1) .08s both; }
       .fl-name { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
       #initial-loader-caption {
-        margin: 0; font-size: 13px; line-height: 1; color: transparent;
+        /* background-clip:text paints only inside the line box, so a tight line-height
+           cuts the descenders (g p y). Taller box, pulled back with negative margin. */
+        margin: -3px 0; max-width: min(92vw, 440px); text-align: center; font-size: 13px; line-height: 1.4; color: transparent;
         background: linear-gradient(90deg, var(--sub) 0%, var(--fg) 50%, var(--sub) 100%);
         background-size: 200% 100%; -webkit-background-clip: text; background-clip: text;
         animation: fl-shim 1.6s linear infinite, fl-fade .3s ease 1s both;
@@ -80,6 +82,14 @@
       .fl-bar i {
         position: absolute; top: 0; bottom: 0; width: 40%; border-radius: inherit;
         background: var(--grad); animation: fl-slide 1.4s cubic-bezier(.65,0,.35,1) infinite;
+      }
+      /* A stalled start: the bar stops sliding, and Reload is offered. */
+      #initial-loader[data-stalled] .fl-bar i { animation: none; left: 0; width: 100%; background: var(--track); }
+      #initial-loader[data-stalled] .fl-bar { opacity: .5; }
+      #initial-loader-reload {
+        font: inherit; font-size: 13px; color: var(--fg); cursor: pointer;
+        background: var(--card); border: 0; border-radius: 8px; padding: 7px 16px;
+        box-shadow: var(--lift);
       }
       @keyframes fl-rise { from { opacity: 0; transform: translateY(8px); } }
       @keyframes fl-fade { from { opacity: 0; } }

@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render } from '@testing-library/react'
 import { ContentType, MessageStatus, type ThreadMessage } from '@janhq/core'
 
 const summarizer = vi.hoisted(() => ({
@@ -21,24 +20,12 @@ vi.mock('@/hooks/useServiceHub', () => ({
   }),
 }))
 
-const transcriptSeen = vi.hoisted(() => ({ value: '' as string | Promise<string> }))
-vi.mock('@/hooks/usePreviewSummary', () => ({
-  usePreviewSummary: (
-    _key: string,
-    _open: boolean,
-    get: () => Promise<string> | string
-  ) => {
-    transcriptSeen.value = get()
-    return { summary: undefined, loading: false }
-  },
-}))
-
 import { useMessages } from '@/hooks/useMessages'
 import { useThreads } from '@/hooks/useThreads'
 import { useAppState } from '@/hooks/useAppState'
 import { regenerateTitle } from '../regenerateTitle'
 import { stampErrorOnLastUserMessage } from '@/containers/dialogs/llamacppRouterError'
-import { ThreadPreviewSummary } from '@/containers/ThreadPreviewSummary'
+import { threadPreviewTranscript } from '@/lib/threadPreview'
 
 let clock = 0
 const msg = (
@@ -105,8 +92,7 @@ describe('readers of a branched thread', () => {
   })
 
   it('previews only the shown versions', async () => {
-    render(<ThreadPreviewSummary open threadId="t1" />)
-    const transcript = await transcriptSeen.value
+    const transcript = await threadPreviewTranscript('t1')
     expect(transcript).toContain('new answer')
     expect(transcript).not.toContain('old answer')
   })

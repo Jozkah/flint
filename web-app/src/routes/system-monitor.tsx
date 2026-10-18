@@ -1031,7 +1031,7 @@ function SystemMonitorContent() {
       <div
         className={cn(
           'min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 pb-8 [scrollbar-width:thin]',
-          inShell ? 'px-1' : 'px-4'
+          inShell ? '-mr-3 pr-4 pl-1' : 'px-4'
         )}
       >
         <div className="flex w-full min-w-0 flex-col gap-4">

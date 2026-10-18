@@ -661,7 +661,7 @@ function PanePicker({
       <div className="flex h-9 shrink-0 items-center justify-between gap-3 pr-1 pl-2 pointer-coarse:h-12">
         <span className="flex min-w-0 items-center gap-3">
           <Icon name="comment" size={16} />
-          <span className="truncate text-sm leading-none font-medium text-secondary-foreground">
+          <span className="descender-safe truncate text-sm leading-none font-medium text-secondary-foreground">
             {t('chat:split.newPane')}
           </span>
         </span>

@@ -1,4 +1,5 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import { showUndoToast } from '@/lib/toastUndo'
 import { readFileAsText } from '@/lib/fileSafety'
 import { DEFAULT_ATTACHMENT_LIMITS } from '@/lib/attachmentSupport'
@@ -54,6 +55,15 @@ export function useLargePaste(options: Options) {
   const latest = useRef(options)
   latest.current = options
   const rawUntil = useRef(0)
+  const toastId = useRef<string | number | undefined>(undefined)
+
+  // The offer belongs to this composer: leaving the chat takes it away.
+  useEffect(
+    () => () => {
+      if (toastId.current !== undefined) toast.dismiss(toastId.current)
+    },
+    []
+  )
 
   /** Call from the composer's keydown: Ctrl/Cmd+Shift+V pastes raw text. */
   const noteKeyDown = useCallback((event: KeyLike) => {
@@ -107,7 +117,7 @@ export function useLargePaste(options: Options) {
       if (announced) return
       announced = true
       const { t, insertText, detach } = latest.current
-      showUndoToast({
+      toastId.current = showUndoToast({
         message: t('common:largePaste.attached', { name: file.name }),
         description: t('common:largePaste.hint'),
         undoLabel: t('common:largePaste.undo'),

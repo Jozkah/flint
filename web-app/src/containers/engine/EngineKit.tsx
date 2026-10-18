@@ -59,7 +59,7 @@ export function EnginePage({
   className?: string
 }) {
   return (
-    <div className="h-full min-h-0 w-full min-w-0 overflow-x-hidden overflow-y-auto">
+    <div className="-mr-3 h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-3">
       <div
         data-testid={testId}
         className={cn(

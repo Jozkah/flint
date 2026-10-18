@@ -380,6 +380,18 @@ describe('General Settings Route', () => {
     expect(screen.getByText('common:settings')).toBeInTheDocument()
   })
 
+  it('has no Credits card', async () => {
+    const Component = GeneralRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+
+    const titles = screen
+      .getAllByTestId('card')
+      .map((c) => c.getAttribute('data-title'))
+    expect(titles).not.toContain('settings:general.credits')
+  })
+
   it('says so when the saved data folder is unavailable (#8855)', async () => {
     // Not Once: the mocked hub is a new object every render, so the page
     // fetches again on each one.

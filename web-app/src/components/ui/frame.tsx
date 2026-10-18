@@ -110,7 +110,7 @@ function FrameHeader({
             </span>
           )}
           {title && (
-            <h2 className="truncate text-sm leading-none font-medium text-secondary-foreground">
+            <h2 className="descender-safe truncate text-sm leading-none font-medium text-secondary-foreground">
               {title}
             </h2>
           )}

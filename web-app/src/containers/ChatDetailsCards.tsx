@@ -502,7 +502,7 @@ export function ChatActivityFrame({
                   )}
                 </div>
                 {entry.detail && (
-                  <p className="m-0 truncate leading-none text-subtle-foreground" title={String(entry.detail)}>
+                  <p className="descender-safe m-0 truncate leading-none text-subtle-foreground" title={String(entry.detail)}>
                     {entry.detail}
                   </p>
                 )}

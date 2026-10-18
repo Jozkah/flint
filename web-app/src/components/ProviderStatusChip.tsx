@@ -9,10 +9,12 @@ import type { ProviderKeyStatus } from '@/lib/providerKeyStatus'
  */
 export function ProviderStatusChip({ status }: { status: ProviderKeyStatus }) {
   const { t } = useTranslation()
-  if (status === 'missing') {
+  if (status === 'missing' || status === 'credentials-missing') {
     return (
       <Chip tone="warn" dot>
-        {t('engine:status.noKey')}
+        {status === 'credentials-missing'
+          ? t('engine:status.noCredentials')
+          : t('engine:status.noKey')}
       </Chip>
     )
   }

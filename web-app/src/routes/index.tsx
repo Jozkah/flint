@@ -11,6 +11,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import SetupScreen from '@/containers/SetupScreen'
 import { route } from '@/constants/routes'
 import { hasUsableProvider, isSetupCompleted } from '@/lib/providerReadiness'
+import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 
@@ -57,6 +58,7 @@ function Index() {
   const { setCurrentThreadId } = useThreads()
   useTools()
 
+  useBedrockCredentials((state) => state.saved)
   const hasValidProviders = hasUsableProvider(providers)
   const [setupDone, setSetupDone] = useState(() => isSetupCompleted())
   const isPhone = useMediaQuery(PHONE_QUERY)

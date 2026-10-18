@@ -22,6 +22,7 @@ import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
 import { ProviderStatusChip } from '@/components/ProviderStatusChip'
 import { providerKeyStatus } from '@/lib/providerKeyStatus'
+import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
@@ -88,6 +89,7 @@ const staggerDelay = (i: number) => 120 + Math.min(i, 8) * 25
 const SPEED_WINDOW = 24
 
 function ModelProviders() {
+  const bedrockCredentials = useBedrockCredentials((state) => state.saved)
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const { providers, addProvider, updateProvider, setProviders } =
@@ -607,7 +609,9 @@ function ModelProviders() {
                         : t('engine:providers.notSetUp')}
                     </small>
                     {provider.active ? (
-                      <ProviderStatusChip status={providerKeyStatus(provider)} />
+                      <ProviderStatusChip
+                        status={providerKeyStatus(provider, { bedrockCredentials })}
+                      />
                     ) : (
                       <Chip dot>{t('engine:status.off')}</Chip>
                     )}
@@ -693,7 +697,9 @@ function ModelProviders() {
                   const loaded = local && activeModels.includes(model.id)
                   const speed = speeds.get(model.id)
                   const ctx = contextLengthOf(model)
-                  const hasKey = providerKeyStatus(provider) !== 'missing'
+                  const keyStatus = providerKeyStatus(provider, { bedrockCredentials })
+                  const hasKey =
+                    keyStatus !== 'missing' && keyStatus !== 'credentials-missing'
                   return (
                     <div
                       key={`${provider.provider}:${model.id}`}
@@ -767,7 +773,7 @@ function ModelProviders() {
                           )
                         ) : hasKey ? (
                           <Chip tone="ok" dot>
-                            {providerKeyStatus(provider) === 'keyless'
+                            {keyStatus === 'keyless'
                               ? t('engine:status.keyless')
                               : t('engine:status.connected')}
                           </Chip>

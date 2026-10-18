@@ -211,6 +211,14 @@ const maskInlineMath = (content: string, store: string[]): string => {
     .join('\n')
 }
 
+// Inline math sets fractions in text style, which shrinks a quadratic formula
+// to unreadable. A leading \displaystyle gives them display size; it stays
+// inline, so the line is only as tall as the fraction needs.
+export const inlineFractions = (expr: string): string =>
+  /\\[dt]?frac(?![a-zA-Z])/.test(expr) && !/^\s*\\displaystyle(?![a-zA-Z])/.test(expr)
+    ? `\\displaystyle ${expr}`
+    : expr
+
 // Cache for normalized LaTeX content
 const latexCache = new Map<string, string>()
 
@@ -229,11 +237,21 @@ const normalizeLatex = (input: string): string => {
   s = s.replace(/\$(?=\d)/g, '\\$') // leftover currency renders literally
   s = fixEmphasisFlanking(s)
 
+  // A `$$...$$` that is alone on its line is display math. Left on one line,
+  // remark-math reads it as inline math, which shrinks fractions and sums.
+  s = s.replace(/^([ \t]*)\uE000L(\d+)\uE000[ \t]*$/gm, (whole, indent, n) => {
+    const expr = math[Number(n)]
+    if (!expr.startsWith('$$') || expr.includes('\n')) return whole
+    return `${indent}$$\n${expr.slice(2, -2).trim()}\n${indent}$$`
+  })
+
   // Restore math, converting bracket delimiters to $… / $$… for remark-math.
   s = s.replace(/\uE000L(\d+)\uE000/g, (_, n) => {
     const expr = math[Number(n)]
     if (expr.startsWith('\\[')) return `$$\n${expr.slice(2, -2).trim()}\n$$`
-    if (expr.startsWith('\\(')) return `$${expr.slice(2, -2).trim()}$`
+    if (expr.startsWith('\\(')) return `$${inlineFractions(expr.slice(2, -2).trim())}$`
+    if (!expr.startsWith('$$') && expr.length > 2)
+      return `$${inlineFractions(expr.slice(1, -1))}$`
     return expr
   })
   s = s.replace(/\uE000C(\d+)\uE000/g, (_, n) => code[Number(n)])

@@ -33,10 +33,15 @@ export interface SlashBuiltin {
   name: string
   description: string
   argumentHint?: string
+  /**
+   * Set for a prompt-library entry: picking it inserts that prompt into the
+   * composer (asking for its variables first) instead of leaving `/name`.
+   */
+  promptId?: string
   run: (args: string) => void | Promise<void>
 }
 
-export type SlashSource = 'plugin' | 'skill' | 'builtin'
+export type SlashSource = 'plugin' | 'skill' | 'builtin' | 'prompt'
 
 /** One row of the `/` menu. */
 export interface SlashItem {
@@ -80,7 +85,8 @@ export function buildSlashItems(
     trigger: b.name,
     aliases: [b.name],
     kind: 'builtin',
-    source: 'builtin',
+    // A prompt-library entry is the user's own, not a built-in command.
+    source: b.promptId ? 'prompt' : 'builtin',
     description: b.description,
     argumentHint: b.argumentHint,
     builtin: b,

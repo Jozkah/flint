@@ -3,13 +3,13 @@ import debounce from 'lodash.debounce'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
@@ -29,7 +29,7 @@ type ModelSettingProps = {
   /** Controlled open state, so other surfaces can open the settings. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  /** No button of its own: the sheet is opened from elsewhere via `open`. */
+  /** No button of its own: the popup is opened from elsewhere via `open`. */
   hideTrigger?: boolean
 }
 
@@ -225,6 +225,10 @@ export function ModelSetting({
         key === 'cpu_moe' ||
         key === 'n_cpu_moe' ||
         key === 'n_cpu_ffn' ||
+        key === 'no_kv_offload' ||
+        key === 'cache_type_k' ||
+        key === 'cache_type_v' ||
+        key === 'ctx_shift' ||
         key === 'server_reasoning' ||
         key === 'model_extra_args'
       ) {
@@ -303,9 +307,9 @@ export function ModelSetting({
   const fitCtxSetting = provider.settings?.find((s) => s.key === 'fit_ctx')
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       {!hideTrigger && (
-        <SheetTrigger asChild>
+        <DialogTrigger asChild>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -316,21 +320,21 @@ export function ModelSetting({
           >
             <SlidersHorizontal aria-hidden />
           </Button>
-        </SheetTrigger>
+        </DialogTrigger>
       )}
-      {/* The Atelier inspector: paper, 360px beside the page on desktop, the
-          whole screen on a phone. */}
-      <SheetContent className="w-full max-w-none gap-0 border-l border-border bg-card sm:w-[var(--inspector-w)] sm:max-w-[var(--inspector-w)]">
-        <SheetHeader className="border-b border-border px-4 py-3">
-          <SheetTitle className="pr-8 text-sm font-semibold leading-snug">
+      {/* One popup for every surface: the settings page rows and the chat
+          input's model picker both open this. */}
+      <DialogContent className="flex max-h-[85vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md lg:max-w-md xl:max-w-md">
+        <DialogHeader className="border-b border-border px-4 py-3">
+          <DialogTitle className="pr-8 text-sm font-semibold leading-snug">
             {t('common:modelSettings.title', {
               modelId: getModelDisplayName(model),
             })}
-          </SheetTitle>
-          <SheetDescription className='text-xs leading-normal'>
+          </DialogTitle>
+          <DialogDescription className='text-xs leading-normal'>
             {t('common:modelSettings.description')}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="flex-1 min-h-0 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           {provider.provider === 'llamacpp' && model.embedding !== true && (
@@ -437,8 +441,8 @@ export function ModelSetting({
           })
           })()}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
 

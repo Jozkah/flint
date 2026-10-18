@@ -1,5 +1,6 @@
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { hasUsableProvider } from '@/lib/providerReadiness'
+import { useBedrockCredentials } from '@/hooks/useBedrockCredentials'
 
 /**
  * Whether first-run setup is still showing. The setup screen is the single
@@ -12,5 +13,7 @@ import { hasUsableProvider } from '@/lib/providerReadiness'
  */
 export function useIsOnboarding(): boolean {
   const providers = useModelProvider((state) => state.providers)
+  // Re-evaluated when the AWS credentials change.
+  useBedrockCredentials((state) => state.saved)
   return !hasUsableProvider(providers)
 }

@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
-const { showUndoToast } = vi.hoisted(() => ({ showUndoToast: vi.fn() }))
+const { showUndoToast, dismiss } = vi.hoisted(() => ({
+  showUndoToast: vi.fn(() => 'toast-1'),
+  dismiss: vi.fn(),
+}))
 vi.mock('@/lib/toastUndo', () => ({ showUndoToast }))
+vi.mock('sonner', () => ({ toast: { dismiss } }))
 
 import { useLargePaste, resetLargePasteAnnouncement } from '../useLargePaste'
 
@@ -49,6 +53,7 @@ const flush = () => new Promise((r) => setTimeout(r, 50))
 describe('useLargePaste', () => {
   beforeEach(() => {
     showUndoToast.mockClear()
+    dismiss.mockClear()
     resetLargePasteAnnouncement()
   })
 
@@ -144,5 +149,13 @@ describe('useLargePaste', () => {
     showUndoToast.mock.calls[0][0].onUndo()
     expect(detach).toHaveBeenCalledWith('pasted-text-1.txt')
     expect(insertText).toHaveBeenCalledWith(big)
+  })
+
+  it('takes its toast away when the composer goes', async () => {
+    const { result, unmount } = setup()
+    result.current.handlePaste(pasteEvent({ text: big }))
+    await flush()
+    unmount()
+    expect(dismiss).toHaveBeenCalledWith('toast-1')
   })
 })

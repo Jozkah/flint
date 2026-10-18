@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { FlintServerSettings } from '@/containers/FlintServerSettings'
 import { RemoteRunnerCard } from '@/containers/RemoteRunnerCard'
+import { StartupItems } from '@/containers/StartupItems'
 import { isPlatformAndroid, isPlatformIOS } from '@/lib/platform/utils'
 import { useHardware } from '@/hooks/useHardware'
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
@@ -40,6 +41,11 @@ import {
   parseChatGptExport,
 } from '@/lib/chatgptImport'
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
+
+/** Column of each group: General, Data folder, Backup, Advanced, Other, phone server, runner. */
+const GENERAL_LAYOUT = [0, 0, 1, 0, 1, 0, 0] as const
+/** Without the desktop-only Backup group the right column is short, so Advanced moves over. */
+const GENERAL_LAYOUT_NO_BACKUP = [0, 0, 1, 1, 1, 0, 0] as const
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.general as any)({
@@ -277,7 +283,11 @@ function General() {
       <SettingsPageBody
         title={t('common:general')}
         description={t('settings:pageDesc.general')}
-        layout={[0, 1, 1, 1, 0, 0]}
+        // The big groups (General, Data folder, Advanced) read down the left.
+        // Groups that exist only on desktop or a server keep their slot, so a
+        // missing one never shifts the others. Narrow windows read in source
+        // order.
+        layout={IS_TAURI ? GENERAL_LAYOUT : GENERAL_LAYOUT_NO_BACKUP}
       >
 
         {/* General */}
@@ -572,6 +582,9 @@ function General() {
               }
             />
           )}
+          {IS_TAURI && !isPlatformAndroid() && !isPlatformIOS() && (
+            <StartupItems />
+          )}
           {IS_TAURI && (
             <CardItem
               anchor="settings-general-download-limit"
@@ -607,9 +620,18 @@ function General() {
             title={t('settings:others.spellCheck', {
               ns: 'settings',
             })}
-            description={t('settings:others.spellCheckDesc', {
-              ns: 'settings',
-            })}
+            description={
+              <span className="flex flex-col gap-1">
+                <span>
+                  {t('settings:others.spellCheckDesc', {
+                    ns: 'settings',
+                  })}
+                </span>
+                <span className="text-subtle-foreground">
+                  {t('settings:others.spellCheckHint')}
+                </span>
+              </span>
+            }
             actions={
               <Switch
                 checked={spellCheckChatInput}
@@ -720,18 +742,6 @@ function General() {
         {/* A page served by flint serve: can this server run agents? */}
         <RemoteRunnerCard />
 
-        {/* Credits */}
-        <Card title={t('settings:general.credits')}>
-          <CardItem
-            align="start"
-            description={
-              <div className="text-muted-foreground -mt-2">
-                <p>{t('settings:general.creditsDesc1')}</p>
-                <p className="mt-2">{t('settings:general.creditsDesc2')}</p>
-              </div>
-            }
-          />
-        </Card>
       </SettingsPageBody>
     </div>
   )
