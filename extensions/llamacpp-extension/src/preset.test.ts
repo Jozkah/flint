@@ -112,14 +112,14 @@ describe('generatePreset MTP emission', () => {
     setupModel('llama', { mtp: true, mtp_layers: 0 })
     await generatePreset('/p', '/jan', CONFIG)
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini).not.toContain('spec-type')
+    expect(ini).not.toMatch(/spec-type = draft/)
   })
 
   it('omits MTP lines when mtp flag is off even if heads exist', async () => {
     setupModel('glm', { mtp: false, mtp_layers: 1 })
     await generatePreset('/p', '/jan', CONFIG)
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini).not.toContain('spec-type')
+    expect(ini).not.toMatch(/spec-type = draft/)
   })
 
   it('emits spec-draft-model for a separate MTP gguf even when main reports 0 heads', async () => {
@@ -671,6 +671,95 @@ describe('generatePreset global engine options', () => {
     expect(g).not.toContain('batch-size')
     expect(g).not.toContain('n-cpu-moe')
     expect(g).not.toContain('kv-offload')
+  })
+
+  // The shipped default is auto (0): [*] gets 1024, not llama.cpp's 512 (on an
+  // RTX 5080 +11% prompt processing on CUDA, +31% on Vulkan for ~100 MiB of
+  // compute buffer), and each model section refines it from VRAM.
+  it('ships ubatch-size auto, which writes 1024 to [*]', async () => {
+    const settings = (await import('../settings.json')).default as Array<{
+      key: string
+      controllerProps: { value: unknown }
+    }>
+    const ubatch = settings.find((s) => s.key === 'ubatch_size')!.controllerProps.value
+    expect(ubatch).toBe(0)
+    await generatePreset('/p', '/jan', { ubatch_size: ubatch } as any)
+    expect(globalSection()).toContain('ubatch-size = 1024')
+  })
+
+  it('auto ubatch: 2048 when the weights spill, 512 when tight, 1024 otherwise', async () => {
+    const GB = 1024 ** 3
+    setupModel('spill', { size_bytes: 21 * GB })
+    setupModel('tight', { size_bytes: 15 * GB })
+    setupModel('roomy', { size_bytes: 5 * GB })
+    setupModel('vision', { size_bytes: 14 * GB, mmproj_size_bytes: 1 * GB })
+    setupModel('nosize', {})
+    setupModel('emb', { size_bytes: 1e8, embedding: true })
+    await generatePreset('/p', '/jan', { ubatch_size: 0 } as any, {
+      gpuMemoryMiB: 16303,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    const sec = (id: string) => {
+      const start = ini.indexOf(`[${id}]`)
+      const end = ini.indexOf('\n[', start + 1)
+      return end === -1 ? ini.slice(start) : ini.slice(start, end)
+    }
+    expect(sec('spill')).toContain('ubatch-size = 2048')
+    expect(sec('tight')).toContain('ubatch-size = 512')
+    expect(sec('vision')).toContain('ubatch-size = 512')
+    // 1024 is the [*] value already, so the section inherits it.
+    expect(sec('roomy')).not.toContain('ubatch-size')
+    expect(sec('nosize')).not.toContain('ubatch-size')
+    expect(sec('emb')).toContain('ubatch-size = 2048')
+    expect(sec('emb').match(/ubatch-size/g)).toHaveLength(1)
+  })
+
+  it('auto ubatch leaves models alone without a known GPU', async () => {
+    setupModel('m', { size_bytes: 21 * 1024 ** 3 })
+    await generatePreset('/p', '/jan', { ubatch_size: 0 } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.match(/ubatch-size/g)).toHaveLength(1)
+  })
+
+  it('an explicit ubatch wins over auto, globally and per model', async () => {
+    setupModel('a', { size_bytes: 21 * 1024 ** 3 })
+    setupModel('b', { size_bytes: 21 * 1024 ** 3, ubatch_size: 512 })
+    await generatePreset('/p', '/jan', { ubatch_size: 256 } as any, {
+      gpuMemoryMiB: 16303,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(globalSection()).toContain('ubatch-size = 256')
+    const a = ini.slice(ini.indexOf('[a]'), ini.indexOf('[b]'))
+    expect(a).not.toContain('ubatch-size')
+    // 512 is llama.cpp's default but not what [*] holds, so it must be written.
+    expect(ini.slice(ini.indexOf('[b]'))).toContain('ubatch-size = 512')
+  })
+
+  it('turns on ngram-mod speculative decoding by default', async () => {
+    await generatePreset('/p', '/jan', {} as any)
+    expect(globalSection()).toContain('spec-type = ngram-mod')
+  })
+
+  it('leaves ngram speculation off when the setting is off', async () => {
+    await generatePreset('/p', '/jan', { ngram_speculation: false } as any)
+    expect(globalSection()).not.toContain('spec-type')
+  })
+
+  it('ships ngram speculation on', async () => {
+    const settings = (await import('../settings.json')).default as Array<{
+      key: string
+      controllerProps: { value: unknown }
+    }>
+    expect(
+      settings.find((s) => s.key === 'ngram_speculation')!.controllerProps.value
+    ).toBe(true)
+  })
+
+  it('an MTP model section replaces the global ngram spec-type', async () => {
+    setupModel('glm', { mtp: true, mtp_layers: 1 })
+    await generatePreset('/p', '/jan', {} as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.slice(ini.indexOf('[glm]'))).toContain('spec-type = draft-mtp')
   })
 
   it('emits batch-size when it differs from the 2048 default', async () => {

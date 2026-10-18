@@ -45,6 +45,7 @@ import {
   NavGroupAction,
   NavGroupLabel,
   NavList,
+  useCloseDrawer,
   useShellNav,
 } from '@/components/shell/nav-kit'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -112,6 +113,7 @@ export function ChatsNav() {
   useEffect(() => startHomeProjectsMirror(), [])
   const navigate = useNavigate()
   const { isMobile } = useShellNav()
+  const closeDrawer = useCloseDrawer()
   const threads = useThreads((s) => s.threads)
   const getFilteredThreads = useThreads((s) => s.getFilteredThreads)
   const isLoadingThreads = useThreads((s) => s.isLoadingThreads)
@@ -241,6 +243,7 @@ export function ChatsNav() {
   const newChat = () => {
     useAgentMode.getState().removeThread(TEMPORARY_CHAT_ID)
     navigate({ to: route.home })
+    closeDrawer()
   }
 
   const handleCreateProject = async (
@@ -251,6 +254,7 @@ export function ChatsNav() {
     const created = await addFolder(name, assistantId, model)
     setProjectDialogOpen(false)
     navigate({ to: '/project/$projectId', params: { projectId: created.id } })
+    closeDrawer()
   }
 
   const empty = groups.every((g) => g.threads.length === 0)
@@ -273,7 +277,7 @@ export function ChatsNav() {
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setProjectDialogOpen(true)}>
                 <FolderPlus />
-                <span>{t('common:projects.new')}</span>
+                <span>{t('common:projects.newGroup')}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -416,9 +420,10 @@ export function ChatsNav() {
                         className="opacity-0 group-hover/cg:opacity-100 group-has-[:focus-visible]/cg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
                         aria-label={t('common:shell.newChatIn', { name: g.name })}
                         title={t('common:shell.newChatIn', { name: g.name })}
-                        onClick={() =>
+                        onClick={() => {
                           navigate({ to: '/project/$projectId', params: { projectId: g.folder!.id } })
-                        }
+                          closeDrawer()
+                        }}
                       >
                         <Plus />
                       </NavGroupAction>
@@ -433,9 +438,10 @@ export function ChatsNav() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" side={isMobile ? 'bottom' : 'right'} className="w-48">
                           <DropdownMenuItem
-                            onSelect={() =>
+                            onSelect={() => {
                               navigate({ to: '/project/$projectId', params: { projectId: g.folder!.id } })
-                            }
+                              closeDrawer()
+                            }}
                           >
                             <FolderOpen />
                             <span>{t('common:shell.openGroup')}</span>
@@ -493,6 +499,7 @@ export function ChatsNav() {
         open={projectDialogOpen}
         onOpenChange={setProjectDialogOpen}
         editingKey={null}
+        noun="group"
         onSave={handleCreateProject}
       />
       <AddProjectDialog
@@ -500,6 +507,7 @@ export function ChatsNav() {
         onOpenChange={(o) => !o && setEditing(null)}
         editingKey={editing?.id ?? null}
         initialData={editing ?? undefined}
+        noun="group"
         onSave={async (name: string, assistantId?: string, model?: ProjectModel) => {
           if (editing) await updateFolder(editing.id, name, assistantId, model)
           setEditing(null)

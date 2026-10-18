@@ -574,7 +574,8 @@ mod engine {
         // "the provided PTX was compiled with an unsupported toolchain". RTX
         // 30/40/50 have SASS and never JIT; Turing (GTX 16xx, RTX 20xx, T4) had
         // only the PTX. The list is mirrored per toolkit version because a
-        // cuda12 build keeps 50/61/70 and cannot emit 120a/121a before 12.8/12.9.
+        // cuda12 build keeps 50/61/70 and cannot emit 120a before 12.8. 121a is
+        // left out: see default_cuda_archs.
         // arm64 keeps upstream's default.
         let archs = compat_var("ENGINE_CUDA_ARCHS").unwrap_or_default();
         let archs = archs.trim();
@@ -925,7 +926,8 @@ mod engine {
     }
 
     /// ggml/src/ggml-cuda/CMakeLists.txt's non-native default as of b11146,
-    /// with 75-virtual changed to 75-real (see the call site).
+    /// with 75-virtual changed to 75-real (see the call site) and 121a-real
+    /// dropped (below).
     /// check_upstream_cuda_archs fails the build if a tag bump changes it.
     fn default_cuda_archs(v: (u32, u32)) -> String {
         let mut a = Vec::new();
@@ -939,9 +941,10 @@ mod engine {
         if v >= (12, 8) {
             a.push("120a-real");
         }
-        if v >= (12, 9) {
-            a.push("121a-real");
-        }
+        // Upstream also adds 121a-real from 12.9. An `a` cubin runs on that
+        // exact chip only, and sm_121 is GB10 (DGX Spark), which is arm64:
+        // this list is x86_64-only, so it was ~1/7 of the CUDA compile time
+        // and ~18 MB of ggml-cuda for no GPU it could run on.
         a.join(";")
     }
 
@@ -979,6 +982,8 @@ mod engine {
                     .collect::<Vec<_>>()
             })
             .collect();
+        // Dropped on purpose; see default_cuda_archs.
+        ours.push("121a-real".to_string());
         ours.sort_unstable();
         ours.dedup();
         assert!(

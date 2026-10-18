@@ -62,6 +62,15 @@ The installers are **not code-signed**, so your OS warns you the first time you 
 - **macOS:** right-click (or Control-click) Flint in Applications and choose **Open**, then **Open** again. Alternatively, try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
 - **macOS local models need Apple silicon** (M1 or later). On Intel Macs you can still use cloud providers.
 
+### Which Windows or Linux download
+
+Stable releases carry two builds for Windows and Linux:
+
+- **Standard** (`Flint_<version>_x64-setup.exe`, `Flint_<version>_amd64.AppImage`, ...) runs local models on any GPU through Vulkan, or on the CPU.
+- **CUDA** (`Flint_<version>_x64-cuda-setup.exe`, `Flint_<version>_amd64-cuda.AppImage`, ...) adds NVIDIA's CUDA backend, which is much faster than Vulkan on NVIDIA cards. It is a larger download because it carries the CUDA runtime and cuBLAS. It needs an **NVIDIA driver R580 or newer** and an RTX 20-series (Turing) or newer GPU; older cards, or older drivers, should use the standard build.
+
+The CUDA build keeps Vulkan too. When CUDA is available Flint uses it by default; on a machine without an NVIDIA driver it falls back to Vulkan or the CPU on its own. You can switch each GPU between CUDA and Vulkan in **System Monitor**. Install one build or the other, not both: they are the same app.
+
 **Models are your choice.** Open **Discover** to search Hugging Face and choose the exact GGUF quantization (or MLX repository on Apple silicon) you want Flint to download. Downloads start only when you click **Download**, support pause/resume, and are size/hash verified when Hugging Face exposes that metadata. You can still import a GGUF you already have with **Import GGUF** on the **Models** page, or add a cloud provider with your own key.
 
 ### The `flint` CLI

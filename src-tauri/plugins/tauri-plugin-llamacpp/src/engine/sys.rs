@@ -99,6 +99,7 @@ mod imp {
         fn jan_llama_response_free(res: ResponseHandle);
         fn jan_llama_load_backends(dir: *const c_char);
         fn jan_llama_devices_json() -> *mut c_char;
+        fn jan_llama_backend_device_count(name: *const c_char) -> c_int;
         fn jan_llama_string_free(s: *mut c_char);
         fn jan_llama_version() -> *const c_char;
         fn jan_llama_build_number() -> c_int;
@@ -306,6 +307,14 @@ mod imp {
             }
         }
 
+        /// Devices the named backend registered, or None when it is not loaded.
+        pub fn backend_device_count(name: &str) -> Option<usize> {
+            let c = CString::new(name).ok()?;
+            // SAFETY: the shim only reads the string for the call.
+            let n = unsafe { jan_llama_backend_device_count(c.as_ptr()) };
+            usize::try_from(n).ok()
+        }
+
         /// The offloadable devices, as the shim's JSON array. Needs no engine:
         /// ggml devices are process-global, so this is an associated function.
         pub fn devices_json() -> Result<String, EngineError> {
@@ -500,6 +509,9 @@ mod imp {
             Response(())
         }
         pub fn load_backends(_dir: Option<&str>) {}
+        pub fn backend_device_count(_name: &str) -> Option<usize> {
+            None
+        }
         pub fn devices_json() -> Result<String, EngineError> {
             Err(EngineError::Unavailable)
         }

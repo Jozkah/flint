@@ -170,13 +170,43 @@ pub fn load_backend_modules() {
             .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
             .map(|dir| has_backend_module(&dir))
             .unwrap_or(false);
-        if beside_exe || !std::path::Path::new(BUILD_BACKEND_DIR).is_dir() {
+        let dir = if beside_exe || !std::path::Path::new(BUILD_BACKEND_DIR).is_dir() {
             Engine::load_backends(None);
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
         } else {
             log::debug!("loading ggml backends from the build tree: {BUILD_BACKEND_DIR}");
             Engine::load_backends(Some(BUILD_BACKEND_DIR));
+            Some(std::path::PathBuf::from(BUILD_BACKEND_DIR))
+        };
+        if let Some(dir) = dir {
+            warn_if_cuda_module_unused(&dir);
         }
     });
+}
+
+/// ggml's loader is silent under NDEBUG, so a CUDA module that fails to load
+/// (cuBLAS missing beside it, no NVIDIA driver) or finds no device leaves no
+/// trace and the engine quietly runs on Vulkan/CPU. Say so once, on stderr,
+/// which the supervisor copies into app.log.
+#[cfg(feature = "engine")]
+fn warn_if_cuda_module_unused(dir: &std::path::Path) {
+    let module = if cfg!(windows) {
+        "ggml-cuda.dll"
+    } else {
+        "libggml-cuda.so"
+    };
+    if !dir.join(module).is_file() {
+        return;
+    }
+    if Engine::backend_device_count("CUDA").unwrap_or(0) == 0 {
+        eprintln!(
+            "flint-llama-worker: {module} is present but no CUDA device was registered \
+             (missing cuBLAS/cudart beside it, no NVIDIA driver, or CUDA_VISIBLE_DEVICES hides \
+             the GPU); falling back to the other backends"
+        );
+    }
 }
 
 /// A `ggml-*` shared object, by the naming ggml itself looks for.

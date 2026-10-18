@@ -61,8 +61,8 @@
   },
   {
     "key": "fit",
-    "title": "Fit (auto-adjust to device memory)",
-    "description": "Whether to adjust unset arguments to fit in device memory ('on' or 'off'). (env: LLAMA_ARG_FIT)",
+    "title": "Auto-fit to device memory",
+    "description": "Auto-fit: adjust unset arguments (such as GPU layers) so the model fits in device memory. Turn off Auto-fit to set them by hand. (env: LLAMA_ARG_FIT)",
     "controllerType": "checkbox",
     "controllerProps": {
       "value": true
@@ -70,8 +70,8 @@
   },
   {
     "key": "fit_target",
-    "title": "Fit Target per Device (MiB)",
-    "description": "Target margin per device for fit, comma-separated list of MiB values. Single value is broadcast across all devices. (env: LLAMA_ARG_FIT_TARGET)",
+    "title": "Auto-fit target per device (MiB)",
+    "description": "Free memory Auto-fit leaves on each device, comma-separated list of MiB values. Single value is broadcast across all devices. (env: LLAMA_ARG_FIT_TARGET)",
     "controllerType": "input",
     "controllerProps": {
       "value": "1024",
@@ -152,11 +152,11 @@
   {
     "key": "ubatch_size",
     "title": "uBatch Size",
-    "description": "Physical maximum batch size for processing prompts.",
+    "description": "Physical maximum batch size for processing prompts. 0 = auto: 1024 when the model fits in VRAM with room to spare, 512 when it is tight, 2048 when it spills to system RAM.",
     "controllerType": "input",
     "controllerProps": {
-      "value": 512,
-      "placeholder": "512",
+      "value": 0,
+      "placeholder": "0 (auto)",
       "type": "number",
       "textAlign": "right"
     }
@@ -304,6 +304,15 @@
     "key": "reserve_background_slots",
     "title": "Reserve Background Slots",
     "description": "Keep two extra internal slots beyond Parallel Sequences for background requests (thread auto-titling, Cowork, subagents) so they do not evict your chat's KV cache. Turn off to run exactly Parallel Sequences slots (set it to 1 for a single slot); background requests then share your chat's slot and can evict its cache. Reloads the model.",
+    "controllerType": "checkbox",
+    "controllerProps": {
+      "value": true
+    }
+  },
+  {
+    "key": "ngram_speculation",
+    "title": "N-gram Speculative Decoding",
+    "description": "Draft tokens from text already in the conversation (ngram-mod) and let the model verify them in one batch. Output is identical; repetitive output such as code edits or quoting generates 3-10x faster, other text is unaffected. Models with their own MTP draft use that instead.",
     "controllerType": "checkbox",
     "controllerProps": {
       "value": true

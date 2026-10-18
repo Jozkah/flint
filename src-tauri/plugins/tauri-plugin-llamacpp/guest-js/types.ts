@@ -93,6 +93,8 @@ export type LlamacppConfig = {
   flash_attn: string
   parallel: number
   cont_batching: boolean
+  /** ngram-mod speculative decoding for every model without its own draft. */
+  ngram_speculation: boolean
   no_mmap: boolean
   mlock: boolean
   cache_type_k: string

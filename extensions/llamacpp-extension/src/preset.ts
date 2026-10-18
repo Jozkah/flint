@@ -87,6 +87,42 @@ export const RESERVED_BACKGROUND_SLOTS = 2
  */
 export const DEFAULT_EMBEDDING_UBATCH = 2048
 
+/** The ubatch an `auto` setting falls back to when VRAM or model size is unknown. */
+export const DEFAULT_UBATCH = 1024
+
+const GIB = 1024 ** 3
+
+/**
+ * The ubatch for a chat model when the setting is `auto` (0), from what its
+ * weights leave of the GPU. Measured on an RTX 5080 (Qwen3-8B, Gemma-3-4B,
+ * Qwen3.5-35B-A3B; CUDA 13 and Vulkan):
+ * - Weights spill to system RAM: 2048. Each ubatch streams the host-side
+ *   weights over PCIe, so a wider one halves that traffic: prompt processing
+ *   went 462 -> 876 tok/s on the 35B MoE, generation unchanged.
+ * - Fits, with >= 1.5 GiB left after the weights: 1024. Over 512 it was
+ *   +4-5% prompt processing on CUDA and +31% on Vulkan for ~100 MiB; 2048 was
+ *   within +-5% of 1024 (better on the 8B, worse on the 4B) for another
+ *   ~250-350 MiB, and 4096 slower on both.
+ * - Fits with less than that: 512, so the ~100 MiB goes to KV and layers.
+ * `undefined` when either number is unknown.
+ */
+export function autoUbatchSize(
+  weightsBytes: number | undefined,
+  gpuMemoryMiB: number | undefined
+): number | undefined {
+  if (!weightsBytes || weightsBytes <= 0 || !gpuMemoryMiB || gpuMemoryMiB <= 0) {
+    return undefined
+  }
+  const headroom = gpuMemoryMiB * 1024 * 1024 - weightsBytes
+  if (headroom < 0) return 2048
+  if (headroom >= 1.5 * GIB) return 1024
+  return 512
+}
+
+function isAutoUbatch(v: unknown): boolean {
+  return !(typeof v === 'number' && Number.isFinite(v) && v > 0)
+}
+
 /**
  * Where each thread's saved KV cache lives.
  *
@@ -331,6 +367,11 @@ export async function generatePreset(
      * can run. Unset on CPU-only, AMD and Apple machines.
      */
     gpuComputeCapability?: number
+    /**
+     * VRAM of the machine's largest GPU, in MiB. Drives the `auto` ubatch per
+     * model (autoUbatchSize). Unset when there is no GPU or it is unknown.
+     */
+    gpuMemoryMiB?: number
   } = {}
 ): Promise<{ path: string; embeddingCount: number }> {
   // Overridable for tests only. Production callers take the default: gating it
@@ -462,6 +503,14 @@ export async function generatePreset(
     // context is what each slot actually gets.
     if (kvUnifiedIsAuto) lines.push('kv-unified = true')
   }
+  // spec-type default = none. ngram-mod drafts only after a 24-token match
+  // with text already in the context, so on novel text it almost never
+  // drafts. Measured on an RTX 5080: code-edit output 3x (first request) to
+  // 10x faster on CUDA and Vulkan, also on the CPU; free-form text within
+  // noise. A model section that names its own spec-type (MTP) replaces it.
+  if (config.ngram_speculation !== false) {
+    lines.push('spec-type = ngram-mod')
+  }
   // cont-batching default = true; emit only the explicit-off case.
   if (config.cont_batching === false) {
     lines.push('cont-batching = false')
@@ -500,14 +549,14 @@ export async function generatePreset(
   ) {
     lines.push(`batch-size = ${Math.floor(config.batch_size)}`)
   }
-  // ubatch-size default = 512
-  if (
-    typeof config.ubatch_size === 'number' &&
-    Number.isFinite(config.ubatch_size) &&
-    config.ubatch_size > 0 &&
-    config.ubatch_size !== 512
-  ) {
-    lines.push(`ubatch-size = ${Math.floor(config.ubatch_size)}`)
+  // ubatch-size: llama.cpp's default is 512. `auto` (0 or unset) writes
+  // DEFAULT_UBATCH here and lets each model section refine it from VRAM.
+  const globalUbatchAuto = isAutoUbatch(config.ubatch_size)
+  const globalUbatch = globalUbatchAuto
+    ? DEFAULT_UBATCH
+    : Math.floor(config.ubatch_size as number)
+  if (globalUbatch !== 512) {
+    lines.push(`ubatch-size = ${globalUbatch}`)
   }
   // n-cpu-moe default = 0 (no MoE weights pinned to the host)
   if (
@@ -872,12 +921,21 @@ export async function generatePreset(
     ) {
       lines.push(`batch-size = ${Math.floor(mc.batch_size)}`)
     }
-    if (
-      typeof mc.ubatch_size === 'number' &&
-      mc.ubatch_size > 0 &&
-      mc.ubatch_size !== 512
-    ) {
-      lines.push(`ubatch-size = ${Math.floor(mc.ubatch_size)}`)
+    // A per-model value is written whenever set: the [*] value it would
+    // otherwise inherit is no longer llama.cpp's 512. Embedders pin their own
+    // below.
+    if (!isAutoUbatch(mc.ubatch_size)) {
+      if (mc.embedding !== true) {
+        lines.push(`ubatch-size = ${Math.floor(mc.ubatch_size as number)}`)
+      }
+    } else if (globalUbatchAuto && mc.embedding !== true) {
+      const weights =
+        (typeof mc.size_bytes === 'number' ? mc.size_bytes : 0) +
+        (typeof mc.mmproj_size_bytes === 'number' ? mc.mmproj_size_bytes : 0)
+      const ub = autoUbatchSize(weights, opts.gpuMemoryMiB)
+      if (ub !== undefined && ub !== globalUbatch) {
+        lines.push(`ubatch-size = ${ub}`)
+      }
     }
     if (mc.cpu_moe === true) {
       lines.push('cpu-moe = true')

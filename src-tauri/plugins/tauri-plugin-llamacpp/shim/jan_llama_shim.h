@@ -104,6 +104,11 @@ void jan_llama_load_backends(const char * dir);
 // Never NULL; free the result with jan_llama_string_free.
 char * jan_llama_devices_json(void);
 
+// Devices the named ggml backend registered ("CUDA", "Vulkan"), or -1 when no
+// such backend is loaded. Unlike jan_llama_devices_json this queries no device
+// memory, so it creates no CUDA context.
+int jan_llama_backend_device_count(const char * name);
+
 void jan_llama_string_free(char * s);
 
 // The llama.cpp the shim was compiled against, for the pin assertion in

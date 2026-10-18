@@ -132,6 +132,7 @@ const PRESET_AFFECTING_KEYS = new Set<string>([
   'parallel',
   'reserve_background_slots',
   'cont_batching',
+  'ngram_speculation',
   'threads',
   'threads_batch',
   'n_predict',
@@ -510,16 +511,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const settings = structuredClone(SETTINGS)
     await this.registerSettings(settings)
 
-    let loadedConfig: any = {}
-    for (const item of settings) {
-      const defaultValue = item.controllerProps.value
-      // Use the potentially updated default value from the settings array as the fallback for getSetting
-      loadedConfig[item.key] = await this.getSetting<typeof defaultValue>(
-        item.key,
-        defaultValue
-      )
-    }
-    this.config = loadedConfig as LlamacppConfig
+    this.config = (await this.loadConfig(settings)) as LlamacppConfig
 
     // Auto-fit is on by default: it places as many layers on the GPU as VRAM
     // allows, and leaves a context size the user or model set alone. Turn it
@@ -527,6 +519,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     await this.migrateFitOn()
 
     await this.migrateAutoUnloadToModelsMax()
+
+    await this.migrateUbatchAuto()
 
     this.timeout = asI32(this.config.timeout, DEFAULT_TIMEOUT) || DEFAULT_TIMEOUT
     this.llamacpp_env = this.config.llamacpp_env
@@ -704,6 +698,23 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     return readSettingsFile()
   }
 
+  /**
+   * Each setting's saved value, or its default. One read of the settings file:
+   * `getSetting` per key re-read it every time (~6 IPC calls each), which held
+   * the window's first render back by a few hundred milliseconds.
+   */
+  async loadConfig(
+    settings: SettingComponentProps[]
+  ): Promise<Record<string, unknown>> {
+    const saved = await this.getSettings()
+    const config: Record<string, unknown> = {}
+    for (const item of settings) {
+      const value = saved.find((s) => s.key === item.key)?.controllerProps.value
+      config[item.key] = value ?? item.controllerProps.value
+    }
+    return config
+  }
+
   override async updateSettings(
     componentProps: Partial<SettingComponentProps>[]
   ): Promise<void> {
@@ -863,6 +874,20 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     return this.engineStartLock
   }
 
+  /** VRAM of the largest GPU in MiB, for the `auto` ubatch. */
+  private async gpuMemoryMiB(): Promise<number | undefined> {
+    try {
+      const gpus = (await getSystemInfo())?.gpus ?? []
+      const largest = Math.max(
+        0,
+        ...gpus.map((g) => Number(g?.total_memory) || 0)
+      )
+      return largest > 0 ? largest : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   private async runStartEngine(): Promise<void> {
     const providerPath = await this.getProviderPath()
     const janDataFolderPath = await getJanDataFolderPath()
@@ -875,6 +900,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         cpuFallbackModels: this.cpuFallbackModels,
         knownDeviceIds: await this.knownDeviceIds(),
         gpuComputeCapability: await this.gpuComputeCapability(),
+        gpuMemoryMiB: await this.gpuMemoryMiB(),
       }
     )
 
@@ -1002,6 +1028,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         cpuFallbackModels: this.cpuFallbackModels,
         knownDeviceIds: await this.knownDeviceIds(),
         gpuComputeCapability: await this.gpuComputeCapability(),
+        gpuMemoryMiB: await this.gpuMemoryMiB(),
       }
     )
     this.presetPath = presetPath
@@ -1190,6 +1217,33 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       )
       this.config.fit = true
       logger.info('Migrated fit setting: enabled')
+    }
+
+    await setBackendSetting(MIGRATION_KEY, '1')
+  }
+
+  /**
+   * uBatch Size became `0 = auto`. Every install saved the old default (512,
+   * or 1024 briefly) as a value, so those two move to auto once; anything
+   * else was typed by the user and stays.
+   */
+  private async migrateUbatchAuto(): Promise<void> {
+    const MIGRATION_KEY = 'llamacpp_ubatch_auto_v1'
+    if (await getBackendSetting(MIGRATION_KEY)) return
+
+    const v = Number(this.config.ubatch_size)
+    if (v === 512 || v === 1024) {
+      const settings = await this.getSettings()
+      await this.updateSettings(
+        settings.map((item) => {
+          if (item.key === 'ubatch_size') {
+            item.controllerProps.value = 0
+          }
+          return item
+        })
+      )
+      this.config.ubatch_size = 0
+      logger.info(`Migrated ubatch_size=${v} -> 0 (auto)`)
     }
 
     await setBackendSetting(MIGRATION_KEY, '1')
