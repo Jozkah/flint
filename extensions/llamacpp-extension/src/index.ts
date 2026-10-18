@@ -60,6 +60,7 @@ import {
 } from './preset'
 import {
   kvDefaultsInEffect,
+  lowestComputeCapability,
   resolveKvCacheTypes,
   shouldRetryLoadWithF16Kv,
 } from './kvCache'
@@ -840,6 +841,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
   }
 
+  /** Lowest NVIDIA compute capability on this machine, if any. */
+  private async gpuComputeCapability(): Promise<number | undefined> {
+    try {
+      return lowestComputeCapability((await getSystemInfo())?.gpus)
+    } catch {
+      return undefined
+    }
+  }
+
   private async startEngine(): Promise<void> {
     const inflight = this.engineStartLock
     if (inflight) {
@@ -864,6 +874,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         kvFallbackModels: this.kvFallbackModels,
         cpuFallbackModels: this.cpuFallbackModels,
         knownDeviceIds: await this.knownDeviceIds(),
+        gpuComputeCapability: await this.gpuComputeCapability(),
       }
     )
 
@@ -990,6 +1001,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         kvFallbackModels: this.kvFallbackModels,
         cpuFallbackModels: this.cpuFallbackModels,
         knownDeviceIds: await this.knownDeviceIds(),
+        gpuComputeCapability: await this.gpuComputeCapability(),
       }
     )
     this.presetPath = presetPath
@@ -2397,6 +2409,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         cacheTypeK: has(mc.cache_type_k) ? mc.cache_type_k : cfg.cache_type_k,
         cacheTypeV: has(mc.cache_type_v) ? mc.cache_type_v : cfg.cache_type_v,
         flashAttn: mc.flash_attn ?? cfg.flash_attn,
+        computeCapability: await this.gpuComputeCapability(),
       }),
     })
   }

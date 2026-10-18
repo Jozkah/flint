@@ -321,15 +321,32 @@ export function interruptRun(id: string, fetchImpl: FetchLike = defaultFetch()) 
   return rpc<Record<string, never>>('agent_run_interrupt', { id }, fetchImpl)
 }
 
-export type ApprovalAnswer = 'allow_once' | 'allow_always' | 'deny'
+/** `defer` answers later: the call is refused for now and recorded (`[approvals]`). */
+export type ApprovalAnswer = 'allow_once' | 'allow_always' | 'deny' | 'defer'
+
+/**
+ * How far an `allow_always` reaches: a folder or a command prefix is saved as a
+ * rule for the project, `once` and `run` keep it to the call or the run. The
+ * server checks it against the call it was chosen for.
+ */
+export type ApprovalScopeAnswer =
+  | { type: 'once' }
+  | { type: 'run' }
+  | { type: 'folder'; dir: string }
+  | { type: 'command_prefix'; prefix: string }
 
 export function approveRun(
   id: string,
   requestId: string,
   decision: ApprovalAnswer,
-  fetchImpl: FetchLike = defaultFetch()
+  fetchImpl: FetchLike = defaultFetch(),
+  scope?: ApprovalScopeAnswer
 ) {
-  return rpc<Record<string, never>>('agent_run_approve', { id, requestId, decision }, fetchImpl)
+  return rpc<Record<string, never>>(
+    'agent_run_approve',
+    { id, requestId, decision, ...(scope ? { scope } : {}) },
+    fetchImpl
+  )
 }
 
 export type AskResult = { id: string; selected: string[]; custom_input?: string }

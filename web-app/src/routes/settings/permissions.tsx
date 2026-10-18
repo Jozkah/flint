@@ -11,6 +11,8 @@ import {
   useAutoApproveLimit,
 } from '@/hooks/useAutoApproveLimit'
 import { FolderAccessCard } from '@/containers/FolderAccessCard'
+import { TrustedFoldersCard } from '@/containers/TrustedFoldersCard'
+import { ApprovalRulesCard } from '@/containers/ApprovalRulesCard'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -533,6 +535,8 @@ function PermissionsSettings() {
 
         {/* Folders granted through request_access */}
         <FolderAccessCard />
+        <TrustedFoldersCard />
+        <ApprovalRulesCard />
 
         {/* 3. Trusted MCP servers, with the state of each approval */}
         <Card

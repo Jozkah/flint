@@ -4,6 +4,7 @@ import {
   answerSubagent,
 } from '@/lib/coworkSubagentQuestions'
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
+import { SCOPABLE_TOOLS, checkScopedRule } from '@/lib/approvalScopes'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import {
@@ -978,7 +979,35 @@ async function routeCoworkTool(
           }
         : undefined
 
-    if (ctx.mode !== 'bypass' && (needsApproval || forced)) {
+    // A rule the person saved with "Always" -- one folder, one command prefix --
+    // answers an ordinary prompt for a call it covers. Never a forced one (a
+    // destructive command, a push, the pause after a long streak), and the
+    // backend only reports a rule for a call its own gate would have prompted
+    // for: a refusal or an asked-every-time call is never covered.
+    const scopeRoot = ctx.worktreePath ?? ctx.readOnlyFolder
+    const savedRule =
+      ctx.mode !== 'bypass' &&
+      needsApproval &&
+      !forced &&
+      scopeRoot &&
+      SCOPABLE_TOOLS.has(toolName)
+        ? await checkScopedRule(scopeRoot, toolName, call.input)
+        : null
+    if (savedRule) {
+      await recordToolActivity({
+        call: call.toolCallId,
+        tool: toolName,
+        session: ctx.sessionId,
+        run: ctx.activity?.run ?? '',
+        invocation: ctx.activity?.invocation ?? '',
+        agent: ctx.activity?.agent ?? '',
+        resource: resourceOf(call.input),
+        phase: 'allowed',
+        detail: `decided by saved approval rule ${savedRule.id}`,
+      })
+    }
+
+    if (ctx.mode !== 'bypass' && (needsApproval || forced) && !savedRule) {
       resetAutoApproveStreak(ctx.sessionId)
       // Recorded separately from the outcome: "the user was asked" and "the
       // user said no" are different facts, and a refused call that was never

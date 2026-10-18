@@ -1,0 +1,242 @@
+//! Is the program that performs the confined spawn the one Flint shipped?
+//!
+//! On Windows every sandboxed command is run by a helper (this binary, or
+//! `JAN_SANDBOX_HELPER_EXE`) that builds the AppContainer. If that file is
+//! swapped for something that spawns the command without confinement, every
+//! later `bash` call would quietly run unsandboxed. So before each sandboxed
+//! exec [`verify`] checks the helper against the digest the app expects, and
+//! the caller refuses -- it never falls back to an unsandboxed run.
+//!
+//! What "expected" means, strongest first:
+//! 1. `JAN_SANDBOX_HELPER_SHA256` -- a digest pinned by whoever launched the
+//!    process (an installer, a policy script);
+//! 2. a `<helper>.sha256` file next to the helper, as an installer would ship;
+//! 3. otherwise the digest the file had the first time this process looked at
+//!    it, so a helper replaced or patched after the app started is caught
+//!    even where nothing was shipped to compare with.
+//!
+//! The check is cheap: the digest is recomputed only when the file's length or
+//! modification time changed since the last successful check.
+
+use std::collections::HashMap;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
+
+use sha2::{Digest, Sha256};
+
+/// Env override (through `compat_env`, so `FLINT_`/`JAN_` spellings both work).
+pub const PINNED_ENV: &str = "SANDBOX_HELPER_SHA256";
+
+#[derive(Clone, PartialEq, Eq)]
+struct Seen {
+    len: u64,
+    modified: Option<SystemTime>,
+    digest: String,
+}
+
+fn state() -> &'static Mutex<HashMap<PathBuf, Seen>> {
+    static STATE: OnceLock<Mutex<HashMap<PathBuf, Seen>>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The most recent refusal, for a caller that only learns "no wrapper".
+fn last_refusal_slot() -> &'static Mutex<Option<String>> {
+    static SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+/// Why the last [`verify`] refused, if it did and nothing has passed since.
+pub fn last_refusal() -> Option<String> {
+    last_refusal_slot().lock().ok().and_then(|s| s.clone())
+}
+
+fn hex_digest(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 16];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+/// A 64-hex-digit token at the start of `text` (the `sha256sum` file shape).
+fn parse_digest(text: &str) -> Option<String> {
+    let token = text.split_whitespace().next()?.to_ascii_lowercase();
+    (token.len() == 64 && token.bytes().all(|b| b.is_ascii_hexdigit())).then_some(token)
+}
+
+fn sidecar(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".sha256");
+    PathBuf::from(name)
+}
+
+/// The digest shipped or pinned for `path`, and where it came from.
+fn pinned(path: &Path) -> Result<Option<(String, String)>, String> {
+    if let Ok(raw) = crate::compat_env::var(PINNED_ENV) {
+        return match parse_digest(&raw) {
+            Some(d) => Ok(Some((d, format!("the {PINNED_ENV} setting")))),
+            None => Err(format!(
+                "the {PINNED_ENV} setting is not a SHA-256 digest (64 hex digits), so the sandbox helper cannot be checked"
+            )),
+        };
+    }
+    let side = sidecar(path);
+    match std::fs::read_to_string(&side) {
+        Ok(text) => match parse_digest(&text) {
+            Some(d) => Ok(Some((d, side.display().to_string()))),
+            None => Err(format!(
+                "{} does not hold a SHA-256 digest, so the sandbox helper cannot be checked",
+                side.display()
+            )),
+        },
+        Err(_) => Ok(None),
+    }
+}
+
+fn check(path: &Path) -> Result<(), String> {
+    let meta = std::fs::metadata(path).map_err(|e| {
+        format!(
+            "the sandbox helper {} is missing or unreadable ({e})",
+            path.display()
+        )
+    })?;
+    if !meta.is_file() {
+        return Err(format!("the sandbox helper {} is not a file", path.display()));
+    }
+    let stamp = (meta.len(), meta.modified().ok());
+    let key = path.to_path_buf();
+    let known = state().lock().ok().and_then(|s| s.get(&key).cloned());
+    let pin = pinned(path)?;
+    // Unchanged on disk since the last pass, and nothing external to compare
+    // with: the earlier verdict stands.
+    if let Some(seen) = &known {
+        if (seen.len, seen.modified) == stamp {
+            return match &pin {
+                Some((want, src)) if *want != seen.digest => Err(mismatch(path, want, &seen.digest, src)),
+                _ => Ok(()),
+            };
+        }
+    }
+    let digest = hex_digest(path).map_err(|e| {
+        format!("the sandbox helper {} could not be read to be checked ({e})", path.display())
+    })?;
+    match (&pin, &known) {
+        (Some((want, src)), _) if *want != digest => return Err(mismatch(path, want, &digest, src)),
+        (None, Some(first)) if first.digest != digest => {
+            return Err(mismatch(path, &first.digest, &digest, "the copy Flint saw when it started"))
+        }
+        _ => {}
+    }
+    if let Ok(mut s) = state().lock() {
+        // The first sighting is the baseline; later stat changes with the same
+        // content refresh the stamp but never the digest.
+        let baseline = known.map(|k| k.digest).unwrap_or_else(|| digest.clone());
+        s.insert(key, Seen { len: stamp.0, modified: stamp.1, digest: baseline });
+    }
+    Ok(())
+}
+
+fn mismatch(path: &Path, want: &str, got: &str, src: &str) -> String {
+    format!(
+        "the sandbox helper {} does not match what Flint expects (expected sha256 {}, found {}; expected value from {src})",
+        path.display(),
+        &want[..want.len().min(16)],
+        &got[..got.len().min(16)],
+    )
+}
+
+/// `Ok` when `helper` is the file the app expects. On `Err` the message says
+/// what failed and that the command was not run; it is also kept for
+/// [`last_refusal`]. Callers must treat `Err` as "do not run the command".
+pub fn verify(helper: &Path) -> Result<(), String> {
+    let result = check(helper).map_err(|why| {
+        format!("{why}. The command was not run: Flint will not run it outside the sandbox. Reinstall Flint to restore the helper.")
+    });
+    if let Ok(mut slot) = last_refusal_slot().lock() {
+        *slot = result.as_ref().err().cloned();
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("flint_sbx_integrity_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn sha(bytes: &[u8]) -> String {
+        hex::encode(Sha256::digest(bytes))
+    }
+
+    #[test]
+    fn a_missing_helper_is_refused_and_says_not_run() {
+        let dir = scratch("missing");
+        let err = verify(&dir.join("helper.exe")).unwrap_err();
+        assert!(err.contains("missing or unreadable"), "{err}");
+        assert!(err.contains("not run") && err.contains("outside the sandbox"), "{err}");
+        assert_eq!(last_refusal().as_deref(), Some(err.as_str()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_helper_that_differs_from_the_shipped_digest_is_refused() {
+        let dir = scratch("sidecar");
+        let exe = dir.join("helper.exe");
+        std::fs::write(&exe, b"genuine").unwrap();
+        std::fs::write(sidecar(&exe), format!("{}  helper.exe\n", sha(b"genuine"))).unwrap();
+        assert!(verify(&exe).is_ok());
+        std::fs::write(&exe, b"tampered!").unwrap();
+        let err = verify(&exe).unwrap_err();
+        assert!(err.contains("does not match") && err.contains(".sha256"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_helper_replaced_after_first_use_is_refused_without_a_shipped_digest() {
+        let dir = scratch("baseline");
+        let exe = dir.join("helper.exe");
+        std::fs::write(&exe, b"first").unwrap();
+        assert!(verify(&exe).is_ok());
+        assert!(verify(&exe).is_ok(), "cached pass");
+        std::fs::write(&exe, b"swapped-in").unwrap();
+        let err = verify(&exe).unwrap_err();
+        assert!(err.contains("when it started"), "{err}");
+        // Restoring the original content passes again.
+        std::fs::write(&exe, b"first").unwrap();
+        assert!(verify(&exe).is_ok());
+        assert_eq!(last_refusal(), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_malformed_shipped_digest_refuses_rather_than_skips_the_check() {
+        let dir = scratch("badside");
+        let exe = dir.join("helper.exe");
+        std::fs::write(&exe, b"x").unwrap();
+        std::fs::write(sidecar(&exe), "not a digest").unwrap();
+        let err = verify(&exe).unwrap_err();
+        assert!(err.contains("does not hold a SHA-256 digest"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn digest_parsing_accepts_sha256sum_lines_only() {
+        let d = sha(b"a");
+        assert_eq!(parse_digest(&format!("{} *file", d.to_uppercase())), Some(d.clone()));
+        assert_eq!(parse_digest(&d[..63]), None);
+        assert_eq!(parse_digest(""), None);
+    }
+}

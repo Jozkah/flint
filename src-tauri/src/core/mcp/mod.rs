@@ -11,6 +11,8 @@ pub mod helpers;
 // for a stdio MCP server and is the single place that confinement is applied.
 // Both the desktop path (`mcp::helpers`) and the CLI path (`cli::mcp`) go
 // through it, so it must not be gated to one of them.
+pub mod allowlist;
+pub mod netguard;
 pub mod launch;
 pub mod lazy;
 // The lock files are addressed through `AppHandle::path()`, so this module is
@@ -23,6 +25,7 @@ pub mod models;
 pub mod oauth;
 #[cfg(not(feature = "cli"))]
 pub mod progress;
+pub mod redact;
 // The server direction: Jan's own toolset offered to other agents. Tauri-free,
 // so it is built in both feature configs.
 pub mod server;

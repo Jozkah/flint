@@ -451,6 +451,7 @@ async fn connect_in(
     let service =
         match (params.transport_type.as_deref(), params.url.as_deref()) {
             (Some(transport @ ("http" | "sse")), Some(url)) => {
+                crate::core::mcp::netguard::enforce_url(url).map_err(ConnectError::Failed)?;
                 let base = http_client(&params.headers)?;
                 // A credential problem we can already name (expired with no refresh
                 // token, or issued for a different url) is `NeedsAuth` outright --
@@ -612,7 +613,9 @@ fn http_client(headers: &serde_json::Map<String, Value>) -> Result<reqwest13::Cl
             }
         }
     }
-    crate::core::net::tls::apply13(reqwest13::Client::builder().default_headers(map))
+    crate::core::net::tls::apply13(
+        crate::core::mcp::netguard::guard13(reqwest13::Client::builder()).default_headers(map),
+    )
         .build()
         .map_err(|e| e.to_string())
 }

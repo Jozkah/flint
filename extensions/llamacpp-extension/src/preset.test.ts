@@ -1316,3 +1316,52 @@ describe('extraArgsToIni negative values and blocking', () => {
     expect(out.lines).toHaveLength(keys.length)
   })
 })
+
+describe('generatePreset GPU-aware defaults (text assembly only; no real GPU tested)', () => {
+  const auto = { cache_type_k: 'auto', cache_type_v: 'auto', flash_attn: 'auto' } as any
+
+  it('Turing: leaves flash-attn on auto and quantizes both KV caches', async () => {
+    setupModel('m', {})
+    await generatePreset('/p', '/jan', auto, { gpuComputeCapability: 7.5 })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).not.toContain('flash-attn')
+    expect(ini).toContain('cache-type-k = q8_0')
+    expect(ini).toContain('cache-type-v = q8_0')
+  })
+
+  it('without a detected GPU the V cache stays f16 as before', async () => {
+    setupModel('m', {})
+    await generatePreset('/p', '/jan', auto)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('cache-type-k = q8_0')
+    expect(ini).not.toContain('cache-type-v')
+  })
+
+  it('a pre-Pascal GPU gets flash-attn = off and no quantized V', async () => {
+    setupModel('m', {})
+    await generatePreset('/p', '/jan', auto, { gpuComputeCapability: 5.2 })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('flash-attn = off')
+    expect(ini).not.toContain('cache-type-v')
+  })
+
+  it('an explicit flash-attn on is respected on an old GPU', async () => {
+    setupModel('m', {})
+    await generatePreset('/p', '/jan', { ...auto, flash_attn: 'on' }, { gpuComputeCapability: 5.2 })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('flash-attn = on')
+    expect(ini).not.toContain('flash-attn = off')
+  })
+
+  it('a bf16 cache request is downgraded to f16 on Turing', async () => {
+    setupModel('m', {})
+    await generatePreset(
+      '/p',
+      '/jan',
+      { ...auto, cache_type_k: 'bf16', cache_type_v: 'bf16', flash_attn: 'on' },
+      { gpuComputeCapability: 7.5 }
+    )
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).not.toContain('bf16')
+  })
+})

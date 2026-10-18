@@ -132,6 +132,11 @@ macro_rules! invoke_commands_with_extras {
         core::huggingface::set_download_speed_limit,
         // Agent commands
         core::agent::commands::agent_emergency_stop,
+        core::agent::trust_commands::folder_trust_status,
+        core::agent::trust_commands::folder_trust_grant,
+        core::agent::trust_commands::folder_trust_revoke,
+        core::agent::trust_commands::folder_trust_list,
+        core::agent::trust_commands::folder_trust_grandfather,
         core::agent::commands::get_compaction_policy,
         core::agent::commands::get_attribution_settings,
         core::agent::commands::set_attribution_settings,
@@ -297,6 +302,14 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_checkpoint_preview_diff,
         core::agent::commands::agent_checkpoint_restore,
         core::agent::commands::agent_checkpoint_forget,
+        core::agent::commands::agent_approval_scope_options,
+        core::agent::commands::agent_approval_rule_check,
+        core::agent::commands::agent_approval_rule_add,
+        core::agent::commands::agent_approval_rules_list,
+        core::agent::commands::agent_approval_rule_revoke,
+        core::agent::commands::agent_deferred_list,
+        core::agent::commands::agent_deferred_answer,
+        core::agent::commands::agent_deferred_discard,
         core::agent::commands::agent_git_status,
         core::agent::commands::agent_git_file_diff,
         core::agent::commands::agent_git_head_file,
@@ -853,6 +866,12 @@ pub fn build_app() -> tauri::App {
             crash_notes.extend(stack_note);
             core::diffusion::register(app.handle());
             core::browser_verify::commands::install_activity_mirror(app.handle());
+            // Project folders the user trusted to run their own hooks and
+            // subagents are recorded beside the app's settings, and stay
+            // trusted.
+            tauri_plugin_agent_tools::folder_trust::set_store(
+                get_jan_data_folder_path(app.handle().clone()).join("trusted-folders.json"),
+            );
             // Toolchain folders the user let the Windows sandbox use are
             // recorded beside the app's settings.
             tauri_plugin_agent_tools::tools::toolchain_grants::set_store(

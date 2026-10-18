@@ -15,7 +15,7 @@
 
 import { fs, joinPath } from '@janhq/core'
 import { invoke } from '@tauri-apps/api/core'
-import { resolveKvCacheTypes } from './kvCache'
+import { gpuFlashAttnDefault, resolveKvCacheTypes } from './kvCache'
 import type { LlamacppConfig, ModelConfig } from '@janhq/tauri-plugin-llamacpp-api'
 
 // ModelConfig is intentionally widened — model.yml may carry extra fields like
@@ -325,6 +325,12 @@ export async function generatePreset(
      * or an eGPU unplug llama.cpp rejects the stale name and every load fails.
      */
     knownDeviceIds?: readonly string[]
+    /**
+     * Lowest CUDA compute capability among the machine's NVIDIA GPUs (`7.5` =
+     * Turing), so KV cache and flash-attn defaults stay within what the cards
+     * can run. Unset on CPU-only, AMD and Apple machines.
+     */
+    gpuComputeCapability?: number
   } = {}
 ): Promise<{ path: string; embeddingCount: number }> {
   // Overridable for tests only. Production callers take the default: gating it
@@ -425,13 +431,17 @@ export async function generatePreset(
     cacheTypeK: config.cache_type_k,
     cacheTypeV: config.cache_type_v,
     flashAttn: config.flash_attn,
+    computeCapability: opts.gpuComputeCapability,
   })
-  // flash-attn default = 'auto'; explicit on/off only.
+  // flash-attn default = 'auto'; explicit on/off only. A GPU too old for it
+  // (pre-Pascal) is pinned off unless the user chose.
   if (
     typeof config.flash_attn === 'string' &&
     (config.flash_attn === 'on' || config.flash_attn === 'off')
   ) {
     lines.push(`flash-attn = ${config.flash_attn}`)
+  } else if (gpuFlashAttnDefault(opts.gpuComputeCapability) === 'off') {
+    lines.push('flash-attn = off')
   }
   // cache-type-k/v: llama.cpp's own default is f16; the `auto` setting maps to
   // q8_0 where that is safe (see kvCache.ts). Only non-f16 is written.
@@ -807,6 +817,7 @@ export async function generatePreset(
             ? mc.cache_type_v
             : config.cache_type_v,
           flashAttn: mc.flash_attn ?? config.flash_attn,
+          computeCapability: opts.gpuComputeCapability,
         },
         { fallback: opts.kvFallbackModels?.has(modelId) === true }
       )

@@ -12,6 +12,7 @@ import {
   setRunModel,
   startRun,
   allowedAccess,
+  approveRun,
 } from '../remoteRunner'
 
 const ok = (body: string) => new Response(body, { status: 200 })
@@ -120,5 +121,21 @@ describe('remoteRunner', () => {
       input: 'look',
       attachments: [{ name: 'a.png', mime: 'image/png', data: 'QUJD' }],
     })
+  })
+
+  it('answers an approval with its scope, or later, only when asked to', async () => {
+    const bodies: unknown[] = []
+    const fetchImpl = async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return ok('{}')
+    }
+    await approveRun('s1', 'perm-1', 'allow_once', fetchImpl)
+    await approveRun('s1', 'perm-2', 'allow_always', fetchImpl, { type: 'folder', dir: 'C:/p/src' })
+    await approveRun('s1', 'perm-3', 'defer', fetchImpl)
+    expect(bodies).toEqual([
+      { id: 's1', requestId: 'perm-1', decision: 'allow_once' },
+      { id: 's1', requestId: 'perm-2', decision: 'allow_always', scope: { type: 'folder', dir: 'C:/p/src' } },
+      { id: 's1', requestId: 'perm-3', decision: 'defer' },
+    ])
   })
 })
