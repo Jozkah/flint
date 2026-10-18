@@ -13,7 +13,7 @@
 // one the app refuses anyway.
 //
 // usage: node scripts/engine-addon/pack.mjs --bin-dir src-tauri/resources/bin \
-//          --kind cuda13 --tag v0.9.0 --platform win-x64 --out dist-addon \
+//          --kind cuda13 --tag v1.0.0 --platform win-x64 --out dist-addon \
 //          [--cuda-toolkit 13.0] [--min-driver 580] [--min-compute 75]
 import { createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto'
 import { execFileSync } from 'node:child_process'

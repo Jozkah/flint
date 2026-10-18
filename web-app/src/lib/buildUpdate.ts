@@ -1,7 +1,7 @@
 /**
  * Whether a newer build of this release exists.
  *
- * Flint 0.9.0 is a nightly: the installers behind the release are rebuilt from
+ * A Flint release (1.0.0) is rolling: the installers behind the release are rebuilt from
  * the latest code and the tag moves with them, so the version number never
  * changes. An installed copy therefore compares the commit it was built from
  * with the commit the release tag points at now. Nothing here runs unless the

@@ -11,7 +11,7 @@ self-update command: re-run this script to update.
 .EXAMPLE
 .\scripts\install-jan-agent.ps1
 .EXAMPLE
-.\scripts\install-jan-agent.ps1 -Version 0.9.0 -AddToPath
+.\scripts\install-jan-agent.ps1 -Version 1.0.0 -AddToPath
 .EXAMPLE
 .\scripts\install-jan-agent.ps1 -Source
 #>

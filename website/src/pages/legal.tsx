@@ -378,8 +378,8 @@ export function SecurityPolicy() {
       title: 'Supported versions',
       body: (
         <>
-          <Table label="Supported versions" head={['Version', 'Supported']} rows={[['0.9.x', 'Yes'], ['Earlier than 0.9', 'No']]} />
-          <p>Security fixes land on the main branch and ship in the next 0.9.x release.</p>
+          <Table label="Supported versions" head={['Version', 'Supported']} rows={[['1.0.x', 'Yes'], ['Earlier than 1.0', 'No']]} />
+          <p>Security fixes land on the main branch and ship in the next 1.0.x release.</p>
         </>
       ),
     },

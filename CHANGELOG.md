@@ -1,3 +1,25 @@
+# Flint 1.0.0
+
+Flint 1.0 is the first stable release after 0.9.0. It covers every nightly since 0.9.0 (2026-09-27) and the campaign merged for 1.0. The full list of changes is in the [v1.0.0 release notes](https://github.com/Jozkah/flint/releases/tag/v1.0.0).
+
+## Highlights
+
+- Discussion Rooms gain a compare mode: one question, every model answers on its own side by side, each in an isolated git workspace, with per-turn change cards and a reviewed Apply flow (preflight, per-file apply, undo).
+- Conversation mentions (@chat, @session, @room and a # menu) pull bounded, redacted excerpts of other conversations into a prompt; a prompt library with fill-in blanks opens from @ and /.
+- Folder trust: hooks and subagents of a folder stay off until you trust it. Approvals gain scoped rules, deferred approvals for unattended runs, an edit-command option and a reason box on Deny.
+- An optional, signed CUDA engine add-on for NVIDIA GPUs, installed and verified from the app, plus faster defaults (GPU-aware flash attention and KV cache, n-gram speculation, a RAM-sized prompt cache) and split GGUF support.
+- `flint serve` runs Flint headless with a browser client (server folders, models, Cowork sessions and discussion rooms), and the iPhone app works as a thin client of a desktop.
+- New providers and tools: Amazon Bedrock, LiteLLM, native Gemini, image search and image generation tools, an OCR tool, a Translate page and a raw completion mode.
+- Campaigns: a campaign engine with a board, overview and phone view.
+- Large speed and stability work: long chats open with a fraction of the DOM, the app starts faster, idle CPU use dropped, and every screen is translated in all 19 languages.
+
+## Breaking changes
+
+- Codex and Claude account sign-in are removed; API keys still work.
+- Built-in cloud providers are no longer on at first install; saving a provider's first key switches it on.
+- The old Jan ref and checkpoint names are no longer written (they are still read).
+- `flint serve` ignores `X-Forwarded-For` for the sign-in lockout unless started with `--trust-proxy`.
+
 # Flint 0.9.0
 
 Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into an agentic desktop workspace for local and user-chosen models. This first release adds Cowork, tool-using Discussion Rooms, an auditable agent runtime, Memory, MCP and Skills, remote access, a redesigned interface and a branded Windows installer.

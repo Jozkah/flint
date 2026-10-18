@@ -5,7 +5,7 @@ title: 'bug: '
 labels: bug
 ---
 
-**Flint version:** e.g. 0.9.0
+**Flint version:** e.g. 1.0.0
 
 ## Describe the bug
 <!-- A clear and concise description of what went wrong -->

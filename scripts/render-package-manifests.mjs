@@ -2,7 +2,7 @@
 // Flint CLI release from the release's checksum list.
 //
 //   node scripts/render-package-manifests.mjs \
-//     --tag v0.9.0 --repo Jozkah/flint --sums sha256sums.txt --out dist/packaging
+//     --tag v1.0.0 --repo Jozkah/flint --sums sha256sums.txt --out dist/packaging
 //
 // `--sums` holds `sha256sum` output (`<hex>  <file name>`), one line per
 // archive named flint-<version>-<target>.<tar.gz|zip>.
