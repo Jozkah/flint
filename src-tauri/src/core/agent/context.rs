@@ -511,6 +511,21 @@ fn instructions_above_memory(project_root: &Path) -> Vec<memory::precedence::Ins
     out
 }
 
+thread_local! {
+    /// What the run being composed is about, for `[memory] ranked`. Set around
+    /// the (synchronous) prompt composition so the signature of the composers
+    /// does not have to carry it.
+    static MEMORY_QUERY: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Run `f` with `query` as the text memory is ranked against.
+pub(crate) fn with_memory_query<T>(query: Option<&str>, f: impl FnOnce() -> T) -> T {
+    let previous = MEMORY_QUERY.with(|q| q.replace(query.map(str::to_string)));
+    let out = f();
+    MEMORY_QUERY.with(|q| *q.borrow_mut() = previous);
+    out
+}
+
 pub(crate) fn load_memories(
     project_root: &Path,
     session_id: Option<&str>,
@@ -552,6 +567,11 @@ pub(crate) fn load_memories(
         .unwrap_or(0);
 
     let instructions = instructions_above_memory(project_root);
+    // `[memory] ranked = true`: relevance + recency + use under a token cap.
+    let memory_cfg = crate::core::agent::project::load_agent_config(project_root)
+        .map(|c| c.memory)
+        .unwrap_or_default();
+    let query = MEMORY_QUERY.with(|q| q.borrow().clone()).unwrap_or_default();
     let selection = memory::retrieve::select(
         &records,
         &memory::retrieve::RetrievalContext {
@@ -561,6 +581,10 @@ pub(crate) fn load_memories(
             budget_chars: MEMORY_BUDGET_CHARS,
             temporary,
             instructions: &instructions,
+            ranking: memory_cfg.ranked.then_some(memory::ranking::Ranking {
+                query: &query,
+                max_tokens: memory_cfg.max_tokens,
+            }),
         },
     );
     (selection.render(), selection)

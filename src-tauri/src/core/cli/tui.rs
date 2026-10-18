@@ -5560,7 +5560,12 @@ impl App {
             StreamEvent::RequestProvenance { .. } => {}
             // AH-174: the run's resource figures are recorded with its end and
             // shown on the timeline; the TUI's transcript does not repeat them.
-            StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
+            // The typed ending (`end_reason`) rides along with the terminal
+            // event the TUI already renders; the transcript says it once.
+            StreamEvent::Done { .. }
+            | StreamEvent::Error { .. }
+            | StreamEvent::RunEnded { .. }
+            | StreamEvent::RunResources { .. } => {}
             // The loop's own compaction: a summarizer round trip the run is
             // blocked on, which nothing else on screen would explain. The
             // header and input row carry the throbber while it runs; the
@@ -18696,6 +18701,7 @@ mod tests {
             max_session_tokens_pinned: true,
             max_turns: None,
             cost_ceiling: None,
+            pause_at_usd: None,
         };
         let app = App::new(
             "m".into(),
@@ -19028,6 +19034,7 @@ mod tests {
                     max_session_tokens_pinned: true,
                     max_turns: None,
                     cost_ceiling: None,
+                    pause_at_usd: None,
                 },
                 false,
                 agent_dir,
@@ -19707,6 +19714,7 @@ mod tests {
             prompt_kind: "write".into(),
             offers_always: true,
             reason: None,
+            args_digest: None,
         });
         let p = app.pending().unwrap();
         assert_eq!(p.diff.as_deref(), Some("@@ created file @@\n+ hi"));
@@ -19746,6 +19754,7 @@ mod tests {
             prompt_kind: "exec".into(),
             offers_always: true,
             reason: None,
+            args_digest: None,
         });
         assert!(app.pending().unwrap().diff_preview(60).is_empty());
     }
@@ -25681,6 +25690,7 @@ mod tests {
                 prompt_kind: "exec".into(),
                 offers_always: true,
                 reason: None,
+                args_digest: None,
             },
         ));
         assert_eq!(
@@ -25721,6 +25731,7 @@ mod tests {
                 prompt_kind: "exec".into(),
                 offers_always: true,
                 reason: None,
+                args_digest: None,
             },
         ));
         // Second subagent's request arrives while the first is still pending.
@@ -25738,6 +25749,7 @@ mod tests {
                 prompt_kind: "read".into(),
                 offers_always: false,
                 reason: None,
+                args_digest: None,
             },
         ));
 
@@ -27926,6 +27938,7 @@ mod tests {
                 prompt_kind: "exec".into(),
                 offers_always: true,
                 reason: None,
+                args_digest: None,
             });
             app.pending_queue.clear(); // simulate approval
             app.apply(StreamEvent::ToolResult {

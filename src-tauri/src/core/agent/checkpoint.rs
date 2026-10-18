@@ -62,6 +62,21 @@
 //! - The conversation, and every effect outside the files: processes started,
 //!   packages installed elsewhere, network requests, messages sent.
 //!
+//! # Integrity
+//!
+//! A checkpoint is only as good as the object it names. At capture, the
+//! snapshot's commit id, the tree it points at and the checkpoint's own record
+//! are written to a manifest inside the repository (`jan-agent-checkpoints/`,
+//! beside the objects). Before anything is planned or restored from a
+//! checkpoint, [`verify`] reads the object back and hashes what it got: the
+//! commit and its root tree must hash to the ids they are filed under, every
+//! file the tree names must be present, and the record handed in must match the
+//! manifest (same commit, tree, root and label, and not claiming to be a
+//! managed checkpoint when it was taken in the user's checkout). A checkpoint
+//! that fails any of this is refused with a message saying which, and nothing
+//! is touched. A checkpoint taken before manifests existed has no record to
+//! compare, so only the object checks apply to it.
+//!
 //! # The guard against silent loss
 //!
 //! A restore discards whatever is on disk. It is only allowed to discard what a
@@ -147,12 +162,160 @@ pub fn capture(
     // Keeping the chain reachable is what stops garbage collection from
     // quietly making recovery impossible between one session and the next.
     git::update_ref(root, thread_id, &sha)?;
-    Ok(Checkpoint {
+    let made = Checkpoint {
         sha,
         label: label.to_string(),
         destination,
         root: root.to_string_lossy().to_string(),
-    })
+    };
+    // Best effort: a checkpoint without a manifest is still restorable, only
+    // less checkable, and failing the capture would lose the snapshot too.
+    if let Err(e) = write_manifest(&made) {
+        log::warn!("checkpoint {}: its integrity record was not written: {e}", short(&made.sha));
+    }
+    Ok(made)
+}
+
+/// What was recorded about a checkpoint when it was taken.
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+struct Manifest {
+    sha: String,
+    tree: String,
+    root: String,
+    label: String,
+    destination: Destination,
+    /// sha256 over the fields above, so a record edited by hand does not
+    /// verify.
+    digest: String,
+}
+
+impl Manifest {
+    fn digest_of(sha: &str, tree: &str, root: &str, label: &str, destination: Destination) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        for part in [sha, tree, root, label, &format!("{destination:?}")] {
+            hasher.update(part.as_bytes());
+            hasher.update([0u8]);
+        }
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+const MANIFEST_DIR: &str = "jan-agent-checkpoints";
+
+fn manifest_file(root: &Path, sha: &str) -> Result<PathBuf, String> {
+    if sha.is_empty() || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!("{sha:?} is not a commit id"));
+    }
+    Ok(git::common_git_dir(root)?.join(MANIFEST_DIR).join(format!("{sha}.json")))
+}
+
+fn write_manifest(cp: &Checkpoint) -> Result<(), String> {
+    let root = PathBuf::from(&cp.root);
+    let tree = git::tree_of(&root, &cp.sha)?;
+    let file = manifest_file(&root, &cp.sha)?;
+    let manifest = Manifest {
+        digest: Manifest::digest_of(&cp.sha, &tree, &cp.root, &cp.label, cp.destination),
+        sha: cp.sha.clone(),
+        tree,
+        root: cp.root.clone(),
+        label: cp.label.clone(),
+        destination: cp.destination,
+    };
+    let body = serde_json::to_vec(&manifest).map_err(|e| e.to_string())?;
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&file, body).map_err(|e| e.to_string())
+}
+
+/// What [`verify`] could compare against.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Integrity {
+    /// The object is intact and matches the record made when it was taken.
+    Verified,
+    /// The object is intact; there is no record from capture to compare with
+    /// (a checkpoint from before manifests, or one whose record was not
+    /// written).
+    ObjectOnly,
+}
+
+fn same_path(a: &str, b: &str) -> bool {
+    match (Path::new(a).canonicalize(), Path::new(b).canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
+}
+
+/// Check that `checkpoint` is the snapshot it claims to be (see the module
+/// docs). Read-only. The error says what failed and that nothing was touched.
+pub fn verify(checkpoint: &Checkpoint) -> Result<Integrity, String> {
+    let refuse = |why: String| {
+        format!(
+            "checkpoint {} was not used: {why}. The snapshot is corrupt or its record was \
+             altered, so nothing was restored or changed",
+            short(&checkpoint.sha)
+        )
+    };
+    let root = PathBuf::from(&checkpoint.root);
+    let sha = checkpoint.sha.as_str();
+    match git::object_kind(&root, sha) {
+        Ok(kind) if kind == "commit" => {}
+        Ok(kind) => return Err(refuse(format!("it names a {kind}, not a snapshot commit"))),
+        Err(e) => return Err(refuse(format!("the snapshot is missing from the repository ({e})"))),
+    }
+    let actual = git::rehash_object(&root, "commit", sha)
+        .map_err(|e| refuse(format!("the snapshot could not be read back ({e})")))?;
+    if actual != sha {
+        return Err(refuse(format!(
+            "its content hashes to {} instead of {}",
+            short(&actual),
+            short(sha)
+        )));
+    }
+    let tree = git::tree_of(&root, sha).map_err(|e| refuse(format!("its tree could not be found ({e})")))?;
+    let tree_actual = git::rehash_object(&root, "tree", &tree)
+        .map_err(|e| refuse(format!("its tree could not be read back ({e})")))?;
+    if tree_actual != tree {
+        return Err(refuse(format!(
+            "its tree hashes to {} instead of {}",
+            short(&tree_actual),
+            short(&tree)
+        )));
+    }
+    let absent = git::absent_blobs(&root, &tree).map_err(|e| refuse(format!("its files could not be listed ({e})")))?;
+    if !absent.is_empty() {
+        return Err(refuse(format!(
+            "{} of the files it holds are missing from the repository",
+            count(absent.len())
+        )));
+    }
+    let file = manifest_file(&root, sha).map_err(refuse)?;
+    let Ok(raw) = std::fs::read(&file) else { return Ok(Integrity::ObjectOnly) };
+    let manifest: Manifest = serde_json::from_slice(&raw)
+        .map_err(|e| refuse(format!("its integrity record cannot be read ({e})")))?;
+    let digest = Manifest::digest_of(
+        &manifest.sha,
+        &manifest.tree,
+        &manifest.root,
+        &manifest.label,
+        manifest.destination,
+    );
+    if digest != manifest.digest {
+        return Err(refuse("its integrity record does not match its own hash".to_string()));
+    }
+    if manifest.sha != sha || manifest.tree != tree {
+        return Err(refuse("its integrity record is for a different snapshot".to_string()));
+    }
+    if !same_path(&manifest.root, &checkpoint.root) || manifest.label != checkpoint.label {
+        return Err(refuse("the checkpoint's root or label differs from what was captured".to_string()));
+    }
+    if manifest.destination == Destination::UserCheckout && checkpoint.destination == Destination::Managed {
+        return Err(refuse(
+            "it claims to be a Flint-owned checkpoint but was taken in your own checkout".to_string(),
+        ));
+    }
+    Ok(Integrity::Verified)
 }
 
 /// Longest subject line a checkpoint commit gets, git's customary limit.
@@ -225,6 +388,7 @@ pub enum RewindPlan {
 /// A restore plan names what it would touch, so a confirmation can show the
 /// scope instead of asking someone to agree to an unnamed overwrite.
 pub fn plan(checkpoint: &Checkpoint, latest: &str) -> Result<RewindPlan, String> {
+    verify(checkpoint)?;
     if checkpoint.destination.may_hard_restore() {
         let root = PathBuf::from(&checkpoint.root);
         let files = git::changed_since(&root, &checkpoint.sha)?;
@@ -253,6 +417,7 @@ pub fn plan(checkpoint: &Checkpoint, latest: &str) -> Result<RewindPlan, String>
 /// Only for a managed tree: in the user's checkout the plan already *is* a
 /// patch, and there is no restore to preview.
 pub fn preview_restore_diff(checkpoint: &Checkpoint) -> Result<String, String> {
+    verify(checkpoint)?;
     if !checkpoint.destination.may_hard_restore() {
         return Err("this checkpoint is in your own checkout; its plan is the patch".to_string());
     }
@@ -304,6 +469,9 @@ pub fn restore(checkpoint: &Checkpoint, latest: &str, guard: &RestoreGuard) -> R
                 .to_string(),
         );
     }
+    // Before anything is compared or written: a checkpoint that is not the
+    // snapshot it claims to be is never restored from.
+    verify(checkpoint)?;
     let root = PathBuf::from(&checkpoint.root);
     require_top_level(&root)?;
 
@@ -1505,5 +1673,151 @@ mod tests {
         assert_eq!(tree_state(&root), at_point);
         assert_eq!(std::fs::read(root.join("crlf.txt")).unwrap(), b"c\r\nd\r\n");
         assert_eq!(std::fs::read(root.join("x.crlf")).unwrap(), b"g\nh\n");
+    }
+
+    // ---- integrity ---------------------------------------------------------
+
+    /// The loose object file for `id`, made writable so a test can damage it
+    /// (git leaves objects read-only).
+    fn loose_object(root: &Path, id: &str) -> PathBuf {
+        let path = root.join(".git").join("objects").join(&id[..2]).join(&id[2..]);
+        assert!(path.exists(), "{id} is not a loose object here");
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&path, perms).unwrap();
+        path
+    }
+
+    fn manifest_of(root: &Path, sha: &str) -> PathBuf {
+        root.join(".git").join(MANIFEST_DIR).join(format!("{sha}.json"))
+    }
+
+    fn assert_refused_untouched(root: &Path, point: &Checkpoint, latest: &str, expect: &str) {
+        let before = tree_state(root);
+        let err = restore(point, latest, &RestoreGuard::default()).expect_err("must refuse");
+        assert!(err.contains("was not used"), "{err}");
+        assert!(err.contains("nothing was restored"), "{err}");
+        assert!(err.contains(expect), "wanted {expect:?} in {err}");
+        assert_eq!(tree_state(root), before, "a refused restore changed the tree");
+    }
+
+    #[test]
+    fn a_checkpoint_is_verified_against_the_record_made_when_it_was_taken() {
+        let (_d, root) = repo();
+        let point = managed(&root, &thread_id("cp-verify"), None, "before");
+        assert!(manifest_of(&root, &point.sha).exists(), "capture writes a record");
+        assert_eq!(verify(&point), Ok(Integrity::Verified));
+    }
+
+    #[test]
+    fn a_checkpoint_from_before_records_existed_is_checked_by_its_objects_alone() {
+        let (_d, root) = repo();
+        let id = thread_id("cp-legacy");
+        let first = managed(&root, &id, None, "before");
+        std::fs::remove_file(manifest_of(&root, &first.sha)).unwrap();
+        assert_eq!(verify(&first), Ok(Integrity::ObjectOnly));
+        write(&root, "a.txt", "changed\n");
+        let latest = managed(&root, &id, Some(&first.sha), "after");
+        restore(&first, &latest.sha, &RestoreGuard::default()).expect("a legacy checkpoint still restores");
+        assert_eq!(read(&root, "a.txt"), "one\n");
+    }
+
+    #[test]
+    fn a_record_that_names_a_different_snapshot_is_refused() {
+        let (_d, root) = repo();
+        let id = thread_id("cp-swap");
+        let first = managed(&root, &id, None, "before");
+        write(&root, "a.txt", "changed\n");
+        let latest = managed(&root, &id, Some(&first.sha), "after");
+        // The caller hands over the right label and root but a different
+        // commit: the first checkpoint's record says it is not this one.
+        let swapped = Checkpoint { sha: latest.sha.clone(), ..first.clone() };
+        write(&root, "a.txt", "edited after\n");
+        let err = verify(&swapped).expect_err("refused");
+        assert!(err.contains("label differs") || err.contains("different snapshot"), "{err}");
+        assert_refused_untouched(&root, &swapped, &latest.sha, "was not used");
+        assert_eq!(read(&root, "a.txt"), "edited after\n");
+    }
+
+    #[test]
+    fn an_altered_label_or_root_is_refused() {
+        let (_d, root) = repo();
+        let first = managed(&root, &thread_id("cp-label"), None, "before");
+        let renamed = Checkpoint { label: "something else".into(), ..first.clone() };
+        assert!(verify(&renamed).unwrap_err().contains("differs from what was captured"));
+        let moved = Checkpoint { root: root.join("sub").to_string_lossy().to_string(), ..first };
+        assert!(verify(&moved).is_err());
+    }
+
+    #[test]
+    fn a_users_checkout_cannot_pass_itself_off_as_a_managed_one() {
+        let (_d, root) = repo();
+        let made = capture(&root, &thread_id("cp-claim"), None, "mine", &[], Destination::UserCheckout).unwrap();
+        assert_eq!(verify(&made), Ok(Integrity::Verified));
+        let claimed = Checkpoint { destination: Destination::Managed, ..made };
+        let err = verify(&claimed).unwrap_err();
+        assert!(err.contains("taken in your own checkout"), "{err}");
+        // The rewind plan and the preview refuse it too, not just the restore.
+        assert!(plan(&claimed, &claimed.sha).is_err());
+        assert!(preview_restore_diff(&claimed).is_err());
+    }
+
+    #[test]
+    fn an_edited_record_does_not_verify() {
+        let (_d, root) = repo();
+        let first = managed(&root, &thread_id("cp-edit"), None, "before");
+        let file = manifest_of(&root, &first.sha);
+        let mut manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        manifest["tree"] = serde_json::json!("0".repeat(40));
+        std::fs::write(&file, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        assert!(verify(&first).unwrap_err().contains("does not match its own hash"));
+        std::fs::write(&file, b"{not json").unwrap();
+        assert!(verify(&first).unwrap_err().contains("cannot be read"));
+    }
+
+    #[test]
+    fn a_corrupt_snapshot_object_is_refused_and_the_tree_is_left_alone() {
+        let (_d, root) = repo();
+        let id = thread_id("cp-corrupt");
+        let first = managed(&root, &id, None, "before");
+        write(&root, "a.txt", "changed\n");
+        let latest = managed(&root, &id, Some(&first.sha), "after");
+        // Damage the snapshot's commit object in place.
+        let object = loose_object(&root, &first.sha);
+        std::fs::write(&object, b"not a zlib stream").unwrap();
+        assert_refused_untouched(&root, &first, &latest.sha, "was not used");
+    }
+
+    #[test]
+    fn a_file_missing_from_the_snapshot_is_refused() {
+        let (_d, root) = repo();
+        let id = thread_id("cp-missing");
+        write(&root, "unique.txt", "content only this snapshot holds\n");
+        let first = managed(&root, &id, None, "before");
+        let blob = git_text(&root, &["rev-parse", &format!("{}:unique.txt", first.sha)]);
+        write(&root, "a.txt", "changed\n");
+        // Taken before the object is damaged: a later capture would write the
+        // same file's content back.
+        let latest = managed(&root, &id, Some(&first.sha), "after");
+        std::fs::remove_file(loose_object(&root, &blob)).unwrap();
+        assert_refused_untouched(&root, &first, &latest.sha, "missing from the repository");
+    }
+
+    #[test]
+    fn something_that_is_not_a_snapshot_commit_is_refused() {
+        let (_d, root) = repo();
+        let first = managed(&root, &thread_id("cp-kind"), None, "before");
+        let tree = git_text(&root, &["rev-parse", &format!("{}^{{tree}}", first.sha)]);
+        let wrong = Checkpoint { sha: tree, ..first.clone() };
+        assert!(verify(&wrong).unwrap_err().contains("not a snapshot commit"));
+        let absent = Checkpoint { sha: "0123456789abcdef0123456789abcdef01234567".into(), ..first };
+        assert!(verify(&absent).unwrap_err().contains("missing from the repository"));
+    }
+
+    fn git_text(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().expect("git");
+        assert!(out.status.success(), "git {args:?}: {out:?}");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 }

@@ -316,6 +316,16 @@ pub enum StreamEvent {
     },
     /// Terminal failure (setup error, upstream/tool failure, or max_turns).
     Error { code: String, message: String },
+    /// Why the run ended, as one typed value (see `end_reason`), emitted just
+    /// before the terminal `Done`/`Error` so every surface says the same thing
+    /// about the same ending. `reason` is one of `completed`, `user_stop`,
+    /// `budget`, `turn_limit`, `refusal`, `error`, `lease_lost`; `label` is the
+    /// sentence a desktop shows; `exit_code` is the status the CLI ends with.
+    RunEnded {
+        reason: String,
+        label: String,
+        exit_code: i32,
+    },
     /// The loop needs the user to approve a gated tool call. The client replies via
     /// the `agent_permission_respond` command referencing `request_id`.
     PermissionRequest {
@@ -344,6 +354,13 @@ pub enum StreamEvent {
         /// ordinary prompt.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
+        /// The sha256 (hex) of the tool name and its arguments as canonical
+        /// JSON (keys sorted), taken when this prompt was raised. The approved
+        /// call runs only if its arguments still hash to this value; otherwise
+        /// it is refused unrun. `None` for a prompt not about one tool call's
+        /// arguments.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        args_digest: Option<String>,
     },
     /// A host-registered tool was called and the run is waiting for the host to
     /// execute it. The client replies with a `tool_result` line carrying this
@@ -739,6 +756,14 @@ pub(crate) mod tests {
                 },
             ),
             (
+                "RunEnded",
+                StreamEvent::RunEnded {
+                    reason: "turn_limit".into(),
+                    label: "Stopped: the turn limit was reached before the work was done.".into(),
+                    exit_code: 53,
+                },
+            ),
+            (
                 "PermissionRequest",
                 StreamEvent::PermissionRequest {
                     request_id: "perm-1".into(),
@@ -751,6 +776,7 @@ pub(crate) mod tests {
                     prompt_kind: "exec".into(),
                     offers_always: true,
                     reason: None,
+                    args_digest: None,
                 },
             ),
             (
@@ -829,6 +855,7 @@ pub(crate) mod tests {
             | StreamEvent::TurnUsage { .. }
             | StreamEvent::Done { .. }
             | StreamEvent::Error { .. }
+            | StreamEvent::RunEnded { .. }
             | StreamEvent::PermissionRequest { .. }
             | StreamEvent::ToolRequest { .. }
             | StreamEvent::ToolRequestCancelled { .. }
@@ -1024,6 +1051,7 @@ pub(crate) mod tests {
             prompt_kind: "write".into(),
             offers_always: true,
             reason: None,
+            args_digest: None,
         })
         .unwrap();
         assert_eq!(

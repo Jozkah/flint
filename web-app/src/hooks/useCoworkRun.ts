@@ -10,6 +10,7 @@ import type {
 } from '@/types/coworkSession'
 import type { ModelLoadProgress } from '@/hooks/useAppState'
 import type { RunOutcome } from '@/lib/coworkRunner'
+import type { RunEndedEvent } from '@/lib/runEnded'
 
 /** How a session's run ended, as the route shows it. */
 export type RunEnding = Pick<RunOutcome, 'stoppedBy' | 'errorText'>
@@ -39,6 +40,7 @@ export type StreamEvent =
   | { type: 'tool_result'; id: string; content: string; is_error: boolean; diff?: string }
   | { type: 'done'; stop_reason: string; usage: Usage | null }
   | { type: 'error'; code: string; message: string }
+  | RunEndedEvent
   | { type: 'todo_update'; list: TodoList }
   | { type: 'ask_request'; request_id: string; request: AskRequestPayload }
   | { type: 'subagent_queued'; run_id: string; name: string; waiting: number }

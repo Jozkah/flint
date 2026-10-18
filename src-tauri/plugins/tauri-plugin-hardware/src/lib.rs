@@ -108,6 +108,27 @@ pub fn sample_system_usage() -> SystemUsage {
     }
 }
 
+/// Memory a new process can take now, in MiB (the OS "available" figure).
+/// Cheap: unlike [`sample_system_usage`] it does not sample the CPU, so a guard
+/// can call it before every turn.
+pub fn available_memory_mb() -> u64 {
+    let mut system = sysinfo::System::new();
+    system.refresh_memory();
+    system.available_memory() / 1024 / 1024
+}
+
+/// Free VRAM in MiB on the GPU with the most room, or `None` when no GPU
+/// reports its usage (no GPU, or a vendor whose usage we cannot read).
+pub fn free_vram_mb() -> Option<u64> {
+    get_system_info()
+        .gpus
+        .iter()
+        .map(|gpu| gpu.get_usage())
+        .filter(|usage| usage.total_memory > 0)
+        .map(|usage| usage.total_memory.saturating_sub(usage.used_memory))
+        .max()
+}
+
 /// Invalidates cached hardware info so the next `get_system_info()` re-detects GPUs.
 pub fn invalidate_system_info() {
     #[cfg(target_os = "linux")]

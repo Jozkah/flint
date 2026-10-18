@@ -164,8 +164,12 @@ had said before it broke as `result`:
 | `session_id` | Short session id for `--resume`. `null` only when no thread was saved: a fresh run that fails before its first save reports `null`, while a resumed run keeps the id it already had |
 | `num_turns` | Agent turns taken. Subagent turns are not counted |
 | `usage` | Summed over every request the run made, subagents included |
+| `tool_failures` | Failed tool calls by tool name, e.g. `{"bash": 2}`: a result starting with `ERROR` (refusals included) or a shell command that exited non-zero. Subagent calls are not counted. Absent when none failed |
+| `completed_with_failures` | `true` when the run finished without an error but at least one tool call failed along the way. Absent otherwise |
 
-One-shot exit codes: `0` on completion, `1` on failure, `2` on bad CLI arguments, `53` when `--max-turns` is exhausted while the model is still calling tools. `--max-session-tokens` is advisory and does not produce exit `53`.
+Every run ends with one typed reason, reported the same way everywhere: a `run_ended` event just before the terminal `done`/`error`, `end_reason` and `exit_code` in the `--output-format json` result, and the process exit status. The reasons are `completed` (0), `user_stop` (130), `budget` (75), `turn_limit` (53), `refusal` (77, a refused permission, approval or sandbox call), `lease_lost` (73, another process took the run over) and `error` (the failure's own `sysexits` code, for example 69 for an unreachable provider). `flint cli agent ledger <run>` prints every side-effecting tool call a run made (file writes with the file's sha256 before and after, commands, network calls), in order, from the session's record; pass a session id for all of its runs, or `--json` for the entries. A session is driven by one process at a time: a second process is refused while the first holds the run's lease, a crashed run's lease is taken over at once, and a hung one's after 30 seconds without a heartbeat.
+
+One-shot exit codes: `0` on completion, `1` on failure, `2` on bad CLI arguments, `53` when `--max-turns` is exhausted while the model is still calling tools. `--max-session-tokens` is advisory and does not produce exit `53`. With `[agent] final_answer_on_limit = true` an exhausted `--max-turns` instead ends with a closing answer, `stop_reason: turn_limit_exceeded` and exit `0`.
 
 #### Streaming JSON, in both directions
 
@@ -768,6 +772,21 @@ flint cli memory pin project <ID>                 # and: unpin
 flint cli memory forget project <ID>              # also removes it from saved requests
 flint cli memory clear project --yes
 flint cli memory export user ./memories.json
+```
+
+### `approvals`
+
+Prompts a run put off (with `[approvals] defer = true` in `agent.toml`, or by answering `d` at the
+terminal prompt), and the scoped rules saved with "allow always". See
+[Project configuration](/docs/agent/project-config#approvals).
+
+```bash
+flint cli approvals list [--project .] [--all] [--json]   # what is waiting for an answer
+flint cli approvals allow <ID>                    # then resume the session; the same call runs once
+flint cli approvals deny <ID>
+flint cli approvals discard <ID>
+flint cli approvals rules [--project .] [--json]  # folders and command prefixes you allowed
+flint cli approvals revoke <RULE_ID>
 ```
 
 ### `worktree`

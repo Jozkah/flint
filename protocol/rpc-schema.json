@@ -1140,6 +1140,32 @@
         ]
       },
       {
+        "description": "Why the run ended, as one typed value (see `end_reason`), emitted just\nbefore the terminal `Done`/`Error` so every surface says the same thing\nabout the same ending. `reason` is one of `completed`, `user_stop`,\n`budget`, `turn_limit`, `refusal`, `error`, `lease_lost`; `label` is the\nsentence a desktop shows; `exit_code` is the status the CLI ends with.",
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "type": {
+            "type": "string",
+            "const": "run_ended"
+          }
+        },
+        "required": [
+          "type",
+          "reason",
+          "label",
+          "exit_code"
+        ]
+      },
+      {
         "description": "The loop needs the user to approve a gated tool call. The client replies via\nthe `agent_permission_respond` command referencing `request_id`.",
         "type": "object",
         "properties": {
@@ -1191,6 +1217,13 @@
           },
           "reason": {
             "description": "Why this call is being asked about when a grant or auto-approval\nwould otherwise have let it run: a destructive shell command, or the\ncheck-in after a long streak of auto-approved calls. `None` for an\nordinary prompt.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args_digest": {
+            "description": "The sha256 (hex) of the tool name and its arguments as canonical\nJSON (keys sorted), taken when this prompt was raised. The approved\ncall runs only if its arguments still hash to this value; otherwise\nit is refused unrun. `None` for a prompt not about one tool call's\narguments.",
             "type": [
               "string",
               "null"

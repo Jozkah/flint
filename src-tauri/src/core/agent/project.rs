@@ -21,6 +21,9 @@ pub(crate) struct AgentToml {
     pub provider: Option<ProviderSection>,
     #[serde(default)]
     pub tools: ToolsSection,
+    /// `[memory]` -- how remembered facts are ranked into the prompt.
+    #[serde(default)]
+    pub memory: MemorySection,
     /// `[prompt]` -- which contributors to the system prompt may sit above the
     /// cache line.
     #[serde(default)]
@@ -48,6 +51,15 @@ pub(crate) struct AgentToml {
     /// `[auto_mode]` -- the autonomous-mode safety classifier, off by default.
     #[serde(default)]
     pub auto_mode: crate::core::agent::auto_mode::AutoModePolicy,
+    /// `[[tool_rules]]` -- order and count rules over a run's tool calls.
+    #[serde(default)]
+    pub tool_rules: Vec<crate::core::agent::tool_rules::ToolRuleSpec>,
+    /// `[approvals]` -- what a run does at a prompt nobody can answer.
+    #[serde(default)]
+    pub approvals: crate::core::agent::approval_flow::ApprovalsSection,
+    /// `[[tool_profiles]]` -- per-model override of `[tools] profile`.
+    #[serde(default)]
+    pub tool_profiles: Vec<crate::core::agent::tool_profile::ToolProfileRule>,
     /// `[output]` -- how much a run says about itself (AH-181).
     #[cfg(feature = "cli")]
     #[serde(default)]
@@ -56,6 +68,78 @@ pub(crate) struct AgentToml {
     /// (AH-158).
     #[serde(default)]
     pub licenses: LicensesSection,
+    /// `[subagents]` -- which subagents this project's runs may spawn.
+    #[serde(default)]
+    pub subagents: SubagentsSection,
+    /// `[mcp]` -- which programs a stdio MCP server may be started with.
+    /// Declared so the section parses with the rest; the launch check reads the
+    /// global file itself, so nothing reads this field.
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub mcp: McpSection,
+}
+
+/// `[mcp]` -- `allow_commands` limits stdio MCP servers to those whose command
+/// (file name, case-insensitive, without `.exe`/`.cmd`) is listed. Absent or
+/// empty is today's behaviour: any command. Enforced at launch by
+/// `core::mcp::allowlist`, from the global agent.toml.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct McpSection {
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub allow_commands: Vec<String>,
+    /// Hosts a remote (http/sse) MCP server URL may point at; `*.x.com` allows
+    /// subdomains. Enforced by `core::mcp::netguard`.
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub allow_hosts: Vec<String>,
+}
+
+/// `[subagents]` -- an allowlist over the subagents a run of this project may
+/// spawn. Absent or empty is today's behaviour: any saved, shipped or one-off
+/// subagent. A non-empty `allow` admits exactly the names it lists, shipped
+/// roles included, and nothing else.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct SubagentsSection {
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// What a failed child does to the rest of the fan-out: `continue` (the
+    /// default; siblings carry on and the parent is told which failed), `stop`
+    /// (the other children are stopped and the parent is told why), or
+    /// `retry_once` (the failed child runs once more before it counts as
+    /// failed). Kept as text so a typo is refused at dispatch with a message,
+    /// not by dropping the whole file.
+    #[serde(default)]
+    pub on_failure: Option<String>,
+}
+
+/// The project's `[subagents].allow` list, trimmed, blanks dropped. A missing
+/// or malformed agent.toml yields an empty list, like every other section read
+/// for a run.
+pub(crate) fn subagent_allowlist(project_root: &Path) -> Vec<String> {
+    load_agent_config(project_root)
+        .map(|cfg| allowlist_of(&cfg.subagents))
+        .unwrap_or_default()
+}
+
+/// The project's `[subagents].on_failure`, or `continue` when unset.
+pub(crate) fn subagent_failure_policy(
+    project_root: &Path,
+) -> Result<crate::core::agent::subagent::FailurePolicy, String> {
+    match load_agent_config(project_root).ok().and_then(|cfg| cfg.subagents.on_failure) {
+        None => Ok(Default::default()),
+        Some(raw) => crate::core::agent::subagent::FailurePolicy::parse(&raw),
+    }
+}
+
+fn allowlist_of(section: &SubagentsSection) -> Vec<String> {
+    section
+        .allow
+        .iter()
+        .map(|n| n.trim())
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// `[licenses]` -- the licences this project allows its dependencies to carry
@@ -111,6 +195,8 @@ pub(crate) struct ProfileSection {
     pub sandbox: Option<bool>,
     #[serde(default)]
     pub format_on_edit: Option<bool>,
+    #[serde(default)]
+    pub check_syntax: Option<bool>,
     /// `[skills].enabled` for this profile.
     #[serde(default)]
     pub skills: Option<Vec<String>>,
@@ -167,6 +253,9 @@ pub(crate) fn apply_profile(mut cfg: AgentToml, name: &str) -> Result<AgentToml,
     }
     if let Some(format_on_edit) = profile.format_on_edit {
         cfg.tools.format_on_edit = Some(format_on_edit);
+    }
+    if let Some(check_syntax) = profile.check_syntax {
+        cfg.tools.check_syntax = Some(check_syntax);
     }
     if let Some(skills) = profile.skills.clone() {
         cfg.skills.enabled = skills;
@@ -267,6 +356,62 @@ pub(crate) struct SkillsSection {
 /// spend (see `SessionBudget`: replayed context is not recharged each turn).
 /// Unset applies `DEFAULT_MAX_SESSION_TOKENS`; an explicit `0` disables the
 /// ceiling, leaving cancellation as the only guard.
+/// `[memory]` -- ranking of remembered facts. Off by default: the precedence
+/// order is the long-standing behaviour.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct MemorySection {
+    /// Rank by relevance + recency + use count instead of precedence order.
+    #[serde(default)]
+    pub ranked: bool,
+    /// Cap on injected memory in tokens, applied on top of the character budget.
+    #[serde(default)]
+    pub max_tokens: Option<usize>,
+}
+
+/// The `[agent]` performance keys, readable in the desktop build too (the
+/// typed `AgentSection` is CLI-only). Read from the raw table so a malformed
+/// neighbour never costs a run these settings, and a value of the wrong type is
+/// ignored rather than refusing the file.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct AgentPerf {
+    /// `fast_path`: trivial prompts skip the heavy preamble.
+    pub fast_path: bool,
+    /// `min_free_ram_mb`: pause before a turn when free RAM is below this.
+    pub min_free_ram_mb: Option<u64>,
+    /// `min_free_vram_mb`: the same for the emptiest GPU.
+    pub min_free_vram_mb: Option<u64>,
+}
+
+impl AgentPerf {
+    pub(crate) fn from_toml_str(raw: &str) -> Self {
+        let Ok(doc) = raw.parse::<toml::Table>() else {
+            return Self::default();
+        };
+        let Some(agent) = doc.get("agent").and_then(|v| v.as_table()) else {
+            return Self::default();
+        };
+        let mb = |key: &str| {
+            agent
+                .get(key)
+                .and_then(|v| v.as_integer())
+                .and_then(|n| u64::try_from(n).ok())
+                .filter(|n| *n > 0)
+        };
+        Self {
+            fast_path: agent.get("fast_path").and_then(|v| v.as_bool()).unwrap_or(false),
+            min_free_ram_mb: mb("min_free_ram_mb"),
+            min_free_vram_mb: mb("min_free_vram_mb"),
+        }
+    }
+
+    /// The project's keys; none set when the file is missing or unreadable.
+    pub(crate) fn load(project_root: &Path) -> Self {
+        std::fs::read_to_string(agent_toml_path(project_root))
+            .map(|raw| Self::from_toml_str(&raw))
+            .unwrap_or_default()
+    }
+}
+
 #[cfg(feature = "cli")]
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(crate) struct BudgetSection {
@@ -277,6 +422,12 @@ pub(crate) struct BudgetSection {
     /// capped and a run that asks for one is refused rather than run uncapped.
     #[serde(default)]
     pub max_usd: Option<f64>,
+    /// USD at which a run pauses once to ask whether to go on. A soft check-in,
+    /// not a limit: allowing it continues up to `max_usd` (if any), denying it
+    /// stops the run as `budget_exceeded`, and a run with nobody to ask goes on
+    /// exactly as if this were unset. Priced from `prices.toml` like `max_usd`.
+    #[serde(default)]
+    pub pause_at_usd: Option<f64>,
 }
 
 /// `[agent]` — resolves the model and per-run knobs for CLI agent runs.
@@ -335,6 +486,21 @@ pub(crate) struct AgentSection {
     /// to the global `worktree` setting, then the default, off.
     #[serde(default)]
     pub worktree: Option<bool>,
+    /// When a top-level run reaches `max_turns` while the model is still
+    /// calling tools, make one more request with tool use withheld and return
+    /// that reply as the answer (`finish_reason: "turn_limit_exceeded"`)
+    /// instead of failing with the turn-limit error. Default false. Subagent
+    /// runs always keep the error. See `turn_limit`.
+    #[serde(default)]
+    pub final_answer_on_limit: Option<bool>,
+    /// Checks a run must pass before it may hand back a final answer: files
+    /// that must exist (`{ file = "out.md" }`) and commands that must exit 0
+    /// (`{ command = "cargo test", timeout_secs = 300 }`). A failure gives the
+    /// model one retry turn carrying what failed; after that the run finishes
+    /// and the answer is marked as unverified. Commands run only in a trusted
+    /// folder. See `final_checks`.
+    #[serde(default)]
+    pub final_checks: Vec<crate::core::agent::final_checks::FinalCheck>,
 }
 
 // `default`/`allow`/`deny`/`allow_write` are consumed by `permissions_from`,
@@ -390,12 +556,25 @@ pub(crate) struct ToolsSection {
     /// formatter it uses (AH-150).
     #[serde(default)]
     pub format_on_edit: Option<bool>,
+    /// Whether a `.json`/`.toml`/`.yaml` file the agent writes or edits is
+    /// parse-checked and a failure appended to the tool result. On unless set
+    /// to false.
+    #[serde(default)]
+    pub check_syntax: Option<bool>,
     /// Programs that open Windows' null device themselves, beyond the
     /// built-in `go` and `git`. Where the null device refuses the sandbox, a
     /// sandboxed command naming one is not run; the user is asked to run it
     /// outside the sandbox instead.
     #[serde(default)]
     pub nul_programs: Vec<String>,
+    /// `"full"` (default) or `"minimal"`: how much of the toolset the model is
+    /// shown. See `core::agent::tool_profile`.
+    #[serde(default)]
+    pub profile: Option<String>,
+    /// Offer the `code` tool: one short script that calls a few read-only
+    /// tools and returns a combined result. Off unless asked for.
+    #[serde(default)]
+    pub code_mode: Option<bool>,
 }
 
 const AGENT_TOML_TEMPLATE: &str = r#"[agent]
@@ -404,7 +583,13 @@ const AGENT_TOML_TEMPLATE: &str = r#"[agent]
 # compaction_reserve_tokens = 16384  # headroom before auto-compaction; defaults to 16K
 # max_tokens = 4096  # cap on tokens the model generates per response (OpenAI max_tokens); omitted if unset
 # max_parallel_subagents = 10  # max concurrently-running subagents per run; extra dispatches queue FIFO
+# Checks a run must pass before it hands back a final answer: files that must
+# exist and commands that must exit 0 (commands run only in a trusted folder).
+# A failure gives the model one retry turn; after that the answer is marked unverified.
+# final_checks = [{ file = "dist/report.md" }, { command = "cargo test", timeout_secs = 300 }]
 # show_reasoning = false  # expand  reasoning in the transcript (Ctrl-O still toggles)
+# fast_path = false  # trivial prompts (greetings, short factual questions) skip the heavy preamble
+# min_free_ram_mb = 2048  # pause before a turn when free RAM drops below this
 # send_reasoning = true  # resend prior reasoning to the model; false drops it from the request
 #                        # (a provider that rejects the field is detected and stripped automatically)
 
@@ -438,6 +623,11 @@ allow_write = []
 # running the agent: the CLI allows it, the desktop's throwaway chat sandbox
 # does not.
 # allow_network = true
+# How much of the toolset the model is shown: "full" (default) or "minimal"
+# (read, ls, grep, find, write, edit, bash, ask only: for small local models
+# whose window the ~48 tool schemas would eat). Only ever removes tools.
+# profile = "full"
+# (a per-model override, [[tool_profiles]], is further down)
 # Whether the sandboxed shell can read your home directory (for git/ssh
 # credential helpers and ~/.ssh/config). Unset follows the surface: the CLI
 # allows it (true), the desktop masks $HOME. Writes stay in the workspace.
@@ -452,6 +642,9 @@ allow_write = []
 # declares (rustfmt.toml/Cargo.toml, .prettierrc, pyproject [tool.ruff]/[tool.black],
 # go.mod) and that is actually installed.
 # format_on_edit = true
+# Whether a .json/.toml/.yaml file the agent writes or edits is parse-checked,
+# with one warning line added to the tool result when it no longer parses.
+# check_syntax = false
 # Programs that open Windows' null device (NUL) themselves, besides go and git.
 # Where NUL refuses sandboxed programs, a command running one is not run in the
 # sandbox; you are asked to allow it outside the sandbox instead.
@@ -471,12 +664,17 @@ inject = "always"
 # Ids: assistant_instructions, guidelines, subagent_guide, skill_guide,
 # web_tools_guide, memory_precedence, project_context, skills, project_tooling,
 # memory_catalog, runtime_environment, remembered_memories, date, session_hooks,
-# plan_addendum, eager_todo_addendum. tool_schemas is a request field and always
-# stays above the line; prompt_submit_hooks and todo_upkeep change while a run
-# works and are always below it (listing them is an error).
+# plan_addendum, eager_todo_addendum, repo_map. tool_schemas is a request field and
+# always stays above the line; prompt_submit_hooks and todo_upkeep change while a
+# run works and are always below it (listing them is an error).
+# repo_map = true adds a "Repository map" block: the project's most relevant files
+# and their top-level symbols, ranked for the first message of the run and sized
+# to 2% of the context window (300 to 2000 tokens). Off by default: it changes the
+# prompt, so a provider's cache restarts when the map does. Needs a git project.
 # [prompt]
 # prefix_allow = ["assistant_instructions", "guidelines", "skills"]
 # prefix_deny = ["project_context"]
+# repo_map = true
 
 # Who to tell when a run ends, or stops to wait for you. Nothing is sent but
 # which run, what happened and when -- never the prompt, the answer or any tool
@@ -501,6 +699,21 @@ inject = "always"
 # [[routing]]
 # match = "role:smol"          # role:<name>, agent:<name>, model:<pattern>, or *
 # use = "provider/small-fast-model"
+
+# Per-model override of [tools] profile: `*` wildcard (case-insensitive), first
+# match wins, no match uses [tools] profile. "minimal" offers a small model only
+# read, ls, grep, find, write, edit, bash and ask.
+# [[tool_profiles]]
+# model = "qwen3*"
+# profile = "minimal"
+
+# Which subagents this project's runs may spawn. Unset or empty: any of them.
+# A list admits exactly those names, shipped roles included.
+# [subagents]
+# allow = ["explore", "reviewer"]
+# What one failed child does to the rest: "continue" (default; the parent is told
+# which children failed), "stop" (the others are stopped) or "retry_once".
+# on_failure = "continue"
 
 # Named variations on the settings above, chosen with `--profile <name>`.
 # What a profile does not mention is left exactly as it is above.
@@ -550,6 +763,8 @@ pub(crate) struct RunSettings {
     pub sandbox: Option<bool>,
     /// `[tools].format_on_edit` (AH-149); unset is off.
     pub format_on_edit: bool,
+    /// `[tools].check_syntax`; unset is on.
+    pub check_syntax: bool,
     /// `[tools].nul_programs`.
     pub nul_programs: Vec<String>,
     /// `[tools].allow_domains`, capped by the machine policy (Jozkah/jan#226).
@@ -594,6 +809,7 @@ pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> Ru
         allow_home_read: cfg.tools.allow_home_read,
         sandbox: cfg.tools.sandbox,
         format_on_edit: cfg.tools.format_on_edit.unwrap_or(false),
+        check_syntax: cfg.tools.check_syntax.unwrap_or(true),
         nul_programs: cfg.tools.nul_programs,
         prompt: crate::core::agent::prompt::PromptPolicy::new(cfg.prompt),
         #[cfg(feature = "cli")]
@@ -973,6 +1189,21 @@ max_tokens = 10
         let _ = std::fs::remove_dir_all(&bare);
     }
 
+    /// The post-edit parse check is on unless `[tools] check_syntax = false`.
+    #[test]
+    fn check_syntax_defaults_on_and_can_be_switched_off() {
+        let unset = project_with("[tools]
+default = \"allow\"
+");
+        assert!(run_settings_for(&unset, None).check_syntax);
+        let off = project_with("[tools]
+check_syntax = false
+");
+        assert!(!run_settings_for(&off, None).check_syntax);
+        let _ = std::fs::remove_dir_all(&unset);
+        let _ = std::fs::remove_dir_all(&off);
+    }
+
     /// The settings a run actually uses follow the profile, not just the file:
     /// this is the path `resolve_run_settings` reads.
     #[test]
@@ -1151,6 +1382,42 @@ skills = ["two", "three"]
     }
 
     #[test]
+    fn subagents_section_reads_its_allowlist() {
+        let root = unique_root("subagents_allow");
+        write_agent_toml(&root, "[subagents]\nallow = [\"reviewer\", \" explore \", \"\"]\n");
+        assert_eq!(subagent_allowlist(&root), ["reviewer", "explore"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_absent_or_empty_subagents_section_allows_everything() {
+        let root = unique_root("subagents_none");
+        // No agent.toml at all.
+        assert!(subagent_allowlist(&root).is_empty());
+        write_agent_toml(&root, "[tools]\ndefault = \"ask\"\n");
+        assert!(subagent_allowlist(&root).is_empty());
+        write_agent_toml(&root, "[subagents]\n");
+        assert!(subagent_allowlist(&root).is_empty());
+        write_agent_toml(&root, "[subagents]\nallow = []\n");
+        assert!(subagent_allowlist(&root).is_empty());
+        // The scaffold leaves the section commented out.
+        let cfg: AgentToml = toml::from_str(AGENT_TOML_TEMPLATE).expect("template parses");
+        assert!(cfg.subagents.allow.is_empty());
+        assert!(AGENT_TOML_TEMPLATE.contains("# [subagents]"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Like every sibling section, `[subagents]` tolerates a key it does not
+    /// know rather than failing the whole file: a refusal there would drop
+    /// every other section of the project's policy along with it.
+    #[test]
+    fn an_unknown_subagents_key_is_ignored_like_its_siblings() {
+        let cfg: AgentToml = toml::from_str("[subagents]\nallow = [\"a\"]\nlater = true\n").expect("parses");
+        assert_eq!(allowlist_of(&cfg.subagents), ["a"]);
+        assert!(toml::from_str::<AgentToml>("[subagents]\nallow = \"a\"\n").is_err(), "allow is a list");
+    }
+
+    #[test]
     fn load_roundtrips_template() {
         let root = unique_root("roundtrip");
         ensure_project(&root).expect("scaffold");
@@ -1172,6 +1439,22 @@ skills = ["two", "three"]
         let policy = prompt_policy(&root);
         assert_eq!(policy.prefix_allow(), None);
         assert!(policy.prefix_deny().is_empty());
+        assert!(!policy.repo_map(), "the repository map is opt-in");
+        assert!(AGENT_TOML_TEMPLATE.contains("repo_map"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `repo_map` is read from `[prompt]`, and absent means off.
+    #[test]
+    fn prompt_section_reads_repo_map() {
+        let root = unique_root("prompt_repo_map");
+        assert!(!prompt_policy(&root).repo_map(), "no agent.toml");
+        write_agent_toml(&root, "[prompt]\nprefix_deny = [\"skills\"]\n");
+        assert!(!prompt_policy(&root).repo_map(), "section without the key");
+        write_agent_toml(&root, "[prompt]\nrepo_map = true\n");
+        assert!(prompt_policy(&root).repo_map());
+        write_agent_toml(&root, "[prompt]\nrepo_map = false\n");
+        assert!(!prompt_policy(&root).repo_map());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1347,6 +1630,81 @@ skills = ["two", "three"]
     fn budget_max_tokens_parses_when_set() {
         let cfg: AgentToml = toml::from_str("[budget]\nmax_tokens = 200000\n").expect("parses");
         assert_eq!(cfg.budget.max_tokens, Some(200_000));
+    }
+
+    #[test]
+    fn perf_keys_default_off_and_parse_from_the_agent_table() {
+        assert_eq!(AgentPerf::from_toml_str(""), AgentPerf::default());
+        assert_eq!(AgentPerf::from_toml_str(AGENT_TOML_TEMPLATE), AgentPerf::default());
+        let perf = AgentPerf::from_toml_str(
+            "[agent]\nfast_path = true\nmin_free_ram_mb = 2048\nmin_free_vram_mb = 512\n",
+        );
+        assert_eq!(
+            perf,
+            AgentPerf { fast_path: true, min_free_ram_mb: Some(2048), min_free_vram_mb: Some(512) }
+        );
+    }
+
+    #[test]
+    fn perf_keys_of_the_wrong_type_or_value_are_ignored_not_fatal() {
+        let perf = AgentPerf::from_toml_str(
+            "[agent]\nfast_path = \"yes\"\nmin_free_ram_mb = -5\nmin_free_vram_mb = 0\nmodel = \"x\"\n",
+        );
+        assert_eq!(perf, AgentPerf::default());
+        // A broken file yields the defaults rather than an error.
+        assert_eq!(AgentPerf::from_toml_str("[agent\nfast_path = true"), AgentPerf::default());
+    }
+
+    #[test]
+    fn new_sections_parse_with_safe_defaults_and_keep_the_rest_of_the_file() {
+        let cfg: AgentToml = toml::from_str(AGENT_TOML_TEMPLATE).expect("template parses");
+        assert!(!cfg.memory.ranked);
+        assert_eq!(cfg.memory.max_tokens, None);
+        assert_eq!(cfg.tools.code_mode, None);
+        assert!(!cfg.prompt.trim);
+        let cfg: AgentToml = toml::from_str(
+            "[memory]\nranked = true\nmax_tokens = 300\n[tools]\ncode_mode = true\ndeny = [\"bash\"]\n[prompt]\ntrim = true\nsurprise = 1\n",
+        )
+        .expect("parses");
+        assert!(cfg.memory.ranked);
+        assert_eq!(cfg.memory.max_tokens, Some(300));
+        assert_eq!(cfg.tools.code_mode, Some(true));
+        assert_eq!(cfg.tools.deny, ["bash"]);
+        assert!(cfg.prompt.trim);
+    }
+
+    #[cfg(feature = "cli")]
+    #[test]
+    fn budget_pause_at_usd_parses_and_defaults_to_none() {
+        let cfg: AgentToml =
+            toml::from_str("[budget]\nmax_usd = 5.0\npause_at_usd = 2.5\n").expect("parses");
+        assert_eq!(cfg.budget.pause_at_usd, Some(2.5));
+        assert_eq!(cfg.budget.max_usd, Some(5.0));
+        let cfg: AgentToml = toml::from_str("[budget]\npause_at_usd = 1\n").expect("an integer parses");
+        assert_eq!(cfg.budget.pause_at_usd, Some(1.0));
+        let cfg: AgentToml = toml::from_str("[budget]\nmax_usd = 5.0\n").expect("parses");
+        assert_eq!(cfg.budget.pause_at_usd, None);
+        let cfg: AgentToml = toml::from_str(AGENT_TOML_TEMPLATE).expect("template parses");
+        assert_eq!(cfg.budget.pause_at_usd, None);
+    }
+
+    #[cfg(feature = "cli")]
+    #[test]
+    fn agent_final_checks_parse_files_and_commands_and_tolerate_new_keys() {
+        let cfg: AgentToml = toml::from_str(
+            "[agent]\nfinal_checks = [\n  { file = \"dist/report.md\" },\n  { command = \"cargo test\", timeout_secs = 300, future_key = true },\n]\nmodel = \"m\"\n",
+        )
+        .expect("parses");
+        assert_eq!(cfg.agent.model.as_deref(), Some("m"), "the rest of the section survives");
+        assert_eq!(cfg.agent.final_checks.len(), 2);
+        assert_eq!(cfg.agent.final_checks[0].file.as_deref(), Some("dist/report.md"));
+        assert_eq!(cfg.agent.final_checks[1].command.as_deref(), Some("cargo test"));
+        assert_eq!(cfg.agent.final_checks[1].timeout_secs, Some(300));
+        assert!(crate::core::agent::final_checks::validate(&cfg.agent.final_checks).is_ok());
+        let none: AgentToml = toml::from_str("[agent]\nmodel = \"m\"\n").expect("parses");
+        assert!(none.agent.final_checks.is_empty());
+        let template: AgentToml = toml::from_str(AGENT_TOML_TEMPLATE).expect("template parses");
+        assert!(template.agent.final_checks.is_empty());
     }
 
     #[cfg(feature = "cli")]

@@ -92,6 +92,7 @@ pub(crate) enum Composer {
     ProjectContext,
     Skills,
     ProjectTooling,
+    RepoMap,
     MemoryCatalog,
     RuntimeEnvironment,
     RememberedMemories,
@@ -116,6 +117,7 @@ impl Composer {
         Composer::ProjectContext,
         Composer::Skills,
         Composer::ProjectTooling,
+        Composer::RepoMap,
         Composer::MemoryCatalog,
         Composer::RuntimeEnvironment,
         Composer::RememberedMemories,
@@ -140,6 +142,7 @@ impl Composer {
             Composer::ProjectContext => "project_context",
             Composer::Skills => "skills",
             Composer::ProjectTooling => "project_tooling",
+            Composer::RepoMap => "repo_map",
             Composer::MemoryCatalog => "memory_catalog",
             Composer::RuntimeEnvironment => "runtime_environment",
             Composer::RememberedMemories => "remembered_memories",
@@ -168,6 +171,7 @@ impl Composer {
             Composer::ProjectContext => "FLINT.md (or JAN.md) from the project and its ancestors",
             Composer::Skills => "the installed skill catalog",
             Composer::ProjectTooling => "how the project builds and tests",
+            Composer::RepoMap => "ranked map of the project's files and symbols (`[prompt] repo_map`)",
             Composer::MemoryCatalog => "the curated memory note catalog",
             Composer::RuntimeEnvironment => {
                 "working directory, OS, shell, scratch space, date and git branch"
@@ -212,6 +216,7 @@ impl Composer {
             | Composer::ProjectContext
             | Composer::Skills
             | Composer::ProjectTooling
+            | Composer::RepoMap
             | Composer::MemoryCatalog
             | Composer::RuntimeEnvironment
             | Composer::RememberedMemories
@@ -254,6 +259,16 @@ pub(crate) struct PromptSection {
     /// Writer ids kept below the cache line, applied after `prefix_allow`.
     #[serde(default)]
     pub prefix_deny: Vec<String>,
+    /// `repo_map = true` adds a ranked map of the project's files and symbols
+    /// to the system prompt. Off by default: it changes the prompt, and with it
+    /// what a provider's cache can reuse.
+    #[serde(default)]
+    pub repo_map: bool,
+    /// `trim = true` runs the assembled system prompt through the deterministic
+    /// trimmer (`prompt_trim`): repeated blocks dropped, empty sections dropped,
+    /// whitespace canonical. Off by default; it never calls a model.
+    #[serde(default)]
+    pub trim: bool,
 }
 
 /// The resolved `[prompt]` policy.
@@ -261,6 +276,8 @@ pub(crate) struct PromptSection {
 pub(crate) struct PromptPolicy {
     prefix_allow: Option<Vec<String>>,
     prefix_deny: Vec<String>,
+    repo_map: bool,
+    trim: bool,
 }
 
 /// The system prompt after the policy has placed every block.
@@ -278,7 +295,19 @@ impl PromptPolicy {
         Self {
             prefix_allow: section.prefix_allow,
             prefix_deny: section.prefix_deny,
+            repo_map: section.repo_map,
+            trim: section.trim,
         }
+    }
+
+    /// Whether `[prompt] trim = true` asked for the deterministic trimmer.
+    pub(crate) fn trim(&self) -> bool {
+        self.trim
+    }
+
+    /// Whether `[prompt] repo_map = true` asked for the repository map.
+    pub(crate) fn repo_map(&self) -> bool {
+        self.repo_map
     }
 
     #[cfg_attr(not(feature = "cli"), allow(dead_code))]
@@ -407,6 +436,8 @@ mod tests {
         PromptPolicy::new(PromptSection {
             prefix_allow: allow.map(|ids| ids.iter().map(|s| s.to_string()).collect()),
             prefix_deny: deny.iter().map(|s| s.to_string()).collect(),
+            repo_map: false,
+            trim: false,
         })
     }
 
@@ -445,6 +476,7 @@ mod tests {
                 "project_context",
                 "skills",
                 "project_tooling",
+                "repo_map",
                 "memory_catalog",
                 "runtime_environment",
                 "remembered_memories",

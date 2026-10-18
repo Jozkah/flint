@@ -1509,6 +1509,68 @@ pub fn pr_for_commit(project: &Path, sha: &str) -> Option<(u64, String)> {
     Some((first.get("number")?.as_u64()?, url.to_string()))
 }
 
+// ---- checkpoint integrity ------------------------------------------------
+//
+// A checkpoint is named by its commit's sha, which is a hash of the commit's
+// own content. These read an object back and hash what came out, so a
+// checkpoint whose object was damaged, truncated or swapped under its name is
+// found before anything is restored from it. `checkpoint::verify` uses them.
+
+/// The repository's shared git directory (where objects and refs live, and
+/// where a linked worktree shares them), absolute.
+pub(crate) fn common_git_dir(repo: &Path) -> Result<PathBuf, String> {
+    let out = run(repo, None, &["rev-parse", "--git-common-dir"])?;
+    let dir = PathBuf::from(out);
+    Ok(if dir.is_absolute() { dir } else { repo.join(dir) })
+}
+
+/// The type git reports for `id` (`commit`, `tree`, ...), or why it has none.
+pub(crate) fn object_kind(repo: &Path, id: &str) -> Result<String, String> {
+    run(repo, None, &["cat-file", "-t", id])
+}
+
+/// The tree a commit points at.
+pub(crate) fn tree_of(repo: &Path, commit: &str) -> Result<String, String> {
+    run(repo, None, &["rev-parse", "--verify", &format!("{commit}^{{tree}}")])
+}
+
+/// The id git computes for the content of `id` read back from the object
+/// database. Equal to `id` for an object that is intact.
+pub(crate) fn rehash_object(repo: &Path, kind: &str, id: &str) -> Result<String, String> {
+    let raw = git_read_raw(repo, &["cat-file", kind, id])?;
+    run_with_input(repo, &["hash-object", "-t", kind, "--stdin"], &raw)
+}
+
+fn run_with_input(repo: &Path, args: &[&str], input: &[u8]) -> Result<String, String> {
+    exec(repo, None, args, Some(input)).map(|out| out.trim().to_string())
+}
+
+/// Blobs that `tree` names and the object database does not hold. Submodule
+/// entries are commits in another repository and are not looked for.
+pub(crate) fn absent_blobs(repo: &Path, tree: &str) -> Result<Vec<String>, String> {
+    let listing = run_untrimmed(repo, None, &["ls-tree", "-r", "-z", tree])?;
+    let mut ids = String::new();
+    for entry in listing.split('\0').filter(|e| !e.is_empty()) {
+        // "<mode> <type> <sha>\t<path>"
+        let Some((meta, _path)) = entry.split_once('\t') else { continue };
+        let mut parts = meta.split(' ');
+        let (_mode, kind, id) = (parts.next(), parts.next(), parts.next());
+        if let (Some("blob"), Some(id)) = (kind, id) {
+            ids.push_str(id);
+            ids.push('\n');
+        }
+    }
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let checked = exec(repo, None, &["cat-file", "--batch-check"], Some(ids.as_bytes()))?;
+    Ok(checked
+        .lines()
+        .filter_map(|l| l.strip_suffix(" missing"))
+        .map(str::to_string)
+        .collect())
+}
+
 /// Pure-parser tests for the review-panel plumbing. These need neither git nor
 /// the `cli` feature, so they always run.
 #[cfg(test)]

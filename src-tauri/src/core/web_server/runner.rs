@@ -305,7 +305,15 @@ enum Cmd {
     Start { input: Value, caller: Caller, reply: Reply },
     Steer { text: String, reply: Reply },
     Interrupt { reply: Reply },
-    Approve { request_id: String, decision: PermissionDecision, by: String, ip_hash: String, reply: Option<Reply> },
+    Approve {
+        request_id: String,
+        decision: PermissionDecision,
+        /// Why the user refused, shown to the model. Only used with `deny`.
+        reason: Option<String>,
+        by: String,
+        ip_hash: String,
+        reply: Option<Reply>,
+    },
     AnswerAsk { request_id: String, results: Vec<crate::core::agent::interaction::QuestionResult>, reply: Reply },
     SetModel { model: String, reply: Reply },
     SetAccess { mode: PermissionMode, reply: Reply },
@@ -462,7 +470,7 @@ impl Runner {
             );
             let backlog: Vec<(u64, Arc<str>)> =
                 feed.ring.iter().filter(|(s, _)| *s > after).cloned().collect();
-            (events, backlog, preface + &hello, after)
+            (events, backlog, preface + hello.as_str(), after)
         };
         tokio::spawn(async move {
             if tx.send(Bytes::from(hello)).is_err() {
@@ -572,19 +580,51 @@ impl Runner {
             "agent_run_approve" => {
                 let live = self.require(text(args, "id")?)?;
                 let request_id = text(args, "requestId")?.to_owned();
-                let decision = text(args, "decision")?;
-                let decision = parse_decision(decision)
-                    .ok_or_else(|| fail(400, "decision must be allow_once, allow_always or deny"))?;
+                let word = text(args, "decision")?;
+                // "defer" answers later: the call is refused for now and recorded
+                // (`[approvals]`), never allowed.
+                let defer = word == "defer";
+                let decision = if defer {
+                    PermissionDecision::Deny
+                } else {
+                    parse_decision(word).ok_or_else(|| {
+                        fail(400, "decision must be allow_once, allow_always, deny or defer")
+                    })?
+                };
                 if decision == PermissionDecision::AllowAlways && !self.options.allow_always {
                     return Err(fail(
                         403,
                         "this server does not grant standing approvals; start it with --agent-allow-always",
                     ));
                 }
+                // The form's answer: how far an "allow" reaches. A folder or a
+                // command prefix is a standing rule, so it goes with allow_always
+                // and is checked against the call it was chosen for when applied.
+                let scope = args
+                    .get("scope")
+                    .filter(|v| !v.is_null())
+                    .map(|v| serde_json::from_value::<tauri_plugin_agent_tools::scoped_rules::ApprovalScope>(v.clone()))
+                    .transpose()
+                    .map_err(|e| fail(400, format!("scope is not valid: {e}")))?;
+                if let Some(scope) = scope {
+                    if scope.is_standing() && decision != PermissionDecision::AllowAlways {
+                        return Err(fail(400, "a folder or command-prefix scope goes with allow_always"));
+                    }
+                    crate::core::agent::approval_flow::record_scope_choice(request_id.as_str(), scope);
+                }
+                if defer {
+                    crate::core::agent::approval_flow::mark_defer(request_id.as_str());
+                }
+                let reason = args
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+                    .filter(|_| decision == PermissionDecision::Deny);
                 let (by, ip) = (caller.client.clone(), caller.ip_hash.clone());
                 self.send(&live, |reply| Cmd::Approve {
                     request_id,
                     decision,
+                    reason,
                     by,
                     ip_hash: ip,
                     reply: Some(reply),
@@ -1687,7 +1727,7 @@ async fn actor(
                         ping("idle");
                         let _ = reply.send(Ok(json!({})));
                     }
-                    Cmd::Approve { request_id, decision, by, ip_hash, reply } => {
+                    Cmd::Approve { request_id, decision, reason, by, ip_hash, reply } => {
                         let answer = match approvals.remove(&request_id) {
                             None => Err(fail(404, "no permission request with that id is pending on this session")),
                             Some(tool) => {
@@ -1695,6 +1735,9 @@ async fn actor(
                                 match sender {
                                     None => Err(fail(404, "that permission request was already answered")),
                                     Some(sender) => {
+                                        if let Some(reason) = reason.as_deref() {
+                                            crate::core::agent::r#loop::record_deny_reason(&request_id, reason);
+                                        }
                                         let _ = sender.send(decision);
                                         let word = match decision {
                                             PermissionDecision::AllowOnce => "allow_once",
@@ -1949,6 +1992,7 @@ async fn actor(
                                         .send(Cmd::Approve {
                                             request_id: request,
                                             decision: PermissionDecision::Deny,
+                                            reason: None,
                                             by: "timeout".to_owned(),
                                             ip_hash: String::new(),
                                             reply: None,

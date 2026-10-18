@@ -38,6 +38,9 @@ pub enum ErrorKind {
     Timeout,
     /// A token, step or wall-clock budget was exhausted.
     BudgetExhausted,
+    /// Another process took over the run's lease, or its heartbeat could not be
+    /// kept, so this process no longer owns the run and stopped driving it.
+    LeaseLost,
     /// The permission gate denied the call.
     PermissionDenied,
     /// The user was asked and said no.
@@ -97,6 +100,7 @@ impl ErrorKind {
             Self::Interrupted => "interrupted",
             Self::Timeout => "timeout",
             Self::BudgetExhausted => "budget_exhausted",
+            Self::LeaseLost => "lease_lost",
             Self::PermissionDenied => "permission_denied",
             Self::ApprovalRefused => "approval_refused",
             Self::SandboxDenied => "sandbox_denied",
@@ -129,6 +133,7 @@ impl ErrorKind {
             ErrorKind::Interrupted,
             ErrorKind::Timeout,
             ErrorKind::BudgetExhausted,
+            ErrorKind::LeaseLost,
             ErrorKind::PermissionDenied,
             ErrorKind::ApprovalRefused,
             ErrorKind::SandboxDenied,
@@ -162,6 +167,7 @@ impl ErrorKind {
             ErrorKind::Interrupted,
             ErrorKind::Timeout,
             ErrorKind::BudgetExhausted,
+            ErrorKind::LeaseLost,
             ErrorKind::PermissionDenied,
             ErrorKind::ApprovalRefused,
             ErrorKind::SandboxDenied,
@@ -205,6 +211,7 @@ impl ErrorKind {
             // grind one down.
             Self::Cancelled
             | Self::BudgetExhausted
+            | Self::LeaseLost
             | Self::PermissionDenied
             | Self::ApprovalRefused
             | Self::SandboxDenied
@@ -248,6 +255,7 @@ impl ErrorKind {
             Self::Cancelled
             | Self::Interrupted
             | Self::BudgetExhausted
+            | Self::LeaseLost
             | Self::Upstream
             | Self::Transport
             | Self::Authentication
@@ -616,6 +624,7 @@ impl HarnessError {
     /// * 75 `EX_TEMPFAIL` -- try again later
     /// * 76 `EX_PROTOCOL` -- the answer could not be read
     /// * 77 `EX_NOPERM` -- refused, denied, or a rejected credential
+    /// * 73 -- another process owns the run now (its lease was lost)
     pub fn exit_code(&self) -> i32 {
         match self.kind {
             ErrorKind::Cancelled => 130,
@@ -632,6 +641,7 @@ impl HarnessError {
             | ErrorKind::Internal => 70,
             ErrorKind::Io => 74,
             ErrorKind::Timeout | ErrorKind::Interrupted | ErrorKind::BudgetExhausted => 75,
+            ErrorKind::LeaseLost => 73,
             ErrorKind::InvalidResponse
             | ErrorKind::Serialization
             | ErrorKind::MalformedState => 76,
@@ -984,7 +994,7 @@ mod tests {
         for kind in ErrorKind::all() {
             assert_eq!(ErrorKind::from_tag(kind.tag()), Some(*kind), "{kind:?}");
         }
-        assert_eq!(ErrorKind::all().len(), 26, "a kind was added without a tag or a test");
+        assert_eq!(ErrorKind::all().len(), 27, "a kind was added without a tag or a test");
         assert_eq!(ErrorKind::from_tag("something_new"), None);
     }
 

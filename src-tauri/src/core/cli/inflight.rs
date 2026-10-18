@@ -107,6 +107,10 @@ pub struct Writer {
     /// per-token cap check is O(1) instead of a rescan of the whole buffer
     /// (Jozkah/jan#152).
     partial_chars: usize,
+    /// The run's lease (heartbeat kept on a thread of its own), so a second
+    /// process cannot drive this thread and a crashed run's lease expires.
+    /// Released when the writer is dropped.
+    _lease: Option<crate::core::agent::lease::HeartbeatGuard>,
 }
 
 impl Writer {
@@ -121,6 +125,11 @@ impl Writer {
             .at(Stage::Startup));
         }
         std::fs::create_dir_all(thread_dir).map_err(|e| io(e, "the session directory"))?;
+        // The check above is a read; the lease is the atomic claim that makes
+        // two simultaneous starters produce one winner.
+        let session = thread_dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let lease = std::sync::Arc::new(crate::core::agent::lease::Lease::acquire(thread_dir, &session)?);
+        let heartbeat = lease.keep_alive(&session);
         let (pid, created) = this_process();
         let now = now_ms();
         let mut writer = Writer {
@@ -138,6 +147,7 @@ impl Writer {
             last_text_write: Instant::now(),
             dirty: true,
             partial_chars: 0,
+            _lease: Some(heartbeat),
         };
         writer.flush()?;
         Ok(writer)
@@ -197,6 +207,11 @@ fn io(e: std::io::Error, what: &str) -> HarnessError {
 /// What the thread's checkpoint says. An unreadable checkpoint is reported as
 /// an interrupted run with nothing recoverable in it, never as settled.
 pub fn state(thread_dir: &Path) -> RunState {
+    // A live lease is the authority: its holder is driving the thread whether
+    // or not it has written a checkpoint yet.
+    if let crate::core::agent::lease::Status::Held(lease) = crate::core::agent::lease::status(thread_dir) {
+        return RunState::Live { pid: lease.pid };
+    }
     let Ok(text) = std::fs::read_to_string(path(thread_dir)) else {
         return RunState::Settled;
     };
