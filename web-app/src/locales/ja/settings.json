@@ -144,6 +144,8 @@
     "renderUserMarkdownDesc": "送信したメッセージの太字、リスト、見出し、コードを整形して表示します。オフの場合は入力したとおりに表示されます。",
     "renderHtmlArtifacts": "HTMLとSVGのアーティファクトを表示",
     "renderHtmlArtifactsDesc": "HTMLとSVGのコードブロックにプレビュータブを追加します。HTMLはモデルが生成したページをサンドボックス化されたフレーム内で実行し、独自のスクリプトは動作しますが、Flintやあなたのファイル、ネットワークにはアクセスできません。SVGはスクリプトを無効にして静的に表示されます。既定ではオフです。",
+    "wrapCodeLines": "コードブロックの長い行を折り返す",
+    "wrapCodeLinesDesc": "ブロックを横にスクロールする代わりに、長い行をコードの位置に字下げして次の行へ折り返します。コードブロックのヘッダーにある折り返しボタンも同じ設定を切り替えます。",
     "composerRailButtons": "Cowork コンポーザーの出力ボタン",
     "composerRailButtonsDesc": "Cowork のメッセージ欄の下に、プレビュー、コード、変更、アクティビティ、タイムラインを表示します。オフにすると、ヘッダーの 1 つの「出力」ボタンでパネルを開きます。",
     "autoGenerateTitle": "チャットタイトルを自動生成",
@@ -421,7 +423,10 @@
     "defaultModelPlaceholder": "ローカルモデルを選択",
     "noLocalModels": "ローカルモデルがインポートされていません",
     "usage5hAria": "5 時間あたりのトークン数",
-    "usageWeekAria": "1 週間あたりのトークン数"
+    "usageWeekAria": "1 週間あたりのトークン数",
+    "usageWindow": "期間",
+    "usageLimit": "上限",
+    "usageUnsaved": "未保存の変更"
   },
   "privacy": {
     "analytics": "分析",
@@ -685,7 +690,20 @@
     "reduceMotion": "視覚効果を減らす",
     "reduceMotionDesc": "Flint のアニメーションをオフにします。Flint はシステム設定に従わないため、これを切り替えない限り、アニメーションはオンのままです。",
     "increaseContrast": "コントラストを上げる",
-    "increaseContrastDesc": "文字をはっきりさせて読みやすくします。ダークテーマではより白く、ライトテーマではより濃くなります。"
+    "increaseContrastDesc": "文字をはっきりさせて読みやすくします。ダークテーマではより白く、ライトテーマではより濃くなります。",
+    "performanceMode": "パフォーマンスモード",
+    "performanceModeDesc": "軽量モードでは、ぼかし、大きな影、ループするアニメーションをオフにし、ストリーミング中のテキストの更新頻度を下げます。遅いコンピューター向けです。自動では、このコンピューターが遅いと判断したときに選ばれます。",
+    "performanceModeAuto": "自動",
+    "performanceModeReduced": "常に軽量",
+    "performanceModeFull": "フル",
+    "performanceModeNowReduced": "現在: 軽量（{{why}}）",
+    "performanceModeNowFull": "現在: フル",
+    "perfReasonCores": "{{n}} コア",
+    "perfReasonMemory": "{{n}} GB メモリ",
+    "perfReasonFrames": "フレームが遅い",
+    "perfReasonMotion": "システムが動きを減らす設定",
+    "perfReasonData": "データセーバー",
+    "perfReasonChosen": "ここで選択"
   },
   "pageDesc": {
     "general": "言語、データフォルダー、ログ、アプリ全体のオプションです。",
@@ -1190,10 +1208,17 @@
       "header": "上部と下部"
     },
     "showItem": "{{item}} をサイドバーに表示",
+    "hideItem": "{{item}} をサイドバーから非表示",
     "alwaysShown": "常に表示",
     "showAll": "すべて表示",
     "preview": "プレビュー",
-    "reachable": "非表示の項目も、コマンドパレットと設定から開けます。"
+    "reachable": "非表示の項目も、コマンドパレットと設定から開けます。",
+    "presets": {
+      "label": "プリセット",
+      "minimal": "最小",
+      "standard": "標準",
+      "everything": "すべて"
+    }
   },
   "memoryPage": {
     "useSaved": "会話で保存済みのメモリを使う",
@@ -1312,7 +1337,11 @@
       "importedCount_one": "{{count}} 件のメモリをインポートしました",
       "importedCount_other": "{{count}} 件のメモリをインポートしました",
       "importFailed": "メモリをインポートできませんでした"
-    }
+    },
+    "fileActionsAria": "記憶をエクスポートまたはインポート",
+    "noMatchHint": "綴りを確認するか、検索をクリアしてすべて表示してください。",
+    "emptyHint": "上に書き込むか、チャット中に Flint に覚えさせてください。",
+    "footerCount_other": "この範囲に {{count}} 件の記憶"
   },
   "chatMentions": {
     "title": "会話のメンション",

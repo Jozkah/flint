@@ -95,6 +95,7 @@
     "title": "Deixe a barra lateral do seu jeito",
     "body": "Oculte os itens que você não usa. Você pode mudar isso a qualquer momento em Configurações, em Aparência.",
     "customize": "Personalizar barra lateral",
-    "close": "Concluído"
+    "close": "Concluído",
+    "bodyMinimal": "O Flint começa com uma barra lateral curta. As outras páginas estão na paleta de comandos, ou adicione-as de volta aqui."
   }
 }

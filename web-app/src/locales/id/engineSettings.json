@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "Variabel lingkungan",
+    "description": "Variabel lingkungan untuk llama.cpp (KEY=VALUE), dipisahkan dengan ';'",
+    "placeholder": "Mis. GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "Argumen tambahan",
+    "description": "Opsi llama-server tambahan, mis. --rope-scaling yarn --no-warmup. Diterapkan ke setiap model dan ditulis setelah pengaturan di atas, sehingga lebih diutamakan. Opsi alamat server, kredensial, dan file model diabaikan.",
+    "placeholder": "Mis. --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "Maks. Model yang Dimuat Bersamaan",
+    "description": "Jumlah maksimum model yang tetap dimuat oleh router secara bersamaan. 0 = tanpa batas.",
+    "placeholder": "mis. 1"
+  },
+  "idle_unload_minutes": {
+    "title": "Lepas Model Menganggur Setelah (menit)",
+    "description": "Lepaskan model lokal yang tidak digunakan selama sekian menit untuk mengosongkan memori. Model dimuat ulang pada permintaan berikutnya. Model embedding dan model yang sedang memproses permintaan tidak pernah dilepas. 0 = tidak pernah. Bawaan 30, agar VRAM tidak tertahan saat Anda bermain game atau merender.",
+    "placeholder": "mis. 10"
+  },
+  "timeout": {
+    "title": "Batas waktu llama.cpp",
+    "description": "Batas waktu koneksi dan pemuatan llama.cpp dalam detik",
+    "placeholder": "mis. 600"
+  },
+  "ctx_size": {
+    "title": "Ukuran konteks bawaan",
+    "description": "Jendela konteks untuk model lokal yang tidak menetapkan ukurannya sendiri. Lebih besar = mengingat lebih banyak tetapi butuh lebih banyak memori. Setiap model dapat menimpanya di pengaturannya sendiri (ikon roda gigi). Biarkan Otomatis untuk memakai ukuran asli model (bisa sangat besar). Ukuran umum: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "Otomatis"
+  },
+  "fit": {
+    "title": "Penyesuaian otomatis",
+    "description": "Biarkan Flint menentukan berapa banyak layer yang berjalan di GPU dan seberapa besar konteksnya, agar model muat di memori Anda. Matikan untuk mengatur sendiri layer GPU dan Ukuran Konteks."
+  },
+  "fit_target": {
+    "title": "Penyesuaian otomatis: memori yang dibiarkan kosong",
+    "description": "Jumlah memori (dalam MiB) yang dibiarkan kosong oleh penyesuaian otomatis di setiap GPU untuk aplikasi lain dan tampilan layar. Naikkan jika sistem terasa lambat saat model dimuat. Hanya untuk model lokal.",
+    "placeholder": "1024 atau MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "Penyesuaian otomatis: konteks terkecil",
+    "description": "Ukuran konteks terkecil (dalam token) yang boleh dicapai penyesuaian otomatis saat model tidak muat di memori. Nilainya tidak pernah di bawah ini, dan model gagal dimuat jika tetap tidak muat. Ini bukan ukuran konteks: atur itu di Ukuran konteks bawaan atau per model di Ukuran Konteks. Hanya dipakai saat Penyesuaian otomatis aktif, dan hanya untuk model lokal."
+  },
+  "threads": {
+    "title": "Thread",
+    "description": "Jumlah thread yang digunakan saat pembuatan teks (-1 untuk core logis)."
+  },
+  "threads_batch": {
+    "title": "Thread (Batch)",
+    "description": "Jumlah thread untuk pemrosesan batch dan prompt (bawaan: sama dengan Thread).",
+    "placeholder": "-1 (sama dengan Thread)"
+  },
+  "ctx_shift": {
+    "title": "Pergeseran Konteks",
+    "description": "Izinkan model memotong teks di bagian awal untuk memberi ruang bagi teks baru dalam memorinya"
+  },
+  "n_predict": {
+    "title": "Maks. Token yang Diprediksi",
+    "description": "Jumlah maksimum token yang dihasilkan (-1 = tak terbatas)."
+  },
+  "batch_size": {
+    "title": "Ukuran Batch",
+    "description": "Ukuran batch maksimum logis untuk memproses prompt."
+  },
+  "ubatch_size": {
+    "title": "Ukuran uBatch",
+    "description": "Ukuran batch maksimum fisik untuk memproses prompt. 0 = otomatis: 1024 jika model muat di VRAM dengan ruang tersisa, 512 jika pas-pasan, 2048 jika meluber ke RAM sistem.",
+    "placeholder": "0 (otomatis)"
+  },
+  "n_cpu_moe": {
+    "title": "Layer MoE di CPU",
+    "description": "Simpan bobot Mixture-of-Experts dari N layer pertama di memori CPU. Memungkinkan model MoE besar muat di VRAM yang terbatas. 0 menonaktifkannya."
+  },
+  "n_cpu_ffn": {
+    "title": "Layer FFN Padat di CPU",
+    "description": "Simpan bobot feed-forward padat dari N layer pertama di memori CPU. Padanan pengaturan MoE di atas, untuk model padat. 0 menonaktifkannya."
+  },
+  "no_kv_offload": {
+    "title": "Nonaktifkan Offload Cache KV",
+    "description": "Simpan cache KV di RAM sistem, bukan di memori GPU. Berguna saat VRAM terbatas, dengan konsekuensi kecepatan berkurang."
+  },
+  "device": {
+    "title": "Perangkat untuk Offload",
+    "description": "Akselerator tujuan offload, dipisahkan koma, dengan nama sesuai daftar perangkat keras yang terdeteksi. Biarkan kosong untuk memakai semua akselerator yang tersedia, atau isi \"none\" untuk menonaktifkan offload sepenuhnya.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "Mode Pembagian GPU",
+    "description": "Cara membagi model ke beberapa GPU.",
+    "options": {
+      "none": "Tidak ada",
+      "layer": "Per layer",
+      "row": "Per baris",
+      "tensor": "Per tensor (eksperimental)"
+    }
+  },
+  "main_gpu": {
+    "title": "Indeks GPU Utama",
+    "description": "GPU yang digunakan untuk model (split-mode=none) atau untuk hasil antara (split-mode=row)."
+  },
+  "tensor_split": {
+    "title": "Pembagian Tensor",
+    "description": "Proporsi yang dipisahkan koma untuk membagi model ke beberapa perangkat, mis. \"3,1\". Biarkan kosong untuk pembagian rata."
+  },
+  "no_op_offload": {
+    "title": "Nonaktifkan Offload Operasi",
+    "description": "Jalankan operasi tensor host di CPU alih-alih memindahkannya ke akselerator."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "Aktifkan Flash Attention untuk performa yang dioptimalkan.",
+    "options": {
+      "auto": "Otomatis",
+      "on": "Aktif",
+      "off": "Nonaktif"
+    }
+  },
+  "parallel": {
+    "title": "Urutan Paralel",
+    "description": "Jumlah urutan paralel yang didekode untuk permintaan chat Anda sendiri (0 = bawaan llama.cpp, yaitu 4). Flint mencadangkan satu slot internal tambahan di luar jumlah ini untuk permintaan latar belakang (mis. pemberian judul utas otomatis), agar tidak menggusur cache KV chat Anda."
+  },
+  "reserve_background_slots": {
+    "title": "Cadangkan Slot Latar Belakang",
+    "description": "Sediakan dua slot internal tambahan di luar Urutan Paralel untuk permintaan latar belakang (judul utas otomatis, Cowork, subagen) agar tidak menggusur cache KV chat Anda. Matikan untuk menjalankan tepat sejumlah slot Urutan Paralel (atur ke 1 untuk satu slot); permintaan latar belakang lalu berbagi slot chat Anda dan dapat menggusur cache-nya. Memuat ulang model."
+  },
+  "ngram_speculation": {
+    "title": "Decoding Spekulatif N-gram",
+    "description": "Buat token draf dari teks yang sudah ada di percakapan (ngram-mod) dan biarkan model memverifikasinya dalam satu batch. Hasilnya identik; output berulang seperti suntingan kode atau kutipan dihasilkan 3-10x lebih cepat, teks lain tidak terpengaruh. Model yang punya draf MTP sendiri memakai draf tersebut."
+  },
+  "cont_batching": {
+    "title": "Batching Berkelanjutan",
+    "description": "Aktifkan batching berkelanjutan (alias batching dinamis) untuk permintaan bersamaan. Aktif secara bawaan, sama seperti llama.cpp."
+  },
+  "no_mmap": {
+    "title": "Nonaktifkan mmap",
+    "description": "Jangan petakan model ke memori (pemuatan lebih lambat, tetapi dapat mengurangi pageout jika tidak memakai mlock)."
+  },
+  "lazy_mode": {
+    "title": "Pembacaan Tensor Tertunda",
+    "description": "Baca baris tensor besar yang ditandai arsitektur (mis. embedding per layer) dari disk sesuai kebutuhan alih-alih menyimpannya di memori. Otomatis menerapkannya di atas 4 GiB. Memerlukan mmap.",
+    "options": {
+      "auto": "Otomatis",
+      "on": "Aktif",
+      "off": "Nonaktif"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "Kunci model di RAM agar tidak pernah dipindahkan ke swap. Jika digabung dengan \"Nonaktifkan mmap\", bobot dimuat tanpa mmap lalu dikunci."
+  },
+  "cache_type_k": {
+    "title": "Tipe K Cache KV",
+    "description": "Tipe data cache KV untuk Key. Otomatis memakai q8_0, yang memangkas cache menjadi setengah dengan penurunan kualitas yang dapat diabaikan.",
+    "options": {
+      "auto": "Otomatis",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "Tipe V Cache KV",
+    "description": "Tipe data cache KV untuk Value. Otomatis memakai q8_0 jika Flash Attention Aktif dan f16 jika tidak, karena cache V terkuantisasi memerlukan Flash Attention. Model yang gagal dimuat dengan pengaturan ini dicoba ulang sekali dengan f16.",
+    "options": {
+      "auto": "Otomatis",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "Metode Penskalaan RoPE",
+    "description": "Metode penskalaan frekuensi RoPE. \"Bawaan model\" menyerahkannya pada model; \"Tidak ada\" menonaktifkan penskalaan secara eksplisit.",
+    "options": {
+      "auto": "Bawaan model",
+      "none": "Tidak ada",
+      "linear": "Linear",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "Basis Frekuensi RoPE",
+    "description": "Frekuensi basis RoPE (0 = dimuat dari model).",
+    "placeholder": "0 (bawaan model)"
+  },
+  "rope_freq_scale": {
+    "title": "Faktor Skala Frekuensi RoPE",
+    "description": "Faktor penskalaan frekuensi RoPE. 0 memuat nilai dari model; 1 memaksa tanpa penskalaan."
+  },
+  "cache_ram": {
+    "title": "RAM Cache Prompt (MiB)",
+    "description": "Ukuran cache prompt dalam MiB: RAM yang menyimpan konteks percakapan lain agar saat kembali ke salah satunya tidak perlu dibaca ulang. Kosong atau -2 = otomatis dari RAM Anda (20% RAM sistem, paling banyak setengah dari yang kosong, 1024-8192); 0 = mati; -1 = tanpa batas.",
+    "placeholder": "-2 (otomatis)"
+  },
+  "persist_thread_cache": {
+    "title": "Ingat Percakapan Antar Sesi",
+    "description": "Simpan cache prompt setiap percakapan di disk agar saat dibuka kembali tidak perlu membaca ulang seluruh percakapan. Hanya dipulihkan jika model, pengaturannya, dan build llama.cpp sama persis dengan saat disimpan."
+  },
+  "thread_cache_size": {
+    "title": "Batas Disk Cache Percakapan (MiB)",
+    "description": "Kuota disk untuk cache percakapan yang disimpan (bawaan: 2048). Setelah tercapai, cache tertua dihapus lebih dulu. Satu percakapan panjang bisa memakan ratusan MiB."
+  },
+  "cache_reuse": {
+    "title": "Penggunaan Ulang Cache",
+    "description": "Ukuran potongan minimum token prefiks yang cocok untuk digunakan ulang dari cache. 0 = nonaktif."
+  },
+  "ctx_checkpoints": {
+    "title": "Checkpoint Konteks",
+    "description": "Jumlah maksimum checkpoint konteks yang disimpan per slot, agar konteks yang bergeser dapat dipulihkan alih-alih diproses ulang."
+  },
+  "checkpoint_min_step": {
+    "title": "Jarak Minimum Checkpoint",
+    "description": "Jumlah minimum token di antara checkpoint konteks."
+  },
+  "swa_full": {
+    "title": "Cache SWA Penuh",
+    "description": "Gunakan cache KV ukuran penuh untuk model sliding-window attention (mis. Gemma). Aktifkan jika model seperti itu memproses ulang seluruh prompt setiap giliran alih-alih menggunakan ulang cache; memerlukan lebih banyak memori."
+  },
+  "kv_unified": {
+    "title": "Cache KV Terpadu",
+    "description": "Gunakan satu buffer KV terpadu yang dibagi ke semua slot. Menghemat memori saat menjalankan beberapa slot paralel.",
+    "options": {
+      "auto": "Otomatis",
+      "on": "Aktif",
+      "off": "Nonaktif"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "Konteks per Slot",
+    "description": "Batasi seberapa banyak cache KV terpadu yang boleh dipakai satu slot, dalam token. 0 membiarkan slot mengisi seluruh cache. Hanya berlaku jika cache terpadu."
+  },
+  "reasoning_preserve": {
+    "title": "Pertahankan Riwayat Penalaran",
+    "description": "Simpan penalaran dari setiap giliran asisten sebelumnya di prompt, bukan hanya yang terbaru. Hanya berpengaruh pada model yang template chat-nya mendukung, dan memakan token prompt."
+  },
+  "keep": {
+    "title": "Pertahankan N Token Pertama",
+    "description": "Jumlah token dari prompt awal yang dipertahankan saat konteks digeser. -1 = pertahankan semua."
+  },
+  "_ui": {
+    "moreInfo": "Selengkapnya tentang {{setting}}",
+    "perModelSettings": "Pengaturan per model",
+    "perModelDefault": "Bawaan (dari pengaturan: {{value}})",
+    "perModelDefaultAuto": "Bawaan (dari pengaturan: Otomatis)"
+  }
+}

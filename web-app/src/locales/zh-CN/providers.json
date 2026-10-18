@@ -56,6 +56,10 @@
     "connected": "已连接"
   },
   "table": {
+    "contextAutoFit": "自动适配",
+    "contextAuto": "自动",
+    "contextAutoFitTitle": "上下文大小为空，因此引擎在加载模型时按你的内存选择了这个窗口。",
+    "contextAutoTitle": "上下文大小为空：引擎会在加载模型时选择窗口。",
     "name": "名称",
     "file": "文件",
     "size": "大小",

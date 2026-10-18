@@ -144,6 +144,8 @@
     "renderUserMarkdownDesc": "Gönderdiğiniz mesajlarda kalın yazı, listeler, başlıklar ve kodu biçimli gösterir. Kapalıyken yazdığınız gibi görünürler.",
     "renderHtmlArtifacts": "HTML ve SVG üretimlerini oluştur",
     "renderHtmlArtifactsDesc": "HTML ve SVG kod bloklarına bir Önizleme sekmesi ekleyin. HTML, modelin ürettiği sayfayı, kendi betiklerini çalıştıran ancak Flint'e, dosyalarınıza veya ağa erişemeyen korumalı bir çerçevede çalıştırır; SVG betikler devre dışı bırakılmış şekilde statik olarak oluşturulur. Varsayılan olarak kapalıdır.",
+    "wrapCodeLines": "Kod bloklarında uzun satırları kaydır",
+    "wrapCodeLinesDesc": "Bloğu yana kaydırmak yerine uzun satırları kodun altına girintili olarak sonraki satıra taşır. Kod bloğu başlığındaki kaydırma düğmesi aynı ayarı değiştirir.",
     "composerRailButtons": "Cowork giriş alanında çıktı düğmeleri",
     "composerRailButtonsDesc": "Cowork mesaj kutusunun altında Önizleme, Kod, Değişiklikler, Etkinlik ve Zaman çizelgesini gösterin. Kapalıyken başlıktaki tek bir Çıktı düğmesi paneli açar.",
     "autoGenerateTitle": "Sohbet başlığını otomatik oluştur",
@@ -421,7 +423,10 @@
     "defaultModelPlaceholder": "Bir yerel model seçin",
     "noLocalModels": "İçe aktarılmış yerel model yok",
     "usage5hAria": "5 saat başına token",
-    "usageWeekAria": "Haftalık token"
+    "usageWeekAria": "Haftalık token",
+    "usageWindow": "Pencere",
+    "usageLimit": "Sınır",
+    "usageUnsaved": "Kaydedilmemiş değişiklikler"
   },
   "privacy": {
     "analytics": "Analizler",
@@ -685,7 +690,20 @@
     "reduceMotion": "Hareketi azalt",
     "reduceMotionDesc": "Flint'teki animasyonları kapatın. Flint sistem ayarını izlemez, bu nedenle bunu değiştirmediğiniz sürece hareket açık kalır.",
     "increaseContrast": "Karşıtlığı artır",
-    "increaseContrastDesc": "Metni daha belirgin yaparak okumayı kolaylaştırır. Koyu temada daha beyaz, açık temada daha koyu."
+    "increaseContrastDesc": "Metni daha belirgin yaparak okumayı kolaylaştırır. Koyu temada daha beyaz, açık temada daha koyu.",
+    "performanceMode": "Performans modu",
+    "performanceModeDesc": "Azaltılmış mod bulanıklığı, büyük gölgeleri ve döngülü animasyonları kapatır, akış halindeki metni daha seyrek günceller; daha yavaş bilgisayarlar içindir. Otomatik, bu bilgisayar yavaş göründüğünde bunu seçer.",
+    "performanceModeAuto": "Otomatik",
+    "performanceModeReduced": "Her zaman azaltılmış",
+    "performanceModeFull": "Tam",
+    "performanceModeNowReduced": "Şu an: azaltılmış ({{why}})",
+    "performanceModeNowFull": "Şu an: tam",
+    "perfReasonCores": "{{n}} çekirdek",
+    "perfReasonMemory": "{{n}} GB bellek",
+    "perfReasonFrames": "yavaş kareler",
+    "perfReasonMotion": "sistem hareketi azaltıyor",
+    "perfReasonData": "veri tasarrufu",
+    "perfReasonChosen": "burada seçildi"
   },
   "pageDesc": {
     "general": "Dil, veri klasörü, günlükler ve uygulama genelindeki seçenekler.",
@@ -1190,10 +1208,17 @@
       "header": "Üst ve alt"
     },
     "showItem": "{{item}} öğesini kenar çubuğunda göster",
+    "hideItem": "{{item}} öğesini kenar çubuğundan gizle",
     "alwaysShown": "Her zaman gösterilir",
     "showAll": "Tümünü göster",
     "preview": "Önizleme",
-    "reachable": "Gizli öğelere komut paletinden ve Ayarlar'dan yine ulaşılabilir."
+    "reachable": "Gizli öğelere komut paletinden ve Ayarlar'dan yine ulaşılabilir.",
+    "presets": {
+      "label": "Hazır ayarlar",
+      "minimal": "Sade",
+      "standard": "Standart",
+      "everything": "Tümü"
+    }
   },
   "memoryPage": {
     "useSaved": "Konuşmalarda kayıtlı belleği kullan",
@@ -1312,7 +1337,12 @@
       "importedCount_one": "{{count}} anı içe aktarıldı",
       "importedCount_other": "{{count}} anı içe aktarıldı",
       "importFailed": "Anılar içe aktarılamadı"
-    }
+    },
+    "fileActionsAria": "Anıları dışa veya içe aktar",
+    "noMatchHint": "Yazımı kontrol edin ya da her şeyi görmek için aramayı temizleyin.",
+    "emptyHint": "Yukarıya bir tane yazın ya da sohbet ederken Flint'in hatırlamasına izin verin.",
+    "footerCount_one": "Bu kapsamda 1 anı",
+    "footerCount_other": "Bu kapsamda {{count}} anı"
   },
   "chatMentions": {
     "title": "Konuşma anmaları",

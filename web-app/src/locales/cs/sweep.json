@@ -63,7 +63,7 @@
     "loadingVariants": "Načítání variant…",
     "mayExceed": "Může překročit paměť",
     "modelCount_one": "{{count}} model",
-    "modelCount_other": "{{count}} modely",
+    "modelCount_other": "{{count}} modelů",
     "modelCount_few": "{{count}} modely",
     "modelCount_many": "{{count}} modelu",
     "mostDownloaded": "Nejstahovanější",
@@ -94,7 +94,8 @@
     "under3b": "Pod 3B",
     "update": "Aktualizovat",
     "variant": "Varianta",
-    "whatToLookFor": "Co hledat"
+    "whatToLookFor": "Co hledat",
+    "searchPlaceholderShort": "Hledat nebo vložit URL…"
   },
   "llamaImport": {
     "description": "Importujte soubor modelu GGUF a přidejte ho do své kolekce. Zapněte multimodální podporu pro připojení mmproj pro vstup obrazu nebo zvuku, případně podporu konceptových modelů pro spekulativní dekódování. Embeddingové modely se rozpoznají automaticky.",

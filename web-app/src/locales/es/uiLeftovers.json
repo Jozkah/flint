@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Pizarra",
+    "vermilion": "Bermellón",
+    "ink": "Tinta",
+    "moss": "Musgo",
+    "slate": "Azul pizarra",
+    "violet": "Violeta"
+  },
+  "fontSizeNames": {
+    "small": "Pequeño",
+    "medium": "Mediano",
+    "large": "Grande",
+    "extraLarge": "Muy grande"
+  },
+  "unknownSize": "Tamaño desconocido",
+  "official": "Oficial",
+  "configuration": "Configuración",
   "modelCombobox": {
     "refresh": "Actualizar modelos",
     "placeholder": "Escribe o selecciona un modelo..."

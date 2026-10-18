@@ -145,6 +145,8 @@
     "renderUserMarkdownDesc": "Mostra grassetto, elenchi, titoli e codice nei messaggi che invii. Se disattivato, appaiono esattamente come li hai scritti.",
     "renderHtmlArtifacts": "Mostra gli artefatti HTML e SVG",
     "renderHtmlArtifactsDesc": "Aggiunge una scheda Anteprima ai blocchi di codice HTML e SVG. L'HTML esegue la pagina generata dal modello in un frame isolato che esegue i propri script ma non può accedere a Flint, ai tuoi file o alla rete; l'SVG viene mostrato in modo statico con gli script disattivati. Disattivato per impostazione predefinita.",
+    "wrapCodeLines": "A capo nelle righe lunghe dei blocchi di codice",
+    "wrapCodeLinesDesc": "Manda a capo le righe lunghe, rientrate sotto il codice, invece di scorrere il blocco lateralmente. Il pulsante a capo nell'intestazione di un blocco di codice attiva la stessa impostazione.",
     "composerRailButtons": "Pulsanti dell'output nel compositore di Cowork",
     "composerRailButtonsDesc": "Mostra Anteprima, Codice, Modifiche, Attività e Cronologia sotto la casella dei messaggi di Cowork. Se disattivato, un solo pulsante Output nell'intestazione apre il pannello.",
     "autoGenerateTitle": "Genera automaticamente il titolo della chat",
@@ -423,7 +425,10 @@
     "defaultModelPlaceholder": "Seleziona un modello locale",
     "noLocalModels": "Nessun modello locale importato",
     "usage5hAria": "Token per 5 ore",
-    "usageWeekAria": "Token a settimana"
+    "usageWeekAria": "Token a settimana",
+    "usageWindow": "Finestra",
+    "usageLimit": "Limite",
+    "usageUnsaved": "Modifiche non salvate"
   },
   "privacy": {
     "analytics": "Analisi dati",
@@ -687,7 +692,20 @@
     "reduceMotion": "Riduci movimento",
     "reduceMotionDesc": "Disattiva le animazioni in Flint. Flint non segue l'impostazione di sistema, quindi il movimento resta attivo a meno che tu non lo cambi qui.",
     "increaseContrast": "Aumenta il contrasto",
-    "increaseContrastDesc": "Rende il testo più marcato per leggerlo meglio. Più bianco nel tema scuro, più scuro in quello chiaro."
+    "increaseContrastDesc": "Rende il testo più marcato per leggerlo meglio. Più bianco nel tema scuro, più scuro in quello chiaro.",
+    "performanceMode": "Modalità prestazioni",
+    "performanceModeDesc": "Ridotta disattiva sfocatura, ombre ampie e animazioni in loop e aggiorna il testo in streaming meno spesso, per computer più lenti. Automatico la sceglie quando questo computer sembra lento.",
+    "performanceModeAuto": "Automatico",
+    "performanceModeReduced": "Sempre ridotta",
+    "performanceModeFull": "Completa",
+    "performanceModeNowReduced": "Ora: ridotta ({{why}})",
+    "performanceModeNowFull": "Ora: completa",
+    "perfReasonCores": "{{n}} core",
+    "perfReasonMemory": "{{n}} GB di memoria",
+    "perfReasonFrames": "fotogrammi lenti",
+    "perfReasonMotion": "il sistema riduce il movimento",
+    "perfReasonData": "risparmio dati",
+    "perfReasonChosen": "scelta qui"
   },
   "pageDesc": {
     "general": "Lingua, cartella dati, log e opzioni dell'intera app.",
@@ -1193,10 +1211,17 @@
       "header": "In alto e in basso"
     },
     "showItem": "Mostra {{item}} nella barra laterale",
+    "hideItem": "Nascondi {{item}} dalla barra laterale",
     "alwaysShown": "Sempre visibile",
     "showAll": "Mostra tutto",
     "preview": "Anteprima",
-    "reachable": "Le voci nascoste restano raggiungibili dalla palette dei comandi (Ctrl+Maiusc+P per impostazione predefinita) e dalle Impostazioni."
+    "reachable": "Le voci nascoste restano raggiungibili dalla palette dei comandi (Ctrl+Maiusc+P per impostazione predefinita) e dalle Impostazioni.",
+    "presets": {
+      "label": "Preimpostazioni",
+      "minimal": "Minima",
+      "standard": "Normale",
+      "everything": "Tutto"
+    }
   },
   "memoryPage": {
     "useSaved": "Usa la memoria salvata nelle conversazioni",
@@ -1315,7 +1340,12 @@
       "importedCount_one": "{{count}} ricordo importato",
       "importedCount_other": "{{count}} ricordi importati",
       "importFailed": "Impossibile importare i ricordi"
-    }
+    },
+    "fileActionsAria": "Esporta o importa ricordi",
+    "noMatchHint": "Controlla l'ortografia o cancella la ricerca per vedere tutto.",
+    "emptyHint": "Scrivine uno qui sopra, o lascia che Flint ricordi mentre chatti.",
+    "footerCount_one": "1 ricordo in questo ambito",
+    "footerCount_other": "{{count}} ricordi in questo ambito"
   },
   "chatMentions": {
     "title": "Menzioni di conversazioni",

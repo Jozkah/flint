@@ -95,6 +95,7 @@
     "title": "Gestalte die Seitenleiste nach deinem Geschmack",
     "body": "Blende Einträge aus, die du nicht nutzt. Du kannst das jederzeit in den Einstellungen unter Darstellung ändern.",
     "customize": "Seitenleiste anpassen",
-    "close": "Fertig"
+    "close": "Fertig",
+    "bodyMinimal": "Flint startet mit einer kurzen Seitenleiste. Alle anderen Seiten findest du in der Befehlspalette (Strg+K), oder du fügst sie hier wieder hinzu."
   }
 }

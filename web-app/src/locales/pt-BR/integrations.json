@@ -72,5 +72,36 @@
     "remote": "Remoto",
     "searchModels": "Pesquisar modelos...",
     "noModels": "Nenhum modelo encontrado para \"{{search}}\""
+  },
+  "serverFolders": {
+    "title": "Escolher uma pasta do servidor",
+    "description": "Pastas que este servidor permite usar em sessões.",
+    "roots": "Pastas do servidor",
+    "off": "Nenhuma pasta compartilhada. Inicie o servidor com --agent-root <folder>.",
+    "loading": "Carregando pastas...",
+    "up": "Subir",
+    "empty": "Nenhuma pasta aqui.",
+    "truncated": "Apenas as primeiras 500 pastas são exibidas.",
+    "choose": "Usar esta pasta"
+  },
+  "serverSession": {
+    "title": "Nova sessão no servidor",
+    "description": "Roda no servidor em uma de suas pastas, com o modelo que você escolher.",
+    "notReady": "Este servidor ainda não executa sessões.",
+    "folder": "Pasta: {{path}}",
+    "noFolder": "nenhuma escolhida",
+    "prompt": "Primeira mensagem",
+    "promptPlaceholder": "O que a sessão deve fazer?",
+    "start": "Iniciar sessão",
+    "starting": "Iniciando...",
+    "newButton": "Nova sessão no servidor",
+    "badge": "Sessão do servidor, {{status}}",
+    "runsWith": "Usa {{model}}",
+    "status": {
+      "running": "em execução",
+      "idle": "ociosa",
+      "awaiting_approval": "aguardando aprovação",
+      "awaiting_answer": "aguardando resposta"
+    }
   }
 }

@@ -248,6 +248,7 @@
   "preview": {
     "title": "Önizleme",
     "empty": "Burada önizlemek için oluşturulan bir çıktıyı açın.",
+    "emptyHint": "Flint'in bu oturumda oluşturduğu dosyalar burada açılır.",
     "loading": "Açılıyor…",
     "unsupported": "Flint bu tür bir dosyayı gösteremiyor. Başka bir uygulamada görmek için açın.",
     "outside": "Bu dosya artık oturum çalışma alanında değil.",
@@ -330,9 +331,14 @@
     "openItem": "{{item}} öğesini aç"
   },
   "searchGroup": {
+    "pages": "Sayfalar",
+    "settings": "Ayarlar",
     "inProjects": "Projelerde",
     "conversations": "Konuşmalar",
-    "messages": "Mesajlarda"
+    "messages": "Mesajlarda",
+    "work": "Odalar ve oturumlar",
+    "room": "Oda",
+    "session": "Cowork oturumu"
   },
   "rail": {
     "label": "Cowork panelleri",
@@ -645,7 +651,8 @@
       "add": "Ekle",
       "cancel": "Vazgeç",
       "remove": "Kaldır"
-    }
+    },
+    "ctxAutoFitHint": "Otomatik sığdırma açık: boş bırakırsanız bağlamı o seçer ve gerekirse belleğe sığması için küçültür. Buraya yazılan sayı olduğu gibi kullanılır."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -688,6 +695,14 @@
     "showRawLibraries": "{{count}} eksik kitaplık adını göster"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Proje oluştur",
+      "editTitle": "Projeyi düzenle",
+      "namePlaceholder": "Proje adını girin...",
+      "alreadyExists": "\"{{projectName}}\" projesi zaten var",
+      "createSuccess": "\"{{projectName}}\" projesi oluşturuldu",
+      "updateSuccess": "\"{{projectName}}\" projesi güncellendi"
+    },
     "title": "Projeler",
     "new": "Yeni Projeler",
     "addProject": "Proje Ekle",
@@ -781,7 +796,8 @@
     "pathNameNotice": "Bu, bir sohbet koleksiyonunu adlandırır; o klasörü açmaz.",
     "openCodeFolderInCowork": "Kod klasörünü Cowork'te aç",
     "openCodeFolder": "Kod klasörünü aç",
-    "openCodeFolderDescription": "Flint'in çalışacağı, bilgisayarınızdaki bir klasörü seçin."
+    "openCodeFolderDescription": "Flint'in çalışacağı, bilgisayarınızdaki bir klasörü seçin.",
+    "setUpEmbeddingModel": "Gömme modeli kur"
   },
   "attachmentsIngestion": {
     "title": "Eklerin nasıl işleneceğini seçin",
@@ -913,7 +929,8 @@
       "unsupportedType": "\"{{type}}\" dosya türü desteklenmiyor.",
       "ioError": "{{subject}} okunamadı: {{message}}",
       "parseGeneric": "{{subject}} ayrıştırılamadı: {{message}}",
-      "fallback": "{{subject}} işlenemedi."
+      "fallback": "{{subject}} işlenemedi.",
+      "noEmbeddingModel": "{{subject}} eklenmedi: dizinlemek için yüklü bir gömme modeli yok. Llama.cpp'de bir tane kurun, sonra dosyayı yeniden ekleyin."
     },
     "fileDeleted": {
       "title": "Dosya Silindi",
@@ -1060,7 +1077,10 @@
     "branchLabel": "Dal",
     "actionsLabel": "Klasör eylemleri",
     "copyPath": "Yolu kopyala",
-    "copied": "Yol kopyalandı"
+    "copied": "Yol kopyalandı",
+    "footnoteEmptyEdit": "Ajanın projen üzerinde çalışması için bir klasör ekle.",
+    "a11yWithFolderEditable": "Proje klasörü {{folder}}, düzenleme için eklendi. Değiştirin veya ayırın.",
+    "a11yWithFolderWorktree": "Proje klasörü {{folder}}, ayrı bir worktree üzerinden düzenleniyor. Değiştirin veya ayırın."
   },
   "coworkEmpty": {
     "title": "Ne üzerinde çalışıyoruz?",
@@ -1082,7 +1102,9 @@
       "hint": "Bu klasör bir Obsidian kasasıdır. Flint onu herhangi bir Markdown not klasörü gibi okur ve Obsidian'ın .obsidian ayarlarını ve .trash klasörünü dışarıda bırakır.",
       "add": "Obsidian kasamı ekle",
       "addHint": "Obsidian kasası sadece bir klasördür. Onu başka herhangi bir klasör gibi seçin."
-    }
+    },
+    "subtitleFolderEdit": "Flint'e bir görev ver. {{folder}} içindeki dosyaları doğrudan okur ve değiştirir, oradan sonra kendi başına çalışır.",
+    "subtitleFolderWorktree": "Flint'e bir görev ver. {{folder}} klasörünün bir git worktree'sinde çalışır; klasörün yalnızca birleştirdiğinde değişir."
   },
   "sandbox": {
     "noTerminal": "Terminal yok",
@@ -1260,7 +1282,9 @@
     "count_one": "1 sonuç",
     "count_other": "{{count}} sonuç",
     "empty": "Eşleşen ayar yok.",
-    "clear": "Aramayı temizle"
+    "clear": "Aramayı temizle",
+    "emptyHint": "Başka bir sözcük deneyin ya da işlevine göre arayın: tema, proxy, bellek.",
+    "pageCrumb": "Sayfa"
   },
   "tasks": {
     "title": "Etkinlik",
@@ -2193,10 +2217,12 @@
   },
   "browserVerify": {
     "title": "Tarayıcıda doğrula",
+    "about": "Nasıl çalışır",
     "explain": "Yerel uygulamanızı ayrı, geçici bir tarayıcı profilinde (Flint'in önizlemesi değil, çerez yok) ve yalnızca uygulamanın kendi kaynağıyla sınırlı olarak açar. Başka yerlere yapılan istekler engellenir ve listelenir.",
     "url": "Yerel uygulama URL'si",
     "notLocal": "Yalnızca bu makinedeki bir uygulama (localhost, 127.0.0.1) doğrulanabilir.",
-    "steps": "Adımlar (isteğe bağlı): open, click, type, expect, wait, screenshot — satır başına bir tane",
+    "stepsLabel": "Adımlar (isteğe bağlı)",
+    "stepsHint": "Her satıra bir tane: open, click, type, expect, wait, screenshot",
     "run": "Doğrula",
     "cancel": "Durdur",
     "using": "{{browser}} kullanılıyor",
@@ -2222,7 +2248,8 @@
       "failed": "Başarısız",
       "cancelled": "Durduruldu",
       "error": "Çalıştırılamadı"
-    }
+    },
+    "steps": "Adımlar (isteğe bağlı): open, click, type, expect, wait, screenshot — satır başına bir tane"
   },
   "jev": {
     "automationTitle": "Otomatik seçimler",
@@ -2562,7 +2589,11 @@
     }
   },
   "voicePill": {
-    "cancel": "İptal"
+    "cancel": "İptal",
+    "dictate": "Dikte et",
+    "stop": "Dikteyi durdur",
+    "working": "İşleniyor…",
+    "setup": "Sesli girişi ayarla"
   },
   "motionMedia": {
     "queued": "Sırada",
@@ -2594,7 +2625,8 @@
     "copied": "Kopyalandı",
     "binary": "Bu bir ikili dosya gibi görünüyor, bu yüzden metin önizlemesi yok.",
     "expandLine": "Satırın tamamını göster",
-    "collapseLine": "Satırı kısalt"
+    "collapseLine": "Satırı kısalt",
+    "truncatedOnAdd": "{{total}} içinden ilk {{shown}} gösteriliyor (ek, eklenirken kısaltıldı)"
   },
   "dropAttachFailed": "Bırakılan dosyalar eklenemedi",
   "sampler": {
@@ -2635,7 +2667,8 @@
     "errorEngine": "Bu modeli çalıştıran motor kullanılamıyor. Flint'i yeniden başlatıp tekrar deneyin.",
     "openProvider": "Sağlayıcı ayarlarını aç",
     "errorDetails": "Ayrıntılar",
-    "pasteHint": "Panoya erişim engellendi. Metin kutusuna tıklayın ve {{keys}} tuşlarına basın."
+    "pasteHint": "Panoya erişim engellendi. Metin kutusuna tıklayın ve {{keys}} tuşlarına basın.",
+    "swapNeedsSource": "Değiştirmek için bir kaynak dil seçin"
   },
   "markdownImage": {
     "load": "Görseli {{host}} adresinden yükle"
@@ -2658,6 +2691,7 @@
     "export": "Dışa aktar",
     "imported_one": "{{count}} istem eklendi",
     "imported_other": "{{count}} istem eklendi",
+    "importedNone": "Yeni istem bulunamadı",
     "search": "İstemlerde ara",
     "empty": "Henüz istem yok.",
     "edit": "{{name}} öğesini düzenle",
@@ -2682,7 +2716,9 @@
       "gone": "Bu istem artık yok",
       "invalidJson": "Bu dosya geçerli bir JSON değil",
       "noPrompts": "Bu dosyada istem bulunamadı"
-    }
+    },
+    "noResults": "“{{query}}” ile eşleşen istem yok.",
+    "clearSearch": "Aramayı temizle"
   },
   "memoryProposal": {
     "title": "Bunu hatırlayayım mı?",
@@ -2766,10 +2802,50 @@
       "assistant": "Asistan"
     },
     "messagesCount_one": "{{count}} mesaj",
-    "messagesCount_other": "{{count}} mesaj"
+    "messagesCount_other": "{{count}} mesaj",
+    "compact_one": "{{count}} bahsetme · {{mode}}",
+    "compact_other": "{{count}} bahsetme · {{mode}}",
+    "mixed": "Karışık"
   },
   "campaignList": {
     "timeout": "Uygulama zamanında yanıt vermedi.",
     "unreadableRecord": "arka uç bu sayfanın okuyamadığı bir kayıt gönderdi"
+  },
+  "composer": {
+    "messageLabel": "Mesaj"
+  },
+  "routeLoading": {
+    "slow": "Bu sayfanın açılması her zamankinden uzun sürüyor.",
+    "reload": "Yeniden yükle",
+    "retry": "Tekrar dene",
+    "failed": "Bu sayfa açılamadı"
+  },
+  "replyCutOff": {
+    "withTokens": "Yanıt sınırında kesildi ({{tokens}} token)",
+    "plain": "Yanıt sınırında kesildi"
+  },
+  "routeNotFound": {
+    "title": "Sayfa bulunamadı",
+    "body": "{{path}} adresinde bir sayfa yok. Taşınmış olabilir ya da bağlantı güncel değil.",
+    "home": "Ana sayfaya git",
+    "settings": "Ayarları aç"
+  },
+  "waitingForYou": "Sizi bekliyor",
+  "dnd": {
+    "anItem": "öğe",
+    "aGroup": "bir grup",
+    "picked": "{{item}} tutuldu.",
+    "over": "{{item}}, {{group}} üzerinde.",
+    "notOver": "{{item}} bir grubun üzerinde değil.",
+    "dropped": "{{item}}, {{group}} grubuna taşındı.",
+    "cancelled": "{{item}} yerine bırakıldı."
+  },
+  "searchEverything": "Sohbet, oda, sayfa ve ayarlarda ara…",
+  "noResultsFoundEverywhere": "Sohbetlerde, odalarda, Cowork oturumlarında, sayfalarda veya ayarlarda eşleşme yok. Başka bir kelime deneyin.",
+  "selectModelNoKey": "Bu oturum için model seçilmedi ve {{provider}} için API anahtarı yok. Önce model menüsünden bir model seçin.",
+  "serverConnection": {
+    "offlineTitle": "Flint sunucusuna ulaşılamıyor.",
+    "offlineBody": "Yeniden bağlanılıyor… Sunucu dönene kadar şimdi yaptıklarınız kaydedilmeyebilir.",
+    "statusOffline": "Sunucuya ulaşılamıyor"
   }
 }

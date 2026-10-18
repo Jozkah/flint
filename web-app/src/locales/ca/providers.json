@@ -56,6 +56,10 @@
     "connected": "Connectat"
   },
   "table": {
+    "contextAutoFit": "autoajust",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "La mida del context és buida, així que el motor ha ajustat aquesta finestra a la memòria en carregar el model.",
+    "contextAutoTitle": "La mida del context és buida: el motor tria la finestra en carregar el model.",
     "name": "Nom",
     "file": "Fitxer",
     "size": "Mida",

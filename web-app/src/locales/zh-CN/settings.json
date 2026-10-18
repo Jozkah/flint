@@ -144,6 +144,8 @@
     "renderUserMarkdownDesc": "在你发送的消息中显示粗体、列表、标题和代码。关闭时按输入原样显示。",
     "renderHtmlArtifacts": "渲染 HTML 和 SVG 产物",
     "renderHtmlArtifactsDesc": "为 HTML 和 SVG 代码块添加预览标签页。HTML 在沙盒框架中运行模型生成的页面，可执行其自身脚本，但无法访问 Flint、你的文件或网络；SVG 以静态方式渲染并禁用脚本。默认关闭。",
+    "wrapCodeLines": "代码块中的长行自动换行",
+    "wrapCodeLinesDesc": "长行换到下一行并缩进对齐代码，而不是横向滚动代码块。代码块标题栏中的换行按钮切换的是同一设置。",
     "composerRailButtons": "Cowork 输入区中的输出按钮",
     "composerRailButtonsDesc": "在 Cowork 消息框下方显示“预览”“代码”“更改”“活动”和“时间线”。关闭时，标题栏中的一个“输出”按钮会打开该面板。",
     "autoGenerateTitle": "自动生成聊天标题",
@@ -421,7 +423,10 @@
     "defaultModelPlaceholder": "选择一个本地模型",
     "noLocalModels": "尚未导入本地模型",
     "usage5hAria": "每 5 小时的 token 数",
-    "usageWeekAria": "每周的 token 数"
+    "usageWeekAria": "每周的 token 数",
+    "usageWindow": "时间窗",
+    "usageLimit": "上限",
+    "usageUnsaved": "未保存的更改"
   },
   "privacy": {
     "analytics": "分析",
@@ -685,7 +690,20 @@
     "reduceMotion": "减少动效",
     "reduceMotionDesc": "关闭 Flint 中的动画。Flint 不会跟随系统设置，因此除非你切换此项，否则动效保持开启。",
     "increaseContrast": "提高对比度",
-    "increaseContrastDesc": "让文字更醒目，更易阅读。深色主题下更白，浅色主题下更深。"
+    "increaseContrastDesc": "让文字更醒目，更易阅读。深色主题下更白，浅色主题下更深。",
+    "performanceMode": "性能模式",
+    "performanceModeDesc": "精简模式会关闭模糊、大阴影和循环动画，并降低流式文本的刷新频率，适合较慢的电脑。自动模式会在这台电脑显得较慢时选择它。",
+    "performanceModeAuto": "自动",
+    "performanceModeReduced": "始终精简",
+    "performanceModeFull": "完整",
+    "performanceModeNowReduced": "当前：精简（{{why}}）",
+    "performanceModeNowFull": "当前：完整",
+    "perfReasonCores": "{{n}} 核",
+    "perfReasonMemory": "{{n}} GB 内存",
+    "perfReasonFrames": "帧速慢",
+    "perfReasonMotion": "系统减少动态效果",
+    "perfReasonData": "省流量",
+    "perfReasonChosen": "在此选择"
   },
   "pageDesc": {
     "general": "语言、数据文件夹、日志和应用范围的选项。",
@@ -1190,10 +1208,17 @@
       "header": "顶部和底部"
     },
     "showItem": "在侧边栏中显示 {{item}}",
+    "hideItem": "从侧边栏隐藏{{item}}",
     "alwaysShown": "始终显示",
     "showAll": "全部显示",
     "preview": "预览",
-    "reachable": "隐藏的项目仍可从命令面板和“设置”中访问。"
+    "reachable": "隐藏的项目仍可从命令面板和“设置”中访问。",
+    "presets": {
+      "label": "预设",
+      "minimal": "精简",
+      "standard": "标准",
+      "everything": "全部"
+    }
   },
   "memoryPage": {
     "useSaved": "在对话中使用已保存的记忆",
@@ -1312,7 +1337,11 @@
       "importedCount_one": "已导入 {{count}} 条记忆",
       "importedCount_other": "已导入 {{count}} 条记忆",
       "importFailed": "无法导入记忆"
-    }
+    },
+    "fileActionsAria": "导出或导入记忆",
+    "noMatchHint": "检查拼写，或清除搜索以查看全部。",
+    "emptyHint": "在上方写一条，或让 Flint 在聊天时自动记住。",
+    "footerCount_other": "此范围内有 {{count}} 条记忆"
   },
   "chatMentions": {
     "title": "对话提及",

@@ -224,7 +224,7 @@
   "profile": "Profil",
   "reset": "Przywróć",
   "search": "Szukaj",
-  "searchThreads": "Szukaj wątków...",
+  "searchThreads": "Szukaj czatów...",
   "toNavigate": "aby nawigować",
   "toSelect": "aby wybrać",
   "toClose": "aby zamknąć",
@@ -250,6 +250,7 @@
   "preview": {
     "title": "Podgląd",
     "empty": "Otwórz wygenerowany artefakt, aby zobaczyć jego podgląd tutaj.",
+    "emptyHint": "Pliki utworzone przez Flinta w tej sesji otwierają się tutaj.",
     "loading": "Otwieranie…",
     "unsupported": "Flint nie może wyświetlić tego rodzaju pliku. Otwórz go, aby zobaczyć w innej aplikacji.",
     "outside": "Ten plik nie znajduje się już w przestrzeni roboczej sesji.",
@@ -334,9 +335,14 @@
     "openItem": "Otwórz: {{item}}"
   },
   "searchGroup": {
+    "pages": "Strony",
+    "settings": "Ustawienia",
     "inProjects": "W projektach",
     "conversations": "Rozmowy",
-    "messages": "W wiadomościach"
+    "messages": "W wiadomościach",
+    "work": "Pokoje i sesje",
+    "room": "Pokój",
+    "session": "Sesja Cowork"
   },
   "rail": {
     "label": "Panele Cowork",
@@ -655,7 +661,8 @@
       "add": "Dodaj",
       "cancel": "Anuluj",
       "remove": "Usuń"
-    }
+    },
+    "ctxAutoFitHint": "Automatyczne dopasowanie jest włączone: zostaw puste, a samo wybierze kontekst, w razie potrzeby zmniejszając go, by zmieścił się w pamięci. Liczba wpisana tutaj jest używana bez zmian."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -698,6 +705,14 @@
     "showRawLibraries": "Pokaż nazwy brakujących bibliotek ({{count}})"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Utwórz projekt",
+      "editTitle": "Edytuj projekt",
+      "namePlaceholder": "Wpisz nazwę projektu...",
+      "alreadyExists": "Projekt „{{projectName}}” już istnieje",
+      "createSuccess": "Utworzono projekt „{{projectName}}”",
+      "updateSuccess": "Zaktualizowano projekt „{{projectName}}”"
+    },
     "title": "Projekty",
     "new": "Nowe Projekty",
     "addProject": "Dodaj Projekt",
@@ -793,7 +808,8 @@
     "pathNameNotice": "To nazywa kolekcję czatów; nie otwiera tego folderu.",
     "openCodeFolderInCowork": "Otwórz folder z kodem w Cowork",
     "openCodeFolder": "Otwórz folder z kodem",
-    "openCodeFolderDescription": "Wybierz folder na komputerze, w którym Flint ma pracować."
+    "openCodeFolderDescription": "Wybierz folder na komputerze, w którym Flint ma pracować.",
+    "setUpEmbeddingModel": "Skonfiguruj model embeddingów"
   },
   "attachmentsIngestion": {
     "title": "Wybierz sposób wczytania załączników",
@@ -925,7 +941,8 @@
       "unsupportedType": "Typ pliku „{{type}}” nie jest obsługiwany.",
       "ioError": "Nie udało się odczytać: {{subject}}: {{message}}",
       "parseGeneric": "Nie udało się przeanalizować: {{subject}}: {{message}}",
-      "fallback": "Nie udało się przetworzyć: {{subject}}."
+      "fallback": "Nie udało się przetworzyć: {{subject}}.",
+      "noEmbeddingModel": "{{subject}} nie został dodany: brak zainstalowanego modelu embeddingów do indeksowania. Skonfiguruj go w Llama.cpp i dodaj plik ponownie."
     },
     "fileDeleted": {
       "title": "Plik usunięty",
@@ -1082,7 +1099,10 @@
     "branchLabel": "Gałąź",
     "actionsLabel": "Akcje folderu",
     "copyPath": "Kopiuj ścieżkę",
-    "copied": "Skopiowano ścieżkę"
+    "copied": "Skopiowano ścieżkę",
+    "footnoteEmptyEdit": "Dołącz folder, aby agent mógł pracować nad twoim projektem.",
+    "a11yWithFolderEditable": "Folder projektu {{folder}}, dołączony do edycji. Zmień go lub odłącz.",
+    "a11yWithFolderWorktree": "Folder projektu {{folder}}, edytowany w osobnym worktree. Zmień go lub odłącz."
   },
   "coworkEmpty": {
     "title": "Nad czym pracujemy?",
@@ -1104,7 +1124,9 @@
       "hint": "Ten folder jest skarbcem Obsidian. Flint czyta go jak każdy folder z notatkami Markdown i pomija ustawienia .obsidian oraz .trash z Obsidiana.",
       "add": "Dodaj mój skarbiec Obsidian",
       "addHint": "Skarbiec Obsidian to zwykły folder. Wybierz go tak jak każdy inny folder."
-    }
+    },
+    "subtitleFolderEdit": "Daj Flintowi zadanie. Czyta i zmienia pliki w {{folder}} bezpośrednio, a dalej pracuje samodzielnie.",
+    "subtitleFolderWorktree": "Daj Flintowi zadanie. Pracuje w git worktree folderu {{folder}}, więc twój folder zmienia się dopiero po scaleniu."
   },
   "sandbox": {
     "noTerminal": "Brak terminala",
@@ -1290,7 +1312,9 @@
     "count_few": "{{count}} wyniki",
     "count_many": "{{count}} wyników",
     "empty": "Brak pasujących ustawień.",
-    "clear": "Wyczyść wyszukiwanie"
+    "clear": "Wyczyść wyszukiwanie",
+    "emptyHint": "Spróbuj innego słowa albo szukaj według działania: motyw, proxy, pamięć.",
+    "pageCrumb": "Strona"
   },
   "tasks": {
     "title": "Aktywność",
@@ -2275,10 +2299,12 @@
   },
   "browserVerify": {
     "title": "Zweryfikuj w przeglądarce",
+    "about": "Jak to działa",
     "explain": "Otwiera Twoją lokalną aplikację w osobnym, tymczasowym profilu przeglądarki (nie w podglądzie Flint, bez ciasteczek), ograniczonym do źródła samej aplikacji. Żądania gdzie indziej są blokowane i wypisywane.",
     "url": "Adres URL lokalnej aplikacji",
     "notLocal": "Zweryfikować można tylko aplikację na tym komputerze (localhost, 127.0.0.1).",
-    "steps": "Kroki (opcjonalnie): open, click, type, expect, wait, screenshot — po jednym w wierszu",
+    "stepsLabel": "Kroki (opcjonalnie)",
+    "stepsHint": "Jeden na wiersz: open, click, type, expect, wait, screenshot",
     "run": "Zweryfikuj",
     "cancel": "Zatrzymaj",
     "using": "Używa: {{browser}}",
@@ -2308,7 +2334,8 @@
       "failed": "Niepowodzenie",
       "cancelled": "Zatrzymane",
       "error": "Nie udało się uruchomić"
-    }
+    },
+    "steps": "Kroki (opcjonalnie): open, click, type, expect, wait, screenshot — po jednym w wierszu"
   },
   "jev": {
     "automationTitle": "Automatyczne wybory",
@@ -2660,7 +2687,11 @@
     }
   },
   "voicePill": {
-    "cancel": "Anuluj"
+    "cancel": "Anuluj",
+    "dictate": "Dyktuj",
+    "stop": "Zatrzymaj dyktowanie",
+    "working": "Przetwarzanie…",
+    "setup": "Skonfiguruj wprowadzanie głosowe"
   },
   "motionMedia": {
     "queued": "W kolejce",
@@ -2694,7 +2725,8 @@
     "copied": "Skopiowano",
     "binary": "To wygląda na plik binarny, więc nie ma podglądu tekstu.",
     "expandLine": "Pokaż cały wiersz",
-    "collapseLine": "Skróć wiersz"
+    "collapseLine": "Skróć wiersz",
+    "truncatedOnAdd": "Wyświetlono pierwsze {{shown}} z {{total}} (załącznik został przycięty przy dodawaniu)"
   },
   "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików",
   "sampler": {
@@ -2737,7 +2769,8 @@
     "errorEngine": "Silnik uruchamiający ten model jest niedostępny. Uruchom Flint ponownie i spróbuj jeszcze raz.",
     "openProvider": "Otwórz ustawienia dostawcy",
     "errorDetails": "Szczegóły",
-    "pasteHint": "Dostęp do schowka został zablokowany. Kliknij pole tekstowe i naciśnij {{keys}}."
+    "pasteHint": "Dostęp do schowka został zablokowany. Kliknij pole tekstowe i naciśnij {{keys}}.",
+    "swapNeedsSource": "Wybierz język źródłowy, aby zamienić"
   },
   "markdownImage": {
     "load": "Wczytaj obraz z {{host}}"
@@ -2762,6 +2795,7 @@
     "imported_few": "Dodano {{count}} prompty",
     "imported_many": "Dodano {{count}} promptów",
     "imported_other": "Dodano {{count}} prompta",
+    "importedNone": "Nie znaleziono nowych promptów",
     "search": "Szukaj promptów",
     "empty": "Brak promptów.",
     "edit": "Edytuj: {{name}}",
@@ -2786,7 +2820,9 @@
       "gone": "Ten prompt już nie istnieje",
       "invalidJson": "Ten plik nie jest prawidłowym JSON-em",
       "noPrompts": "W tym pliku nie znaleziono promptów"
-    }
+    },
+    "noResults": "Żaden prompt nie pasuje do „{{query}}”.",
+    "clearSearch": "Wyczyść wyszukiwanie"
   },
   "memoryProposal": {
     "title": "Zapamiętać to?",
@@ -2874,10 +2910,52 @@
     "messagesCount_one": "{{count}} wiadomość",
     "messagesCount_few": "{{count}} wiadomości",
     "messagesCount_many": "{{count}} wiadomości",
-    "messagesCount_other": "{{count}} wiadomości"
+    "messagesCount_other": "{{count}} wiadomości",
+    "compact_one": "{{count}} wzmianka · {{mode}}",
+    "compact_few": "{{count}} wzmianki · {{mode}}",
+    "compact_many": "{{count}} wzmianek · {{mode}}",
+    "compact_other": "{{count}} wzmianki · {{mode}}",
+    "mixed": "Mieszane"
   },
   "campaignList": {
     "timeout": "Aplikacja nie odpowiedziała na czas.",
     "unreadableRecord": "backend wysłał rekord, którego ta strona nie potrafi odczytać"
+  },
+  "composer": {
+    "messageLabel": "Wiadomość"
+  },
+  "routeLoading": {
+    "slow": "Otwieranie tej strony trwa dłużej niż zwykle.",
+    "reload": "Wczytaj ponownie",
+    "retry": "Spróbuj ponownie",
+    "failed": "Nie udało się otworzyć tej strony"
+  },
+  "replyCutOff": {
+    "withTokens": "Ucięto na limicie odpowiedzi ({{tokens}} tokenów)",
+    "plain": "Ucięto na limicie odpowiedzi"
+  },
+  "routeNotFound": {
+    "title": "Nie znaleziono strony",
+    "body": "Pod adresem {{path}} nie ma strony. Mogła zostać przeniesiona albo link jest nieaktualny.",
+    "home": "Przejdź do strony głównej",
+    "settings": "Otwórz ustawienia"
+  },
+  "waitingForYou": "Czeka na Ciebie",
+  "dnd": {
+    "anItem": "element",
+    "aGroup": "grupa",
+    "picked": "Podniesiono: {{item}}.",
+    "over": "{{item}} nad grupą {{group}}.",
+    "notOver": "{{item}} nie jest nad żadną grupą.",
+    "dropped": "Przeniesiono {{item}} do grupy {{group}}.",
+    "cancelled": "{{item}} odłożono z powrotem."
+  },
+  "searchEverything": "Szukaj czatów, pokojów, stron i ustawień…",
+  "noResultsFoundEverywhere": "Brak wyników w czatach, pokojach, sesjach Cowork, stronach i ustawieniach. Spróbuj innego słowa.",
+  "selectModelNoKey": "Dla tej sesji nie wybrano modelu, a {{provider}} nie ma klucza API. Najpierw wybierz model w menu modeli.",
+  "serverConnection": {
+    "offlineTitle": "Nie można połączyć się z serwerem Flint.",
+    "offlineBody": "Ponowne łączenie… To, co teraz zrobisz, może nie zostać zapisane, dopóki serwer nie wróci.",
+    "statusOffline": "Serwer niedostępny"
   }
 }

@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "Ortam değişkenleri",
+    "description": "llama.cpp için ortam değişkenleri (KEY=VALUE), ';' ile ayrılır",
+    "placeholder": "Örn. GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "Ek argümanlar",
+    "description": "Ek llama-server seçenekleri, ör. --rope-scaling yarn --no-warmup. Her modele uygulanır ve yukarıdaki ayarlardan sonra yazılır, bu yüzden öncelikli olurlar. Sunucu adresi, kimlik bilgileri ve model dosyası seçenekleri yok sayılır.",
+    "placeholder": "Örn. --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "Aynı Anda Yüklü Maksimum Model",
+    "description": "Yönlendiricinin aynı anda yüklü tutacağı en fazla model sayısı. 0 = sınırsız.",
+    "placeholder": "ör. 1"
+  },
+  "idle_unload_minutes": {
+    "title": "Boştaki Modelleri Kaldırma Süresi (dakika)",
+    "description": "Bu kadar dakikadır kullanılmayan yerel modeli belleği boşaltmak için kaldırır. Bir sonraki istekte yeniden yüklenir. Gömme (embedding) modelleri ve işlenmekte olan isteği bulunan modeller asla kaldırılmaz. 0 = asla. Varsayılan 30'dur; böylece oyun oynarken veya render alırken VRAM boşuna tutulmaz.",
+    "placeholder": "ör. 10"
+  },
+  "timeout": {
+    "title": "llama.cpp zaman aşımı",
+    "description": "llama.cpp bağlantı ve yükleme zaman aşımı (saniye)",
+    "placeholder": "ör. 600"
+  },
+  "ctx_size": {
+    "title": "Varsayılan bağlam boyutu",
+    "description": "Kendi değerini belirtmeyen yerel modeller için kullanılan bağlam penceresi. Daha büyük = daha fazlasını hatırlar ama daha çok bellek gerektirir. Her model bunu kendi ayarlarında (dişli simgesi) geçersiz kılabilir. Modelin yerel boyutunu kullanmak için Otomatik'te bırakın (çok büyük olabilir). Yaygın boyutlar: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "Otomatik"
+  },
+  "fit": {
+    "title": "Otomatik sığdırma",
+    "description": "Modelin belleğinize sığması için GPU'da kaç katman çalışacağına ve bağlamın ne kadar büyük olabileceğine Flint karar versin. GPU katmanlarını ve Bağlam Boyutunu kendiniz ayarlamak için kapatın."
+  },
+  "fit_target": {
+    "title": "Otomatik sığdırma: boş bırakılacak bellek",
+    "description": "Otomatik sığdırmanın diğer uygulamalar ve ekran için her GPU'da boş bıraktığı bellek miktarı (MiB). Bir model yüklüyken sisteminiz yavaşlıyorsa artırın. Yalnızca yerel modeller.",
+    "placeholder": "1024 veya MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "Otomatik sığdırma: en küçük bağlam",
+    "description": "Model belleğe sığmadığında otomatik sığdırmanın inebileceği en küçük bağlam boyutu (token). Bunun altına asla inmez; model yine de sığmazsa yüklenemez. Bu, bağlam boyutunun kendisi değildir: onu Varsayılan bağlam boyutu'nda ya da model bazında Bağlam Boyutu'nda ayarlayın. Yalnızca Otomatik sığdırma açıkken ve yalnızca yerel modeller için kullanılır."
+  },
+  "threads": {
+    "title": "İş Parçacıkları",
+    "description": "Üretim sırasında kullanılacak iş parçacığı sayısı (mantıksal çekirdekler için -1)."
+  },
+  "threads_batch": {
+    "title": "İş Parçacıkları (Toplu)",
+    "description": "Toplu iş ve istem işleme için iş parçacığı sayısı (varsayılan: İş Parçacıkları ile aynı).",
+    "placeholder": "-1 (İş Parçacıkları ile aynı)"
+  },
+  "ctx_shift": {
+    "title": "Bağlam Kaydırma",
+    "description": "Modelin yeni metne bellekte yer açmak için baştaki metni kesmesine izin ver"
+  },
+  "n_predict": {
+    "title": "Tahmin Edilecek Maksimum Token",
+    "description": "Üretilecek en fazla token sayısı (-1 = sınırsız)."
+  },
+  "batch_size": {
+    "title": "Toplu İş Boyutu",
+    "description": "İstemleri işlemek için mantıksal maksimum toplu iş boyutu."
+  },
+  "ubatch_size": {
+    "title": "uBatch Boyutu",
+    "description": "İstemleri işlemek için fiziksel maksimum toplu iş boyutu. 0 = otomatik: model VRAM'e rahatça sığıyorsa 1024, sınırdaysa 512, sistem RAM'ine taşıyorsa 2048.",
+    "placeholder": "0 (otomatik)"
+  },
+  "n_cpu_moe": {
+    "title": "CPU'daki MoE Katmanları",
+    "description": "İlk N katmanın Uzmanlar Karışımı (MoE) ağırlıklarını CPU belleğinde tutar. Büyük bir MoE modelinin sınırlı VRAM'e sığmasını sağlar. 0 devre dışı bırakır."
+  },
+  "n_cpu_ffn": {
+    "title": "CPU'daki Yoğun FFN Katmanları",
+    "description": "İlk N katmanın yoğun ileri beslemeli ağırlıklarını CPU belleğinde tutar. Yukarıdaki MoE ayarının yoğun modeller için karşılığıdır. 0 devre dışı bırakır."
+  },
+  "no_kv_offload": {
+    "title": "KV Önbellek Aktarımını Devre Dışı Bırak",
+    "description": "KV önbelleğini GPU belleği yerine sistem RAM'inde tutar. VRAM kısıtlıysa işe yarar, ancak hızdan ödün verir."
+  },
+  "device": {
+    "title": "Aktarım Yapılacak Aygıtlar",
+    "description": "Aktarım yapılacak hızlandırıcıların virgülle ayrılmış listesi; algılanan donanım listesindeki adlarıyla. Tüm kullanılabilir hızlandırıcıları kullanmak için boş bırakın veya aktarımı tamamen kapatmak için \"none\" yazın.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "GPU Bölme Modu",
+    "description": "Modelin birden fazla GPU'ya nasıl bölüneceği.",
+    "options": {
+      "none": "Yok",
+      "layer": "Katman",
+      "row": "Satır",
+      "tensor": "Tensör (deneysel)"
+    }
+  },
+  "main_gpu": {
+    "title": "Ana GPU Dizini",
+    "description": "Model (split-mode=none) veya ara sonuçlar (split-mode=row) için kullanılacak GPU."
+  },
+  "tensor_split": {
+    "title": "Tensör Bölme",
+    "description": "Modeli aygıtlara bölmek için virgülle ayrılmış oranlar, ör. \"3,1\". Eşit bölme için boş bırakın."
+  },
+  "no_op_offload": {
+    "title": "İşlem Aktarımını Devre Dışı Bırak",
+    "description": "Ana makine tensör işlemlerini hızlandırıcıya aktarmak yerine CPU'da tutar."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "Daha iyi performans için Flash Attention'ı etkinleştirir.",
+    "options": {
+      "auto": "Otomatik",
+      "on": "Açık",
+      "off": "Kapalı"
+    }
+  },
+  "parallel": {
+    "title": "Paralel Diziler",
+    "description": "Kendi sohbet istekleriniz için çözülecek paralel dizi sayısı (0 = llama.cpp varsayılanı olan 4). Flint, arka plan istekleri (ör. konu başlığının otomatik oluşturulması) için bunun dışında bir dahili yuva daha ayırır; böylece sohbetinizin KV önbelleğini silmezler."
+  },
+  "reserve_background_slots": {
+    "title": "Arka Plan Yuvalarını Ayır",
+    "description": "Arka plan istekleri (konu başlığının otomatik oluşturulması, Cowork, alt ajanlar) için Paralel Diziler'in dışında iki ek dahili yuva tutar; böylece sohbetinizin KV önbelleğini silmezler. Tam olarak Paralel Diziler kadar yuva çalıştırmak için kapatın (tek yuva için 1 yapın); bu durumda arka plan istekleri sohbetinizin yuvasını paylaşır ve önbelleğini silebilir. Modeli yeniden yükler."
+  },
+  "ngram_speculation": {
+    "title": "N-gram Spekülatif Kod Çözme",
+    "description": "Konuşmada zaten bulunan metinden taslak tokenlar üretir (ngram-mod) ve modelin bunları tek bir toplu işte doğrulamasını sağlar. Çıktı aynıdır; kod düzenlemeleri veya alıntı gibi tekrarlı çıktılar 3-10 kat daha hızlı üretilir, diğer metinler etkilenmez. Kendi MTP taslağı olan modeller onu kullanır."
+  },
+  "cont_batching": {
+    "title": "Sürekli Toplu İşleme",
+    "description": "Eşzamanlı istekler için sürekli toplu işlemeyi (dinamik toplu işleme olarak da bilinir) etkinleştirir. llama.cpp ile uyumlu olarak varsayılan olarak açıktır."
+  },
+  "no_mmap": {
+    "title": "mmap'i Devre Dışı Bırak",
+    "description": "Modeli belleğe eşleme (yükleme yavaşlar, ancak mlock kullanılmıyorsa sayfa dışına atmaları azaltabilir)."
+  },
+  "lazy_mode": {
+    "title": "Tembel Tensör Okuma",
+    "description": "Büyük, mimariye özgü işaretli tensörlerin (ör. katman başına gömmeler) satırlarını bellekte tutmak yerine gerektiğinde diskten okur. Otomatik, 4 GiB üzerinde uygular. mmap gerektirir.",
+    "options": {
+      "auto": "Otomatik",
+      "on": "Açık",
+      "off": "Kapalı"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "Modeli RAM'de kilitler, böylece asla takas alanına atılmaz. \"mmap'i Devre Dışı Bırak\" ile birlikte ağırlıkları mmap olmadan yükler ve ardından kilitler."
+  },
+  "cache_type_k": {
+    "title": "KV Önbellek K Türü",
+    "description": "Anahtarlar (Keys) için KV önbellek veri türü. Otomatik, önbelleği ihmal edilebilir bir kalite kaybıyla yarıya indiren q8_0'ı kullanır.",
+    "options": {
+      "auto": "Otomatik",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "KV Önbellek V Türü",
+    "description": "Değerler (Values) için KV önbellek veri türü. Otomatik, Flash Attention Açık ise q8_0, değilse f16 kullanır; çünkü nicemlenmiş V önbelleği Flash Attention gerektirir. Bununla yüklenemeyen model bir kez f16 ile yeniden denenir.",
+    "options": {
+      "auto": "Otomatik",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "RoPE Ölçekleme Yöntemi",
+    "description": "RoPE frekans ölçekleme yöntemi. \"Model varsayılanı\" kararı modele bırakır; \"Yok\" ölçeklemeyi açıkça devre dışı bırakır.",
+    "options": {
+      "auto": "Model varsayılanı",
+      "none": "Yok",
+      "linear": "Doğrusal",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "RoPE Frekans Tabanı",
+    "description": "RoPE taban frekansı (0 = modelden yüklenir).",
+    "placeholder": "0 (model varsayılanı)"
+  },
+  "rope_freq_scale": {
+    "title": "RoPE Frekans Ölçek Faktörü",
+    "description": "RoPE frekans ölçekleme faktörü. 0 değeri modelden yükler; 1 ölçeklemeyi devre dışı bırakır."
+  },
+  "cache_ram": {
+    "title": "İstem Önbelleği RAM'i (MiB)",
+    "description": "MiB cinsinden istem önbelleği boyutu: diğer konuşmaların bağlamını tutan RAM; böylece birine geri döndüğünüzde yeniden okunmaz. Boş veya -2 = RAM'inize göre otomatik (sistem RAM'inin %20'si, en fazla boş belleğin yarısı, 1024-8192); 0 = kapalı; -1 = sınırsız.",
+    "placeholder": "-2 (otomatik)"
+  },
+  "persist_thread_cache": {
+    "title": "Konuşmaları Oturumlar Arasında Hatırla",
+    "description": "Her konuşmanın istem önbelleğini diskte tutar; böylece yeniden açtığınızda tüm konuşma tekrar okunmaz. Yalnızca model, ayarları ve llama.cpp derlemesi, kaydedildiği andakiyle eşleşirse geri yüklenir."
+  },
+  "thread_cache_size": {
+    "title": "Konuşma Önbelleği Disk Sınırı (MiB)",
+    "description": "Kaydedilen konuşma önbellekleri için disk bütçesi (varsayılan: 2048). Sınıra ulaşıldığında önce en eskiler silinir. Uzun tek bir konuşma yüzlerce MiB yer kaplayabilir."
+  },
+  "cache_reuse": {
+    "title": "Önbellek Yeniden Kullanımı",
+    "description": "Önbellekten yeniden kullanılacak eşleşen önek tokenlarının en küçük parça boyutu. 0 = devre dışı."
+  },
+  "ctx_checkpoints": {
+    "title": "Bağlam Kontrol Noktaları",
+    "description": "Yuva başına tutulan en fazla bağlam kontrol noktası; kaydırılmış bir bağlamın yeniden işlenmek yerine geri yüklenmesini sağlar."
+  },
+  "checkpoint_min_step": {
+    "title": "Kontrol Noktası En Küçük Adımı",
+    "description": "Bağlam kontrol noktaları arasındaki en az token sayısı."
+  },
+  "swa_full": {
+    "title": "Tam SWA Önbelleği",
+    "description": "Kayan pencere dikkat (SWA) modelleri (ör. Gemma) için tam boyutlu KV önbelleği kullanır. Böyle bir model önbelleği yeniden kullanmak yerine her turda tüm istemi yeniden işliyorsa bunu açın; daha fazla bellek harcar."
+  },
+  "kv_unified": {
+    "title": "Birleşik KV Önbelleği",
+    "description": "Tüm yuvalar arasında paylaşılan tek bir birleşik KV arabelleği kullanır. Birden çok paralel yuva çalıştırırken bellek tasarrufu sağlar.",
+    "options": {
+      "auto": "Otomatik",
+      "on": "Açık",
+      "off": "Kapalı"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "Yuva Başına Bağlam",
+    "description": "Bir yuvanın birleşik KV önbelleğinden ne kadar kullanabileceğini token cinsinden sınırlar. 0, yuvanın tüm önbelleği doldurmasına izin verir. Yalnızca önbellek birleşikken geçerlidir."
+  },
+  "reasoning_preserve": {
+    "title": "Akıl Yürütme Geçmişini Koru",
+    "description": "Yalnızca en sonuncusunu değil, önceki tüm asistan turlarının akıl yürütmesini istemde tutar. Yalnızca sohbet şablonu bunu destekleyen modelleri etkiler ve istem tokenı harcar."
+  },
+  "keep": {
+    "title": "İlk N Tokenı Koru",
+    "description": "Bağlam kaydırıldığında ilk istemden korunacak token sayısı. -1 = tümünü koru."
+  },
+  "_ui": {
+    "moreInfo": "{{setting}} hakkında daha fazla bilgi",
+    "perModelSettings": "Model bazında ayarlar",
+    "perModelDefault": "Varsayılan (ayarlardan: {{value}})",
+    "perModelDefaultAuto": "Varsayılan (ayarlardan: Otomatik)"
+  }
+}

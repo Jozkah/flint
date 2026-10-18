@@ -12,8 +12,8 @@
     "open": "Buka {{title}}",
     "delete": "Hapus",
     "deleteLabel": "Hapus {{title}}",
-    "participants": "{{count}} peserta",
-    "turns": "{{count}} giliran",
+    "participants_other": "{{count}} peserta",
+    "turns_other": "{{count}} giliran",
     "updated": "Diperbarui {{time}}",
     "untitled": "Ruang tanpa judul",
     "moreLabel": "Tindakan lain untuk {{title}}",
@@ -21,7 +21,9 @@
     "noParticipants": "Belum ada peserta",
     "noPreview": "Buka ruang untuk melihat diskusi.",
     "tokens": "{{count}} token",
-    "yours": "Ruang Anda"
+    "yours": "Ruang Anda",
+    "participants": "{{count}} peserta",
+    "turns": "{{count}} giliran"
   },
   "create": {
     "title": "Ruang baru",
@@ -76,6 +78,9 @@
     "heading": "Pengaturan ruang",
     "sectionGeneral": "Umum",
     "sectionDiscussion": "Diskusi & moderator",
+    "sectionIdentity": "Identitas",
+    "sectionModel": "Model & penalaran",
+    "sectionTools": "Alat",
     "lockedWhileRunning": "Jeda ruang untuk mengubah pengaturan.",
     "title": "Judul",
     "objective": "Tujuan",
@@ -191,8 +196,10 @@
     "isolation": {
       "active": "Setiap peserta yang dapat mengedit bekerja di ruang kerja terisolasi sendiri, sehingga tidak bisa saling menimpa atau menimpa folder Anda.",
       "unavailable": "Ruang kerja terisolasi tidak tersedia: {{reason}}. Peserta yang dapat mengedit hanya membaca di ruang ini.",
-      "untrusted": "folder tidak dipercaya"
-    }
+      "untrusted": "folder tidak dipercaya",
+      "trust": "Percayai folder ini"
+    },
+    "saving": "Menyimpan…"
   },
   "limits": {
     "maxRounds": "Putaran",
@@ -278,7 +285,18 @@
       "tools": "Menggunakan alat, tetapi tidak menulis balasan teks.",
       "none": "Tidak ada balasan teks."
     },
-    "thought": "Berpikir"
+    "thought": "Berpikir",
+    "answerFrom": "Jawaban dari {{name}}",
+    "expandAnswer": "Tampilkan seluruh jawaban dari {{name}}",
+    "collapseAnswer": "Persingkat jawaban dari {{name}}",
+    "expand": "Bentangkan",
+    "collapse": "Ciutkan",
+    "linkScroll": "Gulir bersama",
+    "linkScrollHint": "Gulir jawaban untuk satu pertanyaan bersamaan",
+    "continuePrompt": "Lanjutkan jawaban sebelumnya dari bagian yang terpotong.",
+    "catchUp": "Susulan: juga menjawab {{count}} pertanyaan sebelumnya",
+    "catchUp_one": "Susulan: juga menjawab 1 pertanyaan sebelumnya",
+    "catchUpHint": "Peserta ini bergabung setelah pertanyaan-pertanyaan ini, jadi balasan ini juga menjawabnya:"
   },
   "unknownWindow": {
     "title": "Jendela konteks tidak diketahui",
@@ -329,7 +347,7 @@
     "speaking": "{{name}} sedang berbicara",
     "compacting": "{{name}} sedang menyusul",
     "draft": "Siap dimulai",
-    "draftHint": "{{count}} peserta · {{mode}}",
+    "draftHint_other": "{{count}} peserta · {{mode}}",
     "running": "Diskusi berjalan",
     "runningHint": "Pembicara berikutnya sedang bersiap.",
     "awaiting-user": "Giliran Anda memilih",
@@ -348,7 +366,9 @@
     "failedHint": "Mulai lagi untuk mencoba ulang.",
     "round": "Putaran",
     "turn": "Giliran",
-    "of": "dari"
+    "of": "dari",
+    "question": "Pertanyaan",
+    "draftHint": "{{count}} peserta · {{mode}}"
   },
   "usage": {
     "label": "Penggunaan",
@@ -361,7 +381,8 @@
     "time": "Waktu",
     "of": "{{value}} / {{max}}",
     "noLimit": "tanpa batas",
-    "stopReason": "Dihentikan: {{reason}}"
+    "stopReason": "Dihentikan: {{reason}}",
+    "questions": "Pertanyaan"
   },
   "stopReason": {
     "user": "dihentikan oleh Anda",
@@ -390,7 +411,9 @@
     "toShort": "Kepada",
     "placeholderTo": "Tulis kepada {{name}}…",
     "mention": "Sebut peserta",
-    "dropSkipped": "Tidak ditambahkan (bukan teks, berupa folder, atau melebihi batas pesan): {{files}}"
+    "dropSkipped": "Tidak ditambahkan (bukan teks, berupa folder, atau melebihi batas pesan): {{files}}",
+    "placeholderShort": "Tulis ke ruang… @ untuk menyebut",
+    "extendByQuestions": "Pertanyaan tambahan"
   },
   "kpi": {
     "running": "Berjalan",
@@ -399,9 +422,10 @@
     "waitingHint": "Perlu pilihan atau balasan Anda",
     "waitingNone": "Tidak ada yang membutuhkan Anda",
     "turns": "Giliran minggu ini",
-    "turnsHint": "Di {{count}} ruang",
+    "turnsHint_other": "Di {{count}} ruang",
     "models": "Model yang ikut serta",
-    "modelsNone": "Belum ada peserta"
+    "modelsNone": "Belum ada peserta",
+    "turnsHint": "Di {{count}} ruang"
   },
   "waiting": {
     "title": "Menunggu Anda",
@@ -471,8 +495,11 @@
       "queued": "Dalam antrean",
       "done": "Sudah dijawab",
       "failed": "Gagal",
-      "idle": "Belum dijawab"
-    }
+      "idle": "Belum dijawab",
+      "waitingSlot": "Antre: menunggu slot model lokal"
+    },
+    "retry": "Coba lagi",
+    "retryFor": "Coba lagi {{name}}"
   },
   "changes": {
     "summaryOne": "{{count}} file berubah",
@@ -487,24 +514,85 @@
     "state": {
       "kept": "Disimpan",
       "discarded": "Dibuang",
-      "applied": "Diterapkan"
+      "applied": "Diterapkan",
+      "idle": "Belum diterapkan"
     },
     "diffTitle": "Perubahan di ruang kerja",
     "diffHint": "Semua yang diubah peserta ini di ruang kerja terisolasinya.",
-    "applyTitle": "Terapkan ke folder Anda?",
-    "applyHint": "Patch ini akan ditulis ke folder Anda. Jika tidak bisa diterapkan dengan bersih, tidak ada yang berubah.",
     "discardTitle": "Buang perubahan ini?",
     "discardHint": "Ruang kerja peserta kembali ke keadaan awal. Folder Anda tidak disentuh.",
     "loading": "Memuat diff…",
     "empty": "Tidak ada yang diterapkan.",
-    "applyConfirm": "Terapkan",
     "discardConfirm": "Buang",
     "scopeTurn": "Giliran ini",
-    "scopeAll": "Sejak ruang kerja dibuat"
+    "scopeAll": "Sejak ruang kerja dibuat",
+    "applyShort": "Terapkan",
+    "scopeAllShort": "Semua",
+    "scope": "Perubahan yang ditampilkan",
+    "showAll": "Tampilkan semua berkas ({{count}})",
+    "partial_other": "{{count}} file diterapkan",
+    "applyIncludesEarlier_other": "Terapkan juga mencakup {{count}} file sebelumnya yang belum diterapkan",
+    "applyTitle": "Terapkan ke folder Anda?",
+    "applyHint": "Patch ini akan ditulis ke folder Anda. Jika tidak bisa diterapkan dengan bersih, tidak ada yang berubah.",
+    "applyConfirm": "Terapkan"
+  },
+  "apply": {
+    "title_one": "Terapkan {{count}} perubahan ke folder Anda",
+    "title_other": "Terapkan {{count}} perubahan ke folder Anda",
+    "copyPath": "Salin jalur folder {{path}}",
+    "pathCopied": "Jalur folder disalin",
+    "files_one": "{{count}} berkas",
+    "files_other": "{{count}} berkas",
+    "source": "Dari {{name}} · putaran {{round}}",
+    "safety": "Tidak ada yang diterapkan jika patch tidak bisa diterapkan dengan bersih. Anda bisa membatalkannya segera setelahnya.",
+    "checking": "Memeriksa apakah bisa diterapkan ke folder Anda…",
+    "clean": "Bisa diterapkan dengan bersih",
+    "checkFailed": "Tidak dapat memeriksa patch: {{message}}",
+    "conflict_one": "{{count}} berkas tidak bisa diterapkan ke folder Anda",
+    "conflict_other": "{{count}} berkas tidak bisa diterapkan ke folder Anda",
+    "conflictHint": "Kecualikan berkas itu, atau minta peserta mengerjakannya ulang terhadap folder Anda saat ini.",
+    "notChecked": "tidak diperiksa satu per satu (terlalu banyak berkas)",
+    "fileConflict": "Tidak bisa diterapkan",
+    "leaveOut": "Lewati file yang bertentangan",
+    "details": "Rincian",
+    "fileDirty": "Suntingan Anda",
+    "dirtyTitle_one": "Ada perubahan belum di-commit di {{count}} berkas ini",
+    "dirtyTitle_other": "Ada perubahan belum di-commit di {{count}} berkas ini",
+    "dirtyHint": "Patch ditulis di atas suntingan Anda. Commit atau stash dulu jika ingin mudah kembali.",
+    "selectAll": "Pilih semua berkas",
+    "include": "Sertakan {{path}}",
+    "renamedFrom": "(diganti nama dari {{path}})",
+    "status": {
+      "added": "Ditambah",
+      "modified": "Diubah",
+      "deleted": "Dihapus",
+      "renamed": "Diganti nama"
+    },
+    "binary": "Berkas biner berubah. Isinya tidak ditampilkan.",
+    "noLines": "Tidak ada baris yang berubah (hanya mode atau nama).",
+    "showMore_one": "Tampilkan {{count}} baris lagi",
+    "showMore_other": "Tampilkan {{count}} baris lagi",
+    "hiddenLines_one": "({{count}} tersembunyi)",
+    "hiddenLines_other": "({{count}} tersembunyi)",
+    "blockedConflict": "Terapkan nonaktif: beberapa berkas terpilih tidak bisa diterapkan dengan bersih.",
+    "blockedNothing": "Pilih setidaknya satu berkas.",
+    "blockedFailed": "Terapkan nonaktif sampai pemeriksaan berhasil.",
+    "copyPatch": "Salin patch",
+    "patchCopied": "Patch disalin",
+    "confirm_one": "Terapkan {{count}} berkas",
+    "confirm_other": "Terapkan {{count}} berkas",
+    "applied_one": "{{count}} berkas diterapkan ke folder Anda",
+    "applied_other": "{{count}} berkas diterapkan ke folder Anda",
+    "undo": "Urungkan",
+    "undone": "Perubahan sudah ditarik dari folder Anda",
+    "undoFailed": "Tidak dapat mengurungkan: {{message}}"
   },
   "approvals": {
     "held": "Ruang dijeda",
     "heldHint": "Ruang dijeda saat ini menunggu, jadi tidak bisa diizinkan lagi. Lanjutkan ruang dan peserta akan bertanya lagi bila masih perlu.",
-    "dismiss": "Tutup"
+    "dismiss": "Tutup",
+    "heldBanner": "Ruang dijeda: permintaan ini tidak bisa diizinkan lagi. Lanjutkan untuk bertanya lagi.",
+    "wantsToRun": "{{origin}} ingin menjalankan {{tool}}",
+    "details": "Detail"
   }
 }

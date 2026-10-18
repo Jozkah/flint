@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Ardoise",
+    "vermilion": "Vermillon",
+    "ink": "Encre",
+    "moss": "Mousse",
+    "slate": "Bleu ardoise",
+    "violet": "Violet"
+  },
+  "fontSizeNames": {
+    "small": "Petite",
+    "medium": "Moyenne",
+    "large": "Grande",
+    "extraLarge": "Très grande"
+  },
+  "unknownSize": "Taille inconnue",
+  "official": "Officiel",
+  "configuration": "Configuration",
   "modelCombobox": {
     "refresh": "Actualiser les modèles",
     "placeholder": "Saisissez ou choisissez un modèle…"

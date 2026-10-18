@@ -90,7 +90,8 @@
     "under3b": "Menos de 3B",
     "update": "Actualizar",
     "variant": "Variante",
-    "whatToLookFor": "Qué buscar"
+    "whatToLookFor": "Qué buscar",
+    "searchPlaceholderShort": "Busca o pega una URL…"
   },
   "llamaImport": {
     "description": "Importa un archivo de modelo GGUF para añadirlo a tu colección. Activa la compatibilidad multimodal para adjuntar un mmproj (entrada de imagen o audio), o la de modelos borrador para la decodificación especulativa. Los modelos de embeddings se detectan automáticamente.",

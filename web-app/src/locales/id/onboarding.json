@@ -95,6 +95,7 @@
     "title": "Buat sidebar sesuai gaya Anda",
     "body": "Sembunyikan item yang tidak Anda pakai. Anda bisa mengubahnya kapan saja di Pengaturan, di bawah Tampilan.",
     "customize": "Sesuaikan sidebar",
-    "close": "Selesai"
+    "close": "Selesai",
+    "bodyMinimal": "Flint dimulai dengan sidebar yang ringkas. Semua halaman lain ada di palet perintah, atau tambahkan kembali di sini."
   }
 }

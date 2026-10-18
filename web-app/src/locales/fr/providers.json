@@ -56,6 +56,10 @@
     "connected": "Connecté"
   },
   "table": {
+    "contextAutoFit": "ajusté auto",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "La taille de contexte est vide : le moteur a ajusté cette fenêtre à votre mémoire au chargement du modèle.",
+    "contextAutoTitle": "La taille de contexte est vide : le moteur choisit la fenêtre au chargement du modèle.",
     "name": "Nom",
     "file": "Fichier",
     "size": "Taille",

@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Assistent per defecte",
   "defaultAssistantDesc": "S'utilitza en iniciar un xat nou",
   "allAssistants": "Tots els assistents",
-  "lastUsed": "Últim ús"
+  "lastUsed": "Últim ús",
+  "starterDescriptions": {
+    "jan": "Flint és un assistent d'escriptori que raona tasques complexes i fa servir eines per completar-les per tu.",
+    "quartz": "Un especialista precís en recerca i anàlisi: proves, comparacions, càlculs i conclusions a punt per decidir.",
+    "coal": "Un enginyer de programari pràctic per depurar, implementar, refactoritzar, provar i revisar codi.",
+    "blaze": "Un especialista creatiu en producte i escriptura: conceptes agosarats, noms, idees d'UX, textos i resultats polits.",
+    "redstone": "Un especialista en sistemes i automatització: fluxos repetibles, integracions, operacions i execució fiable en diversos passos.",
+    "book-and-quill": "Un narrador que escriu i continua històries amb escenes vives i personatges coherents.",
+    "compass": "Un traductor que passa textos d'una llengua a una altra amb fidelitat i assenyala les expressions difícils.",
+    "emerald": "Una ajuda amb els diners: pressupostos, conceptes i compromisos. Educativa, no assessorament financer autoritzat.",
+    "book": "Un tutor d'estudi que ensenya pas a pas i comprova la comprensió amb preguntes breus."
+  }
 }

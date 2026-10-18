@@ -72,5 +72,36 @@
     "remote": "Remote",
     "searchModels": "Modelle suchen ...",
     "noModels": "Keine Modelle für „{{search}}“ gefunden"
+  },
+  "serverFolders": {
+    "title": "Serverordner wählen",
+    "description": "Ordner, die dieser Server für Sitzungen freigibt.",
+    "roots": "Serverordner",
+    "off": "Keine Ordner freigegeben. Starten Sie den Server mit --agent-root <folder>.",
+    "loading": "Ordner werden geladen...",
+    "up": "Nach oben",
+    "empty": "Hier gibt es keine Ordner.",
+    "truncated": "Nur die ersten 500 Ordner werden angezeigt.",
+    "choose": "Diesen Ordner verwenden"
+  },
+  "serverSession": {
+    "title": "Neue Serversitzung",
+    "description": "Läuft auf dem Server in einem seiner Ordner, mit dem gewählten Modell.",
+    "notReady": "Dieser Server führt noch keine Sitzungen aus.",
+    "folder": "Ordner: {{path}}",
+    "noFolder": "keiner gewählt",
+    "prompt": "Erste Nachricht",
+    "promptPlaceholder": "Was soll die Sitzung tun?",
+    "start": "Sitzung starten",
+    "starting": "Wird gestartet...",
+    "newButton": "Neue Serversitzung",
+    "badge": "Serversitzung, {{status}}",
+    "runsWith": "Läuft mit {{model}}",
+    "status": {
+      "running": "läuft",
+      "idle": "inaktiv",
+      "awaiting_approval": "wartet auf Freigabe",
+      "awaiting_answer": "wartet auf Antwort"
+    }
   }
 }

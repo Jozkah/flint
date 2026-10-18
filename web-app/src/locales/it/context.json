@@ -3,6 +3,7 @@
   "title": "Cosa sta usando Flint in questa conversazione",
   "description": "Cosa è disponibile per Flint, cosa è stato scelto per una richiesta e cosa è verificato nella copia sanificata dell'ultima richiesta. Le modifiche qui influenzano i messaggi futuri, non una risposta già in scrittura.",
   "refresh": "Aggiorna",
+  "retry": "Riprova",
   "details": "Dettagli",
   "closeDetails": "Chiudi dettagli",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Gira su questo dispositivo o sulla tua rete. I messaggi non ne escono.",
+      "local": "Funziona su questo dispositivo. I messaggi non lo lasciano.",
       "remote": "Provider remoto: i tuoi messaggi e i file inclusi vengono inviati a lui.",
       "checking": "Sto ancora verificando dove gira questo provider.",
-      "unknown": "Non è stato possibile determinare dove gira questo provider."
+      "unknown": "Non è stato possibile determinare dove gira questo provider.",
+      "network": "Inviato a {{host}} sulla tua rete. Messaggi e file inclusi lasciano questo dispositivo, ma non la tua rete.",
+      "remoteHost": "Inviato a {{host}}: i tuoi messaggi e i file inclusi lasciano questo computer."
     },
     "assistantInstructions": "Le istruzioni dell'assistente vengono inviate come prompt di sistema.",
     "pendingInline": "Il suo testo verrà inserito nel tuo prossimo messaggio.",
@@ -119,7 +122,9 @@
     "noModel": "Nessun modello selezionato.",
     "noInstructions": "Nessuna istruzione dell'assistente. Le conversazioni normali non leggono i file di istruzioni del progetto come Flint.md; Cowork sì.",
     "noAttachments": "Nessun file è allegato a questa conversazione.",
+    "noAttachmentsHint": "I file che alleghi compaiono qui, con il modo in cui Flint li usa.",
     "indexUnavailable": "Non è stato possibile elencare i file indicizzati.",
+    "indexUnavailableHint": "Flint non è riuscito a leggere l'indice dei file di questa conversazione. Riprova tra un momento.",
     "noMemory": "Nessuna memoria salvata si applicava all'ultimo messaggio.",
     "noTools": "Nessuno strumento disponibile."
   },
@@ -137,6 +142,8 @@
     "noProject": "nessun progetto"
   },
   "inspect": "Ispeziona la richiesta sanificata (avanzato)",
+  "why": "Perché",
+  "verifiedMeaning": "Cosa significa “verificato”",
   "showAll": "Mostra tutti i {{count}}",
   "showFewer": "Mostra meno",
   "cards": {

@@ -95,6 +95,7 @@
     "title": "Přizpůsobte si postranní panel",
     "body": "Skryjte položky, které nepoužíváte. Kdykoli to změníte v Nastavení v části Vzhled.",
     "customize": "Přizpůsobit postranní panel",
-    "close": "Hotovo"
+    "close": "Hotovo",
+    "bodyMinimal": "Flint začíná s krátkým postranním panelem. Všechny ostatní stránky najdete v paletě příkazů, nebo je sem můžete vrátit."
   }
 }

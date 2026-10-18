@@ -222,7 +222,7 @@
   "profile": "프로필",
   "reset": "초기화",
   "search": "검색",
-  "searchThreads": "스레드 검색...",
+  "searchThreads": "채팅 검색...",
   "toNavigate": "이동",
   "toSelect": "선택",
   "toClose": "닫기",
@@ -248,6 +248,7 @@
   "preview": {
     "title": "미리 보기",
     "empty": "생성된 아티팩트를 열면 여기에서 미리 볼 수 있습니다.",
+    "emptyHint": "이 세션에서 Flint가 만든 파일이 여기에 열립니다.",
     "loading": "여는 중…",
     "unsupported": "Flint에서 이 종류의 파일은 표시할 수 없습니다. 열어서 다른 앱에서 확인하세요.",
     "outside": "이 파일은 더 이상 세션 작업 공간에 없습니다.",
@@ -330,9 +331,14 @@
     "openItem": "{{item}} 열기"
   },
   "searchGroup": {
+    "pages": "페이지",
+    "settings": "설정",
     "inProjects": "프로젝트 내",
     "conversations": "대화",
-    "messages": "메시지에서"
+    "messages": "메시지에서",
+    "work": "룸과 세션",
+    "room": "룸",
+    "session": "Cowork 세션"
   },
   "rail": {
     "label": "Cowork 패널",
@@ -645,7 +651,8 @@
       "add": "추가",
       "cancel": "취소",
       "remove": "삭제"
-    }
+    },
+    "ctxAutoFitHint": "자동 맞춤이 켜져 있습니다: 비워 두면 자동 맞춤이 컨텍스트를 고르고 필요하면 메모리에 맞게 줄입니다. 여기에 입력한 숫자는 그대로 사용됩니다."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -688,6 +695,14 @@
     "showRawLibraries": "누락된 라이브러리 이름 {{count}}개 보기"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "프로젝트 만들기",
+      "editTitle": "프로젝트 편집",
+      "namePlaceholder": "프로젝트 이름 입력...",
+      "alreadyExists": "프로젝트 \"{{projectName}}\"이(가) 이미 있습니다",
+      "createSuccess": "프로젝트 \"{{projectName}}\"을(를) 만들었습니다",
+      "updateSuccess": "프로젝트 \"{{projectName}}\"을(를) 업데이트했습니다"
+    },
     "title": "프로젝트",
     "new": "새 프로젝트",
     "addProject": "프로젝트 추가",
@@ -781,7 +796,8 @@
     "pathNameNotice": "채팅 컬렉션의 이름일 뿐이며 해당 폴더를 열지는 않습니다.",
     "openCodeFolderInCowork": "Cowork에서 코드 폴더 열기",
     "openCodeFolder": "코드 폴더 열기",
-    "openCodeFolderDescription": "Flint가 작업할 컴퓨터의 폴더를 선택하세요."
+    "openCodeFolderDescription": "Flint가 작업할 컴퓨터의 폴더를 선택하세요.",
+    "setUpEmbeddingModel": "임베딩 모델 설정"
   },
   "attachmentsIngestion": {
     "title": "첨부 파일 수집 방식 선택",
@@ -913,7 +929,8 @@
       "unsupportedType": "\"{{type}}\" 파일 형식은 지원되지 않습니다.",
       "ioError": "{{subject}}을(를) 읽을 수 없습니다: {{message}}",
       "parseGeneric": "{{subject}}을(를) 분석할 수 없습니다: {{message}}",
-      "fallback": "{{subject}}을(를) 처리하지 못했습니다."
+      "fallback": "{{subject}}을(를) 처리하지 못했습니다.",
+      "noEmbeddingModel": "{{subject}}을(를) 추가하지 못했습니다: 색인할 임베딩 모델이 설치되어 있지 않습니다. Llama.cpp에서 설정한 뒤 파일을 다시 추가하세요."
     },
     "fileDeleted": {
       "title": "파일 삭제됨",
@@ -1060,7 +1077,10 @@
     "branchLabel": "브랜치",
     "actionsLabel": "폴더 작업",
     "copyPath": "경로 복사",
-    "copied": "경로를 복사했습니다"
+    "copied": "경로를 복사했습니다",
+    "footnoteEmptyEdit": "폴더를 첨부하면 에이전트가 프로젝트에서 작업할 수 있습니다.",
+    "a11yWithFolderEditable": "프로젝트 폴더 {{folder}}, 편집용으로 연결됨. 변경하거나 분리하세요.",
+    "a11yWithFolderWorktree": "프로젝트 폴더 {{folder}}, 별도 worktree로 편집됨. 변경하거나 분리하세요."
   },
   "coworkEmpty": {
     "title": "무엇을 작업할까요?",
@@ -1082,7 +1102,9 @@
       "hint": "이 폴더는 Obsidian 보관함입니다. Flint는 일반 Markdown 노트 폴더처럼 읽으며, Obsidian의 .obsidian 설정과 .trash는 제외합니다.",
       "add": "내 Obsidian 보관함 추가",
       "addHint": "Obsidian 보관함은 그냥 폴더입니다. 다른 폴더와 똑같이 선택하세요."
-    }
+    },
+    "subtitleFolderEdit": "Flint에게 작업을 맡기세요. {{folder}}의 파일을 직접 읽고 변경하며, 이후 스스로 작업합니다.",
+    "subtitleFolderWorktree": "Flint에게 작업을 맡기세요. {{folder}}의 git worktree에서 작업하므로 병합할 때만 폴더가 바뀝니다."
   },
   "sandbox": {
     "noTerminal": "터미널 없음",
@@ -1260,7 +1282,9 @@
     "count_one": "결과 1개",
     "count_other": "결과 {{count}}개",
     "empty": "일치하는 설정이 없습니다.",
-    "clear": "검색 지우기"
+    "clear": "검색 지우기",
+    "emptyHint": "다른 단어로 시도하거나 기능으로 검색하세요: 테마, 프록시, 메모리.",
+    "pageCrumb": "페이지"
   },
   "tasks": {
     "title": "활동",
@@ -2193,10 +2217,12 @@
   },
   "browserVerify": {
     "title": "브라우저에서 확인",
+    "about": "작동 방식",
     "explain": "별도의 임시 브라우저 프로필(Flint 미리 보기 아님, 쿠키 없음)에서 로컬 앱을 열며, 앱 자체 출처로 제한됩니다. 다른 곳으로의 요청은 차단되고 목록에 표시됩니다.",
     "url": "로컬 앱 URL",
     "notLocal": "이 컴퓨터(localhost, 127.0.0.1)의 앱만 확인할 수 있습니다.",
-    "steps": "단계(선택): open, click, type, expect, wait, screenshot — 한 줄에 하나",
+    "stepsLabel": "단계(선택 사항)",
+    "stepsHint": "한 줄에 하나: open, click, type, expect, wait, screenshot",
     "run": "확인",
     "cancel": "중지",
     "using": "{{browser}} 사용",
@@ -2222,7 +2248,8 @@
       "failed": "실패",
       "cancelled": "중지됨",
       "error": "실행할 수 없음"
-    }
+    },
+    "steps": "단계(선택): open, click, type, expect, wait, screenshot — 한 줄에 하나"
   },
   "jev": {
     "automationTitle": "자동 선택",
@@ -2561,7 +2588,11 @@
   "openclaw": "OpenClaw",
   "openclawAgent": "OpenClaw 에이전트",
   "voicePill": {
-    "cancel": "취소"
+    "cancel": "취소",
+    "dictate": "받아쓰기",
+    "stop": "받아쓰기 중지",
+    "working": "처리 중…",
+    "setup": "음성 입력 설정"
   },
   "motionMedia": {
     "queued": "대기 중",
@@ -2592,7 +2623,8 @@
     "copied": "복사됨",
     "binary": "바이너리 파일로 보여 텍스트 미리보기가 없습니다.",
     "expandLine": "전체 줄 보기",
-    "collapseLine": "줄 줄이기"
+    "collapseLine": "줄 줄이기",
+    "truncatedOnAdd": "{{total}} 중 처음 {{shown}}만 표시 중 (첨부 파일이 추가될 때 잘렸습니다)"
   },
   "dropAttachFailed": "끌어다 놓은 파일을 첨부할 수 없습니다",
   "sampler": {
@@ -2632,7 +2664,8 @@
     "errorEngine": "이 모델을 실행하는 엔진을 사용할 수 없습니다. Flint를 다시 시작한 뒤 다시 시도하세요.",
     "openProvider": "제공업체 설정 열기",
     "errorDetails": "자세히",
-    "pasteHint": "클립보드 접근이 차단되었습니다. 텍스트 상자를 클릭하고 {{keys}}를 누르세요."
+    "pasteHint": "클립보드 접근이 차단되었습니다. 텍스트 상자를 클릭하고 {{keys}}를 누르세요.",
+    "swapNeedsSource": "바꾸려면 원본 언어를 선택하세요"
   },
   "markdownImage": {
     "load": "{{host}}에서 이미지 불러오기"
@@ -2654,6 +2687,7 @@
     "import": "가져오기",
     "export": "내보내기",
     "imported_other": "프롬프트 {{count}}개를 추가했습니다",
+    "importedNone": "새 프롬프트가 없습니다",
     "search": "프롬프트 검색",
     "empty": "아직 프롬프트가 없습니다.",
     "edit": "{{name}} 편집",
@@ -2678,7 +2712,9 @@
       "gone": "해당 프롬프트가 더 이상 존재하지 않습니다",
       "invalidJson": "이 파일은 올바른 JSON이 아닙니다",
       "noPrompts": "이 파일에서 프롬프트를 찾을 수 없습니다"
-    }
+    },
+    "noResults": "“{{query}}”와 일치하는 프롬프트가 없습니다.",
+    "clearSearch": "검색 지우기"
   },
   "memoryProposal": {
     "title": "이것을 기억할까요?",
@@ -2760,10 +2796,49 @@
       "you": "나",
       "assistant": "어시스턴트"
     },
-    "messagesCount_other": "메시지 {{count}}개"
+    "messagesCount_other": "메시지 {{count}}개",
+    "compact_other": "멘션 {{count}}개 · {{mode}}",
+    "mixed": "혼합"
   },
   "campaignList": {
     "timeout": "앱이 제때 응답하지 않았습니다.",
     "unreadableRecord": "백엔드가 이 페이지에서 읽을 수 없는 레코드를 보냈습니다"
+  },
+  "composer": {
+    "messageLabel": "메시지"
+  },
+  "routeLoading": {
+    "slow": "이 페이지를 여는 데 평소보다 오래 걸리고 있습니다.",
+    "reload": "새로고침",
+    "retry": "다시 시도",
+    "failed": "이 페이지를 열 수 없습니다"
+  },
+  "replyCutOff": {
+    "withTokens": "답변 한도에서 잘림 ({{tokens}} 토큰)",
+    "plain": "답변 한도에서 잘림"
+  },
+  "routeNotFound": {
+    "title": "페이지를 찾을 수 없음",
+    "body": "{{path}}에 페이지가 없습니다. 이동되었거나 링크가 오래되었을 수 있습니다.",
+    "home": "홈으로",
+    "settings": "설정 열기"
+  },
+  "waitingForYou": "응답 대기 중",
+  "dnd": {
+    "anItem": "항목",
+    "aGroup": "그룹",
+    "picked": "{{item}}을(를) 집었습니다.",
+    "over": "{{item}}이(가) {{group}} 위에 있습니다.",
+    "notOver": "{{item}}이(가) 그룹 위에 있지 않습니다.",
+    "dropped": "{{item}}을(를) {{group}}(으)로 옮겼습니다.",
+    "cancelled": "{{item}}을(를) 제자리에 두었습니다."
+  },
+  "searchEverything": "채팅, 룸, 페이지, 설정 검색…",
+  "noResultsFoundEverywhere": "채팅, 룸, Cowork 세션, 페이지, 설정에서 일치하는 항목이 없습니다. 다른 키워드를 사용해 보세요.",
+  "selectModelNoKey": "이 세션에 선택된 모델이 없고 {{provider}}에 API 키가 없습니다. 먼저 모델 메뉴에서 모델을 선택하세요.",
+  "serverConnection": {
+    "offlineTitle": "Flint 서버에 연결할 수 없습니다.",
+    "offlineBody": "다시 연결하는 중… 서버가 돌아올 때까지 지금 한 작업은 저장되지 않을 수 있습니다.",
+    "statusOffline": "서버에 연결할 수 없음"
   }
 }

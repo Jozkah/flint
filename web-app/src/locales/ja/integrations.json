@@ -72,5 +72,36 @@
     "remote": "リモート",
     "searchModels": "モデルを検索...",
     "noModels": "「{{search}}」に一致するモデルはありません"
+  },
+  "serverFolders": {
+    "title": "サーバーのフォルダーを選択",
+    "description": "このサーバーがセッションに使用を許可しているフォルダー。",
+    "roots": "サーバーのフォルダー",
+    "off": "共有フォルダーがありません。--agent-root <folder> を付けてサーバーを起動してください。",
+    "loading": "フォルダーを読み込み中...",
+    "up": "上へ",
+    "empty": "フォルダーがありません。",
+    "truncated": "最初の 500 フォルダーのみ表示しています。",
+    "choose": "このフォルダーを使用"
+  },
+  "serverSession": {
+    "title": "新しいサーバーセッション",
+    "description": "選んだモデルで、サーバー上のフォルダーで実行します。",
+    "notReady": "このサーバーはまだセッションを実行できません。",
+    "folder": "フォルダー: {{path}}",
+    "noFolder": "未選択",
+    "prompt": "最初のメッセージ",
+    "promptPlaceholder": "セッションに何をさせますか？",
+    "start": "セッションを開始",
+    "starting": "開始中...",
+    "newButton": "新しいサーバーセッション",
+    "badge": "サーバーセッション、{{status}}",
+    "runsWith": "{{model}} で実行",
+    "status": {
+      "running": "実行中",
+      "idle": "待機中",
+      "awaiting_approval": "承認待ち",
+      "awaiting_answer": "回答待ち"
+    }
   }
 }

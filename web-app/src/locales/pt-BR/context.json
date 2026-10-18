@@ -3,6 +3,7 @@
   "title": "O que o Flint está usando nesta conversa",
   "description": "O que está disponível para o Flint, o que foi escolhido para uma requisição e o que é verificado na cópia sanitizada da última requisição. As alterações aqui afetam mensagens futuras, não uma resposta que já está sendo escrita.",
   "refresh": "Atualizar",
+  "retry": "Tentar de novo",
   "details": "Detalhes",
   "closeDetails": "Fechar detalhes",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Roda neste dispositivo ou na sua rede. As mensagens não saem dele.",
+      "local": "Roda neste dispositivo. As mensagens não saem dele.",
       "remote": "Provedor remoto: suas mensagens e arquivos incluídos são enviados a ele.",
       "checking": "Ainda verificando onde este provedor roda.",
-      "unknown": "Não foi possível determinar onde este provedor roda."
+      "unknown": "Não foi possível determinar onde este provedor roda.",
+      "network": "Enviado para {{host}} na sua rede. Mensagens e arquivos incluídos saem deste dispositivo, mas não da sua rede.",
+      "remoteHost": "Enviado para {{host}}: suas mensagens e arquivos incluídos saem deste computador."
     },
     "assistantInstructions": "As instruções do assistente são enviadas como prompt de sistema.",
     "pendingInline": "Seu texto será colocado na sua próxima mensagem.",
@@ -119,7 +122,9 @@
     "noModel": "Nenhum modelo selecionado.",
     "noInstructions": "Sem instruções de assistente. Conversas normais não leem arquivos de instruções do projeto, como Flint.md; o Cowork lê.",
     "noAttachments": "Nenhum arquivo anexado a esta conversa.",
+    "noAttachmentsHint": "Os arquivos que você anexar aparecem aqui, com a forma como o Flint os usa.",
     "indexUnavailable": "Não foi possível listar os arquivos indexados.",
+    "indexUnavailableHint": "O Flint não conseguiu ler o índice de arquivos desta conversa. Tente de novo em instantes.",
     "noMemory": "Nenhuma memória salva se aplicou à última mensagem.",
     "noTools": "Nenhuma ferramenta disponível."
   },
@@ -137,6 +142,8 @@
     "noProject": "nenhum projeto"
   },
   "inspect": "Inspecionar a requisição sanitizada (avançado)",
+  "why": "Por quê",
+  "verifiedMeaning": "O que “verificado” significa",
   "showAll": "Mostrar todos os {{count}}",
   "showFewer": "Mostrar menos",
   "cards": {

@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Trợ lý mặc định",
   "defaultAssistantDesc": "Được dùng khi bắt đầu cuộc trò chuyện mới",
   "allAssistants": "Tất cả trợ lý",
-  "lastUsed": "Dùng lần cuối"
+  "lastUsed": "Dùng lần cuối",
+  "starterDescriptions": {
+    "jan": "Flint là trợ lý trên máy tính, suy luận qua các tác vụ phức tạp và dùng công cụ để hoàn thành thay bạn.",
+    "quartz": "Chuyên gia nghiên cứu và phân tích chính xác: bằng chứng, so sánh, tính toán và kết luận sẵn sàng để quyết định.",
+    "coal": "Kỹ sư phần mềm thực tế cho gỡ lỗi, triển khai, tái cấu trúc, kiểm thử và đánh giá mã.",
+    "blaze": "Chuyên gia sáng tạo về sản phẩm và viết: ý tưởng táo bạo, đặt tên, ý tưởng UX, nội dung và sản phẩm chỉn chu.",
+    "redstone": "Chuyên gia hệ thống và tự động hóa: quy trình lặp lại, tích hợp, vận hành và thực thi nhiều bước đáng tin cậy.",
+    "book-and-quill": "Người kể chuyện viết và tiếp tục câu chuyện với cảnh sống động và nhân vật nhất quán.",
+    "compass": "Người dịch chuyển văn bản giữa các ngôn ngữ một cách trung thực và chỉ ra cách diễn đạt khó.",
+    "emerald": "Trợ thủ về tiền bạc: ngân sách, khái niệm và đánh đổi. Mang tính giáo dục, không phải tư vấn tài chính có giấy phép.",
+    "book": "Gia sư học tập dạy từng bước và kiểm tra mức hiểu bằng câu hỏi ngắn."
+  }
 }

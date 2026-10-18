@@ -1,4 +1,5 @@
 {
+  "vramUsed": "VRAM usada",
   "title": "Monitor do Sistema",
   "cpuUsage": "Uso da CPU",
   "model": "Modelo",
@@ -72,5 +73,6 @@
   "processor": "Processador",
   "graphics": "Gráficos",
   "freeVram": "VRAM livre",
-  "apiVersion": "Versão da API"
+  "apiVersion": "Versão da API",
+  "measuring": "Medindo…"
 }

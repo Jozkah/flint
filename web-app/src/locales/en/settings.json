@@ -144,6 +144,8 @@
     "renderUserMarkdownDesc": "Show bold, lists, headings and code in the messages you send. When off, they show exactly as typed.",
     "renderHtmlArtifacts": "Render HTML & SVG artifacts",
     "renderHtmlArtifactsDesc": "Add a Preview tab to HTML and SVG code blocks. HTML runs the model-generated page in a sandboxed frame that executes its own scripts but cannot access Flint, your files, or the network; SVG renders statically with scripts disabled. Off by default.",
+    "wrapCodeLines": "Wrap long lines in code blocks",
+    "wrapCodeLinesDesc": "Wrap long lines onto the next row, indented under the code, instead of scrolling the block sideways. The wrap button in a code block's header toggles the same setting.",
     "composerRailButtons": "Output buttons in the Cowork composer",
     "composerRailButtonsDesc": "Show Preview, Code, Changes, Activity and Timeline under the Cowork message box. Off, one Output button in the header opens the panel.",
     "autoGenerateTitle": "Auto-generate chat title",
@@ -421,7 +423,10 @@
     "defaultModelPlaceholder": "Select a local model",
     "noLocalModels": "No local models imported",
     "usage5hAria": "Tokens per 5 hours",
-    "usageWeekAria": "Tokens per week"
+    "usageWeekAria": "Tokens per week",
+    "usageWindow": "Window",
+    "usageLimit": "Limit",
+    "usageUnsaved": "Unsaved changes"
   },
   "privacy": {
     "analytics": "Analytics",
@@ -685,7 +690,20 @@
     "increaseContrast": "Increase contrast",
     "increaseContrastDesc": "Make text brighter so it is easier to read. Whiter on the dark theme, darker on the light theme.",
     "reduceMotion": "Reduce motion",
-    "reduceMotionDesc": "Turn off animations in Flint. Flint does not follow the system setting, so motion stays on unless you switch this."
+    "reduceMotionDesc": "Turn off animations in Flint. Flint does not follow the system setting, so motion stays on unless you switch this.",
+    "performanceMode": "Performance mode",
+    "performanceModeDesc": "Reduced turns off blur, large shadows and looping animations and updates streaming text less often, for slower computers. Auto picks it when this computer looks slow.",
+    "performanceModeAuto": "Auto",
+    "performanceModeReduced": "Always reduced",
+    "performanceModeFull": "Full",
+    "performanceModeNowReduced": "Currently: reduced ({{why}})",
+    "performanceModeNowFull": "Currently: full",
+    "perfReasonCores": "{{n}} cores",
+    "perfReasonMemory": "{{n}} GB memory",
+    "perfReasonFrames": "slow frames",
+    "perfReasonMotion": "system reduces motion",
+    "perfReasonData": "data saver",
+    "perfReasonChosen": "chosen here"
   },
   "pageDesc": {
     "general": "Language, the data folder, logs and app-wide options.",
@@ -1190,10 +1208,17 @@
       "header": "Top and bottom"
     },
     "showItem": "Show {{item}} in the sidebar",
+    "hideItem": "Hide {{item}} from the sidebar",
     "alwaysShown": "Always shown",
     "showAll": "Show all",
     "preview": "Preview",
-    "reachable": "Hidden items stay reachable from the command palette and from Settings."
+    "reachable": "Hidden items stay reachable from the command palette and from Settings.",
+    "presets": {
+      "label": "Presets",
+      "minimal": "Minimal",
+      "standard": "Standard",
+      "everything": "Everything"
+    }
   },
   "memoryPage": {
     "useSaved": "Use saved memory in conversations",
@@ -1312,7 +1337,12 @@
       "importedCount_one": "Imported {{count}} memory",
       "importedCount_other": "Imported {{count}} memories",
       "importFailed": "Could not import memories"
-    }
+    },
+    "fileActionsAria": "Export or import memories",
+    "noMatchHint": "Check the spelling, or clear the search to see everything here.",
+    "emptyHint": "Write one above, or let Flint remember as you chat.",
+    "footerCount_one": "1 memory in this scope",
+    "footerCount_other": "{{count}} memories in this scope"
   },
   "chatMentions": {
     "title": "Conversation mentions",

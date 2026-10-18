@@ -56,6 +56,10 @@
     "connected": "Połączony"
   },
   "table": {
+    "contextAutoFit": "auto-dopas.",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "Rozmiar kontekstu jest pusty, więc silnik dopasował to okno do pamięci podczas ładowania modelu.",
+    "contextAutoTitle": "Rozmiar kontekstu jest pusty: silnik wybierze okno podczas ładowania modelu.",
     "name": "Nazwa",
     "file": "Plik",
     "size": "Rozmiar",

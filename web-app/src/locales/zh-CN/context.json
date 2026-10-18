@@ -3,6 +3,7 @@
   "title": "Flint 在此对话中正在使用的内容",
   "description": "Flint 可用的内容、为某次请求选择的内容，以及在上一次请求的脱敏副本中已验证的内容。此处的更改会影响之后的消息，而不会影响正在撰写的回复。",
   "refresh": "刷新",
+  "retry": "重试",
   "details": "详情",
   "closeDetails": "关闭详情",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "在这台设备或你的网络上运行。消息不会离开。",
+      "local": "在此设备上运行。消息不会离开此设备。",
       "remote": "远程提供商：你的消息和包含的文件会发送给它。",
       "checking": "仍在检查此提供商的运行位置。",
-      "unknown": "无法确定此提供商的运行位置。"
+      "unknown": "无法确定此提供商的运行位置。",
+      "network": "发送到你网络中的 {{host}}。消息和附带的文件会离开此设备，但不会离开你的网络。",
+      "remoteHost": "发送到 {{host}}：你的消息和附带的文件会离开这台电脑。"
     },
     "assistantInstructions": "助手的指令作为系统提示词发送。",
     "pendingInline": "其文本将放入你的下一条消息中。",
@@ -119,7 +122,9 @@
     "noModel": "未选择模型。",
     "noInstructions": "没有助手指令。普通对话不会读取 Flint.md 等项目指令文件；Cowork 会读取。",
     "noAttachments": "此对话没有附加文件。",
+    "noAttachmentsHint": "你附加的文件会显示在这里，并说明 Flint 如何使用它们。",
     "indexUnavailable": "无法列出已索引的文件。",
+    "indexUnavailableHint": "Flint 无法读取此对话的文件索引。请稍后重试。",
     "noMemory": "没有已保存的记忆应用于上一条消息。",
     "noTools": "没有可用的工具。"
   },
@@ -137,6 +142,8 @@
     "noProject": "无项目"
   },
   "inspect": "检查脱敏请求（高级）",
+  "why": "原因",
+  "verifiedMeaning": "“已验证”的含义",
   "showAll": "显示全部 {{count}} 项",
   "showFewer": "显示更少",
   "cards": {

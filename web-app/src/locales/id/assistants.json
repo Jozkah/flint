@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Asisten Default",
   "defaultAssistantDesc": "Dipakai saat memulai obrolan baru",
   "allAssistants": "Semua Asisten",
-  "lastUsed": "Terakhir dipakai"
+  "lastUsed": "Terakhir dipakai",
+  "starterDescriptions": {
+    "jan": "Flint adalah asisten desktop yang menalar tugas rumit dan memakai alat untuk menyelesaikannya untuk Anda.",
+    "quartz": "Spesialis riset dan analisis yang teliti: bukti, perbandingan, perhitungan, dan kesimpulan siap untuk keputusan.",
+    "coal": "Insinyur perangkat lunak praktis untuk debugging, implementasi, refaktor, pengujian, dan tinjauan kode.",
+    "blaze": "Spesialis kreatif produk dan tulisan: konsep berani, penamaan, ide UX, teks, dan hasil yang rapi.",
+    "redstone": "Spesialis sistem dan otomatisasi: alur kerja berulang, integrasi, operasi, dan eksekusi multi-langkah yang andal.",
+    "book-and-quill": "Pencerita yang menulis dan melanjutkan cerita dengan adegan hidup dan tokoh yang konsisten.",
+    "compass": "Penerjemah yang mengalihbahasakan teks dengan setia dan menandai kata-kata yang rumit.",
+    "emerald": "Pembantu keuangan untuk anggaran, konsep, dan pertimbangan. Untuk belajar, bukan nasihat keuangan berlisensi.",
+    "book": "Tutor belajar yang mengajar langkah demi langkah dan memeriksa pemahaman dengan pertanyaan singkat."
+  }
 }

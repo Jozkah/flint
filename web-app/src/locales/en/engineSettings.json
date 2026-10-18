@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "Environment variables",
+    "description": "Environment variables for llama.cpp (KEY=VALUE), separated by ';'",
+    "placeholder": "Eg. GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "Additional arguments",
+    "description": "Extra llama-server options, e.g. --rope-scaling yarn --no-warmup. Applied to every model and written after the settings above, so they win. Server address, credentials and model file options are ignored.",
+    "placeholder": "Eg. --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "Max Concurrently Loaded Models",
+    "description": "Maximum number of models the router will keep loaded at once. 0 = unlimited.",
+    "placeholder": "e.g 1"
+  },
+  "idle_unload_minutes": {
+    "title": "Unload Idle Models After (minutes)",
+    "description": "Unload a local model that has not been used for this many minutes, to free memory. It reloads on the next request. Embedding models and models with a request in progress are never unloaded. 0 = never. Default 30, so VRAM is not held while you game or render.",
+    "placeholder": "e.g 10"
+  },
+  "timeout": {
+    "title": "Timeout for llamacpp",
+    "description": "Llamacpp connection and load timeout in seconds",
+    "placeholder": "e.g 600"
+  },
+  "ctx_size": {
+    "title": "Default context size",
+    "description": "The context window used for local models that do not set their own. Larger = remembers more but needs more memory. Each model can override this in its own settings (gear icon). Leave on Auto to use the model's native size (can be huge). Common sizes: 4096, 8192, 16384, 32768, 65536, 131072.",
+    "placeholder": "Auto"
+  },
+  "fit": {
+    "title": "Auto-fit",
+    "description": "Let Flint decide how many layers run on the GPU and how large the context can be, so the model fits in your memory. Turn it off to set GPU layers and Context Size yourself."
+  },
+  "fit_target": {
+    "title": "Auto-fit: memory to keep free",
+    "description": "How much memory (in MiB) auto-fit leaves free on each GPU for other apps and the display. Raise it if your system gets sluggish while a model is loaded. Local models only.",
+    "placeholder": "1024 or MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "Auto-fit: smallest context",
+    "description": "The smallest context size (in tokens) auto-fit may shrink to when the model does not fit in memory. It never goes below this, and the model fails to load if it still does not fit. This is not the context size: set that in Default context size or per model in Context Size. Only used while Auto-fit is on, and only for local models."
+  },
+  "threads": {
+    "title": "Threads",
+    "description": "Number of threads to use during generation (-1 for logical cores)."
+  },
+  "threads_batch": {
+    "title": "Threads (Batch)",
+    "description": "Number of threads for batch and prompt processing (default: same as Threads).",
+    "placeholder": "-1 (same as Threads)"
+  },
+  "ctx_shift": {
+    "title": "Context Shift",
+    "description": "Allow model to cut text in the beginning to accommodate new text in its memory"
+  },
+  "n_predict": {
+    "title": "Max Tokens to Predict",
+    "description": "Maximum number of tokens to generate (-1 = infinity)."
+  },
+  "batch_size": {
+    "title": "Batch Size",
+    "description": "Logical maximum batch size for processing prompts."
+  },
+  "ubatch_size": {
+    "title": "uBatch Size",
+    "description": "Physical maximum batch size for processing prompts. 0 = auto: 1024 when the model fits in VRAM with room to spare, 512 when it is tight, 2048 when it spills to system RAM.",
+    "placeholder": "0 (auto)"
+  },
+  "n_cpu_moe": {
+    "title": "MoE Layers on CPU",
+    "description": "Keep the Mixture-of-Experts weights of the first N layers in CPU memory. Lets a large MoE model fit in limited VRAM. 0 disables it."
+  },
+  "n_cpu_ffn": {
+    "title": "Dense FFN Layers on CPU",
+    "description": "Keep the dense feed-forward weights of the first N layers in CPU memory. The counterpart of the MoE setting above, for dense models. 0 disables it."
+  },
+  "no_kv_offload": {
+    "title": "Disable KV Cache Offload",
+    "description": "Keep the KV cache in system RAM instead of GPU memory. Useful when VRAM is scarce, at the cost of speed."
+  },
+  "device": {
+    "title": "Devices for Offload",
+    "description": "Comma-separated accelerators to offload to, named as in the detected hardware list. Leave empty to use every available accelerator, or set \"none\" to disable offload entirely.",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "GPU Split Mode",
+    "description": "How to split the model across multiple GPUs.",
+    "options": {
+      "none": "None",
+      "layer": "Layer",
+      "row": "Row",
+      "tensor": "Tensor (experimental)"
+    }
+  },
+  "main_gpu": {
+    "title": "Main GPU Index",
+    "description": "The GPU to use for the model (split-mode=none) or intermediate results (split-mode=row)."
+  },
+  "tensor_split": {
+    "title": "Tensor Split",
+    "description": "Comma-separated proportions for splitting the model across devices, e.g. \"3,1\". Leave empty for an even split."
+  },
+  "no_op_offload": {
+    "title": "Disable Op Offload",
+    "description": "Keep host tensor operations on the CPU instead of offloading them to the accelerator."
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "Enable Flash Attention for optimized performance.",
+    "options": {
+      "auto": "Auto",
+      "on": "On",
+      "off": "Off"
+    }
+  },
+  "parallel": {
+    "title": "Parallel Sequences",
+    "description": "Number of parallel sequences to decode for your own chat requests (0 = llama.cpp default of 4). Flint reserves one additional internal slot beyond this for background requests (e.g. thread auto-titling), so they don't evict your chat's KV cache."
+  },
+  "reserve_background_slots": {
+    "title": "Reserve Background Slots",
+    "description": "Keep two extra internal slots beyond Parallel Sequences for background requests (thread auto-titling, Cowork, subagents) so they do not evict your chat's KV cache. Turn off to run exactly Parallel Sequences slots (set it to 1 for a single slot); background requests then share your chat's slot and can evict its cache. Reloads the model."
+  },
+  "ngram_speculation": {
+    "title": "N-gram Speculative Decoding",
+    "description": "Draft tokens from text already in the conversation (ngram-mod) and let the model verify them in one batch. Output is identical; repetitive output such as code edits or quoting generates 3-10x faster, other text is unaffected. Models with their own MTP draft use that instead."
+  },
+  "cont_batching": {
+    "title": "Continuous Batching",
+    "description": "Enable continuous batching (a.k.a dynamic batching) for concurrent requests. Enabled by default, matching llama.cpp."
+  },
+  "no_mmap": {
+    "title": "Disable mmap",
+    "description": "Do not memory-map model (slower load but may reduce pageouts if not using mlock)."
+  },
+  "lazy_mode": {
+    "title": "Lazy Tensor Reading",
+    "description": "Read the rows of large arch-marked tensors (e.g. per-layer embeddings) from disk on demand instead of keeping them in memory. Auto applies it above 4 GiB. Requires mmap.",
+    "options": {
+      "auto": "Auto",
+      "on": "On",
+      "off": "Off"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "Lock the model in RAM so it is never swapped out. Combined with \"Disable mmap\" this loads the weights without mmap and then locks them."
+  },
+  "cache_type_k": {
+    "title": "KV Cache K Type",
+    "description": "KV cache data type for Keys. Auto uses q8_0, which halves the cache at a negligible quality cost.",
+    "options": {
+      "auto": "Auto",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "KV Cache V Type",
+    "description": "KV cache data type for Values. Auto uses q8_0 when Flash Attention is On and f16 otherwise, since a quantized V cache needs Flash Attention. A model that fails to load with it is retried once with f16.",
+    "options": {
+      "auto": "Auto",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "RoPE Scaling Method",
+    "description": "RoPE frequency scaling method. \"Model default\" leaves it to the model; \"None\" explicitly disables scaling.",
+    "options": {
+      "auto": "Model default",
+      "none": "None",
+      "linear": "Linear",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "RoPE Frequency Base",
+    "description": "RoPE base frequency (0 = loaded from model).",
+    "placeholder": "0 (model default)"
+  },
+  "rope_freq_scale": {
+    "title": "RoPE Frequency Scale Factor",
+    "description": "RoPE frequency scaling factor. 0 loads the value from the model; 1 forces no scaling."
+  },
+  "cache_ram": {
+    "title": "Prompt Cache RAM (MiB)",
+    "description": "Prompt cache size in MiB: the RAM that keeps other conversations' context so switching back to one does not re-read it. Blank or -2 = automatic from your RAM (20% of system RAM, at most half of what is free, 1024-8192); 0 = off; -1 = unlimited.",
+    "placeholder": "-2 (auto)"
+  },
+  "persist_thread_cache": {
+    "title": "Remember Conversations Between Sessions",
+    "description": "Keep each conversation's prompt cache on disk so reopening it does not re-read the whole conversation. Restored only when the model, its settings and the llama.cpp build all match what saved it."
+  },
+  "thread_cache_size": {
+    "title": "Conversation Cache Disk Limit (MiB)",
+    "description": "Disk budget for saved conversation caches (default: 2048). The oldest are dropped first once it is reached. One long conversation can take hundreds of MiB."
+  },
+  "cache_reuse": {
+    "title": "Cache Reuse",
+    "description": "Min chunk size of matching prefix tokens to reuse from cache. 0 = disabled."
+  },
+  "ctx_checkpoints": {
+    "title": "Context Checkpoints",
+    "description": "Maximum context checkpoints kept per slot, which let a shifted context be restored instead of reprocessed."
+  },
+  "checkpoint_min_step": {
+    "title": "Checkpoint Minimum Step",
+    "description": "Minimum number of tokens between context checkpoints."
+  },
+  "swa_full": {
+    "title": "Full SWA Cache",
+    "description": "Use full-size KV cache for sliding-window-attention models (e.g. Gemma). Enable this if such a model reprocesses the entire prompt every turn instead of reusing cache; costs more memory."
+  },
+  "kv_unified": {
+    "title": "Unified KV Cache",
+    "description": "Use a single unified KV buffer shared across all slots. Saves memory when running multiple parallel slots.",
+    "options": {
+      "auto": "Auto",
+      "on": "On",
+      "off": "Off"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "Context Per Slot",
+    "description": "Cap how much of the unified KV cache one slot may use, in tokens. 0 leaves a slot free to fill the whole cache. Only applies when the cache is unified."
+  },
+  "reasoning_preserve": {
+    "title": "Preserve Reasoning History",
+    "description": "Keep the reasoning of every earlier assistant turn in the prompt, not just the most recent one. Only affects models whose chat template supports it, and costs prompt tokens."
+  },
+  "keep": {
+    "title": "Keep First N Tokens",
+    "description": "Number of tokens from the initial prompt to keep when context is shifted. -1 = keep all."
+  },
+  "_ui": {
+    "moreInfo": "More about {{setting}}",
+    "perModelSettings": "Per-model settings",
+    "perModelDefault": "Default (from settings: {{value}})",
+    "perModelDefaultAuto": "Default (from settings: Auto)"
+  }
+}

@@ -56,6 +56,10 @@
     "connected": "연결됨"
   },
   "table": {
+    "contextAutoFit": "자동 맞춤",
+    "contextAuto": "자동",
+    "contextAutoFitTitle": "컨텍스트 크기가 비어 있어 모델을 불러올 때 엔진이 메모리에 맞춰 이 창 크기를 정했습니다.",
+    "contextAutoTitle": "컨텍스트 크기가 비어 있습니다. 모델을 불러올 때 엔진이 창 크기를 정합니다.",
     "name": "이름",
     "file": "파일",
     "size": "크기",

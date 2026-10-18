@@ -145,6 +145,8 @@
     "renderUserMarkdownDesc": "Mostra negrito, listas, títulos e código nas mensagens que você envia. Desativado, elas aparecem exatamente como digitadas.",
     "renderHtmlArtifacts": "Renderizar artefatos HTML e SVG",
     "renderHtmlArtifactsDesc": "Adiciona uma aba de Pré-visualização aos blocos de código HTML e SVG. O HTML executa a página gerada pelo modelo em um frame isolado que executa seus próprios scripts, mas não pode acessar o Flint, seus arquivos nem a rede; o SVG é renderizado de forma estática, com scripts desativados. Desativado por padrão.",
+    "wrapCodeLines": "Quebrar linhas longas em blocos de código",
+    "wrapCodeLinesDesc": "Quebra as linhas longas para a próxima linha, recuadas sob o código, em vez de rolar o bloco para o lado. O botão de quebra no cabeçalho de um bloco de código alterna esta mesma configuração.",
     "composerRailButtons": "Botões de saída no campo de mensagem do Cowork",
     "composerRailButtonsDesc": "Mostra Pré-visualização, Código, Alterações, Atividade e Linha do tempo abaixo da caixa de mensagem do Cowork. Desativado, um botão Saída no cabeçalho abre o painel.",
     "autoGenerateTitle": "Gerar título do chat automaticamente",
@@ -423,7 +425,10 @@
     "defaultModelPlaceholder": "Selecione um modelo local",
     "noLocalModels": "Nenhum modelo local importado",
     "usage5hAria": "Tokens por 5 horas",
-    "usageWeekAria": "Tokens por semana"
+    "usageWeekAria": "Tokens por semana",
+    "usageWindow": "Janela",
+    "usageLimit": "Limite",
+    "usageUnsaved": "Alterações não salvas"
   },
   "privacy": {
     "analytics": "Analytics",
@@ -716,7 +721,20 @@
     "resetCodeBlockStyle": "Redefinir Estilo do Bloco de Código",
     "resetCodeBlockStyleDesc": "Redefinir estilo do bloco de código para padrão.",
     "resetCodeBlockSuccess": "Estilo do bloco de código redefinido com sucesso",
-    "resetCodeBlockSuccessDesc": "Estilo do bloco de código foi restaurado para padrão."
+    "resetCodeBlockSuccessDesc": "Estilo do bloco de código foi restaurado para padrão.",
+    "performanceMode": "Modo de desempenho",
+    "performanceModeDesc": "O modo reduzido desativa o desfoque, as sombras grandes e as animações em loop e atualiza o texto em streaming com menos frequência, para computadores mais lentos. Automático o escolhe quando este computador parece lento.",
+    "performanceModeAuto": "Automático",
+    "performanceModeReduced": "Sempre reduzido",
+    "performanceModeFull": "Completo",
+    "performanceModeNowReduced": "Agora: reduzido ({{why}})",
+    "performanceModeNowFull": "Agora: completo",
+    "perfReasonCores": "{{n}} núcleos",
+    "perfReasonMemory": "{{n}} GB de memória",
+    "perfReasonFrames": "quadros lentos",
+    "perfReasonMotion": "o sistema reduz o movimento",
+    "perfReasonData": "economia de dados",
+    "perfReasonChosen": "escolhido aqui"
   },
   "pageDesc": {
     "general": "Idioma, a pasta de dados, logs e opções de todo o app.",
@@ -1222,10 +1240,17 @@
       "header": "Topo e rodapé"
     },
     "showItem": "Mostrar {{item}} na barra lateral",
+    "hideItem": "Ocultar {{item}} da barra lateral",
     "alwaysShown": "Sempre visível",
     "showAll": "Mostrar tudo",
     "preview": "Pré-visualização",
-    "reachable": "Itens ocultos continuam acessíveis pela paleta de comandos e pelas Configurações."
+    "reachable": "Itens ocultos continuam acessíveis pela paleta de comandos e pelas Configurações.",
+    "presets": {
+      "label": "Predefinições",
+      "minimal": "Mínimo",
+      "standard": "Padrão",
+      "everything": "Tudo"
+    }
   },
   "memoryPage": {
     "useSaved": "Usar a memória salva nas conversas",
@@ -1344,7 +1369,12 @@
       "importedCount_one": "{{count}} memória importada",
       "importedCount_other": "{{count}} memórias importadas",
       "importFailed": "Não foi possível importar as memórias"
-    }
+    },
+    "fileActionsAria": "Exportar ou importar memórias",
+    "noMatchHint": "Confira a grafia ou limpe a busca para ver tudo.",
+    "emptyHint": "Escreva uma acima, ou deixe o Flint lembrar enquanto você conversa.",
+    "footerCount_one": "1 memória neste escopo",
+    "footerCount_other": "{{count}} memórias neste escopo"
   },
   "chatMentions": {
     "title": "Menções a conversas",

@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Pissarra",
+    "vermilion": "Vermelló",
+    "ink": "Tinta",
+    "moss": "Molsa",
+    "slate": "Blau pissarra",
+    "violet": "Violeta"
+  },
+  "fontSizeNames": {
+    "small": "Petita",
+    "medium": "Mitjana",
+    "large": "Gran",
+    "extraLarge": "Molt gran"
+  },
+  "unknownSize": "Mida desconeguda",
+  "official": "Oficial",
+  "configuration": "Configuració",
   "modelCombobox": {
     "refresh": "Actualitza els models",
     "placeholder": "Escriu o selecciona un model..."

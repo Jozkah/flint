@@ -56,6 +56,10 @@
     "connected": "接続済み"
   },
   "table": {
+    "contextAutoFit": "自動調整",
+    "contextAuto": "自動",
+    "contextAutoFitTitle": "コンテキストサイズが空のため、モデル読み込み時にエンジンがメモリに合わせてこのウィンドウを選びました。",
+    "contextAutoTitle": "コンテキストサイズが空です。モデル読み込み時にエンジンがウィンドウを選びます。",
     "name": "名前",
     "file": "ファイル",
     "size": "サイズ",

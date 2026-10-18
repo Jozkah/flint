@@ -24,17 +24,20 @@
     "embeddingSub": "{{count}} embedding models",
     "addedSub": "added to Flint",
     "repliesToday": "Replies today",
-    "repliesSub": "{{count}} replies measured",
+    "repliesSub_one": "{{count}} reply measured",
+    "repliesSub_other": "{{count}} replies measured",
     "apiKeys": "API keys",
     "fallbackSub": "{{count}} fallback keys",
     "noFallbackSub": "no fallback key",
-    "avgSpeed": "Average speed"
+    "avgSpeed": "Average speed",
+    "repliesSub": "{{count}} replies measured"
   },
   "loaded": {
     "title": "Loaded now",
     "empty": "No model is loaded",
     "emptyHint": "Start a local model from the table below, or send it a message.",
-    "unload": "Unload"
+    "unload": "Unload",
+    "speedBar": "Average speed, against the fastest loaded model"
   },
   "speed": {
     "title": "Generation speed",
@@ -108,7 +111,9 @@
     "engineSettings": "Engine settings",
     "memorySettings": "Memory & cache",
     "settingNotSaved": "{{setting}} was not saved",
-    "danger": "Danger zone"
+    "danger": "Danger zone",
+    "networkNote": "On your network · sent to {{host}}",
+    "reachUnknownNote": "Checking where this provider runs"
   },
   "mcp": {
     "title": "Tools & MCP",
@@ -182,5 +187,46 @@
     "kindAudio": "Audio",
     "kindVideo": "Video",
     "htmlPage": "HTML page"
+  },
+  "addon": {
+    "offerTitle": "Faster on your NVIDIA GPU",
+    "offerBody": "Local models usually run faster on this GPU with the CUDA engine than with Vulkan: often 10-70% more tokens per second, more when a model does not fit fully in VRAM. It is a one-time download of about {{size}}.",
+    "download": "Download",
+    "notNow": "Not now",
+    "dontRemind": "Don't remind me",
+    "gettingTitle": "Getting the CUDA engine",
+    "downloading": "Downloading {{received}} of {{total}}",
+    "verifying": "Checking the download...",
+    "installing": "Installing...",
+    "vulkanMeanwhile": "Vulkan is used meanwhile. CUDA takes over at the next model load.",
+    "cancel": "Cancel",
+    "installedTitle": "CUDA engine installed",
+    "installedBody": "It is used from the next model load.",
+    "ok": "OK",
+    "failedTitle": "Could not get the CUDA engine",
+    "retry": "Try again",
+    "driverTitle": "Update your NVIDIA driver",
+    "driverBody": "Update your NVIDIA driver to use the faster CUDA engine. Installed: {{current}}, needed: R{{min}} or newer. Vulkan is used until then.",
+    "close": "Close",
+    "panelTitle": "Engine add-ons",
+    "panelDesc": "Extra GPU engines, downloaded only when you ask. Vulkan stays as the fallback.",
+    "cudaName": "NVIDIA CUDA engine",
+    "inUse": "in use",
+    "unavailableBuild": "Engine add-ons are not available in this build.",
+    "installedVersion": "Installed: {{version}}, {{size}}",
+    "repairNeeded": "Damaged, so Vulkan is used. Download it again to repair.",
+    "notInstalledOffer": "Not installed. Usually faster than Vulkan on this GPU (about {{size}}).",
+    "repair": "Repair",
+    "remove": "Remove",
+    "installFile": "Install from file...",
+    "checkAgain": "Check again",
+    "remindSetting": "Suggest the CUDA engine when a model loads",
+    "errors": {
+      "offline": "No connection to GitHub. Try again later, or install the add-on from a file.",
+      "notPublished": "No CUDA engine is published for this version yet.",
+      "diskSpace": "Not enough free disk space for the CUDA engine.",
+      "verify": "The download did not pass verification and was not installed.",
+      "mismatch": "This add-on was built for a different Flint version."
+    }
   }
 }

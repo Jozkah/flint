@@ -3,6 +3,7 @@
   "title": "Co Flint používá v této konverzaci",
   "description": "Co má Flint k dispozici, co bylo vybráno pro požadavek a co je ověřeno v očištěné kopii posledního požadavku. Změny zde ovlivní budoucí zprávy, ne odpověď, která se již píše.",
   "refresh": "Obnovit",
+  "retry": "Zkusit znovu",
   "details": "Podrobnosti",
   "closeDetails": "Zavřít podrobnosti",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Běží na tomto zařízení nebo ve vaší síti. Zprávy ho neopouštějí.",
+      "local": "Běží na tomto zařízení. Zprávy ho neopouštějí.",
       "remote": "Vzdálený poskytovatel: vaše zprávy a zahrnuté soubory se mu odesílají.",
       "checking": "Stále se zjišťuje, kde tento poskytovatel běží.",
-      "unknown": "Nepodařilo se zjistit, kde tento poskytovatel běží."
+      "unknown": "Nepodařilo se zjistit, kde tento poskytovatel běží.",
+      "network": "Odesílá se na {{host}} ve vaší síti. Zprávy a přiložené soubory opouštějí toto zařízení, ale ne vaši síť.",
+      "remoteHost": "Odesílá se na {{host}}: vaše zprávy a přiložené soubory opouštějí tento počítač."
     },
     "assistantInstructions": "Pokyny asistenta se odesílají jako systémový prompt.",
     "pendingInline": "Jeho text bude vložen do vaší další zprávy.",
@@ -119,7 +122,9 @@
     "noModel": "Není vybrán žádný model.",
     "noInstructions": "Žádné pokyny asistenta. Běžné konverzace nečtou soubory s pokyny projektu, například Flint.md; Cowork je čte.",
     "noAttachments": "K této konverzaci nejsou přiloženy žádné soubory.",
+    "noAttachmentsHint": "Soubory, které připojíte, se zobrazí zde spolu s tím, jak je Flint používá.",
     "indexUnavailable": "Indexované soubory se nepodařilo vypsat.",
+    "indexUnavailableHint": "Flint nemohl načíst index souborů této konverzace. Za chvíli to zkuste znovu.",
     "noMemory": "Na poslední zprávu se nevztahovala žádná uložená paměť.",
     "noTools": "Nejsou k dispozici žádné nástroje."
   },
@@ -137,6 +142,8 @@
     "noProject": "žádný projekt"
   },
   "inspect": "Prozkoumat očištěný požadavek (pokročilé)",
+  "why": "Proč",
+  "verifiedMeaning": "Co znamená „ověřeno“",
   "showAll": "Zobrazit všech {{count}}",
   "showFewer": "Zobrazit méně",
   "cards": {

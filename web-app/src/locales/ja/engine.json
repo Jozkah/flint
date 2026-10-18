@@ -24,17 +24,19 @@
     "embeddingSub": "埋め込みモデル {{count}} 個",
     "addedSub": "Flint に追加済み",
     "repliesToday": "本日の返信",
-    "repliesSub": "測定した返信 {{count}} 件",
+    "repliesSub_other": "{{count}} 件の応答を計測",
     "apiKeys": "API キー",
     "fallbackSub": "フォールバックキー {{count}} 個",
     "noFallbackSub": "フォールバックキーなし",
-    "avgSpeed": "平均速度"
+    "avgSpeed": "平均速度",
+    "repliesSub": "測定した返信 {{count}} 件"
   },
   "loaded": {
     "title": "現在読み込み済み",
     "empty": "読み込まれているモデルはありません",
     "emptyHint": "下の表からローカルモデルを起動するか、メッセージを送信してください。",
-    "unload": "アンロード"
+    "unload": "アンロード",
+    "speedBar": "平均速度（読み込み済みで最速のモデルと比較）"
   },
   "speed": {
     "title": "生成速度",
@@ -108,7 +110,9 @@
     "engineSettings": "エンジン設定",
     "memorySettings": "メモリとキャッシュ",
     "settingNotSaved": "「{{setting}}」を保存できませんでした",
-    "danger": "危険な操作"
+    "danger": "危険な操作",
+    "networkNote": "ネットワーク内 · {{host}} に送信",
+    "reachUnknownNote": "このプロバイダーの実行場所を確認中"
   },
   "mcp": {
     "title": "ツールと MCP",
@@ -182,5 +186,46 @@
     "kindAudio": "音声",
     "kindVideo": "動画",
     "htmlPage": "HTML ページ"
+  },
+  "addon": {
+    "offerTitle": "NVIDIA GPU でより高速に",
+    "offerBody": "この GPU では、ローカルモデルは通常 Vulkan より CUDA エンジンの方が高速です。多くの場合 1 秒あたりのトークン数が 10-70% 増え、モデルが VRAM に収まりきらない場合はさらに差が出ます。約 {{size}} の 1 回だけのダウンロードです。",
+    "download": "ダウンロード",
+    "notNow": "後で",
+    "dontRemind": "今後表示しない",
+    "gettingTitle": "CUDA エンジンを取得中",
+    "downloading": "{{total}} 中 {{received}} をダウンロード済み",
+    "verifying": "ダウンロードを確認中...",
+    "installing": "インストール中...",
+    "vulkanMeanwhile": "その間は Vulkan を使います。次にモデルを読み込むときから CUDA に切り替わります。",
+    "cancel": "キャンセル",
+    "installedTitle": "CUDA エンジンをインストールしました",
+    "installedBody": "次にモデルを読み込むときから使われます。",
+    "ok": "了解",
+    "failedTitle": "CUDA エンジンを取得できませんでした",
+    "retry": "再試行",
+    "driverTitle": "NVIDIA ドライバーを更新してください",
+    "driverBody": "より高速な CUDA エンジンを使うには NVIDIA ドライバーを更新してください。現在: {{current}}、必要: R{{min}} 以降。それまでは Vulkan を使います。",
+    "close": "閉じる",
+    "panelTitle": "エンジンアドオン",
+    "panelDesc": "必要なときだけダウンロードする追加の GPU エンジンです。Vulkan は予備として残ります。",
+    "cudaName": "NVIDIA CUDA エンジン",
+    "inUse": "使用中",
+    "unavailableBuild": "このビルドではエンジンアドオンを利用できません。",
+    "installedVersion": "インストール済み: {{version}}、{{size}}",
+    "repairNeeded": "破損しているため Vulkan を使っています。修復するには再ダウンロードしてください。",
+    "notInstalledOffer": "未インストール。この GPU では通常 Vulkan より高速です (約 {{size}})。",
+    "repair": "修復",
+    "remove": "削除",
+    "installFile": "ファイルからインストール...",
+    "checkAgain": "再確認",
+    "remindSetting": "モデル読み込み時に CUDA エンジンを提案する",
+    "errors": {
+      "offline": "GitHub に接続できません。後で再試行するか、ファイルからアドオンをインストールしてください。",
+      "notPublished": "このバージョン用の CUDA エンジンはまだ公開されていません。",
+      "diskSpace": "CUDA エンジン用の空きディスク容量が足りません。",
+      "verify": "ダウンロードが検証に失敗したため、インストールしませんでした。",
+      "mismatch": "このアドオンは別の Flint バージョン用にビルドされています。"
+    }
   }
 }

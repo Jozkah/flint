@@ -1,0 +1,259 @@
+{
+  "llamacpp_env": {
+    "title": "環境變數",
+    "description": "llama.cpp 的環境變數（KEY=VALUE），以 ';' 分隔",
+    "placeholder": "例如 GGML_VK_VISIBLE_DEVICES=0,1"
+  },
+  "extra_args": {
+    "title": "其他參數",
+    "description": "額外的 llama-server 選項，例如 --rope-scaling yarn --no-warmup。套用於所有模型，並寫在上述設定之後，因此會優先生效。伺服器位址、憑證與模型檔案相關選項會被忽略。",
+    "placeholder": "例如 --rope-scaling yarn --yarn-orig-ctx 32768"
+  },
+  "models_max": {
+    "title": "同時載入模型數上限",
+    "description": "路由器同時保持載入的模型數上限。0 = 不限制。",
+    "placeholder": "例如 1"
+  },
+  "idle_unload_minutes": {
+    "title": "閒置模型卸載時間（分鐘）",
+    "description": "本機模型閒置達此分鐘數後即卸載以釋放記憶體，下次請求時會重新載入。嵌入模型與正在處理請求的模型永遠不會被卸載。0 = 永不。預設為 30，避免在你玩遊戲或算圖時仍佔用 VRAM。",
+    "placeholder": "例如 10"
+  },
+  "timeout": {
+    "title": "llama.cpp 逾時",
+    "description": "llama.cpp 連線與載入逾時（秒）",
+    "placeholder": "例如 600"
+  },
+  "ctx_size": {
+    "title": "預設上下文大小",
+    "description": "用於未自行設定上下文視窗的本機模型。越大 = 記得越多，但需要更多記憶體。每個模型都可在其設定（齒輪圖示）中覆寫此值。保持「自動」即使用模型的原生大小（可能非常大）。常見大小：4096、8192、16384、32768、65536、131072。",
+    "placeholder": "自動"
+  },
+  "fit": {
+    "title": "自動調配",
+    "description": "讓 Flint 決定在 GPU 上執行多少層以及上下文可以多大，使模型能放進你的記憶體。關閉後可自行設定 GPU 層數與上下文大小。"
+  },
+  "fit_target": {
+    "title": "自動調配：保留可用記憶體",
+    "description": "自動調配在每張 GPU 上為其他應用程式與顯示輸出保留的可用記憶體（MiB）。若載入模型時系統變得遲緩，請調高此值。僅適用於本機模型。",
+    "placeholder": "1024 或 MiB0,MiB1,..."
+  },
+  "fit_ctx": {
+    "title": "自動調配：最小上下文",
+    "description": "模型無法放進記憶體時，自動調配可縮減到的最小上下文大小（以 token 計）。不會低於此值；若仍放不下，模型將載入失敗。這並非上下文大小本身：請在「預設上下文大小」或各模型的「上下文大小」中設定。僅在自動調配開啟時使用，且僅適用於本機模型。"
+  },
+  "threads": {
+    "title": "執行緒",
+    "description": "生成時使用的執行緒數（-1 表示使用邏輯核心數）。"
+  },
+  "threads_batch": {
+    "title": "執行緒（批次）",
+    "description": "用於批次與提示詞處理的執行緒數（預設：與「執行緒」相同）。",
+    "placeholder": "-1（與「執行緒」相同）"
+  },
+  "ctx_shift": {
+    "title": "上下文位移",
+    "description": "允許模型裁掉開頭的文字，為記憶體中的新文字騰出空間"
+  },
+  "n_predict": {
+    "title": "最大預測 token 數",
+    "description": "最多生成的 token 數（-1 = 無限）。"
+  },
+  "batch_size": {
+    "title": "批次大小",
+    "description": "處理提示詞時的邏輯最大批次大小。"
+  },
+  "ubatch_size": {
+    "title": "uBatch 大小",
+    "description": "處理提示詞時的實體最大批次大小。0 = 自動：模型可放進 VRAM 且有餘裕時為 1024，較吃緊時為 512，溢出到系統 RAM 時為 2048。",
+    "placeholder": "0（自動）"
+  },
+  "n_cpu_moe": {
+    "title": "CPU 上的 MoE 層",
+    "description": "將前 N 層的混合專家（MoE）權重保留在 CPU 記憶體中，讓大型 MoE 模型能在有限的 VRAM 中執行。0 為停用。"
+  },
+  "n_cpu_ffn": {
+    "title": "CPU 上的密集 FFN 層",
+    "description": "將前 N 層的密集前饋權重保留在 CPU 記憶體中。相當於上方 MoE 設定在密集模型上的對應項目。0 為停用。"
+  },
+  "no_kv_offload": {
+    "title": "停用 KV 快取卸載",
+    "description": "將 KV 快取保留在系統 RAM 而非 GPU 記憶體中。VRAM 不足時很有用，但會犧牲速度。"
+  },
+  "device": {
+    "title": "卸載裝置",
+    "description": "要卸載到的加速器，以逗號分隔，名稱與偵測到的硬體清單一致。留空即使用所有可用的加速器，設為 \"none\" 則完全停用卸載。",
+    "placeholder": "CUDA0"
+  },
+  "split_mode": {
+    "title": "GPU 分割模式",
+    "description": "如何將模型分割到多張 GPU 上。",
+    "options": {
+      "none": "無",
+      "layer": "依層",
+      "row": "依列",
+      "tensor": "張量（實驗性）"
+    }
+  },
+  "main_gpu": {
+    "title": "主要 GPU 索引",
+    "description": "用於執行模型（split-mode=none）或存放中間結果（split-mode=row）的 GPU。"
+  },
+  "tensor_split": {
+    "title": "張量分割",
+    "description": "將模型分割到各裝置的比例，以逗號分隔，例如 \"3,1\"。留空即平均分割。"
+  },
+  "no_op_offload": {
+    "title": "停用運算卸載",
+    "description": "將主機張量運算保留在 CPU 上，而不卸載到加速器。"
+  },
+  "flash_attn": {
+    "title": "Flash Attention",
+    "description": "啟用 Flash Attention 以最佳化效能。",
+    "options": {
+      "auto": "自動",
+      "on": "開啟",
+      "off": "關閉"
+    }
+  },
+  "parallel": {
+    "title": "平行序列",
+    "description": "為你自己的聊天請求平行解碼的序列數（0 = llama.cpp 預設值 4）。Flint 會在此之外額外保留一個內部槽位給背景請求（例如自動產生對話標題），避免它們擠掉你聊天的 KV 快取。"
+  },
+  "reserve_background_slots": {
+    "title": "保留背景槽位",
+    "description": "在「平行序列」之外額外保留兩個內部槽位給背景請求（自動產生對話標題、Cowork、子代理），避免它們擠掉你聊天的 KV 快取。關閉後將完全依「平行序列」數執行槽位（設為 1 即單一槽位）；此時背景請求會與你的聊天共用槽位，並可能擠掉其快取。會重新載入模型。"
+  },
+  "ngram_speculation": {
+    "title": "N-gram 推測解碼",
+    "description": "根據對話中已有的文字草擬 token（ngram-mod），並讓模型在一個批次中驗證。輸出完全相同；程式碼編輯、引用等重複性輸出的生成速度可提升 3-10 倍，其他文字不受影響。自帶 MTP 草稿的模型會改用其自帶的方式。"
+  },
+  "cont_batching": {
+    "title": "連續批次處理",
+    "description": "為並行請求啟用連續批次處理（又稱動態批次處理）。預設開啟，與 llama.cpp 一致。"
+  },
+  "no_mmap": {
+    "title": "停用 mmap",
+    "description": "不對模型進行記憶體對應（載入較慢，但在未使用 mlock 時可減少分頁換出）。"
+  },
+  "lazy_mode": {
+    "title": "延遲讀取張量",
+    "description": "依需求從磁碟讀取依架構標記的大型張量（例如逐層嵌入）的列，而不是常駐於記憶體。「自動」會在超過 4 GiB 時套用。需要 mmap。",
+    "options": {
+      "auto": "自動",
+      "on": "開啟",
+      "off": "關閉"
+    }
+  },
+  "mlock": {
+    "title": "MLock",
+    "description": "將模型鎖定在 RAM 中，使其永遠不會被換出。搭配「停用 mmap」時，會不經 mmap 載入權重後再將其鎖定。"
+  },
+  "cache_type_k": {
+    "title": "KV 快取 K 類型",
+    "description": "鍵（Key）的 KV 快取資料類型。「自動」使用 q8_0，可將快取減半，品質損失幾乎可忽略。",
+    "options": {
+      "auto": "自動",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "cache_type_v": {
+    "title": "KV 快取 V 類型",
+    "description": "值（Value）的 KV 快取資料類型。「自動」在 Flash Attention 開啟時使用 q8_0，否則使用 f16，因為量化的 V 快取需要 Flash Attention。若模型因此無法載入，會改用 f16 重試一次。",
+    "options": {
+      "auto": "自動",
+      "f32": "f32",
+      "f16": "f16",
+      "bf16": "bf16",
+      "q8_0": "q8_0",
+      "q4_0": "q4_0",
+      "q4_1": "q4_1",
+      "iq4_nl": "iq4_nl",
+      "q5_0": "q5_0",
+      "q5_1": "q5_1"
+    }
+  },
+  "rope_scaling": {
+    "title": "RoPE 縮放方式",
+    "description": "RoPE 頻率縮放方式。「模型預設」交由模型決定；「無」則明確停用縮放。",
+    "options": {
+      "auto": "模型預設",
+      "none": "無",
+      "linear": "線性",
+      "yarn": "YaRN"
+    }
+  },
+  "rope_freq_base": {
+    "title": "RoPE 基礎頻率",
+    "description": "RoPE 基礎頻率（0 = 從模型載入）。",
+    "placeholder": "0（模型預設）"
+  },
+  "rope_freq_scale": {
+    "title": "RoPE 頻率縮放係數",
+    "description": "RoPE 頻率縮放係數。0 表示從模型載入此值；1 表示強制不縮放。"
+  },
+  "cache_ram": {
+    "title": "提示詞快取 RAM（MiB）",
+    "description": "提示詞快取大小（MiB）：用來保存其他對話上下文的 RAM，切回某個對話時無需重新讀取。留空或 -2 = 依你的 RAM 自動設定（系統 RAM 的 20%，最多為可用記憶體的一半，1024-8192）；0 = 關閉；-1 = 不限制。",
+    "placeholder": "-2（自動）"
+  },
+  "persist_thread_cache": {
+    "title": "跨工作階段記住對話",
+    "description": "將每個對話的提示詞快取保存在磁碟上，重新開啟時無需重讀整段對話。僅在模型、其設定與 llama.cpp 組建版本都與儲存時相符時才會還原。"
+  },
+  "thread_cache_size": {
+    "title": "對話快取磁碟上限（MiB）",
+    "description": "已儲存對話快取的磁碟配額（預設：2048）。達到上限後會優先刪除最舊的快取。一段很長的對話可能佔用數百 MiB。"
+  },
+  "cache_reuse": {
+    "title": "快取重複使用",
+    "description": "從快取中重複使用的相符前綴 token 最小區塊大小。0 = 停用。"
+  },
+  "ctx_checkpoints": {
+    "title": "上下文檢查點",
+    "description": "每個槽位保留的上下文檢查點上限，可用於還原已位移的上下文，而無需重新處理。"
+  },
+  "checkpoint_min_step": {
+    "title": "檢查點最小間隔",
+    "description": "上下文檢查點之間的最少 token 數。"
+  },
+  "swa_full": {
+    "title": "完整 SWA 快取",
+    "description": "為滑動視窗注意力模型（例如 Gemma）使用完整大小的 KV 快取。若這類模型每一輪都重新處理整個提示詞而未重複使用快取，請啟用此項；會耗用更多記憶體。"
+  },
+  "kv_unified": {
+    "title": "統一 KV 快取",
+    "description": "使用所有槽位共用的單一統一 KV 緩衝區。執行多個平行槽位時可節省記憶體。",
+    "options": {
+      "auto": "自動",
+      "on": "開啟",
+      "off": "關閉"
+    }
+  },
+  "kv_unified_per_slot": {
+    "title": "每槽位上下文",
+    "description": "限制單一槽位可使用的統一 KV 快取量（以 token 計）。0 表示允許一個槽位填滿整個快取。僅在快取為統一模式時適用。"
+  },
+  "reasoning_preserve": {
+    "title": "保留推理歷史",
+    "description": "在提示詞中保留先前每一輪助理回覆的推理內容，而不只是最近一輪。僅影響聊天範本支援此功能的模型，且會耗用提示詞 token。"
+  },
+  "keep": {
+    "title": "保留前 N 個 token",
+    "description": "上下文位移時從初始提示詞中保留的 token 數。-1 = 全部保留。"
+  },
+  "_ui": {
+    "moreInfo": "進一步了解 {{setting}}",
+    "perModelSettings": "個別模型設定",
+    "perModelDefault": "預設（來自設定：{{value}}）",
+    "perModelDefaultAuto": "預設（來自設定：自動）"
+  }
+}

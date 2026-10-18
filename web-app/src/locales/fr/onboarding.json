@@ -95,6 +95,7 @@
     "title": "Personnalisez la barre latérale",
     "body": "Masquez les éléments que vous n'utilisez pas. Vous pouvez le changer à tout moment dans Configurations, sous Apparence.",
     "customize": "Personnaliser la barre latérale",
-    "close": "Terminé"
+    "close": "Terminé",
+    "bodyMinimal": "Flint démarre avec une barre latérale courte. Toutes les autres pages sont dans la palette de commandes, ou rajoutez-les ici."
   }
 }

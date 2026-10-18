@@ -95,6 +95,7 @@
     "title": "Personalizza la barra laterale",
     "body": "Nascondi le voci che non usi. Puoi cambiarlo quando vuoi in Impostazioni, sotto Aspetto.",
     "customize": "Personalizza barra laterale",
-    "close": "Fatto"
+    "close": "Fatto",
+    "bodyMinimal": "Flint parte con una barra laterale corta. Tutte le altre pagine sono nella tavolozza dei comandi, oppure puoi riaggiungerle qui."
   }
 }

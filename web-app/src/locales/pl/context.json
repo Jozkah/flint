@@ -3,6 +3,7 @@
   "title": "Z czego Flint korzysta w tej rozmowie",
   "description": "Co jest dostępne dla Flint, co wybrano dla żądania i co jest zweryfikowane w oczyszczonej kopii ostatniego żądania. Zmiany tutaj wpływają na przyszłe wiadomości, a nie na odpowiedź, która już jest pisana.",
   "refresh": "Odśwież",
+  "retry": "Spróbuj ponownie",
   "details": "Szczegóły",
   "closeDetails": "Zamknij szczegóły",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Działa na tym urządzeniu lub w Twojej sieci. Wiadomości go nie opuszczają.",
+      "local": "Działa na tym urządzeniu. Wiadomości go nie opuszczają.",
       "remote": "Zdalny dostawca: Twoje wiadomości i dołączone pliki są do niego wysyłane.",
       "checking": "Nadal sprawdzam, gdzie działa ten dostawca.",
-      "unknown": "Nie udało się ustalić, gdzie działa ten dostawca."
+      "unknown": "Nie udało się ustalić, gdzie działa ten dostawca.",
+      "network": "Wysyłane do {{host}} w Twojej sieci. Wiadomości i dołączone pliki opuszczają to urządzenie, ale nie Twoją sieć.",
+      "remoteHost": "Wysyłane do {{host}}: Twoje wiadomości i dołączone pliki opuszczają ten komputer."
     },
     "assistantInstructions": "Instrukcje asystenta są wysyłane jako prompt systemowy.",
     "pendingInline": "Jego tekst zostanie wstawiony do następnej wiadomości.",
@@ -119,7 +122,9 @@
     "noModel": "Nie wybrano modelu.",
     "noInstructions": "Brak instrukcji asystenta. Zwykłe rozmowy nie czytają plików instrukcji projektu, takich jak Flint.md; Cowork je czyta.",
     "noAttachments": "Do tej rozmowy nie dołączono plików.",
+    "noAttachmentsHint": "Załączone pliki pojawią się tutaj wraz z informacją, jak Flint ich używa.",
     "indexUnavailable": "Nie udało się wylistować zindeksowanych plików.",
+    "indexUnavailableHint": "Flint nie mógł odczytać indeksu plików tej rozmowy. Spróbuj ponownie za chwilę.",
     "noMemory": "Do ostatniej wiadomości nie zastosowano żadnej zapisanej pamięci.",
     "noTools": "Brak dostępnych narzędzi."
   },
@@ -137,6 +142,8 @@
     "noProject": "brak projektu"
   },
   "inspect": "Sprawdź oczyszczone żądanie (zaawansowane)",
+  "why": "Dlaczego",
+  "verifiedMeaning": "Co znaczy „zweryfikowane”",
   "showAll": "Pokaż wszystkie ({{count}})",
   "showFewer": "Pokaż mniej",
   "cards": {

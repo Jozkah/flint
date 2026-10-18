@@ -44,6 +44,8 @@ const lookup = (loc: Flat, key: string) => loc[key] ?? loc[`${key}_one`]
  * else identical to English is an untranslated copy and fails the test.
  */
 const SAME_AS_ENGLISH: Record<string, string[]> = {
+  // "file" is Italian too.
+  'rooms:apply.files_one': ['it'],
   // uiLeftovers: loanwords and units shared with English.
   'uiLeftovers:hubTasks.embeddings': ['ca', 'de-DE', 'es', 'fr', 'pt-BR'],
   'uiLeftovers:tokenSpeed.tokens': ['ca', 'de-DE', 'es', 'pt-BR'],
@@ -75,6 +77,8 @@ const SAME_AS_ENGLISH: Record<string, string[]> = {
   'common:promptLibrary.editTitle': ['id'],
   // "Models" is spelled the same in Catalan.
   'rooms:controls.models': ['ca'],
+  // "Page" is the French word too.
+  'common:settingsSearch.pageCrumb': ['fr'],
   // "Chat", "{{count}} in {{name}}" and "Conversation" are the real words there.
   'settings:memoryPage.kindChat': ['cs', 'de-DE', 'es', 'fr', 'it', 'pt-BR', 'vn'],
   'settings:memoryPage.stored.projectIn': ['de-DE', 'it'],

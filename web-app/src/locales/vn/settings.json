@@ -144,6 +144,8 @@
     "renderUserMarkdownDesc": "Hiển thị chữ đậm, danh sách, tiêu đề và mã trong tin nhắn bạn gửi. Khi tắt, tin nhắn hiển thị đúng như đã gõ.",
     "renderHtmlArtifacts": "Hiển thị artifact HTML và SVG",
     "renderHtmlArtifactsDesc": "Thêm tab Xem trước vào các khối mã HTML và SVG. HTML chạy trang do mô hình tạo trong một khung sandbox thực thi các tập lệnh của riêng nó nhưng không thể truy cập Flint, tệp của bạn hay mạng; SVG hiển thị tĩnh với tập lệnh bị tắt. Mặc định tắt.",
+    "wrapCodeLines": "Ngắt dòng dài trong khối mã",
+    "wrapCodeLinesDesc": "Đưa các dòng dài xuống hàng tiếp theo, thụt lề dưới mã, thay vì cuộn khối sang ngang. Nút ngắt dòng ở tiêu đề khối mã bật/tắt cùng thiết lập này.",
     "composerRailButtons": "Nút đầu ra trong ô nhập Cowork",
     "composerRailButtonsDesc": "Hiện Xem trước, Mã, Thay đổi, Hoạt động và Dòng thời gian bên dưới hộp tin nhắn Cowork. Khi tắt, một nút Đầu ra ở tiêu đề sẽ mở bảng.",
     "autoGenerateTitle": "Tự động tạo tiêu đề cuộc trò chuyện",
@@ -421,7 +423,10 @@
     "defaultModelPlaceholder": "Chọn một mô hình cục bộ",
     "noLocalModels": "Chưa nhập mô hình cục bộ nào",
     "usage5hAria": "Token mỗi 5 giờ",
-    "usageWeekAria": "Token mỗi tuần"
+    "usageWeekAria": "Token mỗi tuần",
+    "usageWindow": "Khoảng thời gian",
+    "usageLimit": "Giới hạn",
+    "usageUnsaved": "Thay đổi chưa lưu"
   },
   "privacy": {
     "analytics": "Phân tích",
@@ -685,7 +690,20 @@
     "reduceMotion": "Giảm chuyển động",
     "reduceMotionDesc": "Tắt hoạt ảnh trong Flint. Flint không theo cài đặt hệ thống, nên chuyển động vẫn bật trừ khi bạn đổi mục này.",
     "increaseContrast": "Tăng độ tương phản",
-    "increaseContrastDesc": "Làm chữ rõ hơn để dễ đọc. Trắng hơn ở giao diện tối, đậm hơn ở giao diện sáng."
+    "increaseContrastDesc": "Làm chữ rõ hơn để dễ đọc. Trắng hơn ở giao diện tối, đậm hơn ở giao diện sáng.",
+    "performanceMode": "Chế độ hiệu năng",
+    "performanceModeDesc": "Chế độ giảm tắt hiệu ứng làm mờ, bóng lớn và hoạt ảnh lặp, đồng thời cập nhật văn bản đang phát trực tiếp ít thường xuyên hơn, dành cho máy tính chậm. Tự động sẽ chọn chế độ này khi máy tính này có vẻ chậm.",
+    "performanceModeAuto": "Tự động",
+    "performanceModeReduced": "Luôn giảm",
+    "performanceModeFull": "Đầy đủ",
+    "performanceModeNowReduced": "Hiện tại: giảm ({{why}})",
+    "performanceModeNowFull": "Hiện tại: đầy đủ",
+    "perfReasonCores": "{{n}} nhân",
+    "perfReasonMemory": "{{n}} GB bộ nhớ",
+    "perfReasonFrames": "khung hình chậm",
+    "perfReasonMotion": "hệ thống giảm chuyển động",
+    "perfReasonData": "tiết kiệm dữ liệu",
+    "perfReasonChosen": "đã chọn ở đây"
   },
   "pageDesc": {
     "general": "Ngôn ngữ, thư mục dữ liệu, nhật ký và các tùy chọn toàn ứng dụng.",
@@ -1190,10 +1208,17 @@
       "header": "Trên và dưới"
     },
     "showItem": "Hiện {{item}} trên thanh bên",
+    "hideItem": "Ẩn {{item}} khỏi thanh bên",
     "alwaysShown": "Luôn hiển thị",
     "showAll": "Hiện tất cả",
     "preview": "Xem trước",
-    "reachable": "Các mục bị ẩn vẫn truy cập được từ bảng lệnh và từ Cài đặt."
+    "reachable": "Các mục bị ẩn vẫn truy cập được từ bảng lệnh và từ Cài đặt.",
+    "presets": {
+      "label": "Cài đặt sẵn",
+      "minimal": "Tối giản",
+      "standard": "Tiêu chuẩn",
+      "everything": "Tất cả"
+    }
   },
   "memoryPage": {
     "useSaved": "Dùng bộ nhớ đã lưu trong cuộc trò chuyện",
@@ -1312,7 +1337,11 @@
       "importedCount_one": "Đã nhập {{count}} ký ức",
       "importedCount_other": "Đã nhập {{count}} ký ức",
       "importFailed": "Không thể nhập ký ức"
-    }
+    },
+    "fileActionsAria": "Xuất hoặc nhập ký ức",
+    "noMatchHint": "Kiểm tra chính tả, hoặc xóa tìm kiếm để xem tất cả.",
+    "emptyHint": "Viết một ký ức ở trên, hoặc để Flint ghi nhớ khi bạn trò chuyện.",
+    "footerCount_other": "{{count}} ký ức trong phạm vi này"
   },
   "chatMentions": {
     "title": "Nhắc đến hội thoại",

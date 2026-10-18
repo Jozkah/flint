@@ -95,6 +95,7 @@
     "title": "Kenar çubuğunu kendinize göre düzenleyin",
     "body": "Kullanmadığınız öğeleri gizleyin. Bunu istediğiniz zaman Ayarlar'da, Görünüm altında değiştirebilirsiniz.",
     "customize": "Kenar çubuğunu özelleştir",
-    "close": "Bitti"
+    "close": "Bitti",
+    "bodyMinimal": "Flint kısa bir kenar çubuğuyla başlar. Diğer tüm sayfalar komut paletinde; dilerseniz buradan geri ekleyin."
   }
 }

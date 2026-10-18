@@ -56,6 +56,10 @@
     "connected": "Terhubung"
   },
   "table": {
+    "contextAutoFit": "otomatis",
+    "contextAuto": "otomatis",
+    "contextAutoFitTitle": "Ukuran Konteks kosong, jadi mesin menyesuaikan jendela ini dengan memori Anda saat model dimuat.",
+    "contextAutoTitle": "Ukuran Konteks kosong: mesin memilih jendela saat model dimuat.",
     "name": "Nama",
     "file": "File",
     "size": "Ukuran",

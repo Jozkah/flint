@@ -72,5 +72,36 @@
     "remote": "Từ xa",
     "searchModels": "Tìm mô hình...",
     "noModels": "Không tìm thấy mô hình nào cho \"{{search}}\""
+  },
+  "serverFolders": {
+    "title": "Chọn thư mục máy chủ",
+    "description": "Các thư mục máy chủ này cho phép phiên sử dụng.",
+    "roots": "Thư mục máy chủ",
+    "off": "Không có thư mục được chia sẻ. Khởi động máy chủ với --agent-root <folder>.",
+    "loading": "Đang tải thư mục...",
+    "up": "Lên trên",
+    "empty": "Không có thư mục nào.",
+    "truncated": "Chỉ hiển thị 500 thư mục đầu tiên.",
+    "choose": "Dùng thư mục này"
+  },
+  "serverSession": {
+    "title": "Phiên máy chủ mới",
+    "description": "Chạy trên máy chủ trong một thư mục của nó, với mô hình bạn chọn.",
+    "notReady": "Máy chủ này chưa chạy phiên.",
+    "folder": "Thư mục: {{path}}",
+    "noFolder": "chưa chọn",
+    "prompt": "Tin nhắn đầu tiên",
+    "promptPlaceholder": "Phiên nên làm gì?",
+    "start": "Bắt đầu phiên",
+    "starting": "Đang bắt đầu...",
+    "newButton": "Phiên máy chủ mới",
+    "badge": "Phiên máy chủ, {{status}}",
+    "runsWith": "Chạy với {{model}}",
+    "status": {
+      "running": "đang chạy",
+      "idle": "rảnh",
+      "awaiting_approval": "chờ phê duyệt",
+      "awaiting_answer": "chờ câu trả lời"
+    }
   }
 }

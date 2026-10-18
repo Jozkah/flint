@@ -69,6 +69,10 @@
     "connected": "Connected"
   },
   "table": {
+    "contextAutoFit": "auto-fit",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "Context Size is empty, so the engine fitted this window to your memory when the model loaded.",
+    "contextAutoTitle": "Context Size is empty: the engine picks the window when the model loads.",
     "name": "Name",
     "file": "File",
     "size": "Size",

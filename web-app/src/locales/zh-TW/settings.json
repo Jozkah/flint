@@ -144,6 +144,8 @@
     "renderUserMarkdownDesc": "在你傳送的訊息中顯示粗體、清單、標題和程式碼。關閉時依輸入原樣顯示。",
     "renderHtmlArtifacts": "轉譯 HTML 和 SVG 成品",
     "renderHtmlArtifactsDesc": "為 HTML 和 SVG 程式碼區塊新增「預覽」分頁。HTML 會在沙箱框架中執行模型產生的頁面，該框架會執行自己的指令碼，但無法存取 Flint、你的檔案或網路；SVG 則以停用指令碼的方式靜態轉譯。預設為關閉。",
+    "wrapCodeLines": "程式碼區塊中的長行自動換行",
+    "wrapCodeLinesDesc": "長行換到下一行並縮排對齊程式碼，而不是橫向捲動程式碼區塊。程式碼區塊標題列中的換行按鈕切換的是同一設定。",
     "composerRailButtons": "Cowork 輸入區中的輸出按鈕",
     "composerRailButtonsDesc": "在 Cowork 訊息方塊下方顯示「預覽」「程式碼」「變更」「活動」和「時間軸」。關閉時，標題列中的一個「輸出」按鈕會開啟該面板。",
     "autoGenerateTitle": "自動產生聊天標題",
@@ -421,7 +423,10 @@
     "defaultModelPlaceholder": "選擇本機模型",
     "noLocalModels": "尚未匯入本機模型",
     "usage5hAria": "每 5 小時的 token 數",
-    "usageWeekAria": "每週的 token 數"
+    "usageWeekAria": "每週的 token 數",
+    "usageWindow": "時間窗",
+    "usageLimit": "上限",
+    "usageUnsaved": "未儲存的變更"
   },
   "privacy": {
     "analytics": "分析",
@@ -685,7 +690,20 @@
     "reduceMotion": "減少動態效果",
     "reduceMotionDesc": "關閉 Flint 中的動畫。Flint 不會跟隨系統設定，因此除非你切換此項，否則動態效果保持開啟。",
     "increaseContrast": "提高對比度",
-    "increaseContrastDesc": "讓文字更醒目，更易閱讀。深色主題下更白，淺色主題下更深。"
+    "increaseContrastDesc": "讓文字更醒目，更易閱讀。深色主題下更白，淺色主題下更深。",
+    "performanceMode": "效能模式",
+    "performanceModeDesc": "精簡模式會關閉模糊、大陰影和循環動畫，並降低串流文字的更新頻率，適合較慢的電腦。自動模式會在這台電腦顯得較慢時選擇它。",
+    "performanceModeAuto": "自動",
+    "performanceModeReduced": "一律精簡",
+    "performanceModeFull": "完整",
+    "performanceModeNowReduced": "目前：精簡（{{why}}）",
+    "performanceModeNowFull": "目前：完整",
+    "perfReasonCores": "{{n}} 核心",
+    "perfReasonMemory": "{{n}} GB 記憶體",
+    "perfReasonFrames": "畫面更新慢",
+    "perfReasonMotion": "系統減少動態效果",
+    "perfReasonData": "數據節省",
+    "perfReasonChosen": "在此選擇"
   },
   "pageDesc": {
     "general": "語言、資料夾、記錄和應用程式範圍的選項。",
@@ -1190,10 +1208,17 @@
       "header": "頂端和底端"
     },
     "showItem": "在側邊欄顯示 {{item}}",
+    "hideItem": "從側邊欄隱藏{{item}}",
     "alwaysShown": "一律顯示",
     "showAll": "全部顯示",
     "preview": "預覽",
-    "reachable": "隱藏的項目仍可從命令面板和「設定」中存取。"
+    "reachable": "隱藏的項目仍可從命令面板和「設定」中存取。",
+    "presets": {
+      "label": "預設組合",
+      "minimal": "精簡",
+      "standard": "標準",
+      "everything": "全部"
+    }
   },
   "memoryPage": {
     "useSaved": "在對話中使用已儲存的記憶",
@@ -1312,7 +1337,11 @@
       "importedCount_one": "已匯入 {{count}} 則記憶",
       "importedCount_other": "已匯入 {{count}} 則記憶",
       "importFailed": "無法匯入記憶"
-    }
+    },
+    "fileActionsAria": "匯出或匯入記憶",
+    "noMatchHint": "檢查拼字，或清除搜尋以查看全部。",
+    "emptyHint": "在上方寫一條，或讓 Flint 在聊天時自動記住。",
+    "footerCount_other": "此範圍內有 {{count}} 條記憶"
   },
   "chatMentions": {
     "title": "對話提及",

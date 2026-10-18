@@ -223,7 +223,7 @@
   "profile": "Perfil",
   "reset": "Restablecer",
   "search": "Buscar",
-  "searchThreads": "Buscar hilos...",
+  "searchThreads": "Buscar chats...",
   "toNavigate": "para navegar",
   "toSelect": "para seleccionar",
   "toClose": "para cerrar",
@@ -249,6 +249,7 @@
   "preview": {
     "title": "Vista previa",
     "empty": "Abre un artefacto generado para verlo aquí.",
+    "emptyHint": "Los archivos que Flint crea en esta sesión se abren aquí.",
     "loading": "Abriendo…",
     "unsupported": "Flint no puede mostrar este tipo de archivo. Ábrelo para verlo en otra aplicación.",
     "outside": "Este archivo ya no está en el espacio de trabajo de la sesión.",
@@ -332,9 +333,14 @@
     "openItem": "Abrir {{item}}"
   },
   "searchGroup": {
+    "pages": "Páginas",
+    "settings": "Ajustes",
     "inProjects": "En proyectos",
     "conversations": "Conversaciones",
-    "messages": "En mensajes"
+    "messages": "En mensajes",
+    "work": "Salas y sesiones",
+    "room": "Sala",
+    "session": "Sesión de Cowork"
   },
   "rail": {
     "label": "Paneles de Cowork",
@@ -650,7 +656,8 @@
       "add": "Añadir",
       "cancel": "Cancelar",
       "remove": "Quitar"
-    }
+    },
+    "ctxAutoFitHint": "El ajuste automático está activado: déjalo vacío y el ajuste automático elige el contexto, reduciéndolo si hace falta para que quepa en memoria. Un número aquí se usa tal cual."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -693,6 +700,14 @@
     "showRawLibraries": "Mostrar {{count}} nombres de bibliotecas que faltan"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Crear proyecto",
+      "editTitle": "Editar proyecto",
+      "namePlaceholder": "Introduce el nombre del proyecto...",
+      "alreadyExists": "El proyecto «{{projectName}}» ya existe",
+      "createSuccess": "Proyecto «{{projectName}}» creado",
+      "updateSuccess": "Proyecto «{{projectName}}» actualizado"
+    },
     "title": "Proyectos",
     "new": "Nuevos proyectos",
     "addProject": "Agregar proyecto",
@@ -786,7 +801,8 @@
     "pathNameNotice": "Esto da nombre a una colección de chats; no abre esa carpeta.",
     "openCodeFolderInCowork": "Abrir carpeta de código en Cowork",
     "openCodeFolder": "Abrir carpeta de código",
-    "openCodeFolderDescription": "Elige una carpeta de tu equipo en la que Flint trabajará."
+    "openCodeFolderDescription": "Elige una carpeta de tu equipo en la que Flint trabajará.",
+    "setUpEmbeddingModel": "Configurar un modelo de embeddings"
   },
   "attachmentsIngestion": {
     "title": "Elige cómo procesar los adjuntos",
@@ -918,7 +934,8 @@
       "unsupportedType": "El tipo de archivo \"{{type}}\" no es compatible.",
       "ioError": "No se pudo leer {{subject}}: {{message}}",
       "parseGeneric": "{{subject}} no se pudo analizar: {{message}}",
-      "fallback": "No se pudo procesar {{subject}}."
+      "fallback": "No se pudo procesar {{subject}}.",
+      "noEmbeddingModel": "{{subject}} no se añadió: no hay ningún modelo de embeddings instalado para indexarlo. Configura uno en Llama.cpp y vuelve a añadir el archivo."
     },
     "fileDeleted": {
       "title": "Archivo eliminado",
@@ -1070,7 +1087,10 @@
     "branchLabel": "Rama",
     "actionsLabel": "Acciones de carpeta",
     "copyPath": "Copiar ruta",
-    "copied": "Ruta copiada"
+    "copied": "Ruta copiada",
+    "footnoteEmptyEdit": "Adjunta una carpeta para que el agente trabaje en tu proyecto.",
+    "a11yWithFolderEditable": "Carpeta del proyecto {{folder}}, adjuntada para editar. Cámbiala o quítala.",
+    "a11yWithFolderWorktree": "Carpeta del proyecto {{folder}}, editada mediante un worktree aparte. Cámbiala o quítala."
   },
   "coworkEmpty": {
     "title": "¿En qué trabajamos?",
@@ -1092,7 +1112,9 @@
       "hint": "Esta carpeta es un vault de Obsidian. Flint la lee como cualquier carpeta de notas en Markdown y deja fuera los ajustes .obsidian y .trash de Obsidian.",
       "add": "Añadir mi vault de Obsidian",
       "addHint": "Un vault de Obsidian es solo una carpeta. Elígelo como cualquier otra carpeta."
-    }
+    },
+    "subtitleFolderEdit": "Dale una tarea a Flint. Lee y cambia archivos de {{folder}} directamente, y trabaja por su cuenta a partir de ahí.",
+    "subtitleFolderWorktree": "Dale una tarea a Flint. Trabaja en un worktree de git de {{folder}}, así que tu carpeta solo cambia cuando fusionas."
   },
   "sandbox": {
     "noTerminal": "Sin terminal",
@@ -1274,7 +1296,9 @@
     "count_many": "{{count}} de resultados",
     "count_other": "{{count}} resultados",
     "empty": "No hay ajustes que coincidan.",
-    "clear": "Borrar búsqueda"
+    "clear": "Borrar búsqueda",
+    "emptyHint": "Prueba otra palabra o busca por lo que hace: tema, proxy, memoria.",
+    "pageCrumb": "Página"
   },
   "tasks": {
     "title": "Actividad",
@@ -2227,10 +2251,12 @@
   },
   "browserVerify": {
     "title": "Verificar en el navegador",
+    "about": "Cómo funciona",
     "explain": "Abre tu aplicación local en un perfil de navegador temporal y aparte (no la vista previa de Flint, sin cookies), limitado al propio origen de la aplicación. Las solicitudes a otros orígenes se bloquean y se listan.",
     "url": "URL de la aplicación local",
     "notLocal": "Solo se puede verificar una aplicación de este equipo (localhost, 127.0.0.1).",
-    "steps": "Pasos (opcional): open, click, type, expect, wait, screenshot — uno por línea",
+    "stepsLabel": "Pasos (opcional)",
+    "stepsHint": "Uno por línea: open, click, type, expect, wait, screenshot",
     "run": "Verificar",
     "cancel": "Detener",
     "using": "Usando {{browser}}",
@@ -2258,7 +2284,8 @@
       "failed": "Fallido",
       "cancelled": "Detenido",
       "error": "No se pudo ejecutar"
-    }
+    },
+    "steps": "Pasos (opcional): open, click, type, expect, wait, screenshot — uno por línea"
   },
   "jev": {
     "automationTitle": "Elecciones automáticas",
@@ -2606,7 +2633,11 @@
   "openclaw": "OpenClaw",
   "openclawAgent": "Agente OpenClaw",
   "voicePill": {
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "dictate": "Dictar",
+    "stop": "Dejar de dictar",
+    "working": "Procesando…",
+    "setup": "Configurar la entrada de voz"
   },
   "coworkRunSettings": {
     "label": "Ajustes de la ejecución",
@@ -2643,7 +2674,8 @@
     "copied": "Copiado",
     "binary": "Parece un archivo binario, así que no hay vista previa de texto.",
     "expandLine": "Mostrar la línea completa",
-    "collapseLine": "Acortar la línea"
+    "collapseLine": "Acortar la línea",
+    "truncatedOnAdd": "Se muestran los primeros {{shown}} de {{total}} (el adjunto se recortó al añadirlo)"
   },
   "dropAttachFailed": "No se pudieron adjuntar los archivos soltados",
   "sampler": {
@@ -2685,7 +2717,8 @@
     "errorEngine": "El motor que ejecuta este modelo no está disponible. Reinicia Flint e inténtalo de nuevo.",
     "openProvider": "Abrir ajustes del proveedor",
     "errorDetails": "Detalles",
-    "pasteHint": "Se bloqueó el acceso al portapapeles. Haz clic en el cuadro de texto y pulsa {{keys}}."
+    "pasteHint": "Se bloqueó el acceso al portapapeles. Haz clic en el cuadro de texto y pulsa {{keys}}.",
+    "swapNeedsSource": "Elige un idioma de origen para intercambiar"
   },
   "markdownImage": {
     "load": "Cargar imagen de {{host}}"
@@ -2708,6 +2741,7 @@
     "export": "Exportar",
     "imported_one": "Se añadió {{count}} prompt",
     "imported_other": "Se añadieron {{count}} prompts",
+    "importedNone": "No se encontraron prompts nuevos",
     "search": "Buscar prompts",
     "empty": "Aún no hay prompts.",
     "edit": "Editar {{name}}",
@@ -2732,7 +2766,9 @@
       "gone": "Ese prompt ya no existe",
       "invalidJson": "Ese archivo no es un JSON válido",
       "noPrompts": "No se encontraron prompts en ese archivo"
-    }
+    },
+    "noResults": "Ningún prompt coincide con «{{query}}».",
+    "clearSearch": "Borrar búsqueda"
   },
   "memoryProposal": {
     "title": "¿Recordar esto?",
@@ -2818,10 +2854,51 @@
     },
     "messagesCount_one": "{{count}} mensaje",
     "messagesCount_many": "{{count}} de mensajes",
-    "messagesCount_other": "{{count}} mensajes"
+    "messagesCount_other": "{{count}} mensajes",
+    "compact_one": "{{count}} mención · {{mode}}",
+    "compact_many": "{{count}} menciones · {{mode}}",
+    "compact_other": "{{count}} menciones · {{mode}}",
+    "mixed": "Mixto"
   },
   "campaignList": {
     "timeout": "La aplicación no respondió a tiempo.",
     "unreadableRecord": "el backend envió un registro que esta página no puede leer"
+  },
+  "composer": {
+    "messageLabel": "Mensaje"
+  },
+  "routeLoading": {
+    "slow": "Esta página está tardando más de lo normal en abrirse.",
+    "reload": "Recargar",
+    "retry": "Reintentar",
+    "failed": "No se pudo abrir esta página"
+  },
+  "replyCutOff": {
+    "withTokens": "Cortada en el límite de respuesta ({{tokens}} tokens)",
+    "plain": "Cortada en el límite de respuesta"
+  },
+  "routeNotFound": {
+    "title": "Página no encontrada",
+    "body": "No hay ninguna página en {{path}}. Puede que se haya movido o que el enlace esté desactualizado.",
+    "home": "Ir al inicio",
+    "settings": "Abrir configuración"
+  },
+  "waitingForYou": "Esperándote",
+  "dnd": {
+    "anItem": "el elemento",
+    "aGroup": "un grupo",
+    "picked": "Has tomado {{item}}.",
+    "over": "{{item}} está sobre {{group}}.",
+    "notOver": "{{item}} no está sobre ningún grupo.",
+    "dropped": "{{item}} se movió a {{group}}.",
+    "cancelled": "{{item}} volvió a su sitio."
+  },
+  "searchEverything": "Buscar chats, salas, páginas y ajustes…",
+  "noResultsFoundEverywhere": "No hay coincidencias en chats, salas, sesiones de Cowork, páginas ni ajustes. Prueba otra palabra.",
+  "selectModelNoKey": "No hay ningún modelo elegido para esta sesión y {{provider}} no tiene clave de API. Elige primero un modelo en el menú de modelos.",
+  "serverConnection": {
+    "offlineTitle": "No se puede conectar con el servidor de Flint.",
+    "offlineBody": "Reconectando… Lo que hagas ahora puede no guardarse hasta que vuelva.",
+    "statusOffline": "Servidor inaccesible"
   }
 }

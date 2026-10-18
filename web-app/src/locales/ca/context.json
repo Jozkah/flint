@@ -3,6 +3,7 @@
   "title": "Què usa Flint en aquesta conversa",
   "description": "El que Flint té disponible, el que s'ha triat per a una sol·licitud i el que està verificat a la còpia sanejada de l'última sol·licitud. Els canvis d'aquí afecten els missatges futurs, no una resposta que ja s'està escrivint.",
   "refresh": "Actualitza",
+  "retry": "Torna-ho a provar",
   "details": "Detalls",
   "closeDetails": "Tanca els detalls",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "S'executa en aquest dispositiu o a la teva xarxa. Els missatges no en surten.",
+      "local": "S'executa en aquest dispositiu. Els missatges no en surten.",
       "remote": "Proveïdor remot: els teus missatges i els fitxers inclosos se li envien.",
       "checking": "Encara s'està comprovant on s'executa aquest proveïdor.",
-      "unknown": "No s'ha pogut determinar on s'executa aquest proveïdor."
+      "unknown": "No s'ha pogut determinar on s'executa aquest proveïdor.",
+      "network": "S'envia a {{host}} a la teva xarxa. Els missatges i els fitxers inclosos surten d'aquest dispositiu, però no de la teva xarxa.",
+      "remoteHost": "S'envia a {{host}}: els teus missatges i fitxers inclosos surten d'aquest ordinador."
     },
     "assistantInstructions": "Les instruccions de l'assistent s'envien com a missatge del sistema.",
     "pendingInline": "El seu text es col·locarà al teu pròxim missatge.",
@@ -119,7 +122,9 @@
     "noModel": "No hi ha cap model seleccionat.",
     "noInstructions": "Cap instrucció de l'assistent. Les converses normals no llegeixen fitxers d'instruccions del projecte com Flint.md; Cowork sí.",
     "noAttachments": "No hi ha cap fitxer adjunt a aquesta conversa.",
+    "noAttachmentsHint": "Els fitxers que adjuntis apareixeran aquí, amb com els fa servir Flint.",
     "indexUnavailable": "No s'han pogut llistar els fitxers indexats.",
+    "indexUnavailableHint": "Flint no ha pogut llegir l'índex de fitxers d'aquesta conversa. Torna-ho a provar d'aquí a un moment.",
     "noMemory": "Cap memòria desada s'ha aplicat a l'últim missatge.",
     "noTools": "No hi ha cap eina disponible."
   },
@@ -137,6 +142,8 @@
     "noProject": "cap projecte"
   },
   "inspect": "Inspecciona la sol·licitud sanejada (avançat)",
+  "why": "Per què",
+  "verifiedMeaning": "Què vol dir «verificat»",
   "showAll": "Mostra tots {{count}}",
   "showFewer": "Mostra'n menys",
   "cards": {

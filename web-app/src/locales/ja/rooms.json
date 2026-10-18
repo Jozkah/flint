@@ -12,8 +12,8 @@
     "open": "{{title}} を開く",
     "delete": "削除",
     "deleteLabel": "{{title}} を削除",
-    "participants": "参加者 {{count}} 人",
-    "turns": "{{count}} ターン",
+    "participants_other": "参加者 {{count}} 人",
+    "turns_other": "{{count}} ターン",
     "updated": "{{time}} に更新",
     "untitled": "無題のルーム",
     "moreLabel": "{{title}} のその他の操作",
@@ -21,7 +21,9 @@
     "noParticipants": "参加者はまだいません",
     "noPreview": "ルームを開くと、議論が表示されます。",
     "tokens": "{{count}} トークン",
-    "yours": "あなたのルーム"
+    "yours": "あなたのルーム",
+    "participants": "参加者 {{count}} 人",
+    "turns": "{{count}} ターン"
   },
   "create": {
     "title": "新しいルーム",
@@ -76,6 +78,9 @@
     "heading": "ルーム設定",
     "sectionGeneral": "一般",
     "sectionDiscussion": "議論とモデレーター",
+    "sectionIdentity": "アイデンティティ",
+    "sectionModel": "モデルと推論",
+    "sectionTools": "ツール",
     "lockedWhileRunning": "設定を変更するには、ルームを一時停止してください。",
     "title": "タイトル",
     "objective": "目的",
@@ -191,8 +196,10 @@
     "isolation": {
       "active": "編集できる参加者はそれぞれ専用の分離ワークスペースで作業するため、互いやあなたのフォルダーを上書きできません。",
       "unavailable": "分離ワークスペースを使えません: {{reason}}。編集できる参加者はこのルームでは読み取りのみです。",
-      "untrusted": "フォルダーが信頼されていません"
-    }
+      "untrusted": "フォルダーが信頼されていません",
+      "trust": "このフォルダーを信頼"
+    },
+    "saving": "保存中…"
   },
   "limits": {
     "maxRounds": "ラウンド",
@@ -278,7 +285,18 @@
       "tools": "ツールを使いましたが、テキストの返信はありません。",
       "none": "テキストの返信はありません。"
     },
-    "thought": "思考"
+    "thought": "思考",
+    "answerFrom": "{{name}} の回答",
+    "expandAnswer": "{{name}} の回答をすべて表示",
+    "collapseAnswer": "{{name}} の回答を短く表示",
+    "expand": "展開",
+    "collapse": "折りたたむ",
+    "linkScroll": "スクロールを連動",
+    "linkScrollHint": "同じ質問への回答をまとめてスクロール",
+    "continuePrompt": "途切れたところから前の回答の続きを書いてください。",
+    "catchUp": "追いつき：以前の質問 {{count}} 件にも回答しました",
+    "catchUp_one": "追いつき：以前の質問 1 件にも回答しました",
+    "catchUpHint": "この参加者はこれらの質問の後に加わったため、この返信はそれらにも答えています："
   },
   "unknownWindow": {
     "title": "コンテキストウィンドウが不明です",
@@ -329,7 +347,7 @@
     "speaking": "{{name}} が発言中",
     "compacting": "{{name}} が追いついています",
     "draft": "開始できます",
-    "draftHint": "参加者 {{count}} 人 · {{mode}}",
+    "draftHint_other": "参加者 {{count}} 人 · {{mode}}",
     "running": "議論を実行中",
     "runningHint": "次の発言者が準備しています。",
     "awaiting-user": "あなたが選ぶ番です",
@@ -348,7 +366,9 @@
     "failedHint": "もう一度開始すると、再試行します。",
     "round": "ラウンド",
     "turn": "ターン",
-    "of": "/"
+    "of": "/",
+    "question": "質問",
+    "draftHint": "参加者 {{count}} 人 · {{mode}}"
   },
   "usage": {
     "label": "使用量",
@@ -361,7 +381,8 @@
     "time": "時間",
     "of": "{{value}} / {{max}}",
     "noLimit": "制限なし",
-    "stopReason": "停止: {{reason}}"
+    "stopReason": "停止: {{reason}}",
+    "questions": "質問"
   },
   "stopReason": {
     "user": "あなたが停止しました",
@@ -390,7 +411,9 @@
     "toShort": "宛先",
     "placeholderTo": "{{name}} に書き込む…",
     "mention": "参加者にメンション",
-    "dropSkipped": "追加されませんでした (テキストではない、フォルダー、またはメッセージの上限超過): {{files}}"
+    "dropSkipped": "追加されませんでした (テキストではない、フォルダー、またはメッセージの上限超過): {{files}}",
+    "placeholderShort": "ルームに書く… @ でメンション",
+    "extendByQuestions": "追加の質問"
   },
   "kpi": {
     "running": "実行中",
@@ -399,9 +422,10 @@
     "waitingHint": "あなたの選択または返信が必要です",
     "waitingNone": "対応が必要なものはありません",
     "turns": "今週のターン数",
-    "turnsHint": "{{count}} 個のルームの合計",
+    "turnsHint_other": "{{count}} 件のルーム全体",
     "models": "参加しているモデル",
-    "modelsNone": "参加者はまだいません"
+    "modelsNone": "参加者はまだいません",
+    "turnsHint": "{{count}} 個のルームの合計"
   },
   "waiting": {
     "title": "あなたを待っています",
@@ -471,8 +495,11 @@
       "queued": "待機中",
       "done": "回答済み",
       "failed": "失敗",
-      "idle": "未回答"
-    }
+      "idle": "未回答",
+      "waitingSlot": "待機中: ローカルモデルのスロットを待っています"
+    },
+    "retry": "再試行",
+    "retryFor": "{{name}} を再試行"
   },
   "changes": {
     "summaryOne": "{{count}} 個のファイルを変更",
@@ -487,24 +514,85 @@
     "state": {
       "kept": "保持済み",
       "discarded": "破棄済み",
-      "applied": "適用済み"
+      "applied": "適用済み",
+      "idle": "未適用"
     },
     "diffTitle": "ワークスペースの変更",
     "diffHint": "この参加者が分離ワークスペースで変更したすべて。",
-    "applyTitle": "フォルダーに適用しますか？",
-    "applyHint": "このパッチがあなたのフォルダーに書き込まれます。きれいに適用できない場合は何も変更されません。",
     "discardTitle": "これらの変更を破棄しますか？",
     "discardHint": "参加者のワークスペースは開始時の状態に戻ります。あなたのフォルダーには触れません。",
     "loading": "差分を読み込み中…",
     "empty": "適用するものはありません。",
-    "applyConfirm": "適用",
     "discardConfirm": "破棄",
     "scopeTurn": "このターン",
-    "scopeAll": "ワークスペース作成以降"
+    "scopeAll": "ワークスペース作成以降",
+    "applyShort": "適用",
+    "scopeAllShort": "すべて",
+    "scope": "表示する変更",
+    "showAll": "すべてのファイルを表示（{{count}}）",
+    "partial_other": "{{count}} 個のファイルを適用済み",
+    "applyIncludesEarlier_other": "適用には、まだ適用していない以前のファイル {{count}} 個も含まれます",
+    "applyTitle": "フォルダーに適用しますか？",
+    "applyHint": "このパッチがあなたのフォルダーに書き込まれます。きれいに適用できない場合は何も変更されません。",
+    "applyConfirm": "適用"
+  },
+  "apply": {
+    "title_one": "{{count}} 件の変更をフォルダーに適用",
+    "title_other": "{{count}} 件の変更をフォルダーに適用",
+    "copyPath": "フォルダーのパス {{path}} をコピー",
+    "pathCopied": "フォルダーのパスをコピーしました",
+    "files_one": "{{count}} ファイル",
+    "files_other": "{{count}} ファイル",
+    "source": "{{name}} より · ラウンド {{round}}",
+    "safety": "パッチがきれいに当たらない場合は何も適用されません。適用直後に元に戻せます。",
+    "checking": "フォルダーに適用できるか確認しています…",
+    "clean": "きれいに適用できます",
+    "checkFailed": "パッチを確認できませんでした: {{message}}",
+    "conflict_one": "{{count}} 個のファイルがフォルダーに適用できません",
+    "conflict_other": "{{count}} 個のファイルがフォルダーに適用できません",
+    "conflictHint": "外すか、今のフォルダーの状態に合わせて作り直すよう参加者に頼んでください。",
+    "notChecked": "個別には確認していません（ファイルが多すぎます）",
+    "fileConflict": "適用できません",
+    "leaveOut": "競合するファイルを除外",
+    "details": "詳細",
+    "fileDirty": "あなたの編集",
+    "dirtyTitle_one": "このうち {{count}} 個のファイルに未コミットの変更があります",
+    "dirtyTitle_other": "このうち {{count}} 個のファイルに未コミットの変更があります",
+    "dirtyHint": "パッチはあなたの編集の上に書き込まれます。簡単に戻したい場合は、先に commit か stash をしてください。",
+    "selectAll": "すべてのファイルを選択",
+    "include": "{{path}} を含める",
+    "renamedFrom": "（{{path}} から名前変更）",
+    "status": {
+      "added": "追加",
+      "modified": "変更",
+      "deleted": "削除",
+      "renamed": "名前変更"
+    },
+    "binary": "バイナリファイルが変更されました。内容は表示されません。",
+    "noLines": "行の変更はありません（モードまたは名前のみ）。",
+    "showMore_one": "さらに {{count}} 行を表示",
+    "showMore_other": "さらに {{count}} 行を表示",
+    "hiddenLines_one": "（{{count}} 行非表示）",
+    "hiddenLines_other": "（{{count}} 行非表示）",
+    "blockedConflict": "適用できません: 選択したファイルの一部がきれいに当たりません。",
+    "blockedNothing": "少なくとも 1 つのファイルを選択してください。",
+    "blockedFailed": "確認が成功するまで適用できません。",
+    "copyPatch": "パッチをコピー",
+    "patchCopied": "パッチをコピーしました",
+    "confirm_one": "{{count}} ファイルを適用",
+    "confirm_other": "{{count}} ファイルを適用",
+    "applied_one": "{{count}} ファイルをフォルダーに適用しました",
+    "applied_other": "{{count}} ファイルをフォルダーに適用しました",
+    "undo": "元に戻す",
+    "undone": "変更をフォルダーから取り消しました",
+    "undoFailed": "元に戻せませんでした: {{message}}"
   },
   "approvals": {
     "held": "ルーム一時停止中",
     "heldHint": "待機中にルームが一時停止されたため、もう許可できません。ルームを再開すると、必要なら参加者が再度確認します。",
-    "dismiss": "閉じる"
+    "dismiss": "閉じる",
+    "heldBanner": "ルームは一時停止中: この要求はもう許可できません。再開すると再度確認されます。",
+    "wantsToRun": "{{origin}} が {{tool}} を実行しようとしています",
+    "details": "詳細"
   }
 }

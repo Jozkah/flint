@@ -12,8 +12,14 @@
     "open": "Otwórz {{title}}",
     "delete": "Usuń",
     "deleteLabel": "Usuń {{title}}",
-    "participants": "Uczestnicy: {{count}}",
-    "turns": "Tury: {{count}}",
+    "participants_one": "{{count}} uczestnik",
+    "participants_few": "{{count}} uczestników",
+    "participants_many": "{{count}} uczestników",
+    "participants_other": "{{count}} uczestnika",
+    "turns_one": "{{count}} tura",
+    "turns_few": "{{count}} tury",
+    "turns_many": "{{count}} tur",
+    "turns_other": "{{count}} tury",
     "updated": "Zaktualizowano {{time}}",
     "untitled": "Pokój bez tytułu",
     "moreLabel": "Więcej akcji dla {{title}}",
@@ -21,7 +27,9 @@
     "noParticipants": "Brak uczestników",
     "noPreview": "Otwórz pokój, aby zobaczyć dyskusję.",
     "tokens": "Tokeny: {{count}}",
-    "yours": "Twoje pokoje"
+    "yours": "Twoje pokoje",
+    "participants": "Uczestnicy: {{count}}",
+    "turns": "Tury: {{count}}"
   },
   "create": {
     "title": "Nowy pokój",
@@ -76,6 +84,9 @@
     "heading": "Ustawienia pokoju",
     "sectionGeneral": "Ogólne",
     "sectionDiscussion": "Dyskusja i moderator",
+    "sectionIdentity": "Tożsamość",
+    "sectionModel": "Model i rozumowanie",
+    "sectionTools": "Narzędzia",
     "lockedWhileRunning": "Wstrzymaj pokój, aby zmienić ustawienia.",
     "title": "Tytuł",
     "objective": "Cel",
@@ -191,8 +202,10 @@
     "isolation": {
       "active": "Każdy uczestnik, który może edytować, pracuje we własnym odizolowanym obszarze, więc nie mogą nadpisać siebie nawzajem ani twojego folderu.",
       "unavailable": "Odizolowany obszar niedostępny: {{reason}}. Uczestnicy z edycją w tym pokoju tylko czytają.",
-      "untrusted": "folder nie jest zaufany"
-    }
+      "untrusted": "folder nie jest zaufany",
+      "trust": "Ufaj temu folderowi"
+    },
+    "saving": "Zapisywanie…"
   },
   "limits": {
     "maxRounds": "Rundy",
@@ -278,7 +291,20 @@
       "tools": "Użył narzędzi, ale nie napisał odpowiedzi tekstowej.",
       "none": "Brak odpowiedzi tekstowej."
     },
-    "thought": "Rozumowanie"
+    "thought": "Rozumowanie",
+    "answerFrom": "Odpowiedź od {{name}}",
+    "expandAnswer": "Pokaż całą odpowiedź od {{name}}",
+    "collapseAnswer": "Skróć odpowiedź od {{name}}",
+    "expand": "Rozwiń",
+    "collapse": "Zwiń",
+    "linkScroll": "Wspólne przewijanie",
+    "linkScrollHint": "Przewijaj razem odpowiedzi na jedno pytanie",
+    "continuePrompt": "Kontynuuj poprzednią odpowiedź od miejsca, w którym została ucięta.",
+    "catchUp": "Nadrabianie: odpowiedział też na {{count}} wcześniejszych pytań",
+    "catchUp_one": "Nadrabianie: odpowiedział też na 1 wcześniejsze pytanie",
+    "catchUp_few": "Nadrabianie: odpowiedział też na {{count}} wcześniejsze pytania",
+    "catchUp_many": "Nadrabianie: odpowiedział też na {{count}} wcześniejszych pytań",
+    "catchUpHint": "Ten uczestnik dołączył po tych pytaniach, więc ta odpowiedź odpowiada również na nie:"
   },
   "unknownWindow": {
     "title": "Nieznane okno kontekstu",
@@ -329,7 +355,10 @@
     "speaking": "{{name}} mówi",
     "compacting": "{{name}} nadrabia kontekst",
     "draft": "Gotowy do startu",
-    "draftHint": "Uczestnicy: {{count}} · {{mode}}",
+    "draftHint_one": "{{count}} uczestnik · {{mode}}",
+    "draftHint_few": "{{count}} uczestników · {{mode}}",
+    "draftHint_many": "{{count}} uczestników · {{mode}}",
+    "draftHint_other": "{{count}} uczestnika · {{mode}}",
     "running": "Dyskusja w toku",
     "runningHint": "Następny mówca się przygotowuje.",
     "awaiting-user": "Twoja kolej na wybór",
@@ -348,7 +377,9 @@
     "failedHint": "Uruchom ponownie, aby spróbować jeszcze raz.",
     "round": "Runda",
     "turn": "Tura",
-    "of": "z"
+    "of": "z",
+    "question": "Pytanie",
+    "draftHint": "Uczestnicy: {{count}} · {{mode}}"
   },
   "usage": {
     "label": "Użycie",
@@ -361,7 +392,8 @@
     "time": "Czas",
     "of": "{{value}} / {{max}}",
     "noLimit": "bez limitu",
-    "stopReason": "Zatrzymano: {{reason}}"
+    "stopReason": "Zatrzymano: {{reason}}",
+    "questions": "Pytania"
   },
   "stopReason": {
     "user": "zatrzymane przez Ciebie",
@@ -390,7 +422,9 @@
     "toShort": "Do",
     "placeholderTo": "Napisz do {{name}}…",
     "mention": "Wspomnij uczestnika",
-    "dropSkipped": "Nie dodano (to nie tekst, jest to folder albo przekroczono limit wiadomości): {{files}}"
+    "dropSkipped": "Nie dodano (to nie tekst, jest to folder albo przekroczono limit wiadomości): {{files}}",
+    "placeholderShort": "Napisz do pokoju… @ aby wspomnieć",
+    "extendByQuestions": "Więcej pytań"
   },
   "kpi": {
     "running": "W toku",
@@ -399,9 +433,13 @@
     "waitingHint": "Potrzebuje Twojego wyboru lub odpowiedzi",
     "waitingNone": "Nic nie wymaga Twojej uwagi",
     "turns": "Tury w tym tygodniu",
-    "turnsHint": "W pokojach: {{count}}",
+    "turnsHint_one": "W {{count}} pokoju",
+    "turnsHint_few": "W {{count}} pokojach",
+    "turnsHint_many": "W {{count}} pokojach",
+    "turnsHint_other": "W {{count}} pokoju",
     "models": "Biorące udział modele",
-    "modelsNone": "Brak uczestników"
+    "modelsNone": "Brak uczestników",
+    "turnsHint": "W pokojach: {{count}}"
   },
   "waiting": {
     "title": "Czeka na Ciebie",
@@ -471,8 +509,11 @@
       "queued": "W kolejce",
       "done": "Odpowiedział",
       "failed": "Niepowodzenie",
-      "idle": "Jeszcze bez odpowiedzi"
-    }
+      "idle": "Jeszcze bez odpowiedzi",
+      "waitingSlot": "W kolejce: czeka na miejsce modelu lokalnego"
+    },
+    "retry": "Ponów",
+    "retryFor": "Ponów {{name}}"
   },
   "changes": {
     "summaryOne": "Zmieniono {{count}} plik",
@@ -487,24 +528,107 @@
     "state": {
       "kept": "Zachowano",
       "discarded": "Odrzucono",
-      "applied": "Zastosowano"
+      "applied": "Zastosowano",
+      "idle": "Niezastosowane"
     },
     "diffTitle": "Zmiany w obszarze roboczym",
     "diffHint": "Wszystko, co ten uczestnik zmienił w swoim odizolowanym obszarze.",
-    "applyTitle": "Zastosować do twojego folderu?",
-    "applyHint": "Ta łatka zostanie zapisana w twoim folderze. Jeśli nie da się jej czysto zastosować, nic się nie zmieni.",
     "discardTitle": "Odrzucić te zmiany?",
     "discardHint": "Obszar uczestnika wróci do stanu początkowego. Twój folder pozostaje nietknięty.",
     "loading": "Wczytywanie diffu…",
     "empty": "Nic do zastosowania.",
-    "applyConfirm": "Zastosuj",
     "discardConfirm": "Odrzuć",
     "scopeTurn": "Ta tura",
-    "scopeAll": "Od utworzenia obszaru roboczego"
+    "scopeAll": "Od utworzenia obszaru roboczego",
+    "applyShort": "Zastosuj",
+    "scopeAllShort": "Wszystko",
+    "scope": "Które zmiany pokazać",
+    "showAll": "Pokaż wszystkie pliki ({{count}})",
+    "partial_one": "Zastosowano {{count}} plik",
+    "partial_few": "Zastosowano {{count}} pliki",
+    "partial_many": "Zastosowano {{count}} plików",
+    "partial_other": "Zastosowano {{count}} pliku",
+    "applyIncludesEarlier_one": "Zastosuj obejmuje też {{count}} wcześniejszy plik, jeszcze niezastosowany",
+    "applyIncludesEarlier_few": "Zastosuj obejmuje też {{count}} wcześniejsze pliki, jeszcze niezastosowane",
+    "applyIncludesEarlier_many": "Zastosuj obejmuje też {{count}} wcześniejszych plików, jeszcze niezastosowanych",
+    "applyIncludesEarlier_other": "Zastosuj obejmuje też {{count}} wcześniejszego pliku, jeszcze niezastosowanego",
+    "applyTitle": "Zastosować do twojego folderu?",
+    "applyHint": "Ta łatka zostanie zapisana w twoim folderze. Jeśli nie da się jej czysto zastosować, nic się nie zmieni.",
+    "applyConfirm": "Zastosuj"
+  },
+  "apply": {
+    "title_one": "Zastosuj {{count}} zmianę w swoim folderze",
+    "title_few": "Zastosuj {{count}} zmiany w swoim folderze",
+    "title_many": "Zastosuj {{count}} zmian w swoim folderze",
+    "title_other": "Zastosuj {{count}} zmiany w swoim folderze",
+    "copyPath": "Kopiuj ścieżkę folderu {{path}}",
+    "pathCopied": "Skopiowano ścieżkę folderu",
+    "files_one": "{{count}} plik",
+    "files_few": "{{count}} pliki",
+    "files_many": "{{count}} plików",
+    "files_other": "{{count}} pliku",
+    "source": "Od {{name}} · runda {{round}}",
+    "safety": "Nic nie zostanie zastosowane, jeśli łatka nie pasuje czysto. Możesz cofnąć zaraz potem.",
+    "checking": "Sprawdzanie, czy pasuje do twojego folderu…",
+    "clean": "Pasuje czysto",
+    "checkFailed": "Nie udało się sprawdzić łatki: {{message}}",
+    "conflict_one": "{{count}} plik nie pasuje do twojego folderu",
+    "conflict_few": "{{count}} pliki nie pasują do twojego folderu",
+    "conflict_many": "{{count}} plików nie pasuje do twojego folderu",
+    "conflict_other": "{{count}} pliku nie pasuje do twojego folderu",
+    "conflictHint": "Pomiń je albo poproś uczestnika, by zrobił je ponownie na obecnym stanie folderu.",
+    "notChecked": "nie sprawdzono osobno (za dużo plików)",
+    "fileConflict": "Nie pasuje",
+    "leaveOut": "Pomiń pliki z konfliktami",
+    "details": "Szczegóły",
+    "fileDirty": "Twoje zmiany",
+    "dirtyTitle_one": "Masz niezatwierdzone zmiany w {{count}} z tych plików",
+    "dirtyTitle_few": "Masz niezatwierdzone zmiany w {{count}} z tych plików",
+    "dirtyTitle_many": "Masz niezatwierdzone zmiany w {{count}} z tych plików",
+    "dirtyTitle_other": "Masz niezatwierdzone zmiany w {{count}} z tych plików",
+    "dirtyHint": "Łatka zostanie zapisana na twoich zmianach. Najpierw zrób commit lub stash, jeśli chcesz łatwo wrócić.",
+    "selectAll": "Zaznacz wszystkie pliki",
+    "include": "Uwzględnij {{path}}",
+    "renamedFrom": "(zmieniono nazwę z {{path}})",
+    "status": {
+      "added": "Dodany",
+      "modified": "Zmieniony",
+      "deleted": "Usunięty",
+      "renamed": "Przemianowany"
+    },
+    "binary": "Zmieniono plik binarny. Jego zawartość nie jest pokazywana.",
+    "noLines": "Brak zmian w wierszach (tylko tryb lub nazwa).",
+    "showMore_one": "Pokaż {{count}} wiersz więcej",
+    "showMore_few": "Pokaż {{count}} wiersze więcej",
+    "showMore_many": "Pokaż {{count}} wierszy więcej",
+    "showMore_other": "Pokaż {{count}} wiersza więcej",
+    "hiddenLines_one": "({{count}} ukryty)",
+    "hiddenLines_few": "({{count}} ukryte)",
+    "hiddenLines_many": "({{count}} ukrytych)",
+    "hiddenLines_other": "({{count}} ukrytego)",
+    "blockedConflict": "Zastosowanie wyłączone: niektóre zaznaczone pliki nie pasują czysto.",
+    "blockedNothing": "Zaznacz co najmniej jeden plik.",
+    "blockedFailed": "Zastosowanie wyłączone, dopóki sprawdzenie się nie powiedzie.",
+    "copyPatch": "Kopiuj łatkę",
+    "patchCopied": "Skopiowano łatkę",
+    "confirm_one": "Zastosuj {{count}} plik",
+    "confirm_few": "Zastosuj {{count}} pliki",
+    "confirm_many": "Zastosuj {{count}} plików",
+    "confirm_other": "Zastosuj {{count}} pliku",
+    "applied_one": "Zastosowano {{count}} plik w twoim folderze",
+    "applied_few": "Zastosowano {{count}} pliki w twoim folderze",
+    "applied_many": "Zastosowano {{count}} plików w twoim folderze",
+    "applied_other": "Zastosowano {{count}} pliku w twoim folderze",
+    "undo": "Cofnij",
+    "undone": "Zmiana została wycofana z twojego folderu",
+    "undoFailed": "Nie udało się cofnąć: {{message}}"
   },
   "approvals": {
     "held": "Pokój wstrzymany",
     "heldHint": "Pokój wstrzymano, gdy to czekało, więc nie można już na to zezwolić. Wznów pokój, a uczestnik zapyta ponownie, jeśli nadal tego potrzebuje.",
-    "dismiss": "Zamknij"
+    "dismiss": "Zamknij",
+    "heldBanner": "Pokój wstrzymany: tej prośby nie można już zezwolić. Wznów, aby zapytać ponownie.",
+    "wantsToRun": "{{origin}} chce uruchomić {{tool}}",
+    "details": "Szczegóły"
   }
 }

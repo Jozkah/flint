@@ -56,6 +56,10 @@
     "connected": "Verbunden"
   },
   "table": {
+    "contextAutoFit": "automatisch",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "Die Kontextgröße ist leer, daher hat die Engine dieses Fenster beim Laden des Modells an Ihren Speicher angepasst.",
+    "contextAutoTitle": "Die Kontextgröße ist leer: Die Engine wählt das Fenster beim Laden des Modells.",
     "name": "Name",
     "file": "Datei",
     "size": "Größe",

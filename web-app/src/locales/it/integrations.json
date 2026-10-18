@@ -72,5 +72,36 @@
     "remote": "Remoto",
     "searchModels": "Cerca modelli...",
     "noModels": "Nessun modello trovato per \"{{search}}\""
+  },
+  "serverFolders": {
+    "title": "Scegli una cartella del server",
+    "description": "Cartelle che questo server consente di usare nelle sessioni.",
+    "roots": "Cartelle del server",
+    "off": "Nessuna cartella condivisa. Avvia il server con --agent-root <folder>.",
+    "loading": "Caricamento cartelle...",
+    "up": "Su",
+    "empty": "Nessuna cartella qui.",
+    "truncated": "Sono mostrate solo le prime 500 cartelle.",
+    "choose": "Usa questa cartella"
+  },
+  "serverSession": {
+    "title": "Nuova sessione sul server",
+    "description": "Viene eseguita sul server in una delle sue cartelle, con il modello scelto.",
+    "notReady": "Questo server non esegue ancora sessioni.",
+    "folder": "Cartella: {{path}}",
+    "noFolder": "nessuna scelta",
+    "prompt": "Primo messaggio",
+    "promptPlaceholder": "Cosa deve fare la sessione?",
+    "start": "Avvia sessione",
+    "starting": "Avvio...",
+    "newButton": "Nuova sessione sul server",
+    "badge": "Sessione server, {{status}}",
+    "runsWith": "Usa {{model}}",
+    "status": {
+      "running": "in esecuzione",
+      "idle": "inattiva",
+      "awaiting_approval": "in attesa di approvazione",
+      "awaiting_answer": "in attesa di risposta"
+    }
   }
 }

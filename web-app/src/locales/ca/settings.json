@@ -145,6 +145,8 @@
     "renderUserMarkdownDesc": "Mostra negreta, llistes, encapçalaments i codi als missatges que envies. Desactivat, es mostren tal com els escrius.",
     "renderHtmlArtifacts": "Renderitza artefactes HTML i SVG",
     "renderHtmlArtifactsDesc": "Afegeix una pestanya de previsualització als blocs de codi HTML i SVG. L'HTML executa la pàgina generada pel model en un marc aïllat que executa els seus propis scripts però no pot accedir a Flint, als teus fitxers ni a la xarxa; l'SVG es renderitza estàticament amb els scripts desactivats. Desactivat per defecte.",
+    "wrapCodeLines": "Ajusta les línies llargues als blocs de codi",
+    "wrapCodeLinesDesc": "Passa les línies llargues a la fila següent, sagnades sota el codi, en lloc de desplaçar el bloc lateralment. El botó d'ajust de la capçalera d'un bloc de codi canvia aquesta mateixa opció.",
     "composerRailButtons": "Botons de sortida al compositor de Cowork",
     "composerRailButtonsDesc": "Mostra Previsualització, Codi, Canvis, Activitat i Cronologia sota el quadre de missatge de Cowork. Desactivat, un sol botó Sortida a la capçalera obre el tauler.",
     "autoGenerateTitle": "Genera automàticament el títol del xat",
@@ -425,7 +427,10 @@
     "defaultModelPlaceholder": "Selecciona un model local",
     "noLocalModels": "No s'ha importat cap model local",
     "usage5hAria": "Tokens per 5 hores",
-    "usageWeekAria": "Tokens per setmana"
+    "usageWeekAria": "Tokens per setmana",
+    "usageWindow": "Finestra",
+    "usageLimit": "Límit",
+    "usageUnsaved": "Canvis sense desar"
   },
   "privacy": {
     "analytics": "Analítica",
@@ -689,7 +694,20 @@
     "reduceMotion": "Redueix el moviment",
     "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs.",
     "increaseContrast": "Augmenta el contrast",
-    "increaseContrastDesc": "Fa el text més brillant perquè es llegeixi millor. Més blanc al tema fosc, més fosc al tema clar."
+    "increaseContrastDesc": "Fa el text més brillant perquè es llegeixi millor. Més blanc al tema fosc, més fosc al tema clar.",
+    "performanceMode": "Mode de rendiment",
+    "performanceModeDesc": "El mode reduït desactiva el desenfocament, les ombres grans i les animacions en bucle, i actualitza el text en streaming amb menys freqüència, per a ordinadors més lents. Automàtic el tria quan aquest ordinador sembla lent.",
+    "performanceModeAuto": "Automàtic",
+    "performanceModeReduced": "Sempre reduït",
+    "performanceModeFull": "Complet",
+    "performanceModeNowReduced": "Ara: reduït ({{why}})",
+    "performanceModeNowFull": "Ara: complet",
+    "perfReasonCores": "{{n}} nuclis",
+    "perfReasonMemory": "{{n}} GB de memòria",
+    "perfReasonFrames": "fotogrames lents",
+    "perfReasonMotion": "el sistema redueix el moviment",
+    "perfReasonData": "estalvi de dades",
+    "perfReasonChosen": "triat aquí"
   },
   "pageDesc": {
     "general": "Idioma, carpeta de dades, registres i opcions de tota l'aplicació.",
@@ -1195,10 +1213,17 @@
       "header": "A dalt i a baix"
     },
     "showItem": "Mostra {{item}} a la barra lateral",
+    "hideItem": "Amaga {{item}} de la barra lateral",
     "alwaysShown": "Sempre visible",
     "showAll": "Mostra-ho tot",
     "preview": "Vista prèvia",
-    "reachable": "Els elements amagats continuen accessibles des de la paleta d'ordres i des de Configuració."
+    "reachable": "Els elements amagats continuen accessibles des de la paleta d'ordres i des de Configuració.",
+    "presets": {
+      "label": "Predefinits",
+      "minimal": "Mínim",
+      "standard": "Estàndard",
+      "everything": "Tot"
+    }
   },
   "memoryPage": {
     "useSaved": "Fes servir la memòria desada a les converses",
@@ -1317,7 +1342,12 @@
       "importedCount_one": "S'ha importat {{count}} record",
       "importedCount_other": "S'han importat {{count}} records",
       "importFailed": "No s'han pogut importar els records"
-    }
+    },
+    "fileActionsAria": "Exporta o importa memòries",
+    "noMatchHint": "Revisa l'ortografia o esborra la cerca per veure-ho tot.",
+    "emptyHint": "Escriu-ne una a dalt, o deixa que Flint recordi mentre xateges.",
+    "footerCount_one": "1 memòria en aquest àmbit",
+    "footerCount_other": "{{count}} memòries en aquest àmbit"
   },
   "chatMentions": {
     "title": "Mencions de converses",

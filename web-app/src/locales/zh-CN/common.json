@@ -222,7 +222,7 @@
   "profile": "个人资料",
   "reset": "重置",
   "search": "搜索",
-  "searchThreads": "搜索对话…",
+  "searchThreads": "搜索聊天…",
   "toNavigate": "导航",
   "toSelect": "选择",
   "toClose": "关闭",
@@ -248,6 +248,7 @@
   "preview": {
     "title": "预览",
     "empty": "打开已生成的产物以在此预览。",
+    "emptyHint": "Flint 在此会话中创建的文件会在这里打开。",
     "loading": "正在打开…",
     "unsupported": "Flint 无法显示此类文件。请用其他应用打开查看。",
     "outside": "此文件已不在会话工作区中。",
@@ -330,9 +331,14 @@
     "openItem": "打开 {{item}}"
   },
   "searchGroup": {
+    "pages": "页面",
+    "settings": "设置",
     "inProjects": "在项目中",
     "conversations": "对话",
-    "messages": "在消息中"
+    "messages": "在消息中",
+    "work": "房间和会话",
+    "room": "房间",
+    "session": "Cowork 会话"
   },
   "rail": {
     "label": "Cowork 面板",
@@ -645,7 +651,8 @@
       "add": "添加",
       "cancel": "取消",
       "remove": "移除"
-    }
+    },
+    "ctxAutoFitHint": "自动适配已开启：留空则由自动适配选择上下文，并在需要时缩小以适应内存。此处填写的数字将按原样使用。"
   },
   "dialogs": {
     "changeDataFolder": {
@@ -688,6 +695,14 @@
     "showRawLibraries": "显示 {{count}} 个缺失库的名称"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "创建项目",
+      "editTitle": "编辑项目",
+      "namePlaceholder": "输入项目名称...",
+      "alreadyExists": "项目“{{projectName}}”已存在",
+      "createSuccess": "已创建项目“{{projectName}}”",
+      "updateSuccess": "已更新项目“{{projectName}}”"
+    },
     "title": "项目",
     "new": "新建项目",
     "addProject": "添加项目",
@@ -783,7 +798,8 @@
     "openCodeFolderInCowork": "在 Cowork 中打开代码文件夹",
     "openCodeFolder": "打开代码文件夹",
     "openCodeFolderDescription": "选择你电脑上供 Flint 工作的文件夹。",
-    "deleteProjectConfirm": "您确定要删除此项目吗？此操作无法撤销。"
+    "deleteProjectConfirm": "您确定要删除此项目吗？此操作无法撤销。",
+    "setUpEmbeddingModel": "设置嵌入模型"
   },
   "attachmentsIngestion": {
     "title": "选择附件的导入方式",
@@ -915,7 +931,8 @@
       "unsupportedType": "不支持“{{type}}”文件类型。",
       "ioError": "无法读取 {{subject}}：{{message}}",
       "parseGeneric": "{{subject}} 无法解析：{{message}}",
-      "fallback": "处理 {{subject}} 失败。"
+      "fallback": "处理 {{subject}} 失败。",
+      "noEmbeddingModel": "{{subject}} 未添加：没有安装用于建立索引的嵌入模型。请在 Llama.cpp 中设置一个，然后重新添加文件。"
     },
     "fileDeleted": {
       "title": "文件已删除",
@@ -1062,7 +1079,10 @@
     "branchLabel": "分支",
     "actionsLabel": "文件夹操作",
     "copyPath": "复制路径",
-    "copied": "路径已复制"
+    "copied": "路径已复制",
+    "footnoteEmptyEdit": "附加一个文件夹，让智能体处理你的项目。",
+    "a11yWithFolderEditable": "项目文件夹 {{folder}}，已附加为可编辑。可更改或分离。",
+    "a11yWithFolderWorktree": "项目文件夹 {{folder}}，通过单独的 worktree 编辑。可更改或分离。"
   },
   "coworkEmpty": {
     "title": "我们要做点什么？",
@@ -1084,7 +1104,9 @@
       "hint": "此文件夹是 Obsidian 库。Flint 会像读取任何 Markdown 笔记文件夹一样读取它，并忽略 Obsidian 的 .obsidian 设置和 .trash。",
       "add": "添加我的 Obsidian 库",
       "addHint": "Obsidian 库就是一个文件夹。像选择其他文件夹一样选择它即可。"
-    }
+    },
+    "subtitleFolderEdit": "给 Flint 一个任务。它会直接读取并修改 {{folder}} 中的文件，然后自行完成后续工作。",
+    "subtitleFolderWorktree": "给 Flint 一个任务。它在 {{folder}} 的 git worktree 中工作，只有在你合并时文件夹才会改变。"
   },
   "sandbox": {
     "noTerminal": "无终端",
@@ -1262,7 +1284,9 @@
     "count_one": "1 个结果",
     "count_other": "{{count}} 个结果",
     "empty": "没有匹配的设置。",
-    "clear": "清除搜索"
+    "clear": "清除搜索",
+    "emptyHint": "换个词试试，或按用途搜索：主题、代理、记忆。",
+    "pageCrumb": "页面"
   },
   "tasks": {
     "title": "活动",
@@ -2195,10 +2219,12 @@
   },
   "browserVerify": {
     "title": "在浏览器中验证",
+    "about": "工作原理",
     "explain": "在单独的临时浏览器配置文件中打开你的本地应用（不是 Flint 的预览，无 cookie），仅限于应用自身的源。对其他地方的请求会被阻止并列出。",
     "url": "本地应用 URL",
     "notLocal": "只能验证这台机器上的应用（localhost、127.0.0.1）。",
-    "steps": "步骤（可选）：open、click、type、expect、wait、screenshot — 每行一个",
+    "stepsLabel": "步骤（可选）",
+    "stepsHint": "每行一条：open、click、type、expect、wait、screenshot",
     "run": "验证",
     "cancel": "停止",
     "using": "正在使用 {{browser}}",
@@ -2224,7 +2250,8 @@
       "failed": "失败",
       "cancelled": "已停止",
       "error": "无法运行"
-    }
+    },
+    "steps": "步骤（可选）：open、click、type、expect、wait、screenshot — 每行一个"
   },
   "jev": {
     "automationTitle": "自动选择",
@@ -2564,7 +2591,11 @@
     }
   },
   "voicePill": {
-    "cancel": "取消"
+    "cancel": "取消",
+    "dictate": "语音输入",
+    "stop": "停止语音输入",
+    "working": "处理中…",
+    "setup": "设置语音输入"
   },
   "motionMedia": {
     "queued": "排队中",
@@ -2595,7 +2626,8 @@
     "copied": "已复制",
     "binary": "这似乎是二进制文件，因此没有文本预览。",
     "expandLine": "显示整行",
-    "collapseLine": "收起该行"
+    "collapseLine": "收起该行",
+    "truncatedOnAdd": "显示 {{total}} 中的前 {{shown}}（附件在添加时已被截断）"
   },
   "dropAttachFailed": "无法附加拖放的文件",
   "sampler": {
@@ -2635,7 +2667,8 @@
     "errorEngine": "运行此模型的引擎不可用。请重启 Flint 后重试。",
     "openProvider": "打开提供商设置",
     "errorDetails": "详情",
-    "pasteHint": "剪贴板访问被阻止。请点击文本框并按 {{keys}}。"
+    "pasteHint": "剪贴板访问被阻止。请点击文本框并按 {{keys}}。",
+    "swapNeedsSource": "选择源语言后才能互换"
   },
   "markdownImage": {
     "load": "从 {{host}} 加载图片"
@@ -2657,6 +2690,7 @@
     "import": "导入",
     "export": "导出",
     "imported_other": "已添加 {{count}} 条提示词",
+    "importedNone": "未找到新的提示词",
     "search": "搜索提示词",
     "empty": "还没有提示词。",
     "edit": "编辑 {{name}}",
@@ -2681,7 +2715,9 @@
       "gone": "该提示词已不存在",
       "invalidJson": "该文件不是有效的 JSON",
       "noPrompts": "该文件中没有找到提示词"
-    }
+    },
+    "noResults": "没有与“{{query}}”匹配的提示词。",
+    "clearSearch": "清除搜索"
   },
   "memoryProposal": {
     "title": "要记住这个吗？",
@@ -2763,10 +2799,49 @@
       "you": "你",
       "assistant": "助手"
     },
-    "messagesCount_other": "{{count}} 条消息"
+    "messagesCount_other": "{{count}} 条消息",
+    "compact_other": "{{count}} 个提及 · {{mode}}",
+    "mixed": "混合"
   },
   "campaignList": {
     "timeout": "应用未在规定时间内响应。",
     "unreadableRecord": "后端发送了此页面无法读取的记录"
+  },
+  "composer": {
+    "messageLabel": "消息"
+  },
+  "routeLoading": {
+    "slow": "此页面打开的时间比平时长。",
+    "reload": "重新加载",
+    "retry": "重试",
+    "failed": "无法打开此页面"
+  },
+  "replyCutOff": {
+    "withTokens": "在回复上限处被截断（{{tokens}} 个 token）",
+    "plain": "在回复上限处被截断"
+  },
+  "routeNotFound": {
+    "title": "找不到页面",
+    "body": "{{path}} 没有页面。它可能已被移动，或者链接已过期。",
+    "home": "返回首页",
+    "settings": "打开设置"
+  },
+  "waitingForYou": "等待你处理",
+  "dnd": {
+    "anItem": "该项",
+    "aGroup": "一个分组",
+    "picked": "已拿起 {{item}}。",
+    "over": "{{item}} 位于 {{group}} 上方。",
+    "notOver": "{{item}} 不在任何分组上方。",
+    "dropped": "已将 {{item}} 移到 {{group}}。",
+    "cancelled": "{{item}} 已放回原处。"
+  },
+  "searchEverything": "搜索聊天、房间、页面和设置…",
+  "noResultsFoundEverywhere": "在聊天、房间、Cowork 会话、页面或设置中未找到匹配项。请换个关键词。",
+  "selectModelNoKey": "此会话尚未选择模型，且 {{provider}} 没有 API 密钥。请先在模型菜单中选择一个模型。",
+  "serverConnection": {
+    "offlineTitle": "无法连接到 Flint 服务器。",
+    "offlineBody": "正在重新连接… 服务器恢复前，现在的操作可能不会保存。",
+    "statusOffline": "服务器无法访问"
   }
 }

@@ -145,6 +145,8 @@
     "renderUserMarkdownDesc": "Affiche le gras, les listes, les titres et le code dans les messages que vous envoyez. Désactivé, ils s'affichent tels que saisis.",
     "renderHtmlArtifacts": "Afficher les artefacts HTML et SVG",
     "renderHtmlArtifactsDesc": "Ajoute un onglet Aperçu aux blocs de code HTML et SVG. Le HTML exécute la page générée par le modèle dans un cadre isolé qui exécute ses propres scripts mais ne peut accéder ni à Flint, ni à vos fichiers, ni au réseau ; le SVG s'affiche de façon statique, scripts désactivés. Désactivé par défaut.",
+    "wrapCodeLines": "Retour à la ligne dans les blocs de code",
+    "wrapCodeLinesDesc": "Renvoie les lignes longues à la ligne suivante, en retrait sous le code, au lieu de faire défiler le bloc horizontalement. Le bouton de retour à la ligne dans l'en-tête d'un bloc de code bascule ce même réglage.",
     "composerRailButtons": "Boutons de sortie dans la zone de saisie Cowork",
     "composerRailButtonsDesc": "Afficher Aperçu, Code, Modifications, Activité et Chronologie sous la zone de message Cowork. Désactivé, un seul bouton Sortie dans l'en-tête ouvre le panneau.",
     "autoGenerateTitle": "Générer automatiquement le titre de la conversation",
@@ -423,7 +425,10 @@
     "defaultModelPlaceholder": "Sélectionner un modèle local",
     "noLocalModels": "Aucun modèle local importé",
     "usage5hAria": "Tokens par 5 heures",
-    "usageWeekAria": "Tokens par semaine"
+    "usageWeekAria": "Tokens par semaine",
+    "usageWindow": "Fenêtre",
+    "usageLimit": "Limite",
+    "usageUnsaved": "Modifications non enregistrées"
   },
   "privacy": {
     "analytics": "Analytique",
@@ -687,7 +692,20 @@
     "reduceMotion": "Réduire les animations",
     "reduceMotionDesc": "Désactiver les animations dans Flint. Flint ne suit pas le réglage du système : les animations restent actives tant que vous ne changez pas ceci.",
     "increaseContrast": "Augmenter le contraste",
-    "increaseContrastDesc": "Rend le texte plus marqué pour faciliter la lecture. Plus blanc sur le thème sombre, plus foncé sur le thème clair."
+    "increaseContrastDesc": "Rend le texte plus marqué pour faciliter la lecture. Plus blanc sur le thème sombre, plus foncé sur le thème clair.",
+    "performanceMode": "Mode de performance",
+    "performanceModeDesc": "Le mode réduit désactive le flou, les grandes ombres et les animations en boucle, et met à jour le texte en cours de génération moins souvent, pour les ordinateurs plus lents. Automatique le choisit quand cet ordinateur semble lent.",
+    "performanceModeAuto": "Automatique",
+    "performanceModeReduced": "Toujours réduit",
+    "performanceModeFull": "Complet",
+    "performanceModeNowReduced": "Actuellement : réduit ({{why}})",
+    "performanceModeNowFull": "Actuellement : complet",
+    "perfReasonCores": "{{n}} cœurs",
+    "perfReasonMemory": "{{n}} Go de mémoire",
+    "perfReasonFrames": "images lentes",
+    "perfReasonMotion": "le système réduit les animations",
+    "perfReasonData": "économiseur de données",
+    "perfReasonChosen": "choisi ici"
   },
   "pageDesc": {
     "general": "Langue, dossier de données, journaux et options de toute l'application.",
@@ -1193,10 +1211,17 @@
       "header": "Haut et bas"
     },
     "showItem": "Afficher {{item}} dans la barre latérale",
+    "hideItem": "Masquer {{item}} dans la barre latérale",
     "alwaysShown": "Toujours affiché",
     "showAll": "Tout afficher",
     "preview": "Aperçu",
-    "reachable": "Les éléments masqués restent accessibles depuis la palette de commandes et depuis Configurations."
+    "reachable": "Les éléments masqués restent accessibles depuis la palette de commandes et depuis Configurations.",
+    "presets": {
+      "label": "Préréglages",
+      "minimal": "Épuré",
+      "standard": "Courant",
+      "everything": "Tout"
+    }
   },
   "memoryPage": {
     "useSaved": "Utiliser la mémoire enregistrée dans les conversations",
@@ -1315,7 +1340,12 @@
       "importedCount_one": "{{count}} souvenir importé",
       "importedCount_other": "{{count}} souvenirs importés",
       "importFailed": "Impossible d'importer les souvenirs"
-    }
+    },
+    "fileActionsAria": "Exporter ou importer des souvenirs",
+    "noMatchHint": "Vérifiez l'orthographe, ou effacez la recherche pour tout voir.",
+    "emptyHint": "Écrivez-en un ci-dessus, ou laissez Flint retenir au fil des conversations.",
+    "footerCount_one": "1 souvenir dans cette portée",
+    "footerCount_other": "{{count}} souvenirs dans cette portée"
   },
   "chatMentions": {
     "title": "Mentions de conversations",

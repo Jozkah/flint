@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Ardósia",
+    "vermilion": "Vermelhão",
+    "ink": "Tinta",
+    "moss": "Musgo",
+    "slate": "Azul-ardósia",
+    "violet": "Violeta"
+  },
+  "fontSizeNames": {
+    "small": "Pequena",
+    "medium": "Média",
+    "large": "Grande",
+    "extraLarge": "Muito grande"
+  },
+  "unknownSize": "Tamanho desconhecido",
+  "official": "Oficial",
+  "configuration": "Configuração",
   "modelCombobox": {
     "refresh": "Atualizar modelos",
     "placeholder": "Digite ou selecione um modelo..."

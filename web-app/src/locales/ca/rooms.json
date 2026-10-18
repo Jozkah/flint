@@ -12,8 +12,12 @@
     "open": "Obre {{title}}",
     "delete": "Suprimeix",
     "deleteLabel": "Suprimeix {{title}}",
-    "participants": "{{count}} participants",
-    "turns": "{{count}} torns",
+    "participants_one": "{{count}} participant",
+    "participants_many": "{{count}} participants",
+    "participants_other": "{{count}} participants",
+    "turns_one": "{{count}} torn",
+    "turns_many": "{{count}} torns",
+    "turns_other": "{{count}} torns",
     "updated": "Actualitzada {{time}}",
     "untitled": "Sala sense títol",
     "moreLabel": "Més accions per a {{title}}",
@@ -21,7 +25,9 @@
     "noParticipants": "Encara no hi ha participants",
     "noPreview": "Obre la sala per veure el debat.",
     "tokens": "{{count}} tokens",
-    "yours": "Les teves sales"
+    "yours": "Les teves sales",
+    "participants": "{{count}} participants",
+    "turns": "{{count}} torns"
   },
   "create": {
     "title": "Sala nova",
@@ -76,6 +82,9 @@
     "heading": "Configuració de la sala",
     "sectionGeneral": "General",
     "sectionDiscussion": "Debat i moderador",
+    "sectionIdentity": "Identitat",
+    "sectionModel": "Model i raonament",
+    "sectionTools": "Eines",
     "lockedWhileRunning": "Posa la sala en pausa per canviar la configuració.",
     "title": "Títol",
     "objective": "Objectiu",
@@ -191,8 +200,10 @@
     "isolation": {
       "active": "Cada participant que pot editar treballa en el seu propi espai aïllat, així que no poden sobreescriure's entre ells ni la vostra carpeta.",
       "unavailable": "Espai aïllat no disponible: {{reason}}. Els participants que poden editar només llegeixen en aquesta sala.",
-      "untrusted": "la carpeta no és de confiança"
-    }
+      "untrusted": "la carpeta no és de confiança",
+      "trust": "Confia en aquesta carpeta"
+    },
+    "saving": "S'està desant…"
   },
   "limits": {
     "maxRounds": "Rondes",
@@ -278,7 +289,18 @@
       "tools": "Ha fet servir eines, però no ha escrit cap resposta.",
       "none": "Cap resposta de text."
     },
-    "thought": "Pensament"
+    "thought": "Pensament",
+    "answerFrom": "Resposta de {{name}}",
+    "expandAnswer": "Mostra tota la resposta de {{name}}",
+    "collapseAnswer": "Escurça la resposta de {{name}}",
+    "expand": "Amplia",
+    "collapse": "Redueix",
+    "linkScroll": "Desplaçament enllaçat",
+    "linkScrollHint": "Desplaça juntes les respostes a una mateixa pregunta",
+    "continuePrompt": "Continua la teva resposta anterior des d'on es va tallar.",
+    "catchUp": "Posada al dia: també ha respost {{count}} preguntes anteriors",
+    "catchUp_one": "Posada al dia: també ha respost 1 pregunta anterior",
+    "catchUpHint": "Aquest participant s'ha unit després d'aquestes preguntes, així que aquesta resposta també les respon:"
   },
   "unknownWindow": {
     "title": "Finestra de context desconeguda",
@@ -329,7 +351,9 @@
     "speaking": "{{name}} està parlant",
     "compacting": "{{name}} s'està posant al dia",
     "draft": "A punt per començar",
-    "draftHint": "{{count}} participants · {{mode}}",
+    "draftHint_one": "{{count}} participant · {{mode}}",
+    "draftHint_many": "{{count}} participants · {{mode}}",
+    "draftHint_other": "{{count}} participants · {{mode}}",
     "running": "Debat en marxa",
     "runningHint": "El proper orador s'està preparant.",
     "awaiting-user": "Et toca triar",
@@ -348,7 +372,9 @@
     "failedHint": "Torna a iniciar per tornar-ho a provar.",
     "round": "Ronda",
     "turn": "Torn",
-    "of": "de"
+    "of": "de",
+    "question": "Pregunta",
+    "draftHint": "{{count}} participants · {{mode}}"
   },
   "usage": {
     "label": "Ús",
@@ -361,7 +387,8 @@
     "time": "Temps",
     "of": "{{value}} / {{max}}",
     "noLimit": "sense límit",
-    "stopReason": "Aturat: {{reason}}"
+    "stopReason": "Aturat: {{reason}}",
+    "questions": "Preguntes"
   },
   "stopReason": {
     "user": "aturat per tu",
@@ -390,7 +417,9 @@
     "toShort": "A",
     "placeholderTo": "Escriu a {{name}}…",
     "mention": "Esmenta un participant",
-    "dropSkipped": "No s'ha afegit (no és text, és una carpeta o supera el límit del missatge): {{files}}"
+    "dropSkipped": "No s'ha afegit (no és text, és una carpeta o supera el límit del missatge): {{files}}",
+    "placeholderShort": "Escriu a la sala… @ per esmentar",
+    "extendByQuestions": "Més preguntes"
   },
   "kpi": {
     "running": "En execució",
@@ -399,9 +428,12 @@
     "waitingHint": "Necessita la teva elecció o resposta",
     "waitingNone": "Res et necessita",
     "turns": "Torns d'aquesta setmana",
-    "turnsHint": "En {{count}} sales",
+    "turnsHint_one": "En {{count}} sala",
+    "turnsHint_many": "En {{count}} sales",
+    "turnsHint_other": "En {{count}} sales",
     "models": "Models que hi participen",
-    "modelsNone": "Encara no hi ha participants"
+    "modelsNone": "Encara no hi ha participants",
+    "turnsHint": "En {{count}} sales"
   },
   "waiting": {
     "title": "Esperant-te",
@@ -471,8 +503,11 @@
       "queued": "A la cua",
       "done": "Respost",
       "failed": "Ha fallat",
-      "idle": "Encara sense resposta"
-    }
+      "idle": "Encara sense resposta",
+      "waitingSlot": "En cua: esperant la ranura del model local"
+    },
+    "retry": "Torna-ho a provar",
+    "retryFor": "Torna a provar {{name}}"
   },
   "changes": {
     "summaryOne": "{{count}} fitxer canviat",
@@ -487,24 +522,89 @@
     "state": {
       "kept": "Conservat",
       "discarded": "Descartat",
-      "applied": "Aplicat"
+      "applied": "Aplicat",
+      "idle": "No aplicat"
     },
     "diffTitle": "Canvis a l'espai de treball",
     "diffHint": "Tot el que aquest participant ha canviat al seu espai aïllat.",
-    "applyTitle": "Voleu aplicar-ho a la vostra carpeta?",
-    "applyHint": "Aquest pedaç s'escriurà a la vostra carpeta. Si no s'aplica netament, no es canvia res.",
     "discardTitle": "Voleu descartar aquests canvis?",
     "discardHint": "L'espai del participant torna a l'estat inicial. La vostra carpeta no es toca.",
     "loading": "Carregant el diff…",
     "empty": "Res a aplicar.",
-    "applyConfirm": "Aplica",
     "discardConfirm": "Descarta",
     "scopeTurn": "Aquest torn",
-    "scopeAll": "Des que es va crear l'espai de treball"
+    "scopeAll": "Des que es va crear l'espai de treball",
+    "applyShort": "Aplica",
+    "scopeAllShort": "Tot",
+    "scope": "Quins canvis es mostren",
+    "showAll": "Mostra tots els fitxers ({{count}})",
+    "partial_one": "{{count}} fitxer aplicat",
+    "partial_many": "{{count}} fitxers aplicats",
+    "partial_other": "{{count}} fitxers aplicats",
+    "applyIncludesEarlier_one": "Aplica també {{count}} fitxer anterior encara no aplicat",
+    "applyIncludesEarlier_many": "Aplica també {{count}} fitxers anteriors encara no aplicats",
+    "applyIncludesEarlier_other": "Aplica també {{count}} fitxers anteriors encara no aplicats",
+    "applyTitle": "Voleu aplicar-ho a la vostra carpeta?",
+    "applyHint": "Aquest pedaç s'escriurà a la vostra carpeta. Si no s'aplica netament, no es canvia res.",
+    "applyConfirm": "Aplica"
+  },
+  "apply": {
+    "title_one": "Aplica {{count}} canvi a la teva carpeta",
+    "title_other": "Aplica {{count}} canvis a la teva carpeta",
+    "copyPath": "Copia el camí de la carpeta {{path}}",
+    "pathCopied": "Camí de la carpeta copiat",
+    "files_one": "{{count}} fitxer",
+    "files_other": "{{count}} fitxers",
+    "source": "De {{name}} · ronda {{round}}",
+    "safety": "No s’aplica res si el pedaç no encaixa netament. Ho pots desfer just després.",
+    "checking": "Comprovant si s’aplica a la teva carpeta…",
+    "clean": "S’aplica netament",
+    "checkFailed": "No s’ha pogut comprovar el pedaç: {{message}}",
+    "conflict_one": "{{count}} fitxer no s’aplica a la teva carpeta",
+    "conflict_other": "{{count}} fitxers no s’apliquen a la teva carpeta",
+    "conflictHint": "Deixa’ls fora o demana al participant que els refaci sobre la carpeta tal com és ara.",
+    "notChecked": "no comprovat per separat (massa fitxers)",
+    "fileConflict": "No s’aplica",
+    "leaveOut": "Deixa fora els fitxers en conflicte",
+    "details": "Detalls",
+    "fileDirty": "Les teves edicions",
+    "dirtyTitle_one": "Tens canvis sense confirmar en {{count}} d’aquests fitxers",
+    "dirtyTitle_other": "Tens canvis sense confirmar en {{count}} d’aquests fitxers",
+    "dirtyHint": "El pedaç s’escriu damunt dels teus canvis. Fes commit o stash abans si vols una manera fàcil de tornar enrere.",
+    "selectAll": "Selecciona tots els fitxers",
+    "include": "Inclou {{path}}",
+    "renamedFrom": "(reanomenat des de {{path}})",
+    "status": {
+      "added": "Afegit",
+      "modified": "Modificat",
+      "deleted": "Suprimit",
+      "renamed": "Reanomenat"
+    },
+    "binary": "Fitxer binari canviat. No se’n mostra el contingut.",
+    "noLines": "Cap canvi de línia (només mode o nom).",
+    "showMore_one": "Mostra {{count}} línia més",
+    "showMore_other": "Mostra {{count}} línies més",
+    "hiddenLines_one": "({{count}} amagada)",
+    "hiddenLines_other": "({{count}} amagades)",
+    "blockedConflict": "Aplicar està desactivat: alguns fitxers seleccionats no s’apliquen netament.",
+    "blockedNothing": "Selecciona almenys un fitxer.",
+    "blockedFailed": "Aplicar està desactivat fins que la comprovació funcioni.",
+    "copyPatch": "Copia el pedaç",
+    "patchCopied": "Pedaç copiat",
+    "confirm_one": "Aplica {{count}} fitxer",
+    "confirm_other": "Aplica {{count}} fitxers",
+    "applied_one": "{{count}} fitxer aplicat a la teva carpeta",
+    "applied_other": "{{count}} fitxers aplicats a la teva carpeta",
+    "undo": "Desfés",
+    "undone": "El canvi s’ha retirat de la teva carpeta",
+    "undoFailed": "No s’ha pogut desfer: {{message}}"
   },
   "approvals": {
     "held": "Sala en pausa",
     "heldHint": "La sala s'ha posat en pausa mentre això esperava, així que ja no es pot permetre. Repreneu la sala i el participant ho tornarà a demanar si encara ho necessita.",
-    "dismiss": "Descarta"
+    "dismiss": "Descarta",
+    "heldBanner": "Sala en pausa: aquesta sol·licitud ja no es pot permetre. Reprèn-la per tornar-ho a demanar.",
+    "wantsToRun": "{{origin}} vol executar {{tool}}",
+    "details": "Detalls"
   }
 }

@@ -37,5 +37,16 @@
   "defaultAssistantSection": "Varsayılan Asistan",
   "defaultAssistantDesc": "Yeni bir sohbet başlatılırken kullanılır",
   "allAssistants": "Tüm Asistanlar",
-  "lastUsed": "Son kullanılan"
+  "lastUsed": "Son kullanılan",
+  "starterDescriptions": {
+    "jan": "Flint, karmaşık görevleri düşünerek çözen ve bunları sizin yerinize araçlarla tamamlayan bir masaüstü asistanıdır.",
+    "quartz": "Kanıt, karşılaştırma, hesaplama ve karara hazır sonuçlar için titiz bir araştırma ve analiz uzmanı.",
+    "coal": "Hata ayıklama, uygulama, yeniden düzenleme, test ve kod incelemesi için uygulamacı bir yazılım mühendisi.",
+    "blaze": "Cesur fikirler, adlandırma, UX fikirleri, metin ve özenli yaratıcı işler için bir ürün ve yazı uzmanı.",
+    "redstone": "Tekrarlanabilir iş akışları, entegrasyonlar, operasyonlar ve güvenilir çok adımlı yürütme için bir sistem ve otomasyon uzmanı.",
+    "book-and-quill": "Canlı sahneler ve tutarlı karakterlerle hikâye yazan ve sürdüren bir anlatıcı.",
+    "compass": "Metinleri diller arasında aslına sadık çeviren ve zor ifadeleri işaretleyen bir çevirmen.",
+    "emerald": "Bütçe, kavramlar ve ödünleşimler için bir para yardımcısı. Eğitim amaçlıdır, lisanslı finansal tavsiye değildir.",
+    "book": "Adım adım öğreten ve kısa sorularla anlamayı yoklayan bir ders öğretmeni."
+  }
 }

@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Сланцевый",
+    "vermilion": "Киноварь",
+    "ink": "Чернильный",
+    "moss": "Мох",
+    "slate": "Сланцево-синий",
+    "violet": "Фиолетовый"
+  },
+  "fontSizeNames": {
+    "small": "Мелкий",
+    "medium": "Средний",
+    "large": "Крупный",
+    "extraLarge": "Очень крупный"
+  },
+  "unknownSize": "Размер неизвестен",
+  "official": "Официальный",
+  "configuration": "Настройка",
   "modelCombobox": {
     "refresh": "Обновить модели",
     "placeholder": "Введите или выберите модель..."

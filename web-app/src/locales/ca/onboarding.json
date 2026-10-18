@@ -95,6 +95,7 @@
     "title": "Fes teva la barra lateral",
     "body": "Amaga els elements que no fas servir. Ho pots canviar quan vulguis a Configuració, a Aparença.",
     "customize": "Personalitza la barra lateral",
-    "close": "Fet"
+    "close": "Fet",
+    "bodyMinimal": "Flint comença amb una barra lateral curta. Totes les altres pàgines són a la paleta d'ordres, o les pots tornar a afegir aquí."
   }
 }

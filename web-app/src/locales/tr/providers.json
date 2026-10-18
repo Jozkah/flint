@@ -56,6 +56,10 @@
     "connected": "Bağlı"
   },
   "table": {
+    "contextAutoFit": "otomatik",
+    "contextAuto": "otomatik",
+    "contextAutoFitTitle": "Bağlam boyutu boş, bu yüzden motor model yüklenirken bu pencereyi belleğinize göre ayarladı.",
+    "contextAutoTitle": "Bağlam boyutu boş: motor, model yüklenirken pencereyi seçer.",
     "name": "Ad",
     "file": "Dosya",
     "size": "Boyut",

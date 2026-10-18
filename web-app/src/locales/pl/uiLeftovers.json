@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Łupkowy",
+    "vermilion": "Cynobrowy",
+    "ink": "Atramentowy",
+    "moss": "Mchowy",
+    "slate": "Łupkowy niebieski",
+    "violet": "Fioletowy"
+  },
+  "fontSizeNames": {
+    "small": "Mała",
+    "medium": "Średnia",
+    "large": "Duża",
+    "extraLarge": "Bardzo duża"
+  },
+  "unknownSize": "Nieznany rozmiar",
+  "official": "Oficjalny",
+  "configuration": "Konfiguracja",
   "modelCombobox": {
     "refresh": "Odśwież modele",
     "placeholder": "Wpisz lub wybierz model..."

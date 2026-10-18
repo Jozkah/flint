@@ -24,17 +24,20 @@
     "embeddingSub": "{{count}} एम्बेडिंग मॉडल",
     "addedSub": "Flint में जोड़े गए",
     "repliesToday": "आज के जवाब",
-    "repliesSub": "{{count}} जवाब मापे गए",
+    "repliesSub_one": "{{count}} जवाब मापा गया",
+    "repliesSub_other": "{{count}} जवाब मापे गए",
     "apiKeys": "API कुंजियाँ",
     "fallbackSub": "{{count}} फ़ॉलबैक कुंजियाँ",
     "noFallbackSub": "कोई फ़ॉलबैक कुंजी नहीं",
-    "avgSpeed": "औसत गति"
+    "avgSpeed": "औसत गति",
+    "repliesSub": "{{count}} जवाब मापे गए"
   },
   "loaded": {
     "title": "अभी लोड",
     "empty": "कोई मॉडल लोड नहीं है",
     "emptyHint": "नीचे की तालिका से कोई लोकल मॉडल शुरू करें, या उसे संदेश भेजें।",
-    "unload": "अनलोड करें"
+    "unload": "अनलोड करें",
+    "speedBar": "औसत गति, सबसे तेज़ लोड किए गए मॉडल की तुलना में"
   },
   "speed": {
     "title": "जनरेशन गति",
@@ -108,7 +111,9 @@
     "engineSettings": "इंजन सेटिंग",
     "memorySettings": "मेमोरी और कैश",
     "settingNotSaved": "\"{{setting}}\" सहेजा नहीं गया",
-    "danger": "खतरे का क्षेत्र"
+    "danger": "खतरे का क्षेत्र",
+    "networkNote": "आपके नेटवर्क पर · {{host}} को भेजा जाता है",
+    "reachUnknownNote": "जाँच रहे हैं कि यह प्रदाता कहाँ चलता है"
   },
   "mcp": {
     "title": "टूल और MCP",
@@ -182,5 +187,46 @@
     "kindAudio": "ऑडियो",
     "kindVideo": "वीडियो",
     "htmlPage": "HTML पेज"
+  },
+  "addon": {
+    "offerTitle": "आपके NVIDIA GPU पर ज़्यादा तेज़",
+    "offerBody": "इस GPU पर लोकल मॉडल आम तौर पर Vulkan की तुलना में CUDA इंजन से तेज़ चलते हैं: अक्सर प्रति सेकंड 10-70% ज़्यादा टोकन, और जब मॉडल पूरा VRAM में न समाए तो और भी ज़्यादा। यह लगभग {{size}} का एक बार का डाउनलोड है।",
+    "download": "डाउनलोड करें",
+    "notNow": "अभी नहीं",
+    "dontRemind": "फिर याद न दिलाएँ",
+    "gettingTitle": "CUDA इंजन लाया जा रहा है",
+    "downloading": "{{total}} में से {{received}} डाउनलोड हुआ",
+    "verifying": "डाउनलोड जाँचा जा रहा है...",
+    "installing": "इंस्टॉल हो रहा है...",
+    "vulkanMeanwhile": "तब तक Vulkan इस्तेमाल होता है। अगली बार मॉडल लोड होने पर CUDA काम संभालेगा।",
+    "cancel": "रद्द करें",
+    "installedTitle": "CUDA इंजन इंस्टॉल हो गया",
+    "installedBody": "यह अगली बार मॉडल लोड होने से इस्तेमाल होगा।",
+    "ok": "ठीक है",
+    "failedTitle": "CUDA इंजन नहीं मिल सका",
+    "retry": "फिर कोशिश करें",
+    "driverTitle": "अपना NVIDIA ड्राइवर अपडेट करें",
+    "driverBody": "तेज़ CUDA इंजन इस्तेमाल करने के लिए अपना NVIDIA ड्राइवर अपडेट करें। इंस्टॉल: {{current}}, ज़रूरी: R{{min}} या नया। तब तक Vulkan इस्तेमाल होता है।",
+    "close": "बंद करें",
+    "panelTitle": "इंजन ऐड-ऑन",
+    "panelDesc": "अतिरिक्त GPU इंजन, सिर्फ़ आपके कहने पर डाउनलोड होते हैं। Vulkan बैकअप के रूप में बना रहता है।",
+    "cudaName": "NVIDIA CUDA इंजन",
+    "inUse": "इस्तेमाल में",
+    "unavailableBuild": "इस बिल्ड में इंजन ऐड-ऑन उपलब्ध नहीं हैं।",
+    "installedVersion": "इंस्टॉल: {{version}}, {{size}}",
+    "repairNeeded": "खराब है, इसलिए Vulkan इस्तेमाल हो रहा है। ठीक करने के लिए फिर से डाउनलोड करें।",
+    "notInstalledOffer": "इंस्टॉल नहीं है। इस GPU पर आम तौर पर Vulkan से तेज़ (लगभग {{size}})।",
+    "repair": "ठीक करें",
+    "remove": "हटाएँ",
+    "installFile": "फ़ाइल से इंस्टॉल करें...",
+    "checkAgain": "फिर जाँचें",
+    "remindSetting": "मॉडल लोड होने पर CUDA इंजन सुझाएँ",
+    "errors": {
+      "offline": "GitHub से कनेक्शन नहीं है। बाद में फिर कोशिश करें या फ़ाइल से ऐड-ऑन इंस्टॉल करें।",
+      "notPublished": "इस वर्शन के लिए अभी कोई CUDA इंजन प्रकाशित नहीं हुआ है।",
+      "diskSpace": "CUDA इंजन के लिए डिस्क पर पर्याप्त खाली जगह नहीं है।",
+      "verify": "डाउनलोड जाँच में पास नहीं हुआ और इंस्टॉल नहीं किया गया।",
+      "mismatch": "यह ऐड-ऑन Flint के किसी दूसरे वर्शन के लिए बना है।"
+    }
   }
 }

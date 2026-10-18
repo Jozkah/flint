@@ -146,6 +146,8 @@
     "renderUserMarkdownDesc": "Zobrazí tučné písmo, seznamy, nadpisy a kód ve zprávách, které posíláte. Když je vypnuto, zobrazí se přesně tak, jak byly napsány.",
     "renderHtmlArtifacts": "Vykreslovat artefakty HTML a SVG",
     "renderHtmlArtifactsDesc": "Přidá kartu Náhled k blokům kódu HTML a SVG. HTML spouští stránku vygenerovanou modelem v izolovaném rámci, který provádí vlastní skripty, ale nemá přístup k Flintu, vašim souborům ani k síti; SVG se vykresluje staticky se zakázanými skripty. Ve výchozím stavu vypnuto.",
+    "wrapCodeLines": "Zalamovat dlouhé řádky v blocích kódu",
+    "wrapCodeLinesDesc": "Dlouhé řádky se zalomí na další řádek odsazený pod kódem, místo aby se blok posouval do strany. Tlačítko zalamování v záhlaví bloku kódu přepíná totéž nastavení.",
     "composerRailButtons": "Tlačítka výstupu v poli zprávy Coworku",
     "composerRailButtonsDesc": "Zobrazí Náhled, Kód, Změny, Aktivitu a Časovou osu pod polem zprávy Coworku. Když je vypnuto, panel otevře jedno tlačítko Výstup v záhlaví.",
     "autoGenerateTitle": "Automaticky generovat název chatu",
@@ -425,7 +427,10 @@
     "defaultModelPlaceholder": "Vyberte lokální model",
     "noLocalModels": "Nejsou importovány žádné lokální modely",
     "usage5hAria": "Tokeny za 5 hodin",
-    "usageWeekAria": "Tokeny za týden"
+    "usageWeekAria": "Tokeny za týden",
+    "usageWindow": "Okno",
+    "usageLimit": "Limit",
+    "usageUnsaved": "Neuložené změny"
   },
   "privacy": {
     "analytics": "Analytika",
@@ -689,7 +694,20 @@
     "reduceMotion": "Omezit animace",
     "reduceMotionDesc": "Vypne animace ve Flintu. Flint se neřídí systémovým nastavením, takže animace zůstávají zapnuté, dokud to nepřepnete.",
     "increaseContrast": "Zvýšit kontrast",
-    "increaseContrastDesc": "Zjasní text, aby se lépe četl. Bělejší na tmavém motivu, tmavší na světlém."
+    "increaseContrastDesc": "Zjasní text, aby se lépe četl. Bělejší na tmavém motivu, tmavší na světlém.",
+    "performanceMode": "Režim výkonu",
+    "performanceModeDesc": "Omezený režim vypne rozostření, velké stíny a opakované animace a streamovaný text aktualizuje méně často, pro pomalejší počítače. Automaticky ho zvolí, když se tento počítač jeví jako pomalý.",
+    "performanceModeAuto": "Automaticky",
+    "performanceModeReduced": "Vždy omezený",
+    "performanceModeFull": "Plný",
+    "performanceModeNowReduced": "Nyní: omezený ({{why}})",
+    "performanceModeNowFull": "Nyní: plný",
+    "perfReasonCores": "{{n}} jader",
+    "perfReasonMemory": "{{n}} GB paměti",
+    "perfReasonFrames": "pomalé snímky",
+    "perfReasonMotion": "systém omezuje pohyb",
+    "perfReasonData": "spořič dat",
+    "perfReasonChosen": "zvoleno zde"
   },
   "pageDesc": {
     "general": "Jazyk, datová složka, protokoly a možnosti celé aplikace.",
@@ -823,6 +841,7 @@
         "working": "Pracuje se: hotovo {{done}} z {{total}} úkolů",
         "attention_one": "Vyžaduje vaši pozornost: čeká na vás {{count}} úkol",
         "attention_few": "Vyžaduje vaši pozornost: čekají na vás {{count}} úkoly",
+        "attention_many": "Vyžaduje vaši pozornost: čeká na vás {{count}} úkolů",
         "attention_other": "Vyžaduje vaši pozornost: čeká na vás {{count}} úkolů",
         "review": "Připraveno ke kontrole",
         "merging": "Výsledky se spojují",
@@ -887,9 +906,11 @@
       "story": {
         "wrote_one": "Zapsán {{count}} soubor, +{{added}} −{{removed}} řádků",
         "wrote_few": "Zapsány {{count}} soubory, +{{added}} −{{removed}} řádků",
+        "wrote_many": "Zapsáno souborů: {{count}}, +{{added}} −{{removed}} řádků",
         "wrote_other": "Zapsáno souborů: {{count}}, +{{added}} −{{removed}} řádků",
         "wroteUncounted_one": "Zapsán {{count}} soubor",
         "wroteUncounted_few": "Zapsány {{count}} soubory",
+        "wroteUncounted_many": "Zapsáno souborů: {{count}}",
         "wroteUncounted_other": "Zapsáno souborů: {{count}}",
         "stop": {
           "none": "Zastavilo se to před dokončením.",
@@ -902,6 +923,7 @@
           "finishedNoFiles": "Dokončeno bez změny jakéhokoli souboru.",
           "working_one": "Pracuje se na tom: zatím {{count}} krok.",
           "working_few": "Pracuje se na tom: zatím {{count}} kroky.",
+          "working_many": "Pracuje se na tom: zatím kroků: {{count}}.",
           "working_other": "Pracuje se na tom: zatím kroků: {{count}}.",
           "starting": "Teprve začíná.",
           "conflict": "Dokončeno, ale změny kolidují s tím, co napsaly jiné úkoly.",
@@ -921,18 +943,22 @@
         "noRecord": "Pro tento úkol není k dispozici žádný záznam krok za krokem.",
         "more_one": "a ještě {{count}} krok",
         "more_few": "a ještě {{count}} kroky",
+        "more_many": "a ještě kroků: {{count}}",
         "more_other": "a ještě kroků: {{count}}",
         "step": {
           "read": "Přečteno: {{label}}",
           "readMany_one": "Přečten {{count}} soubor",
           "readMany_few": "Přečteny {{count}} soubory",
+          "readMany_many": "Přečteno souborů: {{count}}",
           "readMany_other": "Přečteno souborů: {{count}}",
           "search_one": "Prohledán projekt",
           "search_few": "Projekt prohledán {{count}}krát",
+          "search_many": "Projekt prohledán {{count}}krát",
           "search_other": "Projekt prohledán {{count}}krát",
           "write": "Zapsáno: {{label}}",
           "writeMany_one": "Zapsán {{count}} soubor",
           "writeMany_few": "Zapsány {{count}} soubory",
+          "writeMany_many": "Zapsáno souborů: {{count}}",
           "writeMany_other": "Zapsáno souborů: {{count}}",
           "ran": "Spuštěno: {{label}}",
           "ranFailed": "Spuštěno: {{label}}, ale selhalo"
@@ -955,6 +981,7 @@
         "plan": "Jak to bylo rozděleno",
         "sideBySide_one": "{{count}} úkol běžel samostatně",
         "sideBySide_few": "Tyto {{count}} úkoly běžely současně",
+        "sideBySide_many": "Těchto úkolů běželo současně: {{count}}",
         "sideBySide_other": "Těchto úkolů běželo současně: {{count}}",
         "waitsFor": "Úkol {{task}} čeká na: {{tasks}}",
         "time": "Čas",
@@ -1026,9 +1053,11 @@
         "title": "Přeskočit „{{task}}“?",
         "body_one": "Čeká na něj {{count}} další úkol. Přeskočit i ten, nebo ho nechat běžet bez tohoto?",
         "body_few": "Čekají na něj {{count}} další úkoly. Přeskočit i je, nebo je nechat běžet bez tohoto?",
+        "body_many": "Čeká na něj dalších úkolů: {{count}}. Přeskočit i je, nebo je nechat běžet bez tohoto?",
         "body_other": "Čeká na něj dalších úkolů: {{count}}. Přeskočit i je, nebo je nechat běžet bez tohoto?",
         "cascade_one": "Přeskočit ho i úkol, který na něj čeká",
         "cascade_few": "Přeskočit ho i {{count}} úkoly, které na něj čekají",
+        "cascade_many": "Přeskočit ho i úkoly, které na něj čekají ({{count}})",
         "cascade_other": "Přeskočit ho i úkoly, které na něj čekají ({{count}})",
         "release": "Přeskočit ho a ostatní spustit bez něj"
       },
@@ -1059,6 +1088,7 @@
       "none": "Tento úkol nezměnil žádné soubory.",
       "files_one": "{{count}} soubor",
       "files_few": "{{count}} soubory",
+      "files_many": "{{count}} souborů",
       "files_other": "{{count}} souborů",
       "namesOnly": "U tohoto úkolu jsou známé jen názvy souborů.",
       "uncommitted": "Část této práce ještě není uložena ve větvi úkolu.",
@@ -1074,6 +1104,7 @@
       "renamedFrom": "Přejmenováno z {{from}}",
       "showMore_one": "Zobrazit ještě {{count}} řádek",
       "showMore_few": "Zobrazit ještě {{count}} řádky",
+      "showMore_many": "Zobrazit ještě řádků: {{count}}",
       "showMore_other": "Zobrazit ještě řádků: {{count}}",
       "fileCut": "Tato změna je dlouhá, proto se zobrazuje jen začátek.",
       "noPatch": "Pro tento soubor není k dispozici zobrazení po řádcích."
@@ -1209,10 +1240,17 @@
       "header": "Nahoře a dole"
     },
     "showItem": "Zobrazit {{item}} v postranním panelu",
+    "hideItem": "Skrýt {{item}} z postranního panelu",
     "alwaysShown": "Vždy zobrazeno",
     "showAll": "Zobrazit vše",
     "preview": "Náhled",
-    "reachable": "Skryté položky zůstávají dostupné z palety příkazů a z Nastavení."
+    "reachable": "Skryté položky zůstávají dostupné z palety příkazů a z Nastavení.",
+    "presets": {
+      "label": "Předvolby",
+      "minimal": "Minimální",
+      "standard": "Standardní",
+      "everything": "Vše"
+    }
   },
   "memoryPage": {
     "useSaved": "Používat uloženou paměť v konverzacích",
@@ -1288,7 +1326,8 @@
       "used_other": "použito {{count}}krát",
       "lastUsed": "naposledy použito {{when}}",
       "never": "nikdy",
-      "used_few": "použito {{count}}krát"
+      "used_few": "použito {{count}}krát",
+      "used_many": "použito {{count}}krát"
     },
     "pin": "Připnout",
     "unpin": "Odepnout",
@@ -1333,9 +1372,19 @@
       "importedCount_other": "Importováno {{count}} vzpomínek",
       "importFailed": "Vzpomínky se nepodařilo importovat",
       "forgotCount_few": "Zapomenuty {{count}} vzpomínky",
+      "forgotCount_many": "Zapomenuto {{count}} vzpomínek",
       "exportedCount_few": "Exportovány {{count}} vzpomínky",
-      "importedCount_few": "Importovány {{count}} vzpomínky"
-    }
+      "exportedCount_many": "Exportováno {{count}} vzpomínek",
+      "importedCount_few": "Importovány {{count}} vzpomínky",
+      "importedCount_many": "Importováno {{count}} vzpomínek"
+    },
+    "fileActionsAria": "Exportovat nebo importovat paměti",
+    "noMatchHint": "Zkontrolujte pravopis nebo vymažte hledání a zobrazte vše.",
+    "emptyHint": "Napište něco výše, nebo nechte Flint pamatovat si během chatu.",
+    "footerCount_one": "1 paměť v tomto rozsahu",
+    "footerCount_few": "{{count}} paměti v tomto rozsahu",
+    "footerCount_many": "{{count}} paměti v tomto rozsahu",
+    "footerCount_other": "{{count}} pamětí v tomto rozsahu"
   },
   "chatMentions": {
     "title": "Zmínky o konverzacích",

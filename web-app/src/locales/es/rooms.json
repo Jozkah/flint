@@ -12,8 +12,12 @@
     "open": "Abrir {{title}}",
     "delete": "Eliminar",
     "deleteLabel": "Eliminar {{title}}",
-    "participants": "{{count}} participantes",
-    "turns": "{{count}} turnos",
+    "participants_one": "{{count}} participante",
+    "participants_many": "{{count}} participantes",
+    "participants_other": "{{count}} participantes",
+    "turns_one": "{{count}} turno",
+    "turns_many": "{{count}} turnos",
+    "turns_other": "{{count}} turnos",
     "updated": "Actualizada {{time}}",
     "untitled": "Sala sin título",
     "moreLabel": "Más acciones para {{title}}",
@@ -21,7 +25,9 @@
     "noParticipants": "Aún no hay participantes",
     "noPreview": "Abre la sala para ver el debate.",
     "tokens": "{{count}} tokens",
-    "yours": "Tus salas"
+    "yours": "Tus salas",
+    "participants": "{{count}} participantes",
+    "turns": "{{count}} turnos"
   },
   "create": {
     "title": "Sala nueva",
@@ -76,6 +82,9 @@
     "heading": "Ajustes de la sala",
     "sectionGeneral": "General",
     "sectionDiscussion": "Debate y moderador",
+    "sectionIdentity": "Identidad",
+    "sectionModel": "Modelo y razonamiento",
+    "sectionTools": "Herramientas",
     "lockedWhileRunning": "Pausa la sala para cambiar los ajustes.",
     "title": "Título",
     "objective": "Objetivo",
@@ -191,8 +200,10 @@
     "isolation": {
       "active": "Cada participante que puede editar trabaja en su propio espacio aislado, así que no pueden sobrescribirse entre sí ni tu carpeta.",
       "unavailable": "Espacio aislado no disponible: {{reason}}. Los participantes que pueden editar solo leen en esta sala.",
-      "untrusted": "la carpeta no es de confianza"
-    }
+      "untrusted": "la carpeta no es de confianza",
+      "trust": "Confiar en esta carpeta"
+    },
+    "saving": "Guardando…"
   },
   "limits": {
     "maxRounds": "Rondas",
@@ -278,7 +289,18 @@
       "tools": "Usó herramientas, pero no escribió ninguna respuesta de texto.",
       "none": "Sin respuesta de texto."
     },
-    "thought": "Razonamiento"
+    "thought": "Razonamiento",
+    "answerFrom": "Respuesta de {{name}}",
+    "expandAnswer": "Mostrar toda la respuesta de {{name}}",
+    "collapseAnswer": "Acortar la respuesta de {{name}}",
+    "expand": "Expandir",
+    "collapse": "Contraer",
+    "linkScroll": "Desplazamiento vinculado",
+    "linkScrollHint": "Desplazar juntas las respuestas a una misma pregunta",
+    "continuePrompt": "Continúa tu respuesta anterior desde donde se cortó.",
+    "catchUp": "Puesta al día: también respondió {{count}} preguntas anteriores",
+    "catchUp_one": "Puesta al día: también respondió 1 pregunta anterior",
+    "catchUpHint": "Este participante se unió después de estas preguntas, así que esta respuesta también las responde:"
   },
   "unknownWindow": {
     "title": "Ventana de contexto desconocida",
@@ -329,7 +351,9 @@
     "speaking": "{{name}} está hablando",
     "compacting": "{{name}} se está poniendo al día",
     "draft": "Listo para empezar",
-    "draftHint": "{{count}} participantes · {{mode}}",
+    "draftHint_one": "{{count}} participante · {{mode}}",
+    "draftHint_many": "{{count}} participantes · {{mode}}",
+    "draftHint_other": "{{count}} participantes · {{mode}}",
     "running": "Debate en curso",
     "runningHint": "El siguiente orador se está preparando.",
     "awaiting-user": "Te toca elegir",
@@ -348,7 +372,9 @@
     "failedHint": "Inicia de nuevo para reintentar.",
     "round": "Ronda",
     "turn": "Turno",
-    "of": "de"
+    "of": "de",
+    "question": "Pregunta",
+    "draftHint": "{{count}} participantes · {{mode}}"
   },
   "usage": {
     "label": "Uso",
@@ -361,7 +387,8 @@
     "time": "Tiempo",
     "of": "{{value}} / {{max}}",
     "noLimit": "sin límite",
-    "stopReason": "Detenida: {{reason}}"
+    "stopReason": "Detenida: {{reason}}",
+    "questions": "Preguntas"
   },
   "stopReason": {
     "user": "detenida por ti",
@@ -390,7 +417,9 @@
     "toShort": "Para",
     "placeholderTo": "Escribe a {{name}}…",
     "mention": "Mencionar a un participante",
-    "dropSkipped": "No se añadió (no es texto, es una carpeta o supera el límite del mensaje): {{files}}"
+    "dropSkipped": "No se añadió (no es texto, es una carpeta o supera el límite del mensaje): {{files}}",
+    "placeholderShort": "Escribe a la sala… @ para mencionar",
+    "extendByQuestions": "Más preguntas"
   },
   "kpi": {
     "running": "En ejecución",
@@ -399,9 +428,12 @@
     "waitingHint": "Necesita tu elección o respuesta",
     "waitingNone": "Nada te necesita",
     "turns": "Turnos esta semana",
-    "turnsHint": "En {{count}} salas",
+    "turnsHint_one": "En {{count}} sala",
+    "turnsHint_many": "En {{count}} salas",
+    "turnsHint_other": "En {{count}} salas",
     "models": "Modelos participantes",
-    "modelsNone": "Aún no hay participantes"
+    "modelsNone": "Aún no hay participantes",
+    "turnsHint": "En {{count}} salas"
   },
   "waiting": {
     "title": "Esperándote",
@@ -471,8 +503,11 @@
       "queued": "En cola",
       "done": "Respondido",
       "failed": "Falló",
-      "idle": "Aún sin respuesta"
-    }
+      "idle": "Aún sin respuesta",
+      "waitingSlot": "En cola: esperando la ranura del modelo local"
+    },
+    "retry": "Reintentar",
+    "retryFor": "Reintentar {{name}}"
   },
   "changes": {
     "summaryOne": "{{count}} archivo cambiado",
@@ -487,24 +522,89 @@
     "state": {
       "kept": "Conservado",
       "discarded": "Descartado",
-      "applied": "Aplicado"
+      "applied": "Aplicado",
+      "idle": "Sin aplicar"
     },
     "diffTitle": "Cambios en el espacio de trabajo",
     "diffHint": "Todo lo que este participante cambió en su espacio aislado.",
-    "applyTitle": "¿Aplicar a tu carpeta?",
-    "applyHint": "Este parche se escribirá en tu carpeta. Si no se aplica limpiamente, no se cambia nada.",
     "discardTitle": "¿Descartar estos cambios?",
     "discardHint": "El espacio del participante vuelve a su estado inicial. Tu carpeta no se toca.",
     "loading": "Cargando el diff…",
     "empty": "Nada que aplicar.",
-    "applyConfirm": "Aplicar",
     "discardConfirm": "Descartar",
     "scopeTurn": "Este turno",
-    "scopeAll": "Desde que se creó el espacio de trabajo"
+    "scopeAll": "Desde que se creó el espacio de trabajo",
+    "applyShort": "Aplicar",
+    "scopeAllShort": "Todo",
+    "scope": "Qué cambios mostrar",
+    "showAll": "Mostrar todos los archivos ({{count}})",
+    "partial_one": "{{count}} archivo aplicado",
+    "partial_many": "{{count}} archivos aplicados",
+    "partial_other": "{{count}} archivos aplicados",
+    "applyIncludesEarlier_one": "Aplicar incluye también {{count}} archivo anterior aún sin aplicar",
+    "applyIncludesEarlier_many": "Aplicar incluye también {{count}} archivos anteriores aún sin aplicar",
+    "applyIncludesEarlier_other": "Aplicar incluye también {{count}} archivos anteriores aún sin aplicar",
+    "applyTitle": "¿Aplicar a tu carpeta?",
+    "applyHint": "Este parche se escribirá en tu carpeta. Si no se aplica limpiamente, no se cambia nada.",
+    "applyConfirm": "Aplicar"
+  },
+  "apply": {
+    "title_one": "Aplicar {{count}} cambio a tu carpeta",
+    "title_other": "Aplicar {{count}} cambios a tu carpeta",
+    "copyPath": "Copiar la ruta de la carpeta {{path}}",
+    "pathCopied": "Ruta de la carpeta copiada",
+    "files_one": "{{count}} archivo",
+    "files_other": "{{count}} archivos",
+    "source": "De {{name}} · ronda {{round}}",
+    "safety": "No se aplica nada si el parche no encaja limpiamente. Puedes deshacerlo justo después.",
+    "checking": "Comprobando si se aplica a tu carpeta…",
+    "clean": "Se aplica limpiamente",
+    "checkFailed": "No se pudo comprobar el parche: {{message}}",
+    "conflict_one": "{{count}} archivo no se aplica a tu carpeta",
+    "conflict_other": "{{count}} archivos no se aplican a tu carpeta",
+    "conflictHint": "Déjalos fuera o pide al participante que los rehaga sobre tu carpeta tal como está ahora.",
+    "notChecked": "no comprobado por separado (demasiados archivos)",
+    "fileConflict": "No se aplica",
+    "leaveOut": "Dejar fuera los archivos en conflicto",
+    "details": "Detalles",
+    "fileDirty": "Tus ediciones",
+    "dirtyTitle_one": "Tienes cambios sin confirmar en {{count}} de estos archivos",
+    "dirtyTitle_other": "Tienes cambios sin confirmar en {{count}} de estos archivos",
+    "dirtyHint": "El parche se escribe encima de tus cambios. Haz commit o stash antes si quieres una forma fácil de volver.",
+    "selectAll": "Seleccionar todos los archivos",
+    "include": "Incluir {{path}}",
+    "renamedFrom": "(renombrado desde {{path}})",
+    "status": {
+      "added": "Añadido",
+      "modified": "Modificado",
+      "deleted": "Eliminado",
+      "renamed": "Renombrado"
+    },
+    "binary": "Archivo binario cambiado. Su contenido no se muestra.",
+    "noLines": "Sin cambios de líneas (solo modo o nombre).",
+    "showMore_one": "Mostrar {{count}} línea más",
+    "showMore_other": "Mostrar {{count}} líneas más",
+    "hiddenLines_one": "({{count}} oculta)",
+    "hiddenLines_other": "({{count}} ocultas)",
+    "blockedConflict": "Aplicar está desactivado: algunos archivos seleccionados no se aplican limpiamente.",
+    "blockedNothing": "Selecciona al menos un archivo.",
+    "blockedFailed": "Aplicar está desactivado hasta que la comprobación funcione.",
+    "copyPatch": "Copiar parche",
+    "patchCopied": "Parche copiado",
+    "confirm_one": "Aplicar {{count}} archivo",
+    "confirm_other": "Aplicar {{count}} archivos",
+    "applied_one": "{{count}} archivo aplicado a tu carpeta",
+    "applied_other": "{{count}} archivos aplicados a tu carpeta",
+    "undo": "Deshacer",
+    "undone": "El cambio se retiró de tu carpeta",
+    "undoFailed": "No se pudo deshacer: {{message}}"
   },
   "approvals": {
     "held": "Sala en pausa",
     "heldHint": "La sala se pausó mientras esto esperaba, así que ya no se puede permitir. Reanuda la sala y el participante volverá a preguntar si aún lo necesita.",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "heldBanner": "Sala en pausa: esta solicitud ya no se puede permitir. Reanuda para volver a preguntar.",
+    "wantsToRun": "{{origin}} quiere ejecutar {{tool}}",
+    "details": "Detalles"
   }
 }

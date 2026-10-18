@@ -72,5 +72,36 @@
     "remote": "Remote",
     "searchModels": "Search models...",
     "noModels": "No models found for \"{{search}}\""
+  },
+  "serverFolders": {
+    "title": "Choose a server folder",
+    "description": "Folders this server allows sessions to use.",
+    "roots": "Server folders",
+    "off": "No folders are shared. Start the server with --agent-root <folder>.",
+    "loading": "Loading folders...",
+    "up": "Up",
+    "empty": "No folders here.",
+    "truncated": "Only the first 500 folders are shown.",
+    "choose": "Use this folder"
+  },
+  "serverSession": {
+    "title": "New server session",
+    "description": "Runs on the server in one of its folders, with the model you choose.",
+    "notReady": "This server does not run sessions yet.",
+    "folder": "Folder: {{path}}",
+    "noFolder": "none chosen",
+    "prompt": "First message",
+    "promptPlaceholder": "What should the session do?",
+    "start": "Start session",
+    "starting": "Starting...",
+    "newButton": "New server session",
+    "badge": "Server session, {{status}}",
+    "runsWith": "Runs with {{model}}",
+    "status": {
+      "running": "running",
+      "idle": "idle",
+      "awaiting_approval": "waiting for approval",
+      "awaiting_answer": "waiting for an answer"
+    }
   }
 }

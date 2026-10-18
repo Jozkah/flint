@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Slate",
+    "vermilion": "Vermilion",
+    "ink": "Ink",
+    "moss": "Moss",
+    "slate": "Slate blue",
+    "violet": "Violet"
+  },
+  "fontSizeNames": {
+    "small": "Small",
+    "medium": "Medium",
+    "large": "Large",
+    "extraLarge": "Extra large"
+  },
+  "unknownSize": "Unknown size",
+  "official": "Official",
+  "configuration": "Configuration",
   "modelCombobox": {
     "refresh": "Refresh models",
     "placeholder": "Type or select a model..."

@@ -95,6 +95,7 @@
     "title": "Make the sidebar yours",
     "body": "Hide the items you don't use. You can change this any time in Settings, under Appearance.",
     "customize": "Customize sidebar",
-    "close": "Done"
+    "close": "Done",
+    "bodyMinimal": "Flint starts with a short sidebar. Every other page is in the command palette, or add it back here."
   }
 }

@@ -72,5 +72,36 @@
     "remote": "Jarak jauh",
     "searchModels": "Cari model...",
     "noModels": "Tidak ada model untuk \"{{search}}\""
+  },
+  "serverFolders": {
+    "title": "Pilih folder server",
+    "description": "Folder yang diizinkan server ini untuk sesi.",
+    "roots": "Folder server",
+    "off": "Tidak ada folder yang dibagikan. Jalankan server dengan --agent-root <folder>.",
+    "loading": "Memuat folder...",
+    "up": "Naik",
+    "empty": "Tidak ada folder di sini.",
+    "truncated": "Hanya 500 folder pertama yang ditampilkan.",
+    "choose": "Gunakan folder ini"
+  },
+  "serverSession": {
+    "title": "Sesi server baru",
+    "description": "Berjalan di server dalam salah satu foldernya, dengan model yang Anda pilih.",
+    "notReady": "Server ini belum menjalankan sesi.",
+    "folder": "Folder: {{path}}",
+    "noFolder": "belum dipilih",
+    "prompt": "Pesan pertama",
+    "promptPlaceholder": "Apa yang harus dilakukan sesi?",
+    "start": "Mulai sesi",
+    "starting": "Memulai...",
+    "newButton": "Sesi server baru",
+    "badge": "Sesi server, {{status}}",
+    "runsWith": "Memakai {{model}}",
+    "status": {
+      "running": "berjalan",
+      "idle": "diam",
+      "awaiting_approval": "menunggu persetujuan",
+      "awaiting_answer": "menunggu jawaban"
+    }
   }
 }

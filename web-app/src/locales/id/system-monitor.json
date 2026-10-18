@@ -1,4 +1,5 @@
 {
+  "vramUsed": "VRAM terpakai",
   "title": "Monitor Sistem",
   "cpuUsage": "Penggunaan CPU",
   "model": "Model",
@@ -70,5 +71,6 @@
   "processor": "Prosesor",
   "graphics": "Grafis",
   "freeVram": "VRAM Bebas",
-  "apiVersion": "Versi API"
+  "apiVersion": "Versi API",
+  "measuring": "Mengukur…"
 }

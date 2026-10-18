@@ -65,10 +65,10 @@
   "reportIssue": "Problem melden",
   "appVersion": "App Version",
   "dataFolder": {
-    "appData": "App Daten",
+    "appData": "App-Daten",
     "appDataDesc": "Standardspeicherort für Nachrichten und andere Benutzerdaten.",
     "unavailable": "Dein Datenordner {{path}} ist gerade nicht verfügbar: Das Laufwerk ist möglicherweise getrennt, oder der Ordner wurde verschoben. Flint verwendet den oben gezeigten Standardordner, bis er wieder da ist. Deine Einstellung wurde nicht geändert.",
-    "appLogs": "App Logs",
+    "appLogs": "App-Protokolle",
     "appLogsDesc": "Zeige detaillierte Logs der App an."
   },
   "others": {
@@ -144,6 +144,8 @@
     "renderUserMarkdownDesc": "Zeigt Fettdruck, Listen, Überschriften und Code in deinen gesendeten Nachrichten. Wenn aus, erscheinen sie genau so, wie du sie getippt hast.",
     "renderHtmlArtifacts": "HTML- & SVG-Artefakte rendern",
     "renderHtmlArtifactsDesc": "Fügt HTML- und SVG-Codeblöcken einen Vorschau-Tab hinzu. HTML führt die vom Modell erzeugte Seite in einem Sandbox-Frame aus, der eigene Skripte ausführt, aber nicht auf Flint, deine Dateien oder das Netzwerk zugreifen kann; SVG wird statisch ohne Skripte gerendert. Standardmäßig aus.",
+    "wrapCodeLines": "Lange Zeilen in Codeblöcken umbrechen",
+    "wrapCodeLinesDesc": "Lange Zeilen werden in die nächste Zeile umbrochen und unter dem Code eingerückt, statt den Block seitlich zu scrollen. Die Umbruch-Schaltfläche im Kopf eines Codeblocks schaltet dieselbe Einstellung um.",
     "composerRailButtons": "Ausgabe-Schaltflächen im Cowork-Eingabefeld",
     "composerRailButtonsDesc": "Zeigt Vorschau, Code, Änderungen, Aktivität und Zeitleiste unter dem Cowork-Nachrichtenfeld an. Wenn aus, öffnet eine einzelne Ausgabe-Schaltfläche in der Kopfzeile den Bereich.",
     "autoGenerateTitle": "Chat-Titel automatisch generieren",
@@ -421,7 +423,10 @@
     "defaultModelPlaceholder": "Ein lokales Modell auswählen",
     "noLocalModels": "Keine lokalen Modelle importiert",
     "usage5hAria": "Tokens pro 5 Stunden",
-    "usageWeekAria": "Tokens pro Woche"
+    "usageWeekAria": "Tokens pro Woche",
+    "usageWindow": "Zeitfenster",
+    "usageLimit": "Limit",
+    "usageUnsaved": "Ungespeicherte Änderungen"
   },
   "privacy": {
     "analytics": "Analytik",
@@ -685,7 +690,20 @@
     "reduceMotion": "Bewegung reduzieren",
     "reduceMotionDesc": "Schaltet Animationen in Flint aus. Flint folgt nicht der Systemeinstellung, daher bleiben Animationen an, sofern du das nicht umstellst.",
     "increaseContrast": "Kontrast erhöhen",
-    "increaseContrastDesc": "Macht Text heller, damit er leichter lesbar ist. Weißer im dunklen Design, dunkler im hellen Design."
+    "increaseContrastDesc": "Macht Text heller, damit er leichter lesbar ist. Weißer im dunklen Design, dunkler im hellen Design.",
+    "performanceMode": "Leistungsmodus",
+    "performanceModeDesc": "Reduziert schaltet Unschärfe, große Schatten und Endlosanimationen ab und aktualisiert gestreamten Text seltener, für langsamere Computer. Automatisch wählt ihn, wenn dieser Computer langsam wirkt.",
+    "performanceModeAuto": "Automatisch",
+    "performanceModeReduced": "Immer reduziert",
+    "performanceModeFull": "Voll",
+    "performanceModeNowReduced": "Derzeit: reduziert ({{why}})",
+    "performanceModeNowFull": "Derzeit: voll",
+    "perfReasonCores": "{{n}} Kerne",
+    "perfReasonMemory": "{{n}} GB Arbeitsspeicher",
+    "perfReasonFrames": "langsame Bilder",
+    "perfReasonMotion": "System reduziert Bewegung",
+    "perfReasonData": "Datensparmodus",
+    "perfReasonChosen": "hier gewählt"
   },
   "pageDesc": {
     "general": "Sprache, Datenordner, Protokolle und App-weite Optionen.",
@@ -1190,10 +1208,17 @@
       "header": "Oben und unten"
     },
     "showItem": "{{item}} in der Seitenleiste anzeigen",
+    "hideItem": "{{item}} in der Seitenleiste ausblenden",
     "alwaysShown": "Immer sichtbar",
     "showAll": "Alle anzeigen",
     "preview": "Vorschau",
-    "reachable": "Ausgeblendete Einträge bleiben über die Befehlspalette und die Einstellungen erreichbar."
+    "reachable": "Ausgeblendete Einträge bleiben über die Befehlspalette und die Einstellungen erreichbar.",
+    "presets": {
+      "label": "Vorlagen",
+      "minimal": "Schlank",
+      "standard": "Normal",
+      "everything": "Alles"
+    }
   },
   "memoryPage": {
     "useSaved": "Gespeicherte Erinnerungen in Unterhaltungen verwenden",
@@ -1312,7 +1337,12 @@
       "importedCount_one": "{{count}} Erinnerung importiert",
       "importedCount_other": "{{count}} Erinnerungen importiert",
       "importFailed": "Die Erinnerungen ließen sich nicht importieren"
-    }
+    },
+    "fileActionsAria": "Erinnerungen exportieren oder importieren",
+    "noMatchHint": "Prüfen Sie die Schreibweise oder leeren Sie die Suche, um alles zu sehen.",
+    "emptyHint": "Schreiben Sie oben etwas auf, oder lassen Sie Flint beim Chatten lernen.",
+    "footerCount_one": "1 Erinnerung in diesem Bereich",
+    "footerCount_other": "{{count}} Erinnerungen in diesem Bereich"
   },
   "chatMentions": {
     "title": "Erwähnte Unterhaltungen",

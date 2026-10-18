@@ -56,6 +56,10 @@
     "connected": "Connesso"
   },
   "table": {
+    "contextAutoFit": "auto-adatta",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "La dimensione del contesto è vuota, quindi il motore ha adattato questa finestra alla memoria al caricamento del modello.",
+    "contextAutoTitle": "La dimensione del contesto è vuota: il motore sceglie la finestra al caricamento del modello.",
     "name": "Nome",
     "file": "File",
     "size": "Dimensione",

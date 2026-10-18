@@ -12,8 +12,8 @@
     "open": "{{title}} 열기",
     "delete": "삭제",
     "deleteLabel": "{{title}} 삭제",
-    "participants": "참여자 {{count}}명",
-    "turns": "{{count}}턴",
+    "participants_other": "참가자 {{count}}명",
+    "turns_other": "{{count}}턴",
     "updated": "{{time}}에 업데이트됨",
     "untitled": "제목 없는 룸",
     "moreLabel": "{{title}} 추가 작업",
@@ -21,7 +21,9 @@
     "noParticipants": "아직 참여자가 없습니다",
     "noPreview": "룸을 열어 토론을 확인하세요.",
     "tokens": "토큰 {{count}}개",
-    "yours": "내 룸"
+    "yours": "내 룸",
+    "participants": "참여자 {{count}}명",
+    "turns": "{{count}}턴"
   },
   "create": {
     "title": "새 룸",
@@ -76,6 +78,9 @@
     "heading": "룸 설정",
     "sectionGeneral": "일반",
     "sectionDiscussion": "토론 및 사회자",
+    "sectionIdentity": "정체성",
+    "sectionModel": "모델 및 추론",
+    "sectionTools": "도구",
     "lockedWhileRunning": "설정을 변경하려면 룸을 일시 중지하세요.",
     "title": "제목",
     "objective": "목표",
@@ -191,8 +196,10 @@
     "isolation": {
       "active": "편집할 수 있는 참가자마다 자체 격리 작업 공간에서 작업하므로 서로나 내 폴더를 덮어쓸 수 없습니다.",
       "unavailable": "격리 작업 공간을 사용할 수 없음: {{reason}}. 편집할 수 있는 참가자는 이 룸에서 읽기만 합니다.",
-      "untrusted": "폴더를 신뢰하지 않음"
-    }
+      "untrusted": "폴더를 신뢰하지 않음",
+      "trust": "이 폴더 신뢰"
+    },
+    "saving": "저장 중…"
   },
   "limits": {
     "maxRounds": "라운드",
@@ -278,7 +285,18 @@
       "tools": "도구를 사용했지만 텍스트 답변은 없습니다.",
       "none": "텍스트 답변이 없습니다."
     },
-    "thought": "생각"
+    "thought": "생각",
+    "answerFrom": "{{name}}의 답변",
+    "expandAnswer": "{{name}}의 답변 전체 보기",
+    "collapseAnswer": "{{name}}의 답변 줄이기",
+    "expand": "펼치기",
+    "collapse": "접기",
+    "linkScroll": "스크롤 연동",
+    "linkScrollHint": "한 질문에 대한 답변을 함께 스크롤",
+    "continuePrompt": "잘린 부분부터 이전 답변을 이어서 작성하세요.",
+    "catchUp": "따라잡기: 이전 질문 {{count}}개에도 답했습니다",
+    "catchUp_one": "따라잡기: 이전 질문 1개에도 답했습니다",
+    "catchUpHint": "이 참가자는 이 질문들 이후에 참여했으므로 이 답변이 해당 질문에도 답합니다:"
   },
   "unknownWindow": {
     "title": "컨텍스트 창을 알 수 없음",
@@ -329,7 +347,7 @@
     "speaking": "{{name}}이(가) 발언 중",
     "compacting": "{{name}}이(가) 내용을 따라잡는 중",
     "draft": "시작 준비됨",
-    "draftHint": "참여자 {{count}}명 · {{mode}}",
+    "draftHint_other": "참가자 {{count}}명 · {{mode}}",
     "running": "토론 진행 중",
     "runningHint": "다음 발언자가 준비하고 있습니다.",
     "awaiting-user": "선택할 차례입니다",
@@ -348,7 +366,9 @@
     "failedHint": "다시 시작하여 재시도하세요.",
     "round": "라운드",
     "turn": "턴",
-    "of": "/"
+    "of": "/",
+    "question": "질문",
+    "draftHint": "참여자 {{count}}명 · {{mode}}"
   },
   "usage": {
     "label": "사용량",
@@ -361,7 +381,8 @@
     "time": "시간",
     "of": "{{value}} / {{max}}",
     "noLimit": "한도 없음",
-    "stopReason": "중지됨: {{reason}}"
+    "stopReason": "중지됨: {{reason}}",
+    "questions": "질문"
   },
   "stopReason": {
     "user": "사용자가 중지함",
@@ -390,7 +411,9 @@
     "toShort": "받는 사람",
     "placeholderTo": "{{name}}에게 글을 쓰세요…",
     "mention": "참여자 멘션",
-    "dropSkipped": "추가되지 않음(텍스트가 아니거나, 폴더이거나, 메시지 한도를 초과함): {{files}}"
+    "dropSkipped": "추가되지 않음(텍스트가 아니거나, 폴더이거나, 메시지 한도를 초과함): {{files}}",
+    "placeholderShort": "룸에 쓰기… @로 언급",
+    "extendByQuestions": "추가 질문"
   },
   "kpi": {
     "running": "실행 중",
@@ -399,9 +422,10 @@
     "waitingHint": "선택이나 답변이 필요합니다",
     "waitingNone": "확인할 것이 없습니다",
     "turns": "이번 주 턴",
-    "turnsHint": "룸 {{count}}개 합계",
+    "turnsHint_other": "{{count}}개 룸 전체",
     "models": "참여 중인 모델",
-    "modelsNone": "아직 참여자가 없습니다"
+    "modelsNone": "아직 참여자가 없습니다",
+    "turnsHint": "룸 {{count}}개 합계"
   },
   "waiting": {
     "title": "사용자 대기 중",
@@ -471,8 +495,11 @@
       "queued": "대기 중",
       "done": "답변함",
       "failed": "실패",
-      "idle": "아직 답변 없음"
-    }
+      "idle": "아직 답변 없음",
+      "waitingSlot": "대기 중: 로컬 모델 슬롯을 기다리는 중"
+    },
+    "retry": "다시 시도",
+    "retryFor": "{{name}} 다시 시도"
   },
   "changes": {
     "summaryOne": "파일 {{count}}개 변경됨",
@@ -487,24 +514,85 @@
     "state": {
       "kept": "유지됨",
       "discarded": "버려짐",
-      "applied": "적용됨"
+      "applied": "적용됨",
+      "idle": "적용 안 됨"
     },
     "diffTitle": "작업 공간의 변경 사항",
     "diffHint": "이 참가자가 격리 작업 공간에서 바꾼 모든 것.",
-    "applyTitle": "내 폴더에 적용할까요?",
-    "applyHint": "이 패치가 내 폴더에 기록됩니다. 깨끗하게 적용되지 않으면 아무것도 바뀌지 않습니다.",
     "discardTitle": "이 변경 사항을 버릴까요?",
     "discardHint": "참가자의 작업 공간이 처음 상태로 돌아갑니다. 내 폴더는 건드리지 않습니다.",
     "loading": "diff 불러오는 중…",
     "empty": "적용할 것이 없습니다.",
-    "applyConfirm": "적용",
     "discardConfirm": "버리기",
     "scopeTurn": "이번 차례",
-    "scopeAll": "작업 공간을 만든 이후"
+    "scopeAll": "작업 공간을 만든 이후",
+    "applyShort": "적용",
+    "scopeAllShort": "전체",
+    "scope": "표시할 변경 사항",
+    "showAll": "모든 파일 표시 ({{count}})",
+    "partial_other": "파일 {{count}}개 적용됨",
+    "applyIncludesEarlier_other": "적용하면 아직 적용하지 않은 이전 파일 {{count}}개도 포함됩니다",
+    "applyTitle": "내 폴더에 적용할까요?",
+    "applyHint": "이 패치가 내 폴더에 기록됩니다. 깨끗하게 적용되지 않으면 아무것도 바뀌지 않습니다.",
+    "applyConfirm": "적용"
+  },
+  "apply": {
+    "title_one": "변경 {{count}}개를 내 폴더에 적용",
+    "title_other": "변경 {{count}}개를 내 폴더에 적용",
+    "copyPath": "폴더 경로 {{path}} 복사",
+    "pathCopied": "폴더 경로를 복사했습니다",
+    "files_one": "파일 {{count}}개",
+    "files_other": "파일 {{count}}개",
+    "source": "{{name}} · {{round}}라운드",
+    "safety": "패치가 깔끔하게 적용되지 않으면 아무것도 적용되지 않습니다. 적용 직후 되돌릴 수 있습니다.",
+    "checking": "내 폴더에 적용되는지 확인하는 중…",
+    "clean": "깔끔하게 적용됩니다",
+    "checkFailed": "패치를 확인할 수 없습니다: {{message}}",
+    "conflict_one": "파일 {{count}}개가 내 폴더에 적용되지 않습니다",
+    "conflict_other": "파일 {{count}}개가 내 폴더에 적용되지 않습니다",
+    "conflictHint": "제외하거나, 지금 폴더 상태에 맞춰 다시 만들어 달라고 참가자에게 요청하세요.",
+    "notChecked": "개별 확인 안 함(파일이 너무 많음)",
+    "fileConflict": "적용되지 않음",
+    "leaveOut": "충돌하는 파일 제외",
+    "details": "자세히",
+    "fileDirty": "내 편집",
+    "dirtyTitle_one": "이 중 파일 {{count}}개에 커밋하지 않은 변경이 있습니다",
+    "dirtyTitle_other": "이 중 파일 {{count}}개에 커밋하지 않은 변경이 있습니다",
+    "dirtyHint": "패치는 내 수정 내용 위에 쓰입니다. 쉽게 되돌리려면 먼저 commit 또는 stash 하세요.",
+    "selectAll": "모든 파일 선택",
+    "include": "{{path}} 포함",
+    "renamedFrom": "({{path}}에서 이름 변경)",
+    "status": {
+      "added": "추가됨",
+      "modified": "수정됨",
+      "deleted": "삭제됨",
+      "renamed": "이름 변경"
+    },
+    "binary": "바이너리 파일이 변경되었습니다. 내용은 표시되지 않습니다.",
+    "noLines": "변경된 줄 없음(모드나 이름만 변경).",
+    "showMore_one": "{{count}}줄 더 보기",
+    "showMore_other": "{{count}}줄 더 보기",
+    "hiddenLines_one": "({{count}}줄 숨김)",
+    "hiddenLines_other": "({{count}}줄 숨김)",
+    "blockedConflict": "적용할 수 없음: 선택한 파일 일부가 깔끔하게 적용되지 않습니다.",
+    "blockedNothing": "파일을 하나 이상 선택하세요.",
+    "blockedFailed": "확인에 성공할 때까지 적용할 수 없습니다.",
+    "copyPatch": "패치 복사",
+    "patchCopied": "패치를 복사했습니다",
+    "confirm_one": "파일 {{count}}개 적용",
+    "confirm_other": "파일 {{count}}개 적용",
+    "applied_one": "파일 {{count}}개를 내 폴더에 적용했습니다",
+    "applied_other": "파일 {{count}}개를 내 폴더에 적용했습니다",
+    "undo": "되돌리기",
+    "undone": "변경을 내 폴더에서 되돌렸습니다",
+    "undoFailed": "되돌릴 수 없습니다: {{message}}"
   },
   "approvals": {
     "held": "룸 일시 중지됨",
     "heldHint": "대기 중에 룸이 일시 중지되어 더 이상 허용할 수 없습니다. 룸을 다시 시작하면 필요할 때 참가자가 다시 묻습니다.",
-    "dismiss": "닫기"
+    "dismiss": "닫기",
+    "heldBanner": "룸 일시 중지됨: 이 요청은 더 이상 허용할 수 없습니다. 다시 물으려면 재개하세요.",
+    "wantsToRun": "{{origin}}이(가) {{tool}} 실행을 요청합니다",
+    "details": "자세히"
   }
 }

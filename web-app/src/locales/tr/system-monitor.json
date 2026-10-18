@@ -1,4 +1,5 @@
 {
+  "vramUsed": "Kullanılan VRAM",
   "title": "Sistem Monitörü",
   "cpuUsage": "CPU Kullanımı",
   "model": "Model",
@@ -71,5 +72,6 @@
   "processor": "İşlemci",
   "graphics": "Grafik",
   "freeVram": "Boş VRAM",
-  "apiVersion": "API sürümü"
+  "apiVersion": "API sürümü",
+  "measuring": "Ölçülüyor…"
 }

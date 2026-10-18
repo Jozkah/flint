@@ -56,6 +56,10 @@
     "connected": "Připojeno"
   },
   "table": {
+    "contextAutoFit": "auto-fit",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "Velikost kontextu je prázdná, proto engine při načtení modelu přizpůsobil toto okno vaší paměti.",
+    "contextAutoTitle": "Velikost kontextu je prázdná: engine zvolí okno při načtení modelu.",
     "name": "Název",
     "file": "Soubor",
     "size": "Velikost",

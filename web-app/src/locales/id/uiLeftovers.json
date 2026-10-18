@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Batu tulis",
+    "vermilion": "Merah terakota",
+    "ink": "Tinta",
+    "moss": "Lumut",
+    "slate": "Biru batu tulis",
+    "violet": "Ungu"
+  },
+  "fontSizeNames": {
+    "small": "Kecil",
+    "medium": "Sedang",
+    "large": "Besar",
+    "extraLarge": "Sangat besar"
+  },
+  "unknownSize": "Ukuran tidak diketahui",
+  "official": "Resmi",
+  "configuration": "Konfigurasi",
   "modelCombobox": {
     "refresh": "Segarkan model",
     "placeholder": "Ketik atau pilih model..."

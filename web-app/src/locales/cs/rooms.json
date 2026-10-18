@@ -12,8 +12,14 @@
     "open": "Otevřít {{title}}",
     "delete": "Smazat",
     "deleteLabel": "Smazat {{title}}",
-    "participants": "Účastníků: {{count}}",
-    "turns": "Příspěvků: {{count}}",
+    "participants_one": "{{count}} účastník",
+    "participants_few": "{{count}} účastníci",
+    "participants_many": "{{count}} účastníka",
+    "participants_other": "{{count}} účastníků",
+    "turns_one": "{{count}} tah",
+    "turns_few": "{{count}} tahy",
+    "turns_many": "{{count}} tahu",
+    "turns_other": "{{count}} tahů",
     "updated": "Aktualizováno {{time}}",
     "untitled": "Místnost bez názvu",
     "moreLabel": "Další akce pro {{title}}",
@@ -21,7 +27,9 @@
     "noParticipants": "Zatím žádní účastníci",
     "noPreview": "Otevřete místnost a uvidíte diskusi.",
     "tokens": "Tokenů: {{count}}",
-    "yours": "Vaše místnosti"
+    "yours": "Vaše místnosti",
+    "participants": "Účastníků: {{count}}",
+    "turns": "Příspěvků: {{count}}"
   },
   "create": {
     "title": "Nová místnost",
@@ -76,6 +84,9 @@
     "heading": "Nastavení místnosti",
     "sectionGeneral": "Obecné",
     "sectionDiscussion": "Diskuse a moderátor",
+    "sectionIdentity": "Identita",
+    "sectionModel": "Model a uvažování",
+    "sectionTools": "Nástroje",
     "lockedWhileRunning": "Pro změnu nastavení místnost pozastavte.",
     "title": "Název",
     "objective": "Cíl",
@@ -191,8 +202,10 @@
     "isolation": {
       "active": "Každý účastník, který smí upravovat, pracuje ve vlastním izolovaném pracovním prostoru, takže se nemohou přepsat navzájem ani vaši složku.",
       "unavailable": "Izolovaný pracovní prostor není k dispozici: {{reason}}. Účastníci s úpravami v této místnosti jen čtou.",
-      "untrusted": "složka není důvěryhodná"
-    }
+      "untrusted": "složka není důvěryhodná",
+      "trust": "Důvěřovat této složce"
+    },
+    "saving": "Ukládání…"
   },
   "limits": {
     "maxRounds": "Kola",
@@ -278,7 +291,20 @@
       "tools": "Použil nástroje, ale nenapsal žádnou textovou odpověď.",
       "none": "Žádná textová odpověď."
     },
-    "thought": "Přemýšlení"
+    "thought": "Přemýšlení",
+    "answerFrom": "Odpověď od {{name}}",
+    "expandAnswer": "Zobrazit celou odpověď od {{name}}",
+    "collapseAnswer": "Zkrátit odpověď od {{name}}",
+    "expand": "Rozbalit",
+    "collapse": "Sbalit",
+    "linkScroll": "Propojené posouvání",
+    "linkScrollHint": "Posouvat odpovědi na jednu otázku společně",
+    "continuePrompt": "Pokračuj v předchozí odpovědi od místa, kde byla useknuta.",
+    "catchUp": "Dohánění: odpověděl i na {{count}} dřívějších otázek",
+    "catchUp_one": "Dohánění: odpověděl i na 1 dřívější otázku",
+    "catchUp_few": "Dohánění: odpověděl i na {{count}} dřívější otázky",
+    "catchUp_many": "Dohánění: odpověděl i na {{count}} dřívějších otázek",
+    "catchUpHint": "Tento účastník se připojil až po těchto otázkách, takže tato odpověď odpovídá i na ně:"
   },
   "unknownWindow": {
     "title": "Kontextové okno neznámé",
@@ -329,7 +355,10 @@
     "speaking": "{{name}} mluví",
     "compacting": "{{name}} se dostává do obrazu",
     "draft": "Připraveno ke spuštění",
-    "draftHint": "Účastníků: {{count}} · {{mode}}",
+    "draftHint_one": "{{count}} účastník · {{mode}}",
+    "draftHint_few": "{{count}} účastníci · {{mode}}",
+    "draftHint_many": "{{count}} účastníka · {{mode}}",
+    "draftHint_other": "{{count}} účastníků · {{mode}}",
     "running": "Diskuse probíhá",
     "runningHint": "Další mluvčí se připravuje.",
     "awaiting-user": "Je řada na vás",
@@ -348,7 +377,9 @@
     "failedHint": "Spusťte znovu a zkuste to znovu.",
     "round": "Kolo",
     "turn": "Příspěvek",
-    "of": "z"
+    "of": "z",
+    "question": "Otázka",
+    "draftHint": "Účastníků: {{count}} · {{mode}}"
   },
   "usage": {
     "label": "Využití",
@@ -361,7 +392,8 @@
     "time": "Čas",
     "of": "{{value}} / {{max}}",
     "noLimit": "bez limitu",
-    "stopReason": "Zastaveno: {{reason}}"
+    "stopReason": "Zastaveno: {{reason}}",
+    "questions": "Otázky"
   },
   "stopReason": {
     "user": "zastaveno vámi",
@@ -390,7 +422,9 @@
     "toShort": "Komu",
     "placeholderTo": "Napište {{name}}…",
     "mention": "Zmínit účastníka",
-    "dropSkipped": "Nepřidáno (není to text, jde o složku nebo je překročen limit zprávy): {{files}}"
+    "dropSkipped": "Nepřidáno (není to text, jde o složku nebo je překročen limit zprávy): {{files}}",
+    "placeholderShort": "Napište do místnosti… @ pro zmínku",
+    "extendByQuestions": "Další otázky"
   },
   "kpi": {
     "running": "Běží",
@@ -399,9 +433,13 @@
     "waitingHint": "Vyžaduje váš výběr nebo odpověď",
     "waitingNone": "Nic nevyžaduje vás",
     "turns": "Příspěvky tento týden",
-    "turnsHint": "Napříč místnostmi: {{count}}",
+    "turnsHint_one": "V {{count}} místnosti",
+    "turnsHint_few": "Ve {{count}} místnostech",
+    "turnsHint_many": "V {{count}} místnosti",
+    "turnsHint_other": "V {{count}} místnostech",
     "models": "Zúčastněné modely",
-    "modelsNone": "Zatím žádní účastníci"
+    "modelsNone": "Zatím žádní účastníci",
+    "turnsHint": "Napříč místnostmi: {{count}}"
   },
   "waiting": {
     "title": "Čeká na vás",
@@ -471,8 +509,11 @@
       "queued": "Ve frontě",
       "done": "Odpověděl",
       "failed": "Selhalo",
-      "idle": "Zatím bez odpovědi"
-    }
+      "idle": "Zatím bez odpovědi",
+      "waitingSlot": "Ve frontě: čeká na slot místního modelu"
+    },
+    "retry": "Zkusit znovu",
+    "retryFor": "Zkusit znovu {{name}}"
   },
   "changes": {
     "summaryOne": "{{count}} soubor změněn",
@@ -487,24 +528,107 @@
     "state": {
       "kept": "Ponecháno",
       "discarded": "Zahozeno",
-      "applied": "Použito"
+      "applied": "Použito",
+      "idle": "Nepoužito"
     },
     "diffTitle": "Změny v pracovním prostoru",
     "diffHint": "Vše, co tento účastník změnil ve svém izolovaném prostoru.",
-    "applyTitle": "Použít na vaši složku?",
-    "applyHint": "Tato záplata se zapíše do vaší složky. Pokud nejde použít čistě, nic se nezmění.",
     "discardTitle": "Zahodit tyto změny?",
     "discardHint": "Prostor účastníka se vrátí do počátečního stavu. Vaší složky se to nedotkne.",
     "loading": "Načítání diffu…",
     "empty": "Není co použít.",
-    "applyConfirm": "Použít",
     "discardConfirm": "Zahodit",
     "scopeTurn": "Tento tah",
-    "scopeAll": "Od vytvoření pracovního prostoru"
+    "scopeAll": "Od vytvoření pracovního prostoru",
+    "applyShort": "Použít",
+    "scopeAllShort": "Vše",
+    "scope": "Které změny zobrazit",
+    "showAll": "Zobrazit všechny soubory ({{count}})",
+    "partial_one": "Použit {{count}} soubor",
+    "partial_few": "Použity {{count}} soubory",
+    "partial_many": "Použito {{count}} souboru",
+    "partial_other": "Použito {{count}} souborů",
+    "applyIncludesEarlier_one": "Použít zahrne i {{count}} dřívější soubor, který ještě nebyl použit",
+    "applyIncludesEarlier_few": "Použít zahrne i {{count}} dřívější soubory, které ještě nebyly použity",
+    "applyIncludesEarlier_many": "Použít zahrne i {{count}} dřívějšího souboru, který ještě nebyl použit",
+    "applyIncludesEarlier_other": "Použít zahrne i {{count}} dřívějších souborů, které ještě nebyly použity",
+    "applyTitle": "Použít na vaši složku?",
+    "applyHint": "Tato záplata se zapíše do vaší složky. Pokud nejde použít čistě, nic se nezmění.",
+    "applyConfirm": "Použít"
+  },
+  "apply": {
+    "title_one": "Použít {{count}} změnu ve vaší složce",
+    "title_few": "Použít {{count}} změny ve vaší složce",
+    "title_many": "Použít {{count}} změn ve vaší složce",
+    "title_other": "Použít {{count}} změny ve vaší složce",
+    "copyPath": "Kopírovat cestu ke složce {{path}}",
+    "pathCopied": "Cesta ke složce zkopírována",
+    "files_one": "{{count}} soubor",
+    "files_few": "{{count}} soubory",
+    "files_many": "{{count}} souboru",
+    "files_other": "{{count}} souborů",
+    "source": "Od {{name}} · kolo {{round}}",
+    "safety": "Nic se nepoužije, pokud se patch nedá použít čistě. Hned potom to můžete vrátit.",
+    "checking": "Ověřuje se, zda jde použít na vaši složku…",
+    "clean": "Lze použít čistě",
+    "checkFailed": "Patch se nepodařilo ověřit: {{message}}",
+    "conflict_one": "{{count}} soubor nejde použít na vaši složku",
+    "conflict_few": "{{count}} soubory nejdou použít na vaši složku",
+    "conflict_many": "{{count}} souboru nejde použít na vaši složku",
+    "conflict_other": "{{count}} souborů nejde použít na vaši složku",
+    "conflictHint": "Vynechte je, nebo požádejte účastníka, ať je udělá znovu nad současným stavem složky.",
+    "notChecked": "neověřeno samostatně (příliš mnoho souborů)",
+    "fileConflict": "Nejde použít",
+    "leaveOut": "Vynechat konfliktní soubory",
+    "details": "Podrobnosti",
+    "fileDirty": "Vaše úpravy",
+    "dirtyTitle_one": "V {{count}} z těchto souborů máte necommitnuté změny",
+    "dirtyTitle_few": "Ve {{count}} z těchto souborů máte necommitnuté změny",
+    "dirtyTitle_many": "V {{count}} z těchto souborů máte necommitnuté změny",
+    "dirtyTitle_other": "V {{count}} z těchto souborů máte necommitnuté změny",
+    "dirtyHint": "Patch se zapíše přes vaše úpravy. Pokud chcete snadnou cestu zpět, nejdřív udělejte commit nebo stash.",
+    "selectAll": "Vybrat všechny soubory",
+    "include": "Zahrnout {{path}}",
+    "renamedFrom": "(přejmenováno z {{path}})",
+    "status": {
+      "added": "Přidáno",
+      "modified": "Změněno",
+      "deleted": "Smazáno",
+      "renamed": "Přejmenováno"
+    },
+    "binary": "Změněn binární soubor. Jeho obsah se nezobrazuje.",
+    "noLines": "Žádné změny řádků (jen režim nebo název).",
+    "showMore_one": "Zobrazit další {{count}} řádek",
+    "showMore_few": "Zobrazit další {{count}} řádky",
+    "showMore_many": "Zobrazit dalšího {{count}} řádku",
+    "showMore_other": "Zobrazit dalších {{count}} řádků",
+    "hiddenLines_one": "({{count}} skrytý)",
+    "hiddenLines_few": "({{count}} skryté)",
+    "hiddenLines_many": "({{count}} skrytého)",
+    "hiddenLines_other": "({{count}} skrytých)",
+    "blockedConflict": "Použití je vypnuté: některé vybrané soubory nejdou použít čistě.",
+    "blockedNothing": "Vyberte aspoň jeden soubor.",
+    "blockedFailed": "Použití je vypnuté, dokud ověření neprojde.",
+    "copyPatch": "Kopírovat patch",
+    "patchCopied": "Patch zkopírován",
+    "confirm_one": "Použít {{count}} soubor",
+    "confirm_few": "Použít {{count}} soubory",
+    "confirm_many": "Použít {{count}} souboru",
+    "confirm_other": "Použít {{count}} souborů",
+    "applied_one": "Ve složce použit {{count}} soubor",
+    "applied_few": "Ve složce použity {{count}} soubory",
+    "applied_many": "Ve složce použito {{count}} souboru",
+    "applied_other": "Ve složce použito {{count}} souborů",
+    "undo": "Vrátit",
+    "undone": "Změna byla z vaší složky odebrána",
+    "undoFailed": "Vrácení se nepodařilo: {{message}}"
   },
   "approvals": {
     "held": "Místnost pozastavena",
     "heldHint": "Místnost byla pozastavena, zatímco tento požadavek čekal, takže už jej nelze povolit. Obnovte místnost a účastník se zeptá znovu, pokud to bude stále potřebovat.",
-    "dismiss": "Zavřít"
+    "dismiss": "Zavřít",
+    "heldBanner": "Místnost je pozastavena: tento požadavek už nelze povolit. Po obnovení se zeptá znovu.",
+    "wantsToRun": "{{origin}} chce spustit {{tool}}",
+    "details": "Podrobnosti"
   }
 }

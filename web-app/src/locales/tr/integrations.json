@@ -72,5 +72,36 @@
     "remote": "Uzak",
     "searchModels": "Model ara...",
     "noModels": "\"{{search}}\" için model bulunamadı"
+  },
+  "serverFolders": {
+    "title": "Sunucu klasörü seç",
+    "description": "Bu sunucunun oturumlarda kullanılmasına izin verdiği klasörler.",
+    "roots": "Sunucu klasörleri",
+    "off": "Paylaşılan klasör yok. Sunucuyu --agent-root <folder> ile başlatın.",
+    "loading": "Klasörler yükleniyor...",
+    "up": "Yukarı",
+    "empty": "Burada klasör yok.",
+    "truncated": "Yalnızca ilk 500 klasör gösteriliyor.",
+    "choose": "Bu klasörü kullan"
+  },
+  "serverSession": {
+    "title": "Yeni sunucu oturumu",
+    "description": "Sunucuda, klasörlerinden birinde, seçtiğiniz modelle çalışır.",
+    "notReady": "Bu sunucu henüz oturum çalıştırmıyor.",
+    "folder": "Klasör: {{path}}",
+    "noFolder": "seçilmedi",
+    "prompt": "İlk mesaj",
+    "promptPlaceholder": "Oturum ne yapmalı?",
+    "start": "Oturumu başlat",
+    "starting": "Başlatılıyor...",
+    "newButton": "Yeni sunucu oturumu",
+    "badge": "Sunucu oturumu, {{status}}",
+    "runsWith": "{{model}} ile çalışır",
+    "status": {
+      "running": "çalışıyor",
+      "idle": "boşta",
+      "awaiting_approval": "onay bekliyor",
+      "awaiting_answer": "yanıt bekliyor"
+    }
   }
 }

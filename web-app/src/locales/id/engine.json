@@ -24,17 +24,19 @@
     "embeddingSub": "{{count}} model embedding",
     "addedSub": "ditambahkan ke Flint",
     "repliesToday": "Balasan hari ini",
-    "repliesSub": "{{count}} balasan diukur",
+    "repliesSub_other": "{{count}} balasan diukur",
     "apiKeys": "Kunci API",
     "fallbackSub": "{{count}} kunci cadangan",
     "noFallbackSub": "tanpa kunci cadangan",
-    "avgSpeed": "Kecepatan rata-rata"
+    "avgSpeed": "Kecepatan rata-rata",
+    "repliesSub": "{{count}} balasan diukur"
   },
   "loaded": {
     "title": "Dimuat sekarang",
     "empty": "Tidak ada model yang dimuat",
     "emptyHint": "Mulai model lokal dari tabel di bawah, atau kirim pesan padanya.",
-    "unload": "Bongkar"
+    "unload": "Bongkar",
+    "speedBar": "Kecepatan rata-rata, dibandingkan model termuat tercepat"
   },
   "speed": {
     "title": "Kecepatan pembuatan",
@@ -107,7 +109,9 @@
     "engineSettings": "Pengaturan engine",
     "memorySettings": "Memori & cache",
     "settingNotSaved": "\"{{setting}}\" tidak tersimpan",
-    "danger": "Zona berbahaya"
+    "danger": "Zona berbahaya",
+    "networkNote": "Di jaringan Anda · dikirim ke {{host}}",
+    "reachUnknownNote": "Memeriksa di mana penyedia ini berjalan"
   },
   "mcp": {
     "title": "Alat & MCP",
@@ -178,5 +182,46 @@
     "kindAudio": "Audio",
     "kindVideo": "Video",
     "htmlPage": "Halaman HTML"
+  },
+  "addon": {
+    "offerTitle": "Lebih cepat di GPU NVIDIA kamu",
+    "offerBody": "Di GPU ini, model lokal biasanya berjalan lebih cepat dengan mesin CUDA daripada Vulkan: sering 10-70% lebih banyak token per detik, lebih besar lagi saat model tidak muat sepenuhnya di VRAM. Unduhan sekali saja, sekitar {{size}}.",
+    "download": "Unduh",
+    "notNow": "Nanti saja",
+    "dontRemind": "Jangan ingatkan lagi",
+    "gettingTitle": "Mengambil mesin CUDA",
+    "downloading": "Terunduh {{received}} dari {{total}}",
+    "verifying": "Memeriksa unduhan...",
+    "installing": "Memasang...",
+    "vulkanMeanwhile": "Sementara itu Vulkan dipakai. CUDA mengambil alih saat model berikutnya dimuat.",
+    "cancel": "Batal",
+    "installedTitle": "Mesin CUDA terpasang",
+    "installedBody": "Akan dipakai mulai pemuatan model berikutnya.",
+    "ok": "Mengerti",
+    "failedTitle": "Tidak bisa mengambil mesin CUDA",
+    "retry": "Coba lagi",
+    "driverTitle": "Perbarui driver NVIDIA kamu",
+    "driverBody": "Perbarui driver NVIDIA kamu untuk memakai mesin CUDA yang lebih cepat. Terpasang: {{current}}, dibutuhkan: R{{min}} atau lebih baru. Sampai saat itu Vulkan dipakai.",
+    "close": "Tutup",
+    "panelTitle": "Add-on mesin",
+    "panelDesc": "Mesin GPU tambahan, diunduh hanya saat kamu minta. Vulkan tetap sebagai cadangan.",
+    "cudaName": "Mesin NVIDIA CUDA",
+    "inUse": "dipakai",
+    "unavailableBuild": "Add-on mesin tidak tersedia di build ini.",
+    "installedVersion": "Terpasang: {{version}}, {{size}}",
+    "repairNeeded": "Rusak, jadi Vulkan dipakai. Unduh ulang untuk memperbaiki.",
+    "notInstalledOffer": "Belum terpasang. Biasanya lebih cepat dari Vulkan di GPU ini (sekitar {{size}}).",
+    "repair": "Perbaiki",
+    "remove": "Hapus",
+    "installFile": "Pasang dari file...",
+    "checkAgain": "Periksa lagi",
+    "remindSetting": "Sarankan mesin CUDA saat model dimuat",
+    "errors": {
+      "offline": "Tidak ada koneksi ke GitHub. Coba lagi nanti, atau pasang add-on dari file.",
+      "notPublished": "Belum ada mesin CUDA yang diterbitkan untuk versi ini.",
+      "diskSpace": "Ruang disk kosong tidak cukup untuk mesin CUDA.",
+      "verify": "Unduhan tidak lolos verifikasi dan tidak dipasang.",
+      "mismatch": "Add-on ini dibuat untuk versi Flint lain."
+    }
   }
 }

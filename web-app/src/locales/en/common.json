@@ -9,6 +9,7 @@
     "export": "Export",
     "imported_one": "Added {{count}} prompt",
     "imported_other": "Added {{count}} prompts",
+    "importedNone": "No new prompts found",
     "search": "Search prompts",
     "empty": "No prompts yet.",
     "edit": "Edit {{name}}",
@@ -33,7 +34,9 @@
       "gone": "That prompt no longer exists",
       "invalidJson": "That file is not valid JSON",
       "noPrompts": "No prompts found in that file"
-    }
+    },
+    "noResults": "No prompts match “{{query}}”.",
+    "clearSearch": "Clear search"
   },
   "groups": {
     "newGroup": "New group",
@@ -258,7 +261,7 @@
   "profile": "Profile",
   "reset": "Reset",
   "search": "Search",
-  "searchThreads": "Search threads...",
+  "searchThreads": "Search chats...",
   "toNavigate": "to navigate",
   "toSelect": "to select",
   "toClose": "to close",
@@ -284,6 +287,7 @@
   "preview": {
     "title": "Preview",
     "empty": "Open a generated artifact to preview it here.",
+    "emptyHint": "Files Flint creates in this session open here.",
     "loading": "Opening…",
     "unsupported": "Flint can't show this kind of file. Open it to see it in another app.",
     "outside": "This file is no longer in the session workspace.",
@@ -366,9 +370,14 @@
     "openItem": "Open {{item}}"
   },
   "searchGroup": {
+    "pages": "Pages",
+    "settings": "Settings",
     "inProjects": "In projects",
     "conversations": "Conversations",
-    "messages": "In messages"
+    "messages": "In messages",
+    "work": "Rooms and sessions",
+    "room": "Room",
+    "session": "Cowork session"
   },
   "rail": {
     "label": "Cowork panels",
@@ -682,7 +691,8 @@
       "add": "Add",
       "cancel": "Cancel",
       "remove": "Remove"
-    }
+    },
+    "ctxAutoFitHint": "Auto-fit is on: leave this empty and Auto-fit picks the context, shrinking it if needed to fit memory. A number here is used as set."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -725,6 +735,14 @@
     "showRawLibraries": "Show {{count}} missing library names"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Create project",
+      "editTitle": "Edit project",
+      "namePlaceholder": "Enter project name...",
+      "alreadyExists": "Project \"{{projectName}}\" already exists",
+      "createSuccess": "Project \"{{projectName}}\" created",
+      "updateSuccess": "Project \"{{projectName}}\" updated"
+    },
     "title": "Collections",
     "new": "New collection",
     "addProject": "New collection",
@@ -818,7 +836,8 @@
     "pathNameNotice": "This names a chat collection; it does not open that folder.",
     "openCodeFolderInCowork": "Open code folder in Cowork",
     "openCodeFolder": "Open code folder",
-    "openCodeFolderDescription": "Choose a folder on your computer for Flint to work in."
+    "openCodeFolderDescription": "Choose a folder on your computer for Flint to work in.",
+    "setUpEmbeddingModel": "Set up an embedding model"
   },
   "attachmentsIngestion": {
     "title": "Choose how to ingest attachments",
@@ -950,7 +969,8 @@
       "unsupportedType": "File type \"{{type}}\" is not supported.",
       "ioError": "Could not read {{subject}}: {{message}}",
       "parseGeneric": "{{subject}} could not be parsed: {{message}}",
-      "fallback": "Failed to process {{subject}}."
+      "fallback": "Failed to process {{subject}}.",
+      "noEmbeddingModel": "{{subject}} was not added: no embedding model is installed to index it. Set one up in Llama.cpp, then add the file again."
     },
     "fileDeleted": {
       "title": "File Deleted",
@@ -1097,7 +1117,10 @@
     "branchLabel": "Branch",
     "actionsLabel": "Folder actions",
     "copyPath": "Copy path",
-    "copied": "Path copied"
+    "copied": "Path copied",
+    "footnoteEmptyEdit": "Attach a folder to let the agent work on your project.",
+    "a11yWithFolderEditable": "Project folder {{folder}}, attached for editing. Change or detach it.",
+    "a11yWithFolderWorktree": "Project folder {{folder}}, edited through a separate worktree. Change or detach it."
   },
   "coworkEmpty": {
     "title": "What are we working on?",
@@ -1119,7 +1142,9 @@
       "first": "Explain how {{folder}} is put together",
       "second": "Find every TODO in {{folder}} and group them by area",
       "third": "Write tests for the part of {{folder}} I point you at"
-    }
+    },
+    "subtitleFolderEdit": "Give Flint a task. It reads and changes files in {{folder}} directly, and works on its own from there.",
+    "subtitleFolderWorktree": "Give Flint a task. It works on a git worktree of {{folder}}, so your folder only changes when you merge."
   },
   "sandbox": {
     "noTerminal": "No terminal",
@@ -1297,7 +1322,9 @@
     "count_one": "1 result",
     "count_other": "{{count}} results",
     "empty": "No matching settings.",
-    "clear": "Clear search"
+    "clear": "Clear search",
+    "emptyHint": "Try another word, or search by what it does: theme, proxy, memory.",
+    "pageCrumb": "Page"
   },
   "tasks": {
     "title": "Activity",
@@ -1589,7 +1616,11 @@
     "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "voicePill": {
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "dictate": "Dictate",
+    "stop": "Stop dictating",
+    "working": "Working…",
+    "setup": "Set up voice input"
   },
   "coworkRunSettings": {
     "label": "Run settings",
@@ -2076,7 +2107,8 @@
     "errorEngine": "The engine that runs this model is not available. Restart Flint and try again.",
     "openProvider": "Open provider settings",
     "errorDetails": "Details",
-    "pasteHint": "Clipboard access was blocked. Click the text box and press {{keys}}."
+    "pasteHint": "Clipboard access was blocked. Click the text box and press {{keys}}.",
+    "swapNeedsSource": "Pick a source language to swap"
   },
   "appRail": {
     "label": "Global navigation",
@@ -2273,10 +2305,12 @@
   },
   "browserVerify": {
     "title": "Verify in browser",
+    "about": "How this works",
     "explain": "Opens your local app in a separate, temporary browser profile (not Flint's preview, no cookies), limited to the app's own origin. Requests elsewhere are blocked and listed.",
     "url": "Local app URL",
     "notLocal": "Only an app on this machine (localhost, 127.0.0.1) can be verified.",
-    "steps": "Steps (optional): open, click, type, expect, wait, screenshot — one per line",
+    "stepsLabel": "Steps (optional)",
+    "stepsHint": "One per line: open, click, type, expect, wait, screenshot",
     "run": "Verify",
     "cancel": "Stop",
     "using": "Using {{browser}}",
@@ -2302,7 +2336,8 @@
       "failed": "Failed",
       "cancelled": "Stopped",
       "error": "Could not run"
-    }
+    },
+    "steps": "Steps (optional): open, click, type, expect, wait, screenshot — one per line"
   },
   "jev": {
     "automationTitle": "Automatic choices",
@@ -2671,7 +2706,8 @@
     "copied": "Copied",
     "binary": "This looks like a binary file, so there is no text preview.",
     "expandLine": "Show full line",
-    "collapseLine": "Shorten line"
+    "collapseLine": "Shorten line",
+    "truncatedOnAdd": "Showing the first {{shown}} of {{total}} (the attachment was truncated when it was added)"
   },
   "markdownImage": {
     "load": "Load image from {{host}}"
@@ -2766,10 +2802,50 @@
       "assistant": "Assistant"
     },
     "messagesCount_one": "{{count}} message",
-    "messagesCount_other": "{{count}} messages"
+    "messagesCount_other": "{{count}} messages",
+    "compact_one": "{{count}} mention · {{mode}}",
+    "compact_other": "{{count}} mentions · {{mode}}",
+    "mixed": "Mixed"
   },
   "campaignList": {
     "timeout": "The app did not answer in time.",
     "unreadableRecord": "the backend sent a record this page cannot read"
+  },
+  "composer": {
+    "messageLabel": "Message"
+  },
+  "routeLoading": {
+    "slow": "This page is taking longer than usual to open.",
+    "reload": "Reload",
+    "retry": "Try again",
+    "failed": "This page could not be opened"
+  },
+  "replyCutOff": {
+    "withTokens": "Cut off at the reply limit ({{tokens}} tokens)",
+    "plain": "Cut off at the reply limit"
+  },
+  "routeNotFound": {
+    "title": "Page not found",
+    "body": "There is no page at {{path}}. It may have moved, or the link is out of date.",
+    "home": "Go home",
+    "settings": "Open settings"
+  },
+  "waitingForYou": "Waiting for you",
+  "dnd": {
+    "anItem": "the item",
+    "aGroup": "a group",
+    "picked": "Picked up {{item}}.",
+    "over": "{{item}} is over {{group}}.",
+    "notOver": "{{item}} is not over a group.",
+    "dropped": "Moved {{item}} to {{group}}.",
+    "cancelled": "{{item}} was put back."
+  },
+  "searchEverything": "Search chats, rooms, pages and settings…",
+  "noResultsFoundEverywhere": "Nothing matches in chats, rooms, Cowork sessions, pages or settings. Try a different keyword.",
+  "selectModelNoKey": "No model is chosen for this session, and {{provider}} has no API key. Pick a model in the model menu first.",
+  "serverConnection": {
+    "offlineTitle": "Can't reach the Flint server.",
+    "offlineBody": "Reconnecting… What you do now may not be saved until it is back.",
+    "statusOffline": "Server unreachable"
   }
 }

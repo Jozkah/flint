@@ -72,5 +72,36 @@
     "remote": "Remot",
     "searchModels": "Cerca models...",
     "noModels": "No s'ha trobat cap model per a \"{{search}}\""
+  },
+  "serverFolders": {
+    "title": "Tria una carpeta del servidor",
+    "description": "Carpetes que aquest servidor permet fer servir a les sessions.",
+    "roots": "Carpetes del servidor",
+    "off": "No hi ha carpetes compartides. Inicia el servidor amb --agent-root <folder>.",
+    "loading": "Carregant carpetes...",
+    "up": "Amunt",
+    "empty": "No hi ha carpetes aquí.",
+    "truncated": "Només es mostren les primeres 500 carpetes.",
+    "choose": "Fes servir aquesta carpeta"
+  },
+  "serverSession": {
+    "title": "Nova sessió al servidor",
+    "description": "S'executa al servidor en una de les seves carpetes, amb el model que triïs.",
+    "notReady": "Aquest servidor encara no executa sessions.",
+    "folder": "Carpeta: {{path}}",
+    "noFolder": "cap triada",
+    "prompt": "Primer missatge",
+    "promptPlaceholder": "Què ha de fer la sessió?",
+    "start": "Inicia la sessió",
+    "starting": "Iniciant...",
+    "newButton": "Nova sessió al servidor",
+    "badge": "Sessió del servidor, {{status}}",
+    "runsWith": "Fa servir {{model}}",
+    "status": {
+      "running": "en execució",
+      "idle": "inactiva",
+      "awaiting_approval": "esperant aprovació",
+      "awaiting_answer": "esperant una resposta"
+    }
   }
 }

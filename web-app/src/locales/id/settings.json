@@ -143,6 +143,8 @@
     "renderUserMarkdownDesc": "Menampilkan teks tebal, daftar, judul, dan kode di pesan yang Anda kirim. Jika nonaktif, pesan tampil persis seperti yang diketik.",
     "renderHtmlArtifacts": "Render artefak HTML & SVG",
     "renderHtmlArtifactsDesc": "Tambahkan tab Pratinjau ke blok kode HTML dan SVG. HTML menjalankan halaman buatan model di frame sandbox yang menjalankan skripnya sendiri tetapi tidak dapat mengakses Flint, file Anda, atau jaringan; SVG dirender statis dengan skrip dimatikan. Mati secara default.",
+    "wrapCodeLines": "Bungkus baris panjang di blok kode",
+    "wrapCodeLinesDesc": "Pindahkan baris panjang ke baris berikutnya, menjorok di bawah kode, alih-alih menggulir blok ke samping. Tombol bungkus di header blok kode mengubah pengaturan yang sama.",
     "composerRailButtons": "Tombol keluaran di kotak pesan Cowork",
     "composerRailButtonsDesc": "Tampilkan Pratinjau, Kode, Perubahan, Aktivitas, dan Linimasa di bawah kotak pesan Cowork. Saat mati, satu tombol Keluaran di header membuka panel.",
     "autoGenerateTitle": "Buat judul obrolan otomatis",
@@ -419,7 +421,10 @@
     "defaultModelPlaceholder": "Pilih model lokal",
     "noLocalModels": "Belum ada model lokal yang diimpor",
     "usage5hAria": "Token per 5 jam",
-    "usageWeekAria": "Token per minggu"
+    "usageWeekAria": "Token per minggu",
+    "usageWindow": "Jendela",
+    "usageLimit": "Batas",
+    "usageUnsaved": "Perubahan belum disimpan"
   },
   "privacy": {
     "analytics": "Analitik",
@@ -683,7 +688,20 @@
     "reduceMotion": "Kurangi gerakan",
     "reduceMotionDesc": "Matikan animasi di Flint. Flint tidak mengikuti pengaturan sistem, jadi gerakan tetap aktif kecuali Anda mengubahnya.",
     "increaseContrast": "Tingkatkan kontras",
-    "increaseContrastDesc": "Membuat teks lebih terang agar mudah dibaca. Lebih putih pada tema gelap, lebih gelap pada tema terang."
+    "increaseContrastDesc": "Membuat teks lebih terang agar mudah dibaca. Lebih putih pada tema gelap, lebih gelap pada tema terang.",
+    "performanceMode": "Mode performa",
+    "performanceModeDesc": "Mode dikurangi mematikan blur, bayangan besar, dan animasi berulang, serta memperbarui teks streaming lebih jarang, untuk komputer yang lebih lambat. Otomatis memilihnya saat komputer ini tampak lambat.",
+    "performanceModeAuto": "Otomatis",
+    "performanceModeReduced": "Selalu dikurangi",
+    "performanceModeFull": "Penuh",
+    "performanceModeNowReduced": "Saat ini: dikurangi ({{why}})",
+    "performanceModeNowFull": "Saat ini: penuh",
+    "perfReasonCores": "{{n}} inti",
+    "perfReasonMemory": "memori {{n}} GB",
+    "perfReasonFrames": "frame lambat",
+    "perfReasonMotion": "sistem mengurangi gerakan",
+    "perfReasonData": "penghemat data",
+    "perfReasonChosen": "dipilih di sini"
   },
   "pageDesc": {
     "general": "Bahasa, folder data, log, dan opsi seluruh aplikasi.",
@@ -1187,10 +1205,17 @@
       "header": "Atas dan bawah"
     },
     "showItem": "Tampilkan {{item}} di sidebar",
+    "hideItem": "Sembunyikan {{item}} dari sidebar",
     "alwaysShown": "Selalu tampil",
     "showAll": "Tampilkan semua",
     "preview": "Pratinjau",
-    "reachable": "Item tersembunyi tetap dapat dijangkau dari palet perintah dan dari Pengaturan."
+    "reachable": "Item tersembunyi tetap dapat dijangkau dari palet perintah dan dari Pengaturan.",
+    "presets": {
+      "label": "Preset",
+      "minimal": "Ringkas",
+      "standard": "Standar",
+      "everything": "Semua"
+    }
   },
   "memoryPage": {
     "useSaved": "Gunakan memori tersimpan dalam percakapan",
@@ -1309,7 +1334,11 @@
       "importedCount_one": "{{count}} memori diimpor",
       "importedCount_other": "{{count}} memori diimpor",
       "importFailed": "Tidak dapat mengimpor memori"
-    }
+    },
+    "fileActionsAria": "Ekspor atau impor memori",
+    "noMatchHint": "Periksa ejaannya, atau hapus pencarian untuk melihat semuanya.",
+    "emptyHint": "Tulis satu di atas, atau biarkan Flint mengingat saat Anda mengobrol.",
+    "footerCount_other": "{{count}} memori dalam cakupan ini"
   },
   "chatMentions": {
     "title": "Sebutan percakapan",

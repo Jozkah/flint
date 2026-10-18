@@ -12,8 +12,12 @@
     "open": "Ouvrir {{title}}",
     "delete": "Supprimer",
     "deleteLabel": "Supprimer {{title}}",
-    "participants": "{{count}} participants",
-    "turns": "{{count}} tours",
+    "participants_one": "{{count}} participant",
+    "participants_many": "{{count}} participants",
+    "participants_other": "{{count}} participants",
+    "turns_one": "{{count}} tour",
+    "turns_many": "{{count}} tours",
+    "turns_other": "{{count}} tours",
     "updated": "Mise à jour {{time}}",
     "untitled": "Salle sans titre",
     "moreLabel": "Autres actions pour {{title}}",
@@ -21,7 +25,9 @@
     "noParticipants": "Aucun participant pour l'instant",
     "noPreview": "Ouvrez la salle pour voir la discussion.",
     "tokens": "{{count}} tokens",
-    "yours": "Vos salles"
+    "yours": "Vos salles",
+    "participants": "{{count}} participants",
+    "turns": "{{count}} tours"
   },
   "create": {
     "title": "Nouvelle salle",
@@ -76,6 +82,9 @@
     "heading": "Réglages de la salle",
     "sectionGeneral": "Général",
     "sectionDiscussion": "Discussion et modérateur",
+    "sectionIdentity": "Identité",
+    "sectionModel": "Modèle et raisonnement",
+    "sectionTools": "Outils",
     "lockedWhileRunning": "Mettez la salle en pause pour modifier les réglages.",
     "title": "Titre",
     "objective": "Objectif",
@@ -191,8 +200,10 @@
     "isolation": {
       "active": "Chaque participant qui peut modifier travaille dans son propre espace isolé : ils ne peuvent ni s'écraser entre eux ni écraser votre dossier.",
       "unavailable": "Espace isolé indisponible : {{reason}}. Les participants qui peuvent modifier ne font que lire dans ce salon.",
-      "untrusted": "le dossier n'est pas approuvé"
-    }
+      "untrusted": "le dossier n'est pas approuvé",
+      "trust": "Faire confiance à ce dossier"
+    },
+    "saving": "Enregistrement…"
   },
   "limits": {
     "maxRounds": "Tours de table",
@@ -278,7 +289,18 @@
       "tools": "A utilisé des outils, mais n'a écrit aucune réponse texte.",
       "none": "Aucune réponse texte."
     },
-    "thought": "Réflexion"
+    "thought": "Réflexion",
+    "answerFrom": "Réponse de {{name}}",
+    "expandAnswer": "Afficher toute la réponse de {{name}}",
+    "collapseAnswer": "Raccourcir la réponse de {{name}}",
+    "expand": "Déplier",
+    "collapse": "Replier",
+    "linkScroll": "Défilement lié",
+    "linkScrollHint": "Faire défiler ensemble les réponses à une même question",
+    "continuePrompt": "Reprends ta réponse précédente là où elle a été coupée.",
+    "catchUp": "Rattrapage : a aussi répondu à {{count}} questions précédentes",
+    "catchUp_one": "Rattrapage : a aussi répondu à 1 question précédente",
+    "catchUpHint": "Ce participant est arrivé après ces questions, cette réponse y répond donc aussi :"
   },
   "unknownWindow": {
     "title": "Fenêtre de contexte inconnue",
@@ -329,7 +351,9 @@
     "speaking": "{{name}} parle",
     "compacting": "{{name}} se remet à jour",
     "draft": "Prête à démarrer",
-    "draftHint": "{{count}} participants · {{mode}}",
+    "draftHint_one": "{{count}} participant · {{mode}}",
+    "draftHint_many": "{{count}} participants · {{mode}}",
+    "draftHint_other": "{{count}} participants · {{mode}}",
     "running": "Discussion en cours",
     "runningHint": "Le prochain intervenant se prépare.",
     "awaiting-user": "À vous de choisir",
@@ -348,7 +372,9 @@
     "failedHint": "Redémarrez pour réessayer.",
     "round": "Tour de table",
     "turn": "Tour de parole",
-    "of": "sur"
+    "of": "sur",
+    "question": "Question",
+    "draftHint": "{{count}} participants · {{mode}}"
   },
   "usage": {
     "label": "Utilisation",
@@ -361,7 +387,8 @@
     "time": "Durée",
     "of": "{{value}} / {{max}}",
     "noLimit": "aucune limite",
-    "stopReason": "Arrêtée : {{reason}}"
+    "stopReason": "Arrêtée : {{reason}}",
+    "questions": "Questions"
   },
   "stopReason": {
     "user": "arrêtée par vous",
@@ -390,7 +417,9 @@
     "toShort": "À",
     "placeholderTo": "Écrire à {{name}}…",
     "mention": "Mentionner un participant",
-    "dropSkipped": "Non ajouté (ce n'est pas du texte, c'est un dossier ou la limite du message est dépassée) : {{files}}"
+    "dropSkipped": "Non ajouté (ce n'est pas du texte, c'est un dossier ou la limite du message est dépassée) : {{files}}",
+    "placeholderShort": "Écrire au salon… @ pour mentionner",
+    "extendByQuestions": "Questions en plus"
   },
   "kpi": {
     "running": "En cours",
@@ -399,9 +428,12 @@
     "waitingHint": "Attend votre choix ou votre réponse",
     "waitingNone": "Rien n'attend votre action",
     "turns": "Tours de parole cette semaine",
-    "turnsHint": "Dans {{count}} salles",
+    "turnsHint_one": "Dans {{count}} salle",
+    "turnsHint_many": "Dans {{count}} salles",
+    "turnsHint_other": "Dans {{count}} salles",
     "models": "Modèles participants",
-    "modelsNone": "Aucun participant pour l'instant"
+    "modelsNone": "Aucun participant pour l'instant",
+    "turnsHint": "Dans {{count}} salles"
   },
   "waiting": {
     "title": "En attente de vous",
@@ -471,8 +503,11 @@
       "queued": "En file d'attente",
       "done": "Répondu",
       "failed": "Échec",
-      "idle": "Pas encore de réponse"
-    }
+      "idle": "Pas encore de réponse",
+      "waitingSlot": "En file d'attente : attente de l'emplacement du modèle local"
+    },
+    "retry": "Réessayer",
+    "retryFor": "Réessayer {{name}}"
   },
   "changes": {
     "summaryOne": "{{count}} fichier modifié",
@@ -487,24 +522,89 @@
     "state": {
       "kept": "Conservé",
       "discarded": "Abandonné",
-      "applied": "Appliqué"
+      "applied": "Appliqué",
+      "idle": "Non appliqué"
     },
     "diffTitle": "Modifications dans l'espace de travail",
     "diffHint": "Tout ce que ce participant a modifié dans son espace isolé.",
-    "applyTitle": "Appliquer à votre dossier ?",
-    "applyHint": "Ce correctif sera écrit dans votre dossier. S'il ne s'applique pas proprement, rien n'est modifié.",
     "discardTitle": "Abandonner ces modifications ?",
     "discardHint": "L'espace du participant revient à son état de départ. Votre dossier n'est pas touché.",
     "loading": "Chargement du diff…",
     "empty": "Rien à appliquer.",
-    "applyConfirm": "Appliquer",
     "discardConfirm": "Abandonner",
     "scopeTurn": "Ce tour",
-    "scopeAll": "Depuis la création de l'espace de travail"
+    "scopeAll": "Depuis la création de l'espace de travail",
+    "applyShort": "Appliquer",
+    "scopeAllShort": "Tout",
+    "scope": "Modifications à afficher",
+    "showAll": "Afficher tous les fichiers ({{count}})",
+    "partial_one": "{{count}} fichier appliqué",
+    "partial_many": "{{count}} fichiers appliqués",
+    "partial_other": "{{count}} fichiers appliqués",
+    "applyIncludesEarlier_one": "Appliquer inclut aussi {{count}} fichier antérieur pas encore appliqué",
+    "applyIncludesEarlier_many": "Appliquer inclut aussi {{count}} fichiers antérieurs pas encore appliqués",
+    "applyIncludesEarlier_other": "Appliquer inclut aussi {{count}} fichiers antérieurs pas encore appliqués",
+    "applyTitle": "Appliquer à votre dossier ?",
+    "applyHint": "Ce correctif sera écrit dans votre dossier. S'il ne s'applique pas proprement, rien n'est modifié.",
+    "applyConfirm": "Appliquer"
+  },
+  "apply": {
+    "title_one": "Appliquer {{count}} modification à votre dossier",
+    "title_other": "Appliquer {{count}} modifications à votre dossier",
+    "copyPath": "Copier le chemin du dossier {{path}}",
+    "pathCopied": "Chemin du dossier copié",
+    "files_one": "{{count}} fichier",
+    "files_other": "{{count}} fichiers",
+    "source": "De {{name}} · tour {{round}}",
+    "safety": "Rien n’est appliqué si le patch ne s’applique pas proprement. Vous pourrez annuler juste après.",
+    "checking": "Vérification de l’application à votre dossier…",
+    "clean": "S’applique proprement",
+    "checkFailed": "Impossible de vérifier le patch : {{message}}",
+    "conflict_one": "{{count}} fichier ne s’applique pas à votre dossier",
+    "conflict_other": "{{count}} fichiers ne s’appliquent pas à votre dossier",
+    "conflictHint": "Laissez-les de côté, ou demandez au participant de les refaire sur l’état actuel de votre dossier.",
+    "notChecked": "non vérifié individuellement (trop de fichiers)",
+    "fileConflict": "Ne s’applique pas",
+    "leaveOut": "Laisser de côté les fichiers en conflit",
+    "details": "Détails",
+    "fileDirty": "Vos modifications",
+    "dirtyTitle_one": "Vous avez des modifications non validées dans {{count}} de ces fichiers",
+    "dirtyTitle_other": "Vous avez des modifications non validées dans {{count}} de ces fichiers",
+    "dirtyHint": "Le patch s’écrit par-dessus vos modifications. Validez ou mettez de côté (stash) d’abord si vous voulez pouvoir revenir facilement.",
+    "selectAll": "Sélectionner tous les fichiers",
+    "include": "Inclure {{path}}",
+    "renamedFrom": "(renommé depuis {{path}})",
+    "status": {
+      "added": "Ajouté",
+      "modified": "Modifié",
+      "deleted": "Supprimé",
+      "renamed": "Renommé"
+    },
+    "binary": "Fichier binaire modifié. Son contenu n’est pas affiché.",
+    "noLines": "Aucune ligne modifiée (mode ou nom seulement).",
+    "showMore_one": "Afficher {{count}} ligne de plus",
+    "showMore_other": "Afficher {{count}} lignes de plus",
+    "hiddenLines_one": "({{count}} masquée)",
+    "hiddenLines_other": "({{count}} masquées)",
+    "blockedConflict": "Application désactivée : certains fichiers sélectionnés ne s’appliquent pas proprement.",
+    "blockedNothing": "Sélectionnez au moins un fichier.",
+    "blockedFailed": "Application désactivée tant que la vérification échoue.",
+    "copyPatch": "Copier le patch",
+    "patchCopied": "Patch copié",
+    "confirm_one": "Appliquer {{count}} fichier",
+    "confirm_other": "Appliquer {{count}} fichiers",
+    "applied_one": "{{count}} fichier appliqué à votre dossier",
+    "applied_other": "{{count}} fichiers appliqués à votre dossier",
+    "undo": "Annuler",
+    "undone": "La modification a été retirée de votre dossier",
+    "undoFailed": "Impossible d’annuler : {{message}}"
   },
   "approvals": {
     "held": "Salon en pause",
     "heldHint": "Le salon a été mis en pause pendant cette attente : elle ne peut plus être autorisée. Reprenez le salon et le participant redemandera s'il en a encore besoin.",
-    "dismiss": "Fermer"
+    "dismiss": "Fermer",
+    "heldBanner": "Salon en pause : cette demande ne peut plus être autorisée. Reprenez pour la redemander.",
+    "wantsToRun": "{{origin}} veut exécuter {{tool}}",
+    "details": "Détails"
   }
 }

@@ -12,8 +12,8 @@
     "open": "打开 {{title}}",
     "delete": "删除",
     "deleteLabel": "删除 {{title}}",
-    "participants": "{{count}} 名参与者",
-    "turns": "{{count}} 轮",
+    "participants_other": "{{count}} 位参与者",
+    "turns_other": "{{count}} 轮",
     "updated": "更新于 {{time}}",
     "untitled": "未命名房间",
     "moreLabel": "{{title}} 的更多操作",
@@ -21,7 +21,9 @@
     "noParticipants": "还没有参与者",
     "noPreview": "打开房间以查看讨论。",
     "tokens": "{{count}} 个 token",
-    "yours": "你的房间"
+    "yours": "你的房间",
+    "participants": "{{count}} 名参与者",
+    "turns": "{{count}} 轮"
   },
   "create": {
     "title": "新建房间",
@@ -76,6 +78,9 @@
     "heading": "房间设置",
     "sectionGeneral": "常规",
     "sectionDiscussion": "讨论和主持人",
+    "sectionIdentity": "身份",
+    "sectionModel": "模型与推理",
+    "sectionTools": "工具",
     "lockedWhileRunning": "暂停房间以更改设置。",
     "title": "标题",
     "objective": "目标",
@@ -191,8 +196,10 @@
     "isolation": {
       "active": "每个可编辑的参与者都在自己的隔离工作区中工作，因此无法互相覆盖或覆盖你的文件夹。",
       "unavailable": "隔离工作区不可用：{{reason}}。可编辑的参与者在此房间中只读。",
-      "untrusted": "该文件夹未受信任"
-    }
+      "untrusted": "该文件夹未受信任",
+      "trust": "信任此文件夹"
+    },
+    "saving": "正在保存…"
   },
   "limits": {
     "maxRounds": "轮数",
@@ -278,7 +285,18 @@
       "tools": "使用了工具，但没有写文字回复。",
       "none": "没有文字回复。"
     },
-    "thought": "思考"
+    "thought": "思考",
+    "answerFrom": "{{name}} 的回答",
+    "expandAnswer": "显示 {{name}} 的完整回答",
+    "collapseAnswer": "缩短 {{name}} 的回答",
+    "expand": "展开",
+    "collapse": "收起",
+    "linkScroll": "联动滚动",
+    "linkScrollHint": "同步滚动同一问题的各个回答",
+    "continuePrompt": "请从被截断的地方继续你之前的回答。",
+    "catchUp": "补答：还回答了之前的 {{count}} 个问题",
+    "catchUp_one": "补答：还回答了之前的 1 个问题",
+    "catchUpHint": "该参与者在这些问题之后才加入，因此这条回复也回答了它们："
   },
   "unknownWindow": {
     "title": "上下文窗口未知",
@@ -329,7 +347,7 @@
     "speaking": "{{name}} 正在发言",
     "compacting": "{{name}} 正在跟进",
     "draft": "准备开始",
-    "draftHint": "{{count}} 名参与者 · {{mode}}",
+    "draftHint_other": "{{count}} 位参与者 · {{mode}}",
     "running": "讨论进行中",
     "runningHint": "下一位发言者正在准备。",
     "awaiting-user": "轮到你选择",
@@ -348,7 +366,9 @@
     "failedHint": "重新开始以重试。",
     "round": "轮次",
     "turn": "发言",
-    "of": "/"
+    "of": "/",
+    "question": "问题",
+    "draftHint": "{{count}} 名参与者 · {{mode}}"
   },
   "usage": {
     "label": "用量",
@@ -361,7 +381,8 @@
     "time": "时间",
     "of": "{{value}} / {{max}}",
     "noLimit": "无限制",
-    "stopReason": "已停止：{{reason}}"
+    "stopReason": "已停止：{{reason}}",
+    "questions": "问题"
   },
   "stopReason": {
     "user": "由你停止",
@@ -390,7 +411,9 @@
     "toShort": "发给",
     "placeholderTo": "给 {{name}} 发消息…",
     "mention": "提及参与者",
-    "dropSkipped": "未添加（不是文本、是文件夹，或超出消息限制）：{{files}}"
+    "dropSkipped": "未添加（不是文本、是文件夹，或超出消息限制）：{{files}}",
+    "placeholderShort": "发送到房间… 用 @ 提及",
+    "extendByQuestions": "更多问题"
   },
   "kpi": {
     "running": "进行中",
@@ -399,9 +422,10 @@
     "waitingHint": "需要你选择或回复",
     "waitingNone": "没有需要你处理的事项",
     "turns": "本周发言次数",
-    "turnsHint": "涉及 {{count}} 个房间",
+    "turnsHint_other": "共 {{count}} 个房间",
     "models": "参与的模型",
-    "modelsNone": "还没有参与者"
+    "modelsNone": "还没有参与者",
+    "turnsHint": "涉及 {{count}} 个房间"
   },
   "waiting": {
     "title": "等待你",
@@ -471,8 +495,11 @@
       "queued": "排队中",
       "done": "已回答",
       "failed": "失败",
-      "idle": "尚未回答"
-    }
+      "idle": "尚未回答",
+      "waitingSlot": "排队中：等待本地模型槽位"
+    },
+    "retry": "重试",
+    "retryFor": "重试 {{name}}"
   },
   "changes": {
     "summaryOne": "{{count}} 个文件已更改",
@@ -487,24 +514,85 @@
     "state": {
       "kept": "已保留",
       "discarded": "已放弃",
-      "applied": "已应用"
+      "applied": "已应用",
+      "idle": "未应用"
     },
     "diffTitle": "工作区中的更改",
     "diffHint": "该参与者在其隔离工作区中所做的全部更改。",
-    "applyTitle": "应用到你的文件夹？",
-    "applyHint": "此补丁将写入你的文件夹。如果无法干净地应用，则不会更改任何内容。",
     "discardTitle": "放弃这些更改？",
     "discardHint": "参与者的工作区将恢复到初始状态。你的文件夹不受影响。",
     "loading": "正在加载差异…",
     "empty": "没有可应用的内容。",
-    "applyConfirm": "应用",
     "discardConfirm": "放弃",
     "scopeTurn": "本轮",
-    "scopeAll": "自工作区创建以来"
+    "scopeAll": "自工作区创建以来",
+    "applyShort": "应用",
+    "scopeAllShort": "全部",
+    "scope": "显示哪些更改",
+    "showAll": "显示全部文件（{{count}}）",
+    "partial_other": "已应用 {{count}} 个文件",
+    "applyIncludesEarlier_other": "应用还会包含 {{count}} 个之前尚未应用的文件",
+    "applyTitle": "应用到你的文件夹？",
+    "applyHint": "此补丁将写入你的文件夹。如果无法干净地应用，则不会更改任何内容。",
+    "applyConfirm": "应用"
+  },
+  "apply": {
+    "title_one": "将 {{count}} 项更改应用到你的文件夹",
+    "title_other": "将 {{count}} 项更改应用到你的文件夹",
+    "copyPath": "复制文件夹路径 {{path}}",
+    "pathCopied": "已复制文件夹路径",
+    "files_one": "{{count}} 个文件",
+    "files_other": "{{count}} 个文件",
+    "source": "来自 {{name}} · 第 {{round}} 轮",
+    "safety": "如果补丁无法干净地应用，则不会应用任何内容。应用后可立即撤销。",
+    "checking": "正在检查能否应用到你的文件夹…",
+    "clean": "可以干净地应用",
+    "checkFailed": "无法检查补丁：{{message}}",
+    "conflict_one": "{{count}} 个文件无法应用到你的文件夹",
+    "conflict_other": "{{count}} 个文件无法应用到你的文件夹",
+    "conflictHint": "排除它们，或请参与者基于文件夹当前状态重新修改。",
+    "notChecked": "未单独检查（文件太多）",
+    "fileConflict": "无法应用",
+    "leaveOut": "排除冲突文件",
+    "details": "详情",
+    "fileDirty": "你的编辑",
+    "dirtyTitle_one": "其中 {{count}} 个文件有你未提交的更改",
+    "dirtyTitle_other": "其中 {{count}} 个文件有你未提交的更改",
+    "dirtyHint": "补丁会写在你的修改之上。如需方便回退，请先 commit 或 stash。",
+    "selectAll": "选择所有文件",
+    "include": "包含 {{path}}",
+    "renamedFrom": "（由 {{path}} 重命名）",
+    "status": {
+      "added": "新增",
+      "modified": "修改",
+      "deleted": "删除",
+      "renamed": "重命名"
+    },
+    "binary": "二进制文件已更改，不显示其内容。",
+    "noLines": "没有行更改（仅模式或名称）。",
+    "showMore_one": "再显示 {{count}} 行",
+    "showMore_other": "再显示 {{count}} 行",
+    "hiddenLines_one": "（已隐藏 {{count}} 行）",
+    "hiddenLines_other": "（已隐藏 {{count}} 行）",
+    "blockedConflict": "无法应用：部分所选文件无法干净地应用。",
+    "blockedNothing": "请至少选择一个文件。",
+    "blockedFailed": "检查成功前无法应用。",
+    "copyPatch": "复制补丁",
+    "patchCopied": "已复制补丁",
+    "confirm_one": "应用 {{count}} 个文件",
+    "confirm_other": "应用 {{count}} 个文件",
+    "applied_one": "已将 {{count}} 个文件应用到你的文件夹",
+    "applied_other": "已将 {{count}} 个文件应用到你的文件夹",
+    "undo": "撤销",
+    "undone": "已从你的文件夹撤回该更改",
+    "undoFailed": "无法撤销：{{message}}"
   },
   "approvals": {
     "held": "房间已暂停",
     "heldHint": "此请求等待期间房间被暂停，因此无法再允许。恢复房间后，如仍需要，参与者会再次询问。",
-    "dismiss": "关闭"
+    "dismiss": "关闭",
+    "heldBanner": "房间已暂停：此请求已无法允许。继续后会再次询问。",
+    "wantsToRun": "{{origin}} 想要运行 {{tool}}",
+    "details": "详情"
   }
 }

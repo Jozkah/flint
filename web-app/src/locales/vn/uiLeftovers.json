@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Đá phiến",
+    "vermilion": "Đỏ son",
+    "ink": "Mực",
+    "moss": "Rêu",
+    "slate": "Xanh đá phiến",
+    "violet": "Tím"
+  },
+  "fontSizeNames": {
+    "small": "Nhỏ",
+    "medium": "Vừa",
+    "large": "Lớn",
+    "extraLarge": "Rất lớn"
+  },
+  "unknownSize": "Không rõ kích thước",
+  "official": "Chính thức",
+  "configuration": "Cấu hình",
   "modelCombobox": {
     "refresh": "Làm mới danh sách mô hình",
     "placeholder": "Nhập hoặc chọn một mô hình..."

@@ -12,8 +12,10 @@
     "open": "Open {{title}}",
     "delete": "Delete",
     "deleteLabel": "Delete {{title}}",
-    "participants": "{{count}} participants",
-    "turns": "{{count}} turns",
+    "participants_one": "{{count}} participant",
+    "participants_other": "{{count}} participants",
+    "turns_one": "{{count}} turn",
+    "turns_other": "{{count}} turns",
     "updated": "Updated {{time}}",
     "untitled": "Untitled room",
     "moreLabel": "More actions for {{title}}",
@@ -21,7 +23,9 @@
     "noParticipants": "No participants yet",
     "noPreview": "Open the room to see the discussion.",
     "tokens": "{{count}} tokens",
-    "yours": "Your rooms"
+    "yours": "Your rooms",
+    "participants": "{{count}} participants",
+    "turns": "{{count}} turns"
   },
   "create": {
     "title": "New room",
@@ -76,6 +80,9 @@
     "heading": "Room settings",
     "sectionGeneral": "General",
     "sectionDiscussion": "Discussion & moderator",
+    "sectionIdentity": "Identity",
+    "sectionModel": "Model & reasoning",
+    "sectionTools": "Tools",
     "lockedWhileRunning": "Pause the room to change settings.",
     "title": "Title",
     "objective": "Objective",
@@ -191,8 +198,10 @@
     "isolation": {
       "active": "Each participant that can edit works in its own isolated workspace, so they cannot overwrite each other or your folder.",
       "unavailable": "Isolated workspace unavailable: {{reason}}. Participants that can edit only read in this room.",
-      "untrusted": "the folder is not trusted"
-    }
+      "untrusted": "the folder is not trusted",
+      "trust": "Trust this folder"
+    },
+    "saving": "Saving…"
   },
   "limits": {
     "maxRounds": "Rounds",
@@ -278,7 +287,18 @@
       "tools": "Used tools, but wrote no text reply.",
       "none": "No text reply."
     },
-    "thought": "Thinking"
+    "thought": "Thinking",
+    "answerFrom": "Answer from {{name}}",
+    "expandAnswer": "Show all of the answer from {{name}}",
+    "collapseAnswer": "Shorten the answer from {{name}}",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "linkScroll": "Link scrolling",
+    "linkScrollHint": "Scroll the answers to one question together",
+    "continuePrompt": "Continue your previous answer from where it was cut off.",
+    "catchUp": "Catch-up: also answered {{count}} earlier questions",
+    "catchUp_one": "Catch-up: also answered 1 earlier question",
+    "catchUpHint": "This participant joined after these questions, so this reply answers them as well:"
   },
   "unknownWindow": {
     "title": "Context window unknown",
@@ -329,7 +349,8 @@
     "speaking": "{{name}} is speaking",
     "compacting": "{{name}} is catching up",
     "draft": "Ready to start",
-    "draftHint": "{{count}} participants · {{mode}}",
+    "draftHint_one": "{{count}} participant · {{mode}}",
+    "draftHint_other": "{{count}} participants · {{mode}}",
     "running": "Discussion running",
     "runningHint": "The next speaker is getting ready.",
     "awaiting-user": "Your turn to choose",
@@ -348,7 +369,9 @@
     "failedHint": "Start again to retry.",
     "round": "Round",
     "turn": "Turn",
-    "of": "of"
+    "of": "of",
+    "question": "Question",
+    "draftHint": "{{count}} participants · {{mode}}"
   },
   "usage": {
     "label": "Usage",
@@ -361,7 +384,8 @@
     "time": "Time",
     "of": "{{value}} / {{max}}",
     "noLimit": "no limit",
-    "stopReason": "Stopped: {{reason}}"
+    "stopReason": "Stopped: {{reason}}",
+    "questions": "Questions"
   },
   "stopReason": {
     "user": "stopped by you",
@@ -390,7 +414,9 @@
     "toShort": "To",
     "placeholderTo": "Write to {{name}}…",
     "mention": "Mention a participant",
-    "dropSkipped": "Not added (not text, a folder, or past the message limit): {{files}}"
+    "dropSkipped": "Not added (not text, a folder, or past the message limit): {{files}}",
+    "placeholderShort": "Message the room… @ to mention",
+    "extendByQuestions": "More questions"
   },
   "kpi": {
     "running": "Running",
@@ -399,9 +425,11 @@
     "waitingHint": "Needs your pick or reply",
     "waitingNone": "Nothing needs you",
     "turns": "Turns this week",
-    "turnsHint": "Across {{count}} rooms",
+    "turnsHint_one": "Across {{count}} room",
+    "turnsHint_other": "Across {{count}} rooms",
     "models": "Models taking part",
-    "modelsNone": "No participants yet"
+    "modelsNone": "No participants yet",
+    "turnsHint": "Across {{count}} rooms"
   },
   "waiting": {
     "title": "Waiting for you",
@@ -471,8 +499,11 @@
       "queued": "Queued",
       "done": "Answered",
       "failed": "Failed",
-      "idle": "Not answered yet"
-    }
+      "idle": "Not answered yet",
+      "waitingSlot": "Queued: waiting for the local model slot"
+    },
+    "retry": "Retry",
+    "retryFor": "Retry {{name}}"
   },
   "changes": {
     "summaryOne": "{{count}} file changed",
@@ -487,24 +518,87 @@
     "state": {
       "kept": "Kept",
       "discarded": "Discarded",
-      "applied": "Applied"
+      "applied": "Applied",
+      "idle": "Not applied"
     },
     "diffTitle": "Changes in the workspace",
     "diffHint": "Everything this participant changed in its isolated workspace.",
-    "applyTitle": "Apply to your folder?",
-    "applyHint": "This patch will be written into your folder. Nothing is applied if it does not apply cleanly.",
     "discardTitle": "Discard these changes?",
     "discardHint": "The participant's workspace goes back to how it started. Your folder is not touched.",
     "loading": "Loading the diff…",
     "empty": "Nothing to apply.",
-    "applyConfirm": "Apply",
     "discardConfirm": "Discard",
     "scopeTurn": "This turn",
-    "scopeAll": "Since the workspace was made"
+    "scopeAll": "Since the workspace was made",
+    "applyShort": "Apply",
+    "scopeAllShort": "All",
+    "scope": "Which changes to show",
+    "showAll": "Show all files ({{count}})",
+    "partial_one": "Applied {{count}} file",
+    "partial_other": "Applied {{count}} files",
+    "applyIncludesEarlier_one": "Apply also includes {{count}} earlier file not applied yet",
+    "applyIncludesEarlier_other": "Apply also includes {{count}} earlier files not applied yet",
+    "applyTitle": "Apply to your folder?",
+    "applyHint": "This patch will be written into your folder. Nothing is applied if it does not apply cleanly.",
+    "applyConfirm": "Apply"
+  },
+  "apply": {
+    "title_one": "Apply {{count}} change to your folder",
+    "title_other": "Apply {{count}} changes to your folder",
+    "copyPath": "Copy the folder path {{path}}",
+    "pathCopied": "Folder path copied",
+    "files_one": "{{count}} file",
+    "files_other": "{{count}} files",
+    "source": "From {{name}} · round {{round}}",
+    "safety": "Nothing is applied if the patch does not apply cleanly. You can undo right after.",
+    "checking": "Checking whether it applies to your folder…",
+    "clean": "Applies cleanly",
+    "checkFailed": "Could not check the patch: {{message}}",
+    "conflict_one": "{{count}} file does not apply to your folder",
+    "conflict_other": "{{count}} files do not apply to your folder",
+    "conflictHint": "Leave them out, or ask the participant to redo them against your folder as it is now.",
+    "notChecked": "not checked on its own (too many files)",
+    "fileConflict": "Does not apply",
+    "leaveOut": "Leave out conflicting files",
+    "details": "Details",
+    "fileDirty": "Your edits",
+    "dirtyTitle_one": "You have uncommitted changes in {{count}} of these files",
+    "dirtyTitle_other": "You have uncommitted changes in {{count}} of these files",
+    "dirtyHint": "The patch is written on top of your edits. Commit or stash first if you want an easy way back.",
+    "selectAll": "Select all files",
+    "include": "Include {{path}}",
+    "renamedFrom": "(renamed from {{path}})",
+    "status": {
+      "added": "Added",
+      "modified": "Modified",
+      "deleted": "Deleted",
+      "renamed": "Renamed"
+    },
+    "binary": "Binary file changed. Its content is not shown.",
+    "noLines": "No line changes (mode or name only).",
+    "showMore_one": "Show {{count}} more line",
+    "showMore_other": "Show {{count}} more lines",
+    "hiddenLines_one": "({{count}} hidden)",
+    "hiddenLines_other": "({{count}} hidden)",
+    "blockedConflict": "Apply is off: some selected files do not apply cleanly.",
+    "blockedNothing": "Select at least one file to apply.",
+    "blockedFailed": "Apply is off until the check succeeds.",
+    "copyPatch": "Copy patch",
+    "patchCopied": "Patch copied",
+    "confirm_one": "Apply {{count}} file",
+    "confirm_other": "Apply {{count}} files",
+    "applied_one": "Applied {{count}} file to your folder",
+    "applied_other": "Applied {{count}} files to your folder",
+    "undo": "Undo",
+    "undone": "The change was taken back out of your folder",
+    "undoFailed": "Could not undo: {{message}}"
   },
   "approvals": {
     "held": "Room paused",
     "heldHint": "The room was paused while this was waiting, so it can no longer be allowed. Resume the room and the participant will ask again if it still needs it.",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "heldBanner": "Room paused: this request can no longer be allowed. Resume to ask again.",
+    "wantsToRun": "{{origin}} wants to run {{tool}}",
+    "details": "Details"
   }
 }

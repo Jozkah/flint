@@ -12,8 +12,8 @@
     "open": "開啟 {{title}}",
     "delete": "刪除",
     "deleteLabel": "刪除 {{title}}",
-    "participants": "{{count}} 名參與者",
-    "turns": "{{count}} 輪",
+    "participants_other": "{{count}} 位參與者",
+    "turns_other": "{{count}} 輪",
     "updated": "更新於 {{time}}",
     "untitled": "未命名房間",
     "moreLabel": "{{title}} 的更多操作",
@@ -21,7 +21,9 @@
     "noParticipants": "還沒有參與者",
     "noPreview": "開啟房間以查看討論。",
     "tokens": "{{count}} 個 token",
-    "yours": "你的房間"
+    "yours": "你的房間",
+    "participants": "{{count}} 名參與者",
+    "turns": "{{count}} 輪"
   },
   "create": {
     "title": "新增房間",
@@ -76,6 +78,9 @@
     "heading": "房間設定",
     "sectionGeneral": "一般",
     "sectionDiscussion": "討論與主持人",
+    "sectionIdentity": "身分",
+    "sectionModel": "模型與推理",
+    "sectionTools": "工具",
     "lockedWhileRunning": "暫停房間以變更設定。",
     "title": "標題",
     "objective": "目標",
@@ -191,8 +196,10 @@
     "isolation": {
       "active": "每個可編輯的參與者都在自己的隔離工作區中工作，因此無法互相覆寫或覆寫你的資料夾。",
       "unavailable": "隔離工作區無法使用：{{reason}}。可編輯的參與者在此房間中只讀。",
-      "untrusted": "該資料夾未受信任"
-    }
+      "untrusted": "該資料夾未受信任",
+      "trust": "信任此資料夾"
+    },
+    "saving": "正在儲存…"
   },
   "limits": {
     "maxRounds": "輪數",
@@ -278,7 +285,18 @@
       "tools": "使用了工具，但沒有寫文字回覆。",
       "none": "沒有文字回覆。"
     },
-    "thought": "思考"
+    "thought": "思考",
+    "answerFrom": "{{name}} 的回答",
+    "expandAnswer": "顯示 {{name}} 的完整回答",
+    "collapseAnswer": "縮短 {{name}} 的回答",
+    "expand": "展開",
+    "collapse": "收合",
+    "linkScroll": "連動捲動",
+    "linkScrollHint": "同步捲動同一問題的各個回答",
+    "continuePrompt": "請從被截斷的地方繼續你之前的回答。",
+    "catchUp": "補答：還回答了之前的 {{count}} 個問題",
+    "catchUp_one": "補答：還回答了之前的 1 個問題",
+    "catchUpHint": "該參與者在這些問題之後才加入，因此這則回覆也回答了它們："
   },
   "unknownWindow": {
     "title": "上下文視窗未知",
@@ -329,7 +347,7 @@
     "speaking": "{{name}} 正在發言",
     "compacting": "{{name}} 正在跟進",
     "draft": "準備開始",
-    "draftHint": "{{count}} 名參與者 · {{mode}}",
+    "draftHint_other": "{{count}} 位參與者 · {{mode}}",
     "running": "討論進行中",
     "runningHint": "下一位發言者正在準備。",
     "awaiting-user": "輪到你選擇",
@@ -348,7 +366,9 @@
     "failedHint": "重新開始以重試。",
     "round": "輪次",
     "turn": "發言",
-    "of": "/"
+    "of": "/",
+    "question": "問題",
+    "draftHint": "{{count}} 名參與者 · {{mode}}"
   },
   "usage": {
     "label": "用量",
@@ -361,7 +381,8 @@
     "time": "時間",
     "of": "{{value}} / {{max}}",
     "noLimit": "無限制",
-    "stopReason": "已停止：{{reason}}"
+    "stopReason": "已停止：{{reason}}",
+    "questions": "問題"
   },
   "stopReason": {
     "user": "由你停止",
@@ -390,7 +411,9 @@
     "toShort": "發給",
     "placeholderTo": "給 {{name}} 傳訊息…",
     "mention": "提及參與者",
-    "dropSkipped": "未加入（不是文字、是資料夾，或超出訊息限制）：{{files}}"
+    "dropSkipped": "未加入（不是文字、是資料夾，或超出訊息限制）：{{files}}",
+    "placeholderShort": "傳送到房間… 用 @ 提及",
+    "extendByQuestions": "更多問題"
   },
   "kpi": {
     "running": "進行中",
@@ -399,9 +422,10 @@
     "waitingHint": "需要你選擇或回覆",
     "waitingNone": "沒有需要你處理的事項",
     "turns": "本週發言次數",
-    "turnsHint": "涉及 {{count}} 個房間",
+    "turnsHint_other": "共 {{count}} 個房間",
     "models": "參與的模型",
-    "modelsNone": "還沒有參與者"
+    "modelsNone": "還沒有參與者",
+    "turnsHint": "涉及 {{count}} 個房間"
   },
   "waiting": {
     "title": "等待你",
@@ -471,8 +495,11 @@
       "queued": "排隊中",
       "done": "已回答",
       "failed": "失敗",
-      "idle": "尚未回答"
-    }
+      "idle": "尚未回答",
+      "waitingSlot": "排隊中：等待本機模型槽位"
+    },
+    "retry": "重試",
+    "retryFor": "重試 {{name}}"
   },
   "changes": {
     "summaryOne": "{{count}} 個檔案已變更",
@@ -487,24 +514,85 @@
     "state": {
       "kept": "已保留",
       "discarded": "已捨棄",
-      "applied": "已套用"
+      "applied": "已套用",
+      "idle": "未套用"
     },
     "diffTitle": "工作區中的變更",
     "diffHint": "此參與者在其隔離工作區中所做的全部變更。",
-    "applyTitle": "套用到你的資料夾？",
-    "applyHint": "此修補程式將寫入你的資料夾。若無法乾淨套用，則不會變更任何內容。",
     "discardTitle": "捨棄這些變更？",
     "discardHint": "參與者的工作區會回到初始狀態。你的資料夾不受影響。",
     "loading": "正在載入差異…",
     "empty": "沒有可套用的內容。",
-    "applyConfirm": "套用",
     "discardConfirm": "捨棄",
     "scopeTurn": "本輪",
-    "scopeAll": "自工作區建立以來"
+    "scopeAll": "自工作區建立以來",
+    "applyShort": "套用",
+    "scopeAllShort": "全部",
+    "scope": "顯示哪些變更",
+    "showAll": "顯示全部檔案（{{count}}）",
+    "partial_other": "已套用 {{count}} 個檔案",
+    "applyIncludesEarlier_other": "套用也會包含 {{count}} 個先前尚未套用的檔案",
+    "applyTitle": "套用到你的資料夾？",
+    "applyHint": "此修補程式將寫入你的資料夾。若無法乾淨套用，則不會變更任何內容。",
+    "applyConfirm": "套用"
+  },
+  "apply": {
+    "title_one": "將 {{count}} 項變更套用到你的資料夾",
+    "title_other": "將 {{count}} 項變更套用到你的資料夾",
+    "copyPath": "複製資料夾路徑 {{path}}",
+    "pathCopied": "已複製資料夾路徑",
+    "files_one": "{{count}} 個檔案",
+    "files_other": "{{count}} 個檔案",
+    "source": "來自 {{name}} · 第 {{round}} 輪",
+    "safety": "若修補檔無法乾淨套用，就不會套用任何內容。套用後可立即復原。",
+    "checking": "正在檢查能否套用到你的資料夾…",
+    "clean": "可以乾淨套用",
+    "checkFailed": "無法檢查修補檔：{{message}}",
+    "conflict_one": "{{count}} 個檔案無法套用到你的資料夾",
+    "conflict_other": "{{count}} 個檔案無法套用到你的資料夾",
+    "conflictHint": "排除它們，或請參與者依資料夾目前的狀態重新修改。",
+    "notChecked": "未個別檢查（檔案太多）",
+    "fileConflict": "無法套用",
+    "leaveOut": "排除衝突檔案",
+    "details": "詳細資訊",
+    "fileDirty": "你的編輯",
+    "dirtyTitle_one": "其中 {{count}} 個檔案有你尚未提交的變更",
+    "dirtyTitle_other": "其中 {{count}} 個檔案有你尚未提交的變更",
+    "dirtyHint": "修補檔會寫在你的修改之上。若想方便回復，請先 commit 或 stash。",
+    "selectAll": "選取所有檔案",
+    "include": "包含 {{path}}",
+    "renamedFrom": "（由 {{path}} 重新命名）",
+    "status": {
+      "added": "新增",
+      "modified": "修改",
+      "deleted": "刪除",
+      "renamed": "重新命名"
+    },
+    "binary": "二進位檔已變更，不顯示其內容。",
+    "noLines": "沒有行變更（僅模式或名稱）。",
+    "showMore_one": "再顯示 {{count}} 行",
+    "showMore_other": "再顯示 {{count}} 行",
+    "hiddenLines_one": "（已隱藏 {{count}} 行）",
+    "hiddenLines_other": "（已隱藏 {{count}} 行）",
+    "blockedConflict": "無法套用：部分選取的檔案無法乾淨套用。",
+    "blockedNothing": "請至少選取一個檔案。",
+    "blockedFailed": "檢查成功前無法套用。",
+    "copyPatch": "複製修補檔",
+    "patchCopied": "已複製修補檔",
+    "confirm_one": "套用 {{count}} 個檔案",
+    "confirm_other": "套用 {{count}} 個檔案",
+    "applied_one": "已將 {{count}} 個檔案套用到你的資料夾",
+    "applied_other": "已將 {{count}} 個檔案套用到你的資料夾",
+    "undo": "復原",
+    "undone": "已從你的資料夾撤回這項變更",
+    "undoFailed": "無法復原：{{message}}"
   },
   "approvals": {
     "held": "房間已暫停",
     "heldHint": "此請求等待期間房間被暫停，因此無法再允許。恢復房間後，如仍需要，參與者會再次詢問。",
-    "dismiss": "關閉"
+    "dismiss": "關閉",
+    "heldBanner": "房間已暫停：此請求已無法允許。繼續後會再次詢問。",
+    "wantsToRun": "{{origin}} 想要執行 {{tool}}",
+    "details": "詳細資料"
   }
 }

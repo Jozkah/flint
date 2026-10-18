@@ -72,5 +72,36 @@
     "remote": "远程",
     "searchModels": "搜索模型...",
     "noModels": "未找到与“{{search}}”匹配的模型"
+  },
+  "serverFolders": {
+    "title": "选择服务器文件夹",
+    "description": "此服务器允许会话使用的文件夹。",
+    "roots": "服务器文件夹",
+    "off": "没有共享的文件夹。请使用 --agent-root <folder> 启动服务器。",
+    "loading": "正在加载文件夹...",
+    "up": "上一级",
+    "empty": "这里没有文件夹。",
+    "truncated": "仅显示前 500 个文件夹。",
+    "choose": "使用此文件夹"
+  },
+  "serverSession": {
+    "title": "新建服务器会话",
+    "description": "在服务器的某个文件夹中，用你选择的模型运行。",
+    "notReady": "此服务器尚不能运行会话。",
+    "folder": "文件夹：{{path}}",
+    "noFolder": "未选择",
+    "prompt": "第一条消息",
+    "promptPlaceholder": "会话要做什么？",
+    "start": "开始会话",
+    "starting": "正在开始...",
+    "newButton": "新建服务器会话",
+    "badge": "服务器会话，{{status}}",
+    "runsWith": "使用 {{model}} 运行",
+    "status": {
+      "running": "运行中",
+      "idle": "空闲",
+      "awaiting_approval": "等待批准",
+      "awaiting_answer": "等待回答"
+    }
   }
 }

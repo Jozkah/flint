@@ -136,7 +136,7 @@
   "attachments": "Anhänge",
   "general": "Allgemein",
   "settings": "Einstellungen",
-  "modelProviders": "Modell Anbieter",
+  "modelProviders": "Modellanbieter",
   "localProviders": "Lokal",
   "remoteProviders": "Remote",
   "manageProviders": "Manage providers",
@@ -146,7 +146,7 @@
   "interface": "Erscheinung",
   "appearance": "Erscheinung",
   "privacy": "Privatsphäre",
-  "keyboardShortcuts": "Shortcuts",
+  "keyboardShortcuts": "Tastenkürzel",
   "home": "Start",
   "cowork": "Cowork",
   "campaign": "Kampagne",
@@ -209,7 +209,7 @@
   "delete": "Löschen",
   "copied": "Kopiert!",
   "copyFileName": "Dateinamen kopieren",
-  "dataFolder": "Daten Ordner",
+  "dataFolder": "Datenordner",
   "others": "Andere",
   "language": "Sprache",
   "login": "Anmelden",
@@ -222,7 +222,7 @@
   "profile": "Profil",
   "reset": "Zurücksetzen",
   "search": "Suchen",
-  "searchThreads": "Threads durchsuchen...",
+  "searchThreads": "Chats durchsuchen...",
   "toNavigate": "zum Navigieren",
   "toSelect": "zum Auswählen",
   "toClose": "zum Schließen",
@@ -248,6 +248,7 @@
   "preview": {
     "title": "Vorschau",
     "empty": "Öffne ein generiertes Artefakt, um es hier in der Vorschau anzuzeigen.",
+    "emptyHint": "Dateien, die Flint in dieser Sitzung erstellt, öffnen sich hier.",
     "loading": "Wird geöffnet…",
     "unsupported": "Flint kann diese Dateiart nicht anzeigen. Öffne sie, um sie in einer anderen App anzusehen.",
     "outside": "Diese Datei befindet sich nicht mehr im Sitzungsarbeitsbereich.",
@@ -330,9 +331,14 @@
     "openItem": "{{item}} öffnen"
   },
   "searchGroup": {
+    "pages": "Seiten",
+    "settings": "Einstellungen",
     "inProjects": "In Projekten",
     "conversations": "Unterhaltungen",
-    "messages": "In Nachrichten"
+    "messages": "In Nachrichten",
+    "work": "Räume und Sitzungen",
+    "room": "Raum",
+    "session": "Cowork-Sitzung"
   },
   "rail": {
     "label": "Cowork-Bereiche",
@@ -645,7 +651,8 @@
       "add": "Hinzufügen",
       "cancel": "Abbrechen",
       "remove": "Entfernen"
-    }
+    },
+    "ctxAutoFitHint": "Auto-Anpassung ist an: Leer lassen, dann wählt Auto-Anpassung den Kontext und verkleinert ihn bei Bedarf, damit er in den Speicher passt. Eine Zahl hier wird unverändert verwendet."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -688,6 +695,14 @@
     "showRawLibraries": "{{count}} Namen fehlender Bibliotheken anzeigen"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Projekt erstellen",
+      "editTitle": "Projekt bearbeiten",
+      "namePlaceholder": "Projektnamen eingeben...",
+      "alreadyExists": "Das Projekt „{{projectName}}“ existiert bereits",
+      "createSuccess": "Projekt „{{projectName}}“ erstellt",
+      "updateSuccess": "Projekt „{{projectName}}“ aktualisiert"
+    },
     "title": "Projekte",
     "new": "Neue Projekte",
     "addProject": "Projekt hinzufügen",
@@ -783,7 +798,8 @@
     "pathNameNotice": "Dies benennt eine Chat-Sammlung; es öffnet diesen Ordner nicht.",
     "openCodeFolderInCowork": "Code-Ordner in Cowork öffnen",
     "openCodeFolder": "Code-Ordner öffnen",
-    "openCodeFolderDescription": "Wähle einen Ordner auf deinem Computer, in dem Flint arbeiten soll."
+    "openCodeFolderDescription": "Wähle einen Ordner auf deinem Computer, in dem Flint arbeiten soll.",
+    "setUpEmbeddingModel": "Embedding-Modell einrichten"
   },
   "attachmentsIngestion": {
     "title": "Wähle, wie Anhänge verarbeitet werden",
@@ -915,7 +931,8 @@
       "unsupportedType": "Der Dateityp „{{type}}“ wird nicht unterstützt.",
       "ioError": "{{subject}} konnte nicht gelesen werden: {{message}}",
       "parseGeneric": "{{subject}} konnte nicht geparst werden: {{message}}",
-      "fallback": "{{subject}} konnte nicht verarbeitet werden."
+      "fallback": "{{subject}} konnte nicht verarbeitet werden.",
+      "noEmbeddingModel": "{{subject}} wurde nicht hinzugefügt: Es ist kein Embedding-Modell installiert, um sie zu indexieren. Richte eines in Llama.cpp ein und füge die Datei dann erneut hinzu."
     },
     "fileDeleted": {
       "title": "Datei gelöscht",
@@ -1062,7 +1079,10 @@
     "branchLabel": "Branch",
     "actionsLabel": "Ordneraktionen",
     "copyPath": "Pfad kopieren",
-    "copied": "Pfad kopiert"
+    "copied": "Pfad kopiert",
+    "footnoteEmptyEdit": "Hänge einen Ordner an, damit der Agent an deinem Projekt arbeiten kann.",
+    "a11yWithFolderEditable": "Projektordner {{folder}}, zum Bearbeiten angehängt. Ändern oder trennen.",
+    "a11yWithFolderWorktree": "Projektordner {{folder}}, bearbeitet über einen separaten Worktree. Ändern oder trennen."
   },
   "coworkEmpty": {
     "title": "Woran arbeiten wir?",
@@ -1084,7 +1104,9 @@
       "hint": "Dieser Ordner ist ein Obsidian-Vault. Flint liest ihn wie jeden Ordner mit Markdown-Notizen und lässt die Obsidian-Einstellungen in .obsidian sowie .trash aus.",
       "add": "Meinen Obsidian-Vault hinzufügen",
       "addHint": "Ein Obsidian-Vault ist einfach ein Ordner. Wähle ihn wie jeden anderen Ordner."
-    }
+    },
+    "subtitleFolderEdit": "Gib Flint eine Aufgabe. Es liest und ändert Dateien in {{folder}} direkt und arbeitet von dort selbstständig weiter.",
+    "subtitleFolderWorktree": "Gib Flint eine Aufgabe. Es arbeitet in einem Git-Worktree von {{folder}}, dein Ordner ändert sich also erst beim Zusammenführen."
   },
   "sandbox": {
     "noTerminal": "Kein Terminal",
@@ -1262,7 +1284,9 @@
     "count_one": "1 Ergebnis",
     "count_other": "{{count}} Ergebnisse",
     "empty": "Keine passenden Einstellungen.",
-    "clear": "Suche löschen"
+    "clear": "Suche löschen",
+    "emptyHint": "Versuchen Sie ein anderes Wort oder suchen Sie nach dem Zweck: Design, Proxy, Gedächtnis.",
+    "pageCrumb": "Seite"
   },
   "tasks": {
     "title": "Aktivität",
@@ -2190,10 +2214,12 @@
   },
   "browserVerify": {
     "title": "Im Browser verifizieren",
+    "about": "So funktioniert es",
     "explain": "Öffnet deine lokale App in einem separaten, temporären Browserprofil (nicht Flints Vorschau, keine Cookies), beschränkt auf den eigenen Origin der App. Anfragen an andere Ziele werden blockiert und aufgelistet.",
     "url": "URL der lokalen App",
     "notLocal": "Nur eine App auf diesem Rechner (localhost, 127.0.0.1) kann verifiziert werden.",
-    "steps": "Schritte (optional): open, click, type, expect, wait, screenshot – einer pro Zeile",
+    "stepsLabel": "Schritte (optional)",
+    "stepsHint": "Einer pro Zeile: open, click, type, expect, wait, screenshot",
     "run": "Verifizieren",
     "cancel": "Stoppen",
     "using": "Verwendet {{browser}}",
@@ -2219,7 +2245,8 @@
       "failed": "Fehlgeschlagen",
       "cancelled": "Gestoppt",
       "error": "Konnte nicht ausgeführt werden"
-    }
+    },
+    "steps": "Schritte (optional): open, click, type, expect, wait, screenshot – einer pro Zeile"
   },
   "jev": {
     "automationTitle": "Automatische Entscheidungen",
@@ -2559,7 +2586,11 @@
     }
   },
   "voicePill": {
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "dictate": "Diktieren",
+    "stop": "Diktieren beenden",
+    "working": "Wird verarbeitet…",
+    "setup": "Spracheingabe einrichten"
   },
   "coworkRunSettings": {
     "label": "Ausführungseinstellungen",
@@ -2596,7 +2627,8 @@
     "copied": "Kopiert",
     "binary": "Das scheint eine Binärdatei zu sein, daher gibt es keine Textvorschau.",
     "expandLine": "Ganze Zeile anzeigen",
-    "collapseLine": "Zeile kürzen"
+    "collapseLine": "Zeile kürzen",
+    "truncatedOnAdd": "Die ersten {{shown}} von {{total}} werden angezeigt (der Anhang wurde beim Hinzufügen gekürzt)"
   },
   "dropAttachFailed": "Die abgelegten Dateien konnten nicht angehängt werden",
   "sampler": {
@@ -2637,7 +2669,8 @@
     "errorEngine": "Die Engine, die dieses Modell ausführt, ist nicht verfügbar. Starte Flint neu und versuche es erneut.",
     "openProvider": "Anbieter-Einstellungen öffnen",
     "errorDetails": "Details",
-    "pasteHint": "Der Zugriff auf die Zwischenablage wurde blockiert. Klicke in das Textfeld und drücke {{keys}}."
+    "pasteHint": "Der Zugriff auf die Zwischenablage wurde blockiert. Klicke in das Textfeld und drücke {{keys}}.",
+    "swapNeedsSource": "Wähle eine Ausgangssprache, um zu tauschen"
   },
   "markdownImage": {
     "load": "Bild von {{host}} laden"
@@ -2660,6 +2693,7 @@
     "export": "Exportieren",
     "imported_one": "{{count}} Prompt hinzugefügt",
     "imported_other": "{{count}} Prompts hinzugefügt",
+    "importedNone": "Keine neuen Prompts gefunden",
     "search": "Prompts suchen",
     "empty": "Noch keine Prompts.",
     "edit": "{{name}} bearbeiten",
@@ -2684,7 +2718,9 @@
       "gone": "Dieser Prompt existiert nicht mehr",
       "invalidJson": "Diese Datei ist kein gültiges JSON",
       "noPrompts": "In dieser Datei wurden keine Prompts gefunden"
-    }
+    },
+    "noResults": "Keine Prompts passen zu „{{query}}“.",
+    "clearSearch": "Suche löschen"
   },
   "memoryProposal": {
     "title": "Soll ich mir das merken?",
@@ -2768,10 +2804,50 @@
       "assistant": "Assistent"
     },
     "messagesCount_one": "{{count}} Nachricht",
-    "messagesCount_other": "{{count}} Nachrichten"
+    "messagesCount_other": "{{count}} Nachrichten",
+    "compact_one": "{{count}} Erwähnung · {{mode}}",
+    "compact_other": "{{count}} Erwähnungen · {{mode}}",
+    "mixed": "Gemischt"
   },
   "campaignList": {
     "timeout": "Die App hat nicht rechtzeitig geantwortet.",
     "unreadableRecord": "das Backend hat einen Eintrag gesendet, den diese Seite nicht lesen kann"
+  },
+  "composer": {
+    "messageLabel": "Nachricht"
+  },
+  "routeLoading": {
+    "slow": "Diese Seite braucht länger als üblich zum Öffnen.",
+    "reload": "Neu laden",
+    "retry": "Erneut versuchen",
+    "failed": "Diese Seite konnte nicht geöffnet werden"
+  },
+  "replyCutOff": {
+    "withTokens": "Am Antwortlimit abgeschnitten ({{tokens}} Tokens)",
+    "plain": "Am Antwortlimit abgeschnitten"
+  },
+  "routeNotFound": {
+    "title": "Seite nicht gefunden",
+    "body": "Unter {{path}} gibt es keine Seite. Sie wurde vielleicht verschoben, oder der Link ist veraltet.",
+    "home": "Zur Startseite",
+    "settings": "Einstellungen öffnen"
+  },
+  "waitingForYou": "Wartet auf dich",
+  "dnd": {
+    "anItem": "das Element",
+    "aGroup": "eine Gruppe",
+    "picked": "{{item}} aufgenommen.",
+    "over": "{{item}} ist über {{group}}.",
+    "notOver": "{{item}} ist über keiner Gruppe.",
+    "dropped": "{{item}} nach {{group}} verschoben.",
+    "cancelled": "{{item}} wurde zurückgelegt."
+  },
+  "searchEverything": "Chats, Räume, Seiten und Einstellungen durchsuchen…",
+  "noResultsFoundEverywhere": "Nichts gefunden in Chats, Räumen, Cowork-Sitzungen, Seiten oder Einstellungen. Versuche ein anderes Stichwort.",
+  "selectModelNoKey": "Für diese Sitzung ist kein Modell gewählt, und {{provider}} hat keinen API-Schlüssel. Wähle zuerst ein Modell im Modellmenü.",
+  "serverConnection": {
+    "offlineTitle": "Der Flint-Server ist nicht erreichbar.",
+    "offlineBody": "Verbindung wird wiederhergestellt… Was Sie jetzt tun, wird möglicherweise erst gespeichert, wenn er wieder da ist.",
+    "statusOffline": "Server nicht erreichbar"
   }
 }

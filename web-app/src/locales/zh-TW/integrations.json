@@ -72,5 +72,36 @@
     "remote": "遠端",
     "searchModels": "搜尋模型...",
     "noModels": "找不到符合「{{search}}」的模型"
+  },
+  "serverFolders": {
+    "title": "選擇伺服器資料夾",
+    "description": "此伺服器允許工作階段使用的資料夾。",
+    "roots": "伺服器資料夾",
+    "off": "沒有共用的資料夾。請使用 --agent-root <folder> 啟動伺服器。",
+    "loading": "正在載入資料夾...",
+    "up": "上一層",
+    "empty": "這裡沒有資料夾。",
+    "truncated": "僅顯示前 500 個資料夾。",
+    "choose": "使用此資料夾"
+  },
+  "serverSession": {
+    "title": "新增伺服器工作階段",
+    "description": "在伺服器的某個資料夾中，以你選擇的模型執行。",
+    "notReady": "此伺服器尚無法執行工作階段。",
+    "folder": "資料夾：{{path}}",
+    "noFolder": "未選擇",
+    "prompt": "第一則訊息",
+    "promptPlaceholder": "工作階段要做什麼？",
+    "start": "開始工作階段",
+    "starting": "正在開始...",
+    "newButton": "新增伺服器工作階段",
+    "badge": "伺服器工作階段，{{status}}",
+    "runsWith": "使用 {{model}} 執行",
+    "status": {
+      "running": "執行中",
+      "idle": "閒置",
+      "awaiting_approval": "等待核准",
+      "awaiting_answer": "等待回答"
+    }
   }
 }

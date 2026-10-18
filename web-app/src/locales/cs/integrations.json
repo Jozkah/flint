@@ -72,5 +72,36 @@
     "remote": "Vzdálený",
     "searchModels": "Hledat modely...",
     "noModels": "Pro „{{search}}“ nebyly nalezeny žádné modely"
+  },
+  "serverFolders": {
+    "title": "Vybrat složku serveru",
+    "description": "Složky, které tento server povoluje pro relace.",
+    "roots": "Složky serveru",
+    "off": "Žádné sdílené složky. Spusťte server s --agent-root <folder>.",
+    "loading": "Načítání složek...",
+    "up": "Nahoru",
+    "empty": "Žádné složky.",
+    "truncated": "Zobrazuje se jen prvních 500 složek.",
+    "choose": "Použít tuto složku"
+  },
+  "serverSession": {
+    "title": "Nová relace na serveru",
+    "description": "Běží na serveru v jedné z jeho složek, s modelem, který zvolíte.",
+    "notReady": "Tento server zatím relace nespouští.",
+    "folder": "Složka: {{path}}",
+    "noFolder": "žádná nevybrána",
+    "prompt": "První zpráva",
+    "promptPlaceholder": "Co má relace udělat?",
+    "start": "Spustit relaci",
+    "starting": "Spouštění...",
+    "newButton": "Nová relace na serveru",
+    "badge": "Relace serveru, {{status}}",
+    "runsWith": "Běží s {{model}}",
+    "status": {
+      "running": "běží",
+      "idle": "nečinná",
+      "awaiting_approval": "čeká na schválení",
+      "awaiting_answer": "čeká na odpověď"
+    }
   }
 }

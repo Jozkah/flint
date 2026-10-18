@@ -72,5 +72,36 @@
     "remote": "Distant",
     "searchModels": "Rechercher des modèles...",
     "noModels": "Aucun modèle trouvé pour « {{search}} »"
+  },
+  "serverFolders": {
+    "title": "Choisir un dossier du serveur",
+    "description": "Dossiers que ce serveur autorise pour les sessions.",
+    "roots": "Dossiers du serveur",
+    "off": "Aucun dossier partagé. Démarrez le serveur avec --agent-root <folder>.",
+    "loading": "Chargement des dossiers...",
+    "up": "Remonter",
+    "empty": "Aucun dossier ici.",
+    "truncated": "Seuls les 500 premiers dossiers sont affichés.",
+    "choose": "Utiliser ce dossier"
+  },
+  "serverSession": {
+    "title": "Nouvelle session serveur",
+    "description": "S'exécute sur le serveur dans l'un de ses dossiers, avec le modèle choisi.",
+    "notReady": "Ce serveur n'exécute pas encore de sessions.",
+    "folder": "Dossier : {{path}}",
+    "noFolder": "aucun choisi",
+    "prompt": "Premier message",
+    "promptPlaceholder": "Que doit faire la session ?",
+    "start": "Démarrer la session",
+    "starting": "Démarrage...",
+    "newButton": "Nouvelle session serveur",
+    "badge": "Session serveur, {{status}}",
+    "runsWith": "Utilise {{model}}",
+    "status": {
+      "running": "en cours",
+      "idle": "inactive",
+      "awaiting_approval": "en attente d'approbation",
+      "awaiting_answer": "en attente d'une réponse"
+    }
   }
 }

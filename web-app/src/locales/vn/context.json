@@ -3,6 +3,7 @@
   "title": "Flint đang dùng gì trong cuộc trò chuyện này",
   "description": "Những gì khả dụng với Flint, những gì được chọn cho một yêu cầu, và những gì đã được xác minh trong bản sao đã làm sạch của yêu cầu gần nhất. Thay đổi ở đây ảnh hưởng đến các tin nhắn sau, không ảnh hưởng đến câu trả lời đang được viết.",
   "refresh": "Làm mới",
+  "retry": "Thử lại",
   "details": "Chi tiết",
   "closeDetails": "Đóng chi tiết",
   "tabs": {
@@ -59,10 +60,12 @@
   },
   "reason": {
     "location": {
-      "local": "Chạy trên thiết bị này hoặc mạng của bạn. Tin nhắn không rời khỏi đó.",
+      "local": "Chạy trên thiết bị này. Tin nhắn không rời khỏi thiết bị.",
       "remote": "Nhà cung cấp từ xa: tin nhắn và các tệp đã đưa vào của bạn được gửi đến đó.",
       "checking": "Vẫn đang kiểm tra nơi nhà cung cấp này chạy.",
-      "unknown": "Không xác định được nơi nhà cung cấp này chạy."
+      "unknown": "Không xác định được nơi nhà cung cấp này chạy.",
+      "network": "Gửi tới {{host}} trong mạng của bạn. Tin nhắn và tệp đính kèm rời thiết bị này nhưng không rời mạng của bạn.",
+      "remoteHost": "Gửi tới {{host}}: tin nhắn và tệp đính kèm của bạn rời khỏi máy tính này."
     },
     "assistantInstructions": "Hướng dẫn của trợ lý được gửi dưới dạng system prompt.",
     "pendingInline": "Văn bản của nó sẽ được đặt vào tin nhắn tiếp theo của bạn.",
@@ -119,7 +122,9 @@
     "noModel": "Chưa chọn mô hình nào.",
     "noInstructions": "Không có hướng dẫn trợ lý. Các cuộc trò chuyện thông thường không đọc tệp hướng dẫn dự án như Flint.md; Cowork thì có.",
     "noAttachments": "Không có tệp nào được đính kèm vào cuộc trò chuyện này.",
+    "noAttachmentsHint": "Các tệp bạn đính kèm sẽ hiện ở đây, cùng cách Flint dùng chúng.",
     "indexUnavailable": "Không thể liệt kê các tệp đã lập chỉ mục.",
+    "indexUnavailableHint": "Flint không đọc được chỉ mục tệp của cuộc trò chuyện này. Hãy thử lại sau giây lát.",
     "noMemory": "Không có bộ nhớ đã lưu nào được áp dụng cho tin nhắn gần nhất.",
     "noTools": "Không có công cụ nào khả dụng."
   },
@@ -137,6 +142,8 @@
     "noProject": "không có dự án"
   },
   "inspect": "Kiểm tra yêu cầu đã làm sạch (nâng cao)",
+  "why": "Vì sao",
+  "verifiedMeaning": "“Đã xác minh” nghĩa là gì",
   "showAll": "Hiện cả {{count}}",
   "showFewer": "Hiện ít hơn",
   "cards": {

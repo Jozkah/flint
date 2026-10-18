@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Břidlicová",
+    "vermilion": "Rumělková",
+    "ink": "Inkoustová",
+    "moss": "Mechová",
+    "slate": "Břidlicově modrá",
+    "violet": "Fialová"
+  },
+  "fontSizeNames": {
+    "small": "Malé",
+    "medium": "Střední",
+    "large": "Velké",
+    "extraLarge": "Extra velké"
+  },
+  "unknownSize": "Neznámá velikost",
+  "official": "Oficiální",
+  "configuration": "Konfigurace",
   "modelCombobox": {
     "refresh": "Obnovit modely",
     "placeholder": "Zadejte nebo vyberte model..."

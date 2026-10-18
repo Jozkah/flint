@@ -95,6 +95,7 @@
     "title": "Dostosuj pasek boczny",
     "body": "Ukryj pozycje, których nie używasz. Możesz to zmienić w każdej chwili w Ustawieniach, w sekcji Wygląd.",
     "customize": "Dostosuj pasek boczny",
-    "close": "Gotowe"
+    "close": "Gotowe",
+    "bodyMinimal": "Flint startuje z krótkim paskiem bocznym. Wszystkie pozostałe strony są w palecie poleceń albo możesz je tu dodać z powrotem."
   }
 }

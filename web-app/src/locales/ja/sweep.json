@@ -88,7 +88,8 @@
     "under3b": "3B 未満",
     "update": "更新",
     "variant": "バリアント",
-    "whatToLookFor": "探す対象"
+    "whatToLookFor": "探す対象",
+    "searchPlaceholderShort": "検索または URL を貼り付け…"
   },
   "llamaImport": {
     "description": "GGUF モデルファイルをインポートしてコレクションに追加します。画像や音声入力用の mmproj を添付するにはマルチモーダル対応を、投機的デコード用にはドラフトモデル対応を有効にしてください。埋め込みモデルは自動で検出されます。",

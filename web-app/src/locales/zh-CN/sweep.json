@@ -88,7 +88,8 @@
     "under3b": "小于 3B",
     "update": "更新",
     "variant": "变体",
-    "whatToLookFor": "查找内容"
+    "whatToLookFor": "查找内容",
+    "searchPlaceholderShort": "搜索或粘贴 URL…"
   },
   "llamaImport": {
     "description": "导入 GGUF 模型文件，将其添加到你的收藏。启用多模态支持可附加 mmproj 以输入图像或音频；启用草稿模型支持可用于推测解码。嵌入模型会被自动识别。",

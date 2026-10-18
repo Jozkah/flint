@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Arduvaz",
+    "vermilion": "Zincifre",
+    "ink": "Mürekkep",
+    "moss": "Yosun",
+    "slate": "Arduvaz mavisi",
+    "violet": "Menekşe"
+  },
+  "fontSizeNames": {
+    "small": "Küçük",
+    "medium": "Orta",
+    "large": "Büyük",
+    "extraLarge": "Çok büyük"
+  },
+  "unknownSize": "Bilinmeyen boyut",
+  "official": "Resmi",
+  "configuration": "Yapılandırma",
   "modelCombobox": {
     "refresh": "Modelleri yenile",
     "placeholder": "Bir model yazın veya seçin..."

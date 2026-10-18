@@ -56,6 +56,10 @@
     "connected": "已連線"
   },
   "table": {
+    "contextAutoFit": "自動配適",
+    "contextAuto": "自動",
+    "contextAutoFitTitle": "內容大小為空，因此引擎在載入模型時依你的記憶體選擇了這個視窗。",
+    "contextAutoTitle": "內容大小為空：引擎會在載入模型時選擇視窗。",
     "name": "名稱",
     "file": "檔案",
     "size": "大小",

@@ -72,5 +72,36 @@
     "remote": "Zdalny",
     "searchModels": "Szukaj modeli...",
     "noModels": "Nie znaleziono modeli dla „{{search}}”"
+  },
+  "serverFolders": {
+    "title": "Wybierz folder serwera",
+    "description": "Foldery, których ten serwer pozwala używać w sesjach.",
+    "roots": "Foldery serwera",
+    "off": "Brak udostępnionych folderów. Uruchom serwer z --agent-root <folder>.",
+    "loading": "Wczytywanie folderów...",
+    "up": "W górę",
+    "empty": "Brak folderów.",
+    "truncated": "Pokazano tylko pierwsze 500 folderów.",
+    "choose": "Użyj tego folderu"
+  },
+  "serverSession": {
+    "title": "Nowa sesja na serwerze",
+    "description": "Działa na serwerze w jednym z jego folderów, z wybranym modelem.",
+    "notReady": "Ten serwer nie uruchamia jeszcze sesji.",
+    "folder": "Folder: {{path}}",
+    "noFolder": "nie wybrano",
+    "prompt": "Pierwsza wiadomość",
+    "promptPlaceholder": "Co ma zrobić sesja?",
+    "start": "Rozpocznij sesję",
+    "starting": "Uruchamianie...",
+    "newButton": "Nowa sesja na serwerze",
+    "badge": "Sesja serwera, {{status}}",
+    "runsWith": "Działa z {{model}}",
+    "status": {
+      "running": "działa",
+      "idle": "bezczynna",
+      "awaiting_approval": "czeka na zatwierdzenie",
+      "awaiting_answer": "czeka na odpowiedź"
+    }
   }
 }

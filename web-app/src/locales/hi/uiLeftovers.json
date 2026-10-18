@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "स्लेट",
+    "vermilion": "सिंदूरी",
+    "ink": "स्याही",
+    "moss": "काई",
+    "slate": "स्लेट नीला",
+    "violet": "बैंगनी"
+  },
+  "fontSizeNames": {
+    "small": "छोटा",
+    "medium": "मध्यम",
+    "large": "बड़ा",
+    "extraLarge": "बहुत बड़ा"
+  },
+  "unknownSize": "अज्ञात आकार",
+  "official": "आधिकारिक",
+  "configuration": "कॉन्फ़िगरेशन",
   "modelCombobox": {
     "refresh": "मॉडल रीफ़्रेश करें",
     "placeholder": "कोई मॉडल लिखें या चुनें..."

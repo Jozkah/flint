@@ -223,7 +223,7 @@
   "profile": "Profilo",
   "reset": "Ripristina",
   "search": "Cerca",
-  "searchThreads": "Cerca conversazioni...",
+  "searchThreads": "Cerca nelle chat...",
   "toNavigate": "per navigare",
   "toSelect": "per selezionare",
   "toClose": "per chiudere",
@@ -249,6 +249,7 @@
   "preview": {
     "title": "Anteprima",
     "empty": "Apri un artefatto generato per vederne l'anteprima qui.",
+    "emptyHint": "I file che Flint crea in questa sessione si aprono qui.",
     "loading": "Apertura…",
     "unsupported": "Flint non può mostrare questo tipo di file. Aprilo per vederlo in un'altra app.",
     "outside": "Questo file non è più nel workspace della sessione.",
@@ -332,9 +333,14 @@
     "openItem": "Apri {{item}}"
   },
   "searchGroup": {
+    "pages": "Pagine",
+    "settings": "Impostazioni",
     "inProjects": "Nei progetti",
     "conversations": "Conversazioni",
-    "messages": "Nei messaggi"
+    "messages": "Nei messaggi",
+    "work": "Stanze e sessioni",
+    "room": "Stanza",
+    "session": "Sessione Cowork"
   },
   "rail": {
     "label": "Pannelli di Cowork",
@@ -650,7 +656,8 @@
       "add": "Aggiungi",
       "cancel": "Annulla",
       "remove": "Rimuovi"
-    }
+    },
+    "ctxAutoFitHint": "L'adattamento automatico è attivo: lascia vuoto e sceglie lui il contesto, riducendolo se serve per stare in memoria. Un numero qui viene usato così com'è."
   },
   "dialogs": {
     "changeDataFolder": {
@@ -693,6 +700,14 @@
     "showRawLibraries": "Mostra i nomi delle {{count}} librerie mancanti"
   },
   "projects": {
+    "newProjectDialog": {
+      "createTitle": "Crea progetto",
+      "editTitle": "Modifica progetto",
+      "namePlaceholder": "Inserisci il nome del progetto...",
+      "alreadyExists": "Il progetto \"{{projectName}}\" esiste già",
+      "createSuccess": "Progetto \"{{projectName}}\" creato",
+      "updateSuccess": "Progetto \"{{projectName}}\" aggiornato"
+    },
     "title": "Progetti",
     "new": "Nuovi progetti",
     "addProject": "Aggiungi progetto",
@@ -786,7 +801,8 @@
     "pathNameNotice": "Questo dà un nome a una raccolta di chat; non apre quella cartella.",
     "openCodeFolderInCowork": "Apri la cartella del codice in Cowork",
     "openCodeFolder": "Apri la cartella del codice",
-    "openCodeFolderDescription": "Scegli una cartella del tuo computer in cui Flint possa lavorare."
+    "openCodeFolderDescription": "Scegli una cartella del tuo computer in cui Flint possa lavorare.",
+    "setUpEmbeddingModel": "Configura un modello di embedding"
   },
   "attachmentsIngestion": {
     "title": "Scegli come elaborare gli allegati",
@@ -918,7 +934,8 @@
       "unsupportedType": "Il tipo di file \"{{type}}\" non è supportato.",
       "ioError": "Impossibile leggere {{subject}}: {{message}}",
       "parseGeneric": "{{subject}} non ha potuto essere analizzato: {{message}}",
-      "fallback": "Elaborazione di {{subject}} non riuscita."
+      "fallback": "Elaborazione di {{subject}} non riuscita.",
+      "noEmbeddingModel": "{{subject}} non è stato aggiunto: nessun modello di embedding installato per indicizzarlo. Configurane uno in Llama.cpp, poi aggiungi di nuovo il file."
     },
     "fileDeleted": {
       "title": "File eliminato",
@@ -1069,7 +1086,10 @@
     "branchLabel": "Branch",
     "actionsLabel": "Azioni sulla cartella",
     "copyPath": "Copia percorso",
-    "copied": "Percorso copiato"
+    "copied": "Percorso copiato",
+    "footnoteEmptyEdit": "Allega una cartella per far lavorare l'agente sul tuo progetto.",
+    "a11yWithFolderEditable": "Cartella del progetto {{folder}}, allegata in modifica. Cambiala o scollegala.",
+    "a11yWithFolderWorktree": "Cartella del progetto {{folder}}, modificata tramite un worktree separato. Cambiala o scollegala."
   },
   "coworkEmpty": {
     "title": "Su cosa lavoriamo?",
@@ -1091,7 +1111,9 @@
       "hint": "Questa cartella è un vault di Obsidian. Flint la legge come qualsiasi cartella di note Markdown e ignora le impostazioni .obsidian e il cestino .trash di Obsidian.",
       "add": "Aggiungi il mio vault di Obsidian",
       "addHint": "Un vault di Obsidian è solo una cartella. Sceglilo come qualsiasi altra cartella."
-    }
+    },
+    "subtitleFolderEdit": "Dai un compito a Flint. Legge e modifica direttamente i file in {{folder}}, poi lavora in autonomia.",
+    "subtitleFolderWorktree": "Dai un compito a Flint. Lavora in un worktree git di {{folder}}, quindi la tua cartella cambia solo quando unisci."
   },
   "sandbox": {
     "noTerminal": "Nessun terminale",
@@ -1273,7 +1295,9 @@
     "count_other": "{{count}} risultati",
     "count_many": "{{count}} di risultati",
     "empty": "Nessuna impostazione corrispondente.",
-    "clear": "Cancella ricerca"
+    "clear": "Cancella ricerca",
+    "emptyHint": "Prova un'altra parola o cerca in base alla funzione: tema, proxy, memoria.",
+    "pageCrumb": "Pagina"
   },
   "tasks": {
     "title": "Attività",
@@ -2226,10 +2250,12 @@
   },
   "browserVerify": {
     "title": "Verifica nel browser",
+    "about": "Come funziona",
     "explain": "Apre la tua app locale in un profilo browser separato e temporaneo (non l'anteprima di Flint, senza cookie), limitato all'origine dell'app stessa. Le richieste verso altri posti vengono bloccate ed elencate.",
     "url": "URL dell'app locale",
     "notLocal": "Si può verificare solo un'app su questa macchina (localhost, 127.0.0.1).",
-    "steps": "Passaggi (facoltativi): open, click, type, expect, wait, screenshot — uno per riga",
+    "stepsLabel": "Passaggi (facoltativo)",
+    "stepsHint": "Uno per riga: open, click, type, expect, wait, screenshot",
     "run": "Verifica",
     "cancel": "Ferma",
     "using": "Uso di {{browser}}",
@@ -2257,7 +2283,8 @@
       "failed": "Non superata",
       "cancelled": "Fermata",
       "error": "Impossibile eseguire"
-    }
+    },
+    "steps": "Passaggi (facoltativi): open, click, type, expect, wait, screenshot — uno per riga"
   },
   "jev": {
     "automationTitle": "Scelte automatiche",
@@ -2604,7 +2631,11 @@
   },
   "connectors": "Connettori",
   "voicePill": {
-    "cancel": "Annulla"
+    "cancel": "Annulla",
+    "dictate": "Detta",
+    "stop": "Interrompi dettatura",
+    "working": "Elaborazione…",
+    "setup": "Configura input vocale"
   },
   "coworkRunSettings": {
     "label": "Impostazioni dell'esecuzione",
@@ -2641,7 +2672,8 @@
     "copied": "Copiato",
     "binary": "Sembra un file binario, quindi non c’è un’anteprima di testo.",
     "expandLine": "Mostra la riga intera",
-    "collapseLine": "Accorcia la riga"
+    "collapseLine": "Accorcia la riga",
+    "truncatedOnAdd": "Mostrati i primi {{shown}} di {{total}} (l'allegato è stato troncato quando è stato aggiunto)"
   },
   "dropAttachFailed": "Impossibile allegare i file trascinati",
   "sampler": {
@@ -2683,7 +2715,8 @@
     "errorEngine": "Il motore che esegue questo modello non è disponibile. Riavvia Flint e riprova.",
     "openProvider": "Apri impostazioni del provider",
     "errorDetails": "Dettagli",
-    "pasteHint": "L'accesso agli appunti è stato bloccato. Fai clic nella casella di testo e premi {{keys}}."
+    "pasteHint": "L'accesso agli appunti è stato bloccato. Fai clic nella casella di testo e premi {{keys}}.",
+    "swapNeedsSource": "Scegli una lingua di origine per invertire"
   },
   "markdownImage": {
     "load": "Carica immagine da {{host}}"
@@ -2706,6 +2739,7 @@
     "export": "Esporta",
     "imported_one": "Aggiunto {{count}} prompt",
     "imported_other": "Aggiunti {{count}} prompt",
+    "importedNone": "Nessun nuovo prompt trovato",
     "search": "Cerca prompt",
     "empty": "Ancora nessun prompt.",
     "edit": "Modifica {{name}}",
@@ -2730,7 +2764,9 @@
       "gone": "Quel prompt non esiste più",
       "invalidJson": "Quel file non è un JSON valido",
       "noPrompts": "Nessun prompt trovato in quel file"
-    }
+    },
+    "noResults": "Nessun prompt corrisponde a «{{query}}».",
+    "clearSearch": "Cancella ricerca"
   },
   "memoryProposal": {
     "title": "Ricordare questo?",
@@ -2816,10 +2852,51 @@
     },
     "messagesCount_one": "{{count}} messaggio",
     "messagesCount_many": "{{count}} di messaggi",
-    "messagesCount_other": "{{count}} messaggi"
+    "messagesCount_other": "{{count}} messaggi",
+    "compact_one": "{{count}} menzione · {{mode}}",
+    "compact_many": "{{count}} menzioni · {{mode}}",
+    "compact_other": "{{count}} menzioni · {{mode}}",
+    "mixed": "Misto"
   },
   "campaignList": {
     "timeout": "L'app non ha risposto in tempo.",
     "unreadableRecord": "il backend ha inviato un record che questa pagina non riesce a leggere"
+  },
+  "composer": {
+    "messageLabel": "Messaggio"
+  },
+  "routeLoading": {
+    "slow": "Questa pagina sta impiegando più del solito ad aprirsi.",
+    "reload": "Ricarica",
+    "retry": "Riprova",
+    "failed": "Impossibile aprire questa pagina"
+  },
+  "replyCutOff": {
+    "withTokens": "Interrotta al limite di risposta ({{tokens}} token)",
+    "plain": "Interrotta al limite di risposta"
+  },
+  "routeNotFound": {
+    "title": "Pagina non trovata",
+    "body": "Non c'è nessuna pagina in {{path}}. Potrebbe essere stata spostata, o il link non è più valido.",
+    "home": "Vai alla home",
+    "settings": "Apri impostazioni"
+  },
+  "waitingForYou": "In attesa di te",
+  "dnd": {
+    "anItem": "l'elemento",
+    "aGroup": "un gruppo",
+    "picked": "{{item}} preso.",
+    "over": "{{item}} è sopra {{group}}.",
+    "notOver": "{{item}} non è sopra nessun gruppo.",
+    "dropped": "{{item}} spostato in {{group}}.",
+    "cancelled": "{{item}} è stato rimesso a posto."
+  },
+  "searchEverything": "Cerca chat, stanze, pagine e impostazioni…",
+  "noResultsFoundEverywhere": "Nessun risultato in chat, stanze, sessioni Cowork, pagine o impostazioni. Prova un altro termine.",
+  "selectModelNoKey": "Nessun modello è scelto per questa sessione e {{provider}} non ha una chiave API. Scegli prima un modello nel menu dei modelli.",
+  "serverConnection": {
+    "offlineTitle": "Impossibile raggiungere il server Flint.",
+    "offlineBody": "Riconnessione… Ciò che fai ora potrebbe non essere salvato finché non torna.",
+    "statusOffline": "Server non raggiungibile"
   }
 }

@@ -88,7 +88,8 @@
     "under3b": "Dưới 3B",
     "update": "Cập nhật",
     "variant": "Biến thể",
-    "whatToLookFor": "Cần tìm gì"
+    "whatToLookFor": "Cần tìm gì",
+    "searchPlaceholderShort": "Tìm hoặc dán URL…"
   },
   "llamaImport": {
     "description": "Nhập một tệp mô hình GGUF để thêm vào bộ sưu tập của bạn. Bật hỗ trợ đa phương thức để đính kèm mmproj cho đầu vào hình ảnh hoặc âm thanh, hoặc bật hỗ trợ mô hình nháp cho giải mã suy đoán. Mô hình embedding được nhận diện tự động.",

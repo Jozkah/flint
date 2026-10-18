@@ -24,17 +24,19 @@
     "embeddingSub": "{{count}} mô hình embedding",
     "addedSub": "đã thêm vào Flint",
     "repliesToday": "Câu trả lời hôm nay",
-    "repliesSub": "Đã đo {{count}} câu trả lời",
+    "repliesSub_other": "Đã đo {{count}} phản hồi",
     "apiKeys": "Khóa API",
     "fallbackSub": "{{count}} khóa dự phòng",
     "noFallbackSub": "không có khóa dự phòng",
-    "avgSpeed": "Tốc độ trung bình"
+    "avgSpeed": "Tốc độ trung bình",
+    "repliesSub": "Đã đo {{count}} câu trả lời"
   },
   "loaded": {
     "title": "Đang tải",
     "empty": "Không có mô hình nào được tải",
     "emptyHint": "Khởi động một mô hình cục bộ từ bảng bên dưới, hoặc gửi tin nhắn cho nó.",
-    "unload": "Gỡ"
+    "unload": "Gỡ",
+    "speedBar": "Tốc độ trung bình, so với mô hình đã tải nhanh nhất"
   },
   "speed": {
     "title": "Tốc độ tạo",
@@ -108,7 +110,9 @@
     "engineSettings": "Cài đặt engine",
     "memorySettings": "Bộ nhớ và bộ đệm",
     "settingNotSaved": "Chưa lưu \"{{setting}}\"",
-    "danger": "Vùng nguy hiểm"
+    "danger": "Vùng nguy hiểm",
+    "networkNote": "Trong mạng của bạn · gửi tới {{host}}",
+    "reachUnknownNote": "Đang kiểm tra nhà cung cấp này chạy ở đâu"
   },
   "mcp": {
     "title": "Công cụ và MCP",
@@ -182,5 +186,46 @@
     "kindAudio": "Âm thanh",
     "kindVideo": "Video",
     "htmlPage": "Trang HTML"
+  },
+  "addon": {
+    "offerTitle": "Nhanh hơn trên GPU NVIDIA của bạn",
+    "offerBody": "Trên GPU này, mô hình cục bộ thường chạy nhanh hơn với engine CUDA so với Vulkan: thường nhiều hơn 10-70% token mỗi giây, còn hơn nữa khi mô hình không vừa hết trong VRAM. Chỉ tải một lần, khoảng {{size}}.",
+    "download": "Tải xuống",
+    "notNow": "Để sau",
+    "dontRemind": "Đừng nhắc lại",
+    "gettingTitle": "Đang tải engine CUDA",
+    "downloading": "Đã tải {{received}} / {{total}}",
+    "verifying": "Đang kiểm tra bản tải...",
+    "installing": "Đang cài đặt...",
+    "vulkanMeanwhile": "Trong lúc đó Vulkan được dùng. CUDA sẽ thay thế ở lần tải mô hình tiếp theo.",
+    "cancel": "Hủy",
+    "installedTitle": "Đã cài engine CUDA",
+    "installedBody": "Engine sẽ được dùng từ lần tải mô hình tiếp theo.",
+    "ok": "Đã hiểu",
+    "failedTitle": "Không thể tải engine CUDA",
+    "retry": "Thử lại",
+    "driverTitle": "Cập nhật driver NVIDIA",
+    "driverBody": "Hãy cập nhật driver NVIDIA để dùng engine CUDA nhanh hơn. Đã cài: {{current}}, cần: R{{min}} trở lên. Trong lúc chờ, Vulkan được dùng.",
+    "close": "Đóng",
+    "panelTitle": "Tiện ích engine",
+    "panelDesc": "Các engine GPU bổ sung, chỉ tải khi bạn yêu cầu. Vulkan vẫn là phương án dự phòng.",
+    "cudaName": "Engine NVIDIA CUDA",
+    "inUse": "đang dùng",
+    "unavailableBuild": "Bản dựng này không có tiện ích engine.",
+    "installedVersion": "Đã cài: {{version}}, {{size}}",
+    "repairNeeded": "Bị hỏng nên đang dùng Vulkan. Tải lại để sửa.",
+    "notInstalledOffer": "Chưa cài. Trên GPU này thường nhanh hơn Vulkan (khoảng {{size}}).",
+    "repair": "Sửa",
+    "remove": "Gỡ bỏ",
+    "installFile": "Cài từ tệp...",
+    "checkAgain": "Kiểm tra lại",
+    "remindSetting": "Gợi ý engine CUDA khi tải mô hình",
+    "errors": {
+      "offline": "Không kết nối được GitHub. Hãy thử lại sau hoặc cài tiện ích từ tệp.",
+      "notPublished": "Chưa có engine CUDA nào được phát hành cho phiên bản này.",
+      "diskSpace": "Không đủ dung lượng đĩa trống cho engine CUDA.",
+      "verify": "Bản tải không qua được bước kiểm tra nên chưa được cài.",
+      "mismatch": "Tiện ích này được dựng cho một phiên bản Flint khác."
+    }
   }
 }

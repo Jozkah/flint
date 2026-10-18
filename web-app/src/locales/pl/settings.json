@@ -146,6 +146,8 @@
     "renderUserMarkdownDesc": "Pokazuje pogrubienie, listy, nagłówki i kod w wysyłanych wiadomościach. Gdy wyłączone, są wyświetlane dokładnie tak, jak zostały wpisane.",
     "renderHtmlArtifacts": "Renderuj artefakty HTML i SVG",
     "renderHtmlArtifactsDesc": "Dodaje kartę Podgląd do bloków kodu HTML i SVG. HTML uruchamia stronę wygenerowaną przez model w ramce w piaskownicy, która wykonuje własne skrypty, ale nie ma dostępu do Flint, Twoich plików ani sieci; SVG jest renderowany statycznie, ze skryptami wyłączonymi. Domyślnie wyłączone.",
+    "wrapCodeLines": "Zawijaj długie wiersze w blokach kodu",
+    "wrapCodeLinesDesc": "Długie wiersze przechodzą do następnej linii z wcięciem pod kodem, zamiast przewijać blok w bok. Przycisk zawijania w nagłówku bloku kodu przełącza to samo ustawienie.",
     "composerRailButtons": "Przyciski wyniku w polu wiadomości Cowork",
     "composerRailButtonsDesc": "Pokazuje Podgląd, Kod, Zmiany, Aktywność i Oś czasu pod polem wiadomości Cowork. Po wyłączeniu jeden przycisk Wynik w nagłówku otwiera panel.",
     "autoGenerateTitle": "Automatycznie generuj tytuł czatu",
@@ -425,7 +427,10 @@
     "defaultModelPlaceholder": "Wybierz model lokalny",
     "noLocalModels": "Nie zaimportowano żadnych modeli lokalnych",
     "usage5hAria": "Tokeny na 5 godzin",
-    "usageWeekAria": "Tokeny na tydzień"
+    "usageWeekAria": "Tokeny na tydzień",
+    "usageWindow": "Okno",
+    "usageLimit": "Limit",
+    "usageUnsaved": "Niezapisane zmiany"
   },
   "privacy": {
     "analytics": "Dane Analityczne",
@@ -689,7 +694,20 @@
     "reduceMotion": "Ogranicz animacje",
     "reduceMotionDesc": "Wyłącza animacje we Flint. Flint nie podąża za ustawieniem systemowym, więc animacje pozostają włączone, dopóki tego nie zmienisz.",
     "increaseContrast": "Zwiększ kontrast",
-    "increaseContrastDesc": "Rozjaśnia tekst, aby łatwiej było go czytać. Bielszy w ciemnym motywie, ciemniejszy w jasnym."
+    "increaseContrastDesc": "Rozjaśnia tekst, aby łatwiej było go czytać. Bielszy w ciemnym motywie, ciemniejszy w jasnym.",
+    "performanceMode": "Tryb wydajności",
+    "performanceModeDesc": "Tryb ograniczony wyłącza rozmycie, duże cienie i zapętlone animacje oraz rzadziej odświeża przesyłany tekst, dla wolniejszych komputerów. Automatycznie wybiera go, gdy ten komputer wydaje się wolny.",
+    "performanceModeAuto": "Automatycznie",
+    "performanceModeReduced": "Zawsze ograniczony",
+    "performanceModeFull": "Pełny",
+    "performanceModeNowReduced": "Obecnie: ograniczony ({{why}})",
+    "performanceModeNowFull": "Obecnie: pełny",
+    "perfReasonCores": "rdzenie: {{n}}",
+    "perfReasonMemory": "pamięć: {{n}} GB",
+    "perfReasonFrames": "wolne klatki",
+    "perfReasonMotion": "system ogranicza ruch",
+    "perfReasonData": "oszczędzanie danych",
+    "perfReasonChosen": "wybrano tutaj"
   },
   "pageDesc": {
     "general": "Język, folder danych, dzienniki i opcje całej aplikacji.",
@@ -1222,10 +1240,17 @@
       "header": "Góra i dół"
     },
     "showItem": "Pokaż „{{item}}” na pasku bocznym",
+    "hideItem": "Ukryj {{item}} na pasku bocznym",
     "alwaysShown": "Zawsze widoczne",
     "showAll": "Pokaż wszystko",
     "preview": "Podgląd",
-    "reachable": "Ukryte pozycje pozostają dostępne z palety poleceń i z Ustawień."
+    "reachable": "Ukryte pozycje pozostają dostępne z palety poleceń i z Ustawień.",
+    "presets": {
+      "label": "Ustawienia wstępne",
+      "minimal": "Minimalny",
+      "standard": "Standardowy",
+      "everything": "Wszystko"
+    }
   },
   "memoryPage": {
     "useSaved": "Używaj zapisanej pamięci w rozmowach",
@@ -1352,7 +1377,14 @@
       "importedCount_few": "Zaimportowano {{count}} wspomnienia",
       "importedCount_many": "Zaimportowano {{count}} wspomnień",
       "importFailed": "Nie udało się zaimportować wspomnień"
-    }
+    },
+    "fileActionsAria": "Eksportuj lub importuj wspomnienia",
+    "noMatchHint": "Sprawdź pisownię albo wyczyść wyszukiwanie, aby zobaczyć wszystko.",
+    "emptyHint": "Wpisz coś powyżej albo pozwól, by Flint zapamiętywał podczas rozmowy.",
+    "footerCount_one": "1 wspomnienie w tym zakresie",
+    "footerCount_few": "{{count}} wspomnienia w tym zakresie",
+    "footerCount_many": "{{count}} wspomnień w tym zakresie",
+    "footerCount_other": "{{count}} wspomnienia w tym zakresie"
   },
   "chatMentions": {
     "title": "Wzmianki o rozmowach",

@@ -56,6 +56,10 @@
     "connected": "Conectado"
   },
   "table": {
+    "contextAutoFit": "auto-ajuste",
+    "contextAuto": "auto",
+    "contextAutoFitTitle": "O tamanho do contexto está vazio, então o motor ajustou esta janela à sua memória ao carregar o modelo.",
+    "contextAutoTitle": "O tamanho do contexto está vazio: o motor escolhe a janela ao carregar o modelo.",
     "name": "Nome",
     "file": "Arquivo",
     "size": "Tamanho",

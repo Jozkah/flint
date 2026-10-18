@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "Schiefer",
+    "vermilion": "Zinnober",
+    "ink": "Tinte",
+    "moss": "Moos",
+    "slate": "Schieferblau",
+    "violet": "Violett"
+  },
+  "fontSizeNames": {
+    "small": "Klein",
+    "medium": "Mittel",
+    "large": "Groß",
+    "extraLarge": "Sehr groß"
+  },
+  "unknownSize": "Unbekannte Größe",
+  "official": "Offiziell",
+  "configuration": "Konfiguration",
   "modelCombobox": {
     "refresh": "Modelle aktualisieren",
     "placeholder": "Modell eingeben oder auswählen …"

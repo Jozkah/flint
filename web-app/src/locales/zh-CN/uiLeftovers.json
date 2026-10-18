@@ -1,4 +1,21 @@
 {
+  "accentNames": {
+    "neutral": "石板灰",
+    "vermilion": "朱红",
+    "ink": "墨蓝",
+    "moss": "苔绿",
+    "slate": "石板蓝",
+    "violet": "紫罗兰"
+  },
+  "fontSizeNames": {
+    "small": "小",
+    "medium": "中",
+    "large": "大",
+    "extraLarge": "特大"
+  },
+  "unknownSize": "大小未知",
+  "official": "官方",
+  "configuration": "配置",
   "modelCombobox": {
     "refresh": "刷新模型",
     "placeholder": "输入或选择模型..."

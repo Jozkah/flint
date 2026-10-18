@@ -90,7 +90,8 @@
     "under3b": "Moins de 3B",
     "update": "Mettre à jour",
     "variant": "Variante",
-    "whatToLookFor": "Que chercher ?"
+    "whatToLookFor": "Que chercher ?",
+    "searchPlaceholderShort": "Rechercher ou coller une URL…"
   },
   "llamaImport": {
     "description": "Importez un fichier de modèle GGUF pour l’ajouter à votre collection. Activez la prise en charge multimodale pour joindre un mmproj (entrée image ou audio), ou celle des modèles brouillons pour le décodage spéculatif. Les modèles d’embedding sont détectés automatiquement.",

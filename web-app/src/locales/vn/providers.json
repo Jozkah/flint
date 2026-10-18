@@ -56,6 +56,10 @@
     "connected": "Đã kết nối"
   },
   "table": {
+    "contextAutoFit": "tự khớp",
+    "contextAuto": "tự động",
+    "contextAutoFitTitle": "Kích thước ngữ cảnh để trống, nên công cụ đã chọn cửa sổ này theo bộ nhớ khi tải mô hình.",
+    "contextAutoTitle": "Kích thước ngữ cảnh để trống: công cụ sẽ chọn cửa sổ khi tải mô hình.",
     "name": "Tên",
     "file": "Tệp",
     "size": "Kích thước",

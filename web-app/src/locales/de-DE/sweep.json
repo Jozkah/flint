@@ -90,7 +90,8 @@
     "under3b": "Unter 3B",
     "update": "Aktualisieren",
     "variant": "Variante",
-    "whatToLookFor": "Wonach suchst du?"
+    "whatToLookFor": "Wonach suchst du?",
+    "searchPlaceholderShort": "Suchen oder URL einfügen…"
   },
   "llamaImport": {
     "description": "Importiere eine GGUF-Modelldatei, um sie deiner Sammlung hinzuzufügen. Aktiviere die multimodale Unterstützung, um ein mmproj für Bild- oder Audioeingaben anzuhängen, oder die Unterstützung für Entwurfsmodelle für spekulatives Decoding. Embedding-Modelle werden automatisch erkannt.",
