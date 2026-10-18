@@ -2,6 +2,7 @@ import * as React from "react"
 import { Popover as PopoverPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { POPUP_COLLISION_PADDING } from "@/components/ui/popup-edge"
 
 function Popover({
   ...props
@@ -19,6 +20,8 @@ function PopoverContent({
   className,
   align = "center",
   sideOffset = 4,
+  collisionPadding = POPUP_COLLISION_PADDING,
+  sticky = "partial",
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
   return (
@@ -27,8 +30,10 @@ function PopoverContent({
         data-slot="popover-content"
         align={align}
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
+        sticky={sticky}
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-xl p-4 shadow-pop outline-hidden",
+          "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 w-72 max-w-[calc(100vw-24px)] max-h-(--radix-popover-content-available-height) overflow-y-auto origin-(--radix-popover-content-transform-origin) rounded-xl p-4 shadow-pop outline-hidden",
           className
         )}
         {...props}

@@ -20,7 +20,11 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { partitionTrace, type TranscriptView } from '@/lib/transcriptView'
-import { summarizeTrace, summaryLabelParts, summaryPhrases } from '@/lib/traceSummary'
+import {
+  summarizeTrace,
+  summaryDetails,
+  summaryLabelParts,
+} from '@/lib/traceSummary'
 import { cn } from '@/lib/utils'
 import { segmentReasoningSteps } from '@/lib/reasoning'
 import { ToolCallCard } from './ToolCallCard'
@@ -111,15 +115,11 @@ const CompactTrace = ({
   const working = groupIsStreaming && pinned.length === 0
   // Once the run is over, the folded toggle says what it did, not just how
   // many steps it took.
-  const summary = summarizeTrace(steps.map((e) => e.part))
-  const phrases = working ? [] : summaryPhrases(summary)
-  const summaryText = phrases
-    .map((p) => t(`chat:transcriptView.summary.${p.key}`, { count: p.count }))
-    .join(', ')
-  const failedText =
-    summaryText && summary.failed > 0
-      ? ` (${t('chat:transcriptView.summary.failed', { count: summary.failed })})`
-      : ''
+  const summary = summaryLabelParts(
+    summarizeTrace(steps.map((e) => e.part)),
+    t as never
+  )
+  const summaryText = working ? undefined : summary?.text
   return (
     <div data-transcript-view={mode} className="mb-2.5 w-full text-muted-foreground">
       {reasoning.length > 0 && (
@@ -149,11 +149,13 @@ const CompactTrace = ({
             />
             {summaryText ? (
               <>
-                <span data-testid="transcript-summary">
-                  {summaryText.charAt(0).toUpperCase() + summaryText.slice(1)}
-                  {failedText}
+                <span
+                  data-testid="transcript-summary"
+                  title={summaryDetails(steps.map((e) => e.part))}
+                >
+                  {summaryText}
                 </span>
-                {(summary.added > 0 || summary.removed > 0) && (
+                {summary && (summary.added > 0 || summary.removed > 0) && (
                   <span className="ml-1 font-mono tabular-nums">
                     <span className="text-emerald-600 dark:text-emerald-400">+{summary.added}</span>{' '}
                     <span className="text-red-600 dark:text-red-400">−{summary.removed}</span>
@@ -469,7 +471,11 @@ export const ChainOfThoughtGroup = memo(
                   if (!parts) return undefined
                   return (
                     <>
-                      {parts.text}
+                      <span
+                        title={summaryDetails(entries.map((e) => e.part))}
+                      >
+                        {parts.text}
+                      </span>
                       {(parts.added > 0 || parts.removed > 0) && (
                         <span className="ml-1 font-mono tabular-nums">
                           <span className="text-emerald-600 dark:text-emerald-400">
