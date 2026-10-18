@@ -53,4 +53,20 @@ describe('web_fetch output', () => {
     await executeWebTool('web_fetch', { url: 'https://archive.org/y' })
     expect(webFetch).toHaveBeenCalledTimes(2)
   })
+
+  it('does not remember a rate limit as a failure of the URL', async () => {
+    const limited = {
+      message:
+        'Web search is rate limited right now (Exa, HTTP 429); the next attempt is allowed in about 30 seconds.',
+      kind: 'rate_limited',
+    }
+    webFetch.mockRejectedValueOnce(limited)
+    webFetch.mockResolvedValueOnce({ title: 'T', url: 'https://x', content: 'ok', truncated: false })
+    const first = await executeWebTool('web_fetch', { url: 'https://x' })
+    expect(first.error).toBe(limited.message)
+    expect(first.error).not.toContain('different source')
+    const second = await executeWebTool('web_fetch', { url: 'https://x' })
+    expect(String(second.content)).toContain('ok')
+    expect(webFetch).toHaveBeenCalledTimes(2)
+  })
 })

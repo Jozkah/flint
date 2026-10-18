@@ -78,7 +78,11 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { tidySummaryMarkdown } from '@/lib/continueFromSummary'
 import { useMessageErrors } from '@/stores/message-errors'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
-import { AgentMessageHeader } from '@/containers/AgentMessageHeader'
+import {
+  AgentMessageHeader,
+  agentMessageOf,
+} from '@/containers/AgentMessageHeader'
+import { unwrapForDisplay } from '@/lib/sessionMailbox'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
 import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
 import { extractFilesFromPrompt, FileMetadata } from '@/lib/fileMetadata'
@@ -477,12 +481,16 @@ export const MessageItem = memo(
         message.role === 'user'
           ? splitMentionBlocks(part.text)
           : { clean: part.text, mentions: [] }
+      // Mail from another session reaches the model fenced; the bubble shows
+      // only its text, under the "Message from <name>" header (live test 1b).
       const displayText =
         message.role === 'user'
-          ? nameMentions(
-              extractFilesFromPrompt(mentioned.clean).cleanPrompt,
-              mentioned.mentions
-            )
+          ? agentMessageOf(metadata)
+            ? unwrapForDisplay(part.text)
+            : nameMentions(
+                extractFilesFromPrompt(mentioned.clean).cleanPrompt,
+                mentioned.mentions
+              )
           : part.text
 
       // A `/command` the user sent reads as typed; the expansion folds away.

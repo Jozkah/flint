@@ -1,6 +1,6 @@
 /**
  * A one-line account of a finished run, for the folded steps toggle:
- * "Ran 20 commands, created 8 files, used 6 tools +645 −0".
+ * "Edited 2 files, ran 20 commands (1 failed), used 6 tools +645 −0".
  *
  * "N steps" says how much happened but not what; the counts say what kind of
  * work it was, and the line totals say how much of it changed files.
@@ -15,6 +15,8 @@ export type TraceSummaryPart = {
   output?: unknown
 }
 
+export type SummaryKey = 'edited' | 'created' | 'commands' | 'read' | 'searched' | 'tools'
+
 export type TraceSummary = {
   commands: number
   created: number
@@ -25,6 +27,8 @@ export type TraceSummary = {
   tools: number
   /** Calls that failed, however they failed; also counted in their kind. */
   failed: number
+  /** The failures by kind, so each one is reported next to what failed. */
+  failedBy: Record<SummaryKey, number>
   added: number
   removed: number
 }
@@ -49,7 +53,39 @@ export function partFailed(part: TraceSummaryPart): boolean {
   return (out.exit ?? 0) !== 0 || out.signaled
 }
 
-/** Count a run's tool parts by what they did. */
+/**
+ * A call that has finished, well or badly. One still streaming, running or
+ * awaiting approval has done nothing yet, so the summary leaves it out.
+ * Parts without a state (room calls, older records) are finished.
+ */
+export function partDone(part: TraceSummaryPart): boolean {
+  return (
+    part.state === undefined ||
+    part.state === 'output-available' ||
+    part.state === 'output-error' ||
+    part.state === 'output-denied'
+  )
+}
+
+/** The kind a tool call is counted under. */
+function partKey(name: string): SummaryKey {
+  if (name === 'write') return 'created'
+  if (name === 'edit') return 'edited'
+  if (name === 'read') return 'read'
+  const kind = toolKind({ name })
+  if (name === 'bash' || kind === 'bash') return 'commands'
+  if (kind === 'search' && !name.startsWith('web_')) return 'searched'
+  return 'tools'
+}
+
+/**
+ * Count a run's finished tool parts by what they did.
+ *
+ * Files count once per path, and a path counts as failed only when its last
+ * attempt failed, so a retried edit that went through is not a failure. A
+ * command run again straight after it failed, with no other call between, is
+ * the same command retried; one re-run after other work counts again.
+ */
 export function summarizeTrace(parts: TraceSummaryPart[]): TraceSummary {
   const out: TraceSummary = {
     commands: 0,
@@ -59,49 +95,67 @@ export function summarizeTrace(parts: TraceSummaryPart[]): TraceSummary {
     searched: 0,
     tools: 0,
     failed: 0,
+    failedBy: { edited: 0, created: 0, commands: 0, read: 0, searched: 0, tools: 0 },
     added: 0,
     removed: 0,
   }
-  const created = new Set<string>()
-  const edited = new Set<string>()
-  const read = new Set<string>()
+  // Per path, whether its latest attempt failed.
+  const files: Record<'created' | 'edited' | 'read', Map<string, boolean>> = {
+    created: new Map(),
+    edited: new Map(),
+    read: new Map(),
+  }
+  type Call = { key: SummaryKey; command?: string; failed: boolean }
+  const calls: Call[] = []
+  // The call just before this one, for spotting a straight retry.
+  let prev: Call | undefined
   let anonymous = 0
   for (const part of parts) {
-    if (!part.type.startsWith('tool-')) continue
+    if (!part.type.startsWith('tool-') || !partDone(part)) continue
     const failed = partFailed(part)
-    if (failed) out.failed++
     const name = part.type.slice('tool-'.length)
+    const key = partKey(name)
     const input = (part.input ?? {}) as Record<string, unknown>
-    const path = str(input.path) ?? str(input.file_path)
-    if (name === 'write') {
+    const previous = prev
+    prev = undefined
+    if (key === 'created' || key === 'edited' || key === 'read') {
+      const path = str(input.path) ?? str(input.file_path) ?? `#${anonymous++}`
+      files[key].set(path, failed)
       if (failed) continue
-      created.add(path ?? `#${anonymous++}`)
-      out.added += lines(input.content)
-    } else if (name === 'edit') {
-      if (failed) continue
-      edited.add(path ?? `#${anonymous++}`)
-      const edits = Array.isArray(input.edits) ? input.edits : []
-      for (const e of edits as Record<string, unknown>[]) {
-        out.added += lines(e?.new_string)
-        out.removed += lines(e?.old_string)
+      if (key === 'created') out.added += lines(input.content)
+      if (key === 'edited') {
+        const edits = Array.isArray(input.edits) ? input.edits : []
+        for (const e of edits as Record<string, unknown>[]) {
+          out.added += lines(e?.new_string)
+          out.removed += lines(e?.old_string)
+        }
       }
-    } else if (name === 'read') {
-      read.add(path ?? `#${anonymous++}`)
-    } else {
-      const kind = toolKind({ name })
-      if (name === 'bash' || kind === 'bash') out.commands++
-      else if (kind === 'search' && !name.startsWith('web_')) out.searched++
-      else out.tools++
+      continue
     }
+    const command = key === 'commands' ? str(input.command) : undefined
+    if (command && previous?.failed && previous.command === command) {
+      previous.failed = failed
+      prev = previous
+      continue
+    }
+    prev = { key, command, failed }
+    calls.push(prev)
   }
-  out.created = created.size
-  out.edited = edited.size
-  out.read = read.size
+  for (const key of ['created', 'edited', 'read'] as const) {
+    out[key] = files[key].size
+    for (const failed of files[key].values()) if (failed) out.failedBy[key]++
+  }
+  for (const c of calls) {
+    out[c.key]++
+    if (c.failed) out.failedBy[c.key]++
+  }
+  out.failed = Object.values(out.failedBy).reduce((a, b) => a + b, 0)
   return out
 }
 
 /**
- * The summary as one plain line: "Ran 3 commands, created 1 file (1 failed) +12 −3".
+ * The summary as one plain line, each failure next to the kind that failed:
+ * "Edited 1 file, ran 3 commands (1 failed) +12 −3".
  * Undefined when nothing ran, so the caller keeps its own wording.
  */
 export function summaryLabel(
@@ -109,15 +163,16 @@ export function summaryLabel(
   t: (key: string, options?: Record<string, unknown>) => string
 ): string | undefined {
   const text = summaryPhrases(s)
-    .map((p) => t(`chat:transcriptView.summary.${p.key}`, { count: p.count }))
+    .map((p) => {
+      const phrase = t(`chat:transcriptView.summary.${p.key}`, { count: p.count })
+      return p.failed > 0
+        ? `${phrase} (${t('chat:transcriptView.summary.failed', { count: p.failed })})`
+        : phrase
+    })
     .join(', ')
   if (!text) return undefined
-  const failed =
-    s.failed > 0
-      ? ` (${t('chat:transcriptView.summary.failed', { count: s.failed })})`
-      : ''
   const diff = s.added > 0 || s.removed > 0 ? ` +${s.added} −${s.removed}` : ''
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}${failed}${diff}`
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}${diff}`
 }
 
 /** The same line in two parts, so the line counts can be coloured. */
@@ -129,12 +184,39 @@ export function summaryLabelParts(
   return full ? { text: full, added: s.added, removed: s.removed } : undefined
 }
 
-/** The summary's phrases in reading order, each a translation key and count. */
+/**
+ * The summary's phrases in a fixed order: changes to files first (edited,
+ * created), then commands, then what was only looked at (read, searched),
+ * then everything else. Each carries its own failure count.
+ */
+export const SUMMARY_ORDER = [
+  'edited',
+  'created',
+  'commands',
+  'read',
+  'searched',
+  'tools',
+] as const satisfies readonly SummaryKey[]
+
 export function summaryPhrases(
   s: TraceSummary
-): { key: 'commands' | 'created' | 'edited' | 'read' | 'searched' | 'tools'; count: number }[] {
-  const order = ['commands', 'created', 'edited', 'read', 'searched', 'tools'] as const
-  return order.filter((key) => s[key] > 0).map((key) => ({ key, count: s[key] }))
+): { key: SummaryKey; count: number; failed: number }[] {
+  return SUMMARY_ORDER.filter((key) => s[key] > 0).map((key) => ({
+    key,
+    count: s[key],
+    failed: s.failedBy?.[key] ?? 0,
+  }))
+}
+
+/**
+ * Every finished call on its own line with how it went, for the summary's
+ * tooltip: "✓ Ran git status" / "✗ Edited y.ts".
+ */
+export function summaryDetails(parts: TraceSummaryPart[]): string {
+  return parts
+    .filter((p) => p.type.startsWith('tool-') && partDone(p))
+    .map((p) => `${partFailed(p) ? '✗' : '✓'} ${toolSentence(p)}`)
+    .join('\n')
 }
 
 const basename = (p: string): string =>

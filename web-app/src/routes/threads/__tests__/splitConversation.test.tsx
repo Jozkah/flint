@@ -577,6 +577,29 @@ describe('split view', () => {
     }
   })
 
+  it('lets a narrow tab strip scroll instead of clipping the last tabs', () => {
+    act(() => {
+      split().addPane({ kind: 'chat', refId: 'thread-c' })
+      split().addPane({ kind: 'chat', refId: 'thread-d' })
+    })
+    width.setState({ px: 430 })
+    const scrolled = vi.fn()
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = scrolled
+    try {
+      renderRoute()
+      const strip = screen.getByTestId('split-pane-switch')
+      expect(strip).toHaveClass('overflow-x-auto')
+      expect(strip).not.toHaveClass('overflow-hidden')
+      expect(screen.getAllByRole('tab')).toHaveLength(4)
+      const last = screen.getAllByRole('tab')[3]
+      fireEvent.click(last)
+      expect(scrolled).toHaveBeenCalled()
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('turns extra panes into tabs below the minimum width per pane', () => {
     act(() => {
       split().addPane({ kind: 'chat', refId: 'thread-c' })

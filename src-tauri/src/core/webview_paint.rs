@@ -66,15 +66,33 @@ pub fn browser_args_without_occlusion(existing: Option<&str>) -> Option<String> 
     }
 }
 
+/// Chromium draws LCD (ClearType) text only where the text sits in an opaque,
+/// non-composited layer; text in a composited layer (a mask fade, an
+/// animation, an overlap-promoted sibling) falls back to grayscale. One pane
+/// then mixed both, and the LCD labels read as bolder, varying with zoom as
+/// layers moved. Grayscale everywhere keeps every label the same weight.
+const LCD_TEXT_SWITCH: &str = "--disable-lcd-text";
+
+/// `args` with `--disable-lcd-text` appended, unless it is already there.
+pub fn browser_args_with_grayscale_text(args: &str) -> String {
+    if args.split_whitespace().any(|p| p == LCD_TEXT_SWITCH) {
+        return args.to_string();
+    }
+    format!("{} {LCD_TEXT_SWITCH}", args.trim())
+        .trim()
+        .to_string()
+}
+
 /// Set the env var for this process. Call from `main` before any thread or
 /// webview starts.
 #[cfg(windows)]
 pub fn disable_native_occlusion() {
     const VAR: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
     let existing = std::env::var(VAR).ok();
-    if let Some(args) = browser_args_without_occlusion(existing.as_deref()) {
-        std::env::set_var(VAR, args);
-    }
+    let args = browser_args_without_occlusion(existing.as_deref())
+        .or(existing)
+        .unwrap_or_default();
+    std::env::set_var(VAR, browser_args_with_grayscale_text(&args));
 }
 
 /// Rate limit for the repaint nudge: focus and restore events arrive in
@@ -176,6 +194,20 @@ mod tests {
             )),
             None
         );
+    }
+
+    #[test]
+    fn grayscale_text_switch_is_added_once() {
+        let base = browser_args_without_occlusion(None).unwrap();
+        assert_eq!(
+            browser_args_with_grayscale_text(&base),
+            format!("{base} --disable-lcd-text")
+        );
+        assert_eq!(
+            browser_args_with_grayscale_text("--x --disable-lcd-text"),
+            "--x --disable-lcd-text"
+        );
+        assert_eq!(browser_args_with_grayscale_text(""), "--disable-lcd-text");
     }
 
     #[test]

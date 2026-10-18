@@ -34,23 +34,37 @@ export function AgentMessageCard({
       .catch((e) => console.warn('[mailbox] mark read failed:', e))
   }
 
+  const at = new Date(message.createdAt)
   return (
     <section
       aria-labelledby={titleId}
       data-testid={`agent-message-${message.from.messageId}`}
-      className="space-y-1 rounded-md border border-border px-3 py-2 text-xs"
+      className="space-y-2 rounded-lg border border-border bg-card px-3.5 py-3 text-sm"
     >
       <div className="flex items-center gap-2 text-muted-foreground">
         <Mail size={14} aria-hidden className="shrink-0" />
         <h3 id={titleId} className="font-medium text-foreground">
           {t('messaging:messageFrom', { name })}
         </h3>
+        <time
+          dateTime={at.toISOString()}
+          title={at.toLocaleString()}
+          className="ml-auto shrink-0 text-xs tabular-nums"
+        >
+          {at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </time>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {t('messaging:untrustedNote')}
-      </p>
+      {message.from.hold && (
+        <p
+          data-testid="held-mail-chain-limit"
+          className="rounded-md bg-warning/10 px-2 py-1 text-xs text-foreground"
+        >
+          {t('messaging:chainLimitHeld')}
+        </p>
+      )}
       <p
         data-testid="agent-message-text"
+        dir="auto"
         className="whitespace-pre-wrap break-words"
       >
         {unwrapForDisplay(message.text)}

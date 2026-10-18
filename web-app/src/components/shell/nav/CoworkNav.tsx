@@ -64,7 +64,7 @@ import {
 } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
-import { useNeedsApproval } from '@/hooks/useNeedsApproval'
+import { useHeldMailCount, useWaitingOnUser } from '@/hooks/useHeldMail'
 import { usePrompt } from '@/hooks/usePrompt'
 import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
 import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
@@ -94,6 +94,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
 import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
+import { useCoworkNestStatus } from '@/hooks/useNestStatus'
 import { coworkFolderAdapter } from '@/lib/groups/adapters'
 import { addNewItemToGroup } from '@/lib/groups/inherit'
 import { CampaignGroups } from '@/components/shell/nav/CampaignGroups'
@@ -152,7 +153,7 @@ const SessionItem = memo(function SessionItem({
     useCoworkRun((s) => !!s.runs[session.id]) ||
     (session.remote === true && session.remoteStatus === 'running')
   const waiting =
-    useNeedsApproval(session.id) ||
+    useWaitingOnUser(session.id) ||
     (session.remote === true && session.remoteStatus?.startsWith('awaiting') === true)
   // The session's own worktree when it has one: the card names the repository
   // it was cut from and its branch, and the pull requests are its branch's.
@@ -459,8 +460,11 @@ function SessionMark({
   // The session's own worktree when it has one: its branch, not the folder's.
   const worktreePath = useCoworkWorktrees((s) => s.bySession[session.id]?.path)
   const pr = usePrStatus(worktreePath ?? session.folder, session.id)
-  // Waiting on the user: a tool approval or a question the run asked.
-  const waiting = useNeedsApproval(session.id)
+  // Waiting on the user: a tool approval, a question the run asked, or mail
+  // from another session held for them.
+  const waiting = useWaitingOnUser(session.id)
+  const heldMail = useHeldMailCount(session.id)
+  const { t } = useTranslation()
   const recency = useThreadStatus(
     { updated: session.updated },
     running,
@@ -480,10 +484,27 @@ function SessionMark({
           : pr.state
         : recency
   return (
-    <ThreadStatusMark
-      status={status}
-      detail={pr ? `#${pr.number}` : undefined}
-    />
+    <span className="relative inline-flex shrink-0">
+      <ThreadStatusMark
+        status={status}
+        detail={
+          heldMail > 0
+            ? t('messaging:waitingCount', { count: heldMail })
+            : pr
+              ? `#${pr.number}`
+              : undefined
+        }
+      />
+      {heldMail > 1 && (
+        <span
+          data-testid="held-mail-count"
+          aria-hidden
+          className="absolute -top-1.5 -right-1.5 min-w-3 rounded-full bg-warning px-0.5 text-center text-[length:calc(var(--ui-font-base)*0.5625)] leading-3 font-medium text-background"
+        >
+          {heldMail > 9 ? '9+' : heldMail}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -591,6 +612,25 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
   const byId = useMemo(
     () => new Map(sessions.map((x) => [x.id, x])),
     [sessions]
+  )
+  // Forks nest under the session they were forked from (AH-201's
+  // `forkedFrom`). A chat converted to a session has its chat in another
+  // list, and campaign sessions are grouped above, so neither nests here.
+  const listed = useMemo(
+    () => sessions.filter((x) => !claimed.has(x.id)),
+    [sessions, claimed]
+  )
+  const selectedId = onCowork ? (currentId ?? undefined) : undefined
+  const nestStatusOf = useCoworkNestStatus(listed, selectedId)
+  const nest = useMemo(
+    () => ({
+      scope: 'cowork' as const,
+      parentOf: (id: string) => byId.get(id)?.forkedFrom?.sessionId ?? null,
+      updatedOf: (id: string) => byId.get(id)?.updated ?? 0,
+      statusOf: nestStatusOf,
+      selectedId,
+    }),
+    [byId, nestStatusOf, selectedId]
   )
   const everyById = useMemo(
     () => new Map(allSessions.map((x) => [x.id, x])),
@@ -830,6 +870,7 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
         showNewGroup={false}
         newGroupRequest={newGroupRequest}
         onNewGroupRequestHandled={() => setNewGroupRequest(0)}
+        nest={nest}
       />
 
       <StartCampaignDialog

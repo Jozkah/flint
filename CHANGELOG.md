@@ -167,7 +167,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - System Monitor was redesigned with a GPU switch and fills its empty cards, and the Hardware settings page is gone.
 
 - Added a DuckDuckGo MCP preset using `uvx duckduckgo-mcp-server`.
-- Added **DuckDuckGo** as a native web-search provider that needs no API key, account or instance URL. Results are read in page order with ads and repeated links dropped, and a bot check is reported as an error that names the way out instead of an empty result list.
+- Added **DuckDuckGo** as a native web-search provider that needs no API key, account or instance URL. Results are read in page order with ads and repeated links dropped, a request for more than ten reads the second results page, and a bot check is reported as an error that names the way out instead of an empty result list.
 - Naming a configured MCP server that is off now offers to enable it, instead of the model silently going without its tools.
 - The model picker searches by the remote a model sits behind and labels each row with it when more than one remote offers the same model.
 - Native web-search providers can show their real favicon in Flint UI surfaces.

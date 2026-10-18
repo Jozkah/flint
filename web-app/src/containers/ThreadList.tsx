@@ -50,13 +50,15 @@ import { useDraggable } from '@dnd-kit/core'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
 import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
-import { memo, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
+import { NestedRows } from '@/components/shell/nav/NestedRows'
+import { useChatNestStatus } from '@/hooks/useNestStatus'
 import { Link, useParams } from '@tanstack/react-router'
 import { RenameThreadDialog, DeleteThreadDialog } from '@/containers/dialogs'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import { forkThread } from '@/lib/forkThread'
+import { forkParentOf, forkThread } from '@/lib/forkThread'
 import { continueFromSummaryWithToast } from '@/lib/continueFromSummaryToast'
 import { ConvertToCoworkDialog } from '@/containers/dialogs/ConvertToCoworkDialog'
 import { convertChatToCowork } from '@/lib/convertChatToCowork'
@@ -633,9 +635,11 @@ type ThreadListProps = {
   /** Rows can be dragged onto a chat group (needs a DndContext above). */
   draggable?: boolean
   selection?: ThreadSelection
+  /** Show a fork under the chat it was forked from when both are listed. */
+  nested?: boolean
 }
 
-function ThreadList({ threads, currentProjectId, draggable, selection }: ThreadListProps) {
+function ThreadList({ threads, currentProjectId, draggable, selection, nested }: ThreadListProps) {
   const { isMobile } = useShellNav()
 
   const sortedThreads = useMemo(() => {
@@ -643,6 +647,48 @@ function ThreadList({ threads, currentProjectId, draggable, selection }: ThreadL
       return (b.updated || 0) - (a.updated || 0)
     })
   }, [threads])
+
+  const currentThreadId = useParams({
+    strict: false,
+    select: (params) => params.threadId as string | undefined,
+  })
+  const ids = useMemo(
+    () => (nested ? sortedThreads.map((th) => th.id) : []),
+    [nested, sortedThreads]
+  )
+  const byId = useMemo(
+    () => new Map(sortedThreads.map((th) => [th.id, th])),
+    [sortedThreads]
+  )
+  const parentOf = useCallback((id: string) => forkParentOf(byId.get(id)), [byId])
+  const updatedOf = useCallback((id: string) => updatedMs(byId.get(id)?.updated), [byId])
+  const statusOf = useChatNestStatus(ids, currentThreadId)
+
+  if (nested) {
+    return (
+      <NestedRows
+        scope="chats"
+        ids={ids}
+        parentOf={parentOf}
+        updatedOf={updatedOf}
+        statusOf={statusOf}
+        selectedId={currentThreadId}
+        renderRow={(id) => {
+          const thread = byId.get(id)
+          return thread ? (
+            <ThreadItem
+              key={thread.id}
+              thread={thread}
+              isMobile={isMobile}
+              currentProjectId={currentProjectId}
+              draggable={draggable}
+              selection={selection}
+            />
+          ) : null
+        }}
+      />
+    )
+  }
 
   return (
     <>

@@ -40,7 +40,8 @@
     "notSent": "Chưa gửi",
     "open": "Mở",
     "openLabel": "Mở {{name}}",
-    "untrusted": "Câu trả lời là văn bản của một phiên khác, không phải của bạn."
+    "untrusted": "Câu trả lời là văn bản của một phiên khác, không phải của bạn.",
+    "notSentReason": "Chưa gửi: {{reason}}"
   },
   "errors": {
     "invalid_text": "Câu trả lời phải dài từ 1 đến 8000 ký tự.",
@@ -65,6 +66,19 @@
     "not_available": "Tính năng nhắn tin không khả dụng ở đây.",
     "io": "Không thể đọc hoặc ghi hộp thư.",
     "no_data_folder": "Thư mục dữ liệu của Flint không khả dụng.",
-    "unknown": "Không thể gửi trả lời."
-  }
+    "unknown": "Không thể gửi trả lời.",
+    "chain_limit_reached": "Tin nhắn đã được chuyển giữa các phiên quá nhiều lần. Hãy tự tiếp tục.",
+    "session_archived": "Phiên đó đã được lưu trữ.",
+    "unknownRefusal": "Tin nhắn đã bị từ chối."
+  },
+  "chainLimitHeld": "Đã đạt giới hạn chuỗi, đang chờ bạn. Tin nhắn này được các phiên khác chuyển tiếp nên không đánh thức phiên này.",
+  "moreHeld": "Thêm {{count}}",
+  "dismissAll": "Bỏ qua tất cả",
+  "waitingNotice": "Tin nhắn từ {{name}} đang chờ",
+  "heldBanner_one": "{{count}} tin nhắn từ phiên khác đang chờ bạn",
+  "heldBanner_other": "{{count}} tin nhắn từ các phiên khác đang chờ bạn",
+  "waitingCount_one": "{{count}} tin nhắn đang chờ",
+  "waitingCount_other": "{{count}} tin nhắn đang chờ",
+  "waitingIn_one": "{{count}} tin nhắn trong {{session}}",
+  "waitingIn_other": "{{count}} tin nhắn trong {{session}}"
 }

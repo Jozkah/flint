@@ -22,6 +22,8 @@ export type AskedSession = {
   status: AskedStatus
   /** The other session's reply text. Untrusted: shown as plain text. */
   answer: string | null
+  /** Why a `notSent` call was refused: the backend's error code, if any. */
+  reason?: string | null
 }
 
 type PartLike = {
@@ -30,6 +32,7 @@ type PartLike = {
   input?: unknown
   state?: string
   output?: unknown
+  errorText?: string
 }
 
 const asRecord = (v: unknown): Record<string, unknown> | null =>
@@ -69,7 +72,11 @@ export function askedFromParts(parts: PartLike[] | undefined): AskedSession[] {
       (typeof input?.session_id === 'string' && input.session_id) ||
       ''
     const key = part.toolCallId ?? `part-${index}`
-    const done = part.state === 'output-available' || part.output !== undefined
+    // A refused call can end as `output-error` with no output (live test
+    // 4b): it is finished, not waiting.
+    const failed = part.state === 'output-error' || part.errorText !== undefined
+    const done =
+      failed || part.state === 'output-available' || part.output !== undefined
     if (!done) {
       out.push({
         key,
@@ -80,14 +87,18 @@ export function askedFromParts(parts: PartLike[] | undefined): AskedSession[] {
       })
       return
     }
-    const { error, body } = parseResult(part.output)
-    if (error || !body || body.error) {
+    const { error, body } = parseResult(
+      part.output !== undefined ? part.output : (part.errorText ?? null)
+    )
+    if (failed || error || !body || body.error) {
+      const code = asRecord(body?.error)?.code
       out.push({
         key,
         name: requested,
         sessionId: null,
         status: 'notSent',
         answer: null,
+        reason: typeof code === 'string' ? code : null,
       })
       return
     }

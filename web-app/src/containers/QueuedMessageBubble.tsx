@@ -24,6 +24,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { queueDropTarget } from '@/lib/queueDrag'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { QueuedMessage } from '@/stores/message-queue-store'
+import { unwrapForDisplay } from '@/lib/sessionMailbox'
 
 type QueuedMessageChipProps = {
   message: QueuedMessage
@@ -127,7 +128,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
         onClick={() => onEdit?.(message)}
         title={t('common:queue.edit')}
       >
-        {message.text}
+        {message.from ? unwrapForDisplay(message.text) : message.text}
       </span>
       <div className="ml-auto flex shrink-0 items-center gap-1">
         {message.held ? (

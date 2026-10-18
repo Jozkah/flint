@@ -2858,5 +2858,18 @@
     "offlineTitle": "Der Flint-Server ist nicht erreichbar.",
     "offlineBody": "Verbindung wird wiederhergestellt… Was Sie jetzt tun, wird möglicherweise erst gespeichert, wenn er wieder da ist.",
     "statusOffline": "Server nicht erreichbar"
+  },
+  "nesting": {
+    "more_one": "{{count}} weitere untergeordnet",
+    "more_other": "{{count}} weitere untergeordnet",
+    "new_one": "{{count}} neu",
+    "new_other": "{{count}} neu",
+    "working_one": "{{count}} in Arbeit",
+    "working_other": "{{count}} in Arbeit",
+    "waiting_one": "{{count}} wartet",
+    "waiting_other": "{{count}} warten",
+    "count_one": "{{count}} untergeordnet",
+    "count_other": "{{count}} untergeordnet",
+    "fewer": "Weniger untergeordnete anzeigen"
   }
 }

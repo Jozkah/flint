@@ -548,7 +548,7 @@
       "on": "Cerca web activada",
       "off": "Cerca web desactivada",
       "provider": "Proveïdor de cerca",
-      "providerFoot": "Si DuckDuckGo mostra una verificació de bots, Flint llegeix la pàgina de resultats. Els proveïdors es trien a l'ordinador.",
+      "providerFoot": "Si DuckDuckGo mostra una verificació de bots, espera un minut i torna a cercar. Els proveïdors es trien a l'ordinador.",
       "ddg": "DuckDuckGo no necessita configuració",
       "noKey": "No cal clau",
       "keySet": "Clau definida",

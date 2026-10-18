@@ -40,7 +40,8 @@
     "notSent": "Не отправлено",
     "open": "Открыть",
     "openLabel": "Открыть {{name}}",
-    "untrusted": "Ответ — это текст другой сессии, а не ваш."
+    "untrusted": "Ответ — это текст другой сессии, а не ваш.",
+    "notSentReason": "Не отправлено: {{reason}}"
   },
   "errors": {
     "invalid_text": "Ответ должен содержать от 1 до 8000 символов.",
@@ -65,6 +66,25 @@
     "not_available": "Обмен сообщениями здесь недоступен.",
     "io": "Не удалось прочитать или записать почтовый ящик.",
     "no_data_folder": "Папка данных Flint недоступна.",
-    "unknown": "Не удалось отправить ответ."
-  }
+    "unknown": "Не удалось отправить ответ.",
+    "chain_limit_reached": "Сообщение слишком много раз пересылалось между сессиями. Продолжите сами.",
+    "session_archived": "Эта сессия в архиве.",
+    "unknownRefusal": "Сообщение отклонено."
+  },
+  "chainLimitHeld": "Достигнут предел цепочки, ждёт вас. Это сообщение переслали другие сессии, поэтому оно не разбудило эту.",
+  "moreHeld": "Ещё: {{count}}",
+  "dismissAll": "Скрыть все",
+  "waitingNotice": "Ждёт сообщение от {{name}}",
+  "heldBanner_one": "Вас ждёт {{count}} сообщение из другой сессии",
+  "heldBanner_few": "Вас ждут {{count}} сообщения из других сессий",
+  "heldBanner_many": "Вас ждут {{count}} сообщений из других сессий",
+  "heldBanner_other": "Вас ждут {{count}} сообщения из других сессий",
+  "waitingCount_one": "{{count}} сообщение ждёт",
+  "waitingCount_few": "{{count}} сообщения ждут",
+  "waitingCount_many": "{{count}} сообщений ждут",
+  "waitingCount_other": "{{count}} сообщения ждут",
+  "waitingIn_one": "{{count}} сообщение в {{session}}",
+  "waitingIn_few": "{{count}} сообщения в {{session}}",
+  "waitingIn_many": "{{count}} сообщений в {{session}}",
+  "waitingIn_other": "{{count}} сообщения в {{session}}"
 }

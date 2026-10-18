@@ -1,6 +1,7 @@
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import type { ParentPersona } from '@/lib/subagentChoice'
 import { useAssistant } from '@/hooks/useAssistant'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { jsonSchema, type Tool, type UIMessage } from 'ai'
 import {
   CustomChatTransport,
@@ -459,8 +460,12 @@ export class CoworkChatTransport extends CustomChatTransport {
           this.routedAssistantInstructions.trim(),
         ].join('\n')
       : undefined
+    const self = this.threadId
+      ? useCoworkSessions.getState().sessions.find((s) => s.id === this.threadId)
+      : undefined
     const base = buildCoworkSystemPrompt({
       availableTools: Object.keys(this.advertisedTools),
+      messagingSelf: self ? { id: self.id, name: self.title } : undefined,
       workspacePath: this.config.workspacePath,
       readOnlyFolder: this.config.readOnlyFolder,
       extraFolders: this.config.extraFolders,

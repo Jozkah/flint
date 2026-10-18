@@ -21,6 +21,12 @@ const MESSAGE_METADATA_DROPPED = ['parentId', 'activeChildId']
 /** Thread metadata the fork does not inherit. */
 const THREAD_METADATA_KEPT = ['project', 'folders']
 
+/** The chat a thread was forked from (`metadata.forkedFrom`), if recorded. */
+export function forkParentOf(thread: Pick<Thread, 'metadata'> | undefined): string | null {
+  const from = thread?.metadata?.forkedFrom
+  return typeof from === 'string' && from ? from : null
+}
+
 export const FORK_TITLE_SUFFIX = ' (fork)'
 
 /** The forked chat's title: the original's, marked once however often it is forked. */
@@ -94,7 +100,9 @@ export async function forkThread(
   }
   useThreads.getState().updateThread(created.id, {
     assistants: source.assistants,
-    metadata: { ...(created.metadata ?? {}), ...kept },
+    // `forkedFrom`: the chat this one was copied from, so the sidebar can
+    // show the copy under it. Display only; absent on chats from before it.
+    metadata: { ...(created.metadata ?? {}), ...kept, forkedFrom: source.id },
   })
 
   // Ids sort in copy order: plain ulid() is random within one millisecond, and

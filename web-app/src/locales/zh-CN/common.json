@@ -2852,5 +2852,13 @@
     "offlineTitle": "无法连接到 Flint 服务器。",
     "offlineBody": "正在重新连接… 服务器恢复前，现在的操作可能不会保存。",
     "statusOffline": "服务器无法访问"
+  },
+  "nesting": {
+    "more_other": "另有 {{count}} 个嵌套",
+    "new_other": "{{count}} 个新",
+    "working_other": "{{count}} 个运行中",
+    "waiting_other": "{{count}} 个等待中",
+    "count_other": "{{count}} 个嵌套",
+    "fewer": "收起嵌套项"
   }
 }

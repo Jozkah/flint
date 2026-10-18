@@ -174,7 +174,12 @@ export async function executeWebTool(
       try {
         page = await webFetch(url, apiKey, searchProvider, endpoint)
       } catch (e) {
-        failedFetches.set(key, { error: messageOf(e), at: Date.now() })
+        // A provider rate limit says nothing about the URL: the backend's own
+        // gate already refuses calls until the cool-down ends, and a retry
+        // after it must reach the network, so it is not remembered here.
+        if (!isRateLimited(e)) {
+          failedFetches.set(key, { error: messageOf(e), at: Date.now() })
+        }
         throw e
       }
       failedFetches.delete(key)
@@ -194,6 +199,16 @@ export async function executeWebTool(
   } catch (e) {
     return { error: messageOf(e) }
   }
+}
+
+/** Whether the websearch plugin rejected with its rate-limit kind. */
+function isRateLimited(e: unknown): boolean {
+  return (
+    !!e &&
+    typeof e === 'object' &&
+    'kind' in e &&
+    (e as { kind: unknown }).kind === 'rate_limited'
+  )
 }
 
 function messageOf(e: unknown): string {

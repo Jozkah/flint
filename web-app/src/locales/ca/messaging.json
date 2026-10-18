@@ -40,7 +40,8 @@
     "notSent": "No enviat",
     "open": "Obre",
     "openLabel": "Obre {{name}}",
-    "untrusted": "La resposta és text d'una altra sessió, no teu."
+    "untrusted": "La resposta és text d'una altra sessió, no teu.",
+    "notSentReason": "No enviat: {{reason}}"
   },
   "errors": {
     "invalid_text": "La resposta ha de tenir entre 1 i 8000 caràcters.",
@@ -65,6 +66,19 @@
     "not_available": "La missatgeria no està disponible aquí.",
     "io": "No s'ha pogut llegir ni escriure la bústia.",
     "no_data_folder": "La carpeta de dades de Flint no està disponible.",
-    "unknown": "No s'ha pogut enviar la resposta."
-  }
+    "unknown": "No s'ha pogut enviar la resposta.",
+    "chain_limit_reached": "El missatge s'ha passat entre sessions massa vegades. Continua-ho tu.",
+    "session_archived": "Aquesta sessió està arxivada.",
+    "unknownRefusal": "El missatge ha estat rebutjat."
+  },
+  "chainLimitHeld": "S'ha arribat al límit de la cadena; s'espera a tu. Aquest missatge l'han passat altres sessions, així que no ha despertat aquesta.",
+  "moreHeld": "{{count}} més",
+  "dismissAll": "Descarta-ho tot",
+  "waitingNotice": "Missatge de {{name}} en espera",
+  "heldBanner_one": "{{count}} missatge d'una altra sessió t'espera",
+  "heldBanner_other": "{{count}} missatges d'altres sessions t'esperen",
+  "waitingCount_one": "{{count}} missatge en espera",
+  "waitingCount_other": "{{count}} missatges en espera",
+  "waitingIn_one": "{{count}} missatge a {{session}}",
+  "waitingIn_other": "{{count}} missatges a {{session}}"
 }

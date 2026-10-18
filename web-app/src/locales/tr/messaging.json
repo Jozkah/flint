@@ -40,7 +40,8 @@
     "notSent": "Gönderilmedi",
     "open": "Aç",
     "openLabel": "{{name}} oturumunu aç",
-    "untrusted": "Cevap, sizin değil başka bir oturumun metnidir."
+    "untrusted": "Cevap, sizin değil başka bir oturumun metnidir.",
+    "notSentReason": "Gönderilmedi: {{reason}}"
   },
   "errors": {
     "invalid_text": "Yanıt 1 ile 8000 karakter arasında olmalıdır.",
@@ -65,6 +66,19 @@
     "not_available": "Mesajlaşma burada kullanılamıyor.",
     "io": "Posta kutusu okunamadı veya yazılamadı.",
     "no_data_folder": "Flint'in veri klasörü kullanılamıyor.",
-    "unknown": "Yanıt gönderilemedi."
-  }
+    "unknown": "Yanıt gönderilemedi.",
+    "chain_limit_reached": "İleti oturumlar arasında çok fazla kez aktarıldı. Siz devam edin.",
+    "session_archived": "O oturum arşivlendi.",
+    "unknownRefusal": "İleti reddedildi."
+  },
+  "chainLimitHeld": "Zincir sınırına ulaşıldı, sizi bekliyor. Bu ileti başka oturumlarca aktarıldığı için bu oturumu uyandırmadı.",
+  "moreHeld": "{{count}} tane daha",
+  "dismissAll": "Tümünü kapat",
+  "waitingNotice": "{{name}} iletisi bekliyor",
+  "heldBanner_one": "Başka bir oturumdan {{count}} ileti sizi bekliyor",
+  "heldBanner_other": "Başka oturumlardan {{count}} ileti sizi bekliyor",
+  "waitingCount_one": "{{count}} ileti bekliyor",
+  "waitingCount_other": "{{count}} ileti bekliyor",
+  "waitingIn_one": "{{session}} içinde {{count}} ileti",
+  "waitingIn_other": "{{session}} içinde {{count}} ileti"
 }

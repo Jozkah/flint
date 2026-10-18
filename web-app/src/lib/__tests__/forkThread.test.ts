@@ -115,6 +115,8 @@ describe('forkThread', () => {
     // Documents were embedded for the original chat; the copy does not claim them.
     expect(update.metadata.hasDocuments).toBeUndefined()
     expect(update.metadata.jevRoutedMessageId).toBeUndefined()
+    // The sidebar nests the copy under the chat it came from.
+    expect(update.metadata.forkedFrom).toBe('t1')
   })
 
   it('copies the messages under new ids in the new thread, without branch links', async () => {

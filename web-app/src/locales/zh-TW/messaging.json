@@ -40,7 +40,8 @@
     "notSent": "未傳送",
     "open": "開啟",
     "openLabel": "開啟 {{name}}",
-    "untrusted": "該回答是另一個工作階段的文字，不是你的。"
+    "untrusted": "該回答是另一個工作階段的文字，不是你的。",
+    "notSentReason": "未傳送：{{reason}}"
   },
   "errors": {
     "invalid_text": "回覆必須為 1 到 8000 個字元。",
@@ -65,6 +66,19 @@
     "not_available": "此處無法使用訊息功能。",
     "io": "無法讀取或寫入信箱。",
     "no_data_folder": "Flint 的資料目錄無法使用。",
-    "unknown": "無法傳送回覆。"
-  }
+    "unknown": "無法傳送回覆。",
+    "chain_limit_reached": "這則訊息在工作階段之間轉送的次數過多。請由你繼續。",
+    "session_archived": "該工作階段已封存。",
+    "unknownRefusal": "訊息遭拒絕。"
+  },
+  "chainLimitHeld": "已達到鏈結上限，正在等候你。這則訊息由其他工作階段轉送而來，因此沒有喚醒此工作階段。",
+  "moreHeld": "另外 {{count}} 則",
+  "dismissAll": "全部略過",
+  "waitingNotice": "來自 {{name}} 的訊息等候處理",
+  "heldBanner_one": "有 {{count}} 則來自其他工作階段的訊息在等你",
+  "heldBanner_other": "有 {{count}} 則來自其他工作階段的訊息在等你",
+  "waitingCount_one": "{{count}} 則訊息等候中",
+  "waitingCount_other": "{{count}} 則訊息等候中",
+  "waitingIn_one": "{{session}} 中有 {{count}} 則訊息",
+  "waitingIn_other": "{{session}} 中有 {{count}} 則訊息"
 }

@@ -149,6 +149,27 @@ describe('mailbox delivery', () => {
     expect(useSessionMessaging.getState().pendingWake.A).toBe(true)
   })
 
+  it('never auto-wakes on mail the backend held for the chain limit', async () => {
+    useSessionMessaging.setState({ autoWake: {} })
+    fake.envelope('A', 'a1', { hops: 3, chainId: 'c1', hold: 'chain_cycle' })
+    await delivery.onEvent({ sessionId: 'A', messageId: 'a1' })
+    expect(q('A')[0].held).toBe(true)
+    expect(q('A')[0].from?.hold).toBe('chain_cycle')
+    expect(useSessionMessaging.getState().pendingWake.A).toBeUndefined()
+    // Not even when wake-ups are turned back on, or the session comes into view.
+    useSessionMessaging.getState().setAutoWake('A', false)
+    useSessionMessaging.getState().setAutoWake('A', true)
+    delivery.applyAutoWake('A')
+    expect(q('A')[0].held).toBe(true)
+  })
+
+  it('still wakes on relayed mail the backend did not hold', async () => {
+    useSessionMessaging.setState({ autoWake: {} })
+    fake.envelope('A', 'a1', { hops: 2, chainId: 'c1' })
+    await delivery.onEvent({ sessionId: 'A', messageId: 'a1' })
+    expect(q('A')[0].held).toBe(false)
+  })
+
   it('turning wake-ups back on releases what waited', async () => {
     fake.envelope('A', 'a1')
     await delivery.onEvent({ sessionId: 'A', messageId: 'a1' })

@@ -40,7 +40,8 @@
     "notSent": "Tidak terkirim",
     "open": "Buka",
     "openLabel": "Buka {{name}}",
-    "untrusted": "Jawaban ini adalah teks sesi lain, bukan dari Anda."
+    "untrusted": "Jawaban ini adalah teks sesi lain, bukan dari Anda.",
+    "notSentReason": "Tidak terkirim: {{reason}}"
   },
   "errors": {
     "invalid_text": "Balasan harus antara 1 dan 8000 karakter.",
@@ -65,6 +66,19 @@
     "not_available": "Pesan tidak tersedia di sini.",
     "io": "Kotak pesan tidak dapat dibaca atau ditulis.",
     "no_data_folder": "Folder data Flint tidak tersedia.",
-    "unknown": "Balasan tidak dapat dikirim."
-  }
+    "unknown": "Balasan tidak dapat dikirim.",
+    "chain_limit_reached": "Pesan sudah diteruskan antarsesi terlalu banyak kali. Lanjutkan sendiri.",
+    "session_archived": "Sesi itu diarsipkan.",
+    "unknownRefusal": "Pesan ditolak."
+  },
+  "chainLimitHeld": "Batas rantai tercapai, menunggu Anda. Pesan ini diteruskan oleh sesi lain, jadi tidak membangunkan sesi ini.",
+  "moreHeld": "{{count}} lagi",
+  "dismissAll": "Tutup semua",
+  "waitingNotice": "Pesan dari {{name}} menunggu",
+  "heldBanner_one": "{{count}} pesan dari sesi lain menunggu Anda",
+  "heldBanner_other": "{{count}} pesan dari sesi lain menunggu Anda",
+  "waitingCount_one": "{{count}} pesan menunggu",
+  "waitingCount_other": "{{count}} pesan menunggu",
+  "waitingIn_one": "{{count}} pesan di {{session}}",
+  "waitingIn_other": "{{count}} pesan di {{session}}"
 }

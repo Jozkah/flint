@@ -2908,5 +2908,18 @@
     "offlineTitle": "Impossible de joindre le serveur Flint.",
     "offlineBody": "Reconnexion… Ce que vous faites maintenant risque de ne pas être enregistré avant son retour.",
     "statusOffline": "Serveur injoignable"
+  },
+  "nesting": {
+    "more_one": "{{count}} autre imbriqué",
+    "more_other": "{{count}} autres imbriqués",
+    "new_one": "{{count}} nouveau",
+    "new_other": "{{count}} nouveaux",
+    "working_one": "{{count}} en cours",
+    "working_other": "{{count}} en cours",
+    "waiting_one": "{{count}} en attente",
+    "waiting_other": "{{count}} en attente",
+    "count_one": "{{count}} imbriqué",
+    "count_other": "{{count}} imbriqués",
+    "fewer": "Afficher moins d’imbriqués"
   }
 }

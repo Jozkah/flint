@@ -10,6 +10,7 @@ import {
   QueuedMessageList,
 } from '../QueuedMessageBubble'
 import { queueDropTarget } from '@/lib/queueDrag'
+import { envelopeToQueued } from '@/lib/mailboxDelivery'
 
 describe('QueuedMessageChip held', () => {
   const held = { id: 'h', text: 'held text', createdAt: 1, held: true }
@@ -33,6 +34,27 @@ describe('QueuedMessageChip held', () => {
     expect(discard).toHaveAttribute('aria-label', 'common:steering.discard')
     discard.click()
     expect(onRemove).toHaveBeenCalledWith('h')
+  })
+})
+
+describe('QueuedMessageChip mail', () => {
+  it('previews the text of a queued message from another session, not its fence', () => {
+    const envelope = {
+      v: 1 as const,
+      id: 'msg-q-1',
+      from: { sessionId: 'S1', displayName: 'Alpha' },
+      to: { sessionId: 'S2' },
+      project: 'p',
+      text: 'banana please',
+      createdAt: 1,
+      replyTo: null,
+      depth: 0,
+      origin: 'agent' as const,
+    }
+    render(<QueuedMessageChip message={envelopeToQueued(envelope, false)} />)
+    const chip = screen.getByTestId('queued-message-chip')
+    expect(chip).toHaveTextContent('banana please')
+    expect(chip.textContent).not.toContain('Coordination message')
   })
 })
 

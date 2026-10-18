@@ -89,6 +89,7 @@ permissions = [
     "allow-mailbox-session-waiting",
     "allow-mailbox-session-remove",
     "allow-mailbox-session-revive",
+    "allow-mailbox-session-archive",
     "allow-mailbox-take-for-delivery",
     "allow-mailbox-pending",
     "allow-mailbox-mark-read",
