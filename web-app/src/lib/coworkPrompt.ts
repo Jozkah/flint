@@ -87,6 +87,19 @@ const SESSIONS_BLOCK = [
 ].join('\n')
 
 /**
+ * Who this session is to the others (live test 9b: models in a ring lost
+ * track of their own session). The title is the user's, made one line.
+ */
+function sessionsBlock(self?: { id: string; name: string }): string {
+  if (!self) return SESSIONS_BLOCK
+  const name = self.name.replace(/[\r\n"]+/g, ' ').trim().slice(0, 200)
+  return (
+    `${SESSIONS_BLOCK}\n` +
+    `You are session "${name}" (${self.id}); never send a message to yourself.`
+  )
+}
+
+/**
  * What changes during a session -- the date and the attached folder's branch --
  * last, so it does not invalidate the cached prompt before it.
  */
@@ -130,6 +143,8 @@ export const EXIT_PLAN_LABEL = 'Exit plan mode'
 export type CoworkPromptOptions = {
   /** Tool names actually advertised in this request. */
   availableTools?: readonly string[]
+  /** This session's id and title, named in the messaging section. */
+  messagingSelf?: { id: string; name: string }
   /** The work-profile add-on for this request, when work profiles are on. */
   workProfileBlock?: string
   /** The `# Skills` catalogue (see `skillCatalog.ts`), when skills are installed. */
@@ -598,7 +613,7 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
     const hint = sweepHint(opts.userRequest)
     if (hint) blocks.push(hint)
   }
-  if (hasTool(opts, 'list_sessions')) blocks.push(SESSIONS_BLOCK)
+  if (hasTool(opts, 'list_sessions')) blocks.push(sessionsBlock(opts.messagingSelf))
   // Skills are only worth naming when the run can read them.
   if (opts.skillsBlock?.trim() && hasTool(opts, 'skill_read')) {
     blocks.push(opts.skillsBlock.trim())

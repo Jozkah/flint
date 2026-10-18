@@ -333,6 +333,23 @@ async fn tool_arguments_cannot_forge_or_reset_the_chain() {
     assert_ne!(e.chain_id, "fresh");
 }
 
+#[tokio::test]
+async fn list_sessions_names_the_caller() {
+    let fx = Fx::new("you");
+    let (_mb, _) = ring_mailbox(&fx, 2);
+    let root = fx.project.clone();
+    let ctx = crate::tools::ToolContext::new(&root, &root, &[])
+        .in_session(Some("r1"), false)
+        .with_mailbox(&fx.data);
+    let tool = crate::tools::lookup("list_sessions").unwrap();
+    let out = crate::tools::handlers::execute_builtin(tool, &serde_json::json!({}), &ctx)
+        .await
+        .0;
+    let v: serde_json::Value = serde_json::from_str(&out).expect(&out);
+    assert_eq!(v["you"]["session_id"], "r1");
+    assert_eq!(v["you"]["display_name"], "Ring1");
+}
+
 #[test]
 fn archived_sessions_get_no_mail_and_are_not_listed_until_restored() {
     let fx = Fx::new("archive");
@@ -353,4 +370,23 @@ fn archived_sessions_get_no_mail_and_are_not_listed_until_restored() {
     mb.register("r2", "Ring2", fx.folder()).unwrap();
     assert_eq!(mb.list_sessions("r1").unwrap().len(), 1);
     mb.send("r1", "r2", "hi", None, Origin::Agent).unwrap();
+}
+
+#[test]
+fn naming_yourself_by_title_is_self_target() {
+    let fx = Fx::new("selfname");
+    let (mb, _) = ring_mailbox(&fx, 2);
+    assert_eq!(
+        mb.resolve_session("r1", "Ring1").unwrap_err().code,
+        code::SELF_TARGET
+    );
+    assert_eq!(
+        mb.resolve_session("r1", "ring1").unwrap_err().code,
+        code::SELF_TARGET
+    );
+    assert_eq!(mb.resolve_session("r1", "Ring2").unwrap(), "r2");
+    assert_eq!(
+        mb.resolve_session("r1", "Nobody").unwrap_err().code,
+        code::UNKNOWN_SESSION
+    );
 }
