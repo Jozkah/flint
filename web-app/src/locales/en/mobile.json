@@ -626,7 +626,7 @@
       "on": "Web search on",
       "off": "Web search off",
       "provider": "Search Provider",
-      "providerFoot": "If DuckDuckGo shows a bot check, Flint falls back to reading the results page. Providers are chosen on the computer.",
+      "providerFoot": "If DuckDuckGo shows a bot check, wait a minute and search again. Providers are chosen on the computer.",
       "ddg": "DuckDuckGo needs no setup",
       "noKey": "No key needed",
       "keySet": "Key set",

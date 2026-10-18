@@ -548,7 +548,7 @@
       "on": "Pesquisa na web ativada",
       "off": "Pesquisa na web desativada",
       "provider": "Provedor de pesquisa",
-      "providerFoot": "Se o DuckDuckGo exibir uma verificação de robô, o Flint passa a ler a página de resultados. Os provedores são escolhidos no computador.",
+      "providerFoot": "Se o DuckDuckGo exibir uma verificação de robô, aguarde um minuto e pesquise de novo. Os provedores são escolhidos no computador.",
       "ddg": "O DuckDuckGo não precisa de configuração",
       "noKey": "Sem necessidade de chave",
       "keySet": "Chave definida",

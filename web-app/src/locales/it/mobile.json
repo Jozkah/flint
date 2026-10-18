@@ -548,7 +548,7 @@
       "on": "Ricerca web attiva",
       "off": "Ricerca web disattivata",
       "provider": "Provider di ricerca",
-      "providerFoot": "Se DuckDuckGo mostra un controllo anti-bot, Flint ripiega sulla lettura della pagina dei risultati. I provider si scelgono sul computer.",
+      "providerFoot": "Se DuckDuckGo mostra un controllo anti-bot, attendi un minuto e ripeti la ricerca. I provider si scelgono sul computer.",
       "ddg": "DuckDuckGo non richiede configurazione",
       "noKey": "Nessuna chiave necessaria",
       "keySet": "Chiave impostata",

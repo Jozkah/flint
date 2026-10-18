@@ -1436,12 +1436,44 @@ impl DuckDuckGoProvider {
 #[async_trait]
 impl SearchProvider for DuckDuckGoProvider {
     async fn search(&self, query: &str, count: u32) -> Result<Vec<SearchResult>, String> {
+        // A page holds about ten results; a larger `count` (up to
+        // SEARCH_MAX_COUNT) needs the next page, which is requested with the
+        // fields of the page's own "Next" form (offset, vqd token, region).
+        let mut out = Vec::new();
+        let mut form = vec![("q".to_string(), query.to_string())];
+        for page in 0..DUCKDUCKGO_MAX_PAGES {
+            let html = match self.results_page(&form).await {
+                Ok(html) => html,
+                // Keep the results already read rather than losing them.
+                Err(_) if page > 0 => break,
+                Err(e) => return Err(e),
+            };
+            let before = out.len();
+            collect_duckduckgo_results(&html, count, &mut out);
+            if out.len() >= count as usize || out.len() == before {
+                break;
+            }
+            match duckduckgo_next_page_form(&html) {
+                Some(next) => form = next,
+                None => break,
+            }
+        }
+        Ok(out)
+    }
+
+    async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
+        http_get_page(&self.client, url, "DuckDuckGo").await
+    }
+}
+
+impl DuckDuckGoProvider {
+    async fn results_page(&self, form: &[(String, String)]) -> Result<String, String> {
         let resp = self
             .client
             .post(DUCKDUCKGO_HTML_URL)
             .header(reqwest::header::USER_AGENT, DUCKDUCKGO_USER_AGENT)
             .header(reqwest::header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
-            .form(&[("q", query)])
+            .form(form)
             .send()
             .await
             .map_err(|e| format!("DuckDuckGo request failed: {e}"))?;
@@ -1456,12 +1488,28 @@ impl SearchProvider for DuckDuckGoProvider {
         if !status.is_success() {
             return Err(format!("DuckDuckGo failed with HTTP {}", status.as_u16()));
         }
-        Ok(parse_duckduckgo_results(&html, count))
+        Ok(html)
     }
+}
 
-    async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
-        http_get_page(&self.client, url, "DuckDuckGo").await
-    }
+/// Results pages read per search: two pages cover SEARCH_MAX_COUNT.
+const DUCKDUCKGO_MAX_PAGES: usize = 2;
+
+/// The fields of a results page's "Next" form, which asks for the following
+/// page; `None` on the last page or a page without results.
+fn duckduckgo_next_page_form(html: &str) -> Option<Vec<(String, String)>> {
+    let next = html.find("value=\"Next\"")?;
+    let start = html[..next].rfind("<form")?;
+    let end = next + html[next..].find("</form>")?;
+    let fields: Vec<(String, String)> = html[start..end]
+        .split("<input")
+        .skip(1)
+        .filter_map(|piece| {
+            let tag = format!("<input{}", &piece[..=piece.find('>')?]);
+            Some((html_attr(&tag, "name")?, html_attr(&tag, "value")?))
+        })
+        .collect();
+    fields.iter().any(|(name, _)| name == "q").then_some(fields)
 }
 
 const DUCKDUCKGO_BOT_CHECK: &str = "DuckDuckGo asked for a bot check instead of returning results, which it does after \
@@ -1475,8 +1523,16 @@ fn is_duckduckgo_bot_check(html: &str) -> bool {
 /// The organic results on a DuckDuckGo HTML results page, in page order, with
 /// ads dropped and links resolved to the real destination. A page with no
 /// results parses to an empty list.
+#[cfg(test)]
 fn parse_duckduckgo_results(html: &str, count: u32) -> Vec<SearchResult> {
-    let mut out: Vec<SearchResult> = Vec::new();
+    let mut out = Vec::new();
+    collect_duckduckgo_results(html, count, &mut out);
+    out
+}
+
+/// Append the results of one page to `out` (up to `count` in all), skipping
+/// any already there, so a second page adds only new links.
+fn collect_duckduckgo_results(html: &str, count: u32, out: &mut Vec<SearchResult>) {
     // Every result is one `<div class="result ...">`; the split leaves that
     // opening tag's class list at the start of each piece.
     for block in html.split("<div class=\"result ").skip(1) {
@@ -1507,7 +1563,6 @@ fn parse_duckduckgo_results(html: &str, count: u32) -> Vec<SearchResult> {
             published_at: None,
         });
     }
-    out
 }
 
 struct HtmlAnchor {
@@ -2274,6 +2329,72 @@ mod tests {
         assert!(parse_duckduckgo_results(DDG_PAGE, 0).is_empty());
     }
 
+    // Trimmed captures of real html.duckduckgo.com/html/ responses (2026-10-18,
+    // favicon spans and the vqd token removed).
+    const DDG_LIVE_PAGE1: &str = include_str!("fixtures/ddg_page1.html");
+    const DDG_LIVE_PAGE2: &str = include_str!("fixtures/ddg_page2.html");
+    const DDG_LIVE_NON_ENGLISH: &str = include_str!("fixtures/ddg_non_english.html");
+    const DDG_LIVE_OPERATORS: &str = include_str!("fixtures/ddg_operators.html");
+    const DDG_LIVE_SPECIAL: &str = include_str!("fixtures/ddg_special_chars.html");
+
+    #[test]
+    fn a_live_duckduckgo_page_parses_ten_clean_results() {
+        let results = parse_duckduckgo_results(DDG_LIVE_PAGE1, 20);
+        assert_eq!(results.len(), 10);
+        assert_eq!(results[0].url, "https://docs.rs/async-trait/latest/async_trait/");
+        assert_eq!(results[0].title, "async_trait - Rust - Docs.rs");
+        assert!(results[0].snippet.starts_with("Type erasure for async trait methods"));
+        for r in &results {
+            assert!(!r.url.contains("duckduckgo.com"), "{r:?}");
+            assert!(!r.title.contains('<') && !r.snippet.contains("<b>"), "{r:?}");
+            assert!(!r.title.contains("&#x") && !r.snippet.contains("&#x"), "{r:?}");
+            assert!(!r.snippet.is_empty(), "{r:?}");
+        }
+        assert!(!is_duckduckgo_bot_check(DDG_LIVE_PAGE1));
+    }
+
+    #[test]
+    fn live_duckduckgo_pages_for_other_query_kinds_parse() {
+        let fr = parse_duckduckgo_results(DDG_LIVE_NON_ENGLISH, 10);
+        assert_eq!(fr.len(), 3);
+        assert_eq!(fr[1].title, "Météo Zürich (ZH) : aujourd'hui et demain, température, 15 jours");
+        assert!(fr[2].url.starts_with("https://www.meteoblue.com/en/weather/week/z%C3%BCrich"));
+
+        let ops = parse_duckduckgo_results(DDG_LIVE_OPERATORS, 10);
+        assert_eq!(ops.len(), 8);
+        assert!(ops.iter().all(|r| r.url.starts_with("https://docs.rs/")));
+
+        let special = parse_duckduckgo_results(DDG_LIVE_SPECIAL, 10);
+        assert_eq!(special.len(), 4);
+        assert_eq!(special[0].title, "std::span - cppreference.com");
+        assert!(special.iter().all(|r| !r.snippet.contains("&lt;") && !r.snippet.contains("&amp;")));
+    }
+
+    #[test]
+    fn the_next_page_form_carries_the_offset_and_token() {
+        let form = duckduckgo_next_page_form(DDG_LIVE_PAGE1).unwrap();
+        let get = |k: &str| form.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
+        assert_eq!(get("q"), Some("rust async trait"));
+        assert_eq!(get("s"), Some("10"));
+        assert_eq!(get("dc"), Some("11"));
+        assert_eq!(get("kl"), Some("wt-wt"));
+        assert!(get("vqd").is_some());
+        assert_eq!(duckduckgo_next_page_form(DDG_PAGE), None);
+    }
+
+    #[test]
+    fn a_second_page_fills_a_count_above_ten_without_repeats() {
+        let mut out = Vec::new();
+        collect_duckduckgo_results(DDG_LIVE_PAGE1, 20, &mut out);
+        collect_duckduckgo_results(DDG_LIVE_PAGE2, 20, &mut out);
+        assert_eq!(out.len(), 20);
+        let mut urls: Vec<_> = out.iter().map(|r| r.url.as_str()).collect();
+        urls.sort();
+        urls.dedup();
+        assert_eq!(urls.len(), 20, "page 2 repeats page-1 links; they are dropped");
+        assert_eq!(out[10].url, "https://google.github.io/comprehensive-rust/concurrency/async-pitfalls/async-traits.html");
+    }
+
     #[test]
     fn a_duckduckgo_page_with_no_results_is_an_empty_list_not_an_error() {
         assert!(parse_duckduckgo_results("<html><body><div class=\"no-results\">No results.</div></body></html>", 5).is_empty());
@@ -2335,8 +2456,9 @@ mod tests {
     #[ignore = "needs network access to duckduckgo.com"]
     async fn duckduckgo_live_search_returns_real_results() {
         let provider = DuckDuckGoProvider::new().unwrap();
-        let results = provider.search("rust programming language", 5).await.unwrap();
-        assert!(!results.is_empty(), "expected results");
+        // 20 needs the second results page.
+        let results = provider.search("rust programming language", 20).await.unwrap();
+        assert!(results.len() > 10, "expected the second page too, got {}", results.len());
         for r in &results {
             assert!(r.url.starts_with("http"), "{r:?}");
             assert!(!r.title.is_empty(), "{r:?}");
