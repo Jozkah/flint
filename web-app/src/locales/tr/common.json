@@ -56,7 +56,40 @@
     "chatFolderCount": "Klasörler: {{count}}",
     "newSubfolder": "Yeni alt klasör",
     "moveInto": "Klasöre taşı",
-    "topLevel": "Üst düzey"
+    "topLevel": "Üst düzey",
+    "errors": {
+      "nameEmpty": "Grup adı boş olamaz",
+      "notFound": "Grup bulunamadı",
+      "tooDeep": "Gruplar bu kadar derin iç içe yerleştirilemez",
+      "intoItself": "Bir grup kendi içine taşınamaz"
+    },
+    "failed": {
+      "create": "Grup oluşturulamadı",
+      "rename": "Grup yeniden adlandırılamadı",
+      "moveFolder": "Klasör taşınamadı",
+      "saveState": "Grup durumu kaydedilemedi",
+      "reorder": "Gruplar yeniden sıralanamadı",
+      "moveItem": "Öğe taşınamadı",
+      "delete": "Grup silinemedi",
+      "saveFolders": "Grup klasörleri kaydedilemedi",
+      "updateContext": "Klasör bağlamı güncellenemedi",
+      "update": "Gruplar güncellenemedi",
+      "import": "Gruplar içe aktarılamadı",
+      "unreadable": "{{failure}}: kayıtlı gruplar okunamadı",
+      "restored": "{{failure}}. Önceki sıralamanız geri yüklendi."
+    },
+    "announce": {
+      "created": "{{name}} grubu oluşturuldu",
+      "collapsed": "{{name}} daraltıldı",
+      "expanded": "{{name}} genişletildi",
+      "reordered": "{{name}}, {{total}} içinde {{position}}. sıraya taşındı",
+      "movedToPosition": "{{name}} içine taşındı, sıra {{position}}",
+      "movedToRecents": "Son Kullanılanlar'a taşındı",
+      "deleted": "{{name}} grubu silindi. Öğeleri Son Kullanılanlar'a taşındı",
+      "ctxReplaced": "{{base}}. Klasör bağlamı grup klasörleriyle değiştirildi; erişim hâlâ onay gerektiriyor",
+      "ctxMerged": "{{base}}. Grup klasörleri klasör bağlamına eklendi; erişim hâlâ onay gerektiriyor",
+      "foldersAdded": "{{base}}. Öğenin klasörleri gruba eklendi"
+    }
   },
   "htmlArtifact": {
     "code": "Kod",
@@ -165,8 +198,8 @@
   "favorites": "Sık Kullanılanlar",
   "hub": "Hub",
   "helpSupport": "Yardım ve Destek",
-  "helpUsImproveJan": "Jan'i geliştirmemize yardım edin",
-  "analyticsConsentDetail": "Jan'i geliştirmemize yardımcı olmak için özellik kullanımı ve kullanıcı sayıları gibi anonim verileri paylaşabilirsiniz. Sohbetlerinizi veya kişisel bilgilerinizi asla toplamıyoruz.",
+  "helpUsImproveJan": "Flint'i geliştirmemize yardım edin",
+  "analyticsConsentDetail": "Flint'i geliştirmemize yardımcı olmak için özellik kullanımı ve kullanıcı sayıları gibi anonim verileri paylaşabilirsiniz. Sohbetlerinizi veya kişisel bilgilerinizi asla toplamıyoruz.",
   "analyticsConsentQuestion": "Anonim analiz verilerini paylaşabilir miyiz?",
   "unstarAll": "Tümünü yıldızdan çıkar",
   "unstar": "Yıldızı kaldır",
@@ -216,7 +249,7 @@
     "title": "Önizleme",
     "empty": "Burada önizlemek için oluşturulan bir çıktıyı açın.",
     "loading": "Açılıyor…",
-    "unsupported": "Jan bu tür bir dosyayı gösteremiyor. Başka bir uygulamada görmek için açın.",
+    "unsupported": "Flint bu tür bir dosyayı gösteremiyor. Başka bir uygulamada görmek için açın.",
     "outside": "Bu dosya artık oturum çalışma alanında değil.",
     "tooLarge": "Önizleme için çok büyük. Başka bir uygulamada görmek için açın.",
     "reload": "Yeniden Yükle",
@@ -279,7 +312,7 @@
     "searchThreads": "Konuşmalarda ara",
     "toggleSidebar": "Kenar çubuğunu aç/kapat",
     "openCowork": "Cowork'ü aç",
-    "openArtifacts": "Çıktıları aç",
+    "openArtifacts": "Kitaplık öğesini aç",
     "openSystemMonitor": "Sistem izleyiciyi aç",
     "openLogs": "Uygulama günlüklerini aç",
     "section": {
@@ -441,7 +474,7 @@
   "noAssistant": "Asistan yok",
   "customAvatar": "Özel avatar",
   "editAssistant": "Asistanı düzenle",
-  "jan": "Jan",
+  "jan": "Flint",
   "metadata": "Meta veri",
   "regenerate": "Yeniden üret",
   "threadImage": "Konu görseli",
@@ -475,7 +508,7 @@
   "confirm": "Onayla",
   "continue": "Devam et",
   "loading": "Yükleniyor",
-  "settingUpJan": "Jan ayarlanıyor…",
+  "settingUpJan": "Flint ayarlanıyor…",
   "registeringExtensions": "Uzantılar kaydediliyor…",
   "loadingExtensions": "Uzantılar yükleniyor… ({{done}}/{{total}})",
   "error": "Hata",
@@ -874,7 +907,7 @@
       "pdfMalformedXref": "{{subject}} bozuk bir PDF çapraz referans tablosuna sahip ve ayrıştırılamadı. Bir PDF görüntüleyicisinde açıp yeniden kaydetmeyi (Dosya → Yazdır → PDF olarak kaydet) ve ardından tekrar yüklemeyi deneyin.",
       "pdfScanned": "{{subject}} taranmış veya görüntü tabanlı bir PDF gibi görünüyor. OCR henüz desteklenmiyor — lütfen metin tabanlı bir PDF yükleyin.",
       "pdfEncrypted": "{{subject}} parola korumalı. Parolayı kaldırın ve tekrar deneyin.",
-      "pdfUnsupportedFeature": "{{subject}} Jan'in henüz ayrıştıramadığı bir PDF özelliği kullanıyor (örn. PostScript renk/gölgelendirme işlevleri). Düzleştirmek için yeniden kaydetmeyi (Dosya → Yazdır → PDF olarak kaydet) deneyin, ardından tekrar yükleyin.",
+      "pdfUnsupportedFeature": "{{subject}} Flint'in henüz ayrıştıramadığı bir PDF özelliği kullanıyor (örn. PostScript renk/gölgelendirme işlevleri). Düzleştirmek için yeniden kaydetmeyi (Dosya → Yazdır → PDF olarak kaydet) deneyin, ardından tekrar yükleyin.",
       "pdfGeneric": "{{subject}} bir PDF olarak ayrıştırılamadı. Dosya bozuk olabilir veya desteklenmeyen bir PDF özelliği kullanıyor olabilir.",
       "fileTooLarge": "{{subject}} çok büyük. {{message}}.",
       "unsupportedType": "\"{{type}}\" dosya türü desteklenmiyor.",
@@ -1031,8 +1064,8 @@
   },
   "coworkEmpty": {
     "title": "Ne üzerinde çalışıyoruz?",
-    "subtitleSandbox": "Jan'e bir görev verin. Dosyaları okur ve yazar, komutları çalıştırır ve adımları kendi başına yürütür.",
-    "subtitleFolder": "Jan'e bir görev verin. Doğrudan {{folder}} klasöründe çalışır, dosyaları kendi başına okur ve düzenler.",
+    "subtitleSandbox": "Flint'e bir görev verin. Dosyaları okur ve yazar, komutları çalıştırır ve adımları kendi başına yürütür.",
+    "subtitleFolder": "Flint'e bir görev verin. Doğrudan {{folder}} klasöründe çalışır, dosyaları kendi başına okur ve düzenler.",
     "try": "Dene",
     "sandbox": {
       "first": "Dosyaları çekilme tarihlerine göre yeniden adlandıran bir Python betiği yaz",
@@ -1055,10 +1088,10 @@
     "noTerminal": "Terminal yok",
     "a11y": "Komut çalıştırma kapatıldı. Ayrıntılar.",
     "title": "Komut çalıştırma kapatıldı",
-    "body": "Jan, ajanın kabuk komutlarını yalnızca sisteminiz bunları sınırlandırabildiğinde çalıştırmasına izin verir. Burada kullanılabilir bir korumalı alan yok, bu yüzden ajan korumalı alanında dosyaları okuyabilir, yazabilir ve düzenleyebilir — ancak hiçbir şey çalıştıramaz.",
-    "fixLinux": "Linux bubblewrap kullanır. Kurun, ardından Jan'i yeniden başlatın.",
-    "fixMac": "macOS, /usr/bin/sandbox-exec konumundaki yerleşik korumalı alanı kullanır. Kullanılabilir olduğunda Jan'i yeniden başlatın.",
-    "fixWindows": "Windows, AppContainer kullanır. Tekrar denemek için Jan'i yeniden başlatın.",
+    "body": "Flint, ajanın kabuk komutlarını yalnızca sisteminiz bunları sınırlandırabildiğinde çalıştırmasına izin verir. Burada kullanılabilir bir korumalı alan yok, bu yüzden ajan korumalı alanında dosyaları okuyabilir, yazabilir ve düzenleyebilir — ancak hiçbir şey çalıştıramaz.",
+    "fixLinux": "Linux bubblewrap kullanır. Kurun, ardından Flint'i yeniden başlatın.",
+    "fixMac": "macOS, /usr/bin/sandbox-exec konumundaki yerleşik korumalı alanı kullanır. Kullanılabilir olduğunda Flint'i yeniden başlatın.",
+    "fixWindows": "Windows, AppContainer kullanır. Tekrar denemek için Flint'i yeniden başlatın.",
     "recheck": "Tekrar kontrol et"
   },
   "coworkPlanExecute": {
@@ -1217,7 +1250,8 @@
     "sensitiveRefused": "{{name}} kimlik bilgilerine veya bir anahtara benziyor, bu nedenle açılmadı",
     "binaryRefused": "{{name}} bir metin dosyası değil, uzantısı ne derse desin",
     "chooseAgainAction": "Yeniden seç",
-    "externalGone": "Bu dosya projenin dışından açıldı ve bu erişim korunmadı. Yeniden açmak için tekrar seçin."
+    "externalGone": "Bu dosya projenin dışından açıldı ve bu erişim korunmadı. Yeniden açmak için tekrar seçin.",
+    "oneFolderAtATime": "Aynı anda yalnızca bir klasör eklenebilir. \"{{name}}\" eklenmedi."
   },
   "settingsSearch": {
     "label": "Ayarlarda ara",
@@ -1400,7 +1434,14 @@
     "recommended": "Önerilen",
     "reset": "Genele sıfırla",
     "resetAll": "Genel varsayılanlara sıfırla",
-    "overridden": "Bu sohbet için ayarlandı"
+    "overridden": "Bu sohbet için ayarlandı",
+    "levels": {
+      "low": "Düşük",
+      "medium": "Orta",
+      "high": "Yüksek",
+      "xhigh": "Çok yüksek",
+      "unlimited": "Sınırsız"
+    }
   },
   "modelOffline": {
     "badge": "Erişilemiyor",
@@ -2515,6 +2556,7 @@
       "slots": "{{count}} yuva",
       "vision": "Görme",
       "audio": "Ses",
+      "fixedPrompt": "Her istekle gönderilir: {{count}} token (sistem istemi ve araç şemaları).",
       "tokenUsage": "Token kullanımı",
       "tokenUsageSr": "Token kullanımı {{value}}"
     }
@@ -2541,6 +2583,19 @@
     "previewLoading": "Önizleme yükleniyor…",
     "previewNone": "Önizleme yok"
   },
+  "fileViewer": {
+    "openFull": "Tam önizlemeyi aç",
+    "loadMore": "Daha fazla yükle",
+    "showingFirst": "{{total}} içinden ilk {{loaded}} gösteriliyor",
+    "lines_one": "{{count}} satır",
+    "lines_other": "{{count}} satır",
+    "wrap": "Satırları kaydır",
+    "copy": "Kopyala",
+    "copied": "Kopyalandı",
+    "binary": "Bu bir ikili dosya gibi görünüyor, bu yüzden metin önizlemesi yok.",
+    "expandLine": "Satırın tamamını göster",
+    "collapseLine": "Satırı kısalt"
+  },
   "dropAttachFailed": "Bırakılan dosyalar eklenemedi",
   "sampler": {
     "label": "Örnekleme parametreleri",
@@ -2566,7 +2621,8 @@
     "paste": "Panodan yapıştır",
     "pasteFailed": "Pano okunamadı",
     "clear": "Temizle",
-    "characters": "{{count}} karakter",
+    "characters_one": "{{count}} karakter",
+    "characters_other": "{{count}} karakter",
     "translating": "Çevriliyor…",
     "retry": "Yeniden dene",
     "shortcut": "Çevir (Ctrl/Cmd+Enter)",
@@ -2578,7 +2634,9 @@
     "errorNetwork": "Sağlayıcıya ulaşılamadı. Bağlantınızı ve sunucunun çalıştığını kontrol edin.",
     "errorEngine": "Bu modeli çalıştıran motor kullanılamıyor. Flint'i yeniden başlatıp tekrar deneyin.",
     "openProvider": "Sağlayıcı ayarlarını aç",
-    "errorDetails": "Ayrıntılar"
+    "errorDetails": "Ayrıntılar",
+    "pasteHint": "Panoya erişim engellendi. Metin kutusuna tıklayın ve {{keys}} tuşlarına basın.",
+    "characters": "{{count}} karakter"
   },
   "markdownImage": {
     "load": "Görseli {{host}} adresinden yükle"
@@ -2599,7 +2657,8 @@
     "editTitle": "İstemi düzenle",
     "import": "İçe aktar",
     "export": "Dışa aktar",
-    "imported": "{{count}} istem eklendi",
+    "imported_one": "{{count}} istem eklendi",
+    "imported_other": "{{count}} istem eklendi",
     "search": "İstemlerde ara",
     "empty": "Henüz istem yok.",
     "edit": "{{name}} öğesini düzenle",
@@ -2612,6 +2671,107 @@
     "body": "İstem metni",
     "bodyHint": "İstemi yazın. Boşluklar için {{topic}} veya {{tone:friendly}} kullanın.",
     "variables": "Sorulanlar: {{names}}",
-    "insert": "Ekle"
+    "defaultValue": "Varsayılan: {{value}}",
+    "requiredField": "Zorunlu",
+    "fillNeeded": "Eklemek için şunları doldurun: {{names}}",
+    "insert": "Ekle",
+    "errors": {
+      "nameRequired": "Bir istemin adı olmalı",
+      "nameTooLong": "Bu ad çok uzun",
+      "bodyRequired": "Bir istemin metni olmalı",
+      "bodyTooLong": "Bu istem çok uzun",
+      "gone": "Bu istem artık yok",
+      "invalidJson": "Bu dosya geçerli bir JSON değil",
+      "noPrompts": "Bu dosyada istem bulunamadı"
+    },
+    "imported": "{{count}} istem eklendi"
+  },
+  "memoryProposal": {
+    "title": "Bunu hatırlayayım mı?",
+    "wouldApply": "Geçerlilik alanı: {{where}}.",
+    "remember": "Hatırla",
+    "discard": "Vazgeç",
+    "reviewBoth": "İkisini incele",
+    "saving": "Kaydediliyor…",
+    "discarding": "Vazgeçiliyor…",
+    "scope": {
+      "session": "bu sohbet",
+      "project": "bu proje",
+      "user": "her yerde"
+    }
+  },
+  "picker": {
+    "filter": "Filtre",
+    "source": "Kaynak",
+    "sourceAll": "Tümü",
+    "sourceLocal": "Yerel",
+    "sourceCloud": "Bulut",
+    "capabilities": "Yetenekler",
+    "cap": {
+      "vision": "Görü",
+      "tools": "Araçlar",
+      "reasoning": "Akıl yürütme",
+      "embeddings": "Gömme"
+    },
+    "loadedNow": "Şu an yüklü",
+    "sort": "Sırala",
+    "sortDefault": "Varsayılan sıra",
+    "sortName": "Ad (A–Z)",
+    "sortRecent": "Son kullanılanlar",
+    "sortSize": "Boyut",
+    "clearFilters": "Filtreleri temizle",
+    "noMatch": "Eşleşen model yok",
+    "noMatchFilters": "Eşleşen model yok: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Sohbet",
+      "session": "Oturum",
+      "room": "Oda"
+    },
+    "heading": "Konuşmalar",
+    "empty": "Başka konuşma yok",
+    "noMatch": "Eşleşen konuşma yok",
+    "messages": "İleti: {{n}}",
+    "included": "Eklendi: {{title}} (ileti: {{n}}, ~{{size}} karakter)",
+    "group": "Anılan konuşmalar",
+    "summarize": "Özetle",
+    "summarizeHint": "Son iletiler yerine bir özet ekle",
+    "remove": "{{title}} anmasını kaldır",
+    "mentioned": "Anıldı: {{title}}",
+    "open": "{{title}} konuşmasını aç",
+    "status": {
+      "missing": "Bulunamadı: {{title}}",
+      "self": "{{title}} bu konuşmadır, bu yüzden dışarıda bırakıldı",
+      "over-cap": "{{title}} dışarıda bırakıldı: bir iletide en fazla {{max}} konuşma anılabilir"
+    },
+    "excerpt": "Alıntı",
+    "summary": "Özet",
+    "modeGroup": "{{title}} sohbetinden neyin ekleneceği",
+    "excerptHint": "En son mesajlar, yaklaşık {{tokens}} token",
+    "summaryHint": "Modelin yazdığı bir özet, en fazla yaklaşık {{tokens}} token",
+    "needsModel": "Bunun yerine özet eklemek için bir model yükleyin",
+    "totals_one": "{{count}} mesaj · ~{{tokens}} token eklendi",
+    "totals_other": "{{count}} mesaj · ~{{tokens}} token eklendi",
+    "readOnly": "Alıntılanmış, salt okunur bağlam olarak gönderilir. Model o sohbeti değiştiremez.",
+    "tooLarge": "Bu, modelin bağlam penceresinin dörtte birinden fazla.",
+    "useSummary": "Özet kullan",
+    "resolving": "{{title}} aranıyor",
+    "chipStatus": {
+      "missing": "Bulunamadı",
+      "self": "Bu sohbet",
+      "over-cap": "Sınırın üzerinde"
+    },
+    "preview": {
+      "empty": "Henüz mesaj yok",
+      "you": "Siz",
+      "assistant": "Asistan"
+    },
+    "messagesCount_one": "{{count}} mesaj",
+    "messagesCount_other": "{{count}} mesaj"
+  },
+  "campaignList": {
+    "timeout": "Uygulama zamanında yanıt vermedi.",
+    "unreadableRecord": "arka uç bu sayfanın okuyamadığı bir kayıt gönderdi"
   }
 }

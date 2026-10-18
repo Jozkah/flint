@@ -154,7 +154,45 @@
     "sections": "設定セクション",
     "tabGeneral": "一般",
     "tabDiscussion": "議論",
-    "tabLimits": "制限"
+    "tabLimits": "制限",
+    "compareRun": "モデルの実行",
+    "compareRunHint": "1つずつは遅くなりますが、ローカルモデルを1つずつ読み込み、レート制限も節約できます。",
+    "compareRunOption": {
+      "together": "すべて同時",
+      "one-by-one": "1つずつ"
+    },
+    "compareRunSuggest": "ローカルモデルが2つ以上選ばれています。1つずつ実行するとメモリを奪い合いません。",
+    "tools": {
+      "heading": "ツール",
+      "summary": "{{total}} 件中 {{on}} 件オン · 約 {{tokens}} トークン",
+      "loading": "ツールを読み込み中…",
+      "empty": "このアクセスで使えるツールはありません。",
+      "group": {
+        "files": "ファイルとコマンド",
+        "web": "Web",
+        "mcp": "MCP サーバー",
+        "other": "その他"
+      },
+      "tokens": "約 {{tokens}} tok",
+      "share": "ツール定義はこのモデルのコンテキストウィンドウの約 {{pct}}% を使います。",
+      "warn": "ツール定義はこのモデルのコンテキストウィンドウの約 {{pct}}% を使います（{{limit}}% 超）。議論の余地を残すため、いくつかオフにしてください。",
+      "windowUnknown": "このモデルのコンテキストウィンドウが不明なため、割合を表示できません。",
+      "notStarted": "未起動",
+      "toolsUnknown": "起動するまでツールは不明"
+    },
+    "budget": {
+      "heading": "ターンごとのツール予算",
+      "hint": "ツールを使う参加者のターンごとの上限です。既定値にするには空欄のままにします。",
+      "maxToolCalls": "最大ツール呼び出し数",
+      "maxSteps": "最大ステップ数",
+      "toolTimeoutSec": "ツールのタイムアウト（秒）",
+      "default": "既定: {{value}}"
+    },
+    "isolation": {
+      "active": "編集できる参加者はそれぞれ専用の分離ワークスペースで作業するため、互いやあなたのフォルダーを上書きできません。",
+      "unavailable": "分離ワークスペースを使えません: {{reason}}。編集できる参加者はこのルームでは読み取りのみです。",
+      "untrusted": "フォルダーが信頼されていません"
+    }
   },
   "limits": {
     "maxRounds": "ラウンド",
@@ -228,7 +266,19 @@
     "toolFailed": "失敗",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} トークン",
-    "speedTitle": "この返信で書き込まれたトークン数と、その速度"
+    "speedTitle": "この返信で書き込まれたトークン数と、その速度",
+    "budgetHit": {
+      "tool-calls": "このターンはツール呼び出し予算に達しました。",
+      "steps": "このターンはステップ予算に達しました。",
+      "timeout": "このターンのツール呼び出しがタイムアウトを超えたため停止しました。"
+    },
+    "rawToolCall": "テキストとして書かれたツール呼び出しのようです。実行されていません。",
+    "emptyReply": {
+      "length": "モデルは回答を書かずに返信上限（{{count}} トークン）を使い切りました。ルーム設定で上限を上げるか、この参加者の推論をオフにしてから再実行してください。",
+      "tools": "ツールを使いましたが、テキストの返信はありません。",
+      "none": "テキストの返信はありません。"
+    },
+    "thought": "思考"
   },
   "unknownWindow": {
     "title": "コンテキストウィンドウが不明です",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "各参加者が自分の立場を述べます",
     "synthesizeHint": "反対意見を含む、結果の要約",
     "cancelTurnHint": "進行中の返信のみを停止します",
-    "steerLocked": "これらは、議論が始まると使えるようになります。"
+    "steerLocked": "これらは、議論が始まると使えるようになります。",
+    "answering": "回答中",
+    "models": "モデル"
   },
   "stage": {
     "speaking": "{{name}} が発言中",
@@ -390,5 +442,69 @@
     "panes": "ルームの表示",
     "talk": "議論",
     "controls": "操作"
+  },
+  "compare": {
+    "title": "実行の比較",
+    "modeTogether": "すべて同時",
+    "modeOneByOne": "1つずつ",
+    "include": "次の実行に含める",
+    "includeFor": "{{name}} を次の実行に含める",
+    "run": "実行",
+    "runAgain": "再実行",
+    "runFor": "{{name}} で現在の質問を実行",
+    "runAgainFor": "{{name}} で現在の質問を再実行",
+    "runAll": "すべて実行",
+    "answerEarlier": "以前の質問に回答",
+    "answerEarlierHint": "以前の質問に答えていないモデルが、その場にいたかのように順番に回答します。",
+    "export": "比較をエクスポート",
+    "saveMarkdown": "Markdown で保存…",
+    "copyMarkdown": "Markdown としてコピー",
+    "copyJson": "JSON としてコピー",
+    "saved": "比較を保存しました。",
+    "copied": "クリップボードにコピーしました。",
+    "copyFailed": "クリップボードにコピーできませんでした。",
+    "notAnswered": "この質問にはまだ回答していません。",
+    "state": {
+      "off": "次の実行から除外",
+      "unavailable": "利用できません",
+      "running": "回答中…",
+      "queued": "待機中",
+      "done": "回答済み",
+      "failed": "失敗",
+      "idle": "未回答"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} 個のファイルを変更",
+    "summaryMany": "{{count}} 個のファイルを変更",
+    "workspace": "分離ワークスペース: {{path}}",
+    "binary": "バイナリファイル",
+    "noExcerpt": "抜粋はありません。",
+    "openDiff": "差分を開く",
+    "keep": "保持",
+    "discard": "変更を破棄",
+    "apply": "自分のフォルダーに適用",
+    "state": {
+      "kept": "保持済み",
+      "discarded": "破棄済み",
+      "applied": "適用済み"
+    },
+    "diffTitle": "ワークスペースの変更",
+    "diffHint": "この参加者が分離ワークスペースで変更したすべて。",
+    "applyTitle": "フォルダーに適用しますか？",
+    "applyHint": "このパッチがあなたのフォルダーに書き込まれます。きれいに適用できない場合は何も変更されません。",
+    "discardTitle": "これらの変更を破棄しますか？",
+    "discardHint": "参加者のワークスペースは開始時の状態に戻ります。あなたのフォルダーには触れません。",
+    "loading": "差分を読み込み中…",
+    "empty": "適用するものはありません。",
+    "applyConfirm": "適用",
+    "discardConfirm": "破棄",
+    "scopeTurn": "このターン",
+    "scopeAll": "ワークスペース作成以降"
+  },
+  "approvals": {
+    "held": "ルーム一時停止中",
+    "heldHint": "待機中にルームが一時停止されたため、もう許可できません。ルームを再開すると、必要なら参加者が再度確認します。",
+    "dismiss": "閉じる"
   }
 }

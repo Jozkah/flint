@@ -154,7 +154,45 @@
     "sections": "Mục cài đặt",
     "tabGeneral": "Chung",
     "tabDiscussion": "Thảo luận",
-    "tabLimits": "Giới hạn"
+    "tabLimits": "Giới hạn",
+    "compareRun": "Chạy mô hình",
+    "compareRunHint": "Lần lượt thì chậm hơn, nhưng mỗi lúc chỉ tải một mô hình cục bộ và tiết kiệm giới hạn yêu cầu.",
+    "compareRunOption": {
+      "together": "Tất cả cùng lúc",
+      "one-by-one": "Lần lượt từng cái"
+    },
+    "compareRunSuggest": "Đã chọn từ hai mô hình cục bộ trở lên: chạy lần lượt giúp chúng không tranh nhau bộ nhớ.",
+    "tools": {
+      "heading": "Công cụ",
+      "summary": "Bật {{on}}/{{total}} · ~{{tokens}} token",
+      "loading": "Đang tải công cụ…",
+      "empty": "Không có công cụ nào với quyền này.",
+      "group": {
+        "files": "Tệp và lệnh",
+        "web": "Web",
+        "mcp": "Máy chủ MCP",
+        "other": "Khác"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Định nghĩa công cụ chiếm khoảng {{pct}}% cửa sổ ngữ cảnh của mô hình này.",
+      "warn": "Định nghĩa công cụ chiếm khoảng {{pct}}% cửa sổ ngữ cảnh của mô hình này (trên {{limit}}%). Hãy tắt bớt để chừa chỗ cho cuộc thảo luận.",
+      "windowUnknown": "Không biết cửa sổ ngữ cảnh của mô hình này nên không thể hiển thị tỷ lệ.",
+      "notStarted": "chưa khởi động",
+      "toolsUnknown": "chưa rõ công cụ cho đến khi khởi động"
+    },
+    "budget": {
+      "heading": "Ngân sách công cụ mỗi lượt",
+      "hint": "Giới hạn cho mỗi lượt của người tham gia dùng công cụ. Để trống để dùng mặc định.",
+      "maxToolCalls": "Số lần gọi công cụ tối đa",
+      "maxSteps": "Số bước tối đa",
+      "toolTimeoutSec": "Thời gian chờ công cụ (giây)",
+      "default": "Mặc định: {{value}}"
+    },
+    "isolation": {
+      "active": "Mỗi người tham gia có quyền sửa làm việc trong không gian cô lập riêng, nên không thể ghi đè lên nhau hay lên thư mục của bạn.",
+      "unavailable": "Không có không gian cô lập: {{reason}}. Người tham gia có quyền sửa chỉ đọc trong phòng này.",
+      "untrusted": "thư mục chưa được tin cậy"
+    }
   },
   "limits": {
     "maxRounds": "Vòng",
@@ -228,7 +266,19 @@
     "toolFailed": "thất bại",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} token",
-    "speedTitle": "Số token được viết trong câu trả lời này, và tốc độ"
+    "speedTitle": "Số token được viết trong câu trả lời này, và tốc độ",
+    "budgetHit": {
+      "tool-calls": "Lượt này đã đạt ngân sách gọi công cụ.",
+      "steps": "Lượt này đã đạt ngân sách bước.",
+      "timeout": "Một lần gọi công cụ trong lượt này quá thời gian chờ và đã bị dừng."
+    },
+    "rawToolCall": "Đây có vẻ là một lệnh gọi công cụ được viết dưới dạng văn bản. Nó chưa được chạy.",
+    "emptyReply": {
+      "length": "Mô hình đã dùng hết giới hạn trả lời ({{count}} token) mà không viết câu trả lời. Hãy tăng giới hạn trong cài đặt phòng hoặc tắt suy luận của người tham gia này rồi chạy lại.",
+      "tools": "Đã dùng công cụ nhưng không viết câu trả lời văn bản.",
+      "none": "Không có câu trả lời văn bản."
+    },
+    "thought": "Suy nghĩ"
   },
   "unknownWindow": {
     "title": "Chưa biết cửa sổ ngữ cảnh",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Mỗi người tham gia nêu quan điểm của mình",
     "synthesizeHint": "Tóm tắt kết quả, kèm ý kiến bất đồng",
     "cancelTurnHint": "Chỉ dừng câu trả lời đang diễn ra",
-    "steerLocked": "Các mục này được mở khi cuộc thảo luận đang chạy."
+    "steerLocked": "Các mục này được mở khi cuộc thảo luận đang chạy.",
+    "answering": "Đang trả lời",
+    "models": "Mô hình"
   },
   "stage": {
     "speaking": "{{name}} đang nói",
@@ -390,5 +442,69 @@
     "panes": "Chế độ xem phòng",
     "talk": "Thảo luận",
     "controls": "Điều khiển"
+  },
+  "compare": {
+    "title": "So sánh các lượt chạy",
+    "modeTogether": "Tất cả cùng lúc",
+    "modeOneByOne": "Lần lượt từng cái",
+    "include": "Đưa vào lượt chạy tới",
+    "includeFor": "Đưa {{name}} vào lượt chạy tới",
+    "run": "Chạy",
+    "runAgain": "Chạy lại",
+    "runFor": "Chạy {{name}} với câu hỏi hiện tại",
+    "runAgainFor": "Chạy lại {{name}} với câu hỏi hiện tại",
+    "runAll": "Chạy tất cả",
+    "answerEarlier": "Trả lời các câu hỏi trước",
+    "answerEarlierHint": "Mỗi mô hình đã bỏ lỡ một câu hỏi trước sẽ trả lời ngay bây giờ, theo thứ tự, như thể nó đã có mặt từ đầu.",
+    "export": "Xuất bản so sánh",
+    "saveMarkdown": "Lưu dạng Markdown…",
+    "copyMarkdown": "Sao chép dạng Markdown",
+    "copyJson": "Sao chép dạng JSON",
+    "saved": "Đã lưu bản so sánh.",
+    "copied": "Đã sao chép vào bộ nhớ tạm.",
+    "copyFailed": "Không thể sao chép vào bộ nhớ tạm.",
+    "notAnswered": "Chưa trả lời câu hỏi này.",
+    "state": {
+      "off": "Bỏ qua ở lượt chạy tới",
+      "unavailable": "Không khả dụng",
+      "running": "Đang trả lời…",
+      "queued": "Đang chờ",
+      "done": "Đã trả lời",
+      "failed": "Thất bại",
+      "idle": "Chưa trả lời"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} tệp đã thay đổi",
+    "summaryMany": "{{count}} tệp đã thay đổi",
+    "workspace": "Không gian cô lập: {{path}}",
+    "binary": "Tệp nhị phân",
+    "noExcerpt": "Không có trích đoạn.",
+    "openDiff": "Mở diff",
+    "keep": "Giữ",
+    "discard": "Bỏ thay đổi",
+    "apply": "Áp dụng vào thư mục của tôi",
+    "state": {
+      "kept": "Đã giữ",
+      "discarded": "Đã bỏ",
+      "applied": "Đã áp dụng"
+    },
+    "diffTitle": "Thay đổi trong không gian làm việc",
+    "diffHint": "Mọi thứ người tham gia này đã thay đổi trong không gian cô lập.",
+    "applyTitle": "Áp dụng vào thư mục của bạn?",
+    "applyHint": "Bản vá này sẽ được ghi vào thư mục của bạn. Nếu không áp dụng sạch, sẽ không có gì thay đổi.",
+    "discardTitle": "Bỏ các thay đổi này?",
+    "discardHint": "Không gian của người tham gia trở về trạng thái ban đầu. Thư mục của bạn không bị động đến.",
+    "loading": "Đang tải diff…",
+    "empty": "Không có gì để áp dụng.",
+    "applyConfirm": "Áp dụng",
+    "discardConfirm": "Bỏ",
+    "scopeTurn": "Lượt này",
+    "scopeAll": "Từ khi tạo không gian làm việc"
+  },
+  "approvals": {
+    "held": "Phòng đang tạm dừng",
+    "heldHint": "Phòng bị tạm dừng khi yêu cầu này đang chờ nên không thể cho phép nữa. Tiếp tục phòng và người tham gia sẽ hỏi lại nếu vẫn cần.",
+    "dismiss": "Đóng"
   }
 }

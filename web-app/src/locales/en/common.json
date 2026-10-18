@@ -7,7 +7,8 @@
     "editTitle": "Edit prompt",
     "import": "Import",
     "export": "Export",
-    "imported": "Added {{count}} prompts",
+    "imported_one": "Added {{count}} prompt",
+    "imported_other": "Added {{count}} prompts",
     "search": "Search prompts",
     "empty": "No prompts yet.",
     "edit": "Edit {{name}}",
@@ -20,7 +21,20 @@
     "body": "Prompt text",
     "bodyHint": "Write the prompt. Use {{topic}} or {{tone:friendly}} for blanks.",
     "variables": "Asks for: {{names}}",
-    "insert": "Insert"
+    "defaultValue": "Default: {{value}}",
+    "requiredField": "Required",
+    "fillNeeded": "Fill in {{names}} to insert",
+    "insert": "Insert",
+    "errors": {
+      "nameRequired": "A prompt needs a name",
+      "nameTooLong": "That name is too long",
+      "bodyRequired": "A prompt needs some text",
+      "bodyTooLong": "That prompt is too long",
+      "gone": "That prompt no longer exists",
+      "invalidJson": "That file is not valid JSON",
+      "noPrompts": "No prompts found in that file"
+    },
+    "imported": "Added {{count}} prompts"
   },
   "groups": {
     "newGroup": "New group",
@@ -79,7 +93,40 @@
     "chatFoldersBody": "The chat's tools can read these folders. Writes stay in the chat's own sandbox.",
     "chatFoldersEmpty": "No folders attached.",
     "addFolder": "Add folder",
-    "chatFolderCount": "Folders: {{count}}"
+    "chatFolderCount": "Folders: {{count}}",
+    "errors": {
+      "nameEmpty": "Group name cannot be empty",
+      "notFound": "Group not found",
+      "tooDeep": "Groups cannot be nested that deep",
+      "intoItself": "A group cannot be moved into itself"
+    },
+    "failed": {
+      "create": "Could not create the group",
+      "rename": "Could not rename the group",
+      "moveFolder": "Could not move the folder",
+      "saveState": "Could not save the group state",
+      "reorder": "Could not reorder groups",
+      "moveItem": "Could not move the item",
+      "delete": "Could not delete the group",
+      "saveFolders": "Could not save group folders",
+      "updateContext": "Could not update the folder context",
+      "update": "Could not update groups",
+      "import": "Could not import groups",
+      "unreadable": "{{failure}}: the saved groups could not be read",
+      "restored": "{{failure}}. Your previous order was restored."
+    },
+    "announce": {
+      "created": "Group {{name}} created",
+      "collapsed": "{{name}} collapsed",
+      "expanded": "{{name}} expanded",
+      "reordered": "{{name}} moved to position {{position}} of {{total}}",
+      "movedToPosition": "Moved to {{name}}, position {{position}}",
+      "movedToRecents": "Moved to Recents",
+      "deleted": "Group {{name}} deleted. Its items moved to Recents",
+      "ctxReplaced": "{{base}}. Folder context replaced by group folders; access still needs approval",
+      "ctxMerged": "{{base}}. Group folders added to folder context; access still needs approval",
+      "foldersAdded": "{{base}}. Item folders added to the group"
+    }
   },
   "htmlArtifact": {
     "code": "Code",
@@ -302,7 +349,7 @@
     "searchThreads": "Search conversations",
     "toggleSidebar": "Toggle sidebar",
     "openCowork": "Open Cowork",
-    "openArtifacts": "Open artifacts",
+    "openArtifacts": "Open Library",
     "openSystemMonitor": "Open system monitor",
     "openLogs": "Open app logs",
     "section": {
@@ -1241,7 +1288,8 @@
     "sensitiveRefused": "{{name}} looks like credentials or a key, so it was not opened",
     "binaryRefused": "{{name}} is not a text file, whatever its extension says",
     "chooseAgainAction": "Choose again",
-    "externalGone": "This file was opened from outside the project, and that access did not survive. Choose it again to reopen it."
+    "externalGone": "This file was opened from outside the project, and that access did not survive. Choose it again to reopen it.",
+    "oneFolderAtATime": "Only one folder at a time. \"{{name}}\" was not added."
   },
   "settingsSearch": {
     "label": "Search settings",
@@ -1424,7 +1472,14 @@
     "recommended": "Recommended",
     "reset": "Reset to global",
     "resetAll": "Reset to global defaults",
-    "overridden": "Set for this chat"
+    "overridden": "Set for this chat",
+    "levels": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "XHigh",
+      "unlimited": "Unlimited"
+    }
   },
   "modelOffline": {
     "badge": "Unreachable",
@@ -2008,7 +2063,8 @@
     "paste": "Paste from clipboard",
     "pasteFailed": "Could not read the clipboard",
     "clear": "Clear",
-    "characters": "{{count}} characters",
+    "characters_one": "{{count}} character",
+    "characters_other": "{{count}} characters",
     "translating": "Translating…",
     "retry": "Retry",
     "shortcut": "Translate (Ctrl/Cmd+Enter)",
@@ -2020,7 +2076,9 @@
     "errorNetwork": "Could not reach the provider. Check your connection or that the server is running.",
     "errorEngine": "The engine that runs this model is not available. Restart Flint and try again.",
     "openProvider": "Open provider settings",
-    "errorDetails": "Details"
+    "errorDetails": "Details",
+    "pasteHint": "Clipboard access was blocked. Click the text box and press {{keys}}.",
+    "characters": "{{count}} characters"
   },
   "appRail": {
     "label": "Global navigation",
@@ -2580,6 +2638,7 @@
       "slots": "{{count}} slots",
       "vision": "Vision",
       "audio": "Audio",
+      "fixedPrompt": "Sent with every request: {{count}} tokens (system prompt and tool schemas).",
       "tokenUsage": "Token usage",
       "tokenUsageSr": "Token usage {{value}}"
     }
@@ -2603,6 +2662,19 @@
     "previewLoading": "Loading preview…",
     "previewNone": "No preview available"
   },
+  "fileViewer": {
+    "openFull": "Open full preview",
+    "loadMore": "Load more",
+    "showingFirst": "Showing first {{loaded}} of {{total}}",
+    "lines_one": "{{count}} line",
+    "lines_other": "{{count}} lines",
+    "wrap": "Wrap lines",
+    "copy": "Copy",
+    "copied": "Copied",
+    "binary": "This looks like a binary file, so there is no text preview.",
+    "expandLine": "Show full line",
+    "collapseLine": "Shorten line"
+  },
   "markdownImage": {
     "load": "Load image from {{host}}"
   },
@@ -2613,5 +2685,93 @@
     "title": "Settings file could not be read",
     "withBackup": "{{file}} was damaged, so Flint started with default settings. The damaged file was kept as {{backup}}.",
     "noBackup": "{{file}} was damaged, so Flint started with default settings. A copy of the damaged file could not be saved."
+  },
+  "memoryProposal": {
+    "title": "Remember this?",
+    "wouldApply": "Would apply to {{where}}.",
+    "remember": "Remember",
+    "discard": "Discard",
+    "reviewBoth": "Review both",
+    "saving": "Saving…",
+    "discarding": "Discarding…",
+    "scope": {
+      "session": "this conversation",
+      "project": "this project",
+      "user": "everywhere"
+    }
+  },
+  "picker": {
+    "filter": "Filter",
+    "source": "Source",
+    "sourceAll": "All",
+    "sourceLocal": "Local",
+    "sourceCloud": "Cloud",
+    "capabilities": "Capabilities",
+    "cap": {
+      "vision": "Vision",
+      "tools": "Tools",
+      "reasoning": "Reasoning",
+      "embeddings": "Embedding"
+    },
+    "loadedNow": "Loaded now",
+    "sort": "Sort",
+    "sortDefault": "Default order",
+    "sortName": "Name (A–Z)",
+    "sortRecent": "Recently used",
+    "sortSize": "Size",
+    "clearFilters": "Clear filters",
+    "noMatch": "No models match",
+    "noMatchFilters": "No models match: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Session",
+      "room": "Room"
+    },
+    "heading": "Conversations",
+    "empty": "No other conversations",
+    "noMatch": "No conversation matches",
+    "messages": "Messages: {{n}}",
+    "included": "Included: {{title}} (messages: {{n}}, ~{{size}} chars)",
+    "group": "Mentioned conversations",
+    "summarize": "Summarize",
+    "summarizeHint": "Include a summary instead of the latest messages",
+    "remove": "Remove mention of {{title}}",
+    "mentioned": "Mentioned: {{title}}",
+    "open": "Open {{title}}",
+    "status": {
+      "missing": "Not found: {{title}}",
+      "self": "{{title}} is this conversation, so it is left out",
+      "over-cap": "{{title}} is left out: at most {{max}} conversations per message"
+    },
+    "excerpt": "Excerpt",
+    "summary": "Summary",
+    "modeGroup": "What to include from {{title}}",
+    "excerptHint": "The latest messages, about {{tokens}} tokens",
+    "summaryHint": "A summary written by the model, up to about {{tokens}} tokens",
+    "needsModel": "Load a model to include a summary instead",
+    "totals_one": "{{count}} message · ~{{tokens}} tokens included",
+    "totals_other": "{{count}} messages · ~{{tokens}} tokens included",
+    "readOnly": "Sent as quoted, read-only context. The model cannot change that conversation.",
+    "tooLarge": "This is over a quarter of the model’s context window.",
+    "useSummary": "Use a summary",
+    "resolving": "Looking up {{title}}",
+    "chipStatus": {
+      "missing": "Not found",
+      "self": "This conversation",
+      "over-cap": "Over the limit"
+    },
+    "preview": {
+      "empty": "No messages yet",
+      "you": "You",
+      "assistant": "Assistant"
+    },
+    "messagesCount_one": "{{count}} message",
+    "messagesCount_other": "{{count}} messages"
+  },
+  "campaignList": {
+    "timeout": "The app did not answer in time.",
+    "unreadableRecord": "the backend sent a record this page cannot read"
   }
 }

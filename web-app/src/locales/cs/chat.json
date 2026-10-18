@@ -230,5 +230,6 @@
       "model-not-loaded": "Nejprve načtěte model chatu. Shrnutí píše on.",
       "summary-failed": "Shrnutí se nepodařilo napsat. Nic nebylo vytvořeno."
     }
-  }
+  },
+  "stopToolCall": "Zastavit volání nástroje (Esc)"
 }

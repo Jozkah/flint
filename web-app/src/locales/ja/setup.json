@@ -42,7 +42,7 @@
   "finishNoModels": "ローカルモデルはまだありません。準備ができたら、設定から GGUF ファイルをインポートしてください。モデルなしでセットアップを完了することもできます。",
   "finishStartChat": "チャットを始める",
   "finishWithoutModel": "モデルなしで完了",
-  "welcome": "Janへようこそ",
+  "welcome": "Flintへようこそ",
   "description": "開始するには、Flint Modelで素早く起動するか、独自のローカルまたはリモートプロバイダーを選択してください",
   "descriptionWeb": "開始するには、APIキーを使用してクラウドモデルに接続する必要があります",
   "quickStart": "Flint Modelでクイックスタート",

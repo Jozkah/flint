@@ -223,5 +223,6 @@
       "model-not-loaded": "Chargez d'abord le modèle de la discussion. C'est lui qui écrit le résumé.",
       "summary-failed": "Impossible d'écrire le résumé. Rien n'a été créé."
     }
-  }
+  },
+  "stopToolCall": "Arrêter l'appel d'outil (Échap)"
 }

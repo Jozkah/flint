@@ -107,6 +107,7 @@
     "connection": "接続",
     "engineSettings": "エンジン設定",
     "memorySettings": "メモリとキャッシュ",
+    "settingNotSaved": "「{{setting}}」を保存できませんでした",
     "danger": "危険な操作"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "すべてのツール呼び出しが許可されています",
     "tabServers": "サーバー",
     "tabRouting": "ルーティングと制限",
-    "toolsCount": "{{count}} 個のツール",
+    "toolsCount_one": "{{count}} 個のツール",
+    "toolsCount_other": "{{count}} 個のツール",
     "filterLabel": "サーバーを表示",
     "filterAll": "すべて",
     "filterOn": "オン",
@@ -136,10 +138,11 @@
     "viewList": "リスト",
     "callsPerMin": "呼び出し / 分",
     "window": "直近 {{count}} 分",
-    "needsExtension": "Jan Browser Extension が必要です",
+    "needsExtension": "ブラウザ拡張機能が必要です",
     "moreActions": "{{serverName}} のその他の操作",
     "addTile": "MCP サーバーを追加",
-    "addTileHint": "STDIO、HTTP、SSE"
+    "addTileHint": "STDIO、HTTP、SSE",
+    "toolsCount": "{{count}} 個のツール"
   },
   "extensions": {
     "description": "プラグイン、スキル、そして Flint を構成するエンジンの部品です。",

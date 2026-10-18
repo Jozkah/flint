@@ -107,6 +107,7 @@
     "connection": "Connection",
     "engineSettings": "Engine settings",
     "memorySettings": "Memory & cache",
+    "settingNotSaved": "{{setting}} was not saved",
     "danger": "Danger zone"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "All tool calls are allowed",
     "tabServers": "Servers",
     "tabRouting": "Routing & limits",
-    "toolsCount": "{{count}} tools",
+    "toolsCount_one": "{{count}} tool",
+    "toolsCount_other": "{{count}} tools",
     "filterLabel": "Show servers",
     "filterAll": "All",
     "filterOn": "On",
@@ -136,10 +138,11 @@
     "viewList": "List",
     "callsPerMin": "calls / min",
     "window": "last {{count}} min",
-    "needsExtension": "Requires the Jan Browser Extension",
+    "needsExtension": "Requires the browser extension",
     "moreActions": "More actions for {{serverName}}",
     "addTile": "Add MCP server",
-    "addTileHint": "STDIO, HTTP or SSE"
+    "addTileHint": "STDIO, HTTP or SSE",
+    "toolsCount": "{{count}} tools"
   },
   "extensions": {
     "description": "Plugins, skills and the engine pieces Flint is built from.",

@@ -107,6 +107,7 @@
     "connection": "連線",
     "engineSettings": "引擎設定",
     "memorySettings": "記憶體與快取",
+    "settingNotSaved": "未能儲存「{{setting}}」",
     "danger": "危險區域"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "允許所有工具呼叫",
     "tabServers": "伺服器",
     "tabRouting": "路由與限制",
-    "toolsCount": "{{count}} 個工具",
+    "toolsCount_one": "{{count}} 個工具",
+    "toolsCount_other": "{{count}} 個工具",
     "filterLabel": "顯示伺服器",
     "filterAll": "全部",
     "filterOn": "開",
@@ -136,10 +138,11 @@
     "viewList": "清單",
     "callsPerMin": "呼叫 / 分鐘",
     "window": "最近 {{count}} 分鐘",
-    "needsExtension": "需要 Jan 瀏覽器擴充功能",
+    "needsExtension": "需要瀏覽器擴充功能",
     "moreActions": "{{serverName}} 的更多操作",
     "addTile": "新增 MCP 伺服器",
-    "addTileHint": "STDIO、HTTP 或 SSE"
+    "addTileHint": "STDIO、HTTP 或 SSE",
+    "toolsCount": "{{count}} 個工具"
   },
   "extensions": {
     "description": "外掛程式、技能以及構成 Flint 的引擎元件。",

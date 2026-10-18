@@ -142,6 +142,8 @@
     "showTokenSpeedDesc": "Zobrazí tokeny/s a počet tokenů přímo pod zprávami asistenta. Když je vypnuto, podrobnosti zobrazí po kliknutí kompaktní ikona.",
     "coloredUserBubble": "Barevná bublina zpráv uživatele",
     "coloredUserBubbleDesc": "Použije zvýrazňovací barvu jako pozadí vašich zpráv. Když je vypnuto, odpovídají zprávám asistenta s prostým textem na neutrálním pozadí.",
+    "renderUserMarkdown": "Vykreslovat Markdown v mých zprávách",
+    "renderUserMarkdownDesc": "Zobrazí tučné písmo, seznamy, nadpisy a kód ve zprávách, které posíláte. Když je vypnuto, zobrazí se přesně tak, jak byly napsány.",
     "renderHtmlArtifacts": "Vykreslovat artefakty HTML a SVG",
     "renderHtmlArtifactsDesc": "Přidá kartu Náhled k blokům kódu HTML a SVG. HTML spouští stránku vygenerovanou modelem v izolovaném rámci, který provádí vlastní skripty, ale nemá přístup k Flintu, vašim souborům ani k síti; SVG se vykresluje staticky se zakázanými skripty. Ve výchozím stavu vypnuto.",
     "composerRailButtons": "Tlačítka výstupu v poli zprávy Coworku",
@@ -420,7 +422,10 @@
     "proxyTimeoutDesc": "Doba čekání na odpověď od lokálního modelu, sekundy.",
     "defaultModel": "Výchozí model",
     "defaultModelDesc": "Lokální model, který se automaticky načte při spuštění serveru.",
-    "defaultModelPlaceholder": "Vyberte lokální model"
+    "defaultModelPlaceholder": "Vyberte lokální model",
+    "noLocalModels": "Nejsou importovány žádné lokální modely",
+    "usage5hAria": "Tokeny za 5 hodin",
+    "usageWeekAria": "Tokeny za týden"
   },
   "privacy": {
     "analytics": "Analytika",
@@ -514,7 +519,22 @@
     "support": "Podpora",
     "reportAnIssue": "Nahlásit problém",
     "reportAnIssueDesc": "Našli jste chybu? Pomozte nám nahlášením problému na GitHubu.",
-    "reportIssue": "Nahlásit problém"
+    "reportIssue": "Nahlásit problém",
+    "advanced": "Pokročilé",
+    "migrateJan": {
+      "title": "Migrace z JAN",
+      "desc": "Převeďte data ze stávající instalace JAN do Flintu – zkopírujte je, použijte na místě, přesuňte nebo začněte načisto.",
+      "open": "Otevřít asistenta migrace"
+    },
+    "verify": "Ověřit",
+    "cli": {
+      "installedDesc": "Nainstalováno v {{path}} – používejte flint z terminálu k poskytování modelů.",
+      "desc": "Používejte flint z terminálu k poskytování modelů bez otevření aplikace.",
+      "install": "Nainstalovat",
+      "installing": "Instaluje se…",
+      "uninstall": "Odinstalovat",
+      "uninstalling": "Odinstalovává se…"
+    }
   },
   "extensions": {
     "title": "Rozšíření"
@@ -608,7 +628,9 @@
     "summaryMaxTokens": "Délka shrnutí",
     "summaryDescription": "Nejdelší shrnutí v tokenech.",
     "projectOverride": "(Projekt to přepisuje.)",
-    "saveFailed": "Zásadu zhutňování se nepodařilo uložit"
+    "saveFailed": "Zásadu zhutňování se nepodařilo uložit",
+    "leanTools": "Úsporné nástroje u malých modelů",
+    "leanToolsDescription": "Při kontextovém okně 32K tokenů nebo menším vynechá z chatů seznam pluginů, hledání obrázků a nástroje widgetů, aby okno pojalo konverzaci. Vyhledávání na webu, MCP a nástroje agenta zůstávají."
   },
   "accent": {
     "title": "Zvýrazňovací barva",
@@ -664,10 +686,10 @@
     "completionSoundApproval": "Jen když je potřeba schválení",
     "completionSoundVolume": "Hlasitost",
     "completionSoundPreview": "Přehrát",
-    "increaseContrast": "Zvýšit kontrast",
-    "increaseContrastDesc": "Zjasní text, aby se lépe četl. Bělejší na tmavém motivu, tmavší na světlém.",
     "reduceMotion": "Omezit animace",
-    "reduceMotionDesc": "Vypne animace ve Flintu. Flint se neřídí systémovým nastavením, takže animace zůstávají zapnuté, dokud to nepřepnete."
+    "reduceMotionDesc": "Vypne animace ve Flintu. Flint se neřídí systémovým nastavením, takže animace zůstávají zapnuté, dokud to nepřepnete.",
+    "increaseContrast": "Zvýšit kontrast",
+    "increaseContrastDesc": "Zjasní text, aby se lépe četl. Bělejší na tmavém motivu, tmavší na světlém."
   },
   "pageDesc": {
     "general": "Jazyk, datová složka, protokoly a možnosti celé aplikace.",
@@ -1144,7 +1166,26 @@
     "skipped": "Neobnoveno: {{stores}}",
     "storeToolApproval": "automatické schvalování nástrojů",
     "storeMcpTrust": "důvěra serverům MCP",
-    "storeProxy": "síťová proxy"
+    "storeProxy": "síťová proxy",
+    "title": "Záloha a synchronizace",
+    "exported": "Nastavení exportována",
+    "exportFailed": "Export se nezdařil",
+    "importFailed": "Import se nezdařil",
+    "importedRestarting": "Nastavení importována, okno se restartuje",
+    "exportTitle": "Exportovat nastavení",
+    "exportDesc": "Uložte své předvolby do souboru JSON. Pro synchronizaci mezi počítači jej uložte do složky Google Drive nebo Nextcloud a na druhém počítači importujte. Konverzace a stav jednotlivých počítačů nejsou zahrnuty.",
+    "includeSecrets": "Zahrnout poskytovatele a klíče API",
+    "secretsWarning": "Soubor bude obsahovat vaše klíče API jako prostý text. Uchovejte jej v soukromí a nevkládejte do sdílené složky.",
+    "exportButton": "Exportovat…",
+    "importTitle": "Importovat nastavení",
+    "importDesc": "Nahradí vaše předvolby souborem zálohy. Poté se okno znovu načte.",
+    "chooseFile": "Vybrat soubor…",
+    "pendingGroups": "Skupin nastavení v souboru: {{groups}}.",
+    "pendingKeys": "Poskytovatelů s klíčem API: {{keys}}.",
+    "pendingExported": "Exportováno {{date}}.",
+    "pendingOverwrite": "Přepíše to vaše aktuální hodnoty.",
+    "apply": "Importovat a znovu načíst",
+    "cancel": "Zrušit"
   },
   "startup": {
     "title": "Spouštět s počítačem",
@@ -1172,5 +1213,133 @@
     "showAll": "Zobrazit vše",
     "preview": "Náhled",
     "reachable": "Skryté položky zůstávají dostupné z palety příkazů a z Nastavení."
+  },
+  "memoryPage": {
+    "useSaved": "Používat uloženou paměť v konverzacích",
+    "useSavedDesc": "Když je to vypnuto, Flint do žádného požadavku nepřidává uloženou paměť. Vaše vzpomínky zůstanou zachovány a můžete je tu dál spravovat.",
+    "useFacts": "Používat zapamatovaná fakta v požadavcích",
+    "useFactsDesc": "Vypnutím oblasti se přestane odesílat. Nic se nemaže; po opětovném zapnutí se znovu použije.",
+    "scope": {
+      "chat": {
+        "tab": "Tato konverzace",
+        "blurb": "Zapamatováno jen uvnitř konverzace, ze které bylo uloženo.",
+        "recall": "Tato konverzace",
+        "recallAria": "Používat vzpomínky této konverzace",
+        "newAria": "Nová vzpomínka pro tuto konverzaci",
+        "forgetAll": "Zapomenout vše v této konverzaci",
+        "clearBody": "Vše zapamatované pro tuto konverzaci se přestane používat a jeho text se z tohoto počítače odstraní. Nelze to vrátit jedním krokem."
+      },
+      "project": {
+        "tab": "Projekt",
+        "blurb": "Dostupné každé konverzaci v projektu, který vyberete níže, a žádnému jinému projektu.",
+        "recall": "Tento projekt",
+        "recallAria": "Používat vzpomínky tohoto projektu",
+        "newAria": "Nová vzpomínka pro tento projekt",
+        "forgetAll": "Zapomenout vše v tomto projektu",
+        "clearBody": "Vše zapamatované pro tento projekt se přestane používat a jeho text se z tohoto počítače odstraní. Nelze to vrátit jedním krokem."
+      },
+      "user": {
+        "tab": "Všechny konverzace",
+        "blurb": "Dostupné všude. Použijte pro věci, které platí obecně.",
+        "recall": "Všechny konverzace",
+        "recallAria": "Používat vzpomínky sdílené napříč všemi konverzacemi",
+        "newAria": "Nová vzpomínka pro všechny konverzace",
+        "forgetAll": "Zapomenout vše sdílené napříč konverzacemi",
+        "clearBody": "Vše zapamatované napříč všemi konverzacemi se přestane používat a jeho text se z tohoto počítače odstraní. Nelze to vrátit jedním krokem."
+      }
+    },
+    "stored": {
+      "summary": "{{user}} napříč chaty · {{project}} · {{size}}",
+      "projectIn": "{{count}} v {{name}}",
+      "chooseProject": "vyberte projekt, abyste spočítali jeho vzpomínky"
+    },
+    "listTitle": "Co si Flint pamatuje",
+    "tabsAria": "Rozsah paměti",
+    "recallOff": "Vybavování je pro tuto oblast vypnuto: vzpomínky zůstávají uloženy, ale neodesílají se.",
+    "newPlaceholder": "Něco, co by si Flint měl zapamatovat",
+    "remember": "Zapamatovat",
+    "export": "Exportovat",
+    "import": "Importovat",
+    "importReport": {
+      "summary": "Importováno {{count}} z exportu",
+      "duplicates": "{{count}} již zapamatováno",
+      "refused": "{{count}} odmítnuto"
+    },
+    "conversation": "Konverzace",
+    "conversationAria": "Konverzace, jejíž paměť se zobrazí",
+    "noConversations": "Zatím žádné konverzace",
+    "kindChat": "Chat · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "nahrazeno {{when}}",
+    "projectFolder": "Složka projektu",
+    "projectFolderAria": "Projekt, jehož paměť se zobrazí",
+    "noProjectFolders": "K žádné relaci není připojen projekt",
+    "chooseProject": "Vyberte projekt",
+    "chooseProjectAbove": "Vyberte nahoře projekt, abyste mohli zobrazit a spravovat jeho vzpomínky.",
+    "searchAria": "Hledat ve vzpomínkách",
+    "searchPlaceholder": "Hledat zapamatovaná fakta",
+    "noMatch": "Hledání zde nic neodpovídá.",
+    "empty": "Zatím zde nic není zapamatováno.",
+    "meta": {
+      "youSaved": "Uložili jste to vy",
+      "inferred": "Odvozeno",
+      "pinned": "připnuto",
+      "used_one": "použito {{count}}krát",
+      "used_other": "použito {{count}}krát",
+      "lastUsed": "naposledy použito {{when}}",
+      "never": "nikdy",
+      "used_few": "použito {{count}}krát"
+    },
+    "pin": "Připnout",
+    "unpin": "Odepnout",
+    "pinAria": "Připnout vzpomínku",
+    "unpinAria": "Odepnout vzpomínku",
+    "editAria": "Upravit vzpomínku",
+    "forget": "Zapomenout",
+    "forgetAria": "Zapomenout vzpomínku",
+    "showing": "Zobrazeno {{from}}–{{to}} z {{total}}",
+    "previous": "Předchozí",
+    "waitingTitle": "Čeká na vás",
+    "waitingBody": "Nic z toho se zatím nepoužívá. Nezodpovězený návrh se nikdy nepřidá do výzvy.",
+    "conflictsTitle": "Vzpomínky, které si odporují",
+    "conflictsBody": "Ani jedna strana se nepoužívá. Tato zapamatovaná fakta si odporují, proto je Flint vynechá ze všech požadavků, dokud jedno nezachováte.",
+    "conflictAbout": "K tématu {{subject}}",
+    "keepThis": "Ponechat toto",
+    "keepAria": "Ponechat „{{preview}}“ a druhé zapomenout",
+    "editTitle": "Upravit vzpomínku",
+    "editBody": "Použije se v budoucích konverzacích v oblasti, do které patří.",
+    "contentAria": "Obsah vzpomínky",
+    "clearTitle": "Zapomenout všechny vzpomínky zde?",
+    "clearConfirm": "Zapomenout vše",
+    "toast": {
+      "kept": "Jedna vzpomínka ponechána",
+      "settleFailed": "Tento rozpor se nepodařilo vyřešit",
+      "forgotten": "Vzpomínka zapomenuta",
+      "forgetFailed": "Tuto vzpomínku se nepodařilo zapomenout",
+      "changeFailed": "Tuto vzpomínku se nepodařilo změnit",
+      "updated": "Vzpomínka aktualizována",
+      "updateFailed": "Tuto vzpomínku se nepodařilo aktualizovat",
+      "settingsFailed": "Nastavení paměti se nepodařilo uložit",
+      "recallFailed": "Vybavování se nepodařilo změnit",
+      "saved": "Vzpomínka uložena",
+      "saveFailed": "Tuto vzpomínku se nepodařilo uložit",
+      "forgotCount_one": "Zapomenuta {{count}} vzpomínka",
+      "forgotCount_other": "Zapomenuto {{count}} vzpomínek",
+      "forgetManyFailed": "Tyto vzpomínky se nepodařilo zapomenout",
+      "exportedCount_one": "Exportována {{count}} vzpomínka",
+      "exportedCount_other": "Exportováno {{count}} vzpomínek",
+      "exportFailed": "Vzpomínky se nepodařilo exportovat",
+      "importedCount_one": "Importována {{count}} vzpomínka",
+      "importedCount_other": "Importováno {{count}} vzpomínek",
+      "importFailed": "Vzpomínky se nepodařilo importovat",
+      "forgotCount_few": "Zapomenuty {{count}} vzpomínky",
+      "exportedCount_few": "Exportovány {{count}} vzpomínky",
+      "importedCount_few": "Importovány {{count}} vzpomínky"
+    }
+  },
+  "chatMentions": {
+    "title": "Zmínky o konverzacích",
+    "readAny": "Nechat asistenta číst jakoukoli konverzaci",
+    "readAnyDesc": "Ve výchozím stavu vypnuto. Asistent obvykle čte jen konverzace, které zmíníte pomocí @ nebo #. Po zapnutí může podle id otevřít jakýkoli chat, relaci nebo místnost v tomto počítači. To, co přečte, zůstává v tomto počítači a je označeno jako referenční data."
   }
 }

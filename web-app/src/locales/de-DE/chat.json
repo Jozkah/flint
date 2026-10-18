@@ -216,5 +216,6 @@
       "model-not-loaded": "Lade zuerst das Modell des Chats. Es schreibt die Zusammenfassung.",
       "summary-failed": "Die Zusammenfassung konnte nicht geschrieben werden. Es wurde nichts erstellt."
     }
-  }
+  },
+  "stopToolCall": "Tool-Aufruf stoppen (Esc)"
 }

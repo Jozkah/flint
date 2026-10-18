@@ -56,7 +56,40 @@
     "chatFolderCount": "Dossiers : {{count}}",
     "newSubfolder": "Nouveau sous-dossier",
     "moveInto": "Déplacer dans le dossier",
-    "topLevel": "Niveau supérieur"
+    "topLevel": "Niveau supérieur",
+    "errors": {
+      "nameEmpty": "Le nom du groupe ne peut pas être vide",
+      "notFound": "Groupe introuvable",
+      "tooDeep": "Les groupes ne peuvent pas être imbriqués aussi profondément",
+      "intoItself": "Un groupe ne peut pas être déplacé dans lui-même"
+    },
+    "failed": {
+      "create": "Impossible de créer le groupe",
+      "rename": "Impossible de renommer le groupe",
+      "moveFolder": "Impossible de déplacer le dossier",
+      "saveState": "Impossible d'enregistrer l'état du groupe",
+      "reorder": "Impossible de réorganiser les groupes",
+      "moveItem": "Impossible de déplacer l'élément",
+      "delete": "Impossible de supprimer le groupe",
+      "saveFolders": "Impossible d'enregistrer les dossiers du groupe",
+      "updateContext": "Impossible de mettre à jour le contexte des dossiers",
+      "update": "Impossible de mettre à jour les groupes",
+      "import": "Impossible d'importer les groupes",
+      "unreadable": "{{failure}} : les groupes enregistrés sont illisibles",
+      "restored": "{{failure}}. Votre ordre précédent a été rétabli."
+    },
+    "announce": {
+      "created": "Groupe {{name}} créé",
+      "collapsed": "{{name}} réduit",
+      "expanded": "{{name}} développé",
+      "reordered": "{{name}} déplacé à la position {{position}} sur {{total}}",
+      "movedToPosition": "Déplacé vers {{name}}, position {{position}}",
+      "movedToRecents": "Déplacé vers Récents",
+      "deleted": "Groupe {{name}} supprimé. Ses éléments ont été déplacés vers Récents",
+      "ctxReplaced": "{{base}}. Le contexte des dossiers a été remplacé par les dossiers du groupe ; l'accès nécessite toujours une approbation",
+      "ctxMerged": "{{base}}. Les dossiers du groupe ont été ajoutés au contexte des dossiers ; l'accès nécessite toujours une approbation",
+      "foldersAdded": "{{base}}. Les dossiers de l'élément ont été ajoutés au groupe"
+    }
   },
   "htmlArtifact": {
     "code": "Code",
@@ -281,7 +314,7 @@
     "searchThreads": "Rechercher des conversations",
     "toggleSidebar": "Afficher/masquer la barre latérale",
     "openCowork": "Ouvrir Cowork",
-    "openArtifacts": "Ouvrir les artefacts",
+    "openArtifacts": "Ouvrir Bibliothèque",
     "openSystemMonitor": "Ouvrir le moniteur système",
     "openLogs": "Ouvrir les journaux de l'application",
     "section": {
@@ -1227,7 +1260,8 @@
     "sensitiveRefused": "{{name}} ressemble à des identifiants ou à une clé, il n'a donc pas été ouvert",
     "binaryRefused": "{{name}} n'est pas un fichier texte, quelle que soit son extension",
     "chooseAgainAction": "Choisir à nouveau",
-    "externalGone": "Ce fichier a été ouvert depuis l'extérieur du projet, et cet accès n'a pas été conservé. Choisissez-le à nouveau pour le rouvrir."
+    "externalGone": "Ce fichier a été ouvert depuis l'extérieur du projet, et cet accès n'a pas été conservé. Choisissez-le à nouveau pour le rouvrir.",
+    "oneFolderAtATime": "Un seul dossier à la fois. « {{name}} » n'a pas été ajouté."
   },
   "settingsSearch": {
     "label": "Rechercher dans les paramètres",
@@ -1421,7 +1455,14 @@
     "recommended": "Recommandé",
     "reset": "Revenir au réglage global",
     "resetAll": "Revenir aux valeurs globales par défaut",
-    "overridden": "Défini pour cette conversation"
+    "overridden": "Défini pour cette conversation",
+    "levels": {
+      "low": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé",
+      "xhigh": "Très élevé",
+      "unlimited": "Illimité"
+    }
   },
   "modelOffline": {
     "badge": "Injoignable",
@@ -2552,6 +2593,7 @@
       "slots": "{{count}} emplacements",
       "vision": "Vision",
       "audio": "Audio",
+      "fixedPrompt": "Envoyé avec chaque requête : {{count}} tokens (prompt système et schémas d'outils).",
       "tokenUsage": "Utilisation des tokens",
       "tokenUsageSr": "Utilisation des tokens {{value}}"
     },
@@ -2589,6 +2631,19 @@
     "previewLoading": "Chargement de l'aperçu…",
     "previewNone": "Aucun aperçu disponible"
   },
+  "fileViewer": {
+    "openFull": "Ouvrir l’aperçu complet",
+    "loadMore": "Charger plus",
+    "showingFirst": "Affichage des premiers {{loaded}} sur {{total}}",
+    "lines_one": "{{count}} ligne",
+    "lines_other": "{{count}} lignes",
+    "wrap": "Retour à la ligne",
+    "copy": "Copier",
+    "copied": "Copié",
+    "binary": "Ce fichier semble binaire, il n’y a donc pas d’aperçu texte.",
+    "expandLine": "Afficher la ligne entière",
+    "collapseLine": "Raccourcir la ligne"
+  },
   "dropAttachFailed": "Impossible de joindre les fichiers déposés",
   "sampler": {
     "label": "Paramètres d'échantillonnage",
@@ -2614,7 +2669,9 @@
     "paste": "Coller depuis le presse-papiers",
     "pasteFailed": "Impossible de lire le presse-papiers",
     "clear": "Effacer",
-    "characters": "{{count}} caractères",
+    "characters_one": "{{count}} caractère",
+    "characters_many": "{{count}} de caractères",
+    "characters_other": "{{count}} caractères",
     "translating": "Traduction en cours…",
     "retry": "Réessayer",
     "shortcut": "Traduire (Ctrl/Cmd+Enter)",
@@ -2626,7 +2683,9 @@
     "errorNetwork": "Impossible de joindre le fournisseur. Vérifiez votre connexion ou que le serveur est en marche.",
     "errorEngine": "Le moteur qui exécute ce modèle n'est pas disponible. Redémarrez Flint et réessayez.",
     "openProvider": "Ouvrir les paramètres du fournisseur",
-    "errorDetails": "Détails"
+    "errorDetails": "Détails",
+    "pasteHint": "L'accès au presse-papiers a été bloqué. Cliquez dans la zone de texte et appuyez sur {{keys}}.",
+    "characters": "{{count}} caractères"
   },
   "markdownImage": {
     "load": "Charger l'image depuis {{host}}"
@@ -2647,7 +2706,8 @@
     "editTitle": "Modifier l'invite",
     "import": "Importer",
     "export": "Exporter",
-    "imported": "{{count}} invites ajoutées",
+    "imported_one": "{{count}} invite ajoutée",
+    "imported_other": "{{count}} invites ajoutées",
     "search": "Rechercher des invites",
     "empty": "Aucune invite pour l'instant.",
     "edit": "Modifier {{name}}",
@@ -2660,6 +2720,109 @@
     "body": "Texte de l'invite",
     "bodyHint": "Rédigez l'invite. Utilisez {{topic}} ou {{tone:friendly}} pour les blancs.",
     "variables": "Demande : {{names}}",
-    "insert": "Insérer"
+    "defaultValue": "Par défaut : {{value}}",
+    "requiredField": "Obligatoire",
+    "fillNeeded": "Renseignez {{names}} pour insérer",
+    "insert": "Insérer",
+    "errors": {
+      "nameRequired": "Un prompt a besoin d'un nom",
+      "nameTooLong": "Ce nom est trop long",
+      "bodyRequired": "Un prompt a besoin de texte",
+      "bodyTooLong": "Ce prompt est trop long",
+      "gone": "Ce prompt n'existe plus",
+      "invalidJson": "Ce fichier n'est pas un JSON valide",
+      "noPrompts": "Aucun prompt trouvé dans ce fichier"
+    },
+    "imported": "{{count}} invites ajoutées"
+  },
+  "memoryProposal": {
+    "title": "Mémoriser cela ?",
+    "wouldApply": "S'appliquerait à : {{where}}.",
+    "remember": "Mémoriser",
+    "discard": "Rejeter",
+    "reviewBoth": "Examiner les deux",
+    "saving": "Enregistrement…",
+    "discarding": "Rejet…",
+    "scope": {
+      "session": "cette conversation",
+      "project": "ce projet",
+      "user": "partout"
+    }
+  },
+  "picker": {
+    "filter": "Filtrer",
+    "source": "Source",
+    "sourceAll": "Tous",
+    "sourceLocal": "Local",
+    "sourceCloud": "Cloud",
+    "capabilities": "Capacités",
+    "cap": {
+      "vision": "Vision",
+      "tools": "Outils",
+      "reasoning": "Raisonnement",
+      "embeddings": "Embedding"
+    },
+    "loadedNow": "Chargé maintenant",
+    "sort": "Trier",
+    "sortDefault": "Ordre par défaut",
+    "sortName": "Nom (A–Z)",
+    "sortRecent": "Utilisés récemment",
+    "sortSize": "Taille",
+    "clearFilters": "Effacer les filtres",
+    "noMatch": "Aucun modèle ne correspond",
+    "noMatchFilters": "Aucun modèle ne correspond : {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Discussion",
+      "session": "Session",
+      "room": "Salon"
+    },
+    "heading": "Conversations",
+    "empty": "Aucune autre conversation",
+    "noMatch": "Aucune conversation ne correspond",
+    "messages": "Messages : {{n}}",
+    "included": "Inclus : {{title}} (messages : {{n}}, ~{{size}} caractères)",
+    "group": "Conversations mentionnées",
+    "summarize": "Résumer",
+    "summarizeHint": "Inclure un résumé au lieu des derniers messages",
+    "remove": "Retirer la mention de {{title}}",
+    "mentioned": "Mentionné : {{title}}",
+    "open": "Ouvrir {{title}}",
+    "status": {
+      "missing": "Introuvable : {{title}}",
+      "self": "{{title}} est cette conversation et reste donc exclue",
+      "over-cap": "{{title}} est exclue : {{max}} conversations au maximum par message"
+    },
+    "excerpt": "Extrait",
+    "summary": "Résumé",
+    "modeGroup": "Ce qui est inclus de {{title}}",
+    "excerptHint": "Les derniers messages, environ {{tokens}} jetons",
+    "summaryHint": "Un résumé rédigé par le modèle, au plus environ {{tokens}} jetons",
+    "needsModel": "Chargez un modèle pour inclure plutôt un résumé",
+    "totals_one": "{{count}} message · ~{{tokens}} jetons inclus",
+    "totals_many": "{{count}} de messages · ~{{tokens}} jetons inclus",
+    "totals_other": "{{count}} messages · ~{{tokens}} jetons inclus",
+    "readOnly": "Envoyé comme contexte cité, en lecture seule. Le modèle ne peut pas modifier cette conversation.",
+    "tooLarge": "Cela dépasse un quart de la fenêtre de contexte du modèle.",
+    "useSummary": "Utiliser un résumé",
+    "resolving": "Recherche de {{title}}",
+    "chipStatus": {
+      "missing": "Introuvable",
+      "self": "Cette conversation",
+      "over-cap": "Au-delà de la limite"
+    },
+    "preview": {
+      "empty": "Aucun message pour l’instant",
+      "you": "Vous",
+      "assistant": "Assistant IA"
+    },
+    "messagesCount_one": "{{count}} message",
+    "messagesCount_many": "{{count}} de messages",
+    "messagesCount_other": "{{count}} messages"
+  },
+  "campaignList": {
+    "timeout": "L'application n'a pas répondu à temps.",
+    "unreadableRecord": "le backend a envoyé un enregistrement que cette page ne peut pas lire"
   }
 }

@@ -216,5 +216,6 @@
       "model-not-loaded": "請先載入這個聊天的模型，由它來撰寫摘要。",
       "summary-failed": "無法撰寫摘要，未建立任何內容。"
     }
-  }
+  },
+  "stopToolCall": "停止工具呼叫 (Esc)"
 }

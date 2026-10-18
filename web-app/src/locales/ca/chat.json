@@ -223,5 +223,6 @@
       "model-not-loaded": "Primer carrega el model del xat. És el que escriu el resum.",
       "summary-failed": "No s'ha pogut escriure el resum. No s'ha creat res."
     }
-  }
+  },
+  "stopToolCall": "Atura la crida d'eina (Esc)"
 }

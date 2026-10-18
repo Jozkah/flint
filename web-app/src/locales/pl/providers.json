@@ -1,7 +1,7 @@
 {
   "limitedSupport": "Ten dostawca może nie być w pełni obsługiwany. Możliwości (narzędzia, rozpoznawanie obrazu, dźwięk) nie są wykrywane automatycznie - dodaj modele ręcznie i skonfiguruj możliwości dla każdego modelu.",
   "mlxExperimental": "Obsługa MLX jest eksperymentalna. Osadzenia są niedostępne, przełącznik rozumowania nie jest jeszcze podłączony, a niektóre nowsze architektury modeli mogą się nie wczytać. Zgłaszaj problemy na GitHub, abyśmy mogli nadać im priorytet.",
-  "engineBundled": "Silnik wnioskowania jest wbudowany w Jan, więc nie ma nic do pobrania ani osobnej aktualizacji. Podaj tę wersję, zgłaszając model, który się nie wczytuje.",
+  "engineBundled": "Silnik wnioskowania jest wbudowany w Flint, więc nie ma nic do pobrania ani osobnej aktualizacji. Podaj tę wersję, zgłaszając model, który się nie wczytuje.",
   "engineOtherVersion": "Potrzebujesz innej wersji llama.cpp? Uruchom własny llama-server i dodaj go jako niestandardowego dostawcę zgodnego z OpenAI.",
   "engineReleaseNotes": "Informacje o wydaniu",
   "engineBuild": "Kompilacja",
@@ -129,6 +129,7 @@
     "cachedInputCost": "Koszt wejścia z pamięci podręcznej (USD za 1 mln tokenów)",
     "cacheWriteCost": "Koszt zapisu do pamięci podręcznej (USD za 1 mln tokenów)",
     "costHelp": "Zostaw puste, aby użyć wbudowanej ceny dla dobrze znanych modeli; modele lokalne są bezpłatne. Puste pole kosztu wejścia z pamięci podręcznej lub zapisu do niej jest rozliczane po cenie wejścia.",
+    "costInvalid": "Ceny muszą być liczbą równą 0 lub większą. Wyczyść pole, aby użyć wbudowanej ceny.",
     "displayName": "Nazwa wyświetlana",
     "displayNamePlaceholder": "Wpisz nazwę wyświetlaną",
     "displayNameHelp": "Pokazywana wszędzie, gdzie ten model jest wymieniony. Żądania nadal używają oryginalnego identyfikatora, {{modelId}}.",

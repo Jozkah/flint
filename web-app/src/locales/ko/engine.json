@@ -107,6 +107,7 @@
     "connection": "연결",
     "engineSettings": "엔진 설정",
     "memorySettings": "메모리 및 캐시",
+    "settingNotSaved": "\"{{setting}}\" 설정을 저장하지 못했습니다",
     "danger": "위험 영역"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "모든 도구 호출이 허용됩니다",
     "tabServers": "서버",
     "tabRouting": "라우팅 및 제한",
-    "toolsCount": "도구 {{count}}개",
+    "toolsCount_one": "도구 {{count}}개",
+    "toolsCount_other": "도구 {{count}}개",
     "filterLabel": "서버 표시",
     "filterAll": "전체",
     "filterOn": "켜짐",
@@ -136,10 +138,11 @@
     "viewList": "목록",
     "callsPerMin": "호출/분",
     "window": "최근 {{count}}분",
-    "needsExtension": "Jan Browser Extension이 필요합니다",
+    "needsExtension": "브라우저 확장 프로그램이 필요합니다",
     "moreActions": "{{serverName}} 추가 작업",
     "addTile": "MCP 서버 추가",
-    "addTileHint": "STDIO, HTTP 또는 SSE"
+    "addTileHint": "STDIO, HTTP 또는 SSE",
+    "toolsCount": "도구 {{count}}개"
   },
   "extensions": {
     "description": "플러그인, 스킬, 그리고 Flint를 구성하는 엔진 구성 요소입니다.",

@@ -56,7 +56,40 @@
     "chatFolderCount": "Cartelle: {{count}}",
     "newSubfolder": "Nuova sottocartella",
     "moveInto": "Sposta nella cartella",
-    "topLevel": "Livello principale"
+    "topLevel": "Livello principale",
+    "errors": {
+      "nameEmpty": "Il nome del gruppo non può essere vuoto",
+      "notFound": "Gruppo non trovato",
+      "tooDeep": "I gruppi non possono essere nidificati a questa profondità",
+      "intoItself": "Un gruppo non può essere spostato dentro se stesso"
+    },
+    "failed": {
+      "create": "Impossibile creare il gruppo",
+      "rename": "Impossibile rinominare il gruppo",
+      "moveFolder": "Impossibile spostare la cartella",
+      "saveState": "Impossibile salvare lo stato del gruppo",
+      "reorder": "Impossibile riordinare i gruppi",
+      "moveItem": "Impossibile spostare l'elemento",
+      "delete": "Impossibile eliminare il gruppo",
+      "saveFolders": "Impossibile salvare le cartelle del gruppo",
+      "updateContext": "Impossibile aggiornare il contesto delle cartelle",
+      "update": "Impossibile aggiornare i gruppi",
+      "import": "Impossibile importare i gruppi",
+      "unreadable": "{{failure}}: impossibile leggere i gruppi salvati",
+      "restored": "{{failure}}. L'ordine precedente è stato ripristinato."
+    },
+    "announce": {
+      "created": "Gruppo {{name}} creato",
+      "collapsed": "{{name}} compresso",
+      "expanded": "{{name}} espanso",
+      "reordered": "{{name}} spostato alla posizione {{position}} di {{total}}",
+      "movedToPosition": "Spostato in {{name}}, posizione {{position}}",
+      "movedToRecents": "Spostato in Recenti",
+      "deleted": "Gruppo {{name}} eliminato. I suoi elementi sono stati spostati in Recenti",
+      "ctxReplaced": "{{base}}. Il contesto delle cartelle è stato sostituito dalle cartelle del gruppo; l'accesso richiede ancora approvazione",
+      "ctxMerged": "{{base}}. Le cartelle del gruppo sono state aggiunte al contesto delle cartelle; l'accesso richiede ancora approvazione",
+      "foldersAdded": "{{base}}. Le cartelle dell'elemento sono state aggiunte al gruppo"
+    }
   },
   "htmlArtifact": {
     "code": "Codice",
@@ -281,7 +314,7 @@
     "searchThreads": "Cerca conversazioni",
     "toggleSidebar": "Mostra/nascondi barra laterale",
     "openCowork": "Apri Cowork",
-    "openArtifacts": "Apri artefatti",
+    "openArtifacts": "Apri Libreria",
     "openSystemMonitor": "Apri il monitor di sistema",
     "openLogs": "Apri i log dell'app",
     "section": {
@@ -1229,7 +1262,8 @@
     "sensitiveRefused": "{{name}} sembra contenere credenziali o una chiave, quindi non è stato aperto",
     "binaryRefused": "{{name}} non è un file di testo, qualunque cosa dica l'estensione",
     "chooseAgainAction": "Scegli di nuovo",
-    "externalGone": "Questo file è stato aperto da fuori dal progetto, e quell'accesso non è sopravvissuto. Sceglilo di nuovo per riaprirlo."
+    "externalGone": "Questo file è stato aperto da fuori dal progetto, e quell'accesso non è sopravvissuto. Sceglilo di nuovo per riaprirlo.",
+    "oneFolderAtATime": "Una sola cartella alla volta. «{{name}}» non è stata aggiunta."
   },
   "settingsSearch": {
     "label": "Cerca nelle impostazioni",
@@ -1423,7 +1457,14 @@
     "recommended": "Consigliato",
     "reset": "Ripristina il valore globale",
     "resetAll": "Ripristina i valori globali predefiniti",
-    "overridden": "Impostato per questa chat"
+    "overridden": "Impostato per questa chat",
+    "levels": {
+      "low": "Basso",
+      "medium": "Medio",
+      "high": "Alto",
+      "xhigh": "Molto alto",
+      "unlimited": "Illimitato"
+    }
   },
   "modelOffline": {
     "badge": "Irraggiungibile",
@@ -2556,6 +2597,7 @@
       "slots": "{{count}} slot",
       "vision": "Visione",
       "audio": "Audio",
+      "fixedPrompt": "Inviato con ogni richiesta: {{count}} token (prompt di sistema e schemi degli strumenti).",
       "tokenUsage": "Uso dei token",
       "tokenUsageSr": "Uso dei token {{value}}"
     }
@@ -2588,6 +2630,19 @@
     "previewLoading": "Caricamento anteprima…",
     "previewNone": "Nessuna anteprima disponibile"
   },
+  "fileViewer": {
+    "openFull": "Apri anteprima completa",
+    "loadMore": "Carica altro",
+    "showingFirst": "Visualizzati i primi {{loaded}} di {{total}}",
+    "lines_one": "{{count}} riga",
+    "lines_other": "{{count}} righe",
+    "wrap": "A capo automatico",
+    "copy": "Copia",
+    "copied": "Copiato",
+    "binary": "Sembra un file binario, quindi non c’è un’anteprima di testo.",
+    "expandLine": "Mostra la riga intera",
+    "collapseLine": "Accorcia la riga"
+  },
   "dropAttachFailed": "Impossibile allegare i file trascinati",
   "sampler": {
     "label": "Parametri di campionamento",
@@ -2613,7 +2668,9 @@
     "paste": "Incolla dagli appunti",
     "pasteFailed": "Impossibile leggere gli appunti",
     "clear": "Cancella",
-    "characters": "{{count}} caratteri",
+    "characters_one": "{{count}} carattere",
+    "characters_many": "{{count}} di caratteri",
+    "characters_other": "{{count}} caratteri",
     "translating": "Traduzione in corso…",
     "retry": "Riprova",
     "shortcut": "Traduci (Ctrl/Cmd+Invio)",
@@ -2625,7 +2682,9 @@
     "errorNetwork": "Impossibile raggiungere il provider. Controlla la connessione o che il server sia in esecuzione.",
     "errorEngine": "Il motore che esegue questo modello non è disponibile. Riavvia Flint e riprova.",
     "openProvider": "Apri impostazioni del provider",
-    "errorDetails": "Dettagli"
+    "errorDetails": "Dettagli",
+    "pasteHint": "L'accesso agli appunti è stato bloccato. Fai clic nella casella di testo e premi {{keys}}.",
+    "characters": "{{count}} caratteri"
   },
   "markdownImage": {
     "load": "Carica immagine da {{host}}"
@@ -2646,7 +2705,8 @@
     "editTitle": "Modifica prompt",
     "import": "Importa",
     "export": "Esporta",
-    "imported": "Aggiunti {{count}} prompt",
+    "imported_one": "Aggiunto {{count}} prompt",
+    "imported_other": "Aggiunti {{count}} prompt",
     "search": "Cerca prompt",
     "empty": "Ancora nessun prompt.",
     "edit": "Modifica {{name}}",
@@ -2659,6 +2719,109 @@
     "body": "Testo del prompt",
     "bodyHint": "Scrivi il prompt. Usa {{topic}} o {{tone:friendly}} per gli spazi da riempire.",
     "variables": "Richiede: {{names}}",
-    "insert": "Inserisci"
+    "defaultValue": "Predefinito: {{value}}",
+    "requiredField": "Obbligatorio",
+    "fillNeeded": "Compila {{names}} per inserire",
+    "insert": "Inserisci",
+    "errors": {
+      "nameRequired": "Un prompt ha bisogno di un nome",
+      "nameTooLong": "Quel nome è troppo lungo",
+      "bodyRequired": "Un prompt ha bisogno di testo",
+      "bodyTooLong": "Quel prompt è troppo lungo",
+      "gone": "Quel prompt non esiste più",
+      "invalidJson": "Quel file non è un JSON valido",
+      "noPrompts": "Nessun prompt trovato in quel file"
+    },
+    "imported": "Aggiunti {{count}} prompt"
+  },
+  "memoryProposal": {
+    "title": "Ricordare questo?",
+    "wouldApply": "Si applicherebbe a: {{where}}.",
+    "remember": "Ricorda",
+    "discard": "Scarta",
+    "reviewBoth": "Rivedi entrambe",
+    "saving": "Salvataggio…",
+    "discarding": "Scarto…",
+    "scope": {
+      "session": "questa conversazione",
+      "project": "questo progetto",
+      "user": "ovunque"
+    }
+  },
+  "picker": {
+    "filter": "Filtra",
+    "source": "Origine",
+    "sourceAll": "Tutti",
+    "sourceLocal": "Locale",
+    "sourceCloud": "Cloud",
+    "capabilities": "Capacità",
+    "cap": {
+      "vision": "Visione",
+      "tools": "Strumenti",
+      "reasoning": "Ragionamento",
+      "embeddings": "Embedding"
+    },
+    "loadedNow": "Caricato ora",
+    "sort": "Ordina",
+    "sortDefault": "Ordine predefinito",
+    "sortName": "Nome (A–Z)",
+    "sortRecent": "Usati di recente",
+    "sortSize": "Dimensione",
+    "clearFilters": "Rimuovi filtri",
+    "noMatch": "Nessun modello corrisponde",
+    "noMatchFilters": "Nessun modello corrisponde: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Sessione",
+      "room": "Stanza"
+    },
+    "heading": "Conversazioni",
+    "empty": "Nessun'altra conversazione",
+    "noMatch": "Nessuna conversazione corrisponde",
+    "messages": "Messaggi: {{n}}",
+    "included": "Incluso: {{title}} (messaggi: {{n}}, ~{{size}} caratteri)",
+    "group": "Conversazioni menzionate",
+    "summarize": "Riassumi",
+    "summarizeHint": "Includi un riassunto al posto degli ultimi messaggi",
+    "remove": "Rimuovi la menzione di {{title}}",
+    "mentioned": "Menzionato: {{title}}",
+    "open": "Apri {{title}}",
+    "status": {
+      "missing": "Non trovato: {{title}}",
+      "self": "{{title}} è questa conversazione, quindi viene omessa",
+      "over-cap": "{{title}} viene omessa: al massimo {{max}} conversazioni per messaggio"
+    },
+    "excerpt": "Estratto",
+    "summary": "Riassunto",
+    "modeGroup": "Cosa includere da {{title}}",
+    "excerptHint": "I messaggi più recenti, circa {{tokens}} token",
+    "summaryHint": "Un riassunto scritto dal modello, al massimo circa {{tokens}} token",
+    "needsModel": "Carica un modello per includere invece un riassunto",
+    "totals_one": "{{count}} messaggio · ~{{tokens}} token inclusi",
+    "totals_many": "{{count}} di messaggi · ~{{tokens}} token inclusi",
+    "totals_other": "{{count}} messaggi · ~{{tokens}} token inclusi",
+    "readOnly": "Inviato come contesto citato, di sola lettura. Il modello non può modificare quella conversazione.",
+    "tooLarge": "Supera un quarto della finestra di contesto del modello.",
+    "useSummary": "Usa un riassunto",
+    "resolving": "Ricerca di {{title}}",
+    "chipStatus": {
+      "missing": "Non trovata",
+      "self": "Questa conversazione",
+      "over-cap": "Oltre il limite"
+    },
+    "preview": {
+      "empty": "Ancora nessun messaggio",
+      "you": "Tu",
+      "assistant": "Assistente"
+    },
+    "messagesCount_one": "{{count}} messaggio",
+    "messagesCount_many": "{{count}} di messaggi",
+    "messagesCount_other": "{{count}} messaggi"
+  },
+  "campaignList": {
+    "timeout": "L'app non ha risposto in tempo.",
+    "unreadableRecord": "il backend ha inviato un record che questa pagina non riesce a leggere"
   }
 }

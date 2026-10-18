@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint 想要在 {{workspace}} 中執行 {{command}}",
     "gitRemote": "Flint 想要執行 {{command}}，這會變更 {{target}}",
     "gitDestructive": "Flint 想要執行 {{command}}，這可能會遺失工作成果",
-    "approveCampaign": "Flint 想要開始戰役「{{title}}」（{{count}} 個任務）"
+    "approveCampaign": "Flint 想要開始戰役「{{title}}」（{{count}} 個任務）",
+    "spendPause": "Flint 想在超過支出暫停額度後繼續此次執行"
   },
   "consequence": {
     "fileChange": "它可以建立、覆寫或變更檔案的內容。",
@@ -57,7 +58,8 @@
     "gitLocal": "它會變更這台電腦上此儲存庫的檔案、分支或歷史記錄。",
     "gitRemote": "它會將變更傳送到其他人可見的遠端儲存庫。除非你為此對話暫時允許一般的遠端 Git 動作，否則 Flint 每次都會詢問。",
     "gitDestructive": "它刪除或覆寫的內容可能無法復原。",
-    "campaignPlan": "它會啟動各自獨立的工作階段，每個工作階段位於自己的 worktree 分支上，讀取並變更檔案，並平行消耗你的模型配額。核准計畫並不等於核准任務發出的任何呼叫。Flint 每次都會詢問。"
+    "campaignPlan": "它會啟動各自獨立的工作階段，每個工作階段位於自己的 worktree 分支上，讀取並變更檔案，並平行消耗你的模型配額。核准計畫並不等於核准任務發出的任何呼叫。Flint 每次都會詢問。",
+    "spendPause": "執行會繼續消耗付費模型額度，直到結束或達到上限。拒絕則停止執行。"
   },
   "repeat": {
     "allowedOnceBefore": "你已在此對話中允許過這個指令一次。"
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "日後與 {{action}} 相符的單一程序呼叫將無需詢問即可執行，包括不同的程序 ID。其他指令碼仍會詢問。可在「設定」>「權限」中撤銷。",
     "allowClipboardReadExplanation": "在你於「設定」>「權限」中撤銷之前，Flint 可以在所有對話中無需詢問地讀取日後的剪貼簿內容。寫入剪貼簿仍會詢問。",
     "allowSimilarThreadExplanation": "日後與 {{action}} 相符的呼叫在此對話中無需詢問即可執行。可在「設定」>「權限」中撤銷。",
-    "broader": "更廣泛"
+    "broader": "更廣泛",
+    "editedRunsOnce": "編輯後的指令只會執行一次。"
   },
   "request": {
     "title": "權限請求",
@@ -226,11 +229,12 @@
     "trust": "信任資料夾",
     "later": "稍後再說",
     "failed": "無法信任該資料夾",
+    "kept_other": "已為你正在使用的 {{count}} 個資料夾保持開啟掛鉤。請在「設定 > 權限 > 信任的資料夾」中檢視。",
     "kept": "已為你正在使用的 {{count}} 個資料夾保持開啟掛鉤。請在「設定 > 權限 > 信任的資料夾」中檢視。"
   },
   "trustedFolders": {
     "title": "信任的資料夾",
-    "description": "允許執行其自帶掛鉤與代理程式定義的資料夾。信任會一直保留，直到你收回。",
+    "description": "允許執行其自帶掛鉤與代理程式定義的資料夾。信任會一直保留，直到你收回。代理程式可讀取或變更的檔案列在「資料夾存取」中。",
     "empty": "目前沒有信任的資料夾；當某個資料夾首次帶有掛鉤或代理程式定義時，Flint 會詢問。",
     "add": "信任資料夾…",
     "stop": "停止信任",
@@ -250,7 +254,11 @@
     "prefixHint": "僅限單一一般指令。串接、管線或重新導向的指令會再次詢問。",
     "everywhere": "所有專案中對 {{tool}} 的每次呼叫",
     "everywhereHint": "「一律允許」的舊有意義。範圍很廣，很少是你想要的。",
-    "saveFailed": "無法記住該選擇"
+    "saveFailed": "無法記住該選擇",
+    "alwaysFolder": "一律：{{dir}} 內",
+    "alwaysPrefix": "一律：以 {{prefix}} 開頭的指令",
+    "alwaysFolderExplanation": "僅限該資料夾中的檔案，僅在此專案中，直到你在「設定 > 權限」中撤銷。",
+    "alwaysPrefixExplanation": "僅限以此開頭的單一一般指令，僅在此專案中，直到你在「設定 > 權限」中撤銷。串接、管線或重新導向的指令仍會再次詢問。"
   },
   "rules": {
     "title": "已記住的核准",
@@ -284,12 +292,38 @@
       "consumed": "已使用"
     },
     "loadFailed": "無法讀取等待中的核准",
-    "answerFailed": "無法記錄該回答"
+    "answerFailed": "無法記錄該回答",
+    "allowLabel": "允許：{{summary}}",
+    "denyLabel": "拒絕：{{summary}}",
+    "discardLabel": "移除：{{summary}}"
   },
   "toast": {
     "trustFailed": "無法記住該伺服器",
     "cancelledOne": "{{names}} 的核准已取消",
     "cancelledMany": "{{count}} 個核准（{{names}}）已取消",
     "cancelledDescription": "在你回答之前已離開該聊天。請重新傳送請求以重試。"
+  },
+  "desktopOnly": "僅在 Flint 桌面應用程式中可用。",
+  "folderAccess": {
+    "title": "資料夾存取",
+    "description": "位於代理程式工作區之外、你允許代理程式讀取或變更的資料夾與檔案。資料夾自帶的掛鉤能否執行，請在「信任的資料夾」中設定。",
+    "empty": "尚未授予任何資料夾存取權限。",
+    "readWrite": "讀取與寫入",
+    "readOnly": "唯讀",
+    "untilRevoked": "所有對話，直到撤銷",
+    "untilDate": "此對話，直到 {{when}}",
+    "revoke": "撤銷",
+    "revokeLabel": "撤銷對 {{path}} 的存取"
+  },
+  "spendPause": {
+    "preview": "繼續執行（目前已花費約 {{spent}}）",
+    "previewCeiling": "繼續執行，上限為 {{ceiling}}（目前已花費約 {{spent}}）"
+  },
+  "remote": {
+    "runsOnServer": "在伺服器上執行。",
+    "runsOnServerAt": "在伺服器上執行：{{where}}。"
+  },
+  "childApprovals": {
+    "label": "等待你核准的變更"
   }
 }

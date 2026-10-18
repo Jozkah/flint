@@ -9,7 +9,9 @@
       "title": "Flint erledigt Aufgaben in Ihrem Browser",
       "description": "Installieren Sie die Erweiterung, um Flint Browserzugriff zu gewähren",
       "getExtension": "Erweiterung holen"
-    }
+    },
+    "requires": "Erfordert, dass die Browsererweiterung in deinem Chrome-basierten Browser installiert ist.",
+    "install": "Erweiterung installieren →"
   },
   "serverName": "Server Name",
   "enterServerName": "Server Namen eingeben",

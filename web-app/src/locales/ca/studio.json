@@ -1,0 +1,222 @@
+{
+  "page": {
+    "title": "Estudi",
+    "descriptionLocal": "Crea imatges i vídeo en local en aquest ordinador. Res no surt del teu dispositiu.",
+    "descriptionHosted": "Crea imatges amb un model allotjat. El teu prompt s'envia al seu proveïdor.",
+    "whatToMake": "Què vols crear",
+    "images": "Imatges",
+    "video": "Vídeo",
+    "dismiss": "Descarta",
+    "loading": "Carregant…"
+  },
+  "elapsed": {
+    "slow": "tarda més del normal"
+  },
+  "builds": {
+    "anyGpu": "Qualsevol targeta gràfica",
+    "noGpu": "Sense targeta gràfica",
+    "nvidia": "NVIDIA (més ràpid)",
+    "note": {
+      "linux-vulkan-x64": "Uns 38 MB. NVIDIA, AMD o Intel amb un controlador Vulkan.",
+      "linux-cpu-x64": "Uns 25 MB. Molt lent.",
+      "win-vulkan-x64": "Uns 30 MB. Funciona amb NVIDIA, AMD i Intel.",
+      "win-cuda12-x64": "Uns 900 MB. Cal un controlador NVIDIA recent.",
+      "win-cpu-x64": "Uns 17 MB. Molt lent."
+    }
+  },
+  "picker": {
+    "engine": "Motor",
+    "searchPlaceholder": "Cerca models...",
+    "searchAria": "Cerca models",
+    "clear": "Esborra",
+    "noMatch": "Cap model coincideix.",
+    "local": "En aquest ordinador",
+    "leaves": "el prompt surt d'aquest ordinador",
+    "findMore": "Troba més models d'imatge a Descobreix",
+    "manageHosted": "Gestiona els proveïdors allotjats",
+    "addKey": "Afegeix una clau d'API per usar models allotjats"
+  },
+  "setup": {
+    "unavailableTitle": "Encara no disponible en aquest sistema",
+    "unavailableBody": "La generació local d'imatges i vídeo requereix Windows x64 o Linux x64.",
+    "title": "Configura el motor d'imatges",
+    "body": "Flint crea imatges i vídeo en aquest ordinador amb stable-diffusion.cpp. El motor es baixa una sola vegada, es comprova amb la seva suma de verificació publicada i només s'executa mentre generes.",
+    "downloading": "Baixant… {{percent}}%",
+    "unpacking": "Desempaquetant…",
+    "checking": "Comprovant que s'inicia…",
+    "installing": "Instal·lant…",
+    "install": "Baixa i instal·la"
+  },
+  "size": {
+    "width": "Amplada en píxels",
+    "height": "Alçada en píxels",
+    "swap": "Intercanvia amplada i alçada",
+    "hintVideo": "Múltiples de 16, fins a {{max}} px. Els clips grans necessiten molta memòria.",
+    "hintImage": "Múltiples de 16, fins a {{max}} px. Les imatges grans necessiten més memòria i temps."
+  },
+  "activity": {
+    "done": "Fet",
+    "failed": "Ha fallat",
+    "stopped": "Aturat",
+    "title": "Activitat recent",
+    "clearTitle": "Buida aquesta llista. Les teves imatges es queden a Les teves creacions.",
+    "clearAll": "Esborra-ho tot",
+    "empty": "Encara res. El que facis apareixerà aquí.",
+    "making": "Creant",
+    "open": "Obre"
+  },
+  "video": {
+    "steps_one": "{{count}} pas",
+    "steps_other": "{{count}} passos",
+    "frames_one": "{{count}} fotograma",
+    "frames_other": "{{count}} fotogrames",
+    "seed": "llavor {{seed}}",
+    "avoid": "Evita: {{prompt}}",
+    "copyPrompt": "Copia el prompt"
+  },
+  "actions": {
+    "promptCopied": "Prompt copiat",
+    "archive": "Mou a l'Arxiu",
+    "delete": "Elimina"
+  },
+  "time": {
+    "fewSeconds": "fa uns segons"
+  },
+  "model": {
+    "title": "Model",
+    "manage": "Gestiona",
+    "textToVideo": "Text a vídeo",
+    "textToImage": "Text a imatge",
+    "hostedBy": "Allotjat per {{provider}}",
+    "loaded": "Carregat",
+    "ready": "Llest",
+    "notDownloaded": "No baixat",
+    "hostedNote": "El teu prompt s'envia a {{provider}}, usa la teva clau d'API de Proveïdors i et factura ell.",
+    "localNote_one": "S'executa en aquest ordinador. Comença a {{width}} × {{height}}, {{count}} pas.",
+    "localNote_other": "S'executa en aquest ordinador. Comença a {{width}} × {{height}}, {{count}} passos.",
+    "unload": "Descarrega",
+    "loading": "Carregant…",
+    "load": "Carrega",
+    "installFirst": "Instal·la el motor d'imatges de dalt per usar aquest model.",
+    "removeTitle": "El treu d'aquesta llista. Els fitxers baixats es queden al disc.",
+    "remove": "Treu de l'Estudi"
+  },
+  "download": {
+    "starting": "Començant…",
+    "startingSize": "Començant… {{size}} per baixar",
+    "progress": "{{bytes}} de {{total}}",
+    "downloading": "Baixant…",
+    "button": "Baixa ({{size}})"
+  },
+  "duration": {
+    "s": "{{count}} s",
+    "min": "{{count}} min",
+    "minS": "{{minutes}} min {{seconds}} s"
+  },
+  "phase": {
+    "queued": "Esperant",
+    "encoding": "Llegint el prompt",
+    "sampling": "Dibuixant",
+    "decoding": "Acabant",
+    "saving": "Desant",
+    "working": "Treballant"
+  },
+  "settings": {
+    "title": "Paràmetres de generació",
+    "reset": "Restableix",
+    "shape": "Forma",
+    "aspectRatio": "Relació d'aspecte",
+    "customTitle": "Escriu la teva pròpia amplada i alçada",
+    "custom": "Personalitzada",
+    "imageCount": "Nombre d'imatges",
+    "length": "Durada",
+    "seed": "Llavor",
+    "random": "Aleatòria",
+    "randomSeed": "Tria una llavor aleatòria",
+    "guess": "Uns {{duration}}, segons el teu darrer clip.",
+    "advanced": "Avançat",
+    "loras": "Adaptadors LoRA",
+    "importLora": "Importa .safetensors",
+    "loraHint": "Usa adaptadors fets per a la família de model local seleccionada.",
+    "useLora": "Usa {{name}}",
+    "loraStrength": "Intensitat de {{name}}",
+    "negative": "Prompt negatiu",
+    "negativeAria": "Prompt negatiu",
+    "negativePlaceholder": "Borrós, baixa qualitat, dits de més, text, marca d'aigua…",
+    "avoidAria": "Què cal evitar",
+    "memoryWarning": "Aquest ordinador té uns {{gb}} GB de memòria. La generació de vídeo en necessita molta i, en una màquina com aquesta, un clip pot trigar hores perquè es queda sense memòria i fa swap al disc.",
+    "accept": "Ho entenc i vull continuar.",
+    "loraImported": "{{name}} importat"
+  },
+  "prompt": {
+    "title": "Prompt",
+    "guide": "Guia de prompts",
+    "guideDesc": "Petits hàbits que donen millors imatges.",
+    "g1": {
+      "title": "Digues què hi ha",
+      "body": "Comença pel subjecte, després on és i què fa."
+    },
+    "g2": {
+      "title": "Anomena l'estil",
+      "body": "Pintura a l'oli, fotografia, il·lustració plana, render 3D: l'estil ho canvia tot."
+    },
+    "g3": {
+      "title": "Afegeix llum i ambient",
+      "body": "Llum suau del matí, neó de nit, cel tapat: la llum marca l'ambient."
+    },
+    "g4": {
+      "title": "Limita't a una idea",
+      "body": "Un prompt curt i clar val més que una llista llarga. Afegeix detalls pas a pas."
+    },
+    "g5": {
+      "title": "Usa Evita per al que no vols",
+      "body": "A Avançat, un prompt negatiu llista el que s'ha de deixar fora."
+    },
+    "placeholderVideo": "Un gat caminant per un carreró plujós, cinematogràfic",
+    "placeholderImage": "Un far sobre un penya-segat a la sortida del sol, pintura a l'oli",
+    "enhanceTitle": "Afegeix unes quantes paraules sobre detall i llum",
+    "enhance": "Millora",
+    "example": {
+      "image": {
+        "0": "Un far sobre un penya-segat a la sortida del sol, pintura a l'oli",
+        "1": "Una guineu en un bosc nevat, llum suau",
+        "2": "Ciutat isomètrica de nit, neó"
+      },
+      "video": {
+        "0": "Un gat caminant per un carreró plujós, cinematogràfic",
+        "1": "Onades arribant a una platja negra",
+        "2": "Vapor que surt d'una tassa de cafè"
+      }
+    },
+    "clear": "Esborra el prompt",
+    "copy": "Copia el prompt",
+    "emptyImage": "La teva primera imatge comença aquí",
+    "emptyVideo": "El teu primer vídeo comença aquí",
+    "emptyDesc": "Descriu-la a dalt o prova un dels exemples.",
+    "save": "Desa",
+    "openLarge": "Obre en gran",
+    "remix": "Remix: mateix prompt, llavor nova",
+    "remixShort": "Remix",
+    "stop": "Atura",
+    "generateVideo": "Genera vídeo",
+    "generateImage": "Genera imatge",
+    "loadFirst": "Carrega primer el model",
+    "writeFirst": "Escriu primer un prompt.",
+    "notSetUp": "{{provider}} no està configurat a Proveïdors.",
+    "imageReady": "Imatge llesta",
+    "videoReady": "Vídeo llest",
+    "waitingFor": "Esperant {{provider}}…",
+    "eta": "falten uns {{eta}}"
+  },
+  "gens": {
+    "title": "Les teves creacions",
+    "archive": "Arxiva",
+    "done": "Fet",
+    "select": "Selecciona",
+    "grid": "Quadrícula",
+    "list": "Llista",
+    "filter": "Filtre",
+    "all": "Tot",
+    "empty": "Encara no hi ha res. El que facis apareixerà aquí."
+  }
+}

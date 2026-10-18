@@ -22,7 +22,7 @@
     "OUT_OF_MEMORY": "Bu modeli çalıştırmak için yeterli bellek yok. Daha küçük bir model veya bağlam boyutu genellikle yardımcı olur.",
     "INVALID_ARGUMENT": "Model ayarlarından biri geçersiz.",
     "IO_ERROR": "Model başlatılırken bir dosya okunamadı veya dosyaya yazılamadı.",
-    "INTERNAL_ERROR": "Model başlatılırken Jan içinde bir hata oluştu."
+    "INTERNAL_ERROR": "Model başlatılırken Flint içinde bir hata oluştu."
   },
   "engineMissingLibraries": "Eksik: {{libraries}}",
   "engineReportedDetail": "Motorun bildirdiği hata: {{detail}}",

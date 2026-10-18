@@ -107,6 +107,7 @@
     "connection": "Bağlantı",
     "engineSettings": "Motor ayarları",
     "memorySettings": "Bellek ve önbellek",
+    "settingNotSaved": "\"{{setting}}\" kaydedilmedi",
     "danger": "Tehlikeli bölge"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "Tüm araç çağrılarına izin verilir",
     "tabServers": "Sunucular",
     "tabRouting": "Yönlendirme ve sınırlar",
-    "toolsCount": "{{count}} araç",
+    "toolsCount_one": "{{count}} araç",
+    "toolsCount_other": "{{count}} araç",
     "filterLabel": "Sunucuları göster",
     "filterAll": "Tümü",
     "filterOn": "Açık",
@@ -136,10 +138,11 @@
     "viewList": "Liste",
     "callsPerMin": "çağrı / dk",
     "window": "son {{count}} dk",
-    "needsExtension": "Jan Browser Extension gerektirir",
+    "needsExtension": "Tarayıcı uzantısı gerektirir",
     "moreActions": "{{serverName}} için diğer eylemler",
     "addTile": "MCP sunucusu ekle",
-    "addTileHint": "STDIO, HTTP veya SSE"
+    "addTileHint": "STDIO, HTTP veya SSE",
+    "toolsCount": "{{count}} araç"
   },
   "extensions": {
     "description": "Eklentiler, beceriler ve Flint'in oluşturulduğu motor parçaları.",

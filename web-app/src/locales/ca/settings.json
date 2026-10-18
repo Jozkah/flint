@@ -141,6 +141,8 @@
     "showTokenSpeedDesc": "Mostra els tokens/s i el nombre de tokens a sota dels missatges de l'assistent. Desactivat, una icona compacta mostra els detalls en fer clic.",
     "coloredUserBubble": "Bombolla de missatge d'usuari amb color",
     "coloredUserBubbleDesc": "Usa el color d'èmfasi com a fons dels teus missatges. Desactivat, coincideixen amb els missatges de l'assistent amb text pla sobre un fons neutre.",
+    "renderUserMarkdown": "Mostra Markdown als meus missatges",
+    "renderUserMarkdownDesc": "Mostra negreta, llistes, encapçalaments i codi als missatges que envies. Desactivat, es mostren tal com els escrius.",
     "renderHtmlArtifacts": "Renderitza artefactes HTML i SVG",
     "renderHtmlArtifactsDesc": "Afegeix una pestanya de previsualització als blocs de codi HTML i SVG. L'HTML executa la pàgina generada pel model en un marc aïllat que executa els seus propis scripts però no pot accedir a Flint, als teus fitxers ni a la xarxa; l'SVG es renderitza estàticament amb els scripts desactivats. Desactivat per defecte.",
     "composerRailButtons": "Botons de sortida al compositor de Cowork",
@@ -420,7 +422,10 @@
     "proxyTimeoutDesc": "Temps d’espera d’una resposta del model local, en segons.",
     "defaultModel": "Model per defecte",
     "defaultModelDesc": "Model local que es carrega automàticament quan s'inicia el servidor.",
-    "defaultModelPlaceholder": "Selecciona un model local"
+    "defaultModelPlaceholder": "Selecciona un model local",
+    "noLocalModels": "No s'ha importat cap model local",
+    "usage5hAria": "Tokens per 5 hores",
+    "usageWeekAria": "Tokens per setmana"
   },
   "privacy": {
     "analytics": "Analítica",
@@ -514,7 +519,22 @@
     "support": "Suport",
     "reportAnIssue": "Informa d’un problema",
     "reportAnIssueDesc": "Has trobat un error? Ajuda’ns enviant una incidència a GitHub.",
-    "reportIssue": "Informa del problema"
+    "reportIssue": "Informa del problema",
+    "advanced": "Avançat",
+    "migrateJan": {
+      "title": "Migra des de JAN",
+      "desc": "Porta a Flint les dades d'una instal·lació existent de JAN: copia, reutilitza al mateix lloc, mou o comença de zero.",
+      "open": "Obre l'assistent de migració"
+    },
+    "verify": "Verifica",
+    "cli": {
+      "installedDesc": "Instal·lat a {{path}}: usa flint des del terminal per servir models.",
+      "desc": "Usa flint des del terminal per servir models sense obrir l'aplicació.",
+      "install": "Instal·la",
+      "installing": "S'està instal·lant…",
+      "uninstall": "Desinstal·la",
+      "uninstalling": "S'està desinstal·lant…"
+    }
   },
   "extensions": {
     "title": "Extensions"
@@ -608,7 +628,9 @@
     "summaryMaxTokens": "Longitud del resum",
     "summaryDescription": "El resum més llarg, en tokens.",
     "projectOverride": "(Un projecte ho substitueix.)",
-    "saveFailed": "No s'ha pogut desar la política de compactació"
+    "saveFailed": "No s'ha pogut desar la política de compactació",
+    "leanTools": "Eines lleugeres en models petits",
+    "leanToolsDescription": "Amb una finestra de context de 32K tokens o menys, deixa fora dels xats la llista de connectors, la cerca d'imatges i les eines de ginys, perquè la finestra contingui la conversa. La cerca web, MCP i les eines d'agent es mantenen."
   },
   "accent": {
     "title": "Color d'èmfasi",
@@ -664,10 +686,10 @@
     "completionSoundApproval": "Només quan cal aprovació",
     "completionSoundVolume": "Volum",
     "completionSoundPreview": "Reprodueix",
-    "increaseContrast": "Augmenta el contrast",
-    "increaseContrastDesc": "Fa el text més brillant perquè es llegeixi millor. Més blanc al tema fosc, més fosc al tema clar.",
     "reduceMotion": "Redueix el moviment",
-    "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs."
+    "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs.",
+    "increaseContrast": "Augmenta el contrast",
+    "increaseContrastDesc": "Fa el text més brillant perquè es llegeixi millor. Més blanc al tema fosc, més fosc al tema clar."
   },
   "pageDesc": {
     "general": "Idioma, carpeta de dades, registres i opcions de tota l'aplicació.",
@@ -1130,7 +1152,26 @@
     "skipped": "No restaurat: {{stores}}",
     "storeToolApproval": "aprovació automàtica d'eines",
     "storeMcpTrust": "confiança en servidors MCP",
-    "storeProxy": "servidor intermediari de xarxa"
+    "storeProxy": "servidor intermediari de xarxa",
+    "title": "Còpia de seguretat i sincronització",
+    "exported": "Configuració exportada",
+    "exportFailed": "No s'ha pogut exportar",
+    "importFailed": "No s'ha pogut importar",
+    "importedRestarting": "Configuració importada; es reinicia la finestra",
+    "exportTitle": "Exporta la configuració",
+    "exportDesc": "Desa les teves preferències en un fitxer JSON. Per sincronitzar entre equips, desa'l en una carpeta de Google Drive o Nextcloud i importa'l a l'altre equip. Els xats i l'estat propi de cada equip no s'hi inclouen.",
+    "includeSecrets": "Inclou proveïdors i claus d'API",
+    "secretsWarning": "El fitxer contindrà les teves claus d'API en text pla. Mantén-lo privat i no el posis en una carpeta compartida.",
+    "exportButton": "Exporta…",
+    "importTitle": "Importa la configuració",
+    "importDesc": "Substitueix les teves preferències per les d'un fitxer de còpia. Després la finestra es recarrega.",
+    "chooseFile": "Tria un fitxer…",
+    "pendingGroups": "Grups de configuració al fitxer: {{groups}}.",
+    "pendingKeys": "Proveïdors amb claus d'API: {{keys}}.",
+    "pendingExported": "Exportat el {{date}}.",
+    "pendingOverwrite": "Això sobreescriurà els valors actuals.",
+    "apply": "Importa i recarrega",
+    "cancel": "Cancel·la"
   },
   "startup": {
     "title": "Inicia amb l'ordinador",
@@ -1158,5 +1199,129 @@
     "showAll": "Mostra-ho tot",
     "preview": "Vista prèvia",
     "reachable": "Els elements amagats continuen accessibles des de la paleta d'ordres i des de Configuració."
+  },
+  "memoryPage": {
+    "useSaved": "Fes servir la memòria desada a les converses",
+    "useSavedDesc": "Quan això està desactivat, Flint no afegeix cap memòria desada a cap sol·licitud. Els teus records es conserven i els pots seguir gestionant aquí.",
+    "useFacts": "Fes servir els fets recordats a les sol·licituds",
+    "useFactsDesc": "Desactivar un àmbit n'atura l'enviament. No se suprimeix res; en tornar-lo a activar, es torna a fer servir.",
+    "scope": {
+      "chat": {
+        "tab": "Aquesta conversa",
+        "blurb": "Només es recorda dins de la conversa on es va desar.",
+        "recall": "Aquesta conversa",
+        "recallAria": "Fes servir els records d'aquesta conversa",
+        "newAria": "Nou record per a aquesta conversa",
+        "forgetAll": "Oblida-ho tot en aquesta conversa",
+        "clearBody": "Tot el que es recorda per a aquesta conversa deixa d'utilitzar-se i el seu text s'elimina d'aquest ordinador. Això no es pot desfer d'un sol pas."
+      },
+      "project": {
+        "tab": "Projecte",
+        "blurb": "Disponible per a totes les converses del projecte que triïs a sota, i per a cap altre projecte.",
+        "recall": "Aquest projecte",
+        "recallAria": "Fes servir els records d'aquest projecte",
+        "newAria": "Nou record per a aquest projecte",
+        "forgetAll": "Oblida-ho tot en aquest projecte",
+        "clearBody": "Tot el que es recorda per a aquest projecte deixa d'utilitzar-se i el seu text s'elimina d'aquest ordinador. Això no es pot desfer d'un sol pas."
+      },
+      "user": {
+        "tab": "Totes les converses",
+        "blurb": "Disponible a tot arreu. Reserva-ho per a coses que són certes en general.",
+        "recall": "Totes les converses",
+        "recallAria": "Fes servir els records compartits entre totes les converses",
+        "newAria": "Nou record per a totes les converses",
+        "forgetAll": "Oblida tot el que es comparteix entre converses",
+        "clearBody": "Tot el que es recorda a totes les converses deixa d'utilitzar-se i el seu text s'elimina d'aquest ordinador. Això no es pot desfer d'un sol pas."
+      }
+    },
+    "stored": {
+      "summary": "{{user}} entre xats · {{project}} · {{size}}",
+      "projectIn": "{{count}} a {{name}}",
+      "chooseProject": "tria un projecte per comptar-ne els records"
+    },
+    "listTitle": "Què recorda Flint",
+    "tabsAria": "Àmbit de la memòria",
+    "recallOff": "La memòria està desactivada per a aquest àmbit: es conserven, però no s'envien.",
+    "newPlaceholder": "Alguna cosa que Flint hauria de recordar",
+    "remember": "Recorda",
+    "export": "Exporta",
+    "import": "Importa",
+    "importReport": {
+      "summary": "Importats {{count}} de l'exportació",
+      "duplicates": "{{count}} ja recordats",
+      "refused": "{{count}} rebutjats"
+    },
+    "conversation": "Conversa",
+    "conversationAria": "Conversa de la qual es mostra la memòria",
+    "noConversations": "Encara no hi ha converses",
+    "kindChat": "Xat · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "substituït {{when}}",
+    "projectFolder": "Carpeta del projecte",
+    "projectFolderAria": "Projecte del qual es mostra la memòria",
+    "noProjectFolders": "Cap projecte adjuntat a cap sessió",
+    "chooseProject": "Tria un projecte",
+    "chooseProjectAbove": "Tria un projecte a dalt per veure i gestionar-ne els records.",
+    "searchAria": "Cerca als records",
+    "searchPlaceholder": "Cerca fets recordats",
+    "noMatch": "Res d'aquí coincideix amb la cerca.",
+    "empty": "Encara no hi ha res recordat aquí.",
+    "meta": {
+      "youSaved": "Ho has desat tu",
+      "inferred": "Deduït",
+      "pinned": "fixat",
+      "used_one": "utilitzat {{count}} vegada",
+      "used_other": "utilitzat {{count}} vegades",
+      "lastUsed": "darrer ús {{when}}",
+      "never": "mai"
+    },
+    "pin": "Fixa",
+    "unpin": "Deixa de fixar",
+    "pinAria": "Fixa el record",
+    "unpinAria": "Deixa de fixar el record",
+    "editAria": "Edita el record",
+    "forget": "Oblida",
+    "forgetAria": "Oblida el record",
+    "showing": "Es mostren {{from}}–{{to}} de {{total}}",
+    "previous": "Anterior",
+    "waitingTitle": "Esperant-te",
+    "waitingBody": "Res d'això s'està utilitzant encara. Una proposta sense resposta mai s'afegeix a una instrucció.",
+    "conflictsTitle": "Records que es contradiuen",
+    "conflictsBody": "Cap dels dos costats s'utilitza. Aquests fets recordats es contradiuen, així que Flint els deixa fora de totes les sol·licituds fins que en mantinguis un.",
+    "conflictAbout": "Sobre {{subject}}",
+    "keepThis": "Mantén aquest",
+    "keepAria": "Mantén «{{preview}}» i oblida l'altre",
+    "editTitle": "Edita el record",
+    "editBody": "Això s'utilitza en converses futures dins de l'àmbit al qual pertany.",
+    "contentAria": "Contingut del record",
+    "clearTitle": "Vols oblidar tots els records d'aquí?",
+    "clearConfirm": "Oblida-ho tot",
+    "toast": {
+      "kept": "S'ha mantingut un record",
+      "settleFailed": "No s'ha pogut resoldre aquest conflicte",
+      "forgotten": "Record oblidat",
+      "forgetFailed": "No s'ha pogut oblidar aquest record",
+      "changeFailed": "No s'ha pogut canviar aquest record",
+      "updated": "Record actualitzat",
+      "updateFailed": "No s'ha pogut actualitzar aquest record",
+      "settingsFailed": "No s'han pogut desar els paràmetres de memòria",
+      "recallFailed": "No s'ha pogut canviar la memòria",
+      "saved": "Record desat",
+      "saveFailed": "No s'ha pogut desar aquest record",
+      "forgotCount_one": "S'ha oblidat {{count}} record",
+      "forgotCount_other": "S'han oblidat {{count}} records",
+      "forgetManyFailed": "No s'han pogut oblidar aquests records",
+      "exportedCount_one": "S'ha exportat {{count}} record",
+      "exportedCount_other": "S'han exportat {{count}} records",
+      "exportFailed": "No s'han pogut exportar els records",
+      "importedCount_one": "S'ha importat {{count}} record",
+      "importedCount_other": "S'han importat {{count}} records",
+      "importFailed": "No s'han pogut importar els records"
+    }
+  },
+  "chatMentions": {
+    "title": "Mencions de converses",
+    "readAny": "Deixa que l'assistent llegeixi qualsevol conversa",
+    "readAnyDesc": "Desactivat per defecte. Normalment l'assistent només llegeix les converses que esmentes amb @ o #. Si s'activa, pot obrir qualsevol xat, sessió o sala d'aquest ordinador per l'id. El que llegeix es queda en aquest ordinador i es marca com a dades de referència."
   }
 }

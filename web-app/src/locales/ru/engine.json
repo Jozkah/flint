@@ -109,6 +109,7 @@
     "connection": "Подключение",
     "engineSettings": "Настройки движка",
     "memorySettings": "Память и кэш",
+    "settingNotSaved": "Настройка «{{setting}}» не сохранена",
     "danger": "Опасная зона"
   },
   "mcp": {
@@ -128,7 +129,10 @@
     "kpiApprovedAll": "Все вызовы инструментов разрешены",
     "tabServers": "Серверы",
     "tabRouting": "Маршрутизация и лимиты",
-    "toolsCount": "Инструментов: {{count}}",
+    "toolsCount_one": "{{count}} инструмент",
+    "toolsCount_few": "{{count}} инструмента",
+    "toolsCount_many": "{{count}} инструментов",
+    "toolsCount_other": "{{count}} инструмента",
     "filterLabel": "Показать серверы",
     "filterAll": "Все",
     "filterOn": "Вкл.",
@@ -138,10 +142,11 @@
     "viewList": "Список",
     "callsPerMin": "вызовов / мин",
     "window": "последние {{count}} мин",
-    "needsExtension": "Требуется расширение Jan Browser",
+    "needsExtension": "Требуется расширение браузера",
     "moreActions": "Другие действия для {{serverName}}",
     "addTile": "Добавить MCP-сервер",
-    "addTileHint": "STDIO, HTTP или SSE"
+    "addTileHint": "STDIO, HTTP или SSE",
+    "toolsCount": "Инструментов: {{count}}"
   },
   "extensions": {
     "description": "Плагины, навыки и части движка, из которых построен Flint.",

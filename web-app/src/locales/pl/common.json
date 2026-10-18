@@ -56,7 +56,40 @@
     "chatFolderCount": "Foldery: {{count}}",
     "newSubfolder": "Nowy podfolder",
     "moveInto": "Przenieś do folderu",
-    "topLevel": "Najwyższy poziom"
+    "topLevel": "Najwyższy poziom",
+    "errors": {
+      "nameEmpty": "Nazwa grupy nie może być pusta",
+      "notFound": "Nie znaleziono grupy",
+      "tooDeep": "Grup nie można zagnieżdżać tak głęboko",
+      "intoItself": "Grupy nie można przenieść do niej samej"
+    },
+    "failed": {
+      "create": "Nie udało się utworzyć grupy",
+      "rename": "Nie udało się zmienić nazwy grupy",
+      "moveFolder": "Nie udało się przenieść folderu",
+      "saveState": "Nie udało się zapisać stanu grupy",
+      "reorder": "Nie udało się zmienić kolejności grup",
+      "moveItem": "Nie udało się przenieść elementu",
+      "delete": "Nie udało się usunąć grupy",
+      "saveFolders": "Nie udało się zapisać folderów grupy",
+      "updateContext": "Nie udało się zaktualizować kontekstu folderów",
+      "update": "Nie udało się zaktualizować grup",
+      "import": "Nie udało się zaimportować grup",
+      "unreadable": "{{failure}}: nie można odczytać zapisanych grup",
+      "restored": "{{failure}}. Przywrócono poprzednią kolejność."
+    },
+    "announce": {
+      "created": "Utworzono grupę {{name}}",
+      "collapsed": "Zwinięto {{name}}",
+      "expanded": "Rozwinięto {{name}}",
+      "reordered": "Przeniesiono {{name}} na pozycję {{position}} z {{total}}",
+      "movedToPosition": "Przeniesiono do {{name}}, pozycja {{position}}",
+      "movedToRecents": "Przeniesiono do Ostatnich",
+      "deleted": "Usunięto grupę {{name}}. Jej elementy przeniesiono do Ostatnich",
+      "ctxReplaced": "{{base}}. Kontekst folderów zastąpiono folderami grupy; dostęp nadal wymaga zatwierdzenia",
+      "ctxMerged": "{{base}}. Foldery grupy dodano do kontekstu folderów; dostęp nadal wymaga zatwierdzenia",
+      "foldersAdded": "{{base}}. Foldery elementu dodano do grupy"
+    }
   },
   "htmlArtifact": {
     "code": "Kod",
@@ -283,7 +316,7 @@
     "searchThreads": "Szukaj rozmów",
     "toggleSidebar": "Przełącz panel boczny",
     "openCowork": "Otwórz Cowork",
-    "openArtifacts": "Otwórz artefakty",
+    "openArtifacts": "Otwórz: Biblioteka",
     "openSystemMonitor": "Otwórz monitor systemu",
     "openLogs": "Otwórz dzienniki aplikacji",
     "section": {
@@ -1245,7 +1278,8 @@
     "sensitiveRefused": "{{name}} wygląda na dane uwierzytelniające lub klucz, więc nie został otwarty",
     "binaryRefused": "{{name}} nie jest plikiem tekstowym, niezależnie od rozszerzenia",
     "chooseAgainAction": "Wybierz ponownie",
-    "externalGone": "Ten plik został otwarty spoza projektu, a ten dostęp nie przetrwał. Wybierz go ponownie, aby otworzyć."
+    "externalGone": "Ten plik został otwarty spoza projektu, a ten dostęp nie przetrwał. Wybierz go ponownie, aby otworzyć.",
+    "oneFolderAtATime": "Można dodać tylko jeden folder naraz. Nie dodano „{{name}}”."
   },
   "settingsSearch": {
     "label": "Szukaj w ustawieniach",
@@ -1450,7 +1484,14 @@
     "recommended": "Zalecane",
     "reset": "Przywróć globalne",
     "resetAll": "Przywróć globalne ustawienia domyślne",
-    "overridden": "Ustawione dla tego czatu"
+    "overridden": "Ustawione dla tego czatu",
+    "levels": {
+      "low": "Niski",
+      "medium": "Średni",
+      "high": "Wysoki",
+      "xhigh": "Bardzo wysoki",
+      "unlimited": "Bez limitu"
+    }
   },
   "modelOffline": {
     "badge": "Nieosiągalny",
@@ -2613,6 +2654,7 @@
       "slots": "Sloty: {{count}}",
       "vision": "Obraz",
       "audio": "Dźwięk",
+      "fixedPrompt": "Wysyłane z każdym żądaniem: {{count}} tokenów (prompt systemowy i schematy narzędzi).",
       "tokenUsage": "Użycie tokenów",
       "tokenUsageSr": "Użycie tokenów {{value}}"
     }
@@ -2639,6 +2681,21 @@
     "previewLoading": "Wczytywanie podglądu…",
     "previewNone": "Podgląd niedostępny"
   },
+  "fileViewer": {
+    "openFull": "Otwórz pełny podgląd",
+    "loadMore": "Wczytaj więcej",
+    "showingFirst": "Wyświetlono pierwsze {{loaded}} z {{total}}",
+    "lines_one": "{{count}} wiersz",
+    "lines_few": "{{count}} wiersze",
+    "lines_many": "{{count}} wierszy",
+    "lines_other": "{{count}} wiersza",
+    "wrap": "Zawijaj wiersze",
+    "copy": "Kopiuj",
+    "copied": "Skopiowano",
+    "binary": "To wygląda na plik binarny, więc nie ma podglądu tekstu.",
+    "expandLine": "Pokaż cały wiersz",
+    "collapseLine": "Skróć wiersz"
+  },
   "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików",
   "sampler": {
     "label": "Parametry próbkowania",
@@ -2664,7 +2721,10 @@
     "paste": "Wklej ze schowka",
     "pasteFailed": "Nie udało się odczytać schowka",
     "clear": "Wyczyść",
-    "characters": "Znaki: {{count}}",
+    "characters_one": "{{count}} znak",
+    "characters_few": "{{count}} znaki",
+    "characters_many": "{{count}} znaków",
+    "characters_other": "{{count}} znaku",
     "translating": "Tłumaczę…",
     "retry": "Spróbuj ponownie",
     "shortcut": "Tłumacz (Ctrl/Cmd+Enter)",
@@ -2676,7 +2736,9 @@
     "errorNetwork": "Nie udało się połączyć z dostawcą. Sprawdź połączenie lub czy serwer działa.",
     "errorEngine": "Silnik uruchamiający ten model jest niedostępny. Uruchom Flint ponownie i spróbuj jeszcze raz.",
     "openProvider": "Otwórz ustawienia dostawcy",
-    "errorDetails": "Szczegóły"
+    "errorDetails": "Szczegóły",
+    "pasteHint": "Dostęp do schowka został zablokowany. Kliknij pole tekstowe i naciśnij {{keys}}.",
+    "characters": "Znaki: {{count}}"
   },
   "markdownImage": {
     "load": "Wczytaj obraz z {{host}}"
@@ -2697,7 +2759,10 @@
     "editTitle": "Edytuj prompt",
     "import": "Importuj",
     "export": "Eksportuj",
-    "imported": "Dodano prompty: {{count}}",
+    "imported_one": "Dodano {{count}} prompt",
+    "imported_few": "Dodano {{count}} prompty",
+    "imported_many": "Dodano {{count}} promptów",
+    "imported_other": "Dodano {{count}} prompta",
     "search": "Szukaj promptów",
     "empty": "Brak promptów.",
     "edit": "Edytuj: {{name}}",
@@ -2710,6 +2775,111 @@
     "body": "Treść promptu",
     "bodyHint": "Napisz prompt. Użyj {{topic}} lub {{tone:friendly}} dla pustych miejsc.",
     "variables": "Pyta o: {{names}}",
-    "insert": "Wstaw"
+    "defaultValue": "Domyślnie: {{value}}",
+    "requiredField": "Wymagane",
+    "fillNeeded": "Aby wstawić, wypełnij: {{names}}",
+    "insert": "Wstaw",
+    "errors": {
+      "nameRequired": "Prompt wymaga nazwy",
+      "nameTooLong": "Ta nazwa jest za długa",
+      "bodyRequired": "Prompt wymaga treści",
+      "bodyTooLong": "Ten prompt jest za długi",
+      "gone": "Ten prompt już nie istnieje",
+      "invalidJson": "Ten plik nie jest prawidłowym JSON-em",
+      "noPrompts": "W tym pliku nie znaleziono promptów"
+    },
+    "imported": "Dodano prompty: {{count}}"
+  },
+  "memoryProposal": {
+    "title": "Zapamiętać to?",
+    "wouldApply": "Dotyczyłoby: {{where}}.",
+    "remember": "Zapamiętaj",
+    "discard": "Odrzuć",
+    "reviewBoth": "Sprawdź obie",
+    "saving": "Zapisywanie…",
+    "discarding": "Odrzucanie…",
+    "scope": {
+      "session": "ta rozmowa",
+      "project": "ten projekt",
+      "user": "wszędzie"
+    }
+  },
+  "picker": {
+    "filter": "Filtr",
+    "source": "Źródło",
+    "sourceAll": "Wszystkie",
+    "sourceLocal": "Lokalne",
+    "sourceCloud": "Chmura",
+    "capabilities": "Możliwości",
+    "cap": {
+      "vision": "Wizja",
+      "tools": "Narzędzia",
+      "reasoning": "Rozumowanie",
+      "embeddings": "Embeddingi"
+    },
+    "loadedNow": "Załadowane teraz",
+    "sort": "Sortuj",
+    "sortDefault": "Kolejność domyślna",
+    "sortName": "Nazwa (A–Z)",
+    "sortRecent": "Ostatnio używane",
+    "sortSize": "Rozmiar",
+    "clearFilters": "Wyczyść filtry",
+    "noMatch": "Żaden model nie pasuje",
+    "noMatchFilters": "Żaden model nie pasuje: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Czat",
+      "session": "Sesja",
+      "room": "Pokój"
+    },
+    "heading": "Rozmowy",
+    "empty": "Brak innych rozmów",
+    "noMatch": "Żadna rozmowa nie pasuje",
+    "messages": "Wiadomości: {{n}}",
+    "included": "Dołączono: {{title}} (wiadomości: {{n}}, ok. {{size}} znaków)",
+    "group": "Wspomniane rozmowy",
+    "summarize": "Podsumuj",
+    "summarizeHint": "Dołącz podsumowanie zamiast ostatnich wiadomości",
+    "remove": "Usuń wzmiankę o {{title}}",
+    "mentioned": "Wspomniano: {{title}}",
+    "open": "Otwórz {{title}}",
+    "status": {
+      "missing": "Nie znaleziono: {{title}}",
+      "self": "{{title}} to ta rozmowa, więc zostaje pominięta",
+      "over-cap": "{{title}} zostaje pominięta: najwyżej {{max}} rozmów na wiadomość"
+    },
+    "excerpt": "Fragment",
+    "summary": "Podsumowanie",
+    "modeGroup": "Co dołączyć z {{title}}",
+    "excerptHint": "Najnowsze wiadomości, około {{tokens}} tokenów",
+    "summaryHint": "Podsumowanie napisane przez model, najwyżej około {{tokens}} tokenów",
+    "needsModel": "Wczytaj model, aby zamiast tego dołączyć podsumowanie",
+    "totals_one": "{{count}} wiadomość · dołączono ~{{tokens}} tokenów",
+    "totals_few": "{{count}} wiadomości · dołączono ~{{tokens}} tokenów",
+    "totals_many": "{{count}} wiadomości · dołączono ~{{tokens}} tokenów",
+    "totals_other": "{{count}} wiadomości · dołączono ~{{tokens}} tokenów",
+    "readOnly": "Wysyłane jako cytowany kontekst tylko do odczytu. Model nie może zmienić tej rozmowy.",
+    "tooLarge": "To ponad jedna czwarta okna kontekstu modelu.",
+    "useSummary": "Użyj podsumowania",
+    "resolving": "Wyszukiwanie: {{title}}",
+    "chipStatus": {
+      "missing": "Nie znaleziono",
+      "self": "Ta rozmowa",
+      "over-cap": "Ponad limit"
+    },
+    "preview": {
+      "empty": "Jeszcze brak wiadomości",
+      "you": "Ty",
+      "assistant": "Asystent"
+    },
+    "messagesCount_one": "{{count}} wiadomość",
+    "messagesCount_few": "{{count}} wiadomości",
+    "messagesCount_many": "{{count}} wiadomości",
+    "messagesCount_other": "{{count}} wiadomości"
+  },
+  "campaignList": {
+    "timeout": "Aplikacja nie odpowiedziała na czas.",
+    "unreadableRecord": "backend wysłał rekord, którego ta strona nie potrafi odczytać"
   }
 }

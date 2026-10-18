@@ -216,5 +216,6 @@
       "model-not-loaded": "Hãy tải mô hình của cuộc trò chuyện trước. Mô hình sẽ viết bản tóm tắt.",
       "summary-failed": "Không thể viết bản tóm tắt. Chưa có gì được tạo."
     }
-  }
+  },
+  "stopToolCall": "Dừng lệnh gọi công cụ (Esc)"
 }

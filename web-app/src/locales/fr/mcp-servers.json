@@ -9,7 +9,9 @@
       "title": "Flint accomplit des tâches dans votre navigateur",
       "description": "Installez l'extension pour donner à Flint l'accès au navigateur",
       "getExtension": "Obtenir l'extension"
-    }
+    },
+    "requires": "Nécessite l'installation de l'extension de navigateur dans votre navigateur basé sur Chrome.",
+    "install": "Installer l'extension →"
   },
   "serverName": "Nom du serveur",
   "enterServerName": "Entrez le nom du serveur",

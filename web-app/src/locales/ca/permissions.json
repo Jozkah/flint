@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint vol executar {{command}} a {{workspace}}",
     "gitRemote": "Flint vol executar {{command}}, que canvia {{target}}",
     "gitDestructive": "Flint vol executar {{command}}, que pot fer perdre feina",
-    "approveCampaign": "Flint vol iniciar la campanya \"{{title}}\" ({{count}} tasques)"
+    "approveCampaign": "Flint vol iniciar la campanya \"{{title}}\" ({{count}} tasques)",
+    "spendPause": "Flint vol continuar aquesta execució més enllà de la seva pausa de despesa"
   },
   "consequence": {
     "fileChange": "Pot crear, sobreescriure o canviar el contingut de fitxers.",
@@ -57,7 +58,8 @@
     "gitLocal": "Canvia els fitxers, les branques o l'historial d'aquest repositori en aquest ordinador.",
     "gitRemote": "Envia canvis a un repositori remot que altres persones poden veure. Flint ho pregunta cada vegada tret que permetis temporalment les accions Git remotes ordinàries per a aquesta conversa.",
     "gitDestructive": "El que elimina o sobreescriu pot no ser recuperable.",
-    "campaignPlan": "Inicia sessions separades, cadascuna en la seva pròpia branca de worktree, que llegeixen i canvien fitxers i fan servir la quota del teu model en paral·lel. Aprovar el pla no aprova cap crida que faci una tasca. Flint pregunta cada vegada."
+    "campaignPlan": "Inicia sessions separades, cadascuna en la seva pròpia branca de worktree, que llegeixen i canvien fitxers i fan servir la quota del teu model en paral·lel. Aprovar el pla no aprova cap crida que faci una tasca. Flint pregunta cada vegada.",
+    "spendPause": "L'execució continua gastant quota de model de pagament fins que acabi o arribi al límit. Si ho denegues, s'atura."
   },
   "repeat": {
     "allowedOnceBefore": "Ja has permès aquesta ordre una vegada en aquesta conversa."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Les futures crides d'un sol procés que coincideixin amb {{action}} s'executaran sense preguntar, inclosos identificadors de procés diferents. Els altres scripts continuen preguntant. Revoca-ho a Configuració > Permisos.",
     "allowClipboardReadExplanation": "Flint pot llegir el contingut futur del porta-retalls en totes les converses sense preguntar, fins que ho revoquis a Configuració > Permisos. Escriure al porta-retalls continua preguntant.",
     "allowSimilarThreadExplanation": "Les futures crides que coincideixin amb {{action}} s'executaran sense preguntar en aquesta conversa. Revoca-ho a Configuració > Permisos.",
-    "broader": "Més ampli"
+    "broader": "Més ampli",
+    "editedRunsOnce": "Les ordres editades només s'executen una vegada."
   },
   "request": {
     "title": "Sol·licitud de permís",
@@ -226,11 +229,13 @@
     "trust": "Confia en la carpeta",
     "later": "Ara no",
     "failed": "No s'ha pogut confiar en la carpeta",
+    "kept_one": "S'han mantingut els hooks activats en {{count}} carpeta que ja fas servir. Revisa-la a Configuració > Permisos > Carpetes de confiança.",
+    "kept_other": "S'han mantingut els hooks activats en {{count}} carpetes que ja fas servir. Revisa'ls a Configuració > Permisos > Carpetes de confiança.",
     "kept": "S'han mantingut els hooks activats en {{count}} carpetes que ja fas servir. Revisa'ls a Configuració > Permisos > Carpetes de confiança."
   },
   "trustedFolders": {
     "title": "Carpetes de confiança",
-    "description": "Carpetes els hooks i les definicions d'agents propis de les quals es poden executar. La confiança es manté fins que la retiris.",
+    "description": "Carpetes els hooks i les definicions d'agents propis de les quals es poden executar. La confiança es manté fins que la retiris. Els fitxers que un agent pot llegir o canviar apareixen a Accés a carpetes.",
     "empty": "Encara no hi ha carpetes de confiança; Flint pregunta la primera vegada que una carpeta porta hooks o definicions d'agents.",
     "add": "Confia en una carpeta…",
     "stop": "Deixa de confiar",
@@ -250,7 +255,11 @@
     "prefixHint": "Només una ordre simple. Una d'encadenada, amb canonada o redirigida es torna a preguntar.",
     "everywhere": "Cada crida a {{tool}}, en tots els projectes",
     "everywhereHint": "L'antic significat de Sempre. Molt ampli; poques vegades el que vols.",
-    "saveFailed": "No s'ha pogut recordar aquesta elecció"
+    "saveFailed": "No s'ha pogut recordar aquesta elecció",
+    "alwaysFolder": "Sempre: dins de {{dir}}",
+    "alwaysPrefix": "Sempre: ordres que comencen per {{prefix}}",
+    "alwaysFolderExplanation": "Només els fitxers d'aquesta carpeta, en aquest projecte, fins que ho revoquis a Configuració > Permisos.",
+    "alwaysPrefixExplanation": "Només una ordre simple que comenci així, en aquest projecte, fins que ho revoquis a Configuració > Permisos. Una ordre encadenada, canalitzada o redirigida es tornarà a preguntar."
   },
   "rules": {
     "title": "Aprovacions recordades",
@@ -284,12 +293,38 @@
       "consumed": "Utilitzada"
     },
     "loadFailed": "No s'han pogut llegir les aprovacions en espera",
-    "answerFailed": "No s'ha pogut registrar la resposta"
+    "answerFailed": "No s'ha pogut registrar la resposta",
+    "allowLabel": "Permet: {{summary}}",
+    "denyLabel": "Denega: {{summary}}",
+    "discardLabel": "Elimina: {{summary}}"
   },
   "toast": {
     "trustFailed": "No s'ha pogut recordar aquest servidor",
     "cancelledOne": "S'ha cancel·lat l'aprovació de {{names}}",
     "cancelledMany": "S'han cancel·lat {{count}} aprovacions ({{names}})",
     "cancelledDescription": "Has sortit del xat abans de respondre. Torna a enviar la sol·licitud per tornar-ho a provar."
+  },
+  "desktopOnly": "Només disponible a l'aplicació d'escriptori de Flint.",
+  "folderAccess": {
+    "title": "Accés a carpetes",
+    "description": "Carpetes i fitxers fora de l'espai de treball de l'agent que has deixat llegir o canviar a un agent. Si els hooks d'una carpeta es poden executar es defineix a Carpetes de confiança.",
+    "empty": "No s'ha concedit cap accés a carpetes.",
+    "readWrite": "Lectura i escriptura",
+    "readOnly": "Només lectura",
+    "untilRevoked": "Totes les converses, fins que es revoqui",
+    "untilDate": "Aquesta conversa, fins al {{when}}",
+    "revoke": "Revoca",
+    "revokeLabel": "Revoca l'accés a {{path}}"
+  },
+  "spendPause": {
+    "preview": "Continua l'execució (aproximadament {{spent}} gastats fins ara)",
+    "previewCeiling": "Continua l'execució fins al límit de {{ceiling}} (aproximadament {{spent}} gastats fins ara)"
+  },
+  "remote": {
+    "runsOnServer": "S'executa al servidor.",
+    "runsOnServerAt": "S'executa al servidor: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Canvis pendents d'aprovació"
   }
 }

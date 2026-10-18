@@ -154,7 +154,45 @@
     "sections": "设置分区",
     "tabGeneral": "常规",
     "tabDiscussion": "讨论",
-    "tabLimits": "限制"
+    "tabLimits": "限制",
+    "compareRun": "运行模型",
+    "compareRunHint": "逐个运行较慢，但每次只加载一个本地模型，也更省请求限额。",
+    "compareRunOption": {
+      "together": "全部同时",
+      "one-by-one": "逐个运行"
+    },
+    "compareRunSuggest": "已选择两个或更多本地模型：逐个运行可避免它们争抢内存。",
+    "tools": {
+      "heading": "工具",
+      "summary": "已开启 {{on}}/{{total}} · 约 {{tokens}} 个令牌",
+      "loading": "正在加载工具…",
+      "empty": "此权限下没有可用的工具。",
+      "group": {
+        "files": "文件和命令",
+        "web": "网页",
+        "mcp": "MCP 服务器",
+        "other": "其他"
+      },
+      "tokens": "约 {{tokens}} tok",
+      "share": "工具定义约占此模型上下文窗口的 {{pct}}%。",
+      "warn": "工具定义约占此模型上下文窗口的 {{pct}}%（超过 {{limit}}%）。请关闭一些，为讨论留出空间。",
+      "windowUnknown": "此模型的上下文窗口未知，无法显示占比。",
+      "notStarted": "未启动",
+      "toolsUnknown": "启动前工具未知"
+    },
+    "budget": {
+      "heading": "每轮工具预算",
+      "hint": "每个使用工具的参与者轮次的上限。留空则使用默认值。",
+      "maxToolCalls": "最大工具调用次数",
+      "maxSteps": "最大步数",
+      "toolTimeoutSec": "工具超时（秒）",
+      "default": "默认：{{value}}"
+    },
+    "isolation": {
+      "active": "每个可编辑的参与者都在自己的隔离工作区中工作，因此无法互相覆盖或覆盖你的文件夹。",
+      "unavailable": "隔离工作区不可用：{{reason}}。可编辑的参与者在此房间中只读。",
+      "untrusted": "该文件夹未受信任"
+    }
   },
   "limits": {
     "maxRounds": "轮数",
@@ -228,7 +266,19 @@
     "toolFailed": "失败",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} 个 token",
-    "speedTitle": "此回复中写出的 token 数及速度"
+    "speedTitle": "此回复中写出的 token 数及速度",
+    "budgetHit": {
+      "tool-calls": "本轮已达到工具调用预算。",
+      "steps": "本轮已达到步数预算。",
+      "timeout": "本轮中的一次工具调用超过超时时间，已被停止。"
+    },
+    "rawToolCall": "这看起来是以文本形式写出的工具调用，它没有被执行。",
+    "emptyReply": {
+      "length": "模型用完了全部回复上限（{{count}} 个 token），却没有写出回答。请在房间设置中提高上限，或关闭该参与者的推理，然后重新运行。",
+      "tools": "使用了工具，但没有写文字回复。",
+      "none": "没有文字回复。"
+    },
+    "thought": "思考"
   },
   "unknownWindow": {
     "title": "上下文窗口未知",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "每位参与者陈述自己的立场",
     "synthesizeHint": "结果摘要，附带异议",
     "cancelTurnHint": "仅停止正在进行的回复",
-    "steerLocked": "讨论开始后才会解锁这些功能。"
+    "steerLocked": "讨论开始后才会解锁这些功能。",
+    "answering": "正在回答",
+    "models": "模型"
   },
   "stage": {
     "speaking": "{{name}} 正在发言",
@@ -390,5 +442,69 @@
     "panes": "房间视图",
     "talk": "讨论",
     "controls": "控制"
+  },
+  "compare": {
+    "title": "比较运行",
+    "modeTogether": "全部同时",
+    "modeOneByOne": "逐个运行",
+    "include": "纳入下次运行",
+    "includeFor": "将 {{name}} 纳入下次运行",
+    "run": "运行",
+    "runAgain": "再次运行",
+    "runFor": "用 {{name}} 回答当前问题",
+    "runAgainFor": "用 {{name}} 再次回答当前问题",
+    "runAll": "全部运行",
+    "answerEarlier": "回答之前的问题",
+    "answerEarlierHint": "错过之前问题的每个模型现在按顺序回答，就像它一开始就在场。",
+    "export": "导出比较",
+    "saveMarkdown": "另存为 Markdown…",
+    "copyMarkdown": "复制为 Markdown",
+    "copyJson": "复制为 JSON",
+    "saved": "比较已保存。",
+    "copied": "已复制到剪贴板。",
+    "copyFailed": "无法复制到剪贴板。",
+    "notAnswered": "尚未回答这个问题。",
+    "state": {
+      "off": "下次运行时跳过",
+      "unavailable": "不可用",
+      "running": "正在回答…",
+      "queued": "排队中",
+      "done": "已回答",
+      "failed": "失败",
+      "idle": "尚未回答"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} 个文件已更改",
+    "summaryMany": "{{count}} 个文件已更改",
+    "workspace": "隔离工作区：{{path}}",
+    "binary": "二进制文件",
+    "noExcerpt": "无摘录。",
+    "openDiff": "打开差异",
+    "keep": "保留",
+    "discard": "放弃更改",
+    "apply": "应用到我的文件夹",
+    "state": {
+      "kept": "已保留",
+      "discarded": "已放弃",
+      "applied": "已应用"
+    },
+    "diffTitle": "工作区中的更改",
+    "diffHint": "该参与者在其隔离工作区中所做的全部更改。",
+    "applyTitle": "应用到你的文件夹？",
+    "applyHint": "此补丁将写入你的文件夹。如果无法干净地应用，则不会更改任何内容。",
+    "discardTitle": "放弃这些更改？",
+    "discardHint": "参与者的工作区将恢复到初始状态。你的文件夹不受影响。",
+    "loading": "正在加载差异…",
+    "empty": "没有可应用的内容。",
+    "applyConfirm": "应用",
+    "discardConfirm": "放弃",
+    "scopeTurn": "本轮",
+    "scopeAll": "自工作区创建以来"
+  },
+  "approvals": {
+    "held": "房间已暂停",
+    "heldHint": "此请求等待期间房间被暂停，因此无法再允许。恢复房间后，如仍需要，参与者会再次询问。",
+    "dismiss": "关闭"
   }
 }

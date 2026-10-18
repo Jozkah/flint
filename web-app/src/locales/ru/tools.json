@@ -79,6 +79,8 @@
     "reading": "Чтение...",
     "workspaceRoot": "корень рабочего пространства",
     "matches": "Совпадений: {{count}}",
-    "testsPassed": "Пройдено: {{count}}"
+    "testsPassed": "Пройдено: {{count}}",
+    "runningStatus": "Выполняется {{tool}}…",
+    "stillRunning": "{{tool}} всё ещё выполняется…"
   }
 }

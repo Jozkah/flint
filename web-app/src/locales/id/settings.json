@@ -139,6 +139,8 @@
     "showTokenSpeedDesc": "Tampilkan token/detik dan jumlah token sebaris di bawah pesan asisten. Saat mati, ikon ringkas menampilkan detailnya saat diklik.",
     "coloredUserBubble": "Gelembung pesan pengguna berwarna",
     "coloredUserBubbleDesc": "Pakai warna aksen sebagai latar pesan Anda. Saat mati, pesan menyerupai pesan asisten dengan teks biasa di latar netral.",
+    "renderUserMarkdown": "Tampilkan Markdown di pesan saya",
+    "renderUserMarkdownDesc": "Menampilkan teks tebal, daftar, judul, dan kode di pesan yang Anda kirim. Jika nonaktif, pesan tampil persis seperti yang diketik.",
     "renderHtmlArtifacts": "Render artefak HTML & SVG",
     "renderHtmlArtifactsDesc": "Tambahkan tab Pratinjau ke blok kode HTML dan SVG. HTML menjalankan halaman buatan model di frame sandbox yang menjalankan skripnya sendiri tetapi tidak dapat mengakses Flint, file Anda, atau jaringan; SVG dirender statis dengan skrip dimatikan. Mati secara default.",
     "composerRailButtons": "Tombol keluaran di kotak pesan Cowork",
@@ -414,7 +416,10 @@
     "proxyTimeoutDesc": "Waktu tunggu untuk respons dari model lokal dalam detik.",
     "defaultModel": "Model default",
     "defaultModelDesc": "Model lokal yang dimuat otomatis saat server dimulai.",
-    "defaultModelPlaceholder": "Pilih model lokal"
+    "defaultModelPlaceholder": "Pilih model lokal",
+    "noLocalModels": "Belum ada model lokal yang diimpor",
+    "usage5hAria": "Token per 5 jam",
+    "usageWeekAria": "Token per minggu"
   },
   "privacy": {
     "analytics": "Analitik",
@@ -508,7 +513,22 @@
     "support": "Dukungan",
     "reportAnIssue": "Laporkan Masalah",
     "reportAnIssueDesc": "Menemukan bug? Bantu kami dengan mengajukan masalah di GitHub.",
-    "reportIssue": "Laporkan Masalah"
+    "reportIssue": "Laporkan Masalah",
+    "advanced": "Lanjutan",
+    "migrateJan": {
+      "title": "Migrasi dari JAN",
+      "desc": "Bawa data dari instalasi JAN yang ada ke Flint — salin, gunakan ulang di tempat, pindahkan, atau mulai dari awal.",
+      "open": "Buka asisten migrasi"
+    },
+    "verify": "Verifikasi",
+    "cli": {
+      "installedDesc": "Terpasang di {{path}} — gunakan flint dari terminal untuk menyajikan model.",
+      "desc": "Gunakan flint dari terminal untuk menyajikan model tanpa membuka aplikasi.",
+      "install": "Pasang",
+      "installing": "Memasang…",
+      "uninstall": "Copot",
+      "uninstalling": "Mencopot…"
+    }
   },
   "extensions": {
     "title": "Ekstensi"
@@ -602,7 +622,9 @@
     "summaryMaxTokens": "Panjang ringkasan",
     "summaryDescription": "Ringkasan terpanjang, dalam token.",
     "projectOverride": "(Sebuah proyek menimpa ini.)",
-    "saveFailed": "Kebijakan pemadatan tidak dapat disimpan"
+    "saveFailed": "Kebijakan pemadatan tidak dapat disimpan",
+    "leanTools": "Alat ringkas pada model kecil",
+    "leanToolsDescription": "Dengan jendela konteks 32K token atau kurang, daftar plugin, pencarian gambar, dan alat widget tidak disertakan dalam obrolan, agar jendela memuat percakapan. Pencarian web, MCP, dan alat agen tetap ada."
   },
   "accent": {
     "title": "Warna aksen",
@@ -658,10 +680,10 @@
     "completionSoundApproval": "Hanya saat persetujuan diperlukan",
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Putar",
-    "increaseContrast": "Tingkatkan kontras",
-    "increaseContrastDesc": "Membuat teks lebih terang agar mudah dibaca. Lebih putih pada tema gelap, lebih gelap pada tema terang.",
     "reduceMotion": "Kurangi gerakan",
-    "reduceMotionDesc": "Matikan animasi di Flint. Flint tidak mengikuti pengaturan sistem, jadi gerakan tetap aktif kecuali Anda mengubahnya."
+    "reduceMotionDesc": "Matikan animasi di Flint. Flint tidak mengikuti pengaturan sistem, jadi gerakan tetap aktif kecuali Anda mengubahnya.",
+    "increaseContrast": "Tingkatkan kontras",
+    "increaseContrastDesc": "Membuat teks lebih terang agar mudah dibaca. Lebih putih pada tema gelap, lebih gelap pada tema terang."
   },
   "pageDesc": {
     "general": "Bahasa, folder data, log, dan opsi seluruh aplikasi.",
@@ -1122,7 +1144,26 @@
     "skipped": "Tidak dipulihkan: {{stores}}",
     "storeToolApproval": "persetujuan otomatis alat",
     "storeMcpTrust": "kepercayaan server MCP",
-    "storeProxy": "proksi jaringan"
+    "storeProxy": "proksi jaringan",
+    "title": "Cadangan dan sinkronisasi",
+    "exported": "Pengaturan diekspor",
+    "exportFailed": "Ekspor gagal",
+    "importFailed": "Impor gagal",
+    "importedRestarting": "Pengaturan diimpor, jendela dimulai ulang",
+    "exportTitle": "Ekspor pengaturan",
+    "exportDesc": "Simpan preferensi Anda ke berkas JSON. Untuk menyinkronkan antar mesin, simpan ke folder Google Drive atau Nextcloud lalu impor di mesin lain. Obrolan dan status per mesin tidak disertakan.",
+    "includeSecrets": "Sertakan penyedia dan kunci API",
+    "secretsWarning": "Berkas akan berisi kunci API Anda dalam teks biasa. Jaga kerahasiaannya dan jangan simpan di folder bersama.",
+    "exportButton": "Ekspor…",
+    "importTitle": "Impor pengaturan",
+    "importDesc": "Ganti preferensi Anda dengan berkas cadangan. Setelahnya jendela dimuat ulang.",
+    "chooseFile": "Pilih berkas…",
+    "pendingGroups": "Grup pengaturan dalam berkas: {{groups}}.",
+    "pendingKeys": "Penyedia dengan kunci API: {{keys}}.",
+    "pendingExported": "Diekspor pada {{date}}.",
+    "pendingOverwrite": "Ini akan menimpa nilai Anda saat ini.",
+    "apply": "Impor dan muat ulang",
+    "cancel": "Batal"
   },
   "startup": {
     "title": "Mulai bersama komputer",
@@ -1150,5 +1191,129 @@
     "showAll": "Tampilkan semua",
     "preview": "Pratinjau",
     "reachable": "Item tersembunyi tetap dapat dijangkau dari palet perintah dan dari Pengaturan."
+  },
+  "memoryPage": {
+    "useSaved": "Gunakan memori tersimpan dalam percakapan",
+    "useSavedDesc": "Jika dimatikan, Flint tidak menambahkan memori tersimpan ke permintaan apa pun. Memori Anda tetap tersimpan dan masih bisa dikelola di sini.",
+    "useFacts": "Gunakan fakta yang diingat dalam permintaan",
+    "useFactsDesc": "Mematikan satu cakupan menghentikan pengirimannya. Tidak ada yang dihapus; menyalakannya kembali akan memakainya lagi.",
+    "scope": {
+      "chat": {
+        "tab": "Percakapan ini",
+        "blurb": "Hanya diingat di dalam percakapan tempat memori ini disimpan.",
+        "recall": "Percakapan ini",
+        "recallAria": "Gunakan memori percakapan ini",
+        "newAria": "Memori baru untuk percakapan ini",
+        "forgetAll": "Lupakan semua di percakapan ini",
+        "clearBody": "Semua yang diingat untuk percakapan ini tidak lagi dipakai dan teksnya dihapus dari perangkat ini. Ini tidak bisa dibatalkan dalam satu langkah."
+      },
+      "project": {
+        "tab": "Proyek",
+        "blurb": "Tersedia untuk setiap percakapan di proyek yang Anda pilih di bawah, dan tidak untuk proyek lain.",
+        "recall": "Proyek ini",
+        "recallAria": "Gunakan memori proyek ini",
+        "newAria": "Memori baru untuk proyek ini",
+        "forgetAll": "Lupakan semua di proyek ini",
+        "clearBody": "Semua yang diingat untuk proyek ini tidak lagi dipakai dan teksnya dihapus dari perangkat ini. Ini tidak bisa dibatalkan dalam satu langkah."
+      },
+      "user": {
+        "tab": "Semua percakapan",
+        "blurb": "Tersedia di mana saja. Simpan untuk hal-hal yang berlaku secara umum.",
+        "recall": "Semua percakapan",
+        "recallAria": "Gunakan memori yang dibagikan di semua percakapan",
+        "newAria": "Memori baru untuk semua percakapan",
+        "forgetAll": "Lupakan semua yang dibagikan di semua percakapan",
+        "clearBody": "Semua yang diingat di seluruh percakapan tidak lagi dipakai dan teksnya dihapus dari perangkat ini. Ini tidak bisa dibatalkan dalam satu langkah."
+      }
+    },
+    "stored": {
+      "summary": "{{user}} lintas obrolan · {{project}} · {{size}}",
+      "projectIn": "{{count}} di {{name}}",
+      "chooseProject": "pilih proyek untuk menghitung memorinya"
+    },
+    "listTitle": "Apa yang diingat Flint",
+    "tabsAria": "Cakupan memori",
+    "recallOff": "Pemanggilan dimatikan untuk cakupan ini: memori tetap disimpan, tetapi tidak dikirim.",
+    "newPlaceholder": "Sesuatu yang harus diingat Flint",
+    "remember": "Ingat",
+    "export": "Ekspor",
+    "import": "Impor",
+    "importReport": {
+      "summary": "{{count}} diimpor dari ekspor",
+      "duplicates": "{{count}} sudah diingat",
+      "refused": "{{count}} ditolak"
+    },
+    "conversation": "Percakapan",
+    "conversationAria": "Percakapan yang memorinya ditampilkan",
+    "noConversations": "Belum ada percakapan",
+    "kindChat": "Obrolan · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "diganti {{when}}",
+    "projectFolder": "Folder proyek",
+    "projectFolderAria": "Proyek yang memorinya ditampilkan",
+    "noProjectFolders": "Tidak ada proyek yang terhubung ke sesi mana pun",
+    "chooseProject": "Pilih proyek",
+    "chooseProjectAbove": "Pilih proyek di atas untuk melihat dan mengelola memorinya.",
+    "searchAria": "Cari memori",
+    "searchPlaceholder": "Cari fakta yang diingat",
+    "noMatch": "Tidak ada yang cocok dengan pencarian itu.",
+    "empty": "Belum ada yang diingat di sini.",
+    "meta": {
+      "youSaved": "Anda menyimpan ini",
+      "inferred": "Disimpulkan",
+      "pinned": "disematkan",
+      "used_one": "dipakai {{count}} kali",
+      "used_other": "dipakai {{count}} kali",
+      "lastUsed": "terakhir dipakai {{when}}",
+      "never": "tidak pernah"
+    },
+    "pin": "Sematkan",
+    "unpin": "Lepas sematan",
+    "pinAria": "Sematkan memori",
+    "unpinAria": "Lepas sematan memori",
+    "editAria": "Edit memori",
+    "forget": "Lupakan",
+    "forgetAria": "Lupakan memori",
+    "showing": "Menampilkan {{from}}–{{to}} dari {{total}}",
+    "previous": "Sebelumnya",
+    "waitingTitle": "Menunggu Anda",
+    "waitingBody": "Belum ada yang dipakai di sini. Usulan yang belum dijawab tidak pernah ditambahkan ke prompt.",
+    "conflictsTitle": "Memori yang bertentangan",
+    "conflictsBody": "Keduanya tidak dipakai. Fakta yang diingat ini saling bertentangan, jadi Flint tidak menyertakan keduanya di setiap permintaan sampai Anda mempertahankan salah satu.",
+    "conflictAbout": "Tentang {{subject}}",
+    "keepThis": "Pertahankan yang ini",
+    "keepAria": "Pertahankan \"{{preview}}\" dan lupakan yang lain",
+    "editTitle": "Edit memori",
+    "editBody": "Ini dipakai dalam percakapan berikutnya pada cakupan tempatnya berada.",
+    "contentAria": "Isi memori",
+    "clearTitle": "Lupakan semua memori di sini?",
+    "clearConfirm": "Lupakan semua",
+    "toast": {
+      "kept": "Satu memori dipertahankan",
+      "settleFailed": "Tidak dapat menyelesaikan konflik itu",
+      "forgotten": "Memori dilupakan",
+      "forgetFailed": "Tidak dapat melupakan memori itu",
+      "changeFailed": "Tidak dapat mengubah memori itu",
+      "updated": "Memori diperbarui",
+      "updateFailed": "Tidak dapat memperbarui memori itu",
+      "settingsFailed": "Pengaturan memori tidak dapat disimpan",
+      "recallFailed": "Pemanggilan tidak dapat diubah",
+      "saved": "Memori disimpan",
+      "saveFailed": "Tidak dapat menyimpan memori itu",
+      "forgotCount_one": "{{count}} memori dilupakan",
+      "forgotCount_other": "{{count}} memori dilupakan",
+      "forgetManyFailed": "Tidak dapat melupakan memori itu",
+      "exportedCount_one": "{{count}} memori diekspor",
+      "exportedCount_other": "{{count}} memori diekspor",
+      "exportFailed": "Tidak dapat mengekspor memori",
+      "importedCount_one": "{{count}} memori diimpor",
+      "importedCount_other": "{{count}} memori diimpor",
+      "importFailed": "Tidak dapat mengimpor memori"
+    }
+  },
+  "chatMentions": {
+    "title": "Sebutan percakapan",
+    "readAny": "Izinkan asisten membaca percakapan apa pun",
+    "readAnyDesc": "Nonaktif secara bawaan. Biasanya asisten hanya membaca percakapan yang Anda sebut dengan @ atau #. Jika aktif, asisten dapat membuka obrolan, sesi, atau ruang apa pun di komputer ini lewat id. Yang dibacanya tetap di komputer ini dan ditandai sebagai data referensi."
   }
 }

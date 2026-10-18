@@ -56,7 +56,40 @@
     "chatFolderCount": "Carpetes: {{count}}",
     "newSubfolder": "Subcarpeta nova",
     "moveInto": "Mou a la carpeta",
-    "topLevel": "Nivell superior"
+    "topLevel": "Nivell superior",
+    "errors": {
+      "nameEmpty": "El nom del grup no pot ser buit",
+      "notFound": "No s'ha trobat el grup",
+      "tooDeep": "Els grups no es poden aniuar tan profundament",
+      "intoItself": "Un grup no es pot moure dins d'ell mateix"
+    },
+    "failed": {
+      "create": "No s'ha pogut crear el grup",
+      "rename": "No s'ha pogut canviar el nom del grup",
+      "moveFolder": "No s'ha pogut moure la carpeta",
+      "saveState": "No s'ha pogut desar l'estat del grup",
+      "reorder": "No s'han pogut reordenar els grups",
+      "moveItem": "No s'ha pogut moure l'element",
+      "delete": "No s'ha pogut eliminar el grup",
+      "saveFolders": "No s'han pogut desar les carpetes del grup",
+      "updateContext": "No s'ha pogut actualitzar el context de carpetes",
+      "update": "No s'han pogut actualitzar els grups",
+      "import": "No s'han pogut importar els grups",
+      "unreadable": "{{failure}}: no s'han pogut llegir els grups desats",
+      "restored": "{{failure}}. S'ha restaurat l'ordre anterior."
+    },
+    "announce": {
+      "created": "Grup {{name}} creat",
+      "collapsed": "{{name}} replegat",
+      "expanded": "{{name}} desplegat",
+      "reordered": "{{name}} mogut a la posició {{position}} de {{total}}",
+      "movedToPosition": "Mogut a {{name}}, posició {{position}}",
+      "movedToRecents": "Mogut a Recents",
+      "deleted": "Grup {{name}} eliminat. Els seus elements s'han mogut a Recents",
+      "ctxReplaced": "{{base}}. El context de carpetes s'ha substituït per les carpetes del grup; l'accés encara requereix aprovació",
+      "ctxMerged": "{{base}}. S'han afegit les carpetes del grup al context de carpetes; l'accés encara requereix aprovació",
+      "foldersAdded": "{{base}}. S'han afegit les carpetes de l'element al grup"
+    }
   },
   "htmlArtifact": {
     "code": "Codi",
@@ -281,7 +314,7 @@
     "searchThreads": "Cerca converses",
     "toggleSidebar": "Mostra o amaga la barra lateral",
     "openCowork": "Obre Cowork",
-    "openArtifacts": "Obre els artefactes",
+    "openArtifacts": "Obre Biblioteca",
     "openSystemMonitor": "Obre el monitor del sistema",
     "openLogs": "Obre els registres de l'aplicació",
     "section": {
@@ -1231,7 +1264,8 @@
     "sensitiveRefused": "{{name}} sembla contenir credencials o una clau, així que no s'ha obert",
     "binaryRefused": "{{name}} no és un fitxer de text, digui el que digui l'extensió",
     "chooseAgainAction": "Tria de nou",
-    "externalGone": "Aquest fitxer es va obrir des de fora del projecte i aquest accés no s'ha conservat. Tria'l de nou per reobrir-lo."
+    "externalGone": "Aquest fitxer es va obrir des de fora del projecte i aquest accés no s'ha conservat. Tria'l de nou per reobrir-lo.",
+    "oneFolderAtATime": "Només una carpeta alhora. «{{name}}» no s'ha afegit."
   },
   "settingsSearch": {
     "label": "Cerca a la configuració",
@@ -1425,7 +1459,14 @@
     "recommended": "Recomanat",
     "reset": "Restableix al valor global",
     "resetAll": "Restableix als valors globals per defecte",
-    "overridden": "Definit per a aquest xat"
+    "overridden": "Definit per a aquest xat",
+    "levels": {
+      "low": "Baix",
+      "medium": "Mitjà",
+      "high": "Alt",
+      "xhigh": "Molt alt",
+      "unlimited": "Il·limitat"
+    }
   },
   "modelOffline": {
     "badge": "Inabastable",
@@ -2558,6 +2599,7 @@
       "slots": "{{count}} ranures",
       "vision": "Visió",
       "audio": "Àudio",
+      "fixedPrompt": "S'envia amb cada sol·licitud: {{count}} tokens (indicació del sistema i esquemes d'eines).",
       "tokenUsage": "Ús de tokens",
       "tokenUsageSr": "Ús de tokens {{value}}"
     }
@@ -2589,6 +2631,19 @@
     "previewLoading": "Carregant la previsualització…",
     "previewNone": "No hi ha cap previsualització disponible"
   },
+  "fileViewer": {
+    "openFull": "Obre la vista prèvia completa",
+    "loadMore": "Carrega'n més",
+    "showingFirst": "Es mostren els primers {{loaded}} de {{total}}",
+    "lines_one": "{{count}} línia",
+    "lines_other": "{{count}} línies",
+    "wrap": "Ajusta les línies",
+    "copy": "Copia",
+    "copied": "Copiat",
+    "binary": "Sembla un fitxer binari, així que no hi ha vista prèvia de text.",
+    "expandLine": "Mostra la línia completa",
+    "collapseLine": "Escurça la línia"
+  },
   "dropAttachFailed": "No s'han pogut adjuntar els fitxers deixats anar",
   "sampler": {
     "label": "Paràmetres de mostreig",
@@ -2614,7 +2669,9 @@
     "paste": "Enganxa del porta-retalls",
     "pasteFailed": "No s'ha pogut llegir el porta-retalls",
     "clear": "Esborra",
-    "characters": "{{count}} caràcters",
+    "characters_one": "{{count}} caràcter",
+    "characters_many": "{{count}} de caràcters",
+    "characters_other": "{{count}} caràcters",
     "translating": "S'està traduint…",
     "retry": "Torna-ho a provar",
     "shortcut": "Tradueix (Ctrl/Cmd+Enter)",
@@ -2626,7 +2683,9 @@
     "errorNetwork": "No s'ha pogut contactar amb el proveïdor. Comprova la connexió o que el servidor estigui en marxa.",
     "errorEngine": "El motor que executa aquest model no està disponible. Reinicia Flint i torna-ho a provar.",
     "openProvider": "Obre la configuració del proveïdor",
-    "errorDetails": "Detalls"
+    "errorDetails": "Detalls",
+    "pasteHint": "L'accés al porta-retalls s'ha bloquejat. Fes clic al quadre de text i prem {{keys}}.",
+    "characters": "{{count}} caràcters"
   },
   "markdownImage": {
     "load": "Carrega la imatge de {{host}}"
@@ -2647,7 +2706,8 @@
     "editTitle": "Edita la consigna",
     "import": "Importa",
     "export": "Exporta",
-    "imported": "S'han afegit {{count}} consignes",
+    "imported_one": "S'ha afegit {{count}} consigna",
+    "imported_other": "S'han afegit {{count}} consignes",
     "search": "Cerca consignes",
     "empty": "Encara no hi ha consignes.",
     "edit": "Edita {{name}}",
@@ -2660,6 +2720,109 @@
     "body": "Text de la consigna",
     "bodyHint": "Escriu la consigna. Fes servir {{topic}} o {{tone:friendly}} per als buits.",
     "variables": "Demana: {{names}}",
-    "insert": "Insereix"
+    "defaultValue": "Per defecte: {{value}}",
+    "requiredField": "Obligatori",
+    "fillNeeded": "Omple {{names}} per inserir",
+    "insert": "Insereix",
+    "errors": {
+      "nameRequired": "Un prompt necessita un nom",
+      "nameTooLong": "Aquest nom és massa llarg",
+      "bodyRequired": "Un prompt necessita text",
+      "bodyTooLong": "Aquest prompt és massa llarg",
+      "gone": "Aquest prompt ja no existeix",
+      "invalidJson": "Aquest fitxer no és un JSON vàlid",
+      "noPrompts": "No s'ha trobat cap prompt en aquest fitxer"
+    },
+    "imported": "S'han afegit {{count}} consignes"
+  },
+  "memoryProposal": {
+    "title": "Vols recordar això?",
+    "wouldApply": "S'aplicaria a: {{where}}.",
+    "remember": "Recorda",
+    "discard": "Descarta",
+    "reviewBoth": "Revisa-les totes dues",
+    "saving": "Desant…",
+    "discarding": "Descartant…",
+    "scope": {
+      "session": "aquesta conversa",
+      "project": "aquest projecte",
+      "user": "a tot arreu"
+    }
+  },
+  "picker": {
+    "filter": "Filtra",
+    "source": "Origen",
+    "sourceAll": "Tots",
+    "sourceLocal": "Local",
+    "sourceCloud": "Núvol",
+    "capabilities": "Capacitats",
+    "cap": {
+      "vision": "Visió",
+      "tools": "Eines",
+      "reasoning": "Raonament",
+      "embeddings": "Incrustació"
+    },
+    "loadedNow": "Carregat ara",
+    "sort": "Ordena",
+    "sortDefault": "Ordre per defecte",
+    "sortName": "Nom (A–Z)",
+    "sortRecent": "Usats recentment",
+    "sortSize": "Mida",
+    "clearFilters": "Esborra els filtres",
+    "noMatch": "Cap model coincideix",
+    "noMatchFilters": "Cap model coincideix: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Xat",
+      "session": "Sessió",
+      "room": "Sala"
+    },
+    "heading": "Converses",
+    "empty": "No hi ha cap altra conversa",
+    "noMatch": "Cap conversa coincideix",
+    "messages": "Missatges: {{n}}",
+    "included": "Inclòs: {{title}} (missatges: {{n}}, ~{{size}} caràcters)",
+    "group": "Converses esmentades",
+    "summarize": "Resumeix",
+    "summarizeHint": "Inclou un resum en lloc dels darrers missatges",
+    "remove": "Treu la menció de {{title}}",
+    "mentioned": "Esmentat: {{title}}",
+    "open": "Obre {{title}}",
+    "status": {
+      "missing": "No s'ha trobat: {{title}}",
+      "self": "{{title}} és aquesta conversa, per això s'omet",
+      "over-cap": "{{title}} s'omet: com a màxim {{max}} converses per missatge"
+    },
+    "excerpt": "Extracte",
+    "summary": "Resum",
+    "modeGroup": "Què s’inclou de {{title}}",
+    "excerptHint": "Els missatges més recents, uns {{tokens}} tokens",
+    "summaryHint": "Un resum escrit pel model, com a màxim uns {{tokens}} tokens",
+    "needsModel": "Carrega un model per incloure-hi un resum",
+    "totals_one": "{{count}} missatge · ~{{tokens}} tokens inclosos",
+    "totals_many": "{{count}} de missatges · ~{{tokens}} tokens inclosos",
+    "totals_other": "{{count}} missatges · ~{{tokens}} tokens inclosos",
+    "readOnly": "S’envia com a context citat de només lectura. El model no pot canviar aquesta conversa.",
+    "tooLarge": "Supera una quarta part de la finestra de context del model.",
+    "useSummary": "Fes servir un resum",
+    "resolving": "Cercant {{title}}",
+    "chipStatus": {
+      "missing": "No trobada",
+      "self": "Aquesta conversa",
+      "over-cap": "Per sobre del límit"
+    },
+    "preview": {
+      "empty": "Encara no hi ha missatges",
+      "you": "Tu",
+      "assistant": "Assistent"
+    },
+    "messagesCount_one": "{{count}} missatge",
+    "messagesCount_many": "{{count}} de missatges",
+    "messagesCount_other": "{{count}} missatges"
+  },
+  "campaignList": {
+    "timeout": "L'aplicació no ha respost a temps.",
+    "unreadableRecord": "el backend ha enviat un registre que aquesta pàgina no pot llegir"
   }
 }

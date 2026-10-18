@@ -56,7 +56,40 @@
     "chatFolderCount": "Složky: {{count}}",
     "newSubfolder": "Nová podsložka",
     "moveInto": "Přesunout do složky",
-    "topLevel": "Nejvyšší úroveň"
+    "topLevel": "Nejvyšší úroveň",
+    "errors": {
+      "nameEmpty": "Název skupiny nesmí být prázdný",
+      "notFound": "Skupina nebyla nalezena",
+      "tooDeep": "Skupiny nelze vnořit takto hluboko",
+      "intoItself": "Skupinu nelze přesunout do sebe samé"
+    },
+    "failed": {
+      "create": "Skupinu se nepodařilo vytvořit",
+      "rename": "Skupinu se nepodařilo přejmenovat",
+      "moveFolder": "Složku se nepodařilo přesunout",
+      "saveState": "Stav skupiny se nepodařilo uložit",
+      "reorder": "Skupiny se nepodařilo přeřadit",
+      "moveItem": "Položku se nepodařilo přesunout",
+      "delete": "Skupinu se nepodařilo smazat",
+      "saveFolders": "Složky skupiny se nepodařilo uložit",
+      "updateContext": "Kontext složek se nepodařilo aktualizovat",
+      "update": "Skupiny se nepodařilo aktualizovat",
+      "import": "Skupiny se nepodařilo importovat",
+      "unreadable": "{{failure}}: uložené skupiny se nepodařilo načíst",
+      "restored": "{{failure}}. Předchozí pořadí bylo obnoveno."
+    },
+    "announce": {
+      "created": "Skupina {{name}} vytvořena",
+      "collapsed": "{{name}} sbaleno",
+      "expanded": "{{name}} rozbaleno",
+      "reordered": "{{name}} přesunuto na pozici {{position}} z {{total}}",
+      "movedToPosition": "Přesunuto do {{name}}, pozice {{position}}",
+      "movedToRecents": "Přesunuto do Nedávné",
+      "deleted": "Skupina {{name}} smazána. Její položky byly přesunuty do Nedávné",
+      "ctxReplaced": "{{base}}. Kontext složek byl nahrazen složkami skupiny; přístup stále vyžaduje schválení",
+      "ctxMerged": "{{base}}. Složky skupiny byly přidány do kontextu složek; přístup stále vyžaduje schválení",
+      "foldersAdded": "{{base}}. Složky položky byly přidány do skupiny"
+    }
   },
   "htmlArtifact": {
     "code": "Kód",
@@ -283,7 +316,7 @@
     "searchThreads": "Hledat konverzace",
     "toggleSidebar": "Přepnout postranní panel",
     "openCowork": "Otevřít Cowork",
-    "openArtifacts": "Otevřít artefakty",
+    "openArtifacts": "Otevřít Knihovna",
     "openSystemMonitor": "Otevřít monitor systému",
     "openLogs": "Otevřít protokoly aplikace",
     "section": {
@@ -1244,7 +1277,8 @@
     "sensitiveRefused": "{{name}} vypadá jako přihlašovací údaje nebo klíč, proto nebyl otevřen",
     "binaryRefused": "{{name}} není textový soubor, ať už jeho přípona říká cokoli",
     "chooseAgainAction": "Vybrat znovu",
-    "externalGone": "Tento soubor byl otevřen zvenčí projektu a tento přístup nepřetrval. Vyberte ho znovu, abyste ho otevřeli."
+    "externalGone": "Tento soubor byl otevřen zvenčí projektu a tento přístup nepřetrval. Vyberte ho znovu, abyste ho otevřeli.",
+    "oneFolderAtATime": "Najednou lze přidat jen jednu složku. „{{name}}“ nebyla přidána."
   },
   "settingsSearch": {
     "label": "Hledat v nastavení",
@@ -1449,7 +1483,14 @@
     "recommended": "Doporučeno",
     "reset": "Obnovit globální hodnotu",
     "resetAll": "Obnovit globální výchozí hodnoty",
-    "overridden": "Nastaveno pro tento chat"
+    "overridden": "Nastaveno pro tento chat",
+    "levels": {
+      "low": "Nízká",
+      "medium": "Střední",
+      "high": "Vysoká",
+      "xhigh": "Velmi vysoká",
+      "unlimited": "Neomezená"
+    }
   },
   "modelOffline": {
     "badge": "Nedostupný",
@@ -2606,6 +2647,7 @@
       "slots": "{{count}} slotů",
       "vision": "Vidění",
       "audio": "Zvuk",
+      "fixedPrompt": "Odesíláno s každým požadavkem: {{count}} tokenů (systémový prompt a schémata nástrojů).",
       "tokenUsage": "Využití tokenů",
       "tokenUsageSr": "Využití tokenů {{value}}"
     }
@@ -2637,6 +2679,21 @@
     "previewLoading": "Načítání náhledu…",
     "previewNone": "Náhled není k dispozici"
   },
+  "fileViewer": {
+    "openFull": "Otevřít celý náhled",
+    "loadMore": "Načíst další",
+    "showingFirst": "Zobrazeno prvních {{loaded}} z {{total}}",
+    "lines_one": "{{count}} řádek",
+    "lines_few": "{{count}} řádky",
+    "lines_many": "{{count}} řádku",
+    "lines_other": "{{count}} řádků",
+    "wrap": "Zalamovat řádky",
+    "copy": "Kopírovat",
+    "copied": "Zkopírováno",
+    "binary": "Vypadá to na binární soubor, proto není k dispozici textový náhled.",
+    "expandLine": "Zobrazit celý řádek",
+    "collapseLine": "Zkrátit řádek"
+  },
   "dropAttachFailed": "Přetažené soubory se nepodařilo připojit",
   "sampler": {
     "label": "Parametry vzorkování",
@@ -2662,7 +2719,10 @@
     "paste": "Vložit ze schránky",
     "pasteFailed": "Schránku se nepodařilo přečíst",
     "clear": "Vymazat",
-    "characters": "Znaků: {{count}}",
+    "characters_one": "{{count}} znak",
+    "characters_few": "{{count}} znaky",
+    "characters_many": "{{count}} znaku",
+    "characters_other": "{{count}} znaků",
     "translating": "Překládám…",
     "retry": "Zkusit znovu",
     "shortcut": "Přeložit (Ctrl/Cmd+Enter)",
@@ -2674,7 +2734,9 @@
     "errorNetwork": "K poskytovateli se nepodařilo připojit. Zkontrolujte připojení nebo zda server běží.",
     "errorEngine": "Engine, který tento model spouští, není k dispozici. Restartujte Flint a zkuste to znovu.",
     "openProvider": "Otevřít nastavení poskytovatele",
-    "errorDetails": "Podrobnosti"
+    "errorDetails": "Podrobnosti",
+    "pasteHint": "Přístup ke schránce byl zablokován. Klikněte do textového pole a stiskněte {{keys}}.",
+    "characters": "Znaků: {{count}}"
   },
   "markdownImage": {
     "load": "Načíst obrázek z {{host}}"
@@ -2695,7 +2757,10 @@
     "editTitle": "Upravit prompt",
     "import": "Importovat",
     "export": "Exportovat",
-    "imported": "Přidáno promptů: {{count}}",
+    "imported_one": "Přidán {{count}} prompt",
+    "imported_few": "Přidány {{count}} prompty",
+    "imported_many": "Přidáno {{count}} promptu",
+    "imported_other": "Přidáno promptů: {{count}}",
     "search": "Hledat prompty",
     "empty": "Zatím žádné prompty.",
     "edit": "Upravit {{name}}",
@@ -2708,6 +2773,111 @@
     "body": "Text promptu",
     "bodyHint": "Napište prompt. Pro prázdná místa použijte {{topic}} nebo {{tone:friendly}}.",
     "variables": "Ptá se na: {{names}}",
-    "insert": "Vložit"
+    "defaultValue": "Výchozí: {{value}}",
+    "requiredField": "Povinné",
+    "fillNeeded": "Pro vložení vyplňte: {{names}}",
+    "insert": "Vložit",
+    "errors": {
+      "nameRequired": "Prompt potřebuje název",
+      "nameTooLong": "Tento název je příliš dlouhý",
+      "bodyRequired": "Prompt potřebuje nějaký text",
+      "bodyTooLong": "Tento prompt je příliš dlouhý",
+      "gone": "Tento prompt už neexistuje",
+      "invalidJson": "Tento soubor není platný JSON",
+      "noPrompts": "V tomto souboru nebyly nalezeny žádné prompty"
+    },
+    "imported": "Přidáno promptů: {{count}}"
+  },
+  "memoryProposal": {
+    "title": "Zapamatovat si to?",
+    "wouldApply": "Platilo by pro: {{where}}.",
+    "remember": "Zapamatovat",
+    "discard": "Zahodit",
+    "reviewBoth": "Zkontrolovat obě",
+    "saving": "Ukládání…",
+    "discarding": "Zahazování…",
+    "scope": {
+      "session": "tato konverzace",
+      "project": "tento projekt",
+      "user": "všude"
+    }
+  },
+  "picker": {
+    "filter": "Filtr",
+    "source": "Zdroj",
+    "sourceAll": "Vše",
+    "sourceLocal": "Místní",
+    "sourceCloud": "Cloud",
+    "capabilities": "Schopnosti",
+    "cap": {
+      "vision": "Vidění",
+      "tools": "Nástroje",
+      "reasoning": "Uvažování",
+      "embeddings": "Embedding"
+    },
+    "loadedNow": "Právě načteno",
+    "sort": "Řazení",
+    "sortDefault": "Výchozí pořadí",
+    "sortName": "Název (A–Z)",
+    "sortRecent": "Nedávno použité",
+    "sortSize": "Velikost",
+    "clearFilters": "Zrušit filtry",
+    "noMatch": "Žádný model neodpovídá",
+    "noMatchFilters": "Žádný model neodpovídá: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Relace",
+      "room": "Místnost"
+    },
+    "heading": "Konverzace",
+    "empty": "Žádné další konverzace",
+    "noMatch": "Žádná konverzace neodpovídá",
+    "messages": "Zprávy: {{n}}",
+    "included": "Zahrnuto: {{title}} (zprávy: {{n}}, ~{{size}} znaků)",
+    "group": "Zmíněné konverzace",
+    "summarize": "Shrnout",
+    "summarizeHint": "Zahrnout shrnutí místo posledních zpráv",
+    "remove": "Odebrat zmínku o {{title}}",
+    "mentioned": "Zmíněno: {{title}}",
+    "open": "Otevřít {{title}}",
+    "status": {
+      "missing": "Nenalezeno: {{title}}",
+      "self": "{{title}} je tato konverzace, a proto se vynechá",
+      "over-cap": "{{title}} se vynechá: nejvýše {{max}} konverzací na zprávu"
+    },
+    "excerpt": "Výňatek",
+    "summary": "Shrnutí",
+    "modeGroup": "Co zahrnout z {{title}}",
+    "excerptHint": "Nejnovější zprávy, asi {{tokens}} tokenů",
+    "summaryHint": "Shrnutí napsané modelem, nejvýš asi {{tokens}} tokenů",
+    "needsModel": "Načtěte model, chcete-li místo toho zahrnout shrnutí",
+    "totals_one": "{{count}} zpráva · zahrnuto ~{{tokens}} tokenů",
+    "totals_few": "{{count}} zprávy · zahrnuto ~{{tokens}} tokenů",
+    "totals_many": "{{count}} zprávy · zahrnuto ~{{tokens}} tokenů",
+    "totals_other": "{{count}} zpráv · zahrnuto ~{{tokens}} tokenů",
+    "readOnly": "Odesílá se jako citovaný kontext jen pro čtení. Model tuto konverzaci nemůže změnit.",
+    "tooLarge": "To je víc než čtvrtina kontextového okna modelu.",
+    "useSummary": "Použít shrnutí",
+    "resolving": "Vyhledávání {{title}}",
+    "chipStatus": {
+      "missing": "Nenalezeno",
+      "self": "Tato konverzace",
+      "over-cap": "Nad limitem"
+    },
+    "preview": {
+      "empty": "Zatím žádné zprávy",
+      "you": "Vy",
+      "assistant": "Asistent"
+    },
+    "messagesCount_one": "{{count}} zpráva",
+    "messagesCount_few": "{{count}} zprávy",
+    "messagesCount_many": "{{count}} zprávy",
+    "messagesCount_other": "{{count}} zpráv"
+  },
+  "campaignList": {
+    "timeout": "Aplikace neodpověděla včas.",
+    "unreadableRecord": "backend poslal záznam, který tato stránka neumí přečíst"
   }
 }

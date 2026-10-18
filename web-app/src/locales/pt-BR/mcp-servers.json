@@ -9,7 +9,9 @@
       "title": "Flint completa tarefas no seu navegador",
       "description": "Instale a extensão para dar ao Flint acesso ao navegador",
       "getExtension": "Obter Extensão"
-    }
+    },
+    "requires": "Requer que a extensão do navegador esteja instalada no seu navegador baseado em Chrome.",
+    "install": "Instalar extensão →"
   },
   "serverName": "Nome do Servidor",
   "enterServerName": "Digite o nome do servidor",

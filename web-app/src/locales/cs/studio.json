@@ -1,0 +1,228 @@
+{
+  "page": {
+    "title": "Studio",
+    "descriptionLocal": "Vytvářejte obrázky a video lokálně na tomto počítači. Nic neopustí vaše zařízení.",
+    "descriptionHosted": "Vytvářejte obrázky pomocí hostovaného modelu. Váš prompt se odešle jeho poskytovateli.",
+    "whatToMake": "Co vytvořit",
+    "images": "Obrázky",
+    "video": "Video",
+    "dismiss": "Zavřít",
+    "loading": "Načítání…"
+  },
+  "elapsed": {
+    "slow": "trvá to déle než obvykle"
+  },
+  "builds": {
+    "anyGpu": "Jakákoli grafická karta",
+    "noGpu": "Bez grafické karty",
+    "nvidia": "NVIDIA (rychlejší)",
+    "note": {
+      "linux-vulkan-x64": "Asi 38 MB. NVIDIA, AMD nebo Intel s ovladačem Vulkan.",
+      "linux-cpu-x64": "Asi 25 MB. Velmi pomalé.",
+      "win-vulkan-x64": "Asi 30 MB. Funguje s NVIDIA, AMD i Intel.",
+      "win-cuda12-x64": "Asi 900 MB. Vyžaduje aktuální ovladač NVIDIA.",
+      "win-cpu-x64": "Asi 17 MB. Velmi pomalé."
+    }
+  },
+  "picker": {
+    "engine": "Engine",
+    "searchPlaceholder": "Hledat modely...",
+    "searchAria": "Hledat modely",
+    "clear": "Vymazat",
+    "noMatch": "Žádný model neodpovídá.",
+    "local": "V tomto počítači",
+    "leaves": "prompt opouští tento počítač",
+    "findMore": "Najít další modely obrázků v Objevování",
+    "manageHosted": "Spravovat hostované poskytovatele",
+    "addKey": "Přidejte klíč API pro použití hostovaných modelů"
+  },
+  "setup": {
+    "unavailableTitle": "Na tomto systému zatím není k dispozici",
+    "unavailableBody": "Lokální generování obrázků a videa vyžaduje Windows x64 nebo Linux x64.",
+    "title": "Nastavení obrazového enginu",
+    "body": "Flint vytváří obrázky a video na tomto počítači pomocí stable-diffusion.cpp. Engine se stáhne jednou, ověří se podle zveřejněného kontrolního součtu a běží jen při generování.",
+    "downloading": "Stahování… {{percent}} %",
+    "unpacking": "Rozbalování…",
+    "checking": "Kontrola, zda se spustí…",
+    "installing": "Instalace…",
+    "install": "Stáhnout a nainstalovat"
+  },
+  "size": {
+    "width": "Šířka v pixelech",
+    "height": "Výška v pixelech",
+    "swap": "Prohodit šířku a výšku",
+    "hintVideo": "Násobky 16, nejvýše {{max}} px. Velké klipy potřebují hodně paměti.",
+    "hintImage": "Násobky 16, nejvýše {{max}} px. Velké obrázky potřebují více paměti a času."
+  },
+  "activity": {
+    "done": "Hotovo",
+    "failed": "Selhalo",
+    "stopped": "Zastaveno",
+    "title": "Nedávná aktivita",
+    "clearTitle": "Vyprázdní tento seznam. Vaše obrázky zůstanou v části Vaše výtvory.",
+    "clearAll": "Vymazat vše",
+    "empty": "Zatím nic. To, co vytvoříte, se zobrazí tady.",
+    "making": "Vytváří se",
+    "open": "Otevřít"
+  },
+  "video": {
+    "steps_one": "{{count}} krok",
+    "steps_few": "{{count}} kroky",
+    "steps_many": "{{count}} kroku",
+    "steps_other": "{{count}} kroků",
+    "frames_one": "{{count}} snímek",
+    "frames_few": "{{count}} snímky",
+    "frames_many": "{{count}} snímku",
+    "frames_other": "{{count}} snímků",
+    "seed": "seed {{seed}}",
+    "avoid": "Vynechat: {{prompt}}",
+    "copyPrompt": "Kopírovat prompt"
+  },
+  "actions": {
+    "promptCopied": "Prompt zkopírován",
+    "archive": "Přesunout do archivu",
+    "delete": "Smazat"
+  },
+  "time": {
+    "fewSeconds": "před několika sekundami"
+  },
+  "model": {
+    "title": "Model",
+    "manage": "Spravovat",
+    "textToVideo": "Text na video",
+    "textToImage": "Text na obrázek",
+    "hostedBy": "Hostuje {{provider}}",
+    "loaded": "Načteno",
+    "ready": "Připraveno",
+    "notDownloaded": "Nestaženo",
+    "hostedNote": "Váš prompt se odešle poskytovateli {{provider}}, použije váš klíč API z části Poskytovatelé a účtuje ho on.",
+    "localNote_one": "Běží na tomto počítači. Začíná na {{width}} × {{height}}, {{count}} krok.",
+    "localNote_few": "Běží na tomto počítači. Začíná na {{width}} × {{height}}, {{count}} kroky.",
+    "localNote_many": "Běží na tomto počítači. Začíná na {{width}} × {{height}}, {{count}} kroku.",
+    "localNote_other": "Běží na tomto počítači. Začíná na {{width}} × {{height}}, {{count}} kroků.",
+    "unload": "Uvolnit",
+    "loading": "Načítání…",
+    "load": "Načíst",
+    "installFirst": "Pro použití tohoto modelu nainstalujte výše obrazový engine.",
+    "removeTitle": "Odebere ho z tohoto seznamu. Stažené soubory zůstanou na disku.",
+    "remove": "Odebrat ze Studia"
+  },
+  "download": {
+    "starting": "Spouštění…",
+    "startingSize": "Spouštění… ke stažení {{size}}",
+    "progress": "{{bytes}} z {{total}}",
+    "downloading": "Stahování…",
+    "button": "Stáhnout ({{size}})"
+  },
+  "duration": {
+    "s": "{{count}} s",
+    "min": "{{count}} min",
+    "minS": "{{minutes}} min {{seconds}} s"
+  },
+  "phase": {
+    "queued": "Čekání",
+    "encoding": "Čtení promptu",
+    "sampling": "Kreslení",
+    "decoding": "Dokončování",
+    "saving": "Ukládání",
+    "working": "Pracuje se"
+  },
+  "settings": {
+    "title": "Nastavení generování",
+    "reset": "Obnovit",
+    "shape": "Tvar",
+    "aspectRatio": "Poměr stran",
+    "customTitle": "Zadejte vlastní šířku a výšku",
+    "custom": "Vlastní",
+    "imageCount": "Počet obrázků",
+    "length": "Délka",
+    "seed": "Seed",
+    "random": "Náhodný",
+    "randomSeed": "Vybrat náhodný seed",
+    "guess": "Asi {{duration}} podle vašeho posledního klipu.",
+    "advanced": "Pokročilé",
+    "loras": "Adaptéry LoRA",
+    "importLora": "Importovat .safetensors",
+    "loraHint": "Používejte adaptéry vytvořené pro vybranou rodinu lokálních modelů.",
+    "useLora": "Použít {{name}}",
+    "loraStrength": "Síla: {{name}}",
+    "negative": "Negativní prompt",
+    "negativeAria": "Negativní prompt",
+    "negativePlaceholder": "Rozmazané, nízká kvalita, navíc prsty, text, vodoznak…",
+    "avoidAria": "Čemu se vyhnout",
+    "memoryWarning": "Tento počítač má asi {{gb}} GB paměti. Generování videa jí potřebuje hodně a na takovém stroji může jeden klip trvat hodiny, protože dojde paměť a data se odkládají na disk.",
+    "accept": "Rozumím a chci pokračovat.",
+    "loraImported": "{{name}} naimportováno"
+  },
+  "prompt": {
+    "title": "Prompt",
+    "guide": "Průvodce prompty",
+    "guideDesc": "Krátké návyky, které dávají lepší obrázky.",
+    "g1": {
+      "title": "Řekněte, co na obrázku je",
+      "body": "Začněte předmětem, pak kde je a co dělá."
+    },
+    "g2": {
+      "title": "Pojmenujte styl",
+      "body": "Olejomalba, fotografie, plochá ilustrace, 3D render: styl mění všechno."
+    },
+    "g3": {
+      "title": "Přidejte světlo a náladu",
+      "body": "Měkké ranní světlo, neon v noci, zataženo: světlo udává atmosféru."
+    },
+    "g4": {
+      "title": "Držte se jedné myšlenky",
+      "body": "Krátký, jasný prompt je lepší než dlouhý výčet. Detaily přidávejte postupně."
+    },
+    "g5": {
+      "title": "Co nechcete, uveďte jako Vynechat",
+      "body": "V části Pokročilé vypisuje negativní prompt věci, které se mají vynechat."
+    },
+    "placeholderVideo": "Kočka kráčející deštivou uličkou, filmově",
+    "placeholderImage": "Maják na útesu při východu slunce, olejomalba",
+    "enhanceTitle": "Přidá pár slov o detailech a světle",
+    "enhance": "Vylepšit",
+    "example": {
+      "image": {
+        "0": "Maják na útesu při východu slunce, olejomalba",
+        "1": "Liška v zasněženém lese, měkké světlo",
+        "2": "Izometrické město v noci, neon"
+      },
+      "video": {
+        "0": "Kočka kráčející deštivou uličkou, filmově",
+        "1": "Vlny narážející na černou pláž",
+        "2": "Pára stoupající z šálku kávy"
+      }
+    },
+    "clear": "Vymazat prompt",
+    "copy": "Kopírovat prompt",
+    "emptyImage": "Váš první obrázek začíná tady",
+    "emptyVideo": "Vaše první video začíná tady",
+    "emptyDesc": "Popište ho nahoře, nebo vyzkoušejte některý z příkladů.",
+    "save": "Uložit",
+    "openLarge": "Otevřít velké",
+    "remix": "Remix: stejný prompt, nový seed",
+    "remixShort": "Remix",
+    "stop": "Zastavit",
+    "generateVideo": "Vygenerovat video",
+    "generateImage": "Vygenerovat obrázek",
+    "loadFirst": "Nejdřív načtěte model",
+    "writeFirst": "Nejdřív napište prompt.",
+    "notSetUp": "{{provider}} není nastaven v části Poskytovatelé.",
+    "imageReady": "Obrázek je hotový",
+    "videoReady": "Video je hotové",
+    "waitingFor": "Čekání na {{provider}}…",
+    "eta": "zbývá asi {{eta}}"
+  },
+  "gens": {
+    "title": "Vaše výtvory",
+    "archive": "Archivovat",
+    "done": "Hotovo",
+    "select": "Vybrat",
+    "grid": "Mřížka",
+    "list": "Seznam",
+    "filter": "Filtr",
+    "all": "Vše",
+    "empty": "Zatím tu nic není. To, co vytvoříte, se zobrazí tady."
+  }
+}

@@ -154,7 +154,45 @@
     "sections": "Settings section",
     "tabGeneral": "General",
     "tabDiscussion": "Discussion",
-    "tabLimits": "Limits"
+    "tabLimits": "Limits",
+    "compareRun": "Run models",
+    "compareRunHint": "One at a time is slower, but loads one local model at a time and spares rate limits.",
+    "compareRunOption": {
+      "together": "All at once",
+      "one-by-one": "One at a time"
+    },
+    "compareRunSuggest": "Two or more local models are selected: running them one at a time keeps them from competing for memory.",
+    "tools": {
+      "heading": "Tools",
+      "summary": "{{on}} of {{total}} on · ~{{tokens}} tokens",
+      "loading": "Loading tools…",
+      "empty": "No tools are available with this access.",
+      "group": {
+        "files": "Files and commands",
+        "web": "Web",
+        "mcp": "MCP servers",
+        "other": "Other"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Tool definitions use about {{pct}}% of this model's context window.",
+      "warn": "Tool definitions use about {{pct}}% of this model's context window (over {{limit}}%). Switch some off to leave room for the discussion.",
+      "windowUnknown": "This model's context window is not known, so the share cannot be shown.",
+      "notStarted": "not started",
+      "toolsUnknown": "tools unknown until it starts"
+    },
+    "budget": {
+      "heading": "Tool budget per turn",
+      "hint": "Caps for each participant turn that uses tools. Leave a field empty for the default.",
+      "maxToolCalls": "Max tool calls",
+      "maxSteps": "Max steps",
+      "toolTimeoutSec": "Tool timeout (seconds)",
+      "default": "Default: {{value}}"
+    },
+    "isolation": {
+      "active": "Each participant that can edit works in its own isolated workspace, so they cannot overwrite each other or your folder.",
+      "unavailable": "Isolated workspace unavailable: {{reason}}. Participants that can edit only read in this room.",
+      "untrusted": "the folder is not trusted"
+    }
   },
   "limits": {
     "maxRounds": "Rounds",
@@ -228,7 +266,19 @@
     "toolFailed": "failed",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} tokens",
-    "speedTitle": "Tokens written in this reply, and how fast"
+    "speedTitle": "Tokens written in this reply, and how fast",
+    "budgetHit": {
+      "tool-calls": "This turn reached its tool call budget.",
+      "steps": "This turn reached its step budget.",
+      "timeout": "A tool call in this turn ran past the tool timeout and was stopped."
+    },
+    "rawToolCall": "This looks like a tool call written as text. It was not run.",
+    "emptyReply": {
+      "length": "The model used its whole reply limit ({{count}} tokens) without writing an answer. Raise the reply limit in the room settings, or turn this participant's reasoning off, then run again.",
+      "tools": "Used tools, but wrote no text reply.",
+      "none": "No text reply."
+    },
+    "thought": "Thinking"
   },
   "unknownWindow": {
     "title": "Context window unknown",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Each participant states where they stand",
     "synthesizeHint": "Summary of the outcome, with dissent",
     "cancelTurnHint": "Stop only the reply in progress",
-    "steerLocked": "These unlock once the discussion is running."
+    "steerLocked": "These unlock once the discussion is running.",
+    "answering": "Answering",
+    "models": "Models"
   },
   "stage": {
     "speaking": "{{name}} is speaking",
@@ -390,5 +442,69 @@
     "panes": "Room view",
     "talk": "Discussion",
     "controls": "Controls"
+  },
+  "compare": {
+    "title": "Compare runs",
+    "modeTogether": "All at once",
+    "modeOneByOne": "One at a time",
+    "include": "Include in next run",
+    "includeFor": "Include {{name}} in the next run",
+    "run": "Run",
+    "runAgain": "Run again",
+    "runFor": "Run {{name}} on the current question",
+    "runAgainFor": "Run {{name}} again on the current question",
+    "runAll": "Run all",
+    "answerEarlier": "Answer the earlier questions",
+    "answerEarlierHint": "Every model that missed an earlier question answers it now, in order, as if it had been there.",
+    "export": "Export comparison",
+    "saveMarkdown": "Save as Markdown…",
+    "copyMarkdown": "Copy as Markdown",
+    "copyJson": "Copy as JSON",
+    "saved": "Comparison saved.",
+    "copied": "Copied to the clipboard.",
+    "copyFailed": "Could not copy to the clipboard.",
+    "notAnswered": "Has not answered this question.",
+    "state": {
+      "off": "Left out of the next run",
+      "unavailable": "Unavailable",
+      "running": "Answering…",
+      "queued": "Queued",
+      "done": "Answered",
+      "failed": "Failed",
+      "idle": "Not answered yet"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} file changed",
+    "summaryMany": "{{count}} files changed",
+    "workspace": "Isolated workspace: {{path}}",
+    "binary": "Binary file",
+    "noExcerpt": "No excerpt.",
+    "openDiff": "Open diff",
+    "keep": "Keep",
+    "discard": "Discard changes",
+    "apply": "Apply to my folder",
+    "state": {
+      "kept": "Kept",
+      "discarded": "Discarded",
+      "applied": "Applied"
+    },
+    "diffTitle": "Changes in the workspace",
+    "diffHint": "Everything this participant changed in its isolated workspace.",
+    "applyTitle": "Apply to your folder?",
+    "applyHint": "This patch will be written into your folder. Nothing is applied if it does not apply cleanly.",
+    "discardTitle": "Discard these changes?",
+    "discardHint": "The participant's workspace goes back to how it started. Your folder is not touched.",
+    "loading": "Loading the diff…",
+    "empty": "Nothing to apply.",
+    "applyConfirm": "Apply",
+    "discardConfirm": "Discard",
+    "scopeTurn": "This turn",
+    "scopeAll": "Since the workspace was made"
+  },
+  "approvals": {
+    "held": "Room paused",
+    "heldHint": "The room was paused while this was waiting, so it can no longer be allowed. Resume the room and the participant will ask again if it still needs it.",
+    "dismiss": "Dismiss"
   }
 }

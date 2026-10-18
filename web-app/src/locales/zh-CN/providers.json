@@ -1,7 +1,7 @@
 {
   "limitedSupport": "此提供商可能未被完全支持。功能（tools、vision、audio）不会自动检测——请手动添加模型并逐个配置其功能。",
   "mlxExperimental": "MLX 支持尚处于实验阶段。Embeddings 不可用，reasoning 开关尚未接入，部分较新的模型架构可能无法加载。请在 GitHub 上报告问题，以便我们优先处理。",
-  "engineBundled": "推理引擎已内置于 Jan 中，无需单独下载或更新。报告模型加载失败时请附上此版本号。",
+  "engineBundled": "推理引擎已内置于 Flint 中，无需单独下载或更新。报告模型加载失败时请附上此版本号。",
   "engineOtherVersion": "需要其他版本的 llama.cpp？运行你自己的 llama-server，并将其添加为自定义的 OpenAI 兼容提供商。",
   "engineReleaseNotes": "发行说明",
   "engineBuild": "Build",
@@ -36,7 +36,7 @@
   "refresh": "刷新",
   "import": "导入",
   "imported": "已导入",
-  "importedTooltip": "从本地文件导入。从 Jan 中移除不会删除磁盘上的文件。",
+  "importedTooltip": "从本地文件导入。从 Flint 中移除不会删除磁盘上的文件。",
   "importModelSuccess": "模型 {{provider}} 已成功导入。",
   "importModelError": "导入模型失败：",
 
@@ -89,8 +89,8 @@
   "deleteModel": {
     "title": "删除模型：{{modelId}}",
     "description": "您确定要删除此模型吗？此操作无法撤销。",
-    "importedDescription": "从 Jan 中移除此导入的模型？磁盘上的本地文件不会被删除。",
-    "removeFromJan": "从 Jan 中移除",
+    "importedDescription": "从 Flint 中移除此导入的模型？磁盘上的本地文件不会被删除。",
+    "removeFromJan": "从 Flint 中移除",
     "success": "模型 {{modelId}} 已被永久删除。",
     "cancel": "取消",
     "delete": "删除"
@@ -106,7 +106,7 @@
     "sizeLabel": "将释放的磁盘空间：",
     "calculating": "正在计算…",
     "warning": "此操作无法撤销。",
-    "importedExcluded": "{{count}} 个导入的模型将被保留（其文件并非由 Jan 下载）。",
+    "importedExcluded": "{{count}} 个导入的模型将被保留（其文件并非由 Flint 下载）。",
     "confirm": "删除 {{count}} 个模型",
     "deleting": "正在删除…",
     "success": "已删除 {{count}} 个模型。",
@@ -129,6 +129,7 @@
     "cachedInputCost": "缓存输入费用（每 100 万 token 的美元数）",
     "cacheWriteCost": "缓存写入费用（每 100 万 token 的美元数）",
     "costHelp": "留空则对知名模型使用内置价格；本地模型免费。缓存输入或缓存写入价格留空时，按输入价格计费。",
+    "costInvalid": "价格必须是不小于 0 的数字。清空此字段即可使用内置价格。",
     "displayName": "显示名称",
     "displayNamePlaceholder": "输入显示名称",
     "displayNameHelp": "显示在列出此模型的任何位置。请求仍使用原始标识符 {{modelId}}。",
@@ -164,7 +165,7 @@
   },
   "apiKeys": {
     "title": "API 密钥",
-    "description": "输入你的 API 密钥。你可以在高级设置中添加备用密钥，如果某个密钥失效，Jan 会自动尝试下一个。",
+    "description": "输入你的 API 密钥。你可以在高级设置中添加备用密钥，如果某个密钥失效，Flint 会自动尝试下一个。",
     "placeholder": "sk-…\nsk-…",
     "primaryPlaceholder": "输入主 API 密钥",
     "keyPlaceholder": "输入 API 密钥",

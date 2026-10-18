@@ -56,7 +56,40 @@
     "chatFolderCount": "Folder: {{count}}",
     "newSubfolder": "Subfolder baru",
     "moveInto": "Pindahkan ke folder",
-    "topLevel": "Tingkat teratas"
+    "topLevel": "Tingkat teratas",
+    "errors": {
+      "nameEmpty": "Nama grup tidak boleh kosong",
+      "notFound": "Grup tidak ditemukan",
+      "tooDeep": "Grup tidak dapat disarangkan sedalam itu",
+      "intoItself": "Grup tidak dapat dipindahkan ke dalam dirinya sendiri"
+    },
+    "failed": {
+      "create": "Tidak dapat membuat grup",
+      "rename": "Tidak dapat mengganti nama grup",
+      "moveFolder": "Tidak dapat memindahkan folder",
+      "saveState": "Tidak dapat menyimpan status grup",
+      "reorder": "Tidak dapat mengurutkan ulang grup",
+      "moveItem": "Tidak dapat memindahkan item",
+      "delete": "Tidak dapat menghapus grup",
+      "saveFolders": "Tidak dapat menyimpan folder grup",
+      "updateContext": "Tidak dapat memperbarui konteks folder",
+      "update": "Tidak dapat memperbarui grup",
+      "import": "Tidak dapat mengimpor grup",
+      "unreadable": "{{failure}}: grup yang tersimpan tidak dapat dibaca",
+      "restored": "{{failure}}. Urutan sebelumnya telah dipulihkan."
+    },
+    "announce": {
+      "created": "Grup {{name}} dibuat",
+      "collapsed": "{{name}} diciutkan",
+      "expanded": "{{name}} diperluas",
+      "reordered": "{{name}} dipindahkan ke posisi {{position}} dari {{total}}",
+      "movedToPosition": "Dipindahkan ke {{name}}, posisi {{position}}",
+      "movedToRecents": "Dipindahkan ke Terbaru",
+      "deleted": "Grup {{name}} dihapus. Itemnya dipindahkan ke Terbaru",
+      "ctxReplaced": "{{base}}. Konteks folder diganti dengan folder grup; akses tetap perlu disetujui",
+      "ctxMerged": "{{base}}. Folder grup ditambahkan ke konteks folder; akses tetap perlu disetujui",
+      "foldersAdded": "{{base}}. Folder item ditambahkan ke grup"
+    }
   },
   "htmlArtifact": {
     "code": "Kode",
@@ -277,7 +310,7 @@
     "searchThreads": "Cari percakapan",
     "toggleSidebar": "Tampilkan/sembunyikan bilah samping",
     "openCowork": "Buka Cowork",
-    "openArtifacts": "Buka artefak",
+    "openArtifacts": "Buka Pustaka",
     "openSystemMonitor": "Buka monitor sistem",
     "openLogs": "Buka log aplikasi",
     "section": {
@@ -1210,7 +1243,8 @@
     "sensitiveRefused": "{{name}} tampak seperti kredensial atau kunci, jadi tidak dibuka",
     "binaryRefused": "{{name}} bukan file teks, apa pun kata ekstensinya",
     "chooseAgainAction": "Pilih lagi",
-    "externalGone": "File ini dibuka dari luar proyek, dan aksesnya tidak bertahan. Pilih lagi untuk membukanya kembali."
+    "externalGone": "File ini dibuka dari luar proyek, dan aksesnya tidak bertahan. Pilih lagi untuk membukanya kembali.",
+    "oneFolderAtATime": "Hanya satu folder dalam satu waktu. \"{{name}}\" tidak ditambahkan."
   },
   "settingsSearch": {
     "label": "Cari pengaturan",
@@ -1382,7 +1416,14 @@
     "recommended": "Disarankan",
     "reset": "Reset ke global",
     "resetAll": "Reset ke default global",
-    "overridden": "Diatur untuk obrolan ini"
+    "overridden": "Diatur untuk obrolan ini",
+    "levels": {
+      "low": "Rendah",
+      "medium": "Sedang",
+      "high": "Tinggi",
+      "xhigh": "Sangat tinggi",
+      "unlimited": "Tanpa batas"
+    }
   },
   "modelOffline": {
     "badge": "Tidak terjangkau",
@@ -2469,6 +2510,7 @@
       "slots": "{{count}} slot",
       "vision": "Visi",
       "audio": "Audio",
+      "fixedPrompt": "Dikirim bersama setiap permintaan: {{count}} token (prompt sistem dan skema alat).",
       "tokenUsage": "Penggunaan token",
       "tokenUsageSr": "Penggunaan token {{value}}"
     }
@@ -2500,6 +2542,18 @@
     "previewLoading": "Memuat pratinjau…",
     "previewNone": "Pratinjau tidak tersedia"
   },
+  "fileViewer": {
+    "openFull": "Buka pratinjau lengkap",
+    "loadMore": "Muat lagi",
+    "showingFirst": "Menampilkan {{loaded}} pertama dari {{total}}",
+    "lines_other": "{{count}} baris",
+    "wrap": "Bungkus baris",
+    "copy": "Salin",
+    "copied": "Disalin",
+    "binary": "Ini tampaknya file biner, jadi tidak ada pratinjau teks.",
+    "expandLine": "Tampilkan seluruh baris",
+    "collapseLine": "Persingkat baris"
+  },
   "dropAttachFailed": "Tidak dapat melampirkan file yang dijatuhkan",
   "sampler": {
     "label": "Parameter sampling",
@@ -2525,7 +2579,7 @@
     "paste": "Tempel dari papan klip",
     "pasteFailed": "Tidak dapat membaca papan klip",
     "clear": "Bersihkan",
-    "characters": "{{count}} karakter",
+    "characters_other": "{{count}} karakter",
     "translating": "Menerjemahkan…",
     "retry": "Coba lagi",
     "shortcut": "Terjemahkan (Ctrl/Cmd+Enter)",
@@ -2537,7 +2591,9 @@
     "errorNetwork": "Tidak dapat menjangkau penyedia. Periksa koneksi Anda atau pastikan server berjalan.",
     "errorEngine": "Engine yang menjalankan model ini tidak tersedia. Mulai ulang Flint lalu coba lagi.",
     "openProvider": "Buka pengaturan penyedia",
-    "errorDetails": "Detail"
+    "errorDetails": "Detail",
+    "pasteHint": "Akses papan klip diblokir. Klik kotak teks lalu tekan {{keys}}.",
+    "characters": "{{count}} karakter"
   },
   "markdownImage": {
     "load": "Muat gambar dari {{host}}"
@@ -2558,7 +2614,7 @@
     "editTitle": "Edit prompt",
     "import": "Impor",
     "export": "Ekspor",
-    "imported": "{{count}} prompt ditambahkan",
+    "imported_other": "{{count}} prompt ditambahkan",
     "search": "Cari prompt",
     "empty": "Belum ada prompt.",
     "edit": "Edit {{name}}",
@@ -2571,6 +2627,105 @@
     "body": "Teks prompt",
     "bodyHint": "Tulis prompt. Gunakan {{topic}} atau {{tone:friendly}} untuk bagian kosong.",
     "variables": "Meminta: {{names}}",
-    "insert": "Sisipkan"
+    "defaultValue": "Bawaan: {{value}}",
+    "requiredField": "Wajib",
+    "fillNeeded": "Isi {{names}} untuk menyisipkan",
+    "insert": "Sisipkan",
+    "errors": {
+      "nameRequired": "Prompt perlu diberi nama",
+      "nameTooLong": "Nama itu terlalu panjang",
+      "bodyRequired": "Prompt perlu berisi teks",
+      "bodyTooLong": "Prompt itu terlalu panjang",
+      "gone": "Prompt itu sudah tidak ada",
+      "invalidJson": "File itu bukan JSON yang valid",
+      "noPrompts": "Tidak ada prompt di file itu"
+    },
+    "imported": "{{count}} prompt ditambahkan"
+  },
+  "memoryProposal": {
+    "title": "Ingat ini?",
+    "wouldApply": "Akan berlaku untuk {{where}}.",
+    "remember": "Ingat",
+    "discard": "Buang",
+    "reviewBoth": "Tinjau keduanya",
+    "saving": "Menyimpan…",
+    "discarding": "Membuang…",
+    "scope": {
+      "session": "percakapan ini",
+      "project": "proyek ini",
+      "user": "di mana saja"
+    }
+  },
+  "picker": {
+    "filter": "Filter",
+    "source": "Sumber",
+    "sourceAll": "Semua",
+    "sourceLocal": "Lokal",
+    "sourceCloud": "Cloud",
+    "capabilities": "Kemampuan",
+    "cap": {
+      "vision": "Visi",
+      "tools": "Alat",
+      "reasoning": "Penalaran",
+      "embeddings": "Embedding"
+    },
+    "loadedNow": "Sedang dimuat",
+    "sort": "Urutkan",
+    "sortDefault": "Urutan default",
+    "sortName": "Nama (A–Z)",
+    "sortRecent": "Baru digunakan",
+    "sortSize": "Ukuran",
+    "clearFilters": "Hapus filter",
+    "noMatch": "Tidak ada model yang cocok",
+    "noMatchFilters": "Tidak ada model yang cocok: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Obrolan",
+      "session": "Sesi",
+      "room": "Ruang"
+    },
+    "heading": "Percakapan",
+    "empty": "Tidak ada percakapan lain",
+    "noMatch": "Tidak ada percakapan yang cocok",
+    "messages": "Pesan: {{n}}",
+    "included": "Disertakan: {{title}} (pesan: {{n}}, ~{{size}} karakter)",
+    "group": "Percakapan yang disebut",
+    "summarize": "Ringkas",
+    "summarizeHint": "Sertakan ringkasan sebagai ganti pesan terbaru",
+    "remove": "Hapus sebutan {{title}}",
+    "mentioned": "Disebut: {{title}}",
+    "open": "Buka {{title}}",
+    "status": {
+      "missing": "Tidak ditemukan: {{title}}",
+      "self": "{{title}} adalah percakapan ini, jadi dilewati",
+      "over-cap": "{{title}} dilewati: maksimal {{max}} percakapan per pesan"
+    },
+    "excerpt": "Kutipan",
+    "summary": "Ringkasan",
+    "modeGroup": "Yang disertakan dari {{title}}",
+    "excerptHint": "Pesan terbaru, sekitar {{tokens}} token",
+    "summaryHint": "Ringkasan yang ditulis model, paling banyak sekitar {{tokens}} token",
+    "needsModel": "Muat model untuk menyertakan ringkasan sebagai gantinya",
+    "totals_other": "{{count}} pesan · ~{{tokens}} token disertakan",
+    "readOnly": "Dikirim sebagai konteks kutipan yang hanya-baca. Model tidak dapat mengubah percakapan itu.",
+    "tooLarge": "Ini lebih dari seperempat jendela konteks model.",
+    "useSummary": "Gunakan ringkasan",
+    "resolving": "Mencari {{title}}",
+    "chipStatus": {
+      "missing": "Tidak ditemukan",
+      "self": "Percakapan ini",
+      "over-cap": "Melebihi batas"
+    },
+    "preview": {
+      "empty": "Belum ada pesan",
+      "you": "Anda",
+      "assistant": "Asisten"
+    },
+    "messagesCount_other": "{{count}} pesan"
+  },
+  "campaignList": {
+    "timeout": "Aplikasi tidak merespons tepat waktu.",
+    "unreadableRecord": "backend mengirim catatan yang tidak dapat dibaca halaman ini"
   }
 }

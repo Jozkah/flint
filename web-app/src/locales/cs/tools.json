@@ -79,6 +79,8 @@
     "reading": "Čtení...",
     "workspaceRoot": "kořen pracovního prostoru",
     "matches": "Shod: {{count}}",
-    "testsPassed": "Prošlo: {{count}}"
+    "testsPassed": "Prošlo: {{count}}",
+    "runningStatus": "Spouští se {{tool}}…",
+    "stillRunning": "{{tool}} stále běží…"
   }
 }

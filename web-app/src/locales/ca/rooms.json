@@ -154,7 +154,45 @@
     "sections": "Secció de configuració",
     "tabGeneral": "General",
     "tabDiscussion": "Debat",
-    "tabLimits": "Límits"
+    "tabLimits": "Límits",
+    "compareRun": "Executa els models",
+    "compareRunHint": "Un per un és més lent, però carrega un sol model local alhora i estalvia límits de peticions.",
+    "compareRunOption": {
+      "together": "Tots alhora",
+      "one-by-one": "Un per un"
+    },
+    "compareRunSuggest": "Has triat dos o més models locals: executar-los un per un evita que competeixin per la memòria.",
+    "tools": {
+      "heading": "Eines",
+      "summary": "{{on}} de {{total}} actives · ~{{tokens}} tokens",
+      "loading": "Carregant les eines…",
+      "empty": "No hi ha eines disponibles amb aquest accés.",
+      "group": {
+        "files": "Fitxers i ordres",
+        "web": "Web",
+        "mcp": "Servidors MCP",
+        "other": "Altres"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Les definicions d'eines ocupen prop del {{pct}} % de la finestra de context d'aquest model.",
+      "warn": "Les definicions d'eines ocupen prop del {{pct}} % de la finestra de context d'aquest model (més del {{limit}} %). Desactiveu-ne algunes per deixar espai a la conversa.",
+      "windowUnknown": "No es coneix la finestra de context d'aquest model, així que no es pot mostrar la proporció.",
+      "notStarted": "no iniciat",
+      "toolsUnknown": "eines desconegudes fins que s'iniciï"
+    },
+    "budget": {
+      "heading": "Pressupost d'eines per torn",
+      "hint": "Límits per a cada torn d'un participant que fa servir eines. Deixeu el camp buit per al valor per defecte.",
+      "maxToolCalls": "Màx. crides d'eines",
+      "maxSteps": "Màx. passos",
+      "toolTimeoutSec": "Temps límit d'una eina (segons)",
+      "default": "Per defecte: {{value}}"
+    },
+    "isolation": {
+      "active": "Cada participant que pot editar treballa en el seu propi espai aïllat, així que no poden sobreescriure's entre ells ni la vostra carpeta.",
+      "unavailable": "Espai aïllat no disponible: {{reason}}. Els participants que poden editar només llegeixen en aquesta sala.",
+      "untrusted": "la carpeta no és de confiança"
+    }
   },
   "limits": {
     "maxRounds": "Rondes",
@@ -228,7 +266,19 @@
     "toolFailed": "ha fallat",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} tokens",
-    "speedTitle": "Tokens escrits en aquesta resposta, i a quina velocitat"
+    "speedTitle": "Tokens escrits en aquesta resposta, i a quina velocitat",
+    "budgetHit": {
+      "tool-calls": "Aquest torn ha arribat al pressupost de crides d'eines.",
+      "steps": "Aquest torn ha arribat al pressupost de passos.",
+      "timeout": "Una crida d'eina d'aquest torn ha superat el temps límit i s'ha aturat."
+    },
+    "rawToolCall": "Sembla una crida a eina escrita com a text. No s'ha executat.",
+    "emptyReply": {
+      "length": "El model ha esgotat el límit de resposta ({{count}} tokens) sense escriure cap resposta. Augmenta el límit a la configuració de la sala o desactiva el raonament d'aquest participant i torna-ho a provar.",
+      "tools": "Ha fet servir eines, però no ha escrit cap resposta.",
+      "none": "Cap resposta de text."
+    },
+    "thought": "Pensament"
   },
   "unknownWindow": {
     "title": "Finestra de context desconeguda",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Cada participant diu on es posiciona",
     "synthesizeHint": "Resum del resultat, amb la dissidència",
     "cancelTurnHint": "Atura només la resposta en curs",
-    "steerLocked": "Aquests es desbloquegen quan el debat estigui en marxa."
+    "steerLocked": "Aquests es desbloquegen quan el debat estigui en marxa.",
+    "answering": "Responen",
+    "models": "Models"
   },
   "stage": {
     "speaking": "{{name}} està parlant",
@@ -390,5 +442,69 @@
     "panes": "Vista de la sala",
     "talk": "Debat",
     "controls": "Controls"
+  },
+  "compare": {
+    "title": "Comparar execucions",
+    "modeTogether": "Tots alhora",
+    "modeOneByOne": "Un per un",
+    "include": "Incloure a la propera execució",
+    "includeFor": "Incloure {{name}} a la propera execució",
+    "run": "Executa",
+    "runAgain": "Torna a executar",
+    "runFor": "Executa {{name}} amb la pregunta actual",
+    "runAgainFor": "Torna a executar {{name}} amb la pregunta actual",
+    "runAll": "Executa'ls tots",
+    "answerEarlier": "Respon les preguntes anteriors",
+    "answerEarlierHint": "Cada model que s'ha perdut una pregunta anterior la respon ara, per ordre, com si hi hagués estat.",
+    "export": "Exporta la comparació",
+    "saveMarkdown": "Desa com a Markdown…",
+    "copyMarkdown": "Copia com a Markdown",
+    "copyJson": "Copia com a JSON",
+    "saved": "Comparació desada.",
+    "copied": "Copiat al porta-retalls.",
+    "copyFailed": "No s'ha pogut copiar al porta-retalls.",
+    "notAnswered": "Encara no ha respost aquesta pregunta.",
+    "state": {
+      "off": "Exclòs de la propera execució",
+      "unavailable": "No disponible",
+      "running": "Responent…",
+      "queued": "A la cua",
+      "done": "Respost",
+      "failed": "Ha fallat",
+      "idle": "Encara sense resposta"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} fitxer canviat",
+    "summaryMany": "{{count}} fitxers canviats",
+    "workspace": "Espai aïllat: {{path}}",
+    "binary": "Fitxer binari",
+    "noExcerpt": "Sense extracte.",
+    "openDiff": "Obre el diff",
+    "keep": "Conserva",
+    "discard": "Descarta els canvis",
+    "apply": "Aplica a la meva carpeta",
+    "state": {
+      "kept": "Conservat",
+      "discarded": "Descartat",
+      "applied": "Aplicat"
+    },
+    "diffTitle": "Canvis a l'espai de treball",
+    "diffHint": "Tot el que aquest participant ha canviat al seu espai aïllat.",
+    "applyTitle": "Voleu aplicar-ho a la vostra carpeta?",
+    "applyHint": "Aquest pedaç s'escriurà a la vostra carpeta. Si no s'aplica netament, no es canvia res.",
+    "discardTitle": "Voleu descartar aquests canvis?",
+    "discardHint": "L'espai del participant torna a l'estat inicial. La vostra carpeta no es toca.",
+    "loading": "Carregant el diff…",
+    "empty": "Res a aplicar.",
+    "applyConfirm": "Aplica",
+    "discardConfirm": "Descarta",
+    "scopeTurn": "Aquest torn",
+    "scopeAll": "Des que es va crear l'espai de treball"
+  },
+  "approvals": {
+    "held": "Sala en pausa",
+    "heldHint": "La sala s'ha posat en pausa mentre això esperava, així que ja no es pot permetre. Repreneu la sala i el participant ho tornarà a demanar si encara ho necessita.",
+    "dismiss": "Descarta"
   }
 }

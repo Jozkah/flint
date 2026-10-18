@@ -79,6 +79,8 @@
     "reading": "Wird gelesen ...",
     "workspaceRoot": "Stammverzeichnis des Arbeitsbereichs",
     "matches": "{{count}} Treffer",
-    "testsPassed": "{{count}} bestanden"
+    "testsPassed": "{{count}} bestanden",
+    "runningStatus": "{{tool}} läuft …",
+    "stillRunning": "{{tool}} läuft noch …"
   }
 }

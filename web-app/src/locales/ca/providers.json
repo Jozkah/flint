@@ -1,7 +1,7 @@
 {
   "limitedSupport": "Aquest proveïdor pot no ser totalment compatible. Les capacitats (eines, visió, àudio) no es detecten automàticament: afegeix els models manualment i configura les capacitats per model.",
   "mlxExperimental": "El suport per a MLX és experimental. Les incrustacions no estan disponibles, l'interruptor de raonament encara no està connectat i algunes arquitectures de models més noves poden no carregar-se. Informa dels problemes a GitHub perquè els puguem prioritzar.",
-  "engineBundled": "El motor d'inferència està integrat a Jan, de manera que no hi ha res per descarregar ni actualitzar per separat. Cita aquesta versió quan informis d'un model que no es carrega.",
+  "engineBundled": "El motor d'inferència està integrat a Flint, de manera que no hi ha res per descarregar ni actualitzar per separat. Cita aquesta versió quan informis d'un model que no es carrega.",
   "engineOtherVersion": "Necessites una altra versió de llama.cpp? Executa el teu propi llama-server i afegeix-lo com a proveïdor personalitzat compatible amb OpenAI.",
   "engineReleaseNotes": "Notes de la versió",
   "engineBuild": "Compilació",
@@ -129,6 +129,7 @@
     "cachedInputCost": "Cost d'entrada en memòria cau (USD per 1 M de tokens)",
     "cacheWriteCost": "Cost d'escriptura a la memòria cau (USD per 1 M de tokens)",
     "costHelp": "Deixa-ho en blanc per usar el preu integrat dels models coneguts; els models locals són gratuïts. Un preu d'entrada en memòria cau o d'escriptura a la memòria cau en blanc es cobra al preu d'entrada.",
+    "costInvalid": "Els preus han de ser un número igual o superior a 0. Buida el camp per usar el preu integrat.",
     "displayName": "Nom visible",
     "displayNamePlaceholder": "Introdueix un nom visible",
     "displayNameHelp": "Es mostra allà on aquest model apareix llistat. Les sol·licituds continuen usant l'identificador original, {{modelId}}.",

@@ -141,6 +141,8 @@
     "showTokenSpeedDesc": "Afficher les tokens/s et le nombre de tokens sous les messages de l'assistant. Désactivé, une petite icône affiche les détails au clic.",
     "coloredUserBubble": "Bulle de message utilisateur colorée",
     "coloredUserBubbleDesc": "Utiliser la couleur d'accentuation comme arrière-plan de vos messages. Désactivé, ils ressemblent aux messages de l'assistant : texte simple sur fond neutre.",
+    "renderUserMarkdown": "Afficher le Markdown dans mes messages",
+    "renderUserMarkdownDesc": "Affiche le gras, les listes, les titres et le code dans les messages que vous envoyez. Désactivé, ils s'affichent tels que saisis.",
     "renderHtmlArtifacts": "Afficher les artefacts HTML et SVG",
     "renderHtmlArtifactsDesc": "Ajoute un onglet Aperçu aux blocs de code HTML et SVG. Le HTML exécute la page générée par le modèle dans un cadre isolé qui exécute ses propres scripts mais ne peut accéder ni à Flint, ni à vos fichiers, ni au réseau ; le SVG s'affiche de façon statique, scripts désactivés. Désactivé par défaut.",
     "composerRailButtons": "Boutons de sortie dans la zone de saisie Cowork",
@@ -418,7 +420,10 @@
     "proxyTimeoutDesc": "Temps d'attente pour une réponse du modèle local, en secondes.",
     "defaultModel": "Modèle par défaut",
     "defaultModelDesc": "Modèle local à charger automatiquement au démarrage du serveur.",
-    "defaultModelPlaceholder": "Sélectionner un modèle local"
+    "defaultModelPlaceholder": "Sélectionner un modèle local",
+    "noLocalModels": "Aucun modèle local importé",
+    "usage5hAria": "Tokens par 5 heures",
+    "usageWeekAria": "Tokens par semaine"
   },
   "privacy": {
     "analytics": "Analytique",
@@ -512,7 +517,22 @@
     "support": "Support",
     "reportAnIssue": "Signaler un problème",
     "reportAnIssueDesc": "Vous avez trouvé un bug ? Aidez-nous en signalant un problème sur GitHub.",
-    "reportIssue": "Signaler un problème"
+    "reportIssue": "Signaler un problème",
+    "advanced": "Avancé",
+    "migrateJan": {
+      "title": "Migrer depuis JAN",
+      "desc": "Importez dans Flint les données d'une installation JAN existante : copier, réutiliser sur place, déplacer ou repartir de zéro.",
+      "open": "Ouvrir l'assistant de migration"
+    },
+    "verify": "Vérifier",
+    "cli": {
+      "installedDesc": "Installé dans {{path}} : utilisez flint depuis votre terminal pour servir des modèles.",
+      "desc": "Utilisez flint depuis votre terminal pour servir des modèles sans ouvrir l'application.",
+      "install": "Installer",
+      "installing": "Installation…",
+      "uninstall": "Désinstaller",
+      "uninstalling": "Désinstallation…"
+    }
   },
   "extensions": {
     "title": "Extensions"
@@ -606,7 +626,9 @@
     "summaryMaxTokens": "Longueur du résumé",
     "summaryDescription": "Le résumé le plus long, en tokens.",
     "projectOverride": "(Un projet remplace ce réglage.)",
-    "saveFailed": "La politique de compactage n'a pas pu être enregistrée"
+    "saveFailed": "La politique de compactage n'a pas pu être enregistrée",
+    "leanTools": "Outils allégés pour les petits modèles",
+    "leanToolsDescription": "Avec une fenêtre de contexte de 32K tokens ou moins, la liste des plugins, la recherche d'images et les outils de widgets sont retirés des chats, pour que la fenêtre contienne la conversation. La recherche web, MCP et les outils d'agent restent."
   },
   "accent": {
     "title": "Couleur d'accentuation",
@@ -662,10 +684,10 @@
     "completionSoundApproval": "Uniquement lorsqu'une approbation est requise",
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Lire",
-    "increaseContrast": "Augmenter le contraste",
-    "increaseContrastDesc": "Rend le texte plus marqué pour faciliter la lecture. Plus blanc sur le thème sombre, plus foncé sur le thème clair.",
     "reduceMotion": "Réduire les animations",
-    "reduceMotionDesc": "Désactiver les animations dans Flint. Flint ne suit pas le réglage du système : les animations restent actives tant que vous ne changez pas ceci."
+    "reduceMotionDesc": "Désactiver les animations dans Flint. Flint ne suit pas le réglage du système : les animations restent actives tant que vous ne changez pas ceci.",
+    "increaseContrast": "Augmenter le contraste",
+    "increaseContrastDesc": "Rend le texte plus marqué pour faciliter la lecture. Plus blanc sur le thème sombre, plus foncé sur le thème clair."
   },
   "pageDesc": {
     "general": "Langue, dossier de données, journaux et options de toute l'application.",
@@ -1128,7 +1150,26 @@
     "skipped": "Non restauré : {{stores}}",
     "storeToolApproval": "approbation automatique des outils",
     "storeMcpTrust": "confiance envers les serveurs MCP",
-    "storeProxy": "proxy réseau"
+    "storeProxy": "proxy réseau",
+    "title": "Sauvegarde et synchronisation",
+    "exported": "Paramètres exportés",
+    "exportFailed": "Échec de l'exportation",
+    "importFailed": "Échec de l'importation",
+    "importedRestarting": "Paramètres importés, redémarrage de la fenêtre",
+    "exportTitle": "Exporter les paramètres",
+    "exportDesc": "Enregistrez vos préférences dans un fichier JSON. Pour synchroniser plusieurs machines, placez-le dans un dossier Google Drive ou Nextcloud et importez-le sur l'autre machine. Les conversations et l'état propre à chaque machine ne sont pas inclus.",
+    "includeSecrets": "Inclure les fournisseurs et les clés API",
+    "secretsWarning": "Le fichier contiendra vos clés API en clair. Gardez-le privé et ne le placez pas dans un dossier partagé.",
+    "exportButton": "Exporter…",
+    "importTitle": "Importer les paramètres",
+    "importDesc": "Remplace vos préférences par celles d'un fichier de sauvegarde. La fenêtre se recharge ensuite.",
+    "chooseFile": "Choisir un fichier…",
+    "pendingGroups": "Groupes de paramètres dans le fichier : {{groups}}.",
+    "pendingKeys": "Fournisseurs avec clés API : {{keys}}.",
+    "pendingExported": "Exporté le {{date}}.",
+    "pendingOverwrite": "Cela écrase vos valeurs actuelles.",
+    "apply": "Importer et recharger",
+    "cancel": "Annuler"
   },
   "startup": {
     "title": "Démarrer avec l'ordinateur",
@@ -1156,5 +1197,129 @@
     "showAll": "Tout afficher",
     "preview": "Aperçu",
     "reachable": "Les éléments masqués restent accessibles depuis la palette de commandes et depuis Configurations."
+  },
+  "memoryPage": {
+    "useSaved": "Utiliser la mémoire enregistrée dans les conversations",
+    "useSavedDesc": "Si cette option est désactivée, Flint n'ajoute aucune mémoire enregistrée aux requêtes. Vos souvenirs sont conservés et restent gérables ici.",
+    "useFacts": "Utiliser les faits mémorisés dans les requêtes",
+    "useFactsDesc": "Désactiver une portée en arrête l'envoi. Rien n'est supprimé ; la réactiver la remet en service.",
+    "scope": {
+      "chat": {
+        "tab": "Cette conversation",
+        "blurb": "Mémorisé uniquement dans la conversation où il a été enregistré.",
+        "recall": "Cette conversation",
+        "recallAria": "Utiliser les souvenirs de cette conversation",
+        "newAria": "Nouveau souvenir pour cette conversation",
+        "forgetAll": "Tout oublier dans cette conversation",
+        "clearBody": "Tout ce qui est mémorisé pour cette conversation cesse d'être utilisé et son texte est supprimé de cet ordinateur. Impossible d'annuler en une seule étape."
+      },
+      "project": {
+        "tab": "Projet",
+        "blurb": "Disponible pour toutes les conversations du projet choisi ci-dessous, et pour aucun autre projet.",
+        "recall": "Ce projet",
+        "recallAria": "Utiliser les souvenirs de ce projet",
+        "newAria": "Nouveau souvenir pour ce projet",
+        "forgetAll": "Tout oublier dans ce projet",
+        "clearBody": "Tout ce qui est mémorisé pour ce projet cesse d'être utilisé et son texte est supprimé de cet ordinateur. Impossible d'annuler en une seule étape."
+      },
+      "user": {
+        "tab": "Toutes les conversations",
+        "blurb": "Disponible partout. À réserver aux choses vraies en général.",
+        "recall": "Toutes les conversations",
+        "recallAria": "Utiliser les souvenirs partagés entre toutes les conversations",
+        "newAria": "Nouveau souvenir pour toutes les conversations",
+        "forgetAll": "Tout oublier de ce qui est partagé entre conversations",
+        "clearBody": "Tout ce qui est mémorisé pour toutes les conversations cesse d'être utilisé et son texte est supprimé de cet ordinateur. Impossible d'annuler en une seule étape."
+      }
+    },
+    "stored": {
+      "summary": "{{user}} entre les chats · {{project}} · {{size}}",
+      "projectIn": "{{count}} dans {{name}}",
+      "chooseProject": "choisissez un projet pour compter ses souvenirs"
+    },
+    "listTitle": "Ce dont Flint se souvient",
+    "tabsAria": "Portée de la mémoire",
+    "recallOff": "Le rappel est désactivé pour cette portée : les souvenirs sont conservés, mais pas envoyés.",
+    "newPlaceholder": "Quelque chose dont Flint doit se souvenir",
+    "remember": "Mémoriser",
+    "export": "Exporter",
+    "import": "Importer",
+    "importReport": {
+      "summary": "{{count}} importés depuis l'export",
+      "duplicates": "{{count}} déjà mémorisés",
+      "refused": "{{count}} refusés"
+    },
+    "conversation": "Conversation",
+    "conversationAria": "Conversation dont afficher la mémoire",
+    "noConversations": "Aucune conversation pour le moment",
+    "kindChat": "Chat · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "remplacé {{when}}",
+    "projectFolder": "Dossier du projet",
+    "projectFolderAria": "Projet dont afficher la mémoire",
+    "noProjectFolders": "Aucun projet associé à une session",
+    "chooseProject": "Choisir un projet",
+    "chooseProjectAbove": "Choisissez un projet ci-dessus pour voir et gérer ses souvenirs.",
+    "searchAria": "Rechercher dans les souvenirs",
+    "searchPlaceholder": "Rechercher dans les faits mémorisés",
+    "noMatch": "Rien ici ne correspond à cette recherche.",
+    "empty": "Rien de mémorisé ici pour le moment.",
+    "meta": {
+      "youSaved": "Enregistré par vous",
+      "inferred": "Déduit",
+      "pinned": "épinglé",
+      "used_one": "utilisé {{count}} fois",
+      "used_other": "utilisé {{count}} fois",
+      "lastUsed": "dernière utilisation {{when}}",
+      "never": "jamais"
+    },
+    "pin": "Épingler",
+    "unpin": "Désépingler",
+    "pinAria": "Épingler le souvenir",
+    "unpinAria": "Désépingler le souvenir",
+    "editAria": "Modifier le souvenir",
+    "forget": "Oublier",
+    "forgetAria": "Oublier le souvenir",
+    "showing": "{{from}}–{{to}} sur {{total}}",
+    "previous": "Précédent",
+    "waitingTitle": "En attente de votre réponse",
+    "waitingBody": "Rien ici n'est encore utilisé. Une proposition sans réponse n'est jamais ajoutée à une invite.",
+    "conflictsTitle": "Souvenirs en désaccord",
+    "conflictsBody": "Aucun des deux n'est utilisé. Ces faits mémorisés se contredisent : Flint les exclut tous deux de chaque requête tant que vous n'en gardez pas un.",
+    "conflictAbout": "À propos de {{subject}}",
+    "keepThis": "Garder celui-ci",
+    "keepAria": "Garder « {{preview}} » et oublier l'autre",
+    "editTitle": "Modifier le souvenir",
+    "editBody": "Ceci sera utilisé dans les futures conversations de la portée à laquelle il appartient.",
+    "contentAria": "Contenu du souvenir",
+    "clearTitle": "Oublier tous les souvenirs ici ?",
+    "clearConfirm": "Tout oublier",
+    "toast": {
+      "kept": "Un souvenir conservé",
+      "settleFailed": "Impossible de résoudre ce conflit",
+      "forgotten": "Souvenir oublié",
+      "forgetFailed": "Impossible d'oublier ce souvenir",
+      "changeFailed": "Impossible de modifier ce souvenir",
+      "updated": "Souvenir mis à jour",
+      "updateFailed": "Impossible de mettre à jour ce souvenir",
+      "settingsFailed": "Impossible d'enregistrer les réglages de la mémoire",
+      "recallFailed": "Impossible de modifier le rappel",
+      "saved": "Souvenir enregistré",
+      "saveFailed": "Impossible d'enregistrer ce souvenir",
+      "forgotCount_one": "{{count}} souvenir oublié",
+      "forgotCount_other": "{{count}} souvenirs oubliés",
+      "forgetManyFailed": "Impossible d'oublier ces souvenirs",
+      "exportedCount_one": "{{count}} souvenir exporté",
+      "exportedCount_other": "{{count}} souvenirs exportés",
+      "exportFailed": "Impossible d'exporter les souvenirs",
+      "importedCount_one": "{{count}} souvenir importé",
+      "importedCount_other": "{{count}} souvenirs importés",
+      "importFailed": "Impossible d'importer les souvenirs"
+    }
+  },
+  "chatMentions": {
+    "title": "Mentions de conversations",
+    "readAny": "Laisser l'assistant lire toute conversation",
+    "readAnyDesc": "Désactivé par défaut. Normalement, l'assistant ne lit que les conversations que vous mentionnez avec @ ou #. Activé, il peut ouvrir n'importe quelle discussion, session ou salon de cet ordinateur grâce à son identifiant. Ce qu'il lit reste sur cet ordinateur et est signalé comme donnée de référence."
   }
 }

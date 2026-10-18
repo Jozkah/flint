@@ -9,7 +9,9 @@
       "title": "Flint 在您的瀏覽器中完成任務",
       "description": "安裝擴充功能以授予 Flint 瀏覽器存取權限",
       "getExtension": "取得擴充功能"
-    }
+    },
+    "requires": "需要在以 Chrome 為基礎的瀏覽器中安裝該瀏覽器擴充功能。",
+    "install": "安裝擴充功能 →"
   },
   "serverName": "伺服器名稱",
   "enterServerName": "輸入伺服器名稱",

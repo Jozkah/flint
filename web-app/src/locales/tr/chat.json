@@ -216,5 +216,6 @@
       "model-not-loaded": "Önce sohbetin modelini yükleyin. Özeti o yazar.",
       "summary-failed": "Özet yazılamadı. Hiçbir şey oluşturulmadı."
     }
-  }
+  },
+  "stopToolCall": "Araç çağrısını durdur (Esc)"
 }

@@ -44,8 +44,23 @@ const lookup = (loc: Flat, key: string) => loc[key] ?? loc[`${key}_one`]
  * else identical to English is an untranslated copy and fails the test.
  */
 const SAME_AS_ENGLISH: Record<string, string[]> = {
+  // uiLeftovers: loanwords and units shared with English.
+  'uiLeftovers:hubTasks.embeddings': ['ca', 'de-DE', 'es', 'fr', 'pt-BR'],
+  'uiLeftovers:tokenSpeed.tokens': ['ca', 'de-DE', 'es', 'pt-BR'],
+  'uiLeftovers:tokenSpeed.count': ['ca', 'es', 'pt-BR'],
+  'uiLeftovers:extensions.global': ['ca', 'de-DE', 'es', 'fr', 'id', 'pt-BR'],
+  'uiLeftovers:memory.no': ['ca', 'es', 'it'],
+  'uiLeftovers:hubTasks.chat': ['cs', 'de-DE', 'es', 'it', 'pt-BR'],
+  'uiLeftovers:memory.importedExport': ['cs', 'fr'],
+  'uiLeftovers:extensions.plugins': ['de-DE', 'es', 'fr', 'pt-BR'],
+  'uiLeftovers:memory.version': ['de-DE', 'fr'],
+  'uiLeftovers:hubTasks.vision': ['fr'],
+  'uiLeftovers:memory.source': ['fr'],
+  'uiLeftovers:memory.conversationId': ['fr'],
+  'uiLeftovers:memory.snapshotId': ['id', 'pt-BR'],
   // "Cowork" is the product feature name, not translated anywhere.
   'settings:sidebarItems.section.cowork': ['*'],
+  'settings:memoryPage.kindCowork': ['*'],
   // The slash-menu source label; locale word is "prompt" (a loanword).
   'slash:source.prompt': ['cs', 'es', 'id', 'it', 'pl', 'pt-BR'],
   // "Pull requests" is the GitHub term, kept as-is in these locales.
@@ -58,6 +73,64 @@ const SAME_AS_ENGLISH: Record<string, string[]> = {
   // Indonesian uses "Edit" and "prompt" as everyday loanwords.
   'common:promptLibrary.edit': ['id'],
   'common:promptLibrary.editTitle': ['id'],
+  // "Models" is spelled the same in Catalan.
+  'rooms:controls.models': ['ca'],
+  // "Chat", "{{count}} in {{name}}" and "Conversation" are the real words there.
+  'settings:memoryPage.kindChat': ['cs', 'de-DE', 'es', 'fr', 'it', 'pt-BR', 'vn'],
+  'settings:memoryPage.stored.projectIn': ['de-DE', 'it'],
+  'settings:memoryPage.conversation': ['fr'],
+  // Picker filters: words these locales really use as they are in English.
+  'common:picker.sourceLocal': ['ca', 'es', 'fr', 'pt-BR'],
+  'common:picker.sourceCloud': ['cs', 'de-DE', 'fr', 'id', 'it'],
+  'common:picker.cap.embeddings': ['cs', 'de-DE', 'fr', 'id', 'it', 'vn'],
+  'common:picker.filter': ['de-DE', 'id'],
+  'common:picker.sortName': ['de-DE'],
+  'common:picker.source': ['fr'],
+  'common:picker.cap.vision': ['fr'],
+  // "Chat", "Session" and "Conversations" are the everyday words in these locales.
+  'common:mentions.kind.chat': ['cs', 'de-DE', 'es', 'it', 'pt-BR'],
+  'common:mentions.kind.session': ['fr'],
+  'common:mentions.heading': ['fr'],
+  // "{{count}} message(s)" is spelled the same in French.
+  'common:mentions.messagesCount_one': ['fr'],
+  'common:mentions.messagesCount_other': ['fr'],
+  // Leftover sweep (studio / integrations / uiLeftovers / sweep): words and units these locales really use as-is.
+  'integrations:claudeCode.local': ['ca', 'es', 'fr', 'pt-BR'],
+  'integrations:remoteRunner.model': ['ca', 'cs', 'id', 'pl', 'tr'],
+  'studio:duration.min': ['ca', 'cs', 'es', 'fr', 'it', 'pl', 'pt-BR'],
+  'studio:duration.minS': ['ca', 'cs', 'es', 'fr', 'it', 'pl', 'pt-BR'],
+  'studio:duration.s': ['ca', 'cs', 'de-DE', 'es', 'fr', 'it', 'pl', 'pt-BR'],
+  'studio:model.title': ['ca', 'cs', 'id', 'pl', 'tr'],
+  'studio:prompt.remixShort': ['ca', 'cs', 'de-DE', 'es', 'fr', 'id', 'it', 'pt-BR', 'vn'],
+  'studio:prompt.title': ['ca', 'cs', 'de-DE', 'es', 'fr', 'id', 'it', 'pl', 'pt-BR', 'vn'],
+  'sweep:hub.format': ['ca', 'de-DE', 'fr', 'id', 'pl'],
+  'sweep:hub.modelCount': ['ca', 'cs', 'pl', 'tr'],
+  'sweep:hub.variant': ['ca'],
+  'uiLeftovers:extensions.global': ['ca', 'de-DE', 'es', 'fr', 'id', 'pt-BR'],
+  'uiLeftovers:hubTasks.embeddings': ['ca', 'de-DE', 'es', 'fr', 'pt-BR'],
+  'uiLeftovers:memory.no': ['ca', 'es', 'it'],
+  'uiLeftovers:tokenSpeed.count': ['ca', 'es', 'pt-BR'],
+  'uiLeftovers:tokenSpeed.tokens': ['ca', 'de-DE', 'es', 'pt-BR'],
+  'studio:page.title': ['cs', 'de-DE', 'fr', 'id', 'it', 'pl', 'vn'],
+  'studio:page.video': ['cs', 'de-DE', 'id', 'it', 'tr', 'vn'],
+  'studio:picker.engine': ['cs', 'de-DE'],
+  'studio:settings.seed': ['cs', 'de-DE', 'fr', 'id', 'it', 'pl', 'pt-BR', 'tr', 'vn'],
+  'studio:video.seed': ['cs', 'fr', 'id', 'it', 'pl', 'pt-BR', 'tr', 'vn'],
+  'uiLeftovers:hubTasks.chat': ['cs', 'de-DE', 'es', 'it', 'pt-BR'],
+  'uiLeftovers:memory.importedExport': ['cs', 'fr'],
+  'integrations:claudeCode.remote': ['de-DE'],
+  'integrations:mcpDialog.headerN': ['de-DE', 'id', 'vn'],
+  'studio:gens.filter': ['de-DE', 'id'],
+  'uiLeftovers:extensions.plugins': ['de-DE', 'es', 'fr', 'pt-BR'],
+  'uiLeftovers:memory.version': ['de-DE', 'fr'],
+  'studio:page.images': ['fr'],
+  'sweep:hub.architecture': ['fr'],
+  'sweep:hub.images': ['fr'],
+  'uiLeftovers:hubTasks.vision': ['fr'],
+  'uiLeftovers:memory.conversationId': ['fr'],
+  'uiLeftovers:memory.source': ['fr'],
+  'studio:settings.reset': ['id'],
+  'uiLeftovers:memory.snapshotId': ['id', 'pt-BR'],
 }
 
 const allowed = (key: string, locale: string) => {
@@ -71,7 +144,7 @@ const placeholders = (s: string) =>
 
 describe('shipped locales are translated', () => {
   it('keeps the key list in sync with en', () => {
-    for (const key of translatedKeys) expect(en[key], key).toBeDefined()
+    for (const key of translatedKeys) expect(lookup(en, key), key).toBeDefined()
   })
 
   for (const locale of LOCALES) {
@@ -81,7 +154,7 @@ describe('shipped locales are translated', () => {
       for (const key of translatedKeys) {
         const value = lookup(loc, key)
         if (value === undefined) continue // presence is lint:locales' job
-        if (value === en[key] && !allowed(key, locale)) copies.push(key)
+        if (value === lookup(en, key) && !allowed(key, locale)) copies.push(key)
       }
       expect(copies, `English copies in ${locale}`).toEqual([])
     })
@@ -93,11 +166,30 @@ describe('shipped locales are translated', () => {
       expect(translatedKeys, key).toContain(key)
       for (const locale of locales.filter((l) => l !== '*')) {
         const value = lookup(loadLocale(locale), key)
-        if (value !== en[key]) stale.push(`${locale} ${key}`)
+        if (value !== lookup(en, key)) stale.push(`${locale} ${key}`)
       }
     }
     expect(stale).toEqual([])
   })
+})
+
+describe('every English key exists in every locale', () => {
+  /** Languages with a single plural form: `_other` stands for the bare English key too. */
+  const ONE_FORM = new Set(['id', 'ja', 'ko', 'vn', 'zh-CN', 'zh-TW'])
+
+  for (const locale of LOCALES) {
+    it(`${locale}: no key of en is missing`, () => {
+      const loc = loadLocale(locale)
+      const missing = Object.keys(en).filter((key) => {
+        if (lookup(loc, key) !== undefined) return false
+        // A plural family (`key`/`key_one` + `key_other`): one-form languages only need `_other`.
+        const family = key.replace(/_one$/, '')
+        const plural = (k: string) => `${k}_other` in en || `${k}_one` in en
+        return !(ONE_FORM.has(locale) && plural(family) && (`${family}_other` in loc || family in loc))
+      })
+      expect(missing, `keys missing in ${locale}`).toEqual([])
+    })
+  }
 })
 
 describe('locale placeholders match English', () => {

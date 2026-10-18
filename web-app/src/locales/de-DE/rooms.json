@@ -154,7 +154,45 @@
     "sections": "Einstellungsbereich",
     "tabGeneral": "Allgemein",
     "tabDiscussion": "Diskussion",
-    "tabLimits": "Limits"
+    "tabLimits": "Limits",
+    "compareRun": "Modelle ausführen",
+    "compareRunHint": "Einer nach dem anderen ist langsamer, lädt aber immer nur ein lokales Modell und schont Ratenlimits.",
+    "compareRunOption": {
+      "together": "Alle gleichzeitig",
+      "one-by-one": "Einer nach dem anderen"
+    },
+    "compareRunSuggest": "Zwei oder mehr lokale Modelle sind ausgewählt: Nacheinander ausgeführt konkurrieren sie nicht um den Speicher.",
+    "tools": {
+      "heading": "Werkzeuge",
+      "summary": "{{on}} von {{total}} an · ~{{tokens}} Tokens",
+      "loading": "Werkzeuge werden geladen…",
+      "empty": "Mit diesem Zugriff sind keine Werkzeuge verfügbar.",
+      "group": {
+        "files": "Dateien und Befehle",
+        "web": "Web",
+        "mcp": "MCP-Server",
+        "other": "Sonstiges"
+      },
+      "tokens": "~{{tokens}} Tok",
+      "share": "Werkzeugdefinitionen belegen etwa {{pct}} % des Kontextfensters dieses Modells.",
+      "warn": "Werkzeugdefinitionen belegen etwa {{pct}} % des Kontextfensters dieses Modells (über {{limit}} %). Schalte einige ab, damit Platz für die Diskussion bleibt.",
+      "windowUnknown": "Das Kontextfenster dieses Modells ist unbekannt, daher kann der Anteil nicht angezeigt werden.",
+      "notStarted": "nicht gestartet",
+      "toolsUnknown": "Werkzeuge erst nach dem Start bekannt"
+    },
+    "budget": {
+      "heading": "Werkzeugbudget pro Zug",
+      "hint": "Obergrenzen für jeden Teilnehmerzug mit Werkzeugen. Leer lassen für den Standard.",
+      "maxToolCalls": "Max. Werkzeugaufrufe",
+      "maxSteps": "Max. Schritte",
+      "toolTimeoutSec": "Werkzeug-Timeout (Sekunden)",
+      "default": "Standard: {{value}}"
+    },
+    "isolation": {
+      "active": "Jeder Teilnehmer mit Schreibzugriff arbeitet in einem eigenen isolierten Arbeitsbereich und kann weder die anderen noch deinen Ordner überschreiben.",
+      "unavailable": "Isolierter Arbeitsbereich nicht verfügbar: {{reason}}. Teilnehmer mit Schreibzugriff lesen in diesem Raum nur.",
+      "untrusted": "der Ordner ist nicht vertrauenswürdig"
+    }
   },
   "limits": {
     "maxRounds": "Runden",
@@ -228,7 +266,19 @@
     "toolFailed": "fehlgeschlagen",
     "speed": "{{tps}} Tok./s",
     "tokensOut": "{{approx}}{{count}} Tokens",
-    "speedTitle": "In dieser Antwort geschriebene Tokens und wie schnell"
+    "speedTitle": "In dieser Antwort geschriebene Tokens und wie schnell",
+    "budgetHit": {
+      "tool-calls": "Dieser Zug hat sein Budget an Werkzeugaufrufen erreicht.",
+      "steps": "Dieser Zug hat sein Schrittbudget erreicht.",
+      "timeout": "Ein Werkzeugaufruf in diesem Zug hat das Timeout überschritten und wurde gestoppt."
+    },
+    "rawToolCall": "Das sieht aus wie ein als Text geschriebener Tool-Aufruf. Er wurde nicht ausgeführt.",
+    "emptyReply": {
+      "length": "Das Modell hat sein ganzes Antwortlimit ({{count}} Tokens) verbraucht, ohne eine Antwort zu schreiben. Erhöhe das Limit in den Raumeinstellungen oder schalte das Nachdenken für diesen Teilnehmer aus und starte erneut.",
+      "tools": "Hat Tools verwendet, aber keine Textantwort geschrieben.",
+      "none": "Keine Textantwort."
+    },
+    "thought": "Nachdenken"
   },
   "unknownWindow": {
     "title": "Kontextfenster unbekannt",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Jeder Teilnehmer legt dar, wo er steht",
     "synthesizeHint": "Zusammenfassung des Ergebnisses, mit abweichenden Meinungen",
     "cancelTurnHint": "Nur die laufende Antwort stoppen",
-    "steerLocked": "Diese werden freigeschaltet, sobald die Diskussion läuft."
+    "steerLocked": "Diese werden freigeschaltet, sobald die Diskussion läuft.",
+    "answering": "Antworten",
+    "models": "Modelle"
   },
   "stage": {
     "speaking": "{{name}} spricht",
@@ -390,5 +442,69 @@
     "panes": "Raumansicht",
     "talk": "Diskussion",
     "controls": "Steuerung"
+  },
+  "compare": {
+    "title": "Läufe vergleichen",
+    "modeTogether": "Alle gleichzeitig",
+    "modeOneByOne": "Einer nach dem anderen",
+    "include": "Beim nächsten Lauf einbeziehen",
+    "includeFor": "{{name}} beim nächsten Lauf einbeziehen",
+    "run": "Ausführen",
+    "runAgain": "Erneut ausführen",
+    "runFor": "{{name}} auf die aktuelle Frage ausführen",
+    "runAgainFor": "{{name}} erneut auf die aktuelle Frage ausführen",
+    "runAll": "Alle ausführen",
+    "answerEarlier": "Frühere Fragen beantworten",
+    "answerEarlierHint": "Jedes Modell, das eine frühere Frage verpasst hat, beantwortet sie jetzt der Reihe nach, als wäre es dabei gewesen.",
+    "export": "Vergleich exportieren",
+    "saveMarkdown": "Als Markdown speichern…",
+    "copyMarkdown": "Als Markdown kopieren",
+    "copyJson": "Als JSON kopieren",
+    "saved": "Vergleich gespeichert.",
+    "copied": "In die Zwischenablage kopiert.",
+    "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen.",
+    "notAnswered": "Hat diese Frage noch nicht beantwortet.",
+    "state": {
+      "off": "Beim nächsten Lauf ausgelassen",
+      "unavailable": "Nicht verfügbar",
+      "running": "Antwortet…",
+      "queued": "In der Warteschlange",
+      "done": "Beantwortet",
+      "failed": "Fehlgeschlagen",
+      "idle": "Noch nicht beantwortet"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} Datei geändert",
+    "summaryMany": "{{count}} Dateien geändert",
+    "workspace": "Isolierter Arbeitsbereich: {{path}}",
+    "binary": "Binärdatei",
+    "noExcerpt": "Kein Auszug.",
+    "openDiff": "Diff öffnen",
+    "keep": "Behalten",
+    "discard": "Änderungen verwerfen",
+    "apply": "Auf meinen Ordner anwenden",
+    "state": {
+      "kept": "Behalten",
+      "discarded": "Verworfen",
+      "applied": "Angewendet"
+    },
+    "diffTitle": "Änderungen im Arbeitsbereich",
+    "diffHint": "Alles, was dieser Teilnehmer in seinem isolierten Arbeitsbereich geändert hat.",
+    "applyTitle": "Auf deinen Ordner anwenden?",
+    "applyHint": "Dieser Patch wird in deinen Ordner geschrieben. Lässt er sich nicht sauber anwenden, wird nichts geändert.",
+    "discardTitle": "Diese Änderungen verwerfen?",
+    "discardHint": "Der Arbeitsbereich des Teilnehmers wird auf den Anfangszustand zurückgesetzt. Dein Ordner bleibt unberührt.",
+    "loading": "Diff wird geladen…",
+    "empty": "Nichts anzuwenden.",
+    "applyConfirm": "Anwenden",
+    "discardConfirm": "Verwerfen",
+    "scopeTurn": "Dieser Zug",
+    "scopeAll": "Seit der Arbeitsbereich erstellt wurde"
+  },
+  "approvals": {
+    "held": "Raum pausiert",
+    "heldHint": "Der Raum wurde pausiert, während dies wartete, daher kann es nicht mehr erlaubt werden. Setze den Raum fort; der Teilnehmer fragt erneut, wenn er es noch braucht.",
+    "dismiss": "Schließen"
   }
 }

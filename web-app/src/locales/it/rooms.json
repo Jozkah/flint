@@ -154,7 +154,45 @@
     "sections": "Sezione delle impostazioni",
     "tabGeneral": "Generale",
     "tabDiscussion": "Discussione",
-    "tabLimits": "Limiti"
+    "tabLimits": "Limiti",
+    "compareRun": "Esecuzione dei modelli",
+    "compareRunHint": "Uno alla volta è più lento, ma carica un solo modello locale per volta e risparmia i limiti di richieste.",
+    "compareRunOption": {
+      "together": "Tutti insieme",
+      "one-by-one": "Uno alla volta"
+    },
+    "compareRunSuggest": "Hai scelto due o più modelli locali: eseguirli uno alla volta evita che si contendano la memoria.",
+    "tools": {
+      "heading": "Strumenti",
+      "summary": "{{on}} di {{total}} attivi · ~{{tokens}} token",
+      "loading": "Caricamento strumenti…",
+      "empty": "Nessuno strumento disponibile con questo accesso.",
+      "group": {
+        "files": "File e comandi",
+        "web": "Web",
+        "mcp": "Server MCP",
+        "other": "Altro"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Le definizioni degli strumenti occupano circa il {{pct}}% della finestra di contesto di questo modello.",
+      "warn": "Le definizioni degli strumenti occupano circa il {{pct}}% della finestra di contesto di questo modello (oltre il {{limit}}%). Disattivane alcuni per lasciare spazio alla discussione.",
+      "windowUnknown": "La finestra di contesto di questo modello non è nota, quindi la quota non può essere mostrata.",
+      "notStarted": "non avviato",
+      "toolsUnknown": "strumenti sconosciuti finché non si avvia"
+    },
+    "budget": {
+      "heading": "Budget strumenti per turno",
+      "hint": "Limiti per ogni turno di un partecipante che usa strumenti. Lascia vuoto per il valore predefinito.",
+      "maxToolCalls": "Max chiamate a strumenti",
+      "maxSteps": "Max passi",
+      "toolTimeoutSec": "Timeout strumento (secondi)",
+      "default": "Predefinito: {{value}}"
+    },
+    "isolation": {
+      "active": "Ogni partecipante che può modificare lavora nel proprio spazio isolato, quindi non possono sovrascriversi a vicenda né sovrascrivere la tua cartella.",
+      "unavailable": "Spazio isolato non disponibile: {{reason}}. I partecipanti che possono modificare in questa stanza leggono soltanto.",
+      "untrusted": "la cartella non è attendibile"
+    }
   },
   "limits": {
     "maxRounds": "Giri",
@@ -228,7 +266,19 @@
     "toolFailed": "non riuscito",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} token",
-    "speedTitle": "Token scritti in questa risposta e a che velocità"
+    "speedTitle": "Token scritti in questa risposta e a che velocità",
+    "budgetHit": {
+      "tool-calls": "Questo turno ha raggiunto il budget di chiamate a strumenti.",
+      "steps": "Questo turno ha raggiunto il budget di passi.",
+      "timeout": "Una chiamata a strumento in questo turno ha superato il timeout ed è stata fermata."
+    },
+    "rawToolCall": "Sembra una chiamata a strumento scritta come testo. Non è stata eseguita.",
+    "emptyReply": {
+      "length": "Il modello ha esaurito il limite di risposta ({{count}} token) senza scrivere una risposta. Aumenta il limite nelle impostazioni della stanza o disattiva il ragionamento di questo partecipante, poi riprova.",
+      "tools": "Ha usato strumenti, ma non ha scritto alcuna risposta di testo.",
+      "none": "Nessuna risposta di testo."
+    },
+    "thought": "Ragionamento"
   },
   "unknownWindow": {
     "title": "Finestra di contesto sconosciuta",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Ogni partecipante dichiara la propria posizione",
     "synthesizeHint": "Riepilogo dell'esito, con il dissenso",
     "cancelTurnHint": "Ferma solo la risposta in corso",
-    "steerLocked": "Si sbloccano quando la discussione è in corso."
+    "steerLocked": "Si sbloccano quando la discussione è in corso.",
+    "answering": "Stanno rispondendo",
+    "models": "Modelli"
   },
   "stage": {
     "speaking": "{{name}} sta parlando",
@@ -390,5 +442,69 @@
     "panes": "Vista della stanza",
     "talk": "Discussione",
     "controls": "Controlli"
+  },
+  "compare": {
+    "title": "Confronta esecuzioni",
+    "modeTogether": "Tutti insieme",
+    "modeOneByOne": "Uno alla volta",
+    "include": "Includi nella prossima esecuzione",
+    "includeFor": "Includi {{name}} nella prossima esecuzione",
+    "run": "Esegui",
+    "runAgain": "Esegui di nuovo",
+    "runFor": "Esegui {{name}} sulla domanda attuale",
+    "runAgainFor": "Esegui di nuovo {{name}} sulla domanda attuale",
+    "runAll": "Esegui tutti",
+    "answerEarlier": "Rispondi alle domande precedenti",
+    "answerEarlierHint": "Ogni modello che ha perso una domanda precedente ora risponde, in ordine, come se fosse stato presente.",
+    "export": "Esporta il confronto",
+    "saveMarkdown": "Salva come Markdown…",
+    "copyMarkdown": "Copia come Markdown",
+    "copyJson": "Copia come JSON",
+    "saved": "Confronto salvato.",
+    "copied": "Copiato negli appunti.",
+    "copyFailed": "Impossibile copiare negli appunti.",
+    "notAnswered": "Non ha ancora risposto a questa domanda.",
+    "state": {
+      "off": "Escluso dalla prossima esecuzione",
+      "unavailable": "Non disponibile",
+      "running": "Sta rispondendo…",
+      "queued": "In coda",
+      "done": "Risposto",
+      "failed": "Non riuscito",
+      "idle": "Ancora senza risposta"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} file modificato",
+    "summaryMany": "{{count}} file modificati",
+    "workspace": "Spazio isolato: {{path}}",
+    "binary": "File binario",
+    "noExcerpt": "Nessun estratto.",
+    "openDiff": "Apri diff",
+    "keep": "Mantieni",
+    "discard": "Scarta modifiche",
+    "apply": "Applica alla mia cartella",
+    "state": {
+      "kept": "Mantenuto",
+      "discarded": "Scartato",
+      "applied": "Applicato"
+    },
+    "diffTitle": "Modifiche nello spazio di lavoro",
+    "diffHint": "Tutto ciò che questo partecipante ha modificato nel suo spazio isolato.",
+    "applyTitle": "Applicare alla tua cartella?",
+    "applyHint": "Questa patch verrà scritta nella tua cartella. Se non si applica in modo pulito, non cambia nulla.",
+    "discardTitle": "Scartare queste modifiche?",
+    "discardHint": "Lo spazio del partecipante torna allo stato iniziale. La tua cartella non viene toccata.",
+    "loading": "Caricamento del diff…",
+    "empty": "Niente da applicare.",
+    "applyConfirm": "Applica",
+    "discardConfirm": "Scarta",
+    "scopeTurn": "Questo turno",
+    "scopeAll": "Da quando è stato creato lo spazio di lavoro"
+  },
+  "approvals": {
+    "held": "Stanza in pausa",
+    "heldHint": "La stanza è stata messa in pausa mentre questa richiesta attendeva, quindi non può più essere consentita. Riprendi la stanza e il partecipante chiederà di nuovo se ne ha ancora bisogno.",
+    "dismiss": "Chiudi"
   }
 }

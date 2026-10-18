@@ -9,7 +9,9 @@
       "title": "Flint hoàn thành các tác vụ trong trình duyệt của bạn",
       "description": "Cài đặt tiện ích để cho phép Flint truy cập trình duyệt",
       "getExtension": "Tải tiện ích"
-    }
+    },
+    "requires": "Yêu cầu cài tiện ích mở rộng trình duyệt trên trình duyệt nền Chrome của bạn.",
+    "install": "Cài tiện ích mở rộng →"
   },
   "serverName": "Tên máy chủ",
   "enterServerName": "Nhập tên máy chủ",

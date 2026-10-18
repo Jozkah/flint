@@ -140,8 +140,10 @@
     "showTokenSpeedDesc": "在助手消息下方内联显示 tokens/sec 和 token 数量。关闭时，点击紧凑图标可查看详情。",
     "coloredUserBubble": "彩色用户消息气泡",
     "coloredUserBubbleDesc": "使用强调色作为你的消息背景。关闭时，用户消息与助手消息样式一致，即中性背景上的纯文本。",
+    "renderUserMarkdown": "在我的消息中渲染 Markdown",
+    "renderUserMarkdownDesc": "在你发送的消息中显示粗体、列表、标题和代码。关闭时按输入原样显示。",
     "renderHtmlArtifacts": "渲染 HTML 和 SVG 产物",
-    "renderHtmlArtifactsDesc": "为 HTML 和 SVG 代码块添加预览标签页。HTML 在沙盒框架中运行模型生成的页面，可执行其自身脚本，但无法访问 Jan、你的文件或网络；SVG 以静态方式渲染并禁用脚本。默认关闭。",
+    "renderHtmlArtifactsDesc": "为 HTML 和 SVG 代码块添加预览标签页。HTML 在沙盒框架中运行模型生成的页面，可执行其自身脚本，但无法访问 Flint、你的文件或网络；SVG 以静态方式渲染并禁用脚本。默认关闭。",
     "composerRailButtons": "Cowork 输入区中的输出按钮",
     "composerRailButtonsDesc": "在 Cowork 消息框下方显示“预览”“代码”“更改”“活动”和“时间线”。关闭时，标题栏中的一个“输出”按钮会打开该面板。",
     "autoGenerateTitle": "自动生成聊天标题",
@@ -260,7 +262,7 @@
     "showKey": "显示密钥",
     "hideKey": "隐藏密钥",
     "title": "网络搜索",
-    "description": "让模型使用 Jan 内置工具搜索并阅读网页。",
+    "description": "让模型使用 Flint 内置工具搜索并阅读网页。",
     "enable": "启用网络搜索",
     "enableDesc": "向支持工具调用的模型提供 web_search 和 web_fetch 工具。开箱即用，无需 API key。",
     "provider": "搜索提供商",
@@ -393,7 +395,7 @@
     "runOnStartup": "Auto start",
     "runOnStartupDesc": "应用程序启动时自动启动本地 API 服务器。使用上次使用的模型，如果不可用则选择第一个可用模型。",
     "runInBackground": "在后台运行",
-    "runInBackgroundDesc": "关闭窗口时，让服务器继续在系统托盘中运行。关闭此选项后，关闭窗口将退出 Jan 并停止服务器。",
+    "runInBackgroundDesc": "关闭窗口时，让服务器继续在系统托盘中运行。关闭此选项后，关闭窗口将退出 Flint 并停止服务器。",
     "serverConfiguration": "服务器配置",
     "serverHost": "服务器主机",
     "serverHostDesc": "服务器的网络地址。",
@@ -416,7 +418,10 @@
     "proxyTimeoutDesc": "等待本地模型响应的时间（单位：秒）。",
     "defaultModel": "默认模型",
     "defaultModelDesc": "服务器启动时自动加载的本地模型。",
-    "defaultModelPlaceholder": "选择一个本地模型"
+    "defaultModelPlaceholder": "选择一个本地模型",
+    "noLocalModels": "尚未导入本地模型",
+    "usage5hAria": "每 5 小时的 token 数",
+    "usageWeekAria": "每周的 token 数"
   },
   "privacy": {
     "analytics": "分析",
@@ -510,7 +515,22 @@
     "support": "支持",
     "reportAnIssue": "报告问题",
     "reportAnIssueDesc": "发现错误？通过在 GitHub 上提交问题来帮助我们。",
-    "reportIssue": "报告问题"
+    "reportIssue": "报告问题",
+    "advanced": "高级",
+    "migrateJan": {
+      "title": "从 JAN 迁移",
+      "desc": "将现有 JAN 安装中的数据导入 Flint——可复制、原地复用、移动，或全新开始。",
+      "open": "打开迁移助手"
+    },
+    "verify": "验证",
+    "cli": {
+      "installedDesc": "已安装在 {{path}}——在终端中使用 flint 来提供模型服务。",
+      "desc": "无需打开应用，即可在终端中使用 flint 来提供模型服务。",
+      "install": "安装",
+      "installing": "正在安装…",
+      "uninstall": "卸载",
+      "uninstalling": "正在卸载…"
+    }
   },
   "extensions": {
     "title": "扩展"
@@ -604,7 +624,9 @@
     "summaryMaxTokens": "摘要长度",
     "summaryDescription": "最长摘要，以 token 计。",
     "projectOverride": "（项目会覆盖此设置。）",
-    "saveFailed": "无法保存压缩策略"
+    "saveFailed": "无法保存压缩策略",
+    "leanTools": "小模型精简工具",
+    "leanToolsDescription": "当上下文窗口为 32K 令牌或更小时,聊天中不提供插件列表、图片搜索和小组件工具,让窗口留给对话。网页搜索、MCP 和智能体工具保留。"
   },
   "accent": {
     "title": "强调色",
@@ -660,10 +682,10 @@
     "completionSoundApproval": "仅在需要批准时",
     "completionSoundVolume": "音量",
     "completionSoundPreview": "播放",
-    "increaseContrast": "提高对比度",
-    "increaseContrastDesc": "让文字更醒目，更易阅读。深色主题下更白，浅色主题下更深。",
     "reduceMotion": "减少动效",
-    "reduceMotionDesc": "关闭 Flint 中的动画。Flint 不会跟随系统设置，因此除非你切换此项，否则动效保持开启。"
+    "reduceMotionDesc": "关闭 Flint 中的动画。Flint 不会跟随系统设置，因此除非你切换此项，否则动效保持开启。",
+    "increaseContrast": "提高对比度",
+    "increaseContrastDesc": "让文字更醒目，更易阅读。深色主题下更白，浅色主题下更深。"
   },
   "pageDesc": {
     "general": "语言、数据文件夹、日志和应用范围的选项。",
@@ -1125,7 +1147,26 @@
     "skipped": "未恢复：{{stores}}",
     "storeToolApproval": "工具自动批准",
     "storeMcpTrust": "MCP 服务器信任",
-    "storeProxy": "网络代理"
+    "storeProxy": "网络代理",
+    "title": "备份与同步",
+    "exported": "设置已导出",
+    "exportFailed": "导出失败",
+    "importFailed": "导入失败",
+    "importedRestarting": "设置已导入，正在重启窗口",
+    "exportTitle": "导出设置",
+    "exportDesc": "将偏好设置保存为 JSON 文件。要在多台设备间同步，请把文件存放到 Google Drive 或 Nextcloud 文件夹，再在另一台设备上导入。聊天记录和各设备自身的状态不包含在内。",
+    "includeSecrets": "包含提供商和 API 密钥",
+    "secretsWarning": "文件将以明文包含您的 API 密钥。请妥善保密，不要放入共享文件夹。",
+    "exportButton": "导出…",
+    "importTitle": "导入设置",
+    "importDesc": "用备份文件替换您的偏好设置。之后窗口会重新加载。",
+    "chooseFile": "选择文件…",
+    "pendingGroups": "文件中的设置组数：{{groups}}。",
+    "pendingKeys": "带 API 密钥的提供商数：{{keys}}。",
+    "pendingExported": "导出于 {{date}}。",
+    "pendingOverwrite": "这会覆盖您当前的值。",
+    "apply": "导入并重新加载",
+    "cancel": "取消"
   },
   "startup": {
     "title": "随电脑启动",
@@ -1153,5 +1194,129 @@
     "showAll": "全部显示",
     "preview": "预览",
     "reachable": "隐藏的项目仍可从命令面板和“设置”中访问。"
+  },
+  "memoryPage": {
+    "useSaved": "在对话中使用已保存的记忆",
+    "useSavedDesc": "关闭后，Flint 不会在任何请求中加入已保存的记忆。你的记忆仍会保留，也仍可在此管理。",
+    "useFacts": "在请求中使用已记住的事实",
+    "useFactsDesc": "关闭某个范围后将不再发送它。不会删除任何内容；重新开启后会再次使用。",
+    "scope": {
+      "chat": {
+        "tab": "此对话",
+        "blurb": "仅在保存它的对话内记住。",
+        "recall": "此对话",
+        "recallAria": "使用此对话的记忆",
+        "newAria": "此对话的新记忆",
+        "forgetAll": "忘记此对话中的全部内容",
+        "clearBody": "为此对话记住的所有内容将不再被使用，其文本会从本机移除。无法一步撤销。"
+      },
+      "project": {
+        "tab": "项目",
+        "blurb": "对下方所选项目中的每个对话可用，对其他项目不可用。",
+        "recall": "此项目",
+        "recallAria": "使用此项目的记忆",
+        "newAria": "此项目的新记忆",
+        "forgetAll": "忘记此项目中的全部内容",
+        "clearBody": "为此项目记住的所有内容将不再被使用，其文本会从本机移除。无法一步撤销。"
+      },
+      "user": {
+        "tab": "所有对话",
+        "blurb": "随处可用。适合保存普遍成立的内容。",
+        "recall": "所有对话",
+        "recallAria": "使用所有对话共享的记忆",
+        "newAria": "所有对话的新记忆",
+        "forgetAll": "忘记跨对话共享的全部内容",
+        "clearBody": "所有对话中记住的全部内容将不再被使用，其文本会从本机移除。无法一步撤销。"
+      }
+    },
+    "stored": {
+      "summary": "跨聊天 {{user}} 条 · {{project}} · {{size}}",
+      "projectIn": "{{name}} 中 {{count}} 条",
+      "chooseProject": "选择一个项目以统计其记忆"
+    },
+    "listTitle": "Flint 记住的内容",
+    "tabsAria": "记忆范围",
+    "recallOff": "此范围已关闭记忆调用：这些内容会保留，但不会被发送。",
+    "newPlaceholder": "希望 Flint 记住的内容",
+    "remember": "记住",
+    "export": "导出",
+    "import": "导入",
+    "importReport": {
+      "summary": "已从导出文件导入 {{count}} 条",
+      "duplicates": "{{count}} 条已存在",
+      "refused": "{{count}} 条被拒绝"
+    },
+    "conversation": "对话",
+    "conversationAria": "要显示其记忆的对话",
+    "noConversations": "还没有对话",
+    "kindChat": "聊天 · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "替换于 {{when}}",
+    "projectFolder": "项目文件夹",
+    "projectFolderAria": "要显示其记忆的项目",
+    "noProjectFolders": "没有会话附加任何项目",
+    "chooseProject": "选择项目",
+    "chooseProjectAbove": "请在上方选择一个项目，以查看和管理其记忆。",
+    "searchAria": "搜索记忆",
+    "searchPlaceholder": "搜索已记住的事实",
+    "noMatch": "这里没有与该搜索匹配的内容。",
+    "empty": "这里还没有记住任何内容。",
+    "meta": {
+      "youSaved": "由你保存",
+      "inferred": "推断",
+      "pinned": "已固定",
+      "used_one": "已使用 {{count}} 次",
+      "used_other": "已使用 {{count}} 次",
+      "lastUsed": "上次使用 {{when}}",
+      "never": "从未"
+    },
+    "pin": "固定",
+    "unpin": "取消固定",
+    "pinAria": "固定记忆",
+    "unpinAria": "取消固定记忆",
+    "editAria": "编辑记忆",
+    "forget": "忘记",
+    "forgetAria": "忘记记忆",
+    "showing": "显示第 {{from}}–{{to}} 条，共 {{total}} 条",
+    "previous": "上一页",
+    "waitingTitle": "等待你处理",
+    "waitingBody": "这里的内容目前都未被使用。未回应的提议绝不会被加入提示词。",
+    "conflictsTitle": "相互矛盾的记忆",
+    "conflictsBody": "双方都不会被使用。这些记住的事实相互矛盾，因此在你保留其一之前，Flint 会在每个请求中排除两者。",
+    "conflictAbout": "关于{{subject}}",
+    "keepThis": "保留此条",
+    "keepAria": "保留“{{preview}}”并忘记另一条",
+    "editTitle": "编辑记忆",
+    "editBody": "这将用于它所属范围内的后续对话。",
+    "contentAria": "记忆内容",
+    "clearTitle": "忘记这里的所有记忆？",
+    "clearConfirm": "全部忘记",
+    "toast": {
+      "kept": "已保留一条记忆",
+      "settleFailed": "无法解决该冲突",
+      "forgotten": "已忘记记忆",
+      "forgetFailed": "无法忘记该记忆",
+      "changeFailed": "无法更改该记忆",
+      "updated": "记忆已更新",
+      "updateFailed": "无法更新该记忆",
+      "settingsFailed": "无法保存记忆设置",
+      "recallFailed": "无法更改记忆调用",
+      "saved": "记忆已保存",
+      "saveFailed": "无法保存该记忆",
+      "forgotCount_one": "已忘记 {{count}} 条记忆",
+      "forgotCount_other": "已忘记 {{count}} 条记忆",
+      "forgetManyFailed": "无法忘记这些记忆",
+      "exportedCount_one": "已导出 {{count}} 条记忆",
+      "exportedCount_other": "已导出 {{count}} 条记忆",
+      "exportFailed": "无法导出记忆",
+      "importedCount_one": "已导入 {{count}} 条记忆",
+      "importedCount_other": "已导入 {{count}} 条记忆",
+      "importFailed": "无法导入记忆"
+    }
+  },
+  "chatMentions": {
+    "title": "对话提及",
+    "readAny": "允许助手读取任意对话",
+    "readAnyDesc": "默认关闭。通常助手只能读取你用 @ 或 # 提及的对话。开启后，它可以按 ID 打开此电脑上的任何聊天、会话或房间。读取的内容只保留在这台电脑上，并标记为参考数据。"
   }
 }

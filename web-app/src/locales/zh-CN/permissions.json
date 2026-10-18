@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint 想要在 {{workspace}} 中运行 {{command}}",
     "gitRemote": "Flint 想要运行 {{command}}，这会更改 {{target}}",
     "gitDestructive": "Flint 想要运行 {{command}}，这可能会丢失工作成果",
-    "approveCampaign": "Flint 想要开始战役“{{title}}”（{{count}} 个任务）"
+    "approveCampaign": "Flint 想要开始战役“{{title}}”（{{count}} 个任务）",
+    "spendPause": "Flint 想在超过支出暂停额度后继续此次运行"
   },
   "consequence": {
     "fileChange": "它可以创建、覆盖或更改文件的内容。",
@@ -57,7 +58,8 @@
     "gitLocal": "它会更改这台电脑上此仓库的文件、分支或历史记录。",
     "gitRemote": "它会将更改发送到其他人可见的远程仓库。除非你为此对话临时允许普通的远程 Git 操作，否则 Flint 每次都会询问。",
     "gitDestructive": "它删除或覆盖的内容可能无法恢复。",
-    "campaignPlan": "它会启动各自独立的会话，每个会话位于自己的 worktree 分支上，读取并更改文件，并并行消耗你的模型配额。批准计划并不等于批准任务发起的任何调用。Flint 每次都会询问。"
+    "campaignPlan": "它会启动各自独立的会话，每个会话位于自己的 worktree 分支上，读取并更改文件，并并行消耗你的模型配额。批准计划并不等于批准任务发起的任何调用。Flint 每次都会询问。",
+    "spendPause": "运行会继续消耗付费模型额度，直到结束或达到上限。拒绝则停止运行。"
   },
   "repeat": {
     "allowedOnceBefore": "你已在此对话中允许过这条命令一次。"
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "以后与 {{action}} 匹配的单进程调用将无需询问即可运行，包括不同的进程 ID。其他脚本仍会询问。可在“设置”>“权限”中撤销。",
     "allowClipboardReadExplanation": "在你于“设置”>“权限”中撤销之前，Flint 可以在所有对话中无需询问地读取以后的剪贴板内容。写入剪贴板仍会询问。",
     "allowSimilarThreadExplanation": "以后与 {{action}} 匹配的调用在此对话中无需询问即可运行。可在“设置”>“权限”中撤销。",
-    "broader": "更宽泛"
+    "broader": "更宽泛",
+    "editedRunsOnce": "编辑后的命令只运行一次。"
   },
   "request": {
     "title": "权限请求",
@@ -226,11 +229,12 @@
     "trust": "信任文件夹",
     "later": "暂不",
     "failed": "无法信任该文件夹",
+    "kept_other": "已为你正在使用的 {{count}} 个文件夹保持开启钩子。请在“设置 > 权限 > 受信任的文件夹”中查看。",
     "kept": "已为你正在使用的 {{count}} 个文件夹保持开启钩子。请在“设置 > 权限 > 受信任的文件夹”中查看。"
   },
   "trustedFolders": {
     "title": "受信任的文件夹",
-    "description": "允许运行其自带钩子和智能体定义的文件夹。信任会一直保留，直到你收回。",
+    "description": "允许运行其自带钩子和智能体定义的文件夹。信任会一直保留，直到你收回。智能体可读取或更改的文件列在“文件夹访问”中。",
     "empty": "还没有受信任的文件夹；当某个文件夹首次带有钩子或智能体定义时，Flint 会询问。",
     "add": "信任文件夹…",
     "stop": "取消信任",
@@ -250,7 +254,11 @@
     "prefixHint": "仅限单个普通命令。串联、管道或重定向的命令会再次询问。",
     "everywhere": "所有项目中对 {{tool}} 的每次调用",
     "everywhereHint": "“始终允许”的旧含义。范围很广，很少是你想要的。",
-    "saveFailed": "无法记住该选择"
+    "saveFailed": "无法记住该选择",
+    "alwaysFolder": "始终：{{dir}} 内",
+    "alwaysPrefix": "始终：以 {{prefix}} 开头的命令",
+    "alwaysFolderExplanation": "仅限该文件夹中的文件，仅在此项目中，直到你在“设置 > 权限”中撤销。",
+    "alwaysPrefixExplanation": "仅限以此开头的单条普通命令，仅在此项目中，直到你在“设置 > 权限”中撤销。串联、管道或重定向的命令仍会再次询问。"
   },
   "rules": {
     "title": "已记住的批准",
@@ -284,12 +292,38 @@
       "consumed": "已使用"
     },
     "loadFailed": "无法读取等待中的批准",
-    "answerFailed": "无法记录该回答"
+    "answerFailed": "无法记录该回答",
+    "allowLabel": "允许：{{summary}}",
+    "denyLabel": "拒绝：{{summary}}",
+    "discardLabel": "移除：{{summary}}"
   },
   "toast": {
     "trustFailed": "无法记住该服务器",
     "cancelledOne": "{{names}} 的批准已取消",
     "cancelledMany": "{{count}} 个批准（{{names}}）已取消",
     "cancelledDescription": "在你回答之前已离开该聊天。请重新发送请求以重试。"
+  },
+  "desktopOnly": "仅在 Flint 桌面应用中可用。",
+  "folderAccess": {
+    "title": "文件夹访问",
+    "description": "位于智能体工作区之外、你允许智能体读取或更改的文件夹和文件。文件夹自带的钩子能否运行，在“受信任的文件夹”中设置。",
+    "empty": "尚未授予任何文件夹访问权限。",
+    "readWrite": "读取和写入",
+    "readOnly": "只读",
+    "untilRevoked": "所有对话，直到撤销",
+    "untilDate": "此对话，直到 {{when}}",
+    "revoke": "撤销",
+    "revokeLabel": "撤销对 {{path}} 的访问"
+  },
+  "spendPause": {
+    "preview": "继续运行（目前已花费约 {{spent}}）",
+    "previewCeiling": "继续运行，上限为 {{ceiling}}（目前已花费约 {{spent}}）"
+  },
+  "remote": {
+    "runsOnServer": "在服务器上运行。",
+    "runsOnServerAt": "在服务器上运行：{{where}}。"
+  },
+  "childApprovals": {
+    "label": "等待你批准的更改"
   }
 }

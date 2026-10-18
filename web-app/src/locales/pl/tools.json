@@ -79,6 +79,8 @@
     "reading": "Czytanie...",
     "workspaceRoot": "katalog główny przestrzeni roboczej",
     "matches": "Dopasowania: {{count}}",
-    "testsPassed": "Zaliczone: {{count}}"
+    "testsPassed": "Zaliczone: {{count}}",
+    "runningStatus": "Uruchamianie {{tool}}…",
+    "stillRunning": "{{tool}} nadal działa…"
   }
 }

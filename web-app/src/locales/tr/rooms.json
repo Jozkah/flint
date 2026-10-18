@@ -154,7 +154,45 @@
     "sections": "Ayar bölümü",
     "tabGeneral": "Genel",
     "tabDiscussion": "Tartışma",
-    "tabLimits": "Sınırlar"
+    "tabLimits": "Sınırlar",
+    "compareRun": "Modelleri çalıştırma",
+    "compareRunHint": "Tek tek daha yavaştır ama aynı anda tek bir yerel model yükler ve istek sınırlarını korur.",
+    "compareRunOption": {
+      "together": "Hepsi aynı anda",
+      "one-by-one": "Tek tek"
+    },
+    "compareRunSuggest": "İki veya daha fazla yerel model seçili: tek tek çalıştırmak bellek için yarışmalarını önler.",
+    "tools": {
+      "heading": "Araçlar",
+      "summary": "{{total}} araçtan {{on}} açık · ~{{tokens}} token",
+      "loading": "Araçlar yükleniyor…",
+      "empty": "Bu erişimle kullanılabilir araç yok.",
+      "group": {
+        "files": "Dosyalar ve komutlar",
+        "web": "Web",
+        "mcp": "MCP sunucuları",
+        "other": "Diğer"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Araç tanımları bu modelin bağlam penceresinin yaklaşık %{{pct}} kadarını kullanıyor.",
+      "warn": "Araç tanımları bu modelin bağlam penceresinin yaklaşık %{{pct}} kadarını kullanıyor (%{{limit}} üzerinde). Tartışmaya yer kalması için bazılarını kapatın.",
+      "windowUnknown": "Bu modelin bağlam penceresi bilinmiyor, bu yüzden pay gösterilemiyor.",
+      "notStarted": "başlatılmadı",
+      "toolsUnknown": "başlayana kadar araçlar bilinmiyor"
+    },
+    "budget": {
+      "heading": "Tur başına araç bütçesi",
+      "hint": "Araç kullanan her katılımcı turu için sınırlar. Varsayılan için alanı boş bırakın.",
+      "maxToolCalls": "En fazla araç çağrısı",
+      "maxSteps": "En fazla adım",
+      "toolTimeoutSec": "Araç zaman aşımı (saniye)",
+      "default": "Varsayılan: {{value}}"
+    },
+    "isolation": {
+      "active": "Düzenleyebilen her katılımcı kendi yalıtılmış çalışma alanında çalışır; birbirlerinin veya klasörünüzün üzerine yazamazlar.",
+      "unavailable": "Yalıtılmış çalışma alanı kullanılamıyor: {{reason}}. Düzenleyebilen katılımcılar bu odada yalnızca okur.",
+      "untrusted": "klasör güvenilir değil"
+    }
   },
   "limits": {
     "maxRounds": "Turlar",
@@ -228,7 +266,19 @@
     "toolFailed": "başarısız",
     "speed": "{{tps}} tok/sn",
     "tokensOut": "{{approx}}{{count}} token",
-    "speedTitle": "Bu yanıtta yazılan token'lar ve ne kadar hızlı olduğu"
+    "speedTitle": "Bu yanıtta yazılan token'lar ve ne kadar hızlı olduğu",
+    "budgetHit": {
+      "tool-calls": "Bu tur araç çağrısı bütçesine ulaştı.",
+      "steps": "Bu tur adım bütçesine ulaştı.",
+      "timeout": "Bu turdaki bir araç çağrısı zaman aşımını geçti ve durduruldu."
+    },
+    "rawToolCall": "Bu, metin olarak yazılmış bir araç çağrısına benziyor. Çalıştırılmadı.",
+    "emptyReply": {
+      "length": "Model yanıt yazmadan tüm yanıt sınırını ({{count}} token) kullandı. Oda ayarlarından sınırı yükseltin veya bu katılımcının akıl yürütmesini kapatıp yeniden çalıştırın.",
+      "tools": "Araç kullandı ama metin yanıtı yazmadı.",
+      "none": "Metin yanıtı yok."
+    },
+    "thought": "Düşünme"
   },
   "unknownWindow": {
     "title": "Bağlam penceresi bilinmiyor",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Her katılımcı nerede durduğunu belirtir",
     "synthesizeHint": "Sonucun özeti, muhalefet şerhiyle birlikte",
     "cancelTurnHint": "Yalnızca devam eden yanıtı durdur",
-    "steerLocked": "Bunlar tartışma başladığında açılır."
+    "steerLocked": "Bunlar tartışma başladığında açılır.",
+    "answering": "Yanıtlayanlar",
+    "models": "Modeller"
   },
   "stage": {
     "speaking": "{{name}} konuşuyor",
@@ -390,5 +442,69 @@
     "panes": "Oda görünümü",
     "talk": "Tartışma",
     "controls": "Kontroller"
+  },
+  "compare": {
+    "title": "Çalıştırmaları karşılaştır",
+    "modeTogether": "Hepsi aynı anda",
+    "modeOneByOne": "Tek tek",
+    "include": "Sonraki çalıştırmaya dahil et",
+    "includeFor": "{{name}} modelini sonraki çalıştırmaya dahil et",
+    "run": "Çalıştır",
+    "runAgain": "Yeniden çalıştır",
+    "runFor": "{{name}} modelini geçerli soruda çalıştır",
+    "runAgainFor": "{{name}} modelini geçerli soruda yeniden çalıştır",
+    "runAll": "Hepsini çalıştır",
+    "answerEarlier": "Önceki soruları yanıtla",
+    "answerEarlierHint": "Önceki bir soruyu kaçıran her model, en baştan oradaymış gibi sırayla şimdi yanıtlar.",
+    "export": "Karşılaştırmayı dışa aktar",
+    "saveMarkdown": "Markdown olarak kaydet…",
+    "copyMarkdown": "Markdown olarak kopyala",
+    "copyJson": "JSON olarak kopyala",
+    "saved": "Karşılaştırma kaydedildi.",
+    "copied": "Panoya kopyalandı.",
+    "copyFailed": "Panoya kopyalanamadı.",
+    "notAnswered": "Bu soruyu henüz yanıtlamadı.",
+    "state": {
+      "off": "Sonraki çalıştırmanın dışında",
+      "unavailable": "Kullanılamıyor",
+      "running": "Yanıtlıyor…",
+      "queued": "Sırada",
+      "done": "Yanıtladı",
+      "failed": "Başarısız",
+      "idle": "Henüz yanıtlamadı"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} dosya değişti",
+    "summaryMany": "{{count}} dosya değişti",
+    "workspace": "Yalıtılmış çalışma alanı: {{path}}",
+    "binary": "İkili dosya",
+    "noExcerpt": "Alıntı yok.",
+    "openDiff": "Farkı aç",
+    "keep": "Tut",
+    "discard": "Değişiklikleri at",
+    "apply": "Klasörüme uygula",
+    "state": {
+      "kept": "Tutuldu",
+      "discarded": "Atıldı",
+      "applied": "Uygulandı"
+    },
+    "diffTitle": "Çalışma alanındaki değişiklikler",
+    "diffHint": "Bu katılımcının yalıtılmış çalışma alanında değiştirdiği her şey.",
+    "applyTitle": "Klasörünüze uygulansın mı?",
+    "applyHint": "Bu yama klasörünüze yazılacak. Temiz uygulanamazsa hiçbir şey değişmez.",
+    "discardTitle": "Bu değişiklikler atılsın mı?",
+    "discardHint": "Katılımcının çalışma alanı başlangıç durumuna döner. Klasörünüze dokunulmaz.",
+    "loading": "Fark yükleniyor…",
+    "empty": "Uygulanacak bir şey yok.",
+    "applyConfirm": "Uygula",
+    "discardConfirm": "At",
+    "scopeTurn": "Bu tur",
+    "scopeAll": "Çalışma alanı oluşturulduğundan beri"
+  },
+  "approvals": {
+    "held": "Oda duraklatıldı",
+    "heldHint": "Bu beklerken oda duraklatıldı, bu yüzden artık izin verilemez. Odayı sürdürün; katılımcı hâlâ gerekiyorsa yeniden soracaktır.",
+    "dismiss": "Kapat"
   }
 }

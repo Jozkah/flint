@@ -106,6 +106,7 @@
     "connection": "Koneksi",
     "engineSettings": "Pengaturan engine",
     "memorySettings": "Memori & cache",
+    "settingNotSaved": "\"{{setting}}\" tidak tersimpan",
     "danger": "Zona berbahaya"
   },
   "mcp": {
@@ -125,7 +126,8 @@
     "kpiApprovedAll": "Semua panggilan alat diizinkan",
     "tabServers": "Server",
     "tabRouting": "Perutean & batas",
-    "toolsCount": "{{count}} alat",
+    "toolsCount_one": "{{count}} alat",
+    "toolsCount_other": "{{count}} alat",
     "filterLabel": "Tampilkan server",
     "filterAll": "Semua",
     "filterOn": "Aktif",
@@ -135,10 +137,11 @@
     "viewList": "Daftar",
     "callsPerMin": "panggilan / menit",
     "window": "{{count}} menit terakhir",
-    "needsExtension": "Memerlukan Jan Browser Extension",
+    "needsExtension": "Memerlukan ekstensi peramban",
     "moreActions": "Tindakan lain untuk {{serverName}}",
     "addTile": "Tambah server MCP",
-    "addTileHint": "STDIO, HTTP atau SSE"
+    "addTileHint": "STDIO, HTTP atau SSE",
+    "toolsCount": "{{count}} alat"
   },
   "extensions": {
     "description": "Plugin, skill, dan bagian engine yang menyusun Flint.",

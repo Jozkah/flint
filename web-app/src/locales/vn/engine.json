@@ -107,6 +107,7 @@
     "connection": "Kết nối",
     "engineSettings": "Cài đặt engine",
     "memorySettings": "Bộ nhớ và bộ đệm",
+    "settingNotSaved": "Chưa lưu \"{{setting}}\"",
     "danger": "Vùng nguy hiểm"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "Mọi lượt gọi công cụ đều được cho phép",
     "tabServers": "Máy chủ",
     "tabRouting": "Định tuyến và giới hạn",
-    "toolsCount": "{{count}} công cụ",
+    "toolsCount_one": "{{count}} công cụ",
+    "toolsCount_other": "{{count}} công cụ",
     "filterLabel": "Hiển thị máy chủ",
     "filterAll": "Tất cả",
     "filterOn": "Bật",
@@ -136,10 +138,11 @@
     "viewList": "Danh sách",
     "callsPerMin": "lượt gọi / phút",
     "window": "{{count}} phút gần nhất",
-    "needsExtension": "Yêu cầu Jan Browser Extension",
+    "needsExtension": "Yêu cầu tiện ích mở rộng trình duyệt",
     "moreActions": "Thêm thao tác cho {{serverName}}",
     "addTile": "Thêm máy chủ MCP",
-    "addTileHint": "STDIO, HTTP hoặc SSE"
+    "addTileHint": "STDIO, HTTP hoặc SSE",
+    "toolsCount": "{{count}} công cụ"
   },
   "extensions": {
     "description": "Plugin, kỹ năng và các thành phần engine mà Flint được xây dựng từ đó.",

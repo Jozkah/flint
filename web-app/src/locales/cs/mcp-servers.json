@@ -9,7 +9,9 @@
       "title": "Flint dokončuje úkoly ve vašem prohlížeči",
       "description": "Nainstalujte rozšíření pro přístup Jana k prohlížeči",
       "getExtension": "Získat rozšíření"
-    }
+    },
+    "requires": "Vyžaduje rozšíření prohlížeče nainstalované ve vašem prohlížeči založeném na Chromu.",
+    "install": "Nainstalovat rozšíření →"
   },
   "serverName": "Název serveru",
   "enterServerName": "Zadejte název serveru",

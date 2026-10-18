@@ -107,6 +107,7 @@
     "connection": "कनेक्शन",
     "engineSettings": "इंजन सेटिंग",
     "memorySettings": "मेमोरी और कैश",
+    "settingNotSaved": "\"{{setting}}\" सहेजा नहीं गया",
     "danger": "खतरे का क्षेत्र"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "सभी टूल कॉल की अनुमति है",
     "tabServers": "सर्वर",
     "tabRouting": "रूटिंग और सीमाएँ",
-    "toolsCount": "{{count}} टूल",
+    "toolsCount_one": "{{count}} टूल",
+    "toolsCount_other": "{{count}} टूल",
     "filterLabel": "सर्वर दिखाएँ",
     "filterAll": "सभी",
     "filterOn": "चालू",
@@ -136,10 +138,11 @@
     "viewList": "सूची",
     "callsPerMin": "कॉल / मिनट",
     "window": "पिछले {{count}} मिनट",
-    "needsExtension": "Jan Browser Extension चाहिए",
+    "needsExtension": "ब्राउज़र एक्सटेंशन चाहिए",
     "moreActions": "{{serverName}} के लिए और क्रियाएँ",
     "addTile": "MCP सर्वर जोड़ें",
-    "addTileHint": "STDIO, HTTP या SSE"
+    "addTileHint": "STDIO, HTTP या SSE",
+    "toolsCount": "{{count}} टूल"
   },
   "extensions": {
     "description": "प्लगइन, स्किल और इंजन के वे हिस्से जिनसे Flint बना है।",

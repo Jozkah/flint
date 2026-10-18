@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint가 {{workspace}}에서 {{command}}을(를) 실행하려고 합니다",
     "gitRemote": "Flint가 {{target}}을(를) 변경하는 {{command}}을(를) 실행하려고 합니다",
     "gitDestructive": "Flint가 작업 내용을 잃을 수 있는 {{command}}을(를) 실행하려고 합니다",
-    "approveCampaign": "Flint가 캠페인 \"{{title}}\"({{count}}개 작업)을 시작하려 합니다"
+    "approveCampaign": "Flint가 캠페인 \"{{title}}\"({{count}}개 작업)을 시작하려 합니다",
+    "spendPause": "Flint가 지출 일시 중지 한도를 넘어 이 실행을 계속하려 합니다"
   },
   "consequence": {
     "fileChange": "파일을 만들거나, 덮어쓰거나, 내용을 변경할 수 있습니다.",
@@ -57,7 +58,8 @@
     "gitLocal": "이 컴퓨터에서 이 저장소의 파일, 브랜치 또는 기록을 변경합니다.",
     "gitRemote": "다른 사람이 볼 수 있는 원격 저장소로 변경 사항을 보냅니다. 이 대화에서 일반적인 원격 Git 작업을 일시적으로 허용하지 않는 한 Flint는 매번 묻습니다.",
     "gitDestructive": "제거되거나 덮어써진 내용은 복구할 수 없을 수 있습니다.",
-    "campaignPlan": "각각 자체 worktree branch에서 별도의 세션을 시작하며, 이 세션들은 파일을 읽고 변경하고 모델 사용량을 병렬로 소비합니다. 계획을 승인해도 작업이 하는 호출이 승인되지는 않습니다. Flint는 매번 묻습니다."
+    "campaignPlan": "각각 자체 worktree branch에서 별도의 세션을 시작하며, 이 세션들은 파일을 읽고 변경하고 모델 사용량을 병렬로 소비합니다. 계획을 승인해도 작업이 하는 호출이 승인되지는 않습니다. Flint는 매번 묻습니다.",
+    "spendPause": "실행은 끝나거나 한도에 이를 때까지 유료 모델 할당량을 계속 사용합니다. 거부하면 실행이 중지됩니다."
   },
   "repeat": {
     "allowedOnceBefore": "이 대화에서 이 명령을 이미 한 번 허용했습니다."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "{{action}}과(와) 일치하는 이후의 단일 프로세스 호출은 프로세스 ID가 달라도 묻지 않고 실행됩니다. 다른 스크립트는 여전히 묻습니다. 설정 > 권한에서 철회할 수 있습니다.",
     "allowClipboardReadExplanation": "설정 > 권한에서 철회할 때까지 Flint가 모든 대화에서 이후의 클립보드 내용을 묻지 않고 읽을 수 있습니다. 클립보드에 쓰는 것은 여전히 묻습니다.",
     "allowSimilarThreadExplanation": "{{action}}과(와) 일치하는 이후의 호출은 이 대화에서 묻지 않고 실행됩니다. 설정 > 권한에서 철회할 수 있습니다.",
-    "broader": "더 넓게"
+    "broader": "더 넓게",
+    "editedRunsOnce": "수정한 명령은 한 번만 실행됩니다."
   },
   "request": {
     "title": "권한 요청",
@@ -226,11 +229,12 @@
     "trust": "폴더 신뢰",
     "later": "나중에",
     "failed": "폴더를 신뢰하지 못했습니다",
+    "kept_other": "이미 사용 중인 폴더 {{count}}개의 훅을 켜진 상태로 유지했습니다. 설정 > 권한 > 신뢰한 폴더에서 검토하세요.",
     "kept": "이미 사용 중인 폴더 {{count}}개의 훅을 켜진 상태로 유지했습니다. 설정 > 권한 > 신뢰한 폴더에서 검토하세요."
   },
   "trustedFolders": {
     "title": "신뢰한 폴더",
-    "description": "자체 훅과 에이전트 정의를 실행할 수 있는 폴더입니다. 신뢰는 직접 취소할 때까지 유지됩니다.",
+    "description": "자체 훅과 에이전트 정의를 실행할 수 있는 폴더입니다. 신뢰는 직접 취소할 때까지 유지됩니다. 에이전트가 읽거나 변경할 수 있는 파일은 폴더 접근에 표시됩니다.",
     "empty": "아직 신뢰한 폴더가 없습니다. 폴더에 훅이나 에이전트 정의가 처음 있을 때 Flint가 물어봅니다.",
     "add": "폴더 신뢰…",
     "stop": "신뢰 해제",
@@ -250,7 +254,11 @@
     "prefixHint": "단순한 명령 하나만 해당합니다. 연결, 파이프 또는 리디렉션된 명령은 다시 묻습니다.",
     "everywhere": "모든 프로젝트의 모든 {{tool}} 호출",
     "everywhereHint": "'항상'의 예전 의미입니다. 범위가 넓어 원하는 결과가 아닌 경우가 많습니다.",
-    "saveFailed": "선택을 기억하지 못했습니다"
+    "saveFailed": "선택을 기억하지 못했습니다",
+    "alwaysFolder": "항상: {{dir}} 내부",
+    "alwaysPrefix": "항상: {{prefix}}(으)로 시작하는 명령",
+    "alwaysFolderExplanation": "해당 폴더의 파일에만, 이 프로젝트에서, 설정 > 권한에서 취소할 때까지 적용됩니다.",
+    "alwaysPrefixExplanation": "이렇게 시작하는 단순한 명령 하나에만, 이 프로젝트에서, 설정 > 권한에서 취소할 때까지 적용됩니다. 연결되거나 파이프·리디렉션된 명령은 다시 묻습니다."
   },
   "rules": {
     "title": "기억된 승인",
@@ -284,12 +292,38 @@
       "consumed": "사용됨"
     },
     "loadFailed": "대기 중인 승인을 읽지 못했습니다",
-    "answerFailed": "답변을 기록하지 못했습니다"
+    "answerFailed": "답변을 기록하지 못했습니다",
+    "allowLabel": "허용: {{summary}}",
+    "denyLabel": "거부: {{summary}}",
+    "discardLabel": "삭제: {{summary}}"
   },
   "toast": {
     "trustFailed": "해당 서버를 기억할 수 없습니다",
     "cancelledOne": "{{names}}에 대한 승인이 취소되었습니다",
     "cancelledMany": "승인 {{count}}개({{names}})가 취소되었습니다",
     "cancelledDescription": "답변하기 전에 채팅을 떠났습니다. 다시 시도하려면 요청을 다시 보내세요."
+  },
+  "desktopOnly": "Flint 데스크톱 앱에서만 사용할 수 있습니다.",
+  "folderAccess": {
+    "title": "폴더 접근",
+    "description": "에이전트 작업 공간 밖에서 에이전트가 읽거나 변경하도록 허용한 폴더와 파일입니다. 폴더 자체 훅의 실행 여부는 신뢰한 폴더에서 설정합니다.",
+    "empty": "허용된 폴더 접근이 없습니다.",
+    "readWrite": "읽기 및 쓰기",
+    "readOnly": "읽기 전용",
+    "untilRevoked": "모든 대화, 취소할 때까지",
+    "untilDate": "이 대화, {{when}}까지",
+    "revoke": "취소",
+    "revokeLabel": "{{path}}에 대한 접근 취소"
+  },
+  "spendPause": {
+    "preview": "실행 계속(지금까지 약 {{spent}} 사용)",
+    "previewCeiling": "상한 {{ceiling}}까지 실행 계속(지금까지 약 {{spent}} 사용)"
+  },
+  "remote": {
+    "runsOnServer": "서버에서 실행됩니다.",
+    "runsOnServerAt": "서버에서 실행됩니다: {{where}}"
+  },
+  "childApprovals": {
+    "label": "승인을 기다리는 변경 사항"
   }
 }

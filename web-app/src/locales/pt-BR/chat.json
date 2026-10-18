@@ -223,5 +223,6 @@
       "model-not-loaded": "Carregue primeiro o modelo do chat. Ele escreve o resumo.",
       "summary-failed": "Não foi possível escrever o resumo. Nada foi criado."
     }
-  }
+  },
+  "stopToolCall": "Parar chamada de ferramenta (Esc)"
 }

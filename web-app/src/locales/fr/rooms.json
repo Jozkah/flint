@@ -154,7 +154,45 @@
     "sections": "Section des réglages",
     "tabGeneral": "Général",
     "tabDiscussion": "Discussion",
-    "tabLimits": "Limites"
+    "tabLimits": "Limites",
+    "compareRun": "Exécution des modèles",
+    "compareRunHint": "L'un après l'autre est plus lent, mais ne charge qu'un modèle local à la fois et ménage les limites de débit.",
+    "compareRunOption": {
+      "together": "Tous en même temps",
+      "one-by-one": "L'un après l'autre"
+    },
+    "compareRunSuggest": "Deux modèles locaux ou plus sont choisis : les lancer l'un après l'autre leur évite de se disputer la mémoire.",
+    "tools": {
+      "heading": "Outils",
+      "summary": "{{on}} sur {{total}} activés · ~{{tokens}} jetons",
+      "loading": "Chargement des outils…",
+      "empty": "Aucun outil disponible avec cet accès.",
+      "group": {
+        "files": "Fichiers et commandes",
+        "web": "Web",
+        "mcp": "Serveurs MCP",
+        "other": "Autres"
+      },
+      "tokens": "~{{tokens}} jet",
+      "share": "Les définitions d'outils occupent environ {{pct}} % de la fenêtre de contexte de ce modèle.",
+      "warn": "Les définitions d'outils occupent environ {{pct}} % de la fenêtre de contexte de ce modèle (plus de {{limit}} %). Désactivez-en quelques-uns pour laisser de la place à la discussion.",
+      "windowUnknown": "La fenêtre de contexte de ce modèle est inconnue, la part ne peut donc pas être affichée.",
+      "notStarted": "non démarré",
+      "toolsUnknown": "outils inconnus avant le démarrage"
+    },
+    "budget": {
+      "heading": "Budget d'outils par tour",
+      "hint": "Plafonds pour chaque tour d'un participant qui utilise des outils. Laissez vide pour la valeur par défaut.",
+      "maxToolCalls": "Appels d'outils max.",
+      "maxSteps": "Étapes max.",
+      "toolTimeoutSec": "Délai d'un outil (secondes)",
+      "default": "Par défaut : {{value}}"
+    },
+    "isolation": {
+      "active": "Chaque participant qui peut modifier travaille dans son propre espace isolé : ils ne peuvent ni s'écraser entre eux ni écraser votre dossier.",
+      "unavailable": "Espace isolé indisponible : {{reason}}. Les participants qui peuvent modifier ne font que lire dans ce salon.",
+      "untrusted": "le dossier n'est pas approuvé"
+    }
   },
   "limits": {
     "maxRounds": "Tours de table",
@@ -228,7 +266,19 @@
     "toolFailed": "échec",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} tokens",
-    "speedTitle": "Tokens écrits dans cette réponse, et à quelle vitesse"
+    "speedTitle": "Tokens écrits dans cette réponse, et à quelle vitesse",
+    "budgetHit": {
+      "tool-calls": "Ce tour a atteint son budget d'appels d'outils.",
+      "steps": "Ce tour a atteint son budget d'étapes.",
+      "timeout": "Un appel d'outil de ce tour a dépassé le délai et a été arrêté."
+    },
+    "rawToolCall": "Cela ressemble à un appel d'outil écrit en texte. Il n'a pas été exécuté.",
+    "emptyReply": {
+      "length": "Le modèle a épuisé sa limite de réponse ({{count}} jetons) sans écrire de réponse. Augmentez la limite dans les réglages du salon ou désactivez le raisonnement de ce participant, puis relancez.",
+      "tools": "A utilisé des outils, mais n'a écrit aucune réponse texte.",
+      "none": "Aucune réponse texte."
+    },
+    "thought": "Réflexion"
   },
   "unknownWindow": {
     "title": "Fenêtre de contexte inconnue",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Chaque participant indique sa position",
     "synthesizeHint": "Résumé du résultat, avec les désaccords",
     "cancelTurnHint": "Arrêter uniquement la réponse en cours",
-    "steerLocked": "Ces commandes se débloquent quand la discussion est en cours."
+    "steerLocked": "Ces commandes se débloquent quand la discussion est en cours.",
+    "answering": "Répondent",
+    "models": "Modèles"
   },
   "stage": {
     "speaking": "{{name}} parle",
@@ -390,5 +442,69 @@
     "panes": "Vue de la salle",
     "talk": "Discussion",
     "controls": "Commandes"
+  },
+  "compare": {
+    "title": "Comparer les exécutions",
+    "modeTogether": "Tous en même temps",
+    "modeOneByOne": "L'un après l'autre",
+    "include": "Inclure dans la prochaine exécution",
+    "includeFor": "Inclure {{name}} dans la prochaine exécution",
+    "run": "Lancer",
+    "runAgain": "Relancer",
+    "runFor": "Lancer {{name}} sur la question actuelle",
+    "runAgainFor": "Relancer {{name}} sur la question actuelle",
+    "runAll": "Tout lancer",
+    "answerEarlier": "Répondre aux questions précédentes",
+    "answerEarlierHint": "Chaque modèle qui a manqué une question précédente y répond maintenant, dans l'ordre, comme s'il avait été là.",
+    "export": "Exporter la comparaison",
+    "saveMarkdown": "Enregistrer en Markdown…",
+    "copyMarkdown": "Copier en Markdown",
+    "copyJson": "Copier en JSON",
+    "saved": "Comparaison enregistrée.",
+    "copied": "Copié dans le presse-papiers.",
+    "copyFailed": "Impossible de copier dans le presse-papiers.",
+    "notAnswered": "N'a pas encore répondu à cette question.",
+    "state": {
+      "off": "Exclu de la prochaine exécution",
+      "unavailable": "Indisponible",
+      "running": "Répond…",
+      "queued": "En file d'attente",
+      "done": "Répondu",
+      "failed": "Échec",
+      "idle": "Pas encore de réponse"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} fichier modifié",
+    "summaryMany": "{{count}} fichiers modifiés",
+    "workspace": "Espace isolé : {{path}}",
+    "binary": "Fichier binaire",
+    "noExcerpt": "Pas d'extrait.",
+    "openDiff": "Ouvrir le diff",
+    "keep": "Conserver",
+    "discard": "Abandonner les modifications",
+    "apply": "Appliquer à mon dossier",
+    "state": {
+      "kept": "Conservé",
+      "discarded": "Abandonné",
+      "applied": "Appliqué"
+    },
+    "diffTitle": "Modifications dans l'espace de travail",
+    "diffHint": "Tout ce que ce participant a modifié dans son espace isolé.",
+    "applyTitle": "Appliquer à votre dossier ?",
+    "applyHint": "Ce correctif sera écrit dans votre dossier. S'il ne s'applique pas proprement, rien n'est modifié.",
+    "discardTitle": "Abandonner ces modifications ?",
+    "discardHint": "L'espace du participant revient à son état de départ. Votre dossier n'est pas touché.",
+    "loading": "Chargement du diff…",
+    "empty": "Rien à appliquer.",
+    "applyConfirm": "Appliquer",
+    "discardConfirm": "Abandonner",
+    "scopeTurn": "Ce tour",
+    "scopeAll": "Depuis la création de l'espace de travail"
+  },
+  "approvals": {
+    "held": "Salon en pause",
+    "heldHint": "Le salon a été mis en pause pendant cette attente : elle ne peut plus être autorisée. Reprenez le salon et le participant redemandera s'il en a encore besoin.",
+    "dismiss": "Fermer"
   }
 }

@@ -22,7 +22,7 @@
     "OUT_OF_MEMORY": "内存不足，无法运行此模型。使用较小的模型或较小的上下文大小通常可以解决。",
     "INVALID_ARGUMENT": "模型的某项设置无效。",
     "IO_ERROR": "启动模型时无法读取或写入某个文件。",
-    "INTERNAL_ERROR": "Jan 在启动模型时内部出现了错误。"
+    "INTERNAL_ERROR": "Flint 在启动模型时内部出现了错误。"
   },
   "engineMissingLibraries": "缺失：{{libraries}}",
   "engineReportedDetail": "引擎报告：{{detail}}",

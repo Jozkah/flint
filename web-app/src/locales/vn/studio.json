@@ -1,0 +1,219 @@
+{
+  "page": {
+    "title": "Studio",
+    "descriptionLocal": "Tạo ảnh và video ngay trên máy tính này. Không có gì rời khỏi thiết bị của bạn.",
+    "descriptionHosted": "Tạo ảnh bằng mô hình được lưu trữ. Prompt của bạn được gửi tới nhà cung cấp của mô hình.",
+    "whatToMake": "Muốn tạo gì",
+    "images": "Ảnh",
+    "video": "Video",
+    "dismiss": "Đóng",
+    "loading": "Đang tải…"
+  },
+  "elapsed": {
+    "slow": "lâu hơn bình thường"
+  },
+  "builds": {
+    "anyGpu": "Card đồ họa bất kỳ",
+    "noGpu": "Không có card đồ họa",
+    "nvidia": "NVIDIA (nhanh hơn)",
+    "note": {
+      "linux-vulkan-x64": "Khoảng 38 MB. NVIDIA, AMD hoặc Intel có trình điều khiển Vulkan.",
+      "linux-cpu-x64": "Khoảng 25 MB. Rất chậm.",
+      "win-vulkan-x64": "Khoảng 30 MB. Chạy được trên NVIDIA, AMD và Intel.",
+      "win-cuda12-x64": "Khoảng 900 MB. Cần trình điều khiển NVIDIA mới.",
+      "win-cpu-x64": "Khoảng 17 MB. Rất chậm."
+    }
+  },
+  "picker": {
+    "engine": "Công cụ",
+    "searchPlaceholder": "Tìm mô hình...",
+    "searchAria": "Tìm mô hình",
+    "clear": "Xóa",
+    "noMatch": "Không có mô hình phù hợp.",
+    "local": "Trên máy tính này",
+    "leaves": "prompt rời khỏi máy tính này",
+    "findMore": "Tìm thêm mô hình ảnh trong Khám phá",
+    "manageHosted": "Quản lý nhà cung cấp lưu trữ",
+    "addKey": "Thêm khóa API để dùng mô hình được lưu trữ"
+  },
+  "setup": {
+    "unavailableTitle": "Chưa hỗ trợ trên hệ thống này",
+    "unavailableBody": "Tạo ảnh và video cục bộ hiện cần Windows x64 hoặc Linux x64.",
+    "title": "Thiết lập công cụ tạo ảnh",
+    "body": "Flint tạo ảnh và video ngay trên máy tính này bằng stable-diffusion.cpp. Công cụ chỉ cần tải một lần, được kiểm tra bằng checksum đã công bố và chỉ chạy khi bạn tạo.",
+    "downloading": "Đang tải xuống… {{percent}}%",
+    "unpacking": "Đang giải nén…",
+    "checking": "Đang kiểm tra khả năng khởi động…",
+    "installing": "Đang cài đặt…",
+    "install": "Tải xuống và cài đặt"
+  },
+  "size": {
+    "width": "Chiều rộng (pixel)",
+    "height": "Chiều cao (pixel)",
+    "swap": "Đổi chiều rộng và chiều cao",
+    "hintVideo": "Bội số của 16, tối đa {{max}} px. Clip lớn cần nhiều bộ nhớ.",
+    "hintImage": "Bội số của 16, tối đa {{max}} px. Ảnh lớn cần nhiều bộ nhớ và thời gian hơn."
+  },
+  "activity": {
+    "done": "Xong",
+    "failed": "Thất bại",
+    "stopped": "Đã dừng",
+    "title": "Hoạt động gần đây",
+    "clearTitle": "Làm trống danh sách này. Ảnh của bạn vẫn nằm trong Sản phẩm của bạn.",
+    "clearAll": "Xóa tất cả",
+    "empty": "Chưa có gì. Những gì bạn tạo sẽ xuất hiện ở đây.",
+    "making": "Đang tạo",
+    "open": "Mở"
+  },
+  "video": {
+    "steps_other": "{{count}} bước",
+    "frames_other": "{{count}} khung hình",
+    "seed": "seed {{seed}}",
+    "avoid": "Tránh: {{prompt}}",
+    "copyPrompt": "Sao chép prompt"
+  },
+  "actions": {
+    "promptCopied": "Đã sao chép prompt",
+    "archive": "Chuyển vào Lưu trữ",
+    "delete": "Xóa"
+  },
+  "time": {
+    "fewSeconds": "vài giây trước"
+  },
+  "model": {
+    "title": "Mô hình",
+    "manage": "Quản lý",
+    "textToVideo": "Văn bản thành video",
+    "textToImage": "Văn bản thành ảnh",
+    "hostedBy": "Do {{provider}} lưu trữ",
+    "loaded": "Đã nạp",
+    "ready": "Sẵn sàng",
+    "notDownloaded": "Chưa tải xuống",
+    "hostedNote": "Prompt của bạn được gửi tới {{provider}}, dùng khóa API của bạn trong Nhà cung cấp và do họ tính phí.",
+    "localNote_other": "Chạy ngay trên máy tính này. Bắt đầu ở {{width}} × {{height}}, {{count}} bước.",
+    "unload": "Gỡ khỏi bộ nhớ",
+    "loading": "Đang nạp…",
+    "load": "Nạp",
+    "installFirst": "Hãy cài công cụ tạo ảnh ở trên để dùng mô hình này.",
+    "removeTitle": "Gỡ mô hình khỏi danh sách này. Các tệp đã tải vẫn nằm trên ổ đĩa.",
+    "remove": "Gỡ khỏi Studio"
+  },
+  "download": {
+    "starting": "Đang bắt đầu…",
+    "startingSize": "Đang bắt đầu… cần tải {{size}}",
+    "progress": "{{bytes}} / {{total}}",
+    "downloading": "Đang tải xuống…",
+    "button": "Tải xuống ({{size}})"
+  },
+  "duration": {
+    "s": "{{count}} giây",
+    "min": "{{count}} phút",
+    "minS": "{{minutes}} phút {{seconds}} giây"
+  },
+  "phase": {
+    "queued": "Đang chờ",
+    "encoding": "Đang đọc prompt",
+    "sampling": "Đang vẽ",
+    "decoding": "Đang hoàn thiện",
+    "saving": "Đang lưu",
+    "working": "Đang xử lý"
+  },
+  "settings": {
+    "title": "Cài đặt tạo",
+    "reset": "Đặt lại",
+    "shape": "Hình dạng",
+    "aspectRatio": "Tỷ lệ khung hình",
+    "customTitle": "Tự nhập chiều rộng và chiều cao",
+    "custom": "Tùy chỉnh",
+    "imageCount": "Số lượng ảnh",
+    "length": "Độ dài",
+    "seed": "Seed",
+    "random": "Ngẫu nhiên",
+    "randomSeed": "Chọn seed ngẫu nhiên",
+    "guess": "Khoảng {{duration}}, dựa trên clip gần nhất của bạn.",
+    "advanced": "Nâng cao",
+    "loras": "Bộ điều hợp LoRA",
+    "importLora": "Nhập .safetensors",
+    "loraHint": "Dùng bộ điều hợp được tạo cho dòng mô hình cục bộ đã chọn.",
+    "useLora": "Dùng {{name}}",
+    "loraStrength": "Cường độ {{name}}",
+    "negative": "Prompt phủ định",
+    "negativeAria": "Prompt phủ định",
+    "negativePlaceholder": "Mờ, chất lượng thấp, thừa ngón tay, chữ, hình mờ…",
+    "avoidAria": "Điều cần tránh",
+    "memoryWarning": "Máy tính này có khoảng {{gb}} GB bộ nhớ. Tạo video cần rất nhiều, và trên máy như vậy một clip có thể mất hàng giờ vì hết bộ nhớ và phải chuyển sang dùng ổ đĩa.",
+    "accept": "Tôi hiểu và muốn tiếp tục.",
+    "loraImported": "Đã nhập {{name}}"
+  },
+  "prompt": {
+    "title": "Prompt",
+    "guide": "Hướng dẫn viết prompt",
+    "guideDesc": "Vài thói quen ngắn giúp ảnh đẹp hơn.",
+    "g1": {
+      "title": "Nói rõ có gì trong ảnh",
+      "body": "Bắt đầu bằng chủ thể, rồi đến vị trí và hành động của nó."
+    },
+    "g2": {
+      "title": "Nêu tên phong cách",
+      "body": "Tranh sơn dầu, ảnh chụp, minh họa phẳng, dựng hình 3D: phong cách thay đổi tất cả."
+    },
+    "g3": {
+      "title": "Thêm ánh sáng và không khí",
+      "body": "Nắng sớm dịu, đèn neon ban đêm, trời âm u: ánh sáng tạo nên cảm giác."
+    },
+    "g4": {
+      "title": "Chỉ giữ một ý",
+      "body": "Một prompt ngắn, rõ ràng tốt hơn một danh sách dài. Hãy thêm chi tiết từng chút một."
+    },
+    "g5": {
+      "title": "Dùng Tránh cho những gì bạn không muốn",
+      "body": "Trong Nâng cao, prompt phủ định liệt kê những thứ cần loại bỏ."
+    },
+    "placeholderVideo": "Một chú mèo đi trong con hẻm mưa, phong cách điện ảnh",
+    "placeholderImage": "Ngọn hải đăng trên vách đá lúc bình minh, tranh sơn dầu",
+    "enhanceTitle": "Thêm vài từ về chi tiết và ánh sáng",
+    "enhance": "Cải thiện",
+    "example": {
+      "image": {
+        "0": "Ngọn hải đăng trên vách đá lúc bình minh, tranh sơn dầu",
+        "1": "Một con cáo trong rừng tuyết, ánh sáng dịu",
+        "2": "Thành phố isometric về đêm, neon"
+      },
+      "video": {
+        "0": "Một chú mèo đi trong con hẻm mưa, phong cách điện ảnh",
+        "1": "Sóng vỗ vào bãi biển đen",
+        "2": "Hơi nước bốc lên từ tách cà phê"
+      }
+    },
+    "clear": "Xóa prompt",
+    "copy": "Sao chép prompt",
+    "emptyImage": "Bức ảnh đầu tiên của bạn bắt đầu từ đây",
+    "emptyVideo": "Video đầu tiên của bạn bắt đầu từ đây",
+    "emptyDesc": "Hãy mô tả ở trên, hoặc thử một trong các ví dụ.",
+    "save": "Lưu",
+    "openLarge": "Mở cỡ lớn",
+    "remix": "Remix: cùng prompt, seed mới",
+    "remixShort": "Remix",
+    "stop": "Dừng",
+    "generateVideo": "Tạo video",
+    "generateImage": "Tạo ảnh",
+    "loadFirst": "Hãy nạp mô hình trước",
+    "writeFirst": "Hãy viết prompt trước.",
+    "notSetUp": "{{provider}} chưa được thiết lập trong Nhà cung cấp.",
+    "imageReady": "Ảnh đã sẵn sàng",
+    "videoReady": "Video đã sẵn sàng",
+    "waitingFor": "Đang chờ {{provider}}…",
+    "eta": "còn khoảng {{eta}}"
+  },
+  "gens": {
+    "title": "Sản phẩm của bạn",
+    "archive": "Lưu trữ",
+    "done": "Xong",
+    "select": "Chọn",
+    "grid": "Lưới",
+    "list": "Danh sách",
+    "filter": "Bộ lọc",
+    "all": "Tất cả",
+    "empty": "Chưa có gì ở đây. Những gì bạn tạo sẽ xuất hiện ở đây."
+  }
+}

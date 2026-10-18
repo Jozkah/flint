@@ -6,10 +6,12 @@
       "checking": "Uzantı durumu kontrol ediliyor..."
     },
     "notInstalled": {
-      "title": "Jan, tarayıcınızda görevleri tamamlar",
-      "description": "Jan'a tarayıcı erişimi vermek için uzantıyı yükleyin",
+      "title": "Flint, tarayıcınızda görevleri tamamlar",
+      "description": "Flint'e tarayıcı erişimi vermek için uzantıyı yükleyin",
       "getExtension": "Uzantıyı Al"
-    }
+    },
+    "requires": "Chrome tabanlı tarayıcınıza tarayıcı uzantısının yüklenmesini gerektirir.",
+    "install": "Uzantıyı yükle →"
   },
   "serverName": "Sunucu Adı",
   "enterServerName": "Sunucu adı girin",
@@ -158,13 +160,13 @@
   "serverStatusInactive": "{{serverKey}} sunucusu başarıyla devre dışı bırakıldı",
   "runtimeSettings": {
     "title": "Çalışma Zamanı Ayarları",
-    "description": "Jan'in MCP sunucularını nasıl yönettiğini ve yeniden denediğini yapılandırın.",
+    "description": "Flint'in MCP sunucularını nasıl yönettiğini ve yeniden denediğini yapılandırın.",
     "toolCallTimeout": "Araç çağrısı zaman aşımı (saniye)",
     "toolCallTimeoutDesc": "Zaman aşımından önce bir MCP araç yanıtı için beklenecek azami süre.",
     "maxToolOutputChars": "Azami araç çıktısı karakter sayısı",
     "maxToolOutputCharsDesc": "Konuşmada tutulan en uzun araç sonucu. Bunun ötesindeki her şey kırpılır ve kesilmiş olarak işaretlenir; böylece tek bir büyük sonuç modelin bağlamını tüketemez. Sonuçları bütün tutmak için 0 olarak ayarlayın.",
     "smartToolRouting": "Akıllı MCP araç yönlendirmesi",
-    "smartToolRoutingDesc": "Etkinleştirildiğinde Jan, araçları yüklemeden önce ilgili MCP sunucularını seçer. Kapatıldığında tüm MCP araç listesi her zaman yüklenir.",
+    "smartToolRoutingDesc": "Etkinleştirildiğinde Flint, araçları yüklemeden önce ilgili MCP sunucularını seçer. Kapatıldığında tüm MCP araç listesi her zaman yüklenir.",
     "useLightweightRouterModel": "Yönlendirme için ayrı bir model kullan",
     "useLightweightRouterModelDesc": "Akıllı yönlendirme açıkken yönlendirme adımını sohbet modeli yerine ayrı (genellikle daha küçük) bir modelle çalıştırın. Yönlendirme için her zaman etkin sohbet modelini kullanmak üzere kapatın.",
     "routerModel": "Yönlendirme modeli",

@@ -108,6 +108,7 @@
     "connection": "Connexió",
     "engineSettings": "Configuració del motor",
     "memorySettings": "Memòria i memòria cau",
+    "settingNotSaved": "No s'ha desat «{{setting}}»",
     "danger": "Zona de perill"
   },
   "mcp": {
@@ -127,7 +128,8 @@
     "kpiApprovedAll": "Totes les crides d'eines estan permeses",
     "tabServers": "Servidors",
     "tabRouting": "Encaminament i límits",
-    "toolsCount": "{{count}} eines",
+    "toolsCount_one": "{{count}} eina",
+    "toolsCount_other": "{{count}} eines",
     "filterLabel": "Mostra els servidors",
     "filterAll": "Tots",
     "filterOn": "Activats",
@@ -137,10 +139,11 @@
     "viewList": "Llista",
     "callsPerMin": "crides / min",
     "window": "darrers {{count}} min",
-    "needsExtension": "Requereix l'extensió de navegador de Jan",
+    "needsExtension": "Requereix l'extensió del navegador",
     "moreActions": "Més accions per a {{serverName}}",
     "addTile": "Afegeix un servidor MCP",
-    "addTileHint": "STDIO, HTTP o SSE"
+    "addTileHint": "STDIO, HTTP o SSE",
+    "toolsCount": "{{count}} eines"
   },
   "extensions": {
     "description": "Connectors, habilitats i les peces del motor amb què es construeix Flint.",

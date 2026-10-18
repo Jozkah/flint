@@ -9,7 +9,9 @@
       "title": "Flint menyelesaikan tugas di browser Anda",
       "description": "Instal ekstensi untuk memberikan Flint akses browser",
       "getExtension": "Dapatkan Ekstensi"
-    }
+    },
+    "requires": "Memerlukan ekstensi peramban terpasang di peramban berbasis Chrome Anda.",
+    "install": "Pasang ekstensi →"
   },
   "serverName": "Nama Server",
   "enterServerName": "Masukkan nama server",

@@ -109,6 +109,7 @@
     "connection": "Připojení",
     "engineSettings": "Nastavení enginu",
     "memorySettings": "Paměť a cache",
+    "settingNotSaved": "Nastavení „{{setting}}“ se neuložilo",
     "danger": "Nebezpečná zóna"
   },
   "mcp": {
@@ -128,7 +129,10 @@
     "kpiApprovedAll": "Všechna volání nástrojů jsou povolena",
     "tabServers": "Servery",
     "tabRouting": "Směrování a limity",
-    "toolsCount": "Nástrojů: {{count}}",
+    "toolsCount_one": "{{count}} nástroj",
+    "toolsCount_few": "{{count}} nástroje",
+    "toolsCount_many": "{{count}} nástroje",
+    "toolsCount_other": "{{count}} nástrojů",
     "filterLabel": "Zobrazit servery",
     "filterAll": "Vše",
     "filterOn": "Zapnuto",
@@ -138,10 +142,11 @@
     "viewList": "Seznam",
     "callsPerMin": "volání / min",
     "window": "posledních {{count}} min",
-    "needsExtension": "Vyžaduje rozšíření Jan Browser Extension",
+    "needsExtension": "Vyžaduje rozšíření prohlížeče",
     "moreActions": "Další akce pro {{serverName}}",
     "addTile": "Přidat server MCP",
-    "addTileHint": "STDIO, HTTP nebo SSE"
+    "addTileHint": "STDIO, HTTP nebo SSE",
+    "toolsCount": "Nástrojů: {{count}}"
   },
   "extensions": {
     "description": "Pluginy, dovednosti a součásti enginu, ze kterých se Flint skládá.",

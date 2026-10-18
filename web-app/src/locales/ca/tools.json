@@ -79,6 +79,8 @@
     "reading": "Llegint...",
     "workspaceRoot": "arrel de l'espai de treball",
     "matches": "{{count}} coincidències",
-    "testsPassed": "{{count}} superades"
+    "testsPassed": "{{count}} superades",
+    "runningStatus": "Executant {{tool}}…",
+    "stillRunning": "Encara executant {{tool}}…"
   }
 }

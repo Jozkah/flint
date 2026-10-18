@@ -56,7 +56,40 @@
     "chatFolderCount": "資料夾：{{count}}",
     "newSubfolder": "新增子資料夾",
     "moveInto": "移入資料夾",
-    "topLevel": "最上層"
+    "topLevel": "最上層",
+    "errors": {
+      "nameEmpty": "群組名稱不能為空",
+      "notFound": "找不到該群組",
+      "tooDeep": "群組巢狀層級不能這麼深",
+      "intoItself": "不能將群組移入其自身"
+    },
+    "failed": {
+      "create": "無法建立群組",
+      "rename": "無法重新命名群組",
+      "moveFolder": "無法移動資料夾",
+      "saveState": "無法儲存群組狀態",
+      "reorder": "無法重新排序群組",
+      "moveItem": "無法移動該項目",
+      "delete": "無法刪除群組",
+      "saveFolders": "無法儲存群組資料夾",
+      "updateContext": "無法更新資料夾脈絡",
+      "update": "無法更新群組",
+      "import": "無法匯入群組",
+      "unreadable": "{{failure}}：無法讀取已儲存的群組",
+      "restored": "{{failure}}。已還原先前的順序。"
+    },
+    "announce": {
+      "created": "已建立群組 {{name}}",
+      "collapsed": "已摺疊 {{name}}",
+      "expanded": "已展開 {{name}}",
+      "reordered": "{{name}} 已移至第 {{position}} 位（共 {{total}} 個）",
+      "movedToPosition": "已移至 {{name}}，第 {{position}} 位",
+      "movedToRecents": "已移至「最近」",
+      "deleted": "已刪除群組 {{name}}。其中的項目已移至「最近」",
+      "ctxReplaced": "{{base}}。資料夾脈絡已替換為群組資料夾；存取仍需核准",
+      "ctxMerged": "{{base}}。已將群組資料夾加入資料夾脈絡；存取仍需核准",
+      "foldersAdded": "{{base}}。已將項目資料夾加入群組"
+    }
   },
   "htmlArtifact": {
     "code": "程式碼",
@@ -279,7 +312,7 @@
     "searchThreads": "搜尋對話",
     "toggleSidebar": "切換側邊欄",
     "openCowork": "開啟 Cowork",
-    "openArtifacts": "開啟成品",
+    "openArtifacts": "開啟 媒體庫",
     "openSystemMonitor": "開啟系統監視器",
     "openLogs": "開啟應用程式記錄",
     "section": {
@@ -1219,7 +1252,8 @@
     "sensitiveRefused": "{{name}} 看起來像憑證或金鑰，因此未被開啟",
     "binaryRefused": "{{name}} 不是文字檔案，無論其副檔名如何",
     "chooseAgainAction": "重新選擇",
-    "externalGone": "此檔案是從專案之外開啟的，該存取權限未能保留。請重新選擇它以再次開啟。"
+    "externalGone": "此檔案是從專案之外開啟的，該存取權限未能保留。請重新選擇它以再次開啟。",
+    "oneFolderAtATime": "一次只能新增一個資料夾。未新增「{{name}}」。"
   },
   "settingsSearch": {
     "label": "搜尋設定",
@@ -1402,7 +1436,14 @@
     "recommended": "建議",
     "reset": "重設為全域設定",
     "resetAll": "重設為全域預設值",
-    "overridden": "已為此聊天設定"
+    "overridden": "已為此聊天設定",
+    "levels": {
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "極高",
+      "unlimited": "無限制"
+    }
   },
   "modelOffline": {
     "badge": "無法連線",
@@ -2517,6 +2558,7 @@
       "slots": "{{count}} 個槽位",
       "vision": "視覺",
       "audio": "音訊",
+      "fixedPrompt": "每次請求都會傳送:{{count}} 個權杖(系統提示詞和工具結構描述)。",
       "tokenUsage": "Token 用量",
       "tokenUsageSr": "Token 用量 {{value}}"
     }
@@ -2543,6 +2585,18 @@
     "previewLoading": "正在載入預覽…",
     "previewNone": "沒有可用的預覽"
   },
+  "fileViewer": {
+    "openFull": "開啟完整預覽",
+    "loadMore": "載入更多",
+    "showingFirst": "顯示 {{total}} 中的前 {{loaded}}",
+    "lines_other": "{{count}} 行",
+    "wrap": "自動換行",
+    "copy": "複製",
+    "copied": "已複製",
+    "binary": "這似乎是二進位檔案，因此沒有文字預覽。",
+    "expandLine": "顯示整行",
+    "collapseLine": "收合該行"
+  },
   "dropAttachFailed": "無法附加拖放的檔案",
   "sampler": {
     "label": "取樣參數",
@@ -2568,7 +2622,7 @@
     "paste": "從剪貼簿貼上",
     "pasteFailed": "無法讀取剪貼簿",
     "clear": "清除",
-    "characters": "{{count}} 個字元",
+    "characters_other": "{{count}} 個字元",
     "translating": "正在翻譯…",
     "retry": "重試",
     "shortcut": "翻譯 (Ctrl/Cmd+Enter)",
@@ -2580,7 +2634,9 @@
     "errorNetwork": "無法連線到供應商。請檢查網路連線，或確認伺服器正在執行。",
     "errorEngine": "執行此模型的引擎無法使用。請重新啟動 Flint 後再試一次。",
     "openProvider": "開啟供應商設定",
-    "errorDetails": "詳細資料"
+    "errorDetails": "詳細資料",
+    "pasteHint": "剪貼簿存取遭到封鎖。請點擊文字方塊並按 {{keys}}。",
+    "characters": "{{count}} 個字元"
   },
   "markdownImage": {
     "load": "從 {{host}} 載入圖片"
@@ -2601,7 +2657,7 @@
     "editTitle": "編輯提示詞",
     "import": "匯入",
     "export": "匯出",
-    "imported": "已新增 {{count}} 則提示詞",
+    "imported_other": "已新增 {{count}} 則提示詞",
     "search": "搜尋提示詞",
     "empty": "還沒有提示詞。",
     "edit": "編輯 {{name}}",
@@ -2614,6 +2670,105 @@
     "body": "提示詞內容",
     "bodyHint": "撰寫提示詞。空白處可使用 {{topic}} 或 {{tone:friendly}}。",
     "variables": "需要填寫：{{names}}",
-    "insert": "插入"
+    "defaultValue": "預設值：{{value}}",
+    "requiredField": "必填",
+    "fillNeeded": "請填寫 {{names}} 後再插入",
+    "insert": "插入",
+    "errors": {
+      "nameRequired": "提示詞需要名稱",
+      "nameTooLong": "名稱太長",
+      "bodyRequired": "提示詞需要有內容",
+      "bodyTooLong": "提示詞太長",
+      "gone": "該提示詞已不存在",
+      "invalidJson": "該檔案不是有效的 JSON",
+      "noPrompts": "該檔案中找不到提示詞"
+    },
+    "imported": "已新增 {{count}} 則提示詞"
+  },
+  "memoryProposal": {
+    "title": "要記住這個嗎？",
+    "wouldApply": "將套用於{{where}}。",
+    "remember": "記住",
+    "discard": "捨棄",
+    "reviewBoth": "檢視兩者",
+    "saving": "儲存中…",
+    "discarding": "正在捨棄…",
+    "scope": {
+      "session": "此對話",
+      "project": "此專案",
+      "user": "所有地方"
+    }
+  },
+  "picker": {
+    "filter": "篩選",
+    "source": "來源",
+    "sourceAll": "全部",
+    "sourceLocal": "本機",
+    "sourceCloud": "雲端",
+    "capabilities": "能力",
+    "cap": {
+      "vision": "視覺",
+      "tools": "工具",
+      "reasoning": "推理",
+      "embeddings": "嵌入"
+    },
+    "loadedNow": "目前已載入",
+    "sort": "排序",
+    "sortDefault": "預設順序",
+    "sortName": "名稱 (A–Z)",
+    "sortRecent": "最近使用",
+    "sortSize": "大小",
+    "clearFilters": "清除篩選",
+    "noMatch": "沒有符合的模型",
+    "noMatchFilters": "沒有符合的模型：{{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "聊天",
+      "session": "工作階段",
+      "room": "聊天室"
+    },
+    "heading": "對話",
+    "empty": "沒有其他對話",
+    "noMatch": "沒有符合的對話",
+    "messages": "訊息數：{{n}}",
+    "included": "已包含：{{title}}（訊息 {{n}} 則，約 {{size}} 字元）",
+    "group": "提及的對話",
+    "summarize": "摘要",
+    "summarizeHint": "以摘要取代最近的訊息",
+    "remove": "移除對 {{title}} 的提及",
+    "mentioned": "已提及：{{title}}",
+    "open": "開啟 {{title}}",
+    "status": {
+      "missing": "找不到：{{title}}",
+      "self": "{{title}} 就是目前的對話，因此不包含",
+      "over-cap": "{{title}} 未包含：每則訊息最多提及 {{max}} 個對話"
+    },
+    "excerpt": "摘錄",
+    "summary": "摘要",
+    "modeGroup": "從 {{title}} 包含的內容",
+    "excerptHint": "最新訊息，約 {{tokens}} 個 token",
+    "summaryHint": "由模型撰寫的摘要，最多約 {{tokens}} 個 token",
+    "needsModel": "載入模型後可改為包含摘要",
+    "totals_other": "{{count}} 則訊息 · 已包含約 {{tokens}} 個 token",
+    "readOnly": "以引用的唯讀上下文傳送。模型無法變更那段對話。",
+    "tooLarge": "這已超過模型上下文視窗的四分之一。",
+    "useSummary": "改用摘要",
+    "resolving": "正在尋找 {{title}}",
+    "chipStatus": {
+      "missing": "找不到",
+      "self": "目前的對話",
+      "over-cap": "超出上限"
+    },
+    "preview": {
+      "empty": "還沒有訊息",
+      "you": "你",
+      "assistant": "助理"
+    },
+    "messagesCount_other": "{{count}} 則訊息"
+  },
+  "campaignList": {
+    "timeout": "應用程式未在時限內回應。",
+    "unreadableRecord": "後端傳送了此頁面無法讀取的記錄"
   }
 }

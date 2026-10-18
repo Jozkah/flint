@@ -107,6 +107,7 @@
     "connection": "Verbindung",
     "engineSettings": "Engine-Einstellungen",
     "memorySettings": "Speicher & Cache",
+    "settingNotSaved": "„{{setting}}“ wurde nicht gespeichert",
     "danger": "Gefahrenbereich"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "Alle Tool-Aufrufe sind erlaubt",
     "tabServers": "Server",
     "tabRouting": "Routing & Limits",
-    "toolsCount": "{{count}} Tools",
+    "toolsCount_one": "{{count}} Tool",
+    "toolsCount_other": "{{count}} Tools",
     "filterLabel": "Server anzeigen",
     "filterAll": "Alle",
     "filterOn": "An",
@@ -136,10 +138,11 @@
     "viewList": "Liste",
     "callsPerMin": "Aufrufe / Min.",
     "window": "letzte {{count}} Min.",
-    "needsExtension": "Erfordert die Jan Browser Extension",
+    "needsExtension": "Erfordert die Browsererweiterung",
     "moreActions": "Weitere Aktionen für {{serverName}}",
     "addTile": "MCP-Server hinzufügen",
-    "addTileHint": "STDIO, HTTP oder SSE"
+    "addTileHint": "STDIO, HTTP oder SSE",
+    "toolsCount": "{{count}} Tools"
   },
   "extensions": {
     "description": "Plugins, Skills und die Engine-Bausteine, aus denen Flint besteht.",

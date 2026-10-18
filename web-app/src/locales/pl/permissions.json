@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint chce uruchomić {{command}} w {{workspace}}",
     "gitRemote": "Flint chce uruchomić {{command}}, co zmienia {{target}}",
     "gitDestructive": "Flint chce uruchomić {{command}}, co może spowodować utratę pracy",
-    "approveCampaign": "Flint chce rozpocząć kampanię „{{title}}” (zadań: {{count}})"
+    "approveCampaign": "Flint chce rozpocząć kampanię „{{title}}” (zadań: {{count}})",
+    "spendPause": "Flint chce kontynuować to uruchomienie po przekroczeniu progu wstrzymania wydatków"
   },
   "consequence": {
     "fileChange": "Może tworzyć i nadpisywać pliki oraz zmieniać ich zawartość.",
@@ -57,7 +58,8 @@
     "gitLocal": "Zmienia pliki, gałęzie lub historię tego repozytorium na tym komputerze.",
     "gitRemote": "Wysyła zmiany do zdalnego repozytorium, które mogą zobaczyć inni ludzie. Flint pyta za każdym razem, chyba że tymczasowo zezwolisz na zwykłe zdalne akcje Git w tej rozmowie.",
     "gitDestructive": "To, co usuwa lub nadpisuje, może nie dać się odzyskać.",
-    "campaignPlan": "Uruchamia osobne sesje, każdą na własnym worktree branchu, które czytają i zmieniają pliki oraz równolegle zużywają limit Twojego modelu. Zatwierdzenie planu nie zatwierdza żadnego wywołania wykonywanego przez zadanie. Flint pyta za każdym razem."
+    "campaignPlan": "Uruchamia osobne sesje, każdą na własnym worktree branchu, które czytają i zmieniają pliki oraz równolegle zużywają limit Twojego modelu. Zatwierdzenie planu nie zatwierdza żadnego wywołania wykonywanego przez zadanie. Flint pyta za każdym razem.",
+    "spendPause": "Uruchomienie nadal zużywa płatny limit modelu, aż się zakończy lub osiągnie pułap. Odmowa je zatrzymuje."
   },
   "repeat": {
     "allowedOnceBefore": "Już raz zezwolono na to polecenie w tej rozmowie."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Przyszłe wywołania jednoprocesowe pasujące do {{action}} są wykonywane bez pytania, także z innymi identyfikatorami procesów. Inne skrypty nadal pytają. Cofnij to w Ustawienia > Uprawnienia.",
     "allowClipboardReadExplanation": "Flint może odczytywać przyszłą zawartość schowka w każdej rozmowie bez pytania, do czasu cofnięcia w Ustawienia > Uprawnienia. Zapis do schowka nadal pyta.",
     "allowSimilarThreadExplanation": "Przyszłe wywołania pasujące do {{action}} są wykonywane bez pytania w tej rozmowie. Cofnij to w Ustawienia > Uprawnienia.",
-    "broader": "Szerzej"
+    "broader": "Szerzej",
+    "editedRunsOnce": "Zmienione polecenia są uruchamiane tylko raz."
   },
   "request": {
     "title": "Prośba o uprawnienie",
@@ -226,11 +229,15 @@
     "trust": "Zaufaj folderowi",
     "later": "Nie teraz",
     "failed": "Nie udało się zaufać folderowi",
+    "kept_one": "Hooki pozostawiono włączone dla folderu, którego już używasz: {{count}}. Sprawdź go w Ustawienia > Uprawnienia > Zaufane foldery.",
+    "kept_other": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery.",
+    "kept_few": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery.",
+    "kept_many": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery.",
     "kept": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery."
   },
   "trustedFolders": {
     "title": "Zaufane foldery",
-    "description": "Foldery, których własne hooki i definicje agentów mogą być uruchamiane. Zaufanie trwa, dopóki go nie cofniesz.",
+    "description": "Foldery, których własne hooki i definicje agentów mogą być uruchamiane. Zaufanie trwa, dopóki go nie cofniesz. Pliki, które agent może czytać lub zmieniać, są na liście Dostęp do folderów.",
     "empty": "Nie ma jeszcze zaufanych folderów; Flint zapyta, gdy pierwszy raz folder będzie zawierał hooki lub definicje agentów.",
     "add": "Zaufaj folderowi…",
     "stop": "Cofnij zaufanie",
@@ -250,7 +257,11 @@
     "prefixHint": "Tylko jedno zwykłe polecenie. Łączone, potokowe lub z przekierowaniem będzie pytane ponownie.",
     "everywhere": "Każde wywołanie {{tool}} w każdym projekcie",
     "everywhereHint": "Dawne znaczenie Zawsze. Bardzo szerokie; rzadko to, czego chcesz.",
-    "saveFailed": "Nie udało się zapamiętać tego wyboru"
+    "saveFailed": "Nie udało się zapamiętać tego wyboru",
+    "alwaysFolder": "Zawsze: wewnątrz {{dir}}",
+    "alwaysPrefix": "Zawsze: polecenia zaczynające się od {{prefix}}",
+    "alwaysFolderExplanation": "Tylko pliki w tym folderze, w tym projekcie, dopóki nie cofniesz tego w Ustawienia > Uprawnienia.",
+    "alwaysPrefixExplanation": "Tylko jedno zwykłe polecenie zaczynające się w ten sposób, w tym projekcie, dopóki nie cofniesz tego w Ustawienia > Uprawnienia. O polecenie łączone, potokowe lub przekierowane zapytamy ponownie."
   },
   "rules": {
     "title": "Zapamiętane zatwierdzenia",
@@ -284,12 +295,38 @@
       "consumed": "Użyte"
     },
     "loadFailed": "Nie udało się odczytać oczekujących zatwierdzeń",
-    "answerFailed": "Nie udało się zapisać odpowiedzi"
+    "answerFailed": "Nie udało się zapisać odpowiedzi",
+    "allowLabel": "Zezwól: {{summary}}",
+    "denyLabel": "Odmów: {{summary}}",
+    "discardLabel": "Usuń: {{summary}}"
   },
   "toast": {
     "trustFailed": "Nie udało się zapamiętać tego serwera",
     "cancelledOne": "Zatwierdzenie dla {{names}} zostało anulowane",
     "cancelledMany": "Zatwierdzenia ({{count}}: {{names}}) zostały anulowane",
     "cancelledDescription": "Czat opuszczono, zanim odpowiedziałeś(-aś). Wyślij prośbę ponownie, aby spróbować jeszcze raz."
+  },
+  "desktopOnly": "Dostępne tylko w aplikacji komputerowej Flint.",
+  "folderAccess": {
+    "title": "Dostęp do folderów",
+    "description": "Foldery i pliki poza obszarem roboczym agenta, które agent może czytać lub zmieniać. To, czy własne hooki folderu mogą działać, ustawia się w Zaufane foldery.",
+    "empty": "Nie udzielono dostępu do żadnych folderów.",
+    "readWrite": "Odczyt i zapis",
+    "readOnly": "Tylko odczyt",
+    "untilRevoked": "Każda rozmowa, do cofnięcia",
+    "untilDate": "Ta rozmowa, do {{when}}",
+    "revoke": "Cofnij",
+    "revokeLabel": "Cofnij dostęp do {{path}}"
+  },
+  "spendPause": {
+    "preview": "Kontynuuj uruchomienie (do tej pory wydano ok. {{spent}})",
+    "previewCeiling": "Kontynuuj uruchomienie do pułapu {{ceiling}} (do tej pory wydano ok. {{spent}})"
+  },
+  "remote": {
+    "runsOnServer": "Działa na serwerze.",
+    "runsOnServerAt": "Działa na serwerze: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Zmiany czekające na Twoją zgodę"
   }
 }

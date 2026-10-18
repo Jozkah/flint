@@ -79,6 +79,8 @@
     "reading": "Membaca...",
     "workspaceRoot": "root workspace",
     "matches": "{{count}} kecocokan",
-    "testsPassed": "{{count}} lulus"
+    "testsPassed": "{{count}} lulus",
+    "runningStatus": "Menjalankan {{tool}}…",
+    "stillRunning": "Masih menjalankan {{tool}}…"
   }
 }

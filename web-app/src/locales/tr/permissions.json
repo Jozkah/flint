@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint, {{workspace}} içinde {{command}} komutunu çalıştırmak istiyor",
     "gitRemote": "Flint, {{target}} hedefini değiştiren {{command}} komutunu çalıştırmak istiyor",
     "gitDestructive": "Flint, çalışma kaybına yol açabilecek {{command}} komutunu çalıştırmak istiyor",
-    "approveCampaign": "Flint \"{{title}}\" kampanyasını başlatmak istiyor ({{count}} görev)"
+    "approveCampaign": "Flint \"{{title}}\" kampanyasını başlatmak istiyor ({{count}} görev)",
+    "spendPause": "Flint, harcama duraklatmasını aşarak bu çalıştırmayı sürdürmek istiyor"
   },
   "consequence": {
     "fileChange": "Dosyalar oluşturabilir, üzerine yazabilir veya içeriklerini değiştirebilir.",
@@ -57,7 +58,8 @@
     "gitLocal": "Bu bilgisayardaki bu deponun dosyalarını, dallarını veya geçmişini değiştirir.",
     "gitRemote": "Başkalarının görebileceği uzak bir depoya değişiklik gönderir. Bu konuşma için sıradan uzak Git eylemlerine geçici olarak izin vermediyseniz Flint her seferinde sorar.",
     "gitDestructive": "Kaldırdığı veya üzerine yazdığı şeyler geri alınamayabilir.",
-    "campaignPlan": "Her biri kendi worktree dalında olan, dosyaları okuyan ve değiştiren, model kotanızı paralel kullanan ayrı oturumlar başlatır. Planı onaylamak, bir görevin yaptığı hiçbir çağrıyı onaylamak anlamına gelmez. Flint her seferinde sorar."
+    "campaignPlan": "Her biri kendi worktree dalında olan, dosyaları okuyan ve değiştiren, model kotanızı paralel kullanan ayrı oturumlar başlatır. Planı onaylamak, bir görevin yaptığı hiçbir çağrıyı onaylamak anlamına gelmez. Flint her seferinde sorar.",
+    "spendPause": "Çalıştırma, bitene veya üst sınırına ulaşana kadar ücretli model kotasını kullanmayı sürdürür. Reddetmek çalıştırmayı durdurur."
   },
   "repeat": {
     "allowedOnceBefore": "Bu komuta bu konuşmada zaten bir kez izin verdiniz."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "{{action}} ile eşleşen gelecekteki tek işlemli çağrılar, farklı işlem kimlikleri dahil sormadan çalışır. Diğer betikler yine sorar. Bunu Ayarlar > İzinler'den geri alın.",
     "allowClipboardReadExplanation": "Flint, siz Ayarlar > İzinler'den geri alana kadar her konuşmada gelecekteki pano içeriğini sormadan okuyabilir. Panoya yazma yine sorar.",
     "allowSimilarThreadExplanation": "{{action}} ile eşleşen gelecekteki çağrılar bu konuşmada sormadan çalışır. Bunu Ayarlar > İzinler'den geri alın.",
-    "broader": "Daha geniş"
+    "broader": "Daha geniş",
+    "editedRunsOnce": "Düzenlenen komutlar yalnızca bir kez çalışır."
   },
   "request": {
     "title": "İzin isteği",
@@ -226,11 +229,13 @@
     "trust": "Klasöre güven",
     "later": "Şimdi değil",
     "failed": "Klasöre güvenilemedi",
+    "kept_one": "Zaten kullandığınız {{count}} klasör için hook'lar açık bırakıldı. Bunları Ayarlar > İzinler > Güvenilen klasörler bölümünden inceleyin.",
+    "kept_other": "Zaten kullandığınız {{count}} klasör için hook'lar açık bırakıldı. Bunları Ayarlar > İzinler > Güvenilen klasörler bölümünden inceleyin.",
     "kept": "Zaten kullandığınız {{count}} klasör için hook'lar açık bırakıldı. Bunları Ayarlar > İzinler > Güvenilen klasörler bölümünden inceleyin."
   },
   "trustedFolders": {
     "title": "Güvenilen klasörler",
-    "description": "Kendi hook'ları ve aracı tanımları çalışabilecek klasörler. Güven, siz geri alana kadar sürer.",
+    "description": "Kendi hook'ları ve aracı tanımları çalışabilecek klasörler. Güven, siz geri alana kadar sürer. Bir aracının okuyabileceği veya değiştirebileceği dosyalar Klasör erişimi'nde listelenir.",
     "empty": "Henüz güvenilen klasör yok; bir klasör ilk kez hook veya aracı tanımı içerdiğinde Flint size sorar.",
     "add": "Bir klasöre güven…",
     "stop": "Güvenmeyi bırak",
@@ -250,7 +255,11 @@
     "prefixHint": "Yalnızca tek bir düz komut. Zincirlenmiş, borulanmış veya yönlendirilmiş komutlar yeniden sorulur.",
     "everywhere": "Her projede her {{tool}} çağrısı",
     "everywhereHint": "Her zaman'ın eski anlamı. Geniş kapsamlı; nadiren istediğiniz şeydir.",
-    "saveFailed": "Bu seçim hatırlanamadı"
+    "saveFailed": "Bu seçim hatırlanamadı",
+    "alwaysFolder": "Her zaman: {{dir}} içinde",
+    "alwaysPrefix": "Her zaman: {{prefix}} ile başlayan komutlar",
+    "alwaysFolderExplanation": "Yalnızca o klasördeki dosyalar, bu projede, Ayarlar > İzinler'den geri alana kadar.",
+    "alwaysPrefixExplanation": "Yalnızca bu şekilde başlayan tek bir basit komut, bu projede, Ayarlar > İzinler'den geri alana kadar. Zincirlenmiş, borulanmış veya yönlendirilmiş komutlar için yine sorulur."
   },
   "rules": {
     "title": "Hatırlanan onaylar",
@@ -284,12 +293,38 @@
       "consumed": "Kullanıldı"
     },
     "loadFailed": "Bekleyen onaylar okunamadı",
-    "answerFailed": "Yanıt kaydedilemedi"
+    "answerFailed": "Yanıt kaydedilemedi",
+    "allowLabel": "İzin ver: {{summary}}",
+    "denyLabel": "Reddet: {{summary}}",
+    "discardLabel": "Kaldır: {{summary}}"
   },
   "toast": {
     "trustFailed": "Bu sunucu hatırlanamadı",
     "cancelledOne": "{{names}} için onay iptal edildi",
     "cancelledMany": "{{count}} onay ({{names}}) iptal edildi",
     "cancelledDescription": "Siz yanıtlamadan sohbetten ayrıldınız. Yeniden denemek için isteği tekrar gönderin."
+  },
+  "desktopOnly": "Yalnızca Flint masaüstü uygulamasında kullanılabilir.",
+  "folderAccess": {
+    "title": "Klasör erişimi",
+    "description": "Aracının çalışma alanı dışında, bir aracının okumasına veya değiştirmesine izin verdiğiniz klasörler ve dosyalar. Bir klasörün kendi hook'larının çalışıp çalışamayacağı Güvenilen klasörler'de belirlenir.",
+    "empty": "Henüz klasör erişimi verilmedi.",
+    "readWrite": "Okuma ve yazma",
+    "readOnly": "Salt okunur",
+    "untilRevoked": "Tüm sohbetler, geri alınana kadar",
+    "untilDate": "Bu sohbet, {{when}} tarihine kadar",
+    "revoke": "Geri al",
+    "revokeLabel": "{{path}} erişimini geri al"
+  },
+  "spendPause": {
+    "preview": "Çalıştırmaya devam et (şimdiye kadar yaklaşık {{spent}} harcandı)",
+    "previewCeiling": "Çalıştırmaya {{ceiling}} üst sınırına kadar devam et (şimdiye kadar yaklaşık {{spent}} harcandı)"
+  },
+  "remote": {
+    "runsOnServer": "Sunucuda çalışır.",
+    "runsOnServerAt": "Sunucuda çalışır: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Onayınızı bekleyen değişiklikler"
   }
 }

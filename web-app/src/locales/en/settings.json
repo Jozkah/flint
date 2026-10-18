@@ -140,6 +140,8 @@
     "showTokenSpeedDesc": "Display tokens/sec and token count inline below assistant messages. When off, a compact icon shows the details on click.",
     "coloredUserBubble": "Colored user message bubble",
     "coloredUserBubbleDesc": "Use the accent color as the background of your messages. When off, they match assistant messages with plain text on a neutral background.",
+    "renderUserMarkdown": "Render Markdown in my messages",
+    "renderUserMarkdownDesc": "Show bold, lists, headings and code in the messages you send. When off, they show exactly as typed.",
     "renderHtmlArtifacts": "Render HTML & SVG artifacts",
     "renderHtmlArtifactsDesc": "Add a Preview tab to HTML and SVG code blocks. HTML runs the model-generated page in a sandboxed frame that executes its own scripts but cannot access Flint, your files, or the network; SVG renders statically with scripts disabled. Off by default.",
     "composerRailButtons": "Output buttons in the Cowork composer",
@@ -416,7 +418,10 @@
     "proxyTimeoutDesc": "Time to wait for a response from the local model, seconds.",
     "defaultModel": "Default model",
     "defaultModelDesc": "Local model to load automatically when the server starts.",
-    "defaultModelPlaceholder": "Select a local model"
+    "defaultModelPlaceholder": "Select a local model",
+    "noLocalModels": "No local models imported",
+    "usage5hAria": "Tokens per 5 hours",
+    "usageWeekAria": "Tokens per week"
   },
   "privacy": {
     "analytics": "Analytics",
@@ -510,7 +515,22 @@
     "support": "Support",
     "reportAnIssue": "Report an Issue",
     "reportAnIssueDesc": "Found a bug? Help us out by filing an issue on GitHub.",
-    "reportIssue": "Report Issue"
+    "reportIssue": "Report Issue",
+    "advanced": "Advanced",
+    "migrateJan": {
+      "title": "Migrate from JAN",
+      "desc": "Bring data from an existing JAN installation into Flint — copy, reuse in place, move, or start fresh.",
+      "open": "Open migration assistant"
+    },
+    "verify": "Verify",
+    "cli": {
+      "installedDesc": "Installed at {{path}} — use flint from your terminal to serve models.",
+      "desc": "Use flint from your terminal to serve models without opening the app.",
+      "install": "Install",
+      "installing": "Installing…",
+      "uninstall": "Uninstall",
+      "uninstalling": "Uninstalling…"
+    }
   },
   "extensions": {
     "title": "Extensions"
@@ -604,7 +624,9 @@
     "summaryMaxTokens": "Summary length",
     "summaryDescription": "The longest summary, in tokens.",
     "projectOverride": "(A project overrides this.)",
-    "saveFailed": "The compaction policy could not be saved"
+    "saveFailed": "The compaction policy could not be saved",
+    "leanTools": "Lean tools on small models",
+    "leanToolsDescription": "With a context window of 32K tokens or less, leave the plugin list, image search and widget tools out of chats, so the window holds the conversation. Web search, MCP and agent tools stay."
   },
   "accent": {
     "title": "Accent colour",
@@ -1125,7 +1147,26 @@
     "skipped": "Not restored: {{stores}}",
     "storeToolApproval": "tool auto-approval",
     "storeMcpTrust": "MCP server trust",
-    "storeProxy": "network proxy"
+    "storeProxy": "network proxy",
+    "title": "Backup and sync",
+    "exported": "Settings exported",
+    "exportFailed": "Export failed",
+    "importFailed": "Import failed",
+    "importedRestarting": "Settings imported, restarting the window",
+    "exportTitle": "Export settings",
+    "exportDesc": "Save your preferences to a JSON file. To sync across machines, save it into a Google Drive or Nextcloud folder and import it on the other machine. Chats and per-machine state are not included.",
+    "includeSecrets": "Include providers and API keys",
+    "secretsWarning": "The file will contain your API keys in plain text. Keep it private, and do not put it in a shared folder.",
+    "exportButton": "Export…",
+    "importTitle": "Import settings",
+    "importDesc": "Replace your preferences with a backup file. The window reloads afterwards.",
+    "chooseFile": "Choose file…",
+    "pendingGroups": "Setting groups in the file: {{groups}}.",
+    "pendingKeys": "Providers with API keys: {{keys}}.",
+    "pendingExported": "Exported on {{date}}.",
+    "pendingOverwrite": "This overwrites your current values.",
+    "apply": "Import and reload",
+    "cancel": "Cancel"
   },
   "startup": {
     "title": "Start with the computer",
@@ -1153,5 +1194,129 @@
     "showAll": "Show all",
     "preview": "Preview",
     "reachable": "Hidden items stay reachable from the command palette and from Settings."
+  },
+  "memoryPage": {
+    "useSaved": "Use saved memory in conversations",
+    "useSavedDesc": "When this is off, Flint adds no saved memory to any request. Your memories are kept and can still be managed here.",
+    "useFacts": "Use remembered facts in requests",
+    "useFactsDesc": "Turning a scope off stops it being sent. Nothing is deleted; turning it back on uses it again.",
+    "scope": {
+      "chat": {
+        "tab": "This conversation",
+        "blurb": "Remembered only inside the conversation it was saved from.",
+        "recall": "This conversation",
+        "recallAria": "Use this conversation's memories",
+        "newAria": "New memory for this conversation",
+        "forgetAll": "Forget all in this conversation",
+        "clearBody": "Everything remembered for this conversation stops being used and its text is removed from this machine. This cannot be undone in one step."
+      },
+      "project": {
+        "tab": "Project",
+        "blurb": "Available to every conversation in the project you choose below, and to no other project.",
+        "recall": "This project",
+        "recallAria": "Use this project's memories",
+        "newAria": "New memory for this project",
+        "forgetAll": "Forget all in this project",
+        "clearBody": "Everything remembered for this project stops being used and its text is removed from this machine. This cannot be undone in one step."
+      },
+      "user": {
+        "tab": "All conversations",
+        "blurb": "Available everywhere. Keep this for things that are true generally.",
+        "recall": "All conversations",
+        "recallAria": "Use memories shared across all conversations",
+        "newAria": "New memory for all conversations",
+        "forgetAll": "Forget everything shared across conversations",
+        "clearBody": "Everything remembered across all conversations stops being used and its text is removed from this machine. This cannot be undone in one step."
+      }
+    },
+    "stored": {
+      "summary": "{{user}} across chats · {{project}} · {{size}}",
+      "projectIn": "{{count}} in {{name}}",
+      "chooseProject": "choose a project to count its memories"
+    },
+    "listTitle": "What Flint remembers",
+    "tabsAria": "Memory scope",
+    "recallOff": "Recall is off for this scope: these are kept, but not sent.",
+    "newPlaceholder": "Something Flint should remember",
+    "remember": "Remember",
+    "export": "Export",
+    "import": "Import",
+    "importReport": {
+      "summary": "Imported {{count}} from export",
+      "duplicates": "{{count}} already remembered",
+      "refused": "{{count}} refused"
+    },
+    "conversation": "Conversation",
+    "conversationAria": "Conversation whose memory to show",
+    "noConversations": "No conversations yet",
+    "kindChat": "Chat · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "replaced {{when}}",
+    "projectFolder": "Project folder",
+    "projectFolderAria": "Project whose memory to show",
+    "noProjectFolders": "No project attached to any session",
+    "chooseProject": "Choose a project",
+    "chooseProjectAbove": "Choose a project above to see and manage its memories.",
+    "searchAria": "Search memories",
+    "searchPlaceholder": "Search remembered facts",
+    "noMatch": "Nothing here matches that search.",
+    "empty": "Nothing remembered here yet.",
+    "meta": {
+      "youSaved": "You saved this",
+      "inferred": "Inferred",
+      "pinned": "pinned",
+      "used_one": "used {{count}} time",
+      "used_other": "used {{count}} times",
+      "lastUsed": "last used {{when}}",
+      "never": "never"
+    },
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "pinAria": "Pin memory",
+    "unpinAria": "Unpin memory",
+    "editAria": "Edit memory",
+    "forget": "Forget",
+    "forgetAria": "Forget memory",
+    "showing": "Showing {{from}}–{{to}} of {{total}}",
+    "previous": "Previous",
+    "waitingTitle": "Waiting for you",
+    "waitingBody": "Nothing here is being used yet. An unanswered proposal is never added to a prompt.",
+    "conflictsTitle": "Memories that disagree",
+    "conflictsBody": "Neither side is being used. These remembered facts contradict each other, so Flint leaves both out of every request here until you keep one.",
+    "conflictAbout": "About the {{subject}}",
+    "keepThis": "Keep this one",
+    "keepAria": "Keep \"{{preview}}\" and forget the other",
+    "editTitle": "Edit memory",
+    "editBody": "This is used in future conversations in the scope it belongs to.",
+    "contentAria": "Memory content",
+    "clearTitle": "Forget every memory here?",
+    "clearConfirm": "Forget all",
+    "toast": {
+      "kept": "Kept one memory",
+      "settleFailed": "Could not settle that conflict",
+      "forgotten": "Memory forgotten",
+      "forgetFailed": "Could not forget that memory",
+      "changeFailed": "Could not change that memory",
+      "updated": "Memory updated",
+      "updateFailed": "Could not update that memory",
+      "settingsFailed": "Memory settings could not be saved",
+      "recallFailed": "Recall could not be changed",
+      "saved": "Memory saved",
+      "saveFailed": "Could not save that memory",
+      "forgotCount_one": "Forgot {{count}} memory",
+      "forgotCount_other": "Forgot {{count}} memories",
+      "forgetManyFailed": "Could not forget those memories",
+      "exportedCount_one": "Exported {{count}} memory",
+      "exportedCount_other": "Exported {{count}} memories",
+      "exportFailed": "Could not export memories",
+      "importedCount_one": "Imported {{count}} memory",
+      "importedCount_other": "Imported {{count}} memories",
+      "importFailed": "Could not import memories"
+    }
+  },
+  "chatMentions": {
+    "title": "Conversation mentions",
+    "readAny": "Let the assistant read any conversation",
+    "readAnyDesc": "Off by default. Normally the assistant can read only the conversations you mention with @ or #. When on, it can open any chat, session or room on this computer by id. What it reads stays on this computer and is marked as reference data."
   }
 }

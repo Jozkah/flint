@@ -223,5 +223,6 @@
       "model-not-loaded": "Carica prima il modello della chat: è lui a scrivere il riassunto.",
       "summary-failed": "Impossibile scrivere il riassunto. Non è stato creato nulla."
     }
-  }
+  },
+  "stopToolCall": "Interrompi la chiamata dello strumento (Esc)"
 }

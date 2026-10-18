@@ -154,7 +154,45 @@
     "sections": "設定區段",
     "tabGeneral": "一般",
     "tabDiscussion": "討論",
-    "tabLimits": "限制"
+    "tabLimits": "限制",
+    "compareRun": "執行模型",
+    "compareRunHint": "逐一執行較慢，但一次只載入一個本機模型，也更省請求額度。",
+    "compareRunOption": {
+      "together": "全部同時",
+      "one-by-one": "逐一執行"
+    },
+    "compareRunSuggest": "已選擇兩個以上的本機模型：逐一執行可避免它們爭搶記憶體。",
+    "tools": {
+      "heading": "工具",
+      "summary": "已開啟 {{on}}/{{total}} · 約 {{tokens}} 個權杖",
+      "loading": "正在載入工具…",
+      "empty": "此權限下沒有可用的工具。",
+      "group": {
+        "files": "檔案與指令",
+        "web": "網頁",
+        "mcp": "MCP 伺服器",
+        "other": "其他"
+      },
+      "tokens": "約 {{tokens}} tok",
+      "share": "工具定義約佔此模型脈絡視窗的 {{pct}}%。",
+      "warn": "工具定義約佔此模型脈絡視窗的 {{pct}}%（超過 {{limit}}%）。請關閉一些，為討論留出空間。",
+      "windowUnknown": "此模型的脈絡視窗未知，無法顯示占比。",
+      "notStarted": "未啟動",
+      "toolsUnknown": "啟動前工具未知"
+    },
+    "budget": {
+      "heading": "每輪工具預算",
+      "hint": "每個使用工具的參與者輪次的上限。留空則使用預設值。",
+      "maxToolCalls": "最多工具呼叫次數",
+      "maxSteps": "最多步數",
+      "toolTimeoutSec": "工具逾時（秒）",
+      "default": "預設：{{value}}"
+    },
+    "isolation": {
+      "active": "每個可編輯的參與者都在自己的隔離工作區中工作，因此無法互相覆寫或覆寫你的資料夾。",
+      "unavailable": "隔離工作區無法使用：{{reason}}。可編輯的參與者在此房間中只讀。",
+      "untrusted": "該資料夾未受信任"
+    }
   },
   "limits": {
     "maxRounds": "輪數",
@@ -228,7 +266,19 @@
     "toolFailed": "失敗",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} 個 token",
-    "speedTitle": "此回覆中寫出的 token 數及速度"
+    "speedTitle": "此回覆中寫出的 token 數及速度",
+    "budgetHit": {
+      "tool-calls": "本輪已達工具呼叫預算。",
+      "steps": "本輪已達步數預算。",
+      "timeout": "本輪中的一次工具呼叫超過逾時，已被停止。"
+    },
+    "rawToolCall": "這看起來是以文字形式寫出的工具呼叫，它沒有被執行。",
+    "emptyReply": {
+      "length": "模型用完了全部回覆上限（{{count}} 個 token），卻沒有寫出回答。請在房間設定中提高上限，或關閉此參與者的推理，然後重新執行。",
+      "tools": "使用了工具，但沒有寫文字回覆。",
+      "none": "沒有文字回覆。"
+    },
+    "thought": "思考"
   },
   "unknownWindow": {
     "title": "上下文視窗未知",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "每位參與者陳述自己的立場",
     "synthesizeHint": "結果摘要，附帶異議",
     "cancelTurnHint": "僅停止正在進行的回覆",
-    "steerLocked": "討論開始後才會解鎖這些功能。"
+    "steerLocked": "討論開始後才會解鎖這些功能。",
+    "answering": "正在回答",
+    "models": "模型"
   },
   "stage": {
     "speaking": "{{name}} 正在發言",
@@ -390,5 +442,69 @@
     "panes": "房間檢視",
     "talk": "討論",
     "controls": "控制"
+  },
+  "compare": {
+    "title": "比較執行",
+    "modeTogether": "全部同時",
+    "modeOneByOne": "逐一執行",
+    "include": "納入下次執行",
+    "includeFor": "將 {{name}} 納入下次執行",
+    "run": "執行",
+    "runAgain": "再次執行",
+    "runFor": "用 {{name}} 回答目前的問題",
+    "runAgainFor": "用 {{name}} 再次回答目前的問題",
+    "runAll": "全部執行",
+    "answerEarlier": "回答先前的問題",
+    "answerEarlierHint": "錯過先前問題的每個模型現在依序回答，就像它一開始就在場。",
+    "export": "匯出比較",
+    "saveMarkdown": "另存為 Markdown…",
+    "copyMarkdown": "複製為 Markdown",
+    "copyJson": "複製為 JSON",
+    "saved": "已儲存比較。",
+    "copied": "已複製到剪貼簿。",
+    "copyFailed": "無法複製到剪貼簿。",
+    "notAnswered": "尚未回答這個問題。",
+    "state": {
+      "off": "下次執行時略過",
+      "unavailable": "無法使用",
+      "running": "正在回答…",
+      "queued": "排隊中",
+      "done": "已回答",
+      "failed": "失敗",
+      "idle": "尚未回答"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} 個檔案已變更",
+    "summaryMany": "{{count}} 個檔案已變更",
+    "workspace": "隔離工作區：{{path}}",
+    "binary": "二進位檔案",
+    "noExcerpt": "無摘錄。",
+    "openDiff": "開啟差異",
+    "keep": "保留",
+    "discard": "捨棄變更",
+    "apply": "套用到我的資料夾",
+    "state": {
+      "kept": "已保留",
+      "discarded": "已捨棄",
+      "applied": "已套用"
+    },
+    "diffTitle": "工作區中的變更",
+    "diffHint": "此參與者在其隔離工作區中所做的全部變更。",
+    "applyTitle": "套用到你的資料夾？",
+    "applyHint": "此修補程式將寫入你的資料夾。若無法乾淨套用，則不會變更任何內容。",
+    "discardTitle": "捨棄這些變更？",
+    "discardHint": "參與者的工作區會回到初始狀態。你的資料夾不受影響。",
+    "loading": "正在載入差異…",
+    "empty": "沒有可套用的內容。",
+    "applyConfirm": "套用",
+    "discardConfirm": "捨棄",
+    "scopeTurn": "本輪",
+    "scopeAll": "自工作區建立以來"
+  },
+  "approvals": {
+    "held": "房間已暫停",
+    "heldHint": "此請求等待期間房間被暫停，因此無法再允許。恢復房間後，如仍需要，參與者會再次詢問。",
+    "dismiss": "關閉"
   }
 }

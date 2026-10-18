@@ -1,7 +1,7 @@
 {
   "limitedSupport": "Bu sağlayıcı tam olarak desteklenmeyebilir. Yetenekler (araçlar, görüntü, ses) otomatik algılanmaz - modelleri elle ekleyin ve her model için yetenekleri yapılandırın.",
   "mlxExperimental": "MLX desteği deneyseldir. Gömme (embedding) kullanılamaz, muhakeme anahtarı henüz bağlanmamıştır ve bazı yeni model mimarileri yüklenemeyebilir. Öncelik verelim diye sorunları GitHub'da bildirin.",
-  "engineBundled": "Çıkarım motoru Jan'e gömülüdür, bu yüzden ayrıca indirilecek veya güncellenecek bir şey yoktur. Yüklenemeyen bir model bildirirken bu sürümü belirtin.",
+  "engineBundled": "Çıkarım motoru Flint'e gömülüdür, bu yüzden ayrıca indirilecek veya güncellenecek bir şey yoktur. Yüklenemeyen bir model bildirirken bu sürümü belirtin.",
   "engineOtherVersion": "Farklı bir llama.cpp sürümü mü gerekiyor? Kendi llama-server'ınızı çalıştırıp OpenAI uyumlu özel bir sağlayıcı olarak ekleyin.",
   "engineReleaseNotes": "Sürüm notları",
   "engineBuild": "Derleme",
@@ -36,7 +36,7 @@
   "refresh": "Yenile",
   "import": "İçe Aktar",
   "imported": "İçe aktarıldı",
-  "importedTooltip": "Yerel bir dosyadan içe aktarıldı. Jan'den kaldırmak, dosyayı diskten silmez.",
+  "importedTooltip": "Yerel bir dosyadan içe aktarıldı. Flint'ten kaldırmak, dosyayı diskten silmez.",
   "importModelSuccess": "{{provider}} modeli başarıyla içe aktarıldı.",
   "importModelError": "Model içe aktarılamadı:",
 
@@ -89,8 +89,8 @@
   "deleteModel": {
     "title": "Modeli Sil: {{modelId}}",
     "description": "Bu modeli silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.",
-    "importedDescription": "İçe aktarılan bu modeli Jan'den kaldırmak istiyor musunuz? Diskteki yerel dosyanız silinmeyecek.",
-    "removeFromJan": "Jan'den Kaldır",
+    "importedDescription": "İçe aktarılan bu modeli Flint'ten kaldırmak istiyor musunuz? Diskteki yerel dosyanız silinmeyecek.",
+    "removeFromJan": "Flint'ten Kaldır",
     "success": "{{modelId}} modeli kalıcı olarak silindi.",
     "cancel": "Vazgeç",
     "delete": "Sil"
@@ -106,7 +106,7 @@
     "sizeLabel": "Boşaltılacak disk alanı:",
     "calculating": "Hesaplanıyor…",
     "warning": "Bu işlem geri alınamaz.",
-    "importedExcluded": "{{count}} içe aktarılan model korunacak (dosyaları Jan tarafından indirilmedi).",
+    "importedExcluded": "{{count}} içe aktarılan model korunacak (dosyaları Flint tarafından indirilmedi).",
     "confirm": "{{count}} modeli sil",
     "deleting": "Siliniyor…",
     "success": "{{count}} model silindi.",
@@ -129,6 +129,7 @@
     "cachedInputCost": "Önbelleğe alınmış girdi maliyeti (1M token başına USD)",
     "cacheWriteCost": "Önbellek yazma maliyeti (1M token başına USD)",
     "costHelp": "Bilinen modeller için yerleşik fiyatı kullanmak üzere boş bırakın; yerel modeller ücretsizdir. Boş bırakılan önbelleğe alınmış girdi veya önbellek yazma fiyatı girdi fiyatı üzerinden ücretlendirilir.",
+    "costInvalid": "Fiyatlar 0 veya daha büyük bir sayı olmalıdır. Yerleşik fiyatı kullanmak için alanı boş bırakın.",
     "displayName": "Görünen ad",
     "displayNamePlaceholder": "Bir görünen ad girin",
     "displayNameHelp": "Bu modelin listelendiği her yerde gösterilir. İstekler yine özgün tanımlayıcıyı, {{modelId}}, kullanır.",
@@ -164,7 +165,7 @@
   },
   "apiKeys": {
     "title": "API anahtarları",
-    "description": "API anahtarınızı girin. Gelişmiş bölümünde ek anahtarlar ekleyebilirsiniz; bir anahtar başarısız olursa Jan otomatik olarak bir sonrakini dener.",
+    "description": "API anahtarınızı girin. Gelişmiş bölümünde ek anahtarlar ekleyebilirsiniz; bir anahtar başarısız olursa Flint otomatik olarak bir sonrakini dener.",
     "placeholder": "sk-…\nsk-…",
     "primaryPlaceholder": "Birincil API anahtarını girin",
     "keyPlaceholder": "API anahtarını girin",

@@ -230,5 +230,6 @@
       "model-not-loaded": "Najpierw wczytaj model czatu. To on pisze podsumowanie.",
       "summary-failed": "Nie udało się napisać podsumowania. Nic nie zostało utworzone."
     }
-  }
+  },
+  "stopToolCall": "Zatrzymaj wywołanie narzędzia (Esc)"
 }

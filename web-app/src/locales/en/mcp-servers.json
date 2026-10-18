@@ -9,7 +9,9 @@
       "title": "Flint completes tasks in your browser",
       "description": "Install the extension to give Flint browser access",
       "getExtension": "Get Extension"
-    }
+    },
+    "requires": "Requires the browser extension to be installed in your Chrome-based browser.",
+    "install": "Install Extension →"
   },
   "serverName": "Server Name",
   "enterServerName": "Enter server name",

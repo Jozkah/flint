@@ -1,7 +1,7 @@
 {
   "limitedSupport": "Questo provider potrebbe non essere completamente supportato. Le funzionalità (strumenti, visione, audio) non vengono rilevate automaticamente: aggiungi i modelli manualmente e configura le funzionalità per singolo modello.",
   "mlxExperimental": "Il supporto MLX è sperimentale. Gli embedding non sono disponibili, l'interruttore del ragionamento non è ancora collegato e alcune architetture di modelli più recenti potrebbero non caricarsi. Segnala i problemi su GitHub così possiamo dare loro priorità.",
-  "engineBundled": "Il motore di inferenza è integrato in Jan, quindi non c'è nulla da scaricare o aggiornare separatamente. Cita questa versione quando segnali un modello che non si carica.",
+  "engineBundled": "Il motore di inferenza è integrato in Flint, quindi non c'è nulla da scaricare o aggiornare separatamente. Cita questa versione quando segnali un modello che non si carica.",
   "engineOtherVersion": "Ti serve un'altra versione di llama.cpp? Avvia il tuo llama-server e aggiungilo come provider personalizzato compatibile con OpenAI.",
   "engineReleaseNotes": "Note di rilascio",
   "engineBuild": "Build",
@@ -129,6 +129,7 @@
     "cachedInputCost": "Costo input in cache (USD per 1M di token)",
     "cacheWriteCost": "Costo scrittura cache (USD per 1M di token)",
     "costHelp": "Lascia vuoto per usare il prezzo integrato per i modelli noti; i modelli locali sono gratuiti. Un prezzo vuoto per input in cache o scrittura cache viene addebitato al prezzo dell'input.",
+    "costInvalid": "I prezzi devono essere un numero pari o superiore a 0. Svuota il campo per usare il prezzo integrato.",
     "displayName": "Nome visualizzato",
     "displayNamePlaceholder": "Inserisci un nome visualizzato",
     "displayNameHelp": "Mostrato ovunque questo modello sia elencato. Le richieste usano ancora l'identificatore originale, {{modelId}}.",

@@ -107,6 +107,7 @@
     "connection": "连接",
     "engineSettings": "引擎设置",
     "memorySettings": "内存和缓存",
+    "settingNotSaved": "未能保存“{{setting}}”",
     "danger": "危险区域"
   },
   "mcp": {
@@ -126,7 +127,8 @@
     "kpiApprovedAll": "允许所有工具调用",
     "tabServers": "服务器",
     "tabRouting": "路由和限制",
-    "toolsCount": "{{count}} 个工具",
+    "toolsCount_one": "{{count}} 个工具",
+    "toolsCount_other": "{{count}} 个工具",
     "filterLabel": "显示服务器",
     "filterAll": "全部",
     "filterOn": "开",
@@ -136,10 +138,11 @@
     "viewList": "列表",
     "callsPerMin": "调用 / 分钟",
     "window": "最近 {{count}} 分钟",
-    "needsExtension": "需要 Jan 浏览器扩展",
+    "needsExtension": "需要浏览器扩展",
     "moreActions": "{{serverName}} 的更多操作",
     "addTile": "添加 MCP 服务器",
-    "addTileHint": "STDIO、HTTP 或 SSE"
+    "addTileHint": "STDIO、HTTP 或 SSE",
+    "toolsCount": "{{count}} 个工具"
   },
   "extensions": {
     "description": "插件、技能以及构成 Flint 的引擎组件。",

@@ -9,7 +9,9 @@
       "title": "Flint completa le attività nel tuo browser",
       "description": "Installa l'estensione per consentire a Flint l'accesso al browser",
       "getExtension": "Ottieni estensione"
-    }
+    },
+    "requires": "Richiede l'installazione dell'estensione del browser nel tuo browser basato su Chrome.",
+    "install": "Installa l'estensione →"
   },
   "serverName": "Nome server",
   "enterServerName": "Inserisci il nome del server",

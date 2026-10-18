@@ -56,7 +56,40 @@
     "chatFolderCount": "Ordner: {{count}}",
     "newSubfolder": "Neuer Unterordner",
     "moveInto": "In Ordner verschieben",
-    "topLevel": "Oberste Ebene"
+    "topLevel": "Oberste Ebene",
+    "errors": {
+      "nameEmpty": "Der Gruppenname darf nicht leer sein",
+      "notFound": "Gruppe nicht gefunden",
+      "tooDeep": "Gruppen können nicht so tief verschachtelt werden",
+      "intoItself": "Eine Gruppe kann nicht in sich selbst verschoben werden"
+    },
+    "failed": {
+      "create": "Die Gruppe konnte nicht erstellt werden",
+      "rename": "Die Gruppe konnte nicht umbenannt werden",
+      "moveFolder": "Der Ordner konnte nicht verschoben werden",
+      "saveState": "Der Gruppenstatus konnte nicht gespeichert werden",
+      "reorder": "Die Gruppen konnten nicht neu angeordnet werden",
+      "moveItem": "Das Element konnte nicht verschoben werden",
+      "delete": "Die Gruppe konnte nicht gelöscht werden",
+      "saveFolders": "Die Gruppenordner konnten nicht gespeichert werden",
+      "updateContext": "Der Ordnerkontext konnte nicht aktualisiert werden",
+      "update": "Die Gruppen konnten nicht aktualisiert werden",
+      "import": "Die Gruppen konnten nicht importiert werden",
+      "unreadable": "{{failure}}: Die gespeicherten Gruppen konnten nicht gelesen werden",
+      "restored": "{{failure}}. Ihre vorherige Reihenfolge wurde wiederhergestellt."
+    },
+    "announce": {
+      "created": "Gruppe {{name}} erstellt",
+      "collapsed": "{{name}} eingeklappt",
+      "expanded": "{{name}} ausgeklappt",
+      "reordered": "{{name}} an Position {{position}} von {{total}} verschoben",
+      "movedToPosition": "Nach {{name}} verschoben, Position {{position}}",
+      "movedToRecents": "In „Zuletzt“ verschoben",
+      "deleted": "Gruppe {{name}} gelöscht. Ihre Elemente wurden nach „Zuletzt“ verschoben",
+      "ctxReplaced": "{{base}}. Der Ordnerkontext wurde durch die Gruppenordner ersetzt; der Zugriff muss weiterhin genehmigt werden",
+      "ctxMerged": "{{base}}. Gruppenordner wurden zum Ordnerkontext hinzugefügt; der Zugriff muss weiterhin genehmigt werden",
+      "foldersAdded": "{{base}}. Ordner des Elements wurden zur Gruppe hinzugefügt"
+    }
   },
   "htmlArtifact": {
     "code": "Code",
@@ -279,7 +312,7 @@
     "searchThreads": "Unterhaltungen durchsuchen",
     "toggleSidebar": "Seitenleiste umschalten",
     "openCowork": "Cowork öffnen",
-    "openArtifacts": "Artefakte öffnen",
+    "openArtifacts": "Bibliothek öffnen",
     "openSystemMonitor": "Systemmonitor öffnen",
     "openLogs": "App-Protokolle öffnen",
     "section": {
@@ -1219,7 +1252,8 @@
     "sensitiveRefused": "{{name}} sieht nach Zugangsdaten oder einem Schlüssel aus und wurde daher nicht geöffnet",
     "binaryRefused": "{{name}} ist keine Textdatei, was auch immer die Endung behauptet",
     "chooseAgainAction": "Erneut auswählen",
-    "externalGone": "Diese Datei wurde von außerhalb des Projekts geöffnet, und dieser Zugriff blieb nicht erhalten. Wähle sie erneut aus, um sie wieder zu öffnen."
+    "externalGone": "Diese Datei wurde von außerhalb des Projekts geöffnet, und dieser Zugriff blieb nicht erhalten. Wähle sie erneut aus, um sie wieder zu öffnen.",
+    "oneFolderAtATime": "Es kann nur ein Ordner auf einmal hinzugefügt werden. „{{name}}“ wurde nicht hinzugefügt."
   },
   "settingsSearch": {
     "label": "Einstellungen durchsuchen",
@@ -1402,7 +1436,14 @@
     "recommended": "Empfohlen",
     "reset": "Auf global zurücksetzen",
     "resetAll": "Auf globale Standardwerte zurücksetzen",
-    "overridden": "Für diesen Chat festgelegt"
+    "overridden": "Für diesen Chat festgelegt",
+    "levels": {
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "xhigh": "Sehr hoch",
+      "unlimited": "Unbegrenzt"
+    }
   },
   "modelOffline": {
     "badge": "Nicht erreichbar",
@@ -2512,6 +2553,7 @@
       "slots": "{{count}} Slots",
       "vision": "Bild",
       "audio": "Audio",
+      "fixedPrompt": "Wird mit jeder Anfrage gesendet: {{count}} Tokens (Systemprompt und Werkzeugschemas).",
       "tokenUsage": "Token-Nutzung",
       "tokenUsageSr": "Token-Nutzung {{value}}"
     }
@@ -2543,6 +2585,19 @@
     "previewLoading": "Vorschau wird geladen…",
     "previewNone": "Keine Vorschau verfügbar"
   },
+  "fileViewer": {
+    "openFull": "Vollständige Vorschau öffnen",
+    "loadMore": "Mehr laden",
+    "showingFirst": "Die ersten {{loaded}} von {{total}} werden angezeigt",
+    "lines_one": "{{count}} Zeile",
+    "lines_other": "{{count}} Zeilen",
+    "wrap": "Zeilen umbrechen",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "binary": "Das scheint eine Binärdatei zu sein, daher gibt es keine Textvorschau.",
+    "expandLine": "Ganze Zeile anzeigen",
+    "collapseLine": "Zeile kürzen"
+  },
   "dropAttachFailed": "Die abgelegten Dateien konnten nicht angehängt werden",
   "sampler": {
     "label": "Sampling-Parameter",
@@ -2568,7 +2623,8 @@
     "paste": "Aus Zwischenablage einfügen",
     "pasteFailed": "Zwischenablage konnte nicht gelesen werden",
     "clear": "Leeren",
-    "characters": "{{count}} Zeichen",
+    "characters_one": "{{count}} Zeichen",
+    "characters_other": "{{count}} Zeichen",
     "translating": "Wird übersetzt…",
     "retry": "Erneut versuchen",
     "shortcut": "Übersetzen (Ctrl/Cmd+Enter)",
@@ -2580,7 +2636,9 @@
     "errorNetwork": "Der Anbieter ist nicht erreichbar. Prüfe deine Verbindung oder ob der Server läuft.",
     "errorEngine": "Die Engine, die dieses Modell ausführt, ist nicht verfügbar. Starte Flint neu und versuche es erneut.",
     "openProvider": "Anbieter-Einstellungen öffnen",
-    "errorDetails": "Details"
+    "errorDetails": "Details",
+    "pasteHint": "Der Zugriff auf die Zwischenablage wurde blockiert. Klicke in das Textfeld und drücke {{keys}}.",
+    "characters": "{{count}} Zeichen"
   },
   "markdownImage": {
     "load": "Bild von {{host}} laden"
@@ -2601,7 +2659,8 @@
     "editTitle": "Prompt bearbeiten",
     "import": "Importieren",
     "export": "Exportieren",
-    "imported": "{{count}} Prompts hinzugefügt",
+    "imported_one": "{{count}} Prompt hinzugefügt",
+    "imported_other": "{{count}} Prompts hinzugefügt",
     "search": "Prompts suchen",
     "empty": "Noch keine Prompts.",
     "edit": "{{name}} bearbeiten",
@@ -2614,6 +2673,107 @@
     "body": "Prompt-Text",
     "bodyHint": "Schreibe den Prompt. Nutze {{topic}} oder {{tone:friendly}} für Platzhalter.",
     "variables": "Fragt nach: {{names}}",
-    "insert": "Einfügen"
+    "defaultValue": "Standard: {{value}}",
+    "requiredField": "Pflichtfeld",
+    "fillNeeded": "Zum Einfügen ausfüllen: {{names}}",
+    "insert": "Einfügen",
+    "errors": {
+      "nameRequired": "Ein Prompt braucht einen Namen",
+      "nameTooLong": "Dieser Name ist zu lang",
+      "bodyRequired": "Ein Prompt braucht Text",
+      "bodyTooLong": "Dieser Prompt ist zu lang",
+      "gone": "Dieser Prompt existiert nicht mehr",
+      "invalidJson": "Diese Datei ist kein gültiges JSON",
+      "noPrompts": "In dieser Datei wurden keine Prompts gefunden"
+    },
+    "imported": "{{count}} Prompts hinzugefügt"
+  },
+  "memoryProposal": {
+    "title": "Soll ich mir das merken?",
+    "wouldApply": "Würde gelten für {{where}}.",
+    "remember": "Merken",
+    "discard": "Verwerfen",
+    "reviewBoth": "Beide prüfen",
+    "saving": "Wird gespeichert…",
+    "discarding": "Wird verworfen…",
+    "scope": {
+      "session": "diese Unterhaltung",
+      "project": "dieses Projekt",
+      "user": "überall"
+    }
+  },
+  "picker": {
+    "filter": "Filter",
+    "source": "Quelle",
+    "sourceAll": "Alle",
+    "sourceLocal": "Lokal",
+    "sourceCloud": "Cloud",
+    "capabilities": "Fähigkeiten",
+    "cap": {
+      "vision": "Bildverständnis",
+      "tools": "Werkzeuge",
+      "reasoning": "Schlussfolgern",
+      "embeddings": "Embedding"
+    },
+    "loadedNow": "Jetzt geladen",
+    "sort": "Sortierung",
+    "sortDefault": "Standardreihenfolge",
+    "sortName": "Name (A–Z)",
+    "sortRecent": "Zuletzt verwendet",
+    "sortSize": "Größe",
+    "clearFilters": "Filter zurücksetzen",
+    "noMatch": "Kein Modell passt",
+    "noMatchFilters": "Kein Modell passt: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Sitzung",
+      "room": "Raum"
+    },
+    "heading": "Unterhaltungen",
+    "empty": "Keine weiteren Unterhaltungen",
+    "noMatch": "Keine Unterhaltung passt",
+    "messages": "Nachrichten: {{n}}",
+    "included": "Eingebunden: {{title}} (Nachrichten: {{n}}, ca. {{size}} Zeichen)",
+    "group": "Erwähnte Unterhaltungen",
+    "summarize": "Zusammenfassen",
+    "summarizeHint": "Statt der letzten Nachrichten eine Zusammenfassung einbinden",
+    "remove": "Erwähnung von {{title}} entfernen",
+    "mentioned": "Erwähnt: {{title}}",
+    "open": "{{title}} öffnen",
+    "status": {
+      "missing": "Nicht gefunden: {{title}}",
+      "self": "{{title}} ist diese Unterhaltung und wird ausgelassen",
+      "over-cap": "{{title}} wird ausgelassen: höchstens {{max}} Unterhaltungen pro Nachricht"
+    },
+    "excerpt": "Auszug",
+    "summary": "Zusammenfassung",
+    "modeGroup": "Was aus {{title}} einbezogen wird",
+    "excerptHint": "Die neuesten Nachrichten, etwa {{tokens}} Tokens",
+    "summaryHint": "Eine vom Modell geschriebene Zusammenfassung, höchstens etwa {{tokens}} Tokens",
+    "needsModel": "Lade ein Modell, um stattdessen eine Zusammenfassung einzubeziehen",
+    "totals_one": "{{count}} Nachricht · ~{{tokens}} Tokens einbezogen",
+    "totals_other": "{{count}} Nachrichten · ~{{tokens}} Tokens einbezogen",
+    "readOnly": "Wird als zitierter, schreibgeschützter Kontext gesendet. Das Modell kann diese Unterhaltung nicht ändern.",
+    "tooLarge": "Das ist mehr als ein Viertel des Kontextfensters des Modells.",
+    "useSummary": "Zusammenfassung verwenden",
+    "resolving": "{{title}} wird gesucht",
+    "chipStatus": {
+      "missing": "Nicht gefunden",
+      "self": "Diese Unterhaltung",
+      "over-cap": "Über dem Limit"
+    },
+    "preview": {
+      "empty": "Noch keine Nachrichten",
+      "you": "Du",
+      "assistant": "Assistent"
+    },
+    "messagesCount_one": "{{count}} Nachricht",
+    "messagesCount_other": "{{count}} Nachrichten"
+  },
+  "campaignList": {
+    "timeout": "Die App hat nicht rechtzeitig geantwortet.",
+    "unreadableRecord": "das Backend hat einen Eintrag gesendet, den diese Seite nicht lesen kann"
   }
 }

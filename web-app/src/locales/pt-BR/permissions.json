@@ -39,7 +39,8 @@
     "gitLocalIn": "O Flint quer executar {{command}} em {{workspace}}",
     "gitRemote": "O Flint quer executar {{command}}, o que altera {{target}}",
     "gitDestructive": "O Flint quer executar {{command}}, o que pode perder trabalho",
-    "approveCampaign": "O Flint quer iniciar a campanha \"{{title}}\" ({{count}} tarefas)"
+    "approveCampaign": "O Flint quer iniciar a campanha \"{{title}}\" ({{count}} tarefas)",
+    "spendPause": "O Flint quer continuar esta execução além da pausa de gastos"
   },
   "consequence": {
     "fileChange": "Pode criar, sobrescrever ou alterar o conteúdo de arquivos.",
@@ -57,7 +58,8 @@
     "gitLocal": "Altera os arquivos, branches ou histórico deste repositório neste computador.",
     "gitRemote": "Envia alterações a um repositório remoto que outras pessoas podem ver. O Flint pergunta sempre, a menos que você permita temporariamente ações Git remotas comuns nesta conversa.",
     "gitDestructive": "O que ele remove ou sobrescreve pode não ser recuperável.",
-    "campaignPlan": "Ela inicia sessões separadas, cada uma em seu próprio worktree e branch, que leem e alteram arquivos e usam sua cota de modelo em paralelo. Aprovar o plano não aprova nenhuma chamada que uma tarefa faça. O Flint pergunta toda vez."
+    "campaignPlan": "Ela inicia sessões separadas, cada uma em seu próprio worktree e branch, que leem e alteram arquivos e usam sua cota de modelo em paralelo. Aprovar o plano não aprova nenhuma chamada que uma tarefa faça. O Flint pergunta toda vez.",
+    "spendPause": "A execução continua usando cota paga do modelo até terminar ou atingir o limite. Negar interrompe a execução."
   },
   "repeat": {
     "allowedOnceBefore": "Você já permitiu este comando uma vez nesta conversa."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Chamadas futuras de processo único que correspondam a {{action}} rodam sem perguntar, incluindo IDs de processo diferentes. Outros scripts continuam perguntando. Revogue isto em Configurações > Permissões.",
     "allowClipboardReadExplanation": "O Flint pode ler o conteúdo futuro da área de transferência em todas as conversas sem perguntar, até você revogar isto em Configurações > Permissões. Gravar na área de transferência continua perguntando.",
     "allowSimilarThreadExplanation": "Chamadas futuras que correspondam a {{action}} rodam sem perguntar nesta conversa. Revogue isto em Configurações > Permissões.",
-    "broader": "Mais amplo"
+    "broader": "Mais amplo",
+    "editedRunsOnce": "Comandos editados são executados apenas uma vez."
   },
   "request": {
     "title": "Solicitação de permissão",
@@ -226,11 +229,13 @@
     "trust": "Confiar na pasta",
     "later": "Agora não",
     "failed": "Não foi possível confiar na pasta",
+    "kept_one": "Hooks mantidos ativos em {{count}} pasta que você já usa. Revise-a em Configurações > Permissões > Pastas confiáveis.",
+    "kept_other": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis.",
     "kept": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis."
   },
   "trustedFolders": {
     "title": "Pastas confiáveis",
-    "description": "Pastas cujos hooks e definições de agentes próprios podem ser executados. A confiança é mantida até você retirá-la.",
+    "description": "Pastas cujos hooks e definições de agentes próprios podem ser executados. A confiança é mantida até você retirá-la. Os arquivos que um agente pode ler ou alterar ficam em Acesso a pastas.",
     "empty": "Ainda não há pastas confiáveis; o Flint pergunta na primeira vez que uma pasta tem hooks ou definições de agentes.",
     "add": "Confiar em uma pasta…",
     "stop": "Parar de confiar",
@@ -250,7 +255,11 @@
     "prefixHint": "Somente um comando simples. Um comando encadeado, com pipe ou redirecionado é perguntado de novo.",
     "everywhere": "Toda chamada de {{tool}}, em todos os projetos",
     "everywhereHint": "O significado antigo de Sempre. Amplo; raramente o que você quer.",
-    "saveFailed": "Não foi possível lembrar essa escolha"
+    "saveFailed": "Não foi possível lembrar essa escolha",
+    "alwaysFolder": "Sempre: dentro de {{dir}}",
+    "alwaysPrefix": "Sempre: comandos que começam com {{prefix}}",
+    "alwaysFolderExplanation": "Somente arquivos nessa pasta, neste projeto, até você revogar em Configurações > Permissões.",
+    "alwaysPrefixExplanation": "Somente um comando simples que comece assim, neste projeto, até você revogar em Configurações > Permissões. Um comando encadeado, com pipe ou redirecionado será perguntado de novo."
   },
   "rules": {
     "title": "Aprovações lembradas",
@@ -284,12 +293,38 @@
       "consumed": "Usada"
     },
     "loadFailed": "Não foi possível ler as aprovações aguardando",
-    "answerFailed": "Não foi possível registrar a resposta"
+    "answerFailed": "Não foi possível registrar a resposta",
+    "allowLabel": "Permitir: {{summary}}",
+    "denyLabel": "Negar: {{summary}}",
+    "discardLabel": "Remover: {{summary}}"
   },
   "toast": {
     "trustFailed": "Não foi possível lembrar esse servidor",
     "cancelledOne": "A aprovação de {{names}} foi cancelada",
     "cancelledMany": "{{count}} aprovações ({{names}}) foram canceladas",
     "cancelledDescription": "O chat foi deixado antes de você responder. Envie a requisição novamente para tentar de novo."
+  },
+  "desktopOnly": "Disponível apenas no app de desktop do Flint.",
+  "folderAccess": {
+    "title": "Acesso a pastas",
+    "description": "Pastas e arquivos fora do espaço de trabalho do agente que você deixou um agente ler ou alterar. Se os hooks próprios de uma pasta podem ser executados é definido em Pastas confiáveis.",
+    "empty": "Nenhum acesso a pastas foi concedido.",
+    "readWrite": "Leitura e gravação",
+    "readOnly": "Somente leitura",
+    "untilRevoked": "Todas as conversas, até ser revogado",
+    "untilDate": "Esta conversa, até {{when}}",
+    "revoke": "Revogar",
+    "revokeLabel": "Revogar acesso a {{path}}"
+  },
+  "spendPause": {
+    "preview": "Continuar a execução (cerca de {{spent}} gastos até agora)",
+    "previewCeiling": "Continuar a execução até o limite de {{ceiling}} (cerca de {{spent}} gastos até agora)"
+  },
+  "remote": {
+    "runsOnServer": "Executa no servidor.",
+    "runsOnServerAt": "Executa no servidor: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Alterações aguardando sua aprovação"
   }
 }

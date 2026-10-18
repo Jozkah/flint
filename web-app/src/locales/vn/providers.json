@@ -1,7 +1,7 @@
 {
   "limitedSupport": "Nhà cung cấp này có thể chưa được hỗ trợ đầy đủ. Các khả năng (công cụ, thị giác, âm thanh) không được tự động phát hiện - hãy thêm mô hình thủ công và cấu hình khả năng cho từng mô hình.",
   "mlxExperimental": "Hỗ trợ MLX còn mang tính thử nghiệm. Không có embedding, công tắc suy luận chưa được nối, và một số kiến trúc mô hình mới hơn có thể không tải được. Hãy báo lỗi trên GitHub để chúng tôi ưu tiên xử lý.",
-  "engineBundled": "Engine suy luận được tích hợp sẵn trong Jan, nên không có gì cần tải xuống hay cập nhật riêng. Hãy nêu phiên bản này khi báo cáo một mô hình không tải được.",
+  "engineBundled": "Engine suy luận được tích hợp sẵn trong Flint, nên không có gì cần tải xuống hay cập nhật riêng. Hãy nêu phiên bản này khi báo cáo một mô hình không tải được.",
   "engineOtherVersion": "Cần phiên bản llama.cpp khác? Hãy tự chạy llama-server và thêm nó làm nhà cung cấp tùy chỉnh tương thích OpenAI.",
   "engineReleaseNotes": "Ghi chú phát hành",
   "engineBuild": "Bản dựng",
@@ -129,6 +129,7 @@
     "cachedInputCost": "Chi phí đầu vào được lưu đệm (USD mỗi 1M token)",
     "cacheWriteCost": "Chi phí ghi bộ đệm (USD mỗi 1M token)",
     "costHelp": "Để trống để dùng giá tích hợp cho các mô hình phổ biến; mô hình cục bộ miễn phí. Giá đầu vào được lưu đệm hoặc giá ghi bộ đệm để trống sẽ được tính theo giá đầu vào.",
+    "costInvalid": "Giá phải là một số từ 0 trở lên. Để trống ô để dùng giá tích hợp sẵn.",
     "displayName": "Tên hiển thị",
     "displayNamePlaceholder": "Nhập tên hiển thị",
     "displayNameHelp": "Hiển thị ở mọi nơi mô hình này được liệt kê. Các yêu cầu vẫn dùng mã định danh gốc, {{modelId}}.",

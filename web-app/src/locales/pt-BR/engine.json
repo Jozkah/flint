@@ -108,6 +108,7 @@
     "connection": "Conexão",
     "engineSettings": "Configurações do motor",
     "memorySettings": "Memória e cache",
+    "settingNotSaved": "\"{{setting}}\" não foi salvo",
     "danger": "Zona de perigo"
   },
   "mcp": {
@@ -127,7 +128,8 @@
     "kpiApprovedAll": "Todas as chamadas de ferramenta são permitidas",
     "tabServers": "Servidores",
     "tabRouting": "Roteamento e limites",
-    "toolsCount": "{{count}} ferramentas",
+    "toolsCount_one": "{{count}} ferramenta",
+    "toolsCount_other": "{{count}} ferramentas",
     "filterLabel": "Mostrar servidores",
     "filterAll": "Todos",
     "filterOn": "Ativados",
@@ -137,10 +139,11 @@
     "viewList": "Lista",
     "callsPerMin": "chamadas / min",
     "window": "últimos {{count}} min",
-    "needsExtension": "Requer a Extensão de Navegador do Jan",
+    "needsExtension": "Requer a extensão do navegador",
     "moreActions": "Mais ações para {{serverName}}",
     "addTile": "Adicionar servidor MCP",
-    "addTileHint": "STDIO, HTTP ou SSE"
+    "addTileHint": "STDIO, HTTP ou SSE",
+    "toolsCount": "{{count}} ferramentas"
   },
   "extensions": {
     "description": "Plugins, skills e as peças do motor com as quais o Flint é construído.",

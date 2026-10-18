@@ -129,6 +129,7 @@
     "cachedInputCost": "Cena vstupu z cache (USD za 1M tokenů)",
     "cacheWriteCost": "Cena zápisu do cache (USD za 1M tokenů)",
     "costHelp": "Nechte prázdné pro použití vestavěné ceny u známých modelů; lokální modely jsou zdarma. Prázdná cena vstupu z cache nebo zápisu do cache se účtuje cenou vstupu.",
+    "costInvalid": "Ceny musí být číslo 0 nebo vyšší. Vyprázdněte pole, abyste použili vestavěnou cenu.",
     "displayName": "Zobrazovaný název",
     "displayNamePlaceholder": "Zadejte zobrazovaný název",
     "displayNameHelp": "Zobrazuje se všude, kde je tento model uveden. Požadavky nadále používají původní identifikátor {{modelId}}.",

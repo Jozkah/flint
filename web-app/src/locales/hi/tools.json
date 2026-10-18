@@ -79,6 +79,8 @@
     "reading": "पढ़ा जा रहा है...",
     "workspaceRoot": "वर्कस्पेस रूट",
     "matches": "{{count}} मेल",
-    "testsPassed": "{{count}} पास हुए"
+    "testsPassed": "{{count}} पास हुए",
+    "runningStatus": "{{tool}} चल रहा है…",
+    "stillRunning": "{{tool}} अभी भी चल रहा है…"
   }
 }

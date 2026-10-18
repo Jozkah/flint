@@ -154,7 +154,45 @@
     "sections": "Sekce nastavení",
     "tabGeneral": "Obecné",
     "tabDiscussion": "Diskuse",
-    "tabLimits": "Limity"
+    "tabLimits": "Limity",
+    "compareRun": "Spouštění modelů",
+    "compareRunHint": "Jeden po druhém je pomalejší, ale načte vždy jen jeden místní model a šetří limity požadavků.",
+    "compareRunOption": {
+      "together": "Všechny najednou",
+      "one-by-one": "Jeden po druhém"
+    },
+    "compareRunSuggest": "Vybrali jste dva nebo více místních modelů: spouštění jednoho po druhém zabrání, aby soupeřily o paměť.",
+    "tools": {
+      "heading": "Nástroje",
+      "summary": "{{on}} z {{total}} zapnuto · ~{{tokens}} tokenů",
+      "loading": "Načítání nástrojů…",
+      "empty": "S tímto přístupem nejsou k dispozici žádné nástroje.",
+      "group": {
+        "files": "Soubory a příkazy",
+        "web": "Web",
+        "mcp": "Servery MCP",
+        "other": "Ostatní"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Definice nástrojů zabírají asi {{pct}} % kontextového okna tohoto modelu.",
+      "warn": "Definice nástrojů zabírají asi {{pct}} % kontextového okna tohoto modelu (přes {{limit}} %). Některé vypněte, ať zbude místo na diskusi.",
+      "windowUnknown": "Kontextové okno tohoto modelu není známé, podíl proto nelze zobrazit.",
+      "notStarted": "nespuštěno",
+      "toolsUnknown": "nástroje neznámé do spuštění"
+    },
+    "budget": {
+      "heading": "Rozpočet nástrojů na tah",
+      "hint": "Limity pro každý tah účastníka, který používá nástroje. Prázdné pole znamená výchozí hodnotu.",
+      "maxToolCalls": "Max. volání nástrojů",
+      "maxSteps": "Max. kroků",
+      "toolTimeoutSec": "Časový limit nástroje (sekundy)",
+      "default": "Výchozí: {{value}}"
+    },
+    "isolation": {
+      "active": "Každý účastník, který smí upravovat, pracuje ve vlastním izolovaném pracovním prostoru, takže se nemohou přepsat navzájem ani vaši složku.",
+      "unavailable": "Izolovaný pracovní prostor není k dispozici: {{reason}}. Účastníci s úpravami v této místnosti jen čtou.",
+      "untrusted": "složka není důvěryhodná"
+    }
   },
   "limits": {
     "maxRounds": "Kola",
@@ -228,7 +266,19 @@
     "toolFailed": "selhalo",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} tokenů",
-    "speedTitle": "Tokeny napsané v této odpovědi a jak rychle"
+    "speedTitle": "Tokeny napsané v této odpovědi a jak rychle",
+    "budgetHit": {
+      "tool-calls": "Tento tah vyčerpal rozpočet volání nástrojů.",
+      "steps": "Tento tah vyčerpal rozpočet kroků.",
+      "timeout": "Volání nástroje v tomto tahu překročilo časový limit a bylo zastaveno."
+    },
+    "rawToolCall": "Vypadá to jako volání nástroje zapsané jako text. Nebylo spuštěno.",
+    "emptyReply": {
+      "length": "Model vyčerpal celý limit odpovědi ({{count}} tokenů), aniž by napsal odpověď. Zvyšte limit v nastavení místnosti nebo vypněte uvažování tohoto účastníka a spusťte znovu.",
+      "tools": "Použil nástroje, ale nenapsal žádnou textovou odpověď.",
+      "none": "Žádná textová odpověď."
+    },
+    "thought": "Přemýšlení"
   },
   "unknownWindow": {
     "title": "Kontextové okno neznámé",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Každý účastník uvede, kde stojí",
     "synthesizeHint": "Souhrn výsledku s odlišnými názory",
     "cancelTurnHint": "Zastavit jen probíhající odpověď",
-    "steerLocked": "Tyto volby se odemknou, jakmile diskuse běží."
+    "steerLocked": "Tyto volby se odemknou, jakmile diskuse běží.",
+    "answering": "Odpovídají",
+    "models": "Modely"
   },
   "stage": {
     "speaking": "{{name}} mluví",
@@ -390,5 +442,69 @@
     "panes": "Zobrazení místnosti",
     "talk": "Diskuse",
     "controls": "Ovládání"
+  },
+  "compare": {
+    "title": "Porovnání běhů",
+    "modeTogether": "Všechny najednou",
+    "modeOneByOne": "Jeden po druhém",
+    "include": "Zahrnout do dalšího běhu",
+    "includeFor": "Zahrnout {{name}} do dalšího běhu",
+    "run": "Spustit",
+    "runAgain": "Spustit znovu",
+    "runFor": "Spustit {{name}} na aktuální otázku",
+    "runAgainFor": "Spustit {{name}} znovu na aktuální otázku",
+    "runAll": "Spustit vše",
+    "answerEarlier": "Odpovědět na dřívější otázky",
+    "answerEarlierHint": "Každý model, který dřívější otázku vynechal, na ni teď odpoví, popořadě, jako by u toho byl.",
+    "export": "Exportovat porovnání",
+    "saveMarkdown": "Uložit jako Markdown…",
+    "copyMarkdown": "Kopírovat jako Markdown",
+    "copyJson": "Kopírovat jako JSON",
+    "saved": "Porovnání uloženo.",
+    "copied": "Zkopírováno do schránky.",
+    "copyFailed": "Do schránky se nepodařilo zkopírovat.",
+    "notAnswered": "Na tuto otázku zatím neodpověděl.",
+    "state": {
+      "off": "Vynechán z dalšího běhu",
+      "unavailable": "Nedostupný",
+      "running": "Odpovídá…",
+      "queued": "Ve frontě",
+      "done": "Odpověděl",
+      "failed": "Selhalo",
+      "idle": "Zatím bez odpovědi"
+    }
+  },
+  "changes": {
+    "summaryOne": "{{count}} soubor změněn",
+    "summaryMany": "Změněno souborů: {{count}}",
+    "workspace": "Izolovaný pracovní prostor: {{path}}",
+    "binary": "Binární soubor",
+    "noExcerpt": "Bez úryvku.",
+    "openDiff": "Otevřít diff",
+    "keep": "Ponechat",
+    "discard": "Zahodit změny",
+    "apply": "Použít na mou složku",
+    "state": {
+      "kept": "Ponecháno",
+      "discarded": "Zahozeno",
+      "applied": "Použito"
+    },
+    "diffTitle": "Změny v pracovním prostoru",
+    "diffHint": "Vše, co tento účastník změnil ve svém izolovaném prostoru.",
+    "applyTitle": "Použít na vaši složku?",
+    "applyHint": "Tato záplata se zapíše do vaší složky. Pokud nejde použít čistě, nic se nezmění.",
+    "discardTitle": "Zahodit tyto změny?",
+    "discardHint": "Prostor účastníka se vrátí do počátečního stavu. Vaší složky se to nedotkne.",
+    "loading": "Načítání diffu…",
+    "empty": "Není co použít.",
+    "applyConfirm": "Použít",
+    "discardConfirm": "Zahodit",
+    "scopeTurn": "Tento tah",
+    "scopeAll": "Od vytvoření pracovního prostoru"
+  },
+  "approvals": {
+    "held": "Místnost pozastavena",
+    "heldHint": "Místnost byla pozastavena, zatímco tento požadavek čekal, takže už jej nelze povolit. Obnovte místnost a účastník se zeptá znovu, pokud to bude stále potřebovat.",
+    "dismiss": "Zavřít"
   }
 }

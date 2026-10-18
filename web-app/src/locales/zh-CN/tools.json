@@ -79,6 +79,8 @@
     "reading": "正在读取...",
     "workspaceRoot": "工作区根目录",
     "matches": "{{count}} 个匹配项",
-    "testsPassed": "{{count}} 个通过"
+    "testsPassed": "{{count}} 个通过",
+    "runningStatus": "正在运行 {{tool}}…",
+    "stillRunning": "仍在运行 {{tool}}…"
   }
 }

@@ -56,7 +56,40 @@
     "chatFolderCount": "フォルダー: {{count}}",
     "newSubfolder": "新しいサブフォルダ",
     "moveInto": "フォルダに移動",
-    "topLevel": "最上位"
+    "topLevel": "最上位",
+    "errors": {
+      "nameEmpty": "グループ名を空にすることはできません",
+      "notFound": "グループが見つかりません",
+      "tooDeep": "グループをこれ以上深く入れ子にすることはできません",
+      "intoItself": "グループを自分自身の中に移動することはできません"
+    },
+    "failed": {
+      "create": "グループを作成できませんでした",
+      "rename": "グループの名前を変更できませんでした",
+      "moveFolder": "フォルダーを移動できませんでした",
+      "saveState": "グループの状態を保存できませんでした",
+      "reorder": "グループを並べ替えられませんでした",
+      "moveItem": "項目を移動できませんでした",
+      "delete": "グループを削除できませんでした",
+      "saveFolders": "グループのフォルダーを保存できませんでした",
+      "updateContext": "フォルダーのコンテキストを更新できませんでした",
+      "update": "グループを更新できませんでした",
+      "import": "グループをインポートできませんでした",
+      "unreadable": "{{failure}}: 保存されたグループを読み込めませんでした",
+      "restored": "{{failure}}。以前の並び順に戻しました。"
+    },
+    "announce": {
+      "created": "グループ「{{name}}」を作成しました",
+      "collapsed": "{{name}}を折りたたみました",
+      "expanded": "{{name}}を展開しました",
+      "reordered": "{{name}}を{{total}}件中{{position}}番目に移動しました",
+      "movedToPosition": "{{name}}の{{position}}番目に移動しました",
+      "movedToRecents": "最近に移動しました",
+      "deleted": "グループ「{{name}}」を削除しました。項目は最近に移動しました",
+      "ctxReplaced": "{{base}}。フォルダーのコンテキストをグループのフォルダーに置き換えました。アクセスには引き続き承認が必要です",
+      "ctxMerged": "{{base}}。グループのフォルダーをフォルダーのコンテキストに追加しました。アクセスには引き続き承認が必要です",
+      "foldersAdded": "{{base}}。項目のフォルダーをグループに追加しました"
+    }
   },
   "htmlArtifact": {
     "code": "コード",
@@ -165,7 +198,7 @@
   "favorites": "お気に入り",
   "hub": "ハブ",
   "helpSupport": "ヘルプとサポート",
-  "helpUsImproveJan": "Janの改善にご協力ください",
+  "helpUsImproveJan": "Flintの改善にご協力ください",
   "analyticsConsentDetail": "機能の利用状況を把握するため、匿名のデータを収集します。チャットや個人情報が追跡されることはありません。設定 > プライバシーでいつでも変更できます。",
   "analyticsConsentQuestion": "Flint の改善にご協力いただけますか?",
   "unstarAll": "すべてのスターを解除",
@@ -279,7 +312,7 @@
     "searchThreads": "会話を検索",
     "toggleSidebar": "サイドバーを切り替え",
     "openCowork": "Cowork を開く",
-    "openArtifacts": "アーティファクトを開く",
+    "openArtifacts": "ライブラリ を開く",
     "openSystemMonitor": "システムモニターを開く",
     "openLogs": "アプリのログを開く",
     "section": {
@@ -475,7 +508,7 @@
   "confirm": "確認",
   "continue": "続ける",
   "loading": "読み込み中...",
-  "settingUpJan": "Janを起動しています…",
+  "settingUpJan": "Flintを起動しています…",
   "registeringExtensions": "拡張機能を登録しています…",
   "loadingExtensions": "拡張機能を読み込んでいます… ({{done}}/{{total}})",
   "error": "エラー",
@@ -1217,7 +1250,8 @@
     "sensitiveRefused": "{{name}} は認証情報またはキーのように見えるため、開きませんでした",
     "binaryRefused": "{{name}} は拡張子に関わらず、テキストファイルではありません",
     "chooseAgainAction": "選び直す",
-    "externalGone": "このファイルはプロジェクト外から開かれたもので、そのアクセス権は失効しました。選び直して開き直してください。"
+    "externalGone": "このファイルはプロジェクト外から開かれたもので、そのアクセス権は失効しました。選び直して開き直してください。",
+    "oneFolderAtATime": "フォルダーは一度に1つだけ追加できます。「{{name}}」は追加されませんでした。"
   },
   "settingsSearch": {
     "label": "設定を検索",
@@ -1400,7 +1434,14 @@
     "recommended": "おすすめ",
     "reset": "グローバル設定に戻す",
     "resetAll": "グローバルの既定値に戻す",
-    "overridden": "このチャットで設定済み"
+    "overridden": "このチャットで設定済み",
+    "levels": {
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "最高",
+      "unlimited": "無制限"
+    }
   },
   "modelOffline": {
     "badge": "接続不可",
@@ -2512,6 +2553,7 @@
       "slots": "{{count}} スロット",
       "vision": "ビジョン",
       "audio": "オーディオ",
+      "fixedPrompt": "リクエストごとに送信: {{count}} トークン(システムプロンプトとツールスキーマ)。",
       "tokenUsage": "トークン使用量",
       "tokenUsageSr": "トークン使用量 {{value}}"
     }
@@ -2538,6 +2580,18 @@
     "previewLoading": "プレビューを読み込んでいます…",
     "previewNone": "プレビューはありません"
   },
+  "fileViewer": {
+    "openFull": "完全なプレビューを開く",
+    "loadMore": "さらに読み込む",
+    "showingFirst": "{{total}} のうち最初の {{loaded}} を表示中",
+    "lines_other": "{{count}} 行",
+    "wrap": "行を折り返す",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "binary": "バイナリファイルのようなので、テキストのプレビューはありません。",
+    "expandLine": "行全体を表示",
+    "collapseLine": "行を短くする"
+  },
   "dropAttachFailed": "ドロップしたファイルを添付できませんでした",
   "sampler": {
     "label": "サンプリングパラメータ",
@@ -2563,7 +2617,7 @@
     "paste": "クリップボードから貼り付け",
     "pasteFailed": "クリップボードを読み取れませんでした",
     "clear": "クリア",
-    "characters": "{{count}} 文字",
+    "characters_other": "{{count}} 文字",
     "translating": "翻訳中…",
     "retry": "再試行",
     "shortcut": "翻訳(Ctrl/Cmd+Enter)",
@@ -2575,7 +2629,9 @@
     "errorNetwork": "プロバイダーに接続できませんでした。接続状態とサーバーの起動を確認してください。",
     "errorEngine": "このモデルを実行するエンジンを利用できません。Flint を再起動してもう一度お試しください。",
     "openProvider": "プロバイダー設定を開く",
-    "errorDetails": "詳細"
+    "errorDetails": "詳細",
+    "pasteHint": "クリップボードへのアクセスがブロックされました。テキスト欄をクリックして {{keys}} を押してください。",
+    "characters": "{{count}} 文字"
   },
   "markdownImage": {
     "load": "{{host}} から画像を読み込む"
@@ -2596,7 +2652,7 @@
     "editTitle": "プロンプトを編集",
     "import": "インポート",
     "export": "エクスポート",
-    "imported": "{{count}} 件のプロンプトを追加しました",
+    "imported_other": "{{count}} 件のプロンプトを追加しました",
     "search": "プロンプトを検索",
     "empty": "プロンプトはまだありません。",
     "edit": "{{name}} を編集",
@@ -2609,6 +2665,105 @@
     "body": "プロンプト本文",
     "bodyHint": "プロンプトを書きます。空欄には {{topic}} や {{tone:friendly}} を使います。",
     "variables": "入力が必要: {{names}}",
-    "insert": "挿入"
+    "defaultValue": "既定値: {{value}}",
+    "requiredField": "必須",
+    "fillNeeded": "挿入するには {{names}} を入力してください",
+    "insert": "挿入",
+    "errors": {
+      "nameRequired": "プロンプトには名前が必要です",
+      "nameTooLong": "名前が長すぎます",
+      "bodyRequired": "プロンプトにはテキストが必要です",
+      "bodyTooLong": "プロンプトが長すぎます",
+      "gone": "そのプロンプトはもう存在しません",
+      "invalidJson": "このファイルは有効なJSONではありません",
+      "noPrompts": "このファイルにプロンプトが見つかりません"
+    },
+    "imported": "{{count}} 件のプロンプトを追加しました"
+  },
+  "memoryProposal": {
+    "title": "これを記憶しますか？",
+    "wouldApply": "{{where}}に適用されます。",
+    "remember": "記憶する",
+    "discard": "破棄",
+    "reviewBoth": "両方を確認",
+    "saving": "保存中…",
+    "discarding": "破棄中…",
+    "scope": {
+      "session": "この会話",
+      "project": "このプロジェクト",
+      "user": "すべての場所"
+    }
+  },
+  "picker": {
+    "filter": "フィルター",
+    "source": "提供元",
+    "sourceAll": "すべて",
+    "sourceLocal": "ローカル",
+    "sourceCloud": "クラウド",
+    "capabilities": "機能",
+    "cap": {
+      "vision": "ビジョン",
+      "tools": "ツール",
+      "reasoning": "推論",
+      "embeddings": "埋め込み"
+    },
+    "loadedNow": "現在読み込み中",
+    "sort": "並べ替え",
+    "sortDefault": "既定の順",
+    "sortName": "名前 (A–Z)",
+    "sortRecent": "最近使用",
+    "sortSize": "サイズ",
+    "clearFilters": "フィルターを解除",
+    "noMatch": "一致するモデルがありません",
+    "noMatchFilters": "一致するモデルがありません: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "チャット",
+      "session": "セッション",
+      "room": "ルーム"
+    },
+    "heading": "会話",
+    "empty": "ほかの会話はありません",
+    "noMatch": "一致する会話はありません",
+    "messages": "メッセージ数: {{n}}",
+    "included": "含めたもの: {{title}}(メッセージ {{n}} 件、約 {{size}} 文字)",
+    "group": "メンションした会話",
+    "summarize": "要約",
+    "summarizeHint": "最新のメッセージの代わりに要約を含める",
+    "remove": "{{title}} のメンションを外す",
+    "mentioned": "メンション: {{title}}",
+    "open": "{{title}} を開く",
+    "status": {
+      "missing": "見つかりません: {{title}}",
+      "self": "{{title}} はこの会話のため含めません",
+      "over-cap": "{{title}} は含めません: 1 通につき最大 {{max}} 件までです"
+    },
+    "excerpt": "抜粋",
+    "summary": "要約",
+    "modeGroup": "{{title}} から含める内容",
+    "excerptHint": "最新のメッセージ、約 {{tokens}} トークン",
+    "summaryHint": "モデルが書く要約、最大で約 {{tokens}} トークン",
+    "needsModel": "代わりに要約を含めるにはモデルを読み込んでください",
+    "totals_other": "{{count}} 件のメッセージ · ~{{tokens}} トークンを含む",
+    "readOnly": "引用された読み取り専用のコンテキストとして送信されます。モデルはその会話を変更できません。",
+    "tooLarge": "モデルのコンテキストウィンドウの 4 分の 1 を超えています。",
+    "useSummary": "要約を使う",
+    "resolving": "{{title}} を検索中",
+    "chipStatus": {
+      "missing": "見つかりません",
+      "self": "この会話",
+      "over-cap": "上限超過"
+    },
+    "preview": {
+      "empty": "まだメッセージはありません",
+      "you": "あなた",
+      "assistant": "アシスタント"
+    },
+    "messagesCount_other": "{{count}} 件のメッセージ"
+  },
+  "campaignList": {
+    "timeout": "アプリが時間内に応答しませんでした。",
+    "unreadableRecord": "バックエンドから、このページで読み取れないレコードが送信されました"
   }
 }

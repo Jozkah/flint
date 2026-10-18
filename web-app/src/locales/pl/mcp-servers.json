@@ -9,7 +9,9 @@
       "title": "Flint wykonuje zadania w Twojej przeglądarce",
       "description": "Zainstaluj rozszerzenie, aby dać Janowi dostęp do przeglądarki",
       "getExtension": "Pobierz rozszerzenie"
-    }
+    },
+    "requires": "Wymaga zainstalowania rozszerzenia przeglądarki w przeglądarce opartej na Chrome.",
+    "install": "Zainstaluj rozszerzenie →"
   },
   "serverName": "Nazwa Serwera",
   "enterServerName": "Wprowadź nazwę serwera",

@@ -1,0 +1,219 @@
+{
+  "page": {
+    "title": "工作室",
+    "descriptionLocal": "在這台電腦上於本機建立圖片和影片，資料不會離開你的裝置。",
+    "descriptionHosted": "使用代管模型建立圖片，你的提示詞會傳送給其供應商。",
+    "whatToMake": "建立內容",
+    "images": "圖片",
+    "video": "影片",
+    "dismiss": "關閉",
+    "loading": "載入中…"
+  },
+  "elapsed": {
+    "slow": "耗時比平常更久"
+  },
+  "builds": {
+    "anyGpu": "任何顯示卡",
+    "noGpu": "無顯示卡",
+    "nvidia": "NVIDIA（較快）",
+    "note": {
+      "linux-vulkan-x64": "約 38 MB。支援 Vulkan 驅動程式的 NVIDIA、AMD 或 Intel。",
+      "linux-cpu-x64": "約 25 MB。速度非常慢。",
+      "win-vulkan-x64": "約 30 MB。適用於 NVIDIA、AMD 和 Intel。",
+      "win-cuda12-x64": "約 900 MB。需要較新的 NVIDIA 驅動程式。",
+      "win-cpu-x64": "約 17 MB。速度非常慢。"
+    }
+  },
+  "picker": {
+    "engine": "引擎",
+    "searchPlaceholder": "搜尋模型...",
+    "searchAria": "搜尋模型",
+    "clear": "清除",
+    "noMatch": "沒有符合的模型。",
+    "local": "本機",
+    "leaves": "提示詞會離開這台電腦",
+    "findMore": "在「探索」中尋找更多圖片模型",
+    "manageHosted": "管理代管供應商",
+    "addKey": "新增 API 金鑰以使用代管模型"
+  },
+  "setup": {
+    "unavailableTitle": "此系統尚未支援",
+    "unavailableBody": "本機圖片與影片生成目前需要 Windows x64 或 Linux x64。",
+    "title": "設定圖片引擎",
+    "body": "Flint 使用 stable-diffusion.cpp 在這台電腦上生成圖片和影片。引擎只需下載一次，會以其公布的檢查碼驗證，且僅在生成時執行。",
+    "downloading": "正在下載… {{percent}}%",
+    "unpacking": "正在解壓縮…",
+    "checking": "正在檢查能否啟動…",
+    "installing": "正在安裝…",
+    "install": "下載並安裝"
+  },
+  "size": {
+    "width": "寬度（像素）",
+    "height": "高度（像素）",
+    "swap": "對調寬度和高度",
+    "hintVideo": "16 的倍數，最大 {{max}} px。大型影片需要大量記憶體。",
+    "hintImage": "16 的倍數，最大 {{max}} px。大型圖片需要更多記憶體和時間。"
+  },
+  "activity": {
+    "done": "完成",
+    "failed": "失敗",
+    "stopped": "已停止",
+    "title": "最近活動",
+    "clearTitle": "清空此清單。你的圖片仍保留在「我的作品」中。",
+    "clearAll": "全部清除",
+    "empty": "目前沒有內容。你建立的內容會顯示在這裡。",
+    "making": "生成中",
+    "open": "開啟"
+  },
+  "video": {
+    "steps_other": "{{count}} 步",
+    "frames_other": "{{count}} 格",
+    "seed": "種子 {{seed}}",
+    "avoid": "排除：{{prompt}}",
+    "copyPrompt": "複製提示詞"
+  },
+  "actions": {
+    "promptCopied": "提示詞已複製",
+    "archive": "移至封存",
+    "delete": "刪除"
+  },
+  "time": {
+    "fewSeconds": "幾秒前"
+  },
+  "model": {
+    "title": "模型",
+    "manage": "管理",
+    "textToVideo": "文字轉影片",
+    "textToImage": "文字轉圖片",
+    "hostedBy": "由 {{provider}} 代管",
+    "loaded": "已載入",
+    "ready": "就緒",
+    "notDownloaded": "未下載",
+    "hostedNote": "你的提示詞會傳送到 {{provider}}，使用你在「供應商」中設定的 API 金鑰，並由其計費。",
+    "localNote_other": "在這台電腦上執行。起始尺寸 {{width}} × {{height}}，{{count}} 步。",
+    "unload": "卸載",
+    "loading": "載入中…",
+    "load": "載入",
+    "installFirst": "請先安裝上方的圖片引擎，才能使用此模型。",
+    "removeTitle": "將其從此清單中移除。已下載的檔案仍保留在磁碟上。",
+    "remove": "從工作室移除"
+  },
+  "download": {
+    "starting": "正在開始…",
+    "startingSize": "正在開始… 待下載 {{size}}",
+    "progress": "{{bytes}} / {{total}}",
+    "downloading": "正在下載…",
+    "button": "下載（{{size}}）"
+  },
+  "duration": {
+    "s": "{{count}} 秒",
+    "min": "{{count}} 分鐘",
+    "minS": "{{minutes}} 分 {{seconds}} 秒"
+  },
+  "phase": {
+    "queued": "等待中",
+    "encoding": "正在讀取提示詞",
+    "sampling": "正在繪製",
+    "decoding": "正在收尾",
+    "saving": "正在儲存",
+    "working": "處理中"
+  },
+  "settings": {
+    "title": "生成設定",
+    "reset": "重設",
+    "shape": "形狀",
+    "aspectRatio": "長寬比",
+    "customTitle": "自行輸入寬度和高度",
+    "custom": "自訂",
+    "imageCount": "圖片數量",
+    "length": "長度",
+    "seed": "種子",
+    "random": "隨機",
+    "randomSeed": "選擇隨機種子",
+    "guess": "依據你上一部影片，約需 {{duration}}。",
+    "advanced": "進階",
+    "loras": "LoRA 轉接器",
+    "importLora": "匯入 .safetensors",
+    "loraHint": "請使用與所選本機模型系列相符的轉接器。",
+    "useLora": "使用 {{name}}",
+    "loraStrength": "{{name}} 強度",
+    "negative": "負面提示詞",
+    "negativeAria": "負面提示詞",
+    "negativePlaceholder": "模糊、低品質、多餘的手指、文字、浮水印…",
+    "avoidAria": "要避免的內容",
+    "memoryWarning": "這台電腦約有 {{gb}} GB 記憶體。影片生成需要大量記憶體，在這樣的機器上，一部影片可能要花上數小時，因為記憶體不足會改用磁碟交換。",
+    "accept": "我了解，繼續。",
+    "loraImported": "已匯入 {{name}}"
+  },
+  "prompt": {
+    "title": "提示詞",
+    "guide": "提示詞指南",
+    "guideDesc": "幾個能讓圖片更好的小習慣。",
+    "g1": {
+      "title": "說明畫面裡有什麼",
+      "body": "先寫主體，再寫它在哪裡、正在做什麼。"
+    },
+    "g2": {
+      "title": "指明風格",
+      "body": "油畫、攝影、扁平插畫、3D 算圖：風格決定一切。"
+    },
+    "g3": {
+      "title": "加入光線與氛圍",
+      "body": "柔和的晨光、夜晚的霓虹、陰天：光線決定畫面的感覺。"
+    },
+    "g4": {
+      "title": "一次只表達一個想法",
+      "body": "簡短清楚的提示詞勝過冗長的清單。細節要一步一步地加入。"
+    },
+    "g5": {
+      "title": "用「排除」寫下不想要的內容",
+      "body": "在「進階」中，負面提示詞用來列出需要排除的內容。"
+    },
+    "placeholderVideo": "一隻貓走在下雨的小巷裡，電影感",
+    "placeholderImage": "日出時懸崖上的燈塔，油畫",
+    "enhanceTitle": "補充幾個關於細節和光線的詞",
+    "enhance": "增強",
+    "example": {
+      "image": {
+        "0": "日出時懸崖上的燈塔，油畫",
+        "1": "雪林中的狐狸，柔和的光線",
+        "2": "夜晚的等角城市，霓虹"
+      },
+      "video": {
+        "0": "一隻貓走在下雨的小巷裡，電影感",
+        "1": "海浪湧上黑色的沙灘",
+        "2": "咖啡杯上升起的熱氣"
+      }
+    },
+    "clear": "清空提示詞",
+    "copy": "複製提示詞",
+    "emptyImage": "你的第一張圖片從這裡開始",
+    "emptyVideo": "你的第一部影片從這裡開始",
+    "emptyDesc": "在上方描述它，或試試其中一個範例。",
+    "save": "儲存",
+    "openLarge": "放大檢視",
+    "remix": "再創作：相同提示詞，新種子",
+    "remixShort": "再創作",
+    "stop": "停止",
+    "generateVideo": "生成影片",
+    "generateImage": "生成圖片",
+    "loadFirst": "請先載入模型",
+    "writeFirst": "請先寫下提示詞。",
+    "notSetUp": "尚未在「供應商」中設定 {{provider}}。",
+    "imageReady": "圖片已生成",
+    "videoReady": "影片已生成",
+    "waitingFor": "正在等待 {{provider}}…",
+    "eta": "還需約 {{eta}}"
+  },
+  "gens": {
+    "title": "我的作品",
+    "archive": "封存",
+    "done": "完成",
+    "select": "選取",
+    "grid": "格狀",
+    "list": "清單",
+    "filter": "篩選",
+    "all": "全部",
+    "empty": "這裡還沒有內容。你建立的內容會顯示在這裡。"
+  }
+}

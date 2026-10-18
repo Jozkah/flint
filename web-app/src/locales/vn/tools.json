@@ -79,6 +79,8 @@
     "reading": "Đang đọc...",
     "workspaceRoot": "gốc không gian làm việc",
     "matches": "{{count}} kết quả khớp",
-    "testsPassed": "{{count}} đạt"
+    "testsPassed": "{{count}} đạt",
+    "runningStatus": "Đang chạy {{tool}}…",
+    "stillRunning": "Vẫn đang chạy {{tool}}…"
   }
 }

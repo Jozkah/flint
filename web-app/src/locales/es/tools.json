@@ -79,6 +79,8 @@
     "reading": "Leyendo...",
     "workspaceRoot": "raíz del espacio de trabajo",
     "matches": "{{count}} coincidencias",
-    "testsPassed": "{{count}} superadas"
+    "testsPassed": "{{count}} superadas",
+    "runningStatus": "Ejecutando {{tool}}…",
+    "stillRunning": "Aún ejecutando {{tool}}…"
   }
 }

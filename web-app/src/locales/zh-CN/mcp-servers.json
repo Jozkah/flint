@@ -9,7 +9,9 @@
       "title": "Flint 在您的浏览器中完成任务",
       "description": "安装扩展以授予 Flint 浏览器访问权限",
       "getExtension": "获取扩展"
-    }
+    },
+    "requires": "需要在基于 Chrome 的浏览器中安装该浏览器扩展。",
+    "install": "安装扩展 →"
   },
   "serverName": "服务器名称",
   "enterServerName": "输入服务器名称",

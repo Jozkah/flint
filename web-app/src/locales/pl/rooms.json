@@ -154,7 +154,45 @@
     "sections": "Sekcja ustawień",
     "tabGeneral": "Ogólne",
     "tabDiscussion": "Dyskusja",
-    "tabLimits": "Limity"
+    "tabLimits": "Limity",
+    "compareRun": "Uruchamianie modeli",
+    "compareRunHint": "Jeden po drugim jest wolniej, ale ładuje naraz tylko jeden model lokalny i oszczędza limity zapytań.",
+    "compareRunOption": {
+      "together": "Wszystkie naraz",
+      "one-by-one": "Jeden po drugim"
+    },
+    "compareRunSuggest": "Wybrano dwa lub więcej modeli lokalnych: uruchamianie ich po kolei sprawi, że nie będą walczyć o pamięć.",
+    "tools": {
+      "heading": "Narzędzia",
+      "summary": "{{on}} z {{total}} włączone · ~{{tokens}} tokenów",
+      "loading": "Wczytywanie narzędzi…",
+      "empty": "Przy tym dostępie nie ma żadnych narzędzi.",
+      "group": {
+        "files": "Pliki i polecenia",
+        "web": "Sieć",
+        "mcp": "Serwery MCP",
+        "other": "Inne"
+      },
+      "tokens": "~{{tokens}} tok",
+      "share": "Definicje narzędzi zajmują około {{pct}}% okna kontekstu tego modelu.",
+      "warn": "Definicje narzędzi zajmują około {{pct}}% okna kontekstu tego modelu (ponad {{limit}}%). Wyłącz część, aby zostawić miejsce na dyskusję.",
+      "windowUnknown": "Okno kontekstu tego modelu jest nieznane, więc nie można pokazać udziału.",
+      "notStarted": "nie uruchomiono",
+      "toolsUnknown": "narzędzia nieznane do uruchomienia"
+    },
+    "budget": {
+      "heading": "Budżet narzędzi na turę",
+      "hint": "Limity dla każdej tury uczestnika używającego narzędzi. Zostaw puste pole dla wartości domyślnej.",
+      "maxToolCalls": "Maks. wywołań narzędzi",
+      "maxSteps": "Maks. kroków",
+      "toolTimeoutSec": "Limit czasu narzędzia (sekundy)",
+      "default": "Domyślnie: {{value}}"
+    },
+    "isolation": {
+      "active": "Każdy uczestnik, który może edytować, pracuje we własnym odizolowanym obszarze, więc nie mogą nadpisać siebie nawzajem ani twojego folderu.",
+      "unavailable": "Odizolowany obszar niedostępny: {{reason}}. Uczestnicy z edycją w tym pokoju tylko czytają.",
+      "untrusted": "folder nie jest zaufany"
+    }
   },
   "limits": {
     "maxRounds": "Rundy",
@@ -228,7 +266,19 @@
     "toolFailed": "niepowodzenie",
     "speed": "{{tps}} tok/s",
     "tokensOut": "{{approx}}{{count}} tokenów",
-    "speedTitle": "Tokeny napisane w tej odpowiedzi i jak szybko"
+    "speedTitle": "Tokeny napisane w tej odpowiedzi i jak szybko",
+    "budgetHit": {
+      "tool-calls": "Ta tura osiągnęła budżet wywołań narzędzi.",
+      "steps": "Ta tura osiągnęła budżet kroków.",
+      "timeout": "Wywołanie narzędzia w tej turze przekroczyło limit czasu i zostało zatrzymane."
+    },
+    "rawToolCall": "To wygląda na wywołanie narzędzia zapisane jako tekst. Nie zostało uruchomione.",
+    "emptyReply": {
+      "length": "Model zużył cały limit odpowiedzi ({{count}} tokenów), nie pisząc odpowiedzi. Zwiększ limit w ustawieniach pokoju lub wyłącz rozumowanie tego uczestnika i uruchom ponownie.",
+      "tools": "Użył narzędzi, ale nie napisał odpowiedzi tekstowej.",
+      "none": "Brak odpowiedzi tekstowej."
+    },
+    "thought": "Rozumowanie"
   },
   "unknownWindow": {
     "title": "Nieznane okno kontekstu",
@@ -271,7 +321,9 @@
     "finalPositionsHint": "Każdy uczestnik przedstawia swoje stanowisko",
     "synthesizeHint": "Podsumowanie wyniku, wraz ze zdaniami odrębnymi",
     "cancelTurnHint": "Zatrzymaj tylko trwającą odpowiedź",
-    "steerLocked": "Odblokują się, gdy dyskusja się rozpocznie."
+    "steerLocked": "Odblokują się, gdy dyskusja się rozpocznie.",
+    "answering": "Odpowiadają",
+    "models": "Modele"
   },
   "stage": {
     "speaking": "{{name}} mówi",
@@ -390,5 +442,69 @@
     "panes": "Widok pokoju",
     "talk": "Dyskusja",
     "controls": "Sterowanie"
+  },
+  "compare": {
+    "title": "Porównanie uruchomień",
+    "modeTogether": "Wszystkie naraz",
+    "modeOneByOne": "Jeden po drugim",
+    "include": "Uwzględnij w następnym uruchomieniu",
+    "includeFor": "Uwzględnij {{name}} w następnym uruchomieniu",
+    "run": "Uruchom",
+    "runAgain": "Uruchom ponownie",
+    "runFor": "Uruchom {{name}} dla bieżącego pytania",
+    "runAgainFor": "Uruchom ponownie {{name}} dla bieżącego pytania",
+    "runAll": "Uruchom wszystkie",
+    "answerEarlier": "Odpowiedz na wcześniejsze pytania",
+    "answerEarlierHint": "Każdy model, który pominął wcześniejsze pytanie, odpowiada na nie teraz, po kolei, jakby był obecny od początku.",
+    "export": "Eksportuj porównanie",
+    "saveMarkdown": "Zapisz jako Markdown…",
+    "copyMarkdown": "Kopiuj jako Markdown",
+    "copyJson": "Kopiuj jako JSON",
+    "saved": "Porównanie zapisane.",
+    "copied": "Skopiowano do schowka.",
+    "copyFailed": "Nie udało się skopiować do schowka.",
+    "notAnswered": "Jeszcze nie odpowiedział na to pytanie.",
+    "state": {
+      "off": "Pominięty w następnym uruchomieniu",
+      "unavailable": "Niedostępny",
+      "running": "Odpowiada…",
+      "queued": "W kolejce",
+      "done": "Odpowiedział",
+      "failed": "Niepowodzenie",
+      "idle": "Jeszcze bez odpowiedzi"
+    }
+  },
+  "changes": {
+    "summaryOne": "Zmieniono {{count}} plik",
+    "summaryMany": "Zmieniono plików: {{count}}",
+    "workspace": "Odizolowany obszar: {{path}}",
+    "binary": "Plik binarny",
+    "noExcerpt": "Brak fragmentu.",
+    "openDiff": "Otwórz diff",
+    "keep": "Zachowaj",
+    "discard": "Odrzuć zmiany",
+    "apply": "Zastosuj do mojego folderu",
+    "state": {
+      "kept": "Zachowano",
+      "discarded": "Odrzucono",
+      "applied": "Zastosowano"
+    },
+    "diffTitle": "Zmiany w obszarze roboczym",
+    "diffHint": "Wszystko, co ten uczestnik zmienił w swoim odizolowanym obszarze.",
+    "applyTitle": "Zastosować do twojego folderu?",
+    "applyHint": "Ta łatka zostanie zapisana w twoim folderze. Jeśli nie da się jej czysto zastosować, nic się nie zmieni.",
+    "discardTitle": "Odrzucić te zmiany?",
+    "discardHint": "Obszar uczestnika wróci do stanu początkowego. Twój folder pozostaje nietknięty.",
+    "loading": "Wczytywanie diffu…",
+    "empty": "Nic do zastosowania.",
+    "applyConfirm": "Zastosuj",
+    "discardConfirm": "Odrzuć",
+    "scopeTurn": "Ta tura",
+    "scopeAll": "Od utworzenia obszaru roboczego"
+  },
+  "approvals": {
+    "held": "Pokój wstrzymany",
+    "heldHint": "Pokój wstrzymano, gdy to czekało, więc nie można już na to zezwolić. Wznów pokój, a uczestnik zapyta ponownie, jeśli nadal tego potrzebuje.",
+    "dismiss": "Zamknij"
   }
 }

@@ -79,6 +79,8 @@
     "reading": "Reading...",
     "workspaceRoot": "workspace root",
     "matches": "{{count}} matches",
-    "testsPassed": "{{count}} passed"
+    "testsPassed": "{{count}} passed",
+    "runningStatus": "Running {{tool}}…",
+    "stillRunning": "Still running {{tool}}…"
   }
 }

@@ -56,7 +56,40 @@
     "chatFolderCount": "폴더: {{count}}",
     "newSubfolder": "새 하위 폴더",
     "moveInto": "폴더로 이동",
-    "topLevel": "최상위"
+    "topLevel": "최상위",
+    "errors": {
+      "nameEmpty": "그룹 이름은 비워 둘 수 없습니다",
+      "notFound": "그룹을 찾을 수 없습니다",
+      "tooDeep": "그룹을 이렇게 깊이 중첩할 수 없습니다",
+      "intoItself": "그룹을 자기 자신 안으로 이동할 수 없습니다"
+    },
+    "failed": {
+      "create": "그룹을 만들 수 없습니다",
+      "rename": "그룹 이름을 바꿀 수 없습니다",
+      "moveFolder": "폴더를 이동할 수 없습니다",
+      "saveState": "그룹 상태를 저장할 수 없습니다",
+      "reorder": "그룹 순서를 바꿀 수 없습니다",
+      "moveItem": "항목을 이동할 수 없습니다",
+      "delete": "그룹을 삭제할 수 없습니다",
+      "saveFolders": "그룹 폴더를 저장할 수 없습니다",
+      "updateContext": "폴더 컨텍스트를 업데이트할 수 없습니다",
+      "update": "그룹을 업데이트할 수 없습니다",
+      "import": "그룹을 가져올 수 없습니다",
+      "unreadable": "{{failure}}: 저장된 그룹을 읽을 수 없습니다",
+      "restored": "{{failure}}. 이전 순서로 복원했습니다."
+    },
+    "announce": {
+      "created": "그룹 {{name}} 생성됨",
+      "collapsed": "{{name}} 접힘",
+      "expanded": "{{name}} 펼쳐짐",
+      "reordered": "{{name}}을(를) {{total}}개 중 {{position}}번째로 이동했습니다",
+      "movedToPosition": "{{name}}의 {{position}}번째로 이동했습니다",
+      "movedToRecents": "최근 항목으로 이동했습니다",
+      "deleted": "그룹 {{name}}을(를) 삭제했습니다. 항목은 최근 항목으로 이동했습니다",
+      "ctxReplaced": "{{base}}. 폴더 컨텍스트를 그룹 폴더로 바꿨습니다. 접근에는 여전히 승인이 필요합니다",
+      "ctxMerged": "{{base}}. 그룹 폴더를 폴더 컨텍스트에 추가했습니다. 접근에는 여전히 승인이 필요합니다",
+      "foldersAdded": "{{base}}. 항목 폴더를 그룹에 추가했습니다"
+    }
   },
   "htmlArtifact": {
     "code": "코드",
@@ -279,7 +312,7 @@
     "searchThreads": "대화 검색",
     "toggleSidebar": "사이드바 전환",
     "openCowork": "Cowork 열기",
-    "openArtifacts": "아티팩트 열기",
+    "openArtifacts": "라이브러리 열기",
     "openSystemMonitor": "시스템 모니터 열기",
     "openLogs": "앱 로그 열기",
     "section": {
@@ -1217,7 +1250,8 @@
     "sensitiveRefused": "{{name}}은(는) 자격 증명이나 키로 보여 열지 않았습니다",
     "binaryRefused": "{{name}}은(는) 확장자와 상관없이 텍스트 파일이 아닙니다",
     "chooseAgainAction": "다시 선택",
-    "externalGone": "이 파일은 프로젝트 밖에서 열렸으며 해당 접근 권한이 유지되지 않았습니다. 다시 선택하여 여세요."
+    "externalGone": "이 파일은 프로젝트 밖에서 열렸으며 해당 접근 권한이 유지되지 않았습니다. 다시 선택하여 여세요.",
+    "oneFolderAtATime": "폴더는 한 번에 하나만 추가할 수 있습니다. \"{{name}}\"은(는) 추가되지 않았습니다."
   },
   "settingsSearch": {
     "label": "설정 검색",
@@ -1400,7 +1434,14 @@
     "recommended": "추천",
     "reset": "전역 설정으로 재설정",
     "resetAll": "전역 기본값으로 재설정",
-    "overridden": "이 채팅에 설정됨"
+    "overridden": "이 채팅에 설정됨",
+    "levels": {
+      "low": "낮음",
+      "medium": "보통",
+      "high": "높음",
+      "xhigh": "매우 높음",
+      "unlimited": "무제한"
+    }
   },
   "modelOffline": {
     "badge": "연결 불가",
@@ -2512,6 +2553,7 @@
       "slots": "슬롯 {{count}}개",
       "vision": "비전",
       "audio": "오디오",
+      "fixedPrompt": "요청마다 전송: {{count}} 토큰(시스템 프롬프트와 도구 스키마).",
       "tokenUsage": "토큰 사용량",
       "tokenUsageSr": "토큰 사용량 {{value}}"
     }
@@ -2540,6 +2582,18 @@
     "previewLoading": "미리 보기를 불러오는 중…",
     "previewNone": "미리 볼 수 없습니다"
   },
+  "fileViewer": {
+    "openFull": "전체 미리보기 열기",
+    "loadMore": "더 불러오기",
+    "showingFirst": "{{total}} 중 처음 {{loaded}} 표시 중",
+    "lines_other": "{{count}}줄",
+    "wrap": "줄 바꿈",
+    "copy": "복사",
+    "copied": "복사됨",
+    "binary": "바이너리 파일로 보여 텍스트 미리보기가 없습니다.",
+    "expandLine": "전체 줄 보기",
+    "collapseLine": "줄 줄이기"
+  },
   "dropAttachFailed": "끌어다 놓은 파일을 첨부할 수 없습니다",
   "sampler": {
     "label": "샘플링 매개변수",
@@ -2565,7 +2619,7 @@
     "paste": "클립보드에서 붙여넣기",
     "pasteFailed": "클립보드를 읽지 못했습니다",
     "clear": "지우기",
-    "characters": "{{count}}자",
+    "characters_other": "{{count}}자",
     "translating": "번역하는 중…",
     "retry": "다시 시도",
     "shortcut": "번역(Ctrl/Cmd+Enter)",
@@ -2577,7 +2631,9 @@
     "errorNetwork": "제공업체에 연결하지 못했습니다. 연결 상태나 서버가 실행 중인지 확인하세요.",
     "errorEngine": "이 모델을 실행하는 엔진을 사용할 수 없습니다. Flint를 다시 시작한 뒤 다시 시도하세요.",
     "openProvider": "제공업체 설정 열기",
-    "errorDetails": "자세히"
+    "errorDetails": "자세히",
+    "pasteHint": "클립보드 접근이 차단되었습니다. 텍스트 상자를 클릭하고 {{keys}}를 누르세요.",
+    "characters": "{{count}}자"
   },
   "markdownImage": {
     "load": "{{host}}에서 이미지 불러오기"
@@ -2598,7 +2654,7 @@
     "editTitle": "프롬프트 편집",
     "import": "가져오기",
     "export": "내보내기",
-    "imported": "프롬프트 {{count}}개를 추가했습니다",
+    "imported_other": "프롬프트 {{count}}개를 추가했습니다",
     "search": "프롬프트 검색",
     "empty": "아직 프롬프트가 없습니다.",
     "edit": "{{name}} 편집",
@@ -2611,6 +2667,105 @@
     "body": "프롬프트 내용",
     "bodyHint": "프롬프트를 작성하세요. 빈칸에는 {{topic}} 또는 {{tone:friendly}}를 사용하세요.",
     "variables": "입력 필요: {{names}}",
-    "insert": "삽입"
+    "defaultValue": "기본값: {{value}}",
+    "requiredField": "필수",
+    "fillNeeded": "삽입하려면 {{names}}을(를) 입력하세요",
+    "insert": "삽입",
+    "errors": {
+      "nameRequired": "프롬프트에는 이름이 필요합니다",
+      "nameTooLong": "이름이 너무 깁니다",
+      "bodyRequired": "프롬프트에는 내용이 필요합니다",
+      "bodyTooLong": "프롬프트가 너무 깁니다",
+      "gone": "해당 프롬프트가 더 이상 존재하지 않습니다",
+      "invalidJson": "이 파일은 올바른 JSON이 아닙니다",
+      "noPrompts": "이 파일에서 프롬프트를 찾을 수 없습니다"
+    },
+    "imported": "프롬프트 {{count}}개를 추가했습니다"
+  },
+  "memoryProposal": {
+    "title": "이것을 기억할까요?",
+    "wouldApply": "{{where}}에 적용됩니다.",
+    "remember": "기억하기",
+    "discard": "삭제",
+    "reviewBoth": "둘 다 검토",
+    "saving": "저장 중…",
+    "discarding": "삭제 중…",
+    "scope": {
+      "session": "이 대화",
+      "project": "이 프로젝트",
+      "user": "모든 곳"
+    }
+  },
+  "picker": {
+    "filter": "필터",
+    "source": "출처",
+    "sourceAll": "전체",
+    "sourceLocal": "로컬",
+    "sourceCloud": "클라우드",
+    "capabilities": "기능",
+    "cap": {
+      "vision": "비전",
+      "tools": "도구",
+      "reasoning": "추론",
+      "embeddings": "임베딩"
+    },
+    "loadedNow": "현재 로드됨",
+    "sort": "정렬",
+    "sortDefault": "기본 순서",
+    "sortName": "이름 (A–Z)",
+    "sortRecent": "최근 사용",
+    "sortSize": "크기",
+    "clearFilters": "필터 지우기",
+    "noMatch": "일치하는 모델이 없습니다",
+    "noMatchFilters": "일치하는 모델이 없습니다: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "채팅",
+      "session": "세션",
+      "room": "룸"
+    },
+    "heading": "대화",
+    "empty": "다른 대화가 없습니다",
+    "noMatch": "일치하는 대화가 없습니다",
+    "messages": "메시지 수: {{n}}",
+    "included": "포함됨: {{title}} (메시지 {{n}}개, 약 {{size}}자)",
+    "group": "언급한 대화",
+    "summarize": "요약",
+    "summarizeHint": "최근 메시지 대신 요약 포함",
+    "remove": "{{title}} 언급 제거",
+    "mentioned": "언급: {{title}}",
+    "open": "{{title}} 열기",
+    "status": {
+      "missing": "찾을 수 없음: {{title}}",
+      "self": "{{title}}은(는) 현재 대화이므로 제외됩니다",
+      "over-cap": "{{title}}은(는) 제외됨: 메시지 하나에 최대 {{max}}개까지 가능합니다"
+    },
+    "excerpt": "발췌",
+    "summary": "요약",
+    "modeGroup": "{{title}}에서 포함할 내용",
+    "excerptHint": "최근 메시지, 약 {{tokens}}토큰",
+    "summaryHint": "모델이 작성한 요약, 최대 약 {{tokens}}토큰",
+    "needsModel": "대신 요약을 포함하려면 모델을 불러오세요",
+    "totals_other": "메시지 {{count}}개 · ~{{tokens}}토큰 포함",
+    "readOnly": "인용된 읽기 전용 컨텍스트로 전송됩니다. 모델은 그 대화를 바꿀 수 없습니다.",
+    "tooLarge": "모델 컨텍스트 창의 4분의 1을 넘습니다.",
+    "useSummary": "요약 사용",
+    "resolving": "{{title}} 찾는 중",
+    "chipStatus": {
+      "missing": "찾을 수 없음",
+      "self": "이 대화",
+      "over-cap": "한도 초과"
+    },
+    "preview": {
+      "empty": "아직 메시지가 없습니다",
+      "you": "나",
+      "assistant": "어시스턴트"
+    },
+    "messagesCount_other": "메시지 {{count}}개"
+  },
+  "campaignList": {
+    "timeout": "앱이 제때 응답하지 않았습니다.",
+    "unreadableRecord": "백엔드가 이 페이지에서 읽을 수 없는 레코드를 보냈습니다"
   }
 }

@@ -39,7 +39,8 @@
     "gitLocalIn": "Flint ingin menjalankan {{command}} di {{workspace}}",
     "gitRemote": "Flint ingin menjalankan {{command}}, yang mengubah {{target}}",
     "gitDestructive": "Flint ingin menjalankan {{command}}, yang dapat menghilangkan pekerjaan",
-    "approveCampaign": "Flint ingin memulai campaign \"{{title}}\" ({{count}} tugas)"
+    "approveCampaign": "Flint ingin memulai campaign \"{{title}}\" ({{count}} tugas)",
+    "spendPause": "Flint ingin melanjutkan proses ini melewati jeda pengeluarannya"
   },
   "consequence": {
     "fileChange": "Dapat membuat, menimpa, atau mengubah isi file.",
@@ -57,7 +58,8 @@
     "gitLocal": "Mengubah file, branch, atau riwayat repositori ini di komputer ini.",
     "gitRemote": "Mengirim perubahan ke repositori jarak jauh yang dapat dilihat orang lain. Flint bertanya setiap kali kecuali Anda mengizinkan sementara aksi Git jarak jauh biasa untuk percakapan ini.",
     "gitDestructive": "Apa yang dihapus atau ditimpanya mungkin tidak dapat dipulihkan.",
-    "campaignPlan": "Ini memulai sesi terpisah, masing-masing di branch worktree sendiri, yang membaca dan mengubah file serta memakai kuota model Anda secara paralel. Menyetujui rencana tidak menyetujui panggilan apa pun yang dibuat tugas. Flint bertanya setiap kali."
+    "campaignPlan": "Ini memulai sesi terpisah, masing-masing di branch worktree sendiri, yang membaca dan mengubah file serta memakai kuota model Anda secara paralel. Menyetujui rencana tidak menyetujui panggilan apa pun yang dibuat tugas. Flint bertanya setiap kali.",
+    "spendPause": "Proses terus memakai kuota model berbayar sampai selesai atau mencapai batasnya. Menolak akan menghentikannya."
   },
   "repeat": {
     "allowedOnceBefore": "Anda sudah mengizinkan perintah ini sekali dalam percakapan ini."
@@ -81,7 +83,8 @@
     "allowSimilarExplanation": "Panggilan satu-proses di masa depan yang cocok dengan {{action}} berjalan tanpa bertanya, termasuk ID proses berbeda. Skrip lain tetap bertanya. Cabut ini di Pengaturan > Izin.",
     "allowClipboardReadExplanation": "Flint dapat membaca isi clipboard di masa depan di setiap percakapan tanpa bertanya, sampai Anda mencabutnya di Pengaturan > Izin. Menulis ke clipboard tetap bertanya.",
     "allowSimilarThreadExplanation": "Panggilan di masa depan yang cocok dengan {{action}} berjalan tanpa bertanya di percakapan ini. Cabut ini di Pengaturan > Izin.",
-    "broader": "Lebih luas"
+    "broader": "Lebih luas",
+    "editedRunsOnce": "Perintah yang diedit hanya dijalankan sekali."
   },
   "request": {
     "title": "Permintaan izin",
@@ -226,11 +229,12 @@
     "trust": "Percayai folder",
     "later": "Nanti saja",
     "failed": "Tidak dapat memercayai folder",
+    "kept_other": "Hook tetap diaktifkan untuk {{count}} folder yang sudah Anda gunakan. Tinjau di Pengaturan > Izin > Folder tepercaya.",
     "kept": "Hook tetap diaktifkan untuk {{count}} folder yang sudah Anda gunakan. Tinjau di Pengaturan > Izin > Folder tepercaya."
   },
   "trustedFolders": {
     "title": "Folder tepercaya",
-    "description": "Folder yang hook dan definisi agen sendirinya boleh berjalan. Kepercayaan bertahan sampai Anda mencabutnya.",
+    "description": "Folder yang hook dan definisi agen sendirinya boleh berjalan. Kepercayaan bertahan sampai Anda mencabutnya. File yang boleh dibaca atau diubah agen tercantum di Akses folder.",
     "empty": "Belum ada folder tepercaya; Flint bertanya saat pertama kali sebuah folder membawa hook atau definisi agen.",
     "add": "Percayai folder…",
     "stop": "Berhenti memercayai",
@@ -250,7 +254,11 @@
     "prefixHint": "Hanya satu perintah biasa. Perintah berantai, berpipa, atau dialihkan akan ditanyakan lagi.",
     "everywhere": "Setiap panggilan {{tool}}, di semua proyek",
     "everywhereHint": "Arti lama dari Selalu. Terlalu luas; jarang sesuai keinginan Anda.",
-    "saveFailed": "Tidak dapat mengingat pilihan itu"
+    "saveFailed": "Tidak dapat mengingat pilihan itu",
+    "alwaysFolder": "Selalu: di dalam {{dir}}",
+    "alwaysPrefix": "Selalu: perintah yang diawali {{prefix}}",
+    "alwaysFolderExplanation": "Hanya file di folder itu, di proyek ini, sampai Anda mencabutnya di Pengaturan > Izin.",
+    "alwaysPrefixExplanation": "Hanya satu perintah biasa yang diawali seperti ini, di proyek ini, sampai Anda mencabutnya di Pengaturan > Izin. Perintah berantai, berpipa, atau dialihkan akan ditanyakan lagi."
   },
   "rules": {
     "title": "Persetujuan yang diingat",
@@ -284,12 +292,38 @@
       "consumed": "Terpakai"
     },
     "loadFailed": "Tidak dapat membaca persetujuan yang menunggu",
-    "answerFailed": "Tidak dapat mencatat jawaban"
+    "answerFailed": "Tidak dapat mencatat jawaban",
+    "allowLabel": "Izinkan: {{summary}}",
+    "denyLabel": "Tolak: {{summary}}",
+    "discardLabel": "Hapus: {{summary}}"
   },
   "toast": {
     "trustFailed": "Tidak dapat mengingat server itu",
     "cancelledOne": "Persetujuan untuk {{names}} dibatalkan",
     "cancelledMany": "{{count}} persetujuan ({{names}}) dibatalkan",
     "cancelledDescription": "Obrolan ditinggalkan sebelum Anda menjawab. Kirim permintaan lagi untuk mencoba ulang."
+  },
+  "desktopOnly": "Hanya tersedia di aplikasi desktop Flint.",
+  "folderAccess": {
+    "title": "Akses folder",
+    "description": "Folder dan file di luar ruang kerja agen yang Anda izinkan dibaca atau diubah oleh agen. Apakah hook milik suatu folder boleh berjalan diatur di Folder tepercaya.",
+    "empty": "Belum ada akses folder yang diberikan.",
+    "readWrite": "Baca dan tulis",
+    "readOnly": "Hanya baca",
+    "untilRevoked": "Semua percakapan, sampai dicabut",
+    "untilDate": "Percakapan ini, sampai {{when}}",
+    "revoke": "Cabut",
+    "revokeLabel": "Cabut akses ke {{path}}"
+  },
+  "spendPause": {
+    "preview": "Lanjutkan proses (sekitar {{spent}} terpakai sejauh ini)",
+    "previewCeiling": "Lanjutkan proses hingga batas {{ceiling}} (sekitar {{spent}} terpakai sejauh ini)"
+  },
+  "remote": {
+    "runsOnServer": "Berjalan di server.",
+    "runsOnServerAt": "Berjalan di server: {{where}}."
+  },
+  "childApprovals": {
+    "label": "Perubahan menunggu persetujuan Anda"
   }
 }

@@ -140,6 +140,8 @@
     "showTokenSpeedDesc": "Hiển thị token/giây và số token ngay bên dưới tin nhắn của trợ lý. Khi tắt, một biểu tượng gọn hiển thị chi tiết khi nhấp.",
     "coloredUserBubble": "Bong bóng tin nhắn người dùng có màu",
     "coloredUserBubbleDesc": "Dùng màu nhấn làm nền cho tin nhắn của bạn. Khi tắt, chúng giống tin nhắn của trợ lý với văn bản thuần trên nền trung tính.",
+    "renderUserMarkdown": "Hiển thị Markdown trong tin nhắn của tôi",
+    "renderUserMarkdownDesc": "Hiển thị chữ đậm, danh sách, tiêu đề và mã trong tin nhắn bạn gửi. Khi tắt, tin nhắn hiển thị đúng như đã gõ.",
     "renderHtmlArtifacts": "Hiển thị artifact HTML và SVG",
     "renderHtmlArtifactsDesc": "Thêm tab Xem trước vào các khối mã HTML và SVG. HTML chạy trang do mô hình tạo trong một khung sandbox thực thi các tập lệnh của riêng nó nhưng không thể truy cập Flint, tệp của bạn hay mạng; SVG hiển thị tĩnh với tập lệnh bị tắt. Mặc định tắt.",
     "composerRailButtons": "Nút đầu ra trong ô nhập Cowork",
@@ -416,7 +418,10 @@
     "proxyTimeoutDesc": "Thời gian chờ phản hồi từ mô hình cục bộ (tính bằng giây).",
     "defaultModel": "Mô hình mặc định",
     "defaultModelDesc": "Mô hình cục bộ được tải tự động khi máy chủ khởi động.",
-    "defaultModelPlaceholder": "Chọn một mô hình cục bộ"
+    "defaultModelPlaceholder": "Chọn một mô hình cục bộ",
+    "noLocalModels": "Chưa nhập mô hình cục bộ nào",
+    "usage5hAria": "Token mỗi 5 giờ",
+    "usageWeekAria": "Token mỗi tuần"
   },
   "privacy": {
     "analytics": "Phân tích",
@@ -510,7 +515,22 @@
     "support": "Hỗ trợ",
     "reportAnIssue": "Báo cáo Vấn đề",
     "reportAnIssueDesc": "Tìm thấy lỗi? Hãy giúp chúng tôi bằng cách báo cáo vấn đề trên GitHub.",
-    "reportIssue": "Báo cáo Vấn đề"
+    "reportIssue": "Báo cáo Vấn đề",
+    "advanced": "Nâng cao",
+    "migrateJan": {
+      "title": "Chuyển từ JAN",
+      "desc": "Đưa dữ liệu từ bản cài đặt JAN hiện có vào Flint — sao chép, dùng lại tại chỗ, di chuyển hoặc bắt đầu mới.",
+      "open": "Mở trình hỗ trợ chuyển dữ liệu"
+    },
+    "verify": "Xác minh",
+    "cli": {
+      "installedDesc": "Đã cài tại {{path}} — dùng flint từ terminal để phục vụ mô hình.",
+      "desc": "Dùng flint từ terminal để phục vụ mô hình mà không cần mở ứng dụng.",
+      "install": "Cài đặt",
+      "installing": "Đang cài đặt…",
+      "uninstall": "Gỡ cài đặt",
+      "uninstalling": "Đang gỡ cài đặt…"
+    }
   },
   "extensions": {
     "title": "Tiện ích mở rộng"
@@ -604,7 +624,9 @@
     "summaryMaxTokens": "Độ dài bản tóm tắt",
     "summaryDescription": "Bản tóm tắt dài nhất, tính bằng token.",
     "projectOverride": "(Một dự án ghi đè cài đặt này.)",
-    "saveFailed": "Không thể lưu chính sách nén"
+    "saveFailed": "Không thể lưu chính sách nén",
+    "leanTools": "Công cụ gọn cho mô hình nhỏ",
+    "leanToolsDescription": "Với cửa sổ ngữ cảnh từ 32K token trở xuống, danh sách plugin, tìm kiếm hình ảnh và công cụ widget được bỏ khỏi cuộc trò chuyện để cửa sổ dành cho hội thoại. Tìm kiếm web, MCP và công cụ tác tử vẫn giữ nguyên."
   },
   "accent": {
     "title": "Màu nhấn",
@@ -660,10 +682,10 @@
     "completionSoundApproval": "Chỉ khi cần phê duyệt",
     "completionSoundVolume": "Âm lượng",
     "completionSoundPreview": "Phát",
-    "increaseContrast": "Tăng độ tương phản",
-    "increaseContrastDesc": "Làm chữ rõ hơn để dễ đọc. Trắng hơn ở giao diện tối, đậm hơn ở giao diện sáng.",
     "reduceMotion": "Giảm chuyển động",
-    "reduceMotionDesc": "Tắt hoạt ảnh trong Flint. Flint không theo cài đặt hệ thống, nên chuyển động vẫn bật trừ khi bạn đổi mục này."
+    "reduceMotionDesc": "Tắt hoạt ảnh trong Flint. Flint không theo cài đặt hệ thống, nên chuyển động vẫn bật trừ khi bạn đổi mục này.",
+    "increaseContrast": "Tăng độ tương phản",
+    "increaseContrastDesc": "Làm chữ rõ hơn để dễ đọc. Trắng hơn ở giao diện tối, đậm hơn ở giao diện sáng."
   },
   "pageDesc": {
     "general": "Ngôn ngữ, thư mục dữ liệu, nhật ký và các tùy chọn toàn ứng dụng.",
@@ -1125,7 +1147,26 @@
     "skipped": "Không khôi phục: {{stores}}",
     "storeToolApproval": "tự động phê duyệt công cụ",
     "storeMcpTrust": "tin cậy máy chủ MCP",
-    "storeProxy": "proxy mạng"
+    "storeProxy": "proxy mạng",
+    "title": "Sao lưu và đồng bộ",
+    "exported": "Đã xuất cài đặt",
+    "exportFailed": "Xuất không thành công",
+    "importFailed": "Nhập không thành công",
+    "importedRestarting": "Đã nhập cài đặt, đang khởi động lại cửa sổ",
+    "exportTitle": "Xuất cài đặt",
+    "exportDesc": "Lưu tùy chọn của bạn vào tệp JSON. Để đồng bộ giữa các máy, hãy lưu tệp vào thư mục Google Drive hoặc Nextcloud rồi nhập trên máy kia. Các cuộc trò chuyện và trạng thái riêng của từng máy không được đưa vào.",
+    "includeSecrets": "Bao gồm nhà cung cấp và khóa API",
+    "secretsWarning": "Tệp sẽ chứa khóa API của bạn dưới dạng văn bản thuần. Hãy giữ riêng tư và đừng đặt vào thư mục dùng chung.",
+    "exportButton": "Xuất…",
+    "importTitle": "Nhập cài đặt",
+    "importDesc": "Thay tùy chọn của bạn bằng tệp sao lưu. Sau đó cửa sổ sẽ được tải lại.",
+    "chooseFile": "Chọn tệp…",
+    "pendingGroups": "Số nhóm cài đặt trong tệp: {{groups}}.",
+    "pendingKeys": "Số nhà cung cấp có khóa API: {{keys}}.",
+    "pendingExported": "Xuất ngày {{date}}.",
+    "pendingOverwrite": "Thao tác này sẽ ghi đè các giá trị hiện tại.",
+    "apply": "Nhập và tải lại",
+    "cancel": "Hủy"
   },
   "startup": {
     "title": "Khởi động cùng máy tính",
@@ -1153,5 +1194,129 @@
     "showAll": "Hiện tất cả",
     "preview": "Xem trước",
     "reachable": "Các mục bị ẩn vẫn truy cập được từ bảng lệnh và từ Cài đặt."
+  },
+  "memoryPage": {
+    "useSaved": "Dùng bộ nhớ đã lưu trong cuộc trò chuyện",
+    "useSavedDesc": "Khi tắt, Flint không thêm bộ nhớ đã lưu vào bất kỳ yêu cầu nào. Các ký ức của bạn vẫn được giữ và vẫn có thể quản lý tại đây.",
+    "useFacts": "Dùng các thông tin đã nhớ trong yêu cầu",
+    "useFactsDesc": "Tắt một phạm vi sẽ ngừng gửi nó. Không có gì bị xóa; bật lại thì nó được dùng trở lại.",
+    "scope": {
+      "chat": {
+        "tab": "Cuộc trò chuyện này",
+        "blurb": "Chỉ được nhớ trong cuộc trò chuyện mà nó được lưu từ đó.",
+        "recall": "Cuộc trò chuyện này",
+        "recallAria": "Dùng ký ức của cuộc trò chuyện này",
+        "newAria": "Ký ức mới cho cuộc trò chuyện này",
+        "forgetAll": "Quên tất cả trong cuộc trò chuyện này",
+        "clearBody": "Mọi thứ đã nhớ cho cuộc trò chuyện này sẽ không còn được dùng và nội dung bị xóa khỏi máy này. Không thể hoàn tác chỉ bằng một bước."
+      },
+      "project": {
+        "tab": "Dự án",
+        "blurb": "Có sẵn cho mọi cuộc trò chuyện trong dự án bạn chọn bên dưới, và không có cho dự án nào khác.",
+        "recall": "Dự án này",
+        "recallAria": "Dùng ký ức của dự án này",
+        "newAria": "Ký ức mới cho dự án này",
+        "forgetAll": "Quên tất cả trong dự án này",
+        "clearBody": "Mọi thứ đã nhớ cho dự án này sẽ không còn được dùng và nội dung bị xóa khỏi máy này. Không thể hoàn tác chỉ bằng một bước."
+      },
+      "user": {
+        "tab": "Tất cả cuộc trò chuyện",
+        "blurb": "Có sẵn ở mọi nơi. Dùng cho những điều nhìn chung đều đúng.",
+        "recall": "Tất cả cuộc trò chuyện",
+        "recallAria": "Dùng ký ức chung cho mọi cuộc trò chuyện",
+        "newAria": "Ký ức mới cho mọi cuộc trò chuyện",
+        "forgetAll": "Quên mọi thứ dùng chung giữa các cuộc trò chuyện",
+        "clearBody": "Mọi thứ đã nhớ trong tất cả cuộc trò chuyện sẽ không còn được dùng và nội dung bị xóa khỏi máy này. Không thể hoàn tác chỉ bằng một bước."
+      }
+    },
+    "stored": {
+      "summary": "{{user}} trên các cuộc chat · {{project}} · {{size}}",
+      "projectIn": "{{count}} trong {{name}}",
+      "chooseProject": "chọn một dự án để đếm ký ức của nó"
+    },
+    "listTitle": "Flint nhớ những gì",
+    "tabsAria": "Phạm vi bộ nhớ",
+    "recallOff": "Tính năng gợi nhớ đang tắt cho phạm vi này: ký ức vẫn được giữ nhưng không được gửi.",
+    "newPlaceholder": "Điều Flint nên nhớ",
+    "remember": "Ghi nhớ",
+    "export": "Xuất",
+    "import": "Nhập",
+    "importReport": {
+      "summary": "Đã nhập {{count}} từ bản xuất",
+      "duplicates": "{{count}} đã được nhớ",
+      "refused": "{{count}} bị từ chối"
+    },
+    "conversation": "Cuộc trò chuyện",
+    "conversationAria": "Cuộc trò chuyện cần hiển thị bộ nhớ",
+    "noConversations": "Chưa có cuộc trò chuyện nào",
+    "kindChat": "Chat · {{title}}",
+    "kindCowork": "Cowork · {{title}}",
+    "replacedAt": "đã thay thế {{when}}",
+    "projectFolder": "Thư mục dự án",
+    "projectFolderAria": "Dự án cần hiển thị bộ nhớ",
+    "noProjectFolders": "Chưa có dự án nào gắn với phiên nào",
+    "chooseProject": "Chọn một dự án",
+    "chooseProjectAbove": "Chọn một dự án ở trên để xem và quản lý ký ức của nó.",
+    "searchAria": "Tìm trong ký ức",
+    "searchPlaceholder": "Tìm trong các thông tin đã nhớ",
+    "noMatch": "Không có gì khớp với tìm kiếm này.",
+    "empty": "Chưa có gì được nhớ ở đây.",
+    "meta": {
+      "youSaved": "Bạn đã lưu mục này",
+      "inferred": "Suy luận",
+      "pinned": "đã ghim",
+      "used_one": "đã dùng {{count}} lần",
+      "used_other": "đã dùng {{count}} lần",
+      "lastUsed": "dùng lần cuối {{when}}",
+      "never": "chưa bao giờ"
+    },
+    "pin": "Ghim",
+    "unpin": "Bỏ ghim",
+    "pinAria": "Ghim ký ức",
+    "unpinAria": "Bỏ ghim ký ức",
+    "editAria": "Sửa ký ức",
+    "forget": "Quên",
+    "forgetAria": "Quên ký ức",
+    "showing": "Hiển thị {{from}}–{{to}} trong {{total}}",
+    "previous": "Trước",
+    "waitingTitle": "Đang chờ bạn",
+    "waitingBody": "Chưa có mục nào ở đây được sử dụng. Đề xuất chưa trả lời sẽ không bao giờ được thêm vào lời nhắc.",
+    "conflictsTitle": "Các ký ức mâu thuẫn",
+    "conflictsBody": "Cả hai đều không được dùng. Các thông tin đã nhớ này mâu thuẫn nhau, nên Flint loại cả hai khỏi mọi yêu cầu cho đến khi bạn giữ một cái.",
+    "conflictAbout": "Về {{subject}}",
+    "keepThis": "Giữ mục này",
+    "keepAria": "Giữ \"{{preview}}\" và quên mục còn lại",
+    "editTitle": "Sửa ký ức",
+    "editBody": "Nội dung này được dùng trong các cuộc trò chuyện sau, trong phạm vi mà nó thuộc về.",
+    "contentAria": "Nội dung ký ức",
+    "clearTitle": "Quên mọi ký ức ở đây?",
+    "clearConfirm": "Quên tất cả",
+    "toast": {
+      "kept": "Đã giữ một ký ức",
+      "settleFailed": "Không thể giải quyết mâu thuẫn đó",
+      "forgotten": "Đã quên ký ức",
+      "forgetFailed": "Không thể quên ký ức đó",
+      "changeFailed": "Không thể thay đổi ký ức đó",
+      "updated": "Đã cập nhật ký ức",
+      "updateFailed": "Không thể cập nhật ký ức đó",
+      "settingsFailed": "Không thể lưu cài đặt bộ nhớ",
+      "recallFailed": "Không thể đổi tính năng gợi nhớ",
+      "saved": "Đã lưu ký ức",
+      "saveFailed": "Không thể lưu ký ức đó",
+      "forgotCount_one": "Đã quên {{count}} ký ức",
+      "forgotCount_other": "Đã quên {{count}} ký ức",
+      "forgetManyFailed": "Không thể quên các ký ức đó",
+      "exportedCount_one": "Đã xuất {{count}} ký ức",
+      "exportedCount_other": "Đã xuất {{count}} ký ức",
+      "exportFailed": "Không thể xuất ký ức",
+      "importedCount_one": "Đã nhập {{count}} ký ức",
+      "importedCount_other": "Đã nhập {{count}} ký ức",
+      "importFailed": "Không thể nhập ký ức"
+    }
+  },
+  "chatMentions": {
+    "title": "Nhắc đến hội thoại",
+    "readAny": "Cho phép trợ lý đọc mọi hội thoại",
+    "readAnyDesc": "Mặc định tắt. Thông thường trợ lý chỉ đọc những hội thoại bạn nhắc đến bằng @ hoặc #. Khi bật, trợ lý có thể mở bất kỳ cuộc trò chuyện, phiên hoặc phòng nào trên máy này theo id. Nội dung đọc được vẫn nằm trên máy này và được đánh dấu là dữ liệu tham chiếu."
   }
 }

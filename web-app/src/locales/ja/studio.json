@@ -1,0 +1,219 @@
+{
+  "page": {
+    "title": "スタジオ",
+    "descriptionLocal": "このコンピューター上で画像と動画をローカルに作成します。データがデバイスの外に出ることはありません。",
+    "descriptionHosted": "ホスト型モデルで画像を作成します。プロンプトはそのプロバイダーに送信されます。",
+    "whatToMake": "作成する種類",
+    "images": "画像",
+    "video": "動画",
+    "dismiss": "閉じる",
+    "loading": "読み込み中…"
+  },
+  "elapsed": {
+    "slow": "通常より時間がかかっています"
+  },
+  "builds": {
+    "anyGpu": "任意のグラフィックスカード",
+    "noGpu": "グラフィックスカードなし",
+    "nvidia": "NVIDIA（高速）",
+    "note": {
+      "linux-vulkan-x64": "約 38 MB。Vulkan ドライバー対応の NVIDIA、AMD、Intel。",
+      "linux-cpu-x64": "約 25 MB。非常に低速です。",
+      "win-vulkan-x64": "約 30 MB。NVIDIA、AMD、Intel で動作します。",
+      "win-cuda12-x64": "約 900 MB。最新の NVIDIA ドライバーが必要です。",
+      "win-cpu-x64": "約 17 MB。非常に低速です。"
+    }
+  },
+  "picker": {
+    "engine": "エンジン",
+    "searchPlaceholder": "モデルを検索...",
+    "searchAria": "モデルを検索",
+    "clear": "クリア",
+    "noMatch": "一致するモデルがありません。",
+    "local": "このコンピューター上",
+    "leaves": "プロンプトはこのコンピューターの外に送信されます",
+    "findMore": "「探す」でほかの画像モデルを見つける",
+    "manageHosted": "ホスト型プロバイダーを管理",
+    "addKey": "ホスト型モデルを使うには API キーを追加"
+  },
+  "setup": {
+    "unavailableTitle": "このシステムではまだ利用できません",
+    "unavailableBody": "ローカルでの画像・動画生成には、現在 Windows x64 または Linux x64 が必要です。",
+    "title": "画像エンジンをセットアップ",
+    "body": "Flint は stable-diffusion.cpp を使って、このコンピューター上で画像と動画を作成します。エンジンは一度だけダウンロードされ、公開されているチェックサムで検証され、生成中のみ実行されます。",
+    "downloading": "ダウンロード中… {{percent}}%",
+    "unpacking": "展開中…",
+    "checking": "起動を確認中…",
+    "installing": "インストール中…",
+    "install": "ダウンロードしてインストール"
+  },
+  "size": {
+    "width": "幅（ピクセル）",
+    "height": "高さ（ピクセル）",
+    "swap": "幅と高さを入れ替える",
+    "hintVideo": "16 の倍数、最大 {{max}} px。大きなクリップは多くのメモリを使います。",
+    "hintImage": "16 の倍数、最大 {{max}} px。大きな画像はより多くのメモリと時間が必要です。"
+  },
+  "activity": {
+    "done": "完了",
+    "failed": "失敗",
+    "stopped": "停止",
+    "title": "最近のアクティビティ",
+    "clearTitle": "この一覧を空にします。画像は「作成履歴」に残ります。",
+    "clearAll": "すべてクリア",
+    "empty": "まだありません。作成したものはここに表示されます。",
+    "making": "作成中",
+    "open": "開く"
+  },
+  "video": {
+    "steps_other": "{{count}} ステップ",
+    "frames_other": "{{count}} フレーム",
+    "seed": "シード {{seed}}",
+    "avoid": "除外: {{prompt}}",
+    "copyPrompt": "プロンプトをコピー"
+  },
+  "actions": {
+    "promptCopied": "プロンプトをコピーしました",
+    "archive": "アーカイブに移動",
+    "delete": "削除"
+  },
+  "time": {
+    "fewSeconds": "数秒前"
+  },
+  "model": {
+    "title": "モデル",
+    "manage": "管理",
+    "textToVideo": "テキストから動画",
+    "textToImage": "テキストから画像",
+    "hostedBy": "{{provider}} がホスト",
+    "loaded": "読み込み済み",
+    "ready": "準備完了",
+    "notDownloaded": "未ダウンロード",
+    "hostedNote": "プロンプトは {{provider}} に送信され、「プロバイダー」の API キーが使われ、料金は送信先から請求されます。",
+    "localNote_other": "このコンピューター上で実行します。{{width}} × {{height}}、{{count}} ステップから開始します。",
+    "unload": "アンロード",
+    "loading": "読み込み中…",
+    "load": "読み込む",
+    "installFirst": "このモデルを使うには、上の画像エンジンをインストールしてください。",
+    "removeTitle": "この一覧から外します。ダウンロード済みのファイルはディスクに残ります。",
+    "remove": "スタジオから削除"
+  },
+  "download": {
+    "starting": "開始中…",
+    "startingSize": "開始中… ダウンロード {{size}}",
+    "progress": "{{bytes}} / {{total}}",
+    "downloading": "ダウンロード中…",
+    "button": "ダウンロード（{{size}}）"
+  },
+  "duration": {
+    "s": "{{count}} 秒",
+    "min": "{{count}} 分",
+    "minS": "{{minutes}} 分 {{seconds}} 秒"
+  },
+  "phase": {
+    "queued": "待機中",
+    "encoding": "プロンプトを読み取り中",
+    "sampling": "描画中",
+    "decoding": "仕上げ中",
+    "saving": "保存中",
+    "working": "処理中"
+  },
+  "settings": {
+    "title": "生成設定",
+    "reset": "リセット",
+    "shape": "形状",
+    "aspectRatio": "縦横比",
+    "customTitle": "幅と高さを自分で入力",
+    "custom": "カスタム",
+    "imageCount": "画像の枚数",
+    "length": "長さ",
+    "seed": "シード",
+    "random": "ランダム",
+    "randomSeed": "ランダムなシードを選ぶ",
+    "guess": "前回のクリップから見て約 {{duration}}。",
+    "advanced": "詳細設定",
+    "loras": "LoRA アダプター",
+    "importLora": ".safetensors をインポート",
+    "loraHint": "選択したローカルモデルファミリー向けのアダプターを使用します。",
+    "useLora": "{{name}} を使用",
+    "loraStrength": "{{name}} の強度",
+    "negative": "ネガティブプロンプト",
+    "negativeAria": "ネガティブプロンプト",
+    "negativePlaceholder": "ぼやけ、低品質、余分な指、テキスト、透かし…",
+    "avoidAria": "避けたい内容",
+    "memoryWarning": "このコンピューターのメモリは約 {{gb}} GB です。動画生成には大量のメモリが必要で、このようなマシンではメモリ不足によりディスクへのスワップが発生し、1 クリップに何時間もかかることがあります。",
+    "accept": "内容を理解したうえで続行します。",
+    "loraImported": "{{name}} をインポートしました"
+  },
+  "prompt": {
+    "title": "プロンプト",
+    "guide": "プロンプトガイド",
+    "guideDesc": "よりよい画像を得るための簡単なコツ。",
+    "g1": {
+      "title": "何が写っているかを書く",
+      "body": "まず被写体、次にその場所と動作を書きます。"
+    },
+    "g2": {
+      "title": "スタイルを指定する",
+      "body": "油絵、写真、フラットイラスト、3D レンダリング：スタイルで仕上がりが大きく変わります。"
+    },
+    "g3": {
+      "title": "光と雰囲気を加える",
+      "body": "やわらかな朝の光、夜のネオン、曇り空：光が雰囲気を決めます。"
+    },
+    "g4": {
+      "title": "アイデアは 1 つに絞る",
+      "body": "長い羅列より、短く明確なプロンプトのほうが効果的です。詳細は少しずつ足しましょう。"
+    },
+    "g5": {
+      "title": "不要なものは「除外」で指定",
+      "body": "詳細設定のネガティブプロンプトに、含めたくないものを並べます。"
+    },
+    "placeholderVideo": "雨の路地を歩く猫、シネマティック",
+    "placeholderImage": "日の出の崖の上に立つ灯台、油絵",
+    "enhanceTitle": "ディテールと光についての言葉を少し追加します",
+    "enhance": "強化",
+    "example": {
+      "image": {
+        "0": "日の出の崖の上に立つ灯台、油絵",
+        "1": "雪の森にいるキツネ、やわらかな光",
+        "2": "夜のアイソメトリックな都市、ネオン"
+      },
+      "video": {
+        "0": "雨の路地を歩く猫、シネマティック",
+        "1": "黒い砂浜に打ち寄せる波",
+        "2": "コーヒーカップから立ちのぼる湯気"
+      }
+    },
+    "clear": "プロンプトをクリア",
+    "copy": "プロンプトをコピー",
+    "emptyImage": "最初の画像はここから始まります",
+    "emptyVideo": "最初の動画はここから始まります",
+    "emptyDesc": "上に説明を入力するか、例を試してみてください。",
+    "save": "保存",
+    "openLarge": "拡大して開く",
+    "remix": "リミックス：同じプロンプト、新しいシード",
+    "remixShort": "リミックス",
+    "stop": "停止",
+    "generateVideo": "動画を生成",
+    "generateImage": "画像を生成",
+    "loadFirst": "先にモデルを読み込んでください",
+    "writeFirst": "先にプロンプトを入力してください。",
+    "notSetUp": "{{provider}} は「プロバイダー」で設定されていません。",
+    "imageReady": "画像が完成しました",
+    "videoReady": "動画が完成しました",
+    "waitingFor": "{{provider}} を待機中…",
+    "eta": "残り約 {{eta}}"
+  },
+  "gens": {
+    "title": "作成履歴",
+    "archive": "アーカイブ",
+    "done": "完了",
+    "select": "選択",
+    "grid": "グリッド",
+    "list": "リスト",
+    "filter": "フィルター",
+    "all": "すべて",
+    "empty": "まだ何もありません。作成したものはここに表示されます。"
+  }
+}

@@ -209,5 +209,6 @@
       "model-not-loaded": "Muat model obrolan ini terlebih dahulu. Model itulah yang menulis ringkasan.",
       "summary-failed": "Ringkasan gagal ditulis. Tidak ada yang dibuat."
     }
-  }
+  },
+  "stopToolCall": "Hentikan panggilan alat (Esc)"
 }

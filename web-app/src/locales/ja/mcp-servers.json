@@ -6,10 +6,12 @@
       "checking": "拡張機能の状態を確認中..."
     },
     "notInstalled": {
-      "title": "Janがブラウザでタスクを実行します",
-      "description": "拡張機能をインストールしてJanにブラウザアクセスを許可してください",
+      "title": "Flintがブラウザでタスクを実行します",
+      "description": "拡張機能をインストールしてFlintにブラウザアクセスを許可してください",
       "getExtension": "拡張機能を取得"
-    }
+    },
+    "requires": "Chrome ベースのブラウザにブラウザ拡張機能をインストールする必要があります。",
+    "install": "拡張機能をインストール →"
   },
   "serverName": "サーバー名",
   "enterServerName": "サーバー名を入力",
@@ -158,13 +160,13 @@
   "serverStatusInactive": "サーバー {{serverKey}} が正常に非アクティブ化されました",
   "runtimeSettings": {
     "title": "ランタイム設定",
-    "description": "JanがMCPサーバーを管理し再試行する方法を設定します。",
+    "description": "FlintがMCPサーバーを管理し再試行する方法を設定します。",
     "toolCallTimeout": "ツール呼び出しタイムアウト（秒）",
     "toolCallTimeoutDesc": "MCPツールの応答を待機する最大時間（タイムアウトまで）。",
     "maxToolOutputChars": "ツール出力の最大文字数",
     "maxToolOutputCharsDesc": "会話に保持されるツール結果の最大長です。これを超えた部分は切り詰められ、切り詰めたことが示されるため、1 つの大きな結果でモデルのコンテキストが使い果たされることはありません。0 にすると、結果が全体保持されます。",
     "smartToolRouting": "スマートなMCPツールルーティング",
-    "smartToolRoutingDesc": "有効にすると、Janはツールを読み込む前に関連するMCPサーバーを選びます。無効にすると、常にMCPツールの全リストを読み込みます。",
+    "smartToolRoutingDesc": "有効にすると、Flintはツールを読み込む前に関連するMCPサーバーを選びます。無効にすると、常にMCPツールの全リストを読み込みます。",
     "useLightweightRouterModel": "ルーティング専用モデルを使う",
     "useLightweightRouterModelDesc": "スマートルーティングがオンなとき、ルーティングはチャットモデルではなく別の（多くの場合小さな）モデルで実行されます。オフにすると、ルーティングに常にアクティブなチャットモデルを使います。",
     "routerModel": "ルーティングモデル",

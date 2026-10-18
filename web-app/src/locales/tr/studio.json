@@ -1,0 +1,222 @@
+{
+  "page": {
+    "title": "Stüdyo",
+    "descriptionLocal": "Bu bilgisayarda yerel olarak görsel ve video oluşturun. Hiçbir şey cihazınızdan çıkmaz.",
+    "descriptionHosted": "Barındırılan bir modelle görsel oluşturun. İsteminiz sağlayıcısına gönderilir.",
+    "whatToMake": "Ne oluşturulacak",
+    "images": "Görseller",
+    "video": "Video",
+    "dismiss": "Kapat",
+    "loading": "Yükleniyor…"
+  },
+  "elapsed": {
+    "slow": "normalden uzun sürüyor"
+  },
+  "builds": {
+    "anyGpu": "Herhangi bir ekran kartı",
+    "noGpu": "Ekran kartı yok",
+    "nvidia": "NVIDIA (daha hızlı)",
+    "note": {
+      "linux-vulkan-x64": "Yaklaşık 38 MB. Vulkan sürücülü NVIDIA, AMD veya Intel.",
+      "linux-cpu-x64": "Yaklaşık 25 MB. Çok yavaş.",
+      "win-vulkan-x64": "Yaklaşık 30 MB. NVIDIA, AMD ve Intel ile çalışır.",
+      "win-cuda12-x64": "Yaklaşık 900 MB. Güncel bir NVIDIA sürücüsü gerekir.",
+      "win-cpu-x64": "Yaklaşık 17 MB. Çok yavaş."
+    }
+  },
+  "picker": {
+    "engine": "Motor",
+    "searchPlaceholder": "Model ara...",
+    "searchAria": "Model ara",
+    "clear": "Temizle",
+    "noMatch": "Eşleşen model yok.",
+    "local": "Bu bilgisayarda",
+    "leaves": "istem bu bilgisayardan çıkar",
+    "findMore": "Keşfet'te daha fazla görsel modeli bulun",
+    "manageHosted": "Barındırılan sağlayıcıları yönet",
+    "addKey": "Barındırılan modelleri kullanmak için bir API anahtarı ekleyin"
+  },
+  "setup": {
+    "unavailableTitle": "Bu sistemde henüz kullanılamıyor",
+    "unavailableBody": "Yerel görsel ve video üretimi şu anda Windows x64 veya Linux x64 gerektirir.",
+    "title": "Görsel motorunu kurun",
+    "body": "Flint, bu bilgisayarda stable-diffusion.cpp ile görsel ve video üretir. Motor bir kez indirilir, yayımlanmış sağlama toplamıyla doğrulanır ve yalnızca üretim yaparken çalışır.",
+    "downloading": "İndiriliyor… %{{percent}}",
+    "unpacking": "Açılıyor…",
+    "checking": "Başlayıp başlamadığı denetleniyor…",
+    "installing": "Kuruluyor…",
+    "install": "İndir ve kur"
+  },
+  "size": {
+    "width": "Piksel cinsinden genişlik",
+    "height": "Piksel cinsinden yükseklik",
+    "swap": "Genişlik ve yüksekliği değiştir",
+    "hintVideo": "16'nın katları, en fazla {{max}} px. Büyük klipler çok bellek ister.",
+    "hintImage": "16'nın katları, en fazla {{max}} px. Büyük görseller daha fazla bellek ve zaman ister."
+  },
+  "activity": {
+    "done": "Bitti",
+    "failed": "Başarısız",
+    "stopped": "Durduruldu",
+    "title": "Son Etkinlik",
+    "clearTitle": "Bu listeyi boşaltır. Görselleriniz Üretimleriniz'de kalır.",
+    "clearAll": "Tümünü temizle",
+    "empty": "Henüz bir şey yok. Ürettikleriniz burada görünür.",
+    "making": "Üretiliyor",
+    "open": "Aç"
+  },
+  "video": {
+    "steps_one": "{{count}} adım",
+    "steps_other": "{{count}} adım",
+    "frames_one": "{{count}} kare",
+    "frames_other": "{{count}} kare",
+    "seed": "seed {{seed}}",
+    "avoid": "Kaçın: {{prompt}}",
+    "copyPrompt": "İstemi kopyala"
+  },
+  "actions": {
+    "promptCopied": "İstem kopyalandı",
+    "archive": "Arşive taşı",
+    "delete": "Sil"
+  },
+  "time": {
+    "fewSeconds": "birkaç saniye önce"
+  },
+  "model": {
+    "title": "Model",
+    "manage": "Yönet",
+    "textToVideo": "Metinden Videoya",
+    "textToImage": "Metinden Görsele",
+    "hostedBy": "{{provider}} tarafından barındırılıyor",
+    "loaded": "Yüklü",
+    "ready": "Hazır",
+    "notDownloaded": "İndirilmedi",
+    "hostedNote": "İsteminiz {{provider}} sağlayıcısına gönderilir, Sağlayıcılar'daki API anahtarınızı kullanır ve ücretlendirmeyi o yapar.",
+    "localNote_one": "Bu bilgisayarda çalışır. {{width}} × {{height}} ile başlar, {{count}} adım.",
+    "localNote_other": "Bu bilgisayarda çalışır. {{width}} × {{height}} ile başlar, {{count}} adım.",
+    "unload": "Boşalt",
+    "loading": "Yükleniyor…",
+    "load": "Yükle",
+    "installFirst": "Bu modeli kullanmak için yukarıdan görsel motorunu kurun.",
+    "removeTitle": "Modeli bu listeden çıkarır. İndirilen dosyalar diskte kalır.",
+    "remove": "Stüdyo'dan kaldır"
+  },
+  "download": {
+    "starting": "Başlatılıyor…",
+    "startingSize": "Başlatılıyor… {{size}} indirilecek",
+    "progress": "{{bytes}} / {{total}}",
+    "downloading": "İndiriliyor…",
+    "button": "İndir ({{size}})"
+  },
+  "duration": {
+    "s": "{{count}} sn",
+    "min": "{{count}} dk",
+    "minS": "{{minutes}} dk {{seconds}} sn"
+  },
+  "phase": {
+    "queued": "Bekliyor",
+    "encoding": "İstem okunuyor",
+    "sampling": "Çiziliyor",
+    "decoding": "Tamamlanıyor",
+    "saving": "Kaydediliyor",
+    "working": "Çalışıyor"
+  },
+  "settings": {
+    "title": "Üretim Ayarları",
+    "reset": "Sıfırla",
+    "shape": "Biçim",
+    "aspectRatio": "En Boy Oranı",
+    "customTitle": "Kendi genişlik ve yüksekliğinizi yazın",
+    "custom": "Özel",
+    "imageCount": "Görsel Sayısı",
+    "length": "Süre",
+    "seed": "Seed",
+    "random": "Rastgele",
+    "randomSeed": "Rastgele bir seed seç",
+    "guess": "Son klibinize göre yaklaşık {{duration}}.",
+    "advanced": "Gelişmiş",
+    "loras": "LoRA adaptörleri",
+    "importLora": ".safetensors içe aktar",
+    "loraHint": "Seçili yerel model ailesi için hazırlanmış adaptörleri kullanın.",
+    "useLora": "{{name}} kullan",
+    "loraStrength": "{{name}} gücü",
+    "negative": "Negatif İstem",
+    "negativeAria": "Negatif istem",
+    "negativePlaceholder": "Bulanık, düşük kalite, fazladan parmak, metin, filigran…",
+    "avoidAria": "Nelerden kaçınılacak",
+    "memoryWarning": "Bu bilgisayarda yaklaşık {{gb}} GB bellek var. Video üretimi çok bellek ister ve böyle bir makinede bellek yetmediği için veriler diske aktarılır; tek bir klip saatler sürebilir.",
+    "accept": "Anladım ve devam etmek istiyorum.",
+    "loraImported": "{{name}} içe aktarıldı"
+  },
+  "prompt": {
+    "title": "İstem",
+    "guide": "İstem Rehberi",
+    "guideDesc": "Daha iyi görseller için kısa alışkanlıklar.",
+    "g1": {
+      "title": "İçinde ne olduğunu söyleyin",
+      "body": "Konuyla başlayın, sonra nerede olduğunu ve ne yaptığını yazın."
+    },
+    "g2": {
+      "title": "Stili belirtin",
+      "body": "Yağlıboya, fotoğraf, düz çizim, 3D render: stil her şeyi değiştirir."
+    },
+    "g3": {
+      "title": "Işık ve atmosfer ekleyin",
+      "body": "Yumuşak sabah ışığı, gece neonu, kapalı hava: ışık havayı belirler."
+    },
+    "g4": {
+      "title": "Tek bir fikre odaklanın",
+      "body": "Kısa ve net bir istem, uzun bir listeden iyidir. Ayrıntıları tek tek ekleyin."
+    },
+    "g5": {
+      "title": "İstemediklerinizi Kaçın ile yazın",
+      "body": "Gelişmiş altında negatif istem, dışarıda bırakılacakları listeler."
+    },
+    "placeholderVideo": "Yağmurlu bir sokakta yürüyen kedi, sinematik",
+    "placeholderImage": "Gün doğumunda bir uçurumdaki deniz feneri, yağlıboya",
+    "enhanceTitle": "Ayrıntı ve ışık hakkında birkaç kelime ekler",
+    "enhance": "Geliştir",
+    "example": {
+      "image": {
+        "0": "Gün doğumunda bir uçurumdaki deniz feneri, yağlıboya",
+        "1": "Karlı bir ormanda tilki, yumuşak ışık",
+        "2": "Gece izometrik şehir, neon"
+      },
+      "video": {
+        "0": "Yağmurlu bir sokakta yürüyen kedi, sinematik",
+        "1": "Siyah bir plaja vuran dalgalar",
+        "2": "Bir kahve fincanından yükselen buhar"
+      }
+    },
+    "clear": "İstemi temizle",
+    "copy": "İstemi kopyala",
+    "emptyImage": "İlk görseliniz burada başlar",
+    "emptyVideo": "İlk videonuz burada başlar",
+    "emptyDesc": "Yukarıda tarif edin ya da örneklerden birini deneyin.",
+    "save": "Kaydet",
+    "openLarge": "Büyük aç",
+    "remix": "Remiks: aynı istem, yeni seed",
+    "remixShort": "Remiks",
+    "stop": "Durdur",
+    "generateVideo": "Video Üret",
+    "generateImage": "Görsel Üret",
+    "loadFirst": "Önce modeli yükleyin",
+    "writeFirst": "Önce bir istem yazın.",
+    "notSetUp": "{{provider}} Sağlayıcılar'da ayarlanmamış.",
+    "imageReady": "Görsel hazır",
+    "videoReady": "Video hazır",
+    "waitingFor": "{{provider}} bekleniyor…",
+    "eta": "yaklaşık {{eta}} kaldı"
+  },
+  "gens": {
+    "title": "Üretimleriniz",
+    "archive": "Arşivle",
+    "done": "Bitti",
+    "select": "Seç",
+    "grid": "Izgara",
+    "list": "Liste",
+    "filter": "Filtre",
+    "all": "Tümü",
+    "empty": "Burada henüz bir şey yok. Ürettikleriniz burada görünür."
+  }
+}

@@ -9,7 +9,9 @@
       "title": "Flint completa tasques al teu navegador",
       "description": "Instal·la l’extensió per donar accés al navegador a Flint",
       "getExtension": "Instal·la l’extensió"
-    }
+    },
+    "requires": "Cal instal·lar l'extensió del navegador al teu navegador basat en Chrome.",
+    "install": "Instal·la l'extensió →"
   },
   "serverName": "Nom del servidor",
   "enterServerName": "Introdueix el nom del servidor",

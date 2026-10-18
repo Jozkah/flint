@@ -56,7 +56,40 @@
     "chatFolderCount": "Carpetas: {{count}}",
     "newSubfolder": "Subcarpeta nueva",
     "moveInto": "Mover a la carpeta",
-    "topLevel": "Nivel superior"
+    "topLevel": "Nivel superior",
+    "errors": {
+      "nameEmpty": "El nombre del grupo no puede estar vacío",
+      "notFound": "No se encontró el grupo",
+      "tooDeep": "Los grupos no se pueden anidar tan profundamente",
+      "intoItself": "Un grupo no se puede mover dentro de sí mismo"
+    },
+    "failed": {
+      "create": "No se pudo crear el grupo",
+      "rename": "No se pudo renombrar el grupo",
+      "moveFolder": "No se pudo mover la carpeta",
+      "saveState": "No se pudo guardar el estado del grupo",
+      "reorder": "No se pudieron reordenar los grupos",
+      "moveItem": "No se pudo mover el elemento",
+      "delete": "No se pudo eliminar el grupo",
+      "saveFolders": "No se pudieron guardar las carpetas del grupo",
+      "updateContext": "No se pudo actualizar el contexto de carpetas",
+      "update": "No se pudieron actualizar los grupos",
+      "import": "No se pudieron importar los grupos",
+      "unreadable": "{{failure}}: no se pudieron leer los grupos guardados",
+      "restored": "{{failure}}. Se restauró el orden anterior."
+    },
+    "announce": {
+      "created": "Grupo {{name}} creado",
+      "collapsed": "{{name}} contraído",
+      "expanded": "{{name}} expandido",
+      "reordered": "{{name}} movido a la posición {{position}} de {{total}}",
+      "movedToPosition": "Movido a {{name}}, posición {{position}}",
+      "movedToRecents": "Movido a Recientes",
+      "deleted": "Grupo {{name}} eliminado. Sus elementos se movieron a Recientes",
+      "ctxReplaced": "{{base}}. El contexto de carpetas se sustituyó por las carpetas del grupo; el acceso aún requiere aprobación",
+      "ctxMerged": "{{base}}. Las carpetas del grupo se añadieron al contexto de carpetas; el acceso aún requiere aprobación",
+      "foldersAdded": "{{base}}. Las carpetas del elemento se añadieron al grupo"
+    }
   },
   "htmlArtifact": {
     "code": "Código",
@@ -281,7 +314,7 @@
     "searchThreads": "Buscar conversaciones",
     "toggleSidebar": "Mostrar u ocultar la barra lateral",
     "openCowork": "Abrir Cowork",
-    "openArtifacts": "Abrir artefactos",
+    "openArtifacts": "Abrir Biblioteca",
     "openSystemMonitor": "Abrir monitor del sistema",
     "openLogs": "Abrir registros de la aplicación",
     "section": {
@@ -1230,7 +1263,8 @@
     "sensitiveRefused": "{{name}} parece contener credenciales o una clave, así que no se abrió",
     "binaryRefused": "{{name}} no es un archivo de texto, diga lo que diga su extensión",
     "chooseAgainAction": "Elegir de nuevo",
-    "externalGone": "Este archivo se abrió desde fuera del proyecto y ese acceso no se conservó. Elígelo de nuevo para reabrirlo."
+    "externalGone": "Este archivo se abrió desde fuera del proyecto y ese acceso no se conservó. Elígelo de nuevo para reabrirlo.",
+    "oneFolderAtATime": "Solo una carpeta a la vez. «{{name}}» no se añadió."
   },
   "settingsSearch": {
     "label": "Buscar en los ajustes",
@@ -1424,7 +1458,14 @@
     "recommended": "Recomendado",
     "reset": "Restablecer al valor global",
     "resetAll": "Restablecer a los valores globales",
-    "overridden": "Definido para este chat"
+    "overridden": "Definido para este chat",
+    "levels": {
+      "low": "Bajo",
+      "medium": "Medio",
+      "high": "Alto",
+      "xhigh": "Muy alto",
+      "unlimited": "Ilimitado"
+    }
   },
   "modelOffline": {
     "badge": "Inaccesible",
@@ -2557,6 +2598,7 @@
       "slots": "{{count}} slots",
       "vision": "Visión",
       "audio": "Audio",
+      "fixedPrompt": "Se envía con cada solicitud: {{count}} tokens (prompt del sistema y esquemas de herramientas).",
       "tokenUsage": "Uso de tokens",
       "tokenUsageSr": "Uso de tokens {{value}}"
     }
@@ -2590,6 +2632,19 @@
     "previewLoading": "Cargando la vista previa…",
     "previewNone": "No hay vista previa disponible"
   },
+  "fileViewer": {
+    "openFull": "Abrir vista previa completa",
+    "loadMore": "Cargar más",
+    "showingFirst": "Se muestran los primeros {{loaded}} de {{total}}",
+    "lines_one": "{{count}} línea",
+    "lines_other": "{{count}} líneas",
+    "wrap": "Ajustar líneas",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "binary": "Parece un archivo binario, así que no hay vista previa de texto.",
+    "expandLine": "Mostrar la línea completa",
+    "collapseLine": "Acortar la línea"
+  },
   "dropAttachFailed": "No se pudieron adjuntar los archivos soltados",
   "sampler": {
     "label": "Parámetros de muestreo",
@@ -2615,7 +2670,9 @@
     "paste": "Pegar del portapapeles",
     "pasteFailed": "No se pudo leer el portapapeles",
     "clear": "Borrar",
-    "characters": "{{count}} caracteres",
+    "characters_one": "{{count}} carácter",
+    "characters_many": "{{count}} de caracteres",
+    "characters_other": "{{count}} caracteres",
     "translating": "Traduciendo…",
     "retry": "Reintentar",
     "shortcut": "Traducir (Ctrl/Cmd+Enter)",
@@ -2627,7 +2684,9 @@
     "errorNetwork": "No se pudo conectar con el proveedor. Revisa tu conexión o que el servidor esté en marcha.",
     "errorEngine": "El motor que ejecuta este modelo no está disponible. Reinicia Flint e inténtalo de nuevo.",
     "openProvider": "Abrir ajustes del proveedor",
-    "errorDetails": "Detalles"
+    "errorDetails": "Detalles",
+    "pasteHint": "Se bloqueó el acceso al portapapeles. Haz clic en el cuadro de texto y pulsa {{keys}}.",
+    "characters": "{{count}} caracteres"
   },
   "markdownImage": {
     "load": "Cargar imagen de {{host}}"
@@ -2648,7 +2707,8 @@
     "editTitle": "Editar prompt",
     "import": "Importar",
     "export": "Exportar",
-    "imported": "Se añadieron {{count}} prompts",
+    "imported_one": "Se añadió {{count}} prompt",
+    "imported_other": "Se añadieron {{count}} prompts",
     "search": "Buscar prompts",
     "empty": "Aún no hay prompts.",
     "edit": "Editar {{name}}",
@@ -2661,6 +2721,109 @@
     "body": "Texto del prompt",
     "bodyHint": "Escribe el prompt. Usa {{topic}} o {{tone:friendly}} para los huecos.",
     "variables": "Pide: {{names}}",
-    "insert": "Insertar"
+    "defaultValue": "Predeterminado: {{value}}",
+    "requiredField": "Obligatorio",
+    "fillNeeded": "Rellena {{names}} para insertar",
+    "insert": "Insertar",
+    "errors": {
+      "nameRequired": "Un prompt necesita un nombre",
+      "nameTooLong": "Ese nombre es demasiado largo",
+      "bodyRequired": "Un prompt necesita texto",
+      "bodyTooLong": "Ese prompt es demasiado largo",
+      "gone": "Ese prompt ya no existe",
+      "invalidJson": "Ese archivo no es un JSON válido",
+      "noPrompts": "No se encontraron prompts en ese archivo"
+    },
+    "imported": "Se añadieron {{count}} prompts"
+  },
+  "memoryProposal": {
+    "title": "¿Recordar esto?",
+    "wouldApply": "Se aplicaría a: {{where}}.",
+    "remember": "Recordar",
+    "discard": "Descartar",
+    "reviewBoth": "Revisar ambas",
+    "saving": "Guardando…",
+    "discarding": "Descartando…",
+    "scope": {
+      "session": "esta conversación",
+      "project": "este proyecto",
+      "user": "en todas partes"
+    }
+  },
+  "picker": {
+    "filter": "Filtrar",
+    "source": "Origen",
+    "sourceAll": "Todos",
+    "sourceLocal": "Local",
+    "sourceCloud": "Nube",
+    "capabilities": "Capacidades",
+    "cap": {
+      "vision": "Visión",
+      "tools": "Herramientas",
+      "reasoning": "Razonamiento",
+      "embeddings": "Embeddings"
+    },
+    "loadedNow": "Cargado ahora",
+    "sort": "Ordenar",
+    "sortDefault": "Orden predeterminado",
+    "sortName": "Nombre (A–Z)",
+    "sortRecent": "Usados recientemente",
+    "sortSize": "Tamaño",
+    "clearFilters": "Borrar filtros",
+    "noMatch": "Ningún modelo coincide",
+    "noMatchFilters": "Ningún modelo coincide: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Sesión",
+      "room": "Sala"
+    },
+    "heading": "Conversaciones",
+    "empty": "No hay otras conversaciones",
+    "noMatch": "Ninguna conversación coincide",
+    "messages": "Mensajes: {{n}}",
+    "included": "Incluido: {{title}} (mensajes: {{n}}, ~{{size}} caracteres)",
+    "group": "Conversaciones mencionadas",
+    "summarize": "Resumir",
+    "summarizeHint": "Incluir un resumen en lugar de los últimos mensajes",
+    "remove": "Quitar la mención de {{title}}",
+    "mentioned": "Mencionado: {{title}}",
+    "open": "Abrir {{title}}",
+    "status": {
+      "missing": "No encontrado: {{title}}",
+      "self": "{{title}} es esta conversación, así que se omite",
+      "over-cap": "{{title}} se omite: como máximo {{max}} conversaciones por mensaje"
+    },
+    "excerpt": "Extracto",
+    "summary": "Resumen",
+    "modeGroup": "Qué se incluye de {{title}}",
+    "excerptHint": "Los mensajes más recientes, unos {{tokens}} tokens",
+    "summaryHint": "Un resumen escrito por el modelo, como mucho unos {{tokens}} tokens",
+    "needsModel": "Carga un modelo para incluir un resumen en su lugar",
+    "totals_one": "{{count}} mensaje · ~{{tokens}} tokens incluidos",
+    "totals_many": "{{count}} de mensajes · ~{{tokens}} tokens incluidos",
+    "totals_other": "{{count}} mensajes · ~{{tokens}} tokens incluidos",
+    "readOnly": "Se envía como contexto citado de solo lectura. El modelo no puede cambiar esa conversación.",
+    "tooLarge": "Supera una cuarta parte de la ventana de contexto del modelo.",
+    "useSummary": "Usar un resumen",
+    "resolving": "Buscando {{title}}",
+    "chipStatus": {
+      "missing": "No encontrada",
+      "self": "Esta conversación",
+      "over-cap": "Por encima del límite"
+    },
+    "preview": {
+      "empty": "Aún no hay mensajes",
+      "you": "Tú",
+      "assistant": "Asistente"
+    },
+    "messagesCount_one": "{{count}} mensaje",
+    "messagesCount_many": "{{count}} de mensajes",
+    "messagesCount_other": "{{count}} mensajes"
+  },
+  "campaignList": {
+    "timeout": "La aplicación no respondió a tiempo.",
+    "unreadableRecord": "el backend envió un registro que esta página no puede leer"
   }
 }

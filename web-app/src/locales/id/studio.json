@@ -1,0 +1,219 @@
+{
+  "page": {
+    "title": "Studio",
+    "descriptionLocal": "Buat gambar dan video secara lokal di komputer ini. Tidak ada yang keluar dari perangkat Anda.",
+    "descriptionHosted": "Buat gambar dengan model yang di-host. Prompt Anda dikirim ke penyedianya.",
+    "whatToMake": "Yang ingin dibuat",
+    "images": "Gambar",
+    "video": "Video",
+    "dismiss": "Tutup",
+    "loading": "Memuat…"
+  },
+  "elapsed": {
+    "slow": "lebih lama dari biasanya"
+  },
+  "builds": {
+    "anyGpu": "Kartu grafis apa pun",
+    "noGpu": "Tanpa kartu grafis",
+    "nvidia": "NVIDIA (lebih cepat)",
+    "note": {
+      "linux-vulkan-x64": "Sekitar 38 MB. NVIDIA, AMD, atau Intel dengan driver Vulkan.",
+      "linux-cpu-x64": "Sekitar 25 MB. Sangat lambat.",
+      "win-vulkan-x64": "Sekitar 30 MB. Berfungsi di NVIDIA, AMD, dan Intel.",
+      "win-cuda12-x64": "Sekitar 900 MB. Memerlukan driver NVIDIA terbaru.",
+      "win-cpu-x64": "Sekitar 17 MB. Sangat lambat."
+    }
+  },
+  "picker": {
+    "engine": "Mesin",
+    "searchPlaceholder": "Cari model...",
+    "searchAria": "Cari model",
+    "clear": "Hapus",
+    "noMatch": "Tidak ada model yang cocok.",
+    "local": "Di komputer ini",
+    "leaves": "prompt keluar dari komputer ini",
+    "findMore": "Temukan lebih banyak model gambar di Jelajahi",
+    "manageHosted": "Kelola penyedia hosting",
+    "addKey": "Tambahkan kunci API untuk memakai model yang di-host"
+  },
+  "setup": {
+    "unavailableTitle": "Belum tersedia di sistem ini",
+    "unavailableBody": "Pembuatan gambar dan video lokal saat ini memerlukan Windows x64 atau Linux x64.",
+    "title": "Siapkan mesin gambar",
+    "body": "Flint membuat gambar dan video di komputer ini dengan stable-diffusion.cpp. Mesin diunduh sekali, diperiksa dengan checksum yang dipublikasikan, dan hanya berjalan saat Anda membuat.",
+    "downloading": "Mengunduh… {{percent}}%",
+    "unpacking": "Mengekstrak…",
+    "checking": "Memeriksa apakah bisa dijalankan…",
+    "installing": "Memasang…",
+    "install": "Unduh dan pasang"
+  },
+  "size": {
+    "width": "Lebar dalam piksel",
+    "height": "Tinggi dalam piksel",
+    "swap": "Tukar lebar dan tinggi",
+    "hintVideo": "Kelipatan 16, hingga {{max}} px. Klip besar memerlukan banyak memori.",
+    "hintImage": "Kelipatan 16, hingga {{max}} px. Gambar besar memerlukan lebih banyak memori dan waktu."
+  },
+  "activity": {
+    "done": "Selesai",
+    "failed": "Gagal",
+    "stopped": "Dihentikan",
+    "title": "Aktivitas Terbaru",
+    "clearTitle": "Mengosongkan daftar ini. Gambar Anda tetap ada di Hasil Buatan Anda.",
+    "clearAll": "Hapus semua",
+    "empty": "Belum ada. Apa pun yang Anda buat akan muncul di sini.",
+    "making": "Membuat",
+    "open": "Buka"
+  },
+  "video": {
+    "steps_other": "{{count}} langkah",
+    "frames_other": "{{count}} frame",
+    "seed": "seed {{seed}}",
+    "avoid": "Hindari: {{prompt}}",
+    "copyPrompt": "Salin prompt"
+  },
+  "actions": {
+    "promptCopied": "Prompt disalin",
+    "archive": "Pindahkan ke Arsip",
+    "delete": "Hapus"
+  },
+  "time": {
+    "fewSeconds": "beberapa detik lalu"
+  },
+  "model": {
+    "title": "Model",
+    "manage": "Kelola",
+    "textToVideo": "Teks ke Video",
+    "textToImage": "Teks ke Gambar",
+    "hostedBy": "Di-host oleh {{provider}}",
+    "loaded": "Dimuat",
+    "ready": "Siap",
+    "notDownloaded": "Belum diunduh",
+    "hostedNote": "Prompt Anda dikirim ke {{provider}}, memakai kunci API Anda dari Penyedia, dan ditagih oleh mereka.",
+    "localNote_other": "Berjalan di komputer ini. Mulai dari {{width}} × {{height}}, {{count}} langkah.",
+    "unload": "Bongkar",
+    "loading": "Memuat…",
+    "load": "Muat",
+    "installFirst": "Pasang mesin gambar di atas untuk memakai model ini.",
+    "removeTitle": "Menghapusnya dari daftar ini. File yang sudah diunduh tetap ada di disk.",
+    "remove": "Hapus dari Studio"
+  },
+  "download": {
+    "starting": "Memulai…",
+    "startingSize": "Memulai… {{size}} untuk diunduh",
+    "progress": "{{bytes}} dari {{total}}",
+    "downloading": "Mengunduh…",
+    "button": "Unduh ({{size}})"
+  },
+  "duration": {
+    "s": "{{count}} d",
+    "min": "{{count}} mnt",
+    "minS": "{{minutes}} mnt {{seconds}} d"
+  },
+  "phase": {
+    "queued": "Menunggu",
+    "encoding": "Membaca prompt",
+    "sampling": "Menggambar",
+    "decoding": "Menyelesaikan",
+    "saving": "Menyimpan",
+    "working": "Bekerja"
+  },
+  "settings": {
+    "title": "Pengaturan Pembuatan",
+    "reset": "Reset",
+    "shape": "Bentuk",
+    "aspectRatio": "Rasio Aspek",
+    "customTitle": "Ketik lebar dan tinggi sendiri",
+    "custom": "Kustom",
+    "imageCount": "Jumlah Gambar",
+    "length": "Durasi",
+    "seed": "Seed",
+    "random": "Acak",
+    "randomSeed": "Pilih seed acak",
+    "guess": "Sekitar {{duration}}, berdasarkan klip terakhir Anda.",
+    "advanced": "Lanjutan",
+    "loras": "Adapter LoRA",
+    "importLora": "Impor .safetensors",
+    "loraHint": "Pakai adapter yang dibuat untuk keluarga model lokal yang dipilih.",
+    "useLora": "Pakai {{name}}",
+    "loraStrength": "Kekuatan {{name}}",
+    "negative": "Prompt Negatif",
+    "negativeAria": "Prompt negatif",
+    "negativePlaceholder": "Buram, kualitas rendah, jari berlebih, teks, watermark…",
+    "avoidAria": "Yang harus dihindari",
+    "memoryWarning": "Komputer ini memiliki sekitar {{gb}} GB memori. Pembuatan video membutuhkan banyak memori, dan di mesin seperti ini satu klip bisa memakan waktu berjam-jam karena kehabisan memori dan beralih ke disk.",
+    "accept": "Saya mengerti dan ingin melanjutkan.",
+    "loraImported": "{{name}} diimpor"
+  },
+  "prompt": {
+    "title": "Prompt",
+    "guide": "Panduan Prompt",
+    "guideDesc": "Kebiasaan singkat yang menghasilkan gambar lebih baik.",
+    "g1": {
+      "title": "Sebutkan isinya",
+      "body": "Mulai dari subjek, lalu di mana ia berada dan apa yang dilakukannya."
+    },
+    "g2": {
+      "title": "Sebutkan gayanya",
+      "body": "Lukisan cat minyak, foto, ilustrasi datar, render 3D: gaya mengubah segalanya."
+    },
+    "g3": {
+      "title": "Tambahkan cahaya dan suasana",
+      "body": "Cahaya pagi yang lembut, neon di malam hari, mendung: cahaya menentukan nuansa."
+    },
+    "g4": {
+      "title": "Cukup satu ide",
+      "body": "Prompt singkat dan jelas lebih baik daripada daftar panjang. Tambahkan detail sedikit demi sedikit."
+    },
+    "g5": {
+      "title": "Pakai Hindari untuk hal yang tidak diinginkan",
+      "body": "Di Lanjutan, prompt negatif mendaftar hal-hal yang harus dihilangkan."
+    },
+    "placeholderVideo": "Seekor kucing berjalan di gang yang diguyur hujan, sinematik",
+    "placeholderImage": "Mercusuar di tebing saat matahari terbit, lukisan cat minyak",
+    "enhanceTitle": "Menambahkan beberapa kata tentang detail dan cahaya",
+    "enhance": "Tingkatkan",
+    "example": {
+      "image": {
+        "0": "Mercusuar di tebing saat matahari terbit, lukisan cat minyak",
+        "1": "Rubah di hutan bersalju, cahaya lembut",
+        "2": "Kota isometrik di malam hari, neon"
+      },
+      "video": {
+        "0": "Seekor kucing berjalan di gang yang diguyur hujan, sinematik",
+        "1": "Ombak bergulung ke pantai berpasir hitam",
+        "2": "Uap mengepul dari secangkir kopi"
+      }
+    },
+    "clear": "Kosongkan prompt",
+    "copy": "Salin prompt",
+    "emptyImage": "Gambar pertama Anda dimulai di sini",
+    "emptyVideo": "Video pertama Anda dimulai di sini",
+    "emptyDesc": "Jelaskan di atas, atau coba salah satu contoh.",
+    "save": "Simpan",
+    "openLarge": "Buka ukuran besar",
+    "remix": "Remix: prompt sama, seed baru",
+    "remixShort": "Remix",
+    "stop": "Berhenti",
+    "generateVideo": "Buat Video",
+    "generateImage": "Buat Gambar",
+    "loadFirst": "Muat model terlebih dahulu",
+    "writeFirst": "Tulis prompt terlebih dahulu.",
+    "notSetUp": "{{provider}} belum diatur di Penyedia.",
+    "imageReady": "Gambar siap",
+    "videoReady": "Video siap",
+    "waitingFor": "Menunggu {{provider}}…",
+    "eta": "sekitar {{eta}} lagi"
+  },
+  "gens": {
+    "title": "Hasil Buatan Anda",
+    "archive": "Arsipkan",
+    "done": "Selesai",
+    "select": "Pilih",
+    "grid": "Kisi",
+    "list": "Daftar",
+    "filter": "Filter",
+    "all": "Semua",
+    "empty": "Belum ada apa-apa di sini. Apa pun yang Anda buat akan muncul di sini."
+  }
+}

@@ -109,6 +109,7 @@
     "connection": "Połączenie",
     "engineSettings": "Ustawienia silnika",
     "memorySettings": "Pamięć i cache",
+    "settingNotSaved": "Nie zapisano ustawienia „{{setting}}”",
     "danger": "Strefa zagrożenia"
   },
   "mcp": {
@@ -128,7 +129,10 @@
     "kpiApprovedAll": "Wszystkie wywołania narzędzi są dozwolone",
     "tabServers": "Serwery",
     "tabRouting": "Routing i limity",
-    "toolsCount": "Narzędzia: {{count}}",
+    "toolsCount_one": "{{count}} narzędzie",
+    "toolsCount_few": "{{count}} narzędzia",
+    "toolsCount_many": "{{count}} narzędzi",
+    "toolsCount_other": "{{count}} narzędzia",
     "filterLabel": "Pokaż serwery",
     "filterAll": "Wszystkie",
     "filterOn": "Włączone",
@@ -138,10 +142,11 @@
     "viewList": "Lista",
     "callsPerMin": "wywołań / min",
     "window": "ostatnie {{count}} min",
-    "needsExtension": "Wymaga rozszerzenia przeglądarki Jan",
+    "needsExtension": "Wymaga rozszerzenia przeglądarki",
     "moreActions": "Więcej akcji dla {{serverName}}",
     "addTile": "Dodaj serwer MCP",
-    "addTileHint": "STDIO, HTTP lub SSE"
+    "addTileHint": "STDIO, HTTP lub SSE",
+    "toolsCount": "Narzędzia: {{count}}"
   },
   "extensions": {
     "description": "Wtyczki, umiejętności i elementy silnika, z których zbudowany jest Flint.",

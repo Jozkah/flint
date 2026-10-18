@@ -56,7 +56,40 @@
     "chatFolderCount": "Pastas: {{count}}",
     "newSubfolder": "Nova subpasta",
     "moveInto": "Mover para a pasta",
-    "topLevel": "Nível superior"
+    "topLevel": "Nível superior",
+    "errors": {
+      "nameEmpty": "O nome do grupo não pode ficar vazio",
+      "notFound": "Grupo não encontrado",
+      "tooDeep": "Os grupos não podem ser aninhados tão profundamente",
+      "intoItself": "Um grupo não pode ser movido para dentro de si mesmo"
+    },
+    "failed": {
+      "create": "Não foi possível criar o grupo",
+      "rename": "Não foi possível renomear o grupo",
+      "moveFolder": "Não foi possível mover a pasta",
+      "saveState": "Não foi possível salvar o estado do grupo",
+      "reorder": "Não foi possível reordenar os grupos",
+      "moveItem": "Não foi possível mover o item",
+      "delete": "Não foi possível excluir o grupo",
+      "saveFolders": "Não foi possível salvar as pastas do grupo",
+      "updateContext": "Não foi possível atualizar o contexto de pastas",
+      "update": "Não foi possível atualizar os grupos",
+      "import": "Não foi possível importar os grupos",
+      "unreadable": "{{failure}}: não foi possível ler os grupos salvos",
+      "restored": "{{failure}}. Sua ordem anterior foi restaurada."
+    },
+    "announce": {
+      "created": "Grupo {{name}} criado",
+      "collapsed": "{{name}} recolhido",
+      "expanded": "{{name}} expandido",
+      "reordered": "{{name}} movido para a posição {{position}} de {{total}}",
+      "movedToPosition": "Movido para {{name}}, posição {{position}}",
+      "movedToRecents": "Movido para Recentes",
+      "deleted": "Grupo {{name}} excluído. Seus itens foram movidos para Recentes",
+      "ctxReplaced": "{{base}}. O contexto de pastas foi substituído pelas pastas do grupo; o acesso ainda precisa de aprovação",
+      "ctxMerged": "{{base}}. As pastas do grupo foram adicionadas ao contexto de pastas; o acesso ainda precisa de aprovação",
+      "foldersAdded": "{{base}}. As pastas do item foram adicionadas ao grupo"
+    }
   },
   "htmlArtifact": {
     "code": "Código",
@@ -281,7 +314,7 @@
     "searchThreads": "Pesquisar conversas",
     "toggleSidebar": "Alternar barra lateral",
     "openCowork": "Abrir Cowork",
-    "openArtifacts": "Abrir artefatos",
+    "openArtifacts": "Abrir Biblioteca",
     "openSystemMonitor": "Abrir monitor do sistema",
     "openLogs": "Abrir logs do app",
     "section": {
@@ -1229,7 +1262,8 @@
     "sensitiveRefused": "{{name}} parece conter credenciais ou uma chave, então não foi aberto",
     "binaryRefused": "{{name}} não é um arquivo de texto, seja qual for a extensão",
     "chooseAgainAction": "Escolher novamente",
-    "externalGone": "Este arquivo foi aberto de fora do projeto, e esse acesso não persistiu. Escolha-o novamente para reabri-lo."
+    "externalGone": "Este arquivo foi aberto de fora do projeto, e esse acesso não persistiu. Escolha-o novamente para reabri-lo.",
+    "oneFolderAtATime": "Apenas uma pasta por vez. \"{{name}}\" não foi adicionada."
   },
   "settingsSearch": {
     "label": "Pesquisar configurações",
@@ -1423,7 +1457,14 @@
     "recommended": "Recomendado",
     "reset": "Redefinir para o global",
     "resetAll": "Redefinir para os padrões globais",
-    "overridden": "Definido para este chat"
+    "overridden": "Definido para este chat",
+    "levels": {
+      "low": "Baixo",
+      "medium": "Médio",
+      "high": "Alto",
+      "xhigh": "Muito alto",
+      "unlimited": "Ilimitado"
+    }
   },
   "modelOffline": {
     "badge": "Inacessível",
@@ -2560,6 +2601,7 @@
       "slots": "{{count}} slots",
       "vision": "Visão",
       "audio": "Áudio",
+      "fixedPrompt": "Enviado com cada solicitação: {{count}} tokens (prompt do sistema e esquemas de ferramentas).",
       "tokenUsage": "Uso de tokens",
       "tokenUsageSr": "Uso de tokens {{value}}"
     }
@@ -2586,6 +2628,19 @@
     "previewLoading": "Carregando pré-visualização…",
     "previewNone": "Nenhuma pré-visualização disponível"
   },
+  "fileViewer": {
+    "openFull": "Abrir prévia completa",
+    "loadMore": "Carregar mais",
+    "showingFirst": "Mostrando os primeiros {{loaded}} de {{total}}",
+    "lines_one": "{{count}} linha",
+    "lines_other": "{{count}} linhas",
+    "wrap": "Quebrar linhas",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "binary": "Parece um arquivo binário, então não há prévia de texto.",
+    "expandLine": "Mostrar linha inteira",
+    "collapseLine": "Encurtar linha"
+  },
   "dropAttachFailed": "Não foi possível anexar os arquivos soltos",
   "sampler": {
     "label": "Parâmetros de amostragem",
@@ -2611,7 +2666,9 @@
     "paste": "Colar da área de transferência",
     "pasteFailed": "Não foi possível ler a área de transferência",
     "clear": "Limpar",
-    "characters": "{{count}} caracteres",
+    "characters_one": "{{count}} caractere",
+    "characters_many": "{{count}} de caracteres",
+    "characters_other": "{{count}} caracteres",
     "translating": "Traduzindo…",
     "retry": "Tentar novamente",
     "shortcut": "Traduzir (Ctrl/Cmd+Enter)",
@@ -2623,7 +2680,9 @@
     "errorNetwork": "Não foi possível alcançar o provedor. Verifique sua conexão ou se o servidor está em execução.",
     "errorEngine": "O motor que executa este modelo não está disponível. Reinicie o Flint e tente novamente.",
     "openProvider": "Abrir configurações do provedor",
-    "errorDetails": "Detalhes"
+    "errorDetails": "Detalhes",
+    "pasteHint": "O acesso à área de transferência foi bloqueado. Clique na caixa de texto e pressione {{keys}}.",
+    "characters": "{{count}} caracteres"
   },
   "markdownImage": {
     "load": "Carregar imagem de {{host}}"
@@ -2644,7 +2703,8 @@
     "editTitle": "Editar prompt",
     "import": "Importar",
     "export": "Exportar",
-    "imported": "{{count}} prompts adicionados",
+    "imported_one": "{{count}} prompt adicionado",
+    "imported_other": "{{count}} prompts adicionados",
     "search": "Buscar prompts",
     "empty": "Nenhum prompt ainda.",
     "edit": "Editar {{name}}",
@@ -2657,6 +2717,109 @@
     "body": "Texto do prompt",
     "bodyHint": "Escreva o prompt. Use {{topic}} ou {{tone:friendly}} para os espaços em branco.",
     "variables": "Pede: {{names}}",
-    "insert": "Inserir"
+    "defaultValue": "Padrão: {{value}}",
+    "requiredField": "Obrigatório",
+    "fillNeeded": "Preencha {{names}} para inserir",
+    "insert": "Inserir",
+    "errors": {
+      "nameRequired": "Um prompt precisa de um nome",
+      "nameTooLong": "Esse nome é longo demais",
+      "bodyRequired": "Um prompt precisa de algum texto",
+      "bodyTooLong": "Esse prompt é longo demais",
+      "gone": "Esse prompt não existe mais",
+      "invalidJson": "Esse arquivo não é um JSON válido",
+      "noPrompts": "Nenhum prompt encontrado nesse arquivo"
+    },
+    "imported": "{{count}} prompts adicionados"
+  },
+  "memoryProposal": {
+    "title": "Lembrar disso?",
+    "wouldApply": "Valeria para: {{where}}.",
+    "remember": "Lembrar",
+    "discard": "Descartar",
+    "reviewBoth": "Revisar ambas",
+    "saving": "Salvando…",
+    "discarding": "Descartando…",
+    "scope": {
+      "session": "esta conversa",
+      "project": "este projeto",
+      "user": "em qualquer lugar"
+    }
+  },
+  "picker": {
+    "filter": "Filtrar",
+    "source": "Origem",
+    "sourceAll": "Todos",
+    "sourceLocal": "Local",
+    "sourceCloud": "Nuvem",
+    "capabilities": "Capacidades",
+    "cap": {
+      "vision": "Visão",
+      "tools": "Ferramentas",
+      "reasoning": "Raciocínio",
+      "embeddings": "Embeddings"
+    },
+    "loadedNow": "Carregado agora",
+    "sort": "Ordenar",
+    "sortDefault": "Ordem padrão",
+    "sortName": "Nome (A–Z)",
+    "sortRecent": "Usados recentemente",
+    "sortSize": "Tamanho",
+    "clearFilters": "Limpar filtros",
+    "noMatch": "Nenhum modelo corresponde",
+    "noMatchFilters": "Nenhum modelo corresponde: {{filters}}"
+  },
+  "mentions": {
+    "kind": {
+      "chat": "Chat",
+      "session": "Sessão",
+      "room": "Sala"
+    },
+    "heading": "Conversas",
+    "empty": "Nenhuma outra conversa",
+    "noMatch": "Nenhuma conversa corresponde",
+    "messages": "Mensagens: {{n}}",
+    "included": "Incluído: {{title}} (mensagens: {{n}}, ~{{size}} caracteres)",
+    "group": "Conversas mencionadas",
+    "summarize": "Resumir",
+    "summarizeHint": "Incluir um resumo em vez das últimas mensagens",
+    "remove": "Remover a menção a {{title}}",
+    "mentioned": "Mencionado: {{title}}",
+    "open": "Abrir {{title}}",
+    "status": {
+      "missing": "Não encontrado: {{title}}",
+      "self": "{{title}} é esta conversa, por isso fica de fora",
+      "over-cap": "{{title}} fica de fora: no máximo {{max}} conversas por mensagem"
+    },
+    "excerpt": "Trecho",
+    "summary": "Resumo",
+    "modeGroup": "O que incluir de {{title}}",
+    "excerptHint": "As mensagens mais recentes, cerca de {{tokens}} tokens",
+    "summaryHint": "Um resumo escrito pelo modelo, no máximo cerca de {{tokens}} tokens",
+    "needsModel": "Carregue um modelo para incluir um resumo em vez disso",
+    "totals_one": "{{count}} mensagem · ~{{tokens}} tokens incluídos",
+    "totals_many": "{{count}} de mensagens · ~{{tokens}} tokens incluídos",
+    "totals_other": "{{count}} mensagens · ~{{tokens}} tokens incluídos",
+    "readOnly": "Enviado como contexto citado, somente leitura. O modelo não pode alterar essa conversa.",
+    "tooLarge": "Isso passa de um quarto da janela de contexto do modelo.",
+    "useSummary": "Usar um resumo",
+    "resolving": "Procurando {{title}}",
+    "chipStatus": {
+      "missing": "Não encontrada",
+      "self": "Esta conversa",
+      "over-cap": "Acima do limite"
+    },
+    "preview": {
+      "empty": "Ainda sem mensagens",
+      "you": "Você",
+      "assistant": "Assistente"
+    },
+    "messagesCount_one": "{{count}} mensagem",
+    "messagesCount_many": "{{count}} de mensagens",
+    "messagesCount_other": "{{count}} mensagens"
+  },
+  "campaignList": {
+    "timeout": "O app não respondeu a tempo.",
+    "unreadableRecord": "o backend enviou um registro que esta página não consegue ler"
   }
 }

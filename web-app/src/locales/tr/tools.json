@@ -79,6 +79,8 @@
     "reading": "Okunuyor...",
     "workspaceRoot": "çalışma alanı kökü",
     "matches": "{{count}} eşleşme",
-    "testsPassed": "{{count}} geçti"
+    "testsPassed": "{{count}} geçti",
+    "runningStatus": "{{tool}} çalışıyor…",
+    "stillRunning": "{{tool}} hâlâ çalışıyor…"
   }
 }

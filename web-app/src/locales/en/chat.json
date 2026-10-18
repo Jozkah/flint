@@ -216,5 +216,6 @@
     "description": "{{count}} chats will be deleted. This action cannot be undone.",
     "descriptionArchive": "{{count}} chats will move to the Archive. You can restore them from there.",
     "done": "Deleted {{count}} chats"
-  }
+  },
+  "stopToolCall": "Stop tool call (Esc)"
 }
