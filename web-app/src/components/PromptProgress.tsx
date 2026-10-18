@@ -5,6 +5,7 @@ import { Hand, Loader } from 'lucide-react'
 import { useParams } from '@tanstack/react-router'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
+import { useTextOverflow } from '@/hooks/useTextOverflow'
 import { useEffect, useRef, useState } from 'react'
 import { formatElapsed, type RunStatus } from '@/lib/runStatus'
 import { ModelLoader } from '@/containers/loaders/ModelLoader'
@@ -148,6 +149,8 @@ export function PromptProgress({
     stateKey || !threadId ? undefined : state.modelLoadFailures?.[threadId]
   )
   const failedMs = useFailedFor(failedAt, loadingModel)
+  const labelRef = useRef<HTMLSpanElement>(null)
+  useTextOverflow(labelRef)
   if (failedMs !== null && !loadingModel) {
     return (
       <ModelLoader status="failed" elapsedMs={failedMs} className="min-w-56" />
@@ -197,17 +200,22 @@ export function PromptProgress({
   return (
     <div
       className={cn(
-        'inline-flex flex-col gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2',
+        'inline-flex max-w-full min-w-0 flex-col gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2',
         sized && 'min-w-56'
       )}
     >
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex min-w-0 items-center gap-2 text-sm">
         {waiting && !loadingModel && !showReading ? (
           <Hand aria-hidden className="w-3.5 h-3.5 text-warning shrink-0" />
         ) : (
           <Loader className="animate-spin w-3.5 h-3.5 text-primary shrink-0" />
         )}
-        <span className="font-medium text-foreground" data-testid="run-status-label">
+        {/* One line at any width: the label fades rather than wrapping. */}
+        <span
+          ref={labelRef}
+          className="text-fade font-medium text-foreground"
+          data-testid="run-status-label"
+        >
           {label}
         </span>
         {status && !waiting && !loadingModel && !showReading && (
