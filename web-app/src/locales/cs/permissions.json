@@ -232,7 +232,11 @@
     "kept_one": "Hooky ponechány zapnuté pro složku, kterou už používáte: {{count}}. Zkontrolujte ji v Nastavení > Oprávnění > Důvěryhodné složky.",
     "kept_other": "Hooky ponechány zapnuté pro složky, které už používáte: {{count}}. Zkontrolujte je v Nastavení > Oprávnění > Důvěryhodné složky.",
     "kept_few": "Hooky ponechány zapnuté pro složky, které už používáte: {{count}}. Zkontrolujte je v Nastavení > Oprávnění > Důvěryhodné složky.",
-    "kept_many": "Hooky ponechány zapnuté pro složky, které už používáte: {{count}}. Zkontrolujte je v Nastavení > Oprávnění > Důvěryhodné složky."
+    "kept_many": "Hooky ponechány zapnuté pro složky, které už používáte: {{count}}. Zkontrolujte je v Nastavení > Oprávnění > Důvěryhodné složky.",
+    "summaryHooks": "Důvěřovat této složce? Její hooky spouštějí příkazy",
+    "summarySubagents": "Důvěřovat této složce? Její definice agentů se mohou spustit",
+    "summaryBoth": "Důvěřovat této složce? Její hooky a agenti se mohou spustit",
+    "details": "Co znamená důvěra"
   },
   "trustedFolders": {
     "title": "Důvěryhodné složky",

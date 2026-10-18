@@ -75,9 +75,40 @@ describe('FolderTrustBanner', () => {
     vi.mocked(trust.folderTrustStatus).mockResolvedValue(untrusted())
     render(<FolderTrustBanner folder="C:/code/later" />)
     await screen.findByTestId('folder-trust-banner')
-    fireEvent.click(screen.getAllByRole('button')[0])
+    fireEvent.click(screen.getByTestId('folder-trust-later'))
     await waitFor(() => expect(screen.queryByTestId('folder-trust-banner')).toBeNull())
     expect(trust.trustFolder).not.toHaveBeenCalled()
+  })
+})
+
+describe('FolderTrustBanner as one row', () => {
+  beforeEach(() => {
+    vi.mocked(trust.folderTrustStatus).mockReset()
+  })
+
+  it('shows a one-line summary, not the paragraphs', async () => {
+    vi.mocked(trust.folderTrustStatus).mockResolvedValue(untrusted())
+    render(<FolderTrustBanner folder="C:/code/app" />)
+    const summary = await screen.findByTestId('folder-trust-summary')
+    expect(summary).toHaveClass('text-fade')
+    expect(summary.textContent).toBe('permissions:folderTrust.summaryHooks')
+    const banner = screen.getByTestId('folder-trust-banner')
+    expect(banner.querySelectorAll('p')).toHaveLength(0)
+    expect(banner.querySelector('[data-bar-row]')).toHaveClass('flex-nowrap')
+    // Still a warning, and nothing is trusted by showing it.
+    expect(banner.querySelector('[data-bar-row]')!.className).toMatch(/border-warning/)
+    expect(trust.trustFolder).not.toHaveBeenCalled()
+  })
+
+  it('keeps the full explanation behind the info button', async () => {
+    vi.mocked(trust.folderTrustStatus).mockResolvedValue(untrusted())
+    render(<FolderTrustBanner folder="C:/code/app" />)
+    const info = await screen.findByTestId('folder-trust-info')
+    expect(info.getAttribute('aria-label')).toBeTruthy()
+    fireEvent.click(info)
+    const details = await screen.findByTestId('folder-trust-details')
+    expect(details.textContent).toContain('permissions:folderTrust.bodyHooks')
+    expect(details.textContent).toContain('permissions:folderTrust.keepsOff')
   })
 })
 

@@ -230,7 +230,11 @@
     "later": "Pas maintenant",
     "failed": "Impossible de faire confiance au dossier",
     "kept_one": "Hooks conservés pour {{count}} dossier que vous utilisez déjà. Vérifiez-le dans Paramètres > Autorisations > Dossiers de confiance.",
-    "kept_other": "Hooks conservés pour {{count}} dossiers que vous utilisez déjà. Vérifiez-les dans Paramètres > Autorisations > Dossiers de confiance."
+    "kept_other": "Hooks conservés pour {{count}} dossiers que vous utilisez déjà. Vérifiez-les dans Paramètres > Autorisations > Dossiers de confiance.",
+    "summaryHooks": "Faire confiance à ce dossier ? Ses hooks exécutent des commandes",
+    "summarySubagents": "Faire confiance à ce dossier ? Ses définitions d'agents peuvent s'exécuter",
+    "summaryBoth": "Faire confiance à ce dossier ? Ses hooks et agents peuvent s'exécuter",
+    "details": "Ce que signifie faire confiance"
   },
   "trustedFolders": {
     "title": "Dossiers de confiance",

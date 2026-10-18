@@ -1,5 +1,7 @@
-import { ShieldQuestionIcon } from 'lucide-react'
+import { InfoIcon, ShieldCheckIcon, ShieldQuestionIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BarRow } from '@/components/ui/bar-row'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFolderTrust } from '@/hooks/useFolderTrust'
 import { carriesKind } from '@/lib/folderTrust'
@@ -11,7 +13,8 @@ import { carriesKind } from '@/lib/folderTrust'
  *
  * Pinned above the composer (the Cowork bar stack, the chat composer's
  * wrapper), like the other bars, so it stays in view while the transcript
- * scrolls.
+ * scrolls. One row: a one-line summary, the full explanation behind the info
+ * button, and "Trust folder" kept in view while "Not now" shrinks to an x.
  */
 export function FolderTrustBanner({ folder }: { folder: string | null }) {
   const { t } = useTranslation()
@@ -24,36 +27,81 @@ export function FolderTrustBanner({ folder }: { folder: string | null }) {
       : kind === 'hooks'
         ? 'permissions:folderTrust.bodyHooks'
         : 'permissions:folderTrust.bodySubagents'
+  const summary =
+    kind === 'both'
+      ? 'permissions:folderTrust.summaryBoth'
+      : kind === 'hooks'
+        ? 'permissions:folderTrust.summaryHooks'
+        : 'permissions:folderTrust.summarySubagents'
   return (
     <section
       role="region"
       aria-label={t('permissions:folderTrust.title')}
       data-testid="folder-trust-banner"
-      className="mb-1.5 flex w-full min-w-0 flex-col gap-2 rounded-xl border border-warning/40 bg-card p-3 text-[length:calc(var(--ui-font-base)*0.8125)] sm:p-3.5"
+      className="mb-1.5 w-full min-w-0"
     >
-      <div className="flex min-w-0 items-center gap-2 font-medium text-foreground">
-        <ShieldQuestionIcon aria-hidden className="size-4 shrink-0 text-warning" />
-        {t('permissions:folderTrust.title')}
-      </div>
-      <p className="min-w-0 wrap-break-word text-foreground">
-        {t(body, { folder })}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        {t('permissions:folderTrust.keepsOff')}
-      </p>
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button type="button" size="sm" variant="ghost" onClick={later}>
-          {t('permissions:folderTrust.later')}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          data-testid="folder-trust-grant"
-          onClick={() => void trust()}
-        >
-          {t('permissions:folderTrust.trust')}
-        </Button>
-      </div>
+      <BarRow
+        className="border border-warning/50 bg-warning-tint"
+        icon={
+          <ShieldQuestionIcon aria-hidden className="size-4 shrink-0 text-warning" />
+        }
+        lead={t(summary)}
+        leadTitle={t(body, { folder })}
+        leadClassName="font-medium text-foreground"
+        leadTestId="folder-trust-summary"
+        meta={
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t('permissions:folderTrust.details')}
+                data-testid="folder-trust-info"
+                className="shrink-0 pointer-coarse:size-11"
+              >
+                <InfoIcon className="size-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="w-80 space-y-2 text-sm"
+              data-testid="folder-trust-details"
+            >
+              <p className="font-medium text-foreground">
+                {t('permissions:folderTrust.title')}
+              </p>
+              <p className="wrap-break-word text-foreground">{t(body, { folder })}</p>
+              <p className="text-xs text-muted-foreground">
+                {t('permissions:folderTrust.keepsOff')}
+              </p>
+            </PopoverContent>
+          </Popover>
+        }
+        actions={[
+          {
+            id: 'later',
+            label: t('permissions:folderTrust.later'),
+            icon: <X className="size-4" />,
+            iconOnlyCollapsed: true,
+            onSelect: later,
+            testId: 'folder-trust-later',
+            floor: 'icon',
+          },
+          {
+            id: 'trust',
+            label: t('permissions:folderTrust.trust'),
+            onSelect: () => void trust(),
+            testId: 'folder-trust-grant',
+            variant: 'default',
+            icon: <ShieldCheckIcon className="size-4" />,
+            iconOnlyCollapsed: true,
+            rank: 1,
+            // Its label goes only once nothing else is left to give up.
+            floor: 'icon',
+          },
+        ]}
+      />
     </section>
   )
 }
