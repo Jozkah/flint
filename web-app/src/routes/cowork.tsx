@@ -5699,7 +5699,7 @@ export function CoworkPage() {
   const runControls = (variant: 'pill' | 'quiet') => {
     const modeSelector = (
       <CoworkModeSelector
-        variant="pill"
+        variant={variant}
         mode={mode}
         options={modeOptions}
         // A choice made before the first message still needs a session to

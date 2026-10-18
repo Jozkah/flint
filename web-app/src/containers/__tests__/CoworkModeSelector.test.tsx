@@ -67,6 +67,38 @@ describe('CoworkModeSelector', () => {
     expect(onChange).toHaveBeenCalledWith('bypass')
   })
 
+  // Under the composer the mode sits beside the access button and looks
+  // exactly like it: no outline, no chevron, same height and padding.
+  it('quiet variant has no outline or chevron but stays a menu button', async () => {
+    render(<CoworkModeSelector mode="ask" variant="quiet" onChange={vi.fn()} />)
+    const trigger = screen.getByRole('button')
+    expect(trigger.className).not.toContain('border-[0.8px]')
+    expect(trigger.className).toContain('h-7')
+    expect(trigger.className).toContain('px-2 ')
+    expect(trigger.querySelectorAll('svg')).toHaveLength(1)
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
+    expect(trigger).toHaveAccessibleName('common:coworkMode.label')
+    trigger.focus()
+    await user.keyboard('{Enter}')
+    expect(await screen.findAllByRole('menuitemradio')).toHaveLength(4)
+  })
+
+  it('quiet variant keeps the warning colour for auto and bypass', () => {
+    const { rerender } = render(
+      <CoworkModeSelector mode="auto" variant="quiet" onChange={vi.fn()} />
+    )
+    expect(screen.getByRole('button').className).toContain('text-warning')
+    rerender(<CoworkModeSelector mode="ask" variant="quiet" onChange={vi.fn()} />)
+    expect(screen.getByRole('button').className).not.toContain('text-warning')
+  })
+
+  it('pill variant keeps its outline and chevron', () => {
+    render(<CoworkModeSelector mode="ask" variant="pill" onChange={vi.fn()} />)
+    const trigger = screen.getByRole('button')
+    expect(trigger.className).toContain('border-[0.8px]')
+    expect(trigger.querySelectorAll('svg')).toHaveLength(2)
+  })
+
   it('says which mode is active for a screen reader', () => {
     const { container } = render(
       <CoworkModeSelector mode="auto" onChange={vi.fn()} />
