@@ -154,11 +154,10 @@ export function CoworkWorkspacePill({
             quiet
               ? folderName
                 ? // Like the access and mode buttons beside it under the composer.
-                  'h-7 min-w-0 max-w-48 shrink gap-1.5 overflow-hidden px-2 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
+                  'group/ws h-7 min-w-0 max-w-48 shrink gap-2 overflow-hidden px-2 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
                 : 'size-7 shrink-0 text-muted-foreground pointer-coarse:size-11'
               : folderName
-              ? // Never squeezed past a readable branch: the folder name gives way first.
-                'h-[30px] min-w-[2.125rem] shrink gap-1.5 overflow-hidden px-2.5 has-[[data-branch]]:min-w-[7.5rem] text-xs font-medium text-muted-foreground pointer-coarse:h-11'
+              ? 'group/ws h-[30px] min-w-[2.125rem] shrink gap-2 overflow-hidden px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
               : 'size-[30px] shrink-0 text-muted-foreground pointer-coarse:size-11'
           }
           title={folderName && (shortName || chipText) ? folderName : undefined}
@@ -178,38 +177,50 @@ export function CoworkWorkspacePill({
         >
           {folderName ? (
             <>
-              {gitBranch ? (
-                <GitBranch className="size-3.5 shrink-0" aria-hidden />
-              ) : (
-                <Folder className="size-3.5 shrink-0" aria-hidden />
-              )}
-              {/* Narrow row: with a branch, the branch stands in for the
-                  folder's name; with none the name stays until the chip is
-                  an icon. */}
-              {!chipText && !(shortName && gitBranch) && (
-                <span className="min-w-[3ch] max-w-[120px] shrink-[4] truncate text-secondary-foreground">
-                  {folderName}
-                </span>
-              )}
-              {gitBranch && !chipText ? (
-                <span
-                  aria-hidden
-                  data-branch
-                  className="min-w-[5ch] max-w-[96px] shrink truncate font-normal text-muted-foreground"
+              {/* The folder icon and its name; a long name fades, it is not
+                  cut with an ellipsis. The branch is in the tooltips. */}
+              <Folder className="size-3.5 shrink-0" aria-hidden />
+              {!chipText && (
+                <FadeText
+                  data-folder-name
+                  title={gitBranch ? `${folderName} · ${gitBranch}` : folderName}
+                  className="min-w-[3ch] max-w-[120px] shrink-[4] overflow-hidden whitespace-nowrap text-secondary-foreground"
                 >
-                  {shortName ? gitBranch : `· ${gitBranch}`}
-                </span>
-              ) : null}
+                  {folderName}
+                </FadeText>
+              )}
               {extraFolders.length > 0 ? (
                 <span aria-hidden className="font-normal text-muted-foreground">
                   +{extraFolders.length}
                 </span>
               ) : null}
-              <TriggerIcon
-                className="size-3 shrink-0 text-muted-foreground"
-                aria-hidden
-                data-access={primaryAccess}
-              />
+              {/* At most one trailing mark at rest. A worktree is a quiet
+                  badge past a thin divider; editing in place shows its pencil
+                  only on hover or focus; read-only keeps its lock. */}
+              {primaryAccess === 'worktree' ? (
+                <span
+                  data-worktree-badge
+                  title={
+                    gitBranch
+                      ? t('common:workspace.worktreeBadge', { branch: gitBranch })
+                      : t('common:workspace.worktreeBadgeNoBranch')
+                  }
+                  className="flex shrink-0 items-center gap-2"
+                >
+                  <span aria-hidden className="h-3.5 w-px bg-border" />
+                  <GitFork className="size-3.5 text-muted-foreground" aria-hidden />
+                </span>
+              ) : (
+                <TriggerIcon
+                  className={
+                    primaryAccess === 'editable'
+                      ? 'size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/ws:opacity-100 group-focus-visible/ws:opacity-100'
+                      : 'size-3.5 shrink-0 text-muted-foreground'
+                  }
+                  aria-hidden
+                  data-access={primaryAccess}
+                />
+              )}
             </>
           ) : (
             <FolderPlus className="size-[18px] shrink-0" />

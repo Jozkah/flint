@@ -1048,6 +1048,8 @@
   "artifactPath": "路径",
   "artifactShowDetails": "显示 {{name}} 的详情",
   "workspace": {
+    "worktreeBadge": "隔离的 worktree：分支 {{branch}}",
+    "worktreeBadgeNoBranch": "隔离的 worktree",
     "readsFrom": "工作于",
     "alsoAttached": "其他附加",
     "addFolder": "添加其他文件夹",

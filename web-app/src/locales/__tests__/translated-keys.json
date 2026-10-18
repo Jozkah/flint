@@ -1336,5 +1336,7 @@
   "engine:loaded.speedBar",
   "common:serverConnection.offlineTitle",
   "common:serverConnection.offlineBody",
-  "common:serverConnection.statusOffline"
+  "common:serverConnection.statusOffline",
+  "common:workspace.worktreeBadge",
+  "common:workspace.worktreeBadgeNoBranch"
 ]

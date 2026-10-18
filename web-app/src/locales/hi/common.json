@@ -1046,6 +1046,8 @@
   "artifactPath": "पाथ",
   "artifactShowDetails": "{{name}} का विवरण दिखाएँ",
   "workspace": {
+    "worktreeBadge": "अलग worktree: ब्रांच {{branch}}",
+    "worktreeBadgeNoBranch": "अलग worktree",
     "readsFrom": "यहाँ से पढ़ता है",
     "alsoAttached": "साथ में संलग्न",
     "addFolder": "एक और फ़ोल्डर जोड़ें",
