@@ -32,7 +32,7 @@ vi.mock('@/containers/HeaderPage', () => ({
 }))
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const u = await import('@/containers/rooms/__tests__/roomsTestUtils')
-  return { useTranslation: () => ({ t: u.t }) }
+  return { useTranslation: () => ({ t: u.t, i18n: { language: 'en' } }) }
 })
 vi.mock('@/hooks/useModelProvider', async () => {
   const u = await import('@/containers/rooms/__tests__/roomsTestUtils')

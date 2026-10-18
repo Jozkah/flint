@@ -83,13 +83,10 @@ import {
   VIDEO_SECONDS,
   VIDEO_SIZES,
   customSize,
-  downloadProgressText,
-  durationText,
   estimateVideoMs,
   framesForSeconds,
   parseSeed,
   parseSide,
-  phaseLabel,
   sizeIndexOf,
   snapSide,
   videoMemoryWarning,
@@ -103,25 +100,32 @@ import {
   type StudioLora,
 } from '@/lib/studio/studio'
 
-const BUILDS: Array<{ id: EngineBuild; label: string; note: string }> = [
-  { id: 'linux-vulkan-x64', label: 'Any graphics card', note: 'About 38 MB. NVIDIA, AMD or Intel with a Vulkan driver.' },
-  { id: 'linux-cpu-x64', label: 'No graphics card', note: 'About 25 MB. Very slow.' },
-  {
-    id: 'win-vulkan-x64',
-    label: 'Any graphics card',
-    note: 'About 30 MB. Works on NVIDIA, AMD and Intel.',
-  },
-  {
-    id: 'win-cuda12-x64',
-    label: 'NVIDIA (faster)',
-    note: 'About 900 MB. Needs a recent NVIDIA driver.',
-  },
-  {
-    id: 'win-cpu-x64',
-    label: 'No graphics card',
-    note: 'About 17 MB. Very slow.',
-  },
+const BUILDS: Array<{ id: EngineBuild; label: 'anyGpu' | 'noGpu' | 'nvidia' }> = [
+  { id: 'linux-vulkan-x64', label: 'anyGpu' },
+  { id: 'linux-cpu-x64', label: 'noGpu' },
+  { id: 'win-vulkan-x64', label: 'anyGpu' },
+  { id: 'win-cuda12-x64', label: 'nvidia' },
+  { id: 'win-cpu-x64', label: 'noGpu' },
 ]
+
+type T = (key: string, options?: Record<string, unknown>) => string
+
+/** `3 s`, `1 min 20 s`: how long a generation took. */
+function formatDuration(t: T, ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000))
+  if (seconds < 60) return t('studio:duration.s', { count: seconds })
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  return rest === 0
+    ? t('studio:duration.min', { count: minutes })
+    : t('studio:duration.minS', { minutes, seconds: rest })
+}
+
+/** What a running job is doing, in words. */
+function phaseText(t: T, phase: string): string {
+  const known = ['queued', 'encoding', 'sampling', 'decoding', 'saving']
+  return t(known.includes(phase) ? `studio:phase.${phase}` : 'studio:phase.working')
+}
 
 /** What the left column and the stage share: the prompt and the options. */
 type Form = {
@@ -161,6 +165,7 @@ const EMPTY_FORM: Form = {
 
 /** Time spent waiting on a hosted job, ticking each second, so a slow render shows it is alive. */
 function Elapsed({ since }: { since: number }) {
+  const { t } = useTranslation()
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -172,7 +177,7 @@ function Elapsed({ since }: { since: number }) {
     <>
       {' · '}
       {text}
-      {seconds >= 300 ? ' · taking longer than usual' : ''}
+      {seconds >= 300 ? ` · ${t('studio:elapsed.slow')}` : ''}
     </>
   )
 }
@@ -242,6 +247,7 @@ function EnginePicker({
   onHosted: (key: string) => void
 }) {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const q = search.trim().toLowerCase()
@@ -274,7 +280,7 @@ function EnginePicker({
       <PopoverTrigger asChild disabled={disabled}>
         <button
           type="button"
-          aria-label="Engine"
+          aria-label={t('studio:picker.engine')}
           className="-ml-1 flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
         >
           <ModelAvatar modelId={modelId} name={label} provider={providerId} />
@@ -294,15 +300,15 @@ function EnginePicker({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search models..."
-              aria-label="Search models"
+              placeholder={t('studio:picker.searchPlaceholder')}
+              aria-label={t('studio:picker.searchAria')}
               autoFocus
               className="min-w-0 flex-1 bg-transparent text-base font-normal text-foreground outline-0 placeholder:text-muted-foreground md:text-[13px]"
             />
             {search && (
               <button
                 type="button"
-                aria-label="Clear"
+                aria-label={t('studio:picker.clear')}
                 onClick={() => setSearch('')}
                 className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
               >
@@ -312,11 +318,11 @@ function EnginePicker({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto pb-1 [scrollbar-width:thin]">
             {localShown.length === 0 && hostedShown.length === 0 && (
-              <p className="px-4 py-3 text-sm text-muted-foreground">No models match.</p>
+              <p className="px-4 py-3 text-sm text-muted-foreground">{t('studio:picker.noMatch')}</p>
             )}
             {localShown.length > 0 && (
               <div>
-                <p className={heading}>On this computer</p>
+                <p className={heading}>{t('studio:picker.local')}</p>
                 {localShown.map((m) => (
                   <button
                     key={m.id}
@@ -342,7 +348,7 @@ function EnginePicker({
                       <ProvidersAvatar provider={{ provider: id } as ProviderObject} />
                     </span>
                     <span className="font-semibold text-foreground">{models[0].provider}</span>
-                    <span className="text-[11px] text-subtle-foreground">· prompt leaves this computer</span>
+                    <span className="text-[11px] text-subtle-foreground">· {t('studio:picker.leaves')}</span>
                   </div>
                   {models.map((m) => (
                     <button
@@ -369,7 +375,7 @@ function EnginePicker({
               onClick={() => pick(() => navigate({ to: route.hub.index }))}
             >
               <Search className="size-3.5 text-muted-foreground" aria-hidden />
-              <span className="text-[13px] text-secondary-foreground">Find more picture models in Discover</span>
+              <span className="text-[13px] text-secondary-foreground">{t('studio:picker.findMore')}</span>
             </button>
             <button
               type="button"
@@ -378,7 +384,7 @@ function EnginePicker({
             >
               <Settings className="size-3.5 text-muted-foreground" aria-hidden />
               <span className="text-[13px] text-secondary-foreground">
-                {hosted.length ? 'Manage hosted providers' : 'Add an API key to use hosted models'}
+                {hosted.length ? t('studio:picker.manageHosted') : t('studio:picker.addKey')}
               </span>
             </button>
           </div>
@@ -403,6 +409,7 @@ function ShapeGlyph({ width, height }: { width: number; height: number }) {
 }
 
 function EngineSetup() {
+  const { t } = useTranslation()
   const status = useStudio((s) => s.status)
   const installing = useStudio((s) => s.installing)
   const install = useStudio((s) => s.installEngine)
@@ -413,10 +420,10 @@ function EngineSetup() {
   if (!status.supported) {
     return (
       <Frame className="motion-safe:animate-rise-in">
-        <FrameHeader title="Not available on this system yet" />
+        <FrameHeader title={t('studio:setup.unavailableTitle')} />
         <FrameBody className="p-3.5">
           <p className="text-[13px] text-muted-foreground">
-            Local image and video generation currently requires Windows x64 or Linux x64.
+            {t('studio:setup.unavailableBody')}
           </p>
         </FrameBody>
       </Frame>
@@ -428,12 +435,10 @@ function EngineSetup() {
     : 0
   return (
     <Frame className="motion-safe:animate-rise-in">
-      <FrameHeader title="Set up the image engine" />
+      <FrameHeader title={t('studio:setup.title')} />
       <FrameBody className="gap-3 p-3.5">
         <p className="text-[13px] text-muted-foreground">
-          Flint makes images and video on this computer with
-          stable-diffusion.cpp. The engine is downloaded once, checked against
-          its published checksum, and runs only while you generate.
+          {t('studio:setup.body')}
         </p>
         <div className="grid gap-2 sm:grid-cols-3">
           {builds.map((b) => (
@@ -445,8 +450,8 @@ function EngineSetup() {
               onClick={() => setBuild(b.id)}
               className="rounded-lg border-[0.8px] border-border p-3 text-left text-[13px] transition-colors duration-150 hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden aria-pressed:border-input aria-pressed:bg-accent disabled:opacity-50"
             >
-              <div className="font-medium text-foreground">{b.label}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{b.note}</div>
+              <div className="font-medium text-foreground">{t(`studio:builds.${b.label}`)}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{t(`studio:builds.note.${b.id}`)}</div>
             </button>
           ))}
         </div>
@@ -455,16 +460,16 @@ function EngineSetup() {
             <Progress value={installing.stage === 'download' ? percent : 100} />
             <p className="text-xs text-muted-foreground">
               {installing.stage === 'download'
-                ? `Downloading… ${percent}%`
+                ? t('studio:setup.downloading', { percent })
                 : installing.stage === 'unpack'
-                  ? 'Unpacking…'
-                  : 'Checking that it starts…'}
+                  ? t('studio:setup.unpacking')
+                  : t('studio:setup.checking')}
             </p>
           </div>
         )}
         <div>
           <Button disabled={!!installing || !build} onClick={() => { if (build) void install(build) }}>
-            {installing ? 'Installing…' : 'Download and install'}
+            {installing ? t('studio:setup.installing') : t('studio:setup.install')}
           </Button>
         </div>
       </FrameBody>
@@ -486,6 +491,7 @@ function CustomSize({
   setForm: (patch: Partial<Form>) => void
   disabled: boolean
 }) {
+  const { t, i18n } = useTranslation()
   const settle = (key: 'customWidth' | 'customHeight') => {
     const typed = parseSide(form[key])
     setForm({
@@ -509,15 +515,15 @@ function CustomSize({
   return (
     <div className="flex flex-col gap-2 motion-safe:animate-rise-in">
       <div className="flex items-center gap-1.5">
-        {box('customWidth', 'Width in pixels')}
+        {box('customWidth', t('studio:size.width'))}
         <span aria-hidden className="text-xs text-muted-foreground">
           ×
         </span>
-        {box('customHeight', 'Height in pixels')}
+        {box('customHeight', t('studio:size.height'))}
         <button
           type="button"
-          title="Swap width and height"
-          aria-label="Swap width and height"
+          title={t('studio:size.swap')}
+          aria-label={t('studio:size.swap')}
           disabled={disabled}
           onClick={() =>
             setForm({
@@ -531,10 +537,9 @@ function CustomSize({
         </button>
       </div>
       <p className="text-xs leading-snug text-muted-foreground">
-        Multiples of 16, up to {limits.max} pixels.
-        {kind === 'video'
-          ? ' Big clips need a lot of memory.'
-          : ' Big pictures need more memory and time.'}
+        {t(kind === 'video' ? 'studio:size.hintVideo' : 'studio:size.hintImage', {
+          max: new Intl.NumberFormat(i18n.language).format(limits.max),
+        })}
       </p>
     </div>
   )
@@ -562,12 +567,6 @@ function Thumb({ item, className }: { item: GalleryItem; className?: string }) {
 }
 
 const ACTIVITY_TONE = { done: 'ok', failed: 'err', stopped: 'neutral' } as const
-const ACTIVITY_LABEL = {
-  done: 'Done',
-  failed: 'Failed',
-  stopped: 'Stopped',
-} as const
-
 /** A video opens in a dialog with its own controls: the image viewer is for pictures. */
 export function VideoDialog({
   item,
@@ -579,6 +578,7 @@ export function VideoDialog({
   const convertFileSrc = useAssetUrl()
   const remove = useStudio((s) => s.remove)
   const archiveOn = useArchiveEnabled()
+  const { t } = useTranslation()
   if (!item) return null
   const r = item.recipe
   return (
@@ -587,9 +587,10 @@ export function VideoDialog({
         <DialogHeader>
           <DialogTitle>{r.modelName}</DialogTitle>
           <DialogDescription>
-            {r.width} × {r.height} · {r.steps} steps · seed {r.seed}
-            {r.frames ? ` · ${r.frames} frames` : ''} ·{' '}
-            {durationText(r.durationMs)}
+            {r.width} × {r.height} · {t('studio:video.steps', { count: r.steps })} ·{' '}
+            {t('studio:video.seed', { seed: r.seed })}
+            {r.frames ? ` · ${t('studio:video.frames', { count: r.frames })}` : ''} ·{' '}
+            {formatDuration(t, r.durationMs)}
           </DialogDescription>
         </DialogHeader>
         <video
@@ -600,7 +601,7 @@ export function VideoDialog({
         <p className="text-sm">{r.prompt}</p>
         {r.negativePrompt && (
           <p className="text-xs text-muted-foreground">
-            Avoid: {r.negativePrompt}
+            {t('studio:video.avoid', { prompt: r.negativePrompt })}
           </p>
         )}
         <div className="flex gap-2">
@@ -608,10 +609,10 @@ export function VideoDialog({
             variant="outline"
             onClick={() => {
               void navigator.clipboard?.writeText(r.prompt)
-              toast('Prompt copied')
+              toast(t('studio:actions.promptCopied'))
             }}
           >
-            Copy prompt
+            {t('studio:video.copyPrompt')}
           </Button>
           <Button
             variant="outline"
@@ -621,7 +622,7 @@ export function VideoDialog({
               onClose()
             }}
           >
-            <Trash2 className="size-4" /> {archiveOn ? 'Move to Archive' : 'Delete'}
+            <Trash2 className="size-4" /> {archiveOn ? t('studio:actions.archive') : t('studio:actions.delete')}
           </Button>
         </div>
       </DialogContent>
@@ -635,16 +636,16 @@ const ON =
 const OFF =
   'border-border bg-card text-muted-foreground hover:border-border-strong hover:bg-accent hover:text-foreground'
 
-function timeAgo(ms: number): string {
+function timeAgo(ms: number, t: T, language: string): string {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
-  if (s < 20) return 'a few seconds ago'
-  if (s < 90) return 'a minute ago'
+  if (s < 20) return t('studio:time.fewSeconds')
+  const rtf = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
+  if (s < 90) return rtf.format(-1, 'minute')
   const m = Math.round(s / 60)
-  if (m < 60) return `${m} minutes ago`
+  if (m < 60) return rtf.format(-m, 'minute')
   const h = Math.round(m / 60)
-  if (h < 24) return h === 1 ? 'an hour ago' : `${h} hours ago`
-  const d = Math.round(h / 24)
-  return d === 1 ? 'yesterday' : `${d} days ago`
+  if (h < 24) return rtf.format(-h, 'hour')
+  return rtf.format(-Math.round(h / 24), 'day')
 }
 
 /** A flat gradient stand-in for a model preview: the colour comes from its id, so it stays the same. */
@@ -687,6 +688,7 @@ function ModelPanel({
   targets: CloudTarget[]
 }) {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const status = useStudio((s) => s.status)
   const download = useStudio((s) => s.download)
   const job = useStudio((s) => s.job)
@@ -710,16 +712,16 @@ function ModelPanel({
   const engineReady = !!status?.engineBackend
   const running = !!job
   const name = hosted ? hosted.model.name : model.display_name
-  const noun = kind === 'video' ? 'Text to Video' : 'Text to Image'
+  const noun = kind === 'video' ? t('studio:model.textToVideo') : t('studio:model.textToImage')
 
   return (
     <Frame className="motion-safe:animate-rise-in" style={rise(0)}>
       <FrameHeader
         icon={<Box className="size-4" aria-hidden />}
-        title="Model"
+        title={t('studio:model.title')}
         actions={
           <PanelButton onClick={() => navigate({ to: route.hub.index })}>
-            Manage
+            {t('studio:model.manage')}
           </PanelButton>
         }
       />
@@ -751,17 +753,21 @@ function ModelPanel({
             />
             {hosted ? (
               <Chip tone="info" dot>
-                Hosted by {hosted.provider.label}
+                {t('studio:model.hostedBy', { provider: hosted.provider.label })}
               </Chip>
             ) : (
               <Chip tone={resident ? 'ok' : 'neutral'} dot>
-                {resident ? 'Loaded' : model.installed ? 'Ready' : 'Not downloaded'}
+                {resident ? t('studio:model.loaded') : model.installed ? t('studio:model.ready') : t('studio:model.notDownloaded')}
               </Chip>
             )}
             <p className="text-xs leading-snug text-muted-foreground">
               {hosted
-                ? `Your prompt is sent to ${hosted.provider.label}, uses your API key from Providers and is billed by them.`
-                : `Runs on this computer. Starts at ${model.defaults.width} × ${model.defaults.height}, ${model.defaults.steps} steps.`}
+                ? t('studio:model.hostedNote', { provider: hosted.provider.label })
+                : t('studio:model.localNote', {
+                    width: model.defaults.width,
+                    height: model.defaults.height,
+                    count: model.defaults.steps,
+                  })}
             </p>
           </div>
         </div>
@@ -778,7 +784,16 @@ function ModelPanel({
           <div className="space-y-1.5">
             <Progress value={percent} />
             <p className="text-xs text-muted-foreground">
-              {downloadProgressText(download.bytes, download.total, formatModelBytes)}
+              {download.bytes <= 0
+                ? download.total > 0
+                  ? t('studio:download.startingSize', { size: formatModelBytes(download.total) })
+                  : t('studio:download.starting')
+                : download.total > 0
+                  ? t('studio:download.progress', {
+                      bytes: formatModelBytes(download.bytes),
+                      total: formatModelBytes(download.total),
+                    })
+                  : formatModelBytes(download.bytes)}
             </p>
           </div>
         )}
@@ -786,11 +801,11 @@ function ModelPanel({
           (!model.installed ? (
             <Button size="sm" disabled={downloading} onClick={() => void downloadModel(model)}>
               <Download className="size-3.5" />
-              {downloading ? 'Downloading…' : `Download (${formatModelBytes(model.totalBytes)})`}
+              {downloading ? t('studio:download.downloading') : t('studio:download.button', { size: formatModelBytes(model.totalBytes) })}
             </Button>
           ) : resident ? (
             <Button size="sm" variant="outline" disabled={!!job} onClick={() => void unload()}>
-              Unload
+              {t('studio:model.unload')}
             </Button>
           ) : (
             <Button
@@ -802,12 +817,12 @@ function ModelPanel({
                 setLoading(false)
               }}
             >
-              {loading ? 'Loading…' : 'Load'}
+              {loading ? t('studio:model.loading') : t('studio:model.load')}
             </Button>
           ))}
         {!hosted && !engineReady && model.installed && (
           <p className="text-xs text-muted-foreground">
-            Install the image engine above to use this model.
+            {t('studio:model.installFirst')}
           </p>
         )}
         {!hosted && model.custom && (
@@ -818,10 +833,10 @@ function ModelPanel({
               await removeCustomModel(model.id)
               setForm({ localModel: '' })
             }}
-            title="Takes it off this list. Its downloaded files stay on disk."
+            title={t('studio:model.removeTitle')}
             className="self-start rounded-md text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
           >
-            Remove from Studio
+            {t('studio:model.remove')}
           </button>
         )}
       </FrameBody>
@@ -859,6 +874,7 @@ function SettingsPanel({
   targets: CloudTarget[]
 }) {
   const job = useStudio((s) => s.job)
+  const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const [availableLoras, setAvailableLoras] = useState<string[]>([])
   useEffect(() => {
@@ -871,7 +887,7 @@ function SettingsPanel({
       const name = await studioApi.importLora(path)
       setAvailableLoras(await studioApi.listLoras())
       setForm({ loras: [...form.loras, { name, multiplier: 1 }] })
-      toast.success(`${name} imported`)
+      toast.success(t('studio:settings.loraImported', { name }))
     } catch (error) {
       toast.error(String(error))
     }
@@ -905,7 +921,7 @@ function SettingsPanel({
     <Frame className="motion-safe:animate-rise-in lg:flex-1" style={rise(1)}>
       <FrameHeader
         icon={<SlidersHorizontal className="size-4" aria-hidden />}
-        title="Generation Settings"
+        title={t('studio:settings.title')}
         actions={
           <PanelButton
             disabled={running}
@@ -914,13 +930,13 @@ function SettingsPanel({
               setNegativeOn(false)
             }}
           >
-            <RotateCcw className="size-3" aria-hidden /> Reset
+            <RotateCcw className="size-3" aria-hidden /> {t('studio:settings.reset')}
           </PanelButton>
         }
       />
       <FrameBody className="flex-1 gap-4 p-3.5">
         <div className="flex flex-col gap-2">
-          <span className={label}>{kind === 'video' ? 'Shape' : 'Aspect Ratio'}</span>
+          <span className={label}>{kind === 'video' ? t('studio:settings.shape') : t('studio:settings.aspectRatio')}</span>
           <div className="grid grid-cols-4 gap-2">
             {shapeOrder(sizes, kind).map(([s, i]) => (
               <button
@@ -938,14 +954,14 @@ function SettingsPanel({
             ))}
             <button
               type="button"
-              title="Type your own width and height"
+              title={t('studio:settings.customTitle')}
               aria-pressed={form.sizeIndex === CUSTOM}
               disabled={running}
               onClick={() => setForm({ sizeIndex: CUSTOM })}
               className={tile(form.sizeIndex === CUSTOM)}
             >
               <Ruler className="size-3.5" aria-hidden />
-              Custom
+              {t('studio:settings.custom')}
             </button>
           </div>
           {form.sizeIndex === CUSTOM && (
@@ -962,7 +978,7 @@ function SettingsPanel({
         <div className="grid grid-cols-2 gap-4">
           {kind === 'image' ? (
             <div className="flex flex-col gap-2">
-              <span className={label}>Image Count</span>
+              <span className={label}>{t('studio:settings.imageCount')}</span>
               <div className="flex gap-2">
                 {[1, 2, 3, 4].map((n) => (
                   <button
@@ -980,7 +996,7 @@ function SettingsPanel({
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <span className={label}>Length</span>
+              <span className={label}>{t('studio:settings.length')}</span>
               <div className="flex flex-wrap gap-2">
                 {VIDEO_SECONDS.map((n) => (
                   <button
@@ -991,7 +1007,7 @@ function SettingsPanel({
                     onClick={() => setForm({ seconds: n })}
                     className={cn(tile(form.seconds === n), 'h-10 px-3 tabular-nums')}
                   >
-                    {n} s
+                    {t('studio:duration.s', { count: n })}
                   </button>
                 ))}
               </div>
@@ -999,20 +1015,20 @@ function SettingsPanel({
           )}
           {!hosted && (
             <div className="flex flex-col gap-2">
-              <span className={label}>Seed</span>
+              <span className={label}>{t('studio:settings.seed')}</span>
               <div className="relative">
                 <Input
                   value={form.seed}
                   onChange={(e) => setForm({ seed: e.target.value })}
-                  placeholder="Random"
+                  placeholder={t('studio:settings.random')}
                   disabled={running}
-                  aria-label="Seed"
+                  aria-label={t('studio:settings.seed')}
                   className="h-10 pr-10"
                 />
                 <button
                   type="button"
-                  title="Pick a random seed"
-                  aria-label="Pick a random seed"
+                  title={t('studio:settings.randomSeed')}
+                  aria-label={t('studio:settings.randomSeed')}
                   disabled={running}
                   onClick={() => setForm({ seed: String(Math.floor(Math.random() * 2 ** 31)) })}
                   className="absolute top-1/2 right-1.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:opacity-50"
@@ -1025,7 +1041,7 @@ function SettingsPanel({
         </div>
         {guess !== null && (
           <p className="-mt-2 text-xs text-muted-foreground">
-            About {durationText(guess)}, from your last clip.
+            {t('studio:settings.guess', { duration: formatDuration(t, guess) })}
           </p>
         )}
 
@@ -1037,7 +1053,7 @@ function SettingsPanel({
               onClick={() => setAdvanced((v) => !v)}
               className="flex items-center justify-between rounded-md text-[13px] font-medium text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden"
             >
-              Advanced
+              {t('studio:settings.advanced')}
               <ChevronRight
                 className={cn('size-4 text-muted-foreground transition-transform duration-200', advanced && 'rotate-90')}
                 aria-hidden
@@ -1047,17 +1063,17 @@ function SettingsPanel({
               <div className="flex flex-col gap-3 motion-safe:animate-rise-in">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <span className={label}>LoRA adapters</span>
-                    <PanelButton disabled={running} onClick={() => void importLora()}>Import .safetensors</PanelButton>
+                    <span className={label}>{t('studio:settings.loras')}</span>
+                    <PanelButton disabled={running} onClick={() => void importLora()}>{t('studio:settings.importLora')}</PanelButton>
                   </div>
-                  <p className="text-xs text-muted-foreground">Use adapters made for selected local model family.</p>
+                  <p className="text-xs text-muted-foreground">{t('studio:settings.loraHint')}</p>
                   {availableLoras.map((name) => {
                     const selected = form.loras.find((lora) => lora.name === name)
                     return (
                       <div key={name} className="flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"
-                          aria-label={`Use ${name}`}
+                          aria-label={t('studio:settings.useLora', { name })}
                           checked={!!selected}
                           disabled={running}
                           onChange={(event) => setForm({ loras: event.target.checked
@@ -1071,7 +1087,7 @@ function SettingsPanel({
                           max="2"
                           step="0.1"
                           value={selected.multiplier}
-                          aria-label={`${name} strength`}
+                          aria-label={t('studio:settings.loraStrength', { name })}
                           disabled={running}
                           onChange={(event) => setForm({ loras: form.loras.map((lora) => lora.name === name
                             ? { ...lora, multiplier: Number(event.target.value) }
@@ -1090,17 +1106,17 @@ function SettingsPanel({
                       setNegativeOn(on)
                       if (!on) setForm({ negative: '' })
                     }}
-                    aria-label="Negative prompt"
+                    aria-label={t('studio:settings.negativeAria')}
                   />
-                  Negative Prompt
+                  {t('studio:settings.negative')}
                 </label>
                 {negativeShown && (
                   <Textarea
                     value={form.negative}
                     onChange={(e) => setForm({ negative: e.target.value })}
-                    placeholder="Blurry, low quality, extra fingers, text, watermark…"
+                    placeholder={t('studio:settings.negativePlaceholder')}
                     disabled={running}
-                    aria-label="What to avoid"
+                    aria-label={t('studio:settings.avoidAria')}
                     rows={3}
                     className="min-h-0 resize-none"
                   />
@@ -1117,7 +1133,12 @@ function SettingsPanel({
               onChange={(e) => setForm({ accepted: e.target.checked })}
               className="mt-0.5"
             />
-            <span>{warning} I understand and want to continue.</span>
+            <span>
+              {t('studio:settings.memoryWarning', {
+                gb: Math.round((hardware.total_memory ?? 0) / 1024),
+              })}{' '}
+              {t('studio:settings.accept')}
+            </span>
           </label>
         )}
       </FrameBody>
@@ -1128,13 +1149,7 @@ function SettingsPanel({
 const ENHANCE_SUFFIX = ', highly detailed, soft natural lighting, sharp focus'
 const PROMPT_LIMIT = 2000
 
-const GUIDE = [
-  ['Say what is in it', 'Start with the subject, then where it is and what it is doing.'],
-  ['Name the style', 'Oil painting, photograph, flat illustration, 3D render: the style changes everything.'],
-  ['Add light and mood', 'Soft morning light, neon at night, overcast: light sets the feel.'],
-  ['Keep it to one idea', 'A short, clear prompt beats a long list. Add detail one step at a time.'],
-  ['Use Avoid for what you do not want', 'Under Advanced, a negative prompt lists things to leave out.'],
-] as const
+const GUIDE = ['g1', 'g2', 'g3', 'g4', 'g5'] as const
 
 /** Prompt: the text, a look at the latest result, and the one big button. */
 function PromptPanel({
@@ -1178,7 +1193,7 @@ function PromptPanel({
   const busy = !!job
   const latest = items[0]
   const percent = Math.round((job?.fraction ?? 0) * 100)
-  const examples = EXAMPLE_PROMPTS[kind]
+  const examples = EXAMPLE_PROMPTS[kind].map((_, i) => t(`studio:prompt.example.${kind}.${i}`))
   const mac =
     typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
   const { t } = useTranslation()
@@ -1197,15 +1212,15 @@ function PromptPanel({
       : 'complete'
   const etaText =
     !job?.remote && job?.startedAt && job.fraction > 0.05 && job.fraction < 0.97
-      ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
+      ? ` · ${t('studio:prompt.eta', { eta: formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction)) })}`
       : ''
   const stageDetail = job ? (
     <>
       <span className="line-clamp-1 block max-w-full">{jobPrompt}</span>
       <span>
         {job.remote
-          ? `Waiting for ${job.remote}…`
-          : `${phaseLabel(job.phase)} · ${percent}%`}
+          ? t('studio:prompt.waitingFor', { provider: job.remote })
+          : `${phaseText(t, job.phase)} · ${percent}%`}
         {job.remote ? <Elapsed since={job.startedAt} /> : null}
         {etaText}
       </span>
@@ -1215,10 +1230,10 @@ function PromptPanel({
 
   const start = async () => {
     const text = form.prompt.trim()
-    if (!text) return toast.error('Write a prompt first.')
+    if (!text) return toast.error(t('studio:prompt.writeFirst'))
     if (hosted) {
       if (!providerSettings)
-        return toast.error(`${hosted.provider.label} is not set up in Providers.`)
+        return toast.error(t('studio:prompt.notSetUp', { provider: hosted.provider.label }))
       const abort = new AbortController()
       const ok = await generate(
         kind,
@@ -1232,7 +1247,7 @@ function PromptPanel({
           ),
         { label: hosted.provider.label, abort }
       )
-      if (ok) toast.success('Image ready')
+      if (ok) toast.success(t('studio:prompt.imageReady'))
       return
     }
     const common = {
@@ -1252,7 +1267,7 @@ function PromptPanel({
           })
         : studioApi.generateImage({ ...common, count: form.count })
     )
-    if (ok) toast.success(kind === 'video' ? 'Video ready' : 'Image ready')
+    if (ok) toast.success(kind === 'video' ? t('studio:prompt.videoReady') : t('studio:prompt.imageReady'))
   }
 
   const roundBtn =
@@ -1261,10 +1276,10 @@ function PromptPanel({
   return (
     <Frame className="motion-safe:animate-rise-in max-lg:order-first" style={rise(2)}>
       <FrameHeader
-        title="Prompt"
+        title={t('studio:prompt.title')}
         actions={
           <PanelButton onClick={() => setGuide(true)}>
-            <Info className="size-3" aria-hidden /> Prompt Guide
+            <Info className="size-3" aria-hidden /> {t('studio:prompt.guide')}
           </PanelButton>
         }
       />
@@ -1284,11 +1299,11 @@ function PromptPanel({
               }}
               rows={3}
               disabled={busy}
-              aria-label="Prompt"
+              aria-label={t('studio:prompt.title')}
               placeholder={
                 kind === 'video'
-                  ? 'A cat walking through a rainy alley, cinematic'
-                  : 'A lighthouse on a cliff at sunrise, oil painting'
+                  ? t('studio:prompt.placeholderVideo')
+                  : t('studio:prompt.placeholderImage')
               }
               className="min-h-24 resize-none border-0 bg-transparent px-3.5 pt-3 pb-8 shadow-none focus-visible:ring-0"
             />
@@ -1301,10 +1316,10 @@ function PromptPanel({
               type="button"
               disabled={busy || !form.prompt.trim() || form.prompt.includes(ENHANCE_SUFFIX)}
               onClick={() => setForm({ prompt: form.prompt.trim() + ENHANCE_SUFFIX })}
-              title="Adds a few words about detail and light"
+              title={t('studio:prompt.enhanceTitle')}
               className="inline-flex h-7 items-center gap-1.5 rounded-full border-[0.8px] border-blue-500/50 bg-blue-500/10 px-3 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 pointer-coarse:h-11"
             >
-              <Sparkles className="size-3" aria-hidden /> Enhance
+              <Sparkles className="size-3" aria-hidden /> {t('studio:prompt.enhance')}
             </button>
             {examples.map((text) => (
               <button
@@ -1324,7 +1339,7 @@ function PromptPanel({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  aria-label="More"
+                  aria-label={t('common:more')}
                   className="grid h-7 w-8 place-items-center rounded-full border-[0.8px] border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden pointer-coarse:h-11"
                 >
                   <MoreHorizontal className="size-4" />
@@ -1332,16 +1347,16 @@ function PromptPanel({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem disabled={!form.prompt} onSelect={() => setForm({ prompt: '' })}>
-                  Clear the prompt
+                  {t('studio:prompt.clear')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={!form.prompt}
                   onSelect={() => {
                     void navigator.clipboard?.writeText(form.prompt)
-                    toast('Prompt copied')
+                    toast(t('studio:actions.promptCopied'))
                   }}
                 >
-                  Copy the prompt
+                  {t('studio:prompt.copy')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1401,8 +1416,8 @@ function PromptPanel({
               <EmptyState
                 className="absolute inset-0"
                 icon={kind === 'video' ? <Film /> : <ImageIcon />}
-                title={kind === 'video' ? 'Your first video starts here' : 'Your first image starts here'}
-                description="Describe it above, or try one of the examples."
+                title={kind === 'video' ? t('studio:prompt.emptyVideo') : t('studio:prompt.emptyImage')}
+                description={t('studio:prompt.emptyDesc')}
               />
             )
           )}
@@ -1411,16 +1426,16 @@ function PromptPanel({
               <a
                 href={convertFileSrc(latest.path)}
                 download={`studio-${latest.recipe.seed}.${kind === 'video' ? 'mp4' : 'png'}`}
-                title="Save"
-                aria-label="Save"
+                title={t('studio:prompt.save')}
+                aria-label={t('studio:prompt.save')}
                 className={roundBtn}
               >
                 <Download className="size-4" />
               </a>
               <button
                 type="button"
-                title="Open large"
-                aria-label="Open large"
+                title={t('studio:prompt.openLarge')}
+                aria-label={t('studio:prompt.openLarge')}
                 onClick={() => onOpen(0)}
                 className={roundBtn}
               >
@@ -1428,28 +1443,28 @@ function PromptPanel({
               </button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button type="button" aria-label="More" className={roundBtn}>
+                  <button type="button" aria-label={t('common:more')} className={roundBtn}>
                     <MoreHorizontal className="size-4" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onSelect={() => onRemix(latest)}>
-                    Remix: same prompt, new seed
+                    {t('studio:prompt.remix')}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => {
                       void navigator.clipboard?.writeText(latest.recipe.prompt)
-                      toast('Prompt copied')
+                      toast(t('studio:actions.promptCopied'))
                     }}
                   >
-                    Copy the prompt
+                    {t('studio:prompt.copy')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-destructive"
                     onSelect={() => void remove(latest.kind, latest.id)}
                   >
-                    {archiveOn ? 'Move to Archive' : 'Delete'}
+                    {archiveOn ? t('studio:actions.archive') : t('studio:actions.delete')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1474,8 +1489,8 @@ function PromptPanel({
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="tabular-nums">
                   {job?.remote
-                    ? `Waiting for ${job.remote}…`
-                    : `${phaseLabel(job?.phase ?? 'queued')} · ${percent}%`}
+                    ? t('studio:prompt.waitingFor', { provider: job.remote })
+                    : `${phaseText(t, job?.phase ?? 'queued')} · ${percent}%`}
                   {job?.remote && job.startedAt ? (
                     <Elapsed since={job.startedAt} />
                   ) : null}
@@ -1483,7 +1498,7 @@ function PromptPanel({
                   job?.startedAt &&
                   job.fraction > 0.05 &&
                   job.fraction < 0.97
-                    ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
+                    ? ` · ${t('studio:prompt.eta', { eta: formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction)) })}`
                     : ''}
                 </span>
                 <Button
@@ -1491,7 +1506,7 @@ function PromptPanel({
                   size="sm"
                   onClick={() => void cancel()}
                 >
-                  <Square className="size-3" /> Stop
+                  <Square className="size-3" /> {t('studio:prompt.stop')}
                 </Button>
               </div>
             </div>
@@ -1505,7 +1520,7 @@ function PromptPanel({
           className="relative mt-auto flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] text-sm font-semibold text-white shadow-[0_6px_20px_-6px_rgb(99_102_241/0.7)] transition-[filter,transform] duration-150 hover:brightness-110 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-hidden active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
         >
           <Sparkles className="size-4" aria-hidden />
-          {ready ? (kind === 'video' ? 'Generate Video' : 'Generate Image') : 'Load the model first'}
+          {ready ? (kind === 'video' ? t('studio:prompt.generateVideo') : t('studio:prompt.generateImage')) : t('studio:prompt.loadFirst')}
           <span className="absolute right-3 hidden items-center gap-1 rounded-md bg-white/20 px-2 py-1 text-[11px] font-medium sm:inline-flex">
             {mac ? '⌘' : 'Ctrl'} <CornerDownLeft className="size-3" aria-hidden />
           </span>
@@ -1515,14 +1530,14 @@ function PromptPanel({
       <Dialog open={guide} onOpenChange={setGuide}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Prompt Guide</DialogTitle>
-            <DialogDescription>Short habits that give better pictures.</DialogDescription>
+            <DialogTitle>{t('studio:prompt.guide')}</DialogTitle>
+            <DialogDescription>{t('studio:prompt.guideDesc')}</DialogDescription>
           </DialogHeader>
           <ul className="flex flex-col gap-3">
-            {GUIDE.map(([title, body]) => (
-              <li key={title} className="flex flex-col gap-0.5">
-                <span className="text-[13px] font-medium text-foreground">{title}</span>
-                <span className="text-xs leading-snug text-muted-foreground">{body}</span>
+            {GUIDE.map((id) => (
+              <li key={id} className="flex flex-col gap-0.5">
+                <span className="text-[13px] font-medium text-foreground">{t(`studio:prompt.${id}.title`)}</span>
+                <span className="text-xs leading-snug text-muted-foreground">{t(`studio:prompt.${id}.body`)}</span>
               </li>
             ))}
           </ul>
@@ -1542,6 +1557,7 @@ function ActivityPanel({
   onOpen: (index: number) => void
   onRemix: (item: GalleryItem) => void
 }) {
+  const { t, i18n } = useTranslation()
   const job = useStudio((s) => s.job)
   const jobPrompt = useStudio((s) => s.jobPrompt)
   const activity = useStudio((s) => s.activity)
@@ -1563,21 +1579,21 @@ function ActivityPanel({
   return (
     <Frame className="motion-safe:animate-rise-in" style={rise(3)}>
       <FrameHeader
-        title="Recent Activity"
+        title={t('studio:activity.title')}
         actions={
           <PanelButton
             disabled={empty}
             onClick={() => setClearedAt(Date.now())}
-            title="Empties this list. Your pictures stay in Your Generations."
+            title={t('studio:activity.clearTitle')}
           >
-            Clear all
+            {t('studio:activity.clearAll')}
           </PanelButton>
         }
       />
       <FrameBody className="min-h-0 flex-1 p-2.5">
         {empty ? (
           <p className="px-1.5 py-2 text-xs text-muted-foreground">
-            Nothing yet. What you make shows up here.
+            {t('studio:activity.empty')}
           </p>
         ) : (
           <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:thin]">
@@ -1585,10 +1601,10 @@ function ActivityPanel({
               <li className="flex min-w-0 flex-col gap-1.5 rounded-xl border-[0.8px] border-blue-500/40 bg-blue-500/5 p-2.5">
                 <div className="flex items-center gap-2">
                   <Chip tone="info" live>
-                    Making
+                    {t('studio:activity.making')}
                   </Chip>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {job.remote ? `Waiting for ${job.remote}` : `${phaseLabel(job.phase)} · ${percent}%`}
+                    {job.remote ? t('studio:prompt.waitingFor', { provider: job.remote }) : `${phaseText(t, job.phase)} · ${percent}%`}
                     {job.remote ? <Elapsed since={job.startedAt} /> : null}
                   </span>
                 </div>
@@ -1620,7 +1636,7 @@ function ActivityPanel({
                       {item.recipe.prompt}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {timeAgo(item.recipe.createdAtMs)}
+                      {timeAgo(item.recipe.createdAtMs, t, i18n.language)}
                     </span>
                   </span>
                 </button>
@@ -1628,23 +1644,23 @@ function ActivityPanel({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label="More"
+                      aria-label={t('common:more')}
                       className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden pointer-coarse:size-11"
                     >
                       <MoreHorizontal className="size-4" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => onOpen(index)}>Open</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onOpen(index)}>{t('studio:activity.open')}</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onRemix(item)}>
-                      Remix: same prompt, new seed
+                      {t('studio:prompt.remix')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive"
                       onSelect={() => void remove(item.kind, item.id)}
                     >
-                      {archiveOn ? 'Move to Archive' : 'Delete'}
+                      {archiveOn ? t('studio:actions.archive') : t('studio:actions.delete')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -1654,9 +1670,9 @@ function ActivityPanel({
               <li key={entry.id} className="flex min-w-0 flex-col gap-1 rounded-xl p-2.5">
                 <div className="flex items-center gap-2">
                   <Chip tone={ACTIVITY_TONE[entry.status]} dot>
-                    {ACTIVITY_LABEL[entry.status]}
+                    {t(`studio:activity.${entry.status}`)}
                   </Chip>
-                  <span className="text-xs text-muted-foreground">{timeAgo(entry.at)}</span>
+                  <span className="text-xs text-muted-foreground">{timeAgo(entry.at, t, i18n.language)}</span>
                 </div>
                 <p className="line-clamp-2 text-[12.5px] text-foreground">{entry.prompt}</p>
                 {entry.error && (
@@ -1681,6 +1697,7 @@ function GenerationsPanel({
   onOpen: (item: GalleryItem) => void
   onRemix: (item: GalleryItem) => void
 }) {
+  const { t, i18n } = useTranslation()
   const gallery = useStudio((s) => s.gallery)
   const remove = useStudio((s) => s.remove)
   const archiveOn = useArchiveEnabled()
@@ -1728,7 +1745,7 @@ function GenerationsPanel({
   return (
     <Frame className="motion-safe:animate-rise-in" style={rise(4)}>
       <FrameHeader
-        title="Your Generations"
+        title={t('studio:gens.title')}
         actions={
           <div className="flex items-center gap-2">
             {selecting && (
@@ -1739,18 +1756,18 @@ function GenerationsPanel({
                   className="text-destructive"
                 >
                   <Trash2 className="size-3" aria-hidden />
-                  {archiveOn ? 'Archive' : 'Delete'} {picked.size > 0 ? picked.size : ''}
+                  {archiveOn ? t('studio:gens.archive') : t('studio:actions.delete')} {picked.size > 0 ? picked.size : ''}
                 </PanelButton>
               </>
             )}
             <PanelButton onClick={() => (selecting ? leaveSelect() : setSelecting(true))}>
-              {selecting ? 'Done' : 'Select'}
+              {selecting ? t('studio:gens.done') : t('studio:gens.select')}
             </PanelButton>
             <div className="flex items-center gap-0.5 rounded-lg border-[0.8px] border-border bg-card p-0.5">
-              <button type="button" aria-label="Grid" aria-pressed={layout === 'grid'} onClick={() => setLayout('grid')} className={iconBtn(layout === 'grid')}>
+              <button type="button" aria-label={t('studio:gens.grid')} aria-pressed={layout === 'grid'} onClick={() => setLayout('grid')} className={iconBtn(layout === 'grid')}>
                 <LayoutGrid className="size-3.5" />
               </button>
-              <button type="button" aria-label="List" aria-pressed={layout === 'list'} onClick={() => setLayout('list')} className={iconBtn(layout === 'list')}>
+              <button type="button" aria-label={t('studio:gens.list')} aria-pressed={layout === 'list'} onClick={() => setLayout('list')} className={iconBtn(layout === 'list')}>
                 <List className="size-3.5" />
               </button>
             </div>
@@ -1758,12 +1775,12 @@ function GenerationsPanel({
         }
       />
       <FrameBody className="gap-3 p-3.5">
-        <div role="tablist" aria-label="Filter" className="flex w-fit items-center gap-1 rounded-xl border-[0.8px] border-border bg-card p-0.5">
+        <div role="tablist" aria-label={t('studio:gens.filter')} className="flex w-fit items-center gap-1 rounded-xl border-[0.8px] border-border bg-card p-0.5">
           {(
             [
-              ['all', 'All'],
-              ['image', 'Images'],
-              ['video', 'Video'],
+              ['all', t('studio:gens.all')],
+              ['image', t('studio:page.images')],
+              ['video', t('studio:page.video')],
             ] as const
           ).map(([value, text]) => (
             <button
@@ -1780,7 +1797,7 @@ function GenerationsPanel({
         </div>
         {items.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">
-            Nothing here yet. What you make appears here.
+            {t('studio:gens.empty')}
           </p>
         ) : layout === 'grid' ? (
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,150px),1fr))] gap-3">
@@ -1828,13 +1845,13 @@ function GenerationsPanel({
                       <p className="line-clamp-2 text-[11px] leading-snug">{item.recipe.prompt}</p>
                       <div className="flex items-center justify-between gap-1">
                         <span className="truncate text-[10px] opacity-80 tabular-nums">
-                          {timeAgo(item.recipe.createdAtMs)}
+                          {timeAgo(item.recipe.createdAtMs, t, i18n.language)}
                         </span>
                         <span className="pointer-events-auto flex shrink-0 gap-1">
                           <button
                             type="button"
-                            title="Remix: same prompt, new seed"
-                            aria-label="Remix"
+                            title={t('studio:prompt.remix')}
+                            aria-label={t('studio:prompt.remixShort')}
                             onClick={() => onRemix(item)}
                             className="grid size-6 place-items-center rounded-md bg-white/15 transition-colors hover:bg-white/30 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-hidden pointer-coarse:size-9"
                           >
@@ -1842,8 +1859,8 @@ function GenerationsPanel({
                           </button>
                           <button
                             type="button"
-                            title={archiveOn ? 'Move to Archive' : 'Delete'}
-                            aria-label={archiveOn ? 'Move to Archive' : 'Delete'}
+                            title={archiveOn ? t('studio:actions.archive') : t('studio:actions.delete')}
+                            aria-label={archiveOn ? t('studio:actions.archive') : t('studio:actions.delete')}
                             onClick={() => void remove(item.kind, item.id)}
                             className="grid size-6 place-items-center rounded-md bg-white/15 transition-colors hover:bg-white/30 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-hidden pointer-coarse:size-9"
                           >
@@ -1882,15 +1899,15 @@ function GenerationsPanel({
                       <span className="truncate text-[13px] text-foreground">{item.recipe.prompt}</span>
                       <span className="truncate text-xs text-muted-foreground tabular-nums">
                         {item.recipe.modelName} · {item.recipe.width} × {item.recipe.height} ·{' '}
-                        {timeAgo(item.recipe.createdAtMs)}
+                        {timeAgo(item.recipe.createdAtMs, t, i18n.language)}
                       </span>
                     </span>
                   </button>
                   {!selecting && (
                     <button
                       type="button"
-                      title={archiveOn ? 'Move to Archive' : 'Delete'}
-                      aria-label={archiveOn ? 'Move to Archive' : 'Delete'}
+                      title={archiveOn ? t('studio:actions.archive') : t('studio:actions.delete')}
+                      aria-label={archiveOn ? t('studio:actions.archive') : t('studio:actions.delete')}
                       onClick={() => void remove(item.kind, item.id)}
                       className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:text-destructive focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden pointer-coarse:size-11"
                     >
@@ -1908,6 +1925,7 @@ function GenerationsPanel({
 }
 
 export function StudioPage() {
+  const { t } = useTranslation()
   const convertFileSrc = useAssetUrl()
   const status = useStudio((s) => s.status)
   const error = useStudio((s) => s.error)
@@ -2021,19 +2039,19 @@ export function StudioPage() {
   return (
     <EnginePage testId="studio-page">
       <PageHead
-        title="Studio"
+        title={t('studio:page.title')}
         description={
           usingHosted
-            ? 'Create images with a hosted model. Your prompt is sent to its provider.'
-            : 'Create images and video locally on this computer. Nothing leaves your device.'
+            ? t('studio:page.descriptionHosted')
+            : t('studio:page.descriptionLocal')
         }
         actions={
           <Segmented<StudioKind>
-            aria-label="What to make"
+            aria-label={t('studio:page.whatToMake')}
             className="min-w-[200px]"
             options={[
-              { value: 'image', label: 'Images', icon: <ImageIcon className="size-4" /> },
-              { value: 'video', label: 'Video', icon: <Film className="size-4" /> },
+              { value: 'image', label: t('studio:page.images'), icon: <ImageIcon className="size-4" /> },
+              { value: 'video', label: t('studio:page.video'), icon: <Film className="size-4" /> },
             ]}
             value={kind}
             onValueChange={changeKind}
@@ -2048,7 +2066,7 @@ export function StudioPage() {
           <span className="min-w-0 break-words">{error}</span>
           <button
             type="button"
-            aria-label="Dismiss"
+            aria-label={t('studio:page.dismiss')}
             onClick={clearError}
             className="shrink-0 rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden"
           >
@@ -2058,7 +2076,7 @@ export function StudioPage() {
       )}
       {!status ? (
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <Loader className="size-4 animate-spin" /> Loading…
+          <Loader className="size-4 animate-spin" /> {t('studio:page.loading')}
         </div>
       ) : (
         <>

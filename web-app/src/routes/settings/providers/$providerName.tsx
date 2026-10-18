@@ -52,6 +52,7 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
+import { ProviderStatusChip } from '@/components/ProviderStatusChip'
 import {
   useCallback,
   useEffect,
@@ -94,7 +95,7 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { Chip } from '@/components/ui/chip'
 import { MiddleText } from '@/components/ui/middle-text'
-import { parseModelName } from '@/lib/modelDisplayName'
+import { disambiguateModels, parseModelName } from '@/lib/modelDisplayName'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import {
@@ -261,6 +262,20 @@ function ProviderDetail() {
       'name-asc'
     ).map((item) => item.model)
   }, [provider])
+  // Rows whose names are near-identical get a short label from what differs.
+  const disambiguation = useMemo(
+    () =>
+      disambiguateModels(
+        allModels.map((model) => ({
+          key: model.id,
+          name: getModelDisplayName(model),
+          fileName: localFiles[model.id]?.fileName ?? model.id,
+          sizeBytes: localFiles[model.id]?.sizeBytes,
+          contextLength: contextLengthOf(model),
+        }))
+      ),
+    [allModels, localFiles]
+  )
   const embeddingModels = useMemo(
     () =>
       isLlamacpp
@@ -872,7 +887,11 @@ function ProviderDetail() {
           models: synced.models,
         })
 
+        // Short, and one at a time: a long-lived card sat over the Save button of
+        // a dialog opened right after a refresh.
         toast.success(t('providers:models'), {
+          id: 'providers-models-refresh',
+          duration: 2500,
           description: [
             modelsToAdd.length > 0
               ? t('providers:refreshModelsSuccess', {
@@ -889,6 +908,8 @@ function ProviderDetail() {
         })
       } else {
         toast.success(t('providers:models'), {
+          id: 'providers-models-refresh',
+          duration: 2500,
           description: t('providers:noNewModels'),
         })
       }
@@ -982,6 +1003,10 @@ function ProviderDetail() {
       ? !bedrockCredentialsSaved
       : !providerHasRemoteApiKeys(provider))
 
+  const headerKeyStatus = provider
+    ? providerKeyStatus(provider, { bedrockCredentials: bedrockCredentialsSaved })
+    : undefined
+
   const statusFor = (modelId: string) =>
     deriveModelStatus({
       modelId,
@@ -1031,6 +1056,8 @@ function ProviderDetail() {
     const parsed = parseModelName(displayName)
     const quant = parsed.quant ?? parseModelName(secondaryLine).quant
     const shownName = parsed.quant ? parsed.base : displayName
+    // A quant difference already shows as the quant chip.
+    const disambiguator = disambiguation.get(model.id)
     const rowTitle = [
       displayName,
       secondaryLine !== displayName ? secondaryLine : null,
@@ -1106,6 +1133,22 @@ function ProviderDetail() {
             title={rowTitle}
             data-testid="model-secondary-line"
           />
+          {/* What tells this model from its look-alikes, when its name
+              alone would not. On its own line so it never squeezes the name. */}
+          {disambiguator &&
+            disambiguator.kind !== 'quant' &&
+            disambiguator.label !== quant && (
+              <span className="flex min-w-0">
+                <Chip
+                  mono
+                  className="h-[18px] max-w-full min-w-0 overflow-hidden text-ellipsis"
+                  title={file?.fileName ?? model.id}
+                  data-testid="model-disambiguator-chip"
+                >
+                  {disambiguator.label}
+                </Chip>
+              </span>
+            )}
         </div>
         {/* Always a cell, even with no capabilities: CapabilityChips renders
             nothing then, and every later column would slide one place left
@@ -1153,7 +1196,11 @@ function ProviderDetail() {
         <div
           className={cn(
             'flex flex-nowrap items-center justify-end gap-0.5',
-            isEngineProvider ? '@max-[880px]:ml-auto' : '@max-[560px]:ml-auto'
+            // In the two-line card the group may wrap rather than run out
+            // of the row when the page is very narrow.
+            isEngineProvider
+              ? '@max-[880px]:ml-auto @max-[880px]:max-w-full @max-[880px]:flex-wrap'
+              : '@max-[560px]:ml-auto @max-[560px]:max-w-full @max-[560px]:flex-wrap'
           )}
         >
           {options.actions}
@@ -1277,9 +1324,42 @@ function ProviderDetail() {
                 updateObj.base_url = newValue
               }
 
-              serviceHub
-                .providers()
-                .updateSettings(providerName, updateObj.settings ?? [])
+              const previousValue = changed.controller_props.value
+              void Promise.resolve(
+                serviceHub
+                  .providers()
+                  .updateSettings(providerName, updateObj.settings ?? [])
+              ).catch((error: unknown) => {
+                // The engine refused and rolled the file back: put the control
+                // back on the stored value and say why, so a change that was not
+                // kept is never mistaken for one that was.
+                const latest = useModelProvider.getState().getProviderByName(providerName)
+                if (latest) {
+                  updateProvider(providerName, {
+                    ...latest,
+                    settings: latest.settings.map((s, i) =>
+                      i === settingIndex
+                        ? ({
+                            ...s,
+                            controller_props: {
+                              ...s.controller_props,
+                              value: previousValue,
+                            },
+                          } as ProviderSetting)
+                        : s
+                    ),
+                  })
+                }
+                if (restartTimerRef.current) {
+                  clearTimeout(restartTimerRef.current)
+                  restartTimerRef.current = null
+                  pendingRestartRef.current = null
+                }
+                toast.error(t('engine:provider.settingNotSaved', { setting: setting.title }), {
+                  id: `engine-setting-${providerName}-${setting.key}`,
+                  description: errorText(error),
+                })
+              })
               updateProvider(providerName, {
                 ...provider,
                 ...updateObj,
@@ -1820,7 +1900,7 @@ function ProviderDetail() {
               </div>
 
               <div className="text-xs text-muted-foreground">
-                Primary key is <span className="font-medium">#1</span>. Jan
+                Primary key is <span className="font-medium">#1</span>. Flint
                 retries the next key only on{' '}
                 <span className="font-mono">401/403/429</span>.
               </div>
@@ -1989,10 +2069,17 @@ function ProviderDetail() {
                     <Chip tone="ok" live>
                       {t('engine:status.running')}
                     </Chip>
-                  ) : apiKeyMissing ? (
-                    <Chip tone="warn" dot>
-                      {t('engine:status.noKey')}
-                    </Chip>
+                  ) : apiKeyMissing || headerKeyStatus === 'missing' || headerKeyStatus === 'credentials-missing' ? (
+                    // The same words the provider list uses for the same state:
+                    // Bedrock has AWS credentials, not an API key, and a remote
+                    // provider with no endpoint yet is not "connected".
+                    <ProviderStatusChip
+                      status={
+                        provider.provider === 'bedrock' || headerKeyStatus === 'credentials-missing'
+                          ? 'credentials-missing'
+                          : 'missing'
+                      }
+                    />
                   ) : connectionFailed ? (
                     <Chip tone="warn" dot>
                       {t('providers:status.failed')}

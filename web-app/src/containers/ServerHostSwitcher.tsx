@@ -9,6 +9,7 @@ import {
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 const hostOptions = [
   { value: '127.0.0.1', label: '127.0.0.1' },
@@ -20,6 +21,7 @@ export function ServerHostSwitcher({
 }: {
   isServerRunning?: boolean
 }) {
+  const { t } = useTranslation()
   const { serverHost, setServerHost } = useLocalApiServer()
 
   return (
@@ -31,7 +33,7 @@ export function ServerHostSwitcher({
         <Button
           variant="outline"
           className="w-full min-w-[140px] justify-between pointer-coarse:h-11"
-          title="Edit Server Host"
+          title={t('uiLeftovers:serverHost.edit')}
           // A real lock, not only pointer-events: the trigger was still
           // reachable with Tab and Enter while the server ran (#111).
           disabled={isServerRunning}

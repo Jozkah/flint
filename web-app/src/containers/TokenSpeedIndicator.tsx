@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toNumber } from '@/utils/number'
 import { Gauge } from 'lucide-react'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
@@ -34,6 +35,7 @@ interface TokenSpeedIndicatorProps {
 
 export const TokenSpeedIndicator = memo(
   ({ metadata, streaming }: TokenSpeedIndicatorProps) => {
+    const { t } = useTranslation()
     const showTokenSpeed = useInterfaceSettings((s) => s.showTokenSpeed)
 
     const nonStreamingAssistantParam =
@@ -94,19 +96,19 @@ export const TokenSpeedIndicator = memo(
         <div className="flex flex-col gap-1">
           {rawSpeed > 0 && (
             <div className="flex items-center justify-between gap-4">
-              <span className="text-muted-foreground">Generation</span>
+              <span className="text-muted-foreground">{t('uiLeftovers:tokenSpeed.generation')}</span>
               <span className="font-mono">{rawSpeed.toFixed(2)} tps</span>
             </div>
           )}
           {promptSpeed && promptSpeed > 0 && (
             <div className="flex items-center justify-between gap-4">
-              <span className="text-muted-foreground">Reading</span>
+              <span className="text-muted-foreground">{t('uiLeftovers:tokenSpeed.reading')}</span>
               <span className="font-mono">{promptSpeed.toFixed(2)} tps</span>
             </div>
           )}
           {draftPercent !== null && (
             <div className="flex items-center justify-between gap-4">
-              <span className="text-muted-foreground">Draft accepted</span>
+              <span className="text-muted-foreground">{t('uiLeftovers:tokenSpeed.draftAccepted')}</span>
               <span className="font-mono">
                 {draftPercent}% ({persisted?.draftAccepted ?? 0}/
                 {persisted?.draftTokens ?? 0})
@@ -129,7 +131,7 @@ export const TokenSpeedIndicator = memo(
           ) : (
             displayTokenCount > 0 && (
               <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Tokens</span>
+                <span className="text-muted-foreground">{t('uiLeftovers:tokenSpeed.tokens')}</span>
                 <span className="font-mono">{displayTokenCount}</span>
               </div>
             )
@@ -140,9 +142,9 @@ export const TokenSpeedIndicator = memo(
               data-testid="message-memory"
             >
               <div className="font-medium text-foreground">
-                Memory in this request
+                {t('uiLeftovers:tokenSpeed.memoryInRequest')}
               </div>
-              <ul className="mt-1 space-y-0.5" aria-label="Memories sent">
+              <ul className="mt-1 space-y-0.5" aria-label={t('uiLeftovers:tokenSpeed.memoriesSent')}>
                 {memoryIds.map((id) => (
                   <li
                     key={id}
@@ -155,7 +157,7 @@ export const TokenSpeedIndicator = memo(
               </ul>
               {withheldIds.length > 0 && (
                 <p className="mt-1 text-warning">
-                  Withheld as conflicting: {withheldIds.join(', ')}
+                  {t('uiLeftovers:tokenSpeed.withheld', { ids: withheldIds.join(', ') })}
                 </p>
               )}
             </div>
@@ -170,7 +172,7 @@ export const TokenSpeedIndicator = memo(
           <PopoverTrigger asChild>
             <button
               type="button"
-              aria-label="Token usage for this message"
+              aria-label={t('uiLeftovers:tokenSpeed.aria')}
               data-testid="message-token-trigger"
               className="inline-grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground pointer-coarse:size-11"
             >
@@ -178,7 +180,7 @@ export const TokenSpeedIndicator = memo(
             </button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Token usage</TooltipContent>
+        <TooltipContent>{t('uiLeftovers:tokenSpeed.tooltip')}</TooltipContent>
       </Tooltip>
     )
     // Beside the trigger, not inside it: a per-message flag readable without
@@ -202,10 +204,10 @@ export const TokenSpeedIndicator = memo(
           {cacheFlag &&
             cacheStatus(usage) !== 'not-reported' &&
             displaySpeed > 0 && <span aria-hidden>·</span>}
-          {displaySpeed > 0 && <span>{displaySpeed} tokens/sec</span>}
+          {displaySpeed > 0 && <span>{t('uiLeftovers:tokenSpeed.perSec', { n: displaySpeed })}</span>}
           {displayTokenCount > 0 && (
             <span className="text-muted-foreground">
-              ({displayTokenCount} tokens)
+              ({t('uiLeftovers:tokenSpeed.count', { n: displayTokenCount })})
             </span>
           )}
         </div>

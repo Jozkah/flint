@@ -124,7 +124,7 @@ export function VoiceInputButton({
       <VoiceSetupDialog
         open={setupOpen}
         onOpenChange={setSetupOpen}
-        onReady={() => toast.success('Voice input is ready. Press the microphone to dictate.')}
+        onReady={() => toast.success(t('sweep:voice.ready'))}
       />
     </>
   )

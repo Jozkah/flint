@@ -52,6 +52,10 @@ import { ToolElapsed } from './tool-runtime'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { isTypingTarget } from '@/lib/fileDrop'
+import { EVERYWHERE_CHOICE, scopeFromChoiceId } from '@/lib/approvalScopes'
+import type { ApprovalChoice } from '@/hooks/useToolApprovalRequests'
 import { commandEditable } from '@/lib/commandEditable'
 import { ToolKindIcon, TOOL_TILE_CLASS } from '@/components/ToolKindTile'
 import { Citations } from '@/components/Citations'
@@ -516,6 +520,69 @@ export const ToolInput = memo(
   }
 )
 
+/** The options of a structured choice as radios, the selected one marked. */
+function ApprovalChoiceRadios({
+  choice,
+  value,
+  disabled,
+  onChange,
+  idPrefix,
+}: {
+  choice: ApprovalChoice
+  value: string
+  disabled: boolean
+  onChange: (id: string) => void
+  idPrefix: string
+}) {
+  const questionId = `${idPrefix}-question`
+  return (
+    <div
+      data-testid="approval-choice"
+      className="flex min-w-0 flex-col gap-1.5"
+    >
+      <span
+        id={questionId}
+        className="text-[13px] font-medium text-foreground"
+      >
+        {choice.question}
+      </span>
+      <RadioGroup
+        value={value}
+        onValueChange={onChange}
+        disabled={disabled}
+        aria-labelledby={questionId}
+        className="gap-1.5"
+      >
+        {choice.options.map((option) => {
+          const inputId = `${idPrefix}-${option.id}`
+          return (
+            <label
+              key={option.id}
+              htmlFor={inputId}
+              data-selected={value === option.id}
+              className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border px-3 py-2 text-left has-data-[state=checked]:border-(--tk) pointer-coarse:min-h-11"
+            >
+              <RadioGroupItem
+                id={inputId}
+                value={option.id}
+                className="mt-0.5"
+              />
+              <span className="min-w-0 text-[13px] leading-snug">
+                <b className="font-medium text-foreground">{option.label}</b>
+                {option.description && (
+                  <span className="block text-xs text-muted-foreground">
+                    {option.description}
+                  </span>
+                )}
+              </span>
+            </label>
+          )
+        })}
+      </RadioGroup>
+    </div>
+  )
+}
+
 /**
  * A pending request, as the one expanded step of the timeline: what is asked
  * (tool, workspace, the full command), why, what allowing it means, then the
@@ -583,6 +650,7 @@ export const ToolApprovalActions = memo(() => {
   const denyRef = useRef<HTMLButtonElement>(null)
   const titleId = useId()
   const moreId = useId()
+  const editedNoteId = `${moreId}-edited`
   const requestId = pending?.requestId
 
   // Each new request starts with its details closed (the broader options open
@@ -596,9 +664,15 @@ export const ToolApprovalActions = memo(() => {
     setEditOpen(false)
     setDraft('')
   }, [requestId, repeatedCommand])
+  // Focus goes to Deny once per new request, and never out of a field the
+  // person is typing in (the composer keeps its caret while they write).
+  const focusedRequest = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (requestId !== undefined || toolCallId) denyRef.current?.focus()
-  }, [requestId, toolCallId, armed])
+    if (requestId === undefined || focusedRequest.current === requestId) return
+    focusedRequest.current = requestId
+    if (isTypingTarget(document.activeElement)) return
+    denyRef.current?.focus({ preventScroll: true })
+  }, [requestId])
 
   // A subagent's request is not this card's: its call id is only unique inside
   // the child's own conversation, so it can coincide with a card here and would
@@ -632,6 +706,16 @@ export const ToolApprovalActions = memo(() => {
     pending.threadIsEphemeral === true
   )
   const once = request.scopeExplanations['allow-once']
+  // "Always" on a file change or a command asks how far it reaches. That form
+  // sits under "Always" itself, so the row names what the choice means.
+  const scopeFormChoice =
+    pending.scopeForm && pending.choice ? pending.choice : undefined
+  const chosenScopeId = pending.chosenId ?? scopeFormChoice?.defaultId
+  const chosenScope = scopeFormChoice
+    ? scopeFromChoiceId(chosenScopeId, pending.scopeForm?.options ?? [])
+    : null
+  const alwaysEverywhere =
+    !scopeFormChoice || chosenScopeId === EVERYWHERE_CHOICE
   const subject = requestSubject(pending.input, request.resources)
   const planCard = planCardOf(pending.toolName, pending.input)
   const planUnsaved = Boolean(planCard && planDirty[planCard.campaignId])
@@ -718,48 +802,14 @@ export const ToolApprovalActions = memo(() => {
       )}
       {/* A structured choice the request asks for with its answer (the
           campaign plan: how tasks work). The recommended one is selected. */}
-      {pending.choice && (
-        <fieldset
-          data-testid="approval-choice"
-          className="flex min-w-0 flex-col gap-1.5 border-0 p-0"
-        >
-          <legend className="mb-1 text-[13px] font-medium text-foreground">
-            {pending.choice.question}
-          </legend>
-          {pending.choice.options.map((option) => {
-            const inputId = `${titleId}-choice-${option.id}`
-            const selected =
-              (pending.chosenId ?? pending.choice?.defaultId) === option.id
-            return (
-              <label
-                key={option.id}
-                htmlFor={inputId}
-                data-selected={selected}
-                className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border px-3 py-2 text-left has-[:checked]:border-(--tk) pointer-coarse:min-h-11"
-              >
-                <input
-                  id={inputId}
-                  type="radio"
-                  name={`${titleId}-choice`}
-                  className="mt-0.5"
-                  checked={selected}
-                  disabled={!armed}
-                  onChange={() =>
-                    chooseOption(toolCallId, pending.requestId, option.id)
-                  }
-                />
-                <span className="min-w-0 text-[13px] leading-snug">
-                  <b className="font-medium text-foreground">{option.label}</b>
-                  {option.description && (
-                    <span className="block text-xs text-muted-foreground">
-                      {option.description}
-                    </span>
-                  )}
-                </span>
-              </label>
-            )
-          })}
-        </fieldset>
+      {pending.choice && !scopeFormChoice && (
+        <ApprovalChoiceRadios
+          choice={pending.choice}
+          value={pending.chosenId ?? pending.choice.defaultId}
+          disabled={!armed}
+          onChange={(id) => chooseOption(toolCallId, pending.requestId, id)}
+          idPrefix={`${titleId}-choice`}
+        />
       )}
       {repeatedCommand && (
         <p
@@ -807,7 +857,10 @@ export const ToolApprovalActions = memo(() => {
             aria-expanded={reasonOpen}
             data-testid="approval-deny-reason-toggle"
             className="rounded-sm text-muted-foreground underline-offset-4 outline-hidden hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
-            onClick={() => setReasonOpen((open) => !open)}
+            onClick={() => {
+              setReasonOpen((open) => !open)
+              setEditOpen(false)
+            }}
           >
             {t('tools:toolApproval.denyWithReason')}
           </button>
@@ -819,6 +872,7 @@ export const ToolApprovalActions = memo(() => {
               className="rounded-sm text-muted-foreground underline-offset-4 outline-hidden hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
               onClick={() => {
                 setEditOpen((open) => !open)
+                setReasonOpen(false)
                 setDraft(originalCommand)
               }}
             >
@@ -832,12 +886,18 @@ export const ToolApprovalActions = memo(() => {
             size="sm"
             variant="destructive"
             type="button"
-            disabled={!armed}
-            data-scope="deny"
+            disabled={!armed || (reasonOpen && reason.trim() === '')}
+            data-scope={reasonOpen ? 'deny-with-reason' : 'deny'}
             className="min-w-20 border-destructive/40 pointer-coarse:h-11"
-            onClick={() => decide('deny')}
+            onClick={() =>
+              reasonOpen
+                ? resolveApproval(toolCallId, 'deny', pending.requestId, reason)
+                : decide('deny')
+            }
           >
-            {t('permissions:scope.deny')}
+            {reasonOpen
+              ? t('tools:toolApproval.denyAndSend')
+              : t('permissions:scope.deny')}
           </Button>
           <Button
             size="sm"
@@ -904,19 +964,6 @@ export const ToolApprovalActions = memo(() => {
               placeholder={t('tools:toolApproval.denyReasonPlaceholder')}
               onChange={(e) => setReason(e.target.value)}
             />
-            <Button
-              size="sm"
-              variant="destructive"
-              type="button"
-              disabled={!armed || reason.trim() === ''}
-              data-scope="deny-with-reason"
-              className="self-end border-destructive/40 pointer-coarse:h-11"
-              onClick={() =>
-                resolveApproval(toolCallId, 'deny', pending.requestId, reason)
-              }
-            >
-              {t('tools:toolApproval.denyAndSend')}
-            </Button>
           </div>
         )}
         {moreOpen && (
@@ -948,15 +995,51 @@ export const ToolApprovalActions = memo(() => {
                 </button>
               </li>
             )}
+            {commandEdited && broader.length > 0 && (
+              <li
+                id={editedNoteId}
+                data-testid="approval-edited-note"
+                className="px-3 py-2 text-xs text-muted-foreground"
+              >
+                {t('permissions:scope.editedRunsOnce')}
+              </li>
+            )}
             {broader.map((scope) => {
               const info = request.scopeExplanations[scope]!
               const explanationId = `${moreId}-${scope}`
+              // With the scope form, "Always" says what was chosen below it.
+              const formRow = scope === 'allow-always' && scopeFormChoice
+              const named =
+                formRow && chosenScope?.type === 'folder'
+                  ? {
+                      label: t('permissions:scopeForm.alwaysFolder', {
+                        dir: chosenScope.dir,
+                      }),
+                      explanation: t(
+                        'permissions:scopeForm.alwaysFolderExplanation'
+                      ),
+                    }
+                  : formRow && chosenScope?.type === 'command_prefix'
+                    ? {
+                        label: t('permissions:scopeForm.alwaysPrefix', {
+                          prefix: chosenScope.prefix,
+                        }),
+                        explanation: t(
+                          'permissions:scopeForm.alwaysPrefixExplanation'
+                        ),
+                      }
+                    : undefined
+              const label = named?.label ?? formatPermissionMessage(t, info.label)
               return (
-                <li key={scope} className="flex">
+                <li key={scope} className="flex flex-col">
                   <button
                     type="button"
-                    aria-label={formatPermissionMessage(t, info.label)}
-                    aria-describedby={explanationId}
+                    aria-label={label}
+                    aria-describedby={
+                      commandEdited
+                        ? `${explanationId} ${editedNoteId}`
+                        : explanationId
+                    }
                     data-scope={scope}
                     data-suggested={
                       (repeatedCommand && scope === 'allow-thread') || undefined
@@ -966,18 +1049,32 @@ export const ToolApprovalActions = memo(() => {
                     onClick={() => decide(scope)}
                   >
                     <b className="text-[13px] font-medium text-foreground">
-                      {formatPermissionMessage(t, info.label)}
+                      {label}
                     </b>
-                    {info.broader && (
+                    {info.broader && (!formRow || alwaysEverywhere) && (
                       <Chip tone="warn">{t('permissions:scope.broader')}</Chip>
                     )}
                     <span
                       id={explanationId}
                       className="w-full text-xs leading-snug text-muted-foreground"
                     >
-                      {formatPermissionMessage(t, info.explanation)}
+                      {named?.explanation ??
+                        formatPermissionMessage(t, info.explanation)}
                     </span>
                   </button>
+                  {formRow && (
+                    <div className="px-3 pt-1 pb-2.5">
+                      <ApprovalChoiceRadios
+                        choice={scopeFormChoice}
+                        value={chosenScopeId ?? scopeFormChoice.defaultId}
+                        disabled={!armed}
+                        onChange={(id) =>
+                          chooseOption(toolCallId, pending.requestId, id)
+                        }
+                        idPrefix={`${titleId}-scope`}
+                      />
+                    </div>
+                  )}
                 </li>
               )
             })}
@@ -1010,6 +1107,7 @@ type ToolImageProps = {
 }
 
 const ToolImage = memo(({ data, index }: ToolImageProps) => {
+  const { t } = useTranslation()
   // Prepare the URL - convert base64 to data URL if needed
   const [preparedUrl, setPreparedUrl] = useState<string | undefined>(undefined)
 
@@ -1043,7 +1141,7 @@ const ToolImage = memo(({ data, index }: ToolImageProps) => {
     <div key={index} className="inline-block">
       <img
         src={preparedUrl}
-        alt="Tool output"
+        alt={t('uiLeftovers:toolOutputAlt')}
         className="max-w-full max-h-96 w-auto h-auto object-contain rounded-md border border-border"
       />
     </div>

@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { HuggingFaceFileGroup } from '@/lib/huggingface'
 import {
   WINDOW_SIZE,
@@ -18,6 +19,7 @@ type Props = {
  * area with a sticky header. Long lists get family headings and are windowed.
  */
 export function HubVariantList({ variants, recommendedId, renderRow }: Props) {
+  const { t } = useTranslation()
   const [showAll, setShowAll] = useState(false)
   const [windowed, setWindowed] = useState(WINDOW_SIZE)
 
@@ -41,7 +43,7 @@ export function HubVariantList({ variants, recommendedId, renderRow }: Props) {
           onClick={() => setShowAll(true)}
           className="mt-1 w-full cursor-pointer rounded-lg px-3 py-2 text-left text-xs font-medium text-secondary-foreground hover:bg-card hover:text-foreground"
         >
-          Show all {variants.length} variants
+          {t('sweep:hub.showAllVariants', { total: variants.length })}
         </button>
       </div>
     )
@@ -53,8 +55,8 @@ export function HubVariantList({ variants, recommendedId, renderRow }: Props) {
     <div>
       <div className="max-h-80 overflow-y-auto overscroll-contain rounded-xl [scrollbar-gutter:stable]">
         <div className="sticky top-0 z-10 flex items-center justify-between bg-muted px-3 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-          <span>Variant</span>
-          <span>Size and fit</span>
+          <span>{t('sweep:hub.variant')}</span>
+          <span>{t('sweep:hub.sizeAndFit')}</span>
         </div>
         <div className="space-y-1 pt-1">
           {sections.map((section, index) => {
@@ -92,7 +94,7 @@ export function HubVariantList({ variants, recommendedId, renderRow }: Props) {
         }}
         className="mt-1 w-full cursor-pointer rounded-lg px-3 py-2 text-left text-xs font-medium text-secondary-foreground hover:bg-card hover:text-foreground"
       >
-        Show fewer
+        {t('sweep:hub.showFewer')}
       </button>
     </div>
   )

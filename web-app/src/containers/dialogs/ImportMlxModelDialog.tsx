@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { Check, LoaderCircle } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
@@ -25,6 +26,7 @@ export const ImportMlxModelDialog = ({
   trigger,
   onSuccess,
 }: ImportMlxModelDialogProps) => {
+  const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const [open, setOpen] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -53,19 +55,19 @@ export const ImportMlxModelDialog = ({
 
   const handleImport = async () => {
     if (!selectedPath) {
-      toast.error('Please select a model folder')
+      toast.error(t('sweep:mlxImport.selectFolder'))
       return
     }
 
     if (!modelName) {
-      toast.error('Please enter a model name')
+      toast.error(t('sweep:mlxImport.enterName'))
       return
     }
 
     // Validate model name - only allow alphanumeric, underscore, hyphen, and dot
     //eslint-disable-next-line
     if (!/^[a-zA-Z0-9/_.\-]+$/.test(modelName)) {
-      toast.error('Invalid model name. Only alphanumeric and _ - . characters are allowed.')
+      toast.error(t('sweep:mlxImport.invalidName'))
       return
     }
 
@@ -75,8 +77,8 @@ export const ImportMlxModelDialog = ({
     )
 
     if (modelExists) {
-      toast.error('Model already exists', {
-        description: `${modelName} already imported`,
+      toast.error(t('sweep:modelImport.exists'), {
+        description: t('sweep:modelImport.alreadyImported', { name: modelName }),
       })
       return
     }
@@ -98,8 +100,8 @@ export const ImportMlxModelDialog = ({
       })
       console.log('[MLX Import] Import completed')
 
-      toast.success('Model imported successfully', {
-        description: `${modelName} has been imported`,
+      toast.success(t('sweep:modelImport.success'), {
+        description: t('sweep:modelImport.hasBeenImported', { name: modelName }),
       })
 
       // Reset form and close dialog
@@ -109,7 +111,7 @@ export const ImportMlxModelDialog = ({
       onSuccess?.(modelName)
     } catch (error) {
       console.error('[MLX Import] Import model error:', error)
-      toast.error('Failed to import model', {
+      toast.error(t('sweep:modelImport.failed'), {
         description:
           error instanceof Error ? error.message : String(error),
       })
@@ -146,12 +148,10 @@ export const ImportMlxModelDialog = ({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Import MLX Model
+            {t('sweep:mlxImport.title')}
           </DialogTitle>
           <DialogDescription>
-            Import a local MLX model folder for use with MLX. MLX models are
-            typically downloaded from HuggingFace and contain safetensors files
-            along with config and tokenizer files.
+            {t('sweep:mlxImport.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -159,7 +159,7 @@ export const ImportMlxModelDialog = ({
           {/* Model Name Input */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-fg-2">
-              Model Name
+              {t('sweep:mlxImport.modelName')}
             </label>
             <input
               type="text"
@@ -169,7 +169,7 @@ export const ImportMlxModelDialog = ({
               className="w-full min-w-0 rounded-md border border-input bg-card px-3 py-2 font-mono text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring md:text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              Only alphanumeric and _ - . characters are allowed
+              {t('sweep:mlxImport.nameHint')}
             </p>
           </div>
 
@@ -177,10 +177,10 @@ export const ImportMlxModelDialog = ({
           <div className="border border-border rounded-lg p-3 space-y-3">
             <div className="flex items-center gap-2">
               <h3 className="text-[13px] font-semibold text-foreground">
-                Model Folder
+                {t('sweep:mlxImport.modelFolder')}
               </h3>
               <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
-                Required
+                {t('sweep:mlxImport.required')}
               </span>
             </div>
 
@@ -199,7 +199,7 @@ export const ImportMlxModelDialog = ({
                     onClick={handleFileSelect}
                     disabled={importing}
                   >
-                    Change
+                    {t('sweep:mlxImport.change')}
                   </Button>
                 </div>
               </div>
@@ -211,7 +211,7 @@ export const ImportMlxModelDialog = ({
                 disabled={importing}
                 className="w-full h-12 border border-dashed border-border-strong text-muted-foreground hover:bg-muted hover:no-underline"
               >
-                Select Model Folder
+                {t('sweep:mlxImport.selectModelFolder')}
               </Button>
             )}
           </div>
@@ -221,7 +221,7 @@ export const ImportMlxModelDialog = ({
             <div className="rounded-md bg-muted px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Model will be saved as:
+                  {t('sweep:mlxImport.savedAs')}
                 </span>
               </div>
               <p className="text-sm font-mono mt-1">
@@ -238,7 +238,7 @@ export const ImportMlxModelDialog = ({
             onClick={() => handleOpenChange(false)}
             disabled={importing}
           >
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button
             onClick={handleImport}
@@ -246,7 +246,7 @@ export const ImportMlxModelDialog = ({
             disabled={importing || !selectedPath || !modelName}
           >
             {importing && <LoaderCircle className="size-4 motion-safe:animate-spin" />}
-            {importing ? 'Importing...' : 'Import Model'}
+            {importing ? t('sweep:modelImport.importing') : t('sweep:modelImport.import')}
           </Button>
         </div>
       </DialogContent>

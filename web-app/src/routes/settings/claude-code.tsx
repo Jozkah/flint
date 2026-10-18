@@ -300,8 +300,8 @@ function ClaudeCodeIntegration() {
 
     try {
       if (serverStatus === 'stopped') {
-        toast.info('Starting server...', {
-          description: 'Preparing server for Claude Code',
+        toast.info(t('integrations:claudeCode.startingServer'), {
+          description: t('integrations:claudeCode.preparingServer'),
         })
         try {
           await startServer()
@@ -312,7 +312,7 @@ function ClaudeCodeIntegration() {
           // running' case is already swallowed inside startServer and proceeds.
           const msg =
             startErr instanceof Error ? startErr.message : String(startErr)
-          toast.error('Failed to start the local API server', {
+          toast.error(t('integrations:claudeCode.startFailed'), {
             description: msg,
           })
           return
@@ -331,7 +331,7 @@ function ClaudeCodeIntegration() {
         })),
       })
       toast.success(
-        'Environment variables updated. Please try relaunching Claude Code in a new terminal window.',
+        t('integrations:claudeCode.envUpdated'),
         {
           duration: 8000,
         }
@@ -339,7 +339,7 @@ function ClaudeCodeIntegration() {
     } catch (error) {
       console.error('Failed to launch Claude Code:', error)
       const errorMsg = error instanceof Error ? error.message : String(error)
-      toast.error('Failed to configure env vars', {
+      toast.error(t('integrations:claudeCode.configFailed'), {
         description: errorMsg,
       })
     }
@@ -362,7 +362,7 @@ function ClaudeCodeIntegration() {
               className="size-4"
             />
           }
-          title="Claude Code integration"
+          title={t('integrations:claudeCode.cardTitle')}
         >
           <CardItem
             anchor="settings-claude-code-fable-model"
@@ -373,7 +373,7 @@ function ClaudeCodeIntegration() {
                 providers={providers}
                 selectedModel={helperModels.fable}
                 onSelect={(model) => setHelperModel('fable', model)}
-                placeholder="Select Fable Model"
+                placeholder={t('integrations:claudeCode.selectFable')}
               />
             }
           />
@@ -386,7 +386,7 @@ function ClaudeCodeIntegration() {
                 providers={providers}
                 selectedModel={helperModels.big}
                 onSelect={(model) => setHelperModel('big', model)}
-                placeholder="Select Big Model"
+                placeholder={t('integrations:claudeCode.selectBig')}
               />
             }
           />
@@ -399,7 +399,7 @@ function ClaudeCodeIntegration() {
                 providers={providers}
                 selectedModel={helperModels.medium}
                 onSelect={(model) => setHelperModel('medium', model)}
-                placeholder="Select Medium Model"
+                placeholder={t('integrations:claudeCode.selectMedium')}
               />
             }
           />
@@ -412,7 +412,7 @@ function ClaudeCodeIntegration() {
                 providers={providers}
                 selectedModel={helperModels.small}
                 onSelect={(model) => setHelperModel('small', model)}
-                placeholder="Select Small Model"
+                placeholder={t('integrations:claudeCode.selectSmall')}
               />
             }
           />
@@ -424,7 +424,7 @@ function ClaudeCodeIntegration() {
               onClick={() => setIsCustomCliDialogOpen(true)}
             >
               <Icon name="x-plus" size={14} />
-              Environment Variables
+              {t('integrations:envVars')}
             </Button>
             <div className="flex flex-wrap gap-2 sm:justify-end">
               <Button
@@ -434,20 +434,26 @@ function ClaudeCodeIntegration() {
                   clearModels()
                   try {
                     await invoke('clear_claude_code_env')
-                    toast.success('Claude Code settings cleared')
+                    toast.success(t('integrations:claudeCode.cleared'))
                   } catch (e) {
-                    toast.error(`Failed to clear env file: ${e}`)
+                    toast.error(
+                      t('integrations:claudeCode.clearFailed', {
+                        error: String(e),
+                      })
+                    )
                   }
                 }}
               >
-                Reset
+                {t('integrations:claudeCode.reset')}
               </Button>
               <Button
                 className="pointer-coarse:h-11"
                 onClick={handleLaunchClaudeCode}
                 disabled={isModelLoading}
               >
-                {isModelLoading ? 'Loading models...' : 'Save & Enable'}
+                {isModelLoading
+                  ? t('integrations:claudeCode.loadingModels')
+                  : t('integrations:claudeCode.saveEnable')}
               </Button>
             </div>
           </div>
@@ -487,15 +493,18 @@ function ClaudeCodeIntegration() {
             <div className="mt-2.5 rounded-lg bg-muted px-3 py-2.5 font-mono text-xs leading-[1.6] text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
               {helperModels.customCli && (
                 <div className="break-all">
-                  Command: {helperModels.customCli}
+                  {t('integrations:claudeCode.commandLine', {
+                    value: helperModels.customCli,
+                  })}
                 </div>
               )}
               {helperModels.envVars.length > 0 && (
                 <div className="break-all">
-                  Env:{' '}
-                  {helperModels.envVars
-                    .map((env) => `${env.key}=******`)
-                    .join(' · ')}
+                  {t('integrations:claudeCode.envLine', {
+                    value: helperModels.envVars
+                      .map((env) => `${env.key}=******`)
+                      .join(' · '),
+                  })}
                 </div>
               )}
             </div>
@@ -520,13 +529,14 @@ function HelperModelSelector({
   providers,
   selectedModel,
   onSelect,
-  placeholder = 'Select a model',
+  placeholder,
 }: {
   providers: ModelProvider[]
   selectedModel: string | null
   onSelect: (modelId: string) => void
   placeholder?: string
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -609,7 +619,9 @@ function HelperModelSelector({
             {selectedModel && currentModel ? (
               <>
                 <span className="inline-flex h-[18px] shrink-0 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium">
-                  {currentModel.isLocal ? 'Local' : 'Remote'}
+                  {currentModel.isLocal
+                    ? t('integrations:claudeCode.local')
+                    : t('integrations:claudeCode.remote')}
                 </span>
                 <BrandMark
                   logo={modelLogo(currentModel.id, currentModel.providerName)}
@@ -622,7 +634,7 @@ function HelperModelSelector({
                 </span>
               </>
             ) : (
-              placeholder
+              (placeholder ?? t('integrations:claudeCode.selectModel'))
             )}
           </span>
           <Icon name="arrow-down" size={12} className="opacity-70" />
@@ -640,7 +652,7 @@ function HelperModelSelector({
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
-              placeholder="Search models..."
+              placeholder={t('integrations:claudeCode.searchModels')}
               className="min-w-0 flex-1 bg-transparent text-base font-normal outline-0 md:text-sm"
             />
             {searchValue.length > 0 && (
@@ -656,7 +668,7 @@ function HelperModelSelector({
           <div className="max-h-[300px] overflow-y-auto">
             {Object.keys(groupedModels).length === 0 && searchValue ? (
               <div className="py-3 px-4 text-sm text-muted-foreground">
-                No models found for &quot;{searchValue}&quot;
+                {t('integrations:claudeCode.noModels', { search: searchValue })}
               </div>
             ) : (
               <div className="py-1">

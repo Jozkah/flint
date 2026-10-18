@@ -543,8 +543,8 @@ export default function AddEditMCPServer({
                 'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11',
                 isToggled && 'bg-accent text-foreground ring-1 ring-border'
               )}
-              title="Add server by JSON"
-              aria-label="Add server by JSON"
+              title={t('integrations:mcpDialog.jsonToggle')}
+              aria-label={t('integrations:mcpDialog.jsonToggle')}
               aria-pressed={isToggled}
               onClick={() => setIsToggled(!isToggled)}
             >
@@ -614,7 +614,7 @@ export default function AddEditMCPServer({
 
             <div className="space-y-2">
               <label className="text-sm mb-2 inline-block">
-                Transport Type
+                {t('integrations:mcpDialog.transport')}
               </label>
               <RadioGroup
                 value={transportType}
@@ -672,7 +672,7 @@ export default function AddEditMCPServer({
                   {...fieldA11y('url')}
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="Enter URL"
+                  placeholder={t('integrations:mcpDialog.urlPlaceholder')}
                 />
                 <FieldMessage id={messageId('url')} issue={issueFor('url')} />
               </div>
@@ -811,8 +811,13 @@ export default function AddEditMCPServer({
               <>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm">Headers</label>
-                    <RowIconButton label="Headers" onClick={handleAddHeader}>
+                    <label className="text-sm">
+                      {t('integrations:mcpDialog.headers')}
+                    </label>
+                    <RowIconButton
+                      label={t('integrations:mcpDialog.headers')}
+                      onClick={handleAddHeader}
+                    >
                       <Plus aria-hidden />
                     </RowIconButton>
                   </div>
@@ -826,8 +831,8 @@ export default function AddEditMCPServer({
                         onChange={(e) =>
                           handleHeaderKeyChange(index, e.target.value)
                         }
-                        placeholder="Header name"
-                        aria-label="Header name"
+                        placeholder={t('integrations:mcpDialog.headerName')}
+                        aria-label={t('integrations:mcpDialog.headerName')}
                         className="min-w-0 flex-1 font-mono"
                       />
                       <Input
@@ -835,12 +840,14 @@ export default function AddEditMCPServer({
                         onChange={(e) =>
                           handleHeaderValueChange(index, e.target.value)
                         }
-                        placeholder="Header value"
+                        placeholder={t('integrations:mcpDialog.headerValue')}
                         className="min-w-0 flex-1"
                       />
                       {headerKeys.length > 1 && (
                         <RowIconButton
-                          label={`Header ${index + 1}`}
+                          label={t('integrations:mcpDialog.headerN', {
+                            index: index + 1,
+                          })}
                           onClick={() => handleRemoveHeader(index)}
                           destructive
                         >
@@ -861,13 +868,13 @@ export default function AddEditMCPServer({
                     htmlFor={fieldId('timeout')}
                     className="text-sm mb-2 inline-block"
                   >
-                    Timeout (seconds)
+                    {t('integrations:mcpDialog.timeout')}
                   </label>
                   <Input
                     {...fieldA11y('timeout')}
                     value={timeout}
                     onChange={(e) => setTimeout(e.target.value)}
-                    placeholder="Enter timeout in seconds"
+                    placeholder={t('integrations:mcpDialog.timeoutPlaceholder')}
                     type="number"
                   />
                   <FieldMessage

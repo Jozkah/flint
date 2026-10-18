@@ -3,6 +3,8 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { HubTaskChips } from '../HubTaskChips'
 import { HuggingFaceLogo } from '@/components/icons/HuggingFaceLogo'
 
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
+
 describe('HubTaskChips', () => {
   it('renders friendly primary chips and marks the selected one', () => {
     render(<HubTaskChips value="coding" onChange={() => {}} />)

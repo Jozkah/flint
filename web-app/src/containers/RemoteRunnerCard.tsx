@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Card } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import { route } from '@/constants/routes'
@@ -30,6 +31,7 @@ import { campaignApi } from '@/lib/campaignApi'
  * and open it in Cowork.
  */
 function RunOnServer({ info }: { info: RunnerInfo }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [path, setPath] = useState<string | null>(null)
   const [parent, setParent] = useState<string | null>(null)
@@ -96,7 +98,11 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
         // The server fell back to its one-shot planner.
         if ('id' in started) {
           if (started.coordinatorError) {
-            toast.info(`Planned without a coordinator: ${started.coordinatorError}`)
+            toast.info(
+                t('integrations:remoteRunner.plannedWithout', {
+                  error: started.coordinatorError,
+                })
+              )
           }
           void navigate({
             to: route.campaignDetail,
@@ -120,7 +126,9 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
   return (
     <div className="space-y-2 border-t pt-3" data-testid="run-on-server">
       <p className="text-xs text-muted-foreground">
-        Run on server: {path ?? 'choose one of the server folders'}
+        {t('integrations:remoteRunner.runPath', {
+          path: path ?? t('integrations:remoteRunner.chooseFolder'),
+        })}
       </p>
       <ul className="max-h-40 space-y-1 overflow-auto text-xs">
         {path && (
@@ -133,7 +141,7 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
                 setIsGit(false)
               }}
             >
-              Up
+              {t('integrations:remoteRunner.up')}
             </button>
           </li>
         )}
@@ -155,17 +163,19 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
       </ul>
       <div className="flex items-center gap-2">
         <select
-          aria-label="Access"
+          aria-label={t('integrations:remoteRunner.access')}
           className="rounded border bg-transparent px-2 py-1 text-xs"
           value={access}
           onChange={(e) => setAccess(e.target.value as RunAccess)}
         >
-          <option value="read">Read only</option>
-          <option value="ask">Ask before changes</option>
-          {info.allowBypass && <option value="auto">Run unattended</option>}
+          <option value="read">{t('integrations:remoteRunner.accessRead')}</option>
+          <option value="ask">{t('integrations:remoteRunner.accessAsk')}</option>
+          {info.allowBypass && (
+            <option value="auto">{t('integrations:remoteRunner.accessAuto')}</option>
+          )}
         </select>
         <Button size="sm" disabled={!path || busy} onClick={() => void start()}>
-          Run on server
+          {t('integrations:remoteRunner.run')}
         </Button>
       </div>
       {isGit && info.runsWorktrees && access !== 'read' && (
@@ -176,21 +186,19 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
             onChange={(e) => setIsolate(e.target.checked)}
             data-testid="run-on-server-isolate"
           />
-          Work in its own checkout (changes reach the folder only when you apply or merge them)
+          {t('integrations:remoteRunner.isolate')}
         </label>
       )}
       {info.runsCampaigns && isGit && (
         <div className="space-y-2 border-t pt-3" data-testid="campaign-on-server">
           <p className="text-xs text-muted-foreground">
-            New campaign on server: the server plans the work with its model,
-            you approve the plan, and it then runs the tasks with no client
-            attached.
+            {t('integrations:remoteRunner.campaignHelp')}
           </p>
           <textarea
-            aria-label="Campaign goal"
+            aria-label={t('integrations:remoteRunner.goalLabel')}
             className="w-full rounded border bg-transparent px-2 py-1 text-xs"
             rows={3}
-            placeholder="Describe the big task"
+            placeholder={t('integrations:remoteRunner.goalPlaceholder')}
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             data-testid="campaign-on-server-goal"
@@ -202,7 +210,7 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
               onChange={(e) => setCoordinator(e.target.checked)}
               data-testid="campaign-on-server-coordinator"
             />
-            Plan in a conversation (a coordinator session you can talk to)
+            {t('integrations:remoteRunner.coordinator')}
           </label>
           <Button
             size="sm"
@@ -211,7 +219,9 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
             onClick={() => void planCampaign()}
             data-testid="campaign-on-server-plan"
           >
-            {planning ? 'Planning...' : 'Plan campaign on server'}
+            {planning
+              ? t('integrations:remoteRunner.planning')
+              : t('integrations:remoteRunner.planCampaign')}
           </Button>
         </div>
       )}
@@ -235,6 +245,7 @@ export function SessionRow({
   models: RunModel[]
   onChanged: () => void
 }) {
+  const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(session.title)
@@ -257,7 +268,7 @@ export function SessionRow({
 
   const remove = () => {
     const ok = window.confirm(
-      `Delete "${session.title}" from the server? Its conversation is removed for good.`
+      t('integrations:remoteRunner.deleteConfirm', { title: session.title })
     )
     if (ok) void run(() => deleteRun(session.id))
   }
@@ -277,21 +288,21 @@ export function SessionRow({
             }}
           >
             <input
-              aria-label="Session title"
+              aria-label={t('integrations:remoteRunner.sessionTitle')}
               className="min-w-0 flex-1 rounded border bg-transparent px-2 py-1 text-xs"
               value={title}
               maxLength={80}
               onChange={(e) => setTitle(e.target.value)}
             />
             <Button size="sm" type="submit" disabled={busy || !title.trim()}>
-              Save
+              {t('integrations:save')}
             </Button>
           </form>
         ) : (
           <button
             type="button"
             className="truncate text-left underline-offset-2 hover:underline"
-            title="Rename"
+            title={t('integrations:remoteRunner.rename')}
             onClick={() => {
               setTitle(session.title)
               setEditing(true)
@@ -307,13 +318,13 @@ export function SessionRow({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select
-          aria-label="Model"
+          aria-label={t('integrations:remoteRunner.model')}
           className="max-w-48 rounded border bg-transparent px-2 py-1 text-xs"
           value={session.model ?? ''}
           disabled={busy || session.status !== 'idle'}
           onChange={(e) => void run(() => setRunModel(session.id, e.target.value))}
         >
-          {!known && <option value={session.model ?? ''}>{session.model ?? 'server default'}</option>}
+          {!known && <option value={session.model ?? ''}>{session.model ?? t('integrations:remoteRunner.serverDefault')}</option>}
           {models.map((m) => (
             <option key={`${m.provider}/${m.id}`} value={m.id}>
               {m.label}
@@ -321,7 +332,7 @@ export function SessionRow({
           ))}
         </select>
         <select
-          aria-label="Access"
+          aria-label={t('integrations:remoteRunner.access')}
           className="rounded border bg-transparent px-2 py-1 text-xs"
           value={session.access ?? 'ask'}
           disabled={busy || session.status !== 'idle'}
@@ -329,7 +340,11 @@ export function SessionRow({
         >
           {access.map((a) => (
             <option key={a} value={a}>
-              {a === 'read' ? 'Read only' : a === 'ask' ? 'Ask before changes' : 'Run unattended'}
+              {a === 'read'
+                ? t('integrations:remoteRunner.accessRead')
+                : a === 'ask'
+                  ? t('integrations:remoteRunner.accessAsk')
+                  : t('integrations:remoteRunner.accessAuto')}
             </option>
           ))}
         </select>
@@ -340,7 +355,7 @@ export function SessionRow({
           onClick={remove}
           data-testid="remote-session-delete"
         >
-          Delete
+          {t('integrations:remoteRunner.delete')}
         </Button>
       </div>
     </li>
@@ -353,6 +368,7 @@ export function SessionRow({
  * name and a delete. Renders nothing off a server page.
  */
 export function RemoteRunnerCard() {
+  const { t } = useTranslation()
   const runner = useRemoteRunner()
   const [sessions, setSessions] = useState<RemoteSession[]>([])
   const [models, setModels] = useState<RunModel[]>([])
@@ -387,11 +403,19 @@ export function RemoteRunnerCard() {
     runner.state === 'ready'
       ? runnerBanner(runner.info)
       : runner.state === 'unreachable'
-        ? { ok: false, text: `Could not ask this server about agents: ${runner.detail}` }
-        : { ok: false, text: 'Checking what this server can run...' }
+        ? {
+            ok: false,
+            text: t('integrations:remoteRunner.unreachable', {
+              detail: runner.detail,
+            }),
+          }
+        : { ok: false, text: t('integrations:remoteRunner.checking') }
 
   return (
-    <Card title="Server agents" description="Cowork on this server.">
+    <Card
+      title={t('integrations:remoteRunner.title')}
+      description={t('integrations:remoteRunner.description')}
+    >
       <div className="space-y-2 p-4 text-sm" data-testid="remote-runner">
         <p
           role="status"
@@ -402,12 +426,16 @@ export function RemoteRunnerCard() {
         </p>
         {runner.state === 'ready' && runner.info.parityGaps.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            Not matched yet: {runner.info.parityGaps.join(', ')}.
+            {t('integrations:remoteRunner.notMatched', {
+              gaps: runner.info.parityGaps.join(', '),
+            })}
           </p>
         )}
         {runner.state === 'ready' && runner.info.runsSessions && <RunOnServer info={runner.info} />}
         {agentOn && sessions.length === 0 && (
-          <p className="text-xs text-muted-foreground">No agent sessions on this server yet.</p>
+          <p className="text-xs text-muted-foreground">
+            {t('integrations:remoteRunner.noSessions')}
+          </p>
         )}
         {sessions.length > 0 && (
           <ul className="space-y-2" data-testid="remote-runner-sessions">

@@ -11,9 +11,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
 vi.mock('@tauri-apps/api/path', () => ({ join: vi.fn() }))
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
-vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (key: string) => key.split('.').pop() }),
-}))
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 vi.mock('@/hooks/useHuggingFaceDownloads', () => ({
   cancelHuggingFaceBundle: vi.fn(),
   pauseHuggingFaceBundle: vi.fn(),

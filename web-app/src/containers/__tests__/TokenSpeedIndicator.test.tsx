@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { TokenSpeedIndicator } from '@/containers/TokenSpeedIndicator'
 import { isMeaningfulSpeed, speedStats } from '@/lib/tokenSpeed'
 
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
+
 vi.mock('@/hooks/useInterfaceSettings', () => ({
   useInterfaceSettings: (sel: (s: { showTokenSpeed: boolean }) => unknown) =>
     sel({ showTokenSpeed: true }),

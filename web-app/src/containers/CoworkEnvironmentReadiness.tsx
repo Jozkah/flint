@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { CoworkCollapseHeader } from '@/containers/CoworkCollapseHeader'
 import {
   AlertTriangle,
@@ -264,6 +265,7 @@ export function CoworkEnvironmentReadiness({
   /** Overrides routing, for tests and for hosts with their own settings shell. */
   onOpenSetting?: (href: string) => void
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const openSetting =
     onOpenSetting ?? ((href: string) => navigate({ to: href }))
@@ -339,11 +341,11 @@ export function CoworkEnvironmentReadiness({
     <section
       className="rounded-[10px] border-[0.8px] border-border bg-card"
       data-testid="environment-readiness"
-      aria-label="Environment readiness"
+      aria-label={t('sweep:cowork.envReadiness')}
     >
       <header className="flex items-center gap-2 px-3 py-2.5">
         <CoworkCollapseHeader
-          title="Environment"
+          title={t('sweep:cowork.environment')}
           open={open}
           onToggle={collapsible ? () => setOpen((v) => !v) : undefined}
           extra={
@@ -352,7 +354,7 @@ export function CoworkEnvironmentReadiness({
                 className="rounded-full bg-destructive/10 px-1.5 text-[10px] text-destructive"
                 data-testid="environment-readiness-unready"
               >
-                {unready} unavailable
+                {t('sweep:cowork.unavailableCount', { total: unready })}
               </span>
             )
           }
@@ -369,7 +371,7 @@ export function CoworkEnvironmentReadiness({
               size={12}
               className={cn(busy === 'all' && 'motion-safe:animate-spin')}
             />
-            Retry all
+            {t('sweep:cowork.retryAll')}
           </Button>
           <Button
             variant="ghost"

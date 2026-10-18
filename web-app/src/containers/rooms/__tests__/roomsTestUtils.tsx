@@ -3,6 +3,7 @@ import { vi } from 'vitest'
 import { render } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import rooms from '@/locales/en/rooms.json'
+import uiLeftovers from '@/locales/en/uiLeftovers.json'
 import {
   DEFAULT_ROOM_LIMITS,
   ROOM_SCHEMA_VERSION,
@@ -21,10 +22,11 @@ import {
 /** Real `rooms` strings with `{{var}}` interpolation, so tests read like the UI. */
 export function t(key: string, options: Record<string, unknown> = {}): string {
   const [ns, path] = key.includes(':') ? key.split(':') : ['common', key]
-  if (ns !== 'rooms') return key
+  const table = ns === 'rooms' ? rooms : ns === 'uiLeftovers' ? uiLeftovers : null
+  if (!table) return key
   const value = path
     .split('.')
-    .reduce<unknown>((cur, part) => (cur && typeof cur === 'object' ? (cur as Record<string, unknown>)[part] : undefined), rooms)
+    .reduce<unknown>((cur, part) => (cur && typeof cur === 'object' ? (cur as Record<string, unknown>)[part] : undefined), table)
   if (typeof value !== 'string') return key
   return value.replace(/\{\{(\w+)\}\}/g, (m, v) => (options[v] !== undefined ? String(options[v]) : m))
 }
@@ -134,6 +136,7 @@ export function createFakeApi(initial: Partial<RoomsUiState> = {}) {
     requestFinalPositions: ok(),
     synthesize: ok(),
     cancelTurn: ok(),
+    compareRun: ok(),
   }
   const api = {
     status: 'ready' as const,

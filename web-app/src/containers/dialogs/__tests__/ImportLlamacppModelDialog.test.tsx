@@ -466,4 +466,31 @@ describe('ImportLlamacppModelDialog', () => {
     // Other apps' models are not touched.
     expect(screen.getByText('beta')).toBeInTheDocument()
   })
+
+  it('imports an Ollama blob under the scanned name, not its digest file name', async () => {
+    useModelLibrary.setState({ folders: ['C:/ollama'] })
+    hoisted.invoke.mockImplementation(async (cmd: string) =>
+      cmd === 'scan_local_models'
+        ? [
+            { path: 'C:/ollama/blobs/sha256-aaaa', name: 'qwen3:8b', source: 'Ollama', size_bytes: 1000 },
+          ]
+        : { metadata: { 'general.architecture': 'llama' } }
+    )
+    hoisted.pullModel.mockResolvedValueOnce(undefined)
+    render(
+      <ImportLlamacppModelDialog
+        provider={provider}
+        trigger={<button>Open</button>}
+      />
+    )
+    openDialog()
+    fireEvent.click(screen.getByText('Find models already on this computer'))
+    fireEvent.click(await screen.findByText('qwen3:8b'))
+    await waitFor(() => expect(hoisted.validateGgufFile).toHaveBeenCalled())
+    const importBtn = await screen.findByRole('button', { name: /Import Model/i })
+    await waitFor(() => expect(importBtn).not.toBeDisabled())
+    fireEvent.click(importBtn)
+    await waitFor(() => expect(hoisted.pullModel).toHaveBeenCalled())
+    expect(hoisted.pullModel.mock.calls[0][0]).toBe('qwen3-8b')
+  })
 })

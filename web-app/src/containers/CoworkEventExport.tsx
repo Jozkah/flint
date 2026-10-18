@@ -9,6 +9,7 @@
  * in it.
  */
 import { useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import {
   cancelEventExport,
@@ -26,6 +27,7 @@ export function CoworkEventExport({
   sessionId: string | null | undefined
   pickFolder: () => Promise<string | null>
 }) {
+  const { t } = useTranslation()
   const [includeContent, setIncludeContent] = useState(false)
   const [running, setRunning] = useState<string | null>(null)
   const [exported, setExported] = useState<{ path: string; count: number; metadataOnly: boolean } | null>(null)
@@ -64,39 +66,38 @@ export function CoworkEventExport({
   return (
     <section
       className="flex flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-card p-3 text-xs"
-      aria-label="Export this session's events"
+      aria-label={t('sweep:cowork.eventExportLabel')}
       data-testid="event-export"
     >
       {/* The actions on the heading's row and the one option under it, as
           the design lays out the session events box. */}
       <div className="flex flex-wrap items-center gap-1">
-        <p className="flex-1 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">Session events</p>
+        <p className="flex-1 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">{t('sweep:cowork.sessionEvents')}</p>
         <Button size="sm" variant="ghost" onClick={() => void inspect()} data-testid="event-inspect">
-          Inspect an export
+          {t('sweep:cowork.inspectExport')}
         </Button>
         {running ? (
           <Button size="sm" variant="outline" onClick={() => void cancelEventExport(running)} data-testid="event-export-cancel">
-            Stop export
+            {t('sweep:cowork.stopExport')}
           </Button>
         ) : (
           <Button size="sm" variant="outline" onClick={() => void run()} data-testid="event-export-run">
-            Export events
+            {t('sweep:cowork.exportEvents')}
           </Button>
         )}
       </div>
       <label className="flex cursor-pointer items-start gap-3 pt-1">
         <span className="min-w-0 flex-1">
           <span className="block text-[13px] font-medium text-foreground">
-            Include content: prompts, tool inputs and outputs, and file paths.
+            {t('sweep:cowork.includeContent')}
           </span>
           {includeContent ? (
             <span className="block text-warning" data-testid="event-export-warning">
-              The export will hold what the model and tools saw. Secrets were
-              removed when the events were recorded; share it with care.
+              {t('sweep:cowork.exportWarning')}
             </span>
           ) : (
             <span className="block text-muted-foreground">
-              Off: kinds, order, times and statuses only.
+              {t('sweep:cowork.exportMetadataOnly')}
             </span>
           )}
         </span>

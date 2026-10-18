@@ -93,7 +93,7 @@ export default function AddEditCustomCliDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Environment Variables</DialogTitle>
+          <DialogTitle>{t('integrations:envVars')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -112,11 +112,11 @@ export default function AddEditCustomCliDialog({
           {/* Environment Variables */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm">Environment Variables</label>
+              <label className="text-sm">{t('integrations:envVars')}</label>
               <button
                 type="button"
-                aria-label="Add environment variable"
-                title="Add environment variable"
+                aria-label={t('integrations:customCli.add')}
+                title={t('integrations:customCli.add')}
                 className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                 onClick={handleAddEnv}
               >
@@ -129,20 +129,22 @@ export default function AddEditCustomCliDialog({
                 <Input
                   value={env.key}
                   onChange={(e) => handleEnvKeyChange(index, e.target.value)}
-                  placeholder="Key"
+                  placeholder={t('integrations:customCli.key')}
                   className="min-w-0 flex-1 font-mono"
                 />
                 <Input
                   value={env.value}
                   onChange={(e) => handleEnvValueChange(index, e.target.value)}
-                  placeholder="Value"
+                  placeholder={t('integrations:customCli.value')}
                   className="min-w-0 flex-1"
                 />
                 {envVars.length > 1 && (
                   <button
                     type="button"
-                    aria-label={`Remove environment variable ${index + 1}`}
-                    title="Remove"
+                    aria-label={t('integrations:customCli.removeN', {
+                      index: index + 1,
+                    })}
+                    title={t('integrations:customCli.remove')}
                     className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-destructive focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                     onClick={() => handleRemoveEnv(index)}
                   >
@@ -170,7 +172,7 @@ export default function AddEditCustomCliDialog({
             }}
             size="sm"
           >
-            Save
+            {t('integrations:save')}
           </Button>
         </DialogFooter>
       </DialogContent>

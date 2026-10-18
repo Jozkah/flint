@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   Popover,
   PopoverContent,
@@ -29,12 +30,14 @@ type Props = {
  * and a "More" popover for the rest. "All" resets.
  */
 export function HubTaskChips({ value, onChange }: Props) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const hidden: HubTask | undefined = MORE_TASKS.find((t) => t.id === value)
+  const labelOf = (id: HubTaskId) => t(`uiLeftovers:hubTasks.${id}`)
+  const hidden: HubTask | undefined = MORE_TASKS.find((task) => task.id === value)
 
   return (
     <>
-      {PRIMARY_TASKS.map(({ id, label }) => (
+      {PRIMARY_TASKS.map(({ id }) => (
         <button
           key={id}
           type="button"
@@ -42,23 +45,23 @@ export function HubTaskChips({ value, onChange }: Props) {
           onClick={() => onChange(id)}
           className={cn(PILL, value === id ? ON : OFF)}
         >
-          {label}
+          {labelOf(id)}
         </button>
       ))}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            aria-label="More ways to browse"
+            aria-label={t('uiLeftovers:hubTasks.moreAria')}
             aria-pressed={Boolean(hidden)}
             className={cn(PILL, hidden ? ON : OFF)}
           >
-            {hidden ? hidden.label : 'More'}
+            {hidden ? labelOf(hidden.id) : t('uiLeftovers:hubTasks.more')}
             <ChevronDown className="size-3.5" />
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-48 p-1">
-          {MORE_TASKS.map(({ id, label }) => (
+          {MORE_TASKS.map(({ id }) => (
             <button
               key={id}
               type="button"
@@ -69,7 +72,7 @@ export function HubTaskChips({ value, onChange }: Props) {
               }}
               className="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[13px] hover:bg-accent"
             >
-              {label}
+              {labelOf(id)}
               {value === id && <Check className="size-3.5" />}
             </button>
           ))}
