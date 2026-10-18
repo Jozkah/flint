@@ -147,10 +147,77 @@ impl LoadTicket {
             LoadSpec::Args(args) => Engine::start(args, Some(progress)),
             LoadSpec::Preset {
                 ini_path, section, ..
-            } => start_preset_with_mmproj_fallback(ini_path, section, |ini| {
-                Engine::start_from_preset(ini, section, Some(progress.clone()))
-            }),
+            } => {
+                let engine = start_preset_with_mmproj_fallback(ini_path, section, |ini| {
+                    Engine::start_from_preset(ini, section, Some(progress.clone()))
+                })?;
+                if !spec_is_embedding(&self.spec) {
+                    if let Some(n) = std::fs::read_to_string(ini_path)
+                        .ok()
+                        .and_then(|ini| warmup_tokens(&ini, section))
+                    {
+                        warm_up(&engine, model_id, n);
+                    }
+                }
+                Ok(engine)
+            }
         }
+    }
+}
+
+/// Prompt length of the load-time warm-up, or `None` when it is turned off.
+///
+/// llama.cpp's own warm-up decodes two tokens, which builds only the
+/// single-token kernels. The first real prompt then pays for the batched ones:
+/// on Vulkan with a cold driver shader cache (first run after an install, an
+/// engine update or a driver update) that was a 20 s stall on the first
+/// message, prompt speed 300 tok/s instead of 5900 (Qwen3-8B, RTX 5080). One
+/// ubatch-sized pass moves that compile into the load, where the user already
+/// waits behind a progress bar; with a warm cache it costs 0.15-0.3 s.
+/// `no-warmup` (the extra-args opt-out) skips this as well.
+fn warmup_tokens(ini: &str, section: &str) -> Option<usize> {
+    use super::preset::section_value;
+    let value = |k: &str| section_value(ini, section, k);
+    if value("no-warmup").is_some_and(|v| !is_falsey(&v))
+        || value("warmup").is_some_and(|v| is_falsey(&v))
+    {
+        return None;
+    }
+    let num = |k: &str| value(k).and_then(|v| v.parse::<i64>().ok()).filter(|n| *n > 0);
+    let mut n = num("ubatch-size").unwrap_or(512);
+    if let Some(batch) = num("batch-size") {
+        n = n.min(batch);
+    }
+    if let Some(ctx) = num("ctx-size") {
+        // Leaves room for the generated token and BOS in the smallest slot.
+        n = n.min(ctx / num("parallel").unwrap_or(1) - 8);
+    }
+    (n >= 32).then_some(n as usize)
+}
+
+/// One prompt of `n` tokens plus one generated token, then the slot is erased
+/// so neither the prompt cache nor a thread's saved state ever sees it. A
+/// failure only costs the speed-up: the model is loaded either way.
+fn warm_up(engine: &Engine, model_id: &str, n: usize) {
+    let started = std::time::Instant::now();
+    let body = serde_json::json!({
+        // " the" is one token in every vocabulary this app ships models for.
+        "prompt": " the".repeat(n),
+        "n_predict": 1,
+        "id_slot": 0,
+        "cache_prompt": false,
+        "temperature": 0,
+    })
+    .to_string();
+    let status = engine.request("post_completions", &body).status();
+    engine.request_with_query("post_slots", "id_slot=0&action=erase", "");
+    if status == 200 {
+        eprintln!(
+            "flint-llama-worker: warmed up '{model_id}' with a {n}-token batch in {} ms",
+            started.elapsed().as_millis()
+        );
+    } else {
+        eprintln!("flint-llama-worker: warm-up of '{model_id}' failed with HTTP {status}; continuing");
     }
 }
 
@@ -360,7 +427,7 @@ impl Registry {
                 model_id.to_string(),
             )))?;
 
-        self.make_room()?;
+        self.make_room_for(model_id)?;
 
         self.events.emit(model_id, Transition::Loading);
         let (tx, rx) = tokio::sync::watch::channel(false);
@@ -610,6 +677,57 @@ impl Registry {
     /// Saving here needs the same await-and-persist that `unload_model` does,
     /// which the registry cannot do while holding its own lock -- so it belongs
     /// with the caller, as a follow-up. `retire` has the same omission.
+    fn make_room_for(&mut self, model_id: &str) -> Result<(), RegistryError> {
+        // The desktop sizes `models_max` as the user's cap plus one slot for an
+        // installed embedder (`resolveModelsMax` in the llamacpp extension).
+        // That slot is the embedder's: a chat model loaded into it sits beside
+        // the resident one, and the two overflow VRAM. The desktop's own load
+        // evicts the old chat model first; requests that reach the worker
+        // directly (the Local API Server) must get the same, so chat models are
+        // capped at `models_max - 1` whenever an embedder is registered.
+        if self.models_max > 0
+            && self.is_chat(model_id)
+            && self.specs.values().any(spec_is_embedding)
+        {
+            let chat_cap = self.models_max.saturating_sub(1).max(1);
+            loop {
+                let resident_chat = self
+                    .loaded
+                    .keys()
+                    .chain(self.loading.keys())
+                    .filter(|id| self.is_chat(id))
+                    .count();
+                if resident_chat < chat_cap {
+                    break;
+                }
+                let victim = pick_lru_idle(
+                    self.loaded
+                        .iter()
+                        .filter(|(id, _)| self.is_chat(id))
+                        .map(|(id, m)| (id.as_str(), m.inflight, m.last_used)),
+                );
+                let Some(victim) = victim else {
+                    return Err(RegistryError::Full {
+                        models_max: self.models_max,
+                    });
+                };
+                self.loaded.remove(&victim);
+                self.dropped.push(victim.clone());
+                self.events
+                    .emit(&victim, Transition::Unloaded { exit_code: 0 });
+            }
+        }
+        self.make_room()
+    }
+
+    /// A model is a chat model unless its spec starts it as an embedder. An
+    /// unregistered id counts as chat, the conservative side for eviction.
+    fn is_chat(&self, model_id: &str) -> bool {
+        self.specs
+            .get(model_id)
+            .map_or(true, |s| !spec_is_embedding(s))
+    }
+
     fn make_room(&mut self) -> Result<(), RegistryError> {
         if self.models_max == 0 {
             return Ok(());
@@ -848,6 +966,21 @@ fn start_preset_with_mmproj_fallback(
 mod tests {
     use super::*;
 
+    #[test]
+    fn warmup_is_one_ubatch_and_respects_the_opt_out() {
+        let ini = "[*]\nctx-size = 8192\nubatch-size = 512\n\n[a]\nubatch-size = 1024\n\n[b]\n";
+        assert_eq!(warmup_tokens(ini, "a"), Some(1024));
+        assert_eq!(warmup_tokens(ini, "b"), Some(512));
+        assert_eq!(warmup_tokens("[a]\n", "a"), Some(512));
+        // Bounded by batch and by the smallest slot's context.
+        assert_eq!(warmup_tokens("[a]\nubatch-size = 2048\nbatch-size = 1024\n", "a"), Some(1024));
+        assert_eq!(warmup_tokens("[a]\nctx-size = 512\nparallel = 2\n", "a"), Some(248));
+        assert_eq!(warmup_tokens("[a]\nctx-size = 32\n", "a"), None);
+        assert_eq!(warmup_tokens("[*]\nno-warmup = true\n[a]\n", "a"), None);
+        assert_eq!(warmup_tokens("[a]\nwarmup = false\n", "a"), None);
+        assert_eq!(warmup_tokens("[a]\nno-warmup = false\n", "a"), Some(512));
+    }
+
     fn spec(n: &str) -> LoadSpec {
         LoadSpec::Args(vec!["llama-server".into(), "-m".into(), n.into()])
     }
@@ -983,6 +1116,63 @@ mod tests {
         assert!(!spec_is_embedding(&preset(&["embeddings = false"])));
         assert!(!spec_is_embedding(&preset(&["model = m.gguf"])));
         assert!(spec_is_embedding(&LoadSpec::Args(vec!["--embedding".into()])));
+    }
+
+    /// The desktop adds one slot to `models_max` when an embedder is installed,
+    /// so RAG can load it beside the chat model. That slot is not room for a
+    /// second chat model: an API client asking for model B while A is resident
+    /// used to load B beside A, and the two overflowed VRAM (one ran at about a
+    /// twentieth of its speed). A chat load evicts the idle chat model instead,
+    /// which is what the desktop's own load path does.
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn the_embedding_slot_is_not_room_for_a_second_chat_model() {
+        let embedder = LoadSpec::Args(vec!["-m".into(), "e.gguf".into(), "--embedding".into()]);
+        let mut r = Registry::new(2);
+        r.register("emb", embedder.clone());
+        resident(&mut r, &["a"]);
+        r.register("b", spec("b"));
+        assert!(r.make_room_for("b").is_ok());
+        assert_eq!(r.take_dropped(), vec!["a".to_string()]);
+
+        // The embedder still loads beside the chat model.
+        let mut r = Registry::new(2);
+        r.register("emb", embedder.clone());
+        resident(&mut r, &["a"]);
+        assert!(r.make_room_for("emb").is_ok());
+        assert!(r.take_dropped().is_empty());
+
+        // A resident embedder is not the chat model's victim either.
+        let mut r = Registry::new(2);
+        r.register("emb", embedder.clone());
+        r.insert_resident_for_test("emb", 0);
+        resident(&mut r, &["a"]);
+        r.register("b", spec("b"));
+        assert!(r.make_room_for("b").is_ok());
+        assert_eq!(r.take_dropped(), vec!["a".to_string()]);
+
+        // A busy chat model is never evicted mid-generation: the caller waits.
+        let mut r = Registry::new(2);
+        r.register("emb", embedder.clone());
+        r.register("a", spec("a"));
+        r.insert_resident_for_test("a", 1);
+        r.register("b", spec("b"));
+        assert!(matches!(r.make_room_for("b"), Err(RegistryError::Full { .. })));
+
+        // No embedder installed: models_max is all chat, as before.
+        let mut r = Registry::new(2);
+        resident(&mut r, &["a"]);
+        r.register("b", spec("b"));
+        assert!(r.make_room_for("b").is_ok());
+        assert!(r.take_dropped().is_empty());
+
+        // A user cap of 2 (+1 embedding slot = 3) keeps two chat models.
+        let mut r = Registry::new(3);
+        r.register("emb", embedder);
+        resident(&mut r, &["a"]);
+        r.register("b", spec("b"));
+        assert!(r.make_room_for("b").is_ok());
+        assert!(r.take_dropped().is_empty());
     }
 
     /// Every path that stops hosting a model has to say so: the slot occupancy

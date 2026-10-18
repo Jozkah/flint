@@ -33,6 +33,7 @@ export const localStorageKey = {
   conversationGroups: 'conversation-groups',
   recentSearches: 'recent-searches',
   agentMode: 'agent-mode',
+  engineAddon: 'engine-addon',
   coworkDisplay: 'cowork-display',
   sessionMessaging: 'session-messaging',
   campaignSettings: 'campaign-settings',

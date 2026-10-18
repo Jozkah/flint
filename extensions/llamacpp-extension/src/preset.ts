@@ -119,6 +119,64 @@ export function autoUbatchSize(
   return 512
 }
 
+/** Smallest context one slot should get when auto-fit has to trim a model. */
+export const MIN_SLOT_CTX = 8192
+
+/**
+ * Slot plan for a model that auto-fit will have to trim: its weights alone
+ * leave less than the fit target free on the GPU. Fit then reduces the context
+ * to its floor (fit-ctx) before offloading any layer, and with `slots` sharing
+ * that floor each one gets fitCtx / slots. When that share is under
+ * MIN_SLOT_CTX the model gets one slot and a floor of at least MIN_SLOT_CTX.
+ * `undefined` when the model fits, a number is unknown, or the share is enough.
+ */
+export function spillSlotPlan(
+  weightsBytes: number,
+  gpuMemoryMiB: number | undefined,
+  fitTargetMiB: number,
+  fitCtx: number,
+  slots: number
+): { fitCtx: number } | undefined {
+  if (!weightsBytes || weightsBytes <= 0 || !gpuMemoryMiB || gpuMemoryMiB <= 0) {
+    return undefined
+  }
+  const usable = (gpuMemoryMiB - fitTargetMiB) * 1024 * 1024
+  if (weightsBytes <= usable) return undefined
+  if (fitCtx / Math.max(1, slots) >= MIN_SLOT_CTX) return undefined
+  return { fitCtx: Math.max(fitCtx, MIN_SLOT_CTX) }
+}
+
+/** A `cache_ram` setting as a number: blank or unreadable means auto. */
+export function cacheRamValue(value: unknown): number {
+  if (value === undefined || value === null) return CACHE_RAM_AUTO
+  if (typeof value === 'string' && value.trim() === '') return CACHE_RAM_AUTO
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : CACHE_RAM_AUTO
+}
+
+/** `cache_ram` value meaning "size it from this machine's RAM". */
+export const CACHE_RAM_AUTO = -2
+
+/**
+ * Prompt cache size (MiB) for `cache_ram = auto`. The cache holds the KV state
+ * of conversations that are not in a slot, so switching back to one is a
+ * restore instead of a full re-read. Measured on an RTX 5080, Qwen3-8B f16 KV,
+ * five 10k-token threads in turn: 4096 MiB missed every switch (1.6 s to
+ * first token), 8192 hit every one (28 ms); off was 2.1 s even for four
+ * threads. llama.cpp only grows it as states arrive, so the size is a ceiling:
+ * 20% of total RAM, at most half of what was free at launch, 1024-8192.
+ * Unknown RAM keeps the old fixed 4096.
+ */
+export function autoCacheRamMiB(
+  totalMiB: number | undefined,
+  freeMiB: number | undefined
+): number {
+  if (!totalMiB || !(totalMiB > 0)) return 4096
+  let mib = totalMiB * 0.2
+  if (freeMiB !== undefined && freeMiB >= 0) mib = Math.min(mib, freeMiB / 2)
+  return Math.max(1024, Math.min(8192, Math.floor(mib / 512) * 512))
+}
+
 function isAutoUbatch(v: unknown): boolean {
   return !(typeof v === 'number' && Number.isFinite(v) && v > 0)
 }
@@ -132,6 +190,49 @@ function isAutoUbatch(v: unknown): boolean {
  * onto, so the two must not compute it differently -- this function is the one
  * definition.
  */
+/**
+ * The context size a load must write to model.yml first, or undefined when
+ * model.yml already says it. The model settings show a context for every
+ * model (8192 unless changed), but only an edit used to reach model.yml, so a
+ * model never edited loaded at its native size with Auto-fit on while the app
+ * showed 8192 (T7-123). A positive context is a cap passed as ctx-size. A
+ * blank or 0 one means "the provider's Default context size": null asks to
+ * remove a ctx_size model.yml still holds, which would otherwise win over
+ * that default (C043). A missing key leaves model.yml as it is.
+ */
+export function contextSizeToPersist(
+  loadSettings: Record<string, unknown> | undefined,
+  cfg: object | undefined
+): number | null | undefined {
+  const raw = loadSettings?.ctx_size
+  if (raw == null) return undefined
+  const stored = (cfg as { ctx_size?: unknown } | undefined)?.ctx_size
+  const n = raw === '' ? 0 : typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n) || n <= 0) {
+    return stored === undefined || stored === null ? undefined : null
+  }
+  const wanted = Math.floor(n)
+  return stored === wanted
+    ? undefined
+    : wanted
+}
+
+/** Smallest window the provider's Default context size accepts. */
+export const MIN_DEFAULT_CTX_SIZE = 512
+
+/**
+ * The provider-wide Default context size as tokens, or undefined for auto
+ * (blank, 0, negative or unreadable). A positive value below 512 is raised to
+ * 512: smaller windows cannot hold a system prompt and a reply.
+ */
+export function defaultContextSize(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value === 'string' && value.trim() === '') return undefined
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  return Math.max(MIN_DEFAULT_CTX_SIZE, Math.floor(n))
+}
+
 export function threadCacheDir(providerPath: string): string {
   const sep = isWindowsPath(providerPath) ? '\\' : '/'
   return `${providerPath.replace(/[\\/]+$/, '')}${sep}thread-cache`
@@ -154,6 +255,8 @@ function isWindowsPath(p: string): boolean {
 // Fallback context size when the user hasn't set one, to avoid loading a
 // model's full trained context (which can OOM on large-context models).
 const DEFAULT_CTX_SIZE = 8192
+/** Context cap for a speculative-decoding model that sets none (auto-fit on). */
+export const SPEC_DEFAULT_CTX_SIZE = 32768
 
 /**
  * The `--spec-type` values llama.cpp accepts for a draft model
@@ -372,6 +475,13 @@ export async function generatePreset(
      * model (autoUbatchSize). Unset when there is no GPU or it is unknown.
      */
     gpuMemoryMiB?: number
+    /**
+     * Every model runs on the CPU backend: the engine reports no GPU, or the
+     * device setting is `none`. Drives the CPU KV cache default.
+     */
+    cpuOnly?: boolean
+    /** Total and free system RAM in MiB at launch, for `cache_ram = auto`. */
+    systemMemoryMiB?: { total?: number; free?: number }
   } = {}
 ): Promise<{ path: string; embeddingCount: number }> {
   // Overridable for tests only. Production callers take the default: gating it
@@ -457,6 +567,12 @@ export async function generatePreset(
   if (Number.isFinite(fitCtxNum) && fitCtxNum > 0 && fitCtxNum !== 4096) {
     lines.push(`fit-ctx = ${fitCtxNum}`)
   }
+  const fitCtxFloor =
+    Number.isFinite(fitCtxNum) && fitCtxNum > 0 ? fitCtxNum : 4096
+  // A per-device list ("1024,2048") is read by its first entry.
+  const fitTargetFirst = Number(String(config.fit_target ?? '').split(',')[0])
+  const fitTargetMiB =
+    Number.isFinite(fitTargetFirst) && fitTargetFirst > 0 ? fitTargetFirst : 1024
   // ctx-size: llama.cpp's own default loads the model's full trained context,
   // which can OOM on a large-context model, so a conservative cap stands in.
   // There is no engine-level context setting to read here -- per-model
@@ -464,15 +580,27 @@ export async function generatePreset(
   //
   // Skipped when auto-fit is on: emitting it would make n_ctx non-zero for
   // every model and stop fit from reducing context to make a model fit.
+  //
+  // The provider's "Default context size" (ctx_size), when set, is the
+  // window for every model that sets none of its own: a model section's
+  // ctx-size wins over this [*] one. Blank or 0 keeps the behaviour above.
   const fitEnabled = config.fit !== false
-  if (!fitEnabled) {
+  // Read loosely: a plugin API build older than this field has no type for it.
+  const globalCtx = defaultContextSize(
+    (config as { ctx_size?: unknown }).ctx_size
+  )
+  if (globalCtx !== undefined) {
+    lines.push(`ctx-size = ${globalCtx}`)
+  } else if (!fitEnabled) {
     lines.push(`ctx-size = ${DEFAULT_CTX_SIZE}`)
   }
+  const noGpu = opts.cpuOnly === true
   const globalKv = resolveKvCacheTypes({
     cacheTypeK: config.cache_type_k,
     cacheTypeV: config.cache_type_v,
     flashAttn: config.flash_attn,
     computeCapability: opts.gpuComputeCapability,
+    cpuOnly: noGpu,
   })
   // flash-attn default = 'auto'; explicit on/off only. A GPU too old for it
   // (pre-Pascal) is pinned off unless the user chose.
@@ -688,13 +816,21 @@ export async function generatePreset(
   if (config.ctx_shift === true) {
     lines.push('context-shift = true')
   }
-  // cache-ram default = 8192 MiB
+  // cache-ram: llama.cpp's default is 8192 MiB; auto sizes it from RAM.
+  // A blank field is auto too, like every other empty number here: left out,
+  // llama.cpp would quietly apply its own 8192.
+  const cacheRamSetting = cacheRamValue(config.cache_ram)
+  const cacheRam =
+    cacheRamSetting === CACHE_RAM_AUTO
+      ? autoCacheRamMiB(opts.systemMemoryMiB?.total, opts.systemMemoryMiB?.free)
+      : cacheRamSetting
   if (
-    typeof config.cache_ram === 'number' &&
-    Number.isFinite(config.cache_ram) &&
-    config.cache_ram !== 8192
+    typeof cacheRam === 'number' &&
+    Number.isFinite(cacheRam) &&
+    cacheRam >= -1 &&
+    cacheRam !== 8192
   ) {
-    lines.push(`cache-ram = ${Math.floor(config.cache_ram)}`)
+    lines.push(`cache-ram = ${Math.floor(cacheRam)}`)
   }
   // lazy-mode default = auto (on for arch-marked tensors above 4 GiB). Needs
   // mmap, so it is silently inert with `no_mmap` on; `off` is the pre-0.4.0
@@ -867,6 +1003,7 @@ export async function generatePreset(
             : config.cache_type_v,
           flashAttn: mc.flash_attn ?? config.flash_attn,
           computeCapability: opts.gpuComputeCapability,
+          cpuOnly: noGpu || opts.cpuFallbackModels?.has(modelId) === true,
         },
         { fallback: opts.kvFallbackModels?.has(modelId) === true }
       )
@@ -900,16 +1037,52 @@ export async function generatePreset(
       if (kvUnifiedIsAuto) lines.push('kv-unified = true')
     } else if (
       specDecoding &&
-      !((asFiniteNumber(config.parallel) ?? 0) > 0)
+      !((asFiniteNumber(config.parallel) ?? 0) > 1)
     ) {
-      // With parallel on auto, a speculative-decoding model gets one user slot.
-      // Every slot of a hybrid model carries (1 + spec-draft-n-max) rows of
-      // recurrent state for draft rollback, so llama.cpp's auto resolution to
-      // 4 slots overflows a 12 GB card; the driver then spills into shared
-      // system RAM and decode drops about 4x. Only a positive value, global or
-      // per-model, counts as the user's choice.
-      lines.push(`parallel = ${1 + reservedBackgroundSlots}`)
+      // A speculative-decoding model gets exactly one slot unless the user asked
+      // for more than one, and no reserved background slots: background requests
+      // wrap onto slot 0 (upstream takes id_slot modulo the slot count). Every
+      // slot of a hybrid model carries (1 + spec-draft-n-max) rows of recurrent
+      // state plus its own draft context, which auto-fit does not count. With
+      // three slots at native context the model overflows a 16 GB card as soon
+      // as anything else holds VRAM; the driver spills into shared system RAM
+      // and decode drops 5-8x (RTX 5080, Qwen3.5-9B MTP, Vulkan: 144 -> 19 t/s).
+      lines.push('parallel = 1')
       if (kvUnifiedIsAuto) lines.push('kv-unified = true')
+    } else if (
+      fitEnabled &&
+      globalCtx === undefined &&
+      !ctxEmitted &&
+      !((asFiniteNumber(config.parallel) ?? 0) > 1)
+    ) {
+      // A model whose weights do not fit VRAM: fit shrinks the context all the
+      // way to its floor before it moves a single layer off the GPU, so the
+      // context ends at fit-ctx (4096) and the slots share it. Measured on a
+      // 16 GB RTX 5080 with the 21 GB Qwen3.5-35B-A3B: 3 slots on 4096, about
+      // 1365 tokens each once they all run. One slot and an 8192 floor instead;
+      // the extra KV is tens of MiB on such a model, against GiBs of weights.
+      const spill = spillSlotPlan(
+        (typeof mc.size_bytes === 'number' ? mc.size_bytes : 0) +
+          (typeof mc.mmproj_size_bytes === 'number'
+            ? mc.mmproj_size_bytes
+            : 0),
+        opts.gpuMemoryMiB,
+        fitTargetMiB,
+        fitCtxFloor,
+        1 + reservedBackgroundSlots
+      )
+      if (spill) {
+        lines.push('parallel = 1')
+        if (kvUnifiedIsAuto) lines.push('kv-unified = true')
+        if (spill.fitCtx !== fitCtxFloor) lines.push(`fit-ctx = ${spill.fitCtx}`)
+      }
+    }
+    // Same reason: the draft context is sized like the main one and fit does
+    // not see it, so a speculative model with no context of its own is capped
+    // instead of loading its full trained context.
+    if (specDecoding && fitEnabled && !ctxEmitted && globalCtx === undefined) {
+      lines.push(`ctx-size = ${SPEC_DEFAULT_CTX_SIZE}`)
+      ctxEmitted = true
     }
     if (mc.cont_batching === false) {
       lines.push('cont-batching = false')

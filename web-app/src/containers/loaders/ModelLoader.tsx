@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useSecondClock } from '@/lib/sharedClock'
+import { useRef } from 'react'
 import { AlertCircle, Check, Loader } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatElapsed } from '@/lib/runStatus'
@@ -30,12 +31,7 @@ export function ModelLoader({
 }) {
   const start = useRef(Date.now())
   const frozen = useRef<number | undefined>(undefined)
-  const [, tick] = useState(0)
-  useEffect(() => {
-    if (status !== 'loading' || elapsedMs !== undefined) return
-    const id = setInterval(() => tick((n) => n + 1), 1000)
-    return () => clearInterval(id)
-  }, [status, elapsedMs])
+  useSecondClock(status === 'loading' && elapsedMs === undefined)
 
   if (status === 'loading') frozen.current = undefined
   else if (frozen.current === undefined)

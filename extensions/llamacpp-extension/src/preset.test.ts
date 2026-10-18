@@ -47,7 +47,15 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (_cmd: string, args: { path: string }) => modelYamls[args.path]),
 }))
 
-import { generatePreset, threadCacheDir, extraArgsToIni } from './preset'
+import {
+  generatePreset,
+  threadCacheDir,
+  extraArgsToIni,
+  contextSizeToPersist,
+  autoCacheRamMiB,
+  defaultContextSize,
+  CACHE_RAM_AUTO,
+} from './preset'
 
 const CONFIG = {} as any
 
@@ -79,6 +87,14 @@ describe('generatePreset MTP emission', () => {
     expect(ini).toContain('spec-draft-n-max = 8')
     expect(ini).toContain('spec-draft-n-min = 0')
     expect(ini).toContain('spec-draft-p-min = 0.8')
+  })
+
+  it('lets the provider default context size apply to a speculative model too', async () => {
+    setupModel('glm', { mtp: true, mtp_layers: 1 })
+    await generatePreset('/p', '/jan', { ...CONFIG, ctx_size: 65536 } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.split('[glm]')[0]).toContain('ctx-size = 65536')
+    expect(ini.split('[glm]')[1]).not.toContain('ctx-size = 32768')
   })
 
   it('emits spec-draft-sampling only for a valid value and never for DFlash', async () => {
@@ -372,11 +388,11 @@ describe('generatePreset parallel with speculative decoding', () => {
   const section = (ini: string, id: string) =>
     ini.split(`[${id}]`)[1].split('load-on-startup')[0]
 
-  it('pins an embedded-MTP model to one user slot plus the reserved ones on auto', async () => {
+  it('pins an embedded-MTP model to one slot without reserved ones on auto', async () => {
     setupModel('qwen', { mtp: true, mtp_layers: 1 })
     await generatePreset('/p', '/jan', { parallel: 0 } as any)
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(section(ini, 'qwen')).toContain('parallel = 3')
+    expect(section(ini, 'qwen')).toContain('parallel = 1')
     expect(section(ini, 'qwen')).toContain('kv-unified = true')
     expect(ini.split('[qwen]')[0]).not.toContain('parallel =')
   })
@@ -389,7 +405,7 @@ describe('generatePreset parallel with speculative decoding', () => {
     })
     await generatePreset('/p', '/jan', {} as any)
     expect(section(writtenFiles['/p/router.preset.ini'], 'qwen')).toContain(
-      'parallel = 3'
+      'parallel = 1'
     )
   })
 
@@ -432,8 +448,52 @@ describe('generatePreset parallel with speculative decoding', () => {
     setupModel('qwen', { mtp: true, mtp_layers: 1 })
     await generatePreset('/p', '/jan', { kv_unified: 'off' } as any)
     const qwen = section(writtenFiles['/p/router.preset.ini'], 'qwen')
-    expect(qwen).toContain('parallel = 3')
+    expect(qwen).toContain('parallel = 1')
     expect(qwen).not.toContain('kv-unified = true')
+  })
+
+  // Shipped defaults: parallel = 1 globally, reserved slots on, fit on.
+  it('overrides the default global 1 + reserved slots for an MTP model', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1 })
+    setupModel('plain', {})
+    await generatePreset('/p', '/jan', { parallel: 1 } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.split('[plain]')[0]).toContain('parallel = 3')
+    expect(section(ini, 'qwen')).toContain('parallel = 1')
+    expect(section(ini, 'plain')).not.toContain('parallel =')
+  })
+
+  it('keeps a global parallel above one the user chose', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1 })
+    await generatePreset('/p', '/jan', { parallel: 2 } as any)
+    expect(section(writtenFiles['/p/router.preset.ini'], 'qwen')).not.toContain(
+      'parallel ='
+    )
+  })
+
+  it('caps the context of an MTP model that sets none while fit is on', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1 })
+    setupModel('plain', {})
+    await generatePreset('/p', '/jan', {} as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(section(ini, 'qwen')).toContain('ctx-size = 32768')
+    expect(section(ini, 'plain')).not.toContain('ctx-size')
+  })
+
+  it('leaves an MTP model context the user set alone', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1, ctx_size: 0 })
+    await generatePreset('/p', '/jan', {} as any)
+    const qwen = section(writtenFiles['/p/router.preset.ini'], 'qwen')
+    expect(qwen).toContain('ctx-size = 0')
+    expect(qwen).not.toContain('ctx-size = 32768')
+  })
+
+  it('does not cap an MTP model when fit is off (the global cap applies)', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1 })
+    await generatePreset('/p', '/jan', { fit: false } as any)
+    expect(section(writtenFiles['/p/router.preset.ini'], 'qwen')).not.toContain(
+      'ctx-size'
+    )
   })
 })
 
@@ -487,8 +547,25 @@ describe('generatePreset ctx-size default', () => {
     expect(ini).toContain('ctx-size = 8192')
   })
 
-  // There is no engine-level ctx_size setting: the [*] value is purely an OOM
-  // guard, and a user's choice belongs to the per-model ctx_len.
+  // The [*] value is the provider's Default context size, else an OOM guard;
+  // a model's own ctx_len always wins over it.
+  it('lets a per-model ctx_size win over the Default context size', async () => {
+    setupModel('llama', { ctx_size: 4096 })
+    await generatePreset('/p', '/jan', { ctx_size: 32768 } as any, {})
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.slice(0, ini.indexOf('[llama]'))).toContain('ctx-size = 32768')
+    const model = ini.slice(ini.indexOf('[llama]'))
+    expect(model).toContain('ctx-size = 4096')
+  })
+
+  it('lets a model with no ctx_size inherit the Default context size', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { ctx_size: 32768 } as any, {})
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.slice(ini.indexOf('[llama]'))).not.toContain('ctx-size')
+    expect(ini.slice(0, ini.indexOf('[llama]'))).toContain('ctx-size = 32768')
+  })
+
   it('uses the per-model ctx_size over the [*] guard', async () => {
     setupModel('llama', { ctx_size: 16384 })
     await generatePreset('/p', '/jan', { fit: false } as any, {
@@ -938,6 +1015,73 @@ describe('generatePreset upstream-default skipping', () => {
     await generatePreset('/p', '/jan', { cache_ram: -1 } as any, {
     })
     expect(globalSection()).toContain('cache-ram = -1')
+  })
+
+  it('writes no quantized K cache when every model runs on the CPU', async () => {
+    await generatePreset('/p', '/jan', { cache_type_k: 'auto' } as any, { cpuOnly: true })
+    expect(globalSection()).not.toContain('cache-type-k')
+    await generatePreset('/p', '/jan', { cache_type_k: 'auto' } as any, {})
+    expect(globalSection()).toContain('cache-type-k = q8_0')
+  })
+
+  it('sizes an auto cache-ram from total and free RAM', async () => {
+    expect(autoCacheRamMiB(undefined, undefined)).toBe(4096)
+    expect(autoCacheRamMiB(8192, 6000)).toBe(1536)
+    expect(autoCacheRamMiB(16384, 12000)).toBe(3072)
+    expect(autoCacheRamMiB(32450, 20000)).toBe(6144)
+    expect(autoCacheRamMiB(65536, 50000)).toBe(8192)
+    // Half of what is free bounds it, but never below 1024.
+    expect(autoCacheRamMiB(65536, 6000)).toBe(2560)
+    expect(autoCacheRamMiB(16384, 500)).toBe(1024)
+
+    await generatePreset('/p', '/jan', { cache_ram: CACHE_RAM_AUTO } as any, {
+      systemMemoryMiB: { total: 32450, free: 20000 },
+    })
+    expect(globalSection()).toContain('cache-ram = 6144')
+
+    await generatePreset('/p', '/jan', { cache_ram: CACHE_RAM_AUTO } as any, {})
+    expect(globalSection()).toContain('cache-ram = 4096')
+
+    await generatePreset('/p', '/jan', { cache_ram: CACHE_RAM_AUTO } as any, {
+      systemMemoryMiB: { total: 131072, free: 100000 },
+    })
+    expect(globalSection()).not.toContain('cache-ram')
+  })
+
+  it('applies the Default context size to models without their own', async () => {
+    await generatePreset('/p', '/jan', { ctx_size: 16384 } as any, {})
+    expect(globalSection()).toContain('ctx-size = 16384')
+    // Blank and 0 are auto: with fit on, no global ctx-size at all.
+    for (const auto of ['', 0, '0', undefined]) {
+      await generatePreset('/p', '/jan', { ctx_size: auto } as any, {})
+      expect(globalSection()).not.toContain('ctx-size')
+    }
+    // Fit off and auto: the conservative guard as before.
+    await generatePreset('/p', '/jan', { ctx_size: '', fit: false } as any, {})
+    expect(globalSection()).toContain('ctx-size = 8192')
+    await generatePreset('/p', '/jan', { ctx_size: 32768, fit: false } as any, {})
+    expect(globalSection()).toContain('ctx-size = 32768')
+  })
+
+  it('validates the Default context size', () => {
+    expect(defaultContextSize(65536)).toBe(65536)
+    expect(defaultContextSize('8192')).toBe(8192)
+    expect(defaultContextSize(100)).toBe(512)
+    expect(defaultContextSize(0)).toBeUndefined()
+    expect(defaultContextSize(-1)).toBeUndefined()
+    expect(defaultContextSize('abc')).toBeUndefined()
+    expect(defaultContextSize('  ')).toBeUndefined()
+  })
+
+  it('treats a blank cache-ram as auto, not as the llama.cpp 8192 default', async () => {
+    for (const blank of ['', '  ', undefined, null]) {
+      await generatePreset('/p', '/jan', { cache_ram: blank } as any, {
+        systemMemoryMiB: { total: 32450, free: 20000 },
+      })
+      expect(globalSection()).toContain('cache-ram = 6144')
+    }
+    await generatePreset('/p', '/jan', { cache_ram: '0' } as any, {})
+    expect(globalSection()).toContain('cache-ram = 0')
   })
 
   it('names a slot-save-path even when conversation persistence is off', async () => {
@@ -1452,5 +1596,92 @@ describe('generatePreset GPU-aware defaults (text assembly only; no real GPU tes
     )
     const ini = writtenFiles['/p/router.preset.ini']
     expect(ini).not.toContain('bf16')
+  })
+})
+
+// T7-014/T7-123: the model settings showed Context 8,192 while the engine
+// loaded the native 131072, because the shown value never reached model.yml.
+// A positive context the app carries for a model is a cap the preset must
+// pass; empty means auto.
+describe('contextSizeToPersist', () => {
+  it('returns the app-side context when model.yml does not hold it', () => {
+    expect(contextSizeToPersist({ ctx_size: 8192 }, {})).toBe(8192)
+    expect(contextSizeToPersist({ ctx_size: '16384' }, { ctx_size: 8192 })).toBe(16384)
+  })
+  it('leaves model.yml alone when it already agrees or the value is auto', () => {
+    expect(contextSizeToPersist({ ctx_size: 8192 }, { ctx_size: 8192 })).toBeUndefined()
+    expect(contextSizeToPersist({ ctx_size: '' }, {})).toBeUndefined()
+    expect(contextSizeToPersist({ ctx_size: 0 }, {})).toBeUndefined()
+    expect(contextSizeToPersist(undefined, {})).toBeUndefined()
+    expect(contextSizeToPersist({}, { ctx_size: 8192 })).toBeUndefined()
+  })
+  // C043: a blank per-model field means "use the provider's Default context
+  // size"; a ctx_size left in model.yml by an older load would override it.
+  it('clears a stale model.yml context when the app-side value is blank', () => {
+    expect(contextSizeToPersist({ ctx_size: '' }, { ctx_size: 8192 })).toBeNull()
+    expect(contextSizeToPersist({ ctx_size: 0 }, { ctx_size: 8192 })).toBeNull()
+  })
+})
+
+describe('generatePreset slots for a model fit has to trim', () => {
+  const section = (ini: string, id: string) =>
+    ini.split(`[${id}]`)[1].split('load-on-startup')[0]
+  // Benchmark numbers: Qwen3.5-35B-A3B Q4_K_M, 21.2 GB, on a 16 GB RTX 5080.
+  const MOE = { size_bytes: 21_169_117_248 }
+  const GPU = { gpuMemoryMiB: 16303 }
+
+  it('gives a spilling model one slot and an 8192 fit floor', async () => {
+    setupModel('moe', MOE)
+    await generatePreset('/p', '/jan', { parallel: 1 } as any, GPU)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.split('[moe]')[0]).toContain('parallel = 3')
+    const moe = section(ini, 'moe')
+    expect(moe).toContain('parallel = 1')
+    expect(moe).toContain('kv-unified = true')
+    expect(moe).toContain('fit-ctx = 8192')
+  })
+
+  it('leaves a model that fits on the shared slots', async () => {
+    setupModel('small', { size_bytes: 5_000_000_000 })
+    await generatePreset('/p', '/jan', { parallel: 1 } as any, GPU)
+    const small = section(writtenFiles['/p/router.preset.ini'], 'small')
+    expect(small).not.toContain('parallel =')
+    expect(small).not.toContain('fit-ctx')
+  })
+
+  it('keeps the slots when the fit floor already gives each 8192', async () => {
+    setupModel('moe', MOE)
+    await generatePreset('/p', '/jan', { parallel: 1, fit_ctx: 24576 } as any, GPU)
+    expect(section(writtenFiles['/p/router.preset.ini'], 'moe')).not.toContain(
+      'parallel ='
+    )
+  })
+
+  it('keeps a higher fit floor and only drops the slots', async () => {
+    setupModel('moe', MOE)
+    await generatePreset('/p', '/jan', { parallel: 1, fit_ctx: 16384 } as any, GPU)
+    const moe = section(writtenFiles['/p/router.preset.ini'], 'moe')
+    expect(moe).toContain('parallel = 1')
+    expect(moe).not.toContain('fit-ctx')
+  })
+
+  it('respects explicit parallel, context, fit off and unknown VRAM', async () => {
+    setupModel('moe', MOE)
+    for (const [cfg, opts] of [
+      [{ parallel: 2 }, GPU],
+      [{ parallel: 1, ctx_size: 4096 }, GPU],
+      [{ parallel: 1, fit: false }, GPU],
+      [{ parallel: 1 }, {}],
+    ] as const) {
+      await generatePreset('/p', '/jan', cfg as any, opts)
+      expect(section(writtenFiles['/p/router.preset.ini'], 'moe')).not.toContain(
+        'parallel = 1'
+      )
+    }
+    setupModel('moe', { ...MOE, ctx_size: 4096 })
+    await generatePreset('/p', '/jan', { parallel: 1 } as any, GPU)
+    expect(section(writtenFiles['/p/router.preset.ini'], 'moe')).not.toContain(
+      'parallel = 1'
+    )
   })
 })

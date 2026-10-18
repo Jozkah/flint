@@ -30,6 +30,12 @@ export interface KvCacheInput {
    * hardware can honour; anything the user set explicitly still wins.
    */
   computeCapability?: number
+  /**
+   * The model runs on the CPU backend only. `auto` then stays f16: on a Ryzen
+   * 9950X3D a q8_0 K cache cost 35-45% prompt speed on Qwen3-0.6B and 5-12%
+   * on Gemma-3-4B (generation equal), and q8_0 V with flash attention more.
+   */
+  cpuOnly?: boolean
 }
 
 /** `"7.5"` -> `7.5`; undefined for anything that is not `major.minor`. */
@@ -106,7 +112,7 @@ export function resolveKvCacheTypes(
   input: KvCacheInput,
   opts: { fallback?: boolean } = {}
 ): KvCacheTypes {
-  const fallback = opts.fallback === true
+  const fallback = opts.fallback === true || input.cpuOnly === true
   const flash = effectiveFlashAttn(input)
   const noBf16 =
     input.computeCapability !== undefined && input.computeCapability < BF16_MIN_CC

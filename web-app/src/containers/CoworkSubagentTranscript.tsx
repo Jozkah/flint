@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import { useSecondClock } from '@/lib/sharedClock'
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowDown, Check, ChevronDown, Copy } from 'lucide-react'
 import { TOOL_CARD_CLASS, ToolKindTile, kindOfStep } from '@/components/ToolKindTile'
@@ -327,13 +328,7 @@ export function CoworkSubagentTranscript({
   const scroller = useRef<HTMLDivElement | null>(null)
   const [following, setFollowing] = useState(true)
   const [briefOpen, setBriefOpen] = useState(false)
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (!running) return
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [running])
+  const now = useSecondClock(running)
 
   const stats = subagentStats(task, now)
   const line = statusLine(task)

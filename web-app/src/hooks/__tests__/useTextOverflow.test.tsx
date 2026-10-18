@@ -69,4 +69,29 @@ describe('text fades only when it overflows', () => {
       screen.getByText('A session title far too long for the sidebar')
     ).toHaveAttribute('data-overflow', 'true')
   })
+
+  it('a re-render with the same element does not measure again (no forced layout)', () => {
+    const scroll = vi
+      .spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+      .mockReturnValue(10)
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(100)
+    const { rerender } = render(<FadeText className="a">Same</FadeText>)
+    const after = scroll.mock.calls.length
+    for (let i = 0; i < 20; i++) rerender(<FadeText className={`a${i}`}>Same</FadeText>)
+    expect(scroll.mock.calls.length).toBe(after)
+  })
+
+  it('a changed label is still re-measured', async () => {
+    stubWidths(10, 100)
+    const { rerender } = render(<FadeText>Short</FadeText>)
+    vi.restoreAllMocks()
+    stubWidths(400, 100)
+    rerender(<FadeText>Now a much longer label</FadeText>)
+    // The MutationObserver re-measures after the text changes.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.getByText('Now a much longer label')).toHaveAttribute(
+      'data-overflow',
+      'true'
+    )
+  })
 })

@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import { useSecondClock } from '@/lib/sharedClock'
 import type { TeamControl } from '@/lib/coworkTeamControl'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -33,11 +34,6 @@ import type { CoworkTurn } from '@/types/coworkSession'
 import { describeTokenUsage, fromCoworkUsage } from '@/lib/tokenUsage'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 import { redactSecrets } from '@/lib/redact'
-
-/** How often running rows re-render so their elapsed time advances. A second
- * is the resolution the duration label shows, so anything finer is wasted
- * work. The interval only runs while something is actually running. */
-const TICK_MS = 1000
 
 /** Output lines kept in view. A build log can be megabytes; the tail is the
  * part that says what happened, and the rest would freeze the panel. */
@@ -106,17 +102,12 @@ export function CoworkTasksPanel({
   )
   const focusRef = useRef<HTMLDivElement | null>(null)
 
-  const [now, setNow] = useState(() => Date.now())
   const active = totals.running + totals.queued > 0
 
   // A running row's elapsed time derives from `Date.now()`, which React has no
   // reason to re-read on its own; tick only while something is running, so an
   // idle panel costs nothing.
-  useEffect(() => {
-    if (!active) return
-    const id = setInterval(() => setNow(Date.now()), TICK_MS)
-    return () => clearInterval(id)
-  }, [active])
+  const now = useSecondClock(active)
 
   // Reveal what the inline card asked for: open its workflow, open the task,
   // and scroll it into view. Done here rather than by the caller so the panel

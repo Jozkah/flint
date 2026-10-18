@@ -65,7 +65,7 @@ fn generate_worker_key() -> String {
 /// has something to configure, and which directory came up empty is the only
 /// thing that distinguishes the ways that happens.
 #[cfg(feature = "tauri")]
-fn resolve_worker_exe<R: tauri::Runtime>(
+pub(crate) fn resolve_worker_exe<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, String> {
     if let Some(p) = crate::compat_env::var_os("LLAMA_WORKER_BIN") {
@@ -223,6 +223,8 @@ pub async fn start_engine<R: tauri::Runtime>(
     }
 
     let exe = resolve_worker_exe(&app_handle)?;
+    let mut envs = envs;
+    let addon = super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let api_key = generate_worker_key();
     // Filled from the handshake, after the worker is up; a fault before then
     // is worded without it.
@@ -271,6 +273,9 @@ pub async fn start_engine<R: tauri::Runtime>(
         previous.abort();
     }
     *guard = Some(handle);
+    if let Ok(mut in_use) = state.addon_in_use.lock() {
+        *in_use = addon;
+    }
     Ok(info)
 }
 
@@ -439,9 +444,12 @@ pub struct EngineDevice {
 #[tauri::command]
 pub async fn engine_devices<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
+    state: State<'_, Arc<LlamacppState>>,
     envs: HashMap<String, String>,
 ) -> Result<Vec<EngineDevice>, String> {
     let exe = resolve_worker_exe(&app_handle)?;
+    let mut envs = envs;
+    super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--list-devices").envs(envs);
     cmd.stdout(std::process::Stdio::piped());
@@ -501,7 +509,19 @@ pub async fn reload_models(
             .ok_or_else(|| "the engine worker is not running".to_string())?;
         (h.port, h.api_key.clone())
     };
+    reload_models_on(port, &api_key, preset_path, models_max, slot_cache_mib, idle_unload_minutes).await
+}
 
+/// [`reload_models`] against a worker named by port and key, for a caller that
+/// already holds (or has just released) the engine lock.
+pub async fn reload_models_on(
+    port: u16,
+    api_key: &str,
+    preset_path: String,
+    models_max: Option<u32>,
+    slot_cache_mib: Option<u64>,
+    idle_unload_minutes: Option<u32>,
+) -> Result<ReloadReport, String> {
     let mut body = serde_json::json!({ "preset_path": preset_path });
     if let Some(m) = models_max {
         body["models_max"] = serde_json::json!(m);
@@ -515,7 +535,7 @@ pub async fn reload_models(
 
     let resp = worker_client(RELOAD_MODELS_TIMEOUT)?
         .post(format!("http://127.0.0.1:{port}/models/reload"))
-        .bearer_auth(&api_key)
+        .bearer_auth(api_key)
         .json(&body)
         .send()
         .await

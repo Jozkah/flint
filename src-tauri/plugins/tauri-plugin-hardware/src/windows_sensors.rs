@@ -12,9 +12,10 @@
 //!   published by those tools while they run; readable unelevated and the
 //!   only reliable way to get per-core CPU temperatures without admin.
 //!
-//! Spawning PowerShell costs about a second, so the query runs on a
+//! Spawning PowerShell costs about a second of CPU, so the query runs on a
 //! background thread at most every 30 seconds and polls return the cached
-//! result immediately.
+//! result immediately. A machine where no source answers (unelevated, no
+//! hardware monitor running) is asked again only every 10 minutes.
 // The parser and its constants are only reached through the PowerShell query,
 // which exists on Windows; the unit tests exercise them everywhere else.
 #![cfg_attr(not(windows), allow(dead_code))]
@@ -62,6 +63,13 @@ fn zone_name(raw: &str) -> String {
         .find(|s| !s.is_empty())
         .unwrap_or(raw)
         .to_string()
+}
+
+/// How long a query result is reused: a result with readings stays live,
+/// an empty one (nothing readable here) is not worth a PowerShell spawn
+/// every 30 seconds.
+pub(crate) fn ttl(empty: bool) -> std::time::Duration {
+    std::time::Duration::from_secs(if empty { 600 } else { 30 })
 }
 
 /// Parse the script's JSON output into sensors.
@@ -186,7 +194,6 @@ mod cache {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
-    const TTL: Duration = Duration::from_secs(30);
 
     struct State {
         fetched: Option<Instant>,
@@ -256,7 +263,7 @@ mod cache {
     /// Cached sensors; starts a background refresh when stale.
     pub fn sensors() -> Vec<SensorDetails> {
         let mut s = STATE.lock().unwrap_or_else(|e| e.into_inner());
-        let stale = s.fetched.map_or(true, |t| t.elapsed() >= TTL);
+        let stale = s.fetched.map_or(true, |t| t.elapsed() >= ttl(s.sensors.is_empty()));
         if stale && !s.running {
             s.running = true;
             std::thread::spawn(|| {
@@ -327,6 +334,12 @@ mod tests {
         );
         assert_eq!(s[0].max, Some(71.0));
         assert_eq!(s[1].kind, "disk");
+    }
+
+    #[test]
+    fn an_empty_result_is_retried_rarely() {
+        assert_eq!(ttl(false).as_secs(), 30);
+        assert_eq!(ttl(true).as_secs(), 600);
     }
 
     #[test]

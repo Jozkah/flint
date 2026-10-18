@@ -277,7 +277,7 @@ export function DataProvider() {
 
   const { setServers, setSettings } = useMCPServers()
   const { setAssistants } = useAssistant()
-  const { setThreads } = useThreads()
+  const setThreads = useThreads((s) => s.setThreads)
   const setThreadsLoading = useThreads((s) => s.setThreadsLoading)
   // The thread fetch re-runs on extension re-registration; the sandbox sweep
   // should not.

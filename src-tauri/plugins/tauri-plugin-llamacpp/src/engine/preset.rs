@@ -67,6 +67,19 @@ pub fn shared_value(ini: &str, key: &str) -> Option<String> {
     None
 }
 
+/// `key` as the loader resolves it for `section`: the section's own value,
+/// else the shared `[*]` one.
+pub fn section_value(ini: &str, section: &str, key: &str) -> Option<String> {
+    let bodies = section_bodies(ini);
+    let find = |name: &str| {
+        bodies.get(name)?.iter().rev().find_map(|line| {
+            let (k, v) = line.split_once('=')?;
+            (k.trim() == key).then(|| v.trim().to_string())
+        })
+    };
+    find(section).or_else(|| find("*"))
+}
+
 /// Load specs for every model in a preset.
 ///
 /// The spec carries the section body so `Registry::reload` can diff it. Two

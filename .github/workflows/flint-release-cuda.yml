@@ -1,31 +1,46 @@
-name: Flint Release (CUDA)
+name: Flint Engine Add-on (CUDA)
 
-# NVIDIA builds of the Windows and Linux desktop app: the llama.cpp engine with
-# the CUDA backend and Vulkan beside it (cuda13-vulkan), attached to an existing
-# release next to the Vulkan-only bundles flint-release.yml makes.
+# Builds the CUDA engine add-on pack for Windows and Linux x64 and attaches it
+# to a release, next to the Vulkan-only installers flint-release.yml makes. The
+# app offers the pack to NVIDIA users and downloads it only when they click
+# (src-tauri/plugins/tauri-plugin-llamacpp/src/engine/addon.rs).
 #
-# Deliberately NOT on push, schedule or the nightly: a CUDA engine build is an
-# hour or more per platform. It runs when a stable release is published, or by
-# hand for any existing tag. Releases created or published with GITHUB_TOKEN
-# (the nightly) never fire `release` events, so the nightly stays Vulkan-only.
+# flint-release.yml calls this for every nightly and stable run, with the same
+# tag, so each release carries the pack built from its own engine pin; a
+# mismatched pack is refused by the app. Run it by hand to (re)build the pack
+# of an existing release.
 #
-# Runners: GitHub-hosted. The toolkit is not on those images, so the build
-# fetches only nvcc, cudart and cuBLAS from NVIDIA's redist archives
-# (src-tauri/build-utils/fetch-cuda-redist.sh). The self-hosted CUDA pool in
-# engine-build.yml (windows-cuda-13-0, ubuntu-22-04-cuda-13-0) would also work:
-# the fetch step is skipped where nvcc is already on PATH.
+# A failed pack never fails the release: the jobs below continue on error and
+# the app simply finds no pack for that release and stays on Vulkan.
+#
+# Signing: FLINT_ADDON_SIGNING_KEY (repository secret, made by
+# scripts/engine-addon/keygen.mjs) signs the manifest; the app verifies it with
+# the public key committed in src-tauri/plugins/tauri-plugin-llamacpp/
+# addon-signing.pub. Without the secret no pack is published.
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to build the pack for and attach it to.'
+        required: true
+        type: string
+      ref:
+        description: 'Commit to build (the release commit). Defaults to the tag.'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      FLINT_ADDON_SIGNING_KEY:
+        required: false
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to build and attach the CUDA bundles to (e.g. v0.9.0). Empty = the latest stable release.'
-        required: false
+        description: 'Existing release tag to build the CUDA pack for (e.g. v0.9.0).'
+        required: true
         default: ''
 
 concurrency:
-  group: flint-release-cuda-${{ github.event.release.tag_name || inputs.tag || 'latest' }}
+  group: flint-engine-addon-${{ inputs.tag }}
   cancel-in-progress: false
 
 permissions:
@@ -33,70 +48,46 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  NODE_OPTIONS: '--max-old-space-size=4096'
-  FLINT_OPTIMIZE: fast
-  CARGO_PROFILE_RELEASE_LTO: thin
-  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
-  CARGO_PROFILE_RELEASE_OPT_LEVEL: s
-  # CUDA 13.0 keeps the driver floor at R580 (engine/driver.rs). The variant's
-  # major must match: check-engine-toolchain.sh compares it with nvcc.
+  # CUDA 13.0 keeps the driver floor at R580 (engine/driver.rs, addon.rs). The
+  # variant's major must match: check-engine-toolchain.sh compares it with nvcc.
   CUDA_REDIST_VERSION: '13.0.2'
   ENGINE_VARIANT: cuda13-vulkan
+  ADDON_KIND: cuda13
 
 jobs:
-  prepare:
-    name: Resolve the release
-    # Prereleases are nightlies or betas; only a stable publish builds by itself.
-    if: github.event_name != 'release' || !github.event.release.prerelease
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      tag: ${{ steps.release.outputs.tag }}
-    steps:
-      - name: Resolve and validate the tag
-        id: release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ inputs.tag }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          tag="${RELEASE_TAG:-$INPUT_TAG}"
-          if [ -z "$tag" ]; then
-            tag="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
-              --limit 1 --json tagName --jq '.[0].tagName // empty')"
-          fi
-          if ! printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'; then
-            echo "::error::not a usable release tag: '$tag'"
-            exit 1
-          fi
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-  build:
-    name: Build (${{ matrix.name }})
-    needs: prepare
+  pack:
+    name: CUDA pack (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
-    # Hosted jobs stop at 6 h. Expect ~1-1.5 h of nvcc on a cold ccache plus the
-    # usual ~40 min app build.
-    timeout-minutes: 340
+    # Hosted jobs stop at 6 h; a cold nvcc build is ~1-1.5 h.
+    timeout-minutes: 300
+    continue-on-error: true
     env:
-      TAG: ${{ needs.prepare.outputs.tag }}
+      TAG: ${{ inputs.tag }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: windows-x64-cuda
+          - platform: win-x64
             os: windows-latest
-          - name: linux-x64-cuda
+          - platform: linux-x64
             os: ubuntu-22.04
     defaults:
       run:
         shell: bash
     steps:
-      - name: Check out the release tag
+      - name: Validate the tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if ! printf '%s' "$INPUT_TAG" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'; then
+            echo "::error::not a usable release tag: '$INPUT_TAG'"
+            exit 1
+          fi
+
+      - name: Check out the release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.prepare.outputs.tag }}
+          ref: ${{ inputs.ref != '' && inputs.ref || inputs.tag }}
 
       - name: Provision make on Windows
         if: runner.os == 'Windows'
@@ -107,40 +98,14 @@ jobs:
             Add-Content $env:GITHUB_PATH 'C:\ProgramData\chocolatey\bin'
           }
 
-      # Same as flint-release.yml, plus the toolkit (~3 GB unpacked with the
-      # static cuBLAS) and the CUDA objects in the engine build.
+      # The toolkit is ~3 GB unpacked with the static cuBLAS, plus the CUDA
+      # objects; the hosted Ubuntu image has ~14 GB free.
       - name: Free disk space on Linux
         if: runner.os == 'Linux'
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
             /usr/local/share/boost /usr/share/swift
           df -h /
-
-      - name: Install Tauri dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libglib2.0-dev libatk1.0-dev libpango1.0-dev libgtk-3-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev librsvg2-dev libfuse2 libappindicator3-dev
-
-      - name: Install Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 20
-
-      - name: Configure Yarn
-        run: |
-          corepack enable
-          corepack prepare yarn@4.10.3 --activate
-          yarn --version
-          echo "FLINT_YARN_CACHE_PATH=$(yarn config get cacheFolder)" >> "$GITHUB_ENV"
-
-      - name: Restore the Yarn cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.FLINT_YARN_CACHE_PATH }}
-          key: yarn-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            yarn-${{ runner.os }}-
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -150,8 +115,8 @@ jobs:
       - name: Restore the Cargo cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: src-tauri
-          key: flint-release-${{ matrix.name }}-${{ env.FLINT_OPTIMIZE }}
+          workspaces: src-tauri/plugins/tauri-plugin-llamacpp
+          key: flint-engine-addon-${{ matrix.platform }}
           cache-on-failure: true
 
       - name: Fetch the CUDA toolkit
@@ -179,142 +144,113 @@ jobs:
         with:
           variant: ${{ env.ENGINE_VARIANT }}
 
-      # `make build`, split so the CUDA runtime can be staged between the
-      # engine and `tauri build`.
+      # Only the engine: the pack is the ggml-cuda module, which loads into the
+      # Vulkan installer's worker. Same llama.cpp pin as that installer.
       - name: Build the engine
         env:
-          # The hosted image's MSVC can be newer than nvcc 13.0 knows about;
-          # without this nvcc refuses it outright.
+          # The hosted image's MSVC can be newer than nvcc 13.0 knows about.
           NVCC_APPEND_FLAGS: ${{ runner.os == 'Windows' && '-allow-unsupported-compiler' || '' }}
-        run: |
-          make install-and-build
-          make install-rust-targets
-          make build-engine
+        run: make build-engine
 
       - name: Stage the CUDA runtime
         run: bash src-tauri/build-utils/stage-cuda-runtime.sh
-
-      # The checked-in resource lists name only ggml*; a glob that matches
-      # nothing fails `tauri build`, so the CUDA files are added here rather
-      # than to the Vulkan builds' config. CI checkout only, never committed.
-      - name: Bundle the CUDA runtime
-        run: |
-          node -e '
-            const fs = require("fs");
-            const win = process.platform === "win32";
-            const file = `src-tauri/tauri.${win ? "windows" : "linux"}.conf.json`;
-            const conf = JSON.parse(fs.readFileSync(file, "utf8"));
-            const extra = win
-              ? ["resources/bin/cudart64_*.dll", "resources/bin/cublas64_*.dll", "resources/bin/cublasLt64_*.dll"]
-              : ["resources/bin/libcudart.so*", "resources/bin/libcublas.so*", "resources/bin/libcublasLt.so*"];
-            conf.bundle.resources.push(...extra, "resources/bin/CUDA-EULA.txt");
-            fs.writeFileSync(file, JSON.stringify(conf, null, 2) + "\n");
-            console.log(file, conf.bundle.resources);
-          '
-
-      - name: Build Flint
-        run: yarn build
-
-      - name: Check the main thread stack (Windows)
-        if: runner.os == 'Windows'
-        run: node scripts/check-main-thread-stack.mjs src-tauri/target/release/Flint-Desktop.exe
 
       - name: Report ccache statistics
         if: success() || failure()
         run: |
           if command -v ccache >/dev/null 2>&1; then ccache -s; else echo "ccache not available"; fi
 
-      # Flint_0.9.0_x64-setup.exe -> Flint_0.9.0_x64-cuda-setup.exe,
-      # Flint_0.9.0_amd64.AppImage -> Flint_0.9.0_amd64-cuda.AppImage, so the
-      # CUDA bundles never overwrite the Vulkan ones on the release.
-      - name: Collect the bundles
+      - name: Make and sign the pack
+        env:
+          FLINT_ADDON_SIGNING_KEY: ${{ secrets.FLINT_ADDON_SIGNING_KEY }}
         run: |
-          mkdir -p dist
-          find src-tauri/target -path '*/release/bundle/*' -type f \
-            \( -name '*-setup.exe' -o -name '*.msi' -o -name '*.AppImage' -o -name '*.deb' \) \
-            -exec cp {} dist/ \;
-          if [ -z "$(ls -A dist)" ]; then
-            echo "::error::no bundles were produced"
-            exit 1
-          fi
-          (cd dist && for f in *; do
-            to="$(printf '%s' "$f" | sed -E 's/_(x64|amd64)([-_.])/_\1-cuda\2/')"
-            if [ "$to" = "$f" ]; then
-              echo "::error::cannot tell where to mark $f as the CUDA build"
-              exit 1
-            fi
-            mv "$f" "$to"
-          done)
-          ls -l dist
-          (cd dist && for f in *; do sha256sum "$f"; done) > "dist-sha256-${{ matrix.name }}.txt"
-          cat "dist-sha256-${{ matrix.name }}.txt"
+          node scripts/engine-addon/pack.mjs --bin-dir src-tauri/resources/bin \
+            --kind "$ADDON_KIND" --tag "$TAG" --platform "${{ matrix.platform }}" \
+            --cuda-toolkit "${CUDA_REDIST_VERSION%.*}" --min-driver 580 --min-compute 75 \
+            --out dist-addon
+          ls -l dist-addon
 
-      - name: Keep the bundles as a workflow artifact
-        id: keep
-        continue-on-error: true
+      - name: Keep the pack as a workflow artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: flint-cuda-${{ env.TAG }}-${{ matrix.name }}
-          path: |
-            dist/*
-            dist-sha256-${{ matrix.name }}.txt
-          if-no-files-found: error
-
-      - name: Keep the bundles as a workflow artifact (second try)
-        if: steps.keep.outcome == 'failure'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: flint-cuda-${{ env.TAG }}-${{ matrix.name }}
-          path: |
-            dist/*
-            dist-sha256-${{ matrix.name }}.txt
+          name: flint-engine-addon-${{ inputs.tag }}-${{ matrix.platform }}
+          path: dist-addon/*
           if-no-files-found: error
 
       - name: Upload the engine build log
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: engine-build-log-${{ matrix.name }}
+          name: engine-addon-build-log-${{ matrix.platform }}
           path: src-tauri/target/engine-build.log
           if-no-files-found: ignore
 
   # The build jobs run with a read-only token. Only this job, which runs no
   # repository code, may write to the release.
-  upload-release:
-    name: Upload the CUDA bundles to the release
-    needs: [prepare, build]
+  upload:
+    name: Attach the packs to the release
+    needs: pack
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    continue-on-error: true
     permissions:
       contents: write
     steps:
-      - name: Download the bundles
+      - name: Download the packs
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          pattern: flint-cuda-${{ needs.prepare.outputs.tag }}-*
-          path: bundles
+          pattern: flint-engine-addon-${{ inputs.tag }}-*
+          path: packs
           merge-multiple: true
 
-      # The CUDA bundles are several hundred MB each (cuBLASLt alone is most of
-      # that), so a dropped connection is likelier than for the Vulkan ones.
-      - name: Upload the bundles to the release
+      # One SHA256SUMS for the release's add-on assets, and the same lines for
+      # the release notes; the app itself checks the signed manifest instead.
+      - name: Upload the packs and their checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.tag }}
+          TAG: ${{ inputs.tag }}
         run: |
           shopt -s nullglob
-          files=(bundles/dist/*)
+          cd packs
+          files=(flint-engine-*.zip flint-engine-*.json flint-engine-*.json.sig)
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::no bundles were downloaded"
-            exit 1
+            echo "::warning::no engine add-on was built for $TAG; the app stays on Vulkan for this release"
+            exit 0
           fi
-          ls -l "${files[@]}"
+          cat SHA256SUMS-*.txt | sort -k2 > SHA256SUMS-engine-addons.txt
+          cat SHA256SUMS-engine-addons.txt
+          {
+            echo "### Engine add-on checksums (SHA-256)"
+            echo '```'
+            cat SHA256SUMS-engine-addons.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           for attempt in 1 2 3; do
-            if gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"; then
+            if gh release upload "$TAG" "${files[@]}" SHA256SUMS-engine-addons.txt --clobber --repo "$GITHUB_REPOSITORY"; then
               exit 0
             fi
             echo "upload attempt $attempt failed; retrying in $((attempt * 30))s"
             sleep $((attempt * 30))
           done
-          echo "::error::could not upload the bundles to $TAG"
+          echo "::error::could not upload the engine add-on to $TAG"
           exit 1
+
+      - name: Add the checksums to the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          [ -f packs/SHA256SUMS-engine-addons.txt ] || exit 0
+          body="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+          body="$(printf '%s\n' "$body" | sed '/^<!-- engine-addon-sums -->$/,/^<!-- \/engine-addon-sums -->$/d')"
+          {
+            printf '%s\n\n' "$body"
+            echo '<!-- engine-addon-sums -->'
+            echo '**NVIDIA CUDA engine add-on** (downloaded from inside the app on NVIDIA GPUs; SHA-256):'
+            echo '```'
+            cat packs/SHA256SUMS-engine-addons.txt
+            echo '```'
+            echo '<!-- /engine-addon-sums -->'
+          } > notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md

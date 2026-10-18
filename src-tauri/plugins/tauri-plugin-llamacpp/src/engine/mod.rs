@@ -14,6 +14,9 @@
 
 use std::fmt;
 
+pub mod addon;
+#[cfg(feature = "tauri")]
+pub mod addon_commands;
 pub mod commands;
 pub mod driver;
 pub mod events;
@@ -165,6 +168,7 @@ pub fn load_backend_modules() {
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
+        load_addon_modules();
         let beside_exe = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
@@ -184,6 +188,63 @@ pub fn load_backend_modules() {
             warn_if_cuda_module_unused(&dir);
         }
     });
+}
+
+/// Loads the backend modules of an engine add-on (engine/addon.rs) the app
+/// named in `FLINT_ENGINE_ADDON_DIR`, before the bundled ones.
+///
+/// Order matters: llama.cpp keeps the *first* device it sees for a physical GPU
+/// and skips later ones with the same PCI id (src/llama.cpp, "skipping device
+/// ... with the same id"), and ggml's default search registers Vulkan before
+/// anything `GGML_BACKEND_PATH` adds. Registering the add-on first is what
+/// makes CUDA0, not Vulkan0, the default device for an NVIDIA GPU; an explicit
+/// device choice still picks either.
+///
+/// The CUDA runtime DLLs sit beside the module. ggml loads it with a plain
+/// `LoadLibraryW`, whose dependency search does not include the module's own
+/// directory, so on Windows the directory goes to the front of PATH (Linux
+/// modules carry an `$ORIGIN` RUNPATH). Skipped when the executable's own
+/// directory already has a CUDA module, which would register twice.
+#[cfg(feature = "engine")]
+fn load_addon_modules() {
+    let Some(dir) = std::env::var_os(addon::WORKER_ADDON_ENV) else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    if !dir.is_absolute() || !dir.join(addon::cuda_module_name()).is_file() {
+        eprintln!(
+            "flint-llama-worker: engine add-on {} has no {}; using the bundled backends",
+            dir.display(),
+            addon::cuda_module_name()
+        );
+        return;
+    }
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+    if exe_dir.is_some_and(|d| d.join(addon::cuda_module_name()).is_file()) {
+        return;
+    }
+    #[cfg(windows)]
+    {
+        let mut paths = vec![dir.clone()];
+        if let Some(existing) = std::env::var_os("PATH") {
+            paths.extend(std::env::split_paths(&existing));
+        }
+        if let Ok(joined) = std::env::join_paths(paths) {
+            std::env::set_var("PATH", joined);
+        }
+    }
+    // ggml_backend_load_all_from_path also loads GGML_BACKEND_PATH; keep that
+    // for the default pass so a user's out-of-tree backend loads once.
+    let user_backend = std::env::var_os("GGML_BACKEND_PATH");
+    std::env::remove_var("GGML_BACKEND_PATH");
+    Engine::load_backends(Some(&dir.to_string_lossy()));
+    if let Some(v) = user_backend {
+        std::env::set_var("GGML_BACKEND_PATH", v);
+    }
+    eprintln!("flint-llama-worker: loaded engine add-on from {}", dir.display());
+    warn_if_cuda_module_unused(&dir);
 }
 
 /// ggml's loader is silent under NDEBUG, so a CUDA module that fails to load
@@ -267,9 +328,9 @@ mod tests {
 
     #[test]
     fn pin_constants_are_populated_from_build_rs() {
-        assert_eq!(PINNED_TAG, "b11627");
-        assert_eq!(PINNED_BUILD_NUMBER, "11627");
-        assert_eq!(PINNED_VERSION, "0.6.0");
+        assert_eq!(PINNED_TAG, "b11716");
+        assert_eq!(PINNED_BUILD_NUMBER, "11716");
+        assert_eq!(PINNED_VERSION, "0.7.0");
         assert_eq!(PINNED_COMMIT.len(), 40, "commit should be a full sha");
     }
 

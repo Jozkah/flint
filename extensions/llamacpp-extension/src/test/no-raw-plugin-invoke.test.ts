@@ -44,6 +44,8 @@ function collect(dir: string): string[] {
     if (!/\.(ts|tsx)$/.test(entry)) continue
     // Test files legitimately assert on the wire-level command name.
     if (/\.test\.tsx?$/.test(entry)) continue
+    // A list of command NAMES the browser refuses (never invoked from here).
+    if (entry === 'desktopOnlyCommands.ts') continue
     out.push(full)
   }
   return out

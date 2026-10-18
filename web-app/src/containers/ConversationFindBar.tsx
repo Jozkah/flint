@@ -13,6 +13,10 @@ type Props = {
   onClose: () => void
   /** A search hit being opened: start on its phrase, at its message. */
   seed?: { query: string; messageId?: string } | null
+  /** Mount a message the transcript window has not rendered yet. */
+  reveal?: (messageId: string) => void
+  /** First rendered message index; a change re-runs the jump after a reveal. */
+  renderedFrom?: number
 }
 
 const HIGHLIGHT_ALL = 'conv-find'
@@ -41,7 +45,14 @@ function elementsOf(root: HTMLElement, messageId: string): Element[] {
  * text; the one in use is scrolled into view and highlighted where the browser
  * can paint a highlight.
  */
-export function ConversationFindBar({ messages, root, onClose, seed }: Props) {
+export function ConversationFindBar({
+  messages,
+  root,
+  onClose,
+  seed,
+  reveal,
+  renderedFrom,
+}: Props) {
   const { t } = useTranslation()
   const [query, setQuery] = useState(seed?.query ?? '')
   const [active, setActive] = useState(0)
@@ -93,15 +104,24 @@ export function ConversationFindBar({ messages, root, onClose, seed }: Props) {
   // A new query starts from the first match.
   useEffect(() => setActive(0), [query])
 
-  // Land on the message the search hit named, once its text has loaded.
-  const seedPending = useRef(!!seed?.messageId)
+  // Take a search hit's seed (on mount, or a new hit while open), then drop
+  // it from the store so it is never replayed into another chat.
+  const seedPending = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (!seedPending.current || matches.length === 0) return
-    seedPending.current = false
-    const at = matches.findIndex((m) => m.messageId === seed?.messageId)
-    if (at > 0) setActive(at)
+    if (!seed) return
+    setQuery(seed.query)
+    seedPending.current = seed.messageId
     useConversationFind.getState().clearSeed()
-  }, [matches, seed?.messageId])
+  }, [seed])
+
+  // Land on the message the search hit named, once its text has loaded.
+  useEffect(() => {
+    const target = seedPending.current
+    if (!target || matches.length === 0) return
+    seedPending.current = undefined
+    const at = matches.findIndex((m) => m.messageId === target)
+    if (at > 0) setActive(at)
+  }, [matches])
 
   const count = matches.length
   const current = count > 0 ? matches[Math.min(active, count - 1)] : undefined
@@ -112,11 +132,19 @@ export function ConversationFindBar({ messages, root, onClose, seed }: Props) {
 
   // Scroll only when the match in use changes. The painting effect below
   // re-runs on every streamed token and must not pull the view back.
+  // The key last scrolled to, so a window that grows for other reasons
+  // (scrolling up) does not pull the view back to the match.
+  const scrolledKey = useRef('')
   useEffect(() => {
     const host = root()
-    if (!host || !current) return
+    if (!host || !current || scrolledKey.current === currentKey) return
     const elements = elementsOf(host, current.messageId)
-    if (elements.length === 0) return
+    if (elements.length === 0) {
+      // Off the rendered window: mount it, and this runs again once it is.
+      reveal?.(current.messageId)
+      return
+    }
+    scrolledKey.current = currentKey
     const ranges = rangesInElements(elements, query)
     const target = ranges[Math.min(current.ordinal, ranges.length - 1)]
     const anchor =
@@ -124,7 +152,7 @@ export function ConversationFindBar({ messages, root, onClose, seed }: Props) {
       (elements[0] as HTMLElement)
     anchor.scrollIntoView?.({ block: 'center' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentKey])
+  }, [currentKey, renderedFrom])
 
   useEffect(() => {
     const host = root()
@@ -151,7 +179,7 @@ export function ConversationFindBar({ messages, root, onClose, seed }: Props) {
       highlights?.delete(HIGHLIGHT_ALL)
       highlights?.delete(HIGHLIGHT_ACTIVE)
     }
-  }, [current, query, root, messages])
+  }, [current, query, root, messages, renderedFrom])
 
   const step = (dir: 1 | -1) => {
     if (count === 0) return

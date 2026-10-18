@@ -13,10 +13,10 @@
 // vendor/llama.cpp and with engine::PINNED_* on the Rust side; the shim
 // re-exports llama_version()/llama_build_number() so a mismatch is caught at
 // runtime instead of producing a silently wrong engine.
-pub const LLAMA_CPP_TAG: &str = "b11627";
-pub const LLAMA_CPP_BUILD_NUMBER: u32 = 11627;
-pub const LLAMA_CPP_COMMIT: &str = "8c2134a8755d8a9792af513dab20282affe903e4";
-pub const LLAMA_CPP_VERSION: &str = "0.6.0";
+pub const LLAMA_CPP_TAG: &str = "b11716";
+pub const LLAMA_CPP_BUILD_NUMBER: u32 = 11716;
+pub const LLAMA_CPP_COMMIT: &str = "797de63b2fa7396dcc8caca76834c699ac84e1c3";
+pub const LLAMA_CPP_VERSION: &str = "0.7.0";
 
 const COMMANDS: &[&str] = &[
     // Cleanup command
@@ -40,12 +40,43 @@ const COMMANDS: &[&str] = &[
     "force_stop_engine",
     "engine_slots_idle",
     "erase_thread_slot_state",
+    // Engine add-ons (the CUDA pack)
+    "engine_addon_status",
+    "engine_addon_check",
+    "engine_addon_download",
+    "engine_addon_cancel",
+    "engine_addon_install_file",
+    "engine_addon_remove",
+    "engine_addon_verify",
+    "engine_addon_restart_pending",
     // GGUF commands
     "read_gguf_metadata",
     "find_gguf_tensors",
     "is_model_supported",
     "sha256_file",
 ];
+
+/// The Ed25519 key engine add-on packs are verified with (engine/addon.rs):
+/// `FLINT_ADDON_PUBKEY` at build time, else `addon-signing.pub` beside this
+/// file. Empty means this build offers no add-ons. `FLINT_RELEASE_TAG` is the
+/// release the build is published under, so the app fetches its own pack.
+fn emit_addon_pins() {
+    println!("cargo:rerun-if-env-changed=FLINT_ADDON_PUBKEY");
+    println!("cargo:rerun-if-env-changed=FLINT_RELEASE_TAG");
+    println!("cargo:rerun-if-changed=addon-signing.pub");
+    let key = std::env::var("FLINT_ADDON_PUBKEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())
+        .or_else(|| std::fs::read_to_string("addon-signing.pub").ok())
+        .unwrap_or_default();
+    let key: String = key
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .unwrap_or("")
+        .to_string();
+    println!("cargo:rustc-env=FLINT_ADDON_PUBKEY_BUILD={key}");
+}
 
 fn main() {
     tauri_plugin::Builder::new(COMMANDS).build();
@@ -54,6 +85,7 @@ fn main() {
     println!("cargo:rustc-env=JAN_LLAMA_CPP_BUILD_NUMBER={LLAMA_CPP_BUILD_NUMBER}");
     println!("cargo:rustc-env=JAN_LLAMA_CPP_COMMIT={LLAMA_CPP_COMMIT}");
     println!("cargo:rustc-env=JAN_LLAMA_CPP_VERSION={LLAMA_CPP_VERSION}");
+    emit_addon_pins();
 
     // Features reach a build script only as CARGO_FEATURE_* env vars -- a
     // `#[cfg(feature = ...)]` here would silently never fire.

@@ -79,6 +79,35 @@ describe('ConversationFindBar', () => {
     expect(count()).toBe('1 / 2')
   })
 
+  it('asks to mount a match outside the rendered window, then jumps to it', () => {
+    host.innerHTML = '<div data-message-id="m2"><p>beta gamma beta</p></div>'
+    const reveal = vi.fn()
+    const { rerender } = render(
+      <ConversationFindBar
+        messages={messages}
+        root={() => host}
+        onClose={vi.fn()}
+        reveal={reveal}
+        renderedFrom={1}
+      />
+    )
+    fireEvent.change(input(), { target: { value: 'alpha' } })
+    expect(reveal).toHaveBeenCalledWith('m1')
+    expect(scrolled).toEqual([])
+    host.innerHTML =
+      '<div data-message-id="m1"><p>alpha beta</p></div><div data-message-id="m2"><p>beta gamma beta</p></div>'
+    rerender(
+      <ConversationFindBar
+        messages={messages}
+        root={() => host}
+        onClose={vi.fn()}
+        reveal={reveal}
+        renderedFrom={0}
+      />
+    )
+    expect(scrolled.at(-1)).toBe('m1')
+  })
+
   it('says when nothing matches and closes on Escape', () => {
     const onClose = vi.fn()
     renderBar(onClose)

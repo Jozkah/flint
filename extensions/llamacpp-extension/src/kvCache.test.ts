@@ -9,6 +9,15 @@ import {
 } from './kvCache'
 
 describe('resolveKvCacheTypes', () => {
+  it('keeps auto at f16 on the CPU backend but honours explicit types', () => {
+    expect(
+      resolveKvCacheTypes({ cacheTypeK: 'auto', cacheTypeV: 'auto', flashAttn: 'on', cpuOnly: true })
+    ).toEqual({ k: 'f16', v: 'f16' })
+    expect(
+      resolveKvCacheTypes({ cacheTypeK: 'q8_0', cacheTypeV: 'auto', cpuOnly: true })
+    ).toEqual({ k: 'q8_0', v: 'f16' })
+  })
+
   it('keeps f16 when nothing is set', () => {
     expect(resolveKvCacheTypes({})).toEqual({ k: 'f16', v: 'f16' })
   })

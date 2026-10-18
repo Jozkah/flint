@@ -154,6 +154,8 @@ jobs:
     timeout-minutes: 240
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
+      # The app fetches its CUDA engine add-on from this release (engine/addon.rs).
+      FLINT_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -331,6 +333,22 @@ jobs:
           name: engine-build-log-${{ matrix.name }}
           path: src-tauri/target/engine-build.log
           if-no-files-found: ignore
+
+  # The NVIDIA CUDA engine add-on for this release, built from the same commit
+  # and attached beside the installers. It is not in any installer and nothing
+  # waits for it: a failed pack leaves the app on Vulkan for this release.
+  engine-addon:
+    name: CUDA engine add-on
+    needs: prepare
+    if: github.event_name != 'push' && needs.prepare.outputs.skip != 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/flint-release-cuda.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+      ref: ${{ needs.prepare.outputs.ref }}
+    secrets:
+      FLINT_ADDON_SIGNING_KEY: ${{ secrets.FLINT_ADDON_SIGNING_KEY }}
 
   # The build jobs run with a read-only token. Only this job, which runs no
   # repository code, may write to the release.

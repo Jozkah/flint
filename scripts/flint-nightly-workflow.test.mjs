@@ -161,7 +161,14 @@ test('the build jobs hold a read-only token; only the release jobs may write', (
   const writers = jobs
     .filter((job) => /\n    permissions:\n      contents: write/.test(job))
     .map((job) => job.split(':')[0].trim())
-  assert.deepEqual(writers.sort(), ['prepare', 'publish-nightly', 'upload-release'])
+  // engine-addon calls flint-release-cuda.yml, whose build job is read-only and
+  // whose upload job (no repository code) is the only one that writes.
+  assert.deepEqual(writers.sort(), ['engine-addon', 'prepare', 'publish-nightly', 'upload-release'])
+  const addon = readFileSync(new URL('../.github/workflows/flint-release-cuda.yml', import.meta.url), 'utf8')
+  const addonJobs = addon.replace(/\r\n/g, '\n').split('\njobs:\n')[1].split(/\n  (?=[a-z-]+:\n)/)
+  const pack = addonJobs.find((job) => job.trim().startsWith('pack:'))
+  assert.doesNotMatch(pack, /contents: write|gh release/)
+  assert.match(pack, /continue-on-error: true/)
   const build = jobs.find((job) => job.trim().startsWith('build:'))
   assert.doesNotMatch(build, /gh release upload/)
   assert.match(workflow, /upload-release:[\s\S]*gh release upload/)

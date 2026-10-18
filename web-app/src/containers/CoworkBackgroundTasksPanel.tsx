@@ -1,3 +1,4 @@
+import { useSecondClock } from '@/lib/sharedClock'
 import { useEffect, useRef, useState } from 'react'
 import { Bot, ChevronDown, Square, Trash2, X } from 'lucide-react'
 import { TOOL_CARD_CLASS, ToolKindTile } from '@/components/ToolKindTile'
@@ -22,7 +23,6 @@ import {
   type BackgroundSection,
 } from '@/hooks/useBackgroundTabState'
 
-const TICK_MS = 1000
 /** Output lines drawn for a command; a build log can be megabytes. */
 const MAX_OUTPUT_LINES = 200
 
@@ -66,16 +66,11 @@ export function CoworkBackgroundTasksPanel({
   const toggleSection = useBackgroundTabState((s) => s.toggle)
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const [stopping, setStopping] = useState<Set<string>>(() => new Set())
-  const [now, setNow] = useState(() => Date.now())
   const live = running.length > 0
 
   // Elapsed time on a running row is derived from the clock; tick only while
   // something is running.
-  useEffect(() => {
-    if (!live) return
-    const id = setInterval(() => setNow(Date.now()), TICK_MS)
-    return () => clearInterval(id)
-  }, [live])
+  const now = useSecondClock(live)
 
   const toggleOpen = (id: string) =>
     setOpen((cur) => {

@@ -1,4 +1,5 @@
-import { memo, useEffect, useState } from 'react'
+import { useSecondClock } from '@/lib/sharedClock'
+import { memo } from 'react'
 import { cn } from '@/lib/utils'
 import { formatCompactDuration } from '@/lib/duration'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -13,14 +14,8 @@ function useElapsedSeconds(
   endedAt?: number
 ): number | undefined {
   const isRunning = startedAt !== undefined && endedAt === undefined
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (!isRunning) return
-    setNow(Date.now())
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [isRunning, startedAt])
+  // The shared one-second clock: no timer per tool card.
+  const now = useSecondClock(isRunning)
 
   if (startedAt === undefined) return undefined
   return Math.max(0, ((endedAt ?? now) - startedAt) / 1000)
