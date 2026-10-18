@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
-import { ChevronDownIcon } from 'lucide-react'
+import { ChevronDownIcon, MoreHorizontalIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import {
   createContext,
@@ -642,6 +642,9 @@ export const ToolApprovalActions = memo(() => {
   )
   const [moreOpen, setMoreOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  // The secondary answers (details, more options, deny with a reason, edit)
+  // sit behind one "..." button beside Deny and Allow once.
+  const [linksOpen, setLinksOpen] = useState(false)
   const [reasonOpen, setReasonOpen] = useState(false)
   const [reason, setReason] = useState('')
   const [editOpen, setEditOpen] = useState(false)
@@ -730,7 +733,9 @@ export const ToolApprovalActions = memo(() => {
       data-slot="approval-panel"
       data-approval-request={pending.requestId}
       aria-labelledby={titleId}
-      className="flex min-w-0 flex-col gap-2.5 p-3 text-foreground sm:p-3.5"
+      // A container: a narrow card (a phone, a split pane) stacks its rows and
+      // gives its answers the full width, whatever the window's width.
+      className="@container/approval flex min-w-0 flex-col gap-2.5 p-3 text-foreground sm:p-3.5"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2 text-[length:calc(var(--ui-font-base)*0.8125)]">
         <span className="font-medium text-(--tk)">
@@ -825,7 +830,23 @@ export const ToolApprovalActions = memo(() => {
         aria-label={t('permissions:request.chooseScope')}
         className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2"
       >
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <button
+          type="button"
+          aria-expanded={linksOpen}
+          aria-controls={`${moreId}-links`}
+          aria-label={t('common:more')}
+          title={t('common:more')}
+          data-testid="approval-links-toggle"
+          className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground outline-hidden hover:bg-hover-btn hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 aria-expanded:bg-hover-btn aria-expanded:text-foreground pointer-coarse:size-11"
+          onClick={() => setLinksOpen((open) => !open)}
+        >
+          <MoreHorizontalIcon aria-hidden className="size-4" />
+        </button>
+        <div
+          id={`${moreId}-links`}
+          hidden={!linksOpen}
+          className="order-last flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+        >
           <button
             type="button"
             aria-expanded={detailsOpen}
@@ -880,7 +901,7 @@ export const ToolApprovalActions = memo(() => {
             </button>
           )}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1">
           <Button
             ref={denyRef}
             size="sm"
@@ -888,7 +909,7 @@ export const ToolApprovalActions = memo(() => {
             type="button"
             disabled={!armed || (reasonOpen && reason.trim() === '')}
             data-scope={reasonOpen ? 'deny-with-reason' : 'deny'}
-            className="min-w-20 border-destructive/40 pointer-coarse:h-11"
+            className="min-w-20 border-destructive/40 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1"
             onClick={() =>
               reasonOpen
                 ? resolveApproval(toolCallId, 'deny', pending.requestId, reason)
@@ -906,7 +927,7 @@ export const ToolApprovalActions = memo(() => {
             data-scope="allow-once"
             data-primary="true"
             aria-describedby={once ? `${moreId}-once` : undefined}
-            className="min-w-24 pointer-coarse:h-11"
+            className="min-w-24 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1"
             onClick={() => decide('allow-once')}
           >
             {t('permissions:scope.allowOnce')}
