@@ -97,6 +97,7 @@ fn main() {
                     budget_chars: retrieve::DEFAULT_BUDGET_CHARS,
                     temporary: args.get(2).map(String::as_str) == Some("temporary"),
                     instructions: &[],
+                    ranking: None,
                 },
             );
             let ids: Vec<String> = selection

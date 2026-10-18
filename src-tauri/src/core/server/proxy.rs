@@ -1207,6 +1207,35 @@ async fn proxy_request(
     let mut mlx_model_id: Option<String> = None;
 
     match (method.clone(), destination_path.as_str()) {
+        // OpenAI Responses API: rewritten to a chat/completions call on this
+        // same server and the answer rewritten back (see `responses_route`).
+        (hyper::Method::POST, "/responses") => {
+            let Ok(collected) = body.collect().await else {
+                let mut error_response = Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR);
+                error_response = add_cors_headers_with_host_and_origin(
+                    error_response,
+                    &host_header,
+                    &origin_header,
+                    &config.trusted_hosts,
+                );
+                return Ok(error_response.body(full("Failed to read request body")).unwrap());
+            };
+            let url = super::responses_route::loopback_url(&config.host, config.port, &config.prefix);
+            let handled = super::responses_route::handle(&collected.to_bytes(), &headers, &url, &local_client).await;
+            let mut response = Response::builder()
+                .status(handled.status)
+                .header("Content-Type", handled.content_type);
+            if handled.content_type == "text/event-stream" {
+                response = response.header("Cache-Control", "no-cache");
+            }
+            response = add_cors_headers_with_host_and_origin(
+                response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(response.body(handled.body).unwrap());
+        }
         // Anthropic /messages endpoint - tries /messages first, falls back to /chat/completions on error
         (hyper::Method::POST, "/messages") => {
             is_anthropic_messages = true;

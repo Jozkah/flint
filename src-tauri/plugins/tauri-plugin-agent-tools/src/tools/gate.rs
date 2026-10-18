@@ -309,7 +309,7 @@ fn deletes_home_or_root(command: &str) -> bool {
 
 /// Whether a delete target is a home directory, a filesystem root or a drive
 /// root, however spelled, and not something inside one.
-fn names_home_or_root(target: &str) -> bool {
+pub(crate) fn names_home_or_root(target: &str) -> bool {
     let mut t = target.replace('\\', "/");
     loop {
         let before = t.len();
@@ -777,7 +777,7 @@ pub fn resolve_decision(
             crate::tools::browser_tool::Class::Act => gated(PromptKind::Write, grants),
             // A file from the run's folders is gated like a write; one from
             // anywhere else is a write escape (refused where nobody can approve it).
-            crate::tools::browser_tool::Class::Upload => {
+            crate::tools::browser_tool::Class::Upload | crate::tools::browser_tool::Class::Download => {
                 if call_escapes(tool, args, project_root, scratch, read_roots, grants) {
                     Decision::Prompt(PromptKind::WriteEscape)
                 } else {
@@ -1220,6 +1220,15 @@ mod tests {
             decide(json!({"action": "upload", "ref": "e1", "path": "../outside.txt"}), &grants),
             Decision::Prompt(PromptKind::WriteEscape)
         );
+        // A download saves a file: a folder in the working folder is a write, outside it an escape.
+        assert_eq!(
+            decide(json!({"action": "download", "ref": "e1", "path": "out"}), &grants),
+            Decision::Prompt(PromptKind::Write)
+        );
+        assert_eq!(
+            decide(json!({"action": "download", "ref": "e1", "path": "/etc"}), &grants),
+            Decision::Prompt(PromptKind::WriteEscape)
+        );
         // Opening an address and running script are asked every time.
         let open = json!({"action": "open", "url": "http://localhost:3000/"});
         let eval = json!({"action": "evaluate", "expression": "1"});
@@ -1260,6 +1269,29 @@ mod tests {
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ocr_reads_like_read_inside_the_workspace_and_asks_outside_it() {
+        let root = unique_root();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let grants = SessionGrants::default();
+        let decide = |path: &str| {
+            resolve_decision(
+                lookup("ocr").unwrap(),
+                &json!({"path": path}),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        assert_eq!(decide("scan.png"), Decision::Allow);
+        assert_eq!(decide("../scan.png"), Decision::Prompt(PromptKind::ReadEscape));
         let _ = std::fs::remove_dir_all(&root);
     }
 

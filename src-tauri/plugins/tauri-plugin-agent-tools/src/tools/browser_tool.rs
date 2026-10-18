@@ -10,6 +10,8 @@
 //!   gated like a write: asked in modes that ask, covered by a session grant;
 //! - `upload` is gated like a write too, and its file must lie inside the run's
 //!   working folders (anything else is refused, and a write escape at the gate);
+//! - `download` saves one file the page offers, and is gated the same way: the
+//!   folder it names must lie inside the run's write folders (`browser::download`);
 //! - `open` and `evaluate` are asked about every time, whatever grants exist.
 //!   `open` because the model picks which local address the browser reaches (a
 //!   dev server, or any other service on this machine); `evaluate` because
@@ -29,6 +31,9 @@ pub enum Class {
     /// Attaches a file from the run's folders to a page: gated like a write,
     /// and a path outside those folders is a write escape.
     Upload,
+    /// Saves a file the page offers into a folder of the run's: gated like a
+    /// write, and a folder outside the run's write folders is a write escape.
+    Download,
     /// Starts or redirects the browser: asked every time.
     Open,
     /// Runs script in the page: asked every time.
@@ -42,6 +47,7 @@ pub fn class_of(args: &Value) -> Class {
         Some("snapshot" | "screenshot" | "console" | "wait" | "scroll" | "close") => Class::Read,
         Some("open") => Class::Open,
         Some("upload") => Class::Upload,
+        Some("download") => Class::Download,
         Some("evaluate") => Class::Evaluate,
         _ => Class::Act,
     }
@@ -113,6 +119,11 @@ pub fn display(args: &Value, key: &str) -> String {
             clip(std::path::Path::new(s("path").unwrap_or("?")).file_name().and_then(|n| n.to_str()).unwrap_or("?"), 80),
             target()
         ),
+        "download" => format!(
+            "browser download via {} into {}",
+            target(),
+            clip(std::path::Path::new(s("path").unwrap_or("?")).file_name().and_then(|n| n.to_str()).unwrap_or("?"), 80)
+        ),
         "tab" => format!("browser tab {}{}", s("op").unwrap_or("list"), s("url").map(|u| format!(" {}", clip(u, 200))).unwrap_or_default()),
         other => format!("browser {other}"),
     }
@@ -175,7 +186,16 @@ pub async fn run(args: &Value, ctx: &ToolContext<'_>) -> (String, Option<Vec<Ima
     } else {
         None
     };
-    let opts = session::Options { upload: upload.as_deref(), compact_image: ctx.compact_images };
+    let download = if class_of(args) == Class::Download {
+        let raw = args.get("path").and_then(Value::as_str).unwrap_or("");
+        match crate::browser::download::confine_dir(ctx.project_root, ctx.scratch_root, ctx.write_roots, raw) {
+            Ok(p) => Some(p),
+            Err(e) => return (format!("ERROR: {e}"), None),
+        }
+    } else {
+        None
+    };
+    let opts = session::Options { upload: upload.as_deref(), download_dir: download.as_deref(), compact_image: ctx.compact_images };
     let reply = session::run_with(&caller, args, &opts).await;
     let images = reply.image.map(|bytes| {
         use base64::Engine as _;
@@ -203,6 +223,7 @@ mod tests {
             assert_eq!(class_of(&json!({ "action": a })), Class::Act, "{a}");
         }
         assert_eq!(class_of(&json!({ "action": "upload" })), Class::Upload);
+        assert_eq!(class_of(&json!({ "action": "download" })), Class::Download);
         assert_eq!(class_of(&json!({ "action": "open" })), Class::Open);
         assert_eq!(class_of(&json!({ "action": "Evaluate" })), Class::Evaluate);
     }

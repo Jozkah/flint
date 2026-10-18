@@ -279,6 +279,18 @@ pub async fn run_cancellable(
     Ok(out)
 }
 
+/// Ends a hook's whole process tree when dropped with a pid still set: the
+/// hook was stopped, cancelled or ran out of time.
+struct TreeGuard(Option<u32>);
+
+impl Drop for TreeGuard {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0.take() {
+            let _ = tauri_plugin_agent_tools::tools::proc::kill_tree(pid);
+        }
+    }
+}
+
 async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
     use tauri_plugin_agent_tools::tools::proc;
     use tokio::io::AsyncWriteExt;
@@ -324,6 +336,11 @@ async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
             return None;
         }
     };
+    // Dropping the child ends the shell and nothing else: what the shell
+    // started (a `sleep`, a script) keeps running and keeps the output pipe
+    // open, so a stopped or timed-out hook would still hold the run up. The
+    // guard ends the whole tree unless the hook finished by itself.
+    let mut tree = TreeGuard(child.id());
     // Written beside the wait, not before it: a hook that never reads its input
     // would otherwise block a large payload's write past the time limit. A
     // hook that closes the pipe early is its business, not a failure.
@@ -335,6 +352,10 @@ async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
     });
     let limit = Duration::from_secs(hook.timeout_secs);
     let waited = tokio::time::timeout(limit, child.wait_with_output()).await;
+    if waited.is_ok() {
+        tree.0 = None;
+    }
+    drop(tree);
     if let Some(writer) = writer {
         writer.abort();
     }

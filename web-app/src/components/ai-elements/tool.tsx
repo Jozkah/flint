@@ -51,6 +51,8 @@ import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { ToolElapsed } from './tool-runtime'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { commandEditable } from '@/lib/commandEditable'
 import { ToolKindIcon, TOOL_TILE_CLASS } from '@/components/ToolKindTile'
 import { Citations } from '@/components/Citations'
 import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
@@ -573,6 +575,11 @@ export const ToolApprovalActions = memo(() => {
   )
   const [moreOpen, setMoreOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [reasonOpen, setReasonOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [editOpen, setEditOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const setEditedCommand = useToolApprovalRequests((s) => s.setEditedCommand)
   const denyRef = useRef<HTMLButtonElement>(null)
   const titleId = useId()
   const moreId = useId()
@@ -584,6 +591,10 @@ export const ToolApprovalActions = memo(() => {
   useEffect(() => {
     setMoreOpen(Boolean(repeatedCommand))
     setDetailsOpen(false)
+    setReasonOpen(false)
+    setReason('')
+    setEditOpen(false)
+    setDraft('')
   }, [requestId, repeatedCommand])
   useEffect(() => {
     if (requestId !== undefined || toolCallId) denyRef.current?.focus()
@@ -595,9 +606,23 @@ export const ToolApprovalActions = memo(() => {
   // `CoworkChildApprovals`).
   if (!pending || !toolCallId || pending.origin || !request) return null
 
+  // Only a shell command can be rewritten before it is allowed once.
+  const originalCommand =
+    commandEditable(pending) &&
+    typeof (pending.input as { command?: unknown } | undefined)?.command ===
+      'string'
+      ? (pending.input as { command: string }).command
+      : undefined
+  const commandEdited =
+    editOpen && draft.trim() !== '' && draft.trim() !== originalCommand?.trim()
   const decide = (
     decision: PermissionDecision | 'allow-git-temporary'
-  ) => resolveApproval(toolCallId, decision, pending.requestId)
+  ) => {
+    if (decision === 'allow-once' && commandEdited) {
+      setEditedCommand(toolCallId, pending.requestId, draft)
+    }
+    resolveApproval(toolCallId, decision, pending.requestId)
+  }
   const broader = request.scopesOffered.filter(
     (scope) => scope !== 'allow-once' && request.scopeExplanations[scope]
   )
@@ -777,6 +802,29 @@ export const ToolApprovalActions = memo(() => {
               )}
             />
           </button>
+          <button
+            type="button"
+            aria-expanded={reasonOpen}
+            data-testid="approval-deny-reason-toggle"
+            className="rounded-sm text-muted-foreground underline-offset-4 outline-hidden hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+            onClick={() => setReasonOpen((open) => !open)}
+          >
+            {t('tools:toolApproval.denyWithReason')}
+          </button>
+          {originalCommand !== undefined && (
+            <button
+              type="button"
+              aria-expanded={editOpen}
+              data-testid="approval-edit-toggle"
+              className="rounded-sm text-muted-foreground underline-offset-4 outline-hidden hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+              onClick={() => {
+                setEditOpen((open) => !open)
+                setDraft(originalCommand)
+              }}
+            >
+              {t('tools:toolApproval.editCommand')}
+            </button>
+          )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button
@@ -809,6 +857,68 @@ export const ToolApprovalActions = memo(() => {
             </span>
           )}
         </div>
+        {editOpen && originalCommand !== undefined && (
+          <div
+            data-testid="approval-edit"
+            className="flex w-full min-w-0 flex-col gap-1.5"
+          >
+            <label
+              htmlFor={`${moreId}-edit`}
+              className="text-xs font-medium text-foreground"
+            >
+              {t('tools:toolApproval.editCommandLabel')}
+            </label>
+            <Textarea
+              id={`${moreId}-edit`}
+              value={draft}
+              rows={3}
+              autoFocus
+              spellCheck={false}
+              className="font-mono text-[12.5px]"
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              {commandEdited
+                ? t('tools:toolApproval.editCommandNote')
+                : t('tools:toolApproval.editCommandHint')}
+            </p>
+          </div>
+        )}
+        {reasonOpen && (
+          <div
+            data-testid="approval-deny-reason"
+            className="flex w-full min-w-0 flex-col gap-2"
+          >
+            <label
+              htmlFor={`${moreId}-reason`}
+              className="text-xs font-medium text-foreground"
+            >
+              {t('tools:toolApproval.denyReasonLabel')}
+            </label>
+            <Textarea
+              id={`${moreId}-reason`}
+              value={reason}
+              maxLength={500}
+              rows={2}
+              autoFocus
+              placeholder={t('tools:toolApproval.denyReasonPlaceholder')}
+              onChange={(e) => setReason(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="destructive"
+              type="button"
+              disabled={!armed || reason.trim() === ''}
+              data-scope="deny-with-reason"
+              className="self-end border-destructive/40 pointer-coarse:h-11"
+              onClick={() =>
+                resolveApproval(toolCallId, 'deny', pending.requestId, reason)
+              }
+            >
+              {t('tools:toolApproval.denyAndSend')}
+            </Button>
+          </div>
+        )}
         {moreOpen && (
           <ul
             id={moreId}
@@ -851,7 +961,7 @@ export const ToolApprovalActions = memo(() => {
                     data-suggested={
                       (repeatedCommand && scope === 'allow-thread') || undefined
                     }
-                    disabled={!armed || planUnsaved}
+                    disabled={!armed || planUnsaved || commandEdited}
                     className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 data-suggested:border-l-2 data-suggested:border-l-warning pointer-coarse:min-h-11"
                     onClick={() => decide(scope)}
                   >

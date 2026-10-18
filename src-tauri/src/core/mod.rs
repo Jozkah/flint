@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod automation;
 // Archive instead of delete; desktop-only like rooms.
 #[cfg(not(feature = "cli"))]
 pub mod archive;

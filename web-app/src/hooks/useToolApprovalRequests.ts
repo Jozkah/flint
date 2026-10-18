@@ -17,6 +17,17 @@ import {
 } from '@/hooks/useAutoApproveLimit'
 import { rememberCommand, repeatCommandKey } from '@/lib/repeatedCommand'
 import { similarToolCall } from '@/lib/similarToolCall'
+import { commandEditable } from '@/lib/commandEditable'
+import {
+  EVERYWHERE_CHOICE,
+  SCOPABLE_TOOLS,
+  addScopedRule,
+  approvalScopeOptions,
+  buildScopeChoice,
+  isAbsolutePath,
+  scopeFromChoiceId,
+  type ApprovalScopeWire,
+} from '@/lib/approvalScopes'
 
 /**
  * One structured choice a request asks for next to the allow/deny answer: the
@@ -141,6 +152,12 @@ export type PendingApproval = {
   choice?: ApprovalChoice
   /** The option the person selected so far; the default until they pick. */
   chosenId?: string
+  /**
+   * The form for "Always" on a file change or a command: the scopes the
+   * backend would accept for this call, and the folder it was asked about. Set
+   * once they arrive; a card without one answers "Always" as it always did.
+   */
+  scopeForm?: { root: string; options: ApprovalScopeWire[] }
   /** When the prompt was raised (ms since epoch), to tell a long wait. */
   requestedAt?: number
   resolve: (approved: boolean) => void
@@ -169,6 +186,14 @@ type ToolApprovalRequestsState = {
   pending: Record<string, PendingApproval>
   queued: Record<string, PendingApproval[]>
   refusals: Record<string, ApprovalRefusal>
+  /** What the person typed with a deny, by call id, until the loop takes it. */
+  refusalReasons: Record<string, string>
+  /**
+   * A shell command the person rewrote before allowing it once, by call id,
+   * until the loop takes it. Only ever set for `bash`, only kept with
+   * `allow-once`, and never turned into a standing grant.
+   */
+  editedInputs: Record<string, { command: string }>
   approvedFingerprints: Record<string, string>
   answeredByPrompt: Record<string, true>
   bypassedCalls: Record<string, true>
@@ -185,8 +210,21 @@ type ToolApprovalRequestsState = {
   resolveApproval: (
     toolCallId: string,
     decision: ApprovalDecision,
-    requestId?: string
+    requestId?: string,
+    /** Why the person said no. Only kept with `deny`. */
+    reason?: string
   ) => void
+  /**
+   * Replace the command a pending `bash` request will run, if it is allowed
+   * once. A no-op for a stale request, another tool, or a blank command.
+   */
+  setEditedCommand: (
+    toolCallId: string,
+    requestId: string,
+    command: string
+  ) => void
+  /** The edited input once, for the call that was allowed. */
+  takeEditedInput: (toolCallId: string) => { command: string } | undefined
   /** Select an option of the request's `choice`. A no-op for a stale request. */
   chooseOption: (toolCallId: string, requestId: string, optionId: string) => void
   clearPendingForThread: (
@@ -197,6 +235,8 @@ type ToolApprovalRequestsState = {
   /** Drop "Allow all temporarily" for a conversation that is gone. */
   forgetTemporaryGit: (threadId: string) => void
   takeRefusal: (toolCallId: string) => ApprovalRefusal | undefined
+  /** The reason given with a deny, once; the model is told it. */
+  takeRefusalReason: (toolCallId: string) => string | undefined
   takeApprovedFingerprint: (toolCallId: string) => string | undefined
 }
 
@@ -285,6 +325,17 @@ export function canTemporarilyAllowGit(
   return plan.remote === undefined || REMOTE_NAME.test(plan.remote)
 }
 
+/** Longest reason handed to the model; the Rust side caps the same way. */
+export const REFUSAL_REASON_MAX_CHARS = 500
+
+/** A typed reason as it is stored: control characters to spaces, trimmed, capped. */
+export function cleanRefusalReason(reason: string | undefined): string | undefined {
+  if (!reason) return undefined
+  // eslint-disable-next-line no-control-regex
+  const cleaned = reason.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
+  return cleaned ? Array.from(cleaned).slice(0, REFUSAL_REASON_MAX_CHARS).join('') : undefined
+}
+
 let nextRequest = 0
 const newRequestId = () => `req-${Date.now().toString(36)}-${++nextRequest}`
 
@@ -338,6 +389,8 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     pending: {},
     queued: {},
     refusals: {},
+    refusalReasons: {},
+    editedInputs: {},
     approvedFingerprints: {},
     answeredByPrompt: {},
     bypassedCalls: {},
@@ -545,6 +598,52 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : { pending: { ...s.pending, [toolCallId]: entry } }
         )
         signal?.addEventListener('abort', onAbort, { once: true })
+
+        // The form for "Always": the folders and command prefixes the backend
+        // would accept for this call. Asked after the card is up, so the prompt
+        // is never held back by it; a card answered before it arrives keeps the
+        // shape it had.
+        const scopeRoot = context?.workspaceLabel
+        if (
+          !serverName &&
+          !alwaysAsk &&
+          !context?.choice &&
+          SCOPABLE_TOOLS.has(toolName) &&
+          isAbsolutePath(scopeRoot)
+        ) {
+          void approvalScopeOptions(scopeRoot, toolName, context?.input).then(
+            (options) => {
+              const choice = buildScopeChoice(options, toolName)
+              if (!choice) return
+              const attach = (e: PendingApproval): PendingApproval =>
+                e.requestId === entry.requestId
+                  ? {
+                      ...e,
+                      choice,
+                      chosenId: choice.defaultId,
+                      scopeForm: { root: scopeRoot, options },
+                    }
+                  : e
+              set((s) => {
+                const head = s.pending[toolCallId]
+                const waiting = s.queued[toolCallId]
+                return {
+                  ...(head
+                    ? { pending: { ...s.pending, [toolCallId]: attach(head) } }
+                    : {}),
+                  ...(waiting
+                    ? {
+                        queued: {
+                          ...s.queued,
+                          [toolCallId]: waiting.map(attach),
+                        },
+                      }
+                    : {}),
+                }
+              })
+            }
+          )
+        }
       })
     },
 
@@ -588,7 +687,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       })
     },
 
-    resolveApproval: (toolCallId, decision, requestId) => {
+    resolveApproval: (toolCallId, decision, requestId, reason) => {
       const head = get().pending[toolCallId]
       const entry =
         requestId === undefined
@@ -597,6 +696,8 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               (e) => e?.requestId === requestId
             )
       if (!entry) return
+      const refusalReason =
+        decision === 'deny' ? cleanRefusalReason(reason) : undefined
       entry.onDecision?.(
         decision,
         entry.choice ? (entry.chosenId ?? entry.choice.defaultId) : undefined
@@ -611,7 +712,25 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           entry.threadIsEphemeral === true
         )
 
-      if (temporaryGit) {
+      if (entry.scopeForm && decision === 'allow-always' && !serverName) {
+        // "Always" with the form: as wide as the scope picked and no wider. The
+        // backend checks the scope against this very call before it keeps it.
+        const scope = scopeFromChoiceId(entry.chosenId, entry.scopeForm.options)
+        if (scope) {
+          void addScopedRule(
+            entry.scopeForm.root,
+            entry.toolName,
+            entry.input,
+            scope
+          ).catch((error) =>
+            toast.error(i18n.t('permissions:scopeForm.saveFailed'), {
+              description: errorText(error),
+            })
+          )
+        } else if (entry.chosenId === EVERYWHERE_CHOICE) {
+          approval.approveToolEverywhere(entry.toolName)
+        }
+      } else if (temporaryGit) {
         // Intentionally transient; persisted grants are not changed.
       } else if (!serverName && similarToolCall(entry.toolName, entry.input) &&
         decision === 'allow-thread' && !entry.threadIsEphemeral
@@ -656,12 +775,23 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           approval.approveToolEverywhere(entry.toolName)
         }
       }
+      // A command the person rewrote is theirs, not the model's: it is run
+      // once and is never remembered as "allowed once before".
+      const edited = get().editedInputs[toolCallId]
       const onceKey =
-        decision === 'allow-once'
+        decision === 'allow-once' && edited === undefined
           ? repeatCommandKey(entry.toolName, entry.input)
           : null
       set((s) => ({
         ...without(s, entry),
+        // An edit only counts with "Allow once"; any other answer drops it.
+        ...(decision !== 'allow-once' && s.editedInputs[toolCallId]
+          ? {
+              editedInputs: Object.fromEntries(
+                Object.entries(s.editedInputs).filter(([id]) => id !== toolCallId)
+              ),
+            }
+          : {}),
         ...(temporaryGit
           ? {
               temporaryGitThreads: remember(s.temporaryGitThreads, [
@@ -681,7 +811,16 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             }
           : {}),
         ...(decision === 'deny'
-          ? { refusals: remember(s.refusals, [[toolCallId, 'denied']]) }
+          ? {
+              refusals: remember(s.refusals, [[toolCallId, 'denied']]),
+              ...(refusalReason
+                ? {
+                    refusalReasons: remember(s.refusalReasons, [
+                      [toolCallId, refusalReason],
+                    ]),
+                  }
+                : {}),
+            }
           : {
               answeredByPrompt: remember(s.answeredByPrompt, [
                 [toolCallId, true as const],
@@ -751,6 +890,46 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           const next = { ...s.refusals }
           delete next[toolCallId]
           return { refusals: next }
+        })
+      }
+      return why
+    },
+
+    setEditedCommand: (toolCallId, requestId, command) => {
+      const head = get().pending[toolCallId]
+      const entry = [head, ...(get().queued[toolCallId] ?? [])].find(
+        (e) => e?.requestId === requestId
+      )
+      if (!entry || !commandEditable(entry)) return
+      // eslint-disable-next-line no-control-regex
+      const edited = command.replace(/\u0000/g, '').trim()
+      set((s) => {
+        const next = { ...s.editedInputs }
+        if (edited) next[toolCallId] = { command: edited }
+        else delete next[toolCallId]
+        return { editedInputs: next }
+      })
+    },
+
+    takeEditedInput: (toolCallId) => {
+      const edited = get().editedInputs[toolCallId]
+      if (edited) {
+        set((s) => {
+          const next = { ...s.editedInputs }
+          delete next[toolCallId]
+          return { editedInputs: next }
+        })
+      }
+      return edited
+    },
+
+    takeRefusalReason: (toolCallId) => {
+      const why = get().refusalReasons[toolCallId]
+      if (why) {
+        set((s) => {
+          const next = { ...s.refusalReasons }
+          delete next[toolCallId]
+          return { refusalReasons: next }
         })
       }
       return why

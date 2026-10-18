@@ -29,6 +29,7 @@ import { SaveChatPicturesItem } from '@/components/SaveChatPicturesItem'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
+import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import { ChatTasks } from '@/containers/ChatTasks'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import {
@@ -131,7 +132,7 @@ import {
 } from '@/utils/error'
 import { PREFLIGHT_CONTEXT_ERROR_PREFIX } from '@/lib/contextEstimate'
 import { useTranslation, i18n } from '@/i18n/react-i18next-compat'
-import { isEmptyReply } from '@/lib/chatFinish'
+import { isEmptyReply, isRefusal } from '@/lib/chatFinish'
 import { toast } from 'sonner'
 import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import {
@@ -224,7 +225,7 @@ import {
 } from '@/lib/toolActivity'
 import {
   APPROVAL_CANCELLED_TEXT,
-  APPROVAL_DENIED_TEXT,
+  approvalDeniedText,
 } from '@/lib/permissionOutcome'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
@@ -713,6 +714,18 @@ export function ThreadConversation({
         }
       }
 
+      // The provider declined to answer. Say so on the turn it answers, in
+      // words that do not blame the key or the connection.
+      if (!isAbort && !isDisconnect && isRefusal(finishReason)) {
+        const userTurnId =
+          pendingAssistantParentId.current ?? resolveAssistantParent(undefined)
+        if (userTurnId) {
+          useMessageErrors
+            .getState()
+            .setError(userTurnId, i18n.t('model-errors:refusal'))
+        }
+      }
+
       // The turn ended before completion (user hit Stop, or the model hit its
       // output-token cap). Persist the partial marked `stopped` so the UI can
       // offer a "Continue" affordance, and stamp the live message so the button
@@ -1080,6 +1093,9 @@ export function ThreadConversation({
               const refusal = useToolApprovalRequests
                 .getState()
                 .takeRefusal?.(toolCall.toolCallId)
+              const refusalReason = useToolApprovalRequests
+                .getState()
+                .takeRefusalReason?.(toolCall.toolCallId)
               await recordToolActivity({
                 ...permissionEvent,
                 phase: 'refused',
@@ -1095,12 +1111,24 @@ export function ThreadConversation({
                 errorText:
                   refusal === 'cancelled'
                     ? APPROVAL_CANCELLED_TEXT
-                    : APPROVAL_DENIED_TEXT,
+                    : approvalDeniedText(refusalReason),
               })
               continue
             }
+            // The person rewrote the command before allowing it once: run what
+            // they approved, and say so in the record.
+            const editedInput = useToolApprovalRequests
+              .getState()
+              .takeEditedInput?.(toolCall.toolCallId)
+            if (editedInput && toolName === 'bash') {
+              toolCall.input = { ...(toolCall.input as object), ...editedInput }
+            }
             if (needsApproval) {
-              void recordToolActivity({ ...permissionEvent, phase: 'allowed' })
+              void recordToolActivity({
+                ...permissionEvent,
+                phase: 'allowed',
+                ...(editedInput ? { detail: 'allowed after the user edited the command' } : {}),
+              })
             }
 
             // Timed from here, not from approval, so a long approval wait is
@@ -2968,6 +2996,7 @@ export function ThreadConversation({
   const controlsWith = (extra: ReactNode) => (
     <>
       <TemporaryChatBanner threadId={threadId} />
+      <FolderTrustBanner folder={chatPathRoots[0] ?? null} />
       {/* On a phone the page header has room for one button: Split and Details
           move into an overflow menu. A split pane's header row keeps them all. */}
       <div className="flex shrink-0 items-center gap-1.5">

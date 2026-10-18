@@ -4,6 +4,7 @@
 
 mod agent_status;
 pub mod auth;
+pub mod approvals_cmd;
 pub mod brand;
 pub mod color;
 pub mod browser;
@@ -30,6 +31,8 @@ mod path_refs;
 pub mod protocol_schema;
 /// `jan cli agent rpc`: persistent, session-scoped JSON-RPC transport.
 pub mod rpc;
+/// `flint cli acp`: Agent Client Protocol server on stdin/stdout.
+pub mod acp;
 /// `jan cli agent rpc-schema`: the RPC request and event schemas.
 pub mod rpc_schema;
 /// The turn steps the stdio RPC loop and the HTTP session runner share.
@@ -38,6 +41,8 @@ pub mod providers;
 pub mod run_report;
 pub mod archive_cmd;
 pub mod run_data_cmd;
+pub mod automation_cmd;
+pub mod launch_cmd;
 pub mod schedule;
 pub mod skills_cmd;
 pub mod system_cmd;
@@ -885,6 +890,17 @@ fn session_budget_source(
 /// with no declared price is **refused** rather than run uncapped, and a
 /// negative limit is refused as a typo. `0` is allowed and honest: it stops at
 /// the first billed request. Refused at startup, before any paid request.
+/// `[budget].pause_at_usd`, refused at startup when it is not a non-negative
+/// amount, like a ceiling typo.
+fn validate_pause_at_usd(pause: Option<f64>) -> Result<Option<f64>, String> {
+    match pause {
+        Some(usd) if !usd.is_finite() || usd < 0.0 => Err(format!(
+            "[budget].pause_at_usd must be a non-negative amount in USD, not {usd}"
+        )),
+        other => Ok(other),
+    }
+}
+
 fn resolve_cost_ceiling(
     flag: Option<f64>,
     configured: Option<f64>,
@@ -1351,6 +1367,10 @@ pub(crate) struct SessionLimits {
     /// the rates to meter it against, resolved once at startup by
     /// `resolve_cost_ceiling`. `None` leaves the run unmetered.
     pub cost_ceiling: Option<crate::core::agent::session::CostCeiling>,
+    /// `[budget].pause_at_usd`: the spend at which the run asks once whether
+    /// to go on. Metered by `cost_ceiling`'s rates (an infinite ceiling when
+    /// only the pause is set). `None` never pauses.
+    pub pause_at_usd: Option<f64>,
 }
 
 /// Resolved engine handle for a chat session: the args are built once and the
@@ -1418,13 +1438,20 @@ fn request_body(
     // The ceiling travels with the rates it is metered against: the loop is
     // not `cli`-gated, so prices resolved here are the only ones it sees.
     if let Some(ceiling) = limits.cost_ceiling {
-        body["max_budget_usd"] = serde_json::json!(ceiling.max_usd);
+        // Infinite when the run is metered only for its pause: JSON cannot
+        // carry it, and absent is what "no ceiling" means on the body.
+        if ceiling.max_usd.is_finite() {
+            body["max_budget_usd"] = serde_json::json!(ceiling.max_usd);
+        }
         body["token_rates"] = serde_json::json!({
             "prompt_usd": ceiling.rates.prompt_usd,
             "completion_usd": ceiling.rates.completion_usd,
             "cache_read_usd": ceiling.rates.cache_read_usd,
             "cache_write_usd": ceiling.rates.cache_write_usd,
         });
+        if let Some(pause) = limits.pause_at_usd {
+            body["pause_at_usd"] = serde_json::json!(pause);
+        }
     }
     // Reasoning resend policy: the request-level flag the loop reads to
     // decide whether prior assistant `reasoning_content` goes back out.
@@ -1880,14 +1907,21 @@ pub(crate) fn prepare_agent_session(
 
     // Resolved before the session is built: a run that asked for a ceiling it
     // cannot be priced against is refused here, before any paid request.
-    let cost_ceiling = match flags.max_budget_usd.or(cfg.budget.max_usd) {
+    let pause_at_usd = validate_pause_at_usd(cfg.budget.pause_at_usd)?;
+    let cost_ceiling = match flags.max_budget_usd.or(cfg.budget.max_usd).or(pause_at_usd) {
         None => None,
         Some(_) => {
             let prices = crate::core::agent::spend::prices(
                 &crate::core::app::commands::resolve_jan_data_folder(),
             )
             .map_err(|e| e.message)?;
-            resolve_cost_ceiling(flags.max_budget_usd, cfg.budget.max_usd, &prices, &model)?
+            match flags.max_budget_usd.or(cfg.budget.max_usd) {
+                Some(_) => resolve_cost_ceiling(flags.max_budget_usd, cfg.budget.max_usd, &prices, &model)?,
+                // Only a pause: priced the same way, against no ceiling.
+                None => resolve_cost_ceiling(None, pause_at_usd, &prices, &model)?.map(|c| {
+                    crate::core::agent::session::CostCeiling { max_usd: f64::INFINITY, ..c }
+                }),
+            }
         }
     };
 
@@ -1911,6 +1945,7 @@ pub(crate) fn prepare_agent_session(
                 || cfg.budget.max_tokens.is_some(),
             max_turns: flags.max_turns,
             cost_ceiling,
+            pause_at_usd,
         },
         show_reasoning: cfg.agent.show_reasoning.unwrap_or(false),
         stream_reasoning: crate::core::agent::global_config::stream_reasoning_enabled(),
@@ -3000,6 +3035,10 @@ pub async fn run_durable_subagent(
         .project_root
         .clone()
         .ok_or_else(|| HarnessError::new(ErrorKind::InvalidInput, "no project").at(Stage::Startup))?;
+    // The parent checked the project's spawn allowlist; a spec written by
+    // anything else is held to it here too.
+    sub::check_project_spawn_allowed(&project_root, &spec.subagent_name)
+        .map_err(|e| HarnessError::new(ErrorKind::PolicyViolation, e.to_string()).at(Stage::Child))?;
     let registry = SubagentRegistry::load(&project_root);
     let request = SubagentRequest {
         subagent_name: spec.subagent_name.clone(),
@@ -3408,7 +3447,7 @@ async fn resolve_permission_silently(
         .map(|c| format!(" ({c})"))
         .or_else(|| path.map(|p| format!(" on {p}")))
         .unwrap_or_default();
-    let decision = prompt_permission(tool_name, capability, detail).await;
+    let decision = prompt_permission(&request_id, tool_name, capability, detail).await;
     if let Some(sender) = registry.lock().await.remove(&request_id) {
         let _ = sender.send(decision);
     }
@@ -3710,6 +3749,13 @@ async fn print_event(
                 );
             }
         }
+        // One typed ending for every surface (end_reason); a plain finish needs
+        // no extra line, anything else says why in words.
+        StreamEvent::RunEnded { reason, label, .. } => {
+            if reason != "completed" {
+                eprintln!("\n{}", color::paint("2", format_args!("[ended:{reason}] {label}")));
+            }
+        }
         StreamEvent::Done { stop_reason, usage } => {
             let tokens = usage.and_then(|u| u.total_tokens).unwrap_or(0);
             eprintln!("\n{}", color::paint("2", format_args!("[done] stop_reason={stop_reason} tokens={tokens}")));
@@ -3768,7 +3814,7 @@ async fn print_event(
                 );
                 return;
             }
-            let decision = prompt_permission(tool_name, capability, detail).await;
+            let decision = prompt_permission(&request_id, tool_name, capability, detail).await;
             if let Some(sender) = registry.lock().await.remove(&request_id) {
                 let _ = sender.send(decision);
             }
@@ -3803,18 +3849,24 @@ async fn print_event(
 /// Ask the terminal to approve a gated tool call. Non-interactive stdin (pipe,
 /// CI) auto-denies, matching the headless "safe default" contract; blocking
 /// stdin is confined to a blocking thread so the loop task keeps running.
+///
+/// `d` answers later: the call is refused for now and recorded to be answered
+/// with `flint cli approvals allow|deny` (it needs a session to resume, and
+/// otherwise is just a refusal).
 async fn prompt_permission(
+    request_id: &str,
     tool_name: String,
     capability: String,
     detail: String,
 ) -> PermissionDecision {
+    let request_id = request_id.to_string();
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
         eprintln!("{}", color::paint("33", format_args!("[permission] auto-denied {capability} via '{tool_name}' (non-interactive)")));
         return PermissionDecision::Deny;
     }
     tokio::task::spawn_blocking(move || {
-        eprint!("{}", color::paint("33", format_args!("[permission] allow {capability} via '{tool_name}'{detail}? [y/N] ")));
+        eprint!("{}", color::paint("33", format_args!("[permission] allow {capability} via '{tool_name}'{detail}? [y/N/d=answer later] ")));
         let _ = std::io::stderr().flush();
         let mut line = String::new();
         if std::io::stdin().read_line(&mut line).is_err() {
@@ -3822,6 +3874,10 @@ async fn prompt_permission(
         }
         match line.trim().to_ascii_lowercase().as_str() {
             "y" | "yes" => PermissionDecision::AllowOnce,
+            "d" | "defer" | "later" => {
+                crate::core::agent::approval_flow::mark_defer(&request_id);
+                PermissionDecision::Deny
+            }
             _ => PermissionDecision::Deny,
         }
     })
@@ -5637,6 +5693,28 @@ mod tests {
         let body = request_body("m", &limits, true, serde_json::json!([]));
         assert_eq!(body["max_budget_usd"], 0.0);
         assert!(body["token_rates"]["prompt_usd"].as_f64().is_some());
+        assert!(body.get("pause_at_usd").is_none(), "no pause unless one is set");
+
+        // A pause with a ceiling travels beside it; a pause alone travels with
+        // the rates and no ceiling at all.
+        limits.pause_at_usd = Some(0.5);
+        let body = request_body("m", &limits, true, serde_json::json!([]));
+        assert_eq!(body["pause_at_usd"], 0.5);
+        assert_eq!(body["max_budget_usd"], 0.0);
+        limits.cost_ceiling = Some(crate::core::agent::session::CostCeiling { max_usd: f64::INFINITY, ..ceiling });
+        let body = request_body("m", &limits, true, serde_json::json!([]));
+        assert!(body.get("max_budget_usd").is_none(), "{body}");
+        assert_eq!(body["pause_at_usd"], 0.5);
+        assert!(body["token_rates"]["prompt_usd"].as_f64().is_some());
+    }
+
+    #[test]
+    fn a_pause_threshold_must_be_a_non_negative_amount() {
+        assert_eq!(validate_pause_at_usd(None), Ok(None));
+        assert_eq!(validate_pause_at_usd(Some(0.0)), Ok(Some(0.0)));
+        assert_eq!(validate_pause_at_usd(Some(2.5)), Ok(Some(2.5)));
+        assert!(validate_pause_at_usd(Some(-1.0)).is_err());
+        assert!(validate_pause_at_usd(Some(f64::NAN)).is_err());
     }
 
     #[test]
@@ -5695,6 +5773,7 @@ mod tests {
             max_session_tokens_pinned: true,
             max_turns,
             cost_ceiling: None,
+            pause_at_usd: None,
         }
     }
 

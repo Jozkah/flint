@@ -18,7 +18,7 @@ additive schema change is `edit.edits[].replace_all` (optional, default `false`)
 | FileEdit | `edit` | Batch `edits[]` with `old_string`/`new_string`; `replace_all` added. |
 | Read / LS / Grep / Glob | `read` / `ls` / `grep` / `find` | Present, sandbox-checked. |
 | WebFetch / WebSearch | `web_fetch` / `web_search` | Present, provider-neutral. |
-| (Jan-specific) | `memory_*`, `skill_*`, `screenshot` | No Claude Code counterpart. |
+| (Jan-specific) | `memory_*`, `skill_*`, `screenshot`, `ocr` | No Claude Code counterpart. `ocr` reads text out of an image or PDF with the OS engine (Windows.Media.Ocr, else `tesseract`) and is refused when neither exists. |
 | Chrome / Playwright MCP | `browser` | One tool with an `action`; see below. |
 
 ## Intentional differences
@@ -55,9 +55,14 @@ in its tool list. It is deliberately narrower than Playwright MCP:
   the whole tool. MCP peers are never offered it.
 - **Page content is untrusted.** Snapshots, console text and evaluate results
   come back inside an `<untrusted_web_content>` block.
-- **Not offered:** file uploads, downloads (refused and reported), multiple
-  tabs (a popup is closed and reported), network interception, cookies and
-  storage access other than through `evaluate`.
+- **Files and tabs:** `upload` attaches a file from the working folder;
+  `download` clicks a link and saves one file (at most 100 MB, never
+  overwriting, named safely) into a write-confined folder; any other download
+  is refused and reported. `tab` lists, opens, switches and closes tabs.
+  `wait` combines `text`, `selector`, their `_gone` forms, `url_contains`,
+  `title_contains` and `ready`.
+- **Not offered:** network interception, cookies and storage access other
+  than through `evaluate`.
 
 ## Deferred: reference tools with no Jan runtime
 

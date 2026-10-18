@@ -143,12 +143,19 @@ pub fn runs(task_id: &str, limit: usize, json: bool) -> Result<(), HarnessError>
 /// `flint cli schedule run <id>`: start a run now, detached. With `wait`, stay
 /// until it ends and report how.
 pub async fn run_now(task_id: &str, wait: bool) -> Result<(), HarnessError> {
-    let data = data_folder();
-    let store = Store::new(&data);
-    let task = store
+    let task = Store::new(&data_folder())
         .get_task(task_id)
         .map_err(store_err)?
         .ok_or_else(|| HarnessError::new(ErrorKind::NotFound, format!("no scheduled task '{task_id}'")).at(Stage::Startup))?;
+    run_task(task, wait).await
+}
+
+/// Start a run of `task` now (it need not be in the task list: an automation
+/// compiles to one), and with `wait` stay until it ends.
+pub async fn run_task(task: crate::core::schedule::spec::Task, wait: bool) -> Result<(), HarnessError> {
+    let task_id = task.id.as_str();
+    let data = data_folder();
+    let store = Store::new(&data);
     let record = runner::start_run(&store, &data, &SupervisorLauncher, &task, Trigger::Manual, chrono::Utc::now())
         .map_err(store_err)?;
     println!("{}", record.id);
@@ -280,6 +287,13 @@ async fn execute(
             observer.observe(&ev);
             match &ev {
                 StreamEvent::MessagesUpdated { messages } => conversation = Some(messages.clone()),
+                // The spend pause asks whether to go on; nobody attached means
+                // the run goes on exactly as it would with no pause set.
+                StreamEvent::PermissionRequest { request_id, tool_name, .. } if tool_name == "spend_pause" => {
+                    if let Some(sender) = registry.lock().await.remove(request_id) {
+                        let _ = sender.send(PermissionDecision::AllowOnce);
+                    }
+                }
                 StreamEvent::PermissionRequest { request_id, tool_name, capability, path, command, .. } => {
                     eprintln!("(scheduled run: {tool_name} needs approval and nobody is attached; denied)");
                     let end = observer.blocked(tool_name, capability, path.as_deref(), command.as_deref());

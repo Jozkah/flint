@@ -125,8 +125,10 @@ pub enum Observed {
     /// One frame of the live view, when a screencast is running. `ack` is the
     /// number the browser wants echoed back before it sends the next one.
     Frame { session: String, ack: i64, data: String },
-    /// A download started (and is refused).
-    Download { url: String, filename: String },
+    /// A download started (refused unless the `download` action is waiting for one).
+    Download { guid: String, url: String, filename: String },
+    /// How far a download got.
+    DownloadProgress { guid: String, state: String, received: u64, total: u64 },
     /// The page opened another tab or window and popups are off: it was closed.
     Popup { url: String },
     /// The page opened a window and popups are on: the consumer attaches to it
@@ -316,8 +318,17 @@ pub fn spawn(
                         default_prompt: p["defaultPrompt"].as_str().unwrap_or_default().to_string(),
                     });
                 }
+                "Browser.downloadProgress" => {
+                    sink(Observed::DownloadProgress {
+                        guid: p["guid"].as_str().unwrap_or_default().to_string(),
+                        state: p["state"].as_str().unwrap_or_default().to_string(),
+                        received: p["receivedBytes"].as_f64().unwrap_or(0.0) as u64,
+                        total: p["totalBytes"].as_f64().unwrap_or(0.0) as u64,
+                    });
+                }
                 "Browser.downloadWillBegin" => {
                     sink(Observed::Download {
+                        guid: p["guid"].as_str().unwrap_or_default().to_string(),
                         url: display_url(p["url"].as_str().unwrap_or_default()),
                         filename: clip(p["suggestedFilename"].as_str().unwrap_or_default()),
                     });
