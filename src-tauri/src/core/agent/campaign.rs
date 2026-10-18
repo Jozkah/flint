@@ -955,7 +955,14 @@ fn epoch() -> String {
 
 /// Whether the process that took `epoch` (`<start ms hex>-<pid hex>`) is
 /// still running. A pid since reused by a process started after the epoch was
-/// taken does not count.
+/// taken does not count. Mobile runs one app process, so another epoch there
+/// is always a dead one.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn epoch_alive(_epoch: &str) -> bool {
+    false
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn epoch_alive(epoch: &str) -> bool {
     use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
     let Some((ms, pid)) = epoch.split_once('-') else { return false };

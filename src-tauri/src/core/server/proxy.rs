@@ -2903,7 +2903,8 @@ fn bind_addr(host: &str, port: u16) -> Result<SocketAddr, String> {
 
 /// Constant-time comparison of a presented key against the configured one.
 fn keys_equal(presented: &str, expected: &str) -> bool {
-    crate::core::remote::auth::constant_time_eq(presented.as_bytes(), expected.as_bytes())
+    let (a, b) = (presented.as_bytes(), expected.as_bytes());
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// Whether the host of a request's `Origin` is one the server trusts.
