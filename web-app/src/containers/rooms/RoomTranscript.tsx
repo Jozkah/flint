@@ -1,5 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ChevronDown, Globe, Search, Wrench } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, ChevronDown, Globe, Link2, Search, Wrench } from 'lucide-react'
 import { toneForTool, TONE_CLASSES } from '@/lib/semanticTone'
 import { stripConclusion } from '@/lib/rooms/consensus'
 import type {
@@ -10,11 +10,15 @@ import type {
   RoomChangeDecision,
   RoomMessage,
   RoomToolActivity,
+  RoomChangedFile,
 } from '@/lib/rooms/types'
+import { changeCounts } from '@/lib/rooms/turnChanges'
+import { ReplyCutOff } from '@/components/ReplyCutOff'
 import { isCompareRoom } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { liveStatus } from '@/lib/rooms/liveStatus'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { summarizeTrace, summaryLabelParts } from '@/lib/traceSummary'
@@ -32,7 +36,15 @@ import {
 import { RoomMessageText } from './RoomMessageText'
 import { RoomAvatar } from './RoomAvatar'
 import { TurnChangeCard, type WorkspaceActions } from './TurnChangeCard'
-import { applyRoomWorkspace, resetRoomWorkspace, roomWorkspacePatch } from '@/services/rooms'
+import { CappedAnswer } from './CappedAnswer'
+import { createScrollLink, ScrollLinkContext, useRoomsViewPrefs } from '@/lib/rooms/answerScroll'
+import {
+  applyRoomWorkspace,
+  resetRoomWorkspace,
+  roomWorkspaceApplyPreview,
+  roomWorkspacePatch,
+  undoRoomWorkspaceApply,
+} from '@/services/rooms'
 import { useRoomsApi } from './roomsBindings'
 import { CompactionDivider } from '@/containers/CompactionDivider'
 import { WidgetCard } from '@/containers/message/WidgetCard'
@@ -64,11 +76,24 @@ function authorLabel(author: RoomAuthor, room: Room | null, t: T): string {
  * get), with the role and model kept muted beside it so the name is what the
  * color highlights.
  */
-function AuthorName({ author, room, t }: { author: RoomAuthor; room: Room | null; t: T }) {
+function AuthorName({
+  author,
+  room,
+  model,
+  t,
+}: {
+  author: RoomAuthor
+  room: Room | null
+  /** The model that wrote this answer (compare), shown instead of the participant's current one. */
+  model?: string
+  t: T
+}) {
   if (author.kind === 'participant') {
     const p = findParticipant(room, author.participantId)
     const name = p?.name || author.name || t('rooms:transcript.unknownParticipant')
-    const full = authorLabel(author, room, t)
+    const full = model
+      ? `${name} · ${model}${p?.removed ? ` ${t('rooms:transcript.removed')}` : ''}`
+      : authorLabel(author, room, t)
     return (
       <>
         <RoomAvatar
@@ -260,11 +285,25 @@ function ToolCallBody({
  * write amber, MCP violet, failures red); hovering a chip shows what that call
  * was given and what came back. Details opens every call as a full table.
  */
-function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
+function ToolTrace({
+  calls,
+  changes,
+  t,
+}: {
+  calls: RoomToolActivity[]
+  /** The turn's real diff, when it has one: its counts replace the calls' (R-046). */
+  changes?: readonly RoomChangedFile[]
+  t: T
+}) {
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const hasDetails = calls.some((c) => c.args !== undefined || Boolean(c.output))
-  const summary = summaryLabelParts(summarizeTrace(calls.map(asPart)), t as never)
+  const traced = summaryLabelParts(summarizeTrace(calls.map(asPart)), t as never)
+  // The edit calls' old/new strings count unchanged context lines too; the
+  // change card's diff is what the turn really changed, so both say the same.
+  const diff = changes && changes.length > 0 ? changeCounts(changes) : null
+  const summary =
+    traced && diff ? { ...traced, added: diff.additions, removed: diff.deletions } : traced
   const failed = calls.filter((c) => !c.ok).length
 
   return (
@@ -289,8 +328,8 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
               {summary.text}
               {(summary.added > 0 || summary.removed > 0) && (
                 <span className="ml-1 font-mono tabular-nums">
-                  <span className="text-emerald-600 dark:text-emerald-400">+{summary.added}</span>{' '}
-                  <span className="text-red-600 dark:text-red-400">−{summary.removed}</span>
+                  <span className="text-diff-add">+{summary.added}</span>{' '}
+                  <span className="text-diff-del">−{summary.removed}</span>
                 </span>
               )}
             </>
@@ -430,7 +469,10 @@ function workspaceActions(message: RoomMessage): WorkspaceActions | undefined {
   return {
     patch: () => roomWorkspacePatch(roomId, pid),
     discard: () => resetRoomWorkspace(roomId, pid),
-    apply: () => applyRoomWorkspace(roomId, pid),
+    apply: (paths) => applyRoomWorkspace(roomId, pid, paths),
+    preview: () => roomWorkspaceApplyPreview(roomId, pid),
+    undo: () => undoRoomWorkspaceApply(roomId, pid),
+    source: { name: message.author.name, round: message.round },
   }
 }
 
@@ -466,17 +508,41 @@ function EmptyReply({ message, t }: { message: RoomMessage; t: T }) {
   )
 }
 
+/**
+ * The files a turn changed. Drawn under the capped answer, not inside it, so
+ * the answer's fade and height cap never hide or clip the card.
+ */
+function MessageChanges({
+  message,
+  decision,
+  t,
+}: {
+  message: RoomMessage
+  decision?: RoomChangeDecision
+  t: T
+}) {
+  const api = useRoomsApi()
+  if (!message.changes || message.changes.files.length === 0) return null
+  return (
+    <TurnChangeCard
+      changes={message.changes}
+      actions={workspaceActions(message)}
+      decision={decision}
+      onDecision={(d) => api.controller.setChangeDecision(message.roomId, message.id, d)}
+      t={t}
+    />
+  )
+}
+
 function MessageBody({
   message,
   tally,
   mentionColors,
-  decision,
   t,
 }: {
   message: RoomMessage
   tally: VoteTally | undefined
   mentionColors: Map<string, string>
-  decision?: RoomChangeDecision
   t: T
 }) {
   const api = useRoomsApi()
@@ -485,6 +551,7 @@ function MessageBody({
       {message.toolCalls && message.toolCalls.some((c) => !isWidgetCall(c)) && (
         <ToolTrace
           calls={message.toolCalls.filter((c) => !isWidgetCall(c))}
+          changes={message.changes?.files}
           t={t}
         />
       )}
@@ -501,21 +568,51 @@ function MessageBody({
           }}
         />
       ))}
+      {message.compare?.catchUp && message.compare.catchUp.length > 0 && (
+        <details data-testid="compare-catch-up" className="group text-xs text-muted-foreground">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 font-medium text-warning hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronDown className="size-3 -rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+            {t('rooms:transcript.catchUp', { count: message.compare.catchUp.length })}
+          </summary>
+          <p className="mt-1">{t('rooms:transcript.catchUpHint')}</p>
+          <ol className="mt-1 list-decimal space-y-0.5 pl-5">
+            {message.compare.catchUp.map((q) => (
+              <li key={q.id} className="break-words">
+                {q.text}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
       <RoomMessageText
         text={stripConclusion(message.text).text}
         mentionColors={mentionColors}
         className="text-[13.5px] leading-[1.6] text-fg-2"
       />
       <EmptyReply message={message} t={t} />
-      {message.changes && message.changes.files.length > 0 && (
-        <TurnChangeCard
-          changes={message.changes}
-          actions={workspaceActions(message)}
-          decision={decision}
-          onDecision={(d) => api.controller.setChangeDecision(message.roomId, message.id, d)}
-          t={t}
-        />
-      )}
+      {message.author.kind === 'participant' &&
+        message.kind === 'speech' &&
+        message.finishReason === 'length' &&
+        message.text.trim() !== '' && (
+          <ReplyCutOff
+            tokens={message.usage?.outputTokens}
+            // Outside compare, the participant is asked to carry on. A compare
+            // cell is re-run from its own controls instead (a message there is
+            // a new question for everyone).
+            onContinue={
+              message.compare
+                ? undefined
+                : () => {
+                    const author = message.author as { participantId: string }
+                    void api.controller.sendUserMessage(
+                      message.roomId,
+                      t('rooms:transcript.continuePrompt'),
+                      { kind: 'participant', participantId: author.participantId }
+                    )
+                  }
+            }
+          />
+        )}
       {message.budgetHit && (
         <p data-testid="budget-hit" className="text-xs text-warning">
           {t(`rooms:transcript.budgetHit.${message.budgetHit}`)}
@@ -631,7 +728,7 @@ function TranscriptMessage({
       )}
     >
       <header className="flex flex-wrap items-center gap-1.5 text-xs">
-        <AuthorName author={m.author} room={room} t={t} />
+        <AuthorName author={m.author} room={room} model={m.compare?.model} t={t} />
         {chip && (
           <span
             data-testid="message-to"
@@ -654,16 +751,6 @@ function TranscriptMessage({
           </span>
         )}
         <KindLabel message={m} t={t} />
-        {m.compare && (
-          <span
-            data-testid="answer-model"
-            title={m.compare.provider}
-            className="truncate rounded-full bg-accent px-[7px] py-px text-[11px] text-muted-foreground"
-          >
-            {m.compare.model} · {answerDate(m.createdAt)}
-            {m.compare.durationMs ? ` · ${(m.compare.durationMs / 1000).toFixed(1)} s` : ''}
-          </span>
-        )}
         {m.status === 'interrupted' && (
           <Badge tone="warn">{t('rooms:transcript.interrupted')}</Badge>
         )}
@@ -675,7 +762,7 @@ function TranscriptMessage({
             {t('rooms:transcript.addressedToYou')}
           </span>
         )}
-        {m.usage?.outputTokens || m.usage?.tokensPerSecond ? (
+        {!m.compare && (m.usage?.outputTokens || m.usage?.tokensPerSecond) ? (
           <span
             data-testid="message-speed"
             title={t('rooms:transcript.speedTitle')}
@@ -697,14 +784,56 @@ function TranscriptMessage({
           </span>
         ) : null}
       </header>
-      <MessageBody
-        message={m}
-        tally={tallies.get(m.id)}
-        mentionColors={mentionColors}
-        decision={room.changeDecisions?.[m.id]}
-        t={t}
-      />
+      {m.compare && (
+        <CompareAnswerMeta m={m} t={t} />
+      )}
+      <CappedAnswer messageId={m.id} name={authorLabel(m.author, room, t)} t={t}>
+        <MessageBody
+          message={m}
+          tally={tallies.get(m.id)}
+          mentionColors={mentionColors}
+          t={t}
+        />
+      </CappedAnswer>
+      <MessageChanges message={m} decision={room.changeDecisions?.[m.id]} t={t} />
     </article>
+  )
+}
+
+/**
+ * A compare answer's second header line: date · duration · tokens · tok/s,
+ * muted. Each item keeps its own words together, so a narrow column wraps
+ * between items, never inside one.
+ */
+function CompareAnswerMeta({ m, t }: { m: RoomMessage; t: T }) {
+  const items = [
+    answerDate(m.createdAt),
+    m.compare?.durationMs ? `${(m.compare.durationMs / 1000).toFixed(1)} s` : null,
+    m.usage?.outputTokens
+      ? t('rooms:transcript.tokensOut', {
+          count: m.usage.outputTokens,
+          approx: m.usage.estimated ? '~' : '',
+        })
+      : null,
+    m.usage?.tokensPerSecond
+      ? t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })
+      : null,
+  ].filter((x): x is string => Boolean(x))
+  return (
+    <div
+      data-testid="answer-meta"
+      className="-mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[24px] text-[11px] tabular-nums text-muted-foreground"
+    >
+      {items.map((item, i) => (
+        // The separator trails its item, so a wrapped line never starts with one.
+        <span
+          key={i}
+          className="whitespace-nowrap after:ml-1.5 after:content-['·'] last:after:content-none"
+        >
+          {item}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -739,6 +868,7 @@ function LiveCard({
           {liveStatusLabel(liveStatus(live, approvalTool), t)}
         </span>
       </header>
+      <CappedAnswer name={authorLabel(live.author, room, t)} streamedLength={live.text.length} t={t}>
       {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
       {live.compacting ? (
         <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
@@ -750,6 +880,7 @@ function LiveCard({
           className="text-[13.5px] leading-[1.6] text-fg-2"
         />
       ) : null}
+      </CappedAnswer>
     </article>
   )
 }
@@ -814,6 +945,7 @@ function CompareRow({
   ].sort((a, b) => a.rank - b.rank || a.at - b.at)
   if (cells.length === 0) return null
   return (
+    <CompareRowLinked>
     <div
       data-testid="room-compare-row"
       role="group"
@@ -874,6 +1006,43 @@ function CompareRow({
         ) : null
       )}
     </div>
+    </CompareRowLinked>
+  )
+}
+
+/** The answers of one row scroll together while Link scrolling is on. */
+function CompareRowLinked({ children }: { children: React.ReactNode }) {
+  const link = useMemo(() => createScrollLink(() => useRoomsViewPrefs.getState().linkScroll), [])
+  return <ScrollLinkContext.Provider value={link}>{children}</ScrollLinkContext.Provider>
+}
+
+/** On by default; turns off the scroll link between compare columns. */
+function LinkScrollToggle({ t }: { t: T }) {
+  const on = useRoomsViewPrefs((s) => s.linkScroll)
+  const set = useRoomsViewPrefs((s) => s.setLinkScroll)
+  return (
+    <Tooltip>
+    <TooltipTrigger asChild>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      data-testid="room-link-scroll"
+      onClick={() => set(!on)}
+      className={cn(
+        // Stacked columns (a narrow transcript) have nothing to scroll side by side.
+        '@max-[520px]:hidden inline-flex h-7 cursor-pointer items-center gap-1.5 self-end rounded-full border-[0.8px] px-2.5 text-[11.5px] outline-hidden transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40',
+        on ? 'border-border-strong bg-accent text-foreground' : 'border-border text-muted-foreground hover:text-foreground'
+      )}
+    >
+      <Link2 aria-hidden className="size-3.5" />
+      {t('rooms:transcript.linkScroll')}
+    </button>
+    </TooltipTrigger>
+    <TooltipContent side="bottom" align="end">
+      {t('rooms:transcript.linkScrollHint')}
+    </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -991,6 +1160,16 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
 
   const showJump = !follow
 
+  // The visible height of the conversation, for the answer cap (CSS cannot
+  // read a scroll port's height): an answer never outgrows the view.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => el.style.setProperty('--room-transcript-h', `${el.clientHeight}px`))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   // Messages already in the journal when it first loads appear at once; only
   // the ones that arrive afterwards rise in, so opening a room is not a cascade.
   const seenRef = useRef<Set<string> | null>(null)
@@ -1001,6 +1180,7 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
   const shared = { room, tallies, mentionColors, isFresh, t }
 
   return (
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="room-transcript">
     <div
       ref={scrollRef}
       onScroll={onScroll}
@@ -1010,19 +1190,20 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
     >
       <div
         className={cn(
-          'flex flex-col gap-2.5 pt-3.5 pb-2',
+          '@container flex flex-col gap-3 pt-3 pb-3',
           // Side-by-side answers need more width than one column of speech.
           compare
-            ? 'px-[max(16px,calc((100%-1200px)/2))]'
-            : 'px-[max(16px,calc((100%-760px)/2))]'
+            ? 'px-[max(12px,calc((100%-1200px)/2))]'
+            : 'px-[max(12px,calc((100%-760px)/2))]'
         )}
       >
+      {compare && items?.some((x) => x.kind === 'compare') && <LinkScrollToggle t={t} />}
       <div
         role="log"
         aria-live="polite"
         aria-relevant="additions"
         aria-label={t('rooms:transcript.label')}
-        className="flex flex-col gap-2.5"
+        className="flex flex-col gap-3"
       >
         {messages.length === 0 && !live && (
           <p className="mt-10 text-center text-[13px] text-muted-foreground">
@@ -1032,10 +1213,11 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
         {items
           ? items.map((item, i) =>
               item.kind === 'message' ? (
-                <TranscriptMessage key={item.message.id} m={item.message} {...shared} />
+                <TranscriptMessage key={`msg:${item.message.id}`} m={item.message} {...shared} />
               ) : (
                 <CompareRow
-                  key={item.questionId ?? item.answers[0]?.id ?? i}
+                  // A row is keyed by its question, which is also a message sibling.
+                  key={`row:${item.questionId ?? item.answers[0]?.id ?? i}`}
                   answers={item.answers}
                   lives={livesFor.get(i) ?? []}
                   questionId={item.questionId}
@@ -1055,20 +1237,20 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
         <LiveCard live={live} room={room} approvalTool={approvalTool} mentionColors={mentionColors} t={t} />
       )}
       </div>
+    </div>
       {/*
-        Sticky within the scroll port, so it hovers over the newest messages
-        only while the reader has scrolled away from the bottom. Selecting it
-        returns to the latest and re-arms auto-follow. `pointer-events-none` on
-        the centering row lets clicks fall through to the transcript except on
-        the button itself.
+        Its own row under the conversation, just above the dock, so it never
+        sits over a message. Shown only while the reader has scrolled away from
+        the bottom; selecting it returns to the latest and re-arms auto-follow.
       */}
       {showJump && (
-        <div className="pointer-events-none sticky bottom-3 flex justify-center">
+        <div className="flex shrink-0 justify-center py-1.5" data-testid="room-jump-row">
           <button
             type="button"
             onClick={scrollToBottom}
             data-testid="room-jump-latest"
-            className="pointer-events-auto inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-full bg-popover px-3 text-xs text-foreground shadow-pop outline-hidden transition-transform duration-150 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] motion-safe:animate-pop"
+            data-placement="above-dock"
+            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] border-border bg-popover px-3 text-xs text-foreground shadow-pop outline-hidden transition-transform duration-150 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] motion-safe:animate-pop"
           >
             <ArrowDown className="size-[13px]" aria-hidden />
             {t('rooms:transcript.jumpToLatest')}

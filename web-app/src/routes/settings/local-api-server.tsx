@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { route } from '@/constants/routes'
 import {
   SettingsPageBody,
@@ -45,7 +46,7 @@ import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.local_api_server as any)({
-  component: LocalAPIServerContent,
+  component: desktopOnlyRoute(LocalAPIServerContent, 'common:local_api_server'),
 })
 
 function LocalAPIServerContent() {
@@ -275,7 +276,7 @@ function LocalAPIServerContent() {
             <PopoverTrigger asChild>
               <Button variant="outline" className="pointer-coarse:h-11">
                 <Icon name="x-sliders" size={14} />
-                Configuration
+                {t('uiLeftovers:configuration')}
               </Button>
             </PopoverTrigger>
             <PopoverContent

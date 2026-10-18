@@ -18,6 +18,7 @@ import { useModelFilter } from '@/hooks/useModelFilter'
 import { useModelLibrary } from '@/hooks/useModelLibrary'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
+import { useEngineAddon } from '@/hooks/useEngineAddon'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
@@ -58,6 +59,7 @@ import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useGlobalExtensions } from '@/hooks/useGlobalExtensions'
 import { initConversationGroups } from '@/lib/groups/bootstrap'
 import { isChatWindow } from '@/lib/soloFlag'
+import { hasUsableProvider, isSetupCompleted } from '@/lib/providerReadiness'
 import { backendReadFailures } from '@/lib/backendStorage'
 
 /**
@@ -88,6 +90,7 @@ const secondaryStores = [
   useModelLibrary,
   useDefaultEmbeddingModel,
   useAgentMode,
+  useEngineAddon,
   useWebSearchConfig,
   useWebPreviewSettings,
   useCoworkSessions,
@@ -133,6 +136,9 @@ export async function hydrateBackendStores(): Promise<void> {
   if (unread.length > 0) {
     throw new Error(`Could not read saved settings: ${unread.join(', ')}`)
   }
+  // Decided here, before the first render, so the sidebar never flashes the
+  // full list on a new install.
+  useInterfaceSettings.getState().resolveNavDefaults(isExistingInstall())
   // Secrets are never in the persisted blobs; seed them from the keyring
   // before anything (the server auto-start) reads them.
   await Promise.all([seedLocalApiServerKey(), seedProxyPassword()])
@@ -162,6 +168,19 @@ export async function hydrateBackendStores(): Promise<void> {
       }))
     )
   }
+}
+
+/**
+ * Whether this install was used before: setup finished, a model usable, or a
+ * Cowork session saved. Chats load later (from the extension), but anyone with
+ * one has also passed setup.
+ */
+export function isExistingInstall(): boolean {
+  return (
+    isSetupCompleted() ||
+    hasUsableProvider(useModelProvider.getState().providers) ||
+    useCoworkSessions.getState().sessions.length > 0
+  )
 }
 
 /** Recorded as the reason on work the previous app run left unfinished. */

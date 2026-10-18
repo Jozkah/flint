@@ -10,7 +10,7 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 
 import { SidebarItemsPicker } from '../SidebarItemsPicker'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
-import { SIDEBAR_SECTIONS, hideableSidebarIds } from '@/lib/sidebarItems'
+import { SIDEBAR_SECTIONS, hiddenForPreset, hideableSidebarIds } from '@/lib/sidebarItems'
 
 const hidden = () => useInterfaceSettings.getState().hiddenNavItems
 
@@ -45,6 +45,19 @@ describe('SidebarItemsPicker', () => {
     fireEvent.click(screen.getByTestId('sidebar-item-switch-logs'))
     fireEvent.click(screen.getByTestId('sidebar-item-switch-archive'))
     expect(hidden()).toHaveLength(2)
+    fireEvent.click(screen.getByTestId('sidebar-items-show-all'))
+    expect(hidden()).toEqual([])
+  })
+
+  it('offers Minimal, Standard and Everything presets, marking the current one', () => {
+    render(<SidebarItemsPicker />)
+    fireEvent.click(screen.getByTestId('sidebar-items-preset-minimal'))
+    expect(hidden()).toEqual(hiddenForPreset('minimal'))
+    expect(screen.getByTestId('sidebar-items-preset-minimal')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('sidebar-preview-models')).toBeInTheDocument()
+    expect(screen.queryByTestId('sidebar-preview-studio')).toBeNull()
+    fireEvent.click(screen.getByTestId('sidebar-items-preset-standard'))
+    expect(hidden()).toEqual(hiddenForPreset('standard'))
     fireEvent.click(screen.getByTestId('sidebar-items-show-all'))
     expect(hidden()).toEqual([])
   })

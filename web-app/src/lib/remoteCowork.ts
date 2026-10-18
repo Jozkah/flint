@@ -16,7 +16,7 @@
  * raised directly and answered over the wire; this window's own standing
  * grants and permission mode never answer them.
  */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   applyInnerToTurns,
@@ -27,6 +27,7 @@ import {
   type StreamEvent,
 } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import {
   useToolApprovalRequests,
   type ApprovalDecision,
@@ -48,6 +49,7 @@ import {
   interruptRun,
   listRemoteSessions,
   probeRunner,
+  setRunAccess,
   startRun,
   type RunAttachment,
   steerRun,
@@ -58,6 +60,8 @@ import {
   type RunnerInfo,
 } from '@/lib/remoteRunner'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
+import { COWORK_MODES, type CoworkMode } from '@/lib/coworkMode'
+import { DEFAULT_SESSION_TITLE } from '@/lib/coworkSessionStart'
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
@@ -101,16 +105,50 @@ export function isRemoteSession(sid: string | null | undefined): boolean {
 // The sessions list, read through from the server
 // ---------------------------------------------------------------------------
 
+/** The server's title, unless it is only the session id (an unnamed session). */
+function titleOf(row: { id: string; title?: string | null }): string {
+  return row.title && row.title.trim() && row.title !== row.id ? row.title : ''
+}
+
+const TITLE_MAX = 60
+/** Titles a server session carries before it has a real one. */
+const PLACEHOLDER_TITLES = new Set([DEFAULT_SESSION_TITLE, 'Server session'])
+
+/**
+ * A readable title for a server session: the server's own, else the first
+ * thing the user said (as a desktop session is titled), else "New session".
+ * Never the bare session id the server reports for an unnamed session.
+ */
+export function remoteSessionTitle(
+  id: string,
+  title: string | null | undefined,
+  turns: ReadonlyArray<{ role: string; content: unknown }> = []
+): string {
+  const named = titleOf({ id, title })
+  if (named) return named
+  const first = turns.find(
+    (t) => t.role === 'user' && typeof t.content === 'string' && t.content.trim()
+  )
+  if (first) {
+    const line = String(first.content).trim().split(/\r?\n/)[0].trim()
+    return line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX - 1).trimEnd()}…` : line
+  }
+  return DEFAULT_SESSION_TITLE
+}
+
 function stubFor(row: RemoteSession): import('@/hooks/useCoworkSessions').CoworkSession {
   return {
     id: row.id,
-    title: row.title || 'Server session',
+    title: remoteSessionTitle(row.id, row.title),
     folder: row.folder,
     turns: [],
     messages: [],
     updated: row.updated ? row.updated * 1000 : Date.now(),
     createdAt: Date.now(),
     remote: true,
+    remoteStatus: row.status,
+    remoteModel: row.model,
+    ...(row.access ? { remoteAccess: row.access } : {}),
     // The mode a server session runs under is the server's, not this page's.
     mode: undefined,
   }
@@ -129,7 +167,25 @@ export function mergeRemoteRows(rows: RemoteSession[]): void {
       .map((x) => {
         const row = x.remote ? byId.get(x.id) : undefined
         if (!row) return x
-        return { ...x, title: row.title || x.title, folder: row.folder ?? x.folder }
+        const title = titleOf(row) || x.title
+        const folder = row.folder ?? x.folder
+        const remoteAccess = row.access ?? x.remoteAccess
+        if (
+          title === x.title &&
+          folder === x.folder &&
+          row.status === x.remoteStatus &&
+          row.model === x.remoteModel &&
+          remoteAccess === x.remoteAccess
+        )
+          return x
+        return {
+          ...x,
+          title,
+          folder,
+          remoteStatus: row.status,
+          remoteModel: row.model,
+          ...(remoteAccess ? { remoteAccess } : {}),
+        }
       })
     const known = new Set(kept.map((x) => x.id))
     const added = rows.filter((r) => !known.has(r.id)).map(stubFor)
@@ -167,13 +223,118 @@ function commitTurns(
             turns,
             messages: coworkTurnsToUIMessages(turns, sid),
             updated: Date.now(),
-            ...(extra.title ? { title: extra.title } : {}),
+            ...titleUpdate(x, extra.title, turns),
             ...(extra.folder !== undefined ? { folder: extra.folder } : {}),
             ...(extra.usage ? { lastUsage: extra.usage } : {}),
           }
         : x
     ),
   }))
+}
+
+/**
+ * The title to store with a committed transcript: the server's when it named
+ * the session, else one derived from the first message while the row still
+ * carries a placeholder (or the bare id). A title already readable is kept.
+ */
+function titleUpdate(
+  x: { id: string; title: string },
+  given: string | undefined,
+  turns: CoworkTurn[]
+): { title?: string } {
+  const named = given ? titleOf({ id: x.id, title: given }) : ''
+  if (named) return { title: named }
+  if (x.title && x.title !== x.id && !PLACEHOLDER_TITLES.has(x.title)) return {}
+  const derived = remoteSessionTitle(x.id, null, turns as Array<{ role: string; content: unknown }>)
+  return derived === x.title ? {} : { title: derived }
+}
+
+// ---------------------------------------------------------------------------
+// The access a server session runs with (its "mode")
+// ---------------------------------------------------------------------------
+
+/** The server's word for a Cowork mode. */
+export function modeToAccess(mode: CoworkMode): RunAccess {
+  return mode === 'review' ? 'read' : mode
+}
+
+/** The Cowork mode for the server's access word, when it is one. */
+export function accessToMode(access: string | null | undefined): CoworkMode | undefined {
+  if (!access) return undefined
+  const word = access === 'read' ? 'review' : access
+  return (COWORK_MODES as readonly string[]).includes(word) ? (word as CoworkMode) : undefined
+}
+
+/**
+ * The mode a session on a server page is shown in. A server session shows
+ * what the server last said it runs with, so the picker and the server cannot
+ * disagree; before that is known, the user's choice, else `ask`, the server's
+ * own default. Never `auto` by default: a server only allows it when started
+ * with `--agent-allow-bypass`.
+ */
+export function serverPageMode(
+  session: { mode?: CoworkMode; remote?: boolean; remoteAccess?: string } | undefined
+): CoworkMode {
+  if (session?.remote) return accessToMode(session.remoteAccess) ?? session.mode ?? 'ask'
+  return session?.mode ?? 'ask'
+}
+
+/** The modes a session may be put in on this server. */
+export function allowedRemoteModes(
+  info: Pick<RunnerInfo, 'allowBypass'> | null | undefined
+): CoworkMode[] {
+  return info?.allowBypass ? [...COWORK_MODES] : ['review', 'ask']
+}
+
+/** `runnerInfo`'s answer for a component: null until the probe lands. */
+export function useRunnerInfo(enabled: boolean): RunnerInfo | null {
+  const [info, setInfo] = useState<RunnerInfo | null>(cachedInfo?.info ?? null)
+  useEffect(() => {
+    if (!enabled) return
+    let on = true
+    runnerInfo()
+      .then((got) => on && setInfo(got))
+      .catch(() => {})
+    return () => {
+      on = false
+    }
+  }, [enabled])
+  return info
+}
+
+function recordAccess(sid: string, mode: CoworkMode, access: string): void {
+  useCoworkSessions.setState((s) => ({
+    sessions: s.sessions.map((x) => (x.id === sid ? { ...x, mode, remoteAccess: access } : x)),
+  }))
+}
+
+/**
+ * Put a server session in `mode` on the server, and record what the server
+ * answered as the session's effective access. Throws when the server refuses
+ * (a mode it does not allow, a turn in progress); the session is unchanged.
+ */
+export async function setRemoteMode(
+  sid: string,
+  mode: CoworkMode,
+  fetchImpl?: FetchLike
+): Promise<CoworkMode> {
+  const out = await setRunAccess(sid, modeToAccess(mode), fetchImpl)
+  const access = typeof out?.access === 'string' ? out.access : modeToAccess(mode)
+  const effective = accessToMode(access) ?? mode
+  recordAccess(sid, effective, access)
+  return effective
+}
+
+/**
+ * Before a turn: a mode chosen on this page that the server does not have yet
+ * (picked before the session existed, or a change that did not reach it) is
+ * sent first, so the run cannot start under a different access.
+ */
+export async function syncRemoteMode(sid: string, fetchImpl?: FetchLike): Promise<void> {
+  const session = useCoworkSessions.getState().sessions.find((x) => x.id === sid)
+  if (!session?.remote || !session.mode) return
+  if (modeToAccess(session.mode) === session.remoteAccess) return
+  await setRemoteMode(sid, session.mode, fetchImpl)
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +345,16 @@ function commitTurns(
 export async function openRemoteSession(id: string, fetchImpl?: FetchLike): Promise<void> {
   await syncRemoteSessions(fetchImpl)
   useCoworkSessions.setState({ currentId: id })
+}
+
+/**
+ * The model the browser has selected, when it is one the server can run (a
+ * provider the browser added; the server has no local engine for this page).
+ */
+export function selectedServerModel(): string | undefined {
+  const { selectedModel, selectedProvider } = useModelProvider.getState()
+  if (!selectedModel?.id || !selectedProvider || selectedProvider === 'llamacpp') return undefined
+  return selectedModel.id
 }
 
 /** Start a session in `folder` on the server and open it as the current one. */
@@ -202,18 +373,29 @@ export async function startRemoteSession(
   if (!info.runsSessions) {
     throw new Error(info.missing.length ? info.missing.join('; ') : 'This server does not run agents.')
   }
-  const created = await createRun({ ...input, mode: 'cowork' }, fetchImpl)
+  // The model travels with the request: the one asked for, else the browser's
+  // selection (what the server would default to), so the two cannot drift.
+  const model = input.model ?? selectedServerModel()
+  const created = await createRun(
+    { ...input, ...(model ? { model } : {}), mode: 'cowork' },
+    fetchImpl
+  )
+  const createdMode = accessToMode(created.access ?? input.access)
   useCoworkSessions.setState((s) => ({
     sessions: [
       {
         id: created.id,
-        title: input.title || 'Server session',
+        title: input.title?.trim() || DEFAULT_SESSION_TITLE,
         folder: created.folder,
         turns: [],
         messages: [],
         updated: Date.now(),
         createdAt: Date.now(),
         remote: true,
+        remoteStatus: 'idle' as const,
+        remoteModel: model ?? null,
+        ...(created.access ? { remoteAccess: created.access } : {}),
+        ...(createdMode ? { mode: createdMode } : {}),
       },
       ...s.sessions.filter((x) => x.id !== created.id),
     ],
@@ -509,7 +691,12 @@ class RemoteRun {
           if (entry.settled) return
           const answer =
             !approved ? 'deny' : chosen === 'allow-always' && offersAlways ? 'allow_always' : 'allow_once'
-          void approveRun(this.sid, serverId, answer, this.deps.fetchImpl).catch((e) =>
+          // A typed refusal reason goes to the server, which tells the run.
+          const reason =
+            answer === 'deny'
+              ? useToolApprovalRequests.getState().takeRefusalReason(serverId)
+              : undefined
+          void approveRun(this.sid, serverId, answer, this.deps.fetchImpl, undefined, reason).catch((e) =>
             toast.error(e instanceof Error ? e.message : String(e))
           )
         },
@@ -608,6 +795,7 @@ export async function sendRemoteTurn(
   const run = new RemoteRun(sid, crypto.randomUUID(), base, deps)
   run.begin()
   try {
+    await syncRemoteMode(sid, deps.fetchImpl)
     const started = await startRun(sid, text, deps.fetchImpl, attachments)
     run.subscribe(started.after)
     await run.honourStopBeforeStart()

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { desktopOnlyRoute } from '@/lib/desktopOnlyRoute'
 import { useCallback, useEffect, useState } from 'react'
 import { route } from '@/constants/routes'
 import { Card, CardItem } from '@/containers/Card'
@@ -36,7 +37,7 @@ import { toast } from 'sonner'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.extensions as any)({
-  component: ExtensionsContent,
+  component: desktopOnlyRoute(ExtensionsContent, 'common:extensions'),
 })
 
 /** The design's small mono version chip. */

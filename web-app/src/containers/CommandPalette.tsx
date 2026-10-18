@@ -27,8 +27,12 @@ import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useProjectDialog } from '@/hooks/useProjectDialog'
 import { useAgentMode } from '@/hooks/useAgentMode'
-import { SETTINGS_PAGES } from '@/lib/settingsSearch'
-import { SIDEBAR_ITEMS } from '@/lib/sidebarItems'
+import {
+  SETTINGS_PAGES,
+  isSettingsPageAvailable,
+} from '@/lib/settingsSearch'
+import { SIDEBAR_ITEMS, isNavItemAvailable, isSidebarItemHidden } from '@/lib/sidebarItems'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { runExport } from '@/lib/exportAction'
 import { docFromCowork, docFromThread } from '@/lib/exportDoc'
 import {
@@ -58,12 +62,17 @@ export const useCommandPalette = create<PaletteState>()((set) => ({
   setOpen: (open) => set({ open }),
 }))
 
+const NO_THREADS: ReturnType<typeof useThreads.getState>['threads'] = {}
+
 export function CommandPalette() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const open = useCommandPalette((s) => s.open)
   const setOpen = useCommandPalette((s) => s.setOpen)
-  const threads = useThreads((s) => s.threads)
+  // Read only while it is needed: with thousands of chats every title or
+  // timestamp change would otherwise re-render this while it is hidden.
+  const threads = useThreads((s) => (open ? s.threads : NO_THREADS))
+  const hiddenNavItems = useInterfaceSettings((s) => s.hiddenNavItems)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -121,6 +130,15 @@ export function CommandPalette() {
         run: go(route.cowork),
       },
       {
+        id: 'nav-rooms',
+        section: 'navigation',
+        title: t('common:commandPalette.openItem', {
+          item: t('common:appRail.rooms'),
+        }),
+        keywords: ['compare', 'models', 'discussion'],
+        run: go(route.rooms),
+      },
+      {
         id: 'nav-artifacts',
         section: 'navigation',
         title: t('common:commandPalette.openArtifacts'),
@@ -154,16 +172,38 @@ export function CommandPalette() {
         run: go(route.appLogs),
       },
     ]
+    // The browser `flint serve` serves does not offer desktop-only pages.
+    for (let i = out.length - 1; i >= 0; i--) {
+      if (out[i].id.startsWith('nav-') && !isNavItemAvailable(out[i].id.slice(4))) out.splice(i, 1)
+    }
     // Anything the sidebar can hide stays one palette entry away.
     const listed = new Set(out.map((c) => c.id))
     for (const item of SIDEBAR_ITEMS) {
       const id = `nav-${item.id}`
       if (!item.canHide || listed.has(id) || item.id === 'library') continue
+      if (!isNavItemAvailable(item.id)) continue
       out.push({
         id,
         section: 'navigation',
         title: t('common:commandPalette.openItem', { item: t(item.labelKey) }),
         run: go(item.to()),
+      })
+    }
+    // Show or hide any page in the sidebar from here, so a trimmed sidebar is
+    // one search away from being put back.
+    for (const item of SIDEBAR_ITEMS) {
+      if (!item.canHide) continue
+      const label = t(item.labelKey)
+      const isHidden = isSidebarItemHidden(hiddenNavItems, item.id)
+      out.push({
+        id: `sidebar-toggle-${item.id}`,
+        section: 'settings',
+        title: isHidden
+          ? t('settings:sidebarItems.showItem', { item: label })
+          : t('settings:sidebarItems.hideItem', { item: label }),
+        keywords: ['sidebar', 'pin'],
+        run: () =>
+          useInterfaceSettings.getState().setNavItemHidden(item.id, !isHidden),
       })
     }
     // What is on screen decides whether there is anything to export.
@@ -214,6 +254,7 @@ export function CommandPalette() {
       )
     )
     for (const page of SETTINGS_PAGES) {
+      if (!isSettingsPageAvailable(page.id)) continue
       out.push({
         id: `settings-${page.id}`,
         section: 'settings',
@@ -235,7 +276,7 @@ export function CommandPalette() {
       })
     }
     return out
-  }, [t, navigate, threads, open])
+  }, [t, navigate, threads, open, hiddenNavItems])
 
   const results = useMemo(
     () => rankCommands(commands, query),

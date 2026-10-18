@@ -1,6 +1,11 @@
 import { useEffect } from 'react'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useTheme } from '@/hooks/useTheme'
+import {
+  resolvePerfReduced,
+  scheduleFrameProbe,
+  usePerfDetection,
+} from '@/lib/perfMode'
 import { applyAccentToDocument } from '@/lib/accent'
 import {
   buildBootAppearance,
@@ -50,6 +55,20 @@ export function InterfaceProvider() {
   useEffect(() => {
     document.documentElement.classList.toggle('high-contrast', increaseContrast)
   }, [increaseContrast])
+
+  // Performance mode: styles/perf.css keys the reduced look off data-perf.
+  const performanceMode = useInterfaceSettings((s) => s.performanceMode)
+  const perfReduced = usePerfDetection((s) =>
+    resolvePerfReduced(performanceMode, s.detection)
+  )
+  useEffect(() => {
+    if (performanceMode === 'auto') scheduleFrameProbe()
+  }, [performanceMode])
+  useEffect(() => {
+    const root = document.documentElement
+    if (perfReduced) root.setAttribute('data-perf', 'reduced')
+    else root.removeAttribute('data-perf')
+  }, [perfReduced])
 
   // Mirror the resolved appearance for index.html's pre-paint script.
   useEffect(() => {

@@ -45,6 +45,7 @@ import {
   FolderPlus,
   Workflow,
   SquareTerminal,
+  Server,
   type LucideIcon,
 } from 'lucide-react'
 import { coworkTranscript, regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
@@ -100,6 +101,8 @@ import { StatusDot } from '@/components/campaign/StatusDot'
 import { useCampaigns } from '@/hooks/useCampaigns'
 import { useCampaignFolderState } from '@/hooks/useCampaignFolder'
 import { StartCampaignDialog } from '@/components/campaign/StartCampaignDialog'
+import { ServerSessionDialog } from '@/containers/ServerSessionDialog'
+import { isServerTransport } from '@/lib/serverTransportFlag'
 import {
   claimedSessionIds,
   deriveCampaignGroups,
@@ -143,8 +146,14 @@ const SessionItem = memo(function SessionItem({
   // before last.
   const ledger = useCoworkOrigins((state) => state.bySession[session.id])
   const activity = useFileActivity((s) => s.byConversation[session.id])
-  const running = useCoworkRun((s) => !!s.runs[session.id])
-  const waiting = useNeedsApproval(session.id)
+  // A server session also reports the server's own state, so a run another
+  // device started (or one this page is not following) still shows.
+  const running =
+    useCoworkRun((s) => !!s.runs[session.id]) ||
+    (session.remote === true && session.remoteStatus === 'running')
+  const waiting =
+    useNeedsApproval(session.id) ||
+    (session.remote === true && session.remoteStatus?.startsWith('awaiting') === true)
   // The session's own worktree when it has one: the card names the repository
   // it was cut from and its branch, and the pull requests are its branch's.
   const worktree = useCoworkWorktrees((s) => s.bySession[session.id])
@@ -219,6 +228,16 @@ const SessionItem = memo(function SessionItem({
             />
           )}
           <FadeText>{session.title}</FadeText>
+          {session.remote && (
+            <Server
+              aria-label={t('integrations:serverSession.badge', {
+                status: t(`integrations:serverSession.status.${session.remoteStatus ?? 'idle'}`),
+              })}
+              className="size-3 shrink-0 text-muted-foreground"
+              data-testid={`cowork-session-server-${session.id}`}
+              data-status={session.remoteStatus ?? 'idle'}
+            />
+          )}
           {running && (
             // A session running in the background shows here, without the
             // session in view being treated as busy (janhq/jan#8905). The row's
@@ -500,6 +519,9 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
     [allSessions, onCowork, currentId, runs]
   )
   const [startOpen, setStartOpen] = useState(false)
+  // Served by `flint serve`: sessions can also run on the server.
+  const serverPage = isServerTransport()
+  const [serverSessionOpen, setServerSessionOpen] = useState(false)
   // Never waits on the git check: a cached answer is read at once, and the
   // folder is offered while the answer is unknown.
   const { folder: campaignCandidate, isRepo } = useCampaignFolderState()
@@ -764,6 +786,24 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
           </DropdownMenuContent>
         </DropdownMenu>
       </NavItem>
+      {serverPage && (
+        <NavItem>
+          <NavButton
+            onClick={() => setServerSessionOpen(true)}
+            data-testid="nav-new-server-session"
+          >
+            <Server aria-hidden />
+            <span className="flex-1 truncate">{t('integrations:serverSession.newButton')}</span>
+          </NavButton>
+        </NavItem>
+      )}
+      {serverPage && (
+        <ServerSessionDialog
+          open={serverSessionOpen}
+          onOpenChange={setServerSessionOpen}
+          onStarted={closeDrawer}
+        />
+      )}
       {after}
       {(campaignGroups.length > 0 || sessions.length > 0) && (
         <li

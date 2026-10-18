@@ -270,7 +270,32 @@ fn note_keyring_failure(err: &keyring::Error) {
 }
 
 fn keyring_entry(provider: &str) -> keyring::Result<Entry> {
-    Entry::new(KEYRING_SERVICE, provider)
+    let chosen = crate::core::compat_env::var("DATA_FOLDER")
+        .ok()
+        .filter(|f| !f.is_empty())
+        .map(PathBuf::from);
+    let default = crate::core::app::commands::default_cli_data_folder();
+    Entry::new(&keyring_service_for(chosen.as_deref(), &default), provider)
+}
+
+/// The keyring service a data folder's provider keys live under.
+///
+/// The keyring is per user, not per data folder, so a folder chosen by
+/// `--data-dir` / `FLINT_DATA_FOLDER` (a `flint serve` profile, a harness)
+/// gets its own service named after a hash of the canonical folder: it neither
+/// reads nor overwrites the desktop app's keys. Without that override, or when
+/// it names the default folder, the service stays `jan-providers`, so existing
+/// installs keep their keys.
+fn keyring_service_for(chosen: Option<&std::path::Path>, default: &std::path::Path) -> String {
+    let canon = |p: &std::path::Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    match chosen {
+        Some(dir) if canon(dir) != canon(default) => {
+            let digest = Sha256::digest(canon(dir).to_string_lossy().as_bytes());
+            let short: String = digest[..6].iter().map(|b| format!("{b:02x}")).collect();
+            format!("flint-providers:{short}")
+        }
+        _ => KEYRING_SERVICE.to_string(),
+    }
 }
 
 fn secrets_file_path() -> PathBuf {
@@ -940,6 +965,21 @@ mod tests {
             file_load("general:huggingface-token"),
             vec!["hf_general".to_string()]
         );
+    }
+
+    #[test]
+    fn a_chosen_data_folder_gets_its_own_keyring_service() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let default = tempfile::tempdir().unwrap();
+        let sa = keyring_service_for(Some(a.path()), default.path());
+        let sb = keyring_service_for(Some(b.path()), default.path());
+        assert!(sa.starts_with("flint-providers:"), "{sa}");
+        assert_ne!(sa, sb, "two data folders must not share keys");
+        assert_eq!(sa, keyring_service_for(Some(a.path()), default.path()));
+        // The default folder, chosen or not, keeps the service desktop installs use.
+        assert_eq!(keyring_service_for(None, default.path()), "jan-providers");
+        assert_eq!(keyring_service_for(Some(default.path()), default.path()), "jan-providers");
     }
 
     #[test]

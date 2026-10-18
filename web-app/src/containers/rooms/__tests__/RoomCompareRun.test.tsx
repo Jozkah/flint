@@ -52,6 +52,8 @@ describe('compare run panel', () => {
     await waitFor(() => expect(fake.controller.compareRun).toHaveBeenCalledWith('r1', ['p1'], 'latest'))
     await user.click(within(panel).getByRole('button', { name: 'Run all' }))
     await waitFor(() => expect(fake.controller.compareRun).toHaveBeenCalledWith('r1', null, 'latest'))
+    // The app tooltip explains it; no native title bubble.
+    expect(within(panel).getByTestId('compare-answer-earlier')).not.toHaveAttribute('title')
     await user.click(within(panel).getByTestId('compare-answer-earlier'))
     await waitFor(() => expect(fake.controller.compareRun).toHaveBeenCalledWith('r1', null, 'missing'))
   })
@@ -79,9 +81,93 @@ describe('compare run panel', () => {
     const rows = screen.getAllByTestId('compare-participant')
     expect(rows.map((r) => r.getAttribute('data-state'))).toEqual(['running', 'queued'])
   })
+
+  it('says a local model is waiting for the slot another local model holds', () => {
+    const local = { provider: 'llamacpp', id: 'qwen' }
+    const fake = createFakeApi({
+      journal: asJournal([question()]),
+      liveTurns: [{ roomId: 'r1', turnId: 't1', author: { kind: 'participant', participantId: 'p1', name: 'Alice' }, text: '', startedAt: 1 }],
+    })
+    const room = makeRoom({
+      mode: 'compare',
+      status: 'running',
+      participants: [
+        makeParticipant('p1', { name: 'Alice', model: local, order: 0 }),
+        makeParticipant('p2', { name: 'Bob', model: { ...local, id: 'gemma' }, order: 1 }),
+      ],
+    })
+    renderWithApi(<RoomControls room={room} />, fake.api)
+    const rows = screen.getAllByTestId('compare-participant')
+    expect(rows[1]).toHaveAttribute('data-state', 'waitingSlot')
+    expect(rows[1]).toHaveTextContent('Queued: waiting for the local model slot')
+  })
+
+  it('names each model in full: aria-label and a tooltip, no native title', async () => {
+    const user = userEvent.setup()
+    const long = 'Qwen3 Coder 30B A3B Instruct the very long participant name'
+    const fake = createFakeApi({ journal: asJournal([question()]) })
+    const room = makeRoom({
+      mode: 'compare',
+      status: 'awaiting-user',
+      participants: [
+        makeParticipant('p1', { name: long, order: 0 }),
+        makeParticipant('p2', { name: 'Bob', order: 1 }),
+      ],
+    })
+    renderWithApi(<RoomControls room={room} />, fake.api)
+    const name = screen.getAllByTestId('compare-participant-name')[0]
+    expect(name).toHaveAttribute('aria-label', long)
+    expect(name).not.toHaveAttribute('title')
+    await user.hover(name)
+    expect((await screen.findAllByRole('tooltip'))[0]).toHaveTextContent(long)
+  })
+
+  it('offers Retry with the reason on a model that failed to load', async () => {
+    const user = userEvent.setup()
+    const fake = createFakeApi({ journal: asJournal([question()]) })
+    const room = makeRoom({
+      mode: 'compare',
+      status: 'awaiting-user',
+      participants: [
+        makeParticipant('p1', { name: 'Alice', order: 0 }),
+        makeParticipant('p2', {
+          name: 'Bob',
+          order: 1,
+          availability: { state: 'unavailable', reason: 'load-failed', message: 'llama-server exited', at: 1 },
+        }),
+      ],
+    })
+    renderWithApi(<RoomControls room={room} />, fake.api)
+    const bobRow = screen.getAllByTestId('compare-participant')[1]
+    expect(bobRow).toHaveTextContent('llama-server exited')
+    const retry = within(bobRow).getByRole('button', { name: 'Retry Bob' })
+    expect(retry).toBeEnabled()
+    await user.click(retry)
+    await waitFor(() => expect(fake.controller.compareRun).toHaveBeenCalledWith('r1', ['p2'], 'latest'))
+  })
 })
 
 describe('compare transcript', () => {
+  it('renders a question and its answer row without duplicate React keys (T6-016)', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const fake = createFakeApi()
+      const room = makeRoom({ mode: 'compare', status: 'awaiting-user' })
+      const journal = asJournal([
+        question(),
+        makeMessage({ author: bob, text: 'Bob 1', compare: { provider: 'openai', model: 'm', replyTo: 'q1' } }),
+        makeMessage({ id: 'q2', author: { kind: 'user' }, kind: 'user', text: 'Q2' }),
+        makeMessage({ author: bob, text: 'Bob 2', compare: { provider: 'openai', model: 'm', replyTo: 'q2' } }),
+      ])
+      renderWithApi(<RoomTranscript room={room} journal={journal} liveTurn={null} />, fake.api)
+      expect(screen.getAllByTestId('room-compare-row')).toHaveLength(2)
+      const keyWarnings = errors.mock.calls.filter((c) => String(c[0]).includes('same key'))
+      expect(keyWarnings).toEqual([])
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
   it('labels each answer with model and date, and leaves an empty cell to run', async () => {
     const user = userEvent.setup()
     const fake = createFakeApi()
@@ -92,10 +178,17 @@ describe('compare transcript', () => {
       makeMessage({ author: bob, text: 'Bob rerun', createdAt: Date.UTC(2026, 5, 2), compare: { provider: 'openai', model: 'model-x', replyTo: 'q1' } }),
     ])
     renderWithApi(<RoomTranscript room={room} journal={journal} liveTurn={null} />, fake.api)
+    const toggle = screen.getByTestId('room-link-scroll')
+    expect(toggle).not.toHaveAttribute('title')
+    // Hidden by container query once the columns stack.
+    expect(toggle.className).toContain('@max-[520px]:hidden')
     const row = screen.getByTestId('room-compare-row')
-    const labels = within(row).getAllByTestId('answer-model')
+    const labels = within(row).getAllByTestId('answer-meta')
     expect(labels).toHaveLength(2)
-    expect(labels[0]).toHaveTextContent('model-x')
+    // The model is named once, beside the participant, not again in the meta line.
+    const cards = within(row).getAllByTestId('room-message')
+    expect(cards[0].querySelector('header')!.textContent!.match(/model-x/g)).toHaveLength(1)
+    expect(labels[0]).not.toHaveTextContent('model-x')
     expect(labels[0]).toHaveTextContent('1.5 s')
     expect(labels[0].textContent).not.toEqual(labels[1].textContent)
     const empty = within(row).getByTestId('compare-missing')

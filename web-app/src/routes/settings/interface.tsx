@@ -22,9 +22,16 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
 import { TRANSCRIPT_VIEWS } from '@/lib/transcriptView'
 import { toast } from 'sonner'
 import { switchTheme } from '@/lib/themeTransition'
+import {
+  PERFORMANCE_MODES,
+  resolvePerfReduced,
+  usePerfDetection,
+  type PerformanceMode,
+} from '@/lib/perfMode'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.interface as any)({
@@ -102,6 +109,8 @@ function InterfaceSettings() {
     setRenderUserMarkdown,
     renderHtmlArtifacts,
     setRenderHtmlArtifacts,
+    wrapCodeLines,
+    setWrapCodeLines,
     showInlineCitations,
     setShowInlineCitations,
     autoGenerateTitle,
@@ -141,6 +150,7 @@ function InterfaceSettings() {
           />
         }
       />
+      <PerformanceModeSetting />
     </Card>
   )
 
@@ -243,6 +253,18 @@ function InterfaceSettings() {
           <Switch
             checked={renderHtmlArtifacts}
             onCheckedChange={setRenderHtmlArtifacts}
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-appearance-wrap-code-lines"
+        title={t('settings:interface.wrapCodeLines')}
+        description={t('settings:interface.wrapCodeLinesDesc')}
+        actions={
+          <Switch
+            aria-label={t('settings:interface.wrapCodeLines')}
+            checked={wrapCodeLines}
+            onCheckedChange={setWrapCodeLines}
           />
         }
       />
@@ -395,6 +417,101 @@ const LABEL: Record<CompletionSound, string> = {
   approval: 'settings:appearance.completionSoundApproval',
 }
 
+/** The value a radio-group key moves to (arrows wrap, Home / End jump). */
+function stepRadio<T>(values: readonly T[], current: T, key: string): T | undefined {
+  const i = Math.max(0, values.indexOf(current))
+  const n = values.length
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return values[(i + 1) % n]
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return values[(i - 1 + n) % n]
+    case 'Home':
+      return values[0]
+    case 'End':
+      return values[n - 1]
+    default:
+      return undefined
+  }
+}
+
+const PERF_LABEL: Record<PerformanceMode, string> = {
+  auto: 'settings:appearance.performanceModeAuto',
+  reduced: 'settings:appearance.performanceModeReduced',
+  full: 'settings:appearance.performanceModeFull',
+}
+
+/** Settings › Appearance › Motion: Performance mode, with what Auto found. */
+export function PerformanceModeSetting() {
+  const { t } = useTranslation()
+  const mode = useInterfaceSettings((s) => s.performanceMode)
+  const setMode = useInterfaceSettings((s) => s.setPerformanceMode)
+  const detection = usePerfDetection((s) => s.detection)
+  const reduced = resolvePerfReduced(mode, detection)
+  const why =
+    mode === 'reduced'
+      ? t('settings:appearance.perfReasonChosen')
+      : detection.reason === 'cores'
+        ? t('settings:appearance.perfReasonCores', { n: detection.cores })
+        : detection.reason === 'memory'
+          ? t('settings:appearance.perfReasonMemory', { n: detection.memoryGb })
+          : detection.reason === 'frames'
+            ? t('settings:appearance.perfReasonFrames')
+            : detection.reason === 'motion'
+              ? t('settings:appearance.perfReasonMotion')
+              : t('settings:appearance.perfReasonData')
+  const current = reduced
+    ? t('settings:appearance.performanceModeNowReduced', { why })
+    : t('settings:appearance.performanceModeNowFull')
+  return (
+    <CardItem
+      column
+      anchor="settings-appearance-performance-mode"
+      title={t('settings:appearance.performanceMode')}
+      description={
+        <>
+          {t('settings:appearance.performanceModeDesc')}{' '}
+          <span data-testid="performance-mode-current">{current}</span>
+        </>
+      }
+      actions={
+        // Radix radio group: one tab stop (roving tabindex) and arrow focus.
+        // Radix only selects on arrow focus while the key is still down, so the
+        // keys also pick the mode here; Home / End jump to the first / last.
+        <RadioGroup
+          value={mode}
+          onValueChange={(v) => setMode(v as PerformanceMode)}
+          onKeyDown={(e) => {
+            const next = stepRadio(PERFORMANCE_MODES, mode, e.key)
+            if (next !== undefined && next !== mode) setMode(next)
+          }}
+          orientation="horizontal"
+          loop
+          aria-label={t('settings:appearance.performanceMode')}
+          data-testid="performance-mode"
+          className="inline-flex flex-wrap gap-0 rounded-md border border-border p-0.5"
+        >
+          {PERFORMANCE_MODES.map((m) => (
+            <RadioGroupPrimitive.Item
+              key={m}
+              value={m}
+              data-mode={m}
+              className={cn(
+                'rounded px-2.5 py-1 text-xs outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2.5',
+                mode === m ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground'
+              )}
+            >
+              {t(PERF_LABEL[m])}
+            </RadioGroupPrimitive.Item>
+          ))}
+        </RadioGroup>
+      }
+    />
+  )
+}
+
 /** Settings › Appearance › Sounds: when a finished answer plays a sound. */
 function CompletionSoundSettings() {
   const { t } = useTranslation()
@@ -415,7 +532,9 @@ function CompletionSoundSettings() {
             role="radiogroup"
             aria-label={t('settings:appearance.completionSound')}
             data-testid="completion-sound-mode"
-            className="inline-flex flex-wrap rounded-md border border-border p-0.5"
+            // Two even columns: four options never leave one alone on a
+            // ragged second line.
+            className="grid w-full max-w-md grid-cols-2 gap-0.5 rounded-md border border-border p-0.5"
           >
             {COMPLETION_SOUNDS.map((m) => (
               <button
@@ -426,7 +545,7 @@ function CompletionSoundSettings() {
                 data-mode={m}
                 onClick={() => setMode(m)}
                 className={cn(
-                  'rounded px-2.5 py-1 text-xs pointer-coarse:py-2.5',
+                  'min-w-0 rounded px-2.5 py-1 text-xs leading-tight pointer-coarse:py-2.5',
                   mode === m ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground'
                 )}
               >

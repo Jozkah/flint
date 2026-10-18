@@ -35,7 +35,7 @@ vi.mock('@/containers/PlatformMetaKey', () => ({ PlatformMetaKey: () => null }))
 
 import { AppSidebar } from '../AppSidebar'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
-import { hideableSidebarIds } from '@/lib/sidebarItems'
+import { hiddenForPreset, hideableSidebarIds } from '@/lib/sidebarItems'
 
 const hide = (...ids: string[]) =>
   useInterfaceSettings.setState({ hiddenNavItems: ids })
@@ -105,6 +105,21 @@ describe('AppSidebar with hidden items', () => {
     hide('studio')
     render(<AppSidebar />)
     expect(links()).not.toContain('/studio')
+    expect(screen.getByTestId('cowork-settings')).toBeInTheDocument()
+  })
+
+  it('minimal preset: Chat shows New chat and Models, Cowork no More row or empty heading', () => {
+    pathname = '/'
+    hide(...hiddenForPreset('minimal'))
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-new-chat')).toBeInTheDocument()
+    expect(screen.getByTestId('rail-models')).toBeInTheDocument()
+    expect(screen.queryByTestId('rail-discover')).toBeNull()
+    expect(screen.queryByTestId('nav-overview')).toBeNull()
+    fireEvent.click(screen.getByTestId('sidebar-tab-cowork'))
+    expect(screen.getByTestId('cowork-nav')).toBeInTheDocument()
+    expect(screen.queryByTestId('nav-more')).toBeNull()
+    expect(screen.queryByTestId('nav-studio')).toBeNull()
     expect(screen.getByTestId('cowork-settings')).toBeInTheDocument()
   })
 

@@ -1,4 +1,5 @@
 import { route } from '@/constants/routes'
+import { isServedByFlint } from '@/lib/platform/utils'
 import type { LucideIcon } from 'lucide-react'
 import { Languages, Workflow } from 'lucide-react'
 import type { IconName } from '@/components/ui/icon'
@@ -55,6 +56,25 @@ export const SIDEBAR_ITEMS: readonly SidebarItem[] = [
   { id: 'settings', labelKey: 'common:appRail.settings', section: 'header', to: () => route.settings.general, icon: 'sb-settings', canHide: false },
 ]
 
+/**
+ * Pages that only work in the desktop app: the browser `flint serve` serves
+ * shows them as a desktop-only notice, so search and the command palette do
+ * not offer them there.
+ */
+const DESKTOP_ONLY_NAV: ReadonlySet<string> = new Set([
+  'studio',
+  'extensions',
+  'schedules',
+  'local-api',
+  'archive',
+  'discover',
+])
+
+/** Whether a sidebar page is worth offering on this client. */
+export function isNavItemAvailable(id: string): boolean {
+  return !isServedByFlint() || !DESKTOP_ONLY_NAV.has(id)
+}
+
 export const getSidebarItem = (id: string): SidebarItem | undefined =>
   BY_ID.get(id)
 
@@ -79,4 +99,69 @@ export function isSidebarItemHidden(
 ): boolean {
   const item = BY_ID.get(id)
   return Boolean(item?.canHide && hidden?.includes(id))
+}
+
+/**
+ * Sidebar presets, as the ids each one shows. Everything else hideable is
+ * hidden. Minimal is what a new install starts with: chat and cowork, plus
+ * Models, the page a new person needs to add a model. Rooms, the chat list and
+ * Settings are not hideable and stay in every preset.
+ */
+export type SidebarPreset = 'minimal' | 'standard' | 'everything'
+
+export const SIDEBAR_PRESETS: readonly SidebarPreset[] = [
+  'minimal',
+  'standard',
+  'everything',
+]
+
+const PRESET_SHOWN: Record<Exclude<SidebarPreset, 'everything'>, readonly string[]> = {
+  minimal: ['models'],
+  standard: ['models', 'discover', 'library', 'campaigns', 'studio', 'tools', 'overview'],
+}
+
+/** The hidden list a preset stands for. */
+export function hiddenForPreset(preset: SidebarPreset): string[] {
+  if (preset === 'everything') return []
+  const shown = PRESET_SHOWN[preset]
+  return hideableSidebarIds().filter((id) => !shown.includes(id))
+}
+
+/** The preset a hidden list matches exactly, if any. */
+export function presetOf(hidden: readonly string[] | undefined): SidebarPreset | undefined {
+  const mine = hideableSidebarIds().filter((id) => isSidebarItemHidden(hidden, id))
+  return SIDEBAR_PRESETS.find((preset) => {
+    const want = hiddenForPreset(preset)
+    return want.length === mine.length && want.every((id) => mine.includes(id))
+  })
+}
+
+/**
+ * Bumped when the default sidebar for new installs changes. Saved once the
+ * default has been decided for an install, so a later change of default never
+ * overrides what someone already has or chose.
+ */
+export const SIDEBAR_DEFAULTS_VERSION = 1
+
+/**
+ * What the sidebar starts as, decided once per install. `undefined` means
+ * leave the saved state alone.
+ * - already decided (a saved version): unchanged;
+ * - a saved hidden list: the person chose it, kept;
+ * - an existing install (finished setup, a usable model, any chat or session):
+ *   today's full sidebar, kept;
+ * - a new install with nothing saved: the minimal preset.
+ */
+export function resolveSidebarDefaults(input: {
+  decidedVersion: number | undefined
+  hidden: readonly string[]
+  existingInstall: boolean
+}): { hidden: string[]; decidedVersion: number } | undefined {
+  if (typeof input.decidedVersion === 'number' && input.decidedVersion > 0) {
+    return undefined
+  }
+  if (input.hidden.length > 0 || input.existingInstall) {
+    return { hidden: [...input.hidden], decidedVersion: SIDEBAR_DEFAULTS_VERSION }
+  }
+  return { hidden: hiddenForPreset('minimal'), decidedVersion: SIDEBAR_DEFAULTS_VERSION }
 }

@@ -401,6 +401,15 @@ describe('RenderMarkdown', () => {
       expect(document.querySelector('.markdown')?.textContent).not.toContain('**')
     })
 
+    // C049: the helper space must not reach the page (or a copied selection).
+    it('leaves no U+200B in the rendered text', async () => {
+      render(
+        <RenderMarkdown content={'I went **home**. Then**,** slept'} isAnimating={false} />
+      )
+      await waitFor(() => expect(strong()).toBeTruthy())
+      expect(document.querySelector('.markdown')?.textContent).not.toContain('​')
+    })
+
     it('handles glued bold around CJK punctuation', async () => {
       render(<RenderMarkdown content={'中文**，**测试'} isAnimating={false} />)
       await waitFor(() => expect(strong()).toBeTruthy())

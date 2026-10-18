@@ -6,7 +6,9 @@ import { SidebarItemIcon } from '@/components/shell/SidebarItemIcon'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import {
   SIDEBAR_ITEMS,
+  SIDEBAR_PRESETS,
   SIDEBAR_SECTIONS,
+  presetOf,
   isSidebarItemHidden,
   type SidebarSection,
 } from '@/lib/sidebarItems'
@@ -23,8 +25,8 @@ export function SidebarItemsPicker({ preview = true }: { preview?: boolean }) {
   const { t } = useTranslation()
   const hidden = useInterfaceSettings((s) => s.hiddenNavItems)
   const setHidden = useInterfaceSettings((s) => s.setNavItemHidden)
-  const showAll = useInterfaceSettings((s) => s.showAllNavItems)
-  const anyHidden = SIDEBAR_ITEMS.some((i) => isSidebarItemHidden(hidden, i.id))
+  const applyPreset = useInterfaceSettings((s) => s.applyNavPreset)
+  const current = presetOf(hidden)
 
   return (
     <div data-testid="sidebar-items-picker" className="@container flex flex-col gap-3 pb-2">
@@ -86,16 +88,30 @@ export function SidebarItemsPicker({ preview = true }: { preview?: boolean }) {
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">
           {t('settings:sidebarItems.reachable')}
         </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="pointer-coarse:h-11"
-          data-testid="sidebar-items-show-all"
-          disabled={!anyHidden}
-          onClick={showAll}
+        <div
+          role="group"
+          aria-label={t('settings:sidebarItems.presets.label')}
+          className="flex flex-wrap gap-1.5"
         >
-          {t('settings:sidebarItems.showAll')}
-        </Button>
+          {SIDEBAR_PRESETS.map((preset) => (
+            <Button
+              key={preset}
+              variant="outline"
+              size="sm"
+              className="pointer-coarse:h-11"
+              data-testid={
+                preset === 'everything'
+                  ? 'sidebar-items-show-all'
+                  : `sidebar-items-preset-${preset}`
+              }
+              aria-pressed={current === preset}
+              disabled={current === preset}
+              onClick={() => applyPreset(preset)}
+            >
+              {t(`settings:sidebarItems.presets.${preset}`)}
+            </Button>
+          ))}
+        </div>
       </div>
     </div>
   )

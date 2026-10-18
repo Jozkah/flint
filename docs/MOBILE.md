@@ -4,7 +4,7 @@ Two different things are called "mobile" in this repo. Keep them apart.
 
 ## The phone app ("remote")
 
-`web-app/mobile.html` + `web-app/src/mobile/**` is a separate Vite entry (`vite.mobile.config.ts`, `yarn build:mobile`, output `src-tauri/resources/mobile`). The desktop's remote-access server (`src-tauri/src/core/remote`, started by `flint serve` or the desktop app) serves it at `https://<computer>:1340/m/`. A paired phone installs it as a PWA (`mobile-public/manifest.webmanifest`, push through a service worker in `src/mobile/sw`) and reaches the computer directly, over Tailscale or any route to that port.
+`web-app/mobile.html` + `web-app/src/mobile/**` is a separate Vite entry (`vite.mobile.config.ts`, `yarn build:mobile`, output `src-tauri/resources/mobile`). The desktop app's remote-access server (`src-tauri/src/core/remote`) serves it at `https://<computer>:1340/m/`. `flint serve` does not: phone calls are run by the desktop window's TypeScript, which a headless server has none of, so `core::remote` is not built into the `flint` binary and the headless package (`yarn build:server`) carries no phone bundle. On `flint serve`, `/m/` and `/remote/*` answer 404 with a page saying phone pairing needs the desktop app, and `remote_*` commands answer the same in words; a phone uses such a server by opening its address in the browser (or the .apk, below). A paired phone installs it as a PWA (`mobile-public/manifest.webmanifest`, push through a service worker in `src/mobile/sw`) and reaches the computer directly, over Tailscale or any route to that port.
 
 How it works:
 
@@ -60,7 +60,7 @@ Requirement: "Cowork and Campaigns should run on the .apk when it connects to a 
    flint serve --listen 127.0.0.1:1340 --public-host flint.<tailnet>.ts.net --agent-root ~/code
    ```
 
-   `--agent-root <folder>` is optional and repeatable. It turns on the review plane described below for projects under that folder. A root may not contain the data folder (the server refuses to start if it does).
+   Add `--trust-proxy` when a proxy on the same machine fronts the server, so sign-in rate limiting keys on the client its `X-Forwarded-For` names; without it that header is ignored and the peer address is the key. `--agent-root <folder>` is optional and repeatable. It turns on the review plane described below for projects under that folder. A root may not contain the data folder (the server refuses to start if it does).
 2. Copy the first-run administrator credential the server prints (shown once; `flint serve --background` leaves it for the starter to show).
 3. Make the address reachable from the phone (Tailscale on, or the VPN you use) and open it once in the phone's browser to check the certificate is trusted. Android's WebView offers no way past an untrusted certificate, so a self-signed one will not work.
 4. In the .apk: Settings, General, **Flint server**. Enter the HTTPS address, **Test connection**, then **Open server**. Sign in on the server's own page with the credential. Optional: turn on **Open at start**; the app then shows a four second countdown at launch with a **Use this device** button.

@@ -226,7 +226,13 @@ export function TopHeader() {
         ref={headerSlot?.setSlot}
         {...dragRegion}
         data-testid="header-slot"
-        className="flex h-full min-w-0 flex-[1_1_0%] items-center gap-2 overflow-hidden pl-0.5"
+        // Wraps rather than clips: a control that does not fit drops to a
+        // hidden second line whole, never shown cut in half at the edge. A
+        // size container, so page controls can compact themselves first. On a
+        // phone it keeps room for its widest control (the 44px More button),
+        // so the breadcrumb truncates instead of the slot running under the
+        // header's own buttons (U06).
+        className="@container/hslot flex h-full min-w-0 flex-[1_1_0%] flex-wrap items-center gap-x-2 overflow-hidden pl-0.5 [align-content:safe_center] max-sm:min-w-fit"
       />
 
       <div className="flex shrink-0 items-center gap-1.5">

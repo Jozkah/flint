@@ -7,6 +7,7 @@
 import { toast } from 'sonner'
 import { uploadFile } from '@/services/uploads/browser'
 import { DefaultDialogService } from './default'
+import { pickServerFolder } from '@/lib/serverFolderPicker'
 import type { DialogOpenOptions } from './types'
 
 function pickFiles(options?: DialogOpenOptions): Promise<File[]> {
@@ -24,8 +25,13 @@ function pickFiles(options?: DialogOpenOptions): Promise<File[]> {
 
 export class BrowserDialogService extends DefaultDialogService {
   async open(options?: DialogOpenOptions): Promise<string | string[] | null> {
-    // A browser cannot hand the server one of its folders.
-    if (options?.directory) return null
+    // A browser cannot hand the server one of its folders: a folder is
+    // chosen on the server, in the chooser over the folders it allows.
+    if (options?.directory) {
+      const folder = await pickServerFolder()
+      if (!folder) return null
+      return options.multiple ? [folder] : folder
+    }
     const files = await pickFiles(options)
     if (files.length === 0) return null
     const paths: string[] = []

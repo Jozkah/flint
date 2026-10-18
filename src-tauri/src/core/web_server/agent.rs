@@ -34,6 +34,8 @@ use super::campaign_driver::{self, Driver, DriverConfig, Host as _, RunnerHost, 
 use super::runner::{self, Caller, Runner, RunnerOptions};
 use crate::core::agent::campaign;
 use crate::core::agent::campaign_integration;
+use crate::core::agent::git;
+use tauri_plugin_agent_tools::folder_trust;
 use tauri_plugin_agent_tools::proposal;
 use tauri_plugin_agent_tools::tools::jail;
 
@@ -87,6 +89,7 @@ pub fn handles(command: &str) -> bool {
         command,
         "agent_server_info"
             | "agent_server_folders"
+            | "agent_list_folders"
             | "agent_run_list"
             | "agent_run_get"
             | "agent_campaign_list"
@@ -105,6 +108,22 @@ pub fn handles(command: &str) -> bool {
             | "agent_proposal_list"
             | "agent_proposal_apply"
             | "agent_proposal_reject"
+    ) || is_project_read(command)
+}
+
+/// Read-only questions about a project under the agent roots: its trust, its
+/// tooling and its git state. Each is confined like `agent_list_folders`.
+pub fn is_project_read(command: &str) -> bool {
+    matches!(
+        command,
+        "folder_trust_status"
+            | "project_tooling"
+            | "agent_is_git_repo"
+            | "agent_git_branch"
+            | "agent_git_status"
+            | "agent_git_file_diff"
+            | "agent_git_head_file"
+            | "agent_git_blame"
     )
 }
 
@@ -119,6 +138,80 @@ pub struct Agent {
     options: RunnerOptions,
     /// The campaign driver (P3), built with the runner.
     driver: Option<Arc<Driver<RunnerHost>>>,
+    /// Shared cap on `agent_list_folders` calls (a browser's folder chooser).
+    browse_budget: Arc<Budget>,
+}
+
+/// A fixed-window request cap: `LIMIT` calls per `WINDOW`, across clients.
+#[derive(Default)]
+struct Budget {
+    window: std::sync::Mutex<Option<(std::time::Instant, u32)>>,
+}
+
+impl Budget {
+    const LIMIT: u32 = 240;
+    const WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+
+    fn take(&self) -> bool {
+        let mut slot = self.window.lock().unwrap_or_else(|e| e.into_inner());
+        let now = std::time::Instant::now();
+        match slot.as_mut() {
+            Some((start, count)) if now.duration_since(*start) < Self::WINDOW => {
+                if *count >= Self::LIMIT {
+                    return false;
+                }
+                *count += 1;
+            }
+            _ => *slot = Some((now, 1)),
+        }
+        true
+    }
+}
+
+/// Most folders one listing returns.
+const MAX_FOLDER_ENTRIES: usize = 500;
+
+/// Longest path the folder chooser accepts.
+const MAX_BROWSE_PATH: usize = 1024;
+
+/// Refuse what a folder chooser never sends: relative paths, `..` or `.`
+/// segments, UNC and device paths, control characters and over-long input.
+/// What passes is still canonicalised and confined.
+///
+/// `raw` arrives already decoded (a JSON string) and is never decoded again,
+/// so `%` is just a name character: `pct%20dir` and `%2e%2e` are folder names,
+/// not escapes, and a name that is not on disk fails canonicalisation.
+fn browse_request(raw: &str) -> Result<(), Fail> {
+    let bad = || fail(400, "invalid path");
+    if raw.is_empty() {
+        return Ok(());
+    }
+    if raw.len() > MAX_BROWSE_PATH || raw.chars().any(char::is_control) {
+        return Err(bad());
+    }
+    if raw.starts_with("//") {
+        return Err(bad());
+    }
+    let path = Path::new(raw);
+    if !path.is_absolute() {
+        return Err(bad());
+    }
+    use std::path::Component;
+    for part in path.components() {
+        match part {
+            Component::ParentDir | Component::CurDir => return Err(bad()),
+            Component::Prefix(prefix) => {
+                use std::path::Prefix;
+                // A drive, or the verbatim drive form canonical paths take on
+                // Windows; never a share, a device or a verbatim UNC path.
+                if !matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)) {
+                    return Err(bad());
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Whether the session runner is built into this release (P1: `runner.rs`).
@@ -193,6 +286,7 @@ impl Agent {
             runner: None,
             options: RunnerOptions::default(),
             driver: None,
+            browse_budget: Arc::new(Budget::default()),
         }))
     }
 
@@ -531,7 +625,120 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
         }
     }
 
+    /// The chooser lists no hidden, system or dependency folder, so it does
+    /// not open one by name either: every step below the root must be one it
+    /// would have listed.
+    fn browsable(&self, dir: &Path) -> Result<(), Fail> {
+        let Some(root) = self.roots.iter().find(|root| dir.starts_with(root)) else {
+            return Err(fail(403, "that folder is outside the folders this server allows"));
+        };
+        let mut at = root.clone();
+        for part in dir.strip_prefix(root).unwrap_or(Path::new("")).components() {
+            at.push(part);
+            let name = part.as_os_str().to_str().unwrap_or(".");
+            if !listable(name) || hidden_path(&at) {
+                return Err(fail(403, "that folder is not offered"));
+            }
+        }
+        Ok(())
+    }
+
+    /// A project folder a read-only question may be about: under a root and
+    /// one the folder chooser would offer.
+    fn project(&self, args: &Value, key: &str) -> Result<PathBuf, Fail> {
+        let dir = self.confine(text(args, key)?)?;
+        self.browsable(&dir)?;
+        Ok(dir)
+    }
+
+    /// The repository `dir` is in, when there is one, refused when it reaches
+    /// above the agent roots (a root inside a larger repository would
+    /// otherwise show that repository's other files).
+    fn repo(&self, dir: &Path) -> Result<Option<PathBuf>, Fail> {
+        let Some(root) = git::repo_root(dir) else {
+            return Ok(None);
+        };
+        let root = Path::new(&root).canonicalize().map_err(|_| fail(404, "that repository is not readable"))?;
+        if self.roots.iter().any(|r| root.starts_with(r)) {
+            Ok(Some(root))
+        } else {
+            Err(fail(403, "that repository reaches outside the folders this server allows"))
+        }
+    }
+
+    fn project_read(&self, command: &str, args: &Value) -> Result<Value, Fail> {
+        let ui = |e: String| fail(400, e);
+        match command {
+            "folder_trust_status" => {
+                let dir = self.project(args, "folder")?;
+                Ok(json!({
+                    "folder": text(args, "folder")?,
+                    "trusted": folder_trust::is_trusted(&dir),
+                    "carries": folder_trust::carries(&dir),
+                }))
+            }
+            "project_tooling" => {
+                let dir = self.project(args, "folder")?;
+                let never = std::sync::atomic::AtomicBool::new(false);
+                match crate::core::agent::tooling::detect(&dir, &never) {
+                    Ok(tooling) => {
+                        let mut out = to_json(&tooling)?;
+                        if let Some(map) = out.as_object_mut() {
+                            map.insert("prompt".into(), json!(tooling.render()));
+                        }
+                        Ok(out)
+                    }
+                    Err(e) => Err(Fail {
+                        status: 422,
+                        body: json!({ "kind": e.kind(), "message": e.to_string() }),
+                    }),
+                }
+            }
+            "agent_is_git_repo" => {
+                let dir = self.project(args, "folder")?;
+                Ok(json!(self.repo(&dir)?.is_some()))
+            }
+            "agent_git_branch" => {
+                let dir = self.project(args, "project")?;
+                Ok(match self.repo(&dir)? {
+                    Some(_) => json!(git::current_branch(&dir)),
+                    None => Value::Null,
+                })
+            }
+            "agent_git_status" => {
+                let dir = self.project(args, "project")?;
+                if self.repo(&dir)?.is_none() {
+                    return Ok(Value::Null);
+                }
+                let scope = git::DiffScope::parse(args.get("scope").and_then(Value::as_str).unwrap_or("all"));
+                to_json(git::status(&dir, scope).map_err(ui)?)
+            }
+            _ => {
+                let dir = self.project(args, "project")?;
+                if self.repo(&dir)?.is_none() {
+                    return Err(fail(400, "that folder is not a git repository"));
+                }
+                let path = text(args, "path")?;
+                match command {
+                    "agent_git_file_diff" => {
+                        let scope = git::DiffScope::parse(args.get("scope").and_then(Value::as_str).unwrap_or("all"));
+                        to_json(git::file_diff(&dir, path, scope, 512 * 1024).map_err(ui)?)
+                    }
+                    "agent_git_head_file" => to_json(git::head_file(&dir, path).map_err(ui)?),
+                    "agent_git_blame" => Ok(json!({
+                        "porcelain": git::blame(&dir, path).map_err(ui)?,
+                        "webUrl": git::github_web_url(&dir),
+                    })),
+                    _ => Err(fail(404, "Unknown agent command")),
+                }
+            }
+        }
+    }
+
     pub fn call(&self, command: &str, args: &Value) -> Result<Value, Fail> {
+        if is_project_read(command) {
+            return self.project_read(command, args);
+        }
         match command {
             "agent_server_info" => Ok(self.info()),
             "agent_run_list" => {
@@ -552,6 +759,18 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
                 Ok(row)
             }
             "agent_server_folders" => self.folders(args),
+            "agent_list_folders" => {
+                if !self.browse_budget.take() {
+                    return Err(fail(429, "too many folder requests; wait a moment"));
+                }
+                if let Some(raw) = args.get("path").and_then(Value::as_str) {
+                    browse_request(raw)?;
+                    if !raw.is_empty() {
+                        self.browsable(&self.confine(raw)?)?;
+                    }
+                }
+                self.folders(args)
+            }
             "agent_campaign_list" => to_json(campaign::list(&self.data_folder)),
             "agent_campaign_get" => {
                 let id = text(args, "id")?;
@@ -753,19 +972,42 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
             .flatten()
             .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
             .filter(|e| e.file_name().to_str().is_some_and(listable))
+            .filter(|e| !hidden_or_system(e))
             // A link is listed only when it stays inside the roots.
             .filter_map(|e| e.path().canonicalize().ok())
             .filter(|p| self.roots.iter().any(|r| p.starts_with(r)))
             .map(|p| entry(&p))
             .collect();
         entries.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-        entries.truncate(500);
+        let truncated = entries.len() > MAX_FOLDER_ENTRIES;
+        entries.truncate(MAX_FOLDER_ENTRIES);
         Ok(json!({
             "path": dir.to_string_lossy(),
             "parent": parent,
             "entries": entries,
+            "truncated": truncated,
         }))
     }
+}
+
+/// Windows marks some folders hidden or system without a leading dot.
+fn hidden_or_system(entry: &std::fs::DirEntry) -> bool {
+    hidden_path(&entry.path())
+}
+
+#[cfg(windows)]
+fn hidden_path(path: &Path) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const HIDDEN: u32 = 0x2;
+    const SYSTEM: u32 = 0x4;
+    std::fs::symlink_metadata(path)
+        .map(|m| m.file_attributes() & (HIDDEN | SYSTEM) != 0)
+        .unwrap_or(true)
+}
+
+#[cfg(not(windows))]
+fn hidden_path(_path: &Path) -> bool {
+    false
 }
 
 fn entry(path: &Path) -> Value {
@@ -799,6 +1041,32 @@ fn to_json<T: serde::Serialize>(value: T) -> Result<Value, Fail> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn percent_in_a_folder_name_is_a_name_character() {
+        let (data, work) = pair();
+        for name in ["100%done", "pct%20dir", "%2e%2e", "pct%2520dir"] {
+            std::fs::create_dir_all(work.path().join(name)).unwrap();
+        }
+        let agent = Agent::open(data.path(), &[work.path().to_path_buf()]).unwrap().unwrap();
+        let root = agent.roots[0].to_string_lossy().into_owned();
+        let sep = std::path::MAIN_SEPARATOR;
+        let list = |p: String| agent.call("agent_list_folders", &json!({ "path": p }));
+        // Real folders whose names hold `%`, escapes included, open as named.
+        for name in ["100%done", "pct%20dir", "%2e%2e", "pct%2520dir"] {
+            assert!(list(format!("{root}{sep}{name}")).is_ok(), "{name}");
+        }
+        // Encoded traversal is not decoded into one: no such folder exists.
+        for p in [
+            format!("{root}{sep}%2e%2e{sep}%2e%2e"),
+            format!("{root}{sep}..%2f..%2f"),
+            format!("{root}{sep}app%2f..%2f.."),
+            format!("{root}{sep}%252e%252e"),
+        ] {
+            let err = list(p.clone()).unwrap_err();
+            assert_eq!(err.status, 404, "{p}");
+        }
+    }
 
     fn pair() -> (tempfile::TempDir, tempfile::TempDir) {
         (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap())
@@ -841,6 +1109,103 @@ mod tests {
         let climbing = work.path().join("app").join("..").join("..");
         assert!(agent.confine(&climbing.to_string_lossy()).is_err());
         assert_eq!(agent.confine("").unwrap_err().status, 400);
+    }
+
+    #[test]
+    fn list_folders_refuses_traversal_and_foreign_paths() {
+        let (data, work) = pair();
+        std::fs::create_dir_all(work.path().join("app/src")).unwrap();
+        let agent = Agent::open(data.path(), &[work.path().to_path_buf()])
+            .unwrap()
+            .unwrap();
+        assert!(handles("agent_list_folders"));
+        let list = |p: &str| agent.call("agent_list_folders", &json!({ "path": p }));
+        let root = agent.roots[0].to_string_lossy().into_owned();
+        let name = agent.roots[0].file_name().unwrap().to_string_lossy().into_owned();
+        let sep = std::path::MAIN_SEPARATOR;
+        assert!(list(&root).is_ok());
+        assert!(list(&format!("{root}{sep}app{sep}src")).is_ok());
+        assert!(agent.call("agent_list_folders", &json!({})).is_ok());
+        for p in [
+            format!("{root}{sep}app{sep}.."),
+            format!("{root}{sep}..{sep}{name}"),
+            format!("{root}{sep}.{sep}app"),
+            "app".to_owned(),
+            "..".to_owned(),
+            r"\\server\share\x".to_owned(),
+            "//server/share/x".to_owned(),
+            r"\\?\UNC\server\share".to_owned(),
+            r"\\.\PhysicalDrive0".to_owned(),
+            format!("{root}\u{0}x"),
+            format!("{root}{sep}{}", "a".repeat(2000)),
+        ] {
+            assert_eq!(list(&p).unwrap_err().status, 400, "{p}");
+        }
+        // Hidden and dependency folders are not listed, nor opened by name.
+        std::fs::create_dir_all(work.path().join(".secret/inner")).unwrap();
+        std::fs::create_dir_all(work.path().join("node_modules/pkg")).unwrap();
+        for p in [
+            format!("{root}{sep}.secret"),
+            format!("{root}{sep}.secret{sep}inner"),
+            format!("{root}{sep}node_modules{sep}pkg"),
+        ] {
+            assert_eq!(list(&p).unwrap_err().status, 403, "{p}");
+        }
+        let foreign = data.path().canonicalize().unwrap();
+        let foreign = foreign.to_string_lossy().trim_start_matches(r"\\?\").to_owned();
+        assert_eq!(list(&foreign).unwrap_err().status, 403);
+        #[cfg(windows)]
+        for p in [r"C:\Windows", r"\\?\C:\Windows"] {
+            assert_eq!(list(p).unwrap_err().status, 403, "{p}");
+        }
+    }
+
+    #[test]
+    fn list_folders_skips_links_that_leave_the_roots() {
+        let (data, work) = pair();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(work.path().join("app")).unwrap();
+        let link = work.path().join("escape");
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_dir(outside.path(), &link).is_ok()
+            || std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(&link)
+                .arg(outside.path())
+                .output()
+                .is_ok_and(|o| o.status.success());
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(outside.path(), &link).is_ok();
+        assert!(made, "could not create a link to test with");
+        let agent = Agent::open(data.path(), &[work.path().to_path_buf()])
+            .unwrap()
+            .unwrap();
+        let root = agent.roots[0].to_string_lossy().into_owned();
+        let listed = agent.call("agent_list_folders", &json!({ "path": root })).unwrap();
+        let names: Vec<&str> = listed["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec!["app"]);
+        let through = format!("{root}{}escape", std::path::MAIN_SEPARATOR);
+        assert_eq!(
+            agent
+                .call("agent_list_folders", &json!({ "path": through }))
+                .unwrap_err()
+                .status,
+            403
+        );
+    }
+
+    #[test]
+    fn list_folders_is_rate_limited() {
+        let budget = Budget::default();
+        for _ in 0..Budget::LIMIT {
+            assert!(budget.take());
+        }
+        assert!(!budget.take());
     }
 
     #[test]
@@ -968,5 +1333,53 @@ mod tests {
             // Refused by shape or by policy; it never reaches the store.
             assert!(outcome.is_err(), "{input}");
         }
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(ok, "git {args:?}");
+    }
+
+    #[test]
+    fn project_reads_stay_inside_the_roots() {
+        let (data, work) = pair();
+        let app = work.path().join("app");
+        std::fs::create_dir_all(&app).unwrap();
+        git(&app, &["init", "-q"]);
+        std::fs::write(app.join("a.txt"), "one
+").unwrap();
+        let agent = Agent::open(data.path(), &[work.path().to_path_buf()]).unwrap().unwrap();
+        for c in ["folder_trust_status", "project_tooling", "agent_git_status", "agent_git_blame"] {
+            assert!(handles(c), "{c}");
+        }
+        let app_s = app.to_string_lossy().into_owned();
+        let status = agent.call("agent_git_status", &json!({ "project": app_s, "scope": "all" })).unwrap();
+        assert!(status.to_string().contains("a.txt"), "{status}");
+        assert_eq!(agent.call("agent_is_git_repo", &json!({ "folder": app_s })).unwrap(), json!(true));
+        assert!(agent.call("folder_trust_status", &json!({ "folder": app_s })).is_ok());
+        assert!(agent.call("project_tooling", &json!({ "folder": app_s })).is_ok());
+        // A path that climbs out of the repository is refused.
+        let climb = agent.call("agent_git_head_file", &json!({ "project": app_s, "path": "../x" }));
+        assert_eq!(climb.unwrap_err().status, 400);
+        // A folder outside the roots is refused.
+        let outside = data.path().to_string_lossy().into_owned();
+        let refused = agent.call("agent_git_status", &json!({ "project": outside, "scope": "all" }));
+        assert_eq!(refused.unwrap_err().status, 403);
+        // A root inside a larger repository does not show that repository.
+        let (data2, outer) = pair();
+        git(outer.path(), &["init", "-q"]);
+        let inner = outer.path().join("inner");
+        std::fs::create_dir_all(&inner).unwrap();
+        let nested = Agent::open(data2.path(), std::slice::from_ref(&inner)).unwrap().unwrap();
+        let inner_s = inner.to_string_lossy().into_owned();
+        let above = nested.call("agent_git_status", &json!({ "project": inner_s, "scope": "all" }));
+        assert_eq!(above.unwrap_err().status, 403);
     }
 }

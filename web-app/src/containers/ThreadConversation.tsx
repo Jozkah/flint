@@ -40,10 +40,20 @@ import {
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
 import { forkThread } from '@/lib/forkThread'
 import { ConversationFindBar } from '@/containers/ConversationFindBar'
-import { closeFindForThread, useConversationFind } from '@/hooks/useConversationFind'
+import {
+  useConversationFind,
+  useThreadFind,
+} from '@/hooks/useConversationFind'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
+import { useMessageWindow } from '@/hooks/useMessageWindow'
+import type { StickToBottomContext } from 'use-stick-to-bottom'
+import {
+  resolvePerfReduced,
+  streamingThrottleMs,
+  usePerfDetection,
+} from '@/lib/perfMode'
 
 import { useMessages } from '@/hooks/useMessages'
 import { getActiveMessages } from '@/hooks/useActiveMessages'
@@ -70,11 +80,15 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
+  ConversationLoadEarlier,
 } from '@/components/ai-elements/conversation'
 import { generateId } from 'ai'
-import { chatFollowUp, nextChatTurn } from '@/lib/chatSteering'
+import { chatFollowUp, nextChatTurn, stopChatTurn } from '@/lib/chatSteering'
 import type { UIMessage } from '@ai-sdk/react'
 import { useChatSessions } from '@/stores/chat-session-store'
+import { isServedByFlint } from '@/lib/platform/utils'
+import { threadChanged, useRefreshWhenVisible } from '@/lib/threadRefresh'
+import { followSentMessage } from '@/lib/followSentMessage'
 import {
   convertThreadMessagesToUIMessages,
   extractContentPartsFromUIMessage,
@@ -165,6 +179,7 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import {
@@ -257,6 +272,7 @@ import {
   useConversationPane,
 } from '@/hooks/useConversationPane'
 import { ACTIVE_PANE_RING } from '@/hooks/useCoworkPane'
+import { effectiveContextLength } from '@/lib/engineModels'
 import {
   paneDraftScope,
   useSplitConversation,
@@ -425,14 +441,8 @@ export function ThreadConversation({
 
   const titleAbortRef = useRef<AbortController | null>(null)
   // Find in chat: the bar belongs to the conversation that is active.
-  const findOpen = useConversationFind((s) => s.open)
-  const findSeed = useConversationFind((s) =>
-    s.seed && s.seed.threadId === threadId ? s.seed : null
-  )
+  const { findOpen, findSeed, findWaitsForOther } = useThreadFind(threadId)
   const findRootRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    closeFindForThread(threadId)
-  }, [threadId])
 
   // Steering (Steer now / Ctrl+Enter in the composer) is delivered at the
   // tool loop's safe point; see chatFollowUp. Set once `sendMessage` exists.
@@ -615,6 +625,11 @@ export function ThreadConversation({
   const continueReplaceIdRef = useRef<string | null>(null)
 
   // Use the AI SDK chat hook
+  const performanceMode = useInterfaceSettings((s) => s.performanceMode)
+  const perfReduced = usePerfDetection((s) =>
+    resolvePerfReduced(performanceMode, s.detection)
+  )
+  const streamingThrottle = streamingThrottleMs(perfReduced)
   const {
     messages: chatMessages,
     status,
@@ -632,7 +647,8 @@ export function ThreadConversation({
     sessionTitle: thread?.title,
     systemMessage,
     resolveModelSelection: isSplit ? resolvePaneModel : undefined,
-    experimental_throttle: 50,
+    // One UI update per 50 ms of tokens (100 ms in reduced performance mode).
+    experimental_throttle: streamingThrottle,
     onFinish: ({ message, messages: finishedMessages, isAbort, isError, isDisconnect }) => {
       const msgMeta = message.metadata as Record<string, unknown> | undefined
       const finishReason = msgMeta?.finishReason as string | undefined
@@ -1594,6 +1610,31 @@ export function ThreadConversation({
   const hasBannerError = !!(oomError || backendError || contextLimitError)
   const effectiveStatus = hasBannerError ? 'ready' : status
 
+  // Only the tail of a long transcript is mounted; see useMessageWindow.
+  const messageWindow = useMessageWindow(chatMessages.length, threadId)
+  const revealMessage = messageWindow.reveal
+  const stickRef = useRef<StickToBottomContext>(null)
+  const revealMessageId = useCallback(
+    (id: string) => {
+      const at = chatMessages.findIndex((m) => m.id === id)
+      if (at < 0) return
+      // Mounting earlier messages grows the list; stop following the bottom
+      // first, or the find jump is undone by the stick-to-bottom resize.
+      stickRef.current?.stopScroll()
+      revealMessage(at)
+    },
+    [chatMessages, revealMessage]
+  )
+
+  // Set on send; once the sent message is in the list, the view goes to it.
+  const followSentRef = useRef(false)
+  useEffect(() => {
+    if (!followSentRef.current) return
+    if (chatMessages[chatMessages.length - 1]?.role !== 'user') return
+    followSentRef.current = false
+    followSentMessage(stickRef.current)
+  }, [chatMessages])
+
   // Kept as of the last commit, so leaving this conversation while split
   // forgets exactly its own runtime entries (cleanups run before new effects).
   useEffect(() => {
@@ -1834,6 +1875,33 @@ export function ThreadConversation({
       )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, serviceHub])
+
+  // X01: in the browser `flint serve` serves, another tab or device may have
+  // added to this thread. Read it again when this page comes back into view,
+  // and show the server's copy when it differs and nothing is streaming here.
+  useRefreshWhenVisible(isServedByFlint(), () => {
+    if (useChatSessions.getState().sessions[threadId]?.isStreaming) return
+    void serviceHub
+      .messages()
+      .fetchMessages(threadId)
+      .then((fetched) => {
+        if (useChatSessions.getState().sessions[threadId]?.isStreaming) return
+        const shown = useMessages.getState().getMessages(threadId)
+        if (!threadChanged(shown, fetched)) return
+        setMessages(threadId, fetched)
+        const activeRootId = (
+          useThreads.getState().threads[threadId]?.metadata as
+            | Record<string, unknown>
+            | undefined
+        )?.activeRootId as string | undefined
+        setChatMessages(
+          convertThreadMessagesToUIMessages(computeActivePath(fetched, activeRootId))
+        )
+      })
+      .catch(() => {
+        // Unreachable: the page keeps what it shows.
+      })
+  })
 
   useEffect(() => {
     return () => {
@@ -2304,6 +2372,9 @@ export function ThreadConversation({
       files?: Array<{ type: string; mediaType: string; url: string }>
     ) => {
       clearBannerErrors()
+      // C14: what was sent is shown, even from a view above the end (a fork).
+      followSentMessage(stickRef.current)
+      followSentRef.current = true
       await processAndSendMessage(text, files)
     },
     [processAndSendMessage, clearBannerErrors]
@@ -2408,7 +2479,9 @@ export function ThreadConversation({
   const handleFork = useCallback(
     async (messageId: string) => {
       if (!threadId) return
-      const forkedId = await forkThread(threadId, messageId)
+      // A message off the shown branch fails here instead of forking another
+      // branch in its place.
+      const forkedId = await forkThread(threadId, messageId).catch(() => null)
       if (!forkedId) {
         toast.error(t('chat:fork.failed'))
         return
@@ -2569,8 +2642,9 @@ export function ThreadConversation({
     const model = provider.models[modelIndex]
 
     // Increase context length in steps: <8192 -> 8192 -> 32768 -> x1.5
-    const currentCtxLen =
-      (model.settings?.ctx_len?.controller_props?.value as number) ?? 8192
+    // A blank Context Size runs at the provider's Default context size, so
+    // step up from that, not from 8192.
+    const currentCtxLen = effectiveContextLength(model, provider) ?? 8192
     const maxCtxLen =
       (model.settings?.ctx_len?.controller_props?.max as number) || 131072
 
@@ -3001,9 +3075,14 @@ export function ThreadConversation({
   const projectChip = (
     <>
       {groupLabel && (
-        <Chip className="hidden max-w-48 md:inline-flex" title={groupLabel}>
-          <span className="truncate">{groupLabel}</span>
-        </Chip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Chip className="hidden max-w-48 md:inline-flex">
+              <span className="truncate">{groupLabel}</span>
+            </Chip>
+          </TooltipTrigger>
+          <TooltipContent>{groupLabel}</TooltipContent>
+        </Tooltip>
       )}
     </>
   )
@@ -3216,23 +3295,35 @@ export function ThreadConversation({
           }
         >
           {/* Inside the chat column, so it never covers the Details panel. */}
-          {findOpen && isActive && (
+          {findOpen && isActive && !findWaitsForOther && (
             <ConversationFindBar
               messages={chatMessages}
               root={() => findRootRef.current}
               seed={findSeed}
               onClose={() => useConversationFind.getState().setOpen(false)}
+              reveal={revealMessageId}
+              renderedFrom={messageWindow.start}
             />
           )}
           {/* 13.5px at the default size; the message zoom scales it. */}
-          <Conversation className="absolute inset-0 text-start text-[calc(var(--text-base)*0.84375)] leading-[1.6] text-fg-2">
+          <Conversation
+            contextRef={stickRef}
+            className="absolute inset-0 text-start text-[calc(var(--text-base)*0.84375)] leading-[1.6] text-fg-2"
+          >
             <ConversationContent
               className={cn(
                 'transcript-list mx-auto w-full min-w-0 max-w-[calc(780px+2.5rem)] pt-[22px] pb-4',
                 isSplit ? 'px-4' : 'px-5'
               )}
             >
-              {chatMessages.map((message, index) => {
+              {messageWindow.hasEarlier && (
+                <ConversationLoadEarlier
+                  hidden={messageWindow.start}
+                  onLoad={messageWindow.loadEarlier}
+                />
+              )}
+              {chatMessages.slice(messageWindow.start).map((message, i) => {
+                const index = messageWindow.start + i
                 const isLastMessage = index === chatMessages.length - 1
                 const isFirstMessage = index === 0
                 // A banner error stands in for the failed assistant turn:
@@ -3482,9 +3573,15 @@ export function ThreadConversation({
             groupOptions
             onSubmit={handleSubmit}
             onStop={() => {
-              // Stop is for the whole turn, subagents it started included.
-              stopChatDelegation(threadId)
-              stop()
+              // Stop is for the whole turn: subagents it started, and a tool
+              // call still running, whose cancelled result must not be sent
+              // back to the model for another reply.
+              stopChatTurn({
+                toolAbort: toolCallAbortController,
+                stopDelegation: () => stopChatDelegation(threadId),
+                stopStream: stop,
+                cancelToolCall: () => useAppState.getState().cancelToolCalls?.[threadId]?.(),
+              })
             }}
             chatStatus={effectiveStatus}
             // Named, not inferred from the current thread: in a split the

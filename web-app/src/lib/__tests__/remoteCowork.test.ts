@@ -4,10 +4,16 @@ import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useMessageQueue } from '@/stores/message-queue-store'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import {
+  allowedRemoteModes,
   isRemoteSession,
+  loadRemoteTranscript,
   mergeRemoteRows,
+  remoteSessionTitle,
   sendRemoteTurn,
+  serverPageMode,
+  setRemoteMode,
   startRemoteSession,
 } from '../remoteCowork'
 import { SseDecoder, subscribeRun, type LiveEnvelope } from '../remoteRunner'
@@ -148,6 +154,48 @@ describe('remote sessions in the Cowork stores', () => {
     expect(session.remote).toBe(true)
     expect(isRemoteSession(SID)).toBe(true)
     expect(useCoworkSessions.getState().currentId).toBe(SID)
+  })
+
+  it('sends the browser-selected model with a new session, or the one asked for', async () => {
+    useModelProvider.setState({
+      selectedProvider: 'v100',
+      selectedModel: { id: 'qwen-coder' } as never,
+    })
+    const bodies: Array<Record<string, unknown>> = []
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      if (url.endsWith('agent_server_info')) return json(ready)
+      bodies.push(JSON.parse(String(init?.body ?? '{}')))
+      return json({ id: SID, folder: '/srv/app', model: 'qwen-coder', access: 'ask', status: 'idle', lastSeq: 0 })
+    }
+    await startRemoteSession({ folder: '/srv/app' }, fetchImpl)
+    expect(bodies[0].model).toBe('qwen-coder')
+    expect(useCoworkSessions.getState().sessions[0].remoteModel).toBe('qwen-coder')
+    await startRemoteSession({ folder: '/srv/app', model: 'other' }, fetchImpl)
+    expect(bodies[1].model).toBe('other')
+    // A local engine's model is not one the server runs: left to its default.
+    useModelProvider.setState({ selectedProvider: 'llamacpp', selectedModel: { id: 'local' } as never })
+    await startRemoteSession({ folder: '/srv/app' }, fetchImpl)
+    expect(bodies[2]).not.toHaveProperty('model')
+  })
+
+  it('keeps the server status and model of each server session', () => {
+    mergeRemoteRows([
+      { id: SID, title: 'S', folder: '/srv/a', mode: null, model: 'm1', updated: 5, status: 'running', campaign: null },
+    ])
+    let row = useCoworkSessions.getState().sessions.find((s) => s.id === SID)!
+    expect(row.remoteStatus).toBe('running')
+    expect(row.remoteModel).toBe('m1')
+    mergeRemoteRows([
+      { id: SID, title: 'S', folder: '/srv/a', mode: null, model: 'm2', updated: 6, status: 'awaiting_approval', campaign: null },
+    ])
+    row = useCoworkSessions.getState().sessions.find((s) => s.id === SID)!
+    expect(row.remoteStatus).toBe('awaiting_approval')
+    expect(row.remoteModel).toBe('m2')
+    // An unnamed server session reports its id as its title: kept readable.
+    mergeRemoteRows([
+      { id: SID, title: SID, folder: '/srv/a', mode: null, model: 'm2', updated: 7, status: 'idle', campaign: null },
+    ])
+    expect(useCoworkSessions.getState().sessions.find((s) => s.id === SID)!.title).toBe('S')
   })
 
   it('mirrors a server list without touching local sessions', () => {
@@ -319,5 +367,119 @@ describe('remote sessions in the Cowork stores', () => {
     await until(() => !useCoworkRun.getState().runs[SID])
     expect(useCoworkRun.getState().outcomes[SID]).toMatchObject({ stoppedBy: 'error' })
     expect(useCoworkRun.getState().outcomes[SID].errorText).toMatch(/at most 1/)
+  })
+})
+
+describe('server session mode and title (round 5 W12-W14)', () => {
+  const remoteRow = (extra: Record<string, unknown> = {}) => ({
+    id: SID,
+    title: 'S',
+    folder: '/srv/app',
+    turns: [],
+    messages: [],
+    updated: 1,
+    remote: true,
+    ...extra,
+  })
+
+  it.each([
+    ['review', 'read'],
+    ['ask', 'ask'],
+    ['auto', 'auto'],
+  ] as const)('sends %s to the server as access %s and shows what it answered', async (mode, access) => {
+    useCoworkSessions.setState({ sessions: [remoteRow({ remoteAccess: 'ask' }) as never] })
+    const bodies: Array<[string, Record<string, unknown>]> = []
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      bodies.push([url.split('/').pop()!, JSON.parse(String(init?.body ?? '{}'))])
+      return json({ access })
+    }
+    await setRemoteMode(SID, mode, fetchImpl)
+    expect(bodies).toEqual([['agent_run_set_mode', { id: SID, access }]])
+    const row = useCoworkSessions.getState().sessions[0]
+    expect(row.remoteAccess).toBe(access)
+    expect(serverPageMode(row)).toBe(mode)
+  })
+
+  it('syncs a mode picked before the first message before the run starts', async () => {
+    useCoworkSessions.setState({
+      sessions: [remoteRow({ mode: 'review', remoteAccess: 'ask' }) as never],
+    })
+    const commands: string[] = []
+    let sentAccess: unknown
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      if (url.includes('/events')) return new Response('no', { status: 404 })
+      const command = url.split('/').pop()!
+      commands.push(command)
+      if (command === 'agent_run_set_mode') {
+        sentAccess = JSON.parse(String(init?.body)).access
+        return json({ access: 'read' })
+      }
+      if (command === 'agent_run_start') return new Response('stop here', { status: 429 })
+      return json({ id: SID, title: 'S', folder: '/srv/app', turns: [] })
+    }
+    await sendRemoteTurn(SID, 'go', { fetchImpl })
+    await until(() => !useCoworkRun.getState().runs[SID])
+    expect(sentAccess).toBe('read')
+    expect(commands.indexOf('agent_run_set_mode')).toBeGreaterThanOrEqual(0)
+    expect(commands.indexOf('agent_run_set_mode')).toBeLessThan(commands.indexOf('agent_run_start'))
+    expect(useCoworkSessions.getState().sessions[0].remoteAccess).toBe('read')
+  })
+
+  it('does not start the run when the server refuses the mode', async () => {
+    useCoworkSessions.setState({ sessions: [remoteRow({ mode: 'auto', remoteAccess: 'ask' }) as never] })
+    const commands: string[] = []
+    const fetchImpl = async (url: string) => {
+      const command = url.split('/').pop()!
+      commands.push(command)
+      if (command === 'agent_run_set_mode') return new Response('start it with --agent-allow-bypass', { status: 403 })
+      return json({ turnId: 't', after: 0 })
+    }
+    await sendRemoteTurn(SID, 'go', { fetchImpl })
+    await until(() => !useCoworkRun.getState().runs[SID])
+    expect(commands).not.toContain('agent_run_start')
+    expect(useCoworkRun.getState().outcomes[SID]).toMatchObject({ stoppedBy: 'error' })
+  })
+
+  it('shows the server access, defaulting to ask, never auto', () => {
+    expect(serverPageMode(undefined)).toBe('ask')
+    expect(serverPageMode({ remote: true })).toBe('ask')
+    expect(serverPageMode({ remote: true, remoteAccess: 'read', mode: 'auto' })).toBe('review')
+    mergeRemoteRows([
+      { id: SID, title: 'S', folder: '/srv/a', mode: null, model: null, updated: 5, status: 'idle', campaign: null, access: 'read' },
+    ])
+    expect(serverPageMode(useCoworkSessions.getState().sessions[0])).toBe('review')
+  })
+
+  it('offers auto and bypass only when the server allows them', () => {
+    expect(allowedRemoteModes({ allowBypass: false })).toEqual(['review', 'ask'])
+    expect(allowedRemoteModes(null)).toEqual(['review', 'ask'])
+    expect(allowedRemoteModes({ allowBypass: true })).toEqual(['review', 'ask', 'auto', 'bypass'])
+  })
+
+  it('passes the chosen access when a session is created and records it', async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      if (url.endsWith('agent_server_info')) return json({ agent: true, runsSessions: true, missing: [] })
+      bodies.push(JSON.parse(String(init?.body ?? '{}')))
+      return json({ id: SID, folder: '/srv/app', model: 'm', access: 'read', status: 'idle', lastSeq: 0 })
+    }
+    await startRemoteSession({ folder: '/srv/app', access: 'read' }, fetchImpl)
+    expect(bodies[0].access).toBe('read')
+    const row = useCoworkSessions.getState().sessions[0]
+    expect(row.remoteAccess).toBe('read')
+    expect(serverPageMode(row)).toBe('review')
+  })
+
+  it('never titles a session with its bare id', async () => {
+    mergeRemoteRows([
+      { id: SID, title: SID, folder: '/srv/a', mode: null, model: null, updated: 5, status: 'idle', campaign: null },
+    ])
+    expect(useCoworkSessions.getState().sessions[0].title).toBe('New session')
+    const fetchImpl = async () =>
+      json({ id: SID, title: SID, folder: '/srv/a', turns: [{ role: 'user', content: 'Fix the login bug\nplease' }] })
+    await loadRemoteTranscript(SID, fetchImpl)
+    expect(useCoworkSessions.getState().sessions[0].title).toBe('Fix the login bug')
+    expect(remoteSessionTitle(SID, 'Named', [])).toBe('Named')
+    expect(remoteSessionTitle(SID, '', [])).toBe('New session')
   })
 })

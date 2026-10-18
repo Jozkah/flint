@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// The desktop registry; the browser variant is settingsSearch.browser.test.ts.
+vi.mock('@/lib/platform/utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/platform/utils')>()),
+  isPlatformTauri: () => true,
+}))
 import {
   SETTINGS_PAGES,
   SETTINGS_ITEMS,
   buildSettingsIndex,
+  providerSettingAnchor,
   searchSettings,
   WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
   type ProviderForIndex,
@@ -143,6 +150,9 @@ describe('buildSettingsIndex', () => {
     expect(setting.title).toBe('API Key')
     expect(setting.route).toBe(route.settings.providers)
     expect(setting.params).toEqual({ providerName: 'openai' })
+    // Opening it scrolls to and highlights the row on the provider page.
+    expect(setting.anchor).toBe(providerSettingAnchor('openai', 'api-key'))
+    expect(setting.anchor).toBe('provider-setting-openai-api-key')
   })
 
   it('finds a provider by name once it is indexed', () => {

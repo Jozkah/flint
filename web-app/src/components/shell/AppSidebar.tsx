@@ -1,3 +1,5 @@
+import { isServedByFlint } from '@/lib/platform/utils'
+import { useServerConnection } from '@/lib/serverConnection'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useSidebarGlide } from '@/components/shell/useSidebarGlide'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
@@ -327,8 +329,15 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   }
 
   const hiddenNavItems = useInterfaceSettings((s) => s.hiddenNavItems)
+  // The browser client of `flint serve` has no route for these: they drive
+  // the desktop machine (extensions, OS schedules, the local API server).
+  const served = isServedByFlint()
   const shown = (rows: LinkRow[]) =>
-    rows.filter((row) => !isSidebarItemHidden(hiddenNavItems, row.id))
+    rows.filter(
+      (row) =>
+        !isSidebarItemHidden(hiddenNavItems, row.id) &&
+        !(served && DESKTOP_ONLY_ROWS.has(row.id))
+    )
 
   const newChat = () => {
     useAgentMode.getState().removeThread(TEMPORARY_CHAT_ID)
@@ -543,7 +552,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           data-testid="app-sidebar"
           data-tab={tab}
           onKeyDown={moveFocusWithArrows}
-          className="relative -mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 pb-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] hover:[scrollbar-color:var(--border-strong)_transparent] [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border-strong"
+          // The last rows fade out at the bottom edge instead of being cut through
+          // a label; the extra bottom padding lets the final row scroll clear of it.
+          className="relative -mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto scroll-pb-6 px-3 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)] [scrollbar-color:transparent_transparent] [scrollbar-width:thin] hover:[scrollbar-color:var(--border-strong)_transparent] [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border-strong"
         >
           {tab === 'chat' ? (
             <>
@@ -605,7 +616,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const loaded = useAppState((s) => s.activeModels.length)
+  const reportedLoaded = useAppState((s) => s.activeModels.length)
+  // A server that stopped answering has no models loaded as far as this page
+  // can tell: the card says so instead of keeping the last count, green.
+  const offline = useServerConnection((s) => s.state === 'offline')
+  const loaded = offline ? 0 : reportedLoaded
   const serverStatus = useAppState((s) => s.serverStatus)
   const serverOn = serverStatus === 'running'
   const go = (to: string) => {
@@ -634,8 +649,16 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
             <b className="descender-safe truncate text-[0.8125rem] leading-none font-medium text-foreground">
               {t('common:shell.local')}
             </b>
-            <small className="descender-safe truncate text-[11px] leading-none text-muted-foreground">
-              {t('common:statusBar.modelsLoaded', { count: loaded })}
+            <small
+              data-testid="shell-status-detail"
+              className={cn(
+                'descender-safe truncate text-[11px] leading-none',
+                offline ? 'text-warning' : 'text-muted-foreground'
+              )}
+            >
+              {offline
+                ? t('common:serverConnection.statusOffline')
+                : t('common:statusBar.modelsLoaded', { count: loaded })}
             </small>
           </span>
           <Icon name="chevron-selector" />
@@ -650,6 +673,7 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
             {t('common:statusBar.modelsLoaded', { count: loaded })}
           </span>
         </DropdownMenuItem>
+{!isServedByFlint() && (
         <DropdownMenuItem onSelect={() => go(route.settings.local_api_server)}>
           <Server />
           <span className="flex-1">{t('common:shell.localApi')}</span>
@@ -657,6 +681,7 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
             {serverOn ? t('common:shell.on') : t('common:shell.off')}
           </span>
         </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => go(route.settings.general)}>
           <Settings />
@@ -666,6 +691,14 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
     </DropdownMenu>
   )
 }
+
+const DESKTOP_ONLY_ROWS: ReadonlySet<string> = new Set([
+  'discover',
+  'archive',
+  'extensions',
+  'schedules',
+  'local-api',
+])
 
 export function AppSidebar() {
   const { t } = useTranslation()
@@ -806,7 +839,7 @@ export function ResizableSidebar({
           <span
             aria-hidden
             className={cn(
-              'h-full w-0.5 bg-transparent transition-colors duration-150 group-hover/resize:bg-border-strong group-focus-visible/resize:bg-ring',
+              'h-full w-0.5 bg-transparent transition-colors duration-150 group-hover/resize:bg-border-strong group-focus-visible/resize:w-[3px] group-focus-visible/resize:bg-ring',
               resizing && 'bg-ring'
             )}
           />

@@ -5,6 +5,7 @@ import {
   sanitizeMessageZoom,
   useInterfaceSettings,
 } from '../useInterfaceSettings'
+import { SIDEBAR_DEFAULTS_VERSION, hiddenForPreset } from '@/lib/sidebarItems'
 
 // Mock constants
 vi.mock('@/constants/localStorage', () => ({
@@ -50,7 +51,7 @@ describe('useInterfaceSettings', () => {
     expect(result.current.fontSize).toBe('16px')
     expect(result.current.accent).toEqual({ preset: 'neutral' })
     expect(result.current.reduceMotion).toBe(false)
-    expect(result.current.notificationPosition).toBe('top-right')
+    expect(result.current.notificationPosition).toBe('bottom-right')
     expect(typeof result.current.setFontSize).toBe('function')
     expect(typeof result.current.setAccent).toBe('function')
     expect(typeof result.current.resetInterface).toBe('function')
@@ -161,7 +162,7 @@ describe('useInterfaceSettings', () => {
     expect(result.current.fontSize).toBe('16px')
     expect(result.current.accent).toEqual({ preset: 'neutral' })
     expect(result.current.reduceMotion).toBe(false)
-    expect(result.current.notificationPosition).toBe('top-right')
+    expect(result.current.notificationPosition).toBe('bottom-right')
   })
 
   it('toggles reduce motion and resets it with the interface', () => {
@@ -328,5 +329,41 @@ describe('useInterfaceSettings', () => {
       })
       expect(result.current.fontSize).toBe('18px')
     })
+  })
+})
+
+describe('sidebar defaults in the store', () => {
+  const s = () => useInterfaceSettings.getState()
+  beforeEach(() => {
+    useInterfaceSettings.setState({ hiddenNavItems: [], sidebarDefaultsVersion: 0 })
+  })
+
+  it('trims a new install to the minimal sidebar once', () => {
+    act(() => s().resolveNavDefaults(false))
+    expect(s().hiddenNavItems).toEqual(hiddenForPreset('minimal'))
+    expect(s().sidebarDefaultsVersion).toBe(SIDEBAR_DEFAULTS_VERSION)
+    // The person shows everything again; a later boot does not undo it.
+    act(() => s().applyNavPreset('everything'))
+    act(() => s().resolveNavDefaults(false))
+    expect(s().hiddenNavItems).toEqual([])
+  })
+
+  it('leaves an existing install on the full sidebar', () => {
+    act(() => s().resolveNavDefaults(true))
+    expect(s().hiddenNavItems).toEqual([])
+    expect(s().sidebarDefaultsVersion).toBe(SIDEBAR_DEFAULTS_VERSION)
+  })
+
+  it('applies a preset and keeps ids from a newer build', () => {
+    useInterfaceSettings.setState({ hiddenNavItems: ['from-the-future', 'logs'] })
+    act(() => s().applyNavPreset('standard'))
+    expect(s().hiddenNavItems).toEqual(['from-the-future', ...hiddenForPreset('standard')])
+  })
+
+  it('Reset keeps the decision, so the next boot does not trim again', () => {
+    act(() => s().resolveNavDefaults(false))
+    act(() => s().resetInterface())
+    expect(s().hiddenNavItems).toEqual([])
+    expect(s().sidebarDefaultsVersion).toBe(SIDEBAR_DEFAULTS_VERSION)
   })
 })

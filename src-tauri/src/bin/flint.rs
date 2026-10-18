@@ -313,6 +313,11 @@ enum Commands {
         /// Where the background starter collects the first-run credential
         #[arg(long, hide = true)]
         credential_file: Option<std::path::PathBuf>,
+        /// A reverse proxy on this machine (Tailscale Serve, Caddy) fronts the
+        /// server: believe its X-Forwarded-For on loopback connections when
+        /// rate-limiting sign-in. Off by default
+        #[arg(long)]
+        trust_proxy: bool,
     },
     /// Stop the `flint serve` running on this data folder
     Stop {
@@ -2180,6 +2185,9 @@ async fn run() {
     tauri_plugin_agent_tools::folder_trust::set_store(
         app_lib::core::app::commands::resolve_jan_data_folder().join("trusted-folders.json"),
     );
+    tauri_plugin_agent_tools::folder_trust::close_migration_if_fresh(
+        &app_lib::core::app::commands::resolve_jan_data_folder(),
+    );
 
     // The same toolchain grants the desktop app records, so a CLI run's
     // sandbox can use what the user allowed there.
@@ -2255,7 +2263,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy } => {
             // `--data-dir` was applied in `main`, before any thread started.
             let _ = data_dir;
             let assets = assets_dir.unwrap_or_else(|| {
@@ -2317,6 +2325,7 @@ async fn run() {
                     allowed_origins,
                     llama_worker,
                     credential_file,
+                    trust_proxy,
                 },
             ).await {
                 eprintln!("Error: {error}");
