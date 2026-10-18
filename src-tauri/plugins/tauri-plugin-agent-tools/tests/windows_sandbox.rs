@@ -454,9 +454,12 @@ fn the_selected_shell_writes_its_worktree_and_not_the_checkout() {
     std::fs::create_dir_all(&checkout).expect("checkout");
     let inside = worktree.join("made-by-the-shell.txt");
     let outside = checkout.join("must-not-exist.txt");
+    // .NET calls, not cmdlets: on the hosted runner a confined Windows
+    // PowerShell cannot autoload its Management module, and what is under test
+    // here is the ACL, not module loading.
     let script = format!(
-        "Set-Content -LiteralPath '{}' -Value inside; \
-         try {{ Set-Content -LiteralPath '{}' -Value outside -ErrorAction Stop; 'wrote-outside' }} \
+        "[IO.File]::WriteAllText('{}', 'inside'); \
+         try {{ [IO.File]::WriteAllText('{}', 'outside'); 'wrote-outside' }} \
          catch {{ 'refused-outside' }}",
         inside.display(),
         outside.display()
@@ -498,8 +501,9 @@ fn a_worktrees_jan_is_unreadable_from_the_sandbox() {
     std::fs::write(&policy, "policy-marker-124").expect("policy");
     let source = worktree.join("main.rs");
     std::fs::write(&source, "source-marker-124").expect("source");
+    // .NET calls, not cmdlets (see the test above).
     let script = format!(
-        "Get-Content -LiteralPath '{}'; try {{ Get-Content -LiteralPath '{}' -ErrorAction Stop }} catch {{ 'refused-jan' }}",
+        "[IO.File]::ReadAllText('{}'); try {{ [IO.File]::ReadAllText('{}') }} catch {{ 'refused-jan' }}",
         source.display(),
         policy.display()
     );
