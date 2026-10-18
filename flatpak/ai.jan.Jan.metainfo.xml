@@ -69,7 +69,7 @@
   </keywords>
 
   <releases>
-    <release version="1.0.0" date="2026-10-18">
+    <release version="1.0.0" date="2026-10-19">
       <description>
         <p>Flint 1.0: compare rooms with Apply, conversation mentions, a prompt library, folder trust and scoped approvals, an optional CUDA engine add-on, Amazon Bedrock, a headless server with a browser client, and broad speed and stability work</p>
       </description>
