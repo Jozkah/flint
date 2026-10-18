@@ -1,6 +1,7 @@
 #[cfg(feature = "tauri")]
 mod commands;
 pub mod provider;
+pub mod ratelimit;
 
 #[cfg(feature = "tauri")]
 pub use commands::{image_search, web_fetch, web_search, WebSearchError};
