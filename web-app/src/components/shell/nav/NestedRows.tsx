@@ -149,7 +149,7 @@ function NestBlock({
         data-nest-id={root.id}
       >
         {/* Room for the count at the right; the row's own menu covers it on hover. */}
-        <ul className="m-0 list-none p-0 [&_[data-slot=nav-button]]:!pr-9">
+        <ul className="m-0 list-none p-0 [&_[data-active]]:pr-9!">
           {renderRow(root.id)}
         </ul>
         <span
@@ -187,7 +187,7 @@ function NestBlock({
                 title={label}
                 onClick={() => toggle(key)}
                 data-testid="nest-summary"
-                className="h-6 text-[length:calc(var(--ui-font-base)*0.75)]"
+                className="h-6 pl-2 text-[length:calc(var(--ui-font-base)*0.75)]"
               >
                 <FadeText>
                   {expanded ? (
