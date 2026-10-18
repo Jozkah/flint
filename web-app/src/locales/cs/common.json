@@ -2957,5 +2957,28 @@
     "offlineTitle": "Server Flint není dostupný.",
     "offlineBody": "Znovu se připojuje… Co teď uděláte, se nemusí uložit, dokud se server nevrátí.",
     "statusOffline": "Server nedostupný"
+  },
+  "nesting": {
+    "more_one": "{{count}} další vnořená",
+    "more_few": "{{count}} další vnořené",
+    "more_many": "{{count}} dalších vnořených",
+    "more_other": "{{count}} dalších vnořených",
+    "new_one": "{{count}} nová",
+    "new_few": "{{count}} nové",
+    "new_many": "{{count}} nových",
+    "new_other": "{{count}} nových",
+    "working_one": "{{count}} pracuje",
+    "working_few": "{{count}} pracují",
+    "working_many": "{{count}} pracuje",
+    "working_other": "{{count}} pracuje",
+    "waiting_one": "{{count}} čeká",
+    "waiting_few": "{{count}} čekají",
+    "waiting_many": "{{count}} čeká",
+    "waiting_other": "{{count}} čeká",
+    "count_one": "{{count}} vnořená",
+    "count_few": "{{count}} vnořené",
+    "count_many": "{{count}} vnořených",
+    "count_other": "{{count}} vnořených",
+    "fewer": "Zobrazit méně vnořených"
   }
 }

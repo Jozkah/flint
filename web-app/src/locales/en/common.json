@@ -2848,5 +2848,18 @@
     "offlineTitle": "Can't reach the Flint server.",
     "offlineBody": "Reconnecting… What you do now may not be saved until it is back.",
     "statusOffline": "Server unreachable"
+  },
+  "nesting": {
+    "more_one": "{{count}} more nested",
+    "more_other": "{{count}} more nested",
+    "new_one": "{{count}} new",
+    "new_other": "{{count}} new",
+    "working_one": "{{count}} working",
+    "working_other": "{{count}} working",
+    "waiting_one": "{{count}} waiting",
+    "waiting_other": "{{count}} waiting",
+    "count_one": "{{count}} nested",
+    "count_other": "{{count}} nested",
+    "fewer": "Show fewer nested"
   }
 }

@@ -2844,5 +2844,13 @@
     "offlineTitle": "Không thể kết nối tới máy chủ Flint.",
     "offlineBody": "Đang kết nối lại… Những gì bạn làm bây giờ có thể không được lưu cho đến khi máy chủ trở lại.",
     "statusOffline": "Không kết nối được máy chủ"
+  },
+  "nesting": {
+    "more_other": "thêm {{count}} mục lồng",
+    "new_other": "{{count}} mới",
+    "working_other": "{{count}} đang chạy",
+    "waiting_other": "{{count}} đang chờ",
+    "count_other": "{{count}} mục lồng",
+    "fewer": "Thu gọn mục lồng"
   }
 }

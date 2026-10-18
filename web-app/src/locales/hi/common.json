@@ -2850,5 +2850,18 @@
     "offlineTitle": "Flint सर्वर तक नहीं पहुँच पा रहे हैं।",
     "offlineBody": "फिर से जुड़ रहे हैं… सर्वर लौटने तक अभी किया गया काम शायद सहेजा न जाए।",
     "statusOffline": "सर्वर उपलब्ध नहीं"
+  },
+  "nesting": {
+    "more_one": "{{count}} और नेस्टेड",
+    "more_other": "{{count}} और नेस्टेड",
+    "new_one": "{{count}} नया",
+    "new_other": "{{count}} नए",
+    "working_one": "{{count}} चल रहा",
+    "working_other": "{{count}} चल रहे",
+    "waiting_one": "{{count}} प्रतीक्षा में",
+    "waiting_other": "{{count}} प्रतीक्षा में",
+    "count_one": "{{count}} नेस्टेड",
+    "count_other": "{{count}} नेस्टेड",
+    "fewer": "कम नेस्टेड दिखाएँ"
   }
 }

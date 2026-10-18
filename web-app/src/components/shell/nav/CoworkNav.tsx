@@ -94,6 +94,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
 import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
+import { useCoworkNestStatus } from '@/hooks/useNestStatus'
 import { coworkFolderAdapter } from '@/lib/groups/adapters'
 import { addNewItemToGroup } from '@/lib/groups/inherit'
 import { CampaignGroups } from '@/components/shell/nav/CampaignGroups'
@@ -592,6 +593,25 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
     () => new Map(sessions.map((x) => [x.id, x])),
     [sessions]
   )
+  // Forks nest under the session they were forked from (AH-201's
+  // `forkedFrom`). A chat converted to a session has its chat in another
+  // list, and campaign sessions are grouped above, so neither nests here.
+  const listed = useMemo(
+    () => sessions.filter((x) => !claimed.has(x.id)),
+    [sessions, claimed]
+  )
+  const selectedId = onCowork ? (currentId ?? undefined) : undefined
+  const nestStatusOf = useCoworkNestStatus(listed, selectedId)
+  const nest = useMemo(
+    () => ({
+      scope: 'cowork' as const,
+      parentOf: (id: string) => byId.get(id)?.forkedFrom?.sessionId ?? null,
+      updatedOf: (id: string) => byId.get(id)?.updated ?? 0,
+      statusOf: nestStatusOf,
+      selectedId,
+    }),
+    [byId, nestStatusOf, selectedId]
+  )
   const everyById = useMemo(
     () => new Map(allSessions.map((x) => [x.id, x])),
     [allSessions]
@@ -830,6 +850,7 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
         showNewGroup={false}
         newGroupRequest={newGroupRequest}
         onNewGroupRequestHandled={() => setNewGroupRequest(0)}
+        nest={nest}
       />
 
       <StartCampaignDialog

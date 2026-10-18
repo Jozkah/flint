@@ -2958,5 +2958,28 @@
     "offlineTitle": "Nie można połączyć się z serwerem Flint.",
     "offlineBody": "Ponowne łączenie… To, co teraz zrobisz, może nie zostać zapisane, dopóki serwer nie wróci.",
     "statusOffline": "Serwer niedostępny"
+  },
+  "nesting": {
+    "more_one": "jeszcze {{count}} zagnieżdżony",
+    "more_few": "jeszcze {{count}} zagnieżdżone",
+    "more_many": "jeszcze {{count}} zagnieżdżonych",
+    "more_other": "jeszcze {{count}} zagnieżdżonego",
+    "new_one": "{{count}} nowy",
+    "new_few": "{{count}} nowe",
+    "new_many": "{{count}} nowych",
+    "new_other": "{{count}} nowego",
+    "working_one": "{{count}} pracuje",
+    "working_few": "{{count}} pracują",
+    "working_many": "{{count}} pracuje",
+    "working_other": "{{count}} pracuje",
+    "waiting_one": "{{count}} czeka",
+    "waiting_few": "{{count}} czekają",
+    "waiting_many": "{{count}} czeka",
+    "waiting_other": "{{count}} czeka",
+    "count_one": "{{count}} zagnieżdżony",
+    "count_few": "{{count}} zagnieżdżone",
+    "count_many": "{{count}} zagnieżdżonych",
+    "count_other": "{{count}} zagnieżdżonego",
+    "fewer": "Pokaż mniej zagnieżdżonych"
   }
 }

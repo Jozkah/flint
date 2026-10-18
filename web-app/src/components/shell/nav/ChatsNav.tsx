@@ -59,6 +59,8 @@ import {
 } from '@/components/shell/nav-kit'
 import { Skeleton } from '@/components/ui/skeleton'
 import ThreadList, { type ThreadSelection } from '@/containers/ThreadList'
+import { forkParentOf } from '@/lib/forkThread'
+import { buildNestTree } from '@/lib/nesting'
 import { ThreadStatusMark, updatedMs } from '@/containers/ThreadStatusMark'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import type { ProjectModel } from '@/services/projects/types'
@@ -154,22 +156,31 @@ const ChatGroupSection = memo(function ChatGroupSection({
   onDelete,
 }: ChatGroupSectionProps) {
   const { t } = useTranslation()
+  // A page is counted in top-level rows: a fork listed under its chat comes
+  // with it, never cut off from it by "Show more".
+  const roots = useMemo(
+    () =>
+      buildNestTree(
+        g.threads.map((th) => ({ id: th.id, parentId: forkParentOf(th) }))
+      ),
+    [g.threads]
+  )
   // A collapsed group still lists the chat that was open when it was
   // collapsed and any chat that is running, until it stops.
-  const visible = useMemo(
-    () =>
-      isOpen
-        ? showAll
-          ? g.threads
-          : g.threads.slice(0, PAGE)
-        : g.threads.filter(
-            (th) =>
-              (collapsedFor === currentThreadId && th.id === currentThreadId) ||
-              !!streaming?.has(th.id)
-          ),
-    [g.threads, isOpen, showAll, collapsedFor, currentThreadId, streaming]
-  )
-  const hidden = isOpen ? g.threads.length - visible.length : 0
+  const visible = useMemo(() => {
+    if (!isOpen)
+      return g.threads.filter(
+        (th) =>
+          (collapsedFor === currentThreadId && th.id === currentThreadId) ||
+          !!streaming?.has(th.id)
+      )
+    if (showAll || roots.length <= PAGE) return g.threads
+    const keep = new Set(
+      roots.slice(0, PAGE).flatMap((r) => [r.id, ...r.nested])
+    )
+    return g.threads.filter((th) => keep.has(th.id))
+  }, [g.threads, roots, isOpen, showAll, collapsedFor, currentThreadId, streaming])
+  const hidden = isOpen && !showAll ? Math.max(0, roots.length - PAGE) : 0
   return (
     <div className="flex flex-col" data-testid="chat-group">
       <DropTarget id={g.id} label={g.name}>
@@ -241,7 +252,7 @@ const ChatGroupSection = memo(function ChatGroupSection({
       </DropTarget>
       <NavCollapse open={visible.length > 0}>
         <NavList>
-          <ThreadList threads={visible} draggable selection={selection} />
+          <ThreadList threads={visible} draggable selection={selection} nested />
         </NavList>
         {hidden > 0 && (
           <button
@@ -252,7 +263,7 @@ const ChatGroupSection = memo(function ChatGroupSection({
             {t('common:shell.showMore', { count: hidden })}
           </button>
         )}
-        {showAll && g.threads.length > PAGE && (
+        {showAll && roots.length > PAGE && (
           <button
             type="button"
             onClick={() => onShowMore(g.id, false)}

@@ -2901,5 +2901,18 @@
     "offlineTitle": "No se puede conectar con el servidor de Flint.",
     "offlineBody": "Reconectando… Lo que hagas ahora puede no guardarse hasta que vuelva.",
     "statusOffline": "Servidor inaccesible"
+  },
+  "nesting": {
+    "more_one": "{{count}} anidado más",
+    "more_other": "{{count}} anidados más",
+    "new_one": "{{count}} nuevo",
+    "new_other": "{{count}} nuevos",
+    "working_one": "{{count}} trabajando",
+    "working_other": "{{count}} trabajando",
+    "waiting_one": "{{count}} esperando",
+    "waiting_other": "{{count}} esperando",
+    "count_one": "{{count}} anidado",
+    "count_other": "{{count}} anidados",
+    "fewer": "Mostrar menos anidados"
   }
 }
