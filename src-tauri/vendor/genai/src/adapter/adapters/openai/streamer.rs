@@ -106,38 +106,53 @@ impl OpenAIStreamer {
 	}
 
 	/// Captures a single tool call into `captured_data.tool_calls`, merging with existing if needed.
-	/// Returns the (possibly merged) tool call for use in events.
-	fn capture_tool_call(&mut self, index: usize, call_id: String, fn_name: String, arguments: String) -> ToolCall {
+	/// Returns the (possibly merged) tool call for use in events, or `None` for a call whose
+	/// `index` the stream cannot be trusted with (see [`capture_into`]).
+	fn capture_tool_call(&mut self, index: usize, call_id: String, fn_name: String, arguments: String) -> Option<ToolCall> {
 		let tool_call = ToolCall {
-			call_id: call_id.clone(),
-			fn_name: fn_name.clone(),
-			fn_arguments: Value::String(arguments.clone()),
+			call_id,
+			fn_name,
+			fn_arguments: Value::String(arguments),
 			thought_signatures: None,
 		};
 
 		if !self.options.capture_tool_calls {
-			return tool_call;
+			return Some(tool_call);
 		}
 
 		let calls = self.captured_data.tool_calls.get_or_insert_with(Vec::new);
+		capture_into(calls, index, tool_call)
+	}
+}
 
-		if let Some(existing_call) = calls.get_mut(index) {
-			// Merge with existing: accumulate arguments as strings
-			if let Some(existing_args) = existing_call.fn_arguments.as_str() {
-				let accumulated = format!("{existing_args}{arguments}");
-				existing_call.fn_arguments = Value::String(accumulated);
-			}
-			// Update call_id and fn_name on first chunk that has them
-			if !fn_name.is_empty() {
-				existing_call.call_id = call_id;
-				existing_call.fn_name = fn_name;
-			}
-			existing_call.clone()
-		} else {
-			// New tool call - resize to handle potential gaps (though unlikely in streaming)
-			calls.resize(index + 1, tool_call.clone());
-			tool_call
+/// FLINT PATCH: the most tool calls one response may hold, and how far past the end an
+/// `index` may point. The index is the server's word and is used to size a vector, so a
+/// hostile or buggy server sending `"index": 4000000000` would otherwise allocate gigabytes.
+const MAX_TOOL_CALLS: usize = 256;
+const MAX_INDEX_GAP: usize = 64;
+
+/// Merge `tool_call` into `calls` at `index` (arguments accumulate), or add it. A call whose
+/// index is far past the end, or would take the list over [`MAX_TOOL_CALLS`], is skipped.
+fn capture_into(calls: &mut Vec<ToolCall>, index: usize, tool_call: ToolCall) -> Option<ToolCall> {
+	if let Some(existing_call) = calls.get_mut(index) {
+		// Merge with existing: accumulate arguments as strings
+		if let Some(existing_args) = existing_call.fn_arguments.as_str() {
+			let accumulated = format!("{existing_args}{}", tool_call.fn_arguments.as_str().unwrap_or_default());
+			existing_call.fn_arguments = Value::String(accumulated);
 		}
+		// Update call_id and fn_name on first chunk that has them
+		if !tool_call.fn_name.is_empty() {
+			existing_call.call_id = tool_call.call_id;
+			existing_call.fn_name = tool_call.fn_name;
+		}
+		Some(existing_call.clone())
+	} else if index > calls.len() + MAX_INDEX_GAP || index >= MAX_TOOL_CALLS {
+		tracing::warn!("skipping tool call with implausible index {index} ({} captured)", calls.len());
+		None
+	} else {
+		// New tool call - resize to handle potential gaps (though unlikely in streaming)
+		calls.resize(index + 1, tool_call.clone());
+		Some(tool_call)
 	}
 }
 
@@ -272,7 +287,7 @@ impl futures::Stream for OpenAIStreamer {
 										let arguments = take_tool_call_arguments(&mut function);
 
 										let tc = self.capture_tool_call(index as usize, call_id, fn_name, arguments);
-										tool_call_events.push(tc);
+										tool_call_events.extend(tc);
 									}
 								}
 							}
@@ -350,8 +365,9 @@ impl futures::Stream for OpenAIStreamer {
 										let fn_name = function.x_take::<String>("name").unwrap_or_default();
 										let arguments = take_tool_call_arguments(&mut function);
 
-										let tool_call = self.capture_tool_call(index as usize, call_id, fn_name, arguments);
-										self.pending.push_back(InterStreamEvent::ToolCallChunk(tool_call));
+										if let Some(tool_call) = self.capture_tool_call(index as usize, call_id, fn_name, arguments) {
+											self.pending.push_back(InterStreamEvent::ToolCallChunk(tool_call));
+										}
 									}
 								}
 								if let Some(event) = self.pending.pop_front() {
@@ -437,6 +453,52 @@ impl futures::Stream for OpenAIStreamer {
 mod tests {
 	use super::*;
 	use crate::adapter::AdapterKind;
+
+	fn call(id: &str, name: &str, args: &str) -> ToolCall {
+		ToolCall {
+			call_id: id.into(),
+			fn_name: name.into(),
+			fn_arguments: Value::String(args.into()),
+			thought_signatures: None,
+		}
+	}
+
+	#[test]
+	fn a_hostile_tool_call_index_is_skipped_not_allocated() {
+		// A crafted SSE chunk: the index is read the way the streamer reads it.
+		let mut chunk = serde_json::json!({"choices":[{"delta":{"tool_calls":[
+			{"index": 4000000000u32, "id": "x", "function": {"name": "f", "arguments": "{}"}}
+		]}}]});
+		let mut first = chunk.x_take::<Value>("/choices/0/delta/tool_calls/0").unwrap();
+		let index = first.x_take::<u32>("index").unwrap() as usize;
+		let mut calls: Vec<ToolCall> = Vec::new();
+		assert!(capture_into(&mut calls, index, call("x", "f", "{}")).is_none());
+		assert!(calls.is_empty());
+		assert!(calls.capacity() < 1024);
+		// Just past the gap is skipped; a small gap is still filled.
+		assert!(capture_into(&mut calls, MAX_INDEX_GAP + 1, call("a", "f", "")).is_none());
+		assert!(capture_into(&mut calls, 2, call("b", "f", "")).is_some());
+		assert_eq!(calls.len(), 3);
+	}
+
+	#[test]
+	fn the_total_number_of_tool_calls_is_capped() {
+		let mut calls: Vec<ToolCall> = Vec::new();
+		for i in 0..MAX_TOOL_CALLS {
+			assert!(capture_into(&mut calls, i, call("c", "f", "")).is_some(), "{i}");
+		}
+		assert!(capture_into(&mut calls, MAX_TOOL_CALLS, call("c", "f", "")).is_none());
+		assert_eq!(calls.len(), MAX_TOOL_CALLS);
+	}
+
+	#[test]
+	fn argument_chunks_still_merge_into_the_same_call() {
+		let mut calls: Vec<ToolCall> = Vec::new();
+		capture_into(&mut calls, 0, call("id", "f", "{\"a\":"));
+		let merged = capture_into(&mut calls, 0, call("", "", "1}")).unwrap();
+		assert_eq!(merged.fn_arguments, Value::String("{\"a\":1}".into()));
+		assert_eq!(merged.fn_name, "f");
+	}
 
 	fn test_model() -> ModelIden {
 		ModelIden::new(AdapterKind::OpenAI, "test-model")

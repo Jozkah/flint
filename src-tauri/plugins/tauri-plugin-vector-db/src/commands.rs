@@ -40,7 +40,9 @@ pub async fn get_status(state: State<'_, VectorDBState>) -> Result<Status, Vecto
     let temp = db::collection_path(&state.base_dir, "__status__");
     let ann = blocking(move || {
         let conn = db::open_or_init_conn(&temp)?;
-        Ok(db::try_load_sqlite_vec_verbose(&conn))
+        let ok = db::try_load_sqlite_vec_verbose(&conn);
+        println!("[VectorDB] search backend: {}", db::vector_search_backend(&conn));
+        Ok(ok)
     })
     .await?;
 

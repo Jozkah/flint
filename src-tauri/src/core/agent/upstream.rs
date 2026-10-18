@@ -1530,6 +1530,9 @@ pub(crate) async fn execute_mcp_tool_calls(
                 "Tool call '{tool_name}' timed out after {} seconds",
                 call_timeout.as_secs()
             ),
+            crate::core::mcp::stall::CallFailure::Cancelled => {
+                format!("Tool call '{tool_name}' was cancelled")
+            }
             crate::core::mcp::stall::CallFailure::Other(e) => e,
         });
         if stop_stalled {

@@ -44,6 +44,7 @@ describe('validateServerName', () => {
   it('rejects a name already in use', () => {
     expect(validateServerName('github', ctx)?.code).toBe('nameDuplicate')
     expect(validateServerName(' github ', ctx)?.code).toBe('nameDuplicate')
+    expect(validateServerName('GitHub', ctx)?.code).toBe('nameDuplicate')
   })
 
   it('lets an edited server keep its own name', () => {

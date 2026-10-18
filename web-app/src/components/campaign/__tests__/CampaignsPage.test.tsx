@@ -123,4 +123,28 @@ describe('CampaignsPage', () => {
     fireEvent.click(screen.getByTestId('campaigns-start'))
     expect(screen.getByTestId('campaign-goal')).toBeInTheDocument()
   })
+
+  it('keeps the list and shows a banner when a refresh fails', () => {
+    useCampaignStore.setState({
+      campaigns: [campaign('one')],
+      loaded: true,
+      error: 'the campaigns folder could not be read: denied',
+    })
+    render(<CampaignsPage />)
+    expect(screen.getByTestId('campaigns-list')).toBeInTheDocument()
+    expect(screen.getByTestId('campaigns-refresh-error')).toHaveTextContent(
+      'the campaigns folder could not be read: denied'
+    )
+    expect(screen.queryByTestId('campaigns-error')).toBeNull()
+  })
+
+  it('shows no banner when the refresh worked', () => {
+    useCampaignStore.setState({
+      campaigns: [campaign('one')],
+      loaded: true,
+      error: null,
+    })
+    render(<CampaignsPage />)
+    expect(screen.queryByTestId('campaigns-refresh-error')).toBeNull()
+  })
 })

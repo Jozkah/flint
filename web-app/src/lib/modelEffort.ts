@@ -13,7 +13,7 @@
 
 import {
   anthropicTakesAnExplicitBudget,
-  THINKING_BUDGET_LEVELS,
+  thinkingBudgetLabel,
   type ThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
 
@@ -27,7 +27,7 @@ export const isEffortLevel = (value: unknown): value is EffortLevel =>
 
 /** The label the shared level list already gives this level. */
 export function effortLabel(level: EffortLevel): string {
-  return THINKING_BUDGET_LEVELS.find((l) => l.key === level)?.label ?? level
+  return thinkingBudgetLabel(level)
 }
 
 // Anthropic's adaptive thinking sizes itself, so a level changes nothing on

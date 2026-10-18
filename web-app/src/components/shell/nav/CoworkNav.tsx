@@ -4,6 +4,7 @@ import {
   NavAction,
   NavButton,
   NavItem,
+  useCloseDrawer,
   useShellNav,
 } from '@/components/shell/nav-kit'
 import {
@@ -247,7 +248,7 @@ const SessionItem = memo(function SessionItem({
           ) : (
             <NavAction showOnHover>
               <MoreHorizontal />
-              <span className="sr-only">More</span>
+              <span className="sr-only">{t('common:more')}</span>
             </NavAction>
           )}
         </DropdownMenuTrigger>
@@ -481,6 +482,7 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { isMobile } = useShellNav()
+  const closeDrawer = useCloseDrawer()
   const allSessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
   // A blank session is listed only while it is open in Cowork: pressing New
@@ -514,7 +516,10 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
   const [removeWorktree, setRemoveWorktree] = useState(false)
   const archiveOn = useArchiveEnabled()
 
-  const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
+  const goCowork = useCallback(() => {
+    void navigate({ to: route.cowork })
+    closeDrawer()
+  }, [navigate, closeDrawer])
   const newSession = (groupId?: string) => {
     // Idempotent: on a blank session this returns the same one, so a second
     // press cannot leave a trail of empty sessions behind. A draft is the
@@ -605,7 +610,10 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
     {
       title: t('common:artifacts'),
       icon: Box,
-      onClick: () => navigate({ to: route.artifacts }),
+      onClick: () => {
+        void navigate({ to: route.artifacts })
+        closeDrawer()
+      },
     },
     {
       title: t('common:customize'),

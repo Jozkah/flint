@@ -52,6 +52,16 @@ export function ShellNavProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Shuts the narrow-window navigation sheet. Rows that navigate call it so the
+ * sheet does not stay over the page just picked (a no-op on desktop and
+ * outside the shell).
+ */
+export function useCloseDrawer(): () => void {
+  const { setOpenMobile } = useShellNav()
+  return React.useCallback(() => setOpenMobile?.(false), [setOpenMobile])
+}
+
 /** The shell context when rendered inside the app shell, otherwise null. */
 export function useOptionalShellNav() {
   return React.useContext(ShellNavContext)

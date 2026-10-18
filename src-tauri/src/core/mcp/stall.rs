@@ -10,7 +10,8 @@
 //! Tauri-free so the counting and the cancel round trip are unit tested.
 
 use rmcp::model::{
-    CallToolRequest, CallToolRequestParams, CallToolResult, ClientRequest, ServerResult,
+    CallToolRequest, CallToolRequestParams, CallToolResult, CancelledNotification,
+    CancelledNotificationParam, ClientRequest, ServerResult,
 };
 use rmcp::service::{PeerRequestOptions, ServiceError};
 use serde_json::Value;
@@ -50,6 +51,8 @@ pub fn read_server_configs(data_folder: &std::path::Path) -> serde_json::Map<Str
 pub enum CallFailure {
     /// No answer in time; the server was sent `notifications/cancelled`.
     TimedOut,
+    /// The user cancelled; the server was sent `notifications/cancelled`.
+    Cancelled,
     Other(String),
 }
 
@@ -60,12 +63,45 @@ pub async fn call_tool_cancellable(
     params: CallToolRequestParams,
     timeout: Duration,
 ) -> Result<CallToolResult, CallFailure> {
+    call_tool_until(peer, params, timeout, std::future::pending::<()>()).await
+}
+
+/// Like [`call_tool_cancellable`], and also ends when `cancel` resolves (a user
+/// cancel): the server is then sent `notifications/cancelled` for this request,
+/// the same as for a timeout, so it can stop the work.
+pub async fn call_tool_until(
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    params: CallToolRequestParams,
+    timeout: Duration,
+    cancel: impl Future<Output = ()>,
+) -> Result<CallToolResult, CallFailure> {
     let request = ClientRequest::CallToolRequest(CallToolRequest::new(params));
     let handle = peer
         .send_cancellable_request(request, PeerRequestOptions::with_timeout(timeout))
         .await
         .map_err(|e| CallFailure::Other(e.to_string()))?;
-    match handle.await_response().await {
+    let (request_peer, request_id) = (handle.peer.clone(), handle.id.clone());
+    let response = {
+        let wait = handle.await_response();
+        tokio::pin!(wait);
+        tokio::pin!(cancel);
+        tokio::select! {
+            r = &mut wait => Some(r),
+            _ = &mut cancel => None,
+        }
+    };
+    let response = match response {
+        Some(r) => r,
+        None => {
+            let notice = CancelledNotification::new(CancelledNotificationParam::new(
+                Some(request_id),
+                Some("user cancelled".to_string()),
+            ));
+            let _ = request_peer.send_notification(notice.into()).await;
+            return Err(CallFailure::Cancelled);
+        }
+    };
+    match response {
         Ok(ServerResult::CallToolResult(result)) => Ok(result),
         Ok(_) => Err(CallFailure::Other(
             "unexpected response to tools/call".to_string(),
@@ -239,6 +275,49 @@ mod tests {
         assert!(
             cancelled.load(Ordering::SeqCst),
             "server never saw notifications/cancelled"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_user_cancel_sends_the_server_a_cancellation() {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let server = Sleeper {
+            cancelled: cancelled.clone(),
+        };
+        tokio::spawn(async move {
+            let running = server.serve(server_io).await.expect("server starts");
+            let _ = running.waiting().await;
+        });
+        let client = ().serve(client_io).await.expect("client starts");
+        let peer = client.peer().clone();
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            let _ = tx.send(());
+        });
+
+        let started = std::time::Instant::now();
+        let outcome = call_tool_until(
+            &peer,
+            CallToolRequestParams::new("hang"),
+            Duration::from_secs(60),
+            async {
+                let _ = rx.await;
+            },
+        )
+        .await;
+        assert_eq!(outcome.unwrap_err(), CallFailure::Cancelled);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        for _ in 0..50 {
+            if cancelled.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            cancelled.load(Ordering::SeqCst),
+            "server never saw notifications/cancelled for a user cancel"
         );
     }
 }

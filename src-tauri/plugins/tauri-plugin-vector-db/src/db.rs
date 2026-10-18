@@ -71,8 +71,40 @@ pub fn open_or_init_conn(path: &PathBuf) -> Result<Connection, VectorDBError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).ok();
     }
+    register_static_vec();
     let conn = Connection::open(path)?;
     Ok(conn)
+}
+
+static VEC_STATIC: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Statically linked sqlite-vec, registered as a SQLite auto-extension so every
+/// connection opened afterwards has `vec0` with no library file lookup. Must
+/// run before the connection opens (`open_or_init_conn` does). Idempotent.
+pub fn register_static_vec() -> bool {
+    *VEC_STATIC.get_or_init(|| {
+        // SAFETY: sqlite3_vec_init has the extension-entry shape; the transmute
+        // only restores the parameter list the sqlite-vec crate leaves empty.
+        let rc = unsafe {
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute::<
+                *const (),
+                unsafe extern "C" fn(
+                    *mut rusqlite::ffi::sqlite3,
+                    *mut *mut std::os::raw::c_char,
+                    *const rusqlite::ffi::sqlite3_api_routines,
+                ) -> std::os::raw::c_int,
+            >(sqlite_vec::sqlite3_vec_init as *const ())))
+        };
+        if rc != rusqlite::ffi::SQLITE_OK {
+            eprintln!("[VectorDB] static sqlite-vec registration failed (sqlite rc {rc}); trying dynamic library paths");
+        }
+        rc == rusqlite::ffi::SQLITE_OK
+    })
+}
+
+/// Backend a search on this connection uses: "vec0" (sqlite-vec) or "linear".
+pub fn vector_search_backend(conn: &Connection) -> &'static str {
+    if vec0_module_available(conn) { "vec0" } else { "linear" }
 }
 
 // ============================================================================
@@ -127,8 +159,15 @@ fn load_sqlite_vec(conn: &Connection, verbose: bool) -> bool {
     unsafe {
         let _ = conn.load_extension_enable();
     }
+    let first_probe = cached.is_none();
     let ok = probe_sqlite_vec(conn, verbose, cached.flatten());
     let _ = conn.load_extension_disable();
+    if !ok && first_probe {
+        eprintln!(
+            "[VectorDB] sqlite-vec (vec0) unavailable: static registration {} and no loadable library found in any search path; RAG falls back to slower linear search",
+            if VEC_STATIC.get().copied().unwrap_or(false) { "succeeded but vec0 did not load" } else { "failed" }
+        );
+    }
     ok
 }
 
@@ -864,6 +903,29 @@ pub fn chunk_text(text: String, chunk_size: usize, chunk_overlap: usize) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn static_vec0_knn_works_on_fresh_connection() {
+        assert!(register_static_vec());
+        let conn = Connection::open_in_memory().unwrap();
+        assert_eq!(vector_search_backend(&conn), "vec0");
+        let v: String = conn.query_row("select vec_version()", [], |r| r.get(0)).unwrap();
+        assert!(v.starts_with('v'), "vec_version = {v}");
+        conn.execute("CREATE VIRTUAL TABLE t USING vec0(embedding float[3])", []).unwrap();
+        for (id, e) in [(1, "[1,0,0]"), (2, "[0,1,0]"), (3, "[0.9,0.1,0]")] {
+            conn.execute("INSERT INTO t(rowid, embedding) VALUES (?1, ?2)", params![id, e]).unwrap();
+        }
+        let mut st = conn
+            .prepare("SELECT rowid, distance FROM t WHERE embedding MATCH ?1 AND k = 2 ORDER BY distance")
+            .unwrap();
+        let rows: Vec<(i64, f64)> = st
+            .query_map(["[1,0,0]"], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(rows.iter().map(|r| r.0).collect::<Vec<_>>(), vec![1, 3]);
+        assert!(rows[0].1 < 1e-6);
+    }
 
     #[test]
     fn override_takes_priority_over_every_other_candidate() {

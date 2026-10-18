@@ -515,7 +515,7 @@ export function classifyCompatAgent(
     return {
       ...base,
       state: 'duplicate',
-      reason: 'a subagent saved in Jan already has this name',
+      reason: 'a subagent saved in Flint already has this name',
     }
   }
   if (

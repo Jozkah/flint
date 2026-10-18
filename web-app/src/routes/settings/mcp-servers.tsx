@@ -24,6 +24,7 @@ import {
   DEFAULT_MCP_SETTINGS,
 } from '@/hooks/useMCPServers'
 import { IdleShutdownInput } from '@/containers/IdleShutdownInput'
+import { ServerToolTimeoutInput } from '@/containers/ServerToolTimeoutInput'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
@@ -433,8 +434,10 @@ function MCPServersDesktop() {
       return
     }
 
-    const numericValue = Number(rawValue)
-    if (!Number.isNaN(numericValue)) {
+    // Same rule as the per-server field: whole seconds, at least 1. A 0 or
+    // negative entry is ignored and the field keeps the stored value.
+    const numericValue = Math.floor(Number(rawValue))
+    if (Number.isFinite(numericValue) && numericValue >= 1) {
       updateSettings({ toolCallTimeoutSeconds: numericValue })
     }
   }
@@ -763,11 +766,10 @@ function MCPServersDesktop() {
   const setServerToolTimeout = async (
     serverKey: string,
     config: MCPServerConfig,
-    rawValue: string
+    seconds: number | undefined
   ) => {
-    const seconds = Math.floor(Number(rawValue))
     const next = { ...config }
-    if (rawValue.trim() !== '' && Number.isFinite(seconds) && seconds > 0) {
+    if (seconds !== undefined) {
       next.toolCallTimeoutSeconds = seconds
     } else {
       delete next.toolCallTimeoutSeconds
@@ -1262,8 +1264,7 @@ function MCPServersDesktop() {
                   {config.official && (
                     <div className="mt-2 pt-2 text-xs text-muted-foreground">
                       <p className="mb-1">
-                        Requires Jan Browser Extension to be installed in your
-                        Chrome-based browser.
+                        {t('mcp-servers:browserExtension.requires')}
                       </p>
                       <a
                         href="https://chromewebstore.google.com/detail/jan-browser-mcp/mkciifcjehgnpaigoiaakdgabbpfppal"
@@ -1271,7 +1272,7 @@ function MCPServersDesktop() {
                         rel="noopener noreferrer"
                         className="text-acc-text underline-offset-4 hover:underline"
                       >
-                        Install Extension →
+                        {t('mcp-servers:browserExtension.install')}
                       </a>
                     </div>
                   )}
@@ -1321,17 +1322,13 @@ function MCPServersDesktop() {
               </label>
               <label className="flex items-center gap-2">
                 <span>{t('mcp-servers:lifecycle.toolTimeout')}</span>
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  defaultValue={config.toolCallTimeoutSeconds ?? ''}
+                <ServerToolTimeoutInput
+                  seconds={config.toolCallTimeoutSeconds}
                   placeholder={String(settings.toolCallTimeoutSeconds)}
-                  aria-label={t('mcp-servers:lifecycle.toolTimeout')}
-                  onBlur={(event) =>
-                    void setServerToolTimeout(key, config, event.target.value)
+                  ariaLabel={t('mcp-servers:lifecycle.toolTimeout')}
+                  onCommit={(seconds) =>
+                    void setServerToolTimeout(key, config, seconds)
                   }
-                  className="h-7 w-20 text-xs"
                 />
               </label>
               {snapshot.connected ? (

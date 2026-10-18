@@ -283,7 +283,7 @@ describe('imported agent definitions', () => {
     expect(result.reason).toContain('browse')
   })
 
-  it('refuses to redefine an agent the user saved in Jan', () => {
+  it('refuses to redefine an agent the user saved in Flint', () => {
     // A repository must not be able to take over a name the user configured
     // for themselves by choosing it.
     const result = classifyCompatAgent(agent, {
@@ -294,7 +294,7 @@ describe('imported agent definitions', () => {
     })
 
     expect(result.state).toBe('duplicate')
-    expect(result.reason).toContain('saved in Jan')
+    expect(result.reason).toContain('saved in Flint')
     // And nothing dispatchable comes out of it.
     expect(result.content).toBeUndefined()
   })

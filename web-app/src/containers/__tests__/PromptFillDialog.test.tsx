@@ -4,6 +4,13 @@ import '@testing-library/jest-dom'
 import { PromptFillDialog } from '../PromptFillDialog'
 import type { LibraryPrompt } from '@/lib/promptLibrary'
 
+vi.mock('@/i18n/react-i18next-compat', () => ({
+  useTranslation: () => ({
+    t: (k: string, o?: Record<string, string>) =>
+      o ? `${k} ${Object.values(o).join(' ')}` : k,
+  }),
+}))
+
 const prompt = (body: string): LibraryPrompt => ({
   id: 'p1',
   name: 'Brief',
@@ -30,6 +37,28 @@ describe('PromptFillDialog', () => {
     expect(insert).toBeEnabled()
     fireEvent.click(insert)
     expect(onSubmit).toHaveBeenCalledWith('Write about cats for everyone. Again: cats')
+  })
+
+  it('marks defaults as defaults, marks required fields and says why Insert is off', () => {
+    render(
+      <PromptFillDialog
+        prompt={prompt('{{topic}} in {{lang:TypeScript}}')}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    // A default reads as a default, never as a typed value.
+    expect(screen.getByLabelText('lang')).toHaveAttribute(
+      'placeholder',
+      expect.stringContaining('TypeScript')
+    )
+    expect(screen.getByLabelText('lang').getAttribute('placeholder')).not.toBe('TypeScript')
+    expect(screen.getByLabelText('lang')).toHaveAttribute('aria-required', 'false')
+    expect(screen.getByLabelText('topic')).toHaveAttribute('aria-required', 'true')
+    // Why Insert is disabled.
+    expect(screen.getByRole('status')).toHaveTextContent('topic')
+    fireEvent.change(screen.getByLabelText('topic'), { target: { value: 'x' } })
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('cancel inserts nothing', () => {

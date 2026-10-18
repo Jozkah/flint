@@ -269,6 +269,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:dataFolder.appDataDesc',
     keywords: ['storage', 'location', 'move data', 'disk'],
   }),
+  item('general', 'start-with-computer', 'settings:startup.title', {
+    descriptionKey: 'settings:startup.off',
+    keywords: ['autostart', 'startup', 'login', 'boot', 'launch at sign in'],
+  }),
   item('general', 'spell-check', 'settings:others.spellCheck', {
     descriptionKey: 'settings:others.spellCheckDesc',
     keywords: ['spelling', 'typo'],
@@ -373,6 +377,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     keywords: ['url', 'searxng'],
   }),
   // Memory
+  item('memory', 'use-saved', 'settings:memoryPage.useSaved', {
+    descriptionKey: 'settings:memoryPage.useSavedDesc',
+    keywords: ['memory on', 'memory off', 'disable memory', 'saved memory'],
+  }),
   item('memory', 'automatically-save', 'settings:memory.automaticallySave', {
     anchor: MEMORY_AUTOSAVE_ANCHOR,
     descriptionKey: 'settings:memory.automaticallySaveDesc',
@@ -389,6 +397,9 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     keywords: ['edit memory', 'forget', 'pin', 'across chats', 'this project'],
   }),
   // Permissions
+  item('permissions', 'auto-approve-limit', 'permissions:settings.autoApproveLimit', {
+    keywords: ['unattended', 'long runs', 'pause', 'auto approve', 'limit', 'steps'],
+  }),
   item('permissions', 'conversations', 'permissions:settings.conversations', {
     descriptionKey: 'permissions:settings.conversationsDesc',
     keywords: ['allow in thread', 'this conversation', 'revoke'],
@@ -396,6 +407,18 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('permissions', 'everywhere', 'permissions:settings.everywhere', {
     descriptionKey: 'permissions:settings.everywhereDesc',
     keywords: ['always allow', 'trusted servers', 'mcp trust', 'revoke'],
+  }),
+  item('permissions', 'trusted-folders', 'permissions:trustedFolders.title', {
+    descriptionKey: 'permissions:trustedFolders.description',
+    keywords: ['hooks', 'subagents', 'agent definitions', 'workspace trust', 'folder'],
+  }),
+  item('permissions', 'approval-rules', 'permissions:rules.title', {
+    descriptionKey: 'permissions:rules.description',
+    keywords: ['always allow', 'remembered', 'revoke', 'command prefix', 'rule'],
+  }),
+  item('permissions', 'deferred-approvals', 'permissions:deferred.title', {
+    descriptionKey: 'permissions:deferred.description',
+    keywords: ['pending', 'unattended', 'schedule', 'answer later', 'queue'],
   }),
   item('permissions', 'history', 'permissions:settings.history', {
     descriptionKey: 'permissions:settings.historyDesc',
@@ -405,6 +428,17 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('agent-tools', 'enable', 'settings:agentTools.enable', {
     descriptionKey: 'settings:agentTools.enableDesc',
     keywords: ['agent', 'tools', 'filesystem'],
+  }),
+  item('agent-tools', 'compaction', 'settings:compaction.title', {
+    descriptionKey: 'settings:compaction.autoDescription',
+    keywords: [
+      'compact',
+      'summarize',
+      'context window',
+      'reserved tokens',
+      'recent messages',
+      'trim',
+    ],
   }),
   item('agent-tools', 'network', 'settings:agentTools.network', {
     descriptionKey: 'settings:agentTools.networkDesc',
@@ -442,6 +476,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
       keywords: ['autostart', 'boot'],
     }
   ),
+  item('local-api-server', 'default-model', 'settings:localApiServer.defaultModel', {
+    descriptionKey: 'settings:localApiServer.defaultModelDesc',
+    keywords: ['model', 'fallback model', 'override'],
+  }),
   // Attachments
   item('attachments', 'enable', 'settings:attachments.enable', {
     descriptionKey: 'settings:attachments.enableDesc',
@@ -514,6 +552,17 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     'mcp-servers:runtimeSettings.toolCallTimeout',
     { keywords: ['timeout', 'seconds', 'slow tool'] }
   ),
+  item('mcp-servers', 'idle-shutdown', 'mcp-servers:runtimeSettings.idleShutdown', {
+    descriptionKey: 'mcp-servers:runtimeSettings.idleShutdownDesc',
+    keywords: ['idle', 'stop servers', 'memory', 'free memory', 'minutes'],
+  }),
+  item('mcp-servers', 'server-tool-timeout', 'mcp-servers:lifecycle.toolTimeout', {
+    anchor: undefined,
+    anchorNote:
+      'Rendered inside the card of each configured server, which exists only ' +
+      'for servers the user has added, so there is no fixed element to scroll to.',
+    keywords: ['timeout', 'seconds', 'per server', 'slow tool'],
+  }),
   item(
     'mcp-servers',
     'max-tool-output',

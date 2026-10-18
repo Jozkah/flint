@@ -237,6 +237,12 @@ export function SamplerPopover({
         sideOffset={8}
         collisionPadding={12}
         avoidCollisions
+        // Focus the panel itself, not its first control: that control's tooltip
+        // opened on focus and took the first Escape, so closing took two.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          ;(event.target as HTMLElement | null)?.focus?.()
+        }}
         className="w-[380px] p-0 flex flex-col max-h-[var(--radix-popover-content-available-height)]"
       >
         <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2 border-b">

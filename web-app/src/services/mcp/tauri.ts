@@ -134,6 +134,7 @@ export class TauriMCPService extends DefaultMCPService {
     arguments: object
     maxOutputChars?: number
     approvalTicket?: string
+    cancellationToken?: string
   }): Promise<{ error: string; content: { text: string }[] }> {
     return tallied(args, window.core?.api?.callTool(args))
   }

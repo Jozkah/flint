@@ -33,7 +33,11 @@ import { invoke } from '@tauri-apps/api/core'
 import { isChatWindow } from '@/lib/soloFlag'
 import { hostInvoke } from '@/lib/hostInvoke'
 import { grandfatherFolderTrust } from '@/lib/grandfatherFolderTrust'
-import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
+import {
+  keyringKeysToApply,
+  providerHasRemoteApiKeys,
+  providerRemoteApiKeyChain,
+} from '@/lib/provider-api-keys'
 import {
   fillSecretHeaderValues,
   loadSecretHeaderValues,
@@ -130,13 +134,13 @@ async function applyKeyringKeys(): Promise<void> {
   const store = useModelProvider.getState()
   const seeded = await seedProviderKeysFromKeyring(store.providers)
   for (const p of seeded) {
-    const current = store.providers.find((x) => x.provider === p.provider)
-    if (p.api_key && p.api_key !== current?.api_key) {
-      store.updateProvider(p.provider, {
-        api_key: p.api_key,
-        api_key_fallbacks: p.api_key_fallbacks,
-      })
-    }
+    // Read the store again: the keyring read above is async, and a key the
+    // user typed meanwhile must not be replaced by the older stored one.
+    const current = useModelProvider
+      .getState()
+      .providers.find((x) => x.provider === p.provider)
+    const next = keyringKeysToApply(current, p)
+    if (next) store.updateProvider(p.provider, next)
   }
 }
 

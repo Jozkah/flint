@@ -150,6 +150,28 @@ export function CampaignsPage() {
               action={startButton}
             />
           ) : (
+            <>
+            {error && (
+              // A refresh failed but the list from the last good read is still
+              // shown: say so without taking the list away.
+              <div
+                role="alert"
+                data-testid="campaigns-refresh-error"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-[0.8px] border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+              >
+                <span className="min-w-0 flex-1 break-words">
+                  {t('settings:campaigns.list.loadFailed')} {error}
+                </span>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  data-testid="campaigns-refresh-retry"
+                  onClick={() => void refresh()}
+                >
+                  {t('settings:campaigns.list.retry')}
+                </Button>
+              </div>
+            )}
             <ul className="flex flex-col gap-2" data-testid="campaigns-list">
               {sorted.map((c) => {
                 const total = c.tasks.length
@@ -205,6 +227,7 @@ export function CampaignsPage() {
                 )
               })}
             </ul>
+            </>
           )}
         </div>
       </div>

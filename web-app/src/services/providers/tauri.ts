@@ -28,6 +28,11 @@ import {
   parseModelList,
 } from '@/lib/endpointDiagnostics'
 import { modelsUrlCandidates } from '@/lib/modelsUrl'
+import {
+  azureApiVersionSetting,
+  isAzureOpenAIProvider,
+  splitBaseUrlQuery,
+} from '@/lib/model-factory'
 import { recordListedWindows } from '@/lib/listedWindows'
 import { recordListedCapabilities } from '@/lib/listedCapabilities'
 import { findModelEntry } from '@/lib/detectContextWindow'
@@ -198,6 +203,23 @@ export class TauriProvidersService extends DefaultProvidersService {
       let lastStatus = 0
       let lastStatusText = ''
 
+      // Azure answers a model list the way it answers chat: legacy
+      // deployments-style endpoints want `api-key` and an `api-version`, which
+      // may be typed into the URL or kept in the provider's settings.
+      const azure = isAzureOpenAIProvider(provider)
+      let listBase = provider.base_url
+      let listQuery = ''
+      if (azure) {
+        const split = splitBaseUrlQuery(provider.base_url)
+        const params = { ...split.queryParams }
+        if (!params['api-version']) {
+          const version = azureApiVersionSetting(provider)
+          if (version) params['api-version'] = version
+        }
+        listBase = split.baseURL
+        listQuery = new URLSearchParams(params).toString()
+      }
+
       for (let ki = 0; ki < keyAttempts.length; ki++) {
         const key = keyAttempts[ki]
         const headers: Record<string, string> = {
@@ -212,6 +234,7 @@ export class TauriProvidersService extends DefaultProvidersService {
         }
 
         applyProviderAuthHeader(provider, headers, key)
+        if (azure && key) headers['api-key'] = key
 
         // After the key: reserved names are never applied, so a custom header
         // cannot replace it. janhq/jan#8208.
@@ -221,7 +244,9 @@ export class TauriProvidersService extends DefaultProvidersService {
 
         // The address as typed, then `/v1` when it carries no version of its
         // own and the first place answers 404.
-        const candidates = modelsUrlCandidates(provider.base_url)
+        const candidates = modelsUrlCandidates(listBase).map((u) =>
+          listQuery ? `${u}?${listQuery}` : u
+        )
         let modelsUrl = candidates[0]
         let response = await fetchTauri(modelsUrl, {
           method: 'GET',

@@ -1013,10 +1013,16 @@ pub fn events(data_folder: &Path, id: &str) -> Result<Vec<serde_json::Value>, Ca
 
 fn read_raw(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
     let dir = campaign_dir(data_folder, id)?;
-    let text = std::fs::read_to_string(dir.join("campaign.json"))
-        .map_err(|_| CampaignError::new(CampaignErrorKind::NotFound, format!("no campaign {id} was recorded")))?;
-    let c: Campaign = serde_json::from_str(&text)
-        .map_err(|_| CampaignError::new(CampaignErrorKind::Corrupt, format!("the record of campaign {id} is unreadable")))?;
+    let text = std::fs::read_to_string(dir.join("campaign.json")).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            CampaignError::new(CampaignErrorKind::NotFound, format!("no campaign {id} was recorded"))
+        } else {
+            CampaignError::new(CampaignErrorKind::Corrupt, format!("the record of campaign {id} could not be read: {e}"))
+        }
+    })?;
+    let c: Campaign = serde_json::from_str(&text).map_err(|e| {
+        CampaignError::new(CampaignErrorKind::Corrupt, format!("the record of campaign {id} is unreadable: {e}"))
+    })?;
     if c.id != id {
         return Err(CampaignError::new(
             CampaignErrorKind::Corrupt,
@@ -1184,8 +1190,16 @@ pub struct SkippedRecord {
 /// A missing campaigns folder is an empty list, never an error.
 pub fn list_with_skipped(data_folder: &Path) -> (Vec<Campaign>, Vec<SkippedRecord>) {
     let _held = lock(data_folder);
-    let Ok(entries) = std::fs::read_dir(root(data_folder)) else {
-        return (Vec::new(), Vec::new());
+    let entries = match std::fs::read_dir(root(data_folder)) {
+        Ok(entries) => entries,
+        // No campaigns yet is not an error; a folder that is there but cannot
+        // be read must not look like "No campaigns yet".
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (Vec::new(), Vec::new()),
+        Err(e) => {
+            log::warn!("campaigns folder unreadable: {e}");
+            let reason = format!("the campaigns folder could not be read: {e}");
+            return (Vec::new(), vec![SkippedRecord { id: "campaigns".into(), reason }]);
+        }
     };
     let mut out: Vec<Campaign> = Vec::new();
     let mut skipped: Vec<SkippedRecord> = Vec::new();
@@ -2096,6 +2110,33 @@ pub(crate) mod tests {
             estimate: None,
             driver: DRIVER_RENDERER.to_string(),
         }
+    }
+
+    #[test]
+    fn a_damaged_record_names_the_parse_error() {
+        let d = data_dir("parse-err");
+        let bad = root(&d).join("c-bad");
+        std::fs::create_dir_all(&bad).unwrap();
+        std::fs::write(bad.join("campaign.json"), "{ not json").unwrap();
+        let (_, skipped) = list_with_skipped(&d);
+        assert_eq!(skipped.len(), 1);
+        assert!(skipped[0].reason.contains("unreadable: "), "{}", skipped[0].reason);
+        assert!(skipped[0].reason.contains("key must be a string") || skipped[0].reason.contains("line 1"), "{}", skipped[0].reason);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_unreadable_campaigns_folder_is_reported_not_an_empty_list() {
+        let d = data_dir("root-is-file");
+        // A file where the campaigns folder should be: read_dir fails with an
+        // error that is not NotFound.
+        std::fs::create_dir_all(root(&d).parent().unwrap()).unwrap();
+        std::fs::write(root(&d), "x").unwrap();
+        let (ok, skipped) = list_with_skipped(&d);
+        assert!(ok.is_empty());
+        assert_eq!(skipped.len(), 1, "{skipped:?}");
+        assert!(skipped[0].reason.contains("could not be read"), "{}", skipped[0].reason);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

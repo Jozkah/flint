@@ -92,7 +92,7 @@ export default class RagExtension extends RAGExtension {
         )
         if (!status.ann_available) {
           logger.warn(
-            '[RAG] Warning: sqlite-vec not loaded. Collections will use slower linear search.'
+            '[RAG] Warning: built-in sqlite-vec (vec0) failed to initialize. Collections will use slower linear search; see the app log for the reason.'
           )
         }
       }

@@ -99,6 +99,8 @@ const ThreadItem = memo(
     const { folders, addFolder } = useThreadManagement()
     const { t } = useTranslation()
     const navigate = useNavigate()
+    // Narrow windows: the sidebar is a sheet that must not stay over the chat.
+    const setOpenMobile = useShellNav().setOpenMobile
     const [menuOpen, setMenuOpen] = useState(false)
     const cursor = useCursorAnchor()
     // "Convert to Cowork" is offered only when the menu was opened by
@@ -325,14 +327,14 @@ const ThreadItem = memo(
                   to="/threads/$threadId"
                   params={{ threadId: thread.id }}
                   data-testid="thread-nav-item"
-                  onClick={
-                    selection
-                      ? (e: React.MouseEvent) => {
-                          e.preventDefault()
-                          selection.toggle(thread.id)
-                        }
-                      : undefined
-                  }
+                  onClick={(e: React.MouseEvent) => {
+                    if (selection) {
+                      e.preventDefault()
+                      selection.toggle(thread.id)
+                      return
+                    }
+                    setOpenMobile?.(false)
+                  }}
                   onPointerEnter={() =>
                     prefetchThreadMessages(thread.id, (id) =>
                       serviceHub.messages().fetchMessages(id)

@@ -130,7 +130,8 @@ vi.mock('@/lib/bedrock', () => ({
     session_token: false,
   }),
 }))
-vi.mock('@/lib/provider-api-keys', () => ({
+vi.mock('@/lib/provider-api-keys', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/provider-api-keys')>()),
   providerHasRemoteApiKeys: (p: unknown) => h.providerHasRemoteApiKeys(p),
   providerRemoteApiKeyChain: (p: unknown) => h.providerRemoteApiKeyChain(p),
 }))

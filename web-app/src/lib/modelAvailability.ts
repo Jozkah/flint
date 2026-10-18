@@ -34,6 +34,12 @@ export type AvailabilityInput = {
   /** Remote providers need one; local ones do not. */
   hasApiKey: boolean
   baseUrl?: string | null
+  /**
+   * A provider that is not a built-in engine and has no base URL (an Azure
+   * entry without its endpoint, Ollama or LiteLLM not set up) has nowhere to
+   * send a request: it is not a local model just because the URL is blank.
+   */
+  endpointMissing?: boolean
   /** Origins with a transport failure on record. */
   unreachableOrigins: Readonly<Record<string, unknown>>
   modelLoaded?: boolean
@@ -50,6 +56,7 @@ export type AvailabilityInput = {
  */
 export function modelAvailability(input: AvailabilityInput): ModelAvailability {
   if (!input.providerActive) return 'disabled'
+  if (input.endpointMissing) return 'misconfigured'
   if (input.modelDownloading) return 'downloading'
   if (input.modelLoading) return 'loading'
 

@@ -13,7 +13,12 @@ import {
   getModelDisplayName,
   isLocalProvider,
 } from '@/lib/utils'
-import { middleTruncate } from '@/lib/modelDisplayName'
+import {
+  disambiguateModels,
+  middleTruncate,
+  type Disambiguation,
+} from '@/lib/modelDisplayName'
+import { contextLengthOf } from '@/lib/engineModels'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import Capabilities from './Capabilities'
 import { ArrowUpDown, Search, Settings, X } from 'lucide-react'
@@ -258,6 +263,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
 
   // Helper function to check if a model exists in providers
   const checkModelExists = useCallback(
@@ -537,6 +543,30 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     return new Set([...seen].filter(([, n]) => n > 1).map(([id]) => id))
   }, [searchableItems])
 
+  // Models of one provider that read alike in a list (two quants, two
+  // fine-tunes sharing a long prefix) get a short label from what differs.
+  const disambiguation = useMemo(() => {
+    const merged = new Map<string, Disambiguation>()
+    const byProvider = new Map<string, SearchableModel[]>()
+    searchableItems.forEach((item) =>
+      byProvider.set(item.provider.provider, [
+        ...(byProvider.get(item.provider.provider) ?? []),
+        item,
+      ])
+    )
+    byProvider.forEach((items) => {
+      disambiguateModels(
+        items.map((item) => ({
+          key: item.value,
+          name: getModelDisplayName(item.model),
+          fileName: item.model.id,
+          contextLength: contextLengthOf(item.model),
+        }))
+      ).forEach((v, k) => merged.set(k, v))
+    })
+    return merged
+  }, [searchableItems])
+
   // What to call each remote: its title, plus its host when another provider
   // has the same title (two endpoints of one vendor, two local proxies).
   const remoteLabel = useCallback(
@@ -761,9 +791,56 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     ]
   )
 
+  /**
+   * Keyboard use of the open picker: arrows move between the search box and
+   * the model rows, Home/End jump to the first/last row, Enter in the search
+   * box picks the first match, and typing on a row goes back to the search box.
+   */
+  const onPickerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing) return
+    const rows = Array.from(
+      pickerRef.current?.querySelectorAll<HTMLElement>('[data-model-row]') ?? []
+    )
+    const input = searchInputRef.current
+    const onInput = event.target === input
+    const at = rows.indexOf(event.target as HTMLElement)
+    const focusRow = (i: number) => {
+      const row = rows[i]
+      if (!row) return
+      event.preventDefault()
+      row.focus()
+      row.scrollIntoView?.({ block: 'nearest' })
+    }
+    if (event.key === 'ArrowDown' && (onInput || at !== -1)) {
+      focusRow(onInput ? 0 : Math.min(at + 1, rows.length - 1))
+    } else if (event.key === 'ArrowUp' && at !== -1) {
+      if (at === 0) {
+        event.preventDefault()
+        input?.focus()
+      } else focusRow(at - 1)
+    } else if (event.key === 'Home' && at !== -1) {
+      focusRow(0)
+    } else if (event.key === 'End' && at !== -1) {
+      focusRow(rows.length - 1)
+    } else if (event.key === 'Enter' && onInput && rows.length > 0) {
+      event.preventDefault()
+      rows[0].click()
+    } else if (
+      at !== -1 &&
+      event.key.length === 1 &&
+      event.key !== ' ' &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      input?.focus()
+    }
+  }
+
   /** Rows are selectable with Enter or Space, not only with a pointer. */
   const selectableRow = (item: SearchableModel, isSelected: boolean) => ({
     role: 'button' as const,
+    'data-model-row': '',
     tabIndex: 0,
     'aria-pressed': isSelected,
     onClick: () => handleSelect(item),
@@ -790,6 +867,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       selectedProvider === item.provider.provider
     const capabilities = item.model.capabilities || []
     const modelName = getModelDisplayName(item.model)
+    const disambiguator = disambiguation.get(item.value)
     const offline = modelIsOffline(item)
     // A single list has no provider header, so the row carries the provider.
     // So does any row that could be mistaken for another remote's copy of the
@@ -824,6 +902,15 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
             <div className="min-w-0 flex-1">
               <span className="flex items-center text-[13px] font-medium text-foreground">
                 <span className="truncate">{middleTruncate(modelName, 38)}</span>
+                {disambiguator && (
+                  <span
+                    className="ml-1.5 shrink-0 rounded bg-muted px-1 font-mono text-[10.5px] font-normal text-muted-foreground"
+                    title={item.model.id}
+                    data-testid="model-disambiguator"
+                  >
+                    {disambiguator.label}
+                  </span>
+                )}
                 {offline && (
                   <OfflineBadge
                     label={t('common:modelOffline.badge')}
@@ -967,7 +1054,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
         side="bottom"
         avoidCollisions
       >
-        <div className="flex flex-col size-full">
+        <div
+          ref={pickerRef}
+          className="flex flex-col size-full"
+          onKeyDown={onPickerKeyDown}
+        >
           {/* Search input */}
           <div className="flex items-center gap-2 border-b border-dashed border-border px-2 pt-1.5 pb-2">
             <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />

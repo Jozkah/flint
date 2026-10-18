@@ -155,7 +155,9 @@ export function validateServerName(
     return error('nameInvalidChars')
   }
   const taken = ctx.existingNames.some(
-    (existing) => existing === name && existing !== ctx.editingKey
+    (existing) =>
+      existing.toLowerCase() === name.toLowerCase() &&
+      existing !== ctx.editingKey
   )
   if (taken) return error('nameDuplicate')
   return null

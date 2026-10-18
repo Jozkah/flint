@@ -2253,7 +2253,14 @@ export function CoworkPage() {
           .getState()
           .authorize(sid, folder, dataFolder, extraFolders)
         if (!result.ok) {
-          if (result.reason !== 'superseded') toast.error(result.reason)
+          // One toast per folder: reopening sessions that share an unreadable
+          // folder updated the same message instead of stacking copies, and it
+          // clears itself.
+          if (result.reason !== 'superseded')
+            toast.error(result.reason, {
+              id: `folder-access:${folder}`,
+              duration: 8000,
+            })
           return
         }
         const current = useCoworkSessions
@@ -2263,7 +2270,10 @@ export function CoworkPage() {
           await useDirectEditGrants.getState().revokeSession(sid)
         }
       } catch (error) {
-        toast.error(String(error))
+        toast.error(String(error), {
+          id: `folder-access:${folder}`,
+          duration: 8000,
+        })
       } finally {
         done()
       }
@@ -2687,8 +2697,8 @@ export function CoworkPage() {
 
   // The status line's phase: shown for the whole run, not only the gaps.
   const runStatusNow = useMemo(
-    () => runStatus(running, displayedTurns),
-    [running, displayedTurns]
+    () => runStatus(running, displayedTurns, t),
+    [running, displayedTurns, t]
   )
 
 
@@ -5505,7 +5515,7 @@ export function CoworkPage() {
       }
     >
       <PanelRight className="size-4" aria-hidden />
-      <span className="max-sm:sr-only">{t('common:coworkLayout.output')}</span>
+      <span className="max-lg:sr-only">{t('common:coworkLayout.output')}</span>
     </Button>
   )
   // The rail buttons stay in the composer row whether or not the output panel
@@ -5757,10 +5767,16 @@ export function CoworkPage() {
   )
 
   const runningChip = running ? (
-    <Chip className="border-transparent bg-transparent text-secondary-foreground">
+    <Chip className="shrink-0 border-transparent bg-transparent text-secondary-foreground">
       <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden />
-      {/* Icon only on a phone or in a pane, where the title needs the room. */}
-      <span className={paneChrome ? 'sr-only' : 'max-md:sr-only'}>
+      {/* Icon only on a phone, in a pane, or when the header's context bar is
+          too narrow for the word: the state stays visible and the folder
+          chip beside it is the one that gives way. */}
+      <span
+        className={
+          paneChrome ? 'sr-only' : 'max-md:sr-only @max-[7.5rem]/ctx:sr-only'
+        }
+      >
         {t('common:coworkLayout.running')}
       </span>
     </Chip>
@@ -6197,7 +6213,6 @@ export function CoworkPage() {
                   </WidgetHostContext.Provider>
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
-                  <FolderTrustBanner folder={folder} />
                   <CoworkChildApprovals sessionId={session?.id} />
                   <CoworkSubagentQuestions sessionId={session?.id} />
                   {/* Once the run has ended: while it goes, the header says
@@ -6374,6 +6389,11 @@ export function CoworkPage() {
                   beneath the conversation. */}
               {/* Not beside the session's own worktree bar: a session that
                   already has a worktree is not about to adopt another. */}
+              {/* Whether a folder's own hooks and agents may run: asked here,
+                  over the composer, so it cannot scroll away. Outside the
+                  stack so it never pushes the session's own bars behind
+                  "Show N more". */}
+              <FolderTrustBanner folder={folder} />
               {/* The bars over the composer stack: two at a time, the rest
                   behind "Show N more". */}
               <CoworkBarStack>
