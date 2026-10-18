@@ -536,7 +536,7 @@
       "on": "Pencarian web aktif",
       "off": "Pencarian web mati",
       "provider": "Penyedia Pencarian",
-      "providerFoot": "Jika DuckDuckGo menampilkan pemeriksaan bot, Flint beralih membaca halaman hasil. Penyedia dipilih di komputer.",
+      "providerFoot": "Jika DuckDuckGo menampilkan pemeriksaan bot, tunggu satu menit lalu cari lagi. Penyedia dipilih di komputer.",
       "ddg": "DuckDuckGo tidak perlu penyiapan",
       "noKey": "Tanpa kunci",
       "keySet": "Kunci diatur",

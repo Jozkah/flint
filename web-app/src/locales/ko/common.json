@@ -1046,6 +1046,8 @@
   "artifactPath": "경로",
   "artifactShowDetails": "{{name}}의 세부 정보 보기",
   "workspace": {
+    "worktreeBadge": "격리된 worktree: 브랜치 {{branch}}",
+    "worktreeBadgeNoBranch": "격리된 worktree",
     "readsFrom": "읽는 위치",
     "alsoAttached": "함께 첨부됨",
     "addFolder": "폴더 추가",

@@ -1048,6 +1048,8 @@
   "artifactPath": "Đường dẫn",
   "artifactShowDetails": "Hiện chi tiết của {{name}}",
   "workspace": {
+    "worktreeBadge": "Worktree tách biệt: nhánh {{branch}}",
+    "worktreeBadgeNoBranch": "Worktree tách biệt",
     "readsFrom": "Đọc từ",
     "alsoAttached": "Cũng được đính kèm",
     "addFolder": "Thêm thư mục khác",

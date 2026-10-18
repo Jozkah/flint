@@ -1057,6 +1057,8 @@
   "artifactPath": "Ruta",
   "artifactShowDetails": "Mostra els detalls de {{name}}",
   "workspace": {
+    "worktreeBadge": "Worktree aïllat: branca {{branch}}",
+    "worktreeBadgeNoBranch": "Worktree aïllat",
     "readsFrom": "Llegeix de",
     "alsoAttached": "També adjuntes",
     "addFolder": "Afegeix una altra carpeta",

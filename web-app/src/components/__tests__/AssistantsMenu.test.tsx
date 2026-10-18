@@ -118,4 +118,30 @@ describe('AssistantsMenu', () => {
     })
     expect(screen.getByText('No assistants available')).toBeInTheDocument()
   })
+  it('shows one description card at a time as the pointer moves between rows', async () => {
+    const user = userEvent.setup()
+    const described = [
+      { id: 'd1', name: 'Quartz', avatar: '😀', description: 'A precise research assistant' },
+      { id: 'd2', name: 'Blaze', avatar: '😎', description: 'A hot-headed coder' },
+    ]
+    render(
+      <AssitantMenuContainer>
+        <AssistantsMenu
+          selectedAssistant={undefined}
+          setSelectedAssistant={mockSetSelectedAssistant}
+          currentThread={undefined}
+          updateCurrentThreadAssistant={mockUpdateCurrentThreadAssistant}
+          assistants={described as never}
+        />
+      </AssitantMenuContainer>
+    )
+    await user.click(screen.getByText('Open'))
+    await user.hover(await screen.findByText('Quartz'))
+    await waitFor(() => expect(screen.getAllByTestId('assistant-hover-card')).toHaveLength(1))
+    expect(screen.getByText('A precise research assistant')).toBeInTheDocument()
+    await user.hover(screen.getByText('Blaze'))
+    await waitFor(() => expect(screen.getByText('A hot-headed coder')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByTestId('assistant-hover-card')).toHaveLength(1))
+    expect(screen.queryByText('A precise research assistant')).toBeNull()
+  })
 })

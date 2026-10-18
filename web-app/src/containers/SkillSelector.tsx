@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useSkills, effectiveEnabled, storedEnabled } from '@/hooks/useSkills'
-import { cn } from '@/lib/utils'
+import { COMPOSER_ICON, COMPOSER_ICON_BUTTON } from '@/containers/composerIconButton'
 import { isPluginSkill } from '@/lib/skillStore'
 
 /**
@@ -38,38 +38,43 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
     setEnabled(storedEnabled(next, allNames))
   }
 
+  // No count on the button: a dot says some skill is on; the numbers are in
+  // the accessible name and the tooltip.
+  const summary = t('connections:skills.summary', {
+    enabled: effective.size,
+    installed: allNames.length,
+  })
+  const label = `${t('common:skillsInContext')}: ${summary}`
+  const anyOn = effective.size > 0
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
-          size={effective.size > 0 ? 'xs' : 'icon-xs'}
-          className="shrink-0 text-muted-foreground"
-          title={t('common:skillsInContext')}
-          aria-label={t('common:skillsInContext')}
+          size="icon-xs"
+          // The size, radius and icon of the plus and options buttons beside it.
+          className={COMPOSER_ICON_BUTTON}
+          title={label}
+          aria-label={label}
+          data-testid="skill-selector"
+          data-active={anyOn ? 'true' : undefined}
         >
-          <Sparkles
-            className={cn(
-              'shrink-0',
-              effective.size > 0 ? 'size-3.5' : 'size-[18px]'
-            )}
-          />
-          {effective.size > 0 && (
-            <span className="tabular-nums text-foreground">
-              {effective.size}/{allNames.length}
-            </span>
+          {/* Same colour as its siblings whether on or off: the dot is the
+              only accent. */}
+          <Sparkles aria-hidden className={COMPOSER_ICON} />
+          {anyOn && (
+            <span
+              aria-hidden
+              data-testid="skill-selector-dot"
+              className="absolute top-1 right-1 size-[5px] rounded-full bg-primary"
+            />
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-1">
         <div className="px-2 py-1.5 text-xs text-muted-foreground">
           <div>{t('common:skillsInContext')}</div>
-          <div>
-            {t('connections:skills.summary', {
-              enabled: effective.size,
-              installed: allNames.length,
-            })}
-          </div>
+          <div>{summary}</div>
         </div>
         {!scoped && (
           <div className="px-2 pb-1.5 text-xs text-muted-foreground">

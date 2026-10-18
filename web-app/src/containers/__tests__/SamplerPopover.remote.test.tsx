@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { SamplerPopover } from '../SamplerPopover'
 
@@ -33,6 +33,27 @@ describe('SamplerPopover for a remote provider', () => {
     render(<SamplerPopover providerId="anthropic" />)
     const btn = screen.getByRole('button', { name: 'common:sampler.label' })
     expect(btn).toBeDisabled()
+    expect(
+      screen.getByText('common:sampler.notSupported|Anthropic')
+    ).toBeInTheDocument()
+  })
+
+  // Web search lives behind this button, so it opens even here.
+  it('opens to the web search row when the chat offers web search', async () => {
+    const onChange = vi.fn()
+    render(
+      <SamplerPopover
+        providerId="anthropic"
+        webSearch={{ enabled: false, onChange }}
+      />
+    )
+    const btn = screen.getByRole('button', { name: 'common:sampler.label' })
+    expect(btn).not.toBeDisabled()
+    fireEvent.click(btn)
+    const toggle = await screen.findByRole('switch', { name: 'common:web_search' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(toggle)
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(true))
     expect(
       screen.getByText('common:sampler.notSupported|Anthropic')
     ).toBeInTheDocument()

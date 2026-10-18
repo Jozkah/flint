@@ -34,6 +34,7 @@ import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import { useChatMentionConfig } from '@/hooks/useChatMentionConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { useWebSearchChoice } from '@/hooks/useWebSearchChoice'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { useKeybindings } from '@/hooks/useKeybindings'
@@ -103,6 +104,7 @@ const secondaryStores = [
   useLeanToolsConfig,
   useChatMentionConfig,
   useModelOverrides,
+  useWebSearchChoice,
   useContextBreakdown,
   useCoworkDisplay,
   useKeybindings,

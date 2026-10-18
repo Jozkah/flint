@@ -32,8 +32,14 @@ describe('composer controls at a container width', () => {
     const run = screen.getByTestId('cowork-run-settings')
     expect(run).toHaveTextContent('Run settings')
     expect(run).not.toHaveAttribute('data-collapsed')
-    expect(screen.getByRole('button', { name: /flint/i })).toHaveTextContent('flint')
-    expect(screen.getByRole('button', { name: /flint/i })).toHaveTextContent('feat/very-long-branch')
+    const chip = screen.getByRole('button', { name: /flint/i })
+    expect(chip).toHaveTextContent('flint')
+    // The branch is in the name's tooltip, not printed beside it (one quiet chip).
+    expect(chip).not.toHaveTextContent('feat/very-long-branch')
+    expect(chip.querySelector('[data-folder-name]')).toHaveAttribute(
+      'title',
+      'flint · feat/very-long-branch'
+    )
   })
 
   it('drops the Run settings text first, keeping its accessible name and a tooltip', () => {
@@ -45,11 +51,10 @@ describe('composer controls at a container width', () => {
     expect(screen.getByRole('button', { name: /flint/i })).toHaveTextContent('flint')
   })
 
-  it('then shows the branch instead of the folder name, then the icon alone', () => {
+  it('keeps the folder name, then shows the icon alone', () => {
     const { unmount } = row(500)
     let chip = screen.getByRole('button', { name: /flint/i })
-    expect(chip).not.toHaveTextContent(/^flint/)
-    expect(chip).toHaveTextContent('feat/very-long-branch')
+    expect(chip).toHaveTextContent('flint')
     unmount()
     row(300)
     chip = screen.getByRole('button', { name: /flint/i })

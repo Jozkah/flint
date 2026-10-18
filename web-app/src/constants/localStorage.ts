@@ -39,6 +39,7 @@ export const localStorageKey = {
   campaignSettings: 'campaign-settings',
   defaultEmbeddingModel: 'default-embedding-model',
   modelOverrides: 'model-overrides',
+  webSearchChoice: 'web-search-choice',
   contextBreakdown: 'context-breakdown',
   // Value predates the Cowork rename; changing it would orphan saved sessions.
   fileActivity: 'file-activity',

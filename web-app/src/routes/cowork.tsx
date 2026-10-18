@@ -499,7 +499,11 @@ import {
   getSandboxToolchains,
   sandboxEnforces,
 } from '@/lib/agentTools'
-import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import {
+  coworkWebSearchScope,
+  useWebSearchOn,
+  webSearchOnFor,
+} from '@/hooks/useWebSearchChoice'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
   abortRun,
@@ -1079,7 +1083,10 @@ export function CoworkPage() {
     [selectedModel, selectedProvider, modelCapabilities, settingsMcpServers, doctorResults]
   )
   const workspacePath = useSessionWorkspacePath(session?.id)
-  const webSearchEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
+  // Settings decide the default; the session's own switch, once flipped, wins.
+  const webSearchEnabled = useWebSearchOn(
+    session?.id ? coworkWebSearchScope(session.id) : null
+  )
   const hasTurns = (session?.turns?.length ?? 0) > 0
   // A Settings toggle applies at the next run, like a mode change: the run's
   // advertised set is frozen for its lifetime, so the toggle is pushed to the
@@ -3360,7 +3367,9 @@ export function CoworkPage() {
     if (toolchains === STOPPED) return
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
-    const webSearch = useWebSearchConfig.getState().webSearchEnabled
+    const webSearch = webSearchOnFor(
+      current?.id ? coworkWebSearchScope(current.id) : null
+    )
     // Read once, with the session this run is bound to: a mode flipped
     // mid-run would leave the advertised tools and the dispatcher disagreeing.
     const storedMode = modeOf(current ?? {})
@@ -5658,10 +5667,11 @@ export function CoworkPage() {
     projectInitRoot ? st.draftFor(projectInitRoot) !== null : false
   )
   // The project folder: in the header on wide screens, in the composer row
-  // on phones and in panes.
-  const workspacePill = (
+  // on phones, and quiet in the row under a pane's composer.
+  const workspacePillOf = (variant: 'pill' | 'quiet') => (
     <>
       <CoworkWorkspacePill
+        variant={variant}
         describeProject={
           projectInitOffered
             ? {
@@ -5693,13 +5703,14 @@ export function CoworkPage() {
       />
     </>
   )
+  const workspacePill = workspacePillOf('pill')
 
   // What the run may do and how it works: under the composer, as quiet
-  // one-word buttons (Claude's layout), and as pills in a pane's composer row.
+  // one-word buttons (Claude's layout), in a split pane as well.
   const runControls = (variant: 'pill' | 'quiet') => {
     const modeSelector = (
       <CoworkModeSelector
-        variant="pill"
+        variant={variant}
         mode={mode}
         options={modeOptions}
         // A choice made before the first message still needs a session to
@@ -5767,11 +5778,16 @@ export function CoworkPage() {
     )
   }
 
-  const sessionControls = (
+  // A pane or a phone has no header row for its folder, so the folder joins
+  // the quiet row under the composer, before what the run may do; the row
+  // inside the box keeps only attach, options and skills.
+  const belowComposerControls = paneChrome || phone ? (
     <>
-      {workspacePill}
-      {runControls('pill')}
+      {workspacePillOf('quiet')}
+      {runControls('quiet')}
     </>
+  ) : (
+    runControls('quiet')
   )
 
   // Everything about the session that is reference material rather than
@@ -6662,15 +6678,25 @@ export function CoworkPage() {
                 // Assistant, sampling, web search and reasoning behind one
                 // Options button: the Cowork row stays quiet.
                 groupOptions
+                // Web search is per session; a choice made before the first
+                // message creates the session it belongs to, like the mode.
+                webSearchScope={
+                  session?.id ? coworkWebSearchScope(session.id) : null
+                }
+                ensureWebSearchScope={() =>
+                  coworkWebSearchScope(
+                    ensureCurrentSession(paneSessionIdRef.current)
+                  )
+                }
                 // Under the composer, as Claude lays it out: what the run may
                 // do on the left; the effort and the model on the right.
-                belowLeft={!paneChrome ? runControls('quiet') : undefined}
+                // A split pane uses the same row (its folder included).
+                belowLeft={belowComposerControls}
                 // Below the input in every layout, a split pane included: each
                 // pane picks its own session's model there, never the global one.
                 modelControl={quietModelSelector}
                 surfaceControls={
                   <>
-                    {paneChrome ? sessionControls : phone ? workspacePill : null}
                     <CoworkSandboxChip />
                     {/* On a phone the composer is out of view while the
                         output is, so it keeps one set there. */}

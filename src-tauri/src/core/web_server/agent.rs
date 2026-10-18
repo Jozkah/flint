@@ -192,6 +192,12 @@ fn browse_request(raw: &str) -> Result<(), Fail> {
     if raw.starts_with("//") {
         return Err(bad());
     }
+    // `Path::components` silently drops interior `.` segments, so `/root/./app`
+    // would pass the component check below; refuse `.` and `..` segments in the
+    // raw text instead.
+    if raw.split(['/', '\\']).any(|s| s == "." || s == "..") {
+        return Err(bad());
+    }
     let path = Path::new(raw);
     if !path.is_absolute() {
         return Err(bad());

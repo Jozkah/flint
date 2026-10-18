@@ -1041,6 +1041,8 @@
   "artifactPath": "Path",
   "artifactShowDetails": "Tampilkan detail {{name}}",
   "workspace": {
+    "worktreeBadge": "Worktree terisolasi: cabang {{branch}}",
+    "worktreeBadgeNoBranch": "Worktree terisolasi",
     "readsFrom": "Membaca dari",
     "alsoAttached": "Juga dilampirkan",
     "addFolder": "Tambah folder lain",

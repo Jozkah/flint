@@ -266,8 +266,8 @@ vi.mock('@/lib/coworkRunner', async (orig) => {
 vi.mock('@/containers/ChatInput', () => ({
   default: (props: any) => (
     <div data-testid="composer">
-      {props.surfaceControls}
-      {props.belowLeft}
+      <div data-testid="mock-surface-controls">{props.surfaceControls}</div>
+      <div data-testid="mock-below-left">{props.belowLeft}</div>
       {props.belowLeftWithEffort?.({
         effort: null,
         effortOverridden: false,
@@ -1373,6 +1373,10 @@ describe('the folder the session is bound to', () => {
 })
 
 describe('the branch shown for the attached folder', () => {
+  // The chip names the branch in its tooltip (not as text beside the name).
+  const branchShown = (b: string) =>
+    screen.queryAllByText(new RegExp(b)).length > 0 ||
+    document.querySelector(`[title*="${b}"]`) !== null
   it('ignores a branch answer for a folder no longer attached', async () => {
     let answerOld: (b: string) => void = () => {}
     installInvoke({
@@ -1393,14 +1397,14 @@ describe('the branch shown for the attached folder', () => {
       }))
     })
     await waitFor(() =>
-      expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+      expect(branchShown('branch-of-other')).toBe(true)
     )
 
     await act(async () => {
       answerOld('branch-of-repo')
     })
-    expect(screen.queryByText(/branch-of-repo/)).toBeNull()
-    expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+    expect(branchShown('branch-of-repo')).toBe(false)
+    expect(branchShown('branch-of-other')).toBe(true)
   })
 })
 
@@ -1458,6 +1462,24 @@ describe('two sessions side by side in split view', () => {
     useCoworkRun.setState({ runs: {} } as any)
     useMessageQueue.setState({ queues: {} } as any)
     useSplitConversation.setState({ panes: [] } as any)
+  })
+
+  // The folder, access and mode sit in the quiet row under a pane's composer,
+  // as in the full layout, not as pills inside the input box.
+  it('puts the folder, access and mode under the pane composer, not inside it', async () => {
+    await renderSplit()
+    const below = inPane('right', 'mock-below-left')
+    const inside = inPane('right', 'mock-surface-controls')
+    for (const id of ['cowork-access-selector', 'cowork-mode-selector']) {
+      await waitFor(() =>
+        expect(below.querySelector(`[data-testid="${id}"]`)).not.toBeNull()
+      )
+      expect(inside.querySelector(`[data-testid="${id}"]`)).toBeNull()
+    }
+    expect(below.querySelector('[data-variant="quiet"]')).not.toBeNull()
+    expect(
+      below.querySelector('[data-testid="cowork-mode-selector"]')!.className
+    ).not.toContain('border-[0.8px]')
   })
 
   it("sends what is typed in the right pane to the right pane's session only", async () => {

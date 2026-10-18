@@ -542,7 +542,7 @@
       "on": "Tìm kiếm web đang bật",
       "off": "Tìm kiếm web đang tắt",
       "provider": "Nhà cung cấp tìm kiếm",
-      "providerFoot": "Nếu DuckDuckGo hiển thị kiểm tra bot, Flint chuyển sang đọc trang kết quả. Nhà cung cấp được chọn trên máy tính.",
+      "providerFoot": "Nếu DuckDuckGo hiển thị kiểm tra bot, hãy đợi một phút rồi tìm lại. Nhà cung cấp được chọn trên máy tính.",
       "ddg": "DuckDuckGo không cần thiết lập",
       "noKey": "Không cần khóa",
       "keySet": "Đã đặt khóa",

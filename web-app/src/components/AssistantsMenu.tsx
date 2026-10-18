@@ -2,6 +2,7 @@ import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { User } from 'lucide-react'
+import { useState } from 'react'
 import { useAssistant } from '@/hooks/useAssistant'
 
 type AssistantMenuProps = {
@@ -19,6 +20,8 @@ export function AssistantsMenu({
   updateCurrentThreadAssistant,
   assistants,
 }: AssistantMenuProps) {
+  // One description card at a time: the card belongs to the row under the pointer.
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
   const setCurrentAssistant = useAssistant((s) => s.setCurrentAssistant)
   const threadAssistant = currentThread?.assistants?.[0]
   const deletedAssistant =
@@ -77,7 +80,15 @@ export function AssistantsMenu({
             ? currentThread?.assistants?.some((a) => a.id === assistant.id)
             : selectedAssistant === assistant.id
           return (
-            <HoverCard key={assistant.id} openDelay={250} closeDelay={80}>
+            <HoverCard
+              key={assistant.id}
+              openDelay={250}
+              closeDelay={0}
+              open={hoveredId === assistant.id}
+              onOpenChange={(open) =>
+                setHoveredId((cur) => (open ? assistant.id : cur === assistant.id ? null : cur))
+              }
+            >
             <HoverCardTrigger asChild>
             <DropdownMenuItem
               className={isSelected ? 'bg-accent' : ''}

@@ -542,7 +542,7 @@
       "on": "Websuche an",
       "off": "Websuche aus",
       "provider": "Suchanbieter",
-      "providerFoot": "Zeigt DuckDuckGo eine Bot-Prüfung, liest Flint stattdessen die Ergebnisseite. Anbieter werden am Computer gewählt.",
+      "providerFoot": "Zeigt DuckDuckGo eine Bot-Prüfung, warte eine Minute und suche erneut. Anbieter werden am Computer gewählt.",
       "ddg": "DuckDuckGo braucht keine Einrichtung",
       "noKey": "Kein Schlüssel nötig",
       "keySet": "Schlüssel gesetzt",
