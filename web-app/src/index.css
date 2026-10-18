@@ -423,8 +423,9 @@ html.reduce-motion *::after {
    so the zoomed surface still fills the window exactly. An engine without
    typed calc() division keeps zoom 1 and falls back to the rem scale alone.
    WebKitGTK (Linux) is kept out with html.no-css-zoom: its zoom leaves a bar
-   under the window and offsets the sidebar glide, so it uses the same rem
-   fallback. */
+   under the window and offsets the sidebar glide. The Linux desktop app
+   zooms the webview natively instead (lib/interfaceScale.ts); a Linux
+   browser keeps the rem fallback. */
 @supports (zoom: calc(2px / 1px)) {
   html:not(.no-css-zoom) .app-zoom {
     --app-zoom: calc(var(--font-size-base, 16px) / 16px);

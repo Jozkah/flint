@@ -7,6 +7,7 @@ import {
   usePerfDetection,
 } from '@/lib/perfMode'
 import { applyAccentToDocument } from '@/lib/accent'
+import { applyInterfaceFontSize, isWebKitGtk } from '@/lib/interfaceScale'
 import {
   buildBootAppearance,
   releasePreload,
@@ -14,14 +15,9 @@ import {
 } from '@/lib/bootAppearance'
 
 // WebKitGTK's CSS zoom mis-sizes the app surface and the sidebar glide, so
-// Linux webviews use the rem font scale instead (see .app-zoom in index.css).
+// Linux webviews skip it (see .app-zoom in index.css and lib/interfaceScale).
 // Set at module load so the first paint is already unzoomed.
-if (
-  typeof navigator !== 'undefined' &&
-  /Linux/.test(navigator.userAgent) &&
-  !/Android/.test(navigator.userAgent) &&
-  !/Chrome|Chromium|Edg\//.test(navigator.userAgent)
-) {
+if (typeof navigator !== 'undefined' && isWebKitGtk(navigator.userAgent)) {
   document.documentElement.classList.add('no-css-zoom')
 }
 
@@ -39,8 +35,7 @@ export function InterfaceProvider() {
 
   // Apply interface settings on mount and when they change
   useEffect(() => {
-    // Apply font size
-    document.documentElement.style.setProperty('--font-size-base', fontSize)
+    applyInterfaceFontSize(fontSize)
   }, [fontSize])
 
   // The accent's derived tokens depend on the theme, so both drive this.

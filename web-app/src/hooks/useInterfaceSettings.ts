@@ -7,6 +7,7 @@ import {
   type TranscriptView,
 } from '@/lib/transcriptView'
 import { localStorageKey } from '@/constants/localStorage'
+import { applyInterfaceFontSize } from '@/lib/interfaceScale'
 import { backendStorage } from '@/lib/backendStorage'
 import { useTheme } from './useTheme'
 import {
@@ -253,10 +254,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         ...defaultState,
         resetInterface: () => {
           // Reset font size
-          document.documentElement.style.setProperty(
-            '--font-size-base',
-            defaultFontSize
-          )
+          applyInterfaceFontSize(defaultFontSize)
 
           applyAccent(DEFAULT_ACCENT)
 
@@ -318,7 +316,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
         setFontSize: (size: FontSize) => {
           // Update CSS variable
-          document.documentElement.style.setProperty('--font-size-base', size)
+          applyInterfaceFontSize(size)
           // Update state
           set({ fontSize: size })
         },
@@ -495,10 +493,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           }
 
           // Apply font size from storage
-          document.documentElement.style.setProperty(
-            '--font-size-base',
-            state.fontSize
-          )
+          applyInterfaceFontSize(state.fontSize)
 
           state.messageZoom = sanitizeMessageZoom(state.messageZoom)
           state.sidebarWidth = sanitizeSidebarWidth(state.sidebarWidth)
