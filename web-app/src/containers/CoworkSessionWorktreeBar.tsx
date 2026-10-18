@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-import { Copy, FolderOpen, GitBranch, GitMerge, GitPullRequest, Trash2, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Copy, FolderOpen, GitBranch, GitMerge, GitPullRequest, Info, Trash2, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { useTextOverflow } from '@/hooks/useTextOverflow'
+import { BarRow } from '@/components/ui/bar-row'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,7 +44,7 @@ function NotCarried(props: { paths: readonly string[]; onDismiss: () => void }) 
   return (
     <div
       data-testid="worktree-not-carried"
-      className="flex basis-full items-center gap-1.5 text-muted-foreground"
+      className="mt-1 flex h-6 min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden px-3 text-xs text-muted-foreground"
     >
       <span className="min-w-0 truncate">
         {t('common:coworkParallel.notCarriedCount', {
@@ -55,7 +55,7 @@ function NotCarried(props: { paths: readonly string[]; onDismiss: () => void }) 
       <span aria-hidden>·</span>
       <Popover>
         <PopoverTrigger asChild>
-          <button type="button" className="underline-offset-2 hover:underline">
+          <button type="button" className="shrink-0 underline-offset-2 hover:underline">
             {t('common:coworkParallel.notCarriedDetails')}
           </button>
         </PopoverTrigger>
@@ -131,32 +131,34 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
   useEffect(() => {
     setNotCarriedHidden(notCarriedDismissed(props.sessionId))
   }, [props.sessionId])
-  const branchRef = useRef<HTMLSpanElement>(null)
-  useTextOverflow(branchRef)
   const record = props.record
 
   if (!record) {
     if (!props.offerCopy) return null
     return (
-      <div className="mb-2 flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
-        <Copy className="size-3.5 shrink-0" />
-        <span className="flex-1">{t('common:coworkParallel.copyOffer')}</span>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true)
-            try {
-              await props.onWorkOnCopy()
-            } finally {
-              setBusy(false)
-            }
-          }}
-        >
-          {t('common:coworkParallel.workOnCopy')}
-        </Button>
-      </div>
+      <BarRow
+        className="mb-1.5 border border-border text-xs text-muted-foreground"
+        icon={<Copy className="size-3.5 shrink-0" />}
+        lead={t('common:coworkParallel.copyOffer')}
+        leadTitle={t('common:coworkParallel.copyOffer')}
+        actions={[
+          {
+            id: 'copy',
+            label: t('common:coworkParallel.workOnCopy'),
+            variant: 'outline',
+            floor: 'label',
+            disabled: busy,
+            onSelect: async () => {
+              setBusy(true)
+              try {
+                await props.onWorkOnCopy()
+              } finally {
+                setBusy(false)
+              }
+            },
+          },
+        ]}
+      />
     )
   }
 
@@ -246,84 +248,107 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
 
   return (
     <>
-      <div
-        className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs"
-        data-testid="session-worktree-bar"
-      >
-        {isCopy ? (
-          <Copy className="size-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-        )}
-        <span
-          ref={branchRef}
-          data-testid="session-worktree-branch"
-          className="text-fade min-w-[min(12rem,100%)] flex-1 font-mono"
-          title={
+      <div className="mb-1.5 min-w-0">
+        <BarRow
+          testId="session-worktree-bar"
+          className="border border-border text-xs"
+          icon={
+            isCopy ? (
+              <Copy className="size-3.5 shrink-0 text-muted-foreground" />
+            ) : (
+              <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
+            )
+          }
+          leadTestId="session-worktree-branch"
+          leadClassName="font-mono"
+          leadTitle={
             isCopy
               ? t('common:coworkParallel.copyTitle', { folder: props.folder })
               : t('common:coworkParallel.branchTitle', { branch: record.branch })
           }
-        >
-          {isCopy ? t('common:coworkParallel.copyLabel') : record.branch}
-          {!isCopy && base ? (
-            <span className="text-muted-foreground">
-              {' '}
-              {t('common:coworkParallel.basedOn', { base })}
-            </span>
-          ) : null}
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          title={record.path}
-          onClick={() => void serviceHub.opener().openPath(record.path)}
-        >
-          <FolderOpen className="size-3.5" />
-          {t('common:coworkParallel.openFolder')}
-        </Button>
-        {isCopy ? (
-          <Button size="sm" variant="ghost" onClick={() => setApplyOpen(true)}>
-            <GitMerge className="size-3.5" />
-            {t('common:coworkParallel.applyBack')}
-          </Button>
-        ) : (
-          <>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy || !base}
-              onClick={() => void askMerge()}
-            >
-              <GitMerge className="size-3.5" />
-              {base
-                ? t('common:coworkParallel.merge', { base })
-                : t('common:coworkParallel.mergeNoBase')}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => props.onCreatePr(record.branch, base)}
-            >
-              <GitPullRequest className="size-3.5" />
-              {t('common:coworkParallel.createPr')}
-            </Button>
-          </>
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busy}
-          onClick={() => void askDiscard()}
-        >
-          <Trash2 className="size-3.5" />
-          {t('common:coworkParallel.discard')}
-        </Button>
-        {(record.notes?.length ?? 0) > 0 ? (
-          <div className="basis-full text-muted-foreground">
-            {record.notes!.join(' ')}
-          </div>
-        ) : null}
+          lead={
+            <>
+              {isCopy ? t('common:coworkParallel.copyLabel') : record.branch}
+              {!isCopy && base ? (
+                <span className="text-muted-foreground">
+                  {' '}
+                  {t('common:coworkParallel.basedOn', { base })}
+                </span>
+              ) : null}
+            </>
+          }
+          meta={
+            (record.notes?.length ?? 0) > 0 ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={record.notes!.join(' ')}
+                    data-testid="session-worktree-notes"
+                    className="shrink-0 text-muted-foreground"
+                  >
+                    <Info className="size-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-80 p-3 text-xs">
+                  {record.notes!.join(' ')}
+                </PopoverContent>
+              </Popover>
+            ) : null
+          }
+          actions={[
+            {
+              id: 'open',
+              label: t('common:coworkParallel.openFolder'),
+              icon: <FolderOpen className="size-3.5" />,
+              title: record.path,
+              onSelect: () => void serviceHub.opener().openPath(record.path),
+              rank: 0,
+            },
+            ...(isCopy
+              ? [
+                  {
+                    id: 'apply',
+                    label: t('common:coworkParallel.applyBack'),
+                    icon: <GitMerge className="size-3.5" />,
+                    onSelect: () => setApplyOpen(true),
+                    rank: 3,
+                    floor: 'icon' as const,
+                  },
+                ]
+              : [
+                  {
+                    id: 'merge',
+                    label: base
+                      ? t('common:coworkParallel.merge', { base })
+                      : t('common:coworkParallel.mergeNoBase'),
+                    icon: <GitMerge className="size-3.5" />,
+                    disabled: busy || !base,
+                    onSelect: () => void askMerge(),
+                    rank: 2,
+                    floor: 'icon' as const,
+                  },
+                  {
+                    id: 'pr',
+                    label: t('common:coworkParallel.createPr'),
+                    icon: <GitPullRequest className="size-3.5" />,
+                    onSelect: () => props.onCreatePr(record.branch, base),
+                    rank: 3,
+                    floor: 'icon' as const,
+                  },
+                ]),
+            {
+              id: 'discard',
+              label: t('common:coworkParallel.discard'),
+              icon: <Trash2 className="size-3.5" />,
+              disabled: busy,
+              onSelect: () => void askDiscard(),
+              rank: 1,
+            },
+          ]}
+        />
         {record.uncommittedAtCreation.length > 0 && !notCarriedHidden ? (
           <NotCarried
             paths={record.uncommittedAtCreation}
