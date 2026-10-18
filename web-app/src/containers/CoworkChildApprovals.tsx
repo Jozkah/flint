@@ -72,7 +72,7 @@ export function CoworkChildApprovals({
   return (
     <section
       className="my-2 flex flex-col gap-2"
-      aria-label="Changes waiting for your approval"
+      aria-label={t('permissions:childApprovals.label')}
       data-testid="child-approvals"
     >
       {mine.map((entry, index) => (
@@ -95,6 +95,14 @@ export function CoworkChildApprovals({
               {entry.origin}: <span className="font-mono">{entry.toolName}</span>{' '}
               {t('tools:toolApproval.needsApproval')}
             </span>
+            {entry.held && (
+              <span
+                data-testid="approval-held"
+                className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+              >
+                {t('rooms:approvals.held')}
+              </span>
+            )}
           </div>
           <div className="space-y-3 p-3">
             {/* What answering does, in plain words, before the buttons. */}
@@ -138,6 +146,11 @@ export function CoworkChildApprovals({
                 testId="approval-preview"
               />
             )}
+            {entry.held && (
+              <p className="text-muted-foreground" data-testid="approval-held-hint">
+                {t('rooms:approvals.heldHint')}
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button
                 ref={index === 0 ? firstDeny : undefined}
@@ -149,13 +162,14 @@ export function CoworkChildApprovals({
                   resolveApproval(entry.toolCallId, 'deny', entry.requestId)
                 }
               >
-                {t('tools:toolApproval.deny')}
+                {entry.held ? t('rooms:approvals.dismiss') : t('tools:toolApproval.deny')}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 className="pointer-coarse:h-11"
-                disabled={!armed}
+                // A held prompt's run is gone: there is nothing to allow.
+                disabled={!armed || Boolean(entry.held)}
                 onClick={() =>
                   resolveApproval(
                     entry.toolCallId,

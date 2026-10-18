@@ -8,6 +8,7 @@
 
 pub mod commands;
 pub mod store;
+pub mod workspace;
 
 #[cfg(test)]
 mod tests;

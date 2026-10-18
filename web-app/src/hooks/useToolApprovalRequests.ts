@@ -110,6 +110,13 @@ export type ApprovalRequestContext = {
    * question cannot be answered afterwards.
    */
   signal?: AbortSignal
+  /**
+   * Asked when `signal` aborts: a label (e.g. `room paused`) keeps the card on
+   * screen, held, instead of withdrawing it. The run is still answered no at
+   * once; a held card can only be denied or expire (`expireHeld`), never
+   * allowed, so nothing stale is ever replayed.
+   */
+  holdOnAbort?: () => string | null
 }
 
 export type PendingApproval = {
@@ -160,6 +167,8 @@ export type PendingApproval = {
   scopeForm?: { root: string; options: ApprovalScopeWire[] }
   /** When the prompt was raised (ms since epoch), to tell a long wait. */
   requestedAt?: number
+  /** Set when the asking run was paused: shown, but it can no longer be allowed. */
+  held?: string
   resolve: (approved: boolean) => void
 }
 
@@ -232,6 +241,10 @@ type ToolApprovalRequestsState = {
     options?: { notify?: boolean }
   ) => void
   withdrawApproval: (requestId: string) => void
+  /** Keep a prompt whose run was paused on screen, held under `label`. */
+  holdApproval: (requestId: string, label: string) => void
+  /** Drop the held prompts of a thread (its run resumed or is gone). */
+  expireHeld: (threadId: string) => void
   /** Drop "Allow all temporarily" for a conversation that is gone. */
   forgetTemporaryGit: (threadId: string) => void
   takeRefusal: (toolCallId: string) => ApprovalRefusal | undefined
@@ -363,6 +376,14 @@ function remember<T>(
   for (const key of keys.slice(0, Math.max(0, keys.length - REFUSAL_MEMORY))) {
     delete next[key]
   }
+  return next
+}
+
+/** `map` without the given call ids; the same object when none was there. */
+function forget<T>(map: Record<string, T>, ids: string[]): Record<string, T> {
+  if (!ids.some((id) => id in map)) return map
+  const next = { ...map }
+  for (const id of ids) delete next[id]
   return next
 }
 
@@ -586,7 +607,11 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             resolve(approved)
           },
         }
-        const onAbort = () => get().withdrawApproval(entry.requestId)
+        const onAbort = () => {
+          const label = context?.holdOnAbort?.() ?? null
+          if (label) get().holdApproval(entry.requestId, label)
+          else get().withdrawApproval(entry.requestId)
+        }
         set((s) =>
           s.pending[toolCallId]
             ? {
@@ -665,8 +690,31 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       set((s) => ({
         ...without(s, entry),
         refusals: remember(s.refusals, [[entry.toolCallId, 'cancelled']]),
+        // A withdrawn prompt was never answered: an edit typed into it is void.
+        editedInputs: forget(s.editedInputs, [entry.toolCallId]),
       }))
       entry.resolve(false)
+    },
+
+    holdApproval: (requestId, label) => {
+      const entry = allApprovalRequests(get()).find((e) => e.requestId === requestId)
+      if (!entry || entry.held) return
+      const held = (e: PendingApproval): PendingApproval =>
+        e.requestId === requestId ? { ...e, held: label, resolve: () => {} } : e
+      set((s) => ({
+        pending: Object.fromEntries(Object.entries(s.pending).map(([k, e]) => [k, held(e)])),
+        queued: Object.fromEntries(Object.entries(s.queued).map(([k, l]) => [k, l.map(held)])),
+        refusals: remember(s.refusals, [[entry.toolCallId, 'cancelled']]),
+        editedInputs: forget(s.editedInputs, [entry.toolCallId]),
+      }))
+      // The run is gone: it hears no at once and unwinds.
+      entry.resolve(false)
+    },
+
+    expireHeld: (threadId) => {
+      for (const e of allApprovalRequests(get())) {
+        if (e.held && e.threadId === threadId) set((s) => without(s, e))
+      }
     },
 
     chooseOption: (toolCallId, requestId, optionId) => {
@@ -696,6 +744,12 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               (e) => e?.requestId === requestId
             )
       if (!entry) return
+      // A held card's run is gone: only a deny clears it, and nothing is
+      // granted or recorded for a run that can no longer use it.
+      if (entry.held) {
+        if (decision === 'deny') set((s) => without(s, entry))
+        return
+      }
       const refusalReason =
         decision === 'deny' ? cleanRefusalReason(reason) : undefined
       entry.onDecision?.(
@@ -859,6 +913,10 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         return {
           pending: next,
           queued: waiting,
+          editedInputs: forget(
+            s.editedInputs,
+            stranded.map((entry) => entry.toolCallId)
+          ),
           refusals: remember(
             s.refusals,
             stranded.map(
@@ -904,10 +962,12 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       // eslint-disable-next-line no-control-regex
       const edited = command.replace(/\u0000/g, '').trim()
       set((s) => {
-        const next = { ...s.editedInputs }
-        if (edited) next[toolCallId] = { command: edited }
-        else delete next[toolCallId]
-        return { editedInputs: next }
+        // Bounded like the refusals, in case a caller never takes its edit.
+        return {
+          editedInputs: edited
+            ? remember(s.editedInputs, [[toolCallId, { command: edited }]])
+            : forget(s.editedInputs, [toolCallId]),
+        }
       })
     },
 

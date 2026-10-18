@@ -98,6 +98,19 @@ describe('a shell command can be rewritten before it is allowed once', () => {
     expect(store().editedInputs).toEqual({})
   })
 
+  it('drops an edit when the prompt is withdrawn or the conversation stops', async () => {
+    void store().requestApproval('b5', 'bash', 't5', undefined, { input: { command: 'ls' } })
+    const id5 = store().pending['b5'].requestId
+    store().setEditedCommand('b5', id5, 'ls -la')
+    store().withdrawApproval(id5)
+    expect(store().editedInputs).toEqual({})
+
+    void store().requestApproval('b6', 'bash', 't6', undefined, { input: { command: 'ls' } })
+    store().setEditedCommand('b6', store().pending['b6'].requestId, 'ls -la')
+    store().clearPendingForThread('t6')
+    expect(store().editedInputs).toEqual({})
+  })
+
   it('does not remember an edited command as allowed once before', async () => {
     const answer = store().requestApproval('b4', 'bash', 't9', undefined, { input: { command: 'make test' } })
     const requestId = store().pending['b4'].requestId

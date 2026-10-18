@@ -89,7 +89,8 @@ export function HeaderLiveChips() {
   const liveTurns = useCoworkRun((s) => s.liveTurns ?? {})
   const approvalState = useToolApprovalRequests((s) => s)
   const pendingEntries = useMemo(
-    () => allApprovalRequests(approvalState),
+    // A held card (its room was paused) waits on nothing.
+    () => allApprovalRequests(approvalState).filter((e) => !e.held),
     [approvalState]
   )
   const sessions = useCoworkSessions((s) => s.sessions)

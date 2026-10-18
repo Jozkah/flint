@@ -113,7 +113,8 @@ export function useApprovalWaitNotifier(navigate?: ApprovalNavigate): void {
     const reminded = new Set<string>()
     const announced = new Set<string>()
     const check = () => {
-      const entries = allApprovalRequests(useToolApprovalRequests.getState())
+      // A held card (its room was paused) is not waiting on anyone.
+      const entries = allApprovalRequests(useToolApprovalRequests.getState()).filter((e) => !e.held)
       const live = new Set(entries.map((e) => e.requestId))
       // One sound per new prompt (when the user chose it in Sounds).
       for (const id of announced) if (!live.has(id)) announced.delete(id)

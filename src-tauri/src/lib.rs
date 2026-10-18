@@ -376,6 +376,13 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_delete,
         core::rooms::commands::room_delete_permanently,
         core::rooms::commands::room_clear_journal,
+        core::rooms::commands::room_workspace_ensure,
+        core::rooms::commands::room_workspace_changes,
+        core::rooms::commands::room_workspace_mark_turn,
+        core::rooms::commands::room_workspace_patch,
+        core::rooms::commands::room_workspace_reset,
+        core::rooms::commands::room_workspace_apply,
+        core::rooms::commands::room_workspace_remove,
         // Archive (delete moves here first)
         core::archive::commands::archive_list,
         core::archive::commands::archive_disk_usage,
