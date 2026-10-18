@@ -1373,6 +1373,10 @@ describe('the folder the session is bound to', () => {
 })
 
 describe('the branch shown for the attached folder', () => {
+  // The chip names the branch in its tooltip (not as text beside the name).
+  const branchShown = (b: string) =>
+    screen.queryAllByText(new RegExp(b)).length > 0 ||
+    document.querySelector(`[title*="${b}"]`) !== null
   it('ignores a branch answer for a folder no longer attached', async () => {
     let answerOld: (b: string) => void = () => {}
     installInvoke({
@@ -1393,14 +1397,14 @@ describe('the branch shown for the attached folder', () => {
       }))
     })
     await waitFor(() =>
-      expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+      expect(branchShown('branch-of-other')).toBe(true)
     )
 
     await act(async () => {
       answerOld('branch-of-repo')
     })
-    expect(screen.queryByText(/branch-of-repo/)).toBeNull()
-    expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+    expect(branchShown('branch-of-repo')).toBe(false)
+    expect(branchShown('branch-of-other')).toBe(true)
   })
 })
 
