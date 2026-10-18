@@ -2,7 +2,6 @@ import { Toaster } from '@/components/ui/sonner'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useEffect, useState } from 'react'
-import { useLocation } from '@tanstack/react-router'
 import { useWebPreview } from '@/hooks/useWebPreview'
 import { useDialogOpen } from '@/hooks/useDialogOpen'
 import {
@@ -28,7 +27,6 @@ export function ToasterProvider() {
     notifyToasterMounted()
   }, [])
 
-  const pathname = useLocation({ select: (l) => l.pathname })
   const open = useWebPreview((s) => s.open)
   const surface = useWebPreview((s) => s.surface)
   const paneRect = useWebPreview((s) => s.paneRect)
@@ -48,7 +46,7 @@ export function ToasterProvider() {
     notificationPosition,
     open && paneRect ? { surface, rect: paneRect } : null,
     viewport,
-    composerClearanceFor(pathname)
+    composerClearanceFor()
   )
 
   // A modal's header and close button sit where a top toast lands.
