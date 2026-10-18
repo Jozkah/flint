@@ -378,6 +378,7 @@ const platform = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/platform/utils', () => ({
   isPlatformTauri: () => platform.tauri,
+  isServedByFlint: () => false,
 }))
 vi.mock('@/lib/droppedPaths', () => ({
   readDroppedPaths: platform.readDroppedPaths,

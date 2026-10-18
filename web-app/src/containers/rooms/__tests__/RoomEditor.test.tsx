@@ -389,7 +389,12 @@ describe('RoomEditor', () => {
     })
     renderWithApi(<RoomEditor room={room} />, api)
     const note = await within(participantCard('Alice')).findByTestId('participant-isolation')
-    expect(note).toHaveTextContent('the folder is not trusted')
+    // The trust status arrives after the first render: wait for the warning.
+    await waitFor(() =>
+      expect(within(participantCard('Alice')).getByTestId('participant-isolation')).toHaveTextContent(
+        'the folder is not trusted'
+      )
+    )
     expect(within(participantCard('Bob')).queryByTestId('participant-isolation')).toBeNull()
 
     trust.status.mockResolvedValue({ folder: 'C:/p', trusted: true, carries: { hooks: false, subagents: false } })

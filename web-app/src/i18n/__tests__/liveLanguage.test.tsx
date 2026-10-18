@@ -28,7 +28,7 @@ describe('switching the UI language', () => {
     await waitFor(() =>
       expect(screen.getByTestId('label').textContent).not.toBe('Cancel')
     )
-    expect(document.documentElement.lang).toBe('ja')
+    await waitFor(() => expect(document.documentElement.lang).toBe('ja'))
     expect(document.documentElement.dir).toBe('ltr')
 
     act(() => useGeneralSetting.getState().setCurrentLanguage('vn' as Language))
