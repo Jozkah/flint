@@ -21,6 +21,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::ratelimit::{
+    api_http_error, mentions_rate_limit, plain_snippet, rate_limited_marker, retry_after_of,
+};
+
 const FETCH_MAX_CHARS: usize = 40_000;
 /// Hard cap on the bytes read from any response body (Jozkah/jan#182). The
 /// body is read chunk by chunk and reading stops here, so a huge or endless
@@ -120,16 +124,52 @@ pub fn create_provider(
     api_key: Option<String>,
     endpoint: Option<String>,
 ) -> Result<Box<dyn SearchProvider>, String> {
-    match provider.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
-        None | Some("") | Some("exa") => Ok(Box::new(ExaProvider::new(api_key)?)),
-        Some("tavily") => Ok(Box::new(TavilyProvider::new(api_key)?)),
-        Some("brave") => Ok(Box::new(BraveProvider::new(api_key)?)),
+    let id = provider
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "exa".to_string());
+    let keyed = normalize_key(api_key.clone()).is_some();
+    let inner = create_raw_provider(&id, api_key, endpoint)?;
+    // Every backend goes through the rate-limit gate. It never switches
+    // provider: the query only ever goes to the one the user configured.
+    let gate_key = if id == "exa" && !keyed { "exa-hosted".to_string() } else { id.clone() };
+    Ok(Box::new(crate::ratelimit::Gated::new(
+        display_name(&id),
+        gate_key,
+        id == "exa" && !keyed,
+        inner,
+        crate::ratelimit::global_gate(),
+    )))
+}
+
+fn display_name(id: &str) -> &'static str {
+    match id {
+        "exa" => "Exa",
+        "tavily" => "Tavily",
+        "brave" => "Brave",
+        "serper" | "google" => "Serper",
+        "searxng" => "SearXNG",
+        "you" => "You.com",
+        "duckduckgo" | "ddg" => "DuckDuckGo",
+        _ => "the search provider",
+    }
+}
+
+fn create_raw_provider(
+    id: &str,
+    api_key: Option<String>,
+    endpoint: Option<String>,
+) -> Result<Box<dyn SearchProvider>, String> {
+    match id {
+        "" | "exa" => Ok(Box::new(ExaProvider::new(api_key)?)),
+        "tavily" => Ok(Box::new(TavilyProvider::new(api_key)?)),
+        "brave" => Ok(Box::new(BraveProvider::new(api_key)?)),
         // "google" is the user-facing name for the Serper-backed Google adapter.
-        Some("serper") | Some("google") => Ok(Box::new(SerperProvider::new(api_key)?)),
-        Some("searxng") => Ok(Box::new(SearxngProvider::new(endpoint)?)),
-        Some("you") => Ok(Box::new(YouComProvider::new(api_key)?)),
-        Some("duckduckgo") | Some("ddg") => Ok(Box::new(DuckDuckGoProvider::new()?)),
-        Some(other) => Err(format!("Unknown web search provider '{other}'")),
+        "serper" | "google" => Ok(Box::new(SerperProvider::new(api_key)?)),
+        "searxng" => Ok(Box::new(SearxngProvider::new(endpoint)?)),
+        "you" => Ok(Box::new(YouComProvider::new(api_key)?)),
+        "duckduckgo" | "ddg" => Ok(Box::new(DuckDuckGoProvider::new()?)),
+        other => Err(format!("Unknown web search provider '{other}'")),
     }
 }
 
@@ -394,6 +434,7 @@ fn normalize_key(api_key: Option<String>) -> Option<String> {
 pub struct ExaProvider {
     mode: ExaMode,
     client: reqwest::Client,
+    hosted_url: String,
 }
 
 impl ExaProvider {
@@ -406,7 +447,14 @@ impl ExaProvider {
             .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .build()
             .map_err(|e| format!("failed to build HTTP client for Exa: {e}"))?;
-        Ok(Self { mode, client })
+        Ok(Self { mode, client, hosted_url: EXA_HOSTED_URL.to_string() })
+    }
+
+    /// Point the keyless transport somewhere else (tests: a local fake server).
+    #[cfg(test)]
+    pub(crate) fn with_hosted_url(mut self, url: &str) -> Self {
+        self.hosted_url = url.to_string();
+        self
     }
 
     async fn hosted_call(&self, tool: &str, arguments: Value) -> Result<String, String> {
@@ -418,7 +466,7 @@ impl ExaProvider {
         });
         let resp = self
             .client
-            .post(EXA_HOSTED_URL)
+            .post(&self.hosted_url)
             .header("content-type", "application/json")
             .header("accept", "application/json, text/event-stream")
             .json(&body)
@@ -426,15 +474,12 @@ impl ExaProvider {
             .await
             .map_err(|e| format!("Exa request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Exa: failed to read response body: {e}"))?;
         if !status.is_success() {
-            return Err(format!(
-                "Exa failed with HTTP {}: {}",
-                status.as_u16(),
-                text.chars().take(400).collect::<String>()
-            ));
+            return Err(api_http_error("Exa", status.as_u16(), retry_after, &text));
         }
         parse_hosted_result_text(&text, "Exa")
     }
@@ -473,15 +518,12 @@ impl SearchProvider for ExaProvider {
                     .await
                     .map_err(|e| format!("Exa search request failed: {e}"))?;
                 let status = resp.status();
+                let retry_after = retry_after_of(&resp);
                 let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
                     .await
                     .map_err(|e| format!("Exa search: failed to read response body: {e}"))?;
                 if !status.is_success() {
-                    return Err(format!(
-                        "Exa search failed with HTTP {}: {}",
-                        status.as_u16(),
-                        text.chars().take(400).collect::<String>()
-                    ));
+                    return Err(api_http_error("Exa search", status.as_u16(), retry_after, &text));
                 }
                 let parsed: Value = serde_json::from_str(&text)
                     .map_err(|e| format!("Exa search: invalid JSON response: {e}"))?;
@@ -513,15 +555,12 @@ impl SearchProvider for ExaProvider {
                     .await
                     .map_err(|e| format!("Exa fetch request failed: {e}"))?;
                 let status = resp.status();
+                let retry_after = retry_after_of(&resp);
                 let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
                     .await
                     .map_err(|e| format!("Exa fetch: failed to read response body: {e}"))?;
                 if !status.is_success() {
-                    return Err(format!(
-                        "Exa fetch failed with HTTP {}: {}",
-                        status.as_u16(),
-                        text.chars().take(400).collect::<String>()
-                    ));
+                    return Err(api_http_error("Exa fetch", status.as_u16(), retry_after, &text));
                 }
                 let parsed: Value = serde_json::from_str(&text)
                     .map_err(|e| format!("Exa fetch: invalid JSON response: {e}"))?;
@@ -547,7 +586,20 @@ fn parse_hosted_result_text(body: &str, provider: &str) -> Result<String, String
             .map_err(|e| format!("{provider}: invalid response payload: {e}"))?,
     };
     if let Some(err) = envelope.get("error") {
-        return Err(format!("{provider} returned an error: {err}"));
+        // Only the message is kept: the raw JSON-RPC body can carry vendor
+        // instructions (sign-up links, key URLs) that a model reads as orders.
+        let message = err
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown error");
+        if mentions_rate_limit(message) {
+            return Err(rate_limited_marker(provider, None, None));
+        }
+        let code = err.get("code").and_then(Value::as_i64);
+        return Err(match code {
+            Some(c) => format!("{provider} returned an error ({c}): {}", plain_snippet(message)),
+            None => format!("{provider} returned an error: {}", plain_snippet(message)),
+        });
     }
     let result = envelope
         .get("result")
@@ -562,11 +614,10 @@ fn parse_hosted_result_text(body: &str, provider: &str) -> Result<String, String
     // the refusal in the text block where it parses as zero results. Reported
     // as success that reads to a model as "the web has nothing", so the flag in
     // `_meta` is the only thing separating a refusal from a real empty answer.
-    if is_rate_limited(result) {
-        return Err(format!(
-            "{provider} rate limit reached: {}",
-            text.unwrap_or("no quota remaining on the keyless endpoint")
-        ));
+    if is_rate_limited(result) || (result.get("isError").and_then(|v| v.as_bool()) == Some(true)
+        && text.is_some_and(mentions_rate_limit))
+    {
+        return Err(rate_limited_marker(provider, None, None));
     }
     if result.get("isError").and_then(|v| v.as_bool()) == Some(true) {
         return Err(format!(
@@ -768,15 +819,12 @@ impl TavilyProvider {
             .await
             .map_err(|e| format!("Tavily request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Tavily: failed to read response body: {e}"))?;
         if !status.is_success() {
-            return Err(format!(
-                "Tavily failed with HTTP {}: {}",
-                status.as_u16(),
-                text.chars().take(400).collect::<String>()
-            ));
+            return Err(api_http_error("Tavily", status.as_u16(), retry_after, &text));
         }
         serde_json::from_str(&text).map_err(|e| format!("Tavily: invalid JSON response: {e}"))
     }
@@ -910,15 +958,12 @@ impl YouComProvider {
             .await
             .map_err(|e| format!("You.com request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("You.com: failed to read response body: {e}"))?;
         if !status.is_success() {
-            return Err(format!(
-                "You.com failed with HTTP {}: {}",
-                status.as_u16(),
-                text.chars().take(400).collect::<String>()
-            ));
+            return Err(api_http_error("You.com", status.as_u16(), retry_after, &text));
         }
         Ok(text)
     }
@@ -1098,15 +1143,12 @@ impl SearchProvider for SearxngProvider {
             .await
             .map_err(|e| format!("SearXNG request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("SearXNG: failed to read response body: {e}"))?;
         if !status.is_success() {
-            return Err(format!(
-                "SearXNG failed with HTTP {}: {}",
-                status.as_u16(),
-                text.chars().take(400).collect::<String>()
-            ));
+            return Err(api_http_error("SearXNG", status.as_u16(), retry_after, &text));
         }
         let parsed: Value = serde_json::from_str(&text).map_err(|e| {
             format!("SearXNG: invalid JSON response (is the JSON API enabled?): {e}")
@@ -1180,15 +1222,12 @@ impl SearchProvider for BraveProvider {
             .await
             .map_err(|e| format!("Brave request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Brave: failed to read response body: {e}"))?;
         if !status.is_success() {
-            return Err(format!(
-                "Brave failed with HTTP {}: {}",
-                status.as_u16(),
-                text.chars().take(400).collect::<String>()
-            ));
+            return Err(api_http_error("Brave", status.as_u16(), retry_after, &text));
         }
         let parsed: Value = serde_json::from_str(&text)
             .map_err(|e| format!("Brave: invalid JSON response: {e}"))?;
@@ -1210,15 +1249,12 @@ impl SearchProvider for BraveProvider {
             .await
             .map_err(|e| format!("Brave request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Brave: failed to read response body: {e}"))?;
         if !status.is_success() {
-            return Err(format!(
-                "Brave failed with HTTP {}: {}",
-                status.as_u16(),
-                text.chars().take(400).collect::<String>()
-            ));
+            return Err(api_http_error("Brave", status.as_u16(), retry_after, &text));
         }
         let parsed: Value = serde_json::from_str(&text)
             .map_err(|e| format!("Brave: invalid JSON response: {e}"))?;
@@ -1290,15 +1326,12 @@ impl SearchProvider for SerperProvider {
             .await
             .map_err(|e| format!("Serper request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Serper: failed to read response body: {e}"))?;
         if !status.is_success() {
-            return Err(format!(
-                "Serper failed with HTTP {}: {}",
-                status.as_u16(),
-                text.chars().take(400).collect::<String>()
-            ));
+            return Err(api_http_error("Serper", status.as_u16(), retry_after, &text));
         }
         let parsed: Value = serde_json::from_str(&text)
             .map_err(|e| format!("Serper: invalid JSON response: {e}"))?;
@@ -1320,15 +1353,12 @@ impl SearchProvider for SerperProvider {
             .await
             .map_err(|e| format!("Serper request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Serper: failed to read response body: {e}"))?;
         if !status.is_success() {
-            return Err(format!(
-                "Serper failed with HTTP {}: {}",
-                status.as_u16(),
-                text.chars().take(400).collect::<String>()
-            ));
+            return Err(api_http_error("Serper", status.as_u16(), retry_after, &text));
         }
         let parsed: Value = serde_json::from_str(&text)
             .map_err(|e| format!("Serper: invalid JSON response: {e}"))?;
@@ -1478,15 +1508,17 @@ impl DuckDuckGoProvider {
             .await
             .map_err(|e| format!("DuckDuckGo request failed: {e}"))?;
         let status = resp.status();
+        let retry_after = retry_after_of(&resp);
         let html = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("DuckDuckGo: failed to read response body: {e}"))?;
         // A bot check can come back as 200 or as 202/403; read the page first.
         if is_duckduckgo_bot_check(&html) {
-            return Err(DUCKDUCKGO_BOT_CHECK.to_string());
+            // A bot check is DuckDuckGo throttling this machine: wait it out.
+            return Err(rate_limited_marker("DuckDuckGo", Some(status.as_u16()), retry_after));
         }
         if !status.is_success() {
-            return Err(format!("DuckDuckGo failed with HTTP {}", status.as_u16()));
+            return Err(api_http_error("DuckDuckGo", status.as_u16(), retry_after, ""));
         }
         Ok(html)
     }
@@ -1511,10 +1543,6 @@ fn duckduckgo_next_page_form(html: &str) -> Option<Vec<(String, String)>> {
         .collect();
     fields.iter().any(|(name, _)| name == "q").then_some(fields)
 }
-
-const DUCKDUCKGO_BOT_CHECK: &str = "DuckDuckGo asked for a bot check instead of returning results, which it does after \
-     many searches in a short time. Wait a minute and retry, or switch the Web Search provider \
-     in Settings > Web Search to Exa or You.com, which work with no API key.";
 
 fn is_duckduckgo_bot_check(html: &str) -> bool {
     html.contains("anomaly-modal") || html.contains("challenge-form")
@@ -2406,7 +2434,6 @@ mod tests {
         assert!(is_duckduckgo_bot_check("<div class=\"anomaly-modal__modal\">Unfortunately, bots use DuckDuckGo too.</div>"));
         assert!(is_duckduckgo_bot_check("<form id=\"challenge-form\" action=\"//duckduckgo.com/anomaly.js\">"));
         assert!(!is_duckduckgo_bot_check(DDG_PAGE));
-        assert!(DUCKDUCKGO_BOT_CHECK.contains("Exa or You.com"));
     }
 
     #[test]
@@ -2817,9 +2844,11 @@ mod tests {
             }
         })
         .to_string();
-        assert!(parse_hosted_result_text(&tool_err, "You.com")
-            .unwrap_err()
-            .contains("quota exceeded"));
+        // A quota refusal is a rate limit: reported as one, body dropped.
+        assert_eq!(
+            parse_hosted_result_text(&tool_err, "You.com").unwrap_err(),
+            "You.com rate limited (rate limit in response)"
+        );
 
         // A stream that never carries an answer must error rather than
         // silently returning the notification.
