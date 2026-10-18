@@ -361,7 +361,8 @@
   "composerOptions": "Options",
   "coworkBars": {
     "showMore": "Afficher {{count}} de plus",
-    "showFewer": "Afficher moins"
+    "showFewer": "Afficher moins",
+    "moreActions": "Plus d'actions"
   },
   "coworkLayout": {
     "views": "Vue Cowork",

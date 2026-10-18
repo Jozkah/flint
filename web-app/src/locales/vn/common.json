@@ -359,7 +359,8 @@
   "composerOptions": "Tùy chọn",
   "coworkBars": {
     "showMore": "Hiện thêm {{count}}",
-    "showFewer": "Hiện ít hơn"
+    "showFewer": "Hiện ít hơn",
+    "moreActions": "Thêm thao tác"
   },
   "coworkLayout": {
     "views": "Chế độ xem Cowork",

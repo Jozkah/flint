@@ -1336,5 +1336,10 @@
   "engine:loaded.speedBar",
   "common:serverConnection.offlineTitle",
   "common:serverConnection.offlineBody",
-  "common:serverConnection.statusOffline"
+  "common:serverConnection.statusOffline",
+  "common:coworkBars.moreActions",
+  "permissions:folderTrust.summaryHooks",
+  "permissions:folderTrust.summarySubagents",
+  "permissions:folderTrust.summaryBoth",
+  "permissions:folderTrust.details"
 ]
