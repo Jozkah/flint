@@ -666,6 +666,8 @@
     "completionSoundApproval": "Yalnızca onay gerektiğinde",
     "completionSoundVolume": "Ses düzeyi",
     "completionSoundPreview": "Çal",
+    "increaseContrast": "Karşıtlığı artır",
+    "increaseContrastDesc": "Metni daha belirgin yaparak okumayı kolaylaştırır. Koyu temada daha beyaz, açık temada daha koyu.",
     "reduceMotion": "Hareketi azalt",
     "reduceMotionDesc": "Flint'teki animasyonları kapatın. Flint sistem ayarını izlemez, bu nedenle bunu değiştirmediğiniz sürece hareket açık kalır.",
     "completionSoundApproval": "Yalnızca onay gerektiğinde"

@@ -666,6 +666,8 @@
     "completionSoundApproval": "仅在需要批准时",
     "completionSoundVolume": "音量",
     "completionSoundPreview": "播放",
+    "increaseContrast": "提高对比度",
+    "increaseContrastDesc": "让文字更醒目，更易阅读。深色主题下更白，浅色主题下更深。",
     "reduceMotion": "减少动效",
     "reduceMotionDesc": "关闭 Flint 中的动画。Flint 不会跟随系统设置，因此除非你切换此项，否则动效保持开启。",
     "completionSoundApproval": "仅在需要批准时"

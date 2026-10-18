@@ -670,6 +670,8 @@
     "completionSoundApproval": "Только когда нужно подтверждение",
     "completionSoundVolume": "Громкость",
     "completionSoundPreview": "Воспроизвести",
+    "increaseContrast": "Повысить контрастность",
+    "increaseContrastDesc": "Делает текст ярче, чтобы его было легче читать. Белее в тёмной теме, темнее в светлой.",
     "reduceMotion": "Уменьшить анимацию",
     "reduceMotionDesc": "Отключить анимации во Flint. Flint не следует системной настройке, поэтому анимации остаются включёнными, пока вы не переключите это.",
     "completionSoundApproval": "Только когда нужно подтверждение"

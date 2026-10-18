@@ -666,6 +666,8 @@
     "completionSoundApproval": "Chỉ khi cần phê duyệt",
     "completionSoundVolume": "Âm lượng",
     "completionSoundPreview": "Phát",
+    "increaseContrast": "Tăng độ tương phản",
+    "increaseContrastDesc": "Làm chữ rõ hơn để dễ đọc. Trắng hơn ở giao diện tối, đậm hơn ở giao diện sáng.",
     "reduceMotion": "Giảm chuyển động",
     "reduceMotionDesc": "Tắt hoạt ảnh trong Flint. Flint không theo cài đặt hệ thống, nên chuyển động vẫn bật trừ khi bạn đổi mục này.",
     "completionSoundApproval": "Chỉ khi cần phê duyệt"

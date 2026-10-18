@@ -670,6 +670,8 @@
     "completionSoundApproval": "Pouze když je potřeba schválení",
     "completionSoundVolume": "Hlasitost",
     "completionSoundPreview": "Přehrát",
+    "increaseContrast": "Zvýšit kontrast",
+    "increaseContrastDesc": "Zjasní text, aby se lépe četl. Bělejší na tmavém motivu, tmavší na světlém.",
     "reduceMotion": "Omezit animace",
     "reduceMotionDesc": "Vypne animace ve Flintu. Flint se neřídí systémovým nastavením, takže animace zůstávají zapnuté, dokud to nepřepnete.",
     "completionSoundApproval": "Jen když je potřeba schválení"
