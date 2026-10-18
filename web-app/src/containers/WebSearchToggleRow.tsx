@@ -14,10 +14,10 @@ export type WebSearchToggle = {
 }
 
 /**
- * Web search for this chat, as a row in the composer's parameters panel: the
- * globe button it replaces lived beside the parameters button. The switch is
- * the control; the whole row toggles it, and the provider names where the
- * searches go.
+ * Web search for this chat, as one compact row in the composer's parameters
+ * panel (the globe button it replaces sat beside that button). The switch is
+ * the control; the whole row is its label, so a click anywhere toggles it,
+ * and the provider is named quietly on the same line.
  */
 export function WebSearchToggleRow({
   enabled,
@@ -28,28 +28,28 @@ export function WebSearchToggleRow({
   const id = useId()
   const provider = useWebSearchConfig((s) => getProviderMeta(s.searchProvider))
   return (
-    <div
+    <label
+      htmlFor={id}
       data-testid="composer-web-search-row"
+      title={provider.label}
       className={cn(
-        'flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-accent',
+        'flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-xs',
         className
       )}
     >
       <Globe
         aria-hidden
         className={cn(
-          'size-4 shrink-0',
+          'size-3.5 shrink-0',
           enabled ? 'text-foreground' : 'text-muted-foreground'
         )}
       />
-      <label htmlFor={id} className="flex min-w-0 flex-1 cursor-pointer flex-col">
-        <span className="truncate text-sm font-medium">
+      <span className="min-w-0 flex-1 truncate">
+        <span className="font-medium text-foreground">
           {t('common:web_search')}
         </span>
-        <span className="truncate text-xs text-muted-foreground">
-          {provider.label}
-        </span>
-      </label>
+        <span className="ml-1.5 text-muted-foreground">{provider.label}</span>
+      </span>
       <Switch
         id={id}
         data-testid="composer-web-search"
@@ -57,6 +57,6 @@ export function WebSearchToggleRow({
         onCheckedChange={(on) => onChange(on)}
         aria-label={t('common:web_search')}
       />
-    </div>
+    </label>
   )
 }

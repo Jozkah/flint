@@ -35,6 +35,23 @@ describe('web search inside the options button', () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(false))
   })
 
+  it('is a compact single-line row the whole of which toggles', async () => {
+    const onChange = vi.fn()
+    render(
+      <ComposerOptionsMenu label="o" active={[]} webSearch={{ enabled: false, onChange }}>
+        <span />
+      </ComposerOptionsMenu>
+    )
+    await user.click(screen.getByTestId('composer-options'))
+    const row = await screen.findByTestId('composer-web-search-row')
+    expect(row.className).toContain('h-8')
+    expect(row.className).not.toMatch(/bg-(muted|accent|card)\b/)
+    expect(row.querySelector('.flex-col')).toBeNull()
+    expect(row.querySelector('svg')!.getAttribute('class')).toContain('size-3.5')
+    await user.click(row.querySelector('span')!)
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(true))
+  })
+
   it('shows no web search row when the composer offers none', async () => {
     render(
       <ComposerOptionsMenu label="o" active={[]}>
