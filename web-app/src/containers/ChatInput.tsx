@@ -4258,7 +4258,10 @@ const ChatInput = memo(function ChatInput({
           className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1"
         >
           {(belowLeft || belowLeftWithEffort) && (
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div
+              data-testid="composer-below-left"
+              className="flex min-w-0 max-w-full flex-wrap items-center gap-0.5"
+            >
               {belowLeft}
               {belowLeftWithEffort?.({
                 effort: effortControl,

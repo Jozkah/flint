@@ -5658,10 +5658,11 @@ export function CoworkPage() {
     projectInitRoot ? st.draftFor(projectInitRoot) !== null : false
   )
   // The project folder: in the header on wide screens, in the composer row
-  // on phones and in panes.
-  const workspacePill = (
+  // on phones, and quiet in the row under a pane's composer.
+  const workspacePillOf = (variant: 'pill' | 'quiet') => (
     <>
       <CoworkWorkspacePill
+        variant={variant}
         describeProject={
           projectInitOffered
             ? {
@@ -5693,9 +5694,10 @@ export function CoworkPage() {
       />
     </>
   )
+  const workspacePill = workspacePillOf('pill')
 
   // What the run may do and how it works: under the composer, as quiet
-  // one-word buttons (Claude's layout), and as pills in a pane's composer row.
+  // one-word buttons (Claude's layout), in a split pane as well.
   const runControls = (variant: 'pill' | 'quiet') => {
     const modeSelector = (
       <CoworkModeSelector
@@ -5767,11 +5769,15 @@ export function CoworkPage() {
     )
   }
 
-  const sessionControls = (
+  // A pane has no header row for its folder, so the folder joins the quiet
+  // row under the composer, before what the run may do.
+  const belowComposerControls = paneChrome ? (
     <>
-      {workspacePill}
-      {runControls('pill')}
+      {workspacePillOf('quiet')}
+      {runControls('quiet')}
     </>
+  ) : (
+    runControls('quiet')
   )
 
   // Everything about the session that is reference material rather than
@@ -6664,13 +6670,14 @@ export function CoworkPage() {
                 groupOptions
                 // Under the composer, as Claude lays it out: what the run may
                 // do on the left; the effort and the model on the right.
-                belowLeft={!paneChrome ? runControls('quiet') : undefined}
+                // A split pane uses the same row (its folder included).
+                belowLeft={belowComposerControls}
                 // Below the input in every layout, a split pane included: each
                 // pane picks its own session's model there, never the global one.
                 modelControl={quietModelSelector}
                 surfaceControls={
                   <>
-                    {paneChrome ? sessionControls : phone ? workspacePill : null}
+                    {!paneChrome && phone ? workspacePill : null}
                     <CoworkSandboxChip />
                     {/* On a phone the composer is out of view while the
                         output is, so it keeps one set there. */}

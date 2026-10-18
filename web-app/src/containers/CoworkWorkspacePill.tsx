@@ -88,6 +88,8 @@ type Props = {
    * already has one.
    */
   describeProject?: { label: string; onOpen: () => void }
+  /** `pill` in a composer row; `quiet` in the row under the composer. */
+  variant?: 'pill' | 'quiet'
 }
 
 /**
@@ -114,7 +116,9 @@ export function CoworkWorkspacePill({
   onAddExtra,
   onRemoveExtra,
   describeProject,
+  variant = 'pill',
 }: Props) {
+  const quiet = variant === 'quiet'
   const { t } = useTranslation()
   const shortName = useComposerCollapsed('folderName')
   const chipText = useComposerCollapsed('chipText')
@@ -143,10 +147,16 @@ export function CoworkWorkspacePill({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant={folderName ? 'outline' : 'ghost'}
+          variant={folderName && !quiet ? 'outline' : 'ghost'}
           size={folderName ? 'xs' : 'icon-xs'}
+          data-variant={variant}
           className={
-            folderName
+            quiet
+              ? folderName
+                ? // Like the access and mode buttons beside it under the composer.
+                  'h-7 min-w-0 max-w-48 shrink gap-1.5 overflow-hidden px-2 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
+                : 'size-7 shrink-0 text-muted-foreground pointer-coarse:size-11'
+              : folderName
               ? // Never squeezed past a readable branch: the folder name gives way first.
                 'h-[30px] min-w-[2.125rem] shrink gap-1.5 overflow-hidden px-2.5 has-[[data-branch]]:min-w-[7.5rem] text-xs font-medium text-muted-foreground pointer-coarse:h-11'
               : 'size-[30px] shrink-0 text-muted-foreground pointer-coarse:size-11'

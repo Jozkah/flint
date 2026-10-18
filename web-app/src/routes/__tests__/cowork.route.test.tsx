@@ -266,8 +266,8 @@ vi.mock('@/lib/coworkRunner', async (orig) => {
 vi.mock('@/containers/ChatInput', () => ({
   default: (props: any) => (
     <div data-testid="composer">
-      {props.surfaceControls}
-      {props.belowLeft}
+      <div data-testid="mock-surface-controls">{props.surfaceControls}</div>
+      <div data-testid="mock-below-left">{props.belowLeft}</div>
       {props.belowLeftWithEffort?.({
         effort: null,
         effortOverridden: false,
@@ -1458,6 +1458,24 @@ describe('two sessions side by side in split view', () => {
     useCoworkRun.setState({ runs: {} } as any)
     useMessageQueue.setState({ queues: {} } as any)
     useSplitConversation.setState({ panes: [] } as any)
+  })
+
+  // The folder, access and mode sit in the quiet row under a pane's composer,
+  // as in the full layout, not as pills inside the input box.
+  it('puts the folder, access and mode under the pane composer, not inside it', async () => {
+    await renderSplit()
+    const below = inPane('right', 'mock-below-left')
+    const inside = inPane('right', 'mock-surface-controls')
+    for (const id of ['cowork-access-selector', 'cowork-mode-selector']) {
+      await waitFor(() =>
+        expect(below.querySelector(`[data-testid="${id}"]`)).not.toBeNull()
+      )
+      expect(inside.querySelector(`[data-testid="${id}"]`)).toBeNull()
+    }
+    expect(below.querySelector('[data-variant="quiet"]')).not.toBeNull()
+    expect(
+      below.querySelector('[data-testid="cowork-mode-selector"]')!.className
+    ).not.toContain('border-[0.8px]')
   })
 
   it("sends what is typed in the right pane to the right pane's session only", async () => {
