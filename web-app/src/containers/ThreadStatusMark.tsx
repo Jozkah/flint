@@ -151,7 +151,8 @@ export function ThreadStatusMark({
         <span
           className={cn(
             'size-2 rounded-full bg-current',
-            status === 'active' && 'motion-safe:animate-[blink_1.2s_ease-in-out_infinite]',
+            status === 'active' &&
+              'blink-dot motion-safe:animate-[blink_1.2s_ease-in-out_infinite]',
             // Waiting on an approval: a soft pulse, still yellow when reduced.
             status === 'wait' && 'motion-safe:animate-pulse'
           )}

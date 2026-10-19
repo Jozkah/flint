@@ -63,6 +63,10 @@ import { GroupFoldersDialog } from './GroupFoldersDialog'
 import { NestedRows, type NestedRowsProps } from './NestedRows'
 import { GroupPrompts } from './GroupPrompts'
 
+/** One options object for good: a fresh literal each render makes a new sensor,
+  which re-renders every draggable row under the DndContext. */
+const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } }
+
 const UNGROUPED = 'ungrouped'
 
 /** Whether a group or any group under it holds an item `keepVisible` wants. */
@@ -185,7 +189,7 @@ export function GroupedTree({
     [data, ids]
   )
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, POINTER_SENSOR_OPTIONS)
   )
   const [nameDialog, setNameDialog] = useState<NameDialog | null>(null)
   const [name, setName] = useState('')

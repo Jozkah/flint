@@ -243,4 +243,23 @@ describe('useThreadManagement', () => {
 
     expect(result.current.folders).toEqual(newFolders)
   })
+
+  it('reads the projects once for many mounted consumers', async () => {
+    mockGetProjects.mockResolvedValue([{ id: 'p1', name: 'P' }])
+    const all = Array.from({ length: 50 }, () => renderHook(() => useThreadManagement()))
+    await waitFor(() => expect(all[0].result.current.folders).toHaveLength(1))
+    expect(mockGetProjects).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the folders array when a re-read finds nothing new', async () => {
+    mockGetProjects.mockResolvedValue([{ id: 'p1', name: 'P' }])
+    const first = renderHook(() => useThreadManagement())
+    await waitFor(() => expect(first.result.current.folders).toHaveLength(1))
+    const before = first.result.current.folders
+    mockGetProjects.mockResolvedValue([{ id: 'p1', name: 'P' }])
+    const again = renderHook(() => useThreadManagement())
+    await waitFor(() => expect(mockGetProjects).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+    expect(again.result.current.folders).toBe(before)
+  })
 })
