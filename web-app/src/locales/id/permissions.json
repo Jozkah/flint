@@ -209,7 +209,7 @@
     "modeAuto": "Setujui otomatis panggilan aman; tanya untuk panggilan berbahaya",
     "modeBypass": "Lewati izin sampai Flint ditutup",
     "modeDetails": "Setujui otomatis tetap bertanya untuk perintah destruktif, aksi host, perubahan jarak jauh, dan panggilan sensitif lainnya. Lewati izin melewati prompt persetujuan itu juga.",
-    "bypassConfirm": "Lewati izin menyetujui setiap panggilan alat tanpa bertanya, termasuk perintah destruktif dan aksi di komputer Anda. Aktifkan sampai Flint ditutup?"
+    "bypassConfirm": "Bypass menjalankan semuanya tanpa bertanya, termasuk perintah host (PowerShell, WSL, SSH, instalasi), perintah destruktif, penulisan di luar folder proyek, dan git push. Mode rencana, aturan tolak yang kamu tulis, batas pengeluaran, dan penyamaran rahasia tetap menolak. Aktifkan Bypass sampai Flint ditutup?"
   },
   "badge": {
     "reachesRemote": "Menjangkau {{target}}",

@@ -209,7 +209,7 @@
     "modeAuto": "Güvenli çağrıları otomatik onayla; tehlikeli çağrılar için sor",
     "modeBypass": "Flint kapanana kadar izinleri atla",
     "modeDetails": "Otomatik onay; yıkıcı komutlar, ana makine eylemleri, uzak değişiklikler ve diğer hassas çağrılar için sorar. Atlama bu onay istemlerini de geçer.",
-    "bypassConfirm": "İzinleri atlama, yıkıcı komutlar ve bilgisayarınızdaki eylemler dahil her araç çağrısını sormadan onaylar. Flint kapanana kadar etkinleştirilsin mi?"
+    "bypassConfirm": "Atlama, ana makine komutları (PowerShell, WSL, SSH, kurulumlar), yıkıcı komutlar, proje klasörü dışına yazma ve git push dahil her şeyi sormadan çalıştırır. Plan modu, yazdığın reddetme kuralları, harcama sınırları ve gizli bilgilerin maskelenmesi yine de reddeder. Flint kapanana kadar Atlama açılsın mı?"
   },
   "badge": {
     "reachesRemote": "{{target}} hedefine ulaşır",

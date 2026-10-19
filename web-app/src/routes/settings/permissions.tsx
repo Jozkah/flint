@@ -1,4 +1,5 @@
 import { isServedByFlint } from '@/lib/platform/utils'
+import { confirmBypass } from '@/lib/bypassConfirm'
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -423,7 +424,7 @@ function PermissionsSettings() {
                   onSelect={() => {
                     if (
                       mode === 'bypass' &&
-                      !window.confirm(t('permissions:settings.bypassConfirm'))
+                      !confirmBypass(t('permissions:settings.bypassConfirm'))
                     ) return
                     setPermissionMode(mode as PermissionMode)
                   }}

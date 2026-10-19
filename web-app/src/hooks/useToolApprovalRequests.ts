@@ -224,6 +224,12 @@ type ToolApprovalRequestsState = {
     reason?: string
   ) => void
   /**
+   * Allow every approval a thread is waiting on, once. For the moment a person
+   * switches that thread to Bypass: the calls already asking are the ones they
+   * meant. Option pickers and held prompts are left alone.
+   */
+  allowPendingForThread: (threadId: string) => void
+  /**
    * Replace the command a pending `bash` request will run, if it is allowed
    * once. A no-op for a stale request, another tool, or a blank command.
    */
@@ -733,6 +739,17 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : {}),
         }
       })
+    },
+
+    allowPendingForThread: (threadId) => {
+      const { pending, queued } = get()
+      const waiting = [
+        ...Object.values(pending),
+        ...Object.values(queued).flat(),
+      ].filter((e) => e.threadId === threadId && !e.choice && !e.held)
+      for (const entry of waiting) {
+        get().resolveApproval(entry.toolCallId, 'allow-once', entry.requestId)
+      }
     },
 
     resolveApproval: (toolCallId, decision, requestId, reason) => {

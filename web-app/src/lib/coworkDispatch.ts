@@ -40,6 +40,8 @@ import {
   type BackgroundTasks,
 } from '@/lib/coworkBackgroundTasks'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
+import { HOST_ASKED } from '@/lib/hostAsked'
+import { useToolApproval } from '@/hooks/useToolApproval'
 import { isBrowserTool } from '@/lib/browserAgent'
 import { BROWSER_TOOL_NAME } from '@/lib/browserTool'
 import { isVisualizeTool } from '@/lib/visualize/constants'
@@ -112,6 +114,13 @@ export type DispatchContext = {
   extraFolders?: readonly string[]
   /** What this session is allowed to do. */
   mode: CoworkMode
+  /**
+   * The session's mode right now. `mode` is frozen when the run starts, so a
+   * person who switches to Bypass while a call waits for approval would
+   * otherwise keep getting asked. Only Bypass (in or out) and Review take
+   * effect mid-run; see `effectiveMode`.
+   */
+  liveMode?: () => CoworkMode | undefined
   /** Mirrors the advertised set. Refused when off, so a call to a tool that was
    * never advertised cannot reach the network the user switched off. */
   webSearch: boolean
@@ -523,7 +532,9 @@ async function callMcpTool(
     phase: allowed ? 'allowed' : 'refused',
     ...(allowed
       ? {
-          detail: `decided by ${bypassed ? 'bypass' : approvalSourceFor(call.toolCallId)}`,
+          detail: bypassed
+            ? AUTO_APPROVED_BYPASS
+            : `decided by ${approvalSourceFor(call.toolCallId)}`,
         }
       : {}),
   })
@@ -605,6 +616,59 @@ export function withEditNote(ranInput: unknown, output: string): string {
 }
 
 /**
+ * The mode a call runs under. A run's frozen mode stands, except that the
+ * person's switch to Bypass, away from Bypass, or to Review while the run is
+ * going applies to the next call: Bypass means no prompts, and it must not
+ * take a restart to mean it. A run that started read-only stays read-only.
+ */
+export function effectiveMode(
+  ctx: Pick<DispatchContext, 'mode' | 'liveMode'>
+): CoworkMode {
+  if (ctx.mode === 'review') return 'review'
+  const live = ctx.liveMode?.()
+  // The app-wide Bypass (Settings > Permissions) is Bypass here too.
+  if (!live) {
+    return useToolApproval.getState().permissionMode === 'bypass'
+      ? 'bypass'
+      : ctx.mode
+  }
+  return live === 'bypass' || live === 'review' || ctx.mode === 'bypass'
+    ? live
+    : ctx.mode
+}
+
+/** A refusal Bypass cannot lift says so, only while Bypass is on. */
+function bypassNoted(
+  outcome: ToolOutcome,
+  ctx: Pick<DispatchContext, 'mode'>
+): ToolOutcome {
+  return ctx.mode === 'bypass'
+    ? { ...outcome, output: bypassCannotOverride(outcome.output) }
+    : outcome
+}
+
+/**
+ * Does this backend error say a rule refused the call, rather than the call
+ * failing? A deny rule, a tool rule, the sandbox, the network or secret-file
+ * floors: nothing a person could answer, so Bypass cannot lift them.
+ */
+export function isPolicyRefusal(error: string): boolean {
+  return /permission_denied|denied by (this machine|project|policy)|tool_rule|\[sandbox_denied\]|is outside the workspace and every folder|plan mode|plan_mode|refused:|was refused/i.test(
+    error
+  )
+}
+
+/** The audit text for a call Bypass let through without asking. */
+export const AUTO_APPROVED_BYPASS = 'auto-approved (Bypass)'
+
+/**
+ * Why Bypass could not run a call, for the model and the person. Bypass skips
+ * every question a person can answer; these refusals are not questions.
+ */
+export const bypassCannotOverride = (what: string): string =>
+  `${what} Bypass skips approval prompts only, so it cannot override this.`
+
+/**
  * Route one tool call, recording its whole life on the way. AH-050.
  *
  * Every tool call in the app arrives here -- the main agent's, a subagent's, a
@@ -616,6 +680,8 @@ export async function dispatchCoworkTool(
   ctx: DispatchContext,
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
+  const mode = effectiveMode(ctx)
+  if (mode !== ctx.mode) ctx = { ...ctx, mode }
   const outcome = await withToolActivity(
     call,
     { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
@@ -944,23 +1010,27 @@ async function routeCoworkTool(
         case 'review-mode':
           return planRefusal(toolName)
         case 'stale-binding':
-          return detachedRefusal(toolName)
+          return bypassNoted(detachedRefusal(toolName), ctx)
         case 'unresolved-skill':
-          return skillRefusal(toolName, unresolved)
+          return bypassNoted(skillRefusal(toolName, unresolved), ctx)
         case 'no-consent':
-          return {
-            output:
-              `\`${toolName}\` was not run: editing this folder has not been ` +
-              'confirmed for this session. Ask the user to confirm it, or ' +
-              'work in the session workspace instead.',
-            isError: true,
-          }
+          return bypassNoted(
+            {
+              output:
+                `\`${toolName}\` was not run: editing this folder has not been ` +
+                'confirmed for this session. Ask the user to confirm it, or ' +
+                'work in the session workspace instead.',
+              isError: true,
+            },
+            ctx
+          )
         case 'unsupported-access':
           return {
-            output:
+            output: bypassCannotOverride(
               `\`${toolName}\` was not run: the selected access mode is not ` +
-              'available in this build, so nothing outside the session ' +
-              'workspace can be changed. Say so rather than working around it.',
+                'available in this build, so nothing outside the session ' +
+                'workspace can be changed. Say so rather than working around it.'
+            ),
             isError: true,
           }
       }
@@ -1311,6 +1381,30 @@ async function routeCoworkTool(
       }
     }
 
+    // Bypass let this call through without a question: say so in the record,
+    // so a run that asked nobody can be audited as one.
+    if (
+      ctx.mode === 'bypass' &&
+      (PLAN_DENIED_TOOLS.has(toolName) ||
+        git ||
+        HOST_ASKED.has(toolName) ||
+        toolName === 'request_access' ||
+        isBrowserTool(toolName) ||
+        toolName === BROWSER_TOOL_NAME)
+    ) {
+      await recordToolActivity({
+        call: call.toolCallId,
+        tool: toolName,
+        session: ctx.sessionId,
+        run: ctx.activity?.run ?? '',
+        invocation: ctx.activity?.invocation ?? '',
+        agent: ctx.activity?.agent ?? '',
+        resource: resourceOf(call.input),
+        phase: 'allowed',
+        detail: AUTO_APPROVED_BYPASS,
+      })
+    }
+
     // Held for the length of the call, and released on every way out of it —
     // output, refusal or throw.
     const shellDone = toolName === 'bash' ? ctx.trackShell?.() : undefined
@@ -1459,7 +1553,14 @@ async function routeCoworkTool(
           resources: result.resources,
         }
       }
-      return { output: result.error, isError: true, resources: result.resources }
+      return {
+        output:
+          ctx.mode === 'bypass' && isPolicyRefusal(result.error)
+            ? bypassCannotOverride(result.error)
+            : result.error,
+        isError: true,
+        resources: result.resources,
+      }
     }
     // A path that reads now is not missing any more.
     if (readPath) ctx.readFailures?.delete(readPath)

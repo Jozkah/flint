@@ -209,7 +209,7 @@
     "modeAuto": "Auto approve safe calls; ask for dangerous calls",
     "modeBypass": "Bypass permissions until Flint closes",
     "modeDetails": "Auto approve asks for destructive commands, host actions, remote changes, and other sensitive calls. Bypass skips those approval prompts too.",
-    "bypassConfirm": "Bypass permissions approves every tool call without asking, including destructive commands and actions on your computer. Enable until Flint closes?"
+    "bypassConfirm": "Bypass runs everything without asking, including host commands (PowerShell, WSL, SSH, installs), destructive commands, writes outside the project folder and git pushes. Plan mode, deny rules you wrote, spend caps and secret redaction still refuse. Turn Bypass on until Flint closes?"
   },
   "badge": {
     "reachesRemote": "Reaches {{target}}",

@@ -94,6 +94,7 @@ import {
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { resolveCoworkModel } from '@/lib/coworkModelChoice'
+import { confirmBypass } from '@/lib/bypassConfirm'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
   runTitle,
@@ -223,6 +224,7 @@ import {
 import {
   isReadOnly,
   modeOf,
+  type CoworkMode,
 } from '@/lib/coworkMode'
 import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
@@ -587,6 +589,12 @@ export const Route = createFileRoute(route.cowork as any)({
 })
 
 /** The current session, with any split-view panes beside it. */
+/** The session's mode as it is now, for a run that froze its own at the start. */
+function liveSessionMode(sid: string): CoworkMode | undefined {
+  const session = useCoworkSessions.getState().sessions.find((x) => x.id === sid)
+  return session ? modeOf(session) : undefined
+}
+
 function CoworkRoute() {
   return (
     <CoworkSplitWorkspace>
@@ -3416,7 +3424,9 @@ export function CoworkPage() {
       record: recordFor(current?.continuity ?? null, current?.folder ?? null),
       campaignTask: current?.campaign?.role === 'task',
     })
-    const inspecting = opening === 'inspect-and-propose'
+    // Bypass is the person's word that nothing needs protecting from a first
+    // message, so an opening remark runs as typed instead of read-only.
+    const inspecting = opening === 'inspect-and-propose' && storedMode !== 'bypass'
     /**
      * Review for an inspecting turn, whatever the session is set to.
      *
@@ -3803,6 +3813,7 @@ export function CoworkPage() {
             readOnlyFolder: childFolder,
             extraFolders: childExtras,
             mode: runMode,
+            liveMode: () => liveSessionMode(sid),
             readFailures: runReadFailures,
             writeGrant: childGrant,
             // A child in its own checkout is a managed-worktree run of its
@@ -4140,6 +4151,7 @@ export function CoworkPage() {
                 readOnlyFolder: runReadRoot,
                 extraFolders: runExtraFolders,
                 mode: runMode,
+                liveMode: () => liveSessionMode(sid),
                 readFailures: runReadFailures,
                 writeGrant: runGrant,
                 // The same frozen answers the first gate used, so the two cannot
@@ -5783,8 +5795,17 @@ export function CoworkPage() {
         // live on; dropping it left the session in its default mode while the
         // user believed they had picked another.
         onChange={(next) => {
+          // Bypass runs everything without asking, host commands included:
+          // say so before the first switch of the app run.
+          if (next === 'bypass' && !confirmBypass(t('permissions:settings.bypassConfirm'))) {
+            return
+          }
           const sid = ensureCurrentSession(paneSessionIdRef.current)
           useCoworkSessions.getState().setMode(sid, next)
+          // The calls already waiting on a card are the ones this switch is for.
+          if (next === 'bypass') {
+            useToolApprovalRequests.getState().allowPendingForThread(sid)
+          }
           // A server session runs with the server's access: the choice is
           // sent there, and the picker shows what the server answered. One
           // that does not land is sent again before the next message.

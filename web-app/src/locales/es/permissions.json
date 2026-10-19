@@ -209,7 +209,7 @@
     "modeAuto": "Aprobar automáticamente las llamadas seguras; preguntar en las peligrosas",
     "modeBypass": "Omitir permisos hasta que se cierre Flint",
     "modeDetails": "La aprobación automática pregunta por comandos destructivos, acciones del host, cambios remotos y otras llamadas sensibles. Omitir permisos también se salta esas solicitudes de aprobación.",
-    "bypassConfirm": "Omitir permisos aprueba todas las llamadas a herramientas sin preguntar, incluidos los comandos destructivos y las acciones en tu equipo. ¿Activarlo hasta que se cierre Flint?"
+    "bypassConfirm": "Omitir permisos ejecuta todo sin preguntar, incluidos los comandos del host (PowerShell, WSL, SSH, instalaciones), los comandos destructivos, las escrituras fuera de la carpeta del proyecto y los git push. El modo de plan, las reglas de denegación que escribiste, los límites de gasto y la ocultación de secretos siguen rechazando. ¿Activar Omitir hasta que se cierre Flint?"
   },
   "badge": {
     "reachesRemote": "Llega a {{target}}",

@@ -209,7 +209,7 @@
     "modeAuto": "Aprovar chamadas seguras automaticamente; perguntar nas perigosas",
     "modeBypass": "Ignorar permissões até o Flint fechar",
     "modeDetails": "A aprovação automática pergunta em comandos destrutivos, ações no host, alterações remotas e outras chamadas sensíveis. Ignorar pula esses pedidos de aprovação também.",
-    "bypassConfirm": "Ignorar permissões aprova toda chamada de ferramenta sem perguntar, incluindo comandos destrutivos e ações no seu computador. Ativar até o Flint fechar?"
+    "bypassConfirm": "Ignorar permissões executa tudo sem perguntar, incluindo comandos do host (PowerShell, WSL, SSH, instalações), comandos destrutivos, gravações fora da pasta do projeto e git push. O modo de plano, as regras de negação que você escreveu, os limites de gasto e a ocultação de segredos continuam recusando. Ativar Ignorar até o Flint fechar?"
   },
   "badge": {
     "reachesRemote": "Alcança {{target}}",

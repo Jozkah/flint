@@ -4642,6 +4642,7 @@ auto_compact_window = 9000
             subagents_enabled: true,
             max_parallel_subagents: 1,
             auto_approve: false,
+            bypass: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
             session_id: None,
             run_id: None,

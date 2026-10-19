@@ -209,7 +209,7 @@
     "modeAuto": "Automaticky schvalovat bezpečná volání; u nebezpečných se ptát",
     "modeBypass": "Obejít oprávnění do zavření Flintu",
     "modeDetails": "Automatické schvalování se ptá u destruktivních příkazů, akcí na hostiteli, vzdálených změn a dalších citlivých volání. Obejití tyto výzvy ke schválení přeskočí také.",
-    "bypassConfirm": "Obejití oprávnění schválí každé volání nástroje bez dotazu, včetně destruktivních příkazů a akcí na vašem počítači. Povolit do zavření Flintu?"
+    "bypassConfirm": "Obejití oprávnění spustí vše bez dotazu, včetně příkazů hostitele (PowerShell, WSL, SSH, instalace), destruktivních příkazů, zápisů mimo složku projektu a git push. Režim plánu, vámi napsaná pravidla zákazu, limity útraty a skrývání tajných údajů dál odmítají. Zapnout Obejití do zavření Flintu?"
   },
   "badge": {
     "reachesRemote": "Dosáhne na {{target}}",

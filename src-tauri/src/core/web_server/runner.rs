@@ -935,6 +935,7 @@ impl Runner {
     ) -> Result<Session, Fail> {
         let flags = SessionFlags {
             auto_approve: mode.auto_approve(),
+            bypass: mode.bypass(),
             plan: mode.plan(),
             require_model: true,
             sandbox: Some(tauri_plugin_agent_tools::tools::jail::backend().enforces()),
@@ -1840,8 +1841,10 @@ async fn actor(
                         } else {
                             session.mode = mode;
                             session.flags.auto_approve = mode.auto_approve();
+                            session.flags.bypass = mode.bypass();
                             session.flags.plan = mode.plan();
                             session.agent.args.auto_approve = mode.auto_approve();
+                            session.agent.args.bypass = mode.bypass();
                             session.agent.args.run_mode = if mode.plan() {
                                 crate::core::agent::plan::RunMode::Plan
                             } else {

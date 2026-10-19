@@ -2247,6 +2247,7 @@ async fn run() {
             overrides,
             SessionFlags {
                 auto_approve: mode_switches.0,
+                bypass: app_lib::core::cli::PermissionMode::requests_bypass(cli.mode.as_deref()),
                 plan: mode_switches.1,
                 sandbox: cli.sandbox.into_flag(),
                 worktree: cli.worktree.into_flag(),
@@ -3073,6 +3074,7 @@ async fn handle_agent(cmd: AgentCommands) {
                 providers.into_overrides(),
                 SessionFlags {
                     auto_approve: mode_switches.0,
+                    bypass: app_lib::core::cli::PermissionMode::requests_bypass(mode.as_deref()),
                     plan: mode_switches.1,
                     sandbox: sandbox.into_flag(),
                     worktree: worktree.into_flag(),
@@ -3142,6 +3144,7 @@ async fn handle_agent(cmd: AgentCommands) {
                 providers.into_overrides(),
                 SessionFlags {
                     auto_approve: mode_switches.0,
+                    bypass: app_lib::core::cli::PermissionMode::requests_bypass(mode.as_deref()),
                     plan: mode_switches.1,
                     sandbox: sandbox.into_flag(),
                     profile,
