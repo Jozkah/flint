@@ -46,6 +46,7 @@ import {
 } from './scheduleForm'
 import { TimeChips } from './TimeChips'
 import { Select } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 
 type Props = {
   open: boolean
@@ -414,8 +415,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
                       : undefined
                   }
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={form.allowTools.includes(tool.name)}
                     onChange={() => toggleTool(tool.name)}
                   />

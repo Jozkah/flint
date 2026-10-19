@@ -17,6 +17,7 @@ import {
 } from '@/lib/browserAgentRules'
 import { errorText } from '@/lib/errorText'
 import { Select } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 
 /**
  * Settings for the assistant's use of the built-in browser pane: the on/off
@@ -278,8 +279,7 @@ export function BrowserAgentSettings() {
               </div>
               {verdict === 'allow' && (
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     data-testid="browser-rule-private"
                     checked={privateOk}
                     onChange={(e) => setPrivateOk(e.target.checked)}

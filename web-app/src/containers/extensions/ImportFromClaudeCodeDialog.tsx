@@ -22,6 +22,7 @@ import {
   type CcImportSelection,
   type CcItem,
 } from '@/lib/extensionsStore'
+import { Checkbox } from '@/components/ui/checkbox'
 
 /** Inline error row, matching the pattern used by PluginsManagerDialog. */
 const ALERT = 'flex items-start gap-1.5 text-xs text-destructive break-words'
@@ -172,9 +173,8 @@ export default function ImportFromClaudeCodeDialog({
                       const id = `cc-item-${key}`
                       return (
                         <li key={key} className="flex items-center gap-2 text-sm">
-                          <input
+                          <Checkbox
                             id={id}
-                            type="checkbox"
                             checked={selected[key] ?? false}
                             onChange={(e) => toggleItem(item, e.target.checked)}
                           />

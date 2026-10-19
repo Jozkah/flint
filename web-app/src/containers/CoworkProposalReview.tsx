@@ -32,6 +32,7 @@ import {
   type ProposedFile,
   type ReviewFlag,
 } from '@/lib/proposals'
+import { Checkbox } from '@/components/ui/checkbox'
 
 const FLAG_LABEL: Record<ReviewFlag['kind'], string> = {
   dependency: 'Dependency change',
@@ -85,8 +86,7 @@ function FileFlags({
         </div>
       ))}
       <label className="mt-1 flex items-center gap-2">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={acknowledged}
           onChange={(e) => onAcknowledge(e.target.checked)}
           data-testid="proposal-flag-ack"
@@ -169,8 +169,7 @@ function FileReview({
       data-path={file.path}
     >
       <label className="flex min-h-8 items-center gap-2 text-xs font-medium text-foreground pointer-coarse:min-h-11">
-        <input
-          type="checkbox"
+        <Checkbox
           disabled={file.sensitive}
           checked={!file.sensitive && allChosen}
           onChange={(e) =>
@@ -218,8 +217,7 @@ function FileReview({
             return (
               <li key={h.id} data-testid="proposal-hunk" data-hunk={h.id}>
                 <label className="flex min-h-7 items-center gap-2 font-mono text-xs text-fg-2 pointer-coarse:min-h-11">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={chosen?.includes(h.id) ?? false}
                     onChange={(e) => {
                       const current = chosen ?? []

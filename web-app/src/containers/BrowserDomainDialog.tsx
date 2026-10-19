@@ -15,6 +15,7 @@ import {
   type DomainAnswer,
   type DomainScope,
 } from '@/hooks/useBrowserAgentPrompt'
+import { Checkbox } from '@/components/ui/checkbox'
 
 const SCOPES: DomainScope[] = ['once', 'session', 'always']
 
@@ -121,8 +122,7 @@ export function BrowserDomainDialog() {
           </RadioGroup>
           {hasSubdomains(head.host) && (
             <label className="mt-1 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <Checkbox
                 data-testid="browser-domain-subdomains"
                 checked={subdomains}
                 onChange={(e) => setSubdomains(e.target.checked)}

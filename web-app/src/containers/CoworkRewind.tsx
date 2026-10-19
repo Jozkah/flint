@@ -5,6 +5,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { CheckpointEntry, RewindPlan } from '@/hooks/useCoworkCheckpoints'
 import { pathsMatch } from '@/lib/coworkChangeSummary'
 import { cn } from '@/lib/utils'
+import { Checkbox } from '@/components/ui/checkbox'
 
 /**
  * Going back to how things were before a turn.
@@ -362,9 +363,8 @@ export function CoworkRewind(props: RewindProps) {
                       ))}
                     </ul>
                     <label className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 rounded-sm accent-[var(--primary)] outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      <Checkbox
+                        className="mt-0.5 rounded-sm outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
                         checked={acknowledged}
                         disabled={busy}
                         onChange={(event) =>

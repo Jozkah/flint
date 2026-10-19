@@ -96,6 +96,12 @@ function CompactSections() {
   return <SettingsSectionPicker className="lg:hidden" />
 }
 
+// The last group of a column grows to the column's end, so the shorter of two
+// side-by-side columns finishes level with the taller one instead of leaving
+// blank space under it (the group's own card body takes up the slack).
+const STRETCH_LAST =
+  '[&>:last-child]:flex [&>:last-child]:flex-1 [&>:last-child]:flex-col [&>:last-child>[data-slot=frame]]:flex-1 [&>:last-child>[data-slot=frame]>[data-slot=frame-body]]:flex-1 [&>[data-slot=frame]:last-child>[data-slot=frame-body]]:flex-1'
+
 /**
  * Two columns of settings groups placed by hand, for pages whose groups read
  * in a particular order (Appearance, Memory). Collapses to one column when
@@ -121,9 +127,9 @@ export function SettingsColumns({
       </div>
     )
   return (
-    <div className="grid min-w-0 grid-cols-1 items-start gap-4 @min-[44rem]:grid-cols-2">
-      <div className="flex min-w-0 flex-col gap-4">{left}</div>
-      <div className="flex min-w-0 flex-col gap-4">{right}</div>
+    <div className="grid min-w-0 grid-cols-1 gap-4 @min-[44rem]:grid-cols-2">
+      <div className={cn('flex min-w-0 flex-col gap-4', STRETCH_LAST)}>{left}</div>
+      <div className={cn('flex min-w-0 flex-col gap-4', STRETCH_LAST)}>{right}</div>
     </div>
   )
 }
@@ -234,16 +240,17 @@ export function SettingsPageBody({
                 ) : (
                   <div
                     key={`cols-${i}`}
-                    className="flex min-w-0 flex-col gap-4 @min-[44rem]:grid @min-[44rem]:grid-cols-2 @min-[44rem]:items-start"
+                    className="flex min-w-0 flex-col gap-4 @min-[44rem]:grid @min-[44rem]:grid-cols-2"
                   >
                     {([0, 1] as const).map((col) => (
                       <div
                         key={col}
-                        className="contents @min-[44rem]:flex @min-[44rem]:min-w-0 @min-[44rem]:flex-col @min-[44rem]:gap-4"
+                        className="contents @min-[44rem]:flex @min-[44rem]:min-w-0 @min-[44rem]:flex-col @min-[44rem]:gap-4 @min-[44rem]:[&>:last-child]:flex @min-[44rem]:[&>:last-child]:flex-1 @min-[44rem]:[&>:last-child]:flex-col @min-[44rem]:[&>:last-child>[data-slot=frame]]:flex-1 @min-[44rem]:[&>:last-child>[data-slot=frame]>[data-slot=frame-body]]:flex-1"
                       >
                         {seg.items.map(({ child, col: c, at }) =>
                           c === col ? (
                             // One column on narrow windows reads in source order.
+                            // The column's last group stretches to the row's end.
                             <div key={at} className="min-w-0" style={{ order: at }}>
                               {child}
                             </div>
