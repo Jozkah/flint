@@ -23,6 +23,7 @@ import type {
   SandboxApplyPlan,
 } from '@/lib/coworkSandboxApply'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
+import { Checkbox } from '@/components/ui/checkbox'
 
 export type SandboxApplyActions = {
   planFor: (path: string) => SandboxApplyPlan | null
@@ -143,9 +144,8 @@ export function CoworkApplyAllDialog({
                   data-kind={entry.kind}
                 >
                   {entry.kind === 'apply' ? (
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 accent-primary"
+                    <Checkbox
+                      className="mt-0.5"
                       checked={entry.checked}
                       disabled={running || done}
                       aria-label={entry.plan.source}

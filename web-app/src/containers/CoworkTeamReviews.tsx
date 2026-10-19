@@ -32,6 +32,7 @@ import {
   type ChildState,
   type ChildView,
 } from '@/lib/teamChildren'
+import { Checkbox } from '@/components/ui/checkbox'
 
 const STATE: Record<ChildState, string> = {
   running: 'Running',
@@ -186,8 +187,7 @@ function ChildRow({
       ) : null}
       {warn ? (
         <label className="mt-1 flex items-center gap-2 text-[length:calc(var(--ui-font-base)*0.6875)]">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={acknowledged}
             onChange={(e) => setAcknowledged(e.target.checked)}
             data-testid="team-child-acknowledge"

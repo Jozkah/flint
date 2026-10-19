@@ -29,6 +29,7 @@ import {
   type PatchFile,
   type PatchFileStatus,
 } from '@/lib/rooms/applyReview'
+import { Checkbox } from '@/components/ui/checkbox'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -373,9 +374,8 @@ export function ApplyReviewDialog({
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 px-1">
                 <label className="flex min-h-6 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="size-3.5 accent-primary"
+                  <Checkbox
+                    className="size-3.5"
                     checked={allSelected}
                     ref={(el) => {
                       if (el) el.indeterminate = selected.size > 0 && !allSelected
@@ -412,9 +412,8 @@ export function ApplyReviewDialog({
                       )}
                     >
                       <div className="flex min-h-10 items-center gap-2.5 px-3 py-2">
-                        <input
-                          type="checkbox"
-                          className="size-3.5 shrink-0 accent-primary"
+                        <Checkbox
+                          className="size-3.5 shrink-0"
                           checked={on}
                           onChange={() => setSelected((s) => toggle(s, f.path))}
                           aria-label={t('rooms:apply.include', { path: f.path })}

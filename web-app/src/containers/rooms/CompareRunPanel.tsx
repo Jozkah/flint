@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { RoomAvatar } from './RoomAvatar'
 import { messagesOf, participantColor } from './roomUi'
+import { Checkbox } from '@/components/ui/checkbox'
 
 type CompareCellState =
   | 'off'
@@ -196,9 +197,8 @@ export function CompareRunPanel({
                   )}
                 </div>
                 <label className="flex shrink-0 items-center gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="size-3.5 accent-[var(--primary)]"
+                  <Checkbox
+                    className="size-3.5"
                     checked={!p.compareSkip}
                     disabled={busy || roomRunning}
                     aria-label={t('rooms:compare.includeFor', { name: p.name })}

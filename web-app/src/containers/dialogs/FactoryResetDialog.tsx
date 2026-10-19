@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import type { FactoryResetOptions } from '@/services/app/types'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
+import { Checkbox } from '@/components/ui/checkbox'
 
 interface FactoryResetDialogProps {
   onReset: (options: FactoryResetOptions) => void
@@ -60,11 +61,10 @@ export function FactoryResetDialog({
         </DialogHeader>
           <div className="flex flex-col gap-3">
             <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-md py-1 sm:min-h-0">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={keepAppData}
                 onChange={(e) => setKeepAppData(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
@@ -76,11 +76,10 @@ export function FactoryResetDialog({
               </div>
             </label>
             <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-md py-1 sm:min-h-0">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={keepModelsAndConfigs}
                 onChange={(e) => setKeepModelsAndConfigs(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
@@ -92,11 +91,10 @@ export function FactoryResetDialog({
               </div>
             </label>
             <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-md py-1 sm:min-h-0">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={clearWebData}
                 onChange={(e) => setClearWebData(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">

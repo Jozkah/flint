@@ -31,6 +31,7 @@ import {
   dismissNotCarried,
   notCarriedDismissed,
 } from '@/lib/coworkWorktrees'
+import { Checkbox } from '@/components/ui/checkbox'
 
 const NOT_CARRIED_SHOWN = 20
 
@@ -549,8 +550,7 @@ function CopyApplyDialog(props: {
             <ul className="overflow-auto text-xs" data-testid="copy-changes">
               {changes.map((c) => (
                 <li key={c.path} className="flex items-center gap-2 py-0.5">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={chosen.has(c.path)}
                     onChange={() => toggle(c.path)}
                     aria-label={c.path}
@@ -601,8 +601,7 @@ function CopyApplyDialog(props: {
         <DialogFooter className="items-center">
           {changes?.some((c) => c.conflict) ? (
             <label className="mr-auto flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={force}
                 onChange={(e) => setForce(e.target.checked)}
               />

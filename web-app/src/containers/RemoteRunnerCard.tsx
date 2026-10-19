@@ -24,6 +24,7 @@ import {
 } from '@/lib/remoteRunner'
 import { openRemoteSession, startRemoteSession } from '@/lib/remoteCowork'
 import { campaignApi } from '@/lib/campaignApi'
+import { Checkbox } from '@/components/ui/checkbox'
 
 /**
  * The smallest way to start a session on the server: pick one of its folders
@@ -180,8 +181,7 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
       </div>
       {isGit && info.runsWorktrees && access !== 'read' && (
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={isolate}
             onChange={(e) => setIsolate(e.target.checked)}
             data-testid="run-on-server-isolate"
@@ -204,8 +204,7 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
             data-testid="campaign-on-server-goal"
           />
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={coordinator}
               onChange={(e) => setCoordinator(e.target.checked)}
               data-testid="campaign-on-server-coordinator"

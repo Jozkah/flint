@@ -14,6 +14,7 @@ import {
   type BackupSecurityPreview,
   type SettingsBackup,
 } from '@/lib/settings-backup'
+import { Checkbox } from '@/components/ui/checkbox'
 
 const io: BackupIo = {
   get: (key) => invoke<string | null>('settings_get', { key }),
@@ -131,8 +132,7 @@ export function SettingsBackupCard() {
         actions={
           <div className="flex flex-col gap-3 items-start">
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={includeSecrets}
                 onChange={(e) => setIncludeSecrets(e.target.checked)}
                 data-testid="settings-backup-include-secrets"
@@ -193,8 +193,7 @@ export function SettingsBackupCard() {
               {preview && preview.securityStores.length > 0 && (
                 <div className="flex flex-col gap-1">
                   <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={includePermissions}
                       onChange={(e) => setIncludePermissions(e.target.checked)}
                       data-testid="settings-backup-include-permissions"

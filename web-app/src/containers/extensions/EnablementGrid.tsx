@@ -11,6 +11,7 @@ import {
   type ExtensionsMatrix,
   type ProjectEntry,
 } from '@/lib/extensionsStore'
+import { Checkbox } from '@/components/ui/checkbox'
 
 export interface EnablementGridProps {
   kind: ExtensionKind
@@ -142,8 +143,7 @@ export default function EnablementGrid({ kind, id }: EnablementGridProps) {
           const checkboxId = `enablement-${kind}-${id}-${col.key}`
           return (
             <div key={col.key} className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id={checkboxId}
                 className="size-3.5 shrink-0"
                 checked={isChecked(col.key)}

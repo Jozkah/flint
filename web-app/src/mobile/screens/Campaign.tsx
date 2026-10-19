@@ -15,6 +15,7 @@ import { invalidate, useRpc } from '../state/rpc'
 import { RemoteCallError } from '../api/client'
 import { headlineOf, headlineText, modelOf, primaryActionOf, taskModel } from '../state/campaigns'
 import { t } from '../i18n'
+import { Checkbox } from '@/components/ui/checkbox'
 
 const POLL_MS = 4_000
 
@@ -105,8 +106,7 @@ function ReviewPanel({ d, busy, run }: { d: CampaignDetailResult; busy: boolean;
             </small>
             {!f.sensitive && f.flags.length > 0 && (
               <label className="cpflag">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={looked.includes(f.path)}
                   onChange={(e) =>
                     setLooked((cur) => (e.target.checked ? [...cur, f.path] : cur.filter((p) => p !== f.path)))

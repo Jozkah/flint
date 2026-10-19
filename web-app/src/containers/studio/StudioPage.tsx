@@ -100,6 +100,7 @@ import {
   type StudioModel,
   type StudioLora,
 } from '@/lib/studio/studio'
+import { Checkbox } from '@/components/ui/checkbox'
 
 const BUILDS: Array<{ id: EngineBuild; label: 'anyGpu' | 'noGpu' | 'nvidia' }> = [
   { id: 'linux-vulkan-x64', label: 'anyGpu' },
@@ -1068,8 +1069,7 @@ function SettingsPanel({
                     const selected = form.loras.find((lora) => lora.name === name)
                     return (
                       <div key={name} className="flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           aria-label={t('studio:settings.useLora', { name })}
                           checked={!!selected}
                           disabled={running}
@@ -1124,8 +1124,7 @@ function SettingsPanel({
         )}
         {warning && !hosted && (
           <label className="flex items-start gap-2 rounded-lg bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={form.accepted}
               onChange={(e) => setForm({ accepted: e.target.checked })}
               className="mt-0.5"

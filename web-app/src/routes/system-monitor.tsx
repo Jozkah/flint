@@ -47,6 +47,7 @@ import {
   type NetworkRate,
   type SystemSnapshot,
 } from '@/lib/systemMonitor'
+import { Checkbox } from '@/components/ui/checkbox'
 
 export const Route = createFileRoute(route.systemMonitor as any)({
   component: SystemMonitorContent,
@@ -603,9 +604,8 @@ function NetworkPanel({
             htmlFor={toggleId}
             className="flex cursor-pointer items-center gap-2 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground"
           >
-            <input
+            <Checkbox
               id={toggleId}
-              type="checkbox"
               checked={showVirtual}
               onChange={(e) => setShowVirtual(e.target.checked)}
             />
