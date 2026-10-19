@@ -41,7 +41,7 @@ const lines = (text: unknown): number => {
 
 const splitLines = (text: unknown): string[] =>
   typeof text === 'string' && text !== ''
-    ? text.replace(/\n$/, '').split('\n')
+    ? text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n')
     : []
 
 /**
@@ -123,6 +123,20 @@ function partKey(name: string): SummaryKey {
   return 'tools'
 }
 
+// The summary is rebuilt on every streamed update; an edit's line diff does
+// not change once the edit exists, so it is worked out once per edit object.
+const editCounts = new WeakMap<object, { added: number; removed: number }>()
+
+function countsOf(edit: Record<string, unknown> | undefined) {
+  if (!edit || typeof edit !== 'object') return editLineCounts(undefined, undefined)
+  let hit = editCounts.get(edit)
+  if (!hit) {
+    hit = editLineCounts(edit.old_string, edit.new_string)
+    editCounts.set(edit, hit)
+  }
+  return hit
+}
+
 /**
  * Count a run's finished tool parts by what they did.
  *
@@ -171,7 +185,7 @@ export function summarizeTrace(parts: TraceSummaryPart[]): TraceSummary {
       if (key === 'edited') {
         const edits = Array.isArray(input.edits) ? input.edits : []
         for (const e of edits as Record<string, unknown>[]) {
-          const { added, removed } = editLineCounts(e?.old_string, e?.new_string)
+          const { added, removed } = countsOf(e)
           out.added += added
           out.removed += removed
         }

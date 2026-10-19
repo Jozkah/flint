@@ -447,7 +447,7 @@ function withStoredTimes(
   return next.map((m) => {
     if (timeOf(m) !== undefined) return m
     previous ??= new Map(before.map((b) => [b.id, timeOf(b)]))
-    const createdAt = previous.get(m.id) ?? new Date(at)
+    const createdAt = previous.get(m.id) ?? at
     return {
       ...m,
       metadata: { ...((m.metadata as object | undefined) ?? {}), createdAt },
