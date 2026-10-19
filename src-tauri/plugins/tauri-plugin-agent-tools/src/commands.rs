@@ -105,6 +105,10 @@ pub enum ApprovalSource {
     Prompted,
     Auto,
     Bypass,
+    /// The person answered "Write anyway" on the secret-write card for this
+    /// exact call. It lifts the credential scan for that one write and nothing
+    /// else: no grant, no rule.
+    Secret,
 }
 
 /// Everything `execute_tool_inner` needs to run a call again, kept by an
@@ -1466,7 +1470,10 @@ async fn execute_tool_inner(
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }
-    ctx = ctx.with_credential_override(matches!(approval, Some(ApprovalSource::Bypass)));
+    ctx = ctx.with_credential_override(matches!(
+        approval,
+        Some(ApprovalSource::Bypass | ApprovalSource::Secret)
+    ));
     // AH-174: the run a command's CPU and memory are kept against.
     if let Some(run) = undo_run.as_deref() {
         ctx = ctx.with_measured_run(run);
@@ -1793,6 +1800,63 @@ pub async fn preview_change(
     let store = resolve_store(&data_folder, None);
     let ctx = ToolContext::new(&root, &store, &[]).with_scratch_root(&scratch);
     Ok(handlers::preview_diff(tool, &args, &ctx).await)
+}
+
+/// One flagged line of a change a `write`/`edit` would make, for the
+/// secret-write approval card. Carries where it is and a masked snippet, never
+/// the value.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretWriteFinding {
+    pub file: String,
+    pub line: usize,
+    pub rule: String,
+    pub snippet: String,
+}
+
+/// What the credential scan finds in the change this `write`/`edit` would make,
+/// so the renderer can put it to the user as an answerable card before the
+/// call runs. Read-only; same reach as [`preview_change`] (only where the call
+/// could write), and empty for any other tool.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub async fn check_write_secrets(
+    data_folder: String,
+    session_id: String,
+    name: String,
+    args: serde_json::Value,
+    write_grant: Option<String>,
+    scope: Option<WorkspaceScope>,
+) -> Result<Vec<SecretWriteFinding>, AgentToolsError> {
+    if name != "write" && name != "edit" {
+        return Ok(Vec::new());
+    }
+    let Some(tool) = lookup(&name) else {
+        return Ok(Vec::new());
+    };
+    let Some(raw) = args.get("path").and_then(|v| v.as_str()) else {
+        return Ok(Vec::new());
+    };
+    let roots =
+        writable_roots_now(&data_folder, &session_id, write_grant.as_deref(), scope).await?;
+    let root = roots[0].clone();
+    let scratch = workspace::ensure_scratch_dir(&session_id).await?;
+    let target = crate::tools::sandbox::resolve_path(&root, Some(&scratch), raw);
+    let judged = target.canonicalize().unwrap_or_else(|_| target.clone());
+    if !crate::undo::within(&judged, &roots) {
+        return Ok(Vec::new());
+    }
+    let store = resolve_store(&data_folder, None);
+    let ctx = ToolContext::new(&root, &store, &[]).with_scratch_root(&scratch);
+    Ok(handlers::secret_findings(tool, &args, &ctx)
+        .await
+        .into_iter()
+        .map(|f| SecretWriteFinding {
+            file: f.file,
+            line: f.line,
+            rule: f.kind.as_str().to_string(),
+            snippet: f.hint,
+        })
+        .collect())
 }
 
 /// Build the live-output sink.
@@ -2224,6 +2288,11 @@ fn recorded_outcome(
             ApprovalSource::Bypass => Some((
                 Outcome::Allow,
                 "auto-approved (Bypass): allowed without asking (bypass permissions mode)".to_string(),
+            )),
+            ApprovalSource::Secret => Some((
+                Outcome::Granted,
+                "approved in the prompt: write anyway (the credential check was answered for this one write)"
+                    .to_string(),
             )),
         },
         _ => None,
@@ -2658,6 +2727,29 @@ mod tests {
         assert!(all[2].reason.contains("bypass permissions"), "{}", all[2].reason);
         assert_eq!(all[3].decision, crate::audit::Outcome::Prompt);
         assert_eq!(all[3].reason, "prompt:Write");
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// "Write anyway" is recorded as a person's answer to this one write, not
+    /// as a mode letting it through unasked.
+    #[test]
+    fn a_write_anyway_answer_is_recorded_as_granted_in_the_prompt() {
+        let data = unique_data_folder();
+        std::fs::create_dir_all(&data).unwrap();
+        let root = data.join("ws");
+        record_permission_decision(
+            &data,
+            "s1",
+            lookup("write").unwrap(),
+            &json!({"path": "a.txt", "content": "x"}),
+            &root,
+            &Decision::Prompt(PromptKind::Write),
+            &DecisionContext { approval: Some(ApprovalSource::Secret), ..Default::default() },
+        );
+        let all = crate::audit::read_all(&data);
+        assert_eq!(all.len(), 1, "{all:?}");
+        assert_eq!(all[0].decision, crate::audit::Outcome::Granted);
+        assert!(all[0].reason.contains("write anyway"), "{}", all[0].reason);
         let _ = std::fs::remove_dir_all(&data);
     }
 

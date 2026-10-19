@@ -332,5 +332,14 @@
   },
   "childApprovals": {
     "label": "等待你核准的變更"
+  },
+  "secretWrite": {
+    "title": "此次寫入似乎包含機密資訊",
+    "writeAnyway": "仍然寫入",
+    "hint": "「仍然寫入」只寫入這一次。下一次寫入時 Flint 會再次詢問。",
+    "fileLabel": "檔案",
+    "lineLabel": "行",
+    "ruleLabel": "規則",
+    "more": "另有 {{count}} 行被標記"
   }
 }

@@ -332,5 +332,14 @@
   },
   "childApprovals": {
     "label": "等待你批准的更改"
+  },
+  "secretWrite": {
+    "title": "此次写入似乎包含机密信息",
+    "writeAnyway": "仍然写入",
+    "hint": "“仍然写入”只写入这一次。下一次写入时 Flint 会再次询问。",
+    "fileLabel": "文件",
+    "lineLabel": "行",
+    "ruleLabel": "规则",
+    "more": "另有 {{count}} 行被标记"
   }
 }

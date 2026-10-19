@@ -709,3 +709,188 @@ async fn a_run_with_a_deferred_call_ends_there_and_says_what_it_waits_for() {
     assert!(said.contains("defer-1") && said.contains("flint cli approvals"), "{said}");
     assert_eq!(*model.requests.lock().unwrap(), 1, "no request after the call was put off");
 }
+
+// -- a write the credential scan flags is a question, not a refusal ---------------
+
+fn a_secret_line() -> String {
+    format!("export const k = \"{}{}\"", "AKIA", "Z7QX2M4N6P8R0T3V")
+}
+
+fn flagged_content() -> String {
+    format!("const a = 1\n{}\n", a_secret_line())
+}
+
+/// Answer the next prompt, returning what it asked.
+async fn answer_and_capture(
+    rx: &mut mpsc::UnboundedReceiver<StreamEvent>,
+    registry: &PermissionRegistry,
+    decision: PermissionDecision,
+) -> Option<StreamEvent> {
+    loop {
+        match rx.recv().await {
+            Some(event @ StreamEvent::PermissionRequest { .. }) => {
+                if let StreamEvent::PermissionRequest { request_id, .. } = &event {
+                    if let Some(tx) = registry.lock().await.remove(request_id) {
+                        let _ = tx.send(decision);
+                    }
+                }
+                return Some(event);
+            }
+            Some(_) => continue,
+            None => return None,
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_flagged_write_raises_the_secret_prompt_and_write_anyway_writes_once() {
+    let (root, _data, mut invoker, mut rx, registry) = setup();
+    invoker.ask_requests = Some(crate::core::agent::interaction::new_registry());
+    let answer = tokio::spawn({
+        let registry = registry.clone();
+        async move {
+            // "Always" is not offered; a client that sends it anyway gets "once".
+            let asked = answer_and_capture(&mut rx, &registry, PermissionDecision::AllowAlways).await;
+            (asked, rx)
+        }
+    });
+    let out = invoke_within(&invoker, &[write_to("c1", "src/env.ts", &flagged_content())]).await;
+    let (asked, mut rx) = answer.await.unwrap();
+    let Some(StreamEvent::PermissionRequest { prompt_kind, offers_always, reason, path, tool_name, .. }) = asked else {
+        panic!("no prompt was raised");
+    };
+    assert_eq!(prompt_kind, "secret");
+    assert!(!offers_always);
+    assert_eq!(tool_name, "write");
+    assert_eq!(path.as_deref(), Some("src/env.ts"));
+    let reason = reason.unwrap();
+    assert!(reason.contains("This write looks like it contains a secret"), "{reason}");
+    assert!(reason.contains("src/env.ts:2"), "{reason}");
+    assert!(reason.contains("API key"), "{reason}");
+    assert!(!reason.contains("Z7QX2M4N6P8R0T3V"), "the value never reaches the prompt: {reason}");
+    assert!(!out[0].content.starts_with("ERROR"), "{}", out[0].content);
+    assert!(std::fs::read_to_string(root.join("src/env.ts")).unwrap().contains("AKIA"));
+
+    // That answer was for that write: the next flagged write is asked again,
+    // and so is an ordinary write ("always" granted nothing).
+    let again = tokio::spawn({
+        let registry = registry.clone();
+        async move {
+            let asked = answer_and_capture(&mut rx, &registry, PermissionDecision::Deny).await;
+            (asked, rx)
+        }
+    });
+    let out = invoke_within(&invoker, &[write_to("c2", "src/env2.ts", &flagged_content())]).await;
+    let (asked, mut rx) = again.await.unwrap();
+    assert!(matches!(asked, Some(StreamEvent::PermissionRequest { .. })), "asked again");
+    assert!(!root.join("src/env2.ts").exists());
+    assert!(out[0].content.contains("denied by user"), "{}", out[0].content);
+
+    let plain = tokio::spawn({
+        let registry = registry.clone();
+        async move {
+            let asked = answer_and_capture(&mut rx, &registry, PermissionDecision::Deny).await;
+            (asked, rx)
+        }
+    });
+    invoke_within(&invoker, &[write_to("c3", "src/plain.ts", "const a = 1\n")]).await;
+    let (asked, _rx) = plain.await.unwrap();
+    let Some(StreamEvent::PermissionRequest { prompt_kind, .. }) = asked else { panic!("no prompt") };
+    assert_eq!(prompt_kind, "write", "an ordinary write is still an ordinary prompt");
+}
+
+#[tokio::test]
+async fn denying_a_flagged_write_tells_the_model_the_user_was_asked() {
+    let (root, _data, mut invoker, mut rx, registry) = setup();
+    invoker.ask_requests = Some(crate::core::agent::interaction::new_registry());
+    let denier = tokio::spawn({
+        let registry = registry.clone();
+        async move {
+            answer_and_capture(&mut rx, &registry, PermissionDecision::Deny).await;
+        }
+    });
+    let out = invoke_within(&invoker, &[write_to("c1", "src/env.ts", &flagged_content())]).await;
+    let _ = denier.await;
+    let text = &out[0].content;
+    assert!(text.starts_with("ERROR"), "{text}");
+    assert!(text.contains("denied by user"), "{text}");
+    assert!(text.contains("The user was asked"), "{text}");
+    assert!(text.contains("src/env.ts:2"), "{text}");
+    assert!(!text.contains("Z7QX2M4N6P8R0T3V"), "{text}");
+    assert!(!root.join("src/env.ts").exists());
+}
+
+#[tokio::test]
+async fn a_saved_rule_and_a_session_grant_never_answer_a_flagged_write() {
+    let (root, data, mut invoker, mut rx, registry) = setup();
+    invoker.ask_requests = Some(crate::core::agent::interaction::new_registry());
+    save_folder_rule(&data, &root, "src", "src/a.txt");
+    invoker
+        .grants
+        .lock()
+        .unwrap()
+        .grant(tauri_plugin_agent_tools::tools::gate::PromptKind::Write);
+    let denier = tokio::spawn({
+        let registry = registry.clone();
+        async move { answer_and_capture(&mut rx, &registry, PermissionDecision::Deny).await }
+    });
+    let out = invoke_within(&invoker, &[write_to("c1", "src/env.ts", &flagged_content())]).await;
+    let asked = denier.await.unwrap();
+    assert!(
+        matches!(asked, Some(StreamEvent::PermissionRequest { ref prompt_kind, .. }) if prompt_kind == "secret"),
+        "{asked:?}"
+    );
+    assert!(out[0].content.contains("denied by user"), "{}", out[0].content);
+    assert!(!root.join("src/env.ts").exists());
+}
+
+#[tokio::test]
+async fn an_unattended_run_refuses_a_flagged_write_and_says_how_to_allow_it() {
+    if has_a_terminal() {
+        return;
+    }
+    let (root, _data, invoker, mut rx, _registry) = setup();
+    // Nobody attached: no question is raised, nothing is auto-approved.
+    let out = invoke_within(&invoker, &[write_to("c1", "src/env.ts", &flagged_content())]).await;
+    let text = &out[0].content;
+    assert!(text.starts_with("ERROR"), "{text}");
+    assert!(text.contains("nobody is here to ask"), "{text}");
+    assert!(text.contains("--mode bypass"), "{text}");
+    assert!(text.contains("src/env.ts:2"), "{text}");
+    assert!(!text.contains("Z7QX2M4N6P8R0T3V"), "{text}");
+    assert!(!root.join("src/env.ts").exists());
+    assert_eq!(prompts(&mut rx), 0);
+
+    // Auto-approval does not stand in for a person either.
+    let (root, _data, mut invoker, mut rx, _registry) = setup();
+    invoker.auto_approve = true;
+    let out = invoke_within(&invoker, &[write_to("c1", "src/env.ts", &flagged_content())]).await;
+    assert!(out[0].content.starts_with("ERROR"), "{}", out[0].content);
+    assert!(!root.join("src/env.ts").exists());
+    assert_eq!(prompts(&mut rx), 0);
+}
+
+#[tokio::test]
+async fn bypass_writes_a_flagged_line_without_asking() {
+    let (root, _data, mut invoker, mut rx, _registry) = setup();
+    invoker.bypass = true;
+    let out = invoke_within(&invoker, &[write_to("c1", "src/env.ts", &flagged_content())]).await;
+    assert!(!out[0].content.starts_with("ERROR"), "{}", out[0].content);
+    assert!(std::fs::read_to_string(root.join("src/env.ts")).unwrap().contains("AKIA"));
+    assert_eq!(prompts(&mut rx), 0, "Bypass answers the question for the person");
+}
+
+#[tokio::test]
+async fn a_flagged_write_to_a_protected_secret_file_stays_refused() {
+    let (root, _data, mut invoker, mut rx, _registry) = setup();
+    invoker.ask_requests = Some(crate::core::agent::interaction::new_registry());
+    let out = invoke_within(&invoker, &[write_to("c1", ".env", &flagged_content())]).await;
+    assert!(out[0].content.starts_with("ERROR"), "{}", out[0].content);
+    assert!(!root.join(".env").exists());
+    assert_eq!(prompts(&mut rx), 0, "no card offers to write past a protected file");
+    // Not even Bypass lifts it.
+    invoker.bypass = true;
+    let out = invoke_within(&invoker, &[write_to("c2", ".env", &flagged_content())]).await;
+    assert!(out[0].content.starts_with("ERROR"), "{}", out[0].content);
+    assert!(!root.join(".env").exists());
+}

@@ -84,6 +84,7 @@ pub fn kind_name(kind: PromptKind) -> &'static str {
         PromptKind::WriteEscape => "write_escape",
         PromptKind::Exec => "exec",
         PromptKind::Ask => "ask",
+        PromptKind::Secret => "secret",
     }
 }
 
@@ -431,7 +432,7 @@ pub fn scope_options(
     project_root: &Path,
 ) -> Vec<ApprovalScope> {
     let mut out = vec![ApprovalScope::Once];
-    if kind == PromptKind::Ask {
+    if kind.is_every_time() {
         return out;
     }
     out.push(ApprovalScope::Run);
@@ -493,7 +494,7 @@ pub fn validate_choice(
     args: &Value,
     project_root: &Path,
 ) -> Result<ApprovalScope, String> {
-    if kind == PromptKind::Ask && scope.is_standing() {
+    if kind.is_every_time() && scope.is_standing() {
         return Err("a call that is asked about every time cannot be remembered".into());
     }
     match scope {
@@ -531,7 +532,7 @@ pub fn covers(
     args: &Value,
     project_root: &Path,
 ) -> bool {
-    if kind == PromptKind::Ask
+    if kind.is_every_time()
         || rule.tool != tool.name
         || rule.kind != kind_name(kind)
         || rule.project != project_key(project_root)
@@ -665,7 +666,7 @@ pub fn find_cover(
     kind: PromptKind,
     args: &Value,
 ) -> Option<ScopedRule> {
-    if kind == PromptKind::Ask {
+    if kind.is_every_time() {
         return None;
     }
     let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -688,7 +689,7 @@ pub fn upgrade(
 ) -> Decision {
     match decision {
         Decision::Prompt(kind)
-            if kind != PromptKind::Ask
+            if !kind.is_every_time()
                 && find_cover(data_folder, project_root, tool, kind, args).is_some() =>
         {
             Decision::Allow

@@ -333,5 +333,14 @@
   },
   "childApprovals": {
     "label": "Änderungen warten auf deine Freigabe"
+  },
+  "secretWrite": {
+    "title": "Dieser Schreibvorgang enthält anscheinend ein Geheimnis",
+    "writeAnyway": "Trotzdem schreiben",
+    "hint": "Trotzdem schreiben schreibt nur dieses eine Mal. Flint fragt beim nächsten Schreibvorgang erneut.",
+    "fileLabel": "Datei",
+    "lineLabel": "Zeile",
+    "ruleLabel": "Regel",
+    "more": "Und {{count}} weitere markierte Zeilen"
   }
 }

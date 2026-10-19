@@ -333,5 +333,14 @@
   },
   "childApprovals": {
     "label": "Canvis pendents d'aprovació"
+  },
+  "secretWrite": {
+    "title": "Aquesta escriptura sembla contenir un secret",
+    "writeAnyway": "Escriu igualment",
+    "hint": "Escriu igualment ho escriu només aquesta vegada. Flint tornarà a preguntar en la propera escriptura.",
+    "fileLabel": "Fitxer",
+    "lineLabel": "Línia",
+    "ruleLabel": "Regla",
+    "more": "I {{count}} línies marcades més"
   }
 }

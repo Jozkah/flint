@@ -354,6 +354,10 @@ struct Pending {
     /// call itself: a destructive command, a paused auto-approval, a command
     /// that needs to run outside the sandbox.
     reason: Option<String>,
+    /// The gate's class for the prompt (`write`, `exec`, `secret`, ...). Only
+    /// `secret` changes what is offered: "Write anyway" in place of "Allow
+    /// once", and never an "always".
+    prompt_kind: String,
     /// Highlighted option in the docked prompt (index into `options()`).
     selected: usize,
     /// Name of the subagent that requested this, when the call originated inside
@@ -463,6 +467,13 @@ impl Pending {
 
     /// Selectable decisions, in display order. `AllowAlways` only when offered.
     fn options(&self) -> Vec<(PermissionDecision, String)> {
+        if self.prompt_kind == "secret" {
+            // This one write, nothing remembered.
+            return vec![
+                (PermissionDecision::AllowOnce, "Write anyway".to_string()),
+                (PermissionDecision::Deny, "Deny".to_string()),
+            ];
+        }
         let mut opts = vec![(PermissionDecision::AllowOnce, "Allow once".to_string())];
         if self.offers_always {
             opts.push((PermissionDecision::AllowAlways, self.always_label()));
@@ -5406,6 +5417,7 @@ impl App {
                 path,
                 command,
                 diff,
+                prompt_kind,
                 offers_always,
                 reason,
                 ..
@@ -5420,8 +5432,9 @@ impl App {
                     path,
                     command,
                     diff,
-                    offers_always,
+                    offers_always: offers_always && prompt_kind != "secret",
                     reason,
+                    prompt_kind,
                     selected: 0,
                     subagent: None,
                 });
@@ -5697,6 +5710,7 @@ impl App {
                 path,
                 command,
                 diff,
+                prompt_kind,
                 offers_always,
                 reason,
                 ..
@@ -5708,8 +5722,9 @@ impl App {
                     path,
                     command,
                     diff,
-                    offers_always,
+                    offers_always: offers_always && prompt_kind != "secret",
                     reason,
+                    prompt_kind,
                     selected: 0,
                     subagent: Some(name.to_string()),
                 });
@@ -19098,6 +19113,7 @@ mod tests {
             diff: None,
             offers_always,
             reason: None,
+            prompt_kind: "exec".into(),
             selected: 0,
             subagent: None,
         }
@@ -19726,6 +19742,50 @@ mod tests {
         let opts = pending(true).options();
         assert_eq!(opts.len(), 3);
         assert_eq!(opts[1].0, PermissionDecision::AllowAlways);
+    }
+
+    /// A write the credential scan flagged is put to the person with where and
+    /// which rule, offers "Write anyway" and "Deny" only (no "always", even if
+    /// the event claimed one), and names no value.
+    #[test]
+    fn a_secret_write_prompt_offers_write_anyway_and_deny_only() {
+        let mut app = test_app();
+        app.apply(StreamEvent::PermissionRequest {
+            request_id: "s1".into(),
+            tool_name: "write".into(),
+            capability: "write".into(),
+            path: Some("lib/env.ts".into()),
+            command: None,
+            diff: Some("@@ -0,0 +1,2 @@
++const a = 1".into()),
+            patch: None,
+            prompt_kind: "secret".into(),
+            offers_always: true,
+            reason: Some(
+                "This write looks like it contains a secret: lib/env.ts:2 rule \"API key\" matched `export const k = \"[redacted]\"`. \"Write anyway\" writes it this one time."
+                    .into(),
+            ),
+            args_digest: None,
+            call_id: None,
+        });
+        let p = app.pending().unwrap();
+        let labels: Vec<_> = p.options().into_iter().map(|(_, l)| l).collect();
+        assert_eq!(labels, vec!["Write anyway", "Deny"]);
+        assert!(!p.offers_always);
+        let text: String = p
+            .detail_lines(200)
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("
+");
+        assert!(text.contains("lib/env.ts"), "{text}");
+        assert!(text.contains("This write looks like it contains a secret"), "{text}");
+        assert!(text.contains("API key"), "{text}");
+        assert!(!text.contains("AKIA"), "{text}");
+        let rows = render_rows(&mut app, 100, 30).join("
+");
+        assert!(rows.contains("Write anyway"), "{rows}");
     }
 
     #[test]

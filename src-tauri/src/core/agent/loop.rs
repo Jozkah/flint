@@ -385,6 +385,57 @@ pub(crate) fn record_deny_reason(request_id: &str, reason: &str) {
         .insert(request_id.to_string(), cleaned);
 }
 
+/// What the secret-write prompt says: where, which rule, the masked match.
+pub(crate) fn secret_prompt_text(
+    findings: &[tauri_plugin_agent_tools::secrets::SecretFinding],
+) -> String {
+    let what = findings
+        .iter()
+        .map(tauri_plugin_agent_tools::tools::handlers::describe_secret_finding)
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!("This write looks like it contains a secret: {what}. \"Write anyway\" writes it this one time.")
+}
+
+/// The model's result when a flagged write could not be put to anyone.
+pub(crate) fn secret_unattended_msg(
+    name: &str,
+    findings: &[tauri_plugin_agent_tools::secrets::SecretFinding],
+) -> String {
+    let what = findings
+        .iter()
+        .map(tauri_plugin_agent_tools::tools::handlers::describe_secret_finding)
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!(
+        "ERROR: tool '{name}' was not run: it adds what looks like a secret ({what}). Only a person can \
+         allow that, and nobody is here to ask, so nothing was written. If the value is real, use a \
+         placeholder and read it from the environment. If it is not (a fixture, an example), say which \
+         line it is and why in your answer. To allow a write like this in a run nobody watches, start it \
+         with permission mode bypass (`--mode bypass`). Do not reword the code to get past this check."
+    )
+}
+
+/// The model's result when the person said no to a flagged write: it says they
+/// were asked, so it is not mistaken for a harness refusal.
+pub(crate) fn secret_denied_message(
+    name: &str,
+    request_id: &str,
+    findings: &[tauri_plugin_agent_tools::secrets::SecretFinding],
+) -> String {
+    let what = findings
+        .iter()
+        .map(tauri_plugin_agent_tools::tools::handlers::describe_secret_finding)
+        .collect::<Vec<_>>()
+        .join("; ");
+    let base = denied_by_user_message(name, request_id);
+    format!(
+        "{base}. The user was asked whether to write a line that looks like a secret ({what}) and \
+         denied it. Nothing was written. Do not retry the same content: use a placeholder and read \
+         the real value from the environment, or ask the user what they want instead."
+    )
+}
+
 /// The tool result for a prompt the user refused, with their reason when they
 /// gave one. Consumes the recorded reason.
 fn denied_by_user_message(name: &str, request_id: &str) -> String {
@@ -4599,6 +4650,15 @@ impl CompositeToolInvoker {
         e
     }
 
+    /// How a secret-write question ended, in the activity record, so a write
+    /// Bypass or a person let through is distinguishable from an ordinary one.
+    fn note_secret_decision(&self, tc: &serde_json::Value, detail: &str) {
+        let Some(data) = &self.record_to else { return };
+        let mut e = self.activity_event(tc, tauri_plugin_agent_tools::activity::Phase::Allowed);
+        e.detail = detail.to_string();
+        tauri_plugin_agent_tools::activity::append(data, &e.redacted());
+    }
+
     /// Every call, as it is asked for, before any gate.
     fn record_requested(&self, tool_calls: &[serde_json::Value]) {
         let Some(data) = &self.record_to else { return };
@@ -4726,8 +4786,8 @@ impl CompositeToolInvoker {
                 on_complete
             };
         use tauri_plugin_agent_tools::tools::{
-            gate::{resolve_decision, Decision, PromptKind},
-            handlers::{execute_builtin_with_diff, preview_diff, stage_change},
+            gate::{resolve_decision, with_secret_flag, Decision, PromptKind},
+            handlers::{execute_builtin_with_diff, preview_diff, secret_findings, stage_change},
             is_builtin, lookup, Capability, ToolContext,
         };
         let mut out: Vec<ToolOutcome> = Vec::with_capacity(tool_calls.len());
@@ -5166,6 +5226,19 @@ impl CompositeToolInvoker {
             } else {
                 decision
             };
+            // The credential scan, asked before the call runs instead of
+            // refused after it: a flagged write becomes a question the person
+            // can answer for this one write. Applied after saved rules and
+            // session grants so neither can answer it, and never for a call
+            // the gate already refused.
+            let secret_findings = if matches!(tool.name, "write" | "edit")
+                && !matches!(decision, Decision::HardDeny(_))
+            {
+                secret_findings(tool, &args, &self.tool_context()).await
+            } else {
+                Vec::new()
+            };
+            let decision = with_secret_flag(decision, !secret_findings.is_empty());
             use std::sync::atomic::Ordering as StreakOrdering;
             // Said in the prompt, so the person knows why a call that would
             // otherwise have run on its own is in front of them. A forced prompt
@@ -5213,6 +5286,11 @@ impl CompositeToolInvoker {
                 {
                     forced_reason = Some("Asked every time: it changes this computer or reads something private.".to_string());
                     Decision::Prompt(PromptKind::Ask)
+                }
+                // Asked every time, with what was found; no "always".
+                Decision::Prompt(PromptKind::Secret) => {
+                    forced_reason = Some(secret_prompt_text(&secret_findings));
+                    Decision::Prompt(PromptKind::Secret)
                 }
                 other => other,
             };
@@ -5281,19 +5359,36 @@ impl CompositeToolInvoker {
                     // The token lives as long as the call: the guard is held
                     // across the await, so a stop_scope on this run reaches it.
                     let registered = self.call_token(&id);
+                    // Allowed with the scan flagging the change only when Bypass
+                    // answered the prompt for the person.
+                    if !secret_findings.is_empty() {
+                        self.note_secret_decision(tc, "auto-approved (Bypass)");
+                    }
                     let ctx = self
                         .streaming_tool_context(&id)
-                        .with_cancel(registered.token().clone());
+                        .with_cancel(registered.token().clone())
+                        .with_credential_override(!secret_findings.is_empty());
                     execute_builtin_with_diff(tool, &args, &ctx).await
                 }
                 Decision::HardDeny(reason) => {
                     (hard_deny_msg(name, reason, &self.project_root), None, None)
                 }
                 Decision::Prompt(kind) => {
+                    // Only a person can say "write anyway", and only now: it is
+                    // never put off to be answered later, and never refused as
+                    // if they had said no when nobody was asked.
+                    if kind == PromptKind::Secret && !self.can_prompt() {
+                        out.push(ToolOutcome::plain(id.clone(), secret_unattended_msg(name, &secret_findings)));
+                        continue;
+                    }
                     // A question answered while this run was paused, or one to put
                     // off now because nobody is here: see `approval_flow`.
                     let early_digest = approval_digest(name, &args);
-                    let early = self.settle_deferred(name, &early_digest);
+                    let early = if kind == PromptKind::Secret {
+                        crate::core::agent::approval_flow::Settled::Ask
+                    } else {
+                        self.settle_deferred(name, &early_digest)
+                    };
                     if let crate::core::agent::approval_flow::Settled::Refuse(message) = early {
                         out.push(ToolOutcome::plain(id.clone(), message));
                         continue;
@@ -5329,6 +5424,7 @@ impl CompositeToolInvoker {
                         PromptKind::WriteEscape => "write_escape",
                         PromptKind::Exec => "exec",
                         PromptKind::Ask => "ask",
+                        PromptKind::Secret => "secret",
                     };
                     let path = tool
                         .path_args
@@ -5449,6 +5545,7 @@ impl CompositeToolInvoker {
                     // prompt alone; taken whatever the decision so neither outlives it.
                     let chosen_scope = crate::core::agent::approval_flow::take_scope_choice(&request_id);
                     let put_off = crate::core::agent::approval_flow::take_defer_mark(&request_id)
+                        && kind != PromptKind::Secret
                         && matches!(decision, PermissionDecision::Deny)
                         && matches!(early, crate::core::agent::approval_flow::Settled::Ask);
 
@@ -5458,6 +5555,14 @@ impl CompositeToolInvoker {
                         self.cancelled(&mut out, &id, name, reason);
                         continue;
                     }
+                    // "Write anyway" is for this one write: an "always" answer
+                    // (a client that offers none can still send one) is read as
+                    // once, and grants nothing.
+                    let decision = if kind == PromptKind::Secret && decision == PermissionDecision::AllowAlways {
+                        PermissionDecision::AllowOnce
+                    } else {
+                        decision
+                    };
 
                     // AH-148. A prompt can stay open for minutes, and in that
                     // time an editor, a formatter or another agent can write
@@ -5491,9 +5596,14 @@ impl CompositeToolInvoker {
                     } else {
                         match decision {
                             PermissionDecision::AllowOnce => {
+                                let secret = kind == PromptKind::Secret;
+                                if secret {
+                                    self.note_secret_decision(tc, "approved: write anyway (this one write)");
+                                }
                                 let ctx = self
                                     .streaming_tool_context(&id)
-                                    .with_cancel(registered.token().clone());
+                                    .with_cancel(registered.token().clone())
+                                    .with_credential_override(secret);
                                 execute_builtin_with_diff(tool, &args, &ctx).await
                             }
                             PermissionDecision::AllowAlways => {
@@ -5551,6 +5661,9 @@ impl CompositeToolInvoker {
                                         None,
                                         None,
                                     ),
+                                    None if kind == PromptKind::Secret => {
+                                        (secret_denied_message(name, &request_id, &secret_findings), None, None)
+                                    }
                                     None => (denied_by_user_message(name, &request_id), None, None),
                                 }
                             }

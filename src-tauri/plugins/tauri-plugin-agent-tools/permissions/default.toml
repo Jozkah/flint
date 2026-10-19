@@ -72,6 +72,7 @@ permissions = [
     "allow-undo-turn",
     "allow-redo-turn",
     "allow-preview-change",
+    "allow-check-write-secrets",
     "allow-project-list-dir",
     "allow-project-read-file",
     "allow-project-survey",

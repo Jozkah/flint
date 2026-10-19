@@ -333,5 +333,14 @@
   },
   "childApprovals": {
     "label": "Changes waiting for your approval"
+  },
+  "secretWrite": {
+    "title": "This write looks like it contains a secret",
+    "writeAnyway": "Write anyway",
+    "hint": "Write anyway writes it this one time. Flint asks again for the next write.",
+    "fileLabel": "File",
+    "lineLabel": "Line",
+    "ruleLabel": "Rule",
+    "more": "And {{count}} more flagged lines"
   }
 }

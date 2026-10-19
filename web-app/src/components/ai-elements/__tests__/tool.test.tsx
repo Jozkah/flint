@@ -370,6 +370,87 @@ describe('ToolApprovalActions', () => {
     expect(resolveApproval).toHaveBeenCalledWith('tc1', 'allow-once', undefined)
   })
 
+  describe('a write the credential scan stopped', () => {
+    const secretRequest = {
+      tc1: {
+        requestId: 'r1',
+        toolCallId: 'tc1',
+        toolName: 'write',
+        threadId: 't1',
+        alwaysAsk: true,
+        input: { path: 'lib/env.ts', content: 'x' },
+        secret: [
+          {
+            file: 'lib/env.ts',
+            line: 2,
+            rule: 'API key',
+            snippet: 'export const k = "[redacted]"',
+          },
+        ],
+      },
+    }
+
+    it('names the file, the line, the rule and the masked line', () => {
+      renderApproval(secretRequest)
+      expect(
+        screen.getByRole('heading', { name: 'permissions:secretWrite.title' })
+      ).toBeInTheDocument()
+      expect(screen.getByTestId('secret-write-file')).toHaveTextContent(
+        'lib/env.ts'
+      )
+      expect(screen.getByTestId('secret-write-line')).toHaveTextContent('2')
+      expect(screen.getByTestId('secret-write-rule')).toHaveTextContent(
+        'API key'
+      )
+      expect(screen.getByTestId('secret-write-snippet')).toHaveTextContent(
+        'export const k = "[redacted]"'
+      )
+    })
+
+    it('offers Write anyway and Deny, and no broader grant', () => {
+      renderApproval(secretRequest)
+      expect(
+        screen.getByText('permissions:secretWrite.writeAnyway')
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByText('permissions:scope.allowOnce')
+      ).not.toBeInTheDocument()
+      expect(screen.getByText('permissions:scope.deny')).toBeInTheDocument()
+      expect(
+        screen.getByTestId('approval-deny-reason-toggle')
+      ).toBeVisible()
+      expect(screen.getByTestId('approval-more-options')).not.toBeVisible()
+      expect(screen.queryByText(/allowAlways/)).not.toBeInTheDocument()
+    })
+
+    it('answers once for Write anyway, and no for Deny', () => {
+      renderApproval(secretRequest)
+      fireEvent.click(screen.getByText('permissions:secretWrite.writeAnyway'))
+      expect(resolveApproval).toHaveBeenLastCalledWith(
+        'tc1',
+        'allow-once',
+        'r1'
+      )
+      fireEvent.click(screen.getByText('permissions:scope.deny'))
+      expect(resolveApproval).toHaveBeenLastCalledWith('tc1', 'deny', 'r1')
+    })
+
+    it('sends the reason typed with Deny with a reason', () => {
+      renderApproval(secretRequest)
+      fireEvent.click(screen.getByTestId('approval-deny-reason-toggle'))
+      fireEvent.change(screen.getByRole('textbox'), {
+        target: { value: 'it is a fixture, use the example key' },
+      })
+      fireEvent.click(screen.getByText('tools:toolApproval.denyAndSend'))
+      expect(resolveApproval).toHaveBeenLastCalledWith(
+        'tc1',
+        'deny',
+        'r1',
+        'it is a fixture, use the example key'
+      )
+    })
+  })
+
   it('announces how many requests wait in the thread, once', () => {
     renderApproval({
       tc1: { toolCallId: 'tc1', toolName: 'bash', threadId: 't1' },

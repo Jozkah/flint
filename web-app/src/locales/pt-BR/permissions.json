@@ -333,5 +333,14 @@
   },
   "childApprovals": {
     "label": "Alterações aguardando sua aprovação"
+  },
+  "secretWrite": {
+    "title": "Esta gravação parece conter um segredo",
+    "writeAnyway": "Gravar mesmo assim",
+    "hint": "Gravar mesmo assim grava apenas desta vez. O Flint pergunta de novo na próxima gravação.",
+    "fileLabel": "Arquivo",
+    "lineLabel": "Linha",
+    "ruleLabel": "Regra",
+    "more": "E mais {{count}} linhas sinalizadas"
   }
 }

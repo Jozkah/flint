@@ -924,6 +924,41 @@ pub async fn preview_diff(
     }
 }
 
+/// The credential scan's findings in the change a `write`/`edit` would make,
+/// each with the file it is in. `diff` is the display diff `preview_diff` drew.
+pub fn secret_findings_in(diff: &str, args: &serde_json::Value) -> Vec<crate::secrets::SecretFinding> {
+    let mut findings = crate::secrets::scan_diff(diff);
+    for f in findings.iter_mut() {
+        if f.file.is_empty() {
+            f.file = arg_str(args, "path").unwrap_or("the file").to_string();
+        }
+    }
+    findings
+}
+
+/// One finding as a person reads it: where, which rule, the masked match. Never
+/// the value.
+pub fn describe_secret_finding(f: &crate::secrets::SecretFinding) -> String {
+    format!("{}:{} rule \"{}\" matched `{}`", f.file, f.line, f.kind.as_str(), f.hint)
+}
+
+/// What the credential scan would find if this call ran now. Empty for any tool
+/// but `write`/`edit`, and for a change that adds nothing suspicious. Reads the
+/// file the call would change, writes nothing.
+pub async fn secret_findings(
+    tool: &BuiltinTool,
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+) -> Vec<crate::secrets::SecretFinding> {
+    if !matches!(tool.name, "write" | "edit") {
+        return Vec::new();
+    }
+    match preview_diff(tool, args, ctx).await {
+        Some(diff) => secret_findings_in(&diff, args),
+        None => Vec::new(),
+    }
+}
+
 /// Run a built-in tool and, for `write`/`edit`, also produce a focused diff.
 /// Returns `(content, diff)`. The diff is line-prefixed (`-`/`+`) hunk text for
 /// **display only**: the model gets the concise summary in `content`, since the
@@ -965,24 +1000,12 @@ pub async fn execute_builtin_with_diff(
                 let findings = if ctx.credential_override {
                     Vec::new()
                 } else {
-                    crate::secrets::scan_diff(preview)
+                    secret_findings_in(preview, args)
                 };
                 if !findings.is_empty() {
                     let where_ = findings
                         .iter()
-                        .map(|f| {
-                            let file = if !f.file.is_empty() {
-                                f.file.as_str()
-                            } else {
-                                arg_str(args, "path").unwrap_or("the file")
-                            };
-                            format!(
-                                "{file}:{} rule \"{}\" matched `{}`",
-                                f.line,
-                                f.kind.as_str(),
-                                f.hint
-                            )
-                        })
+                        .map(describe_secret_finding)
                         .collect::<Vec<_>>()
                         .join("; ");
                     return (
@@ -991,7 +1014,8 @@ pub async fn execute_builtin_with_diff(
                              Nothing was changed. Only the matched line is the problem; every other line is fine. \
                              If the value is a real secret, use a placeholder and read it from the environment. \
                              If it is not (a test fixture, an example), tell the user which line it is and why: \
-                             they can allow it by switching to Bypass permissions or add that line themselves. \
+                             where the user can be asked they are asked before this refusal, otherwise they can \
+                             allow it by switching to Bypass permissions or add that line themselves. \
                              Do not reword the code to get past this check."
                         ),
                         None,
@@ -6417,6 +6441,31 @@ export function verifyPassword(password: string, stored: string) {
         let ctx = ToolContext::new(&root, &store, &[]);
         let (msg, _, _) = super::execute_builtin_with_diff(w, &session, &ctx).await;
         assert!(!msg.starts_with("ERROR"), "{msg}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// What the card shows: the file, the line and the rule, never the value;
+    /// a placeholder is not a finding, and neither is another tool.
+    #[tokio::test]
+    async fn secret_findings_name_the_file_line_and_rule_and_not_the_value() {
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let w = lookup("write").unwrap();
+        let secret = format!("export const k = \"{}{}\"", "AKIA", "Z7QX2M4N6P8R0T3V");
+        let args = json!({"path": "lib/env.ts", "content": format!("const a = 1\n{secret}\n")});
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let found = super::secret_findings(w, &args, &ctx).await;
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].file, "lib/env.ts");
+        assert_eq!(found[0].line, 2);
+        assert_eq!(found[0].kind.as_str(), "API key");
+        assert!(!found[0].hint.contains("Z7QX2M4N6P8R0T3V"), "{}", found[0].hint);
+        assert!(!root.join("lib/env.ts").exists(), "looking writes nothing");
+
+        let placeholder = json!({"path": "lib/env.ts", "content": "export const k = process.env.API_KEY\n"});
+        assert!(super::secret_findings(w, &placeholder, &ctx).await.is_empty());
+        let other = lookup("read").unwrap();
+        assert!(super::secret_findings(other, &args, &ctx).await.is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 

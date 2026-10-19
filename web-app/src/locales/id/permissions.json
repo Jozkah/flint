@@ -332,5 +332,14 @@
   },
   "childApprovals": {
     "label": "Perubahan menunggu persetujuan Anda"
+  },
+  "secretWrite": {
+    "title": "Penulisan ini tampaknya berisi rahasia",
+    "writeAnyway": "Tulis saja",
+    "hint": "Tulis saja hanya menulisnya kali ini. Flint akan bertanya lagi pada penulisan berikutnya.",
+    "fileLabel": "File",
+    "lineLabel": "Baris",
+    "ruleLabel": "Aturan",
+    "more": "Dan {{count}} baris bertanda lainnya"
   }
 }

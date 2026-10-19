@@ -335,5 +335,14 @@
   },
   "childApprovals": {
     "label": "Změny čekající na vaše schválení"
+  },
+  "secretWrite": {
+    "title": "Tento zápis vypadá, že obsahuje tajný údaj",
+    "writeAnyway": "Přesto zapsat",
+    "hint": "Přesto zapsat zapíše jen tento jeden zápis. Flint se zeptá znovu při dalším zápisu.",
+    "fileLabel": "Soubor",
+    "lineLabel": "Řádek",
+    "ruleLabel": "Pravidlo",
+    "more": "A dalších označených řádků: {{count}}"
   }
 }

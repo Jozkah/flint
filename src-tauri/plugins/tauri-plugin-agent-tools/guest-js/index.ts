@@ -1264,7 +1264,7 @@ export async function executeTool(
 }
 
 /** See `executeTool`'s `approval`. */
-export type ApprovalSource = 'prompted' | 'auto' | 'bypass'
+export type ApprovalSource = 'prompted' | 'auto' | 'bypass' | 'secret'
 
 /**
  * Run a failed `bash` call again outside the sandbox, after the user approved
@@ -1369,6 +1369,38 @@ export async function previewChange(
   options?: { writeGrant?: string; scope?: WorkspaceScope }
 ): Promise<string | null> {
   return await invoke('plugin:agent-tools|preview_change', {
+    dataFolder,
+    sessionId,
+    name,
+    args,
+    writeGrant: options?.writeGrant,
+    scope: options?.scope,
+  })
+}
+
+/** A flagged line of a change a `write`/`edit` would make. Never the value. */
+export type SecretWriteFinding = {
+  file: string
+  line: number
+  /** The rule that matched, e.g. "API key". */
+  rule: string
+  /** The line with the value masked. */
+  snippet: string
+}
+
+/**
+ * What the credential scan finds in the change this `write`/`edit` would make,
+ * before it runs, so it can be put to the user as an answerable card. Empty for
+ * other tools and for a path outside where the call could write.
+ */
+export async function checkWriteSecrets(
+  dataFolder: string,
+  sessionId: string,
+  name: string,
+  args: Record<string, unknown>,
+  options?: { writeGrant?: string; scope?: WorkspaceScope }
+): Promise<SecretWriteFinding[]> {
+  return await invoke('plugin:agent-tools|check_write_secrets', {
     dataFolder,
     sessionId,
     name,

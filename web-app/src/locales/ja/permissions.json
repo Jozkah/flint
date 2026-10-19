@@ -332,5 +332,14 @@
   },
   "childApprovals": {
     "label": "承認待ちの変更"
+  },
+  "secretWrite": {
+    "title": "この書き込みには機密情報が含まれているようです",
+    "writeAnyway": "それでも書き込む",
+    "hint": "「それでも書き込む」は今回の1回だけ書き込みます。次の書き込みでは Flint が再度確認します。",
+    "fileLabel": "ファイル",
+    "lineLabel": "行",
+    "ruleLabel": "ルール",
+    "more": "ほか {{count}} 行が検出されました"
   }
 }

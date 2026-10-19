@@ -191,6 +191,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::undo_turn,
             commands::redo_turn,
             commands::preview_change,
+            commands::check_write_secrets,
             commands::project_list_dir,
             commands::project_read_file,
             commands::project_survey,
