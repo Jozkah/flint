@@ -2688,6 +2688,7 @@
   "messageSaveFailed": "Mesaj kaydedilemedi. Yeniden başlatmadan sonra kaybolabilir.",
   "threadSaveFailed": "Bu konudaki değişiklik kaydedilemedi. Geri alındı.",
   "attachmentsProcessFailed": "Ekler hazırlanamadı, bu yüzden mesaj gönderilmedi",
+  "attachmentMissingFile": "Eklenen bir dosya artık mevcut değil. Kaldırıp yeniden ekleyin; mesajınız kutuda duruyor.",
   "settingsRecovered": {
     "title": "Ayar dosyası okunamadı",
     "withBackup": "{{file}} bozulmuştu, bu yüzden Flint varsayılan ayarlarla başladı. Bozuk dosya {{backup}} olarak saklandı.",

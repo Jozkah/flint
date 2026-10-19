@@ -2645,6 +2645,7 @@
   "messageSaveFailed": "Pesan tidak dapat disimpan. Pesan bisa hilang setelah dimulai ulang.",
   "threadSaveFailed": "Perubahan pada utas ini tidak dapat disimpan. Perubahan dibatalkan.",
   "attachmentsProcessFailed": "Lampiran tidak dapat disiapkan, jadi pesan tidak terkirim",
+  "attachmentMissingFile": "Satu file lampiran tidak tersedia lagi. Hapus lalu lampirkan lagi; pesan Anda masih ada di kotak.",
   "settingsRecovered": {
     "title": "File pengaturan tidak dapat dibaca",
     "withBackup": "{{file}} rusak, jadi Flint dimulai dengan pengaturan default. File yang rusak disimpan sebagai {{backup}}.",

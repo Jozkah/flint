@@ -2688,6 +2688,7 @@
   "messageSaveFailed": "Không thể lưu tin nhắn. Tin nhắn có thể bị mất sau khi khởi động lại.",
   "threadSaveFailed": "Không thể lưu thay đổi cho cuộc trò chuyện này. Đã hoàn tác.",
   "attachmentsProcessFailed": "Không thể chuẩn bị tệp đính kèm nên tin nhắn chưa được gửi",
+  "attachmentMissingFile": "Một tệp đính kèm không còn khả dụng. Hãy xóa và đính kèm lại; tin nhắn của bạn vẫn còn trong ô nhập.",
   "settingsRecovered": {
     "title": "Không thể đọc tệp cài đặt",
     "withBackup": "{{file}} bị hỏng nên Flint khởi động với cài đặt mặc định. Tệp hỏng được giữ lại với tên {{backup}}.",
