@@ -416,7 +416,11 @@ fn toolchain_line(runnable: &[String], unavailable: &[String]) -> String {
     format!(
         "Sandbox programs: available: {} / not runnable in the sandbox: {} (use the `git` tool \
 for all Git and GitHub work -- status, commit, push, pull requests -- rather than `bash git` or an \
-MCP shell, which bypasses approval; tell the user to run the rest or grant it in Settings > Agent Tools).",
+MCP shell, which bypasses approval. A program installed under the user profile (Python from python.org, \
+Node, cargo) is unlocked by calling `request_access` once, read mode, for its install folder, then running \
+it by full path; install Python packages inside the workspace (`pip install --target <workspace>/.pylibs`, \
+or `python -m venv <workspace>/.venv`), since the profile is write-locked. Git for Windows / MSYS2 tools \
+never run here, and a WindowsApps python.exe is only the Store alias; tell the user to run those).",
         list(runnable),
         list(unavailable)
     )
@@ -1369,7 +1373,7 @@ We build with make.")
     fn toolchain_line_names_both_lists_and_the_way_out() {
         let line = toolchain_line(&["git".into(), "python".into()], &["node".into()]);
         assert!(line.contains("available: git, python / not runnable in the sandbox: node"), "{line}");
-        assert!(line.contains("the `git` tool") && line.contains("Settings > Agent Tools"), "{line}");
+        assert!(line.contains("the `git` tool") && line.contains("request_access") && line.contains(".pylibs") && !line.contains("Settings > Agent Tools"), "{line}");
         assert!(toolchain_line(&[], &[]).contains("available: none / not runnable in the sandbox: none"));
     }
 
