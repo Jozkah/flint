@@ -8,7 +8,6 @@ import path from 'path'
 import type { VFile } from 'vfile'
 
 export { cn } from './cn'
-export { getProviderLogo } from './providerLogos'
 
 export function basenameNoExt(filePath: string): string {
   const base = path.basename(filePath)
