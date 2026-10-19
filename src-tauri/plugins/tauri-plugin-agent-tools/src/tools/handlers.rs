@@ -2468,6 +2468,14 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 None
             }
             .or_else(|| super::host_tools::python_launcher_missing(&command_text, &out));
+            if class == super::shell_diag::FailureClass::MissingCommand {
+                if let Some(note) = super::host_tools::missing_path_note(
+                    &out,
+                    super::host_tools::current_profile().as_deref(),
+                ) {
+                    out.push_str(&note);
+                }
+            }
             if sandboxed {
                 // An unquoted assignment value, not a missing program.
                 let quoting = missing

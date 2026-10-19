@@ -40,6 +40,88 @@ pub fn missing_program(output: &str) -> Option<String> {
     None
 }
 
+/// The signed-in user's profile folder, read from the live process
+/// environment every time. Never persisted: a stored copy goes wrong the moment
+/// the settings folder is moved, restored or shared between users.
+pub fn current_profile() -> Option<PathBuf> {
+    ["USERPROFILE", "HOME"]
+        .iter()
+        .filter_map(|k| std::env::var_os(k))
+        .find(|v| !v.is_empty())
+        .map(PathBuf::from)
+}
+
+fn norm_path(p: &str) -> String {
+    let s = p.replace('/', "\\");
+    let s = s.trim_end_matches('\\').to_string();
+    if cfg!(windows) {
+        s.to_lowercase()
+    } else {
+        s
+    }
+}
+
+/// True when `path` sits in a sibling of `profile` (`C:\Users\other\...` while
+/// the current profile is `C:\Users\me`): another user's profile.
+pub fn is_foreign_profile_path(path: &Path, profile: &Path) -> bool {
+    let (p, me) = (
+        norm_path(&path.to_string_lossy()),
+        norm_path(&profile.to_string_lossy()),
+    );
+    let Some(base) = profile.parent() else { return false };
+    let base = norm_path(&base.to_string_lossy());
+    if base.is_empty() || me.is_empty() {
+        return false;
+    }
+    p.starts_with(&format!("{base}\\")) && p != me && !p.starts_with(&format!("{me}\\"))
+}
+
+/// The absolute path a "not recognized" failure names as the program, if it is
+/// one (`The term 'C:\Users\x\python.exe' is not recognized ...`).
+pub fn missing_path(output: &str) -> Option<PathBuf> {
+    let quoted = if let Some(i) = output.find("The term '") {
+        let rest = &output[i + "The term '".len()..];
+        &rest[..rest.find('\'')?]
+    } else {
+        let end = output.find("' is not recognized as an internal or external command")?;
+        let head = &output[..end];
+        &head[head.rfind('\'')? + 1..]
+    };
+    let b = quoted.as_bytes();
+    let drive =
+        b.len() > 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/');
+    (drive || quoted.starts_with("\\\\")).then(|| PathBuf::from(quoted))
+}
+
+/// A note for a "not recognized" failure whose program is an absolute path that
+/// does not exist. Models guess profile paths (a user name seen in a doc, a
+/// stale transcript); say plainly that the path is not this machine's and what
+/// the real home is, so the next command uses it instead of another guess.
+pub fn missing_path_note(output: &str, profile: Option<&Path>) -> Option<String> {
+    let path = missing_path(output)?;
+    if path.exists() {
+        return None;
+    }
+    let shown = path.display();
+    Some(match profile {
+        Some(profile) if is_foreign_profile_path(&path, profile) => format!(
+            "\n[`{shown}` does not exist for the current user: it is under another user's profile. \
+             This user's home is {}. Never guess a profile path; use the home named in the \
+             Runtime Environment, or find the program with Get-Command / where.exe.]",
+            profile.display()
+        ),
+        Some(profile) => format!(
+            "\n[`{shown}` does not exist. This user's home is {}. Do not guess paths; check \
+             with Get-Command / where.exe or ask the user where it is installed.]",
+            profile.display()
+        ),
+        None => format!(
+            "\n[`{shown}` does not exist on this machine. Do not guess paths; check with \
+             Get-Command / where.exe or ask the user.]"
+        ),
+    })
+}
+
 fn clean(name: &str) -> Option<String> {
     let name = name.trim();
     let ok = !name.is_empty()
@@ -1345,6 +1427,38 @@ mod tests {
             missing_program("The term 'C:\\x\\y.exe' is not recognized").as_deref(),
             None
         );
+    }
+
+    #[test]
+    fn a_path_under_another_users_profile_is_foreign() {
+        let me = Path::new(r"C:\Users\jo");
+        assert!(is_foreign_profile_path(Path::new(r"C:\Users\mika\AppData\Local\py.exe"), me));
+        assert!(is_foreign_profile_path(Path::new("C:/Users/MIKA/x"), me));
+        assert!(!is_foreign_profile_path(Path::new(r"C:\Users\jo\AppData\py.exe"), me));
+        assert!(!is_foreign_profile_path(Path::new(r"C:\Users\JO\x"), me));
+        // A name that merely starts like the current one is another user.
+        assert!(is_foreign_profile_path(Path::new(r"C:\Users\joe\x"), me));
+        assert!(!is_foreign_profile_path(Path::new(r"D:\tools\py.exe"), me));
+    }
+
+    #[test]
+    fn a_missing_path_term_names_the_real_home() {
+        let out = r"& : The term 'C:\Users\mika\AppData\Local\Programs\Python\Python311\python.exe' is not recognized as the name of a cmdlet";
+        assert_eq!(
+            missing_path(out).unwrap(),
+            PathBuf::from(r"C:\Users\mika\AppData\Local\Programs\Python\Python311\python.exe")
+        );
+        let note = missing_path_note(out, Some(Path::new(r"C:\Users\jo"))).unwrap();
+        assert!(note.contains("another user's profile"), "{note}");
+        assert!(note.contains(r"C:\Users\jo"), "{note}");
+        // A plain program name is not a path, and cmd's wording is read too.
+        assert!(missing_path("The term 'node' is not recognized").is_none());
+        assert!(missing_path(
+            r"'D:\x\y.exe' is not recognized as an internal or external command"
+        )
+        .is_some());
+        // No profile known: still says the path does not exist.
+        assert!(missing_path_note(out, None).unwrap().contains("does not exist"));
     }
 
     #[test]

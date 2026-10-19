@@ -374,6 +374,7 @@ fn runtime_environment_block(project_root: &Path, scratch: Option<&Path>) -> Str
         shell_notes.push_str(&toolchain_line(&report.runnable, &report.unavailable));
     }
 
+    let user_line = live_user_line(toolchains.is_some());
     let git_branch = git::current_branch(project_root);
     let git_line = match &git_branch {
         Some(branch) => format!("Git branch: `{branch}`"),
@@ -396,11 +397,57 @@ fn runtime_environment_block(project_root: &Path, scratch: Option<&Path>) -> Str
     format!(
         "# Runtime Environment\n\n\
 Work directory: `{cwd}` (relative paths in tool calls resolve here)\n\
-OS: `{os}`\n\
+OS: `{os}`{user_line}\n\
 Shell (bash tool): `{shell}{shell_notes}{scratch_line}\n\
 Date: `{date}`\n\
 {git_line}"
     )
+}
+
+/// Who the app is running as and where that user's folders are, as one line.
+/// Without it the model invents a profile path (`C:\Users\<some name>\...`) and
+/// every command that uses it fails. The values are read from the live process
+/// environment, never stored. `sandboxed` adds that the shell's own `HOME`,
+/// `USERPROFILE` and `APPDATA` are a private scratch home, so the real folders
+/// named here are not what `$env:USERPROFILE` shows there.
+fn user_line(
+    profile: Option<&Path>,
+    username: Option<&str>,
+    appdata: Option<&Path>,
+    local_appdata: Option<&Path>,
+    sandboxed: bool,
+) -> Option<String> {
+    let profile = profile?;
+    let name = username
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
+        .or_else(|| profile.file_name().map(|n| n.to_string_lossy().into_owned()))?;
+    let mut line = format!("User: `{name}`, home `{}`", display_path(profile));
+    for (label, dir) in [("AppData", appdata), ("LocalAppData", local_appdata)] {
+        if let Some(dir) = dir {
+            line.push_str(&format!(", {label} `{}`", display_path(dir)));
+        }
+    }
+    line.push_str(" (never guess another profile path)");
+    if sandboxed {
+        line.push_str("; in the sandbox shell HOME/USERPROFILE/APPDATA are a private scratch home");
+    }
+    Some(line)
+}
+
+fn live_user_line(sandboxed: bool) -> String {
+    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
+    let profile = tauri_plugin_agent_tools::tools::host_tools::current_profile().or_else(dirs::home_dir);
+    let username = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).ok();
+    user_line(
+        profile.as_deref(),
+        username.as_deref(),
+        env("APPDATA").as_deref(),
+        env("LOCALAPPDATA").as_deref(),
+        sandboxed,
+    )
+    .map(|l| format!("\n{l}"))
+    .unwrap_or_default()
 }
 
 /// The sandbox toolchain probe as one prompt line, so the model knows before
@@ -1571,6 +1618,38 @@ We build with make.")
         assert_eq!(display_path(Path::new(r"\\?\UNC\srv\share\proj")), "//srv/share/proj");
         assert_eq!(display_path(Path::new(r"C:\tmp\proj")), "C:/tmp/proj");
         assert_eq!(display_path(Path::new("/home/u/proj")), "/home/u/proj");
+    }
+
+    #[test]
+    fn user_line_states_the_simulated_profile() {
+        let line = user_line(
+            Some(Path::new(r"C:\Users\ana")),
+            Some("ana"),
+            Some(Path::new(r"C:\Users\ana\AppData\Roaming")),
+            Some(Path::new(r"C:\Users\ana\AppData\Local")),
+            true,
+        )
+        .unwrap();
+        assert!(line.contains("User: `ana`, home `C:/Users/ana`"), "{line}");
+        assert!(line.contains("LocalAppData `C:/Users/ana/AppData/Local`"), "{line}");
+        assert!(line.contains("scratch home"), "{line}");
+        assert!(line.len() < 400, "{} chars", line.len());
+        // Falls back to the folder name when USERNAME is unset; none, no line.
+        assert!(user_line(Some(Path::new("C:/Users/bo")), None, None, None, false)
+            .unwrap()
+            .contains("`bo`"));
+        assert!(user_line(None, Some("x"), None, None, false).is_none());
+    }
+
+    #[test]
+    fn runtime_environment_block_names_the_live_home() {
+        let root = scratch_project("home");
+        std::fs::create_dir_all(&root).unwrap();
+        let block = runtime_environment_block(&root, None);
+        if let Some(home) = tauri_plugin_agent_tools::tools::host_tools::current_profile() {
+            assert!(block.contains(&format!("home `{}`", display_path(&home))), "{block}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

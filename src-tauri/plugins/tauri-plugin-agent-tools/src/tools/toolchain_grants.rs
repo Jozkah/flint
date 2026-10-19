@@ -79,11 +79,20 @@ pub fn list() -> Vec<ToolchainGrant> {
 }
 
 /// The granted folders that still exist, for the sandbox `PATH`.
+///
+/// A grant under another user's profile is dropped: the settings folder was
+/// copied or restored from a different account, and that folder is not this
+/// user's to put on a `PATH` (nor does its ACL entry exist for them).
 pub fn granted_folders() -> Vec<PathBuf> {
-    list()
+    granted_folders_for(list(), host_tools::current_profile().as_deref())
+}
+
+fn granted_folders_for(grants: Vec<ToolchainGrant>, profile: Option<&Path>) -> Vec<PathBuf> {
+    grants
         .into_iter()
         .map(|g| g.folder)
         .filter(|f| f.is_dir())
+        .filter(|f| profile.map_or(true, |p| !host_tools::is_foreign_profile_path(f, p)))
         .collect()
 }
 
@@ -520,6 +529,24 @@ mod tests {
         let exe = install.join("python.exe");
         std::fs::write(&exe, b"").unwrap();
         (dir, profile, exe)
+    }
+
+    #[test]
+    fn grants_from_another_profile_never_reach_the_path() {
+        let (_dir, profile, exe) = profile_with_python();
+        let users = profile.parent().unwrap();
+        let other = users.join("other").join("Python311");
+        std::fs::create_dir_all(&other).unwrap();
+        let grant = |folder: &Path| ToolchainGrant {
+            program: "python".into(),
+            folder: folder.to_path_buf(),
+            granted_at: 0,
+        };
+        let kept = granted_folders_for(
+            vec![grant(exe.parent().unwrap()), grant(&other)],
+            Some(&profile),
+        );
+        assert_eq!(kept, vec![exe.parent().unwrap().to_path_buf()]);
     }
 
     #[test]
