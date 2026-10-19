@@ -83,6 +83,17 @@ describe('describeEngineError', () => {
     expect(text).not.toContain('backend')
   })
 
+  it('explains an incompatible GGUF format while preserving engine detail', () => {
+    const text = describeEngineError({
+      code: 'MODEL_FORMAT_NOT_SUPPORTED',
+      details: "gguf_init_from_reader: tensor 'output.weight' has invalid ggml type 142",
+    })
+
+    expect(mockT).toHaveBeenCalledWith('model-errors:engine.MODEL_FORMAT_NOT_SUPPORTED')
+    expect(text).toContain('model-errors:engine.MODEL_FORMAT_NOT_SUPPORTED')
+    expect(text).toContain('invalid ggml type 142')
+  })
+
   it('appends the missing library names, which are not translatable', () => {
     const text = describeEngineError({
       code: 'MISSING_SHARED_LIBRARY',

@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "La richiesta supera la dimensione di contesto disponibile.",
   "refusal": "Il modello ha rifiutato di rispondere. Prova a riformulare la richiesta.",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "Questo file del modello non è compatibile con il motore di Flint. Scegli un'altra quantizzazione GGUF dalla pagina del modello. I formati personalizzati potrebbero richiedere il motore dell'autore.",
     "unknown": "Il motore del modello ha segnalato un errore imprevisto.",
     "MODEL_LOAD_FAILED": "Non è stato possibile caricare il modello.",
     "MODEL_ARCH_NOT_SUPPORTED": "L'architettura di questo modello non è supportata dal motore attuale. Aggiornare il motore dalle Impostazioni potrebbe aggiungere il supporto.",
