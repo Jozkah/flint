@@ -75,6 +75,17 @@ import { chatFolderAdapter } from '@/lib/chatFolders'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import type { ProjectModel } from '@/services/projects/types'
 
+/**
+ * True from the first time `open` is true on. A dialog that has never been
+ * opened is not mounted at all (one set per chat row is hundreds of Radix
+ * trees nobody sees); after the first open it stays so its exit animation runs.
+ */
+function useEverOpen(open: boolean): boolean {
+  const ever = useRef(false)
+  if (open) ever.current = true
+  return ever.current
+}
+
 const ThreadItem = memo(
   ({
     thread,
@@ -115,6 +126,9 @@ const ThreadItem = memo(
     const [convertOpen, setConvertOpen] = useState(false)
     const [renameOpen, setRenameOpen] = useState(false)
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+    const renameMounted = useEverOpen(renameOpen)
+    const convertMounted = useEverOpen(convertOpen)
+    const deleteMounted = useEverOpen(deleteConfirmOpen)
 
     const serviceHub = useServiceHub()
     const getMessages = useMessages((state) => state.getMessages)
@@ -232,11 +246,12 @@ const ThreadItem = memo(
     )
     const toggleFavorite = useThreads((state) => state.toggleFavorite)
 
-    const currentThreadId = useParams({
+    // A boolean, not the id: every row selecting the current id re-rendered
+    // all of them on each chat switch.
+    const isSelected = useParams({
       strict: false,
-      select: (params) => params.threadId,
+      select: (params) => params.threadId === thread.id,
     })
-    const isSelected = currentThreadId === thread.id
     const awaitingApproval = useToolApprovalRequests((s) =>
       Object.values(s.pending ?? {}).some((p) => p.threadId === thread.id)
     )
@@ -570,7 +585,8 @@ const ThreadItem = memo(
           />
         )}
 
-        <RenameThreadDialog
+        {renameMounted && (
+          <RenameThreadDialog
           thread={thread}
           plainTitleForRename={plainTitleForRename}
           onRename={renameThread}
@@ -578,8 +594,10 @@ const ThreadItem = memo(
           onOpenChange={setRenameOpen}
           withoutTrigger
         />
+        )}
         
-        <ConvertToCoworkDialog
+        {convertMounted && (
+          <ConvertToCoworkDialog
           open={convertOpen}
           onOpenChange={setConvertOpen}
           onChoose={async (deleteChat) => {
@@ -595,14 +613,17 @@ const ThreadItem = memo(
             navigate({ to: route.cowork })
           }}
         />
+        )}
 
-        <DeleteThreadDialog
+        {deleteMounted && (
+          <DeleteThreadDialog
           thread={thread}
           onDelete={deleteThread}
           open={deleteConfirmOpen}
           onOpenChange={setDeleteConfirmOpen}
           withoutTrigger
         />
+        )}
       </NavItem>
     )
   }

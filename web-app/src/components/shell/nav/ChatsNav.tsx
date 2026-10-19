@@ -81,6 +81,10 @@ import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import type { ThreadFolder } from '@/services/projects/types'
 
+/** One options object for good: a fresh literal each render makes a new sensor,
+  which re-renders every draggable row under the DndContext. */
+const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } }
+
 type ChatFilter = 'all' | 'active'
 const RECENT_MS = 60 * 60 * 1000
 /** Rows shown per group before "Show N more". */
@@ -445,7 +449,7 @@ export function ChatsNav() {
   const toggleFavorite = useThreads((s) => s.toggleFavorite)
   // A small movement starts a drag, so a click on a row still opens it.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, POINTER_SENSOR_OPTIONS)
   )
   const [filter, setFilter] = useState<ChatFilter>('all')
   const [collapsed, setCollapsed] = useState<Record<string, string | null>>({})

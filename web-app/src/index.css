@@ -368,9 +368,29 @@ html {
   mix-blend-mode: normal;
 }
 
+/* Working dot: blinks on opacity, with its halo drawn as a transform-scaled
+   ring. Animating box-shadow instead restyled and repainted the page on the
+   main thread every frame (a third of idle CPU with a few working chats). */
 @keyframes blink {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 55%, transparent); }
-  50% { opacity: 0.35; box-shadow: 0 0 0 4px transparent; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes blink-ring {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(2); opacity: 0; }
+}
+.blink-dot { position: relative; }
+html.reduce-motion .blink-dot::after,
+[data-perf='reduced'] .blink-dot::after,
+[data-window-idle] .blink-dot::after { animation: none; opacity: 0; }
+.blink-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  pointer-events: none;
+  animation: blink-ring 1.2s ease-in-out infinite;
 }
 
 html.reduce-motion .view-in,

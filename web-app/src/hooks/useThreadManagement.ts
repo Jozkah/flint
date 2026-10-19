@@ -121,6 +121,32 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
   },
 }))
 
+let syncing: Promise<void> | null = null
+
+/**
+ * Reads the projects from the service into the store. Every mounted consumer
+ * calls this (a chat row each: hundreds in a long sidebar), so calls share one
+ * read in flight, and the store is only written when the list really changed:
+ * a fresh array each time re-rendered every row on every page change.
+ */
+export function syncProjects(): Promise<void> {
+  if (syncing) return syncing
+  syncing = (async () => {
+    try {
+      const projects = await getServiceHub().projects().getProjects()
+      const current = useThreadManagementStore.getState().folders
+      if (JSON.stringify(current) !== JSON.stringify(projects)) {
+        useThreadManagementStore.setState({ folders: projects })
+      }
+    } catch (error) {
+      console.error('Error syncing projects:', error)
+    } finally {
+      syncing = null
+    }
+  })()
+  return syncing
+}
+
 export function useThreadManagement(): ThreadManagementState
 export function useThreadManagement<T>(
   selector: (state: ThreadManagementState) => T
@@ -137,16 +163,7 @@ export function useThreadManagement<T>(
 
   // Load projects from service on mount
   useEffect(() => {
-    const syncProjects = async () => {
-      try {
-        const projectsService = getServiceHub().projects()
-        const projects = await projectsService.getProjects()
-        useThreadManagementStore.setState({ folders: projects })
-      } catch (error) {
-        console.error('Error syncing projects:', error)
-      }
-    }
-    syncProjects()
+    void syncProjects()
   }, [])
 
   return store
