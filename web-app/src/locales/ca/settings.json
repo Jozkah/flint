@@ -329,6 +329,8 @@
       "allRunnable": "Totes les cadenes d'eines instal·lades que busca l'entorn aïllat s'hi poden executar.",
       "unrunnable": "Instal·lada a {{folder}}, però l'entorn aïllat no la pot executar.",
       "notGrantable": "Instal·lada, però l'entorn aïllat no la pot executar, i permetre la seva carpeta no ajudaria (Git for Windows i altres eines MSYS2 mai s'executen a l'entorn aïllat).",
+      "storeAlias": "Això és només l'àlies de Microsoft Store, no un programa instal·lat. Instal·la'l o desactiva l'àlies a Configuració > Aplicacions > Configuració avançada de l'aplicació > Àlies d'execució d'aplicacions.",
+      "notGrantableOther": "Instal·lat, però l'entorn aïllat no el pot executar i no s'ha trobat cap carpeta per permetre. Executa'l fora de l'entorn aïllat amb aprovació.",
       "launcher": "L'iniciador py executa un Python instal·lat en un altre lloc. Funciona quan un Python s'executa a l'entorn aïllat: permet python en lloc seu.",
       "grant": "Deixa que l'entorn aïllat usi això",
       "revoke": "Revoca",

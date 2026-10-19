@@ -85,6 +85,29 @@ describe('SandboxToolchainGrants', () => {
     await waitFor(() => expect(sandboxToolchainGrant).toHaveBeenCalledWith('python'))
   })
 
+  it('explains each ungrantable program by its own reason, MSYS2 only for MSYS2', async () => {
+    getSandboxToolchains.mockResolvedValue({
+      runnable: [],
+      unavailable: ['git', 'python', 'python3'],
+      grantable: [],
+      blocked: [
+        { program: 'git', kind: 'msys' },
+        { program: 'python', kind: 'storeAlias' },
+      ],
+    })
+    sandboxToolchainGrants.mockResolvedValue([])
+    render(<SandboxToolchainGrants />)
+    expect(
+      await screen.findByText('settings:agentTools.toolchains.notGrantable')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('settings:agentTools.toolchains.storeAlias')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('settings:agentTools.toolchains.notGrantableOther')
+    ).toBeInTheDocument()
+  })
+
   it('revokes a granted folder', async () => {
     getSandboxToolchains.mockResolvedValue({ runnable: ['python'], unavailable: [] })
     sandboxToolchainGrants.mockResolvedValue([

@@ -102,6 +102,8 @@ export function SandboxToolchainGrants() {
   if (!report && grants.length === 0) return null
   const unavailable = report?.unavailable ?? []
   const grantable = report?.grantable ?? []
+  const blockedKind = (program: string) =>
+    report?.blocked?.find((c) => c.program === program)?.kind
   const candidate = (program: string) =>
     grantable.find((c) => c.program === program)
 
@@ -142,8 +144,12 @@ export function SandboxToolchainGrants() {
                 })
               ) : program === 'py' ? (
                 t('settings:agentTools.toolchains.launcher')
-              ) : (
+              ) : blockedKind(program) === 'msys' ? (
                 t('settings:agentTools.toolchains.notGrantable')
+              ) : blockedKind(program) === 'storeAlias' ? (
+                t('settings:agentTools.toolchains.storeAlias')
+              ) : (
+                t('settings:agentTools.toolchains.notGrantableOther')
               )
             }
             actions={
