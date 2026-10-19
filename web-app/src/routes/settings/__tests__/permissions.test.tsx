@@ -3,6 +3,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
+import {
+  answerBypassConfirm,
+  resetBypassConfirm,
+  useBypassConfirm,
+} from '@/lib/bypassConfirm'
 
 // Mock-backed: the MCP service, the data folder and the audit command are all
 // fakes, so this checks the page's behaviour, not a real Tauri round trip.
@@ -314,7 +319,7 @@ describe('Permissions settings', () => {
 
   it('offers safe auto approval and confirms session bypass', async () => {
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    resetBypassConfirm()
     render(<Page />)
     const mode = screen.getByRole('button', { name: 'permissions:settings.approvalBehavior' })
     await user.click(mode)
@@ -322,13 +327,14 @@ describe('Permissions settings', () => {
     expect(useToolApproval.getState().permissionMode).toBe('auto-approve')
     await user.click(mode)
     await user.click(screen.getByRole('menuitemradio', { name: 'permissions:settings.modeBypass' }))
-    expect(confirm).toHaveBeenCalled()
+    await waitFor(() => expect(useBypassConfirm.getState().request).not.toBeNull())
+    answerBypassConfirm(false)
     expect(useToolApproval.getState().permissionMode).toBe('auto-approve')
-    confirm.mockReturnValue(true)
     await user.click(mode)
     await user.click(screen.getByRole('menuitemradio', { name: 'permissions:settings.modeBypass' }))
-    expect(useToolApproval.getState().permissionMode).toBe('bypass')
-    confirm.mockRestore()
+    await waitFor(() => expect(useBypassConfirm.getState().request).not.toBeNull())
+    answerBypassConfirm(true)
+    await waitFor(() => expect(useToolApproval.getState().permissionMode).toBe('bypass'))
   })
 
   it('shows recent decisions from the audit log', async () => {

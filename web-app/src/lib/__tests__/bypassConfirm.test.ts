@@ -1,20 +1,39 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { confirmBypass, resetBypassConfirm } from '../bypassConfirm'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import {
+  answerBypassConfirm,
+  confirmBypass,
+  resetBypassConfirm,
+  useBypassConfirm,
+} from '../bypassConfirm'
 
 describe('confirmBypass', () => {
   beforeEach(() => resetBypassConfirm())
 
-  it('asks once, then remembers a yes for the app run', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    expect(confirmBypass('sure?')).toBe(true)
-    expect(confirmBypass('sure?')).toBe(true)
-    expect(confirm).toHaveBeenCalledTimes(1)
+  it('never uses the native window.confirm', async () => {
+    const native = vi.spyOn(window, 'confirm')
+    const p = confirmBypass('sure?')
+    expect(useBypassConfirm.getState().request?.message).toBe('sure?')
+    answerBypassConfirm(true)
+    await p
+    expect(native).not.toHaveBeenCalled()
+    native.mockRestore()
   })
 
-  it('asks again after a no', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    expect(confirmBypass('sure?')).toBe(false)
-    expect(confirmBypass('sure?')).toBe(false)
-    expect(confirm).toHaveBeenCalledTimes(2)
+  it('asks once, then remembers a yes for the app run', async () => {
+    const first = confirmBypass('sure?')
+    answerBypassConfirm(true)
+    expect(await first).toBe(true)
+    expect(await confirmBypass('sure?')).toBe(true)
+    expect(useBypassConfirm.getState().request).toBeNull()
+  })
+
+  it('asks again after a no', async () => {
+    const first = confirmBypass('sure?')
+    answerBypassConfirm(false)
+    expect(await first).toBe(false)
+    const second = confirmBypass('sure?')
+    expect(useBypassConfirm.getState().request).not.toBeNull()
+    answerBypassConfirm(false)
+    expect(await second).toBe(false)
   })
 })

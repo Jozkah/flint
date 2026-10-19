@@ -5812,10 +5812,13 @@ export function CoworkPage() {
         // A choice made before the first message still needs a session to
         // live on; dropping it left the session in its default mode while the
         // user believed they had picked another.
-        onChange={(next) => {
+        onChange={async (next) => {
           // Bypass runs everything without asking, host commands included:
           // say so before the first switch of the app run.
-          if (next === 'bypass' && !confirmBypass(t('permissions:settings.bypassConfirm'))) {
+          if (
+            next === 'bypass' &&
+            !(await confirmBypass(t('permissions:settings.bypassConfirm')))
+          ) {
             return
           }
           const sid = ensureCurrentSession(paneSessionIdRef.current)

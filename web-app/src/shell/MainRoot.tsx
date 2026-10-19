@@ -37,6 +37,7 @@ import { ShellNavProvider } from '@/components/shell/nav-kit'
 import { HeaderSlotProvider } from '@/components/shell/HeaderSlot'
 import { WindowResizeGrips } from '@/components/WindowResizeGrips'
 import ErrorDialog from '@/containers/dialogs/ErrorDialog'
+import BypassConfirmDialog from '@/containers/dialogs/BypassConfirmDialog'
 import LlamacppBusyOnExitDialog from '@/containers/dialogs/LlamacppBusyOnExitDialog'
 import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
 import { EngineAddonOffer } from '@/containers/EngineAddon'
@@ -187,6 +188,7 @@ export default function MainRootLayout() {
           <MigrationAssistant />
           <OutOfContextPromiseModal />
           <AccessRequestDialog />
+          <BypassConfirmDialog />
           <ModelReplaceDialog />
           <UnknownWindowDialog />
           <FlintServerAutoConnect />
