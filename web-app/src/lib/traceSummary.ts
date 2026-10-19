@@ -87,12 +87,34 @@ export function editLineCounts(
 const str = (v: unknown): string | undefined =>
   typeof v === 'string' && v ? v : undefined
 
+const REFUSED_WRITE =
+  /^\s*(ERROR\b|Denied\b|The user denied|User denied|Refused\b)|\[sandbox_denied\]|permission_denied|denied by (this machine|project|policy)|tool_rule|\bwas (refused|denied)\b|plan mode/i
+
+function refusedWriteOutput(part: TraceSummaryPart & { approval?: { approved?: unknown } }): boolean {
+  if (part.approval?.approved === false) return true
+  const out = part.output
+  if (typeof out === 'string') return REFUSED_WRITE.test(out)
+  return Boolean(
+    out && typeof out === 'object' && (out as { isError?: unknown }).isError === true
+  )
+}
+
 /**
  * A call that did not do what it was asked: refused, errored, or a command
  * that exited non-zero.
  */
 export function partFailed(part: TraceSummaryPart): boolean {
   if (part.state === 'output-error' || part.state === 'output-denied') return true
+  // A refusal that came back as the call's output (a server's Cowork run, an
+  // older record) did not write anything either: the user said no, or a rule
+  // refused, so it must not be counted as a file created or changed.
+  if (
+    part.state === 'output-available' &&
+    (part.type === 'tool-write' || part.type === 'tool-edit') &&
+    refusedWriteOutput(part)
+  ) {
+    return true
+  }
   if (part.type !== 'tool-bash' || part.state !== 'output-available') return false
   const out = parseBashOutput(part.output)
   return (out.exit ?? 0) !== 0 || out.signaled

@@ -13,10 +13,11 @@ import {
   type TraceSummaryPart,
 } from '../traceSummary'
 
-const tool = (name: string, input: unknown = {}, state = 'output-available') => ({
+const tool = (name: string, input: unknown = {}, state = 'output-available', output?: unknown) => ({
   type: `tool-${name}`,
   state,
   input,
+  ...(output !== undefined ? { output } : {}),
 })
 const bash = (command: string, exit = 0) => ({
   ...tool('bash', { command }),
@@ -87,6 +88,10 @@ describe('summaryLabel', () => {
     ['a denied write is reported on created, with no lines added',
       [tool('write', { path: 'a', content: 'x\ny' }, 'output-denied')],
       'Could not create 1 file'],
+    ['a write refused in its output text is not created',
+      [tool('write', { path: 'a', content: 'x' }, 'output-available', 'Denied: the user declined this write'),
+       tool('edit', { path: 'b' }, 'output-available', 'ERROR: [sandbox_denied] path is outside the workspace')],
+      'Could not edit 1 file, could not create 1 file'],
     ['two failed writes are not "created 2 files"',
       [tool('write', { path: 'a' }, 'output-error'), tool('write', { path: 'b' }, 'output-denied')],
       'Could not create 2 files'],
