@@ -6,14 +6,18 @@
 //! from its first second: before the first-run choice, and whatever the choice
 //! was. This module is the persisted answer to "may Flint use JAN's data?".
 //!
-//! - **Undecided** (no decision, no manifest): the profile is isolated. Flint
-//!   runs on its own empty folder and the first-run assistant offers the choice.
+//! - **First-ever boot** (no decision, no manifest, and nothing in the saved
+//!   JAN folder that Flint wrote): the profile is isolated and `Undecided` is
+//!   recorded. Flint runs on its own empty folder and the first-run assistant
+//!   offers the choice. Not answering keeps it isolated.
 //! - **Fresh** (`Start fresh`, `Don't ask again`): isolated for good. JAN's
 //!   data and JAN's OS-keyring provider keys are never read.
 //! - **Use** (reuse, copy or move completed): not isolated. For a reuse the
 //!   saved folder is JAN's, and Flint is meant to run on it.
-//! - An install that already has a manifest but no decision file predates this
-//!   guard (0.9.0): it is left exactly as it was.
+//! - **Anything else is today's behaviour, untouched.** A machine Flint has run
+//!   on before (a manifest, or a Flint-written marker in the saved folder:
+//!   [`PRIOR_RUN_MARKERS`]) keeps running on its saved folder, JAN's included,
+//!   so an upgraded 0.9.x install never sees its chats vanish.
 //!
 //! Only the saved folder being JAN's own folder is ever redirected, so a Flint
 //! profile in its own folder, a custom folder, or an explicit
@@ -36,6 +40,9 @@ pub const DECISION_FILE: &str = "legacy_data_decision.json";
 pub enum Decision {
     /// Never read JAN's data (or its keyring keys).
     Fresh,
+    /// First-ever boot with JAN installed, not answered yet: same isolation as
+    /// `Fresh`, until the user answers.
+    Undecided,
     /// The user chose to bring JAN's data across or to keep using it.
     Use,
 }
@@ -63,15 +70,31 @@ pub fn record_decision(flint_config_dir: &Path, decision: Decision) -> Result<()
     })
 }
 
-/// Whether Flint must not touch JAN's data: the decision is Fresh, or there is
-/// none and nothing in the Flint config dir predates this guard.
-fn isolated(roots: &Roots) -> bool {
-    let flint = flint_paths(roots);
-    match read_decision(&flint.config_dir) {
-        Some(Decision::Fresh) => true,
-        Some(Decision::Use) => false,
-        None => matches!(manifest::read(&flint.config_dir), Ok(None)),
-    }
+/// Files and folders Flint (0.9.x and later) leaves in a data folder it has
+/// run on, and JAN never writes: the crash-trace folder (created at every
+/// boot on Windows) and run flag, the tool audit log, trusted folders, the
+/// provider-secret index, and the stamp [`stamp_boot`] adds from now on.
+pub const PRIOR_RUN_MARKERS: &[&str] = &[
+    "crashes",
+    "running.flag",
+    "audit",
+    "trusted-folders.json",
+    "provider_secrets.index.json",
+    BOOT_STAMP,
+];
+
+/// File [`stamp_boot`] writes into the data folder Flint runs on.
+pub const BOOT_STAMP: &str = "flint-profile.json";
+
+/// Whether Flint has run on `folder` before.
+fn flint_ran_on(folder: &Path) -> bool {
+    PRIOR_RUN_MARKERS.iter().any(|m| folder.join(m).exists())
+}
+
+/// Record that Flint booted on `folder`, so later versions can tell.
+pub fn stamp_boot(folder: &Path) {
+    let body = format!("{{\"version\":\"{}\"}}", env!("CARGO_PKG_VERSION"));
+    let _ = std::fs::write(folder.join(BOOT_STAMP), body);
 }
 
 /// Whether JAN has a data folder to isolate from.
@@ -81,36 +104,54 @@ fn legacy_present(roots: &Roots) -> bool {
 
 /// The data folder to run against, given the one the app config names.
 ///
-/// Returns `saved` untouched unless it is JAN's own data folder and the user
-/// has not allowed Flint to use it; then it is Flint's own folder.
+/// Returns `saved` untouched unless it is JAN's own data folder and either the
+/// user chose Start fresh, or this is the first-ever Flint boot and nothing
+/// has been answered; then it is Flint's own folder.
 pub fn effective_data_folder(saved: &Path, roots: &Roots) -> PathBuf {
     let legacy = legacy_paths(roots).data_folder;
-    if fsutil::canonical_or_lexical(saved) != fsutil::canonical_or_lexical(&legacy) {
+    if fsutil::canonical_or_lexical(saved) != fsutil::canonical_or_lexical(&legacy)
+        || !legacy_present(roots)
+    {
         return saved.to_path_buf();
     }
-    if legacy_present(roots) && isolated(roots) {
+    let flint = flint_paths(roots);
+    let isolate = match read_decision(&flint.config_dir) {
+        Some(Decision::Fresh | Decision::Undecided) => true,
+        Some(Decision::Use) => false,
+        None => {
+            // Today's behaviour for any machine Flint has run on before.
+            let first_ever = matches!(manifest::read(&flint.config_dir), Ok(None))
+                && !flint_ran_on(&legacy);
+            if first_ever {
+                if let Err(e) = record_decision(&flint.config_dir, Decision::Undecided) {
+                    // Not recorded: do not isolate half-way.
+                    log::warn!("could not record the first-boot isolation: {e}");
+                    return saved.to_path_buf();
+                }
+            }
+            first_ever
+        }
+    };
+    if isolate {
         log::info!(
             "not using JAN's data folder {}: no decision to use it; running on {}",
             legacy.display(),
-            flint_paths(roots).data_folder.display()
+            flint.data_folder.display()
         );
-        return flint_paths(roots).data_folder;
+        return flint.data_folder;
     }
     saved.to_path_buf()
 }
 
 /// Whether provider keys must come from a keyring service of Flint's own
-/// instead of the `jan-providers` one JAN shares.
-///
-/// True after Start fresh, and while undecided with JAN installed. A Use
-/// decision, or an install from before this guard, keeps `jan-providers`.
+/// instead of the `jan-providers` one JAN shares: after Start fresh, and on an
+/// unanswered first boot. Read from the recorded decision only, so an install
+/// that predates the guard keeps `jan-providers`.
 pub fn keyring_isolated(roots: &Roots) -> bool {
-    let flint = flint_paths(roots);
-    match read_decision(&flint.config_dir) {
-        Some(Decision::Fresh) => true,
-        Some(Decision::Use) => false,
-        None => legacy_present(roots) && matches!(manifest::read(&flint.config_dir), Ok(None)),
-    }
+    matches!(
+        read_decision(&flint_paths(roots).config_dir),
+        Some(Decision::Fresh | Decision::Undecided)
+    )
 }
 
 #[cfg(test)]
@@ -160,6 +201,68 @@ mod tests {
             flint_paths(&fx.roots).data_folder
         );
         assert!(keyring_isolated(&fx.roots));
+        // And it stays that way on every later boot until answered, even once
+        // the isolated run has written its own markers.
+        std::fs::create_dir_all(flint_paths(&fx.roots).data_folder.join("crashes")).unwrap();
+        assert_eq!(
+            effective_data_folder(&jan, &fx.roots),
+            flint_paths(&fx.roots).data_folder
+        );
+        assert_eq!(
+            read_decision(&flint_paths(&fx.roots).config_dir),
+            Some(Decision::Undecided)
+        );
+    }
+
+    #[test]
+    fn a_090_user_on_jans_folder_without_a_manifest_keeps_the_folder_and_data() {
+        // 0.9.0 ran on JAN's shared folder and never answered the prompt: no
+        // manifest, no decision file. Its Flint-written markers prove a prior run.
+        for marker in PRIOR_RUN_MARKERS {
+            let fx = jan_install();
+            let jan = jan_folder(&fx);
+            let path = jan.join(marker);
+            if marker.contains('.') {
+                std::fs::write(&path, b"x").unwrap();
+            } else {
+                std::fs::create_dir_all(&path).unwrap();
+            }
+            assert_eq!(effective_data_folder(&jan, &fx.roots), jan, "{marker}");
+            assert!(jan.join("threads").exists(), "{marker}: chats stay visible");
+            assert!(!keyring_isolated(&fx.roots), "{marker}: keys stay visible");
+            assert_eq!(read_decision(&flint_paths(&fx.roots).config_dir), None, "{marker}");
+        }
+    }
+
+    #[test]
+    fn a_090_user_with_a_manifest_but_no_decision_keeps_the_folder() {
+        let fx = jan_install();
+        let jan = jan_folder(&fx);
+        let flint = flint_paths(&fx.roots);
+        manifest::write(&flint.config_dir, &crate::core::migration::manifest::MigrationManifest::new(
+            crate::core::migration::manifest::SourceInfo {
+                config_dir: legacy_paths(&fx.roots).config_dir,
+                data_folder: jan.clone(),
+                location: crate::core::migration::detect::LegacyLocation::DataFolder,
+            },
+            crate::core::migration::manifest::DestInfo {
+                config_dir: flint.config_dir.clone(),
+                data_folder: flint.data_folder.clone(),
+            },
+            crate::core::migration::manifest::ModeTag::Reuse,
+            Vec::new(),
+            Default::default(),
+        )).unwrap();
+        assert_eq!(effective_data_folder(&jan, &fx.roots), jan);
+        assert!(!keyring_isolated(&fx.roots));
+    }
+
+    #[test]
+    fn the_boot_stamp_marks_a_flint_profile() {
+        let fx = jan_install();
+        let jan = jan_folder(&fx);
+        stamp_boot(&jan);
+        assert_eq!(effective_data_folder(&jan, &fx.roots), jan);
     }
 
     #[test]
@@ -215,6 +318,8 @@ mod tests {
         let flint = flint_paths(&fx.roots);
         std::fs::create_dir_all(flint.data_folder.join("threads")).unwrap();
         assert_eq!(effective_data_folder(&flint.data_folder, &fx.roots), flint.data_folder);
+        assert!(!keyring_isolated(&fx.roots), "its own folder keeps its keys");
+        assert_eq!(read_decision(&flint.config_dir), None);
         let custom = fx._td.path().join("custom-data");
         std::fs::create_dir_all(&custom).unwrap();
         assert_eq!(effective_data_folder(&custom, &fx.roots), custom);

@@ -860,6 +860,7 @@ pub fn build_app() -> tauri::App {
                 tauri_plugin_agent_tools::tools::computer::load_exclusions(&data_folder),
             );
             let earlier_run = core::crash_trace::mark_started(&data_folder);
+            core::migration::legacy_guard::stamp_boot(&data_folder);
             // What a fatal exception wrote last time, if one did: read before
             // this run's handler starts a new file.
             let earlier_report = core::crash_trace::take_crash_report(&data_folder);
