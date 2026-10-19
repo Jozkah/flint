@@ -75,7 +75,12 @@ import {
   IMAGE_SEARCH_INPUT_SCHEMA,
 } from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
-import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
+import {
+  getAgentToolSchemas,
+  sandboxEnforces,
+  SHELL_TOOL_NAME,
+} from '@/lib/agentTools'
+import { useChatShell } from '@/hooks/useChatShell'
 import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
 import { subagentGuide } from '@/lib/coworkPrompt'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
@@ -317,7 +322,15 @@ export const SHELL_ROUTING_GUIDANCE = [
   'Use an MCP shell or terminal only when the user names it or asks for it.',
 ].join(' ')
 
-const SCHEMA_PRIMITIVE_TYPES = new Set([
+/** The same guidance once Chat's shell is switched off: bash is not mentioned. */
+export const SHELL_ROUTING_GUIDANCE_NO_BASH = [
+  'Choosing a shell: use the git tool for every git and gh command. Use',
+  'host_powershell when offered and the user explicitly names it or the command',
+  'needs host access, with approval.',
+  'Use an MCP shell or terminal only when the user names it or asks for it.',
+].join(' ')
+
+const SCHEMA_PRIMITIVE_TYPES =new Set([
   'string',
   'number',
   'integer',
@@ -1484,6 +1497,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return true
   }
 
+  /**
+   * The user turned Chat's shell off (composer options). Chat only: Cowork
+   * owns its tool set and keeps its shell. Read per request, so a flip applies
+   * to the next send. When true, neither the tool nor its prompt text is sent.
+   */
+  protected chatShellWithheld(): boolean {
+    return this.appliesChatToolGating() && !useChatShell.getState().shellEnabled
+  }
+
   /** Tools this surface holds back from the request, for the context popover. */
   protected heldBackForBreakdown(): { name: string; group: string; schema: unknown }[] {
     return []
@@ -1819,6 +1841,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       deadTools: deadTools(this.threadId),
       webSearchEnabled: webSearchOnFor(this.threadId),
       agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
+      chatShellWithheld: this.chatShellWithheld(),
       chatDelegation: chatDelegationEnabled(),
       visualizeEnabled: useVisualizeConfig.getState().enabled,
     })
@@ -2089,6 +2112,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // A tool its server does not implement is no longer offered in this
     // conversation (transcript audit #11).
     for (const name of deadTools(this.threadId)) delete toolsRecord[name]
+    // Chat's own shell switch (Cowork does not read it).
+    if (this.chatShellWithheld()) delete toolsRecord[SHELL_TOOL_NAME]
     // Sorted by name: the tool list is part of the prompt, and a server that
     // reconnects in a different order would otherwise change the prefix and
     // throw away the model's prompt cache.
@@ -4184,19 +4209,32 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
     const skills = skillCatalogBlock(undefined, undefined, true)
     if (skills) parts.push('', skills, '')
-    parts.push(SHELL_ROUTING_GUIDANCE)
+    // Switched off: no word about bash, so the model is not told of a tool it
+    // lacks. The git tool and request_access are separate tools and stay.
+    const bashOff = this.chatShellWithheld()
+    parts.push(bashOff ? SHELL_ROUTING_GUIDANCE_NO_BASH : SHELL_ROUTING_GUIDANCE)
     if (sandboxEnforces()) {
       parts.push(
-        'bash runs sandboxed in the workspace: writes only there, no reading of the home',
-        'directory. For a path outside it use a configured filesystem MCP tool that allows it',
+        ...(bashOff
+          ? []
+          : [
+              'bash runs sandboxed in the workspace: writes only there, no reading of the home',
+              'directory.',
+            ]),
+        'For a path outside the workspace use a configured filesystem MCP tool that allows it',
         '(approval does not widen its roots; report a path as denied only after its own error),',
         'or, after a refusal, call request_access with the narrowest absolute path, a one-sentence',
         'reason and access_mode "write" when needed; if denied, do not ask again for that path.',
-        useAgentToolsConfig.getState().bashNetworkEnabled
-          ? 'It has network access.'
-          : 'It has no network access.',
-        'git and Git Bash cannot run in the sandbox: for all Git and GitHub work call the git tool',
-        '(it asks before anything changes or reaches a remote); never use an MCP shell for git.',
+        ...(bashOff
+          ? []
+          : [
+              useAgentToolsConfig.getState().bashNetworkEnabled
+                ? 'It has network access.'
+                : 'It has no network access.',
+            ]),
+        bashOff
+          ? 'For all Git and GitHub work call the git tool (it asks before anything changes or reaches a remote); never use an MCP shell for git.'
+          : 'git and Git Bash cannot run in the sandbox: for all Git and GitHub work call the git tool (it asks before anything changes or reaches a remote); never use an MCP shell for git.',
         'If a GitHub URL names no repository, ask which one before cloning.'
       )
     }
@@ -4234,13 +4272,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (skills) parts.push('', skills, '')
     // Stating the limits up front is cheaper than letting the model discover
     // them by having a command refused. Only when bash is actually offered.
-    parts.push(SHELL_ROUTING_GUIDANCE)
+    // Switched off: no word about bash (see the compact instruction above).
+    const bashOff = this.chatShellWithheld()
+    parts.push(bashOff ? SHELL_ROUTING_GUIDANCE_NO_BASH : SHELL_ROUTING_GUIDANCE)
     if (sandboxEnforces()) {
-      parts.push(
-        'bash runs commands in that workspace under an OS sandbox: it starts',
-        'there, can only write there, and cannot read files in the',
-        "user's home directory."
-      )
+      if (!bashOff) {
+        parts.push(
+          'bash runs commands in that workspace under an OS sandbox: it starts',
+          'there, can only write there, and cannot read files in the',
+          "user's home directory."
+        )
+      }
       parts.push(
         'This limit applies only to these built-in tools. For a location outside',
         'the workspace, use a configured filesystem MCP tool when its allowed',
@@ -4257,13 +4299,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         'refused call. If it is denied, do not ask again for that path: offer',
         'another way (the user pastes or attaches it, or another source).'
       )
+      if (!bashOff) {
+        parts.push(
+          useAgentToolsConfig.getState().bashNetworkEnabled
+            ? 'It has network access.'
+            : 'It has no network access, so commands that download or upload will fail.'
+        )
+      }
       parts.push(
-        useAgentToolsConfig.getState().bashNetworkEnabled
-          ? 'It has network access.'
-          : 'It has no network access, so commands that download or upload will fail.'
-      )
-      parts.push(
-        'git and Git Bash cannot run inside the bash sandbox. For all Git and',
+        bashOff
+          ? 'For all Git and'
+          : 'git and Git Bash cannot run inside the bash sandbox. For all Git and',
         'GitHub work (status, commit, branch, push, pull requests, clone) call the',
         'git tool, which runs the real git and gh outside the sandbox and asks the',
         'user before anything changes or reaches a remote. Never use an MCP shell',

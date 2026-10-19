@@ -10,6 +10,7 @@ export const localStorageKey = {
   settingLocalApiServer: 'setting-local-api-server',
   settingProxyConfig: 'setting-proxy-config',
   settingWebSearch: 'setting-web-search',
+  settingChatShell: 'setting-chat-shell',
   settingWebPreview: 'setting-web-preview',
   settingAgentTools: 'setting-agent-tools',
   settingVisualize: 'setting-visualize',

@@ -359,6 +359,8 @@
     "closeOverlay": "Chiudi pannello"
   },
   "composerOptions": "Opzioni",
+  "chatShell": "Shell",
+  "chatShellHint": "Esegui comandi in una sandbox",
   "coworkBars": {
     "showMore": "Mostra altri {{count}}",
     "showFewer": "Mostra meno",

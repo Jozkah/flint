@@ -361,6 +361,8 @@
     "closeOverlay": "Zavřít panel"
   },
   "composerOptions": "Možnosti",
+  "chatShell": "Shell",
+  "chatShellHint": "Spouštět příkazy v izolovaném prostředí",
   "coworkBars": {
     "showMore": "Zobrazit dalších {{count}}",
     "showFewer": "Zobrazit méně",

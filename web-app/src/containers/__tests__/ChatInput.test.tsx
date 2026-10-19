@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useChatShell } from '@/hooks/useChatShell'
+import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
@@ -372,6 +374,14 @@ vi.mock('@/components/ui/tooltip', () => {
   }
 })
 
+const sandbox = vi.hoisted(() => ({ enforces: true }))
+vi.mock('@/lib/agentTools', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/agentTools')>()),
+  getSandboxStatus: async () => ({
+    backend: sandbox.enforces ? 'x' : 'none',
+    enforces: sandbox.enforces,
+  }),
+}))
 const platform = vi.hoisted(() => ({
   tauri: false,
   readDroppedPaths: vi.fn(),
@@ -1332,6 +1342,61 @@ describe('ChatInput', () => {
         chatStatus: 'streaming',
       })
       expect(screen.getByText('plan')).toBeEnabled()
+    })
+  })
+
+  // Chat's shell switch: a row in the options panel, only where there is a
+  // shell to turn off (Agent tools on, a sandbox that enforces, a tools model,
+  // not Cowork).
+  describe('chat shell switch', () => {
+    const openPanel = async () => {
+      fireEvent.click(screen.getByTestId('composer-options'))
+      await screen.findByRole('switch', { name: 'common:web_search' })
+    }
+    const settle = () =>
+      act(async () => {
+        await new Promise((r) => setTimeout(r, 20))
+      })
+    const shellSwitch = () =>
+      screen.queryByRole('switch', { name: 'common:chatShell' })
+
+    beforeEach(() => {
+      sandbox.enforces = true
+      useAgentToolsConfig.setState({ agentToolsEnabled: true, shellEnabled: true })
+      useChatShell.setState({ shellEnabled: true })
+    })
+
+    it('shows in the options panel when all of it holds', async () => {
+      renderInput({ groupOptions: true })
+      await settle()
+      await openPanel()
+      expect(await screen.findByRole('switch', { name: 'common:chatShell' })).toHaveAttribute('aria-checked', 'true')
+      fireEvent.click(shellSwitch()!)
+      expect(useChatShell.getState().shellEnabled).toBe(false)
+    })
+
+    it('hides when Agent tools are off', async () => {
+      useAgentToolsConfig.setState({ agentToolsEnabled: false })
+      renderInput({ groupOptions: true })
+      await settle()
+      await openPanel()
+      expect(shellSwitch()).toBeNull()
+    })
+
+    it('hides when no sandbox can enforce the shell', async () => {
+      sandbox.enforces = false
+      renderInput({ groupOptions: true })
+      await settle()
+      await openPanel()
+      expect(shellSwitch()).toBeNull()
+    })
+
+    it('hides in Cowork, which owns its tool set', async () => {
+      renderInput({ groupOptions: true, slashSurface: 'cowork' })
+      await settle()
+      fireEvent.click(screen.getByTestId('composer-options'))
+      await screen.findByRole('switch', { name: 'common:web_search' })
+      expect(shellSwitch()).toBeNull()
     })
   })
 

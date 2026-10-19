@@ -359,6 +359,8 @@
     "closeOverlay": "Fermer le panneau"
   },
   "composerOptions": "Options",
+  "chatShell": "Shell",
+  "chatShellHint": "Exécuter des commandes dans un bac à sable",
   "coworkBars": {
     "showMore": "Afficher {{count}} de plus",
     "showFewer": "Afficher moins",

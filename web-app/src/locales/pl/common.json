@@ -361,6 +361,8 @@
     "closeOverlay": "Zamknij panel"
   },
   "composerOptions": "Opcje",
+  "chatShell": "Powłoka",
+  "chatShellHint": "Uruchamiaj polecenia w piaskownicy",
   "coworkBars": {
     "showMore": "Pokaż jeszcze {{count}}",
     "showFewer": "Pokaż mniej",

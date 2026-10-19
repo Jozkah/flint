@@ -359,6 +359,8 @@
     "closeOverlay": "Cerrar panel"
   },
   "composerOptions": "Opciones",
+  "chatShell": "Shell",
+  "chatShellHint": "Ejecutar comandos en un entorno aislado",
   "coworkBars": {
     "showMore": "Mostrar {{count}} más",
     "showFewer": "Mostrar menos",
