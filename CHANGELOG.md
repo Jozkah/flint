@@ -11,6 +11,8 @@ Flint 1.0 is the first stable release after 0.9.0. It covers every nightly since
 - `flint serve` runs Flint headless with a browser client (server folders, models, Cowork sessions and discussion rooms), and the iPhone app works as a thin client of a desktop.
 - New providers and tools: Amazon Bedrock, LiteLLM, native Gemini, image search and image generation tools, an OCR tool, a Translate page and a raw completion mode.
 - Campaigns: a campaign engine with a board, overview and phone view.
+- Small context windows get more room: the compact buffer scales with the window (5K instead of 12.5K at 50K), small-context mode (automatic at 64K or less) trims the prompt, and plain chat and Cowork hold specialist tools back until a run needs them (about 13K fewer tool tokens in Cowork).
+- Archive or delete everything from Settings (chats, Cowork sessions, rooms, campaigns), a waiting-for-the-model status in chat, nested sessions in the sidebar, and a calmer narrow-window Cowork layout.
 - Large speed and stability work: long chats open with a fraction of the DOM, the app starts faster, idle CPU use dropped, and every screen is translated in all 19 languages.
 
 ## Breaking changes
