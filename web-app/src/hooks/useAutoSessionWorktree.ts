@@ -5,7 +5,7 @@ import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
-import { sharedFolder } from '@/lib/sharedFolder'
+import { sharedFolder, type IsolationReason } from '@/lib/sharedFolder'
 import {
   autoIsolateAction,
   copyApi,
@@ -69,8 +69,14 @@ export function useAutoSessionWorktree(input: Input) {
   // says. Asked of the backend registry, which knows who is live. A failure
   // leaves the default off (the session then shares the tree, claims apply).
   const [sharedIsolate, setSharedIsolate] = useState(false)
+  // Why it is isolated (for the line that says so), and whether the person
+  // chose the shared tree instead (per session; the answer then stays "shared").
+  const [sharedReason, setSharedReason] = useState<IsolationReason | null>(null)
+  const [choseShared, setChoseShared] = useState<string | null>(null)
+  const userChoseShared = choseShared !== null && choseShared === input.sessionId
   useEffect(() => {
     setSharedIsolate(false)
+    setSharedReason(null)
     if (!input.sessionId || !input.folder || input.turns > 0 || isGit !== true)
       return
     let cancelled = false
@@ -79,13 +85,18 @@ export function useAutoSessionWorktree(input: Input) {
         folder: input.folder,
         sessionId: input.sessionId,
         isFork,
+        userChoseShared,
       })
-      .then((d) => !cancelled && setSharedIsolate(d.isolate))
+      .then((d) => {
+        if (cancelled) return
+        setSharedIsolate(d.isolate)
+        setSharedReason(d.isolate ? d.reason : null)
+      })
       .catch(() => undefined)
     return () => {
       cancelled = true
     }
-  }, [input.sessionId, input.folder, input.turns, isGit, isFork])
+  }, [input.sessionId, input.folder, input.turns, isGit, isFork, userChoseShared])
 
   useEffect(() => {
     let cancelled = false
@@ -218,5 +229,46 @@ export function useAutoSessionWorktree(input: Input) {
     } else useCoworkWorktrees.getState().forget(sid)
   }, [serviceHub, attach])
 
-  return { isGit, workOnCopy }
+  /**
+   * "Use the shared folder instead": drops the worktree the default made (the
+   * session has no turns, so nothing is lost) and keeps the session on the
+   * shared tree, where claims and the git guard stay in force.
+   */
+  const chooseShared = useCallback(async () => {
+    const { sessionId: sid, folder } = inputRef.current
+    if (!sid || !folder) return
+    setChoseShared(sid)
+    setSharedIsolate(false)
+    const parallel = useCoworkParallel.getState()
+    if (useCoworkWorktrees.getState().bySession[sid]) {
+      const dataFolder = await serviceHub
+        .app()
+        .getJanDataFolder()
+        .catch(() => '')
+      const done = dataFolder
+        ? await useCoworkWorktrees.getState().discard(sid, dataFolder, false)
+        : { ok: false as const, reason: '' }
+      if (!done.ok) {
+        if (done.reason) toast.error(done.reason)
+        setChoseShared(null)
+        return
+      }
+      void useDirectEditGrants.getState().revokeSession(sid)
+      useCoworkSessions.getState().setAccess(sid, 'review-only')
+    }
+    parallel.mark(sid, folder, 'skipped')
+  }, [serviceHub])
+
+  return {
+    isGit,
+    workOnCopy,
+    /** Why the default put this session in its own worktree, while it applies. */
+    isolationReason:
+      sharedReason === 'fork' || sharedReason === 'secondSession'
+        ? sharedReason
+        : null,
+    /** The person chose the shared tree for this session. */
+    choseShared: userChoseShared,
+    chooseShared,
+  }
 }

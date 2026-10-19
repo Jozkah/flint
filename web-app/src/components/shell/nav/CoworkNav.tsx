@@ -56,6 +56,7 @@ import {
   type ThreadStatus,
 } from '@/containers/ThreadStatusMark'
 import { usePrStatus } from '@/stores/pr-status-store'
+import { startSharedFolderSync, useSharedWith } from '@/stores/shared-folder-store'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { isCoworkRoute } from '@/constants/routes'
 import {
@@ -73,7 +74,7 @@ import {
   deleteCoworkSession,
 } from '@/lib/coworkSessionLifecycle'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
@@ -158,6 +159,9 @@ const SessionItem = memo(function SessionItem({
   // The session's own worktree when it has one: the card names the repository
   // it was cut from and its branch, and the pull requests are its branch's.
   const worktree = useCoworkWorktrees((s) => s.bySession[session.id])
+  // Other live sessions in the same folder (the number only: a peer elsewhere
+  // does not re-render this row).
+  const sharedWith = useSharedWith(session.id)
   // The last thing asked, from the conversation or (a session saved before
   // `messages` existed, or seeded without them) from its turns.
   const summary = useMemo(
@@ -198,6 +202,7 @@ const SessionItem = memo(function SessionItem({
           branch: worktree?.branch,
           updated: session.updated,
           messages: session.messages.length || session.turns.length,
+          sharedWith,
         }}
         model={session.model}
         summary={summary}
@@ -464,6 +469,7 @@ function SessionMark({
   // from another session held for them.
   const waiting = useWaitingOnUser(session.id)
   const heldMail = useHeldMailCount(session.id)
+  const sharedWith = useSharedWith(session.id)
   const { t } = useTranslation()
   const recency = useThreadStatus(
     { updated: session.updated },
@@ -487,6 +493,7 @@ function SessionMark({
     <span className="relative inline-flex shrink-0">
       <ThreadStatusMark
         status={status}
+        shared={sharedWith}
         detail={
           heldMail > 0
             ? t('messaging:waitingCount', { count: heldMail })
@@ -524,6 +531,8 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
   const { isMobile } = useShellNav()
   const closeDrawer = useCloseDrawer()
   const allSessions = useCoworkSessions((s) => s.sessions)
+  // One reader of the shared-folder registry for every row's mark.
+  useEffect(() => startSharedFolderSync(), [])
   const currentId = useCoworkSessions((s) => s.currentId)
   // A blank session is listed only while it is open in Cowork: pressing New
   // session and going elsewhere should not leave an empty entry behind.

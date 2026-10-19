@@ -371,6 +371,42 @@
     "files": "待审查的文件：{{count}}",
     "branch": "分支：{{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "另有 {{count}} 个会话正在此文件夹中工作",
+    "others_other": "另有 {{count}} 个会话正在此文件夹中工作",
+    "waitingApproval_one": "另有 {{count}} 个会话正在等待批准",
+    "waitingApproval_other": "另有 {{count}} 个会话正在等待批准",
+    "waitingApprovalOne": "等待批准",
+    "holdEdit": "{{owner}} 正在编辑 {{target}}：已告知 {{session}} 给对方发消息",
+    "holdGit": "{{owner}} 正在此文件夹中工作：{{session}} 的 git {{target}} 已被暂缓，并已告知其给对方发消息",
+    "branchChanged": "分支已从 {{from}} 变为 {{to}}",
+    "show": "查看此文件夹中的会话",
+    "hide": "隐藏列表",
+    "openSession": "打开 {{name}}",
+    "message": "发消息",
+    "isolated": "独立工作树",
+    "moreFiles": "另有 {{count}} 个",
+    "editing": "正在编辑",
+    "status": {
+      "running": "运行中",
+      "idle": "空闲",
+      "unavailable": "不可用"
+    },
+    "allowEdit": "仍允许此会话编辑",
+    "allowGit": "仍允许此会话运行 git",
+    "allowed": {
+      "edit": "已允许编辑，剩余时间",
+      "git": "已允许运行 git，剩余时间",
+      "all": "已允许编辑和运行 git，剩余时间"
+    },
+    "withdraw": "撤销",
+    "isolationHint": "因另一个会话正在此文件夹中工作，正使用独立工作树",
+    "useShared": "改用共享文件夹",
+    "sharedWarning": "共享文件夹：其他会话的 git 更改可能改变此会话的分支和文件。Flint 会暂缓有风险的 git 命令，并在两个会话编辑同一文件时发出警告。",
+    "gotIt": "知道了",
+    "sidebarMark_one": "与另外 {{count}} 个会话共用文件夹",
+    "sidebarMark_other": "与另外 {{count}} 个会话共用文件夹"
+  },
   "coworkLayout": {
     "views": "Cowork 视图",
     "content": "内容",

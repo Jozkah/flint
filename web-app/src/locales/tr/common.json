@@ -371,6 +371,42 @@
     "files": "İncelemeye hazır dosyalar: {{count}}",
     "branch": "Dal: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "Bu klasörde {{count}} başka oturum çalışıyor",
+    "others_other": "Bu klasörde {{count}} başka oturum çalışıyor",
+    "waitingApproval_one": "{{count}} başka oturum onay bekliyor",
+    "waitingApproval_other": "{{count}} başka oturum onay bekliyor",
+    "waitingApprovalOne": "Onay bekliyor",
+    "holdEdit": "{{owner}} {{target}} dosyasını düzenliyor: {{session}} oturumuna ona mesaj atması söylendi",
+    "holdGit": "{{owner}} bu klasörde çalışıyor: {{session}} git {{target}} öncesinde durduruldu ve ona mesaj atması söylendi",
+    "branchChanged": "Dal {{from}} dalından {{to}} dalına değişti",
+    "show": "Bu klasörde kimlerin olduğunu göster",
+    "hide": "Listeyi gizle",
+    "openSession": "{{name}} oturumunu aç",
+    "message": "Mesaj",
+    "isolated": "Kendi worktree’si",
+    "moreFiles": "+{{count}} tane daha",
+    "editing": "Düzenliyor",
+    "status": {
+      "running": "Çalışıyor",
+      "idle": "Boşta",
+      "unavailable": "Kullanılamıyor"
+    },
+    "allowEdit": "Bu oturumun yine de düzenlemesine izin ver",
+    "allowGit": "Bu oturumun yine de git çalıştırmasına izin ver",
+    "allowed": {
+      "edit": "Yine de düzenleyebilir, kalan süre",
+      "git": "Yine de git çalıştırabilir, kalan süre",
+      "all": "Yine de düzenleyebilir ve git çalıştırabilir, kalan süre"
+    },
+    "withdraw": "Geri çek",
+    "isolationHint": "Bu klasörde başka bir oturum çalıştığı için kendi worktree’sini kullanıyor",
+    "useShared": "Bunun yerine paylaşılan klasörü kullan",
+    "sharedWarning": "Klasör paylaşılıyor: başka bir oturumun git değişiklikleri bu oturumun dalını ve dosyalarını kaydırabilir. Flint riskli git komutlarını bekletir ve iki oturum aynı dosyayı düzenlediğinde uyarır.",
+    "gotIt": "Anladım",
+    "sidebarMark_one": "Klasörü {{count}} başka oturumla paylaşıyor",
+    "sidebarMark_other": "Klasörü {{count}} başka oturumla paylaşıyor"
+  },
   "coworkLayout": {
     "views": "Cowork görünümü",
     "content": "İçerik",

@@ -373,6 +373,42 @@
     "files": "Archivos listos para revisar: {{count}}",
     "branch": "Rama: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} otra sesión trabaja en esta carpeta",
+    "others_other": "{{count}} otras sesiones trabajan en esta carpeta",
+    "waitingApproval_one": "{{count}} otra sesión espera aprobación",
+    "waitingApproval_other": "{{count}} otras sesiones esperan aprobación",
+    "waitingApprovalOne": "Esperando aprobación",
+    "holdEdit": "{{owner}} está editando {{target}}: se le indicó a {{session}} que le escriba",
+    "holdGit": "{{owner}} trabaja en esta carpeta: {{session}} quedó retenida antes de git {{target}} y debe escribirle",
+    "branchChanged": "La rama cambió de {{from}} a {{to}}",
+    "show": "Ver quién está en esta carpeta",
+    "hide": "Ocultar la lista",
+    "openSession": "Abrir {{name}}",
+    "message": "Mensaje",
+    "isolated": "Worktree propio",
+    "moreFiles": "+{{count}} más",
+    "editing": "Editando",
+    "status": {
+      "running": "En ejecución",
+      "idle": "Inactiva",
+      "unavailable": "No disponible"
+    },
+    "allowEdit": "Dejar que esta sesión edite igualmente",
+    "allowGit": "Dejar que esta sesión ejecute git igualmente",
+    "allowed": {
+      "edit": "Puede editar igualmente, tiempo restante",
+      "git": "Puede ejecutar git igualmente, tiempo restante",
+      "all": "Puede editar y ejecutar git igualmente, tiempo restante"
+    },
+    "withdraw": "Retirar",
+    "isolationHint": "Usa su propio worktree porque otra sesión trabaja en esta carpeta",
+    "useShared": "Usar la carpeta compartida en su lugar",
+    "sharedWarning": "Carpeta compartida: los cambios de git de otra sesión pueden mover la rama y los archivos de esta. Flint retiene los comandos git arriesgados y avisa cuando dos sesiones editan un mismo archivo.",
+    "gotIt": "Entendido",
+    "sidebarMark_one": "Comparte una carpeta con {{count}} otra sesión",
+    "sidebarMark_other": "Comparte una carpeta con {{count}} otras sesiones"
+  },
   "coworkLayout": {
     "views": "Vista de Cowork",
     "content": "Contenido",

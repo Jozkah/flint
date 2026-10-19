@@ -373,6 +373,42 @@
     "files": "Fichiers prêts à relire : {{count}}",
     "branch": "Branche : {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} autre session travaille dans ce dossier",
+    "others_other": "{{count}} autres sessions travaillent dans ce dossier",
+    "waitingApproval_one": "{{count}} autre session attend une approbation",
+    "waitingApproval_other": "{{count}} autres sessions attendent une approbation",
+    "waitingApprovalOne": "En attente d’approbation",
+    "holdEdit": "{{owner}} modifie {{target}} : {{session}} a reçu pour consigne de lui écrire",
+    "holdGit": "{{owner}} travaille dans ce dossier : {{session}} a été retenue avant git {{target}} et doit lui écrire",
+    "branchChanged": "La branche est passée de {{from}} à {{to}}",
+    "show": "Voir qui est dans ce dossier",
+    "hide": "Masquer la liste",
+    "openSession": "Ouvrir {{name}}",
+    "message": "Message",
+    "isolated": "Worktree propre",
+    "moreFiles": "+{{count}} de plus",
+    "editing": "Modifie",
+    "status": {
+      "running": "En cours",
+      "idle": "Inactive",
+      "unavailable": "Indisponible"
+    },
+    "allowEdit": "Laisser cette session modifier quand même",
+    "allowGit": "Laisser cette session lancer git quand même",
+    "allowed": {
+      "edit": "Autorisée à modifier quand même, temps restant",
+      "git": "Autorisée à lancer git quand même, temps restant",
+      "all": "Autorisée à modifier et lancer git quand même, temps restant"
+    },
+    "withdraw": "Retirer",
+    "isolationHint": "Utilise son propre worktree, car une autre session travaille dans ce dossier",
+    "useShared": "Utiliser plutôt le dossier partagé",
+    "sharedWarning": "Dossier partagé : les changements git d’une autre session peuvent déplacer la branche et les fichiers de celle-ci. Flint retient les commandes git risquées et avertit quand deux sessions modifient un même fichier.",
+    "gotIt": "Compris",
+    "sidebarMark_one": "Partage un dossier avec {{count}} autre session",
+    "sidebarMark_other": "Partage un dossier avec {{count}} autres sessions"
+  },
   "coworkLayout": {
     "views": "Vue Cowork",
     "content": "Contenu",

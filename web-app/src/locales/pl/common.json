@@ -375,6 +375,48 @@
     "files": "Pliki gotowe do przeglądu: {{count}}",
     "branch": "Gałąź: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} inna sesja pracuje w tym folderze",
+    "others_few": "{{count}} inne sesje pracują w tym folderze",
+    "others_many": "{{count}} innych sesji pracuje w tym folderze",
+    "others_other": "{{count}} innej sesji pracuje w tym folderze",
+    "waitingApproval_one": "{{count}} inna sesja czeka na zatwierdzenie",
+    "waitingApproval_few": "{{count}} inne sesje czekają na zatwierdzenie",
+    "waitingApproval_many": "{{count}} innych sesji czeka na zatwierdzenie",
+    "waitingApproval_other": "{{count}} innej sesji czeka na zatwierdzenie",
+    "waitingApprovalOne": "Czeka na zatwierdzenie",
+    "holdEdit": "{{owner}} edytuje {{target}}: {{session}} dostała polecenie napisania do niej",
+    "holdGit": "{{owner}} pracuje w tym folderze: {{session}} została wstrzymana przed git {{target}} i ma napisać do niej",
+    "branchChanged": "Gałąź zmieniła się z {{from}} na {{to}}",
+    "show": "Pokaż, kto jest w tym folderze",
+    "hide": "Ukryj listę",
+    "openSession": "Otwórz {{name}}",
+    "message": "Wiadomość",
+    "isolated": "Własne drzewo robocze",
+    "moreFiles": "+{{count}} więcej",
+    "editing": "Edytuje",
+    "status": {
+      "running": "Działa",
+      "idle": "Bezczynna",
+      "unavailable": "Niedostępna"
+    },
+    "allowEdit": "Mimo to pozwól tej sesji edytować",
+    "allowGit": "Mimo to pozwól tej sesji uruchamiać git",
+    "allowed": {
+      "edit": "Może mimo to edytować, pozostało",
+      "git": "Może mimo to uruchamiać git, pozostało",
+      "all": "Może mimo to edytować i uruchamiać git, pozostało"
+    },
+    "withdraw": "Cofnij",
+    "isolationHint": "Używa własnego drzewa roboczego, bo w tym folderze pracuje inna sesja",
+    "useShared": "Użyj zamiast tego wspólnego folderu",
+    "sharedWarning": "Wspólny folder: zmiany git w innej sesji mogą zmienić gałąź i pliki tej sesji. Flint wstrzymuje ryzykowne polecenia git i ostrzega, gdy dwie sesje edytują jeden plik.",
+    "gotIt": "Rozumiem",
+    "sidebarMark_one": "Dzieli folder z {{count}} inną sesją",
+    "sidebarMark_few": "Dzieli folder z {{count}} innymi sesjami",
+    "sidebarMark_many": "Dzieli folder z {{count}} innymi sesjami",
+    "sidebarMark_other": "Dzieli folder z {{count}} innej sesji"
+  },
   "coworkLayout": {
     "views": "Widok Cowork",
     "content": "Treść",

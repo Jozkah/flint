@@ -14,6 +14,7 @@ import {
   GitBranch,
   Hand,
   ShieldQuestionIcon,
+  Users,
 } from 'lucide-react'
 import {
   Sheet,
@@ -36,6 +37,8 @@ export type NarrowBarsSummary = {
   branch: boolean
   /** Other bars that show (pull request, recovery, notices). */
   more: number
+  /** Other sessions share the folder: what the bar says, and whether it is urgent. */
+  shared?: { label: string; urgent: boolean; count: number } | null
 }
 
 export const EMPTY_SUMMARY: NarrowBarsSummary = {
@@ -50,6 +53,16 @@ export function summarizeBars(root: ParentNode): NarrowBarsSummary {
   const has = (id: string) => !!root.querySelector(`[data-testid="${id}"]`)
   const files = has('cowork-review-ready')
   const branch = has('session-worktree-bar')
+  const sharedEl = root.querySelector<HTMLElement>(
+    '[data-testid="shared-folder-bar"]'
+  )
+  const shared = sharedEl
+    ? {
+        label: sharedEl.dataset.sharedLabel ?? '',
+        urgent: sharedEl.dataset.sharedUrgent !== undefined,
+        count: Number(sharedEl.dataset.sharedCount) || 0,
+      }
+    : null
   const filled = [...root.querySelectorAll<HTMLElement>('[data-bar-slot]')].filter(
     (slot) => slot.childElementCount > 0
   ).length
@@ -57,7 +70,11 @@ export function summarizeBars(root: ParentNode): NarrowBarsSummary {
     trust: has('folder-trust-banner'),
     files,
     branch,
-    more: Math.max(0, filled - (files ? 1 : 0) - (branch ? 1 : 0)),
+    more: Math.max(
+      0,
+      filled - (files ? 1 : 0) - (branch ? 1 : 0) - (shared ? 1 : 0)
+    ),
+    ...(shared ? { shared } : {}),
   }
 }
 
@@ -118,7 +135,11 @@ export function NarrowStatusStrip({
     return () => observer.disconnect()
   })
   const anyBar =
-    summary.trust || summary.files || summary.branch || summary.more > 0
+    summary.trust ||
+    summary.files ||
+    summary.branch ||
+    !!summary.shared ||
+    summary.more > 0
   if (waiting <= 0 && !anyBar) return null
   const open = (e: MouseEvent) => {
     e.stopPropagation()
@@ -160,6 +181,24 @@ export function NarrowStatusStrip({
       className: 'text-warning',
       onClick: open,
     })
+  const sharedChip: Chip | null = summary.shared
+    ? {
+        id: 'shared',
+        aria: summary.shared.label,
+        label: summary.shared.label,
+        body: (
+          <>
+            <Users className="size-3.5" aria-hidden />
+            {summary.shared.count}
+          </>
+        ),
+        className: summary.shared.urgent ? 'text-warning' : undefined,
+        onClick: open,
+      }
+    : null
+  // An urgent shared-folder item ranks with the trust question; a calm one
+  // goes last of the named chips.
+  if (sharedChip && summary.shared?.urgent) chips.push(sharedChip)
   if (summary.files && files)
     chips.push({
       id: 'files',
@@ -185,6 +224,7 @@ export function NarrowStatusStrip({
       body: <GitBranch className="size-3.5" aria-hidden />,
       onClick: open,
     })
+  if (sharedChip && !summary.shared?.urgent) chips.push(sharedChip)
   // A condensed strip (a phone) shows the most urgent item with its words
   // and counts the rest; a wider one shows every chip.
   const shown = condensed ? chips.slice(0, 1) : chips
@@ -249,6 +289,7 @@ export function attentionCount(waiting: number, summary: NarrowBarsSummary): num
     (summary.trust ? 1 : 0) +
     (summary.files ? 1 : 0) +
     (summary.branch ? 1 : 0) +
+    (summary.shared ? 1 : 0) +
     summary.more
   )
 }
@@ -292,7 +333,18 @@ export function NarrowBarsSheet({
     scan()
     if (typeof MutationObserver === 'undefined') return
     const observer = new MutationObserver(scan)
-    observer.observe(el, { childList: true, subtree: true })
+    // The shared-folder bar changes what it says (a hold arrives) without
+    // adding or removing a node: its data attributes are watched too.
+    observer.observe(el, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: [
+        'data-shared-label',
+        'data-shared-urgent',
+        'data-shared-count',
+      ],
+    })
     return () => observer.disconnect()
   }, [el, scan])
 

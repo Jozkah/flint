@@ -375,6 +375,48 @@
     "files": "Soubory k revizi: {{count}}",
     "branch": "Větev: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} další relace pracuje v této složce",
+    "others_few": "{{count}} další relace pracují v této složce",
+    "others_many": "{{count}} další relace pracuje v této složce",
+    "others_other": "{{count}} dalších relací pracuje v této složce",
+    "waitingApproval_one": "{{count}} další relace čeká na schválení",
+    "waitingApproval_few": "{{count}} další relace čekají na schválení",
+    "waitingApproval_many": "{{count}} další relace čeká na schválení",
+    "waitingApproval_other": "{{count}} dalších relací čeká na schválení",
+    "waitingApprovalOne": "Čeká na schválení",
+    "holdEdit": "{{owner}} upravuje {{target}}: {{session}} dostala pokyn, aby jí napsala",
+    "holdGit": "{{owner}} pracuje v této složce: {{session}} byla zadržena před git {{target}} a má jí napsat",
+    "branchChanged": "Větev se změnila z {{from}} na {{to}}",
+    "show": "Zobrazit, kdo je v této složce",
+    "hide": "Skrýt seznam",
+    "openSession": "Otevřít {{name}}",
+    "message": "Zpráva",
+    "isolated": "Vlastní pracovní strom",
+    "moreFiles": "+{{count}} dalších",
+    "editing": "Upravuje",
+    "status": {
+      "running": "Běží",
+      "idle": "Nečinná",
+      "unavailable": "Nedostupná"
+    },
+    "allowEdit": "Přesto této relaci povolit úpravy",
+    "allowGit": "Přesto této relaci povolit spouštět git",
+    "allowed": {
+      "edit": "Může přesto upravovat, zbývá",
+      "git": "Může přesto spouštět git, zbývá",
+      "all": "Může přesto upravovat a spouštět git, zbývá"
+    },
+    "withdraw": "Odvolat",
+    "isolationHint": "Používá vlastní pracovní strom, protože v této složce pracuje jiná relace",
+    "useShared": "Místo toho použít sdílenou složku",
+    "sharedWarning": "Sdílená složka: změny gitu v jiné relaci mohou posunout větev a soubory této relace. Flint zadržuje rizikové příkazy git a varuje, když dvě relace upravují jeden soubor.",
+    "gotIt": "Rozumím",
+    "sidebarMark_one": "Sdílí složku s {{count}} další relací",
+    "sidebarMark_few": "Sdílí složku s {{count}} dalšími relacemi",
+    "sidebarMark_many": "Sdílí složku s {{count}} další relace",
+    "sidebarMark_other": "Sdílí složku s {{count}} dalšími relacemi"
+  },
   "coworkLayout": {
     "views": "Zobrazení Cowork",
     "content": "Obsah",

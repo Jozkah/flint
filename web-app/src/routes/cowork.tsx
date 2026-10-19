@@ -459,6 +459,8 @@ import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { CoworkSessionWorktreeBar } from '@/containers/CoworkSessionWorktreeBar'
+import { SharedFolderBar } from '@/containers/SharedFolderBar'
+import { SharedFolderIsolationHint } from '@/containers/SharedFolderIsolationHint'
 import {
   applyDecision,
   conflictKey,
@@ -6763,6 +6765,12 @@ export function CoworkPage() {
                 {/* The pull request for the folder's branch, if it has one, with
                     the same mark the session carries in the sidebar. */}
                 {session?.id && folder ? (
+                  <>
+                  <SharedFolderIsolationHint
+                    reason={autoWorktree.isolationReason}
+                    choseShared={autoWorktree.choseShared}
+                    onUseShared={() => void autoWorktree.chooseShared()}
+                  />
                   <CoworkSessionWorktreeBar
                     sessionId={session.id}
                     title={session.title}
@@ -6791,8 +6799,15 @@ export function CoworkPage() {
                       useCoworkParallel.getState().mark(sid, folder, 'skipped')
                     }}
                   />
+                  </>
                 ) : null}
                 <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
+                {/* Other sessions in this folder: one more bar, so the narrow
+                    strip folds it in with the rest. Nothing when alone. */}
+                <SharedFolderBar
+                  sessionId={session?.id}
+                  onOpenSession={(id) => useCoworkSessions.getState().selectSession(id)}
+                />
               </CoworkBarStack>
                   </>
                 )

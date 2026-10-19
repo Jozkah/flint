@@ -371,6 +371,39 @@
     "files": "Tệp sẵn sàng để xem lại: {{count}}",
     "branch": "Nhánh: {{branch}}"
   },
+  "sharedFolder": {
+    "others_other": "{{count}} phiên khác đang làm việc trong thư mục này",
+    "waitingApproval_other": "{{count}} phiên khác đang chờ phê duyệt",
+    "waitingApprovalOne": "Đang chờ phê duyệt",
+    "holdEdit": "{{owner}} đang sửa {{target}}: {{session}} được yêu cầu nhắn cho họ",
+    "holdGit": "{{owner}} đang làm việc trong thư mục này: {{session}} bị giữ lại trước git {{target}} và được yêu cầu nhắn cho họ",
+    "branchChanged": "Nhánh đã đổi từ {{from}} sang {{to}}",
+    "show": "Xem ai đang ở trong thư mục này",
+    "hide": "Ẩn danh sách",
+    "openSession": "Mở {{name}}",
+    "message": "Nhắn tin",
+    "isolated": "Worktree riêng",
+    "moreFiles": "+{{count}} nữa",
+    "editing": "Đang sửa",
+    "status": {
+      "running": "Đang chạy",
+      "idle": "Rảnh",
+      "unavailable": "Không khả dụng"
+    },
+    "allowEdit": "Vẫn cho phiên này sửa",
+    "allowGit": "Vẫn cho phiên này chạy git",
+    "allowed": {
+      "edit": "Được phép sửa, còn lại",
+      "git": "Được phép chạy git, còn lại",
+      "all": "Được phép sửa và chạy git, còn lại"
+    },
+    "withdraw": "Thu hồi",
+    "isolationHint": "Đang dùng worktree riêng vì phiên khác đang làm việc trong thư mục này",
+    "useShared": "Dùng thư mục chung thay thế",
+    "sharedWarning": "Thư mục dùng chung: thay đổi git của phiên khác có thể làm đổi nhánh và tệp của phiên này. Flint giữ lại các lệnh git rủi ro và cảnh báo khi hai phiên sửa cùng một tệp.",
+    "gotIt": "Đã hiểu",
+    "sidebarMark_other": "Dùng chung thư mục với {{count}} phiên khác"
+  },
   "coworkLayout": {
     "views": "Chế độ xem Cowork",
     "content": "Nội dung",

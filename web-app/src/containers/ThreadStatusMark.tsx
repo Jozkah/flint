@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect } from 'react'
-import { GitFork } from 'lucide-react'
+import { GitFork, Users } from 'lucide-react'
 import { useMinuteClock } from '@/lib/minuteClock'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -102,6 +102,7 @@ export function ThreadStatusMark({
   status,
   detail,
   fork,
+  shared,
   className,
 }: {
   status: ThreadStatus
@@ -109,9 +110,31 @@ export function ThreadStatusMark({
   detail?: string
   /** A forked chat: shown in this same slot while nothing else marks the row. */
   fork?: boolean
+  /**
+   * How many other live sessions share this one's folder: a small mark in
+   * the same slot while nothing else marks the row (it outranks the fork mark,
+   * and the tooltip still names the fork).
+   */
+  shared?: number
   className?: string
 }) {
   const { t } = useTranslation()
+  if (status === 'none' && shared && shared > 0) {
+    const sharedLabel = t('common:sharedFolder.sidebarMark', { count: shared })
+    const label = fork ? `${sharedLabel} · ${t('chat:fork.chat')}` : sharedLabel
+    return (
+      <span
+        data-status="shared"
+        data-testid="thread-shared-mark"
+        title={label}
+        aria-label={label}
+        role="img"
+        className={cn('relative grid size-3.5 shrink-0 place-items-center text-muted-foreground', className)}
+      >
+        <Users className="size-3.5" aria-hidden />
+      </span>
+    )
+  }
   if (status === 'none' && fork) {
     const forkLabel = t('chat:fork.chat')
     return (

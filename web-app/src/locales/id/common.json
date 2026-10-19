@@ -369,6 +369,39 @@
     "files": "File siap ditinjau: {{count}}",
     "branch": "Cabang: {{branch}}"
   },
+  "sharedFolder": {
+    "others_other": "{{count}} sesi lain sedang bekerja di folder ini",
+    "waitingApproval_other": "{{count}} sesi lain menunggu persetujuan",
+    "waitingApprovalOne": "Menunggu persetujuan",
+    "holdEdit": "{{owner}} sedang mengedit {{target}}: {{session}} diminta mengirim pesan kepadanya",
+    "holdGit": "{{owner}} bekerja di folder ini: {{session}} ditahan sebelum git {{target}} dan diminta mengirim pesan kepadanya",
+    "branchChanged": "Cabang berubah dari {{from}} ke {{to}}",
+    "show": "Tampilkan siapa yang ada di folder ini",
+    "hide": "Sembunyikan daftar",
+    "openSession": "Buka {{name}}",
+    "message": "Pesan",
+    "isolated": "Worktree sendiri",
+    "moreFiles": "+{{count}} lagi",
+    "editing": "Mengedit",
+    "status": {
+      "running": "Berjalan",
+      "idle": "Diam",
+      "unavailable": "Tidak tersedia"
+    },
+    "allowEdit": "Biarkan sesi ini tetap mengedit",
+    "allowGit": "Biarkan sesi ini tetap menjalankan git",
+    "allowed": {
+      "edit": "Boleh tetap mengedit, sisa waktu",
+      "git": "Boleh tetap menjalankan git, sisa waktu",
+      "all": "Boleh tetap mengedit dan menjalankan git, sisa waktu"
+    },
+    "withdraw": "Tarik kembali",
+    "isolationHint": "Memakai worktree sendiri karena sesi lain bekerja di folder ini",
+    "useShared": "Gunakan folder bersama saja",
+    "sharedWarning": "Folder dibagi: perubahan git sesi lain dapat memindahkan cabang dan file sesi ini. Flint menahan perintah git berisiko dan memperingatkan saat dua sesi mengedit satu file.",
+    "gotIt": "Mengerti",
+    "sidebarMark_other": "Berbagi folder dengan {{count}} sesi lain"
+  },
   "coworkLayout": {
     "views": "Tampilan Cowork",
     "content": "Konten",

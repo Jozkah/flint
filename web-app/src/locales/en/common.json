@@ -410,6 +410,42 @@
     "files": "Files ready for review: {{count}}",
     "branch": "Branch: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} other session is working in this folder",
+    "others_other": "{{count}} other sessions are working in this folder",
+    "waitingApproval_one": "{{count}} other session is waiting for approval",
+    "waitingApproval_other": "{{count}} other sessions are waiting for approval",
+    "waitingApprovalOne": "Waiting for approval",
+    "holdEdit": "{{owner}} is editing {{target}}: {{session}} was told to message them",
+    "holdGit": "{{owner}} is working in this folder: {{session}} was held from git {{target}} and told to message them",
+    "branchChanged": "The branch changed from {{from}} to {{to}}",
+    "show": "Show who is in this folder",
+    "hide": "Hide the list",
+    "openSession": "Open {{name}}",
+    "message": "Message",
+    "isolated": "Own worktree",
+    "moreFiles": "+{{count}} more",
+    "editing": "Editing",
+    "status": {
+      "running": "Running",
+      "idle": "Idle",
+      "unavailable": "Unavailable"
+    },
+    "allowEdit": "Let this session edit anyway",
+    "allowGit": "Let this session run git anyway",
+    "allowed": {
+      "edit": "Allowed to edit anyway, time left",
+      "git": "Allowed to run git anyway, time left",
+      "all": "Allowed to edit and run git anyway, time left"
+    },
+    "withdraw": "Withdraw",
+    "isolationHint": "Using its own worktree because another session is working in this folder",
+    "useShared": "Use the shared folder instead",
+    "sharedWarning": "Sharing the folder: another session's git changes can move this session's branch and files. Flint holds risky git commands and warns when two sessions edit one file.",
+    "gotIt": "Got it",
+    "sidebarMark_one": "Shares a folder with {{count}} other session",
+    "sidebarMark_other": "Shares a folder with {{count}} other sessions"
+  },
   "coworkLayout": {
     "views": "Cowork view",
     "content": "Content",

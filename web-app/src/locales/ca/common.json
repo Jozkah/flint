@@ -373,6 +373,42 @@
     "files": "Fitxers a punt per revisar: {{count}}",
     "branch": "Branca: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} altra sessió treballa en aquesta carpeta",
+    "others_other": "{{count}} altres sessions treballen en aquesta carpeta",
+    "waitingApproval_one": "{{count}} altra sessió espera aprovació",
+    "waitingApproval_other": "{{count}} altres sessions esperen aprovació",
+    "waitingApprovalOne": "Esperant aprovació",
+    "holdEdit": "{{owner}} està editant {{target}}: s’ha indicat a {{session}} que li escrigui",
+    "holdGit": "{{owner}} treballa en aquesta carpeta: {{session}} ha quedat retinguda abans de git {{target}} i li ha d’escriure",
+    "branchChanged": "La branca ha canviat de {{from}} a {{to}}",
+    "show": "Mostra qui és en aquesta carpeta",
+    "hide": "Amaga la llista",
+    "openSession": "Obre {{name}}",
+    "message": "Missatge",
+    "isolated": "Worktree propi",
+    "moreFiles": "+{{count}} més",
+    "editing": "Editant",
+    "status": {
+      "running": "En execució",
+      "idle": "Inactiva",
+      "unavailable": "No disponible"
+    },
+    "allowEdit": "Deixa que aquesta sessió editi igualment",
+    "allowGit": "Deixa que aquesta sessió executi git igualment",
+    "allowed": {
+      "edit": "Pot editar igualment, temps restant",
+      "git": "Pot executar git igualment, temps restant",
+      "all": "Pot editar i executar git igualment, temps restant"
+    },
+    "withdraw": "Retira",
+    "isolationHint": "Utilitza el seu propi worktree perquè una altra sessió treballa en aquesta carpeta",
+    "useShared": "Usa la carpeta compartida en lloc d’això",
+    "sharedWarning": "Carpeta compartida: els canvis de git d’una altra sessió poden moure la branca i els fitxers d’aquesta. Flint reté les ordres git arriscades i avisa quan dues sessions editen un mateix fitxer.",
+    "gotIt": "Entesos",
+    "sidebarMark_one": "Comparteix una carpeta amb {{count}} altra sessió",
+    "sidebarMark_other": "Comparteix una carpeta amb {{count}} altres sessions"
+  },
   "coworkLayout": {
     "views": "Vista de Cowork",
     "content": "Contingut",
