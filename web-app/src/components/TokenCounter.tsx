@@ -30,6 +30,7 @@ import { resolvePricing, type Pricing } from '@/lib/modelPricing'
 import { ContextWindowCard } from '@/components/ContextWindowCard'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import { fixedPromptTokens, reconcileBreakdown } from '@/lib/contextBreakdown'
 import { contextUsage, type ContextUsage } from '@/lib/contextUsage'
 import {
@@ -104,6 +105,7 @@ export const TokenCounter = memo(function TokenCounter({
   onSetPrice,
 }: TokenCounterProps) {
   const { t } = useTranslation()
+  const smallContextMode = useLeanToolsConfig((s) => s.smallContextMode)
   const card = usePinnedCard()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
   // Which conversation these numbers belong to, stamped on the badge and its
@@ -383,7 +385,7 @@ export const TokenCounter = memo(function TokenCounter({
           sideOffset={6}
           collisionPadding={POPUP_COLLISION_PADDING}
           showArrow={false}
-          className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
+          className="w-[340px] max-w-[calc(100vw-2rem)] max-h-(--radix-tooltip-content-available-height) overflow-y-auto overscroll-contain rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
           {...card.contentProps}
         >
@@ -419,7 +421,12 @@ export const TokenCounter = memo(function TokenCounter({
                         ? stored.smallContextSaved()
                         : stored.smallContextSaved
                     ),
-                  })}
+                  })}{' '}
+                  {t(
+                    smallContextMode === 'always'
+                      ? 'common:usage.counter.smallContextWhyAlways'
+                      : 'common:usage.counter.smallContextWhyAuto'
+                  )}
                 </p>
               )}
               {fixedTokens > 0 && (
@@ -623,7 +630,7 @@ function TokenCountOnly({
           sideOffset={6}
           collisionPadding={POPUP_COLLISION_PADDING}
           showArrow={false}
-          className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
+          className="w-[340px] max-w-[calc(100vw-2rem)] max-h-(--radix-tooltip-content-available-height) overflow-y-auto overscroll-contain rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
           {...pinned.contentProps}
         >

@@ -26,7 +26,7 @@
   "stepCounter": "Langkah {{current}} dari {{total}}",
   "skipStep": "Lewati untuk sekarang",
   "welcomeTitle": "Flint perlu disiapkan di sistem Anda",
-  "welcomeBody": "Ini memakan waktu beberapa menit: Flint mengunduh engine inferensinya dan model kecil untuk pencarian file. Anda dapat terus memakai komputer selama prosesnya.",
+  "welcomeBody": "Ini butuh beberapa menit: Flint mengunduh mesin inferensinya. Anda bisa terus memakai komputer selama prosesnya.",
   "startSetup": "Ayo mulai",
   "stageSetup": "Menyiapkan engine lokal",
   "badgeGpu": "Akan memakai GPU Anda",
@@ -52,5 +52,6 @@
   "downloadingDescription": "Harap tunggu saat kami mengunduh model. Ini mungkin memakan waktu beberapa menit.",
   "orDivider": "atau",
   "localModel": "Siapkan model lokal",
-  "remoteProvider": "Siapkan penyedia jarak jauh"
+  "remoteProvider": "Siapkan penyedia jarak jauh",
+  "checkSearchNotConfigured": "Belum ada model embedding. Pencarian file akan berfungsi setelah Anda mengimpor satu dari Model > Llama.cpp."
 }

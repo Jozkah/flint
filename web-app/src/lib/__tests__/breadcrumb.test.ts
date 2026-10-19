@@ -17,6 +17,12 @@ describe('crumbForPath', () => {
     expect(c.currentKey).toBe(current)
   })
 
+  it('does not repeat the parent on an unknown path', () => {
+    const c = crumbForPath('/no/such/page')
+    expect(c.currentKey).toBe('common:routeNotFound.title')
+    expect(c.currentKey).not.toBe(c.parentKey)
+  })
+
   it('names threads, rooms and providers from the page', () => {
     expect(crumbForPath('/threads/t1')).toMatchObject({ dynamic: 'thread', param: 't1', currentKey: null })
     expect(crumbForPath('/cowork')).toMatchObject({ dynamic: 'session', parentKey: 'common:cowork' })

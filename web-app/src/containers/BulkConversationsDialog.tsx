@@ -265,9 +265,11 @@ export function BulkConversationsDialog({
             <DialogHeader>
               <DialogTitle>{t('settings:bulk.doneTitle')}</DialogTitle>
               <DialogDescription data-testid="bulk-summary">
-                {isDelete
-                  ? t('settings:bulk.deleted', { count: done })
-                  : t('settings:bulk.archived', { count: done })}
+                {undone && undone.restored > 0
+                  ? t('settings:bulk.restored', { n: undone.restored })
+                  : isDelete
+                    ? t('settings:bulk.deleted', { count: done })
+                    : t('settings:bulk.archived', { count: done })}
               </DialogDescription>
             </DialogHeader>
             <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -283,7 +285,7 @@ export function BulkConversationsDialog({
               {skipCount(shown, 'unsupported') > 0 && (
                 <li>{t('settings:bulk.skippedNoArchive', { n: skipCount(shown, 'unsupported') })}</li>
               )}
-              {!isDelete && done > 0 && archivePage && (
+              {!isDelete && done > 0 && archivePage && !(undone && undone.restored > 0) && (
                 <li>{t('settings:bulk.inArchive')}</li>
               )}
             </ul>
@@ -303,11 +305,9 @@ export function BulkConversationsDialog({
                 </ul>
               </div>
             )}
-            {undone && (
+            {undone && undone.failed.length > 0 && (
               <p className="text-xs text-foreground" data-testid="bulk-undone">
-                {t('settings:bulk.restored', { n: undone.restored })}
-                {undone.failed.length > 0 &&
-                  ` ${t('settings:bulk.restoreFailed', { n: undone.failed.length })}`}
+                {t('settings:bulk.restoreFailed', { n: undone.failed.length })}
                 {undone.failed[0] && (
                   <span className="mt-1 block text-muted-foreground">
                     {undone.failed[0].error}

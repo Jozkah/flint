@@ -534,7 +534,8 @@
       "install": "インストール",
       "installing": "インストール中…",
       "uninstall": "アンインストール",
-      "uninstalling": "アンインストール中…"
+      "uninstalling": "アンインストール中…",
+      "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。"
     }
   },
   "extensions": {

@@ -1092,7 +1092,8 @@
     "copied": "경로를 복사했습니다",
     "footnoteEmptyEdit": "폴더를 첨부하면 에이전트가 프로젝트에서 작업할 수 있습니다.",
     "a11yWithFolderEditable": "프로젝트 폴더 {{folder}}, 편집용으로 연결됨. 변경하거나 분리하세요.",
-    "a11yWithFolderWorktree": "프로젝트 폴더 {{folder}}, 별도 worktree로 편집됨. 변경하거나 분리하세요."
+    "a11yWithFolderWorktree": "프로젝트 폴더 {{folder}}, 별도 worktree로 편집됨. 변경하거나 분리하세요.",
+    "folderNotFound": "해당 폴더가 없습니다: {{path}}"
   },
   "coworkEmpty": {
     "title": "무엇을 작업할까요?",
@@ -2594,7 +2595,9 @@
       "fixedPrompt": "요청마다 전송: {{count}} 토큰(시스템 프롬프트와 도구 스키마).",
       "smallContext": "작은 컨텍스트 모드: 켜짐, 약 {{count}} 토큰 절약",
       "tokenUsage": "토큰 사용량",
-      "tokenUsageSr": "토큰 사용량 {{value}}"
+      "tokenUsageSr": "토큰 사용량 {{value}}",
+      "smallContextWhyAuto": "자동: 창 크기가 64K 이하입니다.",
+      "smallContextWhyAlways": "설정에서 항상으로 지정되어 있습니다."
     }
   },
   "openclaw": "OpenClaw",

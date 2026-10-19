@@ -538,7 +538,8 @@
       "install": "Zainstaluj",
       "installing": "Instalowanie…",
       "uninstall": "Odinstaluj",
-      "uninstalling": "Odinstalowywanie…"
+      "uninstalling": "Odinstalowywanie…",
+      "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii."
     }
   },
   "extensions": {

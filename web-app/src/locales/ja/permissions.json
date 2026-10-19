@@ -40,7 +40,9 @@
     "gitRemote": "Flint が {{command}} を実行しようとしています。これにより {{target}} が変更されます",
     "gitDestructive": "Flint が {{command}} を実行しようとしています。作業内容が失われる可能性があります",
     "approveCampaign": "Flint がキャンペーン「{{title}}」({{count}} 件のタスク) を開始しようとしています",
-    "spendPause": "Flint は、支出の一時停止を超えてこの実行を続けようとしています"
+    "spendPause": "Flint は、支出の一時停止を超えてこの実行を続けようとしています",
+    "changeFileOutside": "Flint は {{workspace}} の外にある {{target}} を変更しようとしています",
+    "changeManyFilesOutside": "Flint は {{count}} 個のファイルを変更しようとしています(一部は {{workspace}} の外)"
   },
   "consequence": {
     "fileChange": "ファイルの作成、上書き、内容の変更ができます。",

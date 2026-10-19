@@ -1101,7 +1101,8 @@
     "copied": "Percorso copiato",
     "footnoteEmptyEdit": "Allega una cartella per far lavorare l'agente sul tuo progetto.",
     "a11yWithFolderEditable": "Cartella del progetto {{folder}}, allegata in modifica. Cambiala o scollegala.",
-    "a11yWithFolderWorktree": "Cartella del progetto {{folder}}, modificata tramite un worktree separato. Cambiala o scollegala."
+    "a11yWithFolderWorktree": "Cartella del progetto {{folder}}, modificata tramite un worktree separato. Cambiala o scollegala.",
+    "folderNotFound": "Questa cartella non esiste: {{path}}"
   },
   "coworkEmpty": {
     "title": "Su cosa lavoriamo?",
@@ -2638,7 +2639,9 @@
       "fixedPrompt": "Inviato con ogni richiesta: {{count}} token (prompt di sistema e schemi degli strumenti).",
       "smallContext": "Modalità contesto ridotto: attiva, risparmia ~{{count}} token",
       "tokenUsage": "Uso dei token",
-      "tokenUsageSr": "Uso dei token {{value}}"
+      "tokenUsageSr": "Uso dei token {{value}}",
+      "smallContextWhyAuto": "Auto: la finestra è di 64K o meno.",
+      "smallContextWhyAlways": "Impostato su Sempre nelle Impostazioni."
     }
   },
   "connectors": "Connettori",

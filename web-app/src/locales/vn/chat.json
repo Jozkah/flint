@@ -123,7 +123,11 @@
       "searched_one": "đã tìm kiếm {{count}} lần",
       "searched_other": "đã tìm kiếm {{count}} lần",
       "tools_one": "đã dùng {{count}} công cụ",
-      "tools_other": "đã dùng {{count}} công cụ"
+      "tools_other": "đã dùng {{count}} công cụ",
+      "createdNone_one": "không thể tạo {{count}} tệp",
+      "createdNone_other": "không thể tạo {{count}} tệp",
+      "editedNone_one": "không thể chỉnh sửa {{count}} tệp",
+      "editedNone_other": "không thể chỉnh sửa {{count}} tệp"
     }
   },
   "widget": {

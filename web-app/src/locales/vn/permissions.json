@@ -40,7 +40,9 @@
     "gitRemote": "Flint muốn chạy {{command}}, lệnh này thay đổi {{target}}",
     "gitDestructive": "Flint muốn chạy {{command}}, lệnh này có thể làm mất công việc",
     "approveCampaign": "Flint muốn bắt đầu chiến dịch \"{{title}}\" ({{count}} tác vụ)",
-    "spendPause": "Flint muốn tiếp tục lượt chạy này vượt quá mức tạm dừng chi tiêu"
+    "spendPause": "Flint muốn tiếp tục lượt chạy này vượt quá mức tạm dừng chi tiêu",
+    "changeFileOutside": "Flint muốn thay đổi {{target}}, nằm ngoài {{workspace}}",
+    "changeManyFilesOutside": "Flint muốn thay đổi {{count}} tệp, một số nằm ngoài {{workspace}}"
   },
   "consequence": {
     "fileChange": "Nó có thể tạo, ghi đè hoặc thay đổi nội dung các tệp.",

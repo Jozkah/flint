@@ -534,7 +534,8 @@
       "install": "설치",
       "installing": "설치 중…",
       "uninstall": "제거",
-      "uninstalling": "제거 중…"
+      "uninstalling": "제거 중…",
+      "foreignDesc": "{{path}}에서 찾았습니다. 다른 Flint 사본이 설치한 것입니다. 이 사본의 CLI를 쓰려면 여기에 설치하세요."
     }
   },
   "extensions": {

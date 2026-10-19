@@ -538,7 +538,8 @@
       "install": "Установить",
       "installing": "Установка…",
       "uninstall": "Удалить",
-      "uninstalling": "Удаление…"
+      "uninstalling": "Удаление…",
+      "foreignDesc": "Найдено в {{path}}, установлено другой копией Flint. Установите здесь, чтобы использовать CLI этой копии."
     }
   },
   "extensions": {

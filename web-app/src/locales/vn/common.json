@@ -1094,7 +1094,8 @@
     "copied": "Đã sao chép đường dẫn",
     "footnoteEmptyEdit": "Đính kèm một thư mục để tác tử làm việc trên dự án của bạn.",
     "a11yWithFolderEditable": "Thư mục dự án {{folder}}, đã đính kèm để chỉnh sửa. Đổi hoặc gỡ thư mục.",
-    "a11yWithFolderWorktree": "Thư mục dự án {{folder}}, được chỉnh sửa qua một worktree riêng. Đổi hoặc gỡ thư mục."
+    "a11yWithFolderWorktree": "Thư mục dự án {{folder}}, được chỉnh sửa qua một worktree riêng. Đổi hoặc gỡ thư mục.",
+    "folderNotFound": "Thư mục đó không tồn tại: {{path}}"
   },
   "coworkEmpty": {
     "title": "Chúng ta làm gì đây?",
@@ -2599,7 +2600,9 @@
       "fixedPrompt": "Gửi kèm mỗi yêu cầu: {{count}} token (lời nhắc hệ thống và lược đồ công cụ).",
       "smallContext": "Chế độ ngữ cảnh nhỏ: bật, tiết kiệm ~{{count}} token",
       "tokenUsage": "Mức dùng token",
-      "tokenUsageSr": "Mức dùng token {{value}}"
+      "tokenUsageSr": "Mức dùng token {{value}}",
+      "smallContextWhyAuto": "Tự động: cửa sổ từ 64K trở xuống.",
+      "smallContextWhyAlways": "Đã đặt thành Luôn bật trong Cài đặt."
     }
   },
   "voicePill": {

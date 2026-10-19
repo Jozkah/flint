@@ -1101,7 +1101,8 @@
     "copied": "Caminho copiado",
     "footnoteEmptyEdit": "Anexe uma pasta para o agente trabalhar no seu projeto.",
     "a11yWithFolderEditable": "Pasta do projeto {{folder}}, anexada para edição. Altere ou desanexe.",
-    "a11yWithFolderWorktree": "Pasta do projeto {{folder}}, editada por um worktree separado. Altere ou desanexe."
+    "a11yWithFolderWorktree": "Pasta do projeto {{folder}}, editada por um worktree separado. Altere ou desanexe.",
+    "folderNotFound": "Essa pasta não existe: {{path}}"
   },
   "coworkEmpty": {
     "title": "No que vamos trabalhar?",
@@ -2642,7 +2643,9 @@
       "fixedPrompt": "Enviado com cada solicitação: {{count}} tokens (prompt do sistema e esquemas de ferramentas).",
       "smallContext": "Modo de contexto pequeno: ativo, economiza ~{{count}} tokens",
       "tokenUsage": "Uso de tokens",
-      "tokenUsageSr": "Uso de tokens {{value}}"
+      "tokenUsageSr": "Uso de tokens {{value}}",
+      "smallContextWhyAuto": "Automático: a janela tem 64K ou menos.",
+      "smallContextWhyAlways": "Definido como Sempre nas Configurações."
     }
   },
   "voicePill": {

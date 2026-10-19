@@ -1857,6 +1857,24 @@ export function CoworkPage() {
           ? await pickServerFolder()
           : await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
+    // Nothing else checks a path handed in (typed, pasted, or from a stale
+    // list): attaching one that is not there built suggestions out of nothing.
+    if (isPlatformTauri() && !isServerTransport()) {
+      let isFolder = true
+      try {
+        const { fs } = await import('@janhq/core')
+        if (typeof fs?.fileStat === 'function') {
+          const stat = await fs.fileStat(picked)
+          isFolder = Boolean(stat?.isDirectory)
+        }
+      } catch {
+        isFolder = false
+      }
+      if (!isFolder) {
+        toast.error(t('common:workspace.folderNotFound', { path: picked }))
+        return
+      }
+    }
     // A split-view pane's session is never the global current one, so it is
     // compared against the pane's own id.
     if (openingSessionId &&
@@ -1890,7 +1908,7 @@ export function CoworkPage() {
       delete next[sid]
       return next
     })
-  }, [serviceHub, session?.id])
+  }, [serviceHub, session?.id, t])
 
   const detachFolder = useCallback(async () => {
     if (!session?.id || folderHeld(session.id)) return

@@ -210,7 +210,10 @@ export function summaryLabel(
 ): string | undefined {
   const text = summaryPhrases(s)
     .map((p) => {
-      const phrase = t(`chat:transcriptView.summary.${p.key}`, { count: p.count })
+      const phrase = t(
+        `chat:transcriptView.summary.${p.none ? `${p.key}None` : p.key}`,
+        { count: p.count }
+      )
       return p.failed > 0
         ? `${phrase} (${t('chat:transcriptView.summary.failed', { count: p.failed })})`
         : phrase
@@ -246,12 +249,18 @@ export const SUMMARY_ORDER = [
 
 export function summaryPhrases(
   s: TraceSummary
-): { key: SummaryKey; count: number; failed: number }[] {
-  return SUMMARY_ORDER.filter((key) => s[key] > 0).map((key) => ({
-    key,
-    count: s[key],
-    failed: s.failedBy?.[key] ?? 0,
-  }))
+): { key: SummaryKey; count: number; failed: number; none?: boolean }[] {
+  return SUMMARY_ORDER.filter((key) => s[key] > 0).map((key) => {
+    const failed = s.failedBy?.[key] ?? 0
+    // A write or edit that failed did not create or change anything, so it is
+    // not counted as done: "created 2 files (2 failed)" read as if it had.
+    if (key === 'created' || key === 'edited') {
+      const done = s[key] - failed
+      if (done <= 0) return { key, count: failed, failed: 0, none: true }
+      return { key, count: done, failed }
+    }
+    return { key, count: s[key], failed }
+  })
 }
 
 /**

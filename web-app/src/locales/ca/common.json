@@ -1103,7 +1103,8 @@
     "copied": "Ruta copiada",
     "footnoteEmptyEdit": "Adjunta una carpeta perquè l'agent treballi en el teu projecte.",
     "a11yWithFolderEditable": "Carpeta del projecte {{folder}}, adjuntada per editar. Canvia-la o treu-la.",
-    "a11yWithFolderWorktree": "Carpeta del projecte {{folder}}, editada mitjançant un worktree separat. Canvia-la o treu-la."
+    "a11yWithFolderWorktree": "Carpeta del projecte {{folder}}, editada mitjançant un worktree separat. Canvia-la o treu-la.",
+    "folderNotFound": "Aquesta carpeta no existeix: {{path}}"
   },
   "coworkEmpty": {
     "title": "En què treballem?",
@@ -2640,7 +2641,9 @@
       "fixedPrompt": "S'envia amb cada sol·licitud: {{count}} tokens (indicació del sistema i esquemes d'eines).",
       "smallContext": "Mode de context petit: activat, estalvia ~{{count}} tokens",
       "tokenUsage": "Ús de tokens",
-      "tokenUsageSr": "Ús de tokens {{value}}"
+      "tokenUsageSr": "Ús de tokens {{value}}",
+      "smallContextWhyAuto": "Automàtic: la finestra és de 64K o menys.",
+      "smallContextWhyAlways": "Definit com a Sempre a Configuració."
     }
   },
   "voicePill": {

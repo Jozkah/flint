@@ -532,7 +532,8 @@
       "install": "Pasang",
       "installing": "Memasang…",
       "uninstall": "Copot",
-      "uninstalling": "Mencopot…"
+      "uninstalling": "Mencopot…",
+      "foreignDesc": "Ditemukan di {{path}}, dipasang oleh salinan Flint lain. Pasang di sini untuk memakai CLI salinan ini."
     }
   },
   "extensions": {

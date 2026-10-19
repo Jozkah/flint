@@ -26,7 +26,7 @@
   "stepCounter": "Krok {{current}} z {{total}}",
   "skipStep": "Pomiń na razie",
   "welcomeTitle": "Flint musi się skonfigurować w Twoim systemie",
-  "welcomeBody": "To zajmie kilka minut: Flint pobiera swój silnik wnioskowania i mały model do wyszukiwania plików. W tym czasie możesz nadal korzystać z komputera.",
+  "welcomeBody": "To potrwa kilka minut: Flint pobiera swój silnik wnioskowania. W tym czasie możesz dalej korzystać z komputera.",
   "startSetup": "Zaczynajmy",
   "stageSetup": "Konfigurowanie lokalnego silnika",
   "badgeGpu": "Użyje Twojego GPU",
@@ -52,5 +52,6 @@
   "downloadingDescription": "Poczekaj, aż pobierzemy model. To może potrwać kilka minut.",
   "orDivider": "lub",
   "localModel": "Ustaw lokalny model",
-  "remoteProvider": "Ustaw dostawcę modeli zdalnych"
+  "remoteProvider": "Ustaw dostawcę modeli zdalnych",
+  "checkSearchNotConfigured": "Nie ma jeszcze modelu osadzeń. Wyszukiwanie w plikach zacznie działać po zaimportowaniu go z Modele > Llama.cpp."
 }

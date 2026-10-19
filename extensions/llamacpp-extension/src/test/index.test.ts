@@ -1023,7 +1023,7 @@ describe('the embedding model Jan will use', () => {
 
     await expect(
       extension['ensureEmbeddingModelLoaded']()
-    ).rejects.toThrow(/Settings/i)
+    ).rejects.toThrow(/Models > Llama\.cpp/)
   })
 
   it('uses an installed embedding model, whatever it is called', async () => {
@@ -1100,6 +1100,18 @@ describe('verifyEmbeddingModel', () => {
 
     expect(result.status).toBe('warning')
     expect(result.error).toBe('download failed: HTTP 403')
+  })
+
+  it('treats "no embedding model installed" as not configured, not a failure', async () => {
+    vi.spyOn(extension as never, 'getEmbedderBootstrapError').mockReturnValue(
+      undefined as never
+    )
+    vi.spyOn(extension as never, 'ensureEmbeddingModelLoaded').mockRestore()
+    vi.spyOn(extension, 'list').mockResolvedValue([] as never)
+
+    const result = await extension.verifyEmbeddingModel()
+
+    expect(result).toEqual({ status: 'ok', notConfigured: true })
   })
 
   it('reports the model id and dimension of a healthy embedder', async () => {

@@ -1087,7 +1087,8 @@
     "copied": "Path disalin",
     "footnoteEmptyEdit": "Lampirkan folder agar agen dapat mengerjakan proyek Anda.",
     "a11yWithFolderEditable": "Folder proyek {{folder}}, dilampirkan untuk diedit. Ubah atau lepaskan.",
-    "a11yWithFolderWorktree": "Folder proyek {{folder}}, diedit melalui worktree terpisah. Ubah atau lepaskan."
+    "a11yWithFolderWorktree": "Folder proyek {{folder}}, diedit melalui worktree terpisah. Ubah atau lepaskan.",
+    "folderNotFound": "Folder itu tidak ada: {{path}}"
   },
   "coworkEmpty": {
     "title": "Apa yang kita kerjakan?",
@@ -2551,7 +2552,9 @@
       "fixedPrompt": "Dikirim bersama setiap permintaan: {{count}} token (prompt sistem dan skema alat).",
       "smallContext": "Mode konteks kecil: aktif, hemat ~{{count}} token",
       "tokenUsage": "Penggunaan token",
-      "tokenUsageSr": "Penggunaan token {{value}}"
+      "tokenUsageSr": "Penggunaan token {{value}}",
+      "smallContextWhyAuto": "Otomatis: jendela 64K atau kurang.",
+      "smallContextWhyAlways": "Diatur ke Selalu di Pengaturan."
     }
   },
   "voicePill": {

@@ -123,7 +123,11 @@
       "searched_one": "{{count}} Mal gesucht",
       "searched_other": "{{count}} Mal gesucht",
       "tools_one": "{{count}} Tool verwendet",
-      "tools_other": "{{count}} Tools verwendet"
+      "tools_other": "{{count}} Tools verwendet",
+      "createdNone_one": "{{count}} Datei konnte nicht erstellt werden",
+      "createdNone_other": "{{count}} Dateien konnten nicht erstellt werden",
+      "editedNone_one": "{{count}} Datei konnte nicht bearbeitet werden",
+      "editedNone_other": "{{count}} Dateien konnten nicht bearbeitet werden"
     }
   },
   "widget": {

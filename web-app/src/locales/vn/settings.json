@@ -534,7 +534,8 @@
       "install": "Cài đặt",
       "installing": "Đang cài đặt…",
       "uninstall": "Gỡ cài đặt",
-      "uninstalling": "Đang gỡ cài đặt…"
+      "uninstalling": "Đang gỡ cài đặt…",
+      "foreignDesc": "Tìm thấy tại {{path}}, do một bản Flint khác cài đặt. Cài ở đây để dùng CLI của bản này."
     }
   },
   "extensions": {

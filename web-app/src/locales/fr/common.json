@@ -1099,7 +1099,8 @@
     "copied": "Chemin copié",
     "footnoteEmptyEdit": "Joignez un dossier pour que l'agent travaille sur votre projet.",
     "a11yWithFolderEditable": "Dossier du projet {{folder}}, joint en modification. Changez-le ou détachez-le.",
-    "a11yWithFolderWorktree": "Dossier du projet {{folder}}, modifié via un worktree séparé. Changez-le ou détachez-le."
+    "a11yWithFolderWorktree": "Dossier du projet {{folder}}, modifié via un worktree séparé. Changez-le ou détachez-le.",
+    "folderNotFound": "Ce dossier n'existe pas : {{path}}"
   },
   "coworkEmpty": {
     "title": "Sur quoi travaillons-nous ?",
@@ -2634,7 +2635,9 @@
       "fixedPrompt": "Envoyé avec chaque requête : {{count}} tokens (prompt système et schémas d'outils).",
       "smallContext": "Mode petit contexte : activé, économise ~{{count}} tokens",
       "tokenUsage": "Utilisation des tokens",
-      "tokenUsageSr": "Utilisation des tokens {{value}}"
+      "tokenUsageSr": "Utilisation des tokens {{value}}",
+      "smallContextWhyAuto": "Auto : la fenêtre fait 64K ou moins.",
+      "smallContextWhyAlways": "Réglé sur Toujours dans les Paramètres."
     },
     "requests_many": "{{count}} de requêtes",
     "memoryCount_many": "{{count}} de souvenirs"

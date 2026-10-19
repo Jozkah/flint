@@ -125,6 +125,28 @@ describe('describePermissionRequest', () => {
     ])
   })
 
+  it('says a file outside the workspace is outside, with its path', () => {
+    const d = describePermissionRequest({
+      toolName: 'write',
+      input: { path: 'C:\\tmp\\hello.txt', content: 'x' },
+      workspaceLabel: 'C:\\tmp\\qa101\\proj',
+    })
+    expect(text(d.action)).toBe(
+      'Flint wants to change C:\\tmp\\hello.txt, which is outside proj'
+    )
+  })
+
+  it('keeps "in <workspace>" for a file inside it', () => {
+    const d = describePermissionRequest({
+      toolName: 'write',
+      input: { path: 'C:\\tmp\\qa101\\proj\\a.txt', content: 'x' },
+      workspaceLabel: 'C:\\tmp\\qa101\\proj',
+    })
+    expect(text(d.action)).toBe(
+      'Flint wants to change C:\\tmp\\qa101\\proj\\a.txt in proj'
+    )
+  })
+
   it('counts several files, including ones named inside a patch', () => {
     const d = describePermissionRequest({
       toolName: 'apply_patch',

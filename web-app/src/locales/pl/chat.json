@@ -137,7 +137,15 @@
       "tools_one": "użyto {{count}} narzędzia",
       "tools_other": "użyto {{count}} narzędzia",
       "tools_few": "użyto {{count}} narzędzi",
-      "tools_many": "użyto {{count}} narzędzi"
+      "tools_many": "użyto {{count}} narzędzi",
+      "createdNone_one": "nie udało się utworzyć {{count}} pliku",
+      "createdNone_other": "nie udało się utworzyć {{count}} pliku",
+      "createdNone_few": "nie udało się utworzyć {{count}} plików",
+      "createdNone_many": "nie udało się utworzyć {{count}} plików",
+      "editedNone_one": "nie udało się edytować {{count}} pliku",
+      "editedNone_other": "nie udało się edytować {{count}} pliku",
+      "editedNone_few": "nie udało się edytować {{count}} plików",
+      "editedNone_many": "nie udało się edytować {{count}} plików"
     }
   },
   "widget": {

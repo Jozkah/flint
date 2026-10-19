@@ -123,7 +123,11 @@
       "searched_one": "搜尋了 {{count}} 次",
       "searched_other": "搜尋了 {{count}} 次",
       "tools_one": "使用了 {{count}} 個工具",
-      "tools_other": "使用了 {{count}} 個工具"
+      "tools_other": "使用了 {{count}} 個工具",
+      "createdNone_one": "無法建立 {{count}} 個檔案",
+      "createdNone_other": "無法建立 {{count}} 個檔案",
+      "editedNone_one": "無法編輯 {{count}} 個檔案",
+      "editedNone_other": "無法編輯 {{count}} 個檔案"
     }
   },
   "widget": {

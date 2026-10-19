@@ -137,7 +137,15 @@
       "tools_one": "použil {{count}} nástroj",
       "tools_few": "použil {{count}} nástroje",
       "tools_many": "použil {{count}} nástroje",
-      "tools_other": "použil {{count}} nástrojů"
+      "tools_other": "použil {{count}} nástrojů",
+      "createdNone_one": "nepodařilo se vytvořit {{count}} soubor",
+      "createdNone_few": "nepodařilo se vytvořit {{count}} soubory",
+      "createdNone_many": "nepodařilo se vytvořit {{count}} souboru",
+      "createdNone_other": "nepodařilo se vytvořit {{count}} souborů",
+      "editedNone_one": "nepodařilo se upravit {{count}} soubor",
+      "editedNone_few": "nepodařilo se upravit {{count}} soubory",
+      "editedNone_many": "nepodařilo se upravit {{count}} souboru",
+      "editedNone_other": "nepodařilo se upravit {{count}} souborů"
     }
   },
   "widget": {

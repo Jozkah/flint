@@ -26,7 +26,7 @@
   "stepCounter": "Pas {{current}} de {{total}}",
   "skipStep": "Omet per ara",
   "welcomeTitle": "Flint s'ha de configurar al teu sistema",
-  "welcomeBody": "Això triga uns minuts: Flint descarrega el seu motor d'inferència i un model petit per a la cerca de fitxers. Pots continuar usant l'ordinador mentre s'executa.",
+  "welcomeBody": "Això triga uns minuts: Flint descarrega el seu motor d'inferència. Pots continuar fent servir l'ordinador mentrestant.",
   "startSetup": "Comencem",
   "stageSetup": "Configurant el motor local",
   "badgeGpu": "Usarà la teva GPU",
@@ -52,5 +52,6 @@
   "downloadingDescription": "Espera mentre descarreguem el model. Pot trigar uns minuts.",
   "orDivider": "o",
   "localModel": "Configura un model local",
-  "remoteProvider": "Configura un proveïdor remot"
+  "remoteProvider": "Configura un proveïdor remot",
+  "checkSearchNotConfigured": "Encara no hi ha cap model d'incrustació. La cerca de fitxers funcionarà quan n'importis un des de Models > Llama.cpp."
 }

@@ -1092,7 +1092,8 @@
     "copied": "パスをコピーしました",
     "footnoteEmptyEdit": "フォルダーを添付すると、エージェントがプロジェクトで作業できます。",
     "a11yWithFolderEditable": "プロジェクトフォルダー {{folder}}（編集用に添付）。変更または切り離します。",
-    "a11yWithFolderWorktree": "プロジェクトフォルダー {{folder}}（別の worktree で編集）。変更または切り離します。"
+    "a11yWithFolderWorktree": "プロジェクトフォルダー {{folder}}（別の worktree で編集）。変更または切り離します。",
+    "folderNotFound": "そのフォルダーは存在しません: {{path}}"
   },
   "coworkEmpty": {
     "title": "何に取り組みますか?",
@@ -2594,7 +2595,9 @@
       "fixedPrompt": "リクエストごとに送信: {{count}} トークン(システムプロンプトとツールスキーマ)。",
       "smallContext": "小コンテキストモード: オン、約{{count}}トークン節約",
       "tokenUsage": "トークン使用量",
-      "tokenUsageSr": "トークン使用量 {{value}}"
+      "tokenUsageSr": "トークン使用量 {{value}}",
+      "smallContextWhyAuto": "自動: ウィンドウが 64K 以下です。",
+      "smallContextWhyAlways": "設定で「常にオン」になっています。"
     }
   },
   "voicePill": {

@@ -26,7 +26,7 @@
   "stepCounter": "Schritt {{current}} von {{total}}",
   "skipStep": "Vorerst überspringen",
   "welcomeTitle": "Flint muss auf deinem System eingerichtet werden",
-  "welcomeBody": "Das dauert ein paar Minuten: Flint lädt seine Inferenz-Engine und ein kleines Modell für die Dateisuche herunter. Du kannst deinen Computer währenddessen weiter benutzen.",
+  "welcomeBody": "Das dauert ein paar Minuten: Flint lädt seine Inferenz-Engine herunter. Du kannst den Computer währenddessen weiter nutzen.",
   "startSetup": "Los geht’s",
   "stageSetup": "Die lokale Engine wird eingerichtet",
   "badgeGpu": "Nutzt deine GPU",
@@ -52,5 +52,6 @@
   "downloadingDescription": "Bitte warten Sie, während wir das Modell herunterladen. Dies kann einige Minuten dauern.",
   "orDivider": "oder",
   "localModel": "Lokales Modell einrichten",
-  "remoteProvider": "Fernen Anbieter einrichten"
+  "remoteProvider": "Fernen Anbieter einrichten",
+  "checkSearchNotConfigured": "Noch kein Embedding-Modell. Die Dateisuche funktioniert, sobald du eines unter Modelle > Llama.cpp importierst."
 }

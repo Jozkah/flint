@@ -26,7 +26,7 @@
   "stepCounter": "ステップ {{current}} / {{total}}",
   "skipStep": "今はスキップ",
   "welcomeTitle": "Flint をお使いのシステムにセットアップする必要があります",
-  "welcomeBody": "数分かかります。Flint は、推論エンジンと、ファイル検索用の小さなモデルをダウンロードします。実行中も、コンピューターを引き続き使用できます。",
+  "welcomeBody": "数分かかります。Flint は推論エンジンをダウンロードします。その間もコンピューターを使い続けられます。",
   "startSetup": "始めましょう",
   "stageSetup": "ローカルエンジンをセットアップ中",
   "badgeGpu": "GPU を使用します",
@@ -52,5 +52,6 @@
   "downloadingDescription": "モデルをダウンロードしていますのでお待ちください。数分かかる場合があります。",
   "orDivider": "または",
   "localModel": "ローカルモデルをセットアップ",
-  "remoteProvider": "リモートプロバイダーをセットアップ"
+  "remoteProvider": "リモートプロバイダーをセットアップ",
+  "checkSearchNotConfigured": "埋め込みモデルがまだありません。モデル > Llama.cpp からインポートすると、ファイル検索が使えるようになります。"
 }

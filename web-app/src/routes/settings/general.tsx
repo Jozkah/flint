@@ -41,7 +41,7 @@ import { useHardware } from '@/hooks/useHardware'
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
 import ReplyLanguageSwitcher from '@/containers/ReplyLanguageSwitcher'
 import FallbackModelsPicker from '@/containers/FallbackModelsPicker'
-import { isRootDir } from '@/utils/path'
+import { isForeignBundledCli, isRootDir } from '@/utils/path'
 import {
   importConversations,
   parseChatGptExport,
@@ -99,6 +99,8 @@ function General() {
   const [isValidatingToken, setIsValidatingToken] = useState(false)
   const [cliInstalled, setCliInstalled] = useState<boolean | null>(null)
   const [cliPath, setCliPath] = useState<string | null>(null)
+  /** The CLI on PATH belongs to another copy of Flint, not this app. */
+  const [cliForeign, setCliForeign] = useState(false)
   const [isCliLoading, setIsCliLoading] = useState(false)
 
   useEffect(() => {
@@ -116,7 +118,20 @@ function General() {
   useEffect(() => {
     if (!IS_TAURI) return
     invoke<{ installed: boolean; path: string | null }>('check_jan_cli_installed')
-      .then((s) => { setCliInstalled(s.installed); setCliPath(s.path) })
+      .then(async (s) => {
+        setCliInstalled(s.installed)
+        setCliPath(s.path)
+        if (!s.installed || !s.path) return
+        try {
+          const { resourceDir } = await import('@tauri-apps/api/path')
+          setCliForeign(
+            typeof resourceDir === 'function' &&
+              isForeignBundledCli(s.path, await resourceDir())
+          )
+        } catch {
+          // Cannot tell whose it is: treat it as this app's, as before.
+        }
+      })
       .catch(() => setCliInstalled(false))
   }, [])
 
@@ -126,6 +141,7 @@ function General() {
       const s = await invoke<{ installed: boolean; path: string | null }>('install_jan_cli')
       setCliInstalled(s.installed)
       setCliPath(s.path)
+      setCliForeign(false)
       toast.success(`Flint CLI installed to ${s.path}`)
     } catch (e) {
       toast.error('Install failed', { description: String(e) })
@@ -535,11 +551,16 @@ function General() {
               title="Flint CLI"
               description={
                 cliInstalled && cliPath
-                  ? t('settings:general.cli.installedDesc', { path: cliPath })
+                  ? t(
+                      cliForeign
+                        ? 'settings:general.cli.foreignDesc'
+                        : 'settings:general.cli.installedDesc',
+                      { path: cliPath }
+                    )
                   : t('settings:general.cli.desc')
               }
               actions={
-                cliInstalled ? (
+                cliInstalled && !cliForeign ? (
                   <Button
                     variant="outline"
                     onClick={handleUninstallCli}

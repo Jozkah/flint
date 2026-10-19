@@ -26,7 +26,7 @@
   "stepCounter": "Krok {{current}} z {{total}}",
   "skipStep": "Zatím přeskočit",
   "welcomeTitle": "Flint se musí na vašem systému nastavit",
-  "welcomeBody": "Zabere to několik minut: Flint stáhne svůj inferenční engine a malý model pro vyhledávání v souborech. Během toho můžete počítač dál používat.",
+  "welcomeBody": "Potrvá to několik minut: Flint stahuje svůj inferenční engine. Počítač můžete mezitím dál používat.",
   "startSetup": "Začněme",
   "stageSetup": "Nastavování lokálního enginu",
   "badgeGpu": "Použije vaše GPU",
@@ -52,5 +52,6 @@
   "downloadingDescription": "Počkejte prosím, než stáhneme model. Může to trvat několik minut.",
   "orDivider": "nebo",
   "localModel": "Nastavit místní model",
-  "remoteProvider": "Nastavit vzdáleného poskytovatele"
+  "remoteProvider": "Nastavit vzdáleného poskytovatele",
+  "checkSearchNotConfigured": "Zatím není žádný embedding model. Vyhledávání v souborech začne fungovat po importu modelu z Modely > Llama.cpp."
 }

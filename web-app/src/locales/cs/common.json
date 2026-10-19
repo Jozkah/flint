@@ -1113,7 +1113,8 @@
     "copied": "Cesta zkopírována",
     "footnoteEmptyEdit": "Připoj složku, aby agent mohl pracovat na tvém projektu.",
     "a11yWithFolderEditable": "Složka projektu {{folder}}, připojená k úpravám. Změňte ji nebo ji odpojte.",
-    "a11yWithFolderWorktree": "Složka projektu {{folder}}, upravovaná přes samostatný worktree. Změňte ji nebo ji odpojte."
+    "a11yWithFolderWorktree": "Složka projektu {{folder}}, upravovaná přes samostatný worktree. Změňte ji nebo ji odpojte.",
+    "folderNotFound": "Tato složka neexistuje: {{path}}"
   },
   "coworkEmpty": {
     "title": "Na čem budeme pracovat?",
@@ -2689,7 +2690,9 @@
       "fixedPrompt": "Odesíláno s každým požadavkem: {{count}} tokenů (systémový prompt a schémata nástrojů).",
       "smallContext": "Režim malého kontextu: zapnuto, ušetří ~{{count}} tokenů",
       "tokenUsage": "Využití tokenů",
-      "tokenUsageSr": "Využití tokenů {{value}}"
+      "tokenUsageSr": "Využití tokenů {{value}}",
+      "smallContextWhyAuto": "Automaticky: okno má 64K nebo méně.",
+      "smallContextWhyAlways": "V Nastavení je zvoleno Vždy."
     }
   },
   "voicePill": {

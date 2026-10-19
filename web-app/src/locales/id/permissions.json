@@ -40,7 +40,9 @@
     "gitRemote": "Flint ingin menjalankan {{command}}, yang mengubah {{target}}",
     "gitDestructive": "Flint ingin menjalankan {{command}}, yang dapat menghilangkan pekerjaan",
     "approveCampaign": "Flint ingin memulai campaign \"{{title}}\" ({{count}} tugas)",
-    "spendPause": "Flint ingin melanjutkan proses ini melewati jeda pengeluarannya"
+    "spendPause": "Flint ingin melanjutkan proses ini melewati jeda pengeluarannya",
+    "changeFileOutside": "Flint ingin mengubah {{target}}, yang berada di luar {{workspace}}",
+    "changeManyFilesOutside": "Flint ingin mengubah {{count}} berkas, sebagian di luar {{workspace}}"
   },
   "consequence": {
     "fileChange": "Dapat membuat, menimpa, atau mengubah isi file.",

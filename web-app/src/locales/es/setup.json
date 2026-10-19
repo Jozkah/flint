@@ -26,7 +26,7 @@
   "stepCounter": "Paso {{current}} de {{total}}",
   "skipStep": "Omitir por ahora",
   "welcomeTitle": "Flint necesita configurarse en tu sistema",
-  "welcomeBody": "Esto lleva unos minutos: Flint descarga su motor de inferencia y un modelo pequeño para la búsqueda de archivos. Puedes seguir usando tu equipo mientras se ejecuta.",
+  "welcomeBody": "Esto tarda unos minutos: Flint descarga su motor de inferencia. Puedes seguir usando el ordenador mientras tanto.",
   "startSetup": "Empecemos",
   "stageSetup": "Configurando el motor local",
   "badgeGpu": "Usará tu GPU",
@@ -52,5 +52,6 @@
   "downloadingDescription": "Por favor espera mientras descargamos el modelo. Esto puede tardar unos minutos.",
   "orDivider": "o",
   "localModel": "Configurar modelo local",
-  "remoteProvider": "Configurar proveedor remoto"
+  "remoteProvider": "Configurar proveedor remoto",
+  "checkSearchNotConfigured": "Aún no hay ningún modelo de embeddings. La búsqueda de archivos funcionará cuando importes uno desde Modelos > Llama.cpp."
 }

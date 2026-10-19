@@ -1092,7 +1092,8 @@
     "copied": "पाथ कॉपी हो गया",
     "footnoteEmptyEdit": "एजेंट को अपने प्रोजेक्ट पर काम करने देने के लिए एक फ़ोल्डर जोड़ें।",
     "a11yWithFolderEditable": "प्रोजेक्ट फ़ोल्डर {{folder}}, संपादन के लिए जुड़ा है। इसे बदलें या हटाएँ।",
-    "a11yWithFolderWorktree": "प्रोजेक्ट फ़ोल्डर {{folder}}, एक अलग worktree से संपादित। इसे बदलें या हटाएँ।"
+    "a11yWithFolderWorktree": "प्रोजेक्ट फ़ोल्डर {{folder}}, एक अलग worktree से संपादित। इसे बदलें या हटाएँ।",
+    "folderNotFound": "यह फ़ोल्डर मौजूद नहीं है: {{path}}"
   },
   "coworkEmpty": {
     "title": "हम किस पर काम कर रहे हैं?",
@@ -2592,7 +2593,9 @@
       "fixedPrompt": "हर अनुरोध के साथ भेजा जाता है: {{count}} टोकन (सिस्टम प्रॉम्प्ट और टूल स्कीमा)।",
       "smallContext": "छोटा संदर्भ मोड: चालू, ~{{count}} टोकन बचाता है",
       "tokenUsage": "टोकन उपयोग",
-      "tokenUsageSr": "टोकन उपयोग {{value}}"
+      "tokenUsageSr": "टोकन उपयोग {{value}}",
+      "smallContextWhyAuto": "ऑटो: विंडो 64K या उससे कम है।",
+      "smallContextWhyAlways": "सेटिंग्स में हमेशा पर सेट है।"
     }
   },
   "openclaw": "OpenClaw",

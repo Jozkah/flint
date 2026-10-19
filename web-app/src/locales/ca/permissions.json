@@ -40,7 +40,9 @@
     "gitRemote": "Flint vol executar {{command}}, que canvia {{target}}",
     "gitDestructive": "Flint vol executar {{command}}, que pot fer perdre feina",
     "approveCampaign": "Flint vol iniciar la campanya \"{{title}}\" ({{count}} tasques)",
-    "spendPause": "Flint vol continuar aquesta execució més enllà de la seva pausa de despesa"
+    "spendPause": "Flint vol continuar aquesta execució més enllà de la seva pausa de despesa",
+    "changeFileOutside": "Flint vol canviar {{target}}, que és fora de {{workspace}}",
+    "changeManyFilesOutside": "Flint vol canviar {{count}} fitxers, alguns fora de {{workspace}}"
   },
   "consequence": {
     "fileChange": "Pot crear, sobreescriure o canviar el contingut de fitxers.",

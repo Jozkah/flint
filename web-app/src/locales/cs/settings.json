@@ -538,7 +538,8 @@
       "install": "Nainstalovat",
       "installing": "Instaluje se…",
       "uninstall": "Odinstalovat",
-      "uninstalling": "Odinstalovává se…"
+      "uninstalling": "Odinstalovává se…",
+      "foreignDesc": "Nalezeno v {{path}}, nainstalováno jinou kopií Flintu. Nainstalujte zde, abyste použili CLI této kopie."
     }
   },
   "extensions": {

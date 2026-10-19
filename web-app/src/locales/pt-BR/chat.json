@@ -130,7 +130,13 @@
       "searched_many": "pesquisou {{count}} de vezes",
       "tools_one": "usou {{count}} ferramenta",
       "tools_other": "usou {{count}} ferramentas",
-      "tools_many": "usou {{count}} de ferramentas"
+      "tools_many": "usou {{count}} de ferramentas",
+      "createdNone_one": "não foi possível criar {{count}} arquivo",
+      "createdNone_other": "não foi possível criar {{count}} arquivos",
+      "createdNone_many": "não foi possível criar {{count}} arquivos",
+      "editedNone_one": "não foi possível editar {{count}} arquivo",
+      "editedNone_other": "não foi possível editar {{count}} arquivos",
+      "editedNone_many": "não foi possível editar {{count}} arquivos"
     }
   },
   "widget": {

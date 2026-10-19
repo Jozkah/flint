@@ -123,7 +123,11 @@
       "searched_one": "searched {{count}} time",
       "searched_other": "searched {{count}} times",
       "tools_one": "used {{count}} tool",
-      "tools_other": "used {{count}} tools"
+      "tools_other": "used {{count}} tools",
+      "createdNone_one": "could not create {{count}} file",
+      "createdNone_other": "could not create {{count}} files",
+      "editedNone_one": "could not edit {{count}} file",
+      "editedNone_other": "could not edit {{count}} files"
     }
   },
   "widget": {
