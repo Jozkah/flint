@@ -68,9 +68,7 @@ jobs:
       matrix:
         include:
           - platform: win-x64
-            # windows-latest now carries only VS 2026 (MSVC 14.51), which nvcc 13.0's
-            # cudafe++ crashes on; windows-2025 has VS 2022.
-            os: windows-2025
+            os: windows-latest
           - platform: linux-x64
             os: ubuntu-22.04
     defaults:
@@ -138,6 +136,8 @@ jobs:
           prefix="$RUNNER_TEMP/cuda"
           bash src-tauri/build-utils/fetch-cuda-redist.sh "$CUDA_REDIST_VERSION" "$prefix" \
             cuda_nvcc cuda_crt cuda_cudart cuda_cccl libnvvm libcublas
+          # The Linux archives put libraries in lib/; nvcc looks in lib64/.
+          if [ -d "$prefix/lib" ] && [ ! -e "$prefix/lib64" ]; then ln -s lib "$prefix/lib64"; fi
           if [ "$RUNNER_OS" = Windows ]; then
             prefix="$(cygpath -w "$prefix")"
             echo "$prefix\\bin" >> "$GITHUB_PATH"
