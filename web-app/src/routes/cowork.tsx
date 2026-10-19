@@ -3107,6 +3107,7 @@ export function CoworkPage() {
           {
             role: 'user',
             content: attached ? `${text}${attached.shownNote}` : text,
+            at: Date.now(),
             ...(attached && attached.keptImages.length > 0 ? { images: attached.keptImages } : {}),
             ...(from ? { from: agentAttribution(from) } : {}),
             ...(hidden ? { hidden: true } : {}),
@@ -5003,6 +5004,7 @@ export function CoworkPage() {
                 role: 'user' as const,
                 content: m.text,
                 steered: true,
+                at: m.createdAt ?? Date.now(),
                 // A mailbox message keeps its sender, so the transcript can
                 // say who it came from and offer a reply.
                 ...(m.from ? { from: agentAttribution(m.from) } : {}),

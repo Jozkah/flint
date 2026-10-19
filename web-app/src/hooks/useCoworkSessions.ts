@@ -428,6 +428,14 @@ import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
 const now = () => Date.now()
 
+/** Rows that carry no time yet get the one they are stored at. */
+const stamped = (turns: CoworkTurn[]): CoworkTurn[] => {
+  const at = Date.now()
+  return turns.some((t) => t.at === undefined)
+    ? turns.map((t) => (t.at === undefined ? { ...t, at } : t))
+    : turns
+}
+
 const timeOf = (m: UIMessage): unknown =>
   (m.metadata as { createdAt?: unknown } | undefined)?.createdAt
 
@@ -890,7 +898,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             x.id === id
               ? {
                   ...x,
-                  turns: [...x.turns, ...turns],
+                  turns: [...x.turns, ...stamped(turns)],
                   messages: withStoredTimes(x.messages ?? [], messages, now()),
                   inFlight: undefined,
                   // The dead run's budget is not this one's.
@@ -942,7 +950,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === id
-              ? { ...x, turns: [...x.turns, ...turns], history, updated: now() }
+              ? { ...x, turns: [...x.turns, ...stamped(turns)], history, updated: now() }
               : x
           ),
         })),
@@ -958,7 +966,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             const incoming = new Set(subagents.map((r) => r.runId))
             return {
               ...x,
-              turns: [...x.turns, ...turns],
+              turns: [...x.turns, ...stamped(turns)],
               messages: withStoredTimes(x.messages ?? [], messages, now()),
               subagents: [
                 ...(x.subagents ?? []).filter((r) => !incoming.has(r.runId)),
@@ -977,7 +985,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === id
-              ? { ...x, turns: [...x.turns, ...turns], updated: now() }
+              ? { ...x, turns: [...x.turns, ...stamped(turns)], updated: now() }
               : x
           ),
         })),

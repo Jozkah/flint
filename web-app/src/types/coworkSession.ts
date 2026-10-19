@@ -14,6 +14,12 @@ import type { CompactionRecord } from '@/lib/compaction'
 export type CoworkTurn = {
   role: 'user' | 'assistant' | 'tool'
   content: string
+  /**
+   * When the row was first stored (ms since the epoch), so the transcript
+   * shows that time after a reload instead of the time it was drawn. Rows
+   * saved before this existed have none.
+   */
+  at?: number
   /** User-row only: data URLs of images attached via paste/file picker. */
   images?: string[]
   /**
