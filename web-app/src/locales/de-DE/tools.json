@@ -81,6 +81,7 @@
     "matches": "{{count}} Treffer",
     "testsPassed": "{{count}} bestanden",
     "runningStatus": "{{tool}} läuft …",
-    "stillRunning": "{{tool}} läuft noch …"
+    "stillRunning": "{{tool}} läuft noch …",
+    "stopThisTool": "Dieses Werkzeug stoppen"
   }
 }

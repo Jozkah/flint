@@ -81,6 +81,7 @@
     "matches": "Dopasowania: {{count}}",
     "testsPassed": "Zaliczone: {{count}}",
     "runningStatus": "Uruchamianie {{tool}}…",
-    "stillRunning": "{{tool}} nadal działa…"
+    "stillRunning": "{{tool}} nadal działa…",
+    "stopThisTool": "Zatrzymaj to narzędzie"
   }
 }

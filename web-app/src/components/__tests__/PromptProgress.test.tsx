@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { PromptProgress } from '../PromptProgress'
 import { useAppState } from '@/hooks/useAppState'
 
@@ -56,6 +56,32 @@ describe('PromptProgress', () => {
     render(<PromptProgress hideIdle />)
 
     expect(screen.queryByTestId('model-loader')).toBeNull()
+  })
+
+  it('offers to stop the running tool once it has run for 30 seconds', () => {
+    vi.useFakeTimers()
+    try {
+      mockUseAppState.mockImplementation((selector) =>
+        selector({ promptProgress: undefined, loadingModel: false })
+      )
+      const onStopTool = vi.fn()
+      const status = {
+        phase: 'tool' as const,
+        key: 'tool:c1',
+        callId: 'c1',
+        label: () => 'Running bash…',
+      }
+      const { rerender } = render(<PromptProgress status={status} onStopTool={onStopTool} />)
+      expect(screen.queryByTestId('run-status-stop-tool')).toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(31_000)
+      })
+      rerender(<PromptProgress status={status} onStopTool={onStopTool} />)
+      screen.getByTestId('run-status-stop-tool').click()
+      expect(onStopTool).toHaveBeenCalledWith('c1')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('should calculate percentage correctly', () => {

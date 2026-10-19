@@ -81,6 +81,7 @@
     "matches": "Совпадений: {{count}}",
     "testsPassed": "Пройдено: {{count}}",
     "runningStatus": "Выполняется {{tool}}…",
-    "stillRunning": "{{tool}} всё ещё выполняется…"
+    "stillRunning": "{{tool}} всё ещё выполняется…",
+    "stopThisTool": "Остановить этот инструмент"
   }
 }

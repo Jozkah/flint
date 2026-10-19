@@ -81,6 +81,7 @@
     "matches": "{{count}} eşleşme",
     "testsPassed": "{{count}} geçti",
     "runningStatus": "{{tool}} çalışıyor…",
-    "stillRunning": "{{tool}} hâlâ çalışıyor…"
+    "stillRunning": "{{tool}} hâlâ çalışıyor…",
+    "stopThisTool": "Bu aracı durdur"
   }
 }

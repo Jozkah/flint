@@ -81,6 +81,7 @@
     "matches": "{{count}} coincidències",
     "testsPassed": "{{count}} superades",
     "runningStatus": "Executant {{tool}}…",
-    "stillRunning": "Encara executant {{tool}}…"
+    "stillRunning": "Encara executant {{tool}}…",
+    "stopThisTool": "Atura aquesta eina"
   }
 }

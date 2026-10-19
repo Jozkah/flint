@@ -563,6 +563,7 @@ import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
+import { stopToolCall } from '@/lib/toolCallStop'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
 import { CoworkBarStack } from '@/containers/CoworkBarStack'
@@ -6492,6 +6493,9 @@ export function CoworkPage() {
                         hideIdle={!awaitingModel}
                         stateKey={session?.id}
                         status={runStatusNow}
+                        onStopTool={(callId) => {
+                          if (session?.id) stopToolCall(session.id, callId)
+                        }}
                         waitingLabel={
                           waitingForUser ? t('common:waitingForYou') : undefined
                         }

@@ -81,6 +81,7 @@
     "matches": "일치 {{count}}개",
     "testsPassed": "{{count}}개 통과",
     "runningStatus": "{{tool}} 실행 중…",
-    "stillRunning": "{{tool}} 계속 실행 중…"
+    "stillRunning": "{{tool}} 계속 실행 중…",
+    "stopThisTool": "이 도구 중지"
   }
 }

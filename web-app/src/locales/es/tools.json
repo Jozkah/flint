@@ -81,6 +81,7 @@
     "matches": "{{count}} coincidencias",
     "testsPassed": "{{count}} superadas",
     "runningStatus": "Ejecutando {{tool}}…",
-    "stillRunning": "Aún ejecutando {{tool}}…"
+    "stillRunning": "Aún ejecutando {{tool}}…",
+    "stopThisTool": "Detener esta herramienta"
   }
 }

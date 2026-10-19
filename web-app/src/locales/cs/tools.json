@@ -81,6 +81,7 @@
     "matches": "Shod: {{count}}",
     "testsPassed": "Prošlo: {{count}}",
     "runningStatus": "Spouští se {{tool}}…",
-    "stillRunning": "{{tool}} stále běží…"
+    "stillRunning": "{{tool}} stále běží…",
+    "stopThisTool": "Zastavit tento nástroj"
   }
 }

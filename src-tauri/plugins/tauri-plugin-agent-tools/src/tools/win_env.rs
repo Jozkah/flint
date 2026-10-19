@@ -125,6 +125,20 @@ pub const TEMP_KEYS: &[&str] = &["TEMP", "TMP", "TMPDIR"];
 /// not something a host can leak in.
 pub const SANDBOX_MARKER: &str = "FLINT_SANDBOX";
 
+/// Variables that keep a command from stopping to ask a question nobody is
+/// there to answer: git's credential prompt and pager, a pager of any kind,
+/// and colour codes. A command that waits for a keystroke holds the whole tool
+/// call until its deadline, so every shell this tool starts is given these,
+/// unless the caller already chose a value.
+pub const NON_INTERACTIVE_ENV: &[(&str, &str)] = &[
+    ("GIT_TERMINAL_PROMPT", "0"),
+    ("GCM_INTERACTIVE", "never"),
+    ("GIT_PAGER", "cat"),
+    ("PAGER", "cat"),
+    ("CI", "1"),
+    ("NO_COLOR", "1"),
+];
+
 /// What `NODE_OPTIONS` carries inside the container.
 ///
 /// Node resolves a script's real path by `lstat`ing every ancestor folder, and
@@ -422,6 +436,9 @@ pub fn build<H: HostEnv>(host: &H, spec: &SandboxEnvSpec<'_>) -> Result<SandboxE
     env.set_if_absent(PS_CACHE_KEY, spec.temp.join("ModuleAnalysisCache").into_os_string());
     env.set_if_absent("NODE_OPTIONS", NODE_SANDBOX_OPTIONS);
     env.set_if_absent(SANDBOX_MARKER, "appcontainer");
+    for (name, value) in NON_INTERACTIVE_ENV {
+        env.set_if_absent(name, *value);
+    }
 
     for name in REQUIRED {
         if !env.contains(name) {

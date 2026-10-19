@@ -81,6 +81,7 @@
     "matches": "{{count}} kecocokan",
     "testsPassed": "{{count}} lulus",
     "runningStatus": "Menjalankan {{tool}}…",
-    "stillRunning": "Masih menjalankan {{tool}}…"
+    "stillRunning": "Masih menjalankan {{tool}}…",
+    "stopThisTool": "Hentikan alat ini"
   }
 }

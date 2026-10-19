@@ -81,6 +81,7 @@
     "matches": "{{count}} 件の一致",
     "testsPassed": "{{count}} 件が成功",
     "runningStatus": "{{tool}} を実行中…",
-    "stillRunning": "{{tool}} を引き続き実行中…"
+    "stillRunning": "{{tool}} を引き続き実行中…",
+    "stopThisTool": "このツールを停止"
   }
 }
