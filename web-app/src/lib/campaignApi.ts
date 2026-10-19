@@ -220,6 +220,12 @@ export const campaignApi = {
     invoke<Campaign>('agent_campaign_task_settle', { id, taskId, input }),
   cancel: (id: string, detail?: string) =>
     invoke<Campaign>('agent_campaign_cancel', { id, detail: detail ?? null }),
+  /**
+   * Remove an idle campaign's record (done, failed, cancelled, draft or
+   * planned). The backend refuses a running one. Git branches, worktrees and
+   * project folders are not touched.
+   */
+  delete: (id: string) => invoke<void>('agent_campaign_delete', { id }),
   decide: (id: string, text: string) =>
     invoke<void>('agent_campaign_decisions_append', { id, text }),
   context: (id: string, taskIds: string[]) =>

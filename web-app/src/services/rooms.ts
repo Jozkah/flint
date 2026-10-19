@@ -123,6 +123,14 @@ export async function deleteRoom(roomId: string): Promise<void> {
   await trackArchiveWork(call<null>('room_delete', { roomId }))
 }
 
+/**
+ * Destroy a room outright, skipping the archive (`room_delete_permanently`).
+ * Nothing is left to restore.
+ */
+export async function deleteRoomPermanently(roomId: string): Promise<void> {
+  await call<null>('room_delete_permanently', { roomId })
+}
+
 /** A compare participant's isolated workspace (see `lib/rooms/isolation.ts`). */
 export function ensureRoomWorkspace(
   roomId: string,

@@ -128,7 +128,8 @@ export interface RoomEditor {
   updateRoomSettings(room: Room, patch: RoomSettingsPatch): Promise<Room>
   addParticipant(room: Room, input: ParticipantInput): Promise<Room>
   removeParticipant(room: Room, participantId: string): Promise<Room>
-  deleteRoom(roomId: string): Promise<void>
+  /** `permanent` skips the archive: the room is gone, not restorable. */
+  deleteRoom(roomId: string, opts?: { permanent?: boolean }): Promise<void>
 }
 
 export type RoomControllerApi = RoomController &
@@ -865,11 +866,16 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         await store().loadRoom(roomId)
       }),
 
-    deleteRoom: async (roomId) => {
+    deleteRoom: async (roomId, opts) => {
       useToolApprovalRequests.getState().expireHeld(roomId)
       await abortRun(roomId, 'stop')
       await enqueue(roomId, async () => {
-        await persistence().deleteRoom(roomId)
+        const port = persistence()
+        if (opts?.permanent && port.deleteRoomPermanently) {
+          await port.deleteRoomPermanently(roomId)
+        } else {
+          await port.deleteRoom(roomId)
+        }
       })
       slots.delete(roomId)
       store().removeRoomLocally(roomId)

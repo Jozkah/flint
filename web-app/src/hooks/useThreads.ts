@@ -29,6 +29,11 @@ type ThreadState = {
   toggleFavorite: (threadId: string) => void
   /** Moves the thread to the archive; `permanent` destroys it instead. */
   deleteThread: (threadId: string, permanent?: boolean) => void
+  /**
+   * `deleteThread`, resolving when the backend finished (and rejecting if it
+   * failed). The row leaves the list at once either way.
+   */
+  deleteThreadAsync: (threadId: string, permanent?: boolean) => Promise<void>
   renameThread: (threadId: string, newTitle: string) => void
   deleteAllThreads: () => void
   clearAllThreads: () => void
@@ -116,14 +121,21 @@ const cleanupThreadArtifacts = (threadId: string, permanent?: boolean) => {
 // the archive is off or `permanent` is set), and removes the request records
 // and scratch dir only when the thread is finally purged. Fire-and-forget from
 // inside a reducer, so a failure is logged rather than thrown.
-const deleteThreadBackend = (threadId: string, permanent?: boolean) => {
+const deleteThreadBackend = (
+  threadId: string,
+  permanent?: boolean
+): Promise<void> => {
   const threads = getServiceHub().threads()
   const done = permanent
     ? threads.deleteThread(threadId, true)
     : threads.deleteThread(threadId)
-  void trackArchiveWork(Promise.resolve(done)).catch((e) =>
+  const tracked = trackArchiveWork(Promise.resolve(done))
+  tracked.catch((e) =>
     console.warn(`[Threads] Failed to delete thread ${threadId}:`, e)
   )
+  // The caller that wants the outcome (bulk delete) awaits this; the rest
+  // ignore it, and the log above already covers them.
+  return tracked
 }
 
 export const useThreads = create<ThreadState>()((set, get) => ({
@@ -230,6 +242,10 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     })
   },
   deleteThread: (threadId, permanent) => {
+    void get().deleteThreadAsync(threadId, permanent).catch(() => undefined)
+  },
+  deleteThreadAsync: (threadId, permanent) => {
+    let backend: Promise<void> = Promise.resolve()
     set((state) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [threadId]: _, ...remainingThreads } = state.threads
@@ -242,7 +258,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       useModelOverrides.getState().dropThread(threadId)
       useThreadToolGrants.getState().dropThread(threadId)
       cleanupThreadArtifacts(threadId, permanent)
-      deleteThreadBackend(threadId, permanent)
+      backend = deleteThreadBackend(threadId, permanent)
 
       return {
         threads: remainingThreads,
@@ -256,6 +272,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         ),
       }
     })
+    return backend
   },
   deleteAllThreads: () => {
     set((state) => {

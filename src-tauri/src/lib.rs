@@ -275,6 +275,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_campaign_transition,
         core::agent::commands::agent_campaign_task_settle,
         core::agent::commands::agent_campaign_cancel,
+        core::agent::commands::agent_campaign_delete,
         core::agent::commands::agent_campaign_decisions_append,
         core::agent::commands::agent_campaign_context,
         core::agent::commands::agent_campaign_events,

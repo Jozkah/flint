@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react'
 import ChangeDataFolderLocation from '@/containers/dialogs/ChangeDataFolderLocation'
 import { FactoryResetDialog } from '@/containers/dialogs'
 import { SettingsBackupCard } from '@/containers/SettingsBackupCard'
+import { BulkConversationsCard } from '@/containers/BulkConversationsCard'
 import type { FactoryResetOptions } from '@/services/app/types'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Copy, CopyCheck } from 'lucide-react'
@@ -47,10 +48,10 @@ import {
 } from '@/lib/chatgptImport'
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
 
-/** Column of each group: General, Data folder, Backup, Advanced, Other, phone server, runner. */
-const GENERAL_LAYOUT = [0, 0, 1, 0, 1, 0, 0] as const
+/** Column of each group: General, Data folder, Backup, Conversations, Advanced, Other, phone server, runner. */
+const GENERAL_LAYOUT = [0, 0, 1, 1, 0, 1, 0, 0] as const
 /** Without the desktop-only Backup group the right column is short, so Advanced moves over. */
-const GENERAL_LAYOUT_NO_BACKUP = [0, 0, 1, 1, 1, 0, 0] as const
+const GENERAL_LAYOUT_NO_BACKUP = [0, 0, 1, 0, 1, 1, 0, 0] as const
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.general as any)({
@@ -524,6 +525,8 @@ function General() {
         )}
 
         {IS_TAURI && <SettingsBackupCard />}
+
+        <BulkConversationsCard anchor="settings-general-bulk-conversations" />
 
         {/* Advanced - Desktop only */}
         <Card title={t('settings:general.advanced')}>
