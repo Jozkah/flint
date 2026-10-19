@@ -126,6 +126,23 @@ describe('NestedRows', () => {
     expect(shownChildren()).toHaveLength(3)
   })
 
+  it('mounts the folded rows only once they are first unfolded', () => {
+    setup(family(8))
+    // 3 shown on the rail; the 5 folded ones are not built yet.
+    expect(screen.queryAllByTestId(/^row-c/)).toHaveLength(3)
+    fireEvent.click(screen.getByTestId('nest-summary'))
+    expect(screen.queryAllByTestId(/^row-c/)).toHaveLength(8)
+    // Folding again keeps them (the collapse animates), unmounting is not needed.
+    fireEvent.click(screen.getByTestId('nest-summary'))
+    expect(screen.queryAllByTestId(/^row-c/)).toHaveLength(8)
+  })
+
+  it('mounts them at once when the choice to unfold was remembered', () => {
+    useNestExpanded.setState({ expanded: { 'chats:p': true } })
+    setup(family(8))
+    expect(screen.queryAllByTestId(/^row-c/)).toHaveLength(8)
+  })
+
   it('keeps every nested row a focusable list row for arrow navigation', () => {
     setup(family(5))
     const buttons = within(document.body)

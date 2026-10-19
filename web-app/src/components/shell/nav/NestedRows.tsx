@@ -1,4 +1,4 @@
-import { Fragment, useMemo, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { GitFork } from 'lucide-react'
 import { NavButton, NavCollapse, NavItem } from '@/components/shell/nav-kit'
 import { FadeText } from '@/components/ui/fade-text'
@@ -14,6 +14,7 @@ import {
 } from '@/lib/nesting'
 import { cn } from '@/lib/utils'
 import { useNestExpanded } from '@/stores/nest-expanded-store'
+import '@/lib/nestPrune'
 
 export type NestedRowsProps = {
   /** Which list this is; part of the remembered expand key. */
@@ -127,6 +128,11 @@ function NestBlock({
   const key = `${scope}:${root.id}`
   const expanded = useNestExpanded((s) => !!s.expanded[key])
   const toggle = useNestExpanded((s) => s.toggle)
+  // The folded rows mount on the first unfold, not with the parent: a long
+  // fork list would otherwise build every hidden row (menus, status hooks)
+  // just to keep it inert.
+  const [unfolded, setUnfolded] = useState(expanded)
+  if (expanded && !unfolded) setUnfolded(true)
   // Folded layout always: the rows past it slide in and out of one collapse.
   const { shown, hidden } = splitNested(root.nested, {
     expanded: false,
@@ -171,11 +177,12 @@ function NestBlock({
         <>
           <NavCollapse as="li" open={expanded} className="list-none">
             <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
-              {hidden.map((id) => (
-                <NestChild key={id} last={false}>
-                  {renderRow(id)}
-                </NestChild>
-              ))}
+              {(unfolded || expanded) &&
+                hidden.map((id) => (
+                  <NestChild key={id} last={false}>
+                    {renderRow(id)}
+                  </NestChild>
+                ))}
             </ul>
           </NavCollapse>
           <NestChild last>
