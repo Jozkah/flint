@@ -119,6 +119,62 @@ export function autoUbatchSize(
   return 512
 }
 
+/** Fit target llama.cpp uses when none is set: MiB left free per device. */
+export const DEFAULT_FIT_TARGET_MIB = 1024
+
+/**
+ * The first entry of a `fit_target` setting ("1024" or "1024,2048") in MiB.
+ * Blank or unreadable means the default; 0 is a real value (keep nothing free)
+ * and must not be mistaken for "unset", or the slot plan would assume 1 GiB.
+ */
+export function fitTargetFirstMiB(value: unknown): number {
+  const first = String(value ?? '').split(',')[0].trim()
+  if (first === '') return DEFAULT_FIT_TARGET_MIB
+  const n = Number(first)
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_FIT_TARGET_MIB
+}
+
+/** Per-device fit targets in MiB; a single value is broadcast, as llama.cpp does. */
+export function fitTargetsMiB(value: unknown, deviceCount: number): number[] {
+  const parts = String(value ?? '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p !== '')
+    .map(Number)
+  const ok = parts.length > 0 && parts.every((n) => Number.isFinite(n) && n >= 0)
+  const list = ok ? parts : [DEFAULT_FIT_TARGET_MIB]
+  return Array.from({ length: deviceCount }, (_, i) =>
+    list.length === 1 ? list[0] : (list[i] ?? list[list.length - 1])
+  )
+}
+
+/**
+ * One line per GPU saying what auto-fit has to work with, for the app log.
+ * llama.cpp's own fit lines are trace-level and never reach it, so without
+ * this a user whose model stops short of their VRAM cannot tell whether the
+ * card reported less than its size, other apps hold memory, or the memory to
+ * keep free (fit_target) is what is left over.
+ */
+export function describeFitBudget(
+  devices: ReadonlyArray<{ id: string; name: string; mem: number; free: number }>,
+  fitEnabled: boolean,
+  fitTarget: unknown
+): string[] {
+  if (devices.length === 0) return []
+  const targets = fitTargetsMiB(fitTarget, devices.length)
+  return devices.map((d, i) => {
+    const total = Math.round(d.mem)
+    const free = Math.round(d.free)
+    const base = `GPU ${d.id} (${d.name}): ${total} MiB reported, ${free} MiB free now`
+    if (!fitEnabled) return `${base}; auto-fit is off`
+    const usable = Math.max(0, free - targets[i])
+    return (
+      `${base}; auto-fit keeps ${targets[i]} MiB free, ` +
+      `so model, KV cache and compute buffers get up to ${usable} MiB`
+    )
+  })
+}
+
 /** Smallest context one slot should get when auto-fit has to trim a model. */
 export const MIN_SLOT_CTX = 8192
 
@@ -570,9 +626,7 @@ export async function generatePreset(
   const fitCtxFloor =
     Number.isFinite(fitCtxNum) && fitCtxNum > 0 ? fitCtxNum : 4096
   // A per-device list ("1024,2048") is read by its first entry.
-  const fitTargetFirst = Number(String(config.fit_target ?? '').split(',')[0])
-  const fitTargetMiB =
-    Number.isFinite(fitTargetFirst) && fitTargetFirst > 0 ? fitTargetFirst : 1024
+  const fitTargetMiB = fitTargetFirstMiB(config.fit_target)
   // ctx-size: llama.cpp's own default loads the model's full trained context,
   // which can OOM on a large-context model, so a conservative cap stands in.
   // There is no engine-level context setting to read here -- per-model
