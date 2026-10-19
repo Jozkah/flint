@@ -11,6 +11,7 @@ import {
   answerSubagentTool,
 } from '@/lib/coworkSubagentQuestions'
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
+import { offerSignature, type ToolGroupId } from '@/lib/coworkToolGroups'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
 import {
@@ -521,6 +522,12 @@ export type CoworkToolOptions = {
    * and the campaign tools; `task` keeps the work tools and drops the rest.
    */
   slim?: 'coordinator' | 'task'
+  /**
+   * Lean tool set (`coworkToolGroups.ts`): the groups this run starts with.
+   * Specialist tools in any other group are held back until the model asks for
+   * them with `enable_tools`. Undefined advertises everything, as before.
+   */
+  offerGroups?: readonly ToolGroupId[]
 }
 
 /** Windows at or under this many tokens get the slim tool set in a campaign. */
@@ -592,6 +599,7 @@ export function coworkToolSignature(
     opts.webSearch ? 'web' : 'noweb',
     opts.campaignCoordinator ? 'campaign' : 'nocampaign',
     opts.slim ?? 'full',
+    offerSignature(opts.offerGroups ? new Set(opts.offerGroups) : undefined),
     useVisualizeConfig.getState().enabled ? 'viz' : 'noviz',
     // Readiness is part of the signature because it changes the advertised
     // tools: a shell that starts after a retry must produce a different tool

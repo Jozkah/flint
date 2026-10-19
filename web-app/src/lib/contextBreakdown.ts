@@ -35,6 +35,8 @@ export type ContextSegment = {
   color: string
   /** What the segment is made of, for the expanded view. */
   children?: ContextChild[]
+  /** Tools left out of the request until the run needs them (System tools only). */
+  heldBack?: { groups: string[]; tools: number; tokens: number }
 }
 
 export type ContextBreakdown = {
@@ -77,6 +79,8 @@ export type BreakdownInput = {
   memoryTexts?: readonly string[]
   /** The tool schemas sent, with the MCP server each came from, if any. */
   tools: readonly { name: string; schema: unknown; server?: string }[]
+  /** Tools held back from this request, so the card can say what is not sent. */
+  held?: readonly { name: string; group: string; schema: unknown }[]
   messages: readonly UIMessage[]
 }
 
@@ -110,6 +114,16 @@ export function buildContextBreakdown(input: BreakdownInput): ContextBreakdown {
   }
   const mcp: ContextChild[] = [...byServer].map(([label, tokens]) => ({ label, tokens }))
 
+  const held = input.held ?? []
+  const heldBack =
+    held.length > 0
+      ? {
+          groups: [...new Set(held.map((h) => h.group))],
+          tools: held.length,
+          tokens: held.reduce((n, h) => n + estimateToolTokens(h.name, h.schema), 0),
+        }
+      : undefined
+
   const make = (
     id: ContextSegment['id'],
     tokens: number,
@@ -120,6 +134,7 @@ export function buildContextBreakdown(input: BreakdownInput): ContextBreakdown {
     tokens,
     color: SEGMENT_COLORS[id],
     ...(children && children.length > 0 ? { children: childrenOf(children) } : {}),
+    ...(id === 'systemTools' && heldBack ? { heldBack } : {}),
   })
 
   const segments: ContextSegment[] = [

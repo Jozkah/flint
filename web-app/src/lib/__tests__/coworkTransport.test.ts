@@ -347,3 +347,103 @@ describe('what the run reports it is sending', () => {
     expect(after.categories.tools).toEqual(before.categories.tools)
   })
 })
+
+describe('lean Cowork tool set', () => {
+  const full = () => ({
+    read: {},
+    task: {},
+    team: {},
+    browser: {},
+    browser_click: {},
+    send_message: {},
+    host_query: {},
+  })
+  const names = (t: CoworkChatTransport) => Object.keys(t.advertisedTools)
+
+  beforeEach(() => {
+    buildCoworkTools.mockReset()
+    buildCoworkTools.mockImplementation(async () => full())
+    sandboxEnforces.mockReturnValue(true)
+  })
+
+  it('starts with the core set and enable_tools when nothing asked for more', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: [] }))
+    await t.refreshTools()
+    expect(names(t)).toEqual(['read', 'task', 'enable_tools'])
+    expect(t.heldGroups).toEqual(['browser', 'team', 'messaging', 'host'])
+  })
+
+  it('a run that needs the browser still gets every browser tool', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: ['browser'] }))
+    await t.refreshTools()
+    expect(names(t)).toEqual(
+      expect.arrayContaining(['browser', 'browser_click', 'enable_tools'])
+    )
+    expect(names(t)).not.toContain('team')
+  })
+
+  it('advertises everything, and no enable_tools, when lean is off', async () => {
+    const t = new CoworkChatTransport('s1', config())
+    await t.refreshTools()
+    expect(names(t).sort()).toEqual(Object.keys(full()).sort())
+  })
+
+  it('never offers a held tool without the gate, however often it refreshes', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: [] }))
+    for (let i = 0; i < 3; i++) await t.refreshTools()
+    for (const held of ['team', 'browser', 'browser_click', 'send_message', 'host_query']) {
+      expect(names(t)).not.toContain(held)
+    }
+    // A refused request opens nothing either.
+    expect(t.openGroupsNow([])).toEqual([])
+    expect(names(t)).not.toContain('browser')
+  })
+
+  it('keeps the advertised JSON identical across turns of a run', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: [] }))
+    await t.refreshTools()
+    const first = JSON.stringify(t.advertisedTools)
+    await t.refreshTools()
+    t.setConfig(config({ offerGroups: ['browser'] }))
+    await t.refreshTools()
+    expect(JSON.stringify(t.advertisedTools)).toBe(first)
+  })
+
+  it('enable_tools opens a group once, after the frozen tools, and leaves the rest held', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: [] }))
+    await t.refreshTools()
+    const before = names(t)
+    const added = t.openGroupsNow(['team'])
+    expect(added).toEqual(['team'])
+    await t.refreshTools()
+    // The tools that were there keep their order: only the tail moved.
+    expect(names(t).slice(0, before.length - 1)).toEqual(before.slice(0, -1))
+    expect(names(t)).toContain('team')
+    expect(names(t)).not.toContain('browser')
+    expect(t.heldGroups).toEqual(['browser', 'messaging', 'host'])
+    expect(t.openGroupsNow(['team'])).toEqual([])
+  })
+
+  it('drops enable_tools once nothing is left to open', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: [] }))
+    await t.refreshTools()
+    t.openGroupsNow(['browser', 'team', 'messaging', 'host'])
+    expect(names(t)).not.toContain('enable_tools')
+    expect(names(t).sort()).toEqual(Object.keys(full()).sort())
+  })
+
+  it('hands a subagent the whole set, so delegation loses nothing', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: [] }))
+    await t.refreshTools()
+    expect(Object.keys(t.childToolSet).sort()).toEqual(Object.keys(full()).sort())
+    expect(Object.keys(t.childToolSet)).not.toContain('enable_tools')
+  })
+
+  it('reports the held-back tools for the context popover', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: ['browser'] }))
+    await t.refreshTools()
+    expect(t.heldBackTools.map((h) => h.name).sort()).toEqual(
+      ['host_query', 'send_message', 'team']
+    )
+  })
+})

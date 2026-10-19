@@ -128,3 +128,34 @@ describe('one estimator for the card and the pre-flight check', () => {
     expect(byId(b, 'systemTools')!.tokens).toBe(estimateToolSchemaTokens(tools))
   })
 })
+
+describe('held-back tools in the breakdown', () => {
+  it('reports the groups, tool count and tokens a request leaves out of System tools', () => {
+    const schema = { description: 'x'.repeat(300), inputSchema: {} }
+    const b = buildContextBreakdown({
+      systemPrompt: 'p',
+      tools: [{ name: 'read', schema }],
+      held: [
+        { name: 'browser', group: 'browser', schema },
+        { name: 'browser_click', group: 'browser', schema },
+        { name: 'team', group: 'team', schema },
+      ],
+      messages: [],
+    })
+    const held = byId(b, 'systemTools')!.heldBack!
+    expect(held.groups).toEqual(['browser', 'team'])
+    expect(held.tools).toBe(3)
+    expect(held.tokens).toBeGreaterThan(0)
+    // Not counted in what the request carries.
+    expect(byId(b, 'systemTools')!.tokens).toBeLessThan(held.tokens)
+  })
+
+  it('says nothing when nothing is held', () => {
+    const b = buildContextBreakdown({
+      systemPrompt: 'p',
+      tools: [{ name: 'read', schema: {} }],
+      messages: [],
+    })
+    expect(byId(b, 'systemTools')!.heldBack).toBeUndefined()
+  })
+})

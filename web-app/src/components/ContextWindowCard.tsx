@@ -28,6 +28,7 @@ type Row = {
   tokens: number
   color: string
   children?: ContextSegment['children']
+  heldBack?: ContextSegment['heldBack']
 }
 
 /**
@@ -83,6 +84,7 @@ export function ContextWindowCard({
       tokens: s.tokens,
       color: s.color,
       children: s.children,
+      heldBack: s.heldBack,
     })),
     ...(buffer > 0
       ? [{ key: 'buffer', label: 'Autocompact buffer', tokens: buffer, color: 'bg-zinc-500' }]
@@ -204,6 +206,14 @@ export function ContextWindowCard({
                     {pctText(share)}
                   </span>
                 </div>
+                {row.heldBack && (
+                  <p
+                    className="ml-[18px] mt-0.5 text-muted-foreground"
+                    data-testid="held-back-tools"
+                  >
+                    {`held back: ${row.heldBack.groups.join(', ')} (${row.heldBack.tools} tools, ~${formatTokenCount(row.heldBack.tokens)} tokens). The model can load them when needed.`}
+                  </p>
+                )}
                 {expandable && isOpen && (
                   <ul className="mb-1 ml-[18px] space-y-0.5 border-l border-border pl-2.5">
                     {row.children!.map((child) => (

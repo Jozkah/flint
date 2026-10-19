@@ -17,6 +17,12 @@ import {
   type CoworkPromptOptions,
 } from '@/lib/coworkPrompt'
 import { coworkToolsFromSchemas } from '@/lib/coworkTools'
+import {
+  ENABLE_TOOLS_NAME,
+  enableToolsTool,
+  splitToolGroups,
+  type ToolGroupId,
+} from '@/lib/coworkToolGroups'
 import { estimatePreRunContext } from '@/lib/coworkContext'
 import type { ContextAccounting } from '@/lib/coworkReadiness'
 
@@ -27,6 +33,8 @@ export type CoworkPreRunInput = {
     webSearch: boolean
     allowSubagents: boolean
     subagentNames: string[]
+    /** Groups a run would start with; omitted measures the full set. */
+    offerGroups?: readonly ToolGroupId[]
   }
   /** The backend's schemas when already read, else null (never fetched here). */
   backendSchemas: readonly ToolSchema[] | null
@@ -37,12 +45,17 @@ export type CoworkPreRunInput = {
 export function coworkPreRunContext(
   input: CoworkPreRunInput
 ): ContextAccounting {
+  const built = coworkToolsFromSchemas(input.backendSchemas ?? [], input.tools)
+  const split = splitToolGroups(
+    built,
+    input.tools.offerGroups ? new Set(input.tools.offerGroups) : undefined
+  )
   return estimatePreRunContext({
     systemPrompt: buildCoworkSystemPrompt(input.prompt),
-    toolSchemas: coworkToolsFromSchemas(
-      input.backendSchemas ?? [],
-      input.tools
-    ),
+    toolSchemas:
+      split.heldGroups.length > 0
+        ? { ...split.lean, [ENABLE_TOOLS_NAME]: enableToolsTool(split.heldGroups) }
+        : split.lean,
     backendToolsKnown: input.backendSchemas != null,
     messages: input.messages,
     configuredContextTokens: input.configuredContextTokens,

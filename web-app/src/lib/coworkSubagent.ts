@@ -19,6 +19,7 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
 import { BACKGROUND_TASK_TOOLS } from '@/lib/coworkBackgroundTasks'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { createUsageCollector } from '@/lib/tokenUsage'
@@ -129,6 +130,8 @@ const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   ...SESSION_MESSAGING_TOOL_NAMES,
   // Answering is the parent's side of `ask_parent`.
   ANSWER_SUBAGENT_TOOL_NAME,
+  // A child is handed its whole tool set up front; there is nothing to load.
+  ENABLE_TOOLS_NAME,
 ])
 
 export type SubagentRequest = {

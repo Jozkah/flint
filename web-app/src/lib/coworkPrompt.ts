@@ -556,7 +556,8 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
  */
 export function subagentsOffered(opts: CoworkPromptOptions): boolean {
   if (opts.planMode) return false
-  if (!hasTool(opts, 'task') || !hasTool(opts, 'team')) return false
+  // `team` may be held back (lean tool set) while `task` is advertised.
+  if (!hasTool(opts, 'task')) return false
   return opts.availableTools ? true : opts.subagentNames.length > 0
 }
 
@@ -609,7 +610,7 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
   }
   if (opts.webSearch && hasTool(opts, 'web_search') && hasTool(opts, 'web_fetch')) blocks.push(WEB_BLOCK)
   if (subagentsOffered(opts)) {
-    blocks.push(subagentGuide(opts.subagentNames))
+    blocks.push(subagentGuide(opts.subagentNames, { team: hasTool(opts, 'team') }))
     const hint = sweepHint(opts.userRequest)
     if (hint) blocks.push(hint)
   }

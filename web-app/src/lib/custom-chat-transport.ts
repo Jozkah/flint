@@ -1466,6 +1466,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return [skillCatalogBlock()]
   }
 
+  /** Tools this surface holds back from the request, for the context popover. */
+  protected heldBackForBreakdown(): { name: string; group: string; schema: unknown }[] {
+    return []
+  }
+
   /**
    * Measure what this request carries by kind and hand it to the composer's
    * context circle. Never throws: a figure that cannot be worked out is a
@@ -1492,6 +1497,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             },
             server: this.toolServers.get(name),
           })),
+          held: this.heldBackForBreakdown(),
           messages,
         })
       )
