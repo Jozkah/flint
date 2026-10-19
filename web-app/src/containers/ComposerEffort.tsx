@@ -43,19 +43,24 @@ export function ComposerEffort({
       : value
         ? clampEffort(value, levels)
         : null
-  const shown: EffortChoice =
+  // A default that is not one of the stops is named "Default", never a level.
+  const shown: EffortChoice | null =
     chosen ??
-    (recommended && levels.includes(recommended)
-      ? recommended
-      : levels[Math.floor(levels.length / 2)])
-  const label =
-    shown === 'off' ? t('common:reasoningEffort.off') : effortLabel(shown)
+    (recommended && levels.includes(recommended) ? recommended : null)
+  const stopName = (c: EffortChoice) =>
+    c === 'off' ? t('common:reasoningEffort.off') : effortLabel(c)
+  const label = shown ? stopName(shown) : t('common:reasoningEffort.default')
+  const defaultName =
+    recommended && levels.includes(recommended)
+      ? stopName(recommended)
+      : t('common:reasoningEffort.engineDefault')
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
           data-testid="composer-effort"
+          title={t('common:reasoningEffort.defaultFor', { value: defaultName })}
           aria-label={`${t('common:reasoningEffort.label')}: ${label}`}
           // The same quiet look as the model name beside it: text only, no box,
           // a faint wash on hover.

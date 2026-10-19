@@ -320,4 +320,14 @@ describe('ReasoningEffortSlider dots', () => {
     render(<Slider canDisable value="off" />)
     expect(dots()).toBe(4)
   })
+
+  it('highlights no stop while the default is no level', () => {
+    render(<Slider value={null} recommended={null} />)
+    expect(screen.queryByTestId('effort-thumb')).toBeNull()
+    expect(dots()).toBe(4)
+    expect(screen.getByRole('slider')).toHaveAttribute(
+      'aria-valuetext',
+      'common:reasoningEffort.default'
+    )
+  })
 })

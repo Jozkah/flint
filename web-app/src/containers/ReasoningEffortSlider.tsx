@@ -67,12 +67,14 @@ export function ReasoningEffortSlider({
         ? clampEffort(value, levels)
         : null
   // Until one is chosen the model runs at its own default, so that is shown.
+  // A default that is no stop (the engine sends no budget) highlights none.
   const fallback =
-    recommended && levels.includes(recommended)
-      ? recommended
-      : levels[Math.floor(levels.length / 2)]
-  const shown = chosen ?? fallback
-  const index = stops.indexOf(shown)
+    recommended && levels.includes(recommended) ? recommended : null
+  const shown: EffortChoice | null = chosen ?? fallback
+  const index = shown ? stops.indexOf(shown) : -1
+  const shownLabel = shown
+    ? stopLabel(shown)
+    : t('common:reasoningEffort.default')
   const recommendedAt = recommended ? stops.indexOf(recommended) : -1
   const centre = (at: number) => `${((at + 0.5) / count) * 100}%`
 
@@ -131,7 +133,7 @@ export function ReasoningEffortSlider({
             {t('common:reasoningEffort.short')}
           </span>
           <span className="whitespace-nowrap text-xs font-medium tabular-nums">
-            {stopLabel(shown)}
+            {shownLabel}
           </span>
         </span>
         {overridden && onReset && (
@@ -159,7 +161,7 @@ export function ReasoningEffortSlider({
         aria-valuemax={count}
         // 1-based, so "1 of 4" reads naturally.
         aria-valuenow={index + 1}
-        aria-valuetext={stopLabel(shown)}
+        aria-valuetext={shownLabel}
         onKeyDown={onKeyDown}
         onPointerDown={(event) => {
           dragging.current = true
@@ -186,14 +188,15 @@ export function ReasoningEffortSlider({
             key={stop}
             aria-hidden
             data-testid={`effort-stop-${stop}`}
-            data-dot={at > index ? '' : undefined}
+            data-dot={index < 0 || at > index ? '' : undefined}
             style={{ left: centre(at) }}
             className={cn(
               'absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/35',
-              at <= index && 'hidden'
+              index >= 0 && at <= index && 'hidden'
             )}
           />
         ))}
+        {index >= 0 && (
         <span
           aria-hidden
           data-testid="effort-thumb"
@@ -203,6 +206,7 @@ export function ReasoningEffortSlider({
           }}
           className="absolute inset-y-0.5 rounded bg-foreground/80 shadow-sm motion-safe:transition-[left] motion-safe:duration-150"
         />
+        )}
       </div>
 
       <div className="relative h-4 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">
