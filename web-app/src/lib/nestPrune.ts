@@ -18,7 +18,8 @@ let installed = false
 export function installNestPrune(): void {
   if (installed) return
   installed = true
-  useCoworkSessions.subscribe((state, prev) => {
+  // Guarded: a test may stand in for a store with a bare mock.
+  useCoworkSessions.subscribe?.((state, prev) => {
     if (state.sessions === prev.sessions) return
     const gone = removedIds(
       prev.sessions.map((s) => s.id),
@@ -26,7 +27,7 @@ export function installNestPrune(): void {
     )
     if (gone.length > 0) useNestExpanded.getState().forget('cowork', gone)
   })
-  useThreads.subscribe((state, prev) => {
+  useThreads.subscribe?.((state, prev) => {
     if (state.threads === prev.threads) return
     const gone = removedIds(Object.keys(prev.threads), Object.keys(state.threads))
     if (gone.length > 0) useNestExpanded.getState().forget('chats', gone)
