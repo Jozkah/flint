@@ -22,6 +22,17 @@ describe('probeLocalProviders', () => {
     expect(urls.sort()).toEqual([
       'http://localhost:11434/v1/models',
       'http://localhost:1234/v1/models',
+      'http://localhost:8080/v1/models',
+    ])
+  })
+
+  it('offers a local model server on the default llama.cpp port', async () => {
+    const fetchImpl = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).includes(':8080')) return ok()
+      throw new Error('connection refused')
+    })
+    expect(await probeLocalProviders(fetchImpl as unknown as typeof fetch)).toEqual([
+      { name: 'Local model server', baseUrl: 'http://localhost:8080/v1' },
     ])
   })
 
@@ -31,8 +42,11 @@ describe('probeLocalProviders', () => {
       fetchImpl as unknown as typeof fetch,
       ['http://localhost:11434/v1/']
     )
-    expect(found.map((c) => c.name)).toEqual(['LM Studio'])
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(found.map((c) => c.name)).toEqual([
+      'LM Studio',
+      'Local model server',
+    ])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
   it('treats an error status as not found', async () => {
