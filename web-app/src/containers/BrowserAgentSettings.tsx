@@ -155,6 +155,7 @@ export function BrowserAgentSettings() {
             <Button
               variant="outline"
               size="sm"
+              className="h-auto min-h-8 max-w-full py-1.5 whitespace-normal"
               onClick={() =>
                 void clearBrowserGrants()
                   .catch(() => {})
