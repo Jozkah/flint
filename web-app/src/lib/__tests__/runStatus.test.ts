@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CoworkTurn } from '@/types/coworkSession'
-import { formatElapsed, inThinkBlock, runStatus, toolLabel } from '../runStatus'
+import { formatElapsed, inThinkBlock, modelWaitStatus, runStatus, toolLabel } from '../runStatus'
 
 const user: CoworkTurn = { role: 'user', content: 'hi' }
 const at = (turns: CoworkTurn[], ms = 0) => runStatus(true, turns)?.label(ms)
@@ -57,5 +57,18 @@ describe('helpers', () => {
     expect(toolLabel(undefined)).toBe('a tool')
     expect(formatElapsed(9_400)).toBe('9s')
     expect(formatElapsed(65_000)).toBe('1m 05s')
+  })
+})
+
+describe('modelWaitStatus', () => {
+  it('escalates like the Cowork wait before the first token', () => {
+    const s = modelWaitStatus()
+    expect(s.label(0)).toBe('Waiting for the model…')
+    expect(s.label(16_000)).toBe('Still waiting for the model…')
+    expect(s.label(61_000)).toBe('The model is taking a while…')
+  })
+
+  it('opens at "Still waiting" for a stream that went quiet mid-reply', () => {
+    expect(modelWaitStatus(true).label(10_000)).toBe('Still waiting for the model…')
   })
 })

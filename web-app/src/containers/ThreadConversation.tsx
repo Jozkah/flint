@@ -137,6 +137,8 @@ import { estimateTokens as estimateTextTokens } from '@/lib/context-manager'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useAttachments } from '@/hooks/useAttachments'
 import { PromptProgress } from '@/components/PromptProgress'
+import { modelWaitStatus } from '@/lib/runStatus'
+import { useStreamQuiet } from '@/hooks/useStreamQuiet'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import {
   OUT_OF_CONTEXT_SIZE,
@@ -1742,6 +1744,8 @@ export function ThreadConversation({
     const last = chatMessages[chatMessages.length - 1]
     return !!last && last.role === 'assistant'
   }, [chatMessages])
+
+  const quietSince = useStreamQuiet(status, chatMessages)
 
   useEffect(() => {
     if (status === 'streaming') {
@@ -3421,8 +3425,20 @@ export function ThreadConversation({
                     <Shimmer duration={1}>Growing the Mind...</Shimmer>
                   )}
                   {!pendingContinueMessage && !lastIsAssistant && (
-                    <PromptProgress />
+                    <PromptProgress status={modelWaitStatus()} />
                   )}
+                </div>
+              )}
+              {!oomError &&
+                !backendError &&
+                !contextLimitError &&
+                status === CHAT_STATUS.STREAMING &&
+                quietSince !== null && (
+                <div className="flex flex-row items-center gap-2">
+                  <PromptProgress
+                    status={modelWaitStatus(true)}
+                    since={quietSince}
+                  />
                 </div>
               )}
               {(contextLimitError || oomError || backendError) && (

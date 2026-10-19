@@ -249,3 +249,21 @@ describe('PromptProgress loaded state', () => {
     expect(screen.queryByTestId('run-status-elapsed')).toBeNull()
   })
 })
+
+describe('PromptProgress since', () => {
+  it('counts elapsed from the given time, not from mount', () => {
+    mockUseAppState.mockImplementation((selector) =>
+      selector({
+        promptProgress: undefined,
+        promptProgresses: {},
+        loadingModel: false,
+        loadingModels: {},
+        modelLoadFailures: {},
+        modelLoadProgressByThread: {},
+      })
+    )
+    const status = { phase: 'waiting' as const, key: 'quiet', label: () => 'Still waiting for the model…' }
+    render(<PromptProgress status={status} since={Date.now() - 12_000} />)
+    expect(screen.getByTestId('run-status-elapsed')).toHaveTextContent('12s')
+  })
+})

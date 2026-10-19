@@ -69,9 +69,13 @@ function useFailedFor(failedAt: number | undefined, loading: boolean | undefined
  * Milliseconds since `key` last changed, re-rendering once a second while
  * `active`. Drives the status line's timer and its escalating wording.
  */
-function usePhaseElapsed(key: string | undefined, active: boolean): number {
+function usePhaseElapsed(
+  key: string | undefined,
+  active: boolean,
+  startedAt?: number
+): number {
   const since = useRef<{ key?: string; at: number }>({ at: Date.now() })
-  if (since.current.key !== key) since.current = { key, at: Date.now() }
+  if (since.current.key !== key) since.current = { key, at: startedAt ?? Date.now() }
   useSecondClock(active)
   return Date.now() - since.current.at
 }
@@ -80,6 +84,7 @@ export function PromptProgress({
   hideIdle = false,
   stateKey,
   status,
+  since,
   waitingLabel,
 }: {
   hideIdle?: boolean
@@ -94,6 +99,12 @@ export function PromptProgress({
    * generic "Working…" with a named phase and how long it has lasted.
    */
   status?: RunStatus | null
+  /**
+   * When the phase really began, if before this component mounted (a reply
+   * that went quiet some seconds ago). Defaults to the moment `status.key`
+   * first appears.
+   */
+  since?: number
   /**
    * Identifies a caller outside the `/threads/:threadId` route — Cowork, keyed
    * by its own session id — overriding the auto-detected route param, and
@@ -142,7 +153,8 @@ export function PromptProgress({
   const waiting = Boolean(waitingLabel) && !!status
   const elapsed = usePhaseElapsed(
     waiting ? `${status?.key}:waiting` : status?.key,
-    !!status && !waiting
+    !!status && !waiting,
+    since
   )
   const loadedMs = useLoadedFor(loadingModel)
   const failedAt = useAppState((state) =>
