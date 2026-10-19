@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { toast } from 'sonner'
 import { checkForNewerBuild, releaseUrl, type BuildCheck } from '@/lib/buildUpdate'
+import { getServiceHub } from '@/hooks/useServiceHub'
 
 /** At most one automatic look per this long, so opening the app often costs nothing. */
 export const CHECK_EVERY_MS = 12 * 60 * 60 * 1000
@@ -38,7 +39,8 @@ export const useBuildUpdate = create<State>()(
             duration: 15000,
             action: {
               label: 'Open release',
-              onClick: () => window.open(releaseUrl(VERSION), '_blank', 'noopener'),
+              // window.open does nothing in the desktop webview; the opener plugin does.
+              onClick: () => void getServiceHub().opener().openUrl(releaseUrl(VERSION)),
             },
           })
         }
