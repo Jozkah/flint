@@ -1,24 +1,24 @@
 class Flint < Formula
   desc "Local-first agent harness: terminal agent console and headless runtime"
   homepage "https://github.com/Jozkah/flint"
-  version "1.0.0"
+  version "1.0.1"
   license "Apache-2.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/Jozkah/flint/releases/download/v1.0.0/flint-1.0.0-aarch64-apple-darwin.tar.gz"
-      sha256 "bf558068da6be28866e674b517ab127d19a6f542ab1f6b0649a53cb1af46a6b3"
+      url "https://github.com/Jozkah/flint/releases/download/v1.0.1/flint-1.0.1-aarch64-apple-darwin.tar.gz"
+      sha256 "8ea1189c5f3fe5c43c7e1f837f467289f67847226bd09a33f333dd9e09d2c359"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/Jozkah/flint/releases/download/v1.0.0/flint-1.0.0-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "281b72caa3a35a4a31be12929a3c6eab43a41b2b727bc3fad5dec9f990bdaef9"
+      url "https://github.com/Jozkah/flint/releases/download/v1.0.1/flint-1.0.1-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "04b1b1e877609f852691bd3ee70772ea97c3b655fcbddfe13b8b6fb33c549500"
     end
     on_intel do
-      url "https://github.com/Jozkah/flint/releases/download/v1.0.0/flint-1.0.0-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "08e665b15dc4f1397294f967c0f4069242fcdb7be987a186b5031c24f1b066cf"
+      url "https://github.com/Jozkah/flint/releases/download/v1.0.1/flint-1.0.1-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "83202d02b06cf6ea25dc059e1adccad32cadb53a24d7b4ab23b3dfbec28a9d90"
     end
   end
 

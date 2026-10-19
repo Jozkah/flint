@@ -1,12 +1,12 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local-first agent harness: terminal agent console and headless runtime",
   "homepage": "https://github.com/Jozkah/flint",
   "license": "Apache-2.0",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/Jozkah/flint/releases/download/v1.0.0/flint-1.0.0-x86_64-pc-windows-msvc.zip",
-      "hash": "c962902dcc74d55ed6b5bb16346d43d55f2bab97adccaf393698f234c81092e9"
+      "url": "https://github.com/Jozkah/flint/releases/download/v1.0.1/flint-1.0.1-x86_64-pc-windows-msvc.zip",
+      "hash": "10925ad879aeca1038e4574130c9a50df9d65508411df235e0f863dc398ed6ad"
     }
   },
   "bin": "flint.exe",
