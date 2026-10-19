@@ -151,12 +151,19 @@ describe('buildCoworkSystemPrompt', () => {
       expect(p).toContain('one subagent per area')
       expect(p).toContain('`team` for independent parts')
     })
-    it('is absent when either tool is not advertised', () => {
-      for (const tools of [['read'], ['read', 'task'], ['read', 'team']]) {
+    it('is absent when `task` is not advertised', () => {
+      for (const tools of [['read'], ['read', 'team']]) {
         expect(
           buildCoworkSystemPrompt(opts({ availableTools: tools }))
         ).not.toContain('# Subagents')
       }
+    })
+    // The lean tool set holds `team` back until asked for; delegation with
+    // `task` must still be taught, minus the `team` lines.
+    it('still teaches `task` when `team` is held back', () => {
+      const p = buildCoworkSystemPrompt(opts({ availableTools: ['read', 'task'] }))
+      expect(p).toContain('# Subagents')
+      expect(p).not.toContain('`team`')
     })
     it('is absent in plan mode even if the tools were listed', () => {
       expect(

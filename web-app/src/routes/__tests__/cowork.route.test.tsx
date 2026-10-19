@@ -189,6 +189,9 @@ vi.mock('@/lib/coworkTransport', () => ({
     get builtinTools() {
       return this.advertisedTools
     }
+    get childToolSet() {
+      return this.advertisedTools
+    }
     mcpServerFor() {
       return undefined
     }

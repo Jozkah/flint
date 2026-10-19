@@ -170,3 +170,26 @@ describe('ContextWindowCard', () => {
     })
   })
 })
+
+describe('ContextWindowCard held-back tools', () => {
+  it('names the groups held back, how many tools and what they would cost', async () => {
+    const held: ContextSegment[] = [
+      {
+        id: 'systemTools',
+        label: 'System tools',
+        tokens: 4000,
+        color: 'bg-orange-500',
+        heldBack: { groups: ['browser', 'computer'], tools: 12, tokens: 3100 },
+      },
+    ]
+    render(<ContextWindowCard segments={held} usedTokens={4000} windowTokens={100000} defaultExpanded />)
+    expect(screen.getByTestId('held-back-tools').textContent).toContain(
+      'held back: browser, computer (12 tools, ~3.1K tokens)'
+    )
+  })
+
+  it('draws no line when nothing is held', () => {
+    render(<ContextWindowCard {...local} defaultExpanded />)
+    expect(screen.queryByTestId('held-back-tools')).toBeNull()
+  })
+})

@@ -34,6 +34,15 @@ import {
   type CoworkToolOptions,
 } from '@/lib/coworkTools'
 import {
+  ENABLE_TOOLS_NAME,
+  TOOL_GROUPS,
+  enableToolsTool,
+  groupOf,
+  splitToolGroups,
+  withoutEnable,
+  type ToolGroupId,
+} from '@/lib/coworkToolGroups'
+import {
   buildCoworkSystemPrompt,
   environmentOptions,
   type CoworkEnvironmentOptions,
@@ -157,6 +166,14 @@ export class CoworkChatTransport extends CustomChatTransport {
    */
   private frozenTools: Record<string, Tool> | null = null
   /**
+   * Specialist tools this run is not advertising (`coworkToolGroups.ts`), and
+   * the groups `enable_tools` has opened since. Opening one is the only thing
+   * that changes the frozen set mid-run.
+   */
+  private heldTools: Record<string, Tool> = {}
+  private builtHeld: Record<string, Tool> = {}
+  private openGroups = new Set<ToolGroupId>()
+  /**
    * MCP tools of the servers that are on right now, re-read at every request.
    * Kept apart from `frozenTools`: the built-in set stays frozen for the run,
    * and this changes only when a server connects, disconnects or is switched.
@@ -258,6 +275,85 @@ export class CoworkChatTransport extends CustomChatTransport {
   /** Drop the freeze so the next run re-reads the config. */
   unfreezeTools() {
     this.frozenTools = null
+    this.heldTools = {}
+    this.openGroups = new Set()
+  }
+
+  /** Held groups with a tool present that nothing has opened yet. */
+  get heldGroups(): ToolGroupId[] {
+    const ids = new Set<ToolGroupId>()
+    for (const name of Object.keys(this.heldTools)) {
+      const id = groupOf(name)
+      if (id && !this.openGroups.has(id)) ids.add(id)
+    }
+    return (Object.keys(TOOL_GROUPS) as ToolGroupId[]).filter((id) => ids.has(id))
+  }
+
+  get openedGroups(): ReadonlySet<ToolGroupId> {
+    return this.openGroups
+  }
+
+  /** The held-back tools, for the context popover. */
+  get heldBackTools(): { name: string; group: ToolGroupId; schema: unknown }[] {
+    return Object.entries(this.heldTools)
+      .filter(([name]) => !this.openGroups.has(groupOf(name) as ToolGroupId))
+      .map(([name, tool]) => ({
+        name,
+        group: groupOf(name) as ToolGroupId,
+        schema: {
+          description: (tool as { description?: string }).description,
+          inputSchema: (tool as { inputSchema?: unknown }).inputSchema,
+        },
+      }))
+  }
+
+  /**
+   * `enable_tools`: advertise held groups from the next request on.
+   *
+   * Appended after the frozen tools, so the prompt prefix up to them is kept;
+   * what follows is re-read once, and the set is then frozen again for the rest
+   * of the run. Not a permission: an opened tool is gated exactly as before.
+   */
+  openGroupsNow(groups: readonly ToolGroupId[]): string[] {
+    const added: string[] = []
+    for (const id of groups) {
+      if (this.openGroups.has(id)) continue
+      this.openGroups.add(id)
+      for (const name of Object.keys(this.heldTools)) {
+        if (groupOf(name) === id) added.push(name)
+      }
+    }
+    if (added.length > 0 && this.frozenTools) {
+      this.frozenTools = this.composeFrozen(this.frozenTools)
+      this.tools = this.frozenTools
+    }
+    return added
+  }
+
+  /** Lean set plus opened groups, with `enable_tools` last (or gone when none is held). */
+  private composeFrozen(base: Record<string, Tool>): Record<string, Tool> {
+    const next: Record<string, Tool> = withoutEnable(base)
+    for (const [name, tool] of Object.entries(this.heldTools)) {
+      const id = groupOf(name)
+      if (id && this.openGroups.has(id)) next[name] = tool
+    }
+    const held = this.heldGroups
+    if (held.length > 0) next[ENABLE_TOOLS_NAME] = enableToolsTool(held)
+    return next
+  }
+
+  /**
+   * Everything a subagent may be narrowed from: the advertised built-ins plus
+   * the held-back ones. A child gets its own request, so nothing is lost to it
+   * by the lean parent, and it never sees `enable_tools`.
+   */
+  get childToolSet(): Record<string, Tool> {
+    return { ...withoutEnable(this.frozenTools ?? this.tools), ...this.heldTools }
+  }
+
+  /** The held-back tools, measured by the base class's breakdown. */
+  protected override heldBackForBreakdown() {
+    return this.heldBackTools
   }
 
   /**
@@ -635,11 +731,21 @@ export class CoworkChatTransport extends CustomChatTransport {
     const sig = coworkToolSignature(this.config, sandboxEnforces())
     // Between runs, skip the rebuild when nothing that shapes the set changed.
     if (this.builtTools && this.builtSig === sig) {
+      this.heldTools = this.builtHeld
+      this.openGroups = new Set()
       this.frozenTools = this.builtTools
       this.tools = this.builtTools
       return
     }
-    const tools = await buildCoworkTools(this.config)
+    const built = await buildCoworkTools(this.config)
+    const split = splitToolGroups(
+      built,
+      this.config.offerGroups ? new Set(this.config.offerGroups) : undefined
+    )
+    const tools: Record<string, Tool> = { ...split.lean }
+    if (split.heldGroups.length > 0) {
+      tools[ENABLE_TOOLS_NAME] = enableToolsTool(split.heldGroups)
+    }
     // No built-in at all means the backend list failed to load. Use it for this
     // turn but do not freeze or cache it, so the next turn asks again instead
     // of keeping a run without file or messaging tools until restart.
@@ -648,7 +754,10 @@ export class CoworkChatTransport extends CustomChatTransport {
       return
     }
     this.builtTools = tools
+    this.builtHeld = split.held
     this.builtSig = sig
+    this.heldTools = split.held
+    this.openGroups = new Set()
     this.frozenTools = tools
     this.tools = tools
   }

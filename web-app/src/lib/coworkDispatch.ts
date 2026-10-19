@@ -32,6 +32,7 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { isolatedTaskAsTeam } from '@/lib/coworkTeam'
+import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
 import {
   BACKGROUND_TASK_TOOLS,
   omitFull,
@@ -146,6 +147,11 @@ export type DispatchContext = {
   onTodo: (input: unknown) => Promise<ToolOutcome>
   /** Suspends until the user answers, or the run is aborted. */
   onAsk: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * `enable_tools`: advertise held-back tool groups from the next request.
+   * Absent on a child's dispatcher, which is never offered the tool.
+   */
+  onEnableTools?: (input: unknown) => ToolOutcome
   /**
    * Asks the user to allow one mutating call, in `ask` mode.
    *
@@ -1191,6 +1197,12 @@ async function routeCoworkTool(
     if (toolName === TODO_TOOL_NAME) return await ctx.onTodo(call.input)
     if (toolName === ASK_TOOL_NAME) {
       return await ctx.onAsk(call.toolCallId, call.input)
+    }
+    if (toolName === ENABLE_TOOLS_NAME) {
+      if (!ctx.onEnableTools) {
+        return { output: 'There is nothing to enable here.', isError: true }
+      }
+      return ctx.onEnableTools(call.input)
     }
     if (toolName === ANSWER_SUBAGENT_TOOL_NAME) {
       // The parent's side only: a child's dispatcher has no team.

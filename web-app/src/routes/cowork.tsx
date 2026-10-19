@@ -363,6 +363,7 @@ import { askedFromParts } from '@/lib/askedSessions'
 import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
+import { groupsToOffer, parseEnableRequest } from '@/lib/coworkToolGroups'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
@@ -1148,6 +1149,8 @@ export function CoworkPage() {
         webSearch: webSearchEnabled,
         allowSubagents: true,
         subagentNames,
+        // What a run started with no message yet would carry: the core set.
+        offerGroups: groupsToOffer({ text: '', history: session?.messages ?? [] }),
       },
       backendSchemas: peekAgentToolSchemas(folder ?? undefined, 'session'),
       messages: hasTurns ? null : [],
@@ -1156,6 +1159,7 @@ export function CoworkPage() {
   }, [
     runContext,
     mode,
+    session?.messages,
     subagentDefs,
     workspacePath,
     folder,
@@ -3511,6 +3515,16 @@ export function CoworkPage() {
       // an inline `system_prompt` is first-class, as it is in Rust.
       allowSubagents: !campaignSlim,
       slim: campaignSlim,
+      // Lean tool set: specialist groups this run's message, history or
+      // sender call for; the rest wait behind `enable_tools`. A campaign's
+      // slim set is already cut, so it keeps its own rules.
+      offerGroups: campaignSlim
+        ? undefined
+        : groupsToOffer({
+            text: text ?? '',
+            history: current?.messages ?? [],
+            fromSession: !!from,
+          }),
       webSearch,
       // The campaign tools go to a top-level session that is not itself a
       // campaign task, and only when there is a repository to branch from.
@@ -3708,7 +3722,7 @@ export function CoworkPage() {
       supportsVision: () =>
         selectedModel?.capabilities?.includes('vision') ?? false,
       providerOptions: () => transport.reasoningProviderOptions(),
-      parentTools: () => transport.builtinTools,
+      parentTools: () => transport.childToolSet,
       anchorMessageId,
       lane: {
         queue: (callId, name, waiting) =>
@@ -4284,6 +4298,23 @@ export function CoworkPage() {
                           createToolDeps(getCampaignRunner())
                         )
                     : undefined,
+                onEnableTools: (input) => {
+                  const parsed = parseEnableRequest(
+                    input,
+                    transport.heldGroups,
+                    transport.openedGroups
+                  )
+                  if (typeof parsed === 'string') {
+                    return { output: `ERROR: ${parsed}`, isError: true }
+                  }
+                  const added = transport.openGroupsNow(parsed.groups)
+                  return {
+                    output:
+                      added.length > 0
+                        ? `Loaded ${added.length} tools: ${added.join(', ')}. Use them from your next step.`
+                        : 'Those tools are already loaded.',
+                  }
+                },
                 onTodo: async (input) => {
                   const result = applyTodoOp(
                     useCoworkSessions
