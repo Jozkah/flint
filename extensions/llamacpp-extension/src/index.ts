@@ -59,6 +59,7 @@ import {
   contextSizeToPersist,
   DEFAULT_EMBEDDING_UBATCH,
   CACHE_RAM_AUTO,
+  describeFitBudget,
 } from './preset'
 import {
   kvDefaultsInEffect,
@@ -2499,6 +2500,28 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
   }
 
+  /**
+   * Logs what auto-fit has to work with before a load: each GPU's reported
+   * size, what is free right now and what the memory to keep free leaves. The
+   * engine's own fit lines are trace-level, so this is the only record of why
+   * a model stopped short of the card's VRAM. Best effort: never blocks a load.
+   */
+  private async logFitBudget(modelId: string): Promise<void> {
+    try {
+      const devices = (await this.getDevices()).filter(
+        (d) => !/^cpu/i.test(d.id)
+      )
+      const lines = describeFitBudget(
+        devices,
+        this.config.fit !== false,
+        this.config.fit_target
+      )
+      for (const line of lines) logger.info(`Loading ${modelId}: ${line}`)
+    } catch (e) {
+      logger.debug('Could not read device memory for the fit log:', e)
+    }
+  }
+
   private async performLoad(
     modelId: string,
     isEmbedding: boolean = false
@@ -2516,6 +2539,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     if (!isEmbedding) {
       await this.evictChatIfAtCapacity(modelId)
     }
+
+    await this.logFitBudget(modelId)
 
     try {
       let info: SessionInfo

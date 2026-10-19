@@ -84,7 +84,7 @@
   {
     "key": "fit_target",
     "title": "Auto-fit: memory to keep free",
-    "description": "How much memory (in MiB) auto-fit leaves free on each GPU for other apps and the display. Raise it if your system gets sluggish while a model is loaded. Local models only.",
+    "description": "How much memory (in MiB) auto-fit leaves free on each GPU for other apps and the display. Lower it (for example 256) to let models use more of your VRAM, or raise it if your system gets sluggish while a model is loaded. It is taken from the memory the GPU reports as free, so a card shows less than its full size when other apps hold some. Each load writes the size and free memory of every GPU to the log. Local models only.",
     "controllerType": "input",
     "controllerProps": {
       "value": "1024",
