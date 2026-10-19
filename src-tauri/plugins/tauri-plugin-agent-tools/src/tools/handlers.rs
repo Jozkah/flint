@@ -913,26 +913,37 @@ pub async fn execute_builtin_with_diff(
             // line is someone taking it out, and refusing that would fire the
             // warning on the fix.
             if let Some(preview) = diff.as_deref() {
-                let findings = crate::secrets::scan_diff(preview);
+                let findings = if ctx.credential_override {
+                    Vec::new()
+                } else {
+                    crate::secrets::scan_diff(preview)
+                };
                 if !findings.is_empty() {
                     let where_ = findings
                         .iter()
                         .map(|f| {
-                            let file = if f.file.is_empty() {
-                                "the file"
+                            let file = if !f.file.is_empty() {
+                                f.file.as_str()
                             } else {
-                                &f.file
+                                arg_str(args, "path").unwrap_or("the file")
                             };
-                            format!("{} line {} ({})", file, f.line, f.kind.as_str())
+                            format!(
+                                "{file}:{} rule \"{}\" matched `{}`",
+                                f.line,
+                                f.kind.as_str(),
+                                f.hint
+                            )
                         })
                         .collect::<Vec<_>>()
-                        .join(", ");
+                        .join("; ");
                     return (
                         format!(
-                            "ERROR: this change was not written: it adds what looks like a \
-                             credential at {where_}. Nothing was changed. Use a placeholder \
-                             and read the real value from the environment, or ask the user \
-                             to add it themselves."
+                            "ERROR: this change was not written: it adds what looks like a real credential: {where_}. \
+                             Nothing was changed. Only the matched line is the problem; every other line is fine. \
+                             If the value is a real secret, use a placeholder and read it from the environment. \
+                             If it is not (a test fixture, an example), tell the user which line it is and why: \
+                             they can allow it by switching to Bypass permissions or add that line themselves. \
+                             Do not reword the code to get past this check."
                         ),
                         None,
                         None,
@@ -6263,6 +6274,42 @@ on_failure = \"warn\"
         assert_eq!(content, "Created w.txt (5 bytes)");
         assert!(!content.contains('+'), "write content must stay concise");
         assert_eq!(diff.as_deref(), Some("@@ created file @@\n+    1 | hello"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A refusal names the file, the line and the rule, and a person in Bypass
+    /// is not refused; ordinary password hashing is never refused at all.
+    #[tokio::test]
+    async fn a_credential_refusal_is_explained_and_bypass_skips_it() {
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let w = lookup("write").unwrap();
+        let secret = format!("export const k = \"{}{}\"", "AKIA", "Z7QX2M4N6P8R0T3V");
+        let args = json!({"path": "lib/env.ts", "content": format!("const a = 1
+{secret}
+")});
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let (msg, _, _) = super::execute_builtin_with_diff(w, &args, &ctx).await;
+        assert!(msg.contains("lib/env.ts:2"), "{msg}");
+        assert!(msg.contains("API key"), "{msg}");
+        assert!(!msg.contains("Z7QX2M4N6P8R0T3V"), "{msg}");
+        assert!(!root.join("lib/env.ts").exists());
+
+        let ctx = ToolContext::new(&root, &store, &[]).with_credential_override(true);
+        let (msg, _, _) = super::execute_builtin_with_diff(w, &args, &ctx).await;
+        assert!(!msg.starts_with("ERROR"), "{msg}");
+
+        let session = json!({"path": "lib/session.ts", "content":
+            "import { scryptSync, timingSafeEqual } from 'node:crypto'
+export function verifyPassword(password: string, stored: string) {
+  const [salt, hash] = stored.split(':')
+  const derived = scryptSync(password, salt, 64)
+  return timingSafeEqual(Buffer.from(hash, 'hex'), derived)
+}
+"});
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let (msg, _, _) = super::execute_builtin_with_diff(w, &session, &ctx).await;
+        assert!(!msg.starts_with("ERROR"), "{msg}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

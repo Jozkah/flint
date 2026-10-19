@@ -190,6 +190,10 @@ pub struct ToolContext<'a> {
     /// shell instead made `Push-Location` "command not found" in Git Bash and
     /// turned `cd .\dir` into `cd .dir`.
     pub sandbox_shell_parity: bool,
+    /// The person waived approval prompts (Bypass), so a `write`/`edit` whose
+    /// diff the credential scan flags goes through, as every other answerable
+    /// prompt does.
+    pub credential_override: bool,
     /// Where an unconfined `bash` starts when the user granted edit access to a
     /// folder the sandbox cannot reach (see [`Self::with_direct_edit_shell`]).
     pub direct_shell_start: Option<PathBuf>,
@@ -318,6 +322,7 @@ impl<'a> ToolContext<'a> {
             temporary: false,
             sandbox: true,
             sandbox_shell_parity: false,
+            credential_override: false,
             direct_shell_start: None,
             nul_programs: &[],
             on_output: None,
@@ -512,6 +517,12 @@ impl<'a> ToolContext<'a> {
     /// Add programs known to open the null device. See [`Self::nul_programs`].
     pub fn with_nul_programs(mut self, programs: &'a [String]) -> Self {
         self.nul_programs = programs;
+        self
+    }
+
+    /// Let a credential-looking write through: the person is in Bypass.
+    pub fn with_credential_override(mut self, on: bool) -> Self {
+        self.credential_override = on;
         self
     }
 
