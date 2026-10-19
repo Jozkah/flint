@@ -1030,7 +1030,14 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // live history the model reads stays raw.
       // Written off the click path: see deferredPersistStorage.
       storage: deferredPersistStorage(
-        createJSONStorage(() => redactingSessionStorage(backendStorage))!
+        createJSONStorage(() => redactingSessionStorage(backendStorage))!,
+        1500,
+        {
+          // Quiet app: write within a moment so a close loses nothing; a
+          // streaming run keeps the long delay so it costs one write.
+          idleDelay: 250,
+          busy: () => Object.keys(useCoworkRun.getState().runs ?? {}).length > 0,
+        }
       ),
       skipHydration: true,
       // Images a tool returned (a `read` of a png) are in the live history for
