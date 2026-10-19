@@ -631,7 +631,12 @@
     "projectOverride": "（项目会覆盖此设置。）",
     "saveFailed": "无法保存压缩策略",
     "leanTools": "小模型精简工具",
-    "leanToolsDescription": "当上下文窗口为 32K 令牌或更小时,聊天中不提供插件列表、图片搜索和小组件工具,让窗口留给对话。网页搜索、MCP 和智能体工具保留。"
+    "leanToolsDescription": "当上下文窗口为 32K 令牌或更小时,聊天中不提供插件列表、图片搜索和小组件工具,让窗口留给对话。网页搜索、MCP 和智能体工具保留。",
+    "smallContext": "小上下文模式",
+    "smallContextDescription": "上下文窗口不超过 64K 令牌时，发送更精简的系统提示、仅含名称的技能列表、更少的记忆和更少的工具。安全规则、审批和沙盒不变。",
+    "smallContextAuto": "自动",
+    "smallContextAlways": "始终",
+    "smallContextNever": "从不"
   },
   "accent": {
     "title": "强调色",

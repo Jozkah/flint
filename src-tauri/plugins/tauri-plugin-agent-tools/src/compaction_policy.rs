@@ -207,12 +207,11 @@ impl Policy {
         Ok(policy)
     }
 
-    /// The reserve actually kept free in a window of this size: never more
-    /// than a quarter of it. A 16K reserve is sensible headroom in a 128K
-    /// window and would leave nothing at all in a 4K local model's, so the
-    /// same policy has to mean the same proportion on every surface.
+    /// The reserve actually kept free in a window of this size, see
+    /// [`scaled_reserve`]. The same policy has to mean the same proportion on
+    /// every surface, so every one of them calls this (or the function).
     pub fn effective_reserve(&self, context_window: u64) -> u64 {
-        self.reserve_tokens.min(context_window / 4)
+        scaled_reserve(self.reserve_tokens, context_window)
     }
 
     /// Whether compaction should run proactively at this usage.
@@ -221,6 +220,19 @@ impl Policy {
             && used_tokens > 0
             && used_tokens > context_window.saturating_sub(self.effective_reserve(context_window))
     }
+}
+
+/// Smallest autocompact buffer: enough for a short reply and one more turn.
+pub const MIN_RESERVE_TOKENS: u64 = 2_048;
+
+/// The buffer kept free in a window of `context_window` tokens: a tenth of it,
+/// at least [`MIN_RESERVE_TOKENS`] and never more than `reserve_tokens` (the
+/// 16K ceiling for big windows) or a quarter of the window. A fixed 16K buffer
+/// is sensible in a 262K window and swallowed a quarter of a 50K one; the
+/// web-app mirror is `effectiveReserve` in `compactionPolicy.ts`.
+pub fn scaled_reserve(reserve_tokens: u64, context_window: u64) -> u64 {
+    let scaled = (context_window / 10).max(MIN_RESERVE_TOKENS);
+    reserve_tokens.min(scaled).min(context_window / 4)
 }
 
 /// Write the user's layer atomically, validated first.
@@ -311,7 +323,22 @@ mod tests {
         assert_eq!(big.effective_reserve(4096), 1024);
         assert!(!big.should_compact(2000, 4096));
         assert!(big.should_compact(3100, 4096));
-        assert_eq!(big.effective_reserve(128_000), 16_384);
+        assert_eq!(big.effective_reserve(262_144), 16_384);
+    }
+
+    #[test]
+    fn the_buffer_scales_with_the_window() {
+        let p = Policy::default();
+        let got: Vec<u64> = [8_192u64, 16_384, 32_768, 50_000, 128_000, 262_144]
+            .iter()
+            .map(|w| p.effective_reserve(*w))
+            .collect();
+        assert_eq!(got, vec![2_048, 2_048, 3_276, 5_000, 12_800, 16_384]);
+        // A reply always fits: the trigger leaves at least the buffer free.
+        for w in [1_024u64, 4_096, 8_192, 32_768, 50_000, 262_144] {
+            let r = p.effective_reserve(w);
+            assert!(r <= w / 4 && w - r >= w * 3 / 4);
+        }
     }
 
     #[test]

@@ -633,7 +633,12 @@
     "projectOverride": "(Un projet remplace ce réglage.)",
     "saveFailed": "La politique de compactage n'a pas pu être enregistrée",
     "leanTools": "Outils allégés pour les petits modèles",
-    "leanToolsDescription": "Avec une fenêtre de contexte de 32K tokens ou moins, la liste des plugins, la recherche d'images et les outils de widgets sont retirés des chats, pour que la fenêtre contienne la conversation. La recherche web, MCP et les outils d'agent restent."
+    "leanToolsDescription": "Avec une fenêtre de contexte de 32K tokens ou moins, la liste des plugins, la recherche d'images et les outils de widgets sont retirés des chats, pour que la fenêtre contienne la conversation. La recherche web, MCP et les outils d'agent restent.",
+    "smallContext": "Mode petit contexte",
+    "smallContextDescription": "Pour une fenêtre de contexte de 64K tokens ou moins, envoie un prompt système plus léger, une liste de compétences réduite aux noms, moins de mémoire et moins d'outils. Les règles de sécurité, les approbations et le bac à sable ne changent pas.",
+    "smallContextAuto": "Auto",
+    "smallContextAlways": "Toujours",
+    "smallContextNever": "Jamais"
   },
   "accent": {
     "title": "Couleur d'accentuation",

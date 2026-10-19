@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import type { UIMessage } from '@ai-sdk/react'
 
 // Capture every streamText({...}) call so we can compare the prompt prefix
@@ -164,6 +165,8 @@ const send = (transport: CustomChatTransport, messages: UIMessage[]) =>
 
 describe('CustomChatTransport prompt-prefix stability across turns', () => {
   beforeEach(() => {
+    // These pin trimming and reserves against the full prompt.
+    useLeanToolsConfig.setState({ smallContextMode: 'never' })
     streamTextCalls.length = 0
     h.disabledTools = []
     h.servers = ['srv']
@@ -449,6 +452,7 @@ describe('fixed seed reaches the model parameters', () => {
 
 describe('CustomChatTransport reply reserve (local vs cloud)', () => {
   beforeEach(() => {
+    useLeanToolsConfig.setState({ smallContextMode: 'never' })
     streamTextCalls.length = 0
     h.disabledTools = []
     h.servers = []
@@ -485,6 +489,7 @@ describe('CustomChatTransport reply reserve (local vs cloud)', () => {
 
 describe('CustomChatTransport plain chat on a small window', () => {
   beforeEach(() => {
+    useLeanToolsConfig.setState({ smallContextMode: 'auto' })
     streamTextCalls.length = 0
     h.disabledTools = []
     h.servers = []
@@ -517,6 +522,28 @@ describe('CustomChatTransport plain chat on a small window', () => {
     const transport = new CustomChatTransport('you are jan', 'thread-lean-large')
     await drain(await send(transport, [user('u1', 'hi')]))
     expect(Object.keys(streamTextCalls[0].tools as object)).toContain('show_widget')
+  })
+
+  it('small-context mode: leaner tools and prompt at 50K, nothing changed at 131K or when never', async () => {
+    const run = async (window: number, mode: 'auto' | 'always' | 'never') => {
+      useLeanToolsConfig.setState({ smallContextMode: mode })
+      local(window)
+      streamTextCalls.length = 0
+      const transport = new CustomChatTransport('you are jan', `thread-small-${window}-${mode}`)
+      await drain(await send(transport, [user('u1', 'hi')]))
+      return {
+        tools: Object.keys((streamTextCalls[0].tools as object | undefined) ?? {}),
+        system: String(streamTextCalls[0].system),
+      }
+    }
+    const small = await run(50_000, 'auto')
+    expect(small.tools).not.toContain('show_widget')
+    expect(small.system).not.toContain('# Color')
+    const never = await run(50_000, 'never')
+    expect(never.tools).toContain('show_widget')
+    expect(never.system).toContain('# Color')
+    expect((await run(131_072, 'auto')).tools).toContain('show_widget')
+    expect((await run(131_072, 'always')).tools).not.toContain('show_widget')
   })
 
   it('does not teach git/push rules when only read-only tools are offered', async () => {

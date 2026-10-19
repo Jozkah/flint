@@ -631,7 +631,12 @@
     "projectOverride": "(A project overrides this.)",
     "saveFailed": "The compaction policy could not be saved",
     "leanTools": "Lean tools on small models",
-    "leanToolsDescription": "With a context window of 32K tokens or less, leave the plugin list, image search and widget tools out of chats, so the window holds the conversation. Web search, MCP and agent tools stay."
+    "leanToolsDescription": "With a context window of 32K tokens or less, leave the plugin list, image search and widget tools out of chats, so the window holds the conversation. Web search, MCP and agent tools stay.",
+    "smallContext": "Small-context mode",
+    "smallContextDescription": "For a context window of 64K tokens or less, send a leaner system prompt, a names-only skills list, less memory and fewer tools. Safety rules, approvals and the sandbox are unchanged.",
+    "smallContextAuto": "Auto",
+    "smallContextAlways": "Always",
+    "smallContextNever": "Never"
   },
   "accent": {
     "title": "Accent colour",

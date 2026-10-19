@@ -2592,6 +2592,7 @@
       "vision": "ビジョン",
       "audio": "オーディオ",
       "fixedPrompt": "リクエストごとに送信: {{count}} トークン(システムプロンプトとツールスキーマ)。",
+      "smallContext": "小コンテキストモード: オン、約{{count}}トークン節約",
       "tokenUsage": "トークン使用量",
       "tokenUsageSr": "トークン使用量 {{value}}"
     }

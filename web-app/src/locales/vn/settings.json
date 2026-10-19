@@ -631,7 +631,12 @@
     "projectOverride": "(Một dự án ghi đè cài đặt này.)",
     "saveFailed": "Không thể lưu chính sách nén",
     "leanTools": "Công cụ gọn cho mô hình nhỏ",
-    "leanToolsDescription": "Với cửa sổ ngữ cảnh từ 32K token trở xuống, danh sách plugin, tìm kiếm hình ảnh và công cụ widget được bỏ khỏi cuộc trò chuyện để cửa sổ dành cho hội thoại. Tìm kiếm web, MCP và công cụ tác tử vẫn giữ nguyên."
+    "leanToolsDescription": "Với cửa sổ ngữ cảnh từ 32K token trở xuống, danh sách plugin, tìm kiếm hình ảnh và công cụ widget được bỏ khỏi cuộc trò chuyện để cửa sổ dành cho hội thoại. Tìm kiếm web, MCP và công cụ tác tử vẫn giữ nguyên.",
+    "smallContext": "Chế độ ngữ cảnh nhỏ",
+    "smallContextDescription": "Với cửa sổ ngữ cảnh từ 64K token trở xuống, gửi system prompt gọn hơn, danh sách kỹ năng chỉ có tên, ít bộ nhớ hơn và ít công cụ hơn. Quy tắc an toàn, phê duyệt và sandbox không đổi.",
+    "smallContextAuto": "Tự động",
+    "smallContextAlways": "Luôn bật",
+    "smallContextNever": "Không bao giờ"
   },
   "accent": {
     "title": "Màu nhấn",

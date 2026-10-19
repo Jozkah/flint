@@ -2683,6 +2683,7 @@
       "vision": "Vision",
       "audio": "Audio",
       "fixedPrompt": "Sent with every request: {{count}} tokens (system prompt and tool schemas).",
+      "smallContext": "Small-context mode: on, saves ~{{count}} tokens",
       "tokenUsage": "Token usage",
       "tokenUsageSr": "Token usage {{value}}"
     }

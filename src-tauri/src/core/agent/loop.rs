@@ -6839,14 +6839,15 @@ async fn orchestrate_inner(
                 .and_then(crate::core::agent::learned_window::lookup),
         };
         let ctx_window = ctx_window.or(learned);
-        // A learned window can be far smaller than the default reserve, and a
-        // reserve that leaves no room would refuse the run. Keep a quarter of
-        // a learned window for output at most; a window set in the config is
-        // the user's own and is still checked as written.
-        let reserve = match (learned, reserve) {
-            (Some(window), Some(reserve)) => Some(reserve.min(window / 4)),
-            (_, reserve) => reserve,
-        };
+        // The buffer scales with the window (a tenth, 2K at least, the policy's
+        // reserve at most): a learned or small window keeps its room for the
+        // conversation, a big one keeps the full 16K.
+        let reserve = reserve.map(|r| {
+            tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+                r,
+                ctx_window.unwrap_or(128_000),
+            )
+        });
         let window_cfg = cpol::WindowConfig::from_config(ctx_window, reserve);
         let resolved = match cpol::thresholds(&window_cfg) {
             Ok(resolved) => resolved,

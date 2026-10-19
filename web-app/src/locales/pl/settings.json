@@ -635,7 +635,12 @@
     "projectOverride": "(Projekt to nadpisuje.)",
     "saveFailed": "Nie udało się zapisać zasad kompaktowania",
     "leanTools": "Oszczędne narzędzia w małych modelach",
-    "leanToolsDescription": "Przy oknie kontekstu 32K tokenów lub mniejszym lista wtyczek, wyszukiwanie obrazów i narzędzia widżetów są pomijane w czatach, aby okno mieściło rozmowę. Wyszukiwanie w sieci, MCP i narzędzia agenta zostają."
+    "leanToolsDescription": "Przy oknie kontekstu 32K tokenów lub mniejszym lista wtyczek, wyszukiwanie obrazów i narzędzia widżetów są pomijane w czatach, aby okno mieściło rozmowę. Wyszukiwanie w sieci, MCP i narzędzia agenta zostają.",
+    "smallContext": "Tryb małego kontekstu",
+    "smallContextDescription": "Przy oknie kontekstu do 64K tokenów wysyła lżejszy prompt systemowy, listę umiejętności tylko z nazwami, mniej pamięci i mniej narzędzi. Zasady bezpieczeństwa, zatwierdzenia i piaskownica się nie zmieniają.",
+    "smallContextAuto": "Automatycznie",
+    "smallContextAlways": "Zawsze",
+    "smallContextNever": "Nigdy"
   },
   "accent": {
     "title": "Kolor akcentu",

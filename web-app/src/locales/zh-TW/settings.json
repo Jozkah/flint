@@ -631,7 +631,12 @@
     "projectOverride": "（專案會覆寫此設定。）",
     "saveFailed": "無法儲存壓縮政策",
     "leanTools": "小模型精簡工具",
-    "leanToolsDescription": "當上下文視窗為 32K 權杖或更小時,聊天中不提供外掛清單、圖片搜尋和小工具,讓視窗留給對話。網頁搜尋、MCP 和代理工具保留。"
+    "leanToolsDescription": "當上下文視窗為 32K 權杖或更小時,聊天中不提供外掛清單、圖片搜尋和小工具,讓視窗留給對話。網頁搜尋、MCP 和代理工具保留。",
+    "smallContext": "小上下文模式",
+    "smallContextDescription": "上下文視窗不超過 64K 權杖時，傳送更精簡的系統提示、僅含名稱的技能清單、更少的記憶與更少的工具。安全規則、核准與沙盒不變。",
+    "smallContextAuto": "自動",
+    "smallContextAlways": "一律",
+    "smallContextNever": "從不"
   },
   "accent": {
     "title": "強調色",

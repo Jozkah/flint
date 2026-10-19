@@ -635,7 +635,12 @@
     "projectOverride": "(Un projecte ho substitueix.)",
     "saveFailed": "No s'ha pogut desar la política de compactació",
     "leanTools": "Eines lleugeres en models petits",
-    "leanToolsDescription": "Amb una finestra de context de 32K tokens o menys, deixa fora dels xats la llista de connectors, la cerca d'imatges i les eines de ginys, perquè la finestra contingui la conversa. La cerca web, MCP i les eines d'agent es mantenen."
+    "leanToolsDescription": "Amb una finestra de context de 32K tokens o menys, deixa fora dels xats la llista de connectors, la cerca d'imatges i les eines de ginys, perquè la finestra contingui la conversa. La cerca web, MCP i les eines d'agent es mantenen.",
+    "smallContext": "Mode de context petit",
+    "smallContextDescription": "Amb una finestra de context de 64K tokens o menys, envia un prompt de sistema més lleuger, una llista d'habilitats només amb noms, menys memòria i menys eines. Les regles de seguretat, les aprovacions i el sandbox no canvien.",
+    "smallContextAuto": "Automàtic",
+    "smallContextAlways": "Sempre",
+    "smallContextNever": "Mai"
   },
   "accent": {
     "title": "Color d'èmfasi",

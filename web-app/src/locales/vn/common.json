@@ -2597,6 +2597,7 @@
       "vision": "Thị giác",
       "audio": "Âm thanh",
       "fixedPrompt": "Gửi kèm mỗi yêu cầu: {{count}} token (lời nhắc hệ thống và lược đồ công cụ).",
+      "smallContext": "Chế độ ngữ cảnh nhỏ: bật, tiết kiệm ~{{count}} token",
       "tokenUsage": "Mức dùng token",
       "tokenUsageSr": "Mức dùng token {{value}}"
     }

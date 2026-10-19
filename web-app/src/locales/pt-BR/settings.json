@@ -633,7 +633,12 @@
     "projectOverride": "(Um projeto substitui isto.)",
     "saveFailed": "Não foi possível salvar a política de compactação",
     "leanTools": "Ferramentas enxutas em modelos pequenos",
-    "leanToolsDescription": "Com uma janela de contexto de 32K tokens ou menos, a lista de plugins, a busca de imagens e as ferramentas de widgets ficam fora dos chats, para que a janela comporte a conversa. Busca na web, MCP e ferramentas do agente continuam."
+    "leanToolsDescription": "Com uma janela de contexto de 32K tokens ou menos, a lista de plugins, a busca de imagens e as ferramentas de widgets ficam fora dos chats, para que a janela comporte a conversa. Busca na web, MCP e ferramentas do agente continuam.",
+    "smallContext": "Modo de contexto pequeno",
+    "smallContextDescription": "Com uma janela de contexto de 64K tokens ou menos, envia um prompt de sistema mais enxuto, uma lista de habilidades só com nomes, menos memória e menos ferramentas. Regras de segurança, aprovações e sandbox não mudam.",
+    "smallContextAuto": "Automático",
+    "smallContextAlways": "Sempre",
+    "smallContextNever": "Nunca"
   },
   "accent": {
     "title": "Cor de destaque",

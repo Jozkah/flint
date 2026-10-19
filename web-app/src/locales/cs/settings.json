@@ -635,7 +635,12 @@
     "projectOverride": "(Projekt to přepisuje.)",
     "saveFailed": "Zásadu zhutňování se nepodařilo uložit",
     "leanTools": "Úsporné nástroje u malých modelů",
-    "leanToolsDescription": "Při kontextovém okně 32K tokenů nebo menším vynechá z chatů seznam pluginů, hledání obrázků a nástroje widgetů, aby okno pojalo konverzaci. Vyhledávání na webu, MCP a nástroje agenta zůstávají."
+    "leanToolsDescription": "Při kontextovém okně 32K tokenů nebo menším vynechá z chatů seznam pluginů, hledání obrázků a nástroje widgetů, aby okno pojalo konverzaci. Vyhledávání na webu, MCP a nástroje agenta zůstávají.",
+    "smallContext": "Režim malého kontextu",
+    "smallContextDescription": "U kontextového okna do 64K tokenů odesílá štíhlejší systémový prompt, seznam dovedností jen s názvy, méně paměti a méně nástrojů. Bezpečnostní pravidla, schvalování a sandbox se nemění.",
+    "smallContextAuto": "Automaticky",
+    "smallContextAlways": "Vždy",
+    "smallContextNever": "Nikdy"
   },
   "accent": {
     "title": "Zvýrazňovací barva",

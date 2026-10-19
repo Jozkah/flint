@@ -633,7 +633,12 @@
     "projectOverride": "(Un progetto lo sovrascrive.)",
     "saveFailed": "Impossibile salvare la politica di compattazione",
     "leanTools": "Strumenti essenziali sui modelli piccoli",
-    "leanToolsDescription": "Con una finestra di contesto di 32K token o meno, l'elenco dei plugin, la ricerca di immagini e gli strumenti dei widget vengono esclusi dalle chat, così la finestra contiene la conversazione. Ricerca web, MCP e strumenti dell'agente restano."
+    "leanToolsDescription": "Con una finestra di contesto di 32K token o meno, l'elenco dei plugin, la ricerca di immagini e gli strumenti dei widget vengono esclusi dalle chat, così la finestra contiene la conversazione. Ricerca web, MCP e strumenti dell'agente restano.",
+    "smallContext": "Modalità contesto ridotto",
+    "smallContextDescription": "Con una finestra di contesto di 64K token o meno, invia un prompt di sistema più leggero, un elenco di skill con soli nomi, meno memoria e meno strumenti. Regole di sicurezza, approvazioni e sandbox non cambiano.",
+    "smallContextAuto": "Automatica",
+    "smallContextAlways": "Sempre",
+    "smallContextNever": "Mai"
   },
   "accent": {
     "title": "Colore di accento",

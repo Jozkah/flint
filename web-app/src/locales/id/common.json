@@ -2549,6 +2549,7 @@
       "vision": "Visi",
       "audio": "Audio",
       "fixedPrompt": "Dikirim bersama setiap permintaan: {{count}} token (prompt sistem dan skema alat).",
+      "smallContext": "Mode konteks kecil: aktif, hemat ~{{count}} token",
       "tokenUsage": "Penggunaan token",
       "tokenUsageSr": "Penggunaan token {{value}}"
     }

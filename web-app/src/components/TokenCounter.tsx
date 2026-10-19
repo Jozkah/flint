@@ -408,6 +408,16 @@ export const TokenCounter = memo(function TokenCounter({
                 autoCompactBuffer={effectiveReserve(tokenData.maxTokens, policy)}
                 onCompact={onCompact}
               />
+              {stored?.smallContextSaved != null && (
+                <p
+                  data-testid="context-small-mode"
+                  className="px-4 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-muted-foreground"
+                >
+                  {t('common:usage.counter.smallContext', {
+                    count: formatExact(stored.smallContextSaved),
+                  })}
+                </p>
+              )}
               {fixedTokens > 0 && (
                 <p
                   data-testid="context-fixed-prompt"

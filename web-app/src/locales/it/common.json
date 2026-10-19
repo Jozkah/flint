@@ -2636,6 +2636,7 @@
       "vision": "Visione",
       "audio": "Audio",
       "fixedPrompt": "Inviato con ogni richiesta: {{count}} token (prompt di sistema e schemi degli strumenti).",
+      "smallContext": "Modalità contesto ridotto: attiva, risparmia ~{{count}} token",
       "tokenUsage": "Uso dei token",
       "tokenUsageSr": "Uso dei token {{value}}"
     }

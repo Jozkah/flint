@@ -631,7 +631,12 @@
     "projectOverride": "(Ein Projekt überschreibt dies.)",
     "saveFailed": "Die Verdichtungsrichtlinie konnte nicht gespeichert werden",
     "leanTools": "Schlanke Werkzeuge bei kleinen Modellen",
-    "leanToolsDescription": "Bei einem Kontextfenster von 32K Tokens oder weniger werden Plugin-Liste, Bildsuche und Widget-Werkzeuge in Chats weggelassen, damit das Fenster die Unterhaltung fasst. Websuche, MCP und Agent-Werkzeuge bleiben."
+    "leanToolsDescription": "Bei einem Kontextfenster von 32K Tokens oder weniger werden Plugin-Liste, Bildsuche und Widget-Werkzeuge in Chats weggelassen, damit das Fenster die Unterhaltung fasst. Websuche, MCP und Agent-Werkzeuge bleiben.",
+    "smallContext": "Modus für kleinen Kontext",
+    "smallContextDescription": "Bei einem Kontextfenster von 64K Tokens oder weniger werden ein schlankerer Systemprompt, eine Skill-Liste nur mit Namen, weniger Gedächtnis und weniger Werkzeuge gesendet. Sicherheitsregeln, Freigaben und Sandbox bleiben unverändert.",
+    "smallContextAuto": "Automatisch",
+    "smallContextAlways": "Immer",
+    "smallContextNever": "Nie"
   },
   "accent": {
     "title": "Akzentfarbe",

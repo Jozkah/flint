@@ -142,6 +142,7 @@ import {
 import {
   trimMessages,
   estimateTokens,
+  estimateToolTokens,
   estimateToolSchemaTokens,
   contextSafetyMargin,
   clearStaleToolResults,
@@ -187,6 +188,10 @@ import {
 import { recordLifecycle } from '@/lib/toolActivity'
 import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
 import { toolsForConversation, toolsForWindow } from '@/lib/leanTools'
+import {
+  SMALL_CONTEXT_MEMORY_CHARS,
+  smallContextActive,
+} from '@/lib/smallContext'
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
 import { usageEventPayload } from '@/lib/executionTimeline'
@@ -1195,6 +1200,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * of each `sendMessages`.
    */
   protected memorySelection: ScopedMemoryRetrieved | null = null
+  /** Small-context mode is on for the request being built (`lib/smallContext.ts`). */
+  protected smallContext = false
+  /** Tokens small-context mode saved on the request being built (prompt and tool schemas). */
+  protected smallContextSaved = 0
   /**
    * The project folder this conversation belongs to, when it has one.
    *
@@ -1463,7 +1472,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   /** Skill text this surface puts in the prompt, counted apart in the breakdown. */
   protected skillTextsInPrompt(): string[] {
-    return [skillCatalogBlock()]
+    return [skillCatalogBlock(undefined, undefined, this.smallContext)]
   }
 
   /** Tools this surface holds back from the request, for the context popover. */
@@ -1476,6 +1485,41 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * context circle. Never throws: a figure that cannot be worked out is a
    * missing figure, not a failed message.
    */
+  /**
+   * What small-context mode saved on this request: the prompt as the full
+   * variants would have written it, and the tool schemas it left out. A floor:
+   * the memory it capped is not counted.
+   */
+  private measureSmallContextSaving(
+    fullTools: Record<string, unknown> | null,
+    messages: UIMessage[]
+  ): number {
+    if (!this.smallContext) return 0
+    try {
+      const small = this.buildSystemPrompt(messages)
+      this.smallContext = false
+      let full: string | undefined
+      try {
+        full = this.buildSystemPrompt(messages)
+      } finally {
+        this.smallContext = true
+      }
+      const promptSaved =
+        estimateTokens(full ?? '') - estimateTokens(small ?? '')
+      let toolsSaved = 0
+      for (const [name, tool] of Object.entries(fullTools ?? {})) {
+        if (this.tools && name in this.tools) continue
+        toolsSaved += estimateToolTokens(name, {
+          description: (tool as { description?: string }).description,
+          inputSchema: (tool as { inputSchema?: unknown }).inputSchema,
+        })
+      }
+      return Math.max(0, promptSaved) + toolsSaved
+    } catch {
+      return 0
+    }
+  }
+
   protected publishContextBreakdown(
     systemPrompt: string | undefined,
     messages: UIMessage[]
@@ -1483,9 +1527,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (!this.threadId) return
     try {
       const memory = this.memorySelection
-      useContextBreakdown.getState().set(
-        this.threadId,
-        buildContextBreakdown({
+      const built = buildContextBreakdown({
           systemPrompt,
           skillTexts: this.skillTextsInPrompt(),
           memoryTexts: memory?.block ? [memory.precedence ?? '', memory.block] : [],
@@ -1500,7 +1542,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           held: this.heldBackForBreakdown(),
           messages,
         })
-      )
+      useContextBreakdown
+        .getState()
+        .set(
+          this.threadId,
+          this.smallContext
+            ? { ...built, smallContextSaved: this.smallContextSaved }
+            : built
+        )
     } catch {
       // Not measured this time.
     }
@@ -1508,6 +1557,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
   /** Static: tells the model that inline HTML colors render in chat. */
   buildColorOutputInstruction(): string {
+    // Decoration, not a rule: a small window does not carry it.
+    if (this.smallContext) return ''
     return [
       '# Color',
       'Chat renders inline HTML color, so use it sparingly where it carries',
@@ -1628,7 +1679,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * A failure leaves the prompt without a memory block rather than failing the
    * turn: not remembering is a degraded answer, and refusing to answer is not.
    */
-  protected async refreshMemory(): Promise<void> {
+  protected async refreshMemory(budgetChars?: number): Promise<void> {
     this.memorySelection = null
     this.syncMemoryBinding()
     const binding: MemoryBinding = {
@@ -1654,6 +1705,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         {
           temporary: binding.temporary,
           instructions: this.memoryInstructions(),
+          ...(budgetChars ? { budgetChars } : {}),
         }
       )) as ScopedMemoryRetrieved
     } catch (e) {
@@ -3117,7 +3169,6 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const selectedModel = this.getModelSelection().selectedModel
 
-    await this.refreshMemory()
     // The user's Claude Code hooks, when they linked them: SessionStart text
     // follows the system prompt, UserPromptSubmit text rides on this message.
     // Only a turn that is answering the user's message asks for the latter.
@@ -3219,10 +3270,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // A small window is not spent on tools a small model rarely needs (the
     // plugin list, image search, widgets), unless the user keeps them on.
     // Before the prompt is built: the prompt only teaches what is offered.
+    this.smallContext = smallContextActive(
+      useLeanToolsConfig.getState().smallContextMode,
+      maxContextTokens
+    )
+    // Memory is read once the window is known: a small window takes less of it.
+    await this.refreshMemory(this.smallContext ? SMALL_CONTEXT_MEMORY_CHARS : undefined)
+    const leanWindows = useLeanToolsConfig.getState().leanSmallWindows
+    const fullTools = this.smallContext
+      ? toolsForWindow(this.tools, maxContextTokens, leanWindows, false)
+      : null
     this.tools = toolsForWindow(
       this.tools,
       maxContextTokens,
-      useLeanToolsConfig.getState().leanSmallWindows
+      leanWindows,
+      this.smallContext
     )
     // Specialist host/browser tools wait until the conversation asks for them.
     this.tools = toolsForConversation(
@@ -3233,6 +3295,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const effectiveSystem = appendSessionContext(
       this.buildSystemPrompt(messagesToConvert),
       ccContext.sessionStart
+    )
+    this.smallContextSaved = this.measureSmallContextSaving(
+      fullTools,
+      messagesToConvert
     )
     this.publishContextBreakdown(effectiveSystem, messagesToConvert)
 
@@ -4044,6 +4110,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (!webSearchOnFor(this.threadId)) return ''
     if (!this.tools || !('web_search' in this.tools || 'web_fetch' in this.tools))
       return ''
+    if (this.smallContext) {
+      return [
+        '# Web Access',
+        'Use web_search and web_fetch for current, external or verifiable information.',
+        'Cite each source you rely on inline, right after the statement, as [[cite:URL]]',
+        '(the full URL from web_search); no separate references section.',
+      ].join(' ')
+    }
     return [
       '# Web Access',
       'You can search the web with web_search and read pages with web_fetch.',
@@ -4065,8 +4139,51 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * tools operate in. Only added when the toolset is enabled so it doesn't
    * affect prompt caching for users who keep it off.
    */
+  /**
+   * The workspace note for small-context mode: the same rules (isolated
+   * workspace, read-only folders, shell routing, sandbox limits, request_access,
+   * git through the git tool), without the explanations.
+   */
+  private buildCompactAgentToolsInstruction(): string {
+    const parts = [
+      '# Workspace',
+      'read, ls, find, grep, write and edit act on an isolated scratch workspace (relative paths,',
+      'deleted with this chat), not the whole filesystem. memory_write/memory_list/memory_read',
+      'keep facts across chats; skill_write records a repeatable procedure.',
+    ]
+    const folders = this.threadId
+      ? chatFoldersOf(useThreads.getState().threads[this.threadId])
+      : []
+    if (folders.length > 0) {
+      parts.push(
+        'Attached folders (READ-ONLY, absolute paths; writes are refused):',
+        ...folders.map((folder) => `- \`${folder}\``)
+      )
+    }
+    const skills = skillCatalogBlock(undefined, undefined, true)
+    if (skills) parts.push('', skills, '')
+    parts.push(SHELL_ROUTING_GUIDANCE)
+    if (sandboxEnforces()) {
+      parts.push(
+        'bash runs sandboxed in the workspace: writes only there, no reading of the home',
+        'directory. For a path outside it use a configured filesystem MCP tool that allows it',
+        '(approval does not widen its roots; report a path as denied only after its own error),',
+        'or, after a refusal, call request_access with the narrowest absolute path, a one-sentence',
+        'reason and access_mode "write" when needed; if denied, do not ask again for that path.',
+        useAgentToolsConfig.getState().bashNetworkEnabled
+          ? 'It has network access.'
+          : 'It has no network access.',
+        'git and Git Bash cannot run in the sandbox: for all Git and GitHub work call the git tool',
+        '(it asks before anything changes or reaches a remote); never use an MCP shell for git.',
+        'If a GitHub URL names no repository, ask which one before cloning.'
+      )
+    }
+    return parts.join(' ')
+  }
+
   buildAgentToolsSystemInstruction(): string {
     if (!useAgentToolsConfig.getState().agentToolsEnabled) return ''
+    if (this.smallContext) return this.buildCompactAgentToolsInstruction()
     const parts = [
       '# Workspace',
       'read, ls, find, grep, write and edit operate on an isolated agent',
@@ -4091,7 +4208,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         'be refused. Use absolute paths for them.'
       )
     }
-    const skills = skillCatalogBlock()
+    const skills = skillCatalogBlock(undefined, undefined, this.smallContext)
     if (skills) parts.push('', skills, '')
     // Stating the limits up front is cheaper than letting the model discover
     // them by having a command refused. Only when bash is actually offered.

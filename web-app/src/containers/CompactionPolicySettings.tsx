@@ -13,6 +13,7 @@ import {
 } from '@/lib/compactionPolicy'
 import { Select } from '@/components/ui/select'
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
+import type { SmallContextMode } from '@/lib/smallContext'
 
 /**
  * The shared compaction policy (AH-076), edited at user scope. What is shown is
@@ -25,6 +26,8 @@ export function CompactionPolicySettings() {
   const [error, setError] = useState<string | null>(null)
   const leanSmallWindows = useLeanToolsConfig((s) => s.leanSmallWindows)
   const setLeanSmallWindows = useLeanToolsConfig((s) => s.setLeanSmallWindows)
+  const smallContextMode = useLeanToolsConfig((s) => s.smallContextMode)
+  const setSmallContextMode = useLeanToolsConfig((s) => s.setSmallContextMode)
 
   useEffect(() => {
     getCompactionPolicy()
@@ -121,6 +124,23 @@ export function CompactionPolicySettings() {
           />
         </>
       )}
+      <CardItem
+        title={t('settings:compaction.smallContext')}
+        description={t('settings:compaction.smallContextDescription')}
+        actions={
+          <Select
+            aria-label={t('settings:compaction.smallContext')}
+            data-testid="small-context-mode"
+            className="min-w-[140px]"
+            value={smallContextMode}
+            onChange={(e) => setSmallContextMode(e.target.value as SmallContextMode)}
+          >
+            <option value="auto">{t('settings:compaction.smallContextAuto')}</option>
+            <option value="always">{t('settings:compaction.smallContextAlways')}</option>
+            <option value="never">{t('settings:compaction.smallContextNever')}</option>
+          </Select>
+        }
+      />
       <CardItem
         title={t('settings:compaction.leanTools')}
         description={t('settings:compaction.leanToolsDescription')}

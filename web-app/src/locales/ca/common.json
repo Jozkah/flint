@@ -2638,6 +2638,7 @@
       "vision": "Visió",
       "audio": "Àudio",
       "fixedPrompt": "S'envia amb cada sol·licitud: {{count}} tokens (indicació del sistema i esquemes d'eines).",
+      "smallContext": "Mode de context petit: activat, estalvia ~{{count}} tokens",
       "tokenUsage": "Ús de tokens",
       "tokenUsageSr": "Ús de tokens {{value}}"
     }
