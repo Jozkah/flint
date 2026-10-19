@@ -211,7 +211,11 @@ impl Policy {
     /// [`scaled_reserve`]. The same policy has to mean the same proportion on
     /// every surface, so every one of them calls this (or the function).
     pub fn effective_reserve(&self, context_window: u64) -> u64 {
-        scaled_reserve(self.reserve_tokens, context_window)
+        reserve_buffer(
+            self.reserve_tokens,
+            context_window,
+            self.origins.reserve_tokens != Origin::Default,
+        )
     }
 
     /// Whether compaction should run proactively at this usage.
@@ -233,6 +237,18 @@ pub const MIN_RESERVE_TOKENS: u64 = 2_048;
 pub fn scaled_reserve(reserve_tokens: u64, context_window: u64) -> u64 {
     let scaled = (context_window / 10).max(MIN_RESERVE_TOKENS);
     reserve_tokens.min(scaled).min(context_window / 4)
+}
+
+/// The buffer for a reserve whose origin is known. Only the built-in default
+/// is scaled down for a small window; a value the user or the project set is
+/// theirs and is kept, still never more than a quarter of the window so the
+/// reply and the next turn fit.
+pub fn reserve_buffer(reserve_tokens: u64, context_window: u64, pinned: bool) -> u64 {
+    if pinned {
+        reserve_tokens.min(context_window / 4)
+    } else {
+        scaled_reserve(reserve_tokens, context_window)
+    }
 }
 
 /// Write the user's layer atomically, validated first.
@@ -339,6 +355,24 @@ mod tests {
             let r = p.effective_reserve(w);
             assert!(r <= w / 4 && w - r >= w * 3 / 4);
         }
+    }
+
+    #[test]
+    fn a_reserve_the_user_set_is_not_scaled_down() {
+        let data = temp("pinned_reserve");
+        save_user(&data, &Layer { reserve_tokens: Some(8_000), ..Default::default() }).unwrap();
+        let p = Policy::resolve(Some(&data), None, None).unwrap();
+        assert_eq!(p.origins.reserve_tokens, Origin::User);
+        // 128K: the default would scale to 12.8K capped at 16K; theirs stays 8K.
+        assert_eq!(p.effective_reserve(128_000), 8_000);
+        // Still never more than a quarter of the window.
+        assert_eq!(p.effective_reserve(16_384), 4_096);
+        // The legacy project key is a project value, so it wins too.
+        let legacy = Policy::resolve(None, None, Some(6_000)).unwrap();
+        assert_eq!(legacy.effective_reserve(50_000), 6_000);
+        // The default still scales.
+        assert_eq!(Policy::default().effective_reserve(50_000), 5_000);
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     #[test]

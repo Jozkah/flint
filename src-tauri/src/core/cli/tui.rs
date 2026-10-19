@@ -1783,6 +1783,9 @@ struct App {
     configured_context_window: Option<u64>,
     /// Tokens to reserve for the model's response (compaction triggers at limit - reserve).
     reserve_tokens: u64,
+    /// The reserve was set by the user or the project, so it is not scaled down
+    /// for a small window (only the built-in default is).
+    reserve_pinned: bool,
     /// Whether to compact proactively, and the tail an automatic compaction
     /// keeps, from the shared policy (AH-076).
     compaction_auto: bool,
@@ -2482,6 +2485,8 @@ impl App {
                 _ => None,
             },
             reserve_tokens: limits.reserve_tokens,
+            reserve_pinned: limits.compaction.origins.reserve_tokens
+                != tauri_plugin_agent_tools::compaction_policy::Origin::Default,
             compaction_auto: limits.compaction.auto,
             compaction_keep_recent: limits.compaction.keep_recent,
             max_tokens: limits.max_tokens,
@@ -4881,6 +4886,7 @@ impl App {
             run_mode: self.run_mode,
             context_window: self.context_window,
             reserve_tokens: self.reserve_tokens,
+            reserve_pinned: self.reserve_pinned,
             history_estimate: if self.history.is_empty() {
                 0
             } else {
@@ -4900,6 +4906,7 @@ struct ContextSnapshot {
     run_mode: crate::core::agent::plan::RunMode,
     context_window: u64,
     reserve_tokens: u64,
+    reserve_pinned: bool,
     /// The Messages segment's estimate over the live history, precomputed so
     /// the off-loop task need not own a clone of the conversation.
     history_estimate: u64,
@@ -5015,9 +5022,10 @@ async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
     // Free space is what is left after the estimated content and the
     // reserved buffer, so the seven segments partition the window exactly
     // and the percentages sum to 100.
-    let buffer = tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+    let buffer = tauri_plugin_agent_tools::compaction_policy::reserve_buffer(
         snapshot.reserve_tokens,
         snapshot.context_window,
+        snapshot.reserve_pinned,
     );
     let used: u64 = segments.iter().map(|s| s.tokens).sum();
     let free = snapshot.context_window.saturating_sub(used + buffer);
@@ -5091,9 +5099,10 @@ fn report_from_the_last_request(snapshot: &ContextSnapshot) -> Option<ContextRep
     // goes true the moment a compaction rewrites it).
     let reported = !snapshot.tokens_estimated && snapshot.turn_prompt_tokens > 0;
     let used: u64 = segments.iter().map(|s| s.tokens).sum();
-    let buffer = tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+    let buffer = tauri_plugin_agent_tools::compaction_policy::reserve_buffer(
         snapshot.reserve_tokens,
         snapshot.context_window,
+        snapshot.reserve_pinned,
     );
     let free = snapshot.context_window.saturating_sub(used + buffer);
     segments.push(ContextSegment {
@@ -5937,9 +5946,10 @@ impl App {
         // surface; an overflow still compacts reactively.
         // The reserve never exceeds a quarter of the window, the same rule
         // `compaction_policy::Policy::effective_reserve` applies everywhere.
-        let reserve = tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+        let reserve = tauri_plugin_agent_tools::compaction_policy::reserve_buffer(
             self.reserve_tokens,
             self.context_window,
+            self.reserve_pinned,
         );
         let limit = self.context_window.saturating_sub(reserve);
         self.compaction_auto && self.tokens > limit && self.tokens > 0 && self.history.len() > 4
@@ -5957,9 +5967,10 @@ impl App {
         let Some(found) = pressure(
             self.tokens,
             self.context_window,
-            tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+            tauri_plugin_agent_tools::compaction_policy::reserve_buffer(
                 self.reserve_tokens,
                 self.context_window,
+                self.reserve_pinned,
             ),
             !self.tokens_estimated,
         ) else {

@@ -74,6 +74,13 @@ pub fn estimate_tokens(messages: &[Value]) -> u64 {
 /// crosses the threshold does not itself overflow.
 pub const DEFAULT_HEADROOM_TOKENS: u64 = 13_000;
 
+/// The headroom for a window of this size: [`DEFAULT_HEADROOM_TOKENS`] in a big
+/// window, an eighth of the window in a small one. A fixed 13K left an 8K
+/// window a trigger of 1 token (every turn compacted) and a 32K one under 20K.
+pub fn scaled_headroom(context_window: u64) -> u64 {
+    DEFAULT_HEADROOM_TOKENS.min(context_window / 8)
+}
+
 /// An explicit override for where compaction triggers, from configuration.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CompactionOverride {
@@ -108,7 +115,7 @@ impl WindowConfig {
         Self {
             context_window: context_window.unwrap_or(128_000),
             reserved_output_tokens: reserved_output.unwrap_or(16_384),
-            headroom: DEFAULT_HEADROOM_TOKENS,
+            headroom: scaled_headroom(context_window.unwrap_or(128_000)),
             override_trigger: None,
             disabled: false,
         }
@@ -696,6 +703,24 @@ mod tests {
         let t = thresholds(&cfg).unwrap().unwrap();
         assert_eq!(t.effective_window, 112_000);
         assert_eq!(t.compact_at, 112_000 - DEFAULT_HEADROOM_TOKENS);
+    }
+
+    #[test]
+    fn headroom_scales_with_the_window() {
+        for (window, reserve, compact_at) in [
+            (8_192u64, 2_048u64, 5_120u64),
+            (16_384, 2_048, 12_288),
+            (32_768, 3_276, 25_396),
+            (50_000, 5_000, 38_750),
+            (128_000, 12_800, 102_200),
+        ] {
+            let t = thresholds(&WindowConfig::from_config(Some(window), Some(reserve)))
+                .unwrap()
+                .unwrap();
+            assert_eq!(t.compact_at, compact_at, "window {window}");
+            assert!(t.compact_at > t.effective_window / 2, "window {window} compacts too early");
+        }
+        assert_eq!(scaled_headroom(1_000_000), DEFAULT_HEADROOM_TOKENS);
     }
 
     #[test]

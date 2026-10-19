@@ -6842,12 +6842,7 @@ async fn orchestrate_inner(
         // The buffer scales with the window (a tenth, 2K at least, the policy's
         // reserve at most): a learned or small window keeps its room for the
         // conversation, a big one keeps the full 16K.
-        let reserve = reserve.map(|r| {
-            tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
-                r,
-                ctx_window.unwrap_or(128_000),
-            )
-        });
+        let reserve = reserve.map(|_| compaction.effective_reserve(ctx_window.unwrap_or(128_000)));
         let window_cfg = cpol::WindowConfig::from_config(ctx_window, reserve);
         let resolved = match cpol::thresholds(&window_cfg) {
             Ok(resolved) => resolved,
