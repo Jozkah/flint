@@ -96,7 +96,9 @@ const isBareName = (path: string): boolean => !path.includes('/') && !path.inclu
  */
 export const isMissingFileError = (err: unknown): boolean =>
   err instanceof MissingAttachmentError ||
-  /os error (2|3)|no such file|cannot find the (file|path)|not found|is no longer available/i.test(
+  // Only wording that names a file or path. A bare "not found" also matches an
+  // embedding model, thread or provider that is missing, which is not a gone file.
+  /os error (2|3)\b|no such file|cannot find the (file|path)|file not found/i.test(
     formatAttachmentError(err)
   )
 
@@ -303,14 +305,21 @@ export const processAttachmentsForSend = async (
       // carries its content and has no file on disk to parse or index.
       // The content wins over the flags: a copy that lost `processed` on its
       // way here must not send a name that is not a file to the indexer.
+      // A document already indexed for retrieval stays embedded even when it
+      // also carries text: the text must not turn it into an inline one.
+      const alreadyEmbedded =
+        !!doc.processed && !!doc.id && doc.injectionMode === 'embeddings'
       if (
+        alreadyEmbedded ||
         doc.inlineContent ||
         (doc.processed && (doc.id || doc.injectionMode === 'inline'))
       ) {
         hasEmbeddedDocuments =
-          hasEmbeddedDocuments || (!doc.inlineContent && doc.injectionMode !== 'inline')
+          hasEmbeddedDocuments ||
+          alreadyEmbedded ||
+          (!doc.inlineContent && doc.injectionMode !== 'inline')
         processedAttachments.push(
-          doc.inlineContent && !doc.injectionMode
+          !alreadyEmbedded && doc.inlineContent && !doc.injectionMode
             ? { ...doc, injectionMode: 'inline' }
             : doc
         )

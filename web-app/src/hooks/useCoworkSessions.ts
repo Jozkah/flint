@@ -447,7 +447,7 @@ function withStoredTimes(
   return next.map((m) => {
     if (timeOf(m) !== undefined) return m
     previous ??= new Map(before.map((b) => [b.id, timeOf(b)]))
-    const createdAt = previous.get(m.id) ?? new Date(at)
+    const createdAt = previous.get(m.id) ?? at
     return {
       ...m,
       metadata: { ...((m.metadata as object | undefined) ?? {}), createdAt },
@@ -471,6 +471,7 @@ function sanitizeSender(from: QueuedMessageSender): QueuedMessageSender {
     messageId: from.messageId,
     replyTo: from.replyTo ?? null,
     depth: from.depth,
+    ...(from.hold ? { hold: from.hold } : {}),
   }
 }
 
@@ -1029,7 +1030,14 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // live history the model reads stays raw.
       // Written off the click path: see deferredPersistStorage.
       storage: deferredPersistStorage(
-        createJSONStorage(() => redactingSessionStorage(backendStorage))!
+        createJSONStorage(() => redactingSessionStorage(backendStorage))!,
+        1500,
+        {
+          // Quiet app: write within a moment so a close loses nothing; a
+          // streaming run keeps the long delay so it costs one write.
+          idleDelay: 250,
+          busy: () => Object.keys(useCoworkRun.getState().runs ?? {}).length > 0,
+        }
       ),
       skipHydration: true,
       // Images a tool returned (a `read` of a png) are in the live history for

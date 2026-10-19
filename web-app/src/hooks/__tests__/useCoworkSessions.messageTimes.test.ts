@@ -28,7 +28,8 @@ describe('message times survive a restart', () => {
     const sid = useCoworkSessions.getState().createSession()
     useCoworkSessions.getState().setMessages(sid, [msg('a')])
     const first = timeOf(sid, 'a')
-    expect(new Date(first as string).toISOString()).toBe('2026-10-18T19:48:00.000Z')
+    expect(typeof first).toBe('number')
+    expect(new Date(first as number).toISOString()).toBe('2026-10-18T19:48:00.000Z')
 
     vi.setSystemTime(new Date('2026-10-18T20:36:00Z'))
     // The same message handed back without its metadata (a reload, a stream
@@ -53,7 +54,8 @@ describe('message times survive a restart', () => {
     const sid = useCoworkSessions.getState().createSession()
     useCoworkSessions.getState().commitTurns(sid, [], [msg('a')], [])
     const first = timeOf(sid, 'a')
-    expect(new Date(first as string).toISOString()).toBe('2026-10-18T19:48:00.000Z')
+    expect(typeof first).toBe('number')
+    expect(new Date(first as number).toISOString()).toBe('2026-10-18T19:48:00.000Z')
 
     vi.setSystemTime(new Date('2026-10-18T20:36:00Z'))
     useCoworkSessions.getState().commitTurns(sid, [], [msg('a'), msg('b')], [])

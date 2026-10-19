@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   BulkKept,
+  BulkSkipped,
   countKinds,
   emptySnapshot,
   planBulk,
@@ -142,6 +143,15 @@ describe('runBulk', () => {
     expect(report.results.map((r) => r.ok)).toEqual([true, false, false])
     expect(report.results[1].error).toBe('disk full')
     expect(report.results[2]).toMatchObject({ kept: true, error: 'unmerged work' })
+  })
+
+  it('marks an item an action left alone because it started running', async () => {
+    const act = vi.fn(async (i: BulkItem) => {
+      if (i.id === 't2') throw new BulkSkipped('running')
+    })
+    const report = await runBulk(plan(), act, { yieldFn: noYield })
+    expect(report.results[1]).toMatchObject({ ok: false, skipped: true, error: 'running' })
+    expect(report.results[2].ok).toBe(true)
   })
 
   it('stops before the next item when aborted and lists what was left', async () => {

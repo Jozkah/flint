@@ -1562,6 +1562,7 @@
     "projectsSafe": "프로젝트 폴더는 절대 삭제되지 않습니다.",
     "skippedPinned": "건너뜀(고정됨): {{n}}개.",
     "skippedActive": "건너뜀(실행 중): {{n}}개.",
+    "skippedRunning": "건너뜀(확인 후 실행이 시작됨).",
     "skippedNoArchive": "보관하지 않음(캠페인에는 보관함이 없음): {{n}}개.",
     "typePrompt": "확인하려면 {{word}}을(를) 입력하세요.",
     "typeLabel": "확인 단어",

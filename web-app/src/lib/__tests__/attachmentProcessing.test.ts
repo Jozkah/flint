@@ -361,11 +361,59 @@ describe('ingestion routing helpers', () => {
   })
 })
 
+describe("an already-embedded document", () => {
+  it("stays embedded when it also carries text", async () => {
+    const result = await processAttachmentsForSend({
+      attachments: [
+        {
+          name: "a.pdf",
+          type: "document",
+          path: "C:/a.pdf",
+          id: "file-1",
+          processed: true,
+          injectionMode: "embeddings",
+          inlineContent: "preview text",
+        } as Attachment,
+      ],
+      threadId: "t",
+      serviceHub: createMockServiceHub() as any,
+      parsePreference: "auto",
+    } as any)
+    expect(result.processedAttachments[0].injectionMode).toBe("embeddings")
+    expect(result.hasEmbeddedDocuments).toBe(true)
+  })
+
+  it("still treats text read in the composer as inline", async () => {
+    const result = await processAttachmentsForSend({
+      attachments: [
+        { name: "p.txt", type: "document", inlineContent: "pasted" } as Attachment,
+      ],
+      threadId: "t",
+      serviceHub: createMockServiceHub() as any,
+      parsePreference: "auto",
+    } as any)
+    expect(result.processedAttachments[0].injectionMode).toBe("inline")
+    expect(result.hasEmbeddedDocuments).toBe(false)
+  })
+})
+
 describe("attachment failure wording", () => {
   it("recognises a backend file-not-found object", () => {
     const err = { ioError: "The system cannot find the file specified. (os error 2)" }
     expect(isMissingFileError(err)).toBe(true)
     expect(isMissingFileError(new Error("boom"))).toBe(false)
+  })
+
+  it("recognises a missing attachment and common file-gone wording", () => {
+    expect(isMissingFileError(new MissingAttachmentError("a.pdf"))).toBe(true)
+    expect(isMissingFileError(new Error("No such file or directory (os error 2)"))).toBe(true)
+    expect(isMissingFileError(new Error("The system cannot find the path specified."))).toBe(true)
+  })
+
+  it("does not call a missing model, thread or provider a missing file", () => {
+    expect(isMissingFileError(new Error("embedding model not found"))).toBe(false)
+    expect(isMissingFileError(new Error("thread not found"))).toBe(false)
+    expect(isMissingFileError(new Error("provider openai not found"))).toBe(false)
   })
 
   it("never describes a failure as raw JSON", () => {

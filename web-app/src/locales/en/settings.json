@@ -1390,6 +1390,7 @@
     "projectsSafe": "Your project folders are never deleted.",
     "skippedPinned": "Skipped, pinned: {{n}}.",
     "skippedActive": "Skipped, running: {{n}}.",
+    "skippedRunning": "skipped, it started running after you confirmed.",
     "skippedNoArchive": "Not archived, campaigns have no archive: {{n}}.",
     "typePrompt": "Type {{word}} to confirm.",
     "typeLabel": "Confirmation word",

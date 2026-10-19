@@ -187,6 +187,7 @@ export function BulkConversationsCard({ anchor }: { anchor?: string }) {
           plan={dialogPlan}
           act={actOnItem}
           undo={undoBulkArchive}
+          canStart={action === 'archive' ? bulkArchiveAvailable : undefined}
           onFinished={() => void resyncAfterBulk(kinds)}
           onOpenArchive={
             isPlatformTauri()

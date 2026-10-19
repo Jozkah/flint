@@ -1566,6 +1566,7 @@
     "projectsSafe": "Tus carpetas de proyecto nunca se eliminan.",
     "skippedPinned": "Omitidos, fijados: {{n}}.",
     "skippedActive": "Omitidos, en curso: {{n}}.",
+    "skippedRunning": "omitido, empezó a ejecutarse tras confirmar.",
     "skippedNoArchive": "No archivadas, las campañas no tienen archivo: {{n}}.",
     "typePrompt": "Escribe {{word}} para confirmar.",
     "typeLabel": "Palabra de confirmación",
