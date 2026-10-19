@@ -8,7 +8,7 @@ ManifestDPIAwareness PerMonitorV2
 !include LogicLib.nsh
 
 !define PRODUCTNAME "Flint"
-!define VERSION "1.0.0"
+!define VERSION "1.0.1"
 !define ALLOWDOWNGRADES "true"
 !ifndef FLINT_SMOKE_ROOT
   !define FLINT_SMOKE_ROOT ".."

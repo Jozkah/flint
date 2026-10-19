@@ -81,8 +81,8 @@ const LOG_BASE: [LogEntry['level'], string, string][] = [
   ['error', 'mcp', 'you-search: 401 Unauthorized, sign-in required'],
   ['info', 'llamacpp', 'Prompt cache hit: reused 28,900 of 31,204 tokens'],
   ['debug', 'agent', 'Compacted context: 31.2k → 6.4k tokens (summary 512)'],
-  ['info', 'app', `Flint 1.0.0 started, data folder ${PREVIEW_DATA_FOLDER}`],
-  ['info', 'updater', 'No update available (1.0.0 is the latest)'],
+  ['info', 'app', `Flint 1.0.1 started, data folder ${PREVIEW_DATA_FOLDER}`],
+  ['info', 'updater', 'No update available (1.0.1 is the latest)'],
 ]
 
 const TARGET: Record<string, string> = {
