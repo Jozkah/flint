@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::atomic::AtomicBool;
 
-const COMMIT: &str = "797de63b2fa7396dcc8caca76834c699ac84e1c3";
+const COMMIT: &str = "7adf160c411e7a55d9ee75b5d41deb497969dac4";
 
 fn signing_key(seed: u8) -> ed25519_dalek::SigningKey {
     ed25519_dalek::SigningKey::from_bytes(&[seed; 32])
