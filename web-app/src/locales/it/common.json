@@ -2736,6 +2736,7 @@
   "messageSaveFailed": "Impossibile salvare il messaggio. Potrebbe andare perso dopo un riavvio.",
   "threadSaveFailed": "Impossibile salvare la modifica a questa conversazione. È stata annullata.",
   "attachmentsProcessFailed": "Impossibile preparare gli allegati, quindi il messaggio non è stato inviato",
+  "attachmentMissingFile": "Un file allegato non è più disponibile. Rimuovilo e allegalo di nuovo; il messaggio è ancora nella casella.",
   "settingsRecovered": {
     "title": "Impossibile leggere il file delle impostazioni",
     "withBackup": "{{file}} era danneggiato, quindi Flint è partito con le impostazioni predefinite. Il file danneggiato è stato conservato come {{backup}}.",

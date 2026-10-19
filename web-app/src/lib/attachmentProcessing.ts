@@ -79,6 +79,33 @@ const formatAttachmentError = (err: unknown): string => {
   return String(err)
 }
 
+/** The attachment has no file on disk and no text of its own to send. */
+export class MissingAttachmentError extends Error {
+  constructor(public readonly attachmentName: string) {
+    super(`${attachmentName} is no longer available`)
+    this.name = 'MissingAttachmentError'
+  }
+}
+
+/** A bare file name (no folder part), as a composer-read file is named. */
+const isBareName = (path: string): boolean => !path.includes('/') && !path.includes('\\')
+
+/**
+ * Whether an attachment failure came from a file that is gone (the backend's
+ * "not found" / os error 2), so the toast can say so instead of printing JSON.
+ */
+export const isMissingFileError = (err: unknown): boolean =>
+  err instanceof MissingAttachmentError ||
+  /os error (2|3)|no such file|cannot find the (file|path)|not found|is no longer available/i.test(
+    formatAttachmentError(err)
+  )
+
+/** A readable line for a failure: the message, never a raw JSON object. */
+export const describeAttachmentFailure = (err: unknown): string => {
+  const text = formatAttachmentError(err).trim()
+  return text.startsWith('{') || text.startsWith('[') ? 'Unknown error' : text
+}
+
 type ParsePreference = AttachmentProcessingOptions['parsePreference']
 export type IngestionChoice = 'inline' | 'embeddings'
 
@@ -274,9 +301,11 @@ export const processAttachmentsForSend = async (
     try {
       // Text read in the composer (a large paste, a dropped .txt) already
       // carries its content and has no file on disk to parse or index.
+      // The content wins over the flags: a copy that lost `processed` on its
+      // way here must not send a name that is not a file to the indexer.
       if (
-        doc.processed &&
-        (doc.id || doc.injectionMode === 'inline' || doc.inlineContent)
+        doc.inlineContent ||
+        (doc.processed && (doc.id || doc.injectionMode === 'inline'))
       ) {
         hasEmbeddedDocuments =
           hasEmbeddedDocuments || (!doc.inlineContent && doc.injectionMode !== 'inline')
@@ -286,6 +315,12 @@ export const processAttachmentsForSend = async (
             : doc
         )
         continue
+      }
+
+      if (!doc.path || isBareName(doc.path)) {
+        // A name, not a file: only text read in the composer is named this way,
+        // and it carries its content. Without it there is nothing to read.
+        throw new MissingAttachmentError(doc.name)
       }
 
       notifyUpdate(doc.name, 'processing')
@@ -408,7 +443,9 @@ export const processAttachmentsForSend = async (
       console.error(`Failed to ingest ${doc.name}:`, err)
       notifyUpdate(doc.name, 'error')
       const desc = formatAttachmentError(err)
-      toast.error('Failed to index attachments', { description: desc })
+      if (!(err instanceof MissingAttachmentError)) {
+        toast.error('Failed to index attachments', { description: desc })
+      }
       throw err instanceof Error ? err : new Error(desc)
     }
   }

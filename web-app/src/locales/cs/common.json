@@ -2789,6 +2789,7 @@
   "messageSaveFailed": "Zprávu se nepodařilo uložit. Po restartu může být ztracena.",
   "threadSaveFailed": "Změnu tohoto vlákna se nepodařilo uložit. Byla vrácena.",
   "attachmentsProcessFailed": "Přílohy se nepodařilo připravit, zpráva proto nebyla odeslána",
+  "attachmentMissingFile": "Přiložený soubor už není dostupný. Odeberte ho a připojte znovu; zpráva zůstala v poli.",
   "settingsRecovered": {
     "title": "Soubor nastavení se nepodařilo přečíst",
     "withBackup": "Soubor {{file}} byl poškozen, proto Flint spustil s výchozím nastavením. Poškozený soubor byl uložen jako {{backup}}.",

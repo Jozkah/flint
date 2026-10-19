@@ -2734,6 +2734,7 @@
   "messageSaveFailed": "Não foi possível salvar a mensagem. Ela pode ser perdida após reiniciar.",
   "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida.",
   "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada",
+  "attachmentMissingFile": "Um arquivo anexado não está mais disponível. Remova e anexe de novo; sua mensagem continua na caixa.",
   "settingsRecovered": {
     "title": "Não foi possível ler o arquivo de configurações",
     "withBackup": "{{file}} estava danificado, então o Flint iniciou com as configurações padrão. O arquivo danificado foi mantido como {{backup}}.",

@@ -2738,6 +2738,7 @@
   "messageSaveFailed": "No se pudo guardar el mensaje. Puede perderse tras reiniciar.",
   "threadSaveFailed": "No se pudo guardar el cambio en este hilo. Se revirtió.",
   "attachmentsProcessFailed": "No se pudieron preparar los adjuntos, así que el mensaje no se envió",
+  "attachmentMissingFile": "Un archivo adjunto ya no está disponible. Quítalo y adjúntalo de nuevo; tu mensaje sigue en el cuadro.",
   "settingsRecovered": {
     "title": "No se pudo leer el archivo de ajustes",
     "withBackup": "{{file}} estaba dañado, así que Flint se inició con los ajustes predeterminados. El archivo dañado se conservó como {{backup}}.",

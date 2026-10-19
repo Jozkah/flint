@@ -2790,6 +2790,7 @@
   "messageSaveFailed": "Nie udało się zapisać wiadomości. Może zostać utracona po restarcie.",
   "threadSaveFailed": "Nie udało się zapisać zmiany w tym wątku. Została cofnięta.",
   "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana",
+  "attachmentMissingFile": "Załączony plik nie jest już dostępny. Usuń go i załącz ponownie; wiadomość nadal jest w polu.",
   "settingsRecovered": {
     "title": "Nie udało się odczytać pliku ustawień",
     "withBackup": "Plik {{file}} był uszkodzony, więc Flint uruchomił się z ustawieniami domyślnymi. Uszkodzony plik zachowano jako {{backup}}.",

@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   processAttachmentsForSend,
+  MissingAttachmentError,
+  isMissingFileError,
+  describeAttachmentFailure,
   type AttachmentProcessingResult,
 } from '../attachmentProcessing'
 import type { Attachment } from '@/types/attachment'
@@ -115,6 +118,41 @@ describe('processAttachmentsForSend', () => {
       expect(result.processedAttachments[0].injectionMode).toBe('inline')
       expect(result.processedAttachments[0].inlineContent).toBe('a very large paste')
       expect(result.hasEmbeddedDocuments).toBe(false)
+      expect(hub.uploads().ingestFileAttachment).not.toHaveBeenCalled()
+    })
+
+    it('sends a paste inline even when the processed flag was lost', async () => {
+      const hub = createMockServiceHub()
+      const doc = docAttachment({
+        name: 'pasted-text-1.txt',
+        path: 'pasted-text-1.txt',
+        inlineContent: 'x'.repeat(22_000),
+      })
+
+      const result = await processAttachmentsForSend({
+        attachments: [doc],
+        threadId,
+        serviceHub: hub as any,
+        parsePreference: 'auto',
+      })
+
+      expect(result.processedAttachments[0].injectionMode).toBe('inline')
+      expect(result.processedAttachments[0].inlineContent).toHaveLength(22_000)
+      expect(hub.uploads().ingestFileAttachment).not.toHaveBeenCalled()
+    })
+
+    it('never sends a bare name to the indexer: it fails with a plain error', async () => {
+      const hub = createMockServiceHub()
+      const doc = docAttachment({ name: 'pasted-text-1.txt', path: 'pasted-text-1.txt' })
+
+      const run = processAttachmentsForSend({
+        attachments: [doc],
+        threadId,
+        serviceHub: hub as any,
+        parsePreference: 'auto',
+      })
+
+      await expect(run).rejects.toBeInstanceOf(MissingAttachmentError)
       expect(hub.uploads().ingestFileAttachment).not.toHaveBeenCalled()
     })
 
@@ -320,5 +358,18 @@ describe('ingestion routing helpers', () => {
       estimateTokens: async () => 10,
     })
     expect(result.processedAttachments[0].injectionMode).toBe('inline')
+  })
+})
+
+describe("attachment failure wording", () => {
+  it("recognises a backend file-not-found object", () => {
+    const err = { ioError: "The system cannot find the file specified. (os error 2)" }
+    expect(isMissingFileError(err)).toBe(true)
+    expect(isMissingFileError(new Error("boom"))).toBe(false)
+  })
+
+  it("never describes a failure as raw JSON", () => {
+    expect(describeAttachmentFailure({ weird: 1 })).toBe("Unknown error")
+    expect(describeAttachmentFailure(new Error("disk full"))).toBe("disk full")
   })
 })

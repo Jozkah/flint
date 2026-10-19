@@ -127,6 +127,8 @@ import {
 } from '@/hooks/useChatAttachments'
 import {
   applyIngestionChoices,
+  describeAttachmentFailure,
+  isMissingFileError,
   estimateAttachmentTokens,
   needsIngestionChoice,
   processAttachmentsForSend,
@@ -2170,7 +2172,9 @@ export function ThreadConversation({
           setAttachmentsForThread(attachmentsKey, () => allAttachments)
           usePrompt.getState().setPrompt(text)
           toast.error(t('common:attachmentsProcessFailed'), {
-            description: error instanceof Error ? error.message : String(error),
+            description: isMissingFileError(error)
+              ? t('common:attachmentMissingFile')
+              : describeAttachmentFailure(error),
           })
           return
         } finally {
