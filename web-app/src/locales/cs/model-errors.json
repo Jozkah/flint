@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "Požadavek překračuje dostupnou velikost kontextu.",
   "refusal": "Model odmítl odpovědět. Zkuste požadavek přeformulovat.",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "Tento soubor modelu není kompatibilní s enginem Flint. Vyberte na stránce modelu jinou kvantizaci GGUF. Vlastní formáty mohou vyžadovat engine autora modelu.",
     "unknown": "Engine modelu nahlásil neočekávanou chybu.",
     "MODEL_LOAD_FAILED": "Model se nepodařilo načíst.",
     "MODEL_ARCH_NOT_SUPPORTED": "Architektura tohoto modelu není současným enginem podporována. Aktualizace enginu v Nastavení může podporu přidat.",

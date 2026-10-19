@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "Permintaan melebihi ukuran konteks yang tersedia.",
   "refusal": "Model menolak menjawab ini. Coba ubah kalimat permintaannya.",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "File model ini tidak kompatibel dengan mesin Flint. Pilih kuantisasi GGUF lain di halaman model. Format khusus mungkin memerlukan mesin dari pembuat model.",
     "unknown": "Engine model melaporkan error tak terduga.",
     "MODEL_LOAD_FAILED": "Model tidak dapat dimuat.",
     "MODEL_ARCH_NOT_SUPPORTED": "Arsitektur model ini tidak didukung oleh engine saat ini. Memperbarui engine dari Pengaturan mungkin menambah dukungan.",

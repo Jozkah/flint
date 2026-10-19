@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "Żądanie przekracza dostępny rozmiar kontekstu.",
   "refusal": "Model odmówił odpowiedzi. Spróbuj przeformułować prośbę.",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "Ten plik modelu nie jest zgodny z silnikiem Flint. Wybierz inną kwantyzację GGUF na stronie modelu. Niestandardowe formaty mogą wymagać silnika autora modelu.",
     "unknown": "Silnik modelu zgłosił nieoczekiwany błąd.",
     "MODEL_LOAD_FAILED": "Nie udało się wczytać modelu.",
     "MODEL_ARCH_NOT_SUPPORTED": "Architektura tego modelu nie jest obsługiwana przez bieżący silnik. Aktualizacja silnika w Ustawieniach może dodać obsługę.",

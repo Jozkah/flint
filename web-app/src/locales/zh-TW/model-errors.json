@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "請求超出可用的上下文大小。",
   "refusal": "模型拒絕回答此要求。請試著換個方式表達。",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "此模型檔案與 Flint 引擎不相容。請在模型頁面選擇其他 GGUF 量化版本。自訂格式可能需要模型作者提供的引擎。",
     "unknown": "模型引擎回報了非預期的錯誤。",
     "MODEL_LOAD_FAILED": "無法載入模型。",
     "MODEL_ARCH_NOT_SUPPORTED": "目前的引擎不支援此模型的架構。從「設定」更新引擎可能會新增支援。",

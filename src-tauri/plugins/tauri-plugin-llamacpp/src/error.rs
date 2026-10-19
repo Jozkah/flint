@@ -6,6 +6,7 @@ pub enum ErrorCode {
     // --- Model Loading Errors ---
     ModelLoadFailed,
     ModelArchNotSupported,
+    ModelFormatNotSupported,
     ModelLoadTimedOut,
     /// The user cancelled the load; not a failure to report.
     ModelLoadCancelled,
@@ -106,6 +107,18 @@ impl LlamacppError {
             return Some(Self::new(
                 ErrorCode::ModelQuantNotSupported,
                 "The model uses a quantization type the GPU backend cannot run.".into(),
+                Some(output.into()),
+            ));
+        }
+
+        // GGUF reader rejects custom tensor encodings before any GPU kernel
+        // runs. Switching off GPU offload cannot make this file load.
+        if lower.contains("gguf_init_from_reader:")
+            && lower.contains("invalid ggml type")
+        {
+            return Some(Self::new(
+                ErrorCode::ModelFormatNotSupported,
+                "The model file uses a tensor format this engine does not support.".into(),
                 Some(output.into()),
             ));
         }
@@ -365,6 +378,7 @@ mod tests {
         let cases = [
             (ErrorCode::ModelLoadFailed, "MODEL_LOAD_FAILED"),
             (ErrorCode::ModelArchNotSupported, "MODEL_ARCH_NOT_SUPPORTED"),
+            (ErrorCode::ModelFormatNotSupported, "MODEL_FORMAT_NOT_SUPPORTED"),
             (ErrorCode::ModelLoadTimedOut, "MODEL_LOAD_TIMED_OUT"),
             (ErrorCode::ModelLoadCancelled, "MODEL_LOAD_CANCELLED"),
             (ErrorCode::MissingSharedLibrary, "MISSING_SHARED_LIBRARY"),
@@ -584,6 +598,14 @@ mod tests {
             classify("something else entirely went wrong").code,
             ErrorCode::ModelLoadFailed
         ));
+    }
+
+    #[test]
+    fn classifies_unsupported_gguf_tensor_type_as_model_incompatibility() {
+        let raw = "gguf_init_from_reader: tensor 'output.weight' has invalid ggml type 142. should be in [0, 43); gguf_init_from_reader: failed to read tensor info";
+        let err = LlamacppError::from_load_failure(raw);
+        assert!(matches!(err.code, ErrorCode::ModelFormatNotSupported), "{err:?}");
+        assert_eq!(err.details.as_deref(), Some(raw));
     }
 
     #[test]

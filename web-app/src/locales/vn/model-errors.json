@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "Yêu cầu vượt quá kích thước ngữ cảnh khả dụng.",
   "refusal": "Mô hình đã từ chối trả lời. Hãy thử diễn đạt lại yêu cầu.",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "Tệp mô hình này không tương thích với bộ máy Flint. Hãy chọn một bản lượng tử hóa GGUF khác trên trang mô hình. Định dạng tùy chỉnh có thể cần bộ máy của tác giả mô hình.",
     "unknown": "Engine mô hình báo một lỗi không mong đợi.",
     "MODEL_LOAD_FAILED": "Không thể tải mô hình.",
     "MODEL_ARCH_NOT_SUPPORTED": "Kiến trúc của mô hình này không được engine hiện tại hỗ trợ. Cập nhật engine từ Cài đặt có thể bổ sung hỗ trợ.",

@@ -74,6 +74,7 @@ const DYNAMIC_KEYS: Record<string, string[]> = {
     'engine.unknown',
     'engine.MODEL_LOAD_FAILED',
     'engine.MODEL_ARCH_NOT_SUPPORTED',
+    'engine.MODEL_FORMAT_NOT_SUPPORTED',
     'engine.MODEL_LOAD_TIMED_OUT',
     'engine.MISSING_SHARED_LIBRARY',
     'engine.GPU_DRIVER_TOO_OLD',

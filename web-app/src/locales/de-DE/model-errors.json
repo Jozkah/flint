@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "Die Anfrage überschreitet die verfügbare Kontextgröße.",
   "refusal": "Das Modell hat die Antwort verweigert. Formuliere die Anfrage anders.",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "Diese Modelldatei ist nicht mit Flints Engine kompatibel. Wählen Sie auf der Modellseite eine andere GGUF-Quantisierung. Benutzerdefinierte Formate benötigen möglicherweise die Engine des Modellautors.",
     "unknown": "Die Modell-Engine hat einen unerwarteten Fehler gemeldet.",
     "MODEL_LOAD_FAILED": "Das Modell konnte nicht geladen werden.",
     "MODEL_ARCH_NOT_SUPPORTED": "Die Architektur dieses Modells wird von der aktuellen Engine nicht unterstützt. Ein Update der Engine in den Einstellungen kann Unterstützung hinzufügen.",

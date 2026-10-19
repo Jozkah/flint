@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "İstek, kullanılabilir bağlam boyutunu aşıyor.",
   "refusal": "Model bunu yanıtlamayı reddetti. İsteği farklı ifade etmeyi deneyin.",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "Bu model dosyası Flint motoruyla uyumlu değil. Model sayfasından farklı bir GGUF nicelemesi seçin. Özel biçimler model yazarının motorunu gerektirebilir.",
     "unknown": "Model motoru beklenmeyen bir hata bildirdi.",
     "MODEL_LOAD_FAILED": "Model yüklenemedi.",
     "MODEL_ARCH_NOT_SUPPORTED": "Bu modelin mimarisi mevcut motor tarafından desteklenmiyor. Motoru Ayarlar'dan güncellemek destek sağlayabilir.",

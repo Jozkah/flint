@@ -9,6 +9,7 @@
   "contextOverflowGeneric": "La sol·licitud supera la mida de context disponible.",
   "refusal": "El model s'ha negat a respondre. Prova de reformular la petició.",
   "engine": {
+    "MODEL_FORMAT_NOT_SUPPORTED": "Aquest fitxer de model no és compatible amb el motor de Flint. Trieu una altra quantització GGUF a la pàgina del model. Els formats personalitzats poden requerir el motor de l'autor.",
     "unknown": "El motor del model ha informat d'un error inesperat.",
     "MODEL_LOAD_FAILED": "No s'ha pogut carregar el model.",
     "MODEL_ARCH_NOT_SUPPORTED": "El motor actual no admet l'arquitectura d'aquest model. Actualitzar el motor des de la Configuració pot afegir-ne el suport.",
