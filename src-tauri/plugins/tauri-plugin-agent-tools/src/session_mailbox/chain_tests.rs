@@ -214,7 +214,7 @@ fn a_chain_that_comes_back_round_twice_is_held_not_woken() {
 }
 
 #[test]
-fn one_chain_wakes_a_session_at_most_three_times_and_relays_six_a_minute() {
+fn one_chain_wakes_a_session_at_most_three_times_and_relays_twelve_a_minute() {
     let fx = Fx::new("wakecap");
     let mb = Mailbox::open(&fx.data).with_clock(Arc::new(AtomicI64::new(1_000_000)));
     for (id, name) in [("hub", "Hub"), ("t", "Target")] {
@@ -237,12 +237,12 @@ fn one_chain_wakes_a_session_at_most_three_times_and_relays_six_a_minute() {
     assert_eq!(holds[3].as_deref(), Some(hold::CHAIN_WAKES));
     let _ = seed;
 
-    // Many chains, one target: the 7th relayed wake-up in a minute is held.
+    // Many chains, one target: the 13th relayed wake-up in a minute is held.
     let fx2 = Fx::new("wakerate");
     let mb2 = Mailbox::open(&fx2.data).with_clock(Arc::new(AtomicI64::new(1_000_000)));
     mb2.register("t", "Target", fx2.folder()).unwrap();
     let mut rate_holds = Vec::new();
-    for i in 0..7 {
+    for i in 0..13 {
         let (u, s) = (format!("u{i}"), format!("s{i}"));
         mb2.register(&u, &u, fx2.folder()).unwrap();
         mb2.register(&s, &s, fx2.folder()).unwrap();
@@ -252,8 +252,51 @@ fn one_chain_wakes_a_session_at_most_three_times_and_relays_six_a_minute() {
         let r = mb2.send(&s, "t", "relay", None, Origin::Agent).unwrap();
         rate_holds.push(envelope(&mb2, "t", &r.message_id).hold);
     }
-    assert!(rate_holds[..6].iter().all(Option::is_none), "{rate_holds:?}");
-    assert_eq!(rate_holds[6].as_deref(), Some(hold::WAKE_RATE));
+    assert!(rate_holds[..12].iter().all(Option::is_none), "{rate_holds:?}");
+    assert_eq!(rate_holds[12].as_deref(), Some(hold::WAKE_RATE));
+}
+
+#[test]
+fn a_fan_in_of_eight_workers_on_one_chain_is_not_held() {
+    let fx = Fx::new("fanin");
+    let mb = Mailbox::open(&fx.data).with_clock(Arc::new(AtomicI64::new(1_000_000)));
+    mb.register("coord", "Coordinator", fx.folder()).unwrap();
+    mb.set_status("coord", true, Some("u")).unwrap();
+    for i in 0..8 {
+        let w = format!("w{i}");
+        mb.register(&w, &w, fx.folder()).unwrap();
+    }
+    // The coordinator's run messages every worker; each worker, woken, replies
+    // to the coordinator.
+    let mut holds = Vec::new();
+    for i in 0..8 {
+        let w = format!("w{i}");
+        mb.send("coord", &w, "do your part", None, Origin::Agent).unwrap();
+        wake(&mb, &w, "w");
+        let r = mb.send(&w, "coord", "done", None, Origin::Agent).unwrap();
+        holds.push(envelope(&mb, "coord", &r.message_id).hold);
+    }
+    assert!(holds.iter().all(Option::is_none), "{holds:?}");
+}
+
+#[test]
+fn mail_only_taken_by_an_idle_session_does_not_arm_the_next_run() {
+    let fx = Fx::new("noleak");
+    let (mb, _) = ring_mailbox(&fx, 2);
+    mb.set_status("r1", true, Some("u")).unwrap();
+    mb.send("r1", "r2", "go", None, Origin::Agent).unwrap();
+    end(&mb, "r1", "u");
+    // Taken while idle (held for the user), then the user starts their own run.
+    assert_eq!(mb.take_for_delivery("r2").unwrap().len(), 1);
+    mb.set_status("r2", true, Some("user-run")).unwrap();
+    assert!(mb.session("r2").unwrap().chain.is_none());
+    end(&mb, "r2", "user-run");
+
+    // A claim is the wake-up: the run it starts continues the chain.
+    mb.set_status("r1", true, Some("u2")).unwrap();
+    mb.send("r1", "r2", "again", None, Origin::Agent).unwrap();
+    wake(&mb, "r2", "w");
+    assert!(mb.session("r2").unwrap().chain.is_some());
 }
 
 #[test]

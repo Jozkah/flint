@@ -52,10 +52,18 @@ pub const MAX_HOPS_CEILING: u8 = 16;
 /// A chain may visit one session this many times before mail on it stops
 /// waking that session (a ring that comes back round a second time).
 pub const MAX_CHAIN_VISITS: usize = 2;
-/// Wake-ups one chain may cause in one session.
+/// Wake-ups one chain may cause in one session through one sender: a session
+/// that keeps relaying the same chain at the same target is a loop.
 pub const WAKES_PER_CHAIN: usize = 3;
+/// Wake-ups one chain may cause in one session across all its senders. A
+/// coordinator that messages N workers who all reply on one chain is a
+/// fan-in, not a loop, so this is far above any sane worker count.
+pub const WAKES_PER_CHAIN_TOTAL: usize = 16;
 /// Wake-ups by relayed (hop > 0) mail one session takes per rolling minute.
-pub const WAKES_PER_MINUTE: usize = 6;
+/// A coordinator's run that messages N workers starts N chains, and every
+/// reply wakes the coordinator, so this stays above a realistic worker count
+/// (a ring is stopped by the hop and visit limits, not by this).
+pub const WAKES_PER_MINUTE: usize = 12;
 pub const WAKE_WINDOW_MS: i64 = 60_000;
 /// How long a chain handed to an idle session waits for the run it wakes.
 pub const CHAIN_ARM_TTL_MS: i64 = 120_000;
@@ -116,7 +124,8 @@ pub mod code {
 pub mod hold {
     /// The chain came back round to this session again.
     pub const CHAIN_CYCLE: &str = "chain_cycle";
-    /// This chain already woke this session `WAKES_PER_CHAIN` times.
+    /// This chain already woke this session `WAKES_PER_CHAIN` times through
+    /// the sender, or `WAKES_PER_CHAIN_TOTAL` times in all.
     pub const CHAIN_WAKES: &str = "chain_wakes";
     /// This session was woken by relayed mail too often in the last minute.
     pub const WAKE_RATE: &str = "wake_rate";
@@ -956,8 +965,16 @@ impl Mailbox {
 
     /// Hand `envelopes` (just delivered to `session_id`) to its chain state:
     /// a running session continues the furthest-along chain among them, an
-    /// idle one arms it for the run they wake. Caller holds the lock.
-    fn arm_chain_locked(&self, session_id: &str, envelopes: &[&MailEnvelope]) -> Result<()> {
+    /// idle one arms it for the run they wake, but only when `arm_idle`: mail
+    /// merely taken by an idle session is held for the user, not handed to a
+    /// run, so arming on it would leak the chain into whatever run the user
+    /// starts next. Caller holds the lock.
+    fn arm_chain_locked(
+        &self,
+        session_id: &str,
+        envelopes: &[&MailEnvelope],
+        arm_idle: bool,
+    ) -> Result<()> {
         if envelopes.is_empty() {
             return Ok(());
         }
@@ -974,7 +991,7 @@ impl Mailbox {
             let next = ChainContext::of(e, now);
             if running {
                 record.chain = Some(ChainContext::merge(record.chain.take(), next));
-            } else {
+            } else if arm_idle {
                 let armed = record
                     .armed_chain
                     .take()
@@ -1344,10 +1361,13 @@ impl Mailbox {
                 let visits = chain_path.iter().filter(|s| s.as_str() == to_id).count();
                 let inbox = read_jsonl::<MailEnvelope>(&self.inbox_path(to_id));
                 let waking = |e: &&MailEnvelope| e.hold.is_none() && e.hops > 0;
+                let on_chain = |e: &&MailEnvelope| e.chain_key() == chain_id;
+                let same_chain_total = inbox.iter().filter(waking).filter(on_chain).count();
                 let same_chain = inbox
                     .iter()
                     .filter(waking)
-                    .filter(|e| e.chain_key() == chain_id)
+                    .filter(on_chain)
+                    .filter(|e| e.from.session_id == from_id)
                     .count();
                 let recent = inbox
                     .iter()
@@ -1356,7 +1376,7 @@ impl Mailbox {
                     .count();
                 if visits >= MAX_CHAIN_VISITS {
                     Some(hold::CHAIN_CYCLE)
-                } else if same_chain >= WAKES_PER_CHAIN {
+                } else if same_chain >= WAKES_PER_CHAIN || same_chain_total >= WAKES_PER_CHAIN_TOTAL {
                     Some(hold::CHAIN_WAKES)
                 } else if recent >= WAKES_PER_MINUTE {
                     Some(hold::WAKE_RATE)
@@ -1609,7 +1629,13 @@ impl Mailbox {
                 );
             }
             write_json_atomically(&self.state_path(session_id), &state)?;
-            self.arm_chain_locked(session_id, &taken.iter().collect::<Vec<_>>())?;
+            // The mail is already delivered: an arming failure must not lose
+            // it, so log it and still hand it back.
+            if let Err(e) =
+                self.arm_chain_locked(session_id, &taken.iter().collect::<Vec<_>>(), false)
+            {
+                log::warn!("mailbox: could not arm the chain for {session_id}: {e:?}");
+            }
         }
         Ok(taken)
     }
@@ -1716,7 +1742,7 @@ impl Mailbox {
         }
         let handed: Vec<&MailEnvelope> =
             inbox.iter().filter(|e| claimed.contains(&e.id)).collect();
-        self.arm_chain_locked(session_id, &handed)?;
+        self.arm_chain_locked(session_id, &handed, true)?;
         Ok(claimed)
     }
 
