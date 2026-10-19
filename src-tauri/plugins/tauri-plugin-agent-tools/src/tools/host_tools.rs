@@ -372,22 +372,53 @@ pub fn unavailable_hint(
     } else {
         "its folder is not on the sandbox PATH".to_string()
     };
-    let remedy = if can_execute(dir) == Some(false) && can_change_acl(dir) == Some(false) {
+    let in_profile = under_profile(dir, profile);
+    let remedy = if in_profile {
+        let packages = if is_python_name(name) {
+            format!(
+                " The profile is not writable from the sandbox, so install packages inside the \
+                 workspace: `{exe} -m pip install --target <workspace>/.pylibs <package>` and set \
+                 `PYTHONPATH=<workspace>/.pylibs` when running, or make an environment with \
+                 `{exe} -m venv <workspace>/.venv` and use that; never install into the profile.",
+                exe = found.display()
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            "Call `request_access` now for the folder {dir} (read mode, that folder only): it asks \
+             the user once and needs no settings; when it returns granted, run {exe} by its full \
+             path. Optional alternative where this build has it: Settings > Agent Tools > Sandbox \
+             toolchains, allow `{name}`.{packages}",
+            dir = dir.display(),
+            exe = found.display()
+        )
+    } else if can_execute(dir) == Some(false) && can_change_acl(dir) == Some(false) {
         format!(
             "Settings cannot grant this folder. Ask the user to run `{}` in an elevated terminal, then restart Flint, or run the command themselves.",
             admin_grant_command(dir)
         )
     } else {
         format!(
-            "Ask the user to allow `{name}` in Settings > Agent Tools > Sandbox toolchains, or run the command themselves."
+            "Ask the user to allow `{name}` in Settings > Agent Tools > Sandbox toolchains if this build has it, or run the command themselves."
         )
+    };
+    let stop = if in_profile {
+        "Do not search the disk for another copy or run a runtime bundled with another application."
+    } else {
+        "Do not search the disk for another copy, run a runtime bundled with another application, \
+         probe settings, or retry until the user acts."
     };
     format!(
         "\n[sandbox: `{name}` is installed at {} but this sandbox cannot run it: {reason}. \
-         Do not search the disk for another copy, run a runtime bundled with another application, \
-         probe settings, or retry until the user acts. {remedy}]",
+         {stop} {remedy}]",
         found.display()
     )
+}
+
+fn is_python_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.starts_with("python") || n == "pip" || n == "pip3"
 }
 
 /// The note appended to a "not found" failure when the program is not on the
@@ -1413,6 +1444,23 @@ mod tests {
             |_| Some(true),
         );
         assert!(in_profile.contains("user profile"));
+        assert!(in_profile.contains("request_access"), "{in_profile}");
+    }
+
+    #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
+    fn profile_python_hint_leads_with_request_access_and_a_workspace_install() {
+        let profile = Path::new(r"C:\Users\me");
+        let exe = Path::new(r"C:\Users\me\AppData\Local\Programs\Python\Python311\python.exe");
+        let hint = unavailable_hint("python", exe, Some(profile), |_| Some(true));
+        let ask = hint.find("request_access").expect("names request_access");
+        let settings = hint.find("Settings > Agent Tools").expect("settings as an alternative");
+        assert!(ask < settings, "{hint}");
+        assert!(hint.contains(r"Python311 (read mode"), "{hint}");
+        assert!(hint.contains("--target <workspace>/.pylibs") && hint.contains("-m venv"), "{hint}");
+        assert!(hint.contains("Optional alternative"), "{hint}");
+        let node = unavailable_hint("node", Path::new(r"C:\Users\me\n\node.exe"), Some(profile), |_| Some(true));
+        assert!(node.contains("request_access") && !node.contains("pip"), "{node}");
     }
 
     #[test]
