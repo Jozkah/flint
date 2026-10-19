@@ -1,4 +1,5 @@
 import { pushNotice } from '@/lib/coworkRunNotices'
+import { registerToolCallStop, stopBackendCall } from '@/lib/toolCallStop'
 import {
   ANSWER_SUBAGENT_TOOL_NAME,
   answerSubagent,
@@ -720,6 +721,22 @@ const BOUNDED_READ_TOOLS = new Set([
   'read', 'ls', 'find', 'grep', 'web_search', 'web_fetch', 'image_search',
   'chat_read',
 ])
+/**
+ * Commands get a generous last-resort wall clock of their own. The backend
+ * bounds them far sooner (shell 150 s, git 120 s); this only matters when the
+ * backend call itself never answers, which used to hold the run on "Running"
+ * for good. It is not a shorter leash on a long build.
+ */
+const SHELL_TOOL_LIMIT_MS = 10 * 60_000
+const isShellTool = (name: string) =>
+  name === 'bash' || name === 'git' || name === 'git_clone' || name.startsWith('host_')
+
+/** The wall clock for one call, or none. */
+function limitFor(name: string): number | undefined {
+  if (BOUNDED_READ_TOOLS.has(name)) return READ_ONLY_TIMEOUT_MS
+  if (isShellTool(name)) return SHELL_TOOL_LIMIT_MS
+  return undefined
+}
 
 /** Stop waiting when the run stops; bound reads that can otherwise hold a turn forever. */
 function boundedToolCall(
@@ -736,10 +753,18 @@ function boundedToolCall(
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
+      unregisterStop()
       signal?.removeEventListener('abort', stop)
       resolve(outcome)
     }
     const stop = () => finish({ output: 'Tool stopped before it returned.', isError: true })
+    // "Stop this tool": ends the wait for this call only; the run goes on.
+    const stoppedByUser = () =>
+      finish({
+        output: `${call.toolName} was stopped by the user before it finished. No result is available; carry on without it or try another approach.`,
+        isError: true,
+      })
+    const unregisterStop = registerToolCallStop(call.toolCallId, stoppedByUser)
     // Time spent waiting for the user is not the tool being slow: while a
     // question of this session is open the clock is held, and only a question
     // left unanswered for a long time ends the call, saying so.
@@ -748,30 +773,36 @@ function boundedToolCall(
         (a) => a.threadId === ctx.sessionId
       )
     const startedAt = Date.now()
+    const limit = limitFor(call.toolName)
     const arm = (ms: number): ReturnType<typeof setTimeout> =>
       setTimeout(() => {
         const asked = waitingOn()
         if (asked && Date.now() - startedAt < APPROVAL_WAIT_MAX_MS) {
-          timer = arm(READ_ONLY_TIMEOUT_MS)
+          timer = arm(limit ?? READ_ONLY_TIMEOUT_MS)
           return
         }
+        if (!asked && isShellTool(call.toolName)) {
+          // The backend never answered: stop whatever it is still running.
+          void stopBackendCall(ctx.sessionId, call.toolCallId)
+        }
+        const seconds = Math.round((limit ?? READ_ONLY_TIMEOUT_MS) / 1000)
         finish({
           output: asked
             ? `ERROR: ${call.toolName} did not run: it was waiting for the user's approval (${asked.toolName}) and the approval was never answered.`
-            : `ERROR: ${call.toolName} timed out after 45 seconds`,
+            : isShellTool(call.toolName)
+              ? `ERROR: ${call.toolName} timed out after ${seconds} seconds with no answer and was stopped; any process it started was killed. No result is available.`
+              : `ERROR: ${call.toolName} timed out after ${seconds} seconds`,
           isError: true,
         })
       }, ms)
-    let timer: ReturnType<typeof setTimeout> | undefined = BOUNDED_READ_TOOLS.has(
-      call.toolName
-    )
-      ? arm(READ_ONLY_TIMEOUT_MS)
-      : undefined
+    let timer: ReturnType<typeof setTimeout> | undefined =
+      limit !== undefined ? arm(limit) : undefined
     signal?.addEventListener('abort', stop, { once: true })
     void routeCoworkTool(call, ctx, signal).then(finish, (error) => {
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
+      unregisterStop()
       signal?.removeEventListener('abort', stop)
       reject(error)
     })

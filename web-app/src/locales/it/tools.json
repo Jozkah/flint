@@ -81,6 +81,7 @@
     "matches": "{{count}} corrispondenze",
     "testsPassed": "{{count}} superati",
     "runningStatus": "Esecuzione di {{tool}}…",
-    "stillRunning": "{{tool}} è ancora in esecuzione…"
+    "stillRunning": "{{tool}} è ancora in esecuzione…",
+    "stopThisTool": "Interrompi questo strumento"
   }
 }

@@ -81,6 +81,7 @@
     "matches": "{{count}} matches",
     "testsPassed": "{{count}} passed",
     "runningStatus": "Running {{tool}}…",
-    "stillRunning": "Still running {{tool}}…"
+    "stillRunning": "Still running {{tool}}…",
+    "stopThisTool": "Stop this tool"
   }
 }

@@ -1374,6 +1374,10 @@ pub async fn spawn(
             cmd.env(key, val);
         }
     }
+    // Nothing may stop to ask a question: there is no one to answer it.
+    for (key, val) in super::win_env::NON_INTERACTIVE_ENV {
+        cmd.env(key, val);
+    }
     // Point the shell's temp env at the session scratch, overriding the host
     // values the allowlist just copied in. Without this a command that writes
     // through `mktemp`/`$TMPDIR` lands in the host temp dir -- unreachable to

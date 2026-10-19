@@ -81,6 +81,7 @@
     "matches": "{{count}} kết quả khớp",
     "testsPassed": "{{count}} đạt",
     "runningStatus": "Đang chạy {{tool}}…",
-    "stillRunning": "Vẫn đang chạy {{tool}}…"
+    "stillRunning": "Vẫn đang chạy {{tool}}…",
+    "stopThisTool": "Dừng công cụ này"
   }
 }

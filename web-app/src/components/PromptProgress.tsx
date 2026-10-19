@@ -7,7 +7,8 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { useTextOverflow } from '@/hooks/useTextOverflow'
 import { useEffect, useRef, useState } from 'react'
-import { formatElapsed, type RunStatus } from '@/lib/runStatus'
+import { formatElapsed, STOP_TOOL_AFTER_MS, type RunStatus } from '@/lib/runStatus'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ModelLoader } from '@/containers/loaders/ModelLoader'
 
 const LOADED_HOLD_MS = 1200
@@ -86,8 +87,14 @@ export function PromptProgress({
   status,
   since,
   waitingLabel,
+  onStopTool,
 }: {
   hideIdle?: boolean
+  /**
+   * Stops the one tool call the run is waiting on, leaving the run going. The
+   * status line offers it once the call has run for a while.
+   */
+  onStopTool?: (callId: string) => void
   /**
    * The run is blocked on the user (an approval or a question): this label
    * replaces the phase, and the clock stops instead of counting a wait that
@@ -115,6 +122,7 @@ export function PromptProgress({
    */
   stateKey?: string
 }) {
+  const { t } = useTranslation()
   const params = useParams({ strict: false })
   const threadId = stateKey ?? (params as { threadId?: string })?.threadId
   const promptProgress = useAppState((state) =>
@@ -238,6 +246,20 @@ export function PromptProgress({
             {formatElapsed(elapsed)}
           </span>
         )}
+        {onStopTool &&
+          status?.phase === 'tool' &&
+          status.callId &&
+          !waiting &&
+          elapsed >= STOP_TOOL_AFTER_MS && (
+            <button
+              type="button"
+              className="shrink-0 rounded border border-border/60 px-1.5 py-0.5 text-xs text-foreground hover:bg-muted"
+              data-testid="run-status-stop-tool"
+              onClick={() => onStopTool(status.callId as string)}
+            >
+              {t('tools:toolCall.stopThisTool')}
+            </button>
+          )}
       </div>
       {showReading && !loadingModel && (
         <Progress value={percentage} className="h-1 bg-secondary/60" />

@@ -21,7 +21,12 @@ export type RunStatus = {
   key: string
   /** Label for a phase that has lasted `elapsedMs`. */
   label: (elapsedMs: number) => string
+  /** The tool call a `tool` phase is waiting on, so it can be stopped alone. */
+  callId?: string
 }
+
+/** How long a tool runs before the status line offers to stop it. */
+export const STOP_TOOL_AFTER_MS = 30_000
 
 const OPEN_THINK = /<(think|thought|thinking)>/gi
 const CLOSE_THINK = /<\/(think|thought|thinking)>/gi
@@ -98,6 +103,7 @@ export function runStatus(
       return {
         phase: 'tool',
         key: `tool:${last.callId ?? name}`,
+        callId: last.callId,
         label: byAge([
           [0, say('tools:toolCall.runningStatus', name)],
           [30 * S, say('tools:toolCall.stillRunning', name)],

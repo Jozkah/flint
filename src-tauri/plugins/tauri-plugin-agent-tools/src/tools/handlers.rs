@@ -2374,6 +2374,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         Err(e) => return format!("ERROR: failed to run command: {e}"),
     };
     let pid = child.id();
+    // Owned by the call's cancellation token, so a Stop (or an outer timeout)
+    // that drops this future reaches the shell's whole process tree instead of
+    // leaving it running with nobody holding it.
+    let owner_token = ctx.cancel.clone();
+    if let (Some(token), Some(pid)) = (owner_token.as_ref(), pid) {
+        token.adopt(pid);
+    }
     // AH-174: measured from here to exit, as a process tree, and kept against
     // the run and call that started it. A measurement that cannot start is
     // recorded as such, never as zero.
@@ -2549,6 +2556,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         }
         if let Some(pid) = pid {
             proc::unregister(pid);
+            if let Some(token) = owner_token.as_ref() {
+                token.release(pid);
+            }
         }
         let _ = tx.send(out);
     });
@@ -2939,6 +2949,14 @@ async fn collect_and_format(
             sink(String::from_utf8_lossy(&text).into_owned());
         }
     };
+    // The shell's own exit is watched alongside its pipes. Reading to EOF first
+    // meant a background grandchild (`server &`, a dev server, a pager) that
+    // inherited the pipe kept the call open after the shell had finished,
+    // until the deadline killed it and called a finished command a timeout.
+    let pid = child.id();
+    let mut exited: Option<std::io::Result<std::process::ExitStatus>> = None;
+    let mut grace_ends: Option<tokio::time::Instant> = None;
+    let mut orphaned = false;
     while out_open || err_open {
         tokio::select! {
             r = stdout.as_mut().unwrap().read(&mut bo), if out_open => match r {
@@ -2949,7 +2967,31 @@ async fn collect_and_format(
                 Ok(0) | Err(_) => err_open = false,
                 Ok(n) => { cap.push(&be[..n]); tee(&be[..n], &mut carry); }
             },
+            status = child.wait(), if exited.is_none() => {
+                exited = Some(status);
+                grace_ends = Some(tokio::time::Instant::now() + PIPE_GRACE_AFTER_EXIT);
+            },
+            _ = tokio::time::sleep_until(grace_ends.unwrap_or_else(tokio::time::Instant::now)),
+                if grace_ends.is_some() => {
+                orphaned = true;
+                break;
+            },
         }
+    }
+    if orphaned {
+        // Something the command started is still holding its output open.
+        // It is stopped, so it does not outlive the call that started it
+        // (`background: true` is how a command asks to keep running).
+        #[cfg(unix)]
+        if let Some(pid) = pid {
+            let _ = proc::kill_tree(pid);
+        }
+        let _ = pid;
+        cap.push(
+            b"\n[note: the command exited, but a process it started kept its output open, so \
+              waiting for more output was cut short. Use {\"background\": true} for a command \
+              that is meant to keep running.]\n",
+        );
     }
     // Whatever is left was never completed: emit it lossily rather than losing it.
     if !carry.is_empty() {
@@ -2957,11 +2999,20 @@ async fn collect_and_format(
             sink(String::from_utf8_lossy(&carry).into_owned());
         }
     }
-    match child.wait().await {
+    let status = match exited {
+        Some(status) => status,
+        None => child.wait().await,
+    };
+    match status {
         Ok(status) => cap.finish(status.code()),
         Err(e) => format!("ERROR: failed to run command: {e}"),
     }
 }
+
+/// How long a command's output pipes are read after the shell itself has
+/// exited. Long enough for the last buffered bytes to arrive; short enough
+/// that a grandchild holding the pipe does not hold the tool call.
+const PIPE_GRACE_AFTER_EXIT: std::time::Duration = std::time::Duration::from_millis(1500);
 
 /// Bounded, tail-preserving accumulator for a command's combined output.
 /// Keeps only the last [`BASH_MAX_BYTES`] raw bytes in memory; once total
@@ -8309,6 +8360,56 @@ export function verifyPassword(password: string, stored: string) {
         .expect("must not hang on stdin read");
         assert!(out.contains("[exit 0]"), "unexpected: {out}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A shell that exits at once but leaves a grandchild holding its output
+    /// pipes: the call must come back with the shell's own result, not wait for
+    /// the pipe to close.
+    #[tokio::test]
+    async fn a_grandchild_holding_the_pipe_does_not_hold_the_call() {
+        let mut cmd;
+        #[cfg(windows)]
+        {
+            cmd = tokio::process::Command::new("cmd");
+            cmd.raw_arg("/S")
+                .raw_arg("/C")
+                .raw_arg("\"echo done & start /B ping -n 12 127.0.0.1\"");
+        }
+        #[cfg(not(windows))]
+        {
+            cmd = tokio::process::Command::new("sh");
+            cmd.args(["-c", "echo done; sleep 12 & exit 0"]);
+        }
+        let child = cmd
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawn shell");
+        let started = std::time::Instant::now();
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            collect_and_format(child, None, None),
+        )
+        .await
+        .expect("a pipe held by a grandchild must not hold the call");
+        assert!(started.elapsed() < std::time::Duration::from_secs(8));
+        assert!(out.contains("done"), "unexpected: {out}");
+        assert!(out.contains("kept its output open"), "no note: {out}");
+        assert!(out.contains("[exit 0]"), "exit marker missing: {out}");
+    }
+
+    /// The shell's environment says nothing may stop to ask a question.
+    #[test]
+    fn spawned_shells_are_told_not_to_prompt() {
+        let keys: Vec<&str> = super::super::win_env::NON_INTERACTIVE_ENV
+            .iter()
+            .map(|(k, _)| *k)
+            .collect();
+        for needed in ["GIT_TERMINAL_PROMPT", "GIT_PAGER", "PAGER", "CI", "NO_COLOR"] {
+            assert!(keys.contains(&needed), "{needed} missing");
+        }
     }
 
     #[tokio::test]

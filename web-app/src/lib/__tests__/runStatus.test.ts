@@ -29,6 +29,13 @@ describe('runStatus', () => {
     expect(status?.label(40_000)).toBe('[tools:toolCall.stillRunning|bash]')
   })
 
+  it('names the call a running tool is waiting on, so it can be stopped alone', () => {
+    const tool: CoworkTurn = { role: 'tool', content: '', name: 'bash', status: 'running', callId: 'c9' }
+    expect(runStatus(true, [user, tool])?.callId).toBe('c9')
+    const done: CoworkTurn = { role: 'tool', content: 'ok', name: 'bash', status: 'done', callId: 'c9' }
+    expect(runStatus(true, [user, done])?.callId).toBeUndefined()
+  })
+
   it('reads results after a tool finishes', () => {
     const tool: CoworkTurn = { role: 'tool', content: 'ok', name: 'bash', status: 'done', callId: 'c1' }
     expect(at([user, tool])).toBe('Reading tool results…')

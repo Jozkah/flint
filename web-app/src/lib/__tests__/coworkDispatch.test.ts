@@ -64,6 +64,39 @@ describe('dispatchCoworkTool', () => {
     }
   })
 
+  it('gives a shell call whose backend never answers a last-resort limit, and says so', async () => {
+    vi.useFakeTimers()
+    try {
+      executeAgentTool.mockImplementation(() => new Promise(() => {}))
+      const pending = dispatchCoworkTool(call('bash', { command: 'sleep 9999' }), ctx())
+      // Longer than a read's 45 s: a build is allowed to run.
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+      let settled = false
+      void pending.then(() => (settled = true))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+      await expect(pending).resolves.toMatchObject({ isError: true })
+      expect((await pending).output).toMatch(/bash timed out after 600 seconds/)
+    } finally {
+      executeAgentTool.mockReset()
+      executeAgentTool.mockResolvedValue({ content: 'ok' })
+      vi.useRealTimers()
+    }
+  })
+
+  it('ends the wait for one call when it is stopped, without aborting the run', async () => {
+    executeAgentTool.mockImplementationOnce(() => new Promise(() => {}))
+    const controller = new AbortController()
+    const pending = dispatchCoworkTool(call('bash', { command: 'x' }), ctx(), controller.signal)
+    const { stopToolCall } = await import('@/lib/toolCallStop')
+    expect(stopToolCall('s1', 'c1')).toBe(true)
+    const outcome = await pending
+    expect(outcome.isError).toBe(true)
+    expect(outcome.output).toMatch(/stopped by the user/)
+    expect(controller.signal.aborted).toBe(false)
+  })
+
   it('does not report an unanswered approval as the read timing out', async () => {
     vi.useFakeTimers()
     const { useToolApprovalRequests } = await import('@/hooks/useToolApprovalRequests')

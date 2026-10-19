@@ -81,6 +81,7 @@
     "matches": "{{count}} 個相符項目",
     "testsPassed": "{{count}} 個通過",
     "runningStatus": "正在執行 {{tool}}…",
-    "stillRunning": "仍在執行 {{tool}}…"
+    "stillRunning": "仍在執行 {{tool}}…",
+    "stopThisTool": "停止此工具"
   }
 }
