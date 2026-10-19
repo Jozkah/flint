@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   basenameNoExt,
-  getProviderLogo,
   getProviderTitle,
   getDefaultProviderTitle,
   getReadableLanguageName,
@@ -12,25 +11,6 @@ import {
   getModelDisplayName,
   splitHtmlArtifacts,
 } from '../utils'
-
-describe('getProviderLogo', () => {
-  it('returns correct logo paths for known providers', () => {
-    expect(getProviderLogo('llamacpp')).toBe(
-      '/images/model-provider/llamacpp.svg'
-    )
-    expect(getProviderLogo('anthropic')).toBe(
-      '/images/model-provider/anthropic.svg'
-    )
-    expect(getProviderLogo('openai')).toBe('/images/model-provider/openai.svg')
-    expect(getProviderLogo('gemini')).toBe('/images/model-provider/gemini.svg')
-    expect(getProviderLogo('nvidia')).toBe('/images/model-provider/nvidia.svg')
-  })
-
-  it('returns undefined for unknown providers', () => {
-    expect(getProviderLogo('unknown')).toBeUndefined()
-    expect(getProviderLogo('')).toBeUndefined()
-  })
-})
 
 describe('getProviderTitle', () => {
   it('names litellm', () => {

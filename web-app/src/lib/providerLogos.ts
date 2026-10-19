@@ -14,26 +14,12 @@ export function getProviderLogo(provider: string) {
       return `${IMAGES}/llamacpp.svg`
     case 'mlx':
       return `${IMAGES}/mlx.png`
-    case 'anthropic':
-      return `${IMAGES}/anthropic.svg`
-    case 'huggingface':
-      return `${IMAGES}/huggingface.svg`
-    case 'mistral':
-      return `${IMAGES}/mistral.svg`
-    case 'openrouter':
-      return `${IMAGES}/open-router.svg`
     case 'groq':
       return `${IMAGES}/groq.svg`
     case 'cohere':
       return `${IMAGES}/cohere.svg`
-    case 'gemini':
-      return `${IMAGES}/gemini.svg`
-    case 'openai':
-      return `${IMAGES}/openai.svg`
     case 'azure':
       return `${IMAGES}/azure.svg`
-    case 'xai':
-      return `${IMAGES}/xai.svg`
     case 'minimax':
       return `${IMAGES}/minimax.svg`
     case 'nvidia':

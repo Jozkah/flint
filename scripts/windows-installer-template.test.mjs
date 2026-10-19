@@ -45,6 +45,17 @@ test('Windows installer ships the phone app the way the MSI does', async () => {
   )
 })
 
+test('Windows installer does not invoke a missing signing script', async () => {
+  for (const path of [
+    '../src-tauri/tauri.bundle.windows.nsis.base.template',
+    '../src-tauri/tauri.bundle.windows.nsis.template',
+  ]) {
+    const template = await readFile(new URL(path, import.meta.url), 'utf8')
+    assert.match(template, /!define UNINSTALLERSIGNCOMMAND ""/, path)
+    assert.doesNotMatch(template, /sign\.ps1/, path)
+  }
+})
+
 test('Windows installer recovers only Flint bundled processes and locked files', async () => {
   const template = await readFile(templatePath, 'utf8')
 

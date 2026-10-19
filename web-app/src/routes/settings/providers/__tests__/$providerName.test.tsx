@@ -302,7 +302,6 @@ vi.mock('@/lib/utils', () => ({
   basenameNoExt: (p: string) => p.split('/').pop() ?? p,
   isLocalProvider: (p: string) => p === 'llamacpp' || p === 'mlx',
   formatBytes: (n: number) => `${n} B`,
-  getProviderLogo: () => undefined,
 }))
 
 vi.mock('@/constants/providers', () => ({
