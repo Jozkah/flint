@@ -38,6 +38,10 @@ on:
         description: 'Existing release tag to build the CUDA pack for (e.g. v1.0.0).'
         required: true
         default: ''
+      ref:
+        description: 'Commit to build. Defaults to the tag.'
+        required: false
+        default: ''
 
 concurrency:
   group: flint-engine-addon-${{ inputs.tag }}
