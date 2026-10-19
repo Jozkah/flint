@@ -37,7 +37,8 @@ test('Windows NSIS build is permanently wired to the Flint template', async () =
 
 test('installer template transformation creates the complete Flint wizard', async () => {
   const base = await readFile(basePath, 'utf8')
-  const generated = transformWindowsInstallerTemplate(base, base, await localTemplateDefaults())
+  const defaults = await localTemplateDefaults()
+  const generated = transformWindowsInstallerTemplate(base, base, defaults)
 
   for (const macro of [
     'FLINT_WELCOME_PAGE',
@@ -54,8 +55,8 @@ test('installer template transformation creates the complete Flint wizard', asyn
   assert.doesNotMatch(generated, /jan_(?:productname|version|build|mainbinaryname|bundleid)/)
   assert.match(generated, /!define PRODUCTNAME "Flint"/)
   assert.match(generated, /!define MAINBINARYNAME "Flint-Desktop"/)
-  assert.match(generated, /!define VERSION "0\.9\.0"/)
-  assert.match(generated, /!define VERSIONWITHBUILD "0\.9\.0\.0"/)
+  assert.ok(generated.includes(`!define VERSION "${defaults.version}"`))
+  assert.ok(generated.includes(`!define VERSIONWITHBUILD "${defaults.versionWithBuild}"`))
   assert.match(generated, /!define BUNDLEID "jan\.ai\.app"/)
   assert.match(
     generated,
