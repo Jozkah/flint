@@ -250,6 +250,16 @@ function ProviderDetail() {
     (name) => name === 'llamacpp' || name === 'mlx'
   )
   const providerLocation = provider ? locateProvider(provider) : 'unknown'
+  // A host the resolver has not learned stays "checking" until something
+  // connects to it. Say plainly it is unconfirmed after a few seconds, rather
+  // than leaving a line that reads as in progress forever.
+  const [reachGaveUp, setReachGaveUp] = useState(false)
+  useEffect(() => {
+    setReachGaveUp(false)
+    if (providerLocation === 'local' || providerLocation === 'remote') return
+    const timer = setTimeout(() => setReachGaveUp(true), 8000)
+    return () => clearTimeout(timer)
+  }, [providerLocation, provider?.base_url])
   const reachNote = isEngineProvider
     ? t('engine:providers.onDevice')
     : providerLocation === 'local'
@@ -258,7 +268,9 @@ function ProviderDetail() {
         : t('engine:provider.networkNote', { host: endpointHost(provider?.base_url) ?? '' })
       : providerLocation === 'remote'
         ? t('engine:provider.remoteNote')
-        : t('engine:provider.reachUnknownNote')
+        : reachGaveUp
+          ? t('engine:provider.reachUnconfirmedNote')
+          : t('engine:provider.reachUnknownNote')
   // An engine setting change restarts that engine's models, once typing
   // pauses; a remote provider's settings never touch loaded local models.
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

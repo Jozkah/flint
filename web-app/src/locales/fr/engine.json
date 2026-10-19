@@ -114,7 +114,8 @@
     "settingNotSaved": "« {{setting}} » n'a pas été enregistré",
     "danger": "Zone de danger",
     "networkNote": "Sur votre réseau · envoyé à {{host}}",
-    "reachUnknownNote": "Vérification de l'emplacement de ce fournisseur"
+    "reachUnknownNote": "Vérification de l'emplacement de ce fournisseur",
+    "reachUnconfirmedNote": "Impossible de confirmer où s'exécute ce fournisseur · les messages peuvent quitter cet ordinateur"
   },
   "mcp": {
     "title": "Outils et MCP",

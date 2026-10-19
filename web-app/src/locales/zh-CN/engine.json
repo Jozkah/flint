@@ -111,7 +111,8 @@
     "settingNotSaved": "未能保存“{{setting}}”",
     "danger": "危险区域",
     "networkNote": "在你的网络中 · 发送到 {{host}}",
-    "reachUnknownNote": "正在检查此提供商的运行位置"
+    "reachUnknownNote": "正在检查此提供商的运行位置",
+    "reachUnconfirmedNote": "无法确认此提供商的运行位置 · 消息可能会离开这台电脑"
   },
   "mcp": {
     "title": "工具和 MCP",

@@ -111,7 +111,8 @@
     "settingNotSaved": "\"{{setting}}\" 설정을 저장하지 못했습니다",
     "danger": "위험 영역",
     "networkNote": "내 네트워크 · {{host}}(으)로 전송",
-    "reachUnknownNote": "이 공급자가 실행되는 위치 확인 중"
+    "reachUnknownNote": "이 공급자가 실행되는 위치 확인 중",
+    "reachUnconfirmedNote": "이 공급자가 실행되는 위치를 확인하지 못했습니다 · 메시지가 이 컴퓨터 밖으로 나갈 수 있습니다"
   },
   "mcp": {
     "title": "도구 및 MCP",

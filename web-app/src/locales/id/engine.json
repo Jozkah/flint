@@ -110,7 +110,8 @@
     "settingNotSaved": "\"{{setting}}\" tidak tersimpan",
     "danger": "Zona berbahaya",
     "networkNote": "Di jaringan Anda · dikirim ke {{host}}",
-    "reachUnknownNote": "Memeriksa di mana penyedia ini berjalan"
+    "reachUnknownNote": "Memeriksa di mana penyedia ini berjalan",
+    "reachUnconfirmedNote": "Tidak dapat memastikan di mana penyedia ini berjalan · anggap pesan dapat keluar dari komputer ini"
   },
   "mcp": {
     "title": "Alat & MCP",

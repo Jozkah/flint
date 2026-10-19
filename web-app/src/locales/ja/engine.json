@@ -111,7 +111,8 @@
     "settingNotSaved": "「{{setting}}」を保存できませんでした",
     "danger": "危険な操作",
     "networkNote": "ネットワーク内 · {{host}} に送信",
-    "reachUnknownNote": "このプロバイダーの実行場所を確認中"
+    "reachUnknownNote": "このプロバイダーの実行場所を確認中",
+    "reachUnconfirmedNote": "このプロバイダーの実行場所を確認できませんでした · メッセージがこのコンピューターの外に送信される可能性があります"
   },
   "mcp": {
     "title": "ツールと MCP",

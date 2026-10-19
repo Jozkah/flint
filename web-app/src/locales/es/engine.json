@@ -114,7 +114,8 @@
     "settingNotSaved": "No se guardó «{{setting}}»",
     "danger": "Zona de peligro",
     "networkNote": "En tu red · se envía a {{host}}",
-    "reachUnknownNote": "Comprobando dónde se ejecuta este proveedor"
+    "reachUnknownNote": "Comprobando dónde se ejecuta este proveedor",
+    "reachUnconfirmedNote": "No se pudo confirmar dónde se ejecuta este proveedor · supón que los mensajes pueden salir de este equipo"
   },
   "mcp": {
     "title": "Herramientas y MCP",

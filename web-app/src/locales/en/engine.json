@@ -112,7 +112,8 @@
     "settingNotSaved": "{{setting}} was not saved",
     "danger": "Danger zone",
     "networkNote": "On your network · sent to {{host}}",
-    "reachUnknownNote": "Checking where this provider runs"
+    "reachUnknownNote": "Checking where this provider runs",
+    "reachUnconfirmedNote": "Could not confirm where this provider runs · assume messages may leave this computer"
   },
   "mcp": {
     "title": "Tools & MCP",
