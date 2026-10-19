@@ -1417,6 +1417,10 @@
     "undo": "Rückgängig",
     "undoing": "Wird wiederhergestellt...",
     "restored": "{{n}} wiederhergestellt.",
-    "restoreFailed": "{{n}} konnten nicht wiederhergestellt werden."
+    "restoreFailed": "{{n}} konnten nicht wiederhergestellt werden.",
+    "deleteAllMenu": "Alle löschen...",
+    "deleteAllEmpty": "Nichts zu löschen.",
+    "scopeAll": "Betrifft alles in der Liste, nicht nur die Zeilen, die der aktuelle Filter zeigt.",
+    "archiveInstead": "Stattdessen archivieren"
   }
 }

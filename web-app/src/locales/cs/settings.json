@@ -1463,6 +1463,10 @@
     "undo": "Vrátit zpět",
     "undoing": "Obnovuji...",
     "restored": "Obnoveno: {{n}}.",
-    "restoreFailed": "Nepodařilo se obnovit: {{n}}."
+    "restoreFailed": "Nepodařilo se obnovit: {{n}}.",
+    "deleteAllMenu": "Smazat vše...",
+    "deleteAllEmpty": "Není co mazat.",
+    "scopeAll": "Týká se všeho v seznamu, nejen řádků, které ukazuje aktuální filtr.",
+    "archiveInstead": "Raději archivovat"
   }
 }

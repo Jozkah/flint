@@ -1422,6 +1422,10 @@
     "undo": "Desfés",
     "undoing": "S’està restaurant...",
     "restored": "{{n}} restaurats.",
-    "restoreFailed": "No s’han pogut restaurar {{n}}."
+    "restoreFailed": "No s’han pogut restaurar {{n}}.",
+    "deleteAllMenu": "Suprimeix-ho tot...",
+    "deleteAllEmpty": "No hi ha res per suprimir.",
+    "scopeAll": "Inclou tot el que hi ha a la llista, no només les files que mostra el filtre actual.",
+    "archiveInstead": "Arxiva en lloc de suprimir"
   }
 }

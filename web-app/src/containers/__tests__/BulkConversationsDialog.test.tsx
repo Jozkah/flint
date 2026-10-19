@@ -161,3 +161,27 @@ describe('BulkConversationsDialog archive', () => {
     expect(screen.queryByText(/Archive page/)).toBeNull()
   })
 })
+
+describe('BulkConversationsDialog scoped entry', () => {
+  it('shows the scope note, the keep-pinned switch and the archive way out', () => {
+    const onChange = vi.fn()
+    const onSwitchToArchive = vi.fn()
+    const { act } = setup({
+      scopeNote: 'Covers everything in the list.',
+      keepPinned: { value: true, onChange, count: 2 },
+      onSwitchToArchive,
+    })
+    expect(screen.getByTestId('bulk-scope').textContent).toBe('Covers everything in the list.')
+    fireEvent.click(screen.getByTestId('bulk-keep-pinned'))
+    expect(onChange).toHaveBeenCalledWith(false)
+    fireEvent.click(screen.getByTestId('bulk-switch-archive'))
+    expect(onSwitchToArchive).toHaveBeenCalled()
+    expect(act).not.toHaveBeenCalled()
+  })
+
+  it('hides the switch when nothing is pinned', () => {
+    setup({ keepPinned: { value: true, onChange: vi.fn(), count: 0 } })
+    expect(screen.queryByTestId('bulk-keep-pinned')).toBeNull()
+    expect(screen.queryByTestId('bulk-switch-archive')).toBeNull()
+  })
+})

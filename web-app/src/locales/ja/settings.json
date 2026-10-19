@@ -1414,6 +1414,10 @@
     "undo": "元に戻す",
     "undoing": "復元中...",
     "restored": "{{n}} 件を復元しました。",
-    "restoreFailed": "{{n}} 件を復元できませんでした。"
+    "restoreFailed": "{{n}} 件を復元できませんでした。",
+    "deleteAllMenu": "すべて削除...",
+    "deleteAllEmpty": "削除するものがありません。",
+    "scopeAll": "現在のフィルターで表示されている行だけでなく、リスト内のすべてが対象です。",
+    "archiveInstead": "代わりにアーカイブ"
   }
 }

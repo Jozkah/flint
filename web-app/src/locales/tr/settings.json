@@ -1417,6 +1417,10 @@
     "undo": "Geri al",
     "undoing": "Geri yükleniyor...",
     "restored": "{{n}} öğe geri yüklendi.",
-    "restoreFailed": "{{n}} öğe geri yüklenemedi."
+    "restoreFailed": "{{n}} öğe geri yüklenemedi.",
+    "deleteAllMenu": "Tümünü sil...",
+    "deleteAllEmpty": "Silinecek bir şey yok.",
+    "scopeAll": "Yalnızca geçerli filtrenin gösterdiği satırları değil, listedeki her şeyi kapsar.",
+    "archiveInstead": "Bunun yerine arşivle"
   }
 }

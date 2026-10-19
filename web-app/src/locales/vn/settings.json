@@ -1414,6 +1414,10 @@
     "undo": "Hoàn tác",
     "undoing": "Đang khôi phục...",
     "restored": "Đã khôi phục {{n}}.",
-    "restoreFailed": "Không thể khôi phục {{n}}."
+    "restoreFailed": "Không thể khôi phục {{n}}.",
+    "deleteAllMenu": "Xóa tất cả...",
+    "deleteAllEmpty": "Không có gì để xóa.",
+    "scopeAll": "Áp dụng cho mọi mục trong danh sách, không chỉ các dòng bộ lọc hiện tại đang hiển thị.",
+    "archiveInstead": "Lưu trữ thay vì xóa"
   }
 }

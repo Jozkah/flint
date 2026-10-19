@@ -1593,6 +1593,10 @@
     "undo": "Deshacer",
     "undoing": "Restaurando...",
     "restored": "{{n}} restaurados.",
-    "restoreFailed": "No se pudieron restaurar {{n}}."
+    "restoreFailed": "No se pudieron restaurar {{n}}.",
+    "deleteAllMenu": "Eliminar todo...",
+    "deleteAllEmpty": "No hay nada que eliminar.",
+    "scopeAll": "Incluye todo lo de la lista, no solo las filas que muestra el filtro actual.",
+    "archiveInstead": "Archivar en su lugar"
   }
 }

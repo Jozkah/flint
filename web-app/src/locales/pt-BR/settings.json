@@ -1449,6 +1449,10 @@
     "undo": "Desfazer",
     "undoing": "Restaurando...",
     "restored": "{{n}} restaurados.",
-    "restoreFailed": "Não foi possível restaurar {{n}}."
+    "restoreFailed": "Não foi possível restaurar {{n}}.",
+    "deleteAllMenu": "Excluir tudo...",
+    "deleteAllEmpty": "Nada para excluir.",
+    "scopeAll": "Inclui tudo da lista, não apenas as linhas que o filtro atual mostra.",
+    "archiveInstead": "Arquivar em vez disso"
   }
 }

@@ -1420,6 +1420,10 @@
     "undo": "Annuler",
     "undoing": "Restauration...",
     "restored": "{{n}} restaurés.",
-    "restoreFailed": "{{n}} n’ont pas pu être restaurés."
+    "restoreFailed": "{{n}} n’ont pas pu être restaurés.",
+    "deleteAllMenu": "Tout supprimer...",
+    "deleteAllEmpty": "Rien à supprimer.",
+    "scopeAll": "Concerne tout ce que contient la liste, pas seulement les lignes affichées par le filtre actuel.",
+    "archiveInstead": "Archiver plutôt"
   }
 }
