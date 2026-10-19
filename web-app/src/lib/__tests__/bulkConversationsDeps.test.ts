@@ -12,6 +12,8 @@ const m = vi.hoisted(() => ({
   forgetSession: vi.fn(),
   worktrees: {} as Record<string, unknown>,
   streaming: {} as Record<string, boolean>,
+  sessions: [] as unknown[],
+  setCampaign: vi.fn(),
 }))
 
 vi.mock('@/hooks/useThreads', () => ({
@@ -32,7 +34,9 @@ vi.mock('@/hooks/useCoworkRun', () => ({
   useCoworkRun: { getState: () => ({ runs: {} }) },
 }))
 vi.mock('@/hooks/useCoworkSessions', () => ({
-  useCoworkSessions: { getState: () => ({ sessions: [] }) },
+  useCoworkSessions: {
+    getState: () => ({ sessions: m.sessions, setCampaign: m.setCampaign }),
+  },
 }))
 vi.mock('@/hooks/useCoworkWorktrees', () => ({
   useCoworkWorktrees: { getState: () => ({ bySession: m.worktrees }) },
@@ -68,6 +72,7 @@ beforeEach(() => {
   m.archiveOn = true
   m.worktrees = {}
   m.streaming = {}
+  m.sessions = []
   m.archiveCoworkSession.mockResolvedValue(true)
 })
 
@@ -165,5 +170,16 @@ describe('actOnItem delete', () => {
   it('deletes a campaign through the backend command', async () => {
     await actOnItem(mk('campaign', 'k'), 'delete')
     expect(m.campaignDelete).toHaveBeenCalledWith('k')
+  })
+
+  it('clears the campaign pointer of sessions that ran under the deleted one', async () => {
+    m.sessions = [
+      { id: 's1', title: 's1', campaign: { id: 'k', role: 'task' } },
+      { id: 's2', title: 's2', campaign: { id: 'other', role: 'task' } },
+      { id: 's3', title: 's3' },
+    ]
+    await actOnItem(mk('campaign', 'k'), 'delete')
+    expect(m.setCampaign).toHaveBeenCalledTimes(1)
+    expect(m.setCampaign).toHaveBeenCalledWith('s1', null)
   })
 })

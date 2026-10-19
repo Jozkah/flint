@@ -182,7 +182,20 @@ async function deleteOne(item: BulkItem): Promise<void> {
     }
     case 'campaign':
       await campaignApi.delete(item.id)
+      unlinkCampaignSessions(item.id)
       return
+  }
+}
+
+/**
+ * Sessions keep a `campaign` pointer to the plan they ran under. The record is
+ * gone now, so the pointer would lead nowhere (a campaign chip, a "coordinator"
+ * mode with nothing behind it). The sessions themselves stay as ordinary ones.
+ */
+function unlinkCampaignSessions(campaignId: string): void {
+  const store = useCoworkSessions.getState()
+  for (const s of store.sessions) {
+    if (s.campaign?.id === campaignId) store.setCampaign(s.id, null)
   }
 }
 
