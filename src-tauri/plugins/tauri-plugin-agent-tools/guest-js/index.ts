@@ -1008,6 +1008,8 @@ export type ToolchainReport = {
      */
     adminCommand?: string
   }[]
+  /** Why an unavailable program has no grant: built on MSYS2, or a Store alias. */
+  blocked?: { program: string; kind: 'msys' | 'storeAlias' }[]
 }
 
 /** A toolchain folder the user let the Windows sandbox use. */

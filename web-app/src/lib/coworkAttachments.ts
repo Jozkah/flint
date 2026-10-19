@@ -132,19 +132,21 @@ export async function prepareCoworkAttachments(
     // Cowork has no retrieval tool to search embedded documents with, so every
     // document is read whole, whatever the chat-side preference says.
     const inline = input.docs.map((d) => ({ ...d, parseMode: 'inline' as const }))
-    let processed: Attachment[] = []
-    try {
-      processed = (
-        await processAttachmentsForSend({
-          attachments: inline,
+    // One document at a time: a file that is gone fails only itself, and a
+    // document that already carries its text is never reported as failed
+    // because another one in the batch could not be read.
+    const processed: Attachment[] = []
+    for (const d of inline) {
+      try {
+        const out = await processAttachmentsForSend({
+          attachments: [d],
           threadId: ctx.sessionId,
           serviceHub: ctx.serviceHub,
           parsePreference: 'inline',
           autoFallbackMode: 'inline',
         })
-      ).processedAttachments
-    } catch (e) {
-      for (const d of input.docs) {
+        processed.push(...out.processedAttachments)
+      } catch (e) {
         failed.push({ name: d.name, error: e instanceof Error ? e.message : String(e) })
       }
     }

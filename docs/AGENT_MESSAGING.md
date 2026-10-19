@@ -71,8 +71,9 @@ or reset them:
   `chain_limit_reached`, telling the agent to ask the user. So a ring of N
   sessions told to forward a message wakes at most `max_hops` sessions.
 - Mail that would revisit a session already in the chain twice
-  (`chain_cycle`), the 4th wake-up of one session by one chain
-  (`chain_wakes`), or the 7th wake-up of one session by relayed mail within a
+  (`chain_cycle`), the 4th wake-up of one session by one chain through the same sender
+  (or the 17th by one chain in all)
+  (`chain_wakes`), or the 13th wake-up of one session by relayed mail within a
   minute (`wake_rate`) is delivered with a `hold` reason: it never auto-wakes
   its recipient, which shows it as "Chain limit reached, waiting for you".
 

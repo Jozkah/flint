@@ -110,4 +110,25 @@ describe('prepareCoworkAttachments', () => {
     expect(out.failed.map((f) => f.name)).toEqual(['a.pdf', 'b.pdf'])
     expect(out.failed[0].error).toBe('backend down')
   })
+
+  it('one unreadable document fails only itself; a pasted one keeps its text', async () => {
+    processed.fn.mockImplementation(async ({ attachments }: { attachments: Attachment[] }) => {
+      const [a] = attachments
+      if (a.name === 'gone.pdf') throw new Error('gone.pdf is no longer available')
+      return {
+        processedAttachments: [{ ...a, inlineContent: a.inlineContent ?? 'parsed', injectionMode: 'inline' }],
+        hasEmbeddedDocuments: false,
+      }
+    })
+    const out = await prepareCoworkAttachments(
+      {
+        docs: [doc('gone.pdf'), doc('paste.txt', { inlineContent: 'pasted text' }), doc('ok.md')],
+      },
+      ctx
+    )
+    expect(out.failed).toEqual([{ name: 'gone.pdf', error: 'gone.pdf is no longer available' }])
+    expect(out.modelSuffix).toContain('pasted text')
+    expect(out.modelSuffix).toContain('parsed')
+    expect(out.shownNote).toBe('\n\nAttached: paste.txt, ok.md')
+  })
 })

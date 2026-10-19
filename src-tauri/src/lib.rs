@@ -452,6 +452,10 @@ macro_rules! invoke_commands_with_extras {
 
 #[cfg(not(feature = "cli"))]
 static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Set once the webview has flushed its deferred writes for this close, so the
+/// close that follows goes through.
+#[cfg(not(feature = "cli"))]
+static CLOSE_FLUSHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 #[cfg(not(feature = "cli"))]
 static GRACEFUL_IN_PROGRESS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
@@ -1156,6 +1160,28 @@ pub fn run() {
     run_app(build_app());
 }
 
+/// Ask the main webview to write its deferred stores, and wait for it to say
+/// so. A webview that is gone or stuck costs at most `FLUSH_BEFORE_EXIT_WAIT`.
+#[cfg(not(feature = "cli"))]
+async fn flush_webview_before_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Listener;
+    const FLUSH_BEFORE_EXIT_WAIT: std::time::Duration = std::time::Duration::from_millis(2500);
+    if app.get_webview_window("main").is_none() {
+        return;
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = std::sync::Mutex::new(Some(tx));
+    let id = app.listen("flush-before-exit-done", move |_| {
+        if let Some(tx) = tx.lock().ok().and_then(|mut t| t.take()) {
+            let _ = tx.send(());
+        }
+    });
+    if app.emit("flush-before-exit", ()).is_ok() {
+        let _ = tokio::time::timeout(FLUSH_BEFORE_EXIT_WAIT, rx).await;
+    }
+    app.unlisten(id);
+}
+
 /// Attach the lifecycle-event handler and enter the platform event loop.
 ///
 /// Consumes the [`App`](tauri::App) produced by [`build_app`] and blocks until the
@@ -1210,6 +1236,21 @@ pub fn run_app(app: tauri::App) {
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.hide();
                     }
+                    return;
+                }
+                // The window is really closing. The webview defers some writes
+                // (the Cowork sessions store, 1.5 s), and its pagehide flush
+                // may not finish before the process ends, so ask it to flush
+                // and wait (briefly) for the answer before closing for real.
+                if !CLOSE_FLUSHED.swap(true, Ordering::SeqCst) {
+                    api.prevent_close();
+                    let app_handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        flush_webview_before_exit(&app_handle).await;
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.close();
+                        }
+                    });
                     return;
                 }
             }

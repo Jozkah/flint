@@ -109,6 +109,8 @@ export type BulkResult = {
   error?: string
   /** The delete stopped halfway: the item is safe in the Archive, not gone. */
   kept?: boolean
+  /** Left alone on purpose: it started running after the plan was made. */
+  skipped?: boolean
 }
 
 /**
@@ -119,6 +121,17 @@ export class BulkKept extends Error {
   constructor(reason: string) {
     super(reason)
     this.name = 'BulkKept'
+  }
+}
+
+/**
+ * Thrown by an action that left the item alone because it began running after
+ * the plan was confirmed. Nothing was changed.
+ */
+export class BulkSkipped extends Error {
+  constructor(reason = 'running') {
+    super(reason)
+    this.name = 'BulkSkipped'
   }
 }
 
@@ -170,6 +183,7 @@ export async function runBulk(
         ok: false,
         error: e instanceof Error ? e.message : String(e),
         ...(e instanceof BulkKept ? { kept: true } : {}),
+        ...(e instanceof BulkSkipped ? { skipped: true } : {}),
       })
     }
     if ((index + 1) % every === 0) await wait()
