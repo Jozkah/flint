@@ -2444,7 +2444,10 @@
     "retry": "Yeniden dene",
     "restart": "Flint'i yeniden başlat",
     "done": "Bitti",
-    "restartManually": "Taşınan verileri kullanmaya başlamak için Flint'i yeniden başlatın."
+    "restartManually": "Taşınan verileri kullanmaya başlamak için Flint'i yeniden başlatın.",
+    "chooseNote": "Siz onaylayana kadar hiçbir şey kopyalanmaz. JAN verileri asla değiştirilmez veya silinmez.",
+    "copyDescription": "Aşağıda işaretlediğiniz öğeler için JAN sohbetlerinizi, ayarlarınızı ve sağlayıcı anahtarlarınızı Flint'e kopyalar. JAN'ın kendisi asla değiştirilmez veya silinmez.",
+    "freshDescription": "Flint'i boş başlatır. Sağlayıcı anahtarları dahil JAN'dan hiçbir şey okunmaz veya kopyalanmaz, ne şimdi ne sonraki açılışlarda. İstediğiniz zaman Ayarlar, Veri klasörü bölümünden içe aktarabilirsiniz."
   },
   "imageViewer": {
     "imageN": "Görsel {{n}}",

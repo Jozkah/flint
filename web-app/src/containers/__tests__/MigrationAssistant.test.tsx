@@ -175,6 +175,67 @@ describe('MigrationAssistant', () => {
   })
 })
 
+describe('MigrationAssistant first run', () => {
+  const FRESH_RESULT = {
+    status: 'complete',
+    mode: 'fresh',
+    per_category: [],
+    skipped: [],
+    backup_path: null,
+    reuse_path: null,
+    quarantine_dir: null,
+    manifest_path: '/f/cfg/migration_manifest.json',
+    error: null,
+    rolled_back: false,
+    restart_required: false,
+  }
+
+  it("offers Not now and Don't ask again on the automatic first-launch open", async () => {
+    detect.mockResolvedValue({ ...FOUND, first_launch_pending: true })
+    render(<MigrationAssistant />)
+    expect(await screen.findByTestId('mode-fresh')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Not now' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /ask again/i })).toBeInTheDocument()
+  })
+
+  it('states what each choice does and that JAN is never changed', async () => {
+    detect.mockResolvedValue({ ...FOUND, first_launch_pending: true })
+    render(<MigrationAssistant />)
+    await screen.findByTestId('mode-fresh')
+    expect(screen.getByText(/never modified or deleted/i)).toBeInTheDocument()
+    expect(screen.getByTestId('mode-fresh')).toHaveTextContent(
+      /Nothing is read or copied from JAN, including its provider keys/
+    )
+    expect(screen.getByTestId('mode-copy')).toHaveTextContent(
+      /conversations, settings and provider keys/
+    )
+  })
+
+  it('Start fresh plans and executes a fresh profile and copies nothing', async () => {
+    detect.mockResolvedValue({ ...FOUND, first_launch_pending: true })
+    plan.mockResolvedValue({ ...PLAN, mode: 'fresh', selected_categories: [], items: [] })
+    execute.mockResolvedValue(FRESH_RESULT)
+    render(<MigrationAssistant />)
+    fireEvent.click(await screen.findByTestId('mode-fresh'))
+    fireEvent.click(screen.getByRole('button', { name: 'Start fresh' }))
+
+    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1))
+    expect(plan).toHaveBeenCalledTimes(1)
+    expect(plan.mock.calls[0][0]).toMatchObject({ mode: 'fresh', selectedCategories: [] })
+    expect(execute.mock.calls[0][0]).toMatchObject({ mode: 'fresh', items: [] })
+  })
+
+  it("Don't ask again records the decision through the core", async () => {
+    detect.mockResolvedValue({ ...FOUND, first_launch_pending: true })
+    ;(mig.migrationDismiss as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    render(<MigrationAssistant />)
+    await screen.findByTestId('mode-fresh')
+    fireEvent.click(screen.getByRole('button', { name: /ask again/i }))
+    await waitFor(() => expect(mig.migrationDismiss).toHaveBeenCalled())
+    expect(execute).not.toHaveBeenCalled()
+  })
+})
+
 describe('MigrationAssistant while a migration runs (#249)', () => {
   const FAILED = {
     status: 'failed',

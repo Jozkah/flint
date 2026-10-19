@@ -18,6 +18,7 @@
 pub mod detect;
 pub mod execute;
 pub mod fsutil;
+pub mod legacy_guard;
 pub mod lock;
 pub mod manifest;
 pub mod paths;

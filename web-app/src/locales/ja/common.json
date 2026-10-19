@@ -2444,7 +2444,10 @@
     "retry": "再試行",
     "restart": "Flint を再起動",
     "done": "完了",
-    "restartManually": "移行したデータを使い始めるには、Flint を再起動してください。"
+    "restartManually": "移行したデータを使い始めるには、Flint を再起動してください。",
+    "chooseNote": "確認するまで何もコピーされません。JAN のデータが変更または削除されることはありません。",
+    "copyDescription": "下で選んだ項目について、JAN の会話、設定、プロバイダーキーを Flint にコピーします。JAN 自体は変更も削除もされません。",
+    "freshDescription": "Flint を空の状態で始めます。プロバイダーキーを含め、JAN からは何も読み込まれずコピーもされず、以降の起動でも同様です。設定のデータフォルダからいつでもインポートできます。"
   },
   "imageViewer": {
     "imageN": "画像 {{n}}",

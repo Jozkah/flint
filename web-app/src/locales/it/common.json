@@ -2482,7 +2482,10 @@
     "retry": "Riprova",
     "restart": "Riavvia Flint",
     "done": "Fatto",
-    "restartManually": "Riavvia Flint per iniziare a usare i dati migrati."
+    "restartManually": "Riavvia Flint per iniziare a usare i dati migrati.",
+    "chooseNote": "Non viene copiato nulla finché non confermi. I dati di JAN non vengono mai modificati né eliminati.",
+    "copyDescription": "Copia in Flint le tue conversazioni, impostazioni e chiavi dei provider di JAN, per gli elementi selezionati qui sotto. JAN non viene mai modificato né eliminato.",
+    "freshDescription": "Avvia Flint vuoto. Non viene letto né copiato nulla da JAN, chiavi dei provider incluse, ora e nei prossimi avvii. Puoi sempre importare da Impostazioni, Cartella dati."
   },
   "imageViewer": {
     "imageN": "Immagine {{n}}",

@@ -115,7 +115,7 @@ impl MigrationResult {
     }
 }
 
-fn mode_tag(mode: Mode) -> ModeTag {
+pub(crate) fn mode_tag(mode: Mode) -> ModeTag {
     match mode {
         Mode::Copy => ModeTag::Copy,
         Mode::Reuse => ModeTag::Reuse,
@@ -251,6 +251,7 @@ pub fn execute(plan: &MigrationPlan, opts: &ExecuteOpts) -> MigrationResult {
     if let Ok(Some(existing)) = manifest::read(&flint_config) {
         if existing.status == Status::Complete
             && existing.source.data_folder == plan.source_data_folder
+            && existing.mode == mode_tag(plan.mode)
         {
             result.status = Status::Complete;
             result.per_category = existing
@@ -282,6 +283,19 @@ pub fn execute(plan: &MigrationPlan, opts: &ExecuteOpts) -> MigrationResult {
         Mode::Fresh => execute_fresh(plan, &flint_config, &flint_data, &mut result),
         Mode::Reuse => execute_reuse(plan, &flint_config, opts, &mut result),
         Mode::Copy | Mode::Move => execute_copy_or_move(plan, opts, &mut result),
+    }
+
+    // Persist what the user chose about JAN's data, so a later start never
+    // reads it after Start fresh and never withholds it after a copy or reuse.
+    if result.status == Status::Complete {
+        let decision = match plan.mode {
+            Mode::Fresh => super::legacy_guard::Decision::Fresh,
+            Mode::Reuse | Mode::Copy | Mode::Move => super::legacy_guard::Decision::Use,
+        };
+        if let Err(e) = super::legacy_guard::record_decision(&flint_config, decision) {
+            result.status = Status::Failed;
+            result.error = Some(format!("could not record the choice: {e}"));
+        }
     }
 
     result

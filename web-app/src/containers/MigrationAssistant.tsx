@@ -49,7 +49,7 @@ const COPY_LIKE: MigrationMode[] = ['copy', 'move']
  */
 export function MigrationAssistant() {
   const { t } = useTranslation()
-  const { open, openedManually, openAssistant, closeAssistant } =
+  const { open, openedManually, openFirstRun, closeAssistant } =
     useMigrationAssistant()
 
   const [step, setStep] = useState<Step>('detect')
@@ -92,13 +92,13 @@ export function MigrationAssistant() {
           setDetect(d)
           setStep('choose')
           seedSelection(d)
-          openAssistant()
+          openFirstRun()
         }
       })
       .catch(() => {
         // Detection is best-effort; a failure just means no prompt.
       })
-  }, [openAssistant, seedSelection])
+  }, [openFirstRun, seedSelection])
 
   // When opened manually (Settings), run detection each time it opens.
   useEffect(() => {
@@ -134,6 +134,13 @@ export function MigrationAssistant() {
       alive = false
     }
   }, [open, openedManually, seedSelection])
+
+  const modeDescription = (m: MigrationMode) =>
+    m === 'copy'
+      ? t('common:migration.copyDescription')
+      : m === 'fresh'
+        ? t('common:migration.freshDescription')
+        : MODE_DESCRIPTIONS[m]
 
   const toggleCategory = (c: Category) => {
     setSelected((prev) => {
@@ -319,6 +326,10 @@ export function MigrationAssistant() {
               </div>
             )}
 
+            <p className="text-xs text-muted-foreground">
+              {t('common:migration.chooseNote')}
+            </p>
+
             <div className="flex flex-col gap-2">
               {(Object.keys(MODE_LABELS) as MigrationMode[]).map((m) => (
                 <button
@@ -336,7 +347,7 @@ export function MigrationAssistant() {
                 >
                   <div className="text-sm font-medium">{MODE_LABELS[m]}</div>
                   <div className="text-xs text-muted-foreground">
-                    {MODE_DESCRIPTIONS[m]}
+                    {modeDescription(m)}
                   </div>
                 </button>
               ))}

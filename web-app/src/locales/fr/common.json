@@ -2480,7 +2480,10 @@
     "retry": "Réessayer",
     "restart": "Redémarrer Flint",
     "done": "Terminé",
-    "restartManually": "Redémarrez Flint pour commencer à utiliser les données migrées."
+    "restartManually": "Redémarrez Flint pour commencer à utiliser les données migrées.",
+    "chooseNote": "Rien n'est copié avant votre confirmation. Les données de JAN ne sont jamais modifiées ni supprimées.",
+    "copyDescription": "Copie vos conversations, réglages et clés de fournisseurs de JAN vers Flint, pour les éléments cochés ci-dessous. JAN lui-même n'est jamais modifié ni supprimé.",
+    "freshDescription": "Démarre Flint à vide. Rien n'est lu ni copié depuis JAN, clés de fournisseurs comprises, maintenant comme aux lancements suivants. Vous pouvez toujours importer depuis Paramètres, Dossier de données."
   },
   "imageViewer": {
     "imageN": "Image {{n}}",

@@ -2532,7 +2532,10 @@
     "retry": "Retry",
     "restart": "Restart Flint",
     "done": "Done",
-    "restartManually": "Restart Flint to start using the migrated data."
+    "restartManually": "Restart Flint to start using the migrated data.",
+    "chooseNote": "Nothing is copied until you confirm. JAN's data is never modified or deleted.",
+    "copyDescription": "Copies your JAN conversations, settings and provider keys into Flint, for the items you tick below. JAN itself is never changed or deleted.",
+    "freshDescription": "Starts Flint empty. Nothing is read or copied from JAN, including its provider keys, now or on later launches. You can still import from Settings, Data folder, at any time."
   },
   "imageViewer": {
     "imageN": "Image {{n}}",

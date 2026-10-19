@@ -2484,7 +2484,10 @@
     "retry": "Torna-ho a provar",
     "restart": "Reinicia Flint",
     "done": "Fet",
-    "restartManually": "Reinicia Flint per començar a utilitzar les dades migrades."
+    "restartManually": "Reinicia Flint per començar a utilitzar les dades migrades.",
+    "chooseNote": "No es copia res fins que confirmis. Les dades de JAN mai es modifiquen ni s'esborren.",
+    "copyDescription": "Copia les teves converses, la configuració i les claus de proveïdors de JAN a Flint, per als elements marcats a sota. JAN mai no es canvia ni s'esborra.",
+    "freshDescription": "Inicia Flint buit. No es llegeix ni es copia res de JAN, ni tan sols les seves claus de proveïdors, ara ni en inicis posteriors. Sempre pots importar des de Configuració, Carpeta de dades."
   },
   "imageViewer": {
     "imageN": "Imatge {{n}}",

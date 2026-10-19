@@ -2536,7 +2536,10 @@
     "retry": "Spróbuj ponownie",
     "restart": "Uruchom Flint ponownie",
     "done": "Gotowe",
-    "restartManually": "Uruchom Flint ponownie, aby zacząć używać zmigrowanych danych."
+    "restartManually": "Uruchom Flint ponownie, aby zacząć używać zmigrowanych danych.",
+    "chooseNote": "Nic nie jest kopiowane, dopóki nie potwierdzisz. Dane JAN nigdy nie są zmieniane ani usuwane.",
+    "copyDescription": "Kopiuje do Flint Twoje rozmowy, ustawienia i klucze dostawców z JAN, dla pozycji zaznaczonych poniżej. Sam JAN nigdy nie jest zmieniany ani usuwany.",
+    "freshDescription": "Uruchamia Flint z pustymi danymi. Nic nie jest odczytywane ani kopiowane z JAN, łącznie z kluczami dostawców, teraz ani przy kolejnych uruchomieniach. Importować można zawsze w Ustawieniach, Folder danych."
   },
   "imageViewer": {
     "imageN": "Obraz {{n}}",

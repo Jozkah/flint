@@ -2486,7 +2486,10 @@
     "retry": "Tentar novamente",
     "restart": "Reiniciar o Flint",
     "done": "Concluído",
-    "restartManually": "Reinicie o Flint para começar a usar os dados migrados."
+    "restartManually": "Reinicie o Flint para começar a usar os dados migrados.",
+    "chooseNote": "Nada é copiado até você confirmar. Os dados do JAN nunca são modificados nem apagados.",
+    "copyDescription": "Copia suas conversas, configurações e chaves de provedores do JAN para o Flint, nos itens marcados abaixo. O JAN em si nunca é alterado nem apagado.",
+    "freshDescription": "Inicia o Flint vazio. Nada é lido nem copiado do JAN, incluindo as chaves de provedores, agora ou em inicializações futuras. Você ainda pode importar em Configurações, Pasta de dados."
   },
   "imageViewer": {
     "imageN": "Imagem {{n}}",
