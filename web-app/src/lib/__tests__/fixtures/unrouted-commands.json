@@ -1443,6 +1443,10 @@
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
     "web-app/src/lib/coworkJobsPoller.ts (via bashJobsList)"
   ],
+  "plugin:agent-tools|check_write_secrets": [
+    "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+    "web-app/src/lib/agentTools.ts (via checkWriteSecrets)"
+  ],
   "plugin:agent-tools|direct_edit_authorize": [
     "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
     "web-app/src/hooks/useDirectEditGrants.ts (via directEditAuthorize)",
@@ -2163,24 +2167,39 @@
     "web-app/src/containers/SettingsBackupCard.tsx"
   ],
   "shared_folder_allow": [
+    "web-app/src/containers/SharedFolderBar.tsx (via sharedFolder)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
-    "web-app/src/lib/sharedFolder.ts"
+    "web-app/src/hooks/useSharedFolderView.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts",
+    "web-app/src/stores/shared-folder-store.ts (via sharedFolder)"
   ],
   "shared_folder_default_isolation": [
+    "web-app/src/containers/SharedFolderBar.tsx (via sharedFolder)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
-    "web-app/src/lib/sharedFolder.ts"
+    "web-app/src/hooks/useSharedFolderView.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts",
+    "web-app/src/stores/shared-folder-store.ts (via sharedFolder)"
   ],
   "shared_folder_overview": [
+    "web-app/src/containers/SharedFolderBar.tsx (via sharedFolder)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
-    "web-app/src/lib/sharedFolder.ts"
+    "web-app/src/hooks/useSharedFolderView.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts",
+    "web-app/src/stores/shared-folder-store.ts (via sharedFolder)"
   ],
   "shared_folder_peers": [
+    "web-app/src/containers/SharedFolderBar.tsx (via sharedFolder)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
-    "web-app/src/lib/sharedFolder.ts"
+    "web-app/src/hooks/useSharedFolderView.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts",
+    "web-app/src/stores/shared-folder-store.ts (via sharedFolder)"
   ],
   "shared_folder_recent_edits": [
+    "web-app/src/containers/SharedFolderBar.tsx (via sharedFolder)",
     "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
-    "web-app/src/lib/sharedFolder.ts"
+    "web-app/src/hooks/useSharedFolderView.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts",
+    "web-app/src/stores/shared-folder-store.ts (via sharedFolder)"
   ],
   "start_mcp_server_now": [
     "web-app/src/services/mcp/tauri.ts"

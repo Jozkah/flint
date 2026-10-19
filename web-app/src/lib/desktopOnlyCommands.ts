@@ -63,6 +63,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'plugin:agent-tools|memory_conflicts',
       'plugin:agent-tools|memory_delete',
       'plugin:agent-tools|memory_export',
+      'plugin:agent-tools|check_write_secrets',
       'plugin:agent-tools|memory_import',
       'plugin:agent-tools|memory_list',
       'plugin:agent-tools|memory_proposal_resolve',
