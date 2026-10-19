@@ -26,6 +26,20 @@ export type AskedSession = {
   reason?: string | null
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The model may address a session by raw id. Show that session's title, or a
+ * short id when it is unknown, never the full UUID.
+ */
+export function askedDisplayName(
+  raw: string,
+  sessions: readonly { id: string; title: string }[]
+): string {
+  if (!raw || !UUID.test(raw)) return raw
+  return sessions.find((s) => s.id === raw)?.title || raw.slice(0, 8)
+}
+
 type PartLike = {
   type?: string
   toolCallId?: string

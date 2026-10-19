@@ -2,7 +2,7 @@ import { MessageSquareReply } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
-import type { AskedSession } from '@/lib/askedSessions'
+import { askedDisplayName, type AskedSession } from '@/lib/askedSessions'
 
 /**
  * "Asked <title>": what the agent in this session sent to another session, and
@@ -14,7 +14,9 @@ export function CoworkAskedCard({ asked }: { asked: AskedSession }) {
   const exists = useCoworkSessions((s) =>
     asked.sessionId ? s.sessions.some((x) => x.id === asked.sessionId) : false
   )
-  const name = asked.name || t('messaging:asked.unknownName')
+  const byId = useCoworkSessions((s) => s.sessions)
+  const name =
+    askedDisplayName(asked.name, byId) || t('messaging:asked.unknownName')
   return (
     <section
       data-testid={`agent-asked-${asked.key}`}

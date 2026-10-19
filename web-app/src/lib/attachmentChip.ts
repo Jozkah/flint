@@ -1,5 +1,18 @@
 import type { Attachment } from '@/types/attachment'
 
+/**
+ * Whether an attachment alone is enough to send (empty prompt): media with
+ * bytes, or a finished document carrying content (a large paste becomes a
+ * pasted-text-N.txt chip with the text inline).
+ */
+export function isSendableAttachment(a: Attachment): boolean {
+  if (a.processing || a.error) return false
+  if (a.type === 'document') {
+    return !!a.inlineContent?.trim() || !!a.id || (!!a.processed && !!a.path)
+  }
+  return !!a.dataUrl
+}
+
 export type ChipIcon =
   | 'image'
   | 'audio'

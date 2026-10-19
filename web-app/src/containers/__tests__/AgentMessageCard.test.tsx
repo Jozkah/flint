@@ -162,7 +162,7 @@ describe('CoworkHeldInput with mail', () => {
     expect(markRead).toHaveBeenCalledWith('A', ['m1', 'm2', 'm3', 'm4', 'm5'])
   })
 
-  it('announces itself: a banner that is scrolled into view when mail arrives', async () => {
+  it('announces itself with a banner and never scrolls overflow-hidden ancestors (blank transcript)', async () => {
     const scrolled = vi.fn()
     Element.prototype.scrollIntoView = scrolled
     render(<CoworkHeldInput sessionId="A" running={false} />)
@@ -171,7 +171,8 @@ describe('CoworkHeldInput with mail', () => {
     })
     const banner = await screen.findByTestId('held-mail-banner')
     expect(banner).toHaveTextContent('messaging:heldBanner#1')
-    await waitFor(() => expect(scrolled).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 20))
+    expect(scrolled).not.toHaveBeenCalled()
   })
 
   it('a message held by the chain guard says the chain limit was reached', () => {

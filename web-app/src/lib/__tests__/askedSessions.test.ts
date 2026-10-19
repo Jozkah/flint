@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { askedFromParts } from '../askedSessions'
+import { askedDisplayName, askedFromParts } from '../askedSessions'
+
+describe('askedDisplayName', () => {
+  const id = '3f2a9c1e-1111-4222-8333-444455556666'
+  it('shows the session title for a raw id, else the short id', () => {
+    expect(askedDisplayName(id, [{ id, title: 'Ring2 helper' }])).toBe('Ring2 helper')
+    expect(askedDisplayName(id, [])).toBe('3f2a9c1e')
+    expect(askedDisplayName('Beta', [])).toBe('Beta')
+  })
+})
 
 const part = (over: Record<string, unknown>) => ({
   type: 'tool-send_message',

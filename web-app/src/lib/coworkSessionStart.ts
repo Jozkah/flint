@@ -27,6 +27,9 @@ export function isSessionEmpty(session: CoworkSession | undefined): boolean {
   if (!session) return true
   if (session.turns.length > 0) return false
   if (session.messages.length > 0) return false
+  // A turn cut short by a quit: the message was sent, it is only not
+  // committed yet.
+  if (session.inFlight?.turns?.length) return false
   if (session.todos?.phases?.length) return false
   // Tabs the user opened are work in the session, even with no turn run.
   if (session.codePanel?.tabs?.length) return false

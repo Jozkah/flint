@@ -5,8 +5,37 @@ import {
   dragFileCount,
   formatChipSize,
   imageNeedsVision,
+  isSendableAttachment,
   truncateMiddle,
 } from '../attachmentChip'
+
+describe('isSendableAttachment', () => {
+  it('lets an inline document (large paste) send with an empty prompt', () => {
+    expect(
+      isSendableAttachment({
+        name: 'pasted-text-1.txt',
+        type: 'document',
+        inlineContent: 'lots of text',
+        processed: true,
+      })
+    ).toBe(true)
+  })
+  it('keeps media with bytes sendable and empty ones not', () => {
+    expect(
+      isSendableAttachment({ name: 'a.png', type: 'image', dataUrl: 'data:x' })
+    ).toBe(true)
+    expect(isSendableAttachment({ name: 'a.png', type: 'image' })).toBe(false)
+  })
+  it('rejects documents still processing, errored or empty', () => {
+    expect(
+      isSendableAttachment({ name: 'a.txt', type: 'document', inlineContent: 'x', processing: true })
+    ).toBe(false)
+    expect(
+      isSendableAttachment({ name: 'a.txt', type: 'document', inlineContent: 'x', error: 'bad' })
+    ).toBe(false)
+    expect(isSendableAttachment({ name: 'a.txt', type: 'document' })).toBe(false)
+  })
+})
 
 describe('attachmentChip', () => {
   it('middle-truncates and keeps the extension', () => {

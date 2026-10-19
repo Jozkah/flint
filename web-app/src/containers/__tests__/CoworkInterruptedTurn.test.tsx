@@ -66,6 +66,12 @@ describe('CoworkInterruptedTurn (AH-026)', () => {
     expect(screen.queryByTestId('cowork-interrupted-turn')).toBeNull()
   })
 
+  it('shows the message the user sent, so it is not lost with the turn', () => {
+    h.inFlight = record()
+    render(<CoworkInterruptedTurn sessionId="s1" running={false} onContinue={() => {}} />)
+    expect(screen.getByTestId('cowork-interrupted-prompt').textContent).toContain('fix it')
+  })
+
   it('shows nothing while the run that owns the checkpoint is still running here', () => {
     h.inFlight = record()
     h.liveRunId = 'run-dead'

@@ -49,6 +49,22 @@ describe('what counts as an empty session', () => {
     ).toBe(false)
   })
 
+  it('not one whose first turn was cut short (a message was sent)', () => {
+    expect(
+      isSessionEmpty(
+        session({
+          inFlight: {
+            runId: 'r',
+            startedAt: 1,
+            checkpointAt: 2,
+            baseCount: 0,
+            turns: [{ role: 'user', content: 'hello' }],
+          },
+        })
+      )
+    ).toBe(false)
+  })
+
   it('not one with a todo list', () => {
     expect(
       isSessionEmpty(
