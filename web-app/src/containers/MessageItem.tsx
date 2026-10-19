@@ -69,6 +69,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { calledUnavailableTool, emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatMessageTime } from '@/utils/formatMessageTime'
+import { toMs } from '@/lib/messageTime'
 import {
   useConversationModel,
   useConversationPane,
@@ -206,7 +207,10 @@ export const MessageItem = memo(
     const renderUserMarkdown = useInterfaceSettings((s) => s.renderUserMarkdown)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
-    const createdAt = (metadata?.createdAt as Date) ?? new Date()
+    // The stored time. A message that has none yet (a reply whose first part
+    // has not arrived) shows no time: "now" was re-read on every render, so
+    // reopening a conversation made every such message read as just sent.
+    const createdAt = toMs(metadata?.createdAt)
     // The image viewer: the images it can step through, and which is showing.
     const [viewer, setViewer] = useState<{
       images: ViewerImage[]
@@ -873,10 +877,13 @@ export const MessageItem = memo(
                 </span>
               </>
             )}
-            {!isStreaming && (
+            {!isStreaming && createdAt !== undefined && (
               <>
                 <span aria-hidden>·</span>
-                <span className="shrink-0 tabular-nums">
+                <span
+                  className="shrink-0 tabular-nums"
+                  title={new Date(createdAt).toLocaleString()}
+                >
                   {formatMessageTime(createdAt)}
                 </span>
               </>
@@ -966,9 +973,14 @@ export const MessageItem = memo(
               REVEAL_ACTIONS
             )}
           >
-            <span className="mr-1 text-muted-foreground tabular-nums">
-              {formatMessageTime(createdAt)}
-            </span>
+            {createdAt !== undefined && (
+              <span
+                className="mr-1 text-muted-foreground tabular-nums"
+                title={new Date(createdAt).toLocaleString()}
+              >
+                {formatMessageTime(createdAt)}
+              </span>
+            )}
             {versionNav}
             <span className="inline-flex pointer-coarse:[&_button]:size-11">
               <CopyButton text={getFullTextContent()} />

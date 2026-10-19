@@ -49,6 +49,7 @@ import {
 } from '@/containers/PermissionRequestDetails'
 import { SecretWriteDetails } from '@/containers/SecretWriteDetails'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
+import { timingFor } from '@/lib/toolTimingLog'
 import { ToolElapsed } from './tool-runtime'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
@@ -307,10 +308,10 @@ export const ToolHeader = memo(
       toolCallId ? s.queue.indexOf(toolCallId) : -1
     )
     const startedAt = useToolCallRuntime((s) =>
-      toolCallId ? s.timings[toolCallId]?.startedAt : undefined
+      timingFor(s.timings, toolCallId)?.startedAt
     )
     const endedAt = useToolCallRuntime((s) =>
-      toolCallId ? s.timings[toolCallId]?.endedAt : undefined
+      timingFor(s.timings, toolCallId)?.endedAt
     )
 
     // Colour comes from the card's kind (Tool); the status text below still

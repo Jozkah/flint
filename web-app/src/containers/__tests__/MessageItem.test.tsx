@@ -965,4 +965,40 @@ describe('MessageItem', () => {
     )
     expect(screen.queryByLabelText('chat:actions.regenerate')).not.toBeInTheDocument()
   })
+  describe('message time after a conversation switch', () => {
+    const timeSpan = (container: HTMLElement) =>
+      container.querySelector('span.tabular-nums[title]') as HTMLElement | null
+    const renderUser = (metadata: Record<string, unknown>) =>
+      render(
+        <MessageItem
+          message={
+            makeMsg({ role: 'user', parts: [{ type: 'text', text: 'hi' }], metadata }) as any
+          }
+          isFirstMessage
+          isLastMessage={false}
+          status={'ready' as any}
+        />
+      )
+
+    it('shows the stored time whatever shape it came back in', () => {
+      const at = new Date(2020, 0, 2, 3, 4).getTime()
+      const shown = [new Date(at), at, new Date(at).toISOString()].map((createdAt) => {
+        const { container, unmount } = renderUser({ createdAt })
+        const text = timeSpan(container)?.textContent
+        const title = timeSpan(container)?.title
+        unmount()
+        return [text, title]
+      })
+      expect(shown[0][0]).toBeTruthy()
+      expect(shown[1]).toEqual(shown[0])
+      expect(shown[2]).toEqual(shown[0])
+      // An old message reads as a date, never as today's clock.
+      expect(shown[0][0]).not.toMatch(/^\d\d:\d\d$/)
+    })
+
+    it('shows no time rather than the current one when none was stored', () => {
+      const { container } = renderUser({})
+      expect(timeSpan(container)).toBeNull()
+    })
+  })
 })

@@ -14,6 +14,7 @@ import { diffStat } from '@/components/ChangeDiff'
 import { useAppState } from '@/hooks/useAppState'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
+import { timingFor } from '@/lib/toolTimingLog'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   DEFAULT_COMPACTION_POLICY,
@@ -369,7 +370,7 @@ export function ChatActivityFrame({
           continue
         const name = toolNameOf(part)
         const at =
-          (part.toolCallId ? timings[part.toolCallId]?.endedAt : undefined) ??
+          timingFor(timings, part.toolCallId)?.endedAt ??
           fallbackAt
         const key = part.toolCallId ?? `${message.id}-${list.length}`
         if (READ_TOOLS.has(name)) {
@@ -441,7 +442,7 @@ export function ChatActivityFrame({
           continue
         }
         const failed = toolCallFailed(part.state, part.output)
-        const timing = part.toolCallId ? timings[part.toolCallId] : undefined
+        const timing = timingFor(timings, part.toolCallId)
         list.push({
           key,
           icon: failed ? 'feed-alert' : 'feed-ticket',

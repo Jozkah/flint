@@ -266,6 +266,7 @@ import {
 } from '@/lib/tokenUsage'
 import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
 import { addToReplySpeed, earlierTokenSpeed } from '@/lib/replyTokenSpeed'
+import { earlierCreatedAt } from '@/lib/messageTime'
 import { createReasoningClock } from '@/lib/reasoningClock'
 
 export type TokenUsageCallback = (
@@ -3666,6 +3667,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // The reply this request continues, if it does: its speed block covers
     // every request of the reply, while `usage` stays the last request's.
     const earlierSpeed = earlierTokenSpeed(options.messages)
+    // The reply's time is when it began, stamped once on its first part: the
+    // chat used to show the time it was rendered, and the thread file the
+    // time the last step finished.
+    const replyStartedAt = earlierCreatedAt(options.messages) ?? Date.now()
     let tokensPerSecond = 0
     let promptPerSecond = 0
     let draftTokens = 0
@@ -3750,9 +3755,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           // Who answered, so the reply's header can name the assistant that
           // was in charge of it rather than always saying Flint.
           const answering = part.type === 'start' ? this.answeringAssistant : undefined
-          return compacted || answering
+          return compacted || answering || part.type === 'start'
             ? {
                 ...(attribution ?? {}),
+                ...(part.type === 'start' ? { createdAt: replyStartedAt } : {}),
                 ...(compacted ? { compaction: compacted } : {}),
                 ...(answering
                   ? { assistantName: answering.name, assistantAvatar: answering.avatar }

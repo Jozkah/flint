@@ -1,5 +1,6 @@
 import { archiveFirstAttempt } from '@/lib/firstAttemptArchive'
 import { create } from 'zustand'
+import { logToolTiming } from '@/lib/toolTimingLog'
 
 export type ToolCallTiming = {
   /** Unset until the executor reaches this call. */
@@ -139,6 +140,7 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
           ownerOf(id) === owner
         ) {
           timings[id] = { ...timing, endedAt: Date.now() }
+          logToolTiming(id, timing.startedAt, timings[id].endedAt)
         }
       }
       const owners = { ...s.owners }
@@ -178,11 +180,13 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
       if (!s.timings[toolCallId]) return s
       const progress = { ...s.progress }
       delete progress[toolCallId]
+      const endedAt = Date.now()
+      logToolTiming(toolCallId, s.timings[toolCallId].startedAt, endedAt)
       return {
         queue: s.queue.filter((id) => id !== toolCallId),
         timings: {
           ...s.timings,
-          [toolCallId]: { ...s.timings[toolCallId], endedAt: Date.now() },
+          [toolCallId]: { ...s.timings[toolCallId], endedAt },
         },
         progress,
       }
