@@ -2597,6 +2597,7 @@
       "vision": "視覺",
       "audio": "音訊",
       "fixedPrompt": "每次請求都會傳送:{{count}} 個權杖(系統提示詞和工具結構描述)。",
+      "smallContext": "小上下文模式：已開啟，節省約 {{count}} 個權杖",
       "tokenUsage": "Token 用量",
       "tokenUsageSr": "Token 用量 {{value}}"
     }

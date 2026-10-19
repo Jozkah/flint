@@ -120,18 +120,41 @@ export function skillSummary(description: string): string {
   return `${chars.slice(0, SKILL_SUMMARY_MAX_CHARS - 3).join('').trimEnd()}...`
 }
 
+/** Characters of skill names a compact catalog lists before it points at `skill_list`. */
+const COMPACT_SKILL_BUDGET_CHARS = 600
+
+function compactSkillBlock(ordered: readonly CatalogSkill[]): string {
+  const names: string[] = []
+  let used = 0
+  for (const skill of ordered) {
+    if (used + skill.name.length + 2 > COMPACT_SKILL_BUDGET_CHARS) break
+    names.push(skill.name)
+    used += skill.name.length + 2
+  }
+  const more = ordered.length - names.length
+  return [
+    '# Skills',
+    'Before a task, `skill_read` the skill that covers it (never `ls` a skill folder): ' +
+      names.join(', ') +
+      (more > 0 ? `, and ${more} more (\`skill_list\`).` : '.'),
+  ].join('\n')
+}
+
 /**
  * The `# Skills` block, or `''` when there is nothing to advertise. Skills you
  * wrote come before project and plugin skills so the budget cuts those first.
  */
 export function skillCatalogBlock(
   skills?: readonly CatalogSkill[] | null,
-  folder?: string | null
+  folder?: string | null,
+  /** Small-context mode: names only under a one-line header, `skill_list` for the rest. */
+  compact = false
 ): string {
   const offered = (skills ?? getCachedSkills(folder)).filter((s) => s.model_invocable !== false)
   if (offered.length === 0) return ''
   const rank = (s: CatalogSkill) => (s.plugin ? 2 : s.origin === 'project' ? 1 : 0)
   const ordered = [...offered].sort((a, b) => rank(a) - rank(b))
+  if (compact) return compactSkillBlock(ordered)
   const lines: string[] = []
   let used = 0
   let omitted = 0

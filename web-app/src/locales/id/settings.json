@@ -629,7 +629,12 @@
     "projectOverride": "(Sebuah proyek menimpa ini.)",
     "saveFailed": "Kebijakan pemadatan tidak dapat disimpan",
     "leanTools": "Alat ringkas pada model kecil",
-    "leanToolsDescription": "Dengan jendela konteks 32K token atau kurang, daftar plugin, pencarian gambar, dan alat widget tidak disertakan dalam obrolan, agar jendela memuat percakapan. Pencarian web, MCP, dan alat agen tetap ada."
+    "leanToolsDescription": "Dengan jendela konteks 32K token atau kurang, daftar plugin, pencarian gambar, dan alat widget tidak disertakan dalam obrolan, agar jendela memuat percakapan. Pencarian web, MCP, dan alat agen tetap ada.",
+    "smallContext": "Mode konteks kecil",
+    "smallContextDescription": "Untuk jendela konteks 64K token atau kurang, kirim prompt sistem yang lebih ringkas, daftar skill hanya nama, memori lebih sedikit, dan alat lebih sedikit. Aturan keamanan, persetujuan, dan sandbox tidak berubah.",
+    "smallContextAuto": "Otomatis",
+    "smallContextAlways": "Selalu",
+    "smallContextNever": "Tidak pernah"
   },
   "accent": {
     "title": "Warna aksen",

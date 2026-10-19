@@ -66,16 +66,22 @@ export async function setCompactionPolicy(layer: CompactionLayer): Promise<Compa
   return invoke<CompactionPolicy>('set_compaction_policy', { layer })
 }
 
+/** Smallest autocompact buffer: a short reply and one more turn. */
+export const MIN_RESERVE_TOKENS = 2048
+
 /**
- * The reserve kept free in a window this size: never more than a quarter of
- * it, the same rule the backend applies (`Policy::effective_reserve`), so a
- * small local model keeps its context.
+ * The autocompact buffer kept free in a window this size: a tenth of it, at
+ * least 2K, never more than the policy's reserve (the 16K ceiling for big
+ * windows) or a quarter of the window. The same rule the backend applies
+ * (`scaled_reserve` in compaction_policy.rs), so a 50K local model keeps 5K
+ * for the buffer instead of 12.5K and every surface agrees on the number.
  */
 export function effectiveReserve(
   maxContextTokens: number,
   policy: Pick<CompactionPolicy, 'reserveTokens'>
 ): number {
-  return Math.min(policy.reserveTokens, Math.floor(maxContextTokens / 4))
+  const scaled = Math.max(MIN_RESERVE_TOKENS, Math.floor(maxContextTokens / 10))
+  return Math.min(policy.reserveTokens, scaled, Math.floor(maxContextTokens / 4))
 }
 
 /** Output headroom for a request: the model's cap or the reserve, whichever is larger. */
@@ -84,7 +90,10 @@ export function outputHeadroom(
   maxOutputTokens: number,
   policy: Pick<CompactionPolicy, 'reserveTokens'>
 ): number {
-  return Math.max(maxOutputTokens, effectiveReserve(maxContextTokens, policy))
+  // A hosted model's reply room is not the autocompact buffer: it keeps the
+  // policy reserve, up to a quarter of the window, as before.
+  const hostedReserve = Math.min(policy.reserveTokens, Math.floor(maxContextTokens / 4))
+  return Math.max(maxOutputTokens, hostedReserve)
 }
 
 /** Above this, a local model's reply is given its own cap, not more. */

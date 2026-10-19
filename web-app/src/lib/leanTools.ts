@@ -19,9 +19,11 @@ export const LOW_VALUE_TOOLS: ReadonlySet<string> = new Set([
 export function toolsForWindow<T>(
   tools: Record<string, T>,
   windowTokens: number,
-  lean: boolean
+  lean: boolean,
+  /** Small-context mode is on (`lib/smallContext.ts`): the low-value tools go whatever the window. */
+  small = false
 ): Record<string, T> {
-  if (!lean || !(windowTokens > 0) || windowTokens > SMALL_WINDOW_TOKENS) return tools
+  if (!small && (!lean || !(windowTokens > 0) || windowTokens > SMALL_WINDOW_TOKENS)) return tools
   if (!Object.keys(tools).some((name) => LOW_VALUE_TOOLS.has(name))) return tools
   return Object.fromEntries(
     Object.entries(tools).filter(([name]) => !LOW_VALUE_TOOLS.has(name))

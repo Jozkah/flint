@@ -64,9 +64,9 @@ const noSplitPairs = (messages: UIMessage[]) => {
 describe('threshold math', () => {
   it('compacts at the default share of the window', () => {
     expect(DEFAULT_COMPACT_THRESHOLD).toBe(0.8)
-    expect(thresholdTokens(10_000)).toBe(8_000)
-    expect(shouldCompact(7_999, 10_000)).toBe(false)
-    expect(shouldCompact(8_000, 10_000)).toBe(true)
+    expect(thresholdTokens(100_000)).toBe(80_000)
+    expect(shouldCompact(79_999, 100_000)).toBe(false)
+    expect(shouldCompact(80_000, 100_000)).toBe(true)
   })
 
   it('honours a custom threshold, clamped to a sane range', () => {
@@ -76,17 +76,17 @@ describe('threshold math', () => {
   })
 
   it('compacts early when the next step is expected to cross the trigger', () => {
-    expect(shouldCompact(7_000, 10_000, undefined, 500)).toBe(false)
-    expect(shouldCompact(7_000, 10_000, undefined, 1_000)).toBe(true)
+    expect(shouldCompact(70_000, 100_000, undefined, 5_000)).toBe(false)
+    expect(shouldCompact(70_000, 100_000, undefined, 10_000)).toBe(true)
     // No headroom by default, so the plain behaviour is unchanged.
-    expect(shouldCompact(7_999, 10_000)).toBe(false)
+    expect(shouldCompact(79_999, 100_000)).toBe(false)
   })
 
   it('never lets the trigger sit inside the reply reserve', () => {
-    // A 95% share of a 10,000 window is 9,500, but 1,500 is kept for the
-    // reply, so the trigger is 8,500.
-    expect(shouldCompact(8_499, 10_000, 0.95)).toBe(false)
-    expect(shouldCompact(8_500, 10_000, 0.95)).toBe(true)
+    // A 95% share of a 100,000 window is 95,000, but the autocompact buffer
+    // (a tenth of the window) is kept free, so the trigger is 90,000.
+    expect(shouldCompact(89_999, 100_000, 0.95)).toBe(false)
+    expect(shouldCompact(90_000, 100_000, 0.95)).toBe(true)
   })
 
   it('derives headroom from recent growth, capped at a quarter of the window', () => {

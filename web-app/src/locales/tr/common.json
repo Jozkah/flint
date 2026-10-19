@@ -2595,6 +2595,7 @@
       "vision": "Görme",
       "audio": "Ses",
       "fixedPrompt": "Her istekle gönderilir: {{count}} token (sistem istemi ve araç şemaları).",
+      "smallContext": "Küçük bağlam modu: açık, ~{{count}} token tasarruf ediyor",
       "tokenUsage": "Token kullanımı",
       "tokenUsageSr": "Token kullanımı {{value}}"
     }

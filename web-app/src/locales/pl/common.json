@@ -2693,6 +2693,7 @@
       "vision": "Obraz",
       "audio": "Dźwięk",
       "fixedPrompt": "Wysyłane z każdym żądaniem: {{count}} tokenów (prompt systemowy i schematy narzędzi).",
+      "smallContext": "Tryb małego kontekstu: włączony, oszczędza ~{{count}} tokenów",
       "tokenUsage": "Użycie tokenów",
       "tokenUsageSr": "Użycie tokenów {{value}}"
     }

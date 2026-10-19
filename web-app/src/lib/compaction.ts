@@ -27,6 +27,7 @@ import {
 import { outputTextWithoutImages } from '@/lib/toolOutputImages'
 import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { isContextOverflow, replyReserveFor } from '@/lib/coworkBudget'
+import { DEFAULT_COMPACTION_POLICY, effectiveReserve } from '@/lib/compactionPolicy'
 
 /** Share of the effective window at which a request is compacted first. */
 export const DEFAULT_COMPACT_THRESHOLD = 0.8
@@ -138,7 +139,8 @@ export function shouldCompact(
   if (window == null || !(window > 0)) return false
   const trigger = Math.min(
     thresholdTokens(window, threshold),
-    window - replyReserveFor(window)
+    window -
+      Math.max(replyReserveFor(window), effectiveReserve(window, DEFAULT_COMPACTION_POLICY))
   )
   return projected + Math.max(0, headroom || 0) >= trigger
 }

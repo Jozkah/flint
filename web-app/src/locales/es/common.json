@@ -2637,6 +2637,7 @@
       "vision": "Visión",
       "audio": "Audio",
       "fixedPrompt": "Se envía con cada solicitud: {{count}} tokens (prompt del sistema y esquemas de herramientas).",
+      "smallContext": "Modo de contexto pequeño: activado, ahorra ~{{count}} tokens",
       "tokenUsage": "Uso de tokens",
       "tokenUsageSr": "Uso de tokens {{value}}"
     }

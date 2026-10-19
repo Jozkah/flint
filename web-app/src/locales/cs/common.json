@@ -2687,6 +2687,7 @@
       "vision": "Vidění",
       "audio": "Zvuk",
       "fixedPrompt": "Odesíláno s každým požadavkem: {{count}} tokenů (systémový prompt a schémata nástrojů).",
+      "smallContext": "Režim malého kontextu: zapnuto, ušetří ~{{count}} tokenů",
       "tokenUsage": "Využití tokenů",
       "tokenUsageSr": "Využití tokenů {{value}}"
     }

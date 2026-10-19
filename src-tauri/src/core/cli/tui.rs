@@ -5015,7 +5015,10 @@ async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
     // Free space is what is left after the estimated content and the
     // reserved buffer, so the seven segments partition the window exactly
     // and the percentages sum to 100.
-    let buffer = snapshot.reserve_tokens.min(snapshot.context_window);
+    let buffer = tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+        snapshot.reserve_tokens,
+        snapshot.context_window,
+    );
     let used: u64 = segments.iter().map(|s| s.tokens).sum();
     let free = snapshot.context_window.saturating_sub(used + buffer);
     segments.push(ContextSegment {
@@ -5088,7 +5091,10 @@ fn report_from_the_last_request(snapshot: &ContextSnapshot) -> Option<ContextRep
     // goes true the moment a compaction rewrites it).
     let reported = !snapshot.tokens_estimated && snapshot.turn_prompt_tokens > 0;
     let used: u64 = segments.iter().map(|s| s.tokens).sum();
-    let buffer = snapshot.reserve_tokens.min(snapshot.context_window);
+    let buffer = tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+        snapshot.reserve_tokens,
+        snapshot.context_window,
+    );
     let free = snapshot.context_window.saturating_sub(used + buffer);
     segments.push(ContextSegment {
         key: '.',
@@ -5931,7 +5937,10 @@ impl App {
         // surface; an overflow still compacts reactively.
         // The reserve never exceeds a quarter of the window, the same rule
         // `compaction_policy::Policy::effective_reserve` applies everywhere.
-        let reserve = self.reserve_tokens.min(self.context_window / 4);
+        let reserve = tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+            self.reserve_tokens,
+            self.context_window,
+        );
         let limit = self.context_window.saturating_sub(reserve);
         self.compaction_auto && self.tokens > limit && self.tokens > 0 && self.history.len() > 4
     }
@@ -5948,7 +5957,10 @@ impl App {
         let Some(found) = pressure(
             self.tokens,
             self.context_window,
-            self.reserve_tokens,
+            tauri_plugin_agent_tools::compaction_policy::scaled_reserve(
+                self.reserve_tokens,
+                self.context_window,
+            ),
             !self.tokens_estimated,
         ) else {
             // Below the line again (a compaction, a new conversation, a bigger

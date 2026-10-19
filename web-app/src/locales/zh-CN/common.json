@@ -2597,6 +2597,7 @@
       "vision": "视觉",
       "audio": "音频",
       "fixedPrompt": "每次请求都会发送:{{count}} 个令牌(系统提示词和工具架构)。",
+      "smallContext": "小上下文模式：已开启，节省约 {{count}} 个令牌",
       "tokenUsage": "Token 用量",
       "tokenUsageSr": "Token 用量 {{value}}"
     }

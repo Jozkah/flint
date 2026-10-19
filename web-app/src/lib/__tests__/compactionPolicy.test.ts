@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { shouldCompact } from '../compaction'
 import {
   DEFAULT_COMPACTION_POLICY,
   effectiveReserve,
@@ -21,9 +22,25 @@ describe('compactionPolicy (AH-076)', () => {
     expect(outputHeadroom(100_000, 32_000, { reserveTokens: 16384 })).toBe(32_000)
   })
 
-  it('never reserves more than a quarter of a small window', () => {
-    expect(effectiveReserve(12_000, { reserveTokens: 16384 })).toBe(3000)
-    expect(effectiveReserve(128_000, { reserveTokens: 16384 })).toBe(16384)
+  it('scales the autocompact buffer with the window', () => {
+    const p = { reserveTokens: 16384 }
+    const sizes = [8_192, 16_384, 32_768, 50_000, 128_000, 262_144]
+    expect(sizes.map((w) => effectiveReserve(w, p))).toEqual([2048, 2048, 3276, 5000, 12_800, 16_384])
+    for (const w of [1024, 4096, ...sizes]) {
+      expect(effectiveReserve(w, p)).toBeLessThanOrEqual(Math.floor(w / 4))
+    }
+    expect(effectiveReserve(12_000, p)).toBe(2048)
+    // A user-set smaller reserve still wins.
+    expect(effectiveReserve(128_000, { reserveTokens: 4096 })).toBe(4096)
+  })
+
+  it('compacts before the buffer line at every window size', () => {
+    const p = { reserveTokens: 16384 }
+    for (const w of [8_192, 16_384, 32_768, 50_000, 128_000, 262_144]) {
+      const line = w - effectiveReserve(w, p)
+      expect(shouldCompact(line, w)).toBe(true)
+      expect(shouldCompact(Math.floor(w * 0.5), w)).toBe(false)
+    }
   })
 
   it('reserves only the user cap, else min(2048, 10%), for a local model', () => {

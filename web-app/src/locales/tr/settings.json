@@ -631,7 +631,12 @@
     "projectOverride": "(Bir proje bunu geçersiz kılar.)",
     "saveFailed": "Sıkıştırma ilkesi kaydedilemedi",
     "leanTools": "Küçük modellerde sade araçlar",
-    "leanToolsDescription": "Bağlam penceresi 32K token veya daha küçükse eklenti listesi, görsel arama ve widget araçları sohbetlerden çıkarılır, böylece pencere konuşmaya ayrılır. Web araması, MCP ve ajan araçları kalır."
+    "leanToolsDescription": "Bağlam penceresi 32K token veya daha küçükse eklenti listesi, görsel arama ve widget araçları sohbetlerden çıkarılır, böylece pencere konuşmaya ayrılır. Web araması, MCP ve ajan araçları kalır.",
+    "smallContext": "Küçük bağlam modu",
+    "smallContextDescription": "64K token veya daha küçük bağlam pencerelerinde daha sade bir sistem istemi, yalnızca adlardan oluşan beceri listesi, daha az bellek ve daha az araç gönderir. Güvenlik kuralları, onaylar ve sandbox değişmez.",
+    "smallContextAuto": "Otomatik",
+    "smallContextAlways": "Her zaman",
+    "smallContextNever": "Asla"
   },
   "accent": {
     "title": "Vurgu rengi",
