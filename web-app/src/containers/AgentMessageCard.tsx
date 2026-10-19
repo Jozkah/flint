@@ -51,7 +51,7 @@ export function AgentMessageCard({
           title={at.toLocaleString()}
           className="ml-auto shrink-0 text-xs tabular-nums"
         >
-          {at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}
         </time>
       </div>
       {message.from.hold && (

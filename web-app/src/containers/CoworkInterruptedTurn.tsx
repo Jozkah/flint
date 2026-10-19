@@ -52,6 +52,11 @@ export function CoworkInterruptedTurn({
   if (!isInterrupted(record, liveRunId)) return null
   const calls = record.turns.filter((turn) => turn.role === 'tool').length
   const partial = unfinishedReply(record)
+  // The run's own prompt: committed to the transcript only on recovery, so it
+  // is shown here instead of looking dropped.
+  const firstTurn = record.turns[0]
+  const sentPrompt =
+    firstTurn?.role === 'user' && !firstTurn.hidden ? firstTurn.content : ''
   const take = (choice: InterruptedChoice) => {
     if (useCoworkSessions.getState().recoverInFlight(sessionId, choice)) onContinue()
   }
@@ -68,6 +73,14 @@ export function CoworkInterruptedTurn({
         <PauseCircle size={14} aria-hidden className="shrink-0" />
         <span>{t('common:run.interrupted')}</span>
       </div>
+      {sentPrompt ? (
+        <div
+          data-testid="cowork-interrupted-prompt"
+          className="line-clamp-4 whitespace-pre-wrap rounded-lg bg-muted/40 px-2.5 py-1.5 text-foreground"
+        >
+          {sentPrompt}
+        </div>
+      ) : null}
       <div className="text-muted-foreground">
         {partial
           ? t('common:run.interruptedDetail', { count: calls, calls, chars: partial.length })

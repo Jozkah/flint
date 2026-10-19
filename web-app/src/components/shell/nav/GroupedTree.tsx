@@ -37,6 +37,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { CursorAnchor, useCursorAnchor } from './CursorAnchor'
 import {
   Dialog,
   DialogContent,
@@ -195,6 +196,8 @@ export function GroupedTree({
   const [name, setName] = useState('')
   const [deleting, setDeleting] = useState<ConversationGroup | null>(null)
   const [foldersOf, setFoldersOf] = useState<string | null>(null)
+  const [menuGroup, setMenuGroup] = useState<string | null>(null)
+  const cursor = useCursorAnchor()
   // While a row is dragged, Ungrouped stays on screen as a drop target even
   // when nothing is in it.
   const [dragging, setDragging] = useState(false)
@@ -280,7 +283,16 @@ export function GroupedTree({
           data-group-id={group.id}
         >
           <DropZone id={group.id} label={group.name}>
-            <div className="group/cg flex h-7 items-center gap-0.5 pl-2">
+            <div
+              className="group/cg flex h-7 items-center gap-0.5 pl-2"
+              onContextMenu={(e) => {
+                // Same menu as the "..." button, at the pointer.
+                e.preventDefault()
+                e.stopPropagation()
+                cursor.openAt(e)
+                setMenuGroup(group.id)
+              }}
+            >
               <button
                 type="button"
                 aria-expanded={open}
@@ -318,18 +330,28 @@ export function GroupedTree({
               >
                 <Plus />
               </NavGroupAction>
-              <DropdownMenu>
+              <DropdownMenu
+                open={menuGroup === group.id}
+                onOpenChange={(o) => {
+                  setMenuGroup(o ? group.id : null)
+                  if (!o) cursor.release()
+                }}
+              >
                 <DropdownMenuTrigger asChild>
-                  <NavGroupAction
-                    className="hidden group-focus-within/cg:grid group-hover/cg:grid data-[state=open]:grid pointer-coarse:grid"
-                    aria-label={t('common:groups.options')}
-                  >
-                    <MoreHorizontal />
-                  </NavGroupAction>
+                  {menuGroup === group.id && cursor.point ? (
+                    <CursorAnchor x={cursor.point.x} y={cursor.point.y} />
+                  ) : (
+                    <NavGroupAction
+                      className="hidden group-focus-within/cg:grid group-hover/cg:grid data-[state=open]:grid pointer-coarse:grid"
+                      aria-label={t('common:groups.options')}
+                    >
+                      <MoreHorizontal />
+                    </NavGroupAction>
+                  )}
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="start"
-                  side={isMobile ? 'bottom' : 'right'}
+                  side={cursor.point && menuGroup === group.id ? 'bottom' : isMobile ? 'bottom' : 'right'}
                   className="w-48"
                 >
                   <DropdownMenuItem

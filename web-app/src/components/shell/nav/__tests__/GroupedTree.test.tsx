@@ -195,6 +195,17 @@ describe('Cowork and Rooms groups on the sidebar', () => {
     fireEvent.click(screen.getByTestId('group-new-item'))
     expect(onNew).toHaveBeenCalledWith(id)
   })
+  it('right-clicking a group header opens the group menu', async () => {
+    await act(async () => {
+      await store().createGroup('cowork', 'Backend')
+    })
+    tree()
+    const header = screen.getByTestId('nav-group').querySelector('.group\\/cg')!
+    await act(async () => {
+      fireEvent.contextMenu(header, { clientX: 40, clientY: 50 })
+    })
+    expect(await screen.findByTestId('group-new-subfolder')).toBeInTheDocument()
+  })
   it('scopes the hover group to a folder header so nested folders do not light up together', async () => {
     await act(async () => {
       const parent = (await store().createGroup('cowork', 'Parent'))!

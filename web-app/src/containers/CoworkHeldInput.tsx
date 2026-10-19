@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useMessageQueue, type QueuedMessage } from '@/stores/message-queue-store'
 import { AgentMessageCard } from '@/containers/AgentMessageCard'
+import { revealInScroller } from '@/lib/revealInScroller'
 import { SessionMessagingToggle } from '@/containers/SessionMessagingToggle'
 
 type MailMessage = QueuedMessage & { from: NonNullable<QueuedMessage['from']> }
@@ -126,10 +127,9 @@ function HeldMailStack({
   const seen = useRef(0)
   useEffect(() => {
     if (ordered.length > seen.current) {
-      bannerRef.current?.scrollIntoView?.({
-        block: 'nearest',
-        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-      })
+      if (bannerRef.current) {
+        revealInScroller(bannerRef.current, !prefersReducedMotion())
+      }
     }
     seen.current = ordered.length
   }, [ordered.length])

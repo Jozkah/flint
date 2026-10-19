@@ -1,6 +1,7 @@
 import { canModelSummarize } from '@/lib/continueFromSummary'
 import { refusedDraftToRestore, unescapeComposerMarkdown } from '@/lib/composerText'
 import { pendingComposerTokens } from '@/lib/context-manager'
+import { isSendableAttachment } from '@/lib/attachmentChip'
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
 import { toAssetUrl } from '@/lib/assetPath'
 import {
@@ -1161,11 +1162,7 @@ const ChatInput = memo(function ChatInput({
     (a) => a.type === 'document' && a.processing
   )
   const ingestingAny = attachments.some((a) => a.processing)
-  const hasSendableMedia = attachments.some(
-    (a) =>
-      (a.type === 'image' || a.type === 'audio' || a.type === 'video') &&
-      !!a.dataUrl
-  )
+  const hasSendableMedia = attachments.some(isSendableAttachment)
   // The draft and its inline documents, so the context ring counts them
   // before send.
   const pendingTokens = useMemo(
