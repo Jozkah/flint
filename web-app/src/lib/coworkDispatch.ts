@@ -8,6 +8,7 @@ import { SCOPABLE_TOOLS, checkScopedRule } from '@/lib/approvalScopes'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import {
+  allApprovalRequests,
   approvalSourceFor,
   useToolApprovalRequests,
 } from '@/hooks/useToolApprovalRequests'
@@ -713,6 +714,8 @@ export async function dispatchCoworkTool(
 }
 
 const READ_ONLY_TIMEOUT_MS = 45_000
+/** How long a read may sit on a question to the user before it is given up. */
+const APPROVAL_WAIT_MAX_MS = 10 * 60_000
 const BOUNDED_READ_TOOLS = new Set([
   'read', 'ls', 'find', 'grep', 'web_search', 'web_fetch', 'image_search',
   'chat_read',
@@ -737,14 +740,32 @@ function boundedToolCall(
       resolve(outcome)
     }
     const stop = () => finish({ output: 'Tool stopped before it returned.', isError: true })
-    const timer = BOUNDED_READ_TOOLS.has(call.toolName)
-      ? setTimeout(
-          () => finish({
-            output: `ERROR: ${call.toolName} timed out after 45 seconds`,
-            isError: true,
-          }),
-          READ_ONLY_TIMEOUT_MS
-        )
+    // Time spent waiting for the user is not the tool being slow: while a
+    // question of this session is open the clock is held, and only a question
+    // left unanswered for a long time ends the call, saying so.
+    const waitingOn = () =>
+      allApprovalRequests(useToolApprovalRequests.getState()).find(
+        (a) => a.threadId === ctx.sessionId
+      )
+    const startedAt = Date.now()
+    const arm = (ms: number): ReturnType<typeof setTimeout> =>
+      setTimeout(() => {
+        const asked = waitingOn()
+        if (asked && Date.now() - startedAt < APPROVAL_WAIT_MAX_MS) {
+          timer = arm(READ_ONLY_TIMEOUT_MS)
+          return
+        }
+        finish({
+          output: asked
+            ? `ERROR: ${call.toolName} did not run: it was waiting for the user's approval (${asked.toolName}) and the approval was never answered.`
+            : `ERROR: ${call.toolName} timed out after 45 seconds`,
+          isError: true,
+        })
+      }, ms)
+    let timer: ReturnType<typeof setTimeout> | undefined = BOUNDED_READ_TOOLS.has(
+      call.toolName
+    )
+      ? arm(READ_ONLY_TIMEOUT_MS)
       : undefined
     signal?.addEventListener('abort', stop, { once: true })
     void routeCoworkTool(call, ctx, signal).then(finish, (error) => {

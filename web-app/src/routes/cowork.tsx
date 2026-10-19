@@ -3107,6 +3107,7 @@ export function CoworkPage() {
           {
             role: 'user',
             content: attached ? `${text}${attached.shownNote}` : text,
+            at: Date.now(),
             ...(attached && attached.keptImages.length > 0 ? { images: attached.keptImages } : {}),
             ...(from ? { from: agentAttribution(from) } : {}),
             ...(hidden ? { hidden: true } : {}),
@@ -5003,6 +5004,7 @@ export function CoworkPage() {
                 role: 'user' as const,
                 content: m.text,
                 steered: true,
+                at: m.createdAt ?? Date.now(),
                 // A mailbox message keeps its sender, so the transcript can
                 // say who it came from and offer a reply.
                 ...(m.from ? { from: agentAttribution(m.from) } : {}),
@@ -5812,10 +5814,13 @@ export function CoworkPage() {
         // A choice made before the first message still needs a session to
         // live on; dropping it left the session in its default mode while the
         // user believed they had picked another.
-        onChange={(next) => {
+        onChange={async (next) => {
           // Bypass runs everything without asking, host commands included:
           // say so before the first switch of the app run.
-          if (next === 'bypass' && !confirmBypass(t('permissions:settings.bypassConfirm'))) {
+          if (
+            next === 'bypass' &&
+            !(await confirmBypass(t('permissions:settings.bypassConfirm')))
+          ) {
             return
           }
           const sid = ensureCurrentSession(paneSessionIdRef.current)

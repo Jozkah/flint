@@ -546,6 +546,7 @@ function actionFor(
         ? { key: 'permissions:action.readTarget', values: { target: resources[0] } }
         : { key: 'permissions:action.readFiles' }
     default:
+      if (toolName === 'computer') return { key: 'permissions:action.computer' }
       if (toolName === 'clipboard') {
         if (args.action === 'read') return { key: 'permissions:action.readClipboard' }
         if (args.action === 'write') return { key: 'permissions:action.writeClipboard' }
@@ -611,6 +612,7 @@ function consequencesFor(
     case 'browser':
       return [{ key: 'permissions:consequence.browser' }]
     default:
+      if (toolName === 'computer') return [{ key: 'permissions:consequence.computer' }]
       if (toolName === 'clipboard') {
         if (args.action === 'read') return [{ key: 'permissions:consequence.readClipboard' }]
         if (args.action === 'write') return [{ key: 'permissions:consequence.writeClipboard' }]

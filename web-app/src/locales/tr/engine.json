@@ -112,7 +112,8 @@
     "settingNotSaved": "\"{{setting}}\" kaydedilmedi",
     "danger": "Tehlikeli bölge",
     "networkNote": "Ağınızda · {{host}} adresine gönderilir",
-    "reachUnknownNote": "Bu sağlayıcının nerede çalıştığı denetleniyor"
+    "reachUnknownNote": "Bu sağlayıcının nerede çalıştığı denetleniyor",
+    "reachUnconfirmedNote": "Bu sağlayıcının nerede çalıştığı doğrulanamadı · mesajlar bu bilgisayardan çıkabilir"
   },
   "mcp": {
     "title": "Araçlar ve MCP",

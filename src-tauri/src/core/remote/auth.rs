@@ -247,7 +247,15 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp = path.with_extension("tmp");
+    // A name of its own per write: two saves of one file at once (a switch
+    // flipped twice quickly) shared `x.tmp`, and the second rename then found
+    // nothing to move ("os error 2").
+    static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let tmp = path.with_extension(format!(
+        "tmp{}-{}",
+        std::process::id(),
+        WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     {
         use std::io::Write;
         let mut opts = std::fs::OpenOptions::new();
@@ -261,7 +269,9 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         f.write_all(bytes)?;
         f.sync_all()?;
     }
-    std::fs::rename(&tmp, path)
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
 }
 
 // ---------------------------------------------------------------------------

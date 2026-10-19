@@ -112,7 +112,8 @@
     "settingNotSaved": "„{{setting}}“ wurde nicht gespeichert",
     "danger": "Gefahrenbereich",
     "networkNote": "In deinem Netzwerk · gesendet an {{host}}",
-    "reachUnknownNote": "Prüfe, wo dieser Anbieter läuft"
+    "reachUnknownNote": "Prüfe, wo dieser Anbieter läuft",
+    "reachUnconfirmedNote": "Konnte nicht bestätigen, wo dieser Anbieter läuft · Nachrichten können diesen Computer verlassen"
   },
   "mcp": {
     "title": "Tools & MCP",

@@ -64,6 +64,30 @@ describe('dispatchCoworkTool', () => {
     }
   })
 
+  it('does not report an unanswered approval as the read timing out', async () => {
+    vi.useFakeTimers()
+    const { useToolApprovalRequests } = await import('@/hooks/useToolApprovalRequests')
+    const waiting = useToolApprovalRequests
+      .getState()
+      .requestApproval('c-ask', 'attach_folder', 's1', undefined, { input: {}, alwaysAsk: true })
+    try {
+      executeAgentTool.mockImplementationOnce(() => new Promise(() => {}))
+      const pending = dispatchCoworkTool(call('ls', { path: 'C:\\Users\\NotMe' }), ctx())
+      let done = false
+      void pending.then(() => { done = true })
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(done).toBe(false)
+      await vi.advanceTimersByTimeAsync(10 * 60_000)
+      const out = await pending
+      expect(out.output).toMatch(/waiting for the user's approval \(attach_folder\).*never answered/)
+      expect(out.output).not.toMatch(/timed out/)
+    } finally {
+      vi.useRealTimers()
+      useToolApprovalRequests.setState({ pending: {}, queued: {} })
+      void waiting
+    }
+  })
+
   // The trailing 'session' is load-bearing: under the default 'thread' scope a
   // session's files land where the thread sweep's keep-list can never mention
   // them, and the sweep deletes the only copy of the agent's work.

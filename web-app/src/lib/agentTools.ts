@@ -49,6 +49,7 @@ import {
   BROWSER_TOOL_NAME,
   browserAlwaysAsks,
   browserCallClass,
+  browserOpenRefusal,
   browserInputForPrompt,
   closeBrowserSession,
   describeBrowserCall,
@@ -418,6 +419,9 @@ export async function approveBrowserTool(
 ): Promise<string | null> {
   const cls = browserCallClass(input)
   if (cls === 'read') return null
+  // A page the backend would refuse is refused here, before anyone is asked.
+  const refusal = browserOpenRefusal(input)
+  if (refusal) return refusal
   const alwaysAsk =
     browserAlwaysAsks(cls) ||
     useToolApproval.getState().permissionMode === 'auto-approve'
@@ -494,9 +498,15 @@ export async function describeHostAction(
     unknown
   >
   if (toolName === 'computer') {
+    // Linux has its own wording (X11 root, Wayland clipboard); Windows and
+    // macOS do not mention either.
+    const linux =
+      typeof navigator !== 'undefined' &&
+      /linux/i.test(navigator.userAgent) &&
+      !/android/i.test(navigator.userAgent)
     const target = `screen (${String(a.x)}, ${String(a.y)})`
-    if (a.action === 'screenshot') return 'Capture the primary desktop display (the X11 root on Linux)'
-    if (a.action === 'type') return `Click ${target} and ${a.replace === true ? 'replace the field with' : 'type'} this text (on Wayland this also replaces the clipboard):\n${String(a.text ?? '')}`
+    if (a.action === 'screenshot') return `Capture a screenshot of the primary display${linux ? ' (the X11 root)' : ''}`
+    if (a.action === 'type') return `Click ${target} and ${a.replace === true ? 'replace the field with' : 'type'} this text${linux ? ' (on Wayland this also replaces the clipboard)' : ''}:\n${String(a.text ?? '')}`
     if (a.action === 'key') return `Click ${target} and press ${Array.isArray(a.keys) ? a.keys.join(' + ') : ''}`
     if (a.action === 'scroll') return `Click ${target} and scroll ${String(a.amount)} wheel steps (positive down)`
     return `${a.action === 'move' ? 'Move the pointer to' : `${a.count === 2 ? 'Double-click' : 'Click'} with the ${String(a.button ?? 'left')} button at`} ${target}`

@@ -422,11 +422,13 @@ function PermissionsSettings() {
                   role="menuitemradio"
                   aria-checked={permissionMode === mode}
                   onSelect={() => {
-                    if (
-                      mode === 'bypass' &&
-                      !confirmBypass(t('permissions:settings.bypassConfirm'))
-                    ) return
-                    setPermissionMode(mode as PermissionMode)
+                    void (async () => {
+                      if (
+                        mode === 'bypass' &&
+                        !(await confirmBypass(t('permissions:settings.bypassConfirm')))
+                      ) return
+                      setPermissionMode(mode as PermissionMode)
+                    })()
                   }}
                 >
                   <span className="flex-1">{t(label)}</span>

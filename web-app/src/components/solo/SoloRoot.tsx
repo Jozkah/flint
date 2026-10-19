@@ -22,6 +22,7 @@ import { WebPreviewHost } from '@/containers/WebPreviewHost'
 import { BrowserDomainDialog } from '@/containers/BrowserDomainDialog'
 import AttachmentIngestionDialog from '@/containers/dialogs/AttachmentIngestionDialog'
 import ErrorDialog from '@/containers/dialogs/ErrorDialog'
+import BypassConfirmDialog from '@/containers/dialogs/BypassConfirmDialog'
 import OutOfContextPromiseModal from '@/containers/dialogs/OutOfContextDialog'
 import AccessRequestDialog from '@/containers/dialogs/AccessRequestDialog'
 import { ModelReplaceDialog } from '@/containers/ModelReplaceDialog'
@@ -182,6 +183,7 @@ export default function SoloRoot() {
           <AttachmentIngestionDialog />
           <ErrorDialog />
           <OutOfContextPromiseModal />
+          <BypassConfirmDialog />
           <AccessRequestDialog />
           <ModelReplaceDialog />
         </TranslationProvider>

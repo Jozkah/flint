@@ -947,3 +947,27 @@ fn rpc_target_names_what_a_call_acts_on() {
     let long = "x".repeat(200);
     assert_eq!(rpc_target(&json!({"id": long})).map(|t| t.len()), Some(80));
 }
+
+#[test]
+fn concurrent_saves_of_one_file_all_succeed() {
+    // Two saves of the same file at once used to share one temp name, so the
+    // second rename failed with "os error 2" on a fresh data folder.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fresh").join("config.json");
+    let handles: Vec<_> = (0..16)
+        .map(|i| {
+            let path = path.clone();
+            std::thread::spawn(move || write_private(&path, format!("{{\"n\":{i}}}").as_bytes()))
+        })
+        .collect();
+    for h in handles {
+        h.join().unwrap().expect("every save lands");
+    }
+    assert!(std::fs::read_to_string(&path).unwrap().starts_with("{\"n\":"));
+    let leftovers: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name() != "config.json")
+        .collect();
+    assert!(leftovers.is_empty(), "temp files left: {leftovers:?}");
+}

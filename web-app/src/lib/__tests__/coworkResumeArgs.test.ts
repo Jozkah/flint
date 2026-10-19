@@ -88,3 +88,19 @@ describe('a session knows its own worktree', () => {
     expect(sessionWorktreeBranch('')).toMatch(/^jan\/cowork\/session-/)
   })
 })
+
+describe('turn times', () => {
+  it('a stored row keeps its time on the message, user and assistant alike', () => {
+    const msgs = coworkTurnsToUIMessages([
+      { role: 'user', content: 'hi', at: 1_700_000_000_000 },
+      { role: 'assistant', content: 'hello', at: 1_700_000_005_000 },
+    ])
+    expect((msgs[0].metadata as { createdAt?: number }).createdAt).toBe(1_700_000_000_000)
+    expect((msgs[1].metadata as { createdAt?: number }).createdAt).toBe(1_700_000_005_000)
+  })
+
+  it('a row without a time carries none, so nothing invents one', () => {
+    const msgs = coworkTurnsToUIMessages([{ role: 'user', content: 'old' }])
+    expect(msgs[0].metadata).toBeUndefined()
+  })
+})

@@ -114,7 +114,8 @@
     "settingNotSaved": "No s'ha desat «{{setting}}»",
     "danger": "Zona de perill",
     "networkNote": "A la teva xarxa · s'envia a {{host}}",
-    "reachUnknownNote": "Comprovant on s'executa aquest proveïdor"
+    "reachUnknownNote": "Comprovant on s'executa aquest proveïdor",
+    "reachUnconfirmedNote": "No s'ha pogut confirmar on s'executa aquest proveïdor · suposa que els missatges poden sortir d'aquest ordinador"
   },
   "mcp": {
     "title": "Eines i MCP",

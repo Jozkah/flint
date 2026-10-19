@@ -108,7 +108,13 @@ export function coworkTurnsToUIMessages(
 
   const ensureAssistant = (index: number) => {
     if (!assistant) {
-      assistant = { id: `${idPrefix}-asst-${index}`, role: 'assistant', parts: [] }
+      const at = turns[index - indexOffset]?.at
+      assistant = {
+        id: `${idPrefix}-asst-${index}`,
+        role: 'assistant',
+        parts: [],
+        ...(typeof at === 'number' ? { metadata: { createdAt: at } } : {}),
+      }
     }
     return assistant
   }
@@ -139,6 +145,7 @@ export function coworkTurnsToUIMessages(
       flushAssistant()
       if (turn.hidden && options.omitHiddenTurns) return
       const metadata: Record<string, unknown> = {}
+      if (typeof turn.at === 'number') metadata.createdAt = turn.at
       if (turn.hidden) metadata.hidden = true
       // janhq/jan#8864: marked where it entered a run as steering.
       if (turn.steered) metadata.steered = true

@@ -116,7 +116,8 @@
     "settingNotSaved": "Nastavení „{{setting}}“ se neuložilo",
     "danger": "Nebezpečná zóna",
     "networkNote": "Ve vaší síti · odesílá se na {{host}}",
-    "reachUnknownNote": "Zjišťuje se, kde tento poskytovatel běží"
+    "reachUnknownNote": "Zjišťuje se, kde tento poskytovatel běží",
+    "reachUnconfirmedNote": "Nepodařilo se zjistit, kde tento poskytovatel běží · předpokládejte, že zprávy mohou opustit tento počítač"
   },
   "mcp": {
     "title": "Nástroje a MCP",

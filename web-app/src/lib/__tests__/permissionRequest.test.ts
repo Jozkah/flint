@@ -256,6 +256,14 @@ describe('describePermissionRequest', () => {
     expect(d.technicalDetails.argumentsJson).toBe('')
   })
 
+  it('names the computer tool as screen, keyboard and mouse control', () => {
+    const d = describePermissionRequest({ toolName: 'computer', input: { action: 'screenshot' } })
+    expect(text(d.action)).toBe('Flint wants to control the screen, keyboard and mouse')
+    const c = d.consequences.map(text).join(' ')
+    expect(c).toMatch(/see everything on your screen/)
+    expect(c).not.toMatch(/cannot tell what this tool does|X11/)
+  })
+
   it('describes helpers and memory saves in their own words', () => {
     expect(text(describePermissionRequest({ toolName: 'task' }).action)).toBe(
       'Flint wants to start a helper agent'

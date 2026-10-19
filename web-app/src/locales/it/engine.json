@@ -114,7 +114,8 @@
     "settingNotSaved": "«{{setting}}» non è stato salvato",
     "danger": "Zona pericolosa",
     "networkNote": "Sulla tua rete · inviato a {{host}}",
-    "reachUnknownNote": "Verifica di dove viene eseguito questo provider"
+    "reachUnknownNote": "Verifica di dove viene eseguito questo provider",
+    "reachUnconfirmedNote": "Impossibile confermare dove viene eseguito questo provider · i messaggi potrebbero lasciare questo computer"
   },
   "mcp": {
     "title": "Strumenti e MCP",

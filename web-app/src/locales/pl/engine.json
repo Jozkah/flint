@@ -116,7 +116,8 @@
     "settingNotSaved": "Nie zapisano ustawienia „{{setting}}”",
     "danger": "Strefa zagrożenia",
     "networkNote": "W Twojej sieci · wysyłane do {{host}}",
-    "reachUnknownNote": "Sprawdzanie, gdzie działa ten dostawca"
+    "reachUnknownNote": "Sprawdzanie, gdzie działa ten dostawca",
+    "reachUnconfirmedNote": "Nie udało się potwierdzić, gdzie działa ten dostawca · wiadomości mogą opuszczać ten komputer"
   },
   "mcp": {
     "title": "Narzędzia i MCP",

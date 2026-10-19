@@ -111,7 +111,8 @@
     "settingNotSaved": "Chưa lưu \"{{setting}}\"",
     "danger": "Vùng nguy hiểm",
     "networkNote": "Trong mạng của bạn · gửi tới {{host}}",
-    "reachUnknownNote": "Đang kiểm tra nhà cung cấp này chạy ở đâu"
+    "reachUnknownNote": "Đang kiểm tra nhà cung cấp này chạy ở đâu",
+    "reachUnconfirmedNote": "Không xác nhận được nhà cung cấp này chạy ở đâu · hãy coi như tin nhắn có thể rời khỏi máy tính này"
   },
   "mcp": {
     "title": "Công cụ và MCP",
