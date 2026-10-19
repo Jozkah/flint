@@ -10,6 +10,9 @@ type LeanToolsConfigState = {
    */
   leanSmallWindows: boolean
   setLeanSmallWindows: (value: boolean) => void
+  /** Hold the specialist host and browser tools back until a chat asks for them. */
+  leanSpecialist: boolean
+  setLeanSpecialist: (value: boolean) => void
 }
 
 /** On by default: a small model's window is better spent on the conversation. */
@@ -18,6 +21,8 @@ export const useLeanToolsConfig = create<LeanToolsConfigState>()(
     (set) => ({
       leanSmallWindows: true,
       setLeanSmallWindows: (leanSmallWindows) => set({ leanSmallWindows }),
+      leanSpecialist: true,
+      setLeanSpecialist: (leanSpecialist) => set({ leanSpecialist }),
     }),
     {
       name: localStorageKey.settingLeanTools,

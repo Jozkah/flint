@@ -975,6 +975,30 @@ mod tests {
         }
     }
 
+    /// Rough token cost of one tool schema, by the same 3.5 characters per
+    /// token the web layer's pre-flight estimator uses (`context-manager.ts`).
+    fn schema_tokens(schema: &Value) -> usize {
+        (schema["function"].to_string().len() as f64 / 3.5).ceil() as usize + 4
+    }
+
+    /// Per-tool cost of what rides on every request, largest first. Prints with
+    /// `cargo test -p tauri-plugin-agent-tools --no-default-features
+    /// context_cost_report -- --nocapture`. Needs no data folder: the schemas
+    /// are static, so the figures are the same on every machine.
+    #[test]
+    fn context_cost_report() {
+        let mut rows: Vec<(String, usize)> = builtin_tool_schemas()
+            .iter()
+            .map(|s| (s["function"]["name"].as_str().unwrap().to_string(), schema_tokens(s)))
+            .collect();
+        rows.sort_by(|a, b| b.1.cmp(&a.1));
+        let total: usize = rows.iter().map(|r| r.1).sum();
+        for (name, tokens) in &rows {
+            println!("{tokens:>6}  {name}");
+        }
+        println!("{total:>6}  TOTAL ({} tools)", rows.len());
+    }
+
     fn tool<'a>(schemas: &'a [Value], name: &str) -> &'a Value {
         schemas
             .iter()

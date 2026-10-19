@@ -27,3 +27,69 @@ export function toolsForWindow<T>(
     Object.entries(tools).filter(([name]) => !LOW_VALUE_TOOLS.has(name))
   )
 }
+
+/**
+ * Specialist tools a plain chat carries only once the conversation shows a need.
+ *
+ * With Agent tools on, a chat offers about 45 tools and the specialist host and
+ * browser ones alone are over 5K tokens on every request, including a bare
+ * "test". These are offered from the turn the user (or the model, earlier in
+ * the thread) first touches their subject, and stay offered after that so the
+ * tool list does not flip between turns. Approval behaviour is unchanged: a
+ * tool that is offered is gated exactly as before. Cowork is not affected.
+ */
+const SPECIALIST_TRIGGERS: Readonly<Record<string, RegExp>> = {
+  computer: /\b(screen|screenshot|click|mouse|keyboard|desktop|cursor|type into)\b/i,
+  browser: /\b(browser|web ?page|website|localhost|click|navigate|page|ui test|e2e)\b/i,
+  docker: /\b(docker|container|compose|image build)\b/i,
+  host_ssh: /\b(ssh|remote (server|host|machine)|scp)\b/i,
+  host_wsl: /\b(wsl|linux subsystem|ubuntu)\b/i,
+  host_package: /\b(winget|install|uninstall|upgrade|package|app update)\b/i,
+  host_action: /\b(kill|stop|restart|terminate|process|service|task manager)\b/i,
+  host_build: /\b(gradle|maven|mvn|dotnet|\.net|msbuild|build)\b/i,
+  windows_events: /\b(event log|event viewer|crash|bsod|windows events?)\b/i,
+  local_http: /\b(localhost|127\.0\.0\.1|local server|http request|curl|api endpoint|port \d+)\b/i,
+  clipboard: /\b(clipboard|paste|copy (this|that|it) to)\b/i,
+  open_path: /\b(open (the |this |that )?(file|folder|directory)|show in (explorer|finder)|reveal)\b/i,
+  notify_user: /\b(notify|notification|remind|alert me|ping me)\b/i,
+  git_inspect: /\b(git|repo|repository|branch|commit|diff|clone)\b/i,
+}
+
+export const SPECIALIST_TOOLS: ReadonlySet<string> = new Set(Object.keys(SPECIALIST_TRIGGERS))
+
+type PartLike = { type?: string; text?: string; toolName?: string }
+type MessageLike = { role?: string; parts?: PartLike[] }
+
+function calledToolNames(m: MessageLike): string[] {
+  const out: string[] = []
+  for (const p of m.parts ?? []) {
+    if (p.type === 'dynamic-tool' && p.toolName) out.push(p.toolName)
+    else if (typeof p.type === 'string' && p.type.startsWith('tool-')) out.push(p.type.slice(5))
+  }
+  return out
+}
+
+/**
+ * Chat's tools without the specialist ones nothing in the conversation has
+ * asked for. `lean` off, or no specialist tool in the set, returns it as is.
+ */
+export function toolsForConversation<T>(
+  tools: Record<string, T>,
+  messages: readonly MessageLike[],
+  lean: boolean
+): Record<string, T> {
+  if (!lean || !Object.keys(tools).some((n) => SPECIALIST_TOOLS.has(n))) return tools
+  const userText = messages
+    .filter((m) => m.role === 'user')
+    .flatMap((m) => (m.parts ?? []).map((p) => (p.type === 'text' ? (p.text ?? '') : '')))
+    .join('\n')
+  const used = new Set(messages.flatMap(calledToolNames))
+  return Object.fromEntries(
+    Object.entries(tools).filter(
+      ([name]) =>
+        !SPECIALIST_TOOLS.has(name) ||
+        used.has(name) ||
+        SPECIALIST_TRIGGERS[name]!.test(userText)
+    )
+  )
+}
