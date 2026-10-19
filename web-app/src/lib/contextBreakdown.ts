@@ -44,7 +44,7 @@ export type ContextBreakdown = {
   at: number
   segments: ContextSegment[]
   /** Small-context mode was on for this request; tokens it saved (a floor). */
-  smallContextSaved?: number
+  smallContextSaved?: number | (() => number)
 }
 
 export const SEGMENT_COLORS: Record<ContextSegment['id'], string> = {

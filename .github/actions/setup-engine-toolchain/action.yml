@@ -19,6 +19,13 @@ inputs:
       large and a smaller cache thrashes instead of rolling over.
     required: false
     default: '25G'
+  toolset:
+    description: >
+      MSVC toolset version for the developer environment nvcc builds in (for
+      example 14.44). Empty uses the image's default toolset. Only the CUDA
+      pack workflow, which installs 14.44 itself, sets it.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -142,8 +149,9 @@ runs:
       uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
       with:
         # MSVC 14.51 (VS 2026) crashes nvcc 13's cudafe++; the CUDA pack
-        # workflow installs the 14.44 toolset.
-        toolset: '14.44'
+        # workflow installs the 14.44 toolset and passes it in. Empty means
+        # the image's default, which is what every other CUDA build wants.
+        toolset: ${{ inputs.toolset }}
 
     # Inside a VS developer environment rustc takes link.exe from PATH, and make
     # runs its recipes through Git's sh.exe, whose MSYS runtime prepends its own

@@ -27,7 +27,11 @@ import {
 import { outputTextWithoutImages } from '@/lib/toolOutputImages'
 import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { isContextOverflow, replyReserveFor } from '@/lib/coworkBudget'
-import { DEFAULT_COMPACTION_POLICY, effectiveReserve } from '@/lib/compactionPolicy'
+import {
+  DEFAULT_COMPACTION_POLICY,
+  effectiveReserve,
+  type CompactionPolicy,
+} from '@/lib/compactionPolicy'
 
 /** Share of the effective window at which a request is compacted first. */
 export const DEFAULT_COMPACT_THRESHOLD = 0.8
@@ -134,13 +138,14 @@ export function shouldCompact(
   projected: number,
   window: number | null | undefined,
   threshold: number = DEFAULT_COMPACT_THRESHOLD,
-  headroom = 0
+  headroom = 0,
+  /** The user's policy: the trigger keeps the reserve they set, not the default. */
+  policy: Pick<CompactionPolicy, 'reserveTokens' | 'origins'> = DEFAULT_COMPACTION_POLICY
 ): boolean {
   if (window == null || !(window > 0)) return false
   const trigger = Math.min(
     thresholdTokens(window, threshold),
-    window -
-      Math.max(replyReserveFor(window), effectiveReserve(window, DEFAULT_COMPACTION_POLICY))
+    window - Math.max(replyReserveFor(window), effectiveReserve(window, policy))
   )
   return projected + Math.max(0, headroom || 0) >= trigger
 }
@@ -304,11 +309,12 @@ export function planCompaction(
 export function compactionNeedsTurnSplit(
   messages: UIMessage[],
   keepRecent: number | undefined,
-  window: number | null | undefined
+  window: number | null | undefined,
+  policy?: Pick<CompactionPolicy, 'reserveTokens' | 'origins'>
 ): boolean {
   const plan = planCompaction(messages, { keepRecent })
   if (!plan) return false
-  return shouldCompact(estimateHistoryTokens(plan.keep), window)
+  return shouldCompact(estimateHistoryTokens(plan.keep), window, undefined, 0, policy)
 }
 
 const PER_MESSAGE_CHARS = 4000

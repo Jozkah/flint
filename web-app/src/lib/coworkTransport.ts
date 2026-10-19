@@ -38,6 +38,7 @@ import {
   TOOL_GROUPS,
   enableToolsTool,
   groupOf,
+  groupsToOffer,
   splitToolGroups,
   withoutEnable,
   type ToolGroupId,
@@ -242,6 +243,11 @@ export class CoworkChatTransport extends CustomChatTransport {
    */
   textOnlyNext = false
 
+  /** Cowork gates by tool group and `enable_tools`; chat's triggers do not apply. */
+  protected override appliesChatToolGating(): boolean {
+    return false
+  }
+
   protected override toolChoiceForStep(): 'auto' | 'none' {
     if (this.textOnlyNext) {
       this.textOnlyNext = false
@@ -287,6 +293,16 @@ export class CoworkChatTransport extends CustomChatTransport {
       if (id && !this.openGroups.has(id)) ids.add(id)
     }
     return (Object.keys(TOOL_GROUPS) as ToolGroupId[]).filter((id) => ids.has(id))
+  }
+
+  /** Groups with a tool in the advertised set right now (started with, or opened). */
+  get advertisedGroups(): ReadonlySet<ToolGroupId> {
+    const ids = new Set<ToolGroupId>()
+    for (const name of Object.keys(this.frozenTools ?? this.tools)) {
+      const id = groupOf(name)
+      if (id) ids.add(id)
+    }
+    return ids
   }
 
   get openedGroups(): ReadonlySet<ToolGroupId> {
@@ -719,6 +735,17 @@ export class CoworkChatTransport extends CustomChatTransport {
     this.tools = this.advertised ?? base
   }
 
+  /** The config with groups the activated skills' text calls for added to the offer. */
+  private configWithSkillGroups(): CoworkRunConfig {
+    const offer = this.config.offerGroups
+    if (!offer) return this.config
+    const skillText = this.activeSkills.map((s) => `${s.name}\n${s.body}`).join('\n')
+    if (!skillText.trim()) return this.config
+    const extra = groupsToOffer({ text: '', skillText })
+    const merged = [...new Set([...offer, ...extra])]
+    return merged.length === offer.length ? this.config : { ...this.config, offerGroups: merged }
+  }
+
   private async refreshBuiltins(): Promise<void> {
     // Frozen means frozen: once a run is under way the advertised set is fixed
     // even if the config changed, because rebuilding it would change the tool
@@ -728,7 +755,8 @@ export class CoworkChatTransport extends CustomChatTransport {
       this.tools = this.frozenTools
       return
     }
-    const sig = coworkToolSignature(this.config, sandboxEnforces())
+    const config = this.configWithSkillGroups()
+    const sig = coworkToolSignature(config, sandboxEnforces())
     // Between runs, skip the rebuild when nothing that shapes the set changed.
     if (this.builtTools && this.builtSig === sig) {
       this.heldTools = this.builtHeld
@@ -737,10 +765,10 @@ export class CoworkChatTransport extends CustomChatTransport {
       this.tools = this.builtTools
       return
     }
-    const built = await buildCoworkTools(this.config)
+    const built = await buildCoworkTools(config)
     const split = splitToolGroups(
       built,
-      this.config.offerGroups ? new Set(this.config.offerGroups) : undefined
+      config.offerGroups ? new Set(config.offerGroups) : undefined
     )
     const tools: Record<string, Tool> = { ...split.lean }
     if (split.heldGroups.length > 0) {

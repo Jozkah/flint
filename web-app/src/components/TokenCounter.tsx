@@ -414,7 +414,11 @@ export const TokenCounter = memo(function TokenCounter({
                   className="px-4 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-muted-foreground"
                 >
                   {t('common:usage.counter.smallContext', {
-                    count: formatExact(stored.smallContextSaved),
+                    count: formatExact(
+                      typeof stored.smallContextSaved === 'function'
+                        ? stored.smallContextSaved()
+                        : stored.smallContextSaved
+                    ),
                   })}
                 </p>
               )}

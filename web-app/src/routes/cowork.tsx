@@ -3974,7 +3974,8 @@ export function CoworkPage() {
             accountedTotal(now).tokens,
             window,
             undefined,
-            expected
+            expected,
+            compactionPolicy
           )
         ) {
           return null
@@ -3992,7 +3993,8 @@ export function CoworkPage() {
           splitTurn: compactionNeedsTurnSplit(
             msgs,
             keepRecent,
-            compactionWindow(runWindow, learnedWindow)
+            compactionWindow(runWindow, learnedWindow),
+            compactionPolicy
           ),
           reason: why,
           signal,
@@ -4302,7 +4304,8 @@ export function CoworkPage() {
                   const parsed = parseEnableRequest(
                     input,
                     transport.heldGroups,
-                    transport.openedGroups
+                    transport.openedGroups,
+                    transport.advertisedGroups
                   )
                   if (typeof parsed === 'string') {
                     return { output: `ERROR: ${parsed}`, isError: true }

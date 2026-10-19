@@ -78,8 +78,16 @@ export const MIN_RESERVE_TOKENS = 2048
  */
 export function effectiveReserve(
   maxContextTokens: number,
-  policy: Pick<CompactionPolicy, 'reserveTokens'>
+  policy: Pick<CompactionPolicy, 'reserveTokens'> & {
+    origins?: Pick<CompactionPolicy['origins'], 'reserveTokens'>
+  }
 ): number {
+  // A reserve the user or the project set is theirs: only the built-in
+  // default is scaled down for a small window (`reserve_buffer` in Rust).
+  const origin = policy.origins?.reserveTokens
+  if (origin === 'user' || origin === 'project') {
+    return Math.min(policy.reserveTokens, Math.floor(maxContextTokens / 4))
+  }
   const scaled = Math.max(MIN_RESERVE_TOKENS, Math.floor(maxContextTokens / 10))
   return Math.min(policy.reserveTokens, scaled, Math.floor(maxContextTokens / 4))
 }

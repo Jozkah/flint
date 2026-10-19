@@ -58,3 +58,28 @@ describe('compactionPolicy (AH-076)', () => {
     expect(replyReserve(32_768, 4096, policy, false)).toBe(8192)
   })
 })
+
+describe('a reserve the user set', () => {
+  const origins = (reserveTokens: 'default' | 'user' | 'project') => ({
+    ...DEFAULT_COMPACTION_POLICY.origins,
+    reserveTokens,
+  })
+
+  it('is not scaled down; only the default is', () => {
+    const user = { ...DEFAULT_COMPACTION_POLICY, reserveTokens: 8_000, origins: origins('user') }
+    expect(effectiveReserve(128_000, user)).toBe(8_000)
+    expect(effectiveReserve(16_384, user)).toBe(4_096)
+    const project = { ...user, origins: origins('project') }
+    expect(effectiveReserve(50_000, project)).toBe(8_000)
+    const dflt = { ...DEFAULT_COMPACTION_POLICY, reserveTokens: 8_000 }
+    expect(effectiveReserve(50_000, dflt)).toBe(5_000)
+  })
+
+  it('moves the compaction trigger in shouldCompact', () => {
+    const user = { ...DEFAULT_COMPACTION_POLICY, reserveTokens: 30_000, origins: origins('user') }
+    // 128K window at a 95% share: their 30K reserve puts the trigger at 98K, the
+    // scaled default's 12.8K at 115K, so 110K is over one and under the other.
+    expect(shouldCompact(110_000, 128_000, 0.95, 0, user)).toBe(true)
+    expect(shouldCompact(110_000, 128_000, 0.95)).toBe(false)
+  })
+})

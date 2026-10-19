@@ -49,4 +49,15 @@ describe('toolsForConversation', () => {
     expect(toolsForConversation(tools, [user('hi'), called], true)).toHaveProperty('computer')
     expect(toolsForConversation(tools, [user('test')], false)).toBe(tools)
   })
+
+  it('offers the full specialist set for a prompt the English triggers cannot judge', () => {
+    for (const text of ['otevři prohlížeč a klikni na tlačítko', '请打开网页并点击按钮', 'x'.repeat(700)]) {
+      expect(toolsForConversation(tools, [user(text)], true)).toBe(tools)
+    }
+  })
+
+  it('never filters an MCP tool that shares a specialist name', () => {
+    const out = toolsForConversation(tools, [user('test')], true, (n) => n === 'docker')
+    expect(Object.keys(out)).toEqual(['read', 'docker', 'web_search'])
+  })
 })
