@@ -4,6 +4,7 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { toast } from 'sonner'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
+import type { SecretWriteFinding } from '@/lib/secretWrite'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
 import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
@@ -99,6 +100,12 @@ export type ApprovalRequestContext = {
   /** The diff a file-changing call would make, shown before it is allowed. */
   preview?: string
   /**
+   * The lines of a write the credential scan flagged. Makes this the "This
+   * write looks like it contains a secret" card: asked every time, answered
+   * for this one write only, and never covered by a standing grant.
+   */
+  secret?: SecretWriteFinding[]
+  /**
    * Who is asking, when it is not the conversation's own agent: a subagent or
    * a team child. Their calls are not parts of any message on screen, so the
    * prompt cannot sit under a tool card and is shown on its own instead.
@@ -133,6 +140,8 @@ export type PendingApproval = {
   serverName?: string
   /** The diff a file-changing call would make, shown before it is allowed. */
   preview?: string
+  /** The flagged lines of a write the credential scan stopped, when it did. */
+  secret?: SecretWriteFinding[]
   /**
    * Who is asking, when it is not the conversation's own agent: a subagent or
    * a team child. Their calls are not parts of any message on screen, so the
@@ -495,7 +504,12 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           return
         }
 
-        const similar = !serverName ? similarToolCall(toolName, context?.input) : null
+        // A standing "similar call" grant answers an ordinary prompt, never the
+        // question about a secret: that is for this one write.
+        const similar =
+          !serverName && !context?.secret
+            ? similarToolCall(toolName, context?.input)
+            : null
         if (similar && (
           settings.isSimilarCallApproved(similar.key) ||
           settings.isToolApproved(threadId, similar.key)
@@ -589,6 +603,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           ...(context?.preview !== undefined
             ? { preview: context.preview }
             : {}),
+          ...(context?.secret?.length ? { secret: context.secret } : {}),
           ...(origin ? { origin } : {}),
           ...(serverFingerprint ? { serverFingerprint } : {}),
           ...(context?.input !== undefined ? { input: context.input } : {}),

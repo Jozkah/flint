@@ -216,6 +216,7 @@ import {
 } from '@/lib/agentTools'
 import { browserCallOptions } from '@/lib/browserAgent'
 import { hostCallOptions } from '@/lib/hostAsked'
+import { secretCallOptions } from '@/lib/secretWrite'
 import { closeBrowserSession } from '@/lib/browserTool'
 import {
   VISUALIZE_TOOL_NAMES,
@@ -1221,6 +1222,9 @@ export function ThreadConversation({
                   // The host tools ask too, and their question has to carry
                   // this call's id to appear under its card.
                   ...hostCallOptions(toolName, toolCall.toolCallId),
+                  // A write the credential scan would stop asks the user, under
+                  // this call's card.
+                  ...secretCallOptions(toolName, toolCall.toolCallId),
                   taskLabel:
                     useThreads.getState().threads[threadId]?.title ||
                     'This conversation',

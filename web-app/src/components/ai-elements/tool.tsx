@@ -47,6 +47,7 @@ import {
   formatPermissionMessage,
   type PermissionDecision,
 } from '@/containers/PermissionRequestDetails'
+import { SecretWriteDetails } from '@/containers/SecretWriteDetails'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { ToolElapsed } from './tool-runtime'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -762,8 +763,13 @@ export const ToolApprovalActions = memo(() => {
         id={titleId}
         className="min-w-0 text-[length:calc(var(--ui-font-base)*0.9375)] leading-snug font-semibold wrap-break-word text-foreground"
       >
-        {formatPermissionMessage(t, request.action)}
+        {pending.secret
+          ? t('permissions:secretWrite.title')
+          : formatPermissionMessage(t, request.action)}
       </h3>
+      {/* A write the credential scan stopped: where, which rule, the masked
+          line. The answers below are for this one write only. */}
+      {pending.secret && <SecretWriteDetails findings={pending.secret} />}
       {subject && (
         <pre
           data-testid="approval-subject"
@@ -832,6 +838,7 @@ export const ToolApprovalActions = memo(() => {
       >
         <button
           type="button"
+          hidden={Boolean(pending.secret)}
           aria-expanded={linksOpen}
           aria-controls={`${moreId}-links`}
           aria-label={t('common:more')}
@@ -844,11 +851,12 @@ export const ToolApprovalActions = memo(() => {
         </button>
         <div
           id={`${moreId}-links`}
-          hidden={!linksOpen}
+          hidden={!linksOpen && !pending.secret}
           className="order-last flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs"
         >
           <button
             type="button"
+            hidden={Boolean(pending.secret)}
             aria-expanded={detailsOpen}
             data-testid="approval-details-toggle"
             className="rounded-sm text-acc-text underline-offset-4 outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
@@ -858,6 +866,7 @@ export const ToolApprovalActions = memo(() => {
           </button>
           <button
             type="button"
+            hidden={Boolean(pending.secret)}
             aria-expanded={moreOpen}
             aria-controls={moreId}
             data-testid="approval-more-options"
@@ -930,7 +939,9 @@ export const ToolApprovalActions = memo(() => {
             className="min-w-24 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-8 @max-[30rem]/approval:whitespace-normal"
             onClick={() => decide('allow-once')}
           >
-            {t('permissions:scope.allowOnce')}
+            {pending.secret
+              ? t('permissions:secretWrite.writeAnyway')
+              : t('permissions:scope.allowOnce')}
           </Button>
           {once && (
             <span id={`${moreId}-once`} className="sr-only">

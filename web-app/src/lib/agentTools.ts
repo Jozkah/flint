@@ -10,6 +10,7 @@ import type {
 } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   advertisedToolSchemas,
+  checkWriteSecrets,
   executeTool,
   executeToolStreaming,
   executeToolUnsandboxedRetry,
@@ -29,6 +30,12 @@ import {
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import {
+  SECRET_WRITE_STOPPED,
+  secretWriteDenied,
+  secretWriteReason,
+  secretWriteUnattended,
+} from '@/lib/secretWrite'
 
 type AdvertisedTools = Awaited<ReturnType<typeof advertisedToolSchemas>>
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -458,6 +465,85 @@ export async function approveBrowserTool(
   return ok ? null : 'The user declined this browser action.'
 }
 
+/**
+ * Put a `write`/`edit` the credential scan would stop to the user, before the
+ * backend runs it. Returns what to tell the model when it must not run, or the
+ * source to record when it may.
+ *
+ * The scan used to refuse after the fact, leaving the user only Bypass or a
+ * reworded call. Now the call becomes a card -- the file, the line, the rule, a
+ * masked snippet -- with "Write anyway" for this one write. It is asked every
+ * time (no "always", no grant, no saved rule) and never answered by a mode that
+ * only allows writes. Bypass answers it, as it answers every other question a
+ * person could; a run with nobody to ask refuses and says how to allow it. What
+ * the user was never asked about stays refused by the backend: a protected
+ * secret file, a deny rule, a path outside the workspace.
+ */
+export async function approveSecretWrite(
+  toolName: string,
+  input: unknown,
+  threadId: string,
+  dataFolder: string,
+  options: AgentToolOptions
+): Promise<{ refusal?: string; source?: ApprovalSource }> {
+  if (toolName !== 'write' && toolName !== 'edit') return {}
+  // A person saving their own edit is the one the question would go to.
+  if (options.actor?.id === 'user') return {}
+  const args =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {}
+  let findings: Awaited<ReturnType<typeof checkWriteSecrets>>
+  try {
+    findings = await checkWriteSecrets(dataFolder, threadId, toolName, args, {
+      writeGrant: options.writeGrant ?? undefined,
+      scope: options.scope ?? ('thread' as WorkspaceScope),
+    })
+  } catch {
+    // Nothing is lost by not asking: the backend scans again when it runs and
+    // refuses what it finds, so a check that cannot run never lets one through.
+    return {}
+  }
+  if (findings.length === 0) return {}
+
+  const mode = useToolApproval.getState().permissionMode
+  if (options.approvalSource === 'bypass' || mode === 'bypass') {
+    return { source: 'bypass' }
+  }
+  if (options.unattended) return { refusal: secretWriteUnattended(findings) }
+
+  const callId = options.callId ?? `${toolName}-${Date.now()}`
+  const store = useToolApprovalRequests.getState()
+  const preview = await previewAgentChange(toolName, input, threadId, {
+    scope: options.scope,
+    writeGrant: options.writeGrant,
+  })
+  const approved = await store.requestApproval(
+    callId,
+    toolName,
+    threadId,
+    undefined,
+    {
+      input,
+      alwaysAsk: true,
+      secret: findings,
+      taskContext: secretWriteReason(findings),
+      ...(preview !== undefined ? { preview } : {}),
+      signal: options.signal,
+      origin: options.origin,
+      destructiveChecked: true,
+    }
+  )
+  if (approved) return { source: 'secret' }
+  const state = useToolApprovalRequests.getState()
+  if (state.takeRefusal(callId) === 'cancelled') {
+    return { refusal: SECRET_WRITE_STOPPED }
+  }
+  return {
+    refusal: secretWriteDenied(findings, state.takeRefusalReason(callId)),
+  }
+}
+
 const HOST_ACTION_NAME = 'host_action'
 const HOST_BUILD_NAME = 'host_build'
 /** Host calls ask unless an explicit action-scoped grant covers them. */
@@ -815,6 +901,17 @@ export async function executeAgentTool(
     if (isImageTool(toolName)) return runImageTool(toolName, input, threadId)
     if (toolName === 'list_plugins') {
       return { content: await listPluginsForModel(options.readOnlyProject) }
+    }
+    if (toolName === 'write' || toolName === 'edit') {
+      const gate = await approveSecretWrite(
+        toolName,
+        input,
+        threadId,
+        dataFolder,
+        options
+      )
+      if (gate.refusal) return { error: gate.refusal }
+      if (gate.source) options = { ...options, approvalSource: gate.source }
     }
     const args =
       input && typeof input === 'object'

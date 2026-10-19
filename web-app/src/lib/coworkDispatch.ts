@@ -1482,7 +1482,10 @@ async function routeCoworkTool(
         // which task is asking.
         ...(toolName === 'request_access'
           ? { signal, taskLabel: 'Cowork session' }
-          : {}),
+          : toolName === 'write' || toolName === 'edit'
+            ? // Stopping the run withdraws the question about a flagged line.
+              { signal }
+            : {}),
         // Browser tools ask the user themselves (domain, action, submit).
         // Auto mode has nobody to ask: they then run only on sites a saved
         // rule or the project's allowed domains already cover.

@@ -284,7 +284,7 @@ pub(crate) fn permission_request(
     event: &StreamEvent,
     tracker: &ToolTracker,
 ) -> Option<Value> {
-    let StreamEvent::PermissionRequest { request_id, tool_name, path, command, diff, reason, call_id, .. } = event
+    let StreamEvent::PermissionRequest { request_id, tool_name, path, command, diff, reason, call_id, prompt_kind, .. } = event
     else {
         return None;
     };
@@ -308,13 +308,16 @@ pub(crate) fn permission_request(
         raw_input.insert("reason".into(), json!(reason));
     }
     let title = tool_title(tool_name, &Value::Object(raw_input.clone()));
+    // A write the credential scan flagged: the one-shot answer is "write it
+    // anyway", and says so rather than a bare "Allow once".
+    let allow_label = if prompt_kind == "secret" { "Write anyway" } else { "Allow once" };
     Some(json!({
         "jsonrpc":"2.0","id":rpc_id,"method":"session/request_permission",
         "params":{
             "sessionId":session_id,
             "toolCall":{"toolCallId":tool_call_id,"title":title,"kind":tool_kind(tool_name),"status":"pending","rawInput":raw_input},
             "options":[
-                {"optionId":"allow_once","name":"Allow once","kind":"allow_once"},
+                {"optionId":"allow_once","name":allow_label,"kind":"allow_once"},
                 {"optionId":"reject_once","name":"Reject","kind":"reject_once"},
             ],
         }

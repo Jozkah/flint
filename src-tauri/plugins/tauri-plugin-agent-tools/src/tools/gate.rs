@@ -25,6 +25,42 @@ pub enum PromptKind {
     /// others it is never satisfied by a session grant, so "allow always" does
     /// not silence it -- that is the point of the tier.
     Ask,
+    /// A `write`/`edit` whose added lines look like they hold a credential.
+    /// Answerable (the person may say "write anyway") but only for that one
+    /// call: no session grant, no saved rule, never auto-approved by a mode that
+    /// merely allows writes. Only Bypass, which waives every answerable prompt,
+    /// lets it through unasked. See [`with_secret_flag`].
+    Secret,
+}
+
+impl PromptKind {
+    /// Asked every time: no session grant and no saved rule ever answers it.
+    pub fn is_every_time(self) -> bool {
+        matches!(self, PromptKind::Ask | PromptKind::Secret)
+    }
+}
+
+/// Turn a gate decision into the secret-write prompt when the credential scan
+/// flagged the change the call would make.
+///
+/// Only decisions a person could have answered become the prompt: an allowed
+/// write, an ordinary write prompt, and a project `ask` rule on the tool. The
+/// floors stay exactly what they were -- a deny rule, a protected secret file
+/// the user has not allowed, the hidden state directory, a write outside the
+/// workspace (which has its own route through `request_access`) -- because no
+/// card may offer to write past them. Callers apply this *after* session grants
+/// and saved rules, so neither can answer it, and plan mode is refused before
+/// the gate is consulted at all.
+pub fn with_secret_flag(decision: Decision, flagged: bool) -> Decision {
+    if !flagged {
+        return decision;
+    }
+    match decision {
+        Decision::Allow | Decision::Prompt(PromptKind::Write | PromptKind::Ask) => {
+            Decision::Prompt(PromptKind::Secret)
+        }
+        other => other,
+    }
 }
 
 /// The user's answer to a permission prompt (wire shape for a later IPC command).
@@ -88,7 +124,7 @@ impl SessionGrants {
             // Exec coverage is command-specific; use `covers_command`.
             PromptKind::Exec => false,
             // Confirm every time: a session grant never covers an ask.
-            PromptKind::Ask => false,
+            PromptKind::Ask | PromptKind::Secret => false,
         }
     }
 
@@ -116,7 +152,7 @@ impl SessionGrants {
             // No-op: exec is granted per command via `grant_command`.
             PromptKind::Exec => {}
             // No-op: an ask is never remembered, by design.
-            PromptKind::Ask => {}
+            PromptKind::Ask | PromptKind::Secret => {}
         }
     }
 
@@ -3165,5 +3201,90 @@ mod security_corpus {
             ),
             Decision::HardDeny(DenyReason::Hidden)
         );
+    }
+
+    // -- the secret-write prompt: which decisions may become it ----------------
+
+    fn flagged_write(path: &str, root: &Path, perms: &ToolPermissions) -> Decision {
+        with_secret_flag(
+            decide("write", json!({ "path": path, "content": "x" }), root, perms, &NetworkPolicy::open()),
+            true,
+        )
+    }
+
+    /// An allowed write and an ordinary write prompt both become the secret
+    /// prompt; a write that is not flagged is left exactly as it was.
+    #[test]
+    fn a_flagged_write_the_policy_allows_becomes_the_secret_prompt() {
+        let root = root();
+        assert_eq!(
+            flagged_write("src/a.rs", &root, &ToolPermissions::allow_all()),
+            Decision::Prompt(PromptKind::Secret),
+            "an allowed write is asked about"
+        );
+        assert_eq!(
+            flagged_write("src/a.rs", &root, &ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])),
+            Decision::Prompt(PromptKind::Secret),
+            "a write that would prompt anyway is asked about once, as the secret prompt"
+        );
+        assert_eq!(with_secret_flag(Decision::Allow, false), Decision::Allow);
+        assert_eq!(
+            with_secret_flag(Decision::Prompt(PromptKind::Write), false),
+            Decision::Prompt(PromptKind::Write)
+        );
+        // A project `ask` rule on the tool is one question, not two.
+        assert_eq!(
+            with_secret_flag(Decision::Prompt(PromptKind::Ask), true),
+            Decision::Prompt(PromptKind::Secret)
+        );
+    }
+
+    /// The floors stay refusals: no card may offer to write past a protected
+    /// secret file, a deny rule the user wrote, or the hidden state directory,
+    /// and a write outside the workspace keeps its own route.
+    #[test]
+    fn the_floors_are_never_turned_into_a_question() {
+        let root = root();
+        assert!(
+            matches!(
+                flagged_write(".env", &root, &ToolPermissions::allow_all()),
+                Decision::HardDeny(DenyReason::SecretFile(_))
+            ),
+            "a protected secret file the user has not allowed"
+        );
+        assert!(matches!(
+            flagged_write("keys/id_rsa", &root, &ToolPermissions::allow_all()),
+            Decision::HardDeny(DenyReason::SecretFile(_))
+        ));
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &["write(src/locked/**)".to_string()], &[]);
+        assert_eq!(flagged_write("src/locked/a.rs", &root, &denied), Decision::HardDeny(DenyReason::Policy));
+        assert_eq!(
+            flagged_write(".jan/agent/agent.toml", &root, &ToolPermissions::allow_all()),
+            Decision::HardDeny(DenyReason::Hidden)
+        );
+        for floor in [
+            Decision::HardDeny(DenyReason::Policy),
+            Decision::HardDeny(DenyReason::Hidden),
+            Decision::HardDeny(DenyReason::GitInternals),
+            Decision::HardDeny(DenyReason::Resource),
+            Decision::Prompt(PromptKind::WriteEscape),
+            Decision::Prompt(PromptKind::ReadEscape),
+            Decision::Prompt(PromptKind::Exec),
+        ] {
+            assert_eq!(with_secret_flag(floor.clone(), true), floor);
+        }
+    }
+
+    /// Nothing remembered ever answers it: no session grant covers or records
+    /// the kind, and it is in the asked-every-time tier with `ask`.
+    #[test]
+    fn the_secret_prompt_is_never_remembered() {
+        let mut grants = SessionGrants::default();
+        grants.grant(PromptKind::Secret);
+        grants.grant(PromptKind::Write);
+        assert!(grants.covers(PromptKind::Write));
+        assert!(!grants.covers(PromptKind::Secret));
+        assert!(PromptKind::Secret.is_every_time() && PromptKind::Ask.is_every_time());
+        assert!(!PromptKind::Write.is_every_time());
     }
 }

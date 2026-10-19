@@ -333,5 +333,14 @@
   },
   "childApprovals": {
     "label": "Onayınızı bekleyen değişiklikler"
+  },
+  "secretWrite": {
+    "title": "Bu yazma işlemi bir gizli bilgi içeriyor gibi görünüyor",
+    "writeAnyway": "Yine de yaz",
+    "hint": "Yine de yaz, yalnızca bu seferlik yazar. Flint bir sonraki yazmada yine soracaktır.",
+    "fileLabel": "Dosya",
+    "lineLabel": "Satır",
+    "ruleLabel": "Kural",
+    "more": "Ve işaretlenen {{count}} satır daha"
   }
 }

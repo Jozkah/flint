@@ -3456,6 +3456,7 @@ async fn resolve_permission_silently(
         capability,
         path,
         command,
+        prompt_kind,
         ..
     } = ev
     else {
@@ -3470,7 +3471,8 @@ async fn resolve_permission_silently(
         .map(|c| format!(" ({c})"))
         .or_else(|| path.map(|p| format!(" on {p}")))
         .unwrap_or_default();
-    let decision = prompt_permission(&request_id, tool_name, capability, detail).await;
+    let decision =
+        prompt_permission(&request_id, tool_name, capability, detail, prompt_kind == "secret").await;
     if let Some(sender) = registry.lock().await.remove(&request_id) {
         let _ = sender.send(decision);
     }
@@ -3812,6 +3814,7 @@ async fn print_event(
             command,
             diff,
             reason,
+            prompt_kind,
             ..
         } => {
             // Why a call auto-approval would have run is being asked about.
@@ -3837,7 +3840,8 @@ async fn print_event(
                 );
                 return;
             }
-            let decision = prompt_permission(&request_id, tool_name, capability, detail).await;
+            let decision =
+                prompt_permission(&request_id, tool_name, capability, detail, prompt_kind == "secret").await;
             if let Some(sender) = registry.lock().await.remove(&request_id) {
                 let _ = sender.send(decision);
             }
@@ -3881,6 +3885,9 @@ async fn prompt_permission(
     tool_name: String,
     capability: String,
     detail: String,
+    // A write the credential scan flagged: "write anyway" for this one write,
+    // and it is never put off to be answered later.
+    secret: bool,
 ) -> PermissionDecision {
     let request_id = request_id.to_string();
     use std::io::IsTerminal;
@@ -3889,7 +3896,11 @@ async fn prompt_permission(
         return PermissionDecision::Deny;
     }
     tokio::task::spawn_blocking(move || {
-        eprint!("{}", color::paint("33", format_args!("[permission] allow {capability} via '{tool_name}'{detail}? [y/N/d=answer later] ")));
+        if secret {
+            eprint!("{}", color::paint("33", format_args!("[permission] write anyway via '{tool_name}'{detail}? [y/N] ")));
+        } else {
+            eprint!("{}", color::paint("33", format_args!("[permission] allow {capability} via '{tool_name}'{detail}? [y/N/d=answer later] ")));
+        }
         let _ = std::io::stderr().flush();
         let mut line = String::new();
         if std::io::stdin().read_line(&mut line).is_err() {
@@ -3897,7 +3908,7 @@ async fn prompt_permission(
         }
         match line.trim().to_ascii_lowercase().as_str() {
             "y" | "yes" => PermissionDecision::AllowOnce,
-            "d" | "defer" | "later" => {
+            "d" | "defer" | "later" if !secret => {
                 crate::core::agent::approval_flow::mark_defer(&request_id);
                 PermissionDecision::Deny
             }

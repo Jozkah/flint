@@ -333,5 +333,14 @@
   },
   "childApprovals": {
     "label": "Cambios en espera de tu aprobación"
+  },
+  "secretWrite": {
+    "title": "Esta escritura parece contener un secreto",
+    "writeAnyway": "Escribir de todos modos",
+    "hint": "Escribir de todos modos lo escribe solo esta vez. Flint volverá a preguntar en la siguiente escritura.",
+    "fileLabel": "Archivo",
+    "lineLabel": "Línea",
+    "ruleLabel": "Regla",
+    "more": "Y {{count}} líneas marcadas más"
   }
 }

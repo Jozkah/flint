@@ -39,6 +39,31 @@ describe('CoworkChildApprovals', () => {
     expect(screen.queryByTestId('child-approval')).toBeNull()
   })
 
+  it('shows a child’s flagged write with its file, line and rule, and "Write anyway" answers once', async () => {
+    render(<CoworkChildApprovals sessionId="s1" />)
+    let answer!: Promise<boolean>
+    act(() => {
+      answer = useToolApprovalRequests
+        .getState()
+        .requestApproval('call_s', 'write', 's1', undefined, {
+          origin: 'worker',
+          alwaysAsk: true,
+          secret: [
+            { file: 'lib/env.ts', line: 2, rule: 'API key', snippet: 'k = "[redacted]"' },
+          ],
+        })
+    })
+    const card = await screen.findByTestId('child-approval')
+    expect(within(card).getByTestId('secret-write-file').textContent).toBe('lib/env.ts')
+    expect(within(card).getByTestId('secret-write-line').textContent).toBe('2')
+    expect(within(card).getByTestId('secret-write-rule').textContent).toBe('API key')
+    expect(within(card).queryByRole('button', { name: /allow ?once/i })).toBeNull()
+    await userEvent.click(
+      within(card).getByRole('button', { name: /write ?anyway/i })
+    )
+    expect(await answer).toBe(true)
+  })
+
   // Two children whose first calls share an id. Answering the first puts the
   // second under the same pointer; a double-click must not answer it unread.
   it('pauses the buttons when the next request takes the answered one’s place', async () => {

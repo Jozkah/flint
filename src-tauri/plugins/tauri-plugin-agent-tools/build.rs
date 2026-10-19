@@ -75,6 +75,7 @@ const COMMANDS: &[&str] = &[
     "undo_turn",
     "redo_turn",
     "preview_change",
+    "check_write_secrets",
     "project_list_dir",
     "project_read_file",
     "project_survey",

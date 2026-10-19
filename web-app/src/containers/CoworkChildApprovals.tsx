@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { approvalPreviewText } from '@/lib/approvalPreview'
 import { Button } from '@/components/ui/button'
 import { ChangeDiff } from '@/components/ChangeDiff'
+import { SecretWriteDetails } from '@/containers/SecretWriteDetails'
 import {
   allApprovalRequests,
   useToolApprovalRequests,
@@ -170,6 +171,7 @@ export function CoworkChildApprovals({
                 {t('tools:toolApproval.childDeny')}
               </dd>
             </dl>
+            {entry.secret && <SecretWriteDetails findings={entry.secret} />}
             {entry.preview && (
               <ChangeDiff
                 diff={entry.preview}
@@ -226,7 +228,9 @@ export function CoworkChildApprovals({
                   )
                 }
               >
-                {t('tools:toolApproval.allowOnce')}
+                {entry.secret
+                  ? t('permissions:secretWrite.writeAnyway')
+                  : t('tools:toolApproval.allowOnce')}
               </Button>
               {/* Only a server's run is told the reason over the wire. */}
               {!entry.held && entry.origin === 'server' && (
@@ -270,7 +274,7 @@ function CompactApproval({
 }) {
   const { t } = useTranslation()
   // A file change is shown before it can be allowed, as in the full card.
-  const [details, setDetails] = useState(Boolean(entry.preview))
+  const [details, setDetails] = useState(Boolean(entry.preview || entry.secret))
   const command = approvalPreviewText(entry.input)
   const common = {
     'data-testid': 'child-approval',
@@ -355,7 +359,9 @@ function CompactApproval({
             disabled={!armed}
             onClick={() => onAnswer('allow-once')}
           >
-            {t('tools:toolApproval.allowOnce')}
+            {entry.secret
+              ? t('permissions:secretWrite.writeAnyway')
+              : t('tools:toolApproval.allowOnce')}
           </Button>
         </span>
       </div>
@@ -382,6 +388,7 @@ function CompactApproval({
               {command}
             </pre>
           )}
+          {entry.secret && <SecretWriteDetails findings={entry.secret} />}
           {entry.preview && (
             <ChangeDiff diff={entry.preview} label={t('tools:toolApproval.proposedChange')} testId="approval-preview" />
           )}

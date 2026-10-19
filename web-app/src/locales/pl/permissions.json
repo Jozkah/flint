@@ -335,5 +335,14 @@
   },
   "childApprovals": {
     "label": "Zmiany czekające na Twoją zgodę"
+  },
+  "secretWrite": {
+    "title": "Ten zapis wygląda na zawierający sekret",
+    "writeAnyway": "Zapisz mimo to",
+    "hint": "Zapisz mimo to zapisuje tylko ten jeden raz. Flint zapyta ponownie przy następnym zapisie.",
+    "fileLabel": "Plik",
+    "lineLabel": "Wiersz",
+    "ruleLabel": "Reguła",
+    "more": "I jeszcze {{count}} oznaczonych wierszy"
   }
 }

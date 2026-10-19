@@ -320,7 +320,7 @@ impl JanToolServer {
             // Escapes the served root. There is no one to ask, and the whole
             // point of a served root is that it holds, so refuse.
             // An `ask` rule wants a human every time; there is none here.
-            Decision::Prompt(PromptKind::Ask) => {
+            Decision::Prompt(PromptKind::Ask | PromptKind::Secret) => {
                 return (
                     format!(
                         "ERROR: tool '{name}' was refused: a project rule requires confirming \

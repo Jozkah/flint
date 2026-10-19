@@ -333,5 +333,14 @@
   },
   "childApprovals": {
     "label": "Modifications en attente de votre approbation"
+  },
+  "secretWrite": {
+    "title": "Cette écriture semble contenir un secret",
+    "writeAnyway": "Écrire quand même",
+    "hint": "Écrire quand même l'écrit cette seule fois. Flint redemandera à la prochaine écriture.",
+    "fileLabel": "Fichier",
+    "lineLabel": "Ligne",
+    "ruleLabel": "Règle",
+    "more": "Et {{count}} autres lignes signalées"
   }
 }

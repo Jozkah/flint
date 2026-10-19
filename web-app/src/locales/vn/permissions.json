@@ -332,5 +332,14 @@
   },
   "childApprovals": {
     "label": "Các thay đổi đang chờ bạn phê duyệt"
+  },
+  "secretWrite": {
+    "title": "Thao tác ghi này có vẻ chứa bí mật",
+    "writeAnyway": "Vẫn ghi",
+    "hint": "Vẫn ghi chỉ ghi một lần này. Flint sẽ hỏi lại ở lần ghi tiếp theo.",
+    "fileLabel": "Tệp",
+    "lineLabel": "Dòng",
+    "ruleLabel": "Quy tắc",
+    "more": "Và {{count}} dòng được đánh dấu khác"
   }
 }
