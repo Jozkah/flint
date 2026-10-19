@@ -133,14 +133,22 @@ fn already_complete(plan: &MigrationPlan) -> bool {
         manifest::read(&plan.dest_config_dir),
         Ok(Some(m)) if m.status == manifest::Status::Complete
             && m.source.data_folder == plan.source_data_folder
+            && m.mode == execute::mode_tag(plan.mode)
     )
 }
 
-/// Point the app configuration at `target`. Returns whether the configured
-/// data folder changed, i.e. whether a restart is needed to pick it up.
+/// Point the app configuration at `target`. `running` is the data folder this
+/// session booted on. Returns whether a restart is needed to pick the new
+/// folder up, i.e. whether the session is not already on `target`.
+///
+/// Start fresh never writes the shared app config: its decision is persisted
+/// in Flint's own config dir and keeps Flint off JAN's folder, and writing
+/// Flint's folder into the file JAN also reads would redirect JAN as well.
 fn apply_data_folder<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     target: &Path,
+    running: &Path,
+    mode: Mode,
 ) -> Result<bool, String> {
     // An explicit FLINT_/JAN_DATA_FOLDER override wins over the saved setting
     // on every start, so there is nothing to persist.
@@ -149,14 +157,16 @@ fn apply_data_folder<R: tauri::Runtime>(
     {
         return Ok(false);
     }
-    let mut configuration = app_commands::get_app_configurations(app.clone());
-    if Path::new(&configuration.data_folder) == target {
+    if mode == Mode::Fresh && running == target {
         return Ok(false);
     }
-    configuration.data_folder = target.to_string_lossy().into_owned();
-    configuration.unavailable_data_folder = None;
-    app_commands::update_app_configuration(app.clone(), configuration)?;
-    Ok(true)
+    let mut configuration = app_commands::get_app_configurations(app.clone());
+    if Path::new(&configuration.data_folder) != target {
+        configuration.data_folder = target.to_string_lossy().into_owned();
+        configuration.unavailable_data_folder = None;
+        app_commands::update_app_configuration(app.clone(), configuration)?;
+    }
+    Ok(running != target)
 }
 
 /// Execute a previously built plan.
@@ -175,13 +185,18 @@ pub async fn migration_execute<R: tauri::Runtime>(
     let opts = ExecuteOpts::with_holder("flint-migration");
     let was_complete = already_complete(&plan);
     let target = data_folder_after(&plan);
+    let mode = plan.mode;
+    let running = PathBuf::from(app_commands::get_app_configurations(app.clone()).data_folder);
     // Run the (blocking) filesystem work off the async runtime.
     let mut result = tauri::async_runtime::spawn_blocking(move || execute::execute(&plan, &opts))
         .await
         .map_err(|e| format!("migration task failed: {e}"))?;
     if !was_complete && result.status == manifest::Status::Complete {
-        match apply_data_folder(&app, &target) {
-            Ok(changed) => result.restart_required = changed,
+        match apply_data_folder(&app, &target, &running, mode) {
+            // A copy or move changes the data a running session loaded at boot.
+            Ok(changed) => {
+                result.restart_required = changed || matches!(mode, Mode::Copy | Mode::Move)
+            }
             Err(e) => result.error = Some(format!("could not switch the data folder: {e}")),
         }
     }

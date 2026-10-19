@@ -275,7 +275,14 @@ fn keyring_entry(provider: &str) -> keyring::Result<Entry> {
         .filter(|f| !f.is_empty())
         .map(PathBuf::from);
     let default = crate::core::app::commands::default_cli_data_folder();
-    Entry::new(&keyring_service_for(chosen.as_deref(), &default), provider)
+    let service = if crate::core::migration::legacy_guard::keyring_isolated(
+        &crate::core::migration::paths::Roots::discover(),
+    ) {
+        flint_scoped_service(&resolve_jan_data_folder())
+    } else {
+        keyring_service_for(chosen.as_deref(), &default)
+    };
+    Entry::new(&service, provider)
 }
 
 /// The keyring service a data folder's provider keys live under.
@@ -286,6 +293,14 @@ fn keyring_entry(provider: &str) -> keyring::Result<Entry> {
 /// reads nor overwrites the desktop app's keys. Without that override, or when
 /// it names the default folder, the service stays `jan-providers`, so existing
 /// installs keep their keys.
+/// A keyring service of Flint's own for `folder`, shared with no JAN install.
+fn flint_scoped_service(folder: &std::path::Path) -> String {
+    let canon = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
+    let digest = Sha256::digest(canon.to_string_lossy().as_bytes());
+    let short: String = digest[..6].iter().map(|b| format!("{b:02x}")).collect();
+    format!("flint-providers:{short}")
+}
+
 fn keyring_service_for(chosen: Option<&std::path::Path>, default: &std::path::Path) -> String {
     let canon = |p: &std::path::Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     match chosen {
@@ -980,6 +995,15 @@ mod tests {
         // The default folder, chosen or not, keeps the service desktop installs use.
         assert_eq!(keyring_service_for(None, default.path()), "jan-providers");
         assert_eq!(keyring_service_for(Some(default.path()), default.path()), "jan-providers");
+    }
+
+    #[test]
+    fn a_fresh_start_keyring_service_is_never_the_one_jan_shares() {
+        let dir = tempfile::tempdir().unwrap();
+        let scoped = flint_scoped_service(dir.path());
+        assert!(scoped.starts_with("flint-providers:"), "{scoped}");
+        assert_ne!(scoped, KEYRING_SERVICE, "a fresh start must not read JAN's keys");
+        assert_eq!(scoped, flint_scoped_service(dir.path()));
     }
 
     #[test]

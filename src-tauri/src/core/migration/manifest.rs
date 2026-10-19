@@ -221,6 +221,8 @@ pub fn mark_complete(flint_config_dir: &Path) -> Result<(), String> {
 /// Mark migration dismissed, creating a minimal dismissed manifest when none
 /// exists (the user declined before any run).
 pub fn mark_dismissed(flint_config_dir: &Path) -> Result<(), String> {
+    // Declining means JAN's data is not used, now or on a later start.
+    super::legacy_guard::record_decision(flint_config_dir, super::legacy_guard::Decision::Fresh)?;
     match read(flint_config_dir)? {
         Some(mut m) => {
             m.mark_dismissed();

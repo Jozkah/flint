@@ -2447,7 +2447,10 @@
     "retry": "Thử lại",
     "restart": "Khởi động lại Flint",
     "done": "Xong",
-    "restartManually": "Hãy khởi động lại Flint để bắt đầu dùng dữ liệu đã di chuyển."
+    "restartManually": "Hãy khởi động lại Flint để bắt đầu dùng dữ liệu đã di chuyển.",
+    "chooseNote": "Không có gì được sao chép cho đến khi bạn xác nhận. Dữ liệu của JAN không bao giờ bị sửa đổi hoặc xóa.",
+    "copyDescription": "Sao chép các cuộc trò chuyện, cài đặt và khóa nhà cung cấp của JAN vào Flint, cho các mục bạn chọn bên dưới. Bản thân JAN không bao giờ bị thay đổi hoặc xóa.",
+    "freshDescription": "Khởi động Flint trống. Không có gì được đọc hoặc sao chép từ JAN, kể cả khóa nhà cung cấp, bây giờ hay ở các lần khởi chạy sau. Bạn vẫn có thể nhập từ Cài đặt, Thư mục dữ liệu bất cứ lúc nào."
   },
   "imageViewer": {
     "imageN": "Hình ảnh {{n}}",

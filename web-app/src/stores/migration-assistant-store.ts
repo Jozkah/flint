@@ -12,6 +12,8 @@ type MigrationAssistantState = {
   open: boolean
   openedManually: boolean
   openAssistant: () => void
+  /** The automatic first-launch open: shows the Not now / Don't ask again choices. */
+  openFirstRun: () => void
   closeAssistant: () => void
 }
 
@@ -19,5 +21,6 @@ export const useMigrationAssistant = create<MigrationAssistantState>((set) => ({
   open: false,
   openedManually: false,
   openAssistant: () => set({ open: true, openedManually: true }),
+  openFirstRun: () => set({ open: true, openedManually: false }),
   closeAssistant: () => set({ open: false }),
 }))

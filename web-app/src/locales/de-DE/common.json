@@ -2442,7 +2442,10 @@
     "retry": "Erneut versuchen",
     "restart": "Flint neu starten",
     "done": "Fertig",
-    "restartManually": "Starte Flint neu, um die migrierten Daten zu verwenden."
+    "restartManually": "Starte Flint neu, um die migrierten Daten zu verwenden.",
+    "chooseNote": "Es wird nichts kopiert, bevor du bestätigst. Die Daten von JAN werden nie verändert oder gelöscht.",
+    "copyDescription": "Kopiert deine JAN-Unterhaltungen, Einstellungen und Anbieter-Schlüssel für die unten gewählten Elemente nach Flint. JAN selbst wird nie verändert oder gelöscht.",
+    "freshDescription": "Startet Flint leer. Es wird nichts aus JAN gelesen oder kopiert, auch keine Anbieter-Schlüssel, weder jetzt noch bei späteren Starts. Du kannst jederzeit unter Einstellungen, Datenordner importieren."
   },
   "imageViewer": {
     "imageN": "Bild {{n}}",

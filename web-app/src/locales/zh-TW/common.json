@@ -2447,7 +2447,10 @@
     "retry": "重試",
     "restart": "重新啟動 Flint",
     "done": "完成",
-    "restartManually": "請重新啟動 Flint 以開始使用已移轉的資料。"
+    "restartManually": "請重新啟動 Flint 以開始使用已移轉的資料。",
+    "chooseNote": "在你確認之前不會複製任何內容。JAN 的資料永遠不會被修改或刪除。",
+    "copyDescription": "為下方勾選的項目，將你的 JAN 對話、設定與供應商金鑰複製到 Flint。JAN 本身不會被變更或刪除。",
+    "freshDescription": "以空白狀態啟動 Flint。不會讀取或複製 JAN 的任何內容，包括其供應商金鑰，現在與之後啟動皆然。你隨時可以在設定的資料資料夾中匯入。"
   },
   "imageViewer": {
     "imageN": "圖片 {{n}}",

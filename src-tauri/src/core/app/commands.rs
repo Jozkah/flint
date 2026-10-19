@@ -256,7 +256,10 @@ pub fn resolve_jan_data_folder() -> PathBuf {
                     default.to_string_lossy().into_owned(),
                     &UNAVAILABLE_DATA_FOLDER,
                 );
-                return PathBuf::from(folder);
+                return crate::core::migration::legacy_guard::effective_data_folder(
+                    Path::new(&folder),
+                    &crate::core::migration::paths::Roots::discover(),
+                );
             }
         }
     }
@@ -373,7 +376,14 @@ pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Ap
                         default_data_folder,
                         &UNAVAILABLE_DATA_FOLDER,
                     );
-                    app_configurations.data_folder = folder;
+                    // Not JAN's folder unless the user has asked for it.
+                    app_configurations.data_folder =
+                        crate::core::migration::legacy_guard::effective_data_folder(
+                            Path::new(&folder),
+                            &crate::core::migration::paths::Roots::discover(),
+                        )
+                        .to_string_lossy()
+                        .into_owned();
                     app_configurations.unavailable_data_folder = unavailable;
                     app_configurations
                 }

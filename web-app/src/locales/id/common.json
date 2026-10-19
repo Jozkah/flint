@@ -2402,7 +2402,10 @@
     "retry": "Coba lagi",
     "restart": "Mulai ulang Flint",
     "done": "Selesai",
-    "restartManually": "Mulai ulang Flint untuk mulai memakai data yang dimigrasikan."
+    "restartManually": "Mulai ulang Flint untuk mulai memakai data yang dimigrasikan.",
+    "chooseNote": "Tidak ada yang disalin sampai Anda mengonfirmasi. Data JAN tidak pernah diubah atau dihapus.",
+    "copyDescription": "Menyalin percakapan, pengaturan, dan kunci penyedia JAN Anda ke Flint, untuk item yang dicentang di bawah. JAN sendiri tidak pernah diubah atau dihapus.",
+    "freshDescription": "Memulai Flint dalam keadaan kosong. Tidak ada yang dibaca atau disalin dari JAN, termasuk kunci penyedianya, sekarang maupun pada peluncuran berikutnya. Anda tetap bisa mengimpor dari Pengaturan, Folder data."
   },
   "imageViewer": {
     "imageN": "Gambar {{n}}",

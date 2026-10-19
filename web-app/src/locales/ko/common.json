@@ -2445,7 +2445,10 @@
     "retry": "다시 시도",
     "restart": "Flint 다시 시작",
     "done": "완료",
-    "restartManually": "마이그레이션된 데이터를 사용하려면 Flint를 다시 시작하세요."
+    "restartManually": "마이그레이션된 데이터를 사용하려면 Flint를 다시 시작하세요.",
+    "chooseNote": "확인하기 전에는 아무것도 복사되지 않습니다. JAN의 데이터는 수정되거나 삭제되지 않습니다.",
+    "copyDescription": "아래에서 선택한 항목에 대해 JAN의 대화, 설정, 공급자 키를 Flint로 복사합니다. JAN 자체는 변경되거나 삭제되지 않습니다.",
+    "freshDescription": "Flint를 빈 상태로 시작합니다. 공급자 키를 포함해 JAN에서 아무것도 읽거나 복사하지 않으며, 이후 실행에서도 마찬가지입니다. 설정의 데이터 폴더에서 언제든 가져올 수 있습니다."
   },
   "imageViewer": {
     "imageN": "이미지 {{n}}",

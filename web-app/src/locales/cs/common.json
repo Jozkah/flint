@@ -2531,7 +2531,10 @@
     "retry": "Zkusit znovu",
     "restart": "Restartovat Flint",
     "done": "Hotovo",
-    "restartManually": "Restartujte Flint, abyste začali používat migrovaná data."
+    "restartManually": "Restartujte Flint, abyste začali používat migrovaná data.",
+    "chooseNote": "Nic se nekopíruje, dokud nepotvrdíte. Data JAN se nikdy neupravují ani nemažou.",
+    "copyDescription": "Zkopíruje vaše konverzace, nastavení a klíče poskytovatelů z JAN do Flintu, pro položky zvolené níže. JAN samotný se nikdy nemění ani nemaže.",
+    "freshDescription": "Spustí Flint prázdný. Z JAN se nic nečte ani nekopíruje, včetně klíčů poskytovatelů, teď ani při dalších spuštěních. Importovat můžete kdykoli v Nastavení, Složka dat."
   },
   "imageViewer": {
     "imageN": "Obrázek {{n}}",
