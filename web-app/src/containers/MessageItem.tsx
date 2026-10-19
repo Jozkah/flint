@@ -98,6 +98,7 @@ import {
 } from '@/containers/FilePreviewPopover'
 import { Button } from '@/components/ui/button'
 import { PromptProgress } from '@/components/PromptProgress'
+import { modelWaitStatus } from '@/lib/runStatus'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
@@ -920,7 +921,10 @@ export const MessageItem = memo(
                   </span>
                 </div>
               ) : (
-                <PromptProgress hideIdle={hasPendingToolCall} />
+                <PromptProgress
+                  hideIdle={hasPendingToolCall}
+                  status={hasPendingToolCall ? undefined : modelWaitStatus()}
+                />
               )}
             </div>
           )}

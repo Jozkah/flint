@@ -58,6 +58,30 @@ const ENGLISH: Record<string, (tool: string) => string> = {
   'tools:toolCall.stillRunning': (tool) => `Still running ${tool}…`,
 }
 
+/**
+ * Waiting on the model with nothing back yet: before the first token, or (with
+ * `quiet`) after a reply that was flowing went silent. Chat and Cowork share it
+ * so the wording and the slow-model escalation match.
+ */
+export function modelWaitStatus(quiet = false): RunStatus {
+  return {
+    phase: 'waiting',
+    key: quiet ? 'waiting:quiet' : 'waiting',
+    label: byAge(
+      quiet
+        ? [
+            [0, 'Still waiting for the model…'],
+            [60 * S, 'The model is taking a while…'],
+          ]
+        : [
+            [0, 'Waiting for the model…'],
+            [15 * S, 'Still waiting for the model…'],
+            [60 * S, 'The model is taking a while…'],
+          ]
+    ),
+  }
+}
+
 export function runStatus(
   running: boolean,
   turns: readonly CoworkTurn[],
@@ -67,17 +91,7 @@ export function runStatus(
   const say = (key: string, tool: string) =>
     t ? t(key, { tool }) : ENGLISH[key](tool)
   const last = turns.at(-1)
-  if (!last || last.role === 'user') {
-    return {
-      phase: 'waiting',
-      key: 'waiting',
-      label: byAge([
-        [0, 'Waiting for the model…'],
-        [15 * S, 'Still waiting for the model…'],
-        [60 * S, 'The model is taking a while…'],
-      ]),
-    }
-  }
+  if (!last || last.role === 'user') return modelWaitStatus()
   if (last.role === 'tool') {
     if (last.status !== 'done') {
       const name = toolLabel(last.name)
