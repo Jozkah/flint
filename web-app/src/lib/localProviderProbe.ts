@@ -4,7 +4,7 @@
  *
  * Flint is local-first and makes no unrequested network calls, so this is a
  * one-shot probe that only the add-provider dialog starts, when it opens:
- * loopback addresses only, two fixed ports, a short timeout, no retries and
+ * loopback addresses only, three fixed ports, a short timeout, no retries and
  * nothing kept running afterwards.
  */
 
@@ -19,6 +19,9 @@ export type LocalProviderCandidate = {
 const KNOWN: readonly LocalProviderCandidate[] = [
   { name: 'LM Studio', baseUrl: 'http://localhost:1234/v1' },
   { name: 'Ollama', baseUrl: 'http://localhost:11434/v1' },
+  // llama-server defaults to port 8080. The endpoint can also belong to a
+  // compatible fork, so keep the suggested name generic.
+  { name: 'Local model server', baseUrl: 'http://localhost:8080/v1' },
 ]
 
 /** Long enough for a local server, short enough not to stall the dialog. */
