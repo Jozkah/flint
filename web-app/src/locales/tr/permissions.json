@@ -40,7 +40,9 @@
     "gitRemote": "Flint, {{target}} hedefini değiştiren {{command}} komutunu çalıştırmak istiyor",
     "gitDestructive": "Flint, çalışma kaybına yol açabilecek {{command}} komutunu çalıştırmak istiyor",
     "approveCampaign": "Flint \"{{title}}\" kampanyasını başlatmak istiyor ({{count}} görev)",
-    "spendPause": "Flint, harcama duraklatmasını aşarak bu çalıştırmayı sürdürmek istiyor"
+    "spendPause": "Flint, harcama duraklatmasını aşarak bu çalıştırmayı sürdürmek istiyor",
+    "changeFileOutside": "Flint, {{workspace}} dışındaki {{target}} dosyasını değiştirmek istiyor",
+    "changeManyFilesOutside": "Flint {{count}} dosyayı değiştirmek istiyor, bazıları {{workspace}} dışında"
   },
   "consequence": {
     "fileChange": "Dosyalar oluşturabilir, üzerine yazabilir veya içeriklerini değiştirebilir.",

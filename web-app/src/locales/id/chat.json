@@ -116,7 +116,9 @@
       "edited_other": "mengedit {{count}} file",
       "read_other": "membaca {{count}} file",
       "searched_other": "mencari {{count}} kali",
-      "tools_other": "memakai {{count}} alat"
+      "tools_other": "memakai {{count}} alat",
+      "createdNone_other": "gagal membuat {{count}} berkas",
+      "editedNone_other": "gagal mengedit {{count}} berkas"
     }
   },
   "widget": {

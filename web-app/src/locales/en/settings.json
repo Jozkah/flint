@@ -536,7 +536,8 @@
       "install": "Install",
       "installing": "Installing…",
       "uninstall": "Uninstall",
-      "uninstalling": "Uninstalling…"
+      "uninstalling": "Uninstalling…",
+      "foreignDesc": "Found at {{path}}, installed by another copy of Flint. Install here to use this copy's CLI."
     }
   },
   "extensions": {

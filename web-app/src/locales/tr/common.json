@@ -1092,7 +1092,8 @@
     "copied": "Yol kopyalandı",
     "footnoteEmptyEdit": "Ajanın projen üzerinde çalışması için bir klasör ekle.",
     "a11yWithFolderEditable": "Proje klasörü {{folder}}, düzenleme için eklendi. Değiştirin veya ayırın.",
-    "a11yWithFolderWorktree": "Proje klasörü {{folder}}, ayrı bir worktree üzerinden düzenleniyor. Değiştirin veya ayırın."
+    "a11yWithFolderWorktree": "Proje klasörü {{folder}}, ayrı bir worktree üzerinden düzenleniyor. Değiştirin veya ayırın.",
+    "folderNotFound": "Bu klasör yok: {{path}}"
   },
   "coworkEmpty": {
     "title": "Ne üzerinde çalışıyoruz?",
@@ -2597,7 +2598,9 @@
       "fixedPrompt": "Her istekle gönderilir: {{count}} token (sistem istemi ve araç şemaları).",
       "smallContext": "Küçük bağlam modu: açık, ~{{count}} token tasarruf ediyor",
       "tokenUsage": "Token kullanımı",
-      "tokenUsageSr": "Token kullanımı {{value}}"
+      "tokenUsageSr": "Token kullanımı {{value}}",
+      "smallContextWhyAuto": "Otomatik: pencere 64K veya daha küçük.",
+      "smallContextWhyAlways": "Ayarlar'da Her zaman olarak ayarlı."
     }
   },
   "voicePill": {

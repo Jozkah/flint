@@ -129,7 +129,13 @@
       "edited_many": "{{count}} de fichiers modifiés",
       "read_many": "{{count}} de fichiers lus",
       "searched_many": "{{count}} de recherches",
-      "tools_many": "{{count}} d'outils utilisés"
+      "tools_many": "{{count}} d'outils utilisés",
+      "createdNone_one": "impossible de créer {{count}} fichier",
+      "createdNone_other": "impossible de créer {{count}} fichiers",
+      "createdNone_many": "impossible de créer {{count}} fichiers",
+      "editedNone_one": "impossible de modifier {{count}} fichier",
+      "editedNone_other": "impossible de modifier {{count}} fichiers",
+      "editedNone_many": "impossible de modifier {{count}} fichiers"
     },
     "steps_many": "{{count}} d'étapes"
   },

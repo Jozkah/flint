@@ -40,7 +40,9 @@
     "gitRemote": "Flint chce uruchomić {{command}}, co zmienia {{target}}",
     "gitDestructive": "Flint chce uruchomić {{command}}, co może spowodować utratę pracy",
     "approveCampaign": "Flint chce rozpocząć kampanię „{{title}}” (zadań: {{count}})",
-    "spendPause": "Flint chce kontynuować to uruchomienie po przekroczeniu progu wstrzymania wydatków"
+    "spendPause": "Flint chce kontynuować to uruchomienie po przekroczeniu progu wstrzymania wydatków",
+    "changeFileOutside": "Flint chce zmienić {{target}}, który jest poza {{workspace}}",
+    "changeManyFilesOutside": "Flint chce zmienić {{count}} plików, część poza {{workspace}}"
   },
   "consequence": {
     "fileChange": "Może tworzyć i nadpisywać pliki oraz zmieniać ich zawartość.",

@@ -40,7 +40,9 @@
     "gitRemote": "Flint 想要執行 {{command}}，這會變更 {{target}}",
     "gitDestructive": "Flint 想要執行 {{command}}，這可能會遺失工作成果",
     "approveCampaign": "Flint 想要開始戰役「{{title}}」（{{count}} 個任務）",
-    "spendPause": "Flint 想在超過支出暫停額度後繼續此次執行"
+    "spendPause": "Flint 想在超過支出暫停額度後繼續此次執行",
+    "changeFileOutside": "Flint 想修改 {{workspace}} 之外的 {{target}}",
+    "changeManyFilesOutside": "Flint 想修改 {{count}} 個檔案,其中一些在 {{workspace}} 之外"
   },
   "consequence": {
     "fileChange": "它可以建立、覆寫或變更檔案的內容。",

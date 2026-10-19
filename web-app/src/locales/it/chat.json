@@ -129,7 +129,13 @@
       "searched_many": "ha cercato {{count}} di volte",
       "tools_one": "ha usato {{count}} strumento",
       "tools_other": "ha usato {{count}} strumenti",
-      "tools_many": "ha usato {{count}} di strumenti"
+      "tools_many": "ha usato {{count}} di strumenti",
+      "createdNone_one": "impossibile creare {{count}} file",
+      "createdNone_other": "impossibile creare {{count}} file",
+      "createdNone_many": "impossibile creare {{count}} file",
+      "editedNone_one": "impossibile modificare {{count}} file",
+      "editedNone_other": "impossibile modificare {{count}} file",
+      "editedNone_many": "impossibile modificare {{count}} file"
     },
     "steps_many": "{{count}} di passaggi"
   },

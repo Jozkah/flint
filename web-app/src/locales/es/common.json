@@ -1102,7 +1102,8 @@
     "copied": "Ruta copiada",
     "footnoteEmptyEdit": "Adjunta una carpeta para que el agente trabaje en tu proyecto.",
     "a11yWithFolderEditable": "Carpeta del proyecto {{folder}}, adjuntada para editar. Cámbiala o quítala.",
-    "a11yWithFolderWorktree": "Carpeta del proyecto {{folder}}, editada mediante un worktree aparte. Cámbiala o quítala."
+    "a11yWithFolderWorktree": "Carpeta del proyecto {{folder}}, editada mediante un worktree aparte. Cámbiala o quítala.",
+    "folderNotFound": "Esa carpeta no existe: {{path}}"
   },
   "coworkEmpty": {
     "title": "¿En qué trabajamos?",
@@ -2639,7 +2640,9 @@
       "fixedPrompt": "Se envía con cada solicitud: {{count}} tokens (prompt del sistema y esquemas de herramientas).",
       "smallContext": "Modo de contexto pequeño: activado, ahorra ~{{count}} tokens",
       "tokenUsage": "Uso de tokens",
-      "tokenUsageSr": "Uso de tokens {{value}}"
+      "tokenUsageSr": "Uso de tokens {{value}}",
+      "smallContextWhyAuto": "Automático: la ventana es de 64K o menos.",
+      "smallContextWhyAlways": "Configurado en Siempre en Ajustes."
     }
   },
   "openclaw": "OpenClaw",

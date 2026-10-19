@@ -540,7 +540,8 @@
       "install": "Instal·la",
       "installing": "S'està instal·lant…",
       "uninstall": "Desinstal·la",
-      "uninstalling": "S'està desinstal·lant…"
+      "uninstalling": "S'està desinstal·lant…",
+      "foreignDesc": "Trobada a {{path}}, instal·lada per una altra còpia de Flint. Instal·la aquí per fer servir la CLI d'aquesta còpia."
     }
   },
   "extensions": {

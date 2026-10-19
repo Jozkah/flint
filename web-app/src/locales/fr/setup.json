@@ -26,7 +26,7 @@
   "stepCounter": "Étape {{current}} sur {{total}}",
   "skipStep": "Passer pour l'instant",
   "welcomeTitle": "Flint doit se configurer sur votre système",
-  "welcomeBody": "Cela prend quelques minutes : Flint télécharge son moteur d'inférence et un petit modèle pour la recherche de fichiers. Vous pouvez continuer à utiliser votre ordinateur pendant ce temps.",
+  "welcomeBody": "Cela prend quelques minutes : Flint télécharge son moteur d'inférence. Vous pouvez continuer à utiliser votre ordinateur pendant ce temps.",
   "startSetup": "C'est parti",
   "stageSetup": "Configuration du moteur local",
   "badgeGpu": "Utilisera votre GPU",
@@ -52,5 +52,6 @@
   "downloadingDescription": "Veuillez patienter pendant le téléchargement du modèle. Cela peut prendre quelques minutes.",
   "orDivider": "ou",
   "localModel": "Configurer le modèle local",
-  "remoteProvider": "Configurer le fournisseur distant"
+  "remoteProvider": "Configurer le fournisseur distant",
+  "checkSearchNotConfigured": "Aucun modèle d'embedding pour l'instant. La recherche de fichiers fonctionnera dès que vous en importerez un depuis Modèles > Llama.cpp."
 }

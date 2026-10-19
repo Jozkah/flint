@@ -226,6 +226,13 @@ function searchStage(report: EmbeddingModelReport): SetupStageState {
       messageKey: 'checkSearchPreparing',
     }
   }
+  if (report.status === 'ok' && report.notConfigured) {
+    return {
+      id: 'search',
+      status: 'ok',
+      messageKey: 'checkSearchNotConfigured',
+    }
+  }
   if (report.status === 'ok') {
     return {
       id: 'search',

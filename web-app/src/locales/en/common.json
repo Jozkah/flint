@@ -1132,7 +1132,8 @@
     "copied": "Path copied",
     "footnoteEmptyEdit": "Attach a folder to let the agent work on your project.",
     "a11yWithFolderEditable": "Project folder {{folder}}, attached for editing. Change or detach it.",
-    "a11yWithFolderWorktree": "Project folder {{folder}}, edited through a separate worktree. Change or detach it."
+    "a11yWithFolderWorktree": "Project folder {{folder}}, edited through a separate worktree. Change or detach it.",
+    "folderNotFound": "That folder does not exist: {{path}}"
   },
   "coworkEmpty": {
     "title": "What are we working on?",
@@ -2685,7 +2686,9 @@
       "fixedPrompt": "Sent with every request: {{count}} tokens (system prompt and tool schemas).",
       "smallContext": "Small-context mode: on, saves ~{{count}} tokens",
       "tokenUsage": "Token usage",
-      "tokenUsageSr": "Token usage {{value}}"
+      "tokenUsageSr": "Token usage {{value}}",
+      "smallContextWhyAuto": "Auto: window is 64K or less.",
+      "smallContextWhyAlways": "Set to Always in Settings."
     }
   },
   "motionMedia": {

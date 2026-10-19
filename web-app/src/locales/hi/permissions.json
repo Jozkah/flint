@@ -40,7 +40,9 @@
     "gitRemote": "Flint {{command}} चलाना चाहता है, जो {{target}} को बदलता है",
     "gitDestructive": "Flint {{command}} चलाना चाहता है, जिससे काम खो सकता है",
     "approveCampaign": "Flint कैंपेन \"{{title}}\" ({{count}} कार्य) शुरू करना चाहता है",
-    "spendPause": "Flint इस रन को उसके खर्च-विराम से आगे जारी रखना चाहता है"
+    "spendPause": "Flint इस रन को उसके खर्च-विराम से आगे जारी रखना चाहता है",
+    "changeFileOutside": "Flint {{target}} बदलना चाहता है, जो {{workspace}} के बाहर है",
+    "changeManyFilesOutside": "Flint {{count}} फ़ाइलें बदलना चाहता है, कुछ {{workspace}} के बाहर हैं"
   },
   "consequence": {
     "fileChange": "यह फ़ाइलें बना सकता है, उन्हें ओवरराइट कर सकता है या उनकी सामग्री बदल सकता है।",

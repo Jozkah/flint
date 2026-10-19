@@ -130,7 +130,13 @@
       "searched_other": "ha cercat {{count}} cops",
       "tools_one": "ha usat {{count}} eina",
       "tools_many": "ha usat {{count}} d'eines",
-      "tools_other": "ha usat {{count}} eines"
+      "tools_other": "ha usat {{count}} eines",
+      "createdNone_one": "no s'ha pogut crear {{count}} fitxer",
+      "createdNone_many": "no s'han pogut crear {{count}} fitxers",
+      "createdNone_other": "no s'han pogut crear {{count}} fitxers",
+      "editedNone_one": "no s'ha pogut editar {{count}} fitxer",
+      "editedNone_many": "no s'han pogut editar {{count}} fitxers",
+      "editedNone_other": "no s'han pogut editar {{count}} fitxers"
     }
   },
   "widget": {

@@ -536,7 +536,8 @@
       "install": "Kur",
       "installing": "Kuruluyor…",
       "uninstall": "Kaldır",
-      "uninstalling": "Kaldırılıyor…"
+      "uninstalling": "Kaldırılıyor…",
+      "foreignDesc": "{{path}} konumunda bulundu, Flint'in başka bir kopyası kurmuş. Bu kopyanın CLI'sini kullanmak için buraya kurun."
     }
   },
   "extensions": {

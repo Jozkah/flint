@@ -26,7 +26,7 @@
   "stepCounter": "Step {{current}} of {{total}}",
   "skipStep": "Skip for now",
   "welcomeTitle": "Flint needs to set up on your system",
-  "welcomeBody": "This takes a few minutes: Flint downloads its inference engine and a small model for file search. You can keep using your computer while it runs.",
+  "welcomeBody": "This takes a few minutes: Flint downloads its inference engine. You can keep using your computer while it runs.",
   "startSetup": "Let's start",
   "stageSetup": "Setting up the local engine",
   "badgeGpu": "Will use your GPU",
@@ -41,5 +41,6 @@
   "finishChooseModel": "Choose a model",
   "finishNoModels": "No local models yet. Import a GGUF file from Settings whenever you are ready; you can finish setup without one.",
   "finishStartChat": "Start chatting",
-  "finishWithoutModel": "Finish without a model"
+  "finishWithoutModel": "Finish without a model",
+  "checkSearchNotConfigured": "No embedding model yet. File search starts working once you import one from Models > Llama.cpp."
 }

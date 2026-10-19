@@ -26,7 +26,7 @@
   "stepCounter": "{{total}} adımın {{current}}. adımı",
   "skipStep": "Şimdilik atla",
   "welcomeTitle": "Flint'in sisteminizde kurulum yapması gerekiyor",
-  "welcomeBody": "Bu işlem birkaç dakika sürer: Flint, çıkarım motorunu ve dosya araması için küçük bir modeli indirir. İşlem sürerken bilgisayarınızı kullanmaya devam edebilirsiniz.",
+  "welcomeBody": "Birkaç dakika sürer: Flint çıkarım motorunu indirir. Bu sırada bilgisayarınızı kullanmaya devam edebilirsiniz.",
   "startSetup": "Başlayalım",
   "stageSetup": "Yerel motor kuruluyor",
   "badgeGpu": "GPU'nuzu kullanacak",
@@ -41,5 +41,6 @@
   "finishChooseModel": "Bir model seçin",
   "finishNoModels": "Henüz yerel model yok. Hazır olduğunuzda Ayarlar'dan bir GGUF dosyası içe aktarın; kurulumu modelsiz de bitirebilirsiniz.",
   "finishStartChat": "Sohbete başla",
-  "finishWithoutModel": "Model olmadan bitir"
+  "finishWithoutModel": "Model olmadan bitir",
+  "checkSearchNotConfigured": "Henüz gömme (embedding) modeli yok. Modeller > Llama.cpp üzerinden bir tane içe aktardığınızda dosya araması çalışır."
 }

@@ -26,7 +26,7 @@
   "stepCounter": "{{total}}단계 중 {{current}}단계",
   "skipStep": "지금은 건너뛰기",
   "welcomeTitle": "Flint를 시스템에 설정해야 합니다",
-  "welcomeBody": "몇 분 걸립니다. Flint가 추론 엔진과 파일 검색용 작은 모델을 다운로드합니다. 진행되는 동안 컴퓨터를 계속 사용할 수 있습니다.",
+  "welcomeBody": "몇 분 걸립니다. Flint가 추론 엔진을 다운로드합니다. 그동안 컴퓨터를 계속 사용할 수 있습니다.",
   "startSetup": "시작하기",
   "stageSetup": "로컬 엔진 설정 중",
   "badgeGpu": "GPU 사용",
@@ -52,5 +52,6 @@
   "downloadingDescription": "모델을 다운로드하는 동안 잠시 기다려 주세요. 몇 분 정도 걸릴 수 있습니다.",
   "orDivider": "또는",
   "localModel": "로컬 모델 설정",
-  "remoteProvider": "원격 제공자 설정"
+  "remoteProvider": "원격 제공자 설정",
+  "checkSearchNotConfigured": "아직 임베딩 모델이 없습니다. 모델 > Llama.cpp에서 하나를 가져오면 파일 검색이 동작합니다."
 }

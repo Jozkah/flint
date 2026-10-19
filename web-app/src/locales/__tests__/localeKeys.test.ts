@@ -33,6 +33,7 @@ const DYNAMIC_KEYS: Record<string, string[]> = {
     'checkSearchNoVector',
     'checkSearchInvalidVector',
     'checkSearchProbeFailed',
+    'checkSearchNotConfigured',
     'checkSearchUnavailable',
   ],
   common: [

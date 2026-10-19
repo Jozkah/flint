@@ -26,7 +26,7 @@
   "stepCounter": "第 {{current}} 步，共 {{total}} 步",
   "skipStep": "暂时跳过",
   "welcomeTitle": "Flint 需要在你的系统上进行设置",
-  "welcomeBody": "这需要几分钟时间：Flint 将下载其推理引擎和一个用于文件搜索的小型模型。在此期间你可以继续使用电脑。",
+  "welcomeBody": "这需要几分钟:Flint 会下载其推理引擎。期间你可以继续使用电脑。",
   "startSetup": "开始设置",
   "stageSetup": "正在设置本地引擎",
   "badgeGpu": "将使用你的 GPU",
@@ -52,5 +52,6 @@
   "downloadingDescription": "请等待我们下载模型。这可能需要几分钟。",
   "orDivider": "或",
   "localModel": "设置本地模型",
-  "remoteProvider": "设置远程提供商"
+  "remoteProvider": "设置远程提供商",
+  "checkSearchNotConfigured": "尚无嵌入模型。从 模型 > Llama.cpp 导入一个后,文件搜索即可使用。"
 }

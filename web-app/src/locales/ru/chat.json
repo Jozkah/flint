@@ -137,7 +137,15 @@
       "tools_one": "использован {{count}} инструмент",
       "tools_few": "использовано {{count}} инструмента",
       "tools_many": "использовано {{count}} инструментов",
-      "tools_other": "использовано {{count}} инструмента"
+      "tools_other": "использовано {{count}} инструмента",
+      "createdNone_one": "не удалось создать {{count}} файл",
+      "createdNone_few": "не удалось создать {{count}} файла",
+      "createdNone_many": "не удалось создать {{count}} файлов",
+      "createdNone_other": "не удалось создать {{count}} файла",
+      "editedNone_one": "не удалось изменить {{count}} файл",
+      "editedNone_few": "не удалось изменить {{count}} файла",
+      "editedNone_many": "не удалось изменить {{count}} файлов",
+      "editedNone_other": "не удалось изменить {{count}} файла"
     }
   },
   "widget": {

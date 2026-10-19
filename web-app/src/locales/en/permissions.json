@@ -40,7 +40,9 @@
     "gitRemote": "Flint wants to run {{command}}, which changes {{target}}",
     "gitDestructive": "Flint wants to run {{command}}, which can lose work",
     "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)",
-    "spendPause": "Flint wants to keep this run going past its spend pause"
+    "spendPause": "Flint wants to keep this run going past its spend pause",
+    "changeFileOutside": "Flint wants to change {{target}}, which is outside {{workspace}}",
+    "changeManyFilesOutside": "Flint wants to change {{count}} files, some outside {{workspace}}"
   },
   "consequence": {
     "fileChange": "It can create, overwrite or change the contents of files.",

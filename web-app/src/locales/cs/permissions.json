@@ -40,7 +40,9 @@
     "gitRemote": "Flint chce spustit {{command}}, což změní {{target}}",
     "gitDestructive": "Flint chce spustit {{command}}, což může způsobit ztrátu práce",
     "approveCampaign": "Flint chce spustit kampaň „{{title}}“ (úkolů: {{count}})",
-    "spendPause": "Flint chce pokračovat v tomto běhu po dosažení limitu pozastavení výdajů"
+    "spendPause": "Flint chce pokračovat v tomto běhu po dosažení limitu pozastavení výdajů",
+    "changeFileOutside": "Flint chce změnit {{target}}, který je mimo {{workspace}}",
+    "changeManyFilesOutside": "Flint chce změnit {{count}} souborů, některé mimo {{workspace}}"
   },
   "consequence": {
     "fileChange": "Může vytvářet, přepisovat nebo měnit obsah souborů.",

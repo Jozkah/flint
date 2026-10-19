@@ -40,7 +40,9 @@
     "gitRemote": "Flint가 {{target}}을(를) 변경하는 {{command}}을(를) 실행하려고 합니다",
     "gitDestructive": "Flint가 작업 내용을 잃을 수 있는 {{command}}을(를) 실행하려고 합니다",
     "approveCampaign": "Flint가 캠페인 \"{{title}}\"({{count}}개 작업)을 시작하려 합니다",
-    "spendPause": "Flint가 지출 일시 중지 한도를 넘어 이 실행을 계속하려 합니다"
+    "spendPause": "Flint가 지출 일시 중지 한도를 넘어 이 실행을 계속하려 합니다",
+    "changeFileOutside": "Flint가 {{workspace}} 밖에 있는 {{target}}을(를) 변경하려고 합니다",
+    "changeManyFilesOutside": "Flint가 파일 {{count}}개를 변경하려고 합니다(일부는 {{workspace}} 밖)"
   },
   "consequence": {
     "fileChange": "파일을 만들거나, 덮어쓰거나, 내용을 변경할 수 있습니다.",

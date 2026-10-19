@@ -412,6 +412,23 @@ export function workspaceName(label?: string): string | undefined {
   return sanitizeResource(parts[parts.length - 1] || trimmed, 60)
 }
 
+const isAbsolutePath = (p: string) => /^([a-z]:[\\/]|[\\/]|~[\\/])/i.test(p)
+const normalizePath = (p: string) =>
+  p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+
+/**
+ * Whether a file named by an absolute path lies outside the folder the call
+ * works in. Relative paths, and a workspace known only by a display name, are
+ * never "outside": there is nothing to compare.
+ */
+export function isOutside(resource: string, workspacePath?: string): boolean {
+  const ws = workspacePath?.trim()
+  if (!ws || !isAbsolutePath(ws) || !isAbsolutePath(resource)) return false
+  const root = normalizePath(ws)
+  const file = normalizePath(resource)
+  return file !== root && !file.startsWith(`${root}/`)
+}
+
 function hostOf(url: string): string {
   try {
     return new URL(url).host || url
@@ -426,7 +443,8 @@ function actionFor(
   args: Record<string, unknown>,
   resources: string[],
   serverName: string | undefined,
-  workspace: string | undefined
+  workspace: string | undefined,
+  workspacePath?: string
 ): PermissionMessage {
   const within = (key: string, values: Record<string, string | number> = {}) =>
     workspace
@@ -452,6 +470,22 @@ function actionFor(
       if (toolName === 'memory_write') return { key: 'permissions:action.saveMemory' }
       if (toolName === 'skill_write') return { key: 'permissions:action.saveSkill' }
       if (resources.length === 0) return within('changeFiles')
+      if (workspace) {
+        const outside = resources.filter((r) => isOutside(r, workspacePath))
+        // "in <folder>" would be false for these: say so, with the path.
+        if (resources.length === 1 && outside.length === 1) {
+          return {
+            key: 'permissions:action.changeFileOutside',
+            values: { target: resources[0], workspace },
+          }
+        }
+        if (outside.length > 0) {
+          return {
+          key: 'permissions:action.changeManyFilesOutside',
+          values: { count: resources.length, workspace },
+        }
+        }
+      }
       if (resources.length === 1)
         return within('changeFile', { target: resources[0] })
       return within('changeManyFiles', { count: resources.length })
@@ -844,7 +878,15 @@ export function describePermissionRequest(
   return {
     category,
     categoryLabel: { key: `permissions:category.${category}` },
-    action: actionFor(category, toolName, args, resources, serverName, workspace),
+    action: actionFor(
+      category,
+      toolName,
+      args,
+      resources,
+      serverName,
+      workspace,
+      req.workspaceLabel
+    ),
     resources,
     ...(reason ? { reason } : {}),
     ...(powershell ? { script: truncate(redactSecrets(powershell.trim()), 4000) } : {}),

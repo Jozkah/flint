@@ -362,6 +362,22 @@ describe('useSetupChecklist', () => {
     })
   })
 
+  it('is not a warning when no embedding model is installed yet', async () => {
+    armHealthy()
+    mockVerifyEmbeddingModel.mockResolvedValue({
+      status: 'ok',
+      notConfigured: true,
+    })
+
+    const { result } = renderHook(() => useSetupChecklist())
+
+    await waitFor(() => expect(result.current.isRunning).toBe(false))
+    const search = stageById(result.current.stages, 'search')
+    expect(search.status).toBe('ok')
+    expect(search.messageKey).toBe('checkSearchNotConfigured')
+    expect(result.current.warnings).toHaveLength(0)
+  })
+
   // One failing probe must not hide the verdicts of the others.
   it('keeps other stages meaningful when one check rejects', async () => {
     armHealthy()

@@ -26,7 +26,7 @@
   "stepCounter": "Bước {{current}}/{{total}}",
   "skipStep": "Bỏ qua lúc này",
   "welcomeTitle": "Flint cần được thiết lập trên hệ thống của bạn",
-  "welcomeBody": "Việc này mất vài phút: Flint tải engine suy luận của nó và một mô hình nhỏ cho tìm kiếm tệp. Bạn có thể tiếp tục dùng máy tính trong khi nó chạy.",
+  "welcomeBody": "Việc này mất vài phút: Flint tải bộ máy suy luận của nó. Bạn vẫn có thể dùng máy tính trong lúc đó.",
   "startSetup": "Bắt đầu thôi",
   "stageSetup": "Đang thiết lập engine cục bộ",
   "badgeGpu": "Sẽ dùng GPU của bạn",
@@ -52,5 +52,6 @@
   "downloadingDescription": "Vui lòng đợi trong khi chúng tôi tải xuống mô hình. Điều này có thể mất vài phút.",
   "orDivider": "hoặc",
   "localModel": "Thiết lập mô hình cục bộ",
-  "remoteProvider": "Thiết lập nhà cung cấp từ xa"
+  "remoteProvider": "Thiết lập nhà cung cấp từ xa",
+  "checkSearchNotConfigured": "Chưa có mô hình embedding. Tìm kiếm tệp sẽ hoạt động khi bạn nhập một mô hình từ Mô hình > Llama.cpp."
 }

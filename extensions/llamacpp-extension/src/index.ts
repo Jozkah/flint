@@ -225,8 +225,15 @@ const DEFAULT_TIMEOUT = 600
 // setup wait on a long prompt.
 const EMBEDDING_PROBE_TEXT = 'jan setup embedding probe'
 
+/** Thrown, and recognised by `verifyEmbeddingModel`, when nothing is installed. */
+const NO_EMBEDDING_MODEL_MESSAGE =
+  'No embedding model is installed. Flint does not download one on its own; ' +
+  'import one from Models > Llama.cpp.'
+
 export interface EmbeddingModelReport {
   status: ReadinessStatus
+  /** No embedding model is installed yet; not a failure on a clean profile. */
+  notConfigured?: boolean
   modelId?: string
   dimension?: number
   problem?: EmbeddingVectorProblem
@@ -647,6 +654,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         problem: check.problem,
       }
     } catch (e) {
+      // Nothing installed and nothing failed: a clean profile, not an error.
+      // Reporting it as one put a red warning on every first run.
+      if (
+        !this.getEmbedderBootstrapError() &&
+        e instanceof Error &&
+        e.message === NO_EMBEDDING_MODEL_MESSAGE
+      ) {
+        return { status: 'ok', notConfigured: true }
+      }
       // A failed startup install is the more specific cause, and it is the one
       // the user can act on.
       return {
@@ -3352,10 +3368,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         : installedEmbedding[0]?.id
 
     if (!targetModelId) {
-      throw new Error(
-        'No embedding model is installed. Install one from Settings → Model ' +
-          'Providers → Llama.cpp; Jan does not download models on its own.'
-      )
+      throw new Error(NO_EMBEDDING_MODEL_MESSAGE)
     }
 
     let sInfo = await this.findSessionByModel(targetModelId)

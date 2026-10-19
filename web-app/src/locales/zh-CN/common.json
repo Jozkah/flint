@@ -1094,7 +1094,8 @@
     "copied": "路径已复制",
     "footnoteEmptyEdit": "附加一个文件夹，让智能体处理你的项目。",
     "a11yWithFolderEditable": "项目文件夹 {{folder}}，已附加为可编辑。可更改或分离。",
-    "a11yWithFolderWorktree": "项目文件夹 {{folder}}，通过单独的 worktree 编辑。可更改或分离。"
+    "a11yWithFolderWorktree": "项目文件夹 {{folder}}，通过单独的 worktree 编辑。可更改或分离。",
+    "folderNotFound": "该文件夹不存在:{{path}}"
   },
   "coworkEmpty": {
     "title": "我们要做点什么？",
@@ -2599,7 +2600,9 @@
       "fixedPrompt": "每次请求都会发送:{{count}} 个令牌(系统提示词和工具架构)。",
       "smallContext": "小上下文模式：已开启，节省约 {{count}} 个令牌",
       "tokenUsage": "Token 用量",
-      "tokenUsageSr": "Token 用量 {{value}}"
+      "tokenUsageSr": "Token 用量 {{value}}",
+      "smallContextWhyAuto": "自动:窗口不超过 64K。",
+      "smallContextWhyAlways": "已在设置中设为始终。"
     }
   },
   "voicePill": {

@@ -8,6 +8,17 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 /** At most one automatic look per this long, so opening the app often costs nothing. */
 export const CHECK_EVERY_MS = 12 * 60 * 60 * 1000
 
+/**
+ * What the "newer build" notice tells the person. Only a nightly keeps its
+ * version number between builds; a stable release has a new number, so telling
+ * a v1.0.0 user "this version is a nightly" was simply wrong.
+ */
+export function newerBuildDescription(version: string): string {
+  return version.includes('-')
+    ? 'This version is a nightly, so the number stays the same. Download it again to update; installed copies do not update themselves.'
+    : 'A newer build of this version is available. Download it from the release page to update; installed copies do not update themselves.'
+}
+
 type State = {
   /** Off by default: Flint makes no request nobody asked for. */
   enabled: boolean
@@ -34,8 +45,7 @@ export const useBuildUpdate = create<State>()(
         if (result.state === 'newer' && (manual || result.latest !== remembered)) {
           set({ notifiedFor: result.latest })
           toast.warning('A newer Flint build is available', {
-            description:
-              'This version is a nightly, so the number stays the same. Download it again to update; installed copies do not update themselves.',
+            description: newerBuildDescription(VERSION),
             duration: 15000,
             action: {
               label: 'Open release',

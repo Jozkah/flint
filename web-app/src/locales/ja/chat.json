@@ -123,7 +123,11 @@
       "searched_one": "{{count}} 回検索",
       "searched_other": "{{count}} 回検索",
       "tools_one": "{{count}} 個のツールを使用",
-      "tools_other": "{{count}} 個のツールを使用"
+      "tools_other": "{{count}} 個のツールを使用",
+      "createdNone_one": "{{count}} 件のファイルを作成できませんでした",
+      "createdNone_other": "{{count}} 件のファイルを作成できませんでした",
+      "editedNone_one": "{{count}} 件のファイルを編集できませんでした",
+      "editedNone_other": "{{count}} 件のファイルを編集できませんでした"
     }
   },
   "widget": {

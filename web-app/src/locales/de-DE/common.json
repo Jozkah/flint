@@ -1094,7 +1094,8 @@
     "copied": "Pfad kopiert",
     "footnoteEmptyEdit": "Hänge einen Ordner an, damit der Agent an deinem Projekt arbeiten kann.",
     "a11yWithFolderEditable": "Projektordner {{folder}}, zum Bearbeiten angehängt. Ändern oder trennen.",
-    "a11yWithFolderWorktree": "Projektordner {{folder}}, bearbeitet über einen separaten Worktree. Ändern oder trennen."
+    "a11yWithFolderWorktree": "Projektordner {{folder}}, bearbeitet über einen separaten Worktree. Ändern oder trennen.",
+    "folderNotFound": "Dieser Ordner existiert nicht: {{path}}"
   },
   "coworkEmpty": {
     "title": "Woran arbeiten wir?",
@@ -2594,7 +2595,9 @@
       "fixedPrompt": "Wird mit jeder Anfrage gesendet: {{count}} Tokens (Systemprompt und Werkzeugschemas).",
       "smallContext": "Modus für kleinen Kontext: an, spart ca. {{count}} Tokens",
       "tokenUsage": "Token-Nutzung",
-      "tokenUsageSr": "Token-Nutzung {{value}}"
+      "tokenUsageSr": "Token-Nutzung {{value}}",
+      "smallContextWhyAuto": "Automatisch: Fenster hat 64K oder weniger.",
+      "smallContextWhyAlways": "In den Einstellungen auf Immer gesetzt."
     }
   },
   "voicePill": {

@@ -1114,7 +1114,8 @@
     "copied": "Skopiowano ścieżkę",
     "footnoteEmptyEdit": "Dołącz folder, aby agent mógł pracować nad twoim projektem.",
     "a11yWithFolderEditable": "Folder projektu {{folder}}, dołączony do edycji. Zmień go lub odłącz.",
-    "a11yWithFolderWorktree": "Folder projektu {{folder}}, edytowany w osobnym worktree. Zmień go lub odłącz."
+    "a11yWithFolderWorktree": "Folder projektu {{folder}}, edytowany w osobnym worktree. Zmień go lub odłącz.",
+    "folderNotFound": "Ten folder nie istnieje: {{path}}"
   },
   "coworkEmpty": {
     "title": "Nad czym pracujemy?",
@@ -2695,7 +2696,9 @@
       "fixedPrompt": "Wysyłane z każdym żądaniem: {{count}} tokenów (prompt systemowy i schematy narzędzi).",
       "smallContext": "Tryb małego kontekstu: włączony, oszczędza ~{{count}} tokenów",
       "tokenUsage": "Użycie tokenów",
-      "tokenUsageSr": "Użycie tokenów {{value}}"
+      "tokenUsageSr": "Użycie tokenów {{value}}",
+      "smallContextWhyAuto": "Automatycznie: okno ma 64K lub mniej.",
+      "smallContextWhyAlways": "W Ustawieniach wybrano Zawsze."
     }
   },
   "voicePill": {

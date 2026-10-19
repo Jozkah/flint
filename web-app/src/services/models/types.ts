@@ -230,6 +230,8 @@ interface ReadinessReport {
 }
 
 export interface EmbeddingModelReport extends ReadinessReport {
+  /** No embedding model is installed yet; a clean profile, not a failure. */
+  notConfigured?: boolean
   modelId?: string
   dimension?: number
   problem?: EmbeddingVectorProblem

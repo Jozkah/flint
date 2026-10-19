@@ -123,7 +123,11 @@
       "searched_one": "{{count}} बार खोजा",
       "searched_other": "{{count}} बार खोजा",
       "tools_one": "{{count}} टूल इस्तेमाल किया",
-      "tools_other": "{{count}} टूल इस्तेमाल किए"
+      "tools_other": "{{count}} टूल इस्तेमाल किए",
+      "createdNone_one": "{{count}} फ़ाइल नहीं बनाई जा सकी",
+      "createdNone_other": "{{count}} फ़ाइलें नहीं बनाई जा सकीं",
+      "editedNone_one": "{{count}} फ़ाइल संपादित नहीं हो सकी",
+      "editedNone_other": "{{count}} फ़ाइलें संपादित नहीं हो सकीं"
     }
   },
   "widget": {

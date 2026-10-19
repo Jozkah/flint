@@ -110,5 +110,6 @@ export function crumbForPath(pathname: string): Crumb {
       currentKey: page?.titleKey ?? 'common:general',
     }
   }
-  return { ...ws, currentKey: 'common:appRail.workspace' }
+  // An unknown path is the 404 page; naming the parent twice read "Start / Start".
+  return { ...ws, currentKey: 'common:routeNotFound.title' }
 }

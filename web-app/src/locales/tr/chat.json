@@ -123,7 +123,11 @@
       "searched_one": "{{count}} kez arama yapıldı",
       "searched_other": "{{count}} kez arama yapıldı",
       "tools_one": "{{count}} araç kullanıldı",
-      "tools_other": "{{count}} araç kullanıldı"
+      "tools_other": "{{count}} araç kullanıldı",
+      "createdNone_one": "{{count}} dosya oluşturulamadı",
+      "createdNone_other": "{{count}} dosya oluşturulamadı",
+      "editedNone_one": "{{count}} dosya düzenlenemedi",
+      "editedNone_other": "{{count}} dosya düzenlenemedi"
     }
   },
   "widget": {

@@ -27,3 +27,26 @@ export const isRootDir = (selectedNewPath: string) => {
     selectedNewPath.replace(/\\/g, '/').replace(/\/+$/, '') || '/'
   return linuxRoots.some((root) => normalized === root)
 }
+
+const normalizeForCompare = (p: string) =>
+  p
+    .replace(/^\\\\\?\\/, '')
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase()
+
+/**
+ * Whether a `flint` CLI found on PATH is the bundled one of a different copy of
+ * Flint (another install, or another profile's app) rather than this app's own.
+ * Only a bundled path (`.../resources/bin/flint`) can be told apart; a CLI put
+ * somewhere else on purpose is never reported as foreign.
+ */
+export const isForeignBundledCli = (
+  cliPath: string,
+  ownResourceDir: string | null | undefined
+): boolean => {
+  if (!ownResourceDir) return false
+  const cli = normalizeForCompare(cliPath)
+  if (!/\/resources\/bin\/flint(\.exe)?$/.test(cli)) return false
+  return !cli.startsWith(`${normalizeForCompare(ownResourceDir)}/`)
+}

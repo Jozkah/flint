@@ -536,7 +536,8 @@
       "install": "安装",
       "installing": "正在安装…",
       "uninstall": "卸载",
-      "uninstalling": "正在卸载…"
+      "uninstalling": "正在卸载…",
+      "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安装。在此安装即可使用本份的 CLI。"
     }
   },
   "extensions": {

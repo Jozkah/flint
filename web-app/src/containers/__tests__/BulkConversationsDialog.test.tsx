@@ -148,12 +148,16 @@ describe('BulkConversationsDialog archive', () => {
     expect(act).toHaveBeenCalledTimes(3)
     expect(screen.getByTestId('bulk-summary').textContent).toBe('Archived 3 items.')
     fireEvent.click(screen.getByTestId('bulk-undo'))
-    await waitFor(() => expect(screen.getByTestId('bulk-undone')).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByTestId('bulk-summary').textContent).toBe('Restored 3.')
+    )
     expect(undo).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'a' }),
       expect.objectContaining({ id: 'b' }),
       expect.objectContaining({ id: 'c' }),
     ])
-    expect(screen.getByTestId('bulk-undone').textContent).toContain('Restored 3')
+    // Only the restore is reported: not "Archived 3" next to "Restored 3".
+    expect(screen.getByTestId('bulk-summary').textContent).not.toContain('Archived')
+    expect(screen.queryByText(/Archive page/)).toBeNull()
   })
 })
