@@ -193,7 +193,7 @@ export function toMailboxError(raw: unknown): MailboxError {
   return new MailboxError('unknown', text)
 }
 
-async function dataFolder(): Promise<string> {
+export async function dataFolder(): Promise<string> {
   const folder = await getServiceHub().app().getJanDataFolder()
   if (!folder) {
     throw new MailboxError('no_data_folder', 'Flint data folder is unavailable')
@@ -248,12 +248,21 @@ export const sessionMailbox = {
     folder?: string | null
     /** The per-session opt-out; omitted keeps what the backend has. */
     acceptsMessages?: boolean
+    /**
+     * How the session works in its folder, for shared-folder coordination:
+     * its access mode, and whether it is isolated in a worktree or copy.
+     * Omitted keeps what the backend has.
+     */
+    access?: string
+    isolated?: boolean
   }) =>
     call<SessionRecord>('mailbox_session_register', {
       sessionId: input.sessionId,
       displayName: input.displayName,
       folder: input.folder ?? null,
       acceptsMessages: input.acceptsMessages ?? null,
+      ...(input.access !== undefined ? { access: input.access } : {}),
+      ...(input.isolated !== undefined ? { isolated: input.isolated } : {}),
     }),
 
   /**

@@ -100,4 +100,9 @@ permissions = [
     "allow-mailbox-stop-approve",
     "allow-mailbox-stop-pending",
     "allow-mailbox-stop-resolve",
+    "allow-shared-folder-peers",
+    "allow-shared-folder-overview",
+    "allow-shared-folder-recent-edits",
+    "allow-shared-folder-allow",
+    "allow-shared-folder-default-isolation",
 ]

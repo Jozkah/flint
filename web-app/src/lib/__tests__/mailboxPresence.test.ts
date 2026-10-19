@@ -54,6 +54,36 @@ describe('mailbox presence', () => {
     })
   })
 
+  it('says how a session works in its folder, and re-registers when that changes', () => {
+    vi.advanceTimersByTime(100)
+    mailbox.register.mockClear()
+    useCoworkSessions.setState({
+      sessions: [{ ...session('A', 'Alpha', '/p'), access: 'review-only' }],
+    })
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+      acceptsMessages: true,
+      access: 'review-only',
+      isolated: false,
+    })
+    // Moved into its own worktree: marked isolated.
+    useCoworkSessions.setState({
+      sessions: [{ ...session('A', 'Alpha', '/p'), access: 'managed-worktree' }],
+    })
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+      acceptsMessages: true,
+      access: 'managed-worktree',
+      isolated: true,
+    })
+  })
+
   it('registers a new session, and a rename or folder change once each', () => {
     vi.advanceTimersByTime(100)
     mailbox.register.mockClear()
@@ -88,6 +118,9 @@ describe('mailbox presence', () => {
       displayName: 'Renamed',
       folder: '/other',
       acceptsMessages: true,
+      // Attaching a folder gives the session an access mode, which is sent.
+      access: 'edit-folder',
+      isolated: false,
     })
 
     // An unrelated change registers nothing.

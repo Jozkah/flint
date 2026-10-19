@@ -76,8 +76,16 @@ export function notifySessionRestored(sessionId: string): void {
 const acceptsMessages = (sessionId: string) =>
   useSessionMessaging.getState().optOut[sessionId] !== true
 
+/** Isolated in a worktree or copy: awareness only for shared-folder claims. */
+const isIsolated = (s: CoworkSession) => s.access === 'managed-worktree'
+
 const registrationKey = (s: CoworkSession) =>
-  JSON.stringify([s.title, s.folder ?? null, acceptsMessages(s.id)])
+  JSON.stringify([
+    s.title,
+    s.folder ?? null,
+    acceptsMessages(s.id),
+    s.access ?? null,
+  ])
 
 export function createPresenceSync(
   mailbox: PresenceMailbox = sessionMailbox,
@@ -119,6 +127,10 @@ export function createPresenceSync(
       displayName: latest.title,
       folder: latest.folder,
       acceptsMessages: acceptsMessages(latest.id),
+      // Only sessions that have an access mode say how they share the folder.
+      ...(latest.access !== undefined
+        ? { access: latest.access, isolated: isIsolated(latest) }
+        : {}),
     }
     // Called synchronously (an async wrapper runs to its first await), so a
     // backend that throws instead of rejecting still becomes a rejection.

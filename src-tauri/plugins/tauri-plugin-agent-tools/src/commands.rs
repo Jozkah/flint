@@ -1855,13 +1855,120 @@ pub async fn mailbox_session_register(
     display_name: String,
     folder: Option<String>,
     accepts_messages: Option<bool>,
+    access: Option<String>,
+    isolated: Option<bool>,
 ) -> Result<SessionRecord, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).register_with(
+    Mailbox::open(Path::new(&data_folder)).register_shared(
         &session_id,
         &display_name,
         folder.as_deref(),
         accepts_messages,
+        access.as_deref(),
+        isolated,
     )
+}
+
+// ---------------------------------------------------------------------------
+// Shared-folder coordination
+// (docs/superpowers/specs/2026-10-19-shared-folder-coordination-design.md)
+// ---------------------------------------------------------------------------
+
+use crate::shared_folder::{self, claims::Scope, isolation, view};
+
+/// Who else is in this session's folder: the other live sessions (isolated
+/// ones marked), the branch, this session's held writes and its active
+/// "allow anyway" grants. `None` when the session has no folder.
+#[tauri::command]
+pub async fn shared_folder_peers(
+    data_folder: String,
+    session_id: String,
+) -> Result<Option<view::SharedFolderView>, MailboxError> {
+    let mailbox = Mailbox::open(Path::new(&data_folder));
+    let table = shared_folder::table();
+    Ok(view::view_for(&mailbox, &table, &session_id, shared_folder::now_ms()))
+}
+
+/// Every folder with two or more live sessions, for the sidebar mark.
+#[tauri::command]
+pub async fn shared_folder_overview(
+    data_folder: String,
+) -> Result<Vec<view::SharedFolderGroup>, MailboxError> {
+    let mailbox = Mailbox::open(Path::new(&data_folder));
+    let table = shared_folder::table();
+    Ok(view::overview(&mailbox, &table, shared_folder::now_ms()))
+}
+
+/// Files a session changed in the last `window_secs` (default 600), newest
+/// first, relative to its folder.
+#[tauri::command]
+pub async fn shared_folder_recent_edits(
+    data_folder: String,
+    session_id: String,
+    window_secs: Option<u32>,
+) -> Result<Vec<view::RecentFile>, MailboxError> {
+    let mailbox = Mailbox::open(Path::new(&data_folder));
+    let key = mailbox
+        .session(&session_id)
+        .and_then(|r| r.shared.folder_key)
+        .unwrap_or_default();
+    let window = i64::from(window_secs.unwrap_or(600).min(86_400)) * 1000;
+    let now = shared_folder::now_ms();
+    Ok(shared_folder::table()
+        .recent_of(&session_id, window, now)
+        .into_iter()
+        .map(|e| view::RecentFile {
+            path: shared_folder::path_key::relative_to(&key, &e.path),
+            at: e.at,
+        })
+        .collect())
+}
+
+/// "Allow this session to edit anyway": lets `session_id` through file claims
+/// (`edit`), the git guard (`git`) or both (`all`) for `minutes` (default 30,
+/// at most 240; 0 withdraws). Returns the expiry in epoch ms, `None` when
+/// withdrawn.
+#[tauri::command]
+pub async fn shared_folder_allow(
+    data_folder: String,
+    session_id: String,
+    scope: String,
+    minutes: Option<u32>,
+) -> Result<Option<i64>, MailboxError> {
+    let scope = Scope::parse(&scope).ok_or_else(|| {
+        MailboxError::new("invalid_scope", "scope must be `edit`, `git` or `all`")
+    })?;
+    let mailbox = Mailbox::open(Path::new(&data_folder));
+    let record = mailbox
+        .session(&session_id)
+        .ok_or_else(|| MailboxError::new("unknown_session", "this session is not registered"))?;
+    let until = shared_folder::table().allow(
+        &session_id,
+        scope,
+        minutes.unwrap_or(shared_folder::claims::DEFAULT_ALLOW_MINUTES),
+        shared_folder::now_ms(),
+    );
+    shared_folder::announce(record.shared.folder_key, &session_id, "allow");
+    Ok(until)
+}
+
+/// Should a session in `folder` start in its own worktree? The default for a
+/// fork or a second session in a git folder that already has a live one.
+/// `session_id` is the session being placed (not counted as another).
+#[tauri::command]
+pub async fn shared_folder_default_isolation(
+    data_folder: String,
+    folder: String,
+    session_id: Option<String>,
+    is_fork: Option<bool>,
+    user_chose_shared: Option<bool>,
+) -> Result<isolation::IsolationDecision, MailboxError> {
+    Ok(isolation::decide_for_folder(
+        &Mailbox::open(Path::new(&data_folder)),
+        &folder,
+        session_id.as_deref(),
+        is_fork.unwrap_or(false),
+        user_chose_shared.unwrap_or(false),
+    ))
 }
 
 /// Send a session's final answer back as the reply to a message its run

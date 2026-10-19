@@ -99,6 +99,11 @@ const COMMANDS: &[&str] = &[
     "mailbox_stop_approve",
     "mailbox_stop_pending",
     "mailbox_stop_resolve",
+    "shared_folder_peers",
+    "shared_folder_overview",
+    "shared_folder_recent_edits",
+    "shared_folder_allow",
+    "shared_folder_default_isolation",
 ];
 
 fn main() {

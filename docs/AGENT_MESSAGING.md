@@ -118,6 +118,16 @@ Chat threads and subagents do not get these tools.
 - A run that handled a message and ended without replying has its final answer
   sent back as the reply.
 
+## Sharing a folder
+
+Sessions attached to the same folder see each other (one line in the environment
+block). A `write`/`edit` of a file another live session is editing, and a
+tree-changing git command while another session shares the tree, come back as a
+plain "Not written." / "Not run." result naming that session. Use `send_message`
+(a one-line "Editing <path> for <reason>" is the convention), re-read, then retry:
+one retry after a message or re-read goes through. Holds are advisory and never
+permanent. Design: `docs/superpowers/specs/2026-10-19-shared-folder-coordination-design.md`.
+
 ## Subagents
 
 A finished subagent can be continued instead of replaced. Its `task` result ends

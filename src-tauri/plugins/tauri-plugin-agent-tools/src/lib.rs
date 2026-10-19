@@ -44,6 +44,8 @@ pub mod patch_export;
 pub mod lifecycle;
 /// Cross-session agent messaging (docs/SESSION_MESSAGING.md).
 pub mod session_mailbox;
+/// Sessions sharing one folder: detection, soft claims, git guard.
+pub mod shared_folder;
 pub mod memory;
 pub mod permissions;
 pub mod policy;
@@ -212,7 +214,12 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::mailbox_list_sessions,
             commands::mailbox_stop_approve,
             commands::mailbox_stop_pending,
-            commands::mailbox_stop_resolve
+            commands::mailbox_stop_resolve,
+            commands::shared_folder_peers,
+            commands::shared_folder_overview,
+            commands::shared_folder_recent_edits,
+            commands::shared_folder_allow,
+            commands::shared_folder_default_isolation
         ])
         .setup(|app, _api| {
             // Folder grants live in process memory, so none survives a
@@ -230,6 +237,12 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
                     "agent-mailbox-updated",
                     serde_json::json!({ "sessionId": session_id, "messageId": message_id }),
                 );
+            });
+            // Folder-sharing changes (a session joined or left, a claim or a
+            // hold, a branch moved), announced to the renderer.
+            let shared_handle = app.clone();
+            shared_folder::set_emitter(move |payload| {
+                let _ = shared_handle.emit(shared_folder::UPDATED_EVENT, payload);
             });
             // A recorded stop request, announced to the target's renderer. The
             // payload carries only ids: the renderer re-reads the request.

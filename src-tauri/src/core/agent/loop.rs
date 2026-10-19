@@ -7033,6 +7033,25 @@ async fn orchestrate_inner(
             )
         })
         .unwrap_or_default();
+    // Other live sessions in this folder, as one line in the environment
+    // block (it survives the small-context path with that block). Nothing is
+    // added when this session is alone or has no mailbox identity.
+    if system_prompt_override.is_none() && !jan_data_folder.is_empty() {
+        if let Some(line) = session_id.as_deref().and_then(|sid| {
+            tauri_plugin_agent_tools::shared_folder::tools::env_line_for(
+                std::path::Path::new(jan_data_folder.as_str()),
+                sid,
+            )
+        }) {
+            if let Some((_, block)) = prompt_blocks
+                .iter_mut()
+                .find(|(c, _)| *c == Composer::RuntimeEnvironment)
+            {
+                block.push('\n');
+                block.push_str(&line);
+            }
+        }
+    }
     // The opt-in repository map (`[prompt] repo_map = true`): a ranked list of
     // the project's files and symbols, sized to the context window. Never for
     // a child run, which carries its own prompt. Built off the runtime (it

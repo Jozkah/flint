@@ -5,6 +5,7 @@ import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
+import { sharedFolder } from '@/lib/sharedFolder'
 import {
   autoIsolateAction,
   copyApi,
@@ -59,6 +60,32 @@ export function useAutoSessionWorktree(input: Input) {
   const inFlight = useRef<string | null>(null)
   const inputRef = useRef(input)
   inputRef.current = input
+  const isFork = useCoworkSessions(
+    (s) => !!s.sessions.find((x) => x.id === input.sessionId)?.forkedFrom
+  )
+
+  // Shared-folder default: a fork, or a second session in a Git folder that
+  // already has a live one, starts in its own worktree whatever the setting
+  // says. Asked of the backend registry, which knows who is live. A failure
+  // leaves the default off (the session then shares the tree, claims apply).
+  const [sharedIsolate, setSharedIsolate] = useState(false)
+  useEffect(() => {
+    setSharedIsolate(false)
+    if (!input.sessionId || !input.folder || input.turns > 0 || isGit !== true)
+      return
+    let cancelled = false
+    void sharedFolder
+      .defaultIsolation({
+        folder: input.folder,
+        sessionId: input.sessionId,
+        isFork,
+      })
+      .then((d) => !cancelled && setSharedIsolate(d.isolate))
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [input.sessionId, input.folder, input.turns, isGit, isFork])
 
   useEffect(() => {
     let cancelled = false
@@ -91,7 +118,7 @@ export function useAutoSessionWorktree(input: Input) {
   )
 
   const action = autoIsolateAction({
-    enabled,
+    enabled: enabled || sharedIsolate,
     sessionId: input.sessionId,
     folder: input.folder,
     access: input.access,

@@ -50,6 +50,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -64,6 +65,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -78,6 +80,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -92,6 +95,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -106,6 +110,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -120,6 +125,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -134,6 +140,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -148,6 +155,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -162,6 +170,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -176,6 +185,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -190,6 +200,7 @@
     "web-app/src/containers/RemoteRunnerCard.tsx (via campaignApi)",
     "web-app/src/hooks/useCampaignTaskDiff.ts (via campaignApi)",
     "web-app/src/hooks/useCampaigns.ts (via campaignApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via campaignApi)",
     "web-app/src/lib/campaignApi.ts",
     "web-app/src/lib/campaignHost.ts (via campaignApi)",
     "web-app/src/lib/campaignPlanEdit.ts (via campaignApi)",
@@ -244,6 +255,7 @@
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
@@ -266,6 +278,7 @@
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
@@ -297,7 +310,9 @@
   "agent_emergency_stop": [
     "web-app/src/containers/CoworkStopMenu.tsx",
     "web-app/src/containers/EmergencyStop.tsx",
+    "web-app/src/lib/coworkDispatch.ts (via stopBackendCall)",
     "web-app/src/lib/remote/appActions.ts",
+    "web-app/src/lib/toolCallStop.ts",
     "web-app/src/routes/cowork.tsx (via CoworkStopMenu)"
   ],
   "agent_events_export": [
@@ -527,6 +542,7 @@
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
@@ -547,6 +563,7 @@
     "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
     "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
     "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
@@ -568,6 +585,7 @@
     "web-app/src/lib/archive.ts",
     "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
@@ -578,6 +596,7 @@
     "web-app/src/lib/archive.ts",
     "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
@@ -588,6 +607,7 @@
     "web-app/src/lib/archive.ts",
     "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
@@ -598,6 +618,7 @@
     "web-app/src/lib/archive.ts",
     "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
@@ -608,6 +629,7 @@
     "web-app/src/lib/archive.ts",
     "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
@@ -618,6 +640,7 @@
     "web-app/src/lib/archive.ts",
     "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
@@ -628,6 +651,7 @@
     "web-app/src/lib/archive.ts",
     "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
@@ -638,6 +662,7 @@
     "web-app/src/lib/archive.ts",
     "web-app/src/lib/archiveAssistants.ts (via archiveApi)",
     "web-app/src/lib/archiveRestore.ts (via archiveApi)",
+    "web-app/src/lib/bulkConversationsDeps.ts (via archiveApi)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via archiveApi)",
     "web-app/src/lib/remote/appArchive.ts (via archiveApi)"
   ],
@@ -2136,6 +2161,26 @@
   ],
   "settings_backup_store_provider_keys": [
     "web-app/src/containers/SettingsBackupCard.tsx"
+  ],
+  "shared_folder_allow": [
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts"
+  ],
+  "shared_folder_default_isolation": [
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts"
+  ],
+  "shared_folder_overview": [
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts"
+  ],
+  "shared_folder_peers": [
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts"
+  ],
+  "shared_folder_recent_edits": [
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via sharedFolder)",
+    "web-app/src/lib/sharedFolder.ts"
   ],
   "start_mcp_server_now": [
     "web-app/src/services/mcp/tauri.ts"
