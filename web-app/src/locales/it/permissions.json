@@ -211,7 +211,7 @@
     "modeAuto": "Approva automaticamente le chiamate sicure; chiedi per quelle pericolose",
     "modeBypass": "Ignora i permessi fino alla chiusura di Flint",
     "modeDetails": "L'approvazione automatica chiede per comandi distruttivi, azioni sull'host, modifiche remote e altre chiamate sensibili. Ignora i permessi salta anche quelle richieste di approvazione.",
-    "bypassConfirm": "Ignora i permessi approva ogni chiamata a strumenti senza chiedere, compresi i comandi distruttivi e le azioni sul tuo computer. Attivare fino alla chiusura di Flint?"
+    "bypassConfirm": "Bypass esegue tutto senza chiedere, inclusi i comandi dell'host (PowerShell, WSL, SSH, installazioni), i comandi distruttivi, le scritture fuori dalla cartella del progetto e i git push. La modalità piano, le regole di rifiuto che hai scritto, i limiti di spesa e l'oscuramento dei segreti continuano a rifiutare. Attivare Bypass fino alla chiusura di Flint?"
   },
   "badge": {
     "reachesRemote": "Raggiunge {{target}}",

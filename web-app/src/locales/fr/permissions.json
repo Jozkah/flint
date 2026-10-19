@@ -211,7 +211,7 @@
     "modeAuto": "Approuver automatiquement les appels sûrs ; demander pour les appels dangereux",
     "modeBypass": "Contourner les autorisations jusqu'à la fermeture de Flint",
     "modeDetails": "L'approbation automatique demande pour les commandes destructives, les actions sur l'hôte, les modifications distantes et les autres appels sensibles. Le contournement ignore aussi ces invites d'approbation.",
-    "bypassConfirm": "Contourner les autorisations approuve chaque appel d'outil sans demander, y compris les commandes destructives et les actions sur votre ordinateur. Activer jusqu'à la fermeture de Flint ?"
+    "bypassConfirm": "Contourner les autorisations exécute tout sans demander, y compris les commandes de l'hôte (PowerShell, WSL, SSH, installations), les commandes destructives, les écritures hors du dossier du projet et les git push. Le mode plan, vos règles de refus, les plafonds de dépenses et le masquage des secrets refusent toujours. Activer Contourner jusqu'à la fermeture de Flint ?"
   },
   "badge": {
     "reachesRemote": "Accède à {{target}}",

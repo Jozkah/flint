@@ -511,6 +511,13 @@ pub(crate) struct OrchestrationArgs {
     /// leaves it false. `HardDeny` still stands. Inherited by dispatched
     /// subagents via the cloned parent args.
     pub auto_approve: bool,
+    /// Bypass: `auto_approve` plus every prompt a person could answer is
+    /// skipped too -- host tools, always-ask tools, destructive commands,
+    /// writes outside the project, the unattended-streak pause, MCP self
+    /// approval. Refusals nobody can answer (plan mode, deny rules, the
+    /// judge, the autonomous-mode policy, hidden paths) still stand, and say
+    /// so. Inherited by subagents through the cloned args.
+    pub bypass: bool,
     /// Read-only plan mode. When `Plan`, mutation-capable tools (write/edit/bash,
     /// memory_write/skill_write, MCP, subagent dispatch) are neither advertised
     /// nor executable: the dispatcher hard-denies them with `plan_mode_read_only`,
@@ -1857,6 +1864,8 @@ struct CompositeToolInvoker {
     grants: std::sync::Mutex<tauri_plugin_agent_tools::tools::gate::SessionGrants>,
     subagents: Option<SubagentContext>,
     auto_approve: bool,
+    /// See [`OrchestrationArgs::bypass`].
+    bypass: bool,
     /// The run's model id and the user's attribution settings: a `git`
     /// commit or pull request is rewritten to carry Flint's attribution before
     /// it is put to the user. `None` leaves calls as the model wrote them.
@@ -2753,6 +2762,9 @@ impl CompositeToolInvoker {
         if self.auto_approve {
             if let Some(block) = self.auto_mode.block_reason(name, tauri_plugin_agent_tools::tools::Capability::Exec, args) {
                 return Err(auto_mode_refusal_msg(name, &block));
+            }
+            if self.bypass {
+                return Ok(());
             }
             let streak = self.auto_approved_streak.fetch_add(1, StreakOrdering::Relaxed) + 1;
             if self.auto_approve_limit == 0 || streak <= self.auto_approve_limit {
@@ -4055,6 +4067,31 @@ pub(crate) fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::
 
 /// Rejection message for a mutation-capable tool call attempted in
 /// `RunMode::Plan`. Authoritative: the tool never actually runs.
+/// What a refusal says under Bypass: Bypass skips questions a person can
+/// answer, and these refusals are not questions.
+pub(crate) const BYPASS_CANNOT_OVERRIDE: &str =
+    " Bypass skips approval prompts only, so it cannot override this.";
+
+/// Appends [`BYPASS_CANNOT_OVERRIDE`] to a refusal that no answer could have
+/// changed: plan mode, a deny rule, a tool rule, the network or secret-file
+/// floors, the judge, the autonomous-mode policy. Anything else is left alone.
+pub(crate) fn note_bypass_refusal(outcome: &mut ToolOutcome) {
+    const MARKERS: [&str; 6] = [
+        "[permission_denied]",
+        "plan_mode_read_only",
+        "was refused",
+        " refused:",
+        "[sandbox_denied]",
+        "is not offered",
+    ];
+    let refused = outcome.refusal.is_some()
+        || (outcome.content.starts_with("ERROR")
+            && MARKERS.iter().any(|m| outcome.content.contains(m)));
+    if refused && !outcome.content.contains(BYPASS_CANNOT_OVERRIDE) {
+        outcome.content.push_str(BYPASS_CANNOT_OVERRIDE);
+    }
+}
+
 fn plan_mode_read_only_msg(name: &str) -> String {
     format!("ERROR: tool '{name}' unavailable in plan_mode_read_only (plan mode is read-only)")
 }
@@ -4903,8 +4940,8 @@ impl CompositeToolInvoker {
                         // An actuator is prompted even under `auto_approve`: that
                         // is the whole point of declaring one. A session grant
                         // still covers it, since the user said so explicitly.
-                        HostGate::Actuator => self.approve_host_tool(name).await,
-                        HostGate::Opaque => self.auto_approve || self.approve_host_tool(name).await,
+                        HostGate::Actuator => self.bypass || self.approve_host_tool(name).await,
+                        HostGate::Opaque => self.auto_approve || self.bypass || self.approve_host_tool(name).await,
                     };
                     if !approved {
                         out.push(ToolOutcome::plain(id, format!("ERROR: tool '{name}' denied by user")));
@@ -4959,8 +4996,8 @@ impl CompositeToolInvoker {
                 // it, or the model could approve past Flint's own prompt.
                 let self_approval =
                     tauri_plugin_agent_tools::mcp_trust::is_self_approval_tool(name);
-                if !self_approval
-                    && (self.auto_approve
+                if (!self_approval || self.bypass)
+                    && (self.auto_approve || self.bypass
                         || self.grants.lock().unwrap().covers_mcp(&server, name))
                 {
                     mcp_calls.push(tc.clone());
@@ -5079,7 +5116,7 @@ impl CompositeToolInvoker {
                 .then(|| tauri_plugin_agent_tools::tools::git_tool::plan_from_args(&args).ok())
                 .flatten()
                 .and_then(|p| p.destructive);
-            let destructive = git_destructive.or_else(|| (name == "bash")
+            let destructive = git_destructive.filter(|_| !self.bypass).or_else(|| (name == "bash" && !self.bypass)
                 .then(|| args.get("command").and_then(|v| v.as_str()))
                 .flatten()
                 .and_then(|c| {
@@ -5136,6 +5173,10 @@ impl CompositeToolInvoker {
             // overrides anyway.
             let mut forced_reason: Option<String> = None;
             let decision = match decision {
+                // Bypass answers every prompt a person could: writes outside
+                // the project, always-ask host tools, `ask` rules. Denials
+                // never reach this match.
+                Decision::Prompt(_) if self.bypass => Decision::Allow,
                 Decision::Prompt(PromptKind::Write | PromptKind::Exec)
                     if self.auto_approve && destructive.is_none() =>
                 {
@@ -5633,6 +5674,11 @@ impl CompositeToolInvoker {
             .filter_map(|(i, tc)| tc.get("id").and_then(|v| v.as_str()).map(|id| (id, i)))
             .collect();
         out.sort_by_key(|o| *order.get(o.id.as_str()).unwrap_or(&usize::MAX));
+        if self.bypass {
+            for outcome in out.iter_mut() {
+                note_bypass_refusal(outcome);
+            }
+        }
         self.note_diagnostics(tool_calls, &mut out).await;
         Ok(out)
     }
@@ -5758,6 +5804,7 @@ pub(crate) async fn run_server_side_openai_orchestration(
         subagents_enabled: false,
         max_parallel_subagents: crate::core::agent::subagent::DEFAULT_MAX_PARALLEL_SUBAGENTS,
         auto_approve: false,
+        bypass: false,
         run_mode: crate::core::agent::plan::RunMode::Normal,
         session_id: None,
         // The top-level run is not a child: no dispatch gave it an id.
@@ -6725,6 +6772,7 @@ async fn orchestrate_inner(
         subagents_enabled,
         max_parallel_subagents,
         auto_approve,
+        bypass,
         run_mode,
         session_id,
         run_id: child_run_id,
@@ -7648,6 +7696,7 @@ async fn orchestrate_inner(
             ),
             subagents,
             auto_approve: *auto_approve,
+            bypass: *bypass,
             attribution: Some((
                 model_id.clone(),
                 tauri_plugin_agent_tools::tools::git_attribution::load(
@@ -13966,6 +14015,7 @@ mod tests {
             subagents: None,
             subject,
             auto_approve: false,
+            bypass: false,
             attribution: None,
             auto_mode: crate::core::agent::auto_mode::AutoModePolicy::default(),
             judge: None,
@@ -14628,6 +14678,49 @@ mod tests {
         assert_eq!(prompted, ["host__arm"]);
         assert_eq!(asked, ["opaque"]);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Bypass skips the one prompt auto-approval leaves: an actuator host tool
+    /// runs without anyone being asked.
+    #[cfg(feature = "cli")]
+    #[tokio::test]
+    async fn bypass_runs_an_actuator_host_tool_without_a_prompt() {
+        use crate::core::agent::host_tools::HostCapability;
+        let root = hooks_root("hosttoolbypass");
+        let (mut invoker, events) = host_invoker(
+            root.clone(),
+            host_tool_set_with(&[("arm", Some(HostCapability::Actuator))]),
+        );
+        invoker.bypass = true;
+        let host = answering_host(&invoker, events, PermissionDecision::Deny);
+        let out = invoker
+            .invoke(&[hooked_tool_call("host__arm", "{}")])
+            .await
+            .unwrap();
+        assert_eq!(out[0].content, "done");
+        drop(invoker);
+        let (_asked, prompted) = host.await.expect("the stub host ran");
+        assert!(prompted.is_empty(), "bypass must not prompt: {prompted:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The refusals no answer could change get the sentence that says so.
+    #[test]
+    fn bypass_notes_only_the_refusals_it_cannot_override() {
+        let mut denied = ToolOutcome::plain(
+            "1".into(),
+            "ERROR [permission_denied]: tool 'bash' denied by project policy".to_string(),
+        );
+        note_bypass_refusal(&mut denied);
+        assert!(denied.content.ends_with(BYPASS_CANNOT_OVERRIDE));
+        note_bypass_refusal(&mut denied);
+        assert_eq!(denied.content.matches("cannot override").count(), 1);
+        let mut fine = ToolOutcome::plain("2".into(), "done".to_string());
+        note_bypass_refusal(&mut fine);
+        assert_eq!(fine.content, "done");
+        let mut failed = ToolOutcome::plain("3".into(), "ERROR: file not found".to_string());
+        note_bypass_refusal(&mut failed);
+        assert_eq!(failed.content, "ERROR: file not found");
     }
 
     /// With the host owning the gate its callback is the only prompt: Jan
@@ -16270,6 +16363,25 @@ profile = \"tiny\"
             out[0].content
         );
         assert!(!root.join("out.txt").exists(), "file must not be written");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Bypass does not turn plan mode off, and the refusal says so.
+    #[tokio::test]
+    async fn plan_mode_still_refuses_under_bypass_and_says_why() {
+        let root = unique_project_root();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, permissions);
+        invoker.run_mode = crate::core::agent::plan::RunMode::Plan;
+        invoker.auto_approve = true;
+        invoker.bypass = true;
+
+        let out = invoker.invoke(&[write_call()]).await.unwrap();
+
+        assert!(out[0].content.contains("plan_mode_read_only"), "{}", out[0].content);
+        assert!(out[0].content.contains("Bypass"), "{}", out[0].content);
+        assert!(!root.join("out.txt").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 

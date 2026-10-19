@@ -1249,6 +1249,7 @@ fn build_cli_orchestration_args(
     host_tools: crate::core::agent::host_tools::HostToolSet,
     host_tool_requests: crate::core::agent::host_tools::HostToolRegistry,
     auto_approve: bool,
+    bypass: bool,
     plan: bool,
     max_parallel_subagents: u32,
     sandbox: Option<bool>,
@@ -1283,6 +1284,7 @@ fn build_cli_orchestration_args(
         subagents_enabled: true,
         max_parallel_subagents,
         auto_approve,
+        bypass,
         run_mode: if plan {
             crate::core::agent::plan::RunMode::Plan
         } else {
@@ -1472,8 +1474,9 @@ impl AgentSession {
 /// * `review`: read-only plan mode; leaving it needs the plan approved.
 /// * `ask`: writes, shell commands and MCP calls prompt (`--safe`).
 /// * `auto`: those run unprompted, inside the sandbox when it is on (default).
-/// * `bypass`: as `auto`. The tools that always ask (`host_*`, `computer`,
-///   clipboard) still ask in every mode; no mode covers them.
+/// * `bypass`: as `auto`, and nothing a person could answer is asked:
+///   `host_*`, `computer`, clipboard, destructive commands, writes outside the
+///   project. Plan mode, deny rules and the judge still refuse, and say so.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionMode {
     Review,
@@ -1507,9 +1510,19 @@ impl PermissionMode {
         matches!(self, PermissionMode::Auto | PermissionMode::Bypass)
     }
 
+    /// Whether every prompt a person could answer is skipped.
+    pub fn bypass(self) -> bool {
+        self == PermissionMode::Bypass
+    }
+
     /// Whether the session is read-only plan mode.
     pub fn plan(self) -> bool {
         self == PermissionMode::Review
+    }
+
+    /// Whether a start-up `--mode` names Bypass.
+    pub fn requests_bypass(mode: Option<&str>) -> bool {
+        mode.map(|m| PermissionMode::parse(m) == Ok(PermissionMode::Bypass)).unwrap_or(false)
     }
 
     /// `(auto_approve, plan)` for a start-up request: `--mode` when given,
@@ -1538,6 +1551,9 @@ impl PermissionMode {
 pub struct SessionFlags {
     /// Skip the permission prompt for writes, shell, and MCP calls.
     pub auto_approve: bool,
+    /// Bypass: also skip the prompts `auto_approve` leaves (host tools,
+    /// destructive commands, writes outside the project). Implies `auto_approve`.
+    pub bypass: bool,
     /// Start in read-only plan mode.
     pub plan: bool,
     /// Fail when no model resolves instead of launching with an empty one. The
@@ -1886,6 +1902,7 @@ pub(crate) fn prepare_agent_session(
         crate::core::agent::host_tools::HostToolSet::new(),
         crate::core::agent::host_tools::new_registry(),
         flags.auto_approve,
+        flags.bypass,
         flags.plan,
         max_parallel_subagents,
         flags.sandbox,

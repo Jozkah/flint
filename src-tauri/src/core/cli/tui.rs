@@ -8313,9 +8313,10 @@ fn drain_trailing_sgr_mouse_reports(buf: &mut String, cursor: &mut usize) {
 /// see), so `/mode ask` actually gates the next run.
 fn run_args(app: &App, args: &Arc<OrchestrationArgs>) -> Arc<OrchestrationArgs> {
     match app.args.as_ref() {
-        Some(set) if set.auto_approve != args.auto_approve => {
+        Some(set) if set.auto_approve != args.auto_approve || set.bypass != args.bypass => {
             let mut next = (**args).clone();
             next.auto_approve = set.auto_approve;
+            next.bypass = set.bypass;
             Arc::new(next)
         }
         _ => Arc::clone(args),
@@ -13162,6 +13163,8 @@ fn mode_command(app: &mut App, arg: &str) {
     let current = |app: &App| {
         if app.run_mode == RunMode::Plan {
             PermissionMode::Review
+        } else if app.args.as_ref().is_some_and(|a| a.bypass) {
+            PermissionMode::Bypass
         } else if app.args.as_ref().is_some_and(|a| a.auto_approve) {
             PermissionMode::Auto
         } else {
@@ -13188,7 +13191,9 @@ fn mode_command(app: &mut App, arg: &str) {
         }
     };
     if let Some(args) = app.args.as_mut() {
-        std::sync::Arc::make_mut(args).auto_approve = mode.auto_approve();
+        let args = std::sync::Arc::make_mut(args);
+        args.auto_approve = mode.auto_approve();
+        args.bypass = mode.bypass();
     }
     app.run_mode = if mode.plan() { RunMode::Plan } else { RunMode::Normal };
     app.persist();
@@ -13196,7 +13201,7 @@ fn mode_command(app: &mut App, arg: &str) {
         PermissionMode::Review => "◈ REVIEW · read only — investigate, then propose a plan for review".to_string(),
         PermissionMode::Ask => "mode: ask — writes, shell commands and MCP calls need approval".to_string(),
         PermissionMode::Auto => "mode: auto — approved actions run unprompted (inside the sandbox when it is on)".to_string(),
-        PermissionMode::Bypass => "mode: bypass — as auto; host, computer and clipboard tools still ask".to_string(),
+        PermissionMode::Bypass => "mode: bypass — everything runs without asking, including host commands (PowerShell, WSL, SSH, packages), computer and clipboard tools, destructive commands and writes outside the project. Plan mode and deny rules still refuse.".to_string(),
     });
 }
 
@@ -23767,6 +23772,7 @@ mod tests {
                 subagents_enabled: true,
                 max_parallel_subagents: 4,
                 auto_approve: false,
+                bypass: false,
                 run_mode: crate::core::agent::plan::RunMode::Normal,
                 session_id: None,
                 run_id: None,

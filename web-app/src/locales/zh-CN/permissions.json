@@ -211,7 +211,7 @@
     "modeAuto": "自动批准安全调用；对危险调用询问",
     "modeBypass": "绕过权限直到 Flint 关闭",
     "modeDetails": "自动批准会对破坏性命令、主机操作、远程更改和其他敏感调用询问。绕过会同时跳过这些批准提示。",
-    "bypassConfirm": "绕过权限会在不询问的情况下批准每次工具调用，包括破坏性命令和你电脑上的操作。启用到 Flint 关闭为止吗？"
+    "bypassConfirm": "绕过权限会不经询问运行所有操作,包括主机命令(PowerShell、WSL、SSH、安装)、破坏性命令、项目文件夹之外的写入和 git push。计划模式、你写的拒绝规则、支出上限和机密信息遮盖仍会拒绝。在 Flint 关闭前启用绕过权限?"
   },
   "badge": {
     "reachesRemote": "访问 {{target}}",

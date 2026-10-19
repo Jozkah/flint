@@ -2115,7 +2115,7 @@ fn recorded_outcome(
             )),
             ApprovalSource::Bypass => Some((
                 Outcome::Allow,
-                "allowed without asking (bypass permissions mode)".to_string(),
+                "auto-approved (Bypass): allowed without asking (bypass permissions mode)".to_string(),
             )),
         },
         _ => None,
