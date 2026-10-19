@@ -3,6 +3,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  isValidElement,
   type CSSProperties,
   type ReactNode,
 } from 'react'
@@ -99,6 +100,8 @@ export function SettingsBalancedColumns({ children }: { children: ReactNode[] })
 
   const count = children.length
   useLayoutEffect(() => {
+    // Slots past the end are stale when the count shrinks.
+    refs.current.length = count
     pack()
     if (typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(pack)
@@ -112,7 +115,10 @@ export function SettingsBalancedColumns({ children }: { children: ReactNode[] })
         const p = placed[i]
         return (
           <div
-            key={i}
+            // The group's own key when it has one (`Children.toArray` gives
+            // every element one): a conditional group appearing or going away
+            // must not shift the index and remount the groups after it.
+            key={isValidElement(child) && child.key != null ? child.key : i}
             ref={(el) => {
               refs.current[i] = el
             }}
