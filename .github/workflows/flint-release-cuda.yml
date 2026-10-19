@@ -63,14 +63,18 @@ jobs:
     continue-on-error: true
     env:
       TAG: ${{ inputs.tag }}
+      CUDA_REDIST_VERSION: ${{ matrix.cuda_redist }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: win-x64
             os: windows-latest
+            # MSVC 14.51 (the only toolset on the image) crashes cudafe++ in 13.0.
+            cuda_redist: '13.1.2'
           - platform: linux-x64
             os: ubuntu-22.04
+            cuda_redist: '13.0.2'
     defaults:
       run:
         shell: bash

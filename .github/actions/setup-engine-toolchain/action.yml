@@ -140,9 +140,6 @@ runs:
     - name: Enter the MSVC developer environment for nvcc
       if: runner.os == 'Windows' && contains(inputs.variant, 'cuda')
       uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
-      with:
-        # MSVC 14.51 (VS 2026) crashes nvcc 13.0's cudafe++; use a 14.4x toolset.
-        toolset: '14.4'
 
     # Inside a VS developer environment rustc takes link.exe from PATH, and make
     # runs its recipes through Git's sh.exe, whose MSYS runtime prepends its own
