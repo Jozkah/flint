@@ -129,6 +129,8 @@ jobs:
           $vs = & "$installer\vswhere.exe" -latest -property installationPath
           $p = Start-Process -Wait -PassThru -FilePath "$installer\setup.exe" -ArgumentList @('modify','--installPath',"`"$vs`"",'--add','Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64','--quiet','--norestart','--noUpdateInstaller')
           Write-Host "setup.exe exit code $($p.ExitCode)"
+          # 0 is done, 3010 is done but wants a reboot; anything else failed.
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "Visual Studio setup failed with exit code $($p.ExitCode)" }
           Get-ChildItem "$vs\VC\Tools\MSVC" | ForEach-Object Name
           if (-not (Test-Path "$vs\VC\Tools\MSVC\14.44*")) { throw 'MSVC 14.44 toolset was not installed' }
 
@@ -170,6 +172,7 @@ jobs:
         uses: ./.github/actions/setup-engine-toolchain
         with:
           variant: ${{ env.ENGINE_VARIANT }}
+          toolset: '14.44'
 
       # Only the engine: the pack is the ggml-cuda module, which loads into the
       # Vulkan installer's worker. Same llama.cpp pin as that installer.
