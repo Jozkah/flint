@@ -261,6 +261,9 @@ pub struct SessionRecord {
     /// A chain handed to this idle session, waiting for the run it starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub armed_chain: Option<ChainContext>,
+    /// Which folder the session shares and how (shared-folder coordination).
+    #[serde(default)]
+    pub shared: crate::shared_folder::SharedMeta,
 }
 
 /// Where a run sits in a chain of agent-to-agent messages. Host state only:
@@ -297,6 +300,33 @@ impl ChainContext {
 
 fn default_true() -> bool {
     true
+}
+
+/// Fill a record's shared-folder block from what a registration reports. The
+/// start branch and HEAD are taken when the folder is first seen (or changes).
+fn apply_shared(
+    meta: &mut crate::shared_folder::SharedMeta,
+    folder: Option<&str>,
+    access: Option<&str>,
+    isolated: Option<bool>,
+    epoch: &str,
+) {
+    use crate::shared_folder::{head, path_key};
+    let key = folder.map(|f| path_key::folder_key(Path::new(f)));
+    if key != meta.folder_key || meta.start_head.is_none() && meta.start_branch.is_none() {
+        let read = folder.and_then(|f| head::read_head(Path::new(f)));
+        meta.git = folder.is_some_and(|f| head::is_git_repo(Path::new(f)));
+        meta.start_branch = read.as_ref().and_then(|h| h.branch.clone());
+        meta.start_head = read.and_then(|h| h.sha);
+        meta.folder_key = key;
+    }
+    if let Some(a) = access {
+        meta.access = Some(a.chars().take(40).collect());
+    }
+    if let Some(i) = isolated {
+        meta.isolated = i;
+    }
+    meta.registered_epoch = Some(epoch.to_string());
 }
 
 /// What discovery shows about another session.
@@ -777,6 +807,21 @@ impl Mailbox {
         folder: Option<&str>,
         accepts_messages: Option<bool>,
     ) -> Result<SessionRecord> {
+        self.register_shared(session_id, display_name, folder, accepts_messages, None, None)
+    }
+
+    /// [`Mailbox::register_with`], also recording how the session works in its
+    /// folder: its access mode and whether it is isolated in a worktree.
+    /// `None` leaves a known session's value alone.
+    pub fn register_shared(
+        &self,
+        session_id: &str,
+        display_name: &str,
+        folder: Option<&str>,
+        accepts_messages: Option<bool>,
+        access: Option<&str>,
+        isolated: Option<bool>,
+    ) -> Result<SessionRecord> {
         check_session_id(session_id)?;
         let folder = folder.map(str::trim).filter(|f| !f.is_empty());
         let project = folder.map(|f| messaging_project_key(Path::new(f)));
@@ -799,6 +844,7 @@ impl Mailbox {
                 existing.display_name = name;
                 existing.project = project;
                 existing.folder = folder_shown;
+                apply_shared(&mut existing.shared, folder, access, isolated, &self.epoch);
                 if let Some(accepts) = accepts_messages {
                     existing.accepts_messages = accepts;
                 }
@@ -849,12 +895,16 @@ impl Mailbox {
                     archived: false,
                     chain: None,
                     armed_chain: None,
+                    shared: Default::default(),
                 };
+                let mut record = record;
+                apply_shared(&mut record.shared, folder, access, isolated, &self.epoch);
                 registry.insert(session_id.to_string(), record.clone());
                 record
             }
         };
         self.write_registry(&registry)?;
+        crate::shared_folder::announce(record.shared.folder_key.clone(), session_id, "registered");
         Ok(self.view(&record))
     }
 
@@ -913,7 +963,10 @@ impl Mailbox {
     /// A run started (`running`) or ended. An end naming a run other than the
     /// recorded one is ignored, so a late end cannot mark a newer run idle.
     pub fn set_status(&self, session_id: &str, running: bool, run_id: Option<&str>) -> Result<()> {
-        self.with_live_record(session_id, |record, now, epoch| {
+        let mut applied = false;
+        let mut folder_key = None;
+        let result = self.with_live_record(session_id, |record, now, epoch| {
+            folder_key = record.shared.folder_key.clone();
             if running {
                 // The renderer and the backend may both report one run start;
                 // only a new run takes the armed chain (or none: a run nothing
@@ -947,20 +1000,37 @@ impl Mailbox {
                 record.epoch = None;
                 record.chain = None;
             }
+            applied = true;
             record.updated_at = now;
-        })
+        });
+        if result.is_ok() && applied {
+            // A run boundary drops the session's file claims and branch
+            // baseline; the folder's other sessions see the state change.
+            crate::shared_folder::on_run_boundary(session_id);
+            crate::shared_folder::announce(folder_key, session_id, "state");
+        }
+        result
     }
 
     /// The session was archived (`true`) or restored. An archived session
     /// gets no mail and is left out of discovery; registering restores it too.
     pub fn set_archived(&self, session_id: &str, archived: bool) -> Result<()> {
-        self.with_live_record(session_id, |record, now, _| {
+        let mut folder_key = None;
+        let result = self.with_live_record(session_id, |record, now, _| {
+            folder_key = record.shared.folder_key.clone();
             record.archived = archived;
             if archived {
                 record.armed_chain = None;
             }
             record.updated_at = now;
-        })
+        });
+        if result.is_ok() {
+            if archived {
+                crate::shared_folder::on_session_left(session_id);
+            }
+            crate::shared_folder::announce(folder_key, session_id, if archived { "left" } else { "registered" });
+        }
+        result
     }
 
     /// Hand `envelopes` (just delivered to `session_id`) to its chain state:
@@ -1065,12 +1135,55 @@ impl Mailbox {
                 archived: false,
                 chain: None,
                 armed_chain: None,
+                shared: Default::default(),
             });
         record.deleted = true;
         record.status = SessionStatus::Idle;
         record.run_id = None;
         record.updated_at = now;
-        self.write_registry(&registry)
+        let folder_key = record.shared.folder_key.clone();
+        self.write_registry(&registry)?;
+        crate::shared_folder::on_session_left(session_id);
+        crate::shared_folder::announce(folder_key, session_id, "left");
+        Ok(())
+    }
+
+    /// Whether `record` counts as present in its folder: registered by this
+    /// process (a record left by a process that is gone does not), not
+    /// archived or deleted, and not `unavailable` (a run whose heartbeat
+    /// stopped).
+    pub fn is_live_member(&self, record: &SessionRecord) -> bool {
+        !record.deleted
+            && !record.archived
+            && record.shared.folder_key.is_some()
+            && record.shared.registered_epoch.as_deref() == Some(self.epoch.as_str())
+            && self.status_of(record) != SessionStatus::Unavailable
+    }
+
+    /// Every live session attached to the folder with `folder_key`, isolated
+    /// ones included, with current status.
+    pub fn live_in_folder(&self, folder_key: &str) -> Vec<SessionRecord> {
+        let Ok(registry) = self.read_registry() else {
+            return Vec::new();
+        };
+        registry
+            .values()
+            .filter(|r| r.shared.folder_key.as_deref() == Some(folder_key))
+            .filter(|r| self.is_live_member(r))
+            .map(|r| self.view(r))
+            .collect()
+    }
+
+    /// Every live session that has a folder, for the overview.
+    pub fn live_with_folder(&self) -> Vec<SessionRecord> {
+        let Ok(registry) = self.read_registry() else {
+            return Vec::new();
+        };
+        registry
+            .values()
+            .filter(|r| self.is_live_member(r))
+            .map(|r| self.view(r))
+            .collect()
     }
 
     /// The caller's live record and project, or why it cannot message.
@@ -1958,6 +2071,9 @@ pub async fn run_tool(
                     match sent {
                         Err(e) => Err(e),
                         Ok((target_id, r)) => {
+                            // Evidence, for a held write's retry, that this
+                            // session talked to the other one.
+                            crate::shared_folder::tools::note_message_sent(session_id);
                             let mut out = serde_json::json!({
                                 "message_id": r.message_id,
                                 "delivered_to_status": r.delivered_to_status,

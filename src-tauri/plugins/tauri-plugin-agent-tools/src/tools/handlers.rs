@@ -555,6 +555,10 @@ pub async fn execute_builtin(
         );
     }
 
+    // Shared-folder coordination: a branch moved under this session since its
+    // last step is said once, on this call's result.
+    let branch_moved = crate::shared_folder::tools::before_tool(ctx);
+
     let work = async {
         match tool.name {
             "read" => read_or_list(args, ctx).await,
@@ -582,6 +586,12 @@ pub async fn execute_builtin(
             None,
         ),
     };
+
+    crate::shared_folder::tools::after_tool(ctx);
+    if let Some(notice) = branch_moved {
+        content.push_str("\n\n");
+        content.push_str(&notice);
+    }
 
     // A post-tool hook cannot undo what the tool did, so it never blocks. What
     // it can do is say something went wrong, where the model and the person
@@ -625,6 +635,14 @@ pub(crate) async fn execute_text(
         "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
         "write" | "edit" => {
             let verb = if tool.name == "write" { "overwrite" } else { "edit" };
+            // Another live session on this folder is editing the file: hold.
+            // Advisory; see the shared-folder coordination design.
+            if let Some(target) = tracked_path(args, ctx) {
+                let shown = arg_str(args, "path").unwrap_or_default();
+                if let Some(held) = crate::shared_folder::tools::write_gate(ctx, &target, shown) {
+                    return held;
+                }
+            }
             if let Some(refusal) = stale_edit_refusal(verb, args, ctx).await {
                 return refusal;
             }
@@ -634,11 +652,24 @@ pub(crate) async fn execute_text(
                 edit(args, project_root, scratch, ctx.confine_writes, ctx.write_roots).await
             };
             if !out.starts_with("ERROR") {
-                record_seen(args, ctx).await;
+                if let Some((path, hash)) = record_seen(args, ctx).await {
+                    crate::shared_folder::tools::record_write(ctx, &path, &hash);
+                }
             }
             out
         }
-        "bash" => bash(args, ctx).await,
+        "bash" => {
+            // A tree-changing git command while another live session shares
+            // this folder is held, same as the `git` tool.
+            if let Some(command) = arg_str(args, "command") {
+                if let Some(held) =
+                    crate::shared_folder::tools::guard_command(ctx, command, ctx.project_root)
+                {
+                    return held;
+                }
+            }
+            bash(args, ctx).await
+        }
         "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
         "grep" => grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
         // Memory and skills live in the store root, not the sandbox: they must
@@ -666,9 +697,27 @@ pub(crate) async fn execute_text(
         "ocr" => crate::tools::ocr::run(args, project_root, scratch, ctx.read_roots).await,
         "computer" => crate::tools::computer::run(args).await.0,
         "open_path" => crate::tools::open_path::run(args, ctx).await,
-        "host_powershell" => crate::tools::host_powershell::run(args, ctx).await,
+        "host_powershell" => {
+            if let Some(command) = arg_str(args, "command") {
+                if let Some(held) =
+                    crate::shared_folder::tools::guard_command(ctx, command, ctx.project_root)
+                {
+                    return held;
+                }
+            }
+            crate::tools::host_powershell::run(args, ctx).await
+        }
         "host_package" => crate::tools::host_package::host_package(args).await,
-        "host_wsl" => crate::tools::host_wsl::run(args, ctx).await,
+        "host_wsl" => {
+            if let Some(command) = arg_str(args, "command") {
+                if let Some(held) =
+                    crate::shared_folder::tools::guard_command(ctx, command, ctx.project_root)
+                {
+                    return held;
+                }
+            }
+            crate::tools::host_wsl::run(args, ctx).await
+        }
         "host_ssh" => crate::tools::host_ssh::run(args).await,
         "notify_user" => crate::tools::notify_user::notify_user(args).await,
         "local_http" => crate::tools::local_http::local_http(args).await,
@@ -952,7 +1001,7 @@ pub async fn execute_builtin_with_diff(
             }
 
             let (content, images) = execute_builtin(tool, args, ctx).await;
-            if content.starts_with("ERROR") {
+            if content.starts_with("ERROR") || crate::shared_folder::is_hold(&content) {
                 return (content, None, None);
             }
             // AH-149: the project's own formatter has the last word on layout,
@@ -1469,7 +1518,9 @@ async fn read_or_list(
     // A text file that opens with "ERROR" is still a successful read, but it is
     // indistinguishable here; the model re-reads in that rare case.
     if !out.0.starts_with("ERROR") {
-        record_seen(args, ctx).await;
+        if let Some((path, _)) = record_seen(args, ctx).await {
+            crate::shared_folder::tools::note_read(ctx, &path);
+        }
     }
     out
 }
@@ -1663,9 +1714,12 @@ fn tracked_path(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Option<PathB
 
 /// Remember the bytes now on disk at the call's path as what this session has
 /// seen. A file that cannot be read is forgotten instead.
-async fn record_seen(args: &serde_json::Value, ctx: &ToolContext<'_>) {
+async fn record_seen(
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+) -> Option<(PathBuf, [u8; 32])> {
     let (Some(key), Some(path)) = (stale_key(ctx), tracked_path(args, ctx)) else {
-        return;
+        return None;
     };
     let hash = tokio::fs::read(&path).await.ok().map(|b| content_hash(&b));
     let mut all = read_hashes().lock().unwrap();
@@ -1675,10 +1729,12 @@ async fn record_seen(args: &serde_json::Value, ctx: &ToolContext<'_>) {
             if seen.len() >= MAX_TRACKED_FILES && !seen.contains_key(&path) {
                 seen.clear();
             }
-            seen.insert(path, h);
+            seen.insert(path.clone(), h);
+            Some((path, h))
         }
         None => {
             seen.remove(&path);
+            None
         }
     }
 }

@@ -421,6 +421,11 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'session_export_save',
       'session_handoff_save',
       'session_import_open',
+      'shared_folder_allow',
+      'shared_folder_default_isolation',
+      'shared_folder_overview',
+      'shared_folder_peers',
+      'shared_folder_recent_edits',
     ],
   },
   {

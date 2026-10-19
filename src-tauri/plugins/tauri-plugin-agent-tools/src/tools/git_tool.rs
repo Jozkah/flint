@@ -882,7 +882,7 @@ pub fn plan_from_args(v: &Value) -> Result<GitPlan, String> {
 /// quotes; any other backslash stays literal so Windows paths survive, and a
 /// leading `\\` of a UNC path is kept as is). No expansion of any kind.
 /// `None` for an unterminated quote.
-fn split_command_line(line: &str) -> Option<Vec<String>> {
+pub(crate) fn split_command_line(line: &str) -> Option<Vec<String>> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut in_word = false;
@@ -1838,6 +1838,15 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
     }
     if let Err(e) = check_repo_config(&cwd).await {
         return format!("ERROR: git: {e}");
+    }
+    // A tree-changing command while another live session shares this folder.
+    if let Some(held) = crate::shared_folder::tools::guard_git_tool(
+        ctx,
+        plan.program.as_str(),
+        &plan.args,
+        &cwd,
+    ) {
+        return held;
     }
     execute(&plan, &cwd).await
 }
