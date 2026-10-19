@@ -50,6 +50,35 @@ export function browserCallClass(input: unknown): BrowserCallClass {
 export const browserAlwaysAsks = (c: BrowserCallClass): boolean =>
   c === 'open' || c === 'evaluate'
 
+/**
+ * The refusal for an `open` the backend would reject (`confine::local_origin`):
+ * anything but an http(s) page on this machine, or a URL with credentials in
+ * it. Said before the user is asked, so nobody approves a call that cannot
+ * work. `null` when the URL is fine (or this is not an open).
+ */
+export function browserOpenRefusal(input: unknown): string | null {
+  if (browserCallClass(input) !== 'open') return null
+  const raw = (input as { url?: unknown }).url
+  const outside =
+    'browser only opens pages served from this machine (localhost, 127.0.0.1 or [::1]); it has no network beyond the app under test, on purpose. To read a public page use web_fetch, or turn on the browser agent in Settings > Agent tools. Do not retry browser open for this URL.'
+  if (typeof raw !== 'string') return null
+  let url: URL
+  try {
+    url = new URL(raw.trim())
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return outside
+  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  const loopback =
+    host === 'localhost' || host === '::1' || /^127(\.\d{1,3}){3}$/.test(host)
+  if (!loopback) return outside
+  if (url.username || url.password) {
+    return 'browser does not open a URL with credentials in it.'
+  }
+  return null
+}
+
 const clip = (s: string, n: number): string =>
   s.length > n ? `${s.slice(0, n - 1)}…` : s
 

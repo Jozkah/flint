@@ -95,6 +95,21 @@ describe('approveBrowserTool', () => {
     expect(requestApproval.mock.calls.map((c) => c[4].alwaysAsk)).toEqual([true, true])
   })
 
+  it('refuses a page outside this machine before asking, in every mode', async () => {
+    requestApproval.mockReset()
+    for (const unattended of [false, true]) {
+      for (const url of ['https://example.com', 'http://192.168.1.5:3000', 'file:///etc/passwd']) {
+        const r = await approveBrowserTool({ action: 'open', url }, 't1', opts({ unattended }))
+        expect(r).toMatch(/only opens pages served from this machine/)
+        expect(r).toMatch(/web_fetch/)
+      }
+    }
+    expect(await approveBrowserTool({ action: 'open', url: 'http://user:pw@localhost:1/' }, 't1', opts())).toMatch(/credentials/)
+    expect(requestApproval).not.toHaveBeenCalled()
+    requestApproval.mockResolvedValue(true)
+    expect(await approveBrowserTool({ action: 'open', url: 'http://[::1]:5173/' }, 't1', opts())).toBeNull()
+  })
+
   it('uses the surface’s own asker when it has one', async () => {
     requestApproval.mockReset()
     const approve = vi.fn(async () => true)

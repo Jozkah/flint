@@ -49,6 +49,7 @@ import {
   BROWSER_TOOL_NAME,
   browserAlwaysAsks,
   browserCallClass,
+  browserOpenRefusal,
   browserInputForPrompt,
   closeBrowserSession,
   describeBrowserCall,
@@ -418,6 +419,9 @@ export async function approveBrowserTool(
 ): Promise<string | null> {
   const cls = browserCallClass(input)
   if (cls === 'read') return null
+  // A page the backend would refuse is refused here, before anyone is asked.
+  const refusal = browserOpenRefusal(input)
+  if (refusal) return refusal
   const alwaysAsk =
     browserAlwaysAsks(cls) ||
     useToolApproval.getState().permissionMode === 'auto-approve'
