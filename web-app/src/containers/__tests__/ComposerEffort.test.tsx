@@ -5,7 +5,7 @@ import { ComposerEffort } from '../ComposerEffort'
 import { EFFORT_LEVELS } from '@/lib/modelEffort'
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string, o?: { value?: string }) => (o?.value ? `${key}:${o.value}` : key) }),
 }))
 
 describe('ComposerEffort', () => {
@@ -28,6 +28,31 @@ describe('ComposerEffort', () => {
     expect(screen.getByTestId('composer-effort')).toHaveTextContent('Medium')
   })
 
+  it('reads "Default", not a level, when the default is no stop', () => {
+    render(<ComposerEffort levels={EFFORT_LEVELS} value={null} onChange={vi.fn()} />)
+    const b = screen.getByTestId('composer-effort')
+    expect(b).toHaveTextContent('common:reasoningEffort.default')
+    expect(b).not.toHaveTextContent('XHigh')
+    expect(b).toHaveAttribute(
+      'title',
+      'common:reasoningEffort.defaultFor:common:reasoningEffort.engineDefault'
+    )
+  })
+
+  it('keeps a saved level over the default and tooltips the default', () => {
+    render(
+      <ComposerEffort
+        levels={EFFORT_LEVELS}
+        value="high"
+        recommended="medium"
+        onChange={vi.fn()}
+      />
+    )
+    const b = screen.getByTestId('composer-effort')
+    expect(b).toHaveTextContent('High')
+    expect(b).toHaveAttribute('title', 'common:reasoningEffort.defaultFor:Medium')
+  })
+
   it('names Off when thinking is off', () => {
     render(
       <ComposerEffort
@@ -42,7 +67,7 @@ describe('ComposerEffort', () => {
     )
   })
 
-  it('always names a level, never "model default"', () => {
+  it('never says "model default"', () => {
     render(
       <ComposerEffort levels={EFFORT_LEVELS} value={null} onChange={vi.fn()} />
     )

@@ -60,16 +60,53 @@ describe('which levels a provider actually honours', () => {
     expect(
       effortProfile('anthropic', model('claude-opus-4-5')).recommended
     ).toBe('medium')
+    // A host with no known default of its own: no level is named.
     expect(
       effortProfile('pxa', reasoningModel('pxa-qwen3.8-27b', false)).recommended
+    ).toBeNull()
+    expect(
+      effortProfile('pxa', reasoningModel('gpt-oss-120b', true)).recommended
     ).toBe('medium')
-    // llama.cpp defaults to an unbounded budget; the highest stop is nearest.
-    expect(effortProfile('llamacpp', model('qwen3')).recommended).toBe('xhigh')
+    // llama.cpp sends no budget at all (unbounded): not a level.
+    expect(effortProfile('llamacpp', model('qwen3')).recommended).toBeNull()
     expect(effortProfile('google', model('gemini-3-pro'))).toEqual({
       levels: [],
       recommended: null,
       canDisable: false,
     })
+  })
+
+  // Per-family default table: what the control names while nothing is chosen.
+  it.each([
+    ['llamacpp', 'gemma-3-4b-it-Q4_K_M', false, [], null],
+    ['llamacpp', 'Qwen3-0.6B-Q8_0', false, EFFORT_LEVELS, null],
+    ['llamacpp', 'gpt-oss-20b-mxfp4', false, EFFORT_LEVELS, null],
+    ['openai', 'o3', false, ['low', 'medium', 'high'], 'medium'],
+    ['openai', 'gpt-5.2', false, EFFORT_LEVELS, 'medium'],
+    ['anthropic', 'claude-opus-4-5', false, EFFORT_LEVELS, 'medium'],
+    ['anthropic', 'claude-opus-4-7', false, [], null],
+    ['gemini', 'gemini-2.5-pro', false, [], null],
+    ['pxa', 'gpt-oss-120b', true, ['low', 'medium', 'high'], 'medium'],
+    ['pxa', 'some-unknown-model', false, [], null],
+  ] as const)(
+    '%s %s defaults to %j levels, default %j',
+    (provider, id, reasons, levels, recommended) => {
+      const p = effortProfile(provider, reasoningModel(id, reasons))
+      expect(p.levels).toEqual(levels)
+      expect(p.recommended).toBe(recommended)
+    }
+  )
+
+  it('never names a default level the profile does not offer', () => {
+    for (const [p, id] of [
+      ['llamacpp', 'qwen3'],
+      ['openai', 'gpt-5'],
+      ['anthropic', 'claude-opus-4-5'],
+      ['pxa', 'gpt-oss-20b'],
+    ] as const) {
+      const prof = effortProfile(p, model(id))
+      if (prof.recommended) expect(prof.levels).toContain(prof.recommended)
+    }
   })
 
   // C052: an XHigh chip on gemma-3-4b, a model that does not reason.

@@ -94,9 +94,11 @@ export interface EffortProfile {
   levels: EffortLevel[]
   /**
    * The level the model runs at when none is sent, marked "Recommended" on the
-   * bar and shown while nothing is chosen. Null only when there are no levels.
-   * llama.cpp defaults to an unbounded budget, so its stop is the highest, the
-   * nearest one.
+   * bar and shown while nothing is chosen. Null when there are no levels, or
+   * when the model's default is not one of the stops: llama.cpp sends no
+   * thinking budget at all (unbounded), and an OpenAI-compatible host applies
+   * its own default when no effort is sent. The control then reads "Default"
+   * and highlights no stop, rather than naming a level that is not sent.
    */
   recommended: EffortLevel | null
   /**
@@ -143,11 +145,14 @@ function openaiProfile(modelId: string): EffortProfile {
  * efforts a model accepts, so this is what each family is known to take:
  * gpt-oss stops at `high`, and a Flash-Next template on vLLM skips `high`; the
  * rest of the compatible hosts (OpenRouter,
- * vLLM, LiteLLM) normalise `xhigh` themselves. `medium` is the default
- * everywhere. Qwen3 can be told not to think (`enable_thinking: false`, which
+ * vLLM, LiteLLM) normalise `xhigh` themselves. `medium` is the default only
+ * for gpt-oss and OpenAI's own families. Qwen3 can be told not to think (`enable_thinking: false`, which
  * llama.cpp, vLLM and SGLang all read); the others have no such switch common
  * to every host.
  */
+const COMPATIBLE_DEFAULTS_TO_MEDIUM =
+  /(^|[/:_.-])(gpt-?oss|o[134](-|$)|gpt-?5)/
+
 function compatibleProfile(modelId: string): EffortProfile {
   const id = modelId.toLowerCase()
   return {
@@ -156,7 +161,9 @@ function compatibleProfile(modelId: string): EffortProfile {
       : /flash-next/.test(id)
         ? LOW_MEDIUM_XHIGH
         : EFFORT_LEVELS,
-    recommended: 'medium',
+    // Only the families whose own default is known to be medium name it; any
+    // other host picks its own when no effort is sent.
+    recommended: COMPATIBLE_DEFAULTS_TO_MEDIUM.test(id) ? 'medium' : null,
     canDisable: /qwen-?3/.test(id),
   }
 }
@@ -192,7 +199,7 @@ export function effortProfile(
       // control that does nothing (C052).
       return (model?.capabilities?.includes('reasoning') ?? false) ||
         REASONING_MODEL_ID.test(model?.id ?? '')
-        ? { levels: EFFORT_LEVELS, recommended: 'xhigh', canDisable: true }
+        ? { levels: EFFORT_LEVELS, recommended: null, canDisable: true }
         : NO_EFFORT
     case 'anthropic':
       return anthropicTakesAnExplicitBudget(model?.id ?? '')
