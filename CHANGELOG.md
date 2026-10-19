@@ -1,3 +1,18 @@
+# Flint 1.0.1
+
+A fix release for 1.0.0. The full list is in the [v1.0.1 release notes](https://github.com/Jozkah/flint/releases/tag/v1.0.1).
+
+## Highlights
+
+- Cowork's browser, computer and other specialist tools are no longer stripped by the chat tool filter, and a tool the model enables with `enable_tools` now stays enabled.
+- Bypass now means bypass: it skips every approval you can answer, including host commands, in Cowork, the CLI, headless runs and subagents, and a mid-run switch to Bypass takes effect on the next call. Refusals that cannot be approved say why.
+- Start fresh at first run no longer reads Jan's data or keys. Installs that already ran Flint keep working on the folder they use.
+- Closing the window flushes pending session writes, so a message sent a moment before quitting is not lost. Bulk delete re-checks that an item is not running just before it deletes it.
+- Messaging between sessions keeps its hold across a restart, held mail no longer reaches a running session, and normal fan-in to a coordinator works.
+- Small context windows get more room: the compact headroom scales with the window and a reserve you set yourself is respected.
+- Large pastes send even when the pasted text file is missing, the sidebar and settings feel lighter, and the Python sandbox message is accurate.
+- The first-run guide no longer shows a false embedding-model error.
+
 # Flint 1.0.0
 
 Flint 1.0 is the first stable release after 0.9.0. It covers every nightly since 0.9.0 (2026-09-27) and the campaign merged for 1.0. The full list of changes is in the [v1.0.0 release notes](https://github.com/Jozkah/flint/releases/tag/v1.0.0).
