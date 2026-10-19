@@ -160,8 +160,10 @@ describe('Cowork session persistence', () => {
     // Let the async storage write land, then drop everything in memory. The
     // store writes on every change, so the wipe is written too; put back what
     // was on disk, which is what a restart would find.
-    await vi.waitFor(() =>
-      expect(disk.get(localStorageKey.coworkSessions)).toContain('cached_prompt_tokens')
+    // The store writes once, a moment after the change, not on every set.
+    await vi.waitFor(
+      () => expect(disk.get(localStorageKey.coworkSessions)).toContain('cached_prompt_tokens'),
+      { timeout: 4000 }
     )
     const saved = disk.get(localStorageKey.coworkSessions)!
     useCoworkSessions.setState({ sessions: [], currentId: null })
