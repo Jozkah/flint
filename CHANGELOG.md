@@ -12,6 +12,10 @@ A fix release for 1.0.0. The full list is in the [v1.0.1 release notes](https://
 - Small context windows get more room: the compact headroom scales with the window and a reserve you set yourself is respected.
 - Large pastes send even when the pasted text file is missing, the sidebar and settings feel lighter, and the Python sandbox message is accurate.
 - The first-run guide no longer shows a false embedding-model error.
+- The update check now targets the newest stable release (never a nightly) and compares versions, so a 0.9.0 install learns about 1.x; the Open release and Download buttons open that release page.
+- The effort control follows the model: llama.cpp reasoning models show Default instead of a made-up XHigh, and models without reasoning show no control.
+- Chat gains a Shell switch in the options menu, the sidebar options gain Delete all with a typed confirmation, and browser requests the sandboxed browser cannot open say why.
+- Fixes for a pasted attachment that could not be sent, the model guessing another user's profile path, the Python sandbox guidance, a misplaced sidebar highlight at large font sizes and clipped cards at narrow widths.
 
 # Flint 1.0.0
 
