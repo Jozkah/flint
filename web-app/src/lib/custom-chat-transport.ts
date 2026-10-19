@@ -186,7 +186,7 @@ import {
 } from '@/lib/chatCompaction'
 import { recordLifecycle } from '@/lib/toolActivity'
 import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
-import { toolsForWindow } from '@/lib/leanTools'
+import { toolsForConversation, toolsForWindow } from '@/lib/leanTools'
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
 import { usageEventPayload } from '@/lib/executionTimeline'
@@ -3217,6 +3217,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       this.tools,
       maxContextTokens,
       useLeanToolsConfig.getState().leanSmallWindows
+    )
+    // Specialist host/browser tools wait until the conversation asks for them.
+    this.tools = toolsForConversation(
+      this.tools,
+      messagesToConvert,
+      useLeanToolsConfig.getState().leanSpecialist
     )
     const effectiveSystem = appendSessionContext(
       this.buildSystemPrompt(messagesToConvert),
