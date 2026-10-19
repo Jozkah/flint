@@ -371,6 +371,42 @@
     "files": "レビュー待ちのファイル: {{count}}",
     "branch": "ブランチ: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "このフォルダーで他の{{count}}件のセッションが作業中",
+    "others_other": "このフォルダーで他の{{count}}件のセッションが作業中",
+    "waitingApproval_one": "他の{{count}}件のセッションが承認待ち",
+    "waitingApproval_other": "他の{{count}}件のセッションが承認待ち",
+    "waitingApprovalOne": "承認待ち",
+    "holdEdit": "{{owner}}が{{target}}を編集中: {{session}}は連絡するよう指示されました",
+    "holdGit": "{{owner}}がこのフォルダーで作業中: {{session}}はgit {{target}}を保留され、連絡するよう指示されました",
+    "branchChanged": "ブランチが{{from}}から{{to}}に変わりました",
+    "show": "このフォルダーにいるセッションを表示",
+    "hide": "一覧を隠す",
+    "openSession": "{{name}}を開く",
+    "message": "メッセージ",
+    "isolated": "専用ワークツリー",
+    "moreFiles": "他{{count}}件",
+    "editing": "編集中",
+    "status": {
+      "running": "実行中",
+      "idle": "待機中",
+      "unavailable": "利用不可"
+    },
+    "allowEdit": "このセッションの編集を許可する",
+    "allowGit": "このセッションのgit実行を許可する",
+    "allowed": {
+      "edit": "編集を許可中、残り時間",
+      "git": "git実行を許可中、残り時間",
+      "all": "編集とgit実行を許可中、残り時間"
+    },
+    "withdraw": "取り消す",
+    "isolationHint": "別のセッションがこのフォルダーで作業中のため、専用ワークツリーを使用中",
+    "useShared": "代わりに共有フォルダーを使う",
+    "sharedWarning": "フォルダーを共有します: 他のセッションのgit操作で、このセッションのブランチやファイルが変わることがあります。Flintは危険なgitコマンドを保留し、2つのセッションが同じファイルを編集すると警告します。",
+    "gotIt": "了解",
+    "sidebarMark_one": "他の{{count}}件のセッションとフォルダーを共有",
+    "sidebarMark_other": "他の{{count}}件のセッションとフォルダーを共有"
+  },
   "coworkLayout": {
     "views": "Cowork 表示",
     "content": "コンテンツ",

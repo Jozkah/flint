@@ -373,6 +373,42 @@
     "files": "File pronti da rivedere: {{count}}",
     "branch": "Ramo: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} altra sessione lavora in questa cartella",
+    "others_other": "{{count}} altre sessioni lavorano in questa cartella",
+    "waitingApproval_one": "{{count}} altra sessione attende l’approvazione",
+    "waitingApproval_other": "{{count}} altre sessioni attendono l’approvazione",
+    "waitingApprovalOne": "In attesa di approvazione",
+    "holdEdit": "{{owner}} sta modificando {{target}}: a {{session}} è stato detto di scriverle",
+    "holdGit": "{{owner}} lavora in questa cartella: {{session}} è stata fermata prima di git {{target}} e deve scriverle",
+    "branchChanged": "Il branch è cambiato da {{from}} a {{to}}",
+    "show": "Mostra chi è in questa cartella",
+    "hide": "Nascondi l’elenco",
+    "openSession": "Apri {{name}}",
+    "message": "Messaggio",
+    "isolated": "Worktree proprio",
+    "moreFiles": "+{{count}} altri",
+    "editing": "Modifica",
+    "status": {
+      "running": "In esecuzione",
+      "idle": "Inattiva",
+      "unavailable": "Non disponibile"
+    },
+    "allowEdit": "Lascia comunque modificare questa sessione",
+    "allowGit": "Lascia comunque eseguire git a questa sessione",
+    "allowed": {
+      "edit": "Può comunque modificare, tempo rimasto",
+      "git": "Può comunque eseguire git, tempo rimasto",
+      "all": "Può comunque modificare ed eseguire git, tempo rimasto"
+    },
+    "withdraw": "Revoca",
+    "isolationHint": "Usa un worktree proprio perché un’altra sessione lavora in questa cartella",
+    "useShared": "Usa invece la cartella condivisa",
+    "sharedWarning": "Cartella condivisa: le modifiche git di un’altra sessione possono spostare il branch e i file di questa. Flint trattiene i comandi git rischiosi e avvisa quando due sessioni modificano lo stesso file.",
+    "gotIt": "Capito",
+    "sidebarMark_one": "Condivide una cartella con {{count}} altra sessione",
+    "sidebarMark_other": "Condivide una cartella con {{count}} altre sessioni"
+  },
   "coworkLayout": {
     "views": "Vista di Cowork",
     "content": "Contenuto",

@@ -6,7 +6,7 @@
  * serde(rename_all = "camelCase") structs in
  * src-tauri/plugins/tauri-plugin-agent-tools/src/shared_folder/view.rs.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/previewInvoke'
 import { dataFolder } from '@/lib/sessionMailbox'
 
 /** Emitted after a session joins or leaves a folder, a claim or hold changes, or a branch moves. */

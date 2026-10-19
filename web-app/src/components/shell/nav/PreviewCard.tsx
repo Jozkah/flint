@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, GitBranch, GitFork } from 'lucide-react'
+import { ChevronRight, GitBranch, GitFork, Users } from 'lucide-react'
 import { Chip } from '@/components/ui/chip'
 import { ModelAvatar } from '@/containers/ModelAvatar'
 import { Kbd } from '@/components/ui/kbd'
@@ -46,6 +46,8 @@ export type PreviewMeta = {
   updated?: number
   /** How many messages the conversation holds; left out when unknown. */
   messages?: number
+  /** How many other live sessions share its folder; left out when none. */
+  sharedWith?: number
 }
 
 const lang = () =>
@@ -370,6 +372,17 @@ export function PreviewCard({
     facts.push(
       <span key="count" data-testid="row-preview-count" className="shrink-0 tabular-nums">
         {t('common:previewMessageCount', { count: meta.messages })}
+      </span>
+    )
+  if (meta?.sharedWith && meta.sharedWith > 0)
+    facts.push(
+      <span
+        key="shared"
+        data-testid="row-preview-shared"
+        className="inline-flex shrink-0 items-center gap-1"
+      >
+        <Users className="size-3" aria-hidden />
+        {t('common:sharedFolder.sidebarMark', { count: meta.sharedWith })}
       </span>
     )
   return (

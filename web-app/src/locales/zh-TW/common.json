@@ -371,6 +371,42 @@
     "files": "待審查的檔案：{{count}}",
     "branch": "分支：{{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "另有 {{count}} 個工作階段正在此資料夾中工作",
+    "others_other": "另有 {{count}} 個工作階段正在此資料夾中工作",
+    "waitingApproval_one": "另有 {{count}} 個工作階段正在等待核准",
+    "waitingApproval_other": "另有 {{count}} 個工作階段正在等待核准",
+    "waitingApprovalOne": "等待核准",
+    "holdEdit": "{{owner}} 正在編輯 {{target}}：已告知 {{session}} 傳訊息給對方",
+    "holdGit": "{{owner}} 正在此資料夾中工作：{{session}} 的 git {{target}} 已被暫緩，並已告知其傳訊息給對方",
+    "branchChanged": "分支已從 {{from}} 變為 {{to}}",
+    "show": "查看此資料夾中的工作階段",
+    "hide": "隱藏清單",
+    "openSession": "開啟 {{name}}",
+    "message": "傳訊息",
+    "isolated": "獨立工作樹",
+    "moreFiles": "另有 {{count}} 個",
+    "editing": "正在編輯",
+    "status": {
+      "running": "執行中",
+      "idle": "閒置",
+      "unavailable": "無法使用"
+    },
+    "allowEdit": "仍允許此工作階段編輯",
+    "allowGit": "仍允許此工作階段執行 git",
+    "allowed": {
+      "edit": "已允許編輯，剩餘時間",
+      "git": "已允許執行 git，剩餘時間",
+      "all": "已允許編輯與執行 git，剩餘時間"
+    },
+    "withdraw": "撤回",
+    "isolationHint": "因另一個工作階段正在此資料夾中工作，正使用獨立工作樹",
+    "useShared": "改用共用資料夾",
+    "sharedWarning": "共用資料夾：其他工作階段的 git 變更可能改變此工作階段的分支與檔案。Flint 會暫緩有風險的 git 指令，並在兩個工作階段編輯同一檔案時發出警告。",
+    "gotIt": "知道了",
+    "sidebarMark_one": "與另外 {{count}} 個工作階段共用資料夾",
+    "sidebarMark_other": "與另外 {{count}} 個工作階段共用資料夾"
+  },
   "coworkLayout": {
     "views": "Cowork 檢視",
     "content": "內容",

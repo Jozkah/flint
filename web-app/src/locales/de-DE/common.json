@@ -371,6 +371,42 @@
     "files": "Dateien bereit zur Prüfung: {{count}}",
     "branch": "Zweig: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} andere Sitzung arbeitet in diesem Ordner",
+    "others_other": "{{count}} andere Sitzungen arbeiten in diesem Ordner",
+    "waitingApproval_one": "{{count}} andere Sitzung wartet auf Genehmigung",
+    "waitingApproval_other": "{{count}} andere Sitzungen warten auf Genehmigung",
+    "waitingApprovalOne": "Wartet auf Genehmigung",
+    "holdEdit": "{{owner}} bearbeitet {{target}}: {{session}} wurde angewiesen, ihr zu schreiben",
+    "holdGit": "{{owner}} arbeitet in diesem Ordner: {{session}} wurde bei git {{target}} angehalten und soll ihr schreiben",
+    "branchChanged": "Der Branch hat sich von {{from}} zu {{to}} geändert",
+    "show": "Anzeigen, wer in diesem Ordner arbeitet",
+    "hide": "Liste ausblenden",
+    "openSession": "{{name}} öffnen",
+    "message": "Nachricht",
+    "isolated": "Eigener Worktree",
+    "moreFiles": "+{{count}} weitere",
+    "editing": "Bearbeitet",
+    "status": {
+      "running": "Läuft",
+      "idle": "Inaktiv",
+      "unavailable": "Nicht verfügbar"
+    },
+    "allowEdit": "Diese Sitzung trotzdem bearbeiten lassen",
+    "allowGit": "Diese Sitzung trotzdem git ausführen lassen",
+    "allowed": {
+      "edit": "Darf trotzdem bearbeiten, verbleibende Zeit",
+      "git": "Darf trotzdem git ausführen, verbleibende Zeit",
+      "all": "Darf trotzdem bearbeiten und git ausführen, verbleibende Zeit"
+    },
+    "withdraw": "Zurückziehen",
+    "isolationHint": "Nutzt einen eigenen Worktree, weil eine andere Sitzung in diesem Ordner arbeitet",
+    "useShared": "Stattdessen den gemeinsamen Ordner verwenden",
+    "sharedWarning": "Gemeinsamer Ordner: Git-Änderungen einer anderen Sitzung können Branch und Dateien dieser Sitzung verschieben. Flint hält riskante Git-Befehle an und warnt, wenn zwei Sitzungen dieselbe Datei bearbeiten.",
+    "gotIt": "Verstanden",
+    "sidebarMark_one": "Teilt einen Ordner mit {{count}} anderen Sitzung",
+    "sidebarMark_other": "Teilt einen Ordner mit {{count}} anderen Sitzungen"
+  },
   "coworkLayout": {
     "views": "Cowork-Ansicht",
     "content": "Inhalt",

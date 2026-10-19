@@ -10,6 +10,7 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useMCPServers, type MCPServers } from '@/hooks/useMCPServers'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useServiceStore } from '@/hooks/useServiceHub'
+import { sharedFolderPreview } from '@/dev/previewSharedFolder'
 import {
   useEngineActivity,
   type GenerationSample,
@@ -532,7 +533,7 @@ function previewInvoke(
     case 'agent_skill_enabled_get':
       return ok([])
     default:
-      return undefined
+      return sharedFolderPreview(command, args)
   }
 }
 

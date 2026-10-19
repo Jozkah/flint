@@ -373,6 +373,42 @@
     "files": "Arquivos prontos para revisão: {{count}}",
     "branch": "Ramificação: {{branch}}"
   },
+  "sharedFolder": {
+    "others_one": "{{count}} outra sessão está trabalhando nesta pasta",
+    "others_other": "{{count}} outras sessões estão trabalhando nesta pasta",
+    "waitingApproval_one": "{{count}} outra sessão aguarda aprovação",
+    "waitingApproval_other": "{{count}} outras sessões aguardam aprovação",
+    "waitingApprovalOne": "Aguardando aprovação",
+    "holdEdit": "{{owner}} está editando {{target}}: {{session}} foi orientada a lhe enviar uma mensagem",
+    "holdGit": "{{owner}} trabalha nesta pasta: {{session}} foi retida antes de git {{target}} e deve lhe enviar uma mensagem",
+    "branchChanged": "A branch mudou de {{from}} para {{to}}",
+    "show": "Mostrar quem está nesta pasta",
+    "hide": "Ocultar a lista",
+    "openSession": "Abrir {{name}}",
+    "message": "Mensagem",
+    "isolated": "Worktree próprio",
+    "moreFiles": "+{{count}} mais",
+    "editing": "Editando",
+    "status": {
+      "running": "Em execução",
+      "idle": "Ociosa",
+      "unavailable": "Indisponível"
+    },
+    "allowEdit": "Deixar esta sessão editar mesmo assim",
+    "allowGit": "Deixar esta sessão executar git mesmo assim",
+    "allowed": {
+      "edit": "Pode editar mesmo assim, tempo restante",
+      "git": "Pode executar git mesmo assim, tempo restante",
+      "all": "Pode editar e executar git mesmo assim, tempo restante"
+    },
+    "withdraw": "Retirar",
+    "isolationHint": "Usa seu próprio worktree porque outra sessão trabalha nesta pasta",
+    "useShared": "Usar a pasta compartilhada em vez disso",
+    "sharedWarning": "Pasta compartilhada: as mudanças de git de outra sessão podem mover a branch e os arquivos desta. O Flint retém comandos git arriscados e avisa quando duas sessões editam o mesmo arquivo.",
+    "gotIt": "Entendi",
+    "sidebarMark_one": "Compartilha uma pasta com {{count}} outra sessão",
+    "sidebarMark_other": "Compartilha uma pasta com {{count}} outras sessões"
+  },
   "coworkLayout": {
     "views": "Visualização do Cowork",
     "content": "Conteúdo",
