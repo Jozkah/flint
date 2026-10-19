@@ -649,7 +649,8 @@ async fn windows_the_page_opens_are_closed_unless_the_run_opts_into_popups() {
     let _g = GATE.lock().await;
     let app = serve();
     let c = caller("popups");
-    act(&c, json!({ "action": "open", "url": app.url("/tabs") })).await;
+    let opened = act(&c, json!({ "action": "open", "url": app.url("/tabs") })).await;
+    assert!(opened.contains("Opened http://127.0.0.1:"), "the first open failed: {opened}");
     let snap = act(&c, json!({ "action": "snapshot" })).await;
     let link = ref_of(&snap, "link \"Open elsewhere\"");
     let r = act(&c, json!({ "action": "click", "ref": link })).await;
@@ -657,7 +658,8 @@ async fn windows_the_page_opens_are_closed_unless_the_run_opts_into_popups() {
     assert!(act(&c, json!({ "action": "tab" })).await.contains("1 tab(s)"));
 
     // Opting in keeps the window as a confined tab.
-    act(&c, json!({ "action": "open", "url": app.url("/tabs"), "popups": true })).await;
+    let reopened = act(&c, json!({ "action": "open", "url": app.url("/tabs"), "popups": true })).await;
+    assert!(reopened.contains("Opened http://127.0.0.1:"), "the popups open failed: {reopened}");
     let snap = act(&c, json!({ "action": "snapshot" })).await;
     let link = ref_of(&snap, "link \"Open elsewhere\"");
     act(&c, json!({ "action": "click", "ref": link })).await;

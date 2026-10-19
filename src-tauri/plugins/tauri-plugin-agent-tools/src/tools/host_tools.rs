@@ -53,12 +53,8 @@ pub fn current_profile() -> Option<PathBuf> {
 
 fn norm_path(p: &str) -> String {
     let s = p.replace('/', "\\");
-    let s = s.trim_end_matches('\\').to_string();
-    if cfg!(windows) {
-        s.to_lowercase()
-    } else {
-        s
-    }
+    // Windows profile paths are case-insensitive whatever host parses them.
+    s.trim_end_matches('\\').to_lowercase()
 }
 
 /// True when `path` sits in a sibling of `profile` (`C:\Users\other\...` while
@@ -68,8 +64,8 @@ pub fn is_foreign_profile_path(path: &Path, profile: &Path) -> bool {
         norm_path(&path.to_string_lossy()),
         norm_path(&profile.to_string_lossy()),
     );
-    let Some(base) = profile.parent() else { return false };
-    let base = norm_path(&base.to_string_lossy());
+    // Split the string, not `Path::parent`: off Windows `\` is not a separator.
+    let Some((base, _)) = me.rsplit_once('\\') else { return false };
     if base.is_empty() || me.is_empty() {
         return false;
     }
