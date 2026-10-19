@@ -1466,6 +1466,7 @@ async fn execute_tool_inner(
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }
+    ctx = ctx.with_credential_override(matches!(approval, Some(ApprovalSource::Bypass)));
     // AH-174: the run a command's CPU and memory are kept against.
     if let Some(run) = undo_run.as_deref() {
         ctx = ctx.with_measured_run(run);

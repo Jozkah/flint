@@ -84,8 +84,12 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     // scheme://user:password@host
     if let Some(at) = trimmed.find('@') {
         let head = &trimmed[..at];
-        if head.contains("://") && head.rsplit("://").next().is_some_and(|c| c.contains(':')) {
-            return Some((SecretKind::ConnectionString, mask_after(trimmed, "://")));
+        if let Some(userinfo) = head.rsplit("://").next().filter(|_| head.contains("://")) {
+            if let Some((_, password)) = userinfo.split_once(':') {
+                if !is_stand_in_password(password) {
+                    return Some((SecretKind::ConnectionString, mask_after(trimmed, "://")));
+                }
+            }
         }
     }
 
@@ -116,12 +120,86 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
             || value.contains(REDACTED)
             || is_placeholder(value)
             || is_code_reference(trimmed, v, value)
+            || is_benign_value(trimmed, v, value)
         {
             return None;
         }
         let kind = secret_name_kind(&name)?;
         Some((kind, format!("{name}={REDACTED}")))
     })
+}
+
+/// Whether a value that sits after a credential-sounding name is plainly not a
+/// credential. Used by the write guard only: redaction stays blunt, because
+/// hiding a harmless value costs nothing and leaking a real one does.
+///
+/// A person writing authentication code names things `password`, `secret` and
+/// `token` all day. What matters is the value: an identifier or expression is
+/// code reading a credential from somewhere else (`password: hashedPassword`,
+/// `secret: process.env.SESSION_SECRET!`, `token: Option<String>`), a label or
+/// sentence is text (`'Confirm password'`), and a fixture says so in its value
+/// (`'test-password-123'`). None of them is the credential itself.
+fn is_benign_value(line: &str, v: usize, value: &str) -> bool {
+    let quoted = v > 0 && matches!(line.as_bytes()[v - 1], b'"' | b'\'');
+    let lower = value.to_ascii_lowercase();
+    if quoted && value.contains(char::is_whitespace) {
+        return true;
+    }
+    if is_stand_in_value(&lower) {
+        return true;
+    }
+    // A label: only words, one of which is the thing the field asks for.
+    let words_only = lower
+        .chars()
+        .all(|c| c.is_ascii_alphabetic() || matches!(c, '-' | '_' | ' '));
+    if words_only
+        && ["password", "passwd", "secret", "token", "credential", "api-key", "api_key", "apikey"]
+            .iter()
+            .any(|w| lower.contains(w))
+    {
+        return true;
+    }
+    if quoted || is_env_assignment(line, v) {
+        return false;
+    }
+    // An unquoted identifier or expression: no digits (a generated secret has
+    // them), and some structure that only code has.
+    let first = value.chars().next().unwrap_or(' ');
+    let identifier_chars = value.chars().all(|c| {
+        c.is_ascii_alphabetic()
+            || matches!(c, '_' | '$' | '.' | '!' | '?' | '<' | '>' | '[' | ']' | ':' | '&')
+    });
+    let structured = value.chars().skip(1).any(|c| c.is_ascii_uppercase())
+        || value
+            .chars()
+            .any(|c| matches!(c, '_' | '$' | '.' | '!' | '?' | '<' | '>' | '[' | ']' | ':'));
+    (first.is_ascii_alphabetic() || matches!(first, '_' | '$' | '&')) && identifier_chars && structured
+}
+
+/// A value that announces itself as a fixture or a stand-in.
+fn is_stand_in_value(lower: &str) -> bool {
+    [
+        "test", "fake", "dummy", "sample", "placeholder", "changeme", "example", "your-", "your_",
+        "xxxx",
+    ]
+    .iter()
+    .any(|w| lower.contains(w))
+        || lower.starts_with("${")
+        || lower.starts_with("{{")
+        || lower.starts_with('<')
+}
+
+/// The password half of `user:password@host`, when it is a stand-in.
+fn is_stand_in_password(password: &str) -> bool {
+    let lower = password.to_ascii_lowercase();
+    is_stand_in_value(&lower)
+        || lower.is_empty()
+        || lower.starts_with('$')
+        || lower.starts_with('%')
+        || matches!(
+            lower.as_str(),
+            "password" | "pass" | "pwd" | "secret" | "postgres" | "root" | "user" | "guest" | "mysql"
+        )
 }
 
 /// Every `name<sep>value` pair on a line, separator `=` or `:`: the lowercase
@@ -322,6 +400,8 @@ fn redact_named_values(line: &str) -> Option<String> {
 const ISSUED_PREFIXES: &[(&str, usize, SecretKind)] = &[
     // OpenAI, Stripe and everything that copied them.
     ("sk-", 20, SecretKind::ApiKey),
+    ("sk_live_", 24, SecretKind::ApiKey),
+    ("rk_live_", 24, SecretKind::ApiKey),
     ("pk-live-", 20, SecretKind::ApiKey),
     ("rk-live-", 20, SecretKind::ApiKey),
     // GitHub, all five token classes.
@@ -365,14 +445,25 @@ fn token_like(line: &str) -> Option<(SecretKind, String)> {
         }
     }
 
-    for word in line.split(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',') {
+    for word in line.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ',' | '=')) {
         // Punctuation a sentence puts after a value, not part of it.
         let word = word.trim_end_matches(['.', ';', ':', ')', ']', '}']);
         if word.len() < 16 {
             continue;
         }
         // A JWT: three base64url segments, and the header always starts `eyJ`.
-        if word.starts_with("eyJ") && word.matches('.').count() == 2 {
+        // A stand-in is not an issued credential. Only the unmistakable markers
+        // count: a real token can contain "test" by chance.
+        let low = word.to_ascii_lowercase();
+        if ["xxxx", "fake", "dummy", "placeholder"].iter().any(|w| low.contains(w)) {
+            continue;
+        }
+        if word.starts_with("eyJ")
+            && word.matches('.').count() == 2
+            && word
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '='))
+        {
             return Some((SecretKind::Token, format!("jwt {REDACTED}")));
         }
         for (prefix, min_len, kind) in ISSUED_PREFIXES {
@@ -461,6 +552,13 @@ pub fn scan_diff(diff: &str) -> Vec<SecretFinding> {
         }
         if let Some(added) = raw.strip_prefix('+') {
             line_no += 1;
+            // The preview a person reviews draws a `  12 | text` gutter: the
+            // number there is the line in the file, and the text after it is
+            // the line.
+            let (added, line_no) = match split_gutter(added) {
+                Some((n, text)) => (text, n),
+                None => (added, line_no),
+            };
             if let Some((kind, hint)) = classify_line(added) {
                 findings.push(SecretFinding {
                     kind,
@@ -475,6 +573,13 @@ pub fn scan_diff(diff: &str) -> Vec<SecretFinding> {
     }
 
     findings
+}
+
+/// `"  12 | text"` -> `(12, "text")`.
+fn split_gutter(line: &str) -> Option<(usize, &str)> {
+    let (number, text) = line.split_once(" | ")?;
+    let n = number.trim().parse::<usize>().ok()?;
+    Some((n, text))
 }
 
 /// The new-file starting line of a hunk header: `@@ -a,b +c,d @@`.
@@ -1055,5 +1160,161 @@ git clone https://user:hunter2hunter2@github.com/octocat/Hello-World\n";
     fn an_empty_scan_is_empty_rather_than_an_error() {
         assert!(scan_text("").is_empty());
         assert!(scan_diff("").is_empty());
+    }
+}
+
+/// Regression corpus: ordinary authentication and crypto code must never be
+/// refused as "a credential being written", and the shapes real secrets take
+/// must still be. Every secret below is synthetic: it has the structure of the
+/// real thing and is worth nothing.
+#[cfg(test)]
+mod credential_guard_corpus {
+    use super::{scan_diff, scan_text};
+
+    const ORDINARY: &[&str] = &[
+        "import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto'",
+        "const hash = scryptSync(password, salt, 64).toString('hex')",
+        "const salt = randomBytes(16).toString('hex')",
+        "const derived = scryptSync(password, Buffer.from(saltHex, 'hex'), 64)",
+        "if (!timingSafeEqual(Buffer.from(hash, 'hex'), derived)) return false",
+        "const [saltHex, hash] = stored.split(':')",
+        "const passwordHash = await bcrypt.hash(password, 12)",
+        "const ok = await bcrypt.compare(password, user.passwordHash)",
+        "const valid = await argon2.verify(user.password_hash, password)",
+        "export async function verifyPassword(password: string, stored: string) {",
+        "password: string",
+        "password: string;",
+        "password_hash: hashedPassword,",
+        "password: hashedPassword,",
+        "passwordHash: user.passwordHash,",
+        "passwordHash: await hashPassword(password),",
+        "const password = String(formData.get('password'))",
+        "password: formData.get('password') as string,",
+        "password: z.string().min(8, 'Password must be at least 8 characters'),",
+        "passwordError: 'Invalid password',",
+        "passwordLabel: 'Password',",
+        "label: 'Confirm password'",
+        "<input type=\"password\" name=\"password\" autoComplete=\"current-password\" />",
+        "const { password, ...rest } = user",
+        "const secret = new TextEncoder().encode(process.env.SESSION_SECRET)",
+        "secret: process.env.SESSION_SECRET!,",
+        "const SESSION_SECRET = process.env.SESSION_SECRET ?? ''",
+        "jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '7d' })",
+        "const token = await new SignJWT({ sub: id }).setProtectedHeader({ alg: 'HS256' }).sign(secret)",
+        "headers: { Authorization: `Bearer ${accessToken}` },",
+        "Authorization: `Bearer ${token}`",
+        "const authToken = req.headers.get('authorization')",
+        "resetToken: crypto.randomUUID(),",
+        "access_token: tokens.accessToken,",
+        "refresh_token = response.refreshToken",
+        "const tokenHash = createHash('sha256').update(token).digest('hex')",
+        "type Session = { userId: string; token: string }",
+        "// never store the password in plain text; hash it with scrypt",
+        "if (!process.env.SESSION_SECRET) throw new Error('SESSION_SECRET is not set')",
+        "password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt())",
+        "secret_key = os.environ[\"SECRET_KEY\"]",
+        "SECRET_KEY = os.environ.get('SECRET_KEY')",
+        "let password_hash = argon2.hash_password(password.as_bytes(), &salt)?.to_string();",
+        "let secret = std::env::var(\"SESSION_SECRET\")?;",
+        "password: Option<String>,",
+        "pub token: Option<String>,",
+        "password: !Ref DbPassword",
+        "password: ${{ secrets.DB_PASSWORD }}",
+        "password: {{ .Values.db.password }}",
+        "SESSION_SECRET=your-secret-here",
+        "SESSION_SECRET=changeme",
+        "STRIPE_SECRET_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx",
+        "DATABASE_URL=postgres://user:password@localhost:5432/app",
+        "DATABASE_URL=postgres://postgres:postgres@localhost:5432/app",
+        "DATABASE_URL=\"postgresql://user:pass@db:5432/app\"",
+        "API_KEY=<your api key>",
+        "const password = 'test-password-123'",
+        "const apiKey = 'fake-api-key-for-tests'",
+        "const token = 'dummy-token-value'",
+        "\"integrity\": \"sha512-Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmFyYmF6cQ==\",",
+        "\"resolved\": \"https://registry.npmjs.org/jose/-/jose-5.2.0.tgz\",",
+        "const SESSION_COOKIE = 'session'",
+        "cookies().set('session_token', token, { httpOnly: true })",
+    ];
+
+    // Built by concatenation so no real-looking literal sits in the source.
+    fn secrets() -> Vec<(&'static str, String)> {
+        let alnum36 = "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC2dE4fG6";
+        vec![
+            ("aws key id", format!("const id = \"{}{}\"", "AKIA", "Z7QX2M4N6P8R0T3V")),
+            ("github pat", format!("GH_TOKEN={}{}", "ghp_", alnum36)),
+            ("github oauth", format!("const t = '{}{}'", "gho_", alnum36)),
+            ("anthropic", format!("key: {}{}", "sk-ant-", "api03-Zq8Lm2Xv5Rt7Yp9Ws3Kd6Hf1Jg4Nb0C")),
+            ("openai", format!("const k = \"{}{}\"", "sk-", "proj-Qw3Er5Ty7Ui9Op1As3Df5Gh7Jk9")),
+            ("slack bot", format!("SLACK={}{}", "xoxb-", "123456789012-abcdefghijklmnopqrstuvwx")),
+            ("google key", format!("key = \"{}{}\"", "AIza", "SyD3fG5hJ7kL9mN1pQ3rS5tU7vW9xY1zA3b")),
+            ("stripe live", format!("const stripe = '{}{}'", "sk_live_", "4eC39HqLyjWDarjtT1zdp7dc")),
+            ("pem", format!("-----BEGIN {} PRIVATE KEY-----", "RSA")),
+            ("jwt literal", format!("const t = \"{}{}\"", "eyJhbGciOiJIUzI1NiJ9.", "eyJzdWIiOiIxMjM0NTYifQ.dGhpc2lzbm90YXJlYWxzaWc")),
+            ("postgres url", "DATABASE_URL=postgres://admin:Zx9fQ2mK7vLp@db.prod.internal/app".to_string()),
+            ("mongo url", "const uri = 'mongodb+srv://svc:Pa55w0rdXyz9@cluster0.abcde.mongodb.net/db'".to_string()),
+            ("quoted secret", "const STRIPE_SECRET = \"Xk29fQ7zLm4Vb8Rt2Yp6\"".to_string()),
+            ("quoted password", "password: \"Xk29#fQ7zL!m4Vb8\"".to_string()),
+            ("env hex secret", "SESSION_SECRET=9f86d081884c7d659a2feaa0c55ad015".to_string()),
+            ("env password", "DB_PASSWORD=hunter2seventeen".to_string()),
+            ("client secret", "client_secret: 'a1B2c3D4e5F6g7H8i9J0'".to_string()),
+            ("bearer literal", "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345".to_string()),
+            ("aws secret", "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYzQ4w7r9tkz".to_string()),
+        ]
+    }
+
+    #[test]
+    fn ordinary_auth_and_crypto_code_is_never_refused() {
+        assert!(ORDINARY.len() >= 30);
+        for line in ORDINARY {
+            assert!(scan_text(line).is_empty(), "refused: {line} -> {:?}", scan_text(line));
+            let diff = format!("+++ b/lib/session.ts\n@@ -0,0 +1,1 @@\n+{line}\n");
+            assert!(scan_diff(&diff).is_empty(), "diff refused: {line}");
+        }
+    }
+
+    #[test]
+    fn a_whole_session_module_is_not_refused() {
+        let file = "\
+import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto'
+import { SignJWT, jwtVerify } from 'jose'
+
+const secret = new TextEncoder().encode(process.env.SESSION_SECRET)
+
+export function hashPassword(password: string) {
+  const salt = randomBytes(16).toString('hex')
+  const hash = scryptSync(password, salt, 64).toString('hex')
+  return `${salt}:${hash}`
+}
+
+export function verifyPassword(password: string, stored: string) {
+  const [salt, hash] = stored.split(':')
+  const derived = scryptSync(password, salt, 64)
+  return timingSafeEqual(Buffer.from(hash, 'hex'), derived)
+}
+
+export async function createSession(userId: string) {
+  return new SignJWT({ userId }).setProtectedHeader({ alg: 'HS256' }).sign(secret)
+}
+";
+        assert!(scan_text(file).is_empty(), "{:?}", scan_text(file));
+    }
+
+    #[test]
+    fn real_looking_secrets_are_still_flagged() {
+        let all = secrets();
+        assert!(all.len() >= 15);
+        for (what, line) in &all {
+            assert!(!scan_text(line).is_empty(), "missed {what}: {line}");
+        }
+    }
+
+    #[test]
+    fn a_finding_names_the_line_and_hides_the_value() {
+        let diff = "+++ b/lib/env.ts\n@@ -0,0 +1,2 @@\n+const a = 1\n+const STRIPE_SECRET = \"Xk29fQ7zLm4Vb8Rt2Yp6\"\n";
+        let f = scan_diff(diff);
+        assert_eq!(f.len(), 1);
+        assert_eq!((f[0].file.as_str(), f[0].line), ("lib/env.ts", 2));
+        assert!(!f[0].hint.contains("Xk29fQ7z"));
     }
 }
