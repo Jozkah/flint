@@ -447,3 +447,46 @@ describe('lean Cowork tool set', () => {
     )
   })
 })
+
+describe('Cowork and chat tool gating', () => {
+  beforeEach(() => {
+    buildCoworkTools.mockReset()
+    buildCoworkTools.mockImplementation(async () => ({
+      read: {},
+      task: {},
+      browser: {},
+      browser_click: {},
+      computer: {},
+    }))
+    sandboxEnforces.mockReturnValue(true)
+  })
+
+  it('does not run chat specialist gating on top of its own groups', async () => {
+    const { toolsForConversation } = await import('../leanTools')
+    const t = new CoworkChatTransport('s1', config({ offerGroups: ['browser', 'computer'] }))
+    await t.refreshTools()
+    expect(
+      (t as unknown as { appliesChatToolGating: () => boolean }).appliesChatToolGating()
+    ).toBe(false)
+    // The chat filter alone would strip the browser: it has no https trigger.
+    const user = { role: 'user', parts: [{ type: 'text', text: 'open https://example.com' }] }
+    expect(Object.keys(toolsForConversation(t.advertisedTools, [user], true))).not.toContain('browser')
+    expect(Object.keys(t.advertisedTools)).toEqual(expect.arrayContaining(['browser', 'computer']))
+  })
+
+  it('prompt, context card and request carry one tool set, including an enabled group', async () => {
+    const t = new CoworkChatTransport('s1', config({ offerGroups: [] }))
+    await t.refreshTools()
+    t.openGroupsNow(['browser'])
+    await t.refreshTools()
+    const requestTools = Object.keys((t as unknown as { tools: object }).tools)
+    expect(Object.keys(t.advertisedTools)).toEqual(requestTools)
+    expect(requestTools).toContain('browser')
+  })
+
+  it('a task tool does not name team when team is held back', async () => {
+    const { taskDescription, COWORK_DELEGATION } = await import('../coworkTools')
+    expect(taskDescription([], { ...COWORK_DELEGATION, team: false })).not.toContain('`team`')
+    expect(taskDescription([], COWORK_DELEGATION)).toContain('`team`')
+  })
+})

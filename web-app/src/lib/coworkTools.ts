@@ -753,6 +753,7 @@ export function coworkToolsFromSchemas(
     | 'subagentNames'
     | 'campaignCoordinator'
     | 'slim'
+    | 'offerGroups'
   >
 ): Record<string, Tool> {
   const tools: Record<string, Tool> = {}
@@ -830,7 +831,13 @@ export function coworkToolsFromSchemas(
   tools[TODO_TOOL_NAME] = todoTool
   tools[ASK_TOOL_NAME] = askTool
   if (opts.allowSubagents && !opts.planMode) {
-    tools[TASK_TOOL_NAME] = taskTool(opts.subagentNames)
+    // `task` points at `team` only when `team` is in this run's set: a lean
+    // run that holds it back must not name a tool the model cannot call.
+    const teamOffered = !opts.offerGroups || opts.offerGroups.includes('team')
+    tools[TASK_TOOL_NAME] = taskTool(opts.subagentNames, {
+      ...COWORK_DELEGATION,
+      team: teamOffered,
+    })
     tools[TEAM_TOOL_NAME] = teamTool(opts.subagentNames)
     tools[AWAIT_TASK_TOOL_NAME] = awaitTaskTool
     tools[TASK_STATUS_TOOL_NAME] = taskStatusTool

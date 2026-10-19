@@ -71,27 +71,45 @@ function calledToolNames(m: MessageLike): string[] {
   return out
 }
 
+/** A message past this length is likely to carry a need the English triggers miss. */
+const LONG_MESSAGE_CHARS = 600
+
+/**
+ * The triggers above are English words. A prompt in another language (CJK,
+ * Czech, Cyrillic...) would never match them and chat has no way to load a
+ * stripped tool, so such a prompt, or a long one, gets the full specialist set.
+ */
+export function triggersCannotJudge(text: string): boolean {
+  if (text.length > LONG_MESSAGE_CHARS) return true
+  for (const ch of text) {
+    if (ch.charCodeAt(0) > 127 && /\p{L}/u.test(ch)) return true
+  }
+  return false
+}
+
 /**
  * Chat's tools without the specialist ones nothing in the conversation has
  * asked for. `lean` off, or no specialist tool in the set, returns it as is.
+ * `isExternal` names tools that are not built-ins (MCP tools): one that shares
+ * a specialist's name is never filtered.
  */
 export function toolsForConversation<T>(
   tools: Record<string, T>,
   messages: readonly MessageLike[],
-  lean: boolean
+  lean: boolean,
+  isExternal: (name: string) => boolean = () => false
 ): Record<string, T> {
-  if (!lean || !Object.keys(tools).some((n) => SPECIALIST_TOOLS.has(n))) return tools
+  const gated = (n: string) => SPECIALIST_TOOLS.has(n) && !isExternal(n)
+  if (!lean || !Object.keys(tools).some(gated)) return tools
   const userText = messages
     .filter((m) => m.role === 'user')
     .flatMap((m) => (m.parts ?? []).map((p) => (p.type === 'text' ? (p.text ?? '') : '')))
     .join('\n')
+  if (triggersCannotJudge(userText)) return tools
   const used = new Set(messages.flatMap(calledToolNames))
   return Object.fromEntries(
     Object.entries(tools).filter(
-      ([name]) =>
-        !SPECIALIST_TOOLS.has(name) ||
-        used.has(name) ||
-        SPECIALIST_TRIGGERS[name]!.test(userText)
+      ([name]) => !gated(name) || used.has(name) || SPECIALIST_TRIGGERS[name]!.test(userText)
     )
   )
 }

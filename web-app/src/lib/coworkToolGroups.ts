@@ -144,15 +144,40 @@ export type OfferInput = {
   history?: readonly MessageLike[]
   /** The run was started by another session's message. */
   fromSession?: boolean
+  /** Text of the skills this run activated: a skill that names a subject offers its tools. */
+  skillText?: string
+}
+
+/** Groups an earlier, successful `enable_tools` call opened in this session. */
+function enabledGroups(history: readonly MessageLike[]): Set<ToolGroupId | undefined> {
+  const out = new Set<ToolGroupId | undefined>()
+  for (const m of history) {
+    for (const p of (m.parts ?? []) as (PartLike & {
+      state?: string
+      input?: { groups?: unknown }
+      output?: unknown
+    })[]) {
+      const isEnable =
+        p.type === `tool-${ENABLE_TOOLS_NAME}` ||
+        (p.type === 'dynamic-tool' && p.toolName === ENABLE_TOOLS_NAME)
+      if (!isEnable || p.state !== 'output-available') continue
+      if (typeof p.output === 'string' && p.output.startsWith('ERROR')) continue
+      const groups = p.input?.groups
+      if (!Array.isArray(groups)) continue
+      for (const g of groups) if (typeof g === 'string' && g in TOOL_GROUPS) out.add(g as ToolGroupId)
+    }
+  }
+  return out
 }
 
 /**
  * The groups this run starts with.
  *
  * Offered when the opening message or an earlier user turn mentions the
- * subject, when the session already called one of the group's tools (so the
- * tool list does not flip between turns and the cached prefix survives), or,
- * for messaging, when another session started the run.
+ * subject, when the session already called one of the group's tools or opened
+ * it with `enable_tools` (so the tool list does not flip between turns and the
+ * cached prefix survives), when an activated skill's text names it, or, for
+ * messaging, when another session started the run.
  */
 export function groupsToOffer(input: OfferInput): ToolGroupId[] {
   const history = input.history ?? []
@@ -161,8 +186,12 @@ export function groupsToOffer(input: OfferInput): ToolGroupId[] {
     ...history
       .filter((m) => m.role === 'user')
       .flatMap((m) => (m.parts ?? []).map((p) => (p.type === 'text' ? (p.text ?? '') : ''))),
+    input.skillText ?? '',
   ].join('\n')
-  const used = new Set(history.flatMap(calledToolNames).map((n) => groupOf(n)))
+  const used = new Set([
+    ...history.flatMap(calledToolNames).map((n) => groupOf(n)),
+    ...enabledGroups(history),
+  ])
   return GROUP_IDS.filter(
     (id) =>
       used.has(id) ||
@@ -247,7 +276,9 @@ export function enableToolsTool(heldGroups: readonly ToolGroupId[]): Tool {
 export function parseEnableRequest(
   input: unknown,
   heldGroups: readonly ToolGroupId[],
-  alreadyOpen: ReadonlySet<ToolGroupId>
+  alreadyOpen: ReadonlySet<ToolGroupId>,
+  /** Groups the run started with (no tools held back for them). */
+  advertised?: ReadonlySet<ToolGroupId>
 ): { groups: ToolGroupId[] } | string {
   const raw = (input as { groups?: unknown } | null)?.groups
   if (!Array.isArray(raw) || raw.length === 0) {
@@ -260,6 +291,9 @@ export function parseEnableRequest(
     }
     const id = g as ToolGroupId
     if (!heldGroups.includes(id) && !alreadyOpen.has(id)) {
+      if (advertised?.has(id)) {
+        return `Group '${id}' is already available: use its tools directly, there is nothing to load.`
+      }
       return `Group '${id}' has no tools in this run (off in Settings, or not allowed in this mode).`
     }
     if (!groups.includes(id)) groups.push(id)

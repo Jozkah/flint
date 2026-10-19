@@ -1203,7 +1203,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Small-context mode is on for the request being built (`lib/smallContext.ts`). */
   protected smallContext = false
   /** Tokens small-context mode saved on the request being built (prompt and tool schemas). */
-  protected smallContextSaved = 0
+  protected smallContextSaved: number | (() => number) = 0
   /**
    * The project folder this conversation belongs to, when it has one.
    *
@@ -1475,6 +1475,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return [skillCatalogBlock(undefined, undefined, this.smallContext)]
   }
 
+  /**
+   * Whether chat's own tool gating (specialist tools by conversation, and the
+   * small-window low-value tools) applies to this surface. Cowork gates its
+   * tools by group and says so; it turns this off.
+   */
+  protected appliesChatToolGating(): boolean {
+    return true
+  }
+
   /** Tools this surface holds back from the request, for the context popover. */
   protected heldBackForBreakdown(): { name: string; group: string; schema: unknown }[] {
     return []
@@ -1492,6 +1501,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   private measureSmallContextSaving(
     fullTools: Record<string, unknown> | null,
+    keptTools: Record<string, unknown> | null,
     messages: UIMessage[]
   ): number {
     if (!this.smallContext) return 0
@@ -1508,7 +1518,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         estimateTokens(full ?? '') - estimateTokens(small ?? '')
       let toolsSaved = 0
       for (const [name, tool] of Object.entries(fullTools ?? {})) {
-        if (this.tools && name in this.tools) continue
+        if (keptTools && name in keptTools) continue
         toolsSaved += estimateToolTokens(name, {
           description: (tool as { description?: string }).description,
           inputSchema: (tool as { inputSchema?: unknown }).inputSchema,
@@ -3277,29 +3287,41 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Memory is read once the window is known: a small window takes less of it.
     await this.refreshMemory(this.smallContext ? SMALL_CONTEXT_MEMORY_CHARS : undefined)
     const leanWindows = useLeanToolsConfig.getState().leanSmallWindows
-    const fullTools = this.smallContext
-      ? toolsForWindow(this.tools, maxContextTokens, leanWindows, false)
-      : null
-    this.tools = toolsForWindow(
-      this.tools,
-      maxContextTokens,
-      leanWindows,
-      this.smallContext
-    )
     // Specialist host/browser tools wait until the conversation asks for them.
-    this.tools = toolsForConversation(
-      this.tools,
-      messagesToConvert,
-      useLeanToolsConfig.getState().leanSpecialist
-    )
+    // Chat only: a surface with its own tool gating (Cowork's groups and
+    // `enable_tools`) must not have a second, differently-triggered filter
+    // stacked on top of it.
+    if (this.appliesChatToolGating()) {
+      this.tools = toolsForConversation(
+        this.tools,
+        messagesToConvert,
+        useLeanToolsConfig.getState().leanSpecialist,
+        (name) => this.toolServers.has(name)
+      )
+    }
+    // Snapshot after the conversation gating: what small-context mode saves is
+    // measured against the set the chat would otherwise send.
+    const fullTools =
+      this.smallContext && this.appliesChatToolGating()
+        ? toolsForWindow(this.tools, maxContextTokens, leanWindows, false)
+        : null
+    if (this.appliesChatToolGating()) {
+      this.tools = toolsForWindow(
+        this.tools,
+        maxContextTokens,
+        leanWindows,
+        this.smallContext
+      )
+    }
     const effectiveSystem = appendSessionContext(
       this.buildSystemPrompt(messagesToConvert),
       ccContext.sessionStart
     )
-    this.smallContextSaved = this.measureSmallContextSaving(
-      fullTools,
-      messagesToConvert
-    )
+    // Worked out only when the context popover asks (it rebuilds the prompt).
+    const toolsKept = this.tools
+    let saved: number | undefined
+    this.smallContextSaved = () =>
+      (saved ??= this.measureSmallContextSaving(fullTools, toolsKept, messagesToConvert))
     this.publishContextBreakdown(effectiveSystem, messagesToConvert)
 
     // Room kept for the reply: a local model keeps only its own reply cap (or

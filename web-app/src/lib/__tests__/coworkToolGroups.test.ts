@@ -139,3 +139,40 @@ describe('client tool cost', () => {
     expect(lean).not.toHaveProperty('team')
   })
 })
+
+describe('enable_tools follow-ups', () => {
+  it('says a group already advertised is available, not that it has no tools', () => {
+    const msg = parseEnableRequest({ groups: ['browser'] }, ['team'], new Set(), new Set(['browser']))
+    expect(msg).toMatch(/already available/)
+  })
+
+  it('a successful enable_tools call in history keeps the group offered', () => {
+    const history = [
+      {
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-enable_tools',
+            state: 'output-available',
+            input: { groups: ['team'] },
+            output: 'Loaded 1 tools: team.',
+          },
+        ],
+      },
+    ]
+    expect(groupsToOffer({ text: '', history } as never)).toContain('team')
+    const failed = [
+      {
+        role: 'assistant',
+        parts: [
+          { type: 'tool-enable_tools', state: 'output-available', input: { groups: ['team'] }, output: 'ERROR: x' },
+        ],
+      },
+    ]
+    expect(groupsToOffer({ text: '', history: failed } as never)).not.toContain('team')
+  })
+
+  it('an activated skill that names a subject offers its group', () => {
+    expect(groupsToOffer({ text: 'hi', skillText: 'Use docker compose to build' })).toContain('devops')
+  })
+})
