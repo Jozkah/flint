@@ -112,7 +112,7 @@ pub fn locate_real_on_host(name: &str, host_path: &OsString, avoid: &[PathBuf]) 
         }
         for ext in exts {
             let candidate = dir.join(format!("{name}{ext}"));
-            if candidate.is_file() {
+            if candidate.is_file() && !is_store_alias(&candidate) {
                 return Some(candidate);
             }
         }
@@ -248,6 +248,35 @@ pub fn is_msys_install(dir: &Path) -> bool {
         .any(|root| root.join("usr").join("bin").join("msys-2.0.dll").is_file())
 }
 
+/// True for a program that is itself built on the MSYS2 / Cygwin runtime: its
+/// import table names `msys-2.0.dll` or `cygwin1.dll`, or it sits in an MSYS2
+/// installation. Decided by the binary, never by its name or a neighbouring
+/// folder, so a CPython install is not mistaken for one.
+pub fn is_msys_program(exe: &Path) -> bool {
+    use std::io::Read;
+    if exe.parent().is_some_and(is_msys_install) {
+        return true;
+    }
+    let mut buf = Vec::new();
+    let read = std::fs::File::open(exe).and_then(|f| f.take(4 << 20).read_to_end(&mut buf));
+    if read.is_err() {
+        return false;
+    }
+    let hay = String::from_utf8_lossy(&buf).to_ascii_lowercase();
+    hay.contains("msys-2.0.dll") || hay.contains("cygwin1.dll")
+}
+
+/// True for a Microsoft Store app-execution alias (a `python.exe` in
+/// `Microsoft/WindowsApps`): a stub that opens the Store, not an install.
+pub fn is_store_alias(exe: &Path) -> bool {
+    exe.parent().is_some_and(|d| {
+        d.file_name().is_some_and(|n| n.eq_ignore_ascii_case("WindowsApps"))
+            && d.parent()
+                .and_then(Path::file_name)
+                .is_some_and(|n| n.eq_ignore_ascii_case("Microsoft"))
+    })
+}
+
 /// Whether a folder's own ACL lets AppContainer processes read and execute
 /// what is in it. `None` where this cannot be told (not Windows, unreadable).
 #[cfg(windows)]
@@ -313,7 +342,16 @@ pub fn unavailable_hint(
     can_execute: impl Fn(&Path) -> Option<bool>,
 ) -> String {
     let dir = found.parent().unwrap_or(found);
-    if is_msys_install(dir) {
+    if is_store_alias(found) {
+        return format!(
+            "\n[sandbox: `{name}` at {} is only the Microsoft Store alias, not an installed \
+             program. Tell the user to install Python (python.org) or turn the alias off in \
+             Settings > Apps > Advanced app settings > App execution aliases. Do not retry it \
+             here.]",
+            found.display()
+        );
+    }
+    if is_msys_program(found) {
         return format!(
             "\n[sandbox: `{name}` at {} is part of Git for Windows / MSYS2, which cannot run inside \
              this sandbox. For Git and GitHub work (status, commit, push, pull requests) use the \
@@ -539,6 +577,31 @@ pub struct ToolchainReport {
     /// and any folder a grant must never touch.
     #[serde(default)]
     pub grantable: Vec<GrantCandidate>,
+    /// Why an unavailable program has no grant, when it is known: `msys` or
+    /// `storeAlias`. Absent means a grant was not possible for another reason.
+    #[serde(default)]
+    pub blocked: Vec<BlockedProgram>,
+}
+
+/// An unavailable program no grant can fix, and why.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockedProgram {
+    pub program: String,
+    /// `msys` (built on the MSYS2/Cygwin runtime) or `storeAlias`.
+    pub kind: String,
+}
+
+/// Classify why `name` is not runnable by the binary it resolves to on `host_path`.
+pub fn blocked_kind(name: &str, host_path: &OsString, pathext: &str) -> Option<&'static str> {
+    let found = locate_on_host(name, host_path, pathext)?;
+    if is_store_alias(&found) {
+        Some("storeAlias")
+    } else if is_msys_program(&found) {
+        Some("msys")
+    } else {
+        None
+    }
 }
 
 /// One program a toolchain grant would make runnable.
@@ -576,10 +639,17 @@ pub fn grant_candidates(
         let Some(exe) = grant_executable(name, host_path, avoid) else {
             continue;
         };
+        if is_msys_program(&exe) {
+            continue;
+        }
         let Some(folder) = grant_root(&exe) else {
             continue;
         };
-        if can_execute(&folder) != Some(false)
+        // A folder under the profile needs the grant even when its ACL already
+        // admits app packages: the sandbox PATH leaves profile folders out
+        // until they are granted.
+        let acl_blocks = can_execute(&folder) == Some(false) || under_profile(&folder, profile);
+        if !acl_blocks
             || crate::tools::toolchain_grants::validate_folder(&folder, &exe, profile).is_err()
         {
             continue;
@@ -612,7 +682,8 @@ pub fn classify_programs(
         let runnable = locate_on_host(name, sandbox_path, pathext).is_some_and(|found| {
             let dir = found.parent().unwrap_or(&found);
             !(name == &"cargo" && is_rustup_proxy(&found))
-                && !is_msys_install(dir)
+                && !is_msys_program(&found)
+                && !is_store_alias(&found)
                 && can_execute(dir) == Some(true)
         });
         if runnable {
@@ -707,6 +778,16 @@ fn compute_toolchains() -> Option<ToolchainReport> {
         &pathext,
         container_can_execute,
     );
+    report.blocked = report
+        .unavailable
+        .iter()
+        .filter_map(|n| {
+            blocked_kind(n, &host, &pathext).map(|k| BlockedProgram {
+                program: n.clone(),
+                kind: k.to_string(),
+            })
+        })
+        .collect();
     report.grantable = grant_candidates(
         &report.unavailable,
         &host,
@@ -864,6 +945,40 @@ mod win {
 #[cfg(test)]
 mod grant_candidate_tests {
     use super::*;
+
+    /// Python under the user profile whose ACL already admits app packages is
+    /// still offered a grant (the sandbox PATH skips profile folders), a Store
+    /// alias is named as such, and only a binary importing the MSYS runtime
+    /// counts as MSYS2: not a CPython under a Git-looking path.
+    #[test]
+    fn profile_cpython_is_grantable_alias_and_msys_are_told_apart() {
+        let root = std::env::temp_dir().join(format!("grant-py-{}", std::process::id()));
+        let profile = root.join("Users").join("Git usr");
+        let py = profile.join("AppData").join("Local").join("Programs").join("Python").join("Python311");
+        let apps = profile.join("AppData").join("Local").join("Microsoft").join("WindowsApps");
+        let gitbin = root.join("Git").join("usr").join("bin");
+        for d in [&py, &apps, &gitbin] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let ext = if cfg!(windows) { ".exe" } else { "" };
+        std::fs::write(py.join(format!("python{ext}")), "MZ cpython").unwrap();
+        std::fs::write(apps.join(format!("python{ext}")), "").unwrap();
+        std::fs::write(gitbin.join(format!("python3{ext}")), "MZ msys-2.0.dll").unwrap();
+        let host = std::env::join_paths([apps.clone(), py.clone(), gitbin.clone()]).unwrap();
+        let names = vec!["python".to_string()];
+        let got = grant_candidates(&names, &host, &[], Some(&profile), |_| Some(true), |_| Some(true));
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got[0].folder, py);
+        assert!(is_store_alias(&apps.join(format!("python{ext}"))));
+        assert!(!is_store_alias(&py.join(format!("python{ext}"))));
+        assert!(!is_msys_program(&py.join(format!("python{ext}"))));
+        assert!(is_msys_program(&gitbin.join(format!("python3{ext}"))));
+        let pe = std::env::var("PATHEXT").unwrap_or(".EXE".into());
+        assert_eq!(blocked_kind("python", &std::env::join_paths([apps.clone()]).unwrap(), &pe), Some("storeAlias"));
+        assert_eq!(blocked_kind("python3", &std::env::join_paths([gitbin.clone()]).unwrap(), &pe), Some("msys"));
+        assert_eq!(blocked_kind("python", &std::env::join_paths([py.clone()]).unwrap(), &pe), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// Only a folder a grant would fix is offered: not Git for Windows, not
     /// the `py` launcher's Windows folder, not the profile root.

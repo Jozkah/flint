@@ -329,6 +329,8 @@
       "allRunnable": "Každý nainstalovaný toolchain, který sandbox hledá, v něm může běžet.",
       "unrunnable": "Nainstalováno v {{folder}}, ale sandbox jej nemůže spustit.",
       "notGrantable": "Nainstalováno, ale sandbox jej nemůže spustit a povolení jeho složky by nepomohlo (Git pro Windows a další nástroje MSYS2 se v sandboxu nikdy nespustí).",
+      "storeAlias": "Toto je jen alias Microsoft Store, ne nainstalovaný program. Nainstalujte jej nebo vypněte alias v Nastavení > Aplikace > Rozšířená nastavení aplikací > Aliasy spuštění aplikací.",
+      "notGrantableOther": "Nainstalováno, ale sandbox to nemůže spustit a nebyla nalezena složka k povolení. Spusťte to místo toho mimo sandbox se schválením.",
       "launcher": "Launcher py spouští Python nainstalovaný jinde. Funguje, jakmile v sandboxu běží nějaký Python: povolte raději python.",
       "grant": "Nechat sandbox používat toto",
       "revoke": "Odvolat",

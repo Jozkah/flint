@@ -327,6 +327,8 @@
       "allRunnable": "Toutes les chaînes d'outils installées que recherche le bac à sable peuvent s'y exécuter.",
       "unrunnable": "Installé dans {{folder}}, mais le bac à sable ne peut pas l'exécuter.",
       "notGrantable": "Installé, mais le bac à sable ne peut pas l'exécuter, et autoriser son dossier n'y changerait rien (Git for Windows et les autres outils MSYS2 ne s'exécutent jamais dans le bac à sable).",
+      "storeAlias": "Il s'agit seulement de l'alias du Microsoft Store, pas d'un programme installé. Installez-le ou désactivez l'alias dans Paramètres > Applications > Paramètres avancés des applications > Alias d'exécution d'application.",
+      "notGrantableOther": "Installé, mais le bac à sable ne peut pas l'exécuter et aucun dossier à autoriser n'a été trouvé. Exécutez-le plutôt hors du bac à sable avec approbation.",
       "launcher": "Le lanceur py exécute un Python installé ailleurs. Il fonctionne dès qu'un Python s'exécute dans le bac à sable : autorisez plutôt python.",
       "grant": "Laisser le bac à sable l'utiliser",
       "revoke": "Révoquer",

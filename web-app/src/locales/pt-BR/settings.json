@@ -327,6 +327,8 @@
       "allRunnable": "Toda toolchain instalada que o sandbox procura pode ser executada nele.",
       "unrunnable": "Instalada em {{folder}}, mas o sandbox não consegue executá-la.",
       "notGrantable": "Instalada, mas o sandbox não consegue executá-la, e permitir a pasta dela não ajudaria (o Git for Windows e outras ferramentas MSYS2 nunca rodam no sandbox).",
+      "storeAlias": "Este é apenas o alias da Microsoft Store, não um programa instalado. Instale-o ou desative o alias em Configurações > Aplicativos > Configurações avançadas de aplicativos > Aliases de execução de aplicativo.",
+      "notGrantableOther": "Instalado, mas o sandbox não consegue executá-lo e nenhuma pasta para permitir foi encontrada. Execute-o fora do sandbox com aprovação.",
       "launcher": "O launcher py executa um Python instalado em outro lugar. Ele funciona quando um Python roda no sandbox: permita python em vez disso.",
       "grant": "Deixar o sandbox usar isto",
       "revoke": "Revogar",

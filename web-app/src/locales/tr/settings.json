@@ -325,6 +325,8 @@
       "allRunnable": "Korumalı alanın aradığı her yüklü araç zinciri içinde çalışabilir.",
       "unrunnable": "{{folder}} içinde yüklü, ancak korumalı alan onu çalıştıramıyor.",
       "notGrantable": "Yüklü, ancak korumalı alan onu çalıştıramıyor ve klasörüne izin vermek yardımcı olmaz (Windows için Git ve diğer MSYS2 araçları korumalı alanda asla çalışmaz).",
+      "storeAlias": "Bu yalnızca Microsoft Store takma adıdır, yüklü bir program değildir. Yükleyin veya Ayarlar > Uygulamalar > Gelişmiş uygulama ayarları > Uygulama yürütme diğer adları bölümünden takma adı kapatın.",
+      "notGrantableOther": "Yüklü, ancak korumalı alan onu çalıştıramıyor ve izin verilecek bir klasör bulunamadı. Onayla korumalı alanın dışında çalıştırın.",
       "launcher": "py başlatıcısı başka bir yerde yüklü bir Python'u çalıştırır. Korumalı alanda bir Python çalıştığında işe yarar: bunun yerine python'a izin verin.",
       "grant": "Korumalı alanın bunu kullanmasına izin ver",
       "revoke": "Geri al",
