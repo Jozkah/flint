@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BulkConversationsDialog } from '../BulkConversationsDialog'
 import {
   BulkKept,
+  BulkSkipped,
   type BulkItem,
   type BulkPlan,
 } from '@/lib/bulkConversations'
@@ -94,6 +95,26 @@ describe('BulkConversationsDialog delete', () => {
     await waitFor(() => expect(screen.getByTestId('bulk-summary')).toBeTruthy())
     expect(act).toHaveBeenCalledTimes(1)
     expect(screen.getByText(/Stopped early\. 2 left untouched/)).toBeTruthy()
+  })
+})
+
+describe('BulkConversationsDialog start checks', () => {
+  it('refuses to run an archive when it was turned off since the dialog opened', async () => {
+    const canStart = vi.fn().mockResolvedValue(false)
+    const { act } = setup({ plan: plan('archive'), canStart })
+    fireEvent.click(screen.getByTestId('bulk-confirm'))
+    await waitFor(() => expect(screen.getByTestId('bulk-refused')).toBeTruthy())
+    expect(act).not.toHaveBeenCalled()
+  })
+
+  it('lists an item skipped because it started running', async () => {
+    const act = vi.fn(async (i: BulkItem) => {
+      if (i.id === 'b') throw new BulkSkipped('running')
+    })
+    setup({ plan: plan('archive'), act })
+    fireEvent.click(screen.getByTestId('bulk-confirm'))
+    await waitFor(() => expect(screen.getByTestId('bulk-problems')).toBeTruthy())
+    expect(screen.getByTestId('bulk-problems').textContent).toContain('title-b: skipped, it started running')
   })
 })
 

@@ -1390,6 +1390,7 @@
     "projectsSafe": "Proje klasörleriniz asla silinmez.",
     "skippedPinned": "Atlandı, sabitlenmiş: {{n}}.",
     "skippedActive": "Atlandı, çalışıyor: {{n}}.",
+    "skippedRunning": "atlandı, onaydan sonra çalışmaya başladı.",
     "skippedNoArchive": "Arşivlenmedi, kampanyaların arşivi yok: {{n}}.",
     "typePrompt": "Onaylamak için {{word}} yazın.",
     "typeLabel": "Onay sözcüğü",

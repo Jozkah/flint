@@ -1390,6 +1390,7 @@
     "projectsSafe": "Deine Projektordner werden nie gelöscht.",
     "skippedPinned": "Übersprungen, angeheftet: {{n}}.",
     "skippedActive": "Übersprungen, laufend: {{n}}.",
+    "skippedRunning": "übersprungen, es lief nach der Bestätigung an.",
     "skippedNoArchive": "Nicht archiviert, Kampagnen haben kein Archiv: {{n}}.",
     "typePrompt": "Gib zur Bestätigung {{word}} ein.",
     "typeLabel": "Bestätigungswort",

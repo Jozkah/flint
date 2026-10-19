@@ -1389,6 +1389,7 @@
     "projectsSafe": "你的專案資料夾絕不會被刪除。",
     "skippedPinned": "已略過(已置頂):{{n}} 個。",
     "skippedActive": "已略過(執行中):{{n}} 個。",
+    "skippedRunning": "已略過(確認後開始執行)。",
     "skippedNoArchive": "未封存(戰役沒有封存):{{n}} 個。",
     "typePrompt": "請輸入 {{word}} 以確認。",
     "typeLabel": "確認字詞",

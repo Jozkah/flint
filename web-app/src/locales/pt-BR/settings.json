@@ -1422,6 +1422,7 @@
     "projectsSafe": "Suas pastas de projeto nunca são excluídas.",
     "skippedPinned": "Ignorados, fixados: {{n}}.",
     "skippedActive": "Ignorados, em execução: {{n}}.",
+    "skippedRunning": "ignorado, começou a executar após a confirmação.",
     "skippedNoArchive": "Não arquivadas, campanhas não têm arquivo: {{n}}.",
     "typePrompt": "Digite {{word}} para confirmar.",
     "typeLabel": "Palavra de confirmação",

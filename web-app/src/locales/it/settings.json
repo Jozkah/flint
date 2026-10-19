@@ -1393,6 +1393,7 @@
     "projectsSafe": "Le tue cartelle di progetto non vengono mai eliminate.",
     "skippedPinned": "Saltate, fissate: {{n}}.",
     "skippedActive": "Saltati, in esecuzione: {{n}}.",
+    "skippedRunning": "saltato, è entrato in esecuzione dopo la conferma.",
     "skippedNoArchive": "Non archiviate, le campagne non hanno un archivio: {{n}}.",
     "typePrompt": "Digita {{word}} per confermare.",
     "typeLabel": "Parola di conferma",

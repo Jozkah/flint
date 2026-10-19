@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { flushDeferredStores } from '@/lib/deferredPersistStorage'
 import {
   BULK_KINDS,
   planCounts,
@@ -34,6 +35,11 @@ type Props = {
   plan: BulkPlan
   act: (item: BulkItem, action: BulkAction) => Promise<void>
   undo?: (items: BulkItem[]) => Promise<UndoOutcome>
+  /**
+   * Checked when the run starts, not when the dialog opened: false refuses the
+   * run (an archive that was turned off meanwhile would delete instead).
+   */
+  canStart?: () => Promise<boolean>
   /** Called once a run ended (also when stopped), so the page re-reads its lists. */
   onFinished?: () => void
   /** Where the Archive page is (the desktop app only); absent hides the link. */
@@ -51,6 +57,7 @@ export function BulkConversationsDialog({
   plan,
   act,
   undo,
+  canStart,
   onFinished,
   onOpenArchive,
 }: Props) {
@@ -61,6 +68,7 @@ export function BulkConversationsDialog({
   const [progress, setProgress] = useState<BulkProgress>({ done: 0, total: 0 })
   const [report, setReport] = useState<BulkReport | null>(null)
   const [stopping, setStopping] = useState(false)
+  const [refused, setRefused] = useState(false)
   const [undoing, setUndoing] = useState(false)
   const [undone, setUndone] = useState<UndoOutcome | null>(null)
   const abort = useRef<AbortController | null>(null)
@@ -75,6 +83,7 @@ export function BulkConversationsDialog({
       setReport(null)
       setStopping(false)
       setUndone(null)
+      setRefused(false)
     }
   }, [open])
 
@@ -85,6 +94,14 @@ export function BulkConversationsDialog({
   const shown = phase === 'confirm' ? plan : frozen.current
 
   const start = async () => {
+    if (canStart) {
+      const ok = await canStart().catch(() => false)
+      if (!ok) {
+        setRefused(true)
+        return
+      }
+    }
+    setRefused(false)
     frozen.current = plan
     abort.current = new AbortController()
     setPhase('running')
@@ -93,6 +110,8 @@ export function BulkConversationsDialog({
       signal: abort.current.signal,
       onProgress: setProgress,
     })
+    // Deferred store writes (Cowork sessions) land before "finished" shows.
+    await flushDeferredStores().catch(() => undefined)
     setReport(result)
     setPhase('done')
     onFinished?.()
@@ -181,6 +200,11 @@ export function BulkConversationsDialog({
                   `${t('settings:bulk.skippedActive', { n: skipCount(plan, 'active') })} `}
                 {skipCount(plan, 'unsupported') > 0 &&
                   t('settings:bulk.skippedNoArchive', { n: skipCount(plan, 'unsupported') })}
+              </p>
+            )}
+            {refused && (
+              <p className="text-xs text-destructive" data-testid="bulk-refused">
+                {t('settings:bulk.archiveOff')}
               </p>
             )}
             {isDelete && (
@@ -297,7 +321,11 @@ export function BulkConversationsDialog({
                     <li key={`${r.item.kind}:${r.item.id}`} className="break-words py-0.5">
                       {r.item.title || t('archive:untitled')}
                       {': '}
-                      {r.kept ? t('settings:bulk.keptInArchive', { reason: r.error }) : r.error}
+                      {r.skipped
+                        ? t('settings:bulk.skippedRunning')
+                        : r.kept
+                          ? t('settings:bulk.keptInArchive', { reason: r.error })
+                          : r.error}
                     </li>
                   ))}
                 </ul>

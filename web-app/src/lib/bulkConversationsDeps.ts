@@ -14,6 +14,7 @@ import { archiveApi, archiveEnabled, purgeArchived } from '@/lib/archive'
 import { restoreArchived } from '@/lib/archiveRestore'
 import {
   BulkKept,
+  BulkSkipped,
   emptySnapshot,
   type BulkAction,
   type BulkItem,
@@ -110,7 +111,19 @@ export async function bulkArchiveAvailable(): Promise<boolean> {
   }
 }
 
+/**
+ * Whether the item is running right now, read at the moment of acting: the
+ * plan's `active` flag is from when the dialog opened, and a chat or session
+ * can start streaming while a long run is still working through the list.
+ */
+export function isItemActiveNow(item: BulkItem): boolean {
+  return collectBulkSnapshot()[item.kind].some((i) => i.id === item.id && i.active)
+}
+
 async function archiveOne(item: BulkItem): Promise<void> {
+  // A thread or room "archive" is a delete that the Archive intercepts; with
+  // the Archive turned off since the dialog opened it would destroy the item.
+  if (!(await archiveEnabled())) throw new Error('archive is off')
   switch (item.kind) {
     case 'thread':
       await useThreads.getState().deleteThreadAsync(item.id)
@@ -121,7 +134,7 @@ async function archiveOne(item: BulkItem): Promise<void> {
     case 'cowork': {
       // The worktree is kept, exactly as the single archive keeps it.
       const archived = await archiveCoworkSession(item.id, false)
-      if (!archived) throw new Error('archive is off')
+      if (!archived) throw new Error('session no longer exists')
       useCoworkParallel.getState().forgetSession(item.id)
       return
     }
@@ -173,7 +186,8 @@ async function deleteOne(item: BulkItem): Promise<void> {
   }
 }
 
-export function actOnItem(item: BulkItem, action: BulkAction): Promise<void> {
+export async function actOnItem(item: BulkItem, action: BulkAction): Promise<void> {
+  if (isItemActiveNow(item)) throw new BulkSkipped('running')
   return action === 'archive' ? archiveOne(item) : deleteOne(item)
 }
 

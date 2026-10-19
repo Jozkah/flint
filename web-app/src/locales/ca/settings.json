@@ -1395,6 +1395,7 @@
     "projectsSafe": "Les teves carpetes de projecte no s’eliminen mai.",
     "skippedPinned": "Omesos, fixats: {{n}}.",
     "skippedActive": "Omesos, en curs: {{n}}.",
+    "skippedRunning": "omès, ha començat a executar-se després de confirmar.",
     "skippedNoArchive": "No arxivades, les campanyes no tenen arxiu: {{n}}.",
     "typePrompt": "Escriu {{word}} per confirmar.",
     "typeLabel": "Paraula de confirmació",

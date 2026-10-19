@@ -1432,6 +1432,7 @@
     "projectsSafe": "Vaše složky projektů se nikdy nemažou.",
     "skippedPinned": "Přeskočeno, připnuto: {{n}}.",
     "skippedActive": "Přeskočeno, běží: {{n}}.",
+    "skippedRunning": "přeskočeno, začalo běžet po potvrzení.",
     "skippedNoArchive": "Nearchivováno, kampaně nemají archiv: {{n}}.",
     "typePrompt": "Pro potvrzení napište {{word}}.",
     "typeLabel": "Potvrzovací slovo",

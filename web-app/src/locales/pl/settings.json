@@ -1432,6 +1432,7 @@
     "projectsSafe": "Twoje foldery projektów nigdy nie są usuwane.",
     "skippedPinned": "Pominięto, przypięte: {{n}}.",
     "skippedActive": "Pominięto, uruchomione: {{n}}.",
+    "skippedRunning": "pominięto, zaczęło działać po potwierdzeniu.",
     "skippedNoArchive": "Nie zarchiwizowano, kampanie nie mają archiwum: {{n}}.",
     "typePrompt": "Wpisz {{word}}, aby potwierdzić.",
     "typeLabel": "Słowo potwierdzenia",

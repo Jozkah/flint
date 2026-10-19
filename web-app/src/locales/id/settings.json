@@ -1386,6 +1386,7 @@
     "projectsSafe": "Folder proyek Anda tidak pernah dihapus.",
     "skippedPinned": "Dilewati, disematkan: {{n}}.",
     "skippedActive": "Dilewati, berjalan: {{n}}.",
+    "skippedRunning": "dilewati, mulai berjalan setelah Anda mengonfirmasi.",
     "skippedNoArchive": "Tidak diarsipkan, kampanye tidak punya arsip: {{n}}.",
     "typePrompt": "Ketik {{word}} untuk mengonfirmasi.",
     "typeLabel": "Kata konfirmasi",

@@ -1393,6 +1393,7 @@
     "projectsSafe": "Vos dossiers de projet ne sont jamais supprimés.",
     "skippedPinned": "Ignorées, épinglées : {{n}}.",
     "skippedActive": "Ignorés, en cours : {{n}}.",
+    "skippedRunning": "ignoré, il s'est mis en route après la confirmation.",
     "skippedNoArchive": "Non archivées, les campagnes n’ont pas d’archive : {{n}}.",
     "typePrompt": "Saisissez {{word}} pour confirmer.",
     "typeLabel": "Mot de confirmation",

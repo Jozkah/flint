@@ -1389,6 +1389,7 @@
     "projectsSafe": "Thư mục dự án của bạn không bao giờ bị xóa.",
     "skippedPinned": "Đã bỏ qua, đã ghim: {{n}}.",
     "skippedActive": "Đã bỏ qua, đang chạy: {{n}}.",
+    "skippedRunning": "đã bỏ qua, nó bắt đầu chạy sau khi bạn xác nhận.",
     "skippedNoArchive": "Không lưu trữ, chiến dịch không có kho lưu trữ: {{n}}.",
     "typePrompt": "Nhập {{word}} để xác nhận.",
     "typeLabel": "Từ xác nhận",

@@ -11,13 +11,19 @@ const m = vi.hoisted(() => ({
   removeSessionWorktree: vi.fn(async () => ({ ok: true as const })),
   forgetSession: vi.fn(),
   worktrees: {} as Record<string, unknown>,
+  streaming: {} as Record<string, boolean>,
 }))
 
 vi.mock('@/hooks/useThreads', () => ({
-  useThreads: { getState: () => ({ threads: {}, deleteThreadAsync: m.deleteThreadAsync }) },
+  useThreads: {
+    getState: () => ({
+      threads: { t: { id: 't', title: 't' }, u: { id: 'u', title: 'u' } },
+      deleteThreadAsync: m.deleteThreadAsync,
+    }),
+  },
 }))
 vi.mock('@/hooks/useAppState', () => ({
-  useAppState: { getState: () => ({ streamingContents: {} }) },
+  useAppState: { getState: () => ({ streamingContents: m.streaming }) },
 }))
 vi.mock('@/hooks/useCoworkParallel', () => ({
   useCoworkParallel: { getState: () => ({ forgetSession: m.forgetSession }) },
@@ -52,7 +58,7 @@ vi.mock('@/lib/rooms/store', () => ({
   useRoomsStore: { getState: () => ({ summaries: [], runningRoomIds: [], loadSummaries: vi.fn() }) },
 }))
 
-import { BulkKept, type BulkItem } from '../bulkConversations'
+import { BulkKept, BulkSkipped, type BulkItem } from '../bulkConversations'
 import { actOnItem } from '../bulkConversationsDeps'
 
 const mk = (kind: BulkItem['kind'], id = 'x'): BulkItem => ({ kind, id, title: id })
@@ -61,6 +67,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   m.archiveOn = true
   m.worktrees = {}
+  m.streaming = {}
   m.archiveCoworkSession.mockResolvedValue(true)
 })
 
@@ -92,6 +99,28 @@ describe('actOnItem archive', () => {
   it('has no archive for campaigns', async () => {
     await expect(actOnItem(mk('campaign', 'k'), 'archive')).rejects.toThrow()
     expect(m.campaignDelete).not.toHaveBeenCalled()
+  })
+})
+
+describe('actOnItem re-checks at execution', () => {
+  it('skips a chat that started streaming after the plan was made', async () => {
+    m.streaming = { t: true }
+    const err = await actOnItem({ ...mk('thread', 't'), active: false }, 'delete').catch((e) => e)
+    expect(err).toBeInstanceOf(BulkSkipped)
+    expect(m.deleteThreadAsync).not.toHaveBeenCalled()
+    await actOnItem(mk('thread', 'u'), 'delete')
+    expect(m.deleteThreadAsync).toHaveBeenCalledWith('u', true)
+  })
+
+  it('refuses a chat archive when the archive was turned off meanwhile', async () => {
+    m.archiveOn = false
+    await expect(actOnItem(mk('thread', 't'), 'archive')).rejects.toThrow('archive is off')
+    expect(m.deleteThreadAsync).not.toHaveBeenCalled()
+  })
+
+  it('says the session is gone, not that the archive is off, when it no longer exists', async () => {
+    m.archiveCoworkSession.mockResolvedValue(false)
+    await expect(actOnItem(mk('cowork', 'c'), 'archive')).rejects.toThrow('session no longer exists')
   })
 })
 

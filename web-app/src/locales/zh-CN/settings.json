@@ -1389,6 +1389,7 @@
     "projectsSafe": "你的项目文件夹绝不会被删除。",
     "skippedPinned": "已跳过(已置顶):{{n}} 个。",
     "skippedActive": "已跳过(运行中):{{n}} 个。",
+    "skippedRunning": "已跳过(确认后开始运行)。",
     "skippedNoArchive": "未归档(战役没有归档):{{n}} 个。",
     "typePrompt": "请输入 {{word}} 以确认。",
     "typeLabel": "确认词",

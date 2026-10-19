@@ -1389,6 +1389,7 @@
     "projectsSafe": "プロジェクトフォルダーは削除されません。",
     "skippedPinned": "スキップ(ピン留め): {{n}} 件。",
     "skippedActive": "スキップ(実行中): {{n}} 件。",
+    "skippedRunning": "スキップ(確認後に実行が始まりました)。",
     "skippedNoArchive": "アーカイブしませんでした(キャンペーンにはアーカイブがありません): {{n}} 件。",
     "typePrompt": "確認のため {{word}} と入力してください。",
     "typeLabel": "確認用の単語",
