@@ -96,6 +96,7 @@ import {
   uiMessageHasMeaningfulContent,
   threadMessageIsEmpty,
 } from '@/lib/messages'
+import { toMs } from '@/lib/messageTime'
 import { newUserThreadContent } from '@/lib/completion'
 import {
   computeActivePath,
@@ -828,6 +829,16 @@ export function ThreadConversation({
           parentForAssistant = resolveAssistantParent(undefined)
         }
 
+        // The reply keeps the time it began with. Every step of a tool turn
+        // finishes into this same message, and each used to restamp it with
+        // the time that step ended.
+        const repliedAt =
+          useMessages
+            .getState()
+            .getMessages(threadId)
+            .find((m) => m.id === message.id)?.created_at ||
+          toMs(message.metadata && (message.metadata as { createdAt?: unknown }).createdAt) ||
+          Date.now()
         const assistantMessage: ThreadMessage = {
           type: 'text',
           role: ChatCompletionRole.Assistant,
@@ -836,7 +847,7 @@ export function ThreadConversation({
           object: 'thread.message',
           thread_id: threadId,
           status: MessageStatus.Ready,
-          created_at: Date.now(),
+          created_at: repliedAt,
           completed_at: Date.now(),
           metadata:
             parentForAssistant != null

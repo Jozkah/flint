@@ -17,6 +17,7 @@ import {
   findRunningToolCallId,
   useToolCallRuntime,
 } from '@/hooks/useToolCallRuntime'
+import { timingFor } from '@/lib/toolTimingLog'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { partitionTrace, type TranscriptView } from '@/lib/transcriptView'
@@ -229,7 +230,7 @@ export const ChainOfThoughtGroup = memo(
       let first = Infinity
       let last = -Infinity
       for (const { part } of entries) {
-        const timing = part.toolCallId ? s.timings[part.toolCallId] : undefined
+        const timing = timingFor(s.timings, part.toolCallId)
         if (timing?.startedAt === undefined || timing.endedAt === undefined) continue
         first = Math.min(first, timing.startedAt)
         last = Math.max(last, timing.endedAt)

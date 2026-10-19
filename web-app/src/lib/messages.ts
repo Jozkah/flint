@@ -7,6 +7,7 @@ import {
 } from '@janhq/core'
 import type { UIMessage } from '@ai-sdk/react'
 import { outputForStorage } from '@/lib/toolOutputImages'
+import { toMs } from '@/lib/messageTime'
 // Attachments are now handled upstream in newUserThreadContent
 
 type ThreadContent = NonNullable<ThreadMessage['content']>[number]
@@ -187,8 +188,9 @@ export function convertUIMessageToThreadMessage(
     })
 
   const metadata = uiMessage.metadata as Record<string, unknown> | undefined
-  const createdAt =
-    metadata?.createdAt instanceof Date ? metadata.createdAt.getTime() : Date.now()
+  // A number or ISO string (a message that went through a persisted store) is
+  // as good a time as a Date; only a message with none is stamped now.
+  const createdAt = toMs(metadata?.createdAt) ?? Date.now()
 
   return {
     id: uiMessage.id,
@@ -460,13 +462,18 @@ export function convertThreadMessageToUIMessage(
     })
   }
 
+  // The stored time, never "now": a message without one shows no time rather
+  // than the moment its conversation was opened.
+  const storedAt =
+    toMs(threadMessage.created_at) ??
+    toMs((threadMessage.metadata as { createdAt?: unknown } | undefined)?.createdAt)
   return {
     id: threadMessage.id,
     role: threadMessage.role as 'user' | 'assistant' | 'system',
     parts,
     metadata: {
       ...(threadMessage.metadata || {}),
-      createdAt: new Date(threadMessage.created_at || Date.now()),
+      createdAt: storedAt === undefined ? undefined : new Date(storedAt),
     },
   } as UIMessage
 }
