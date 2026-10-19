@@ -471,6 +471,7 @@ function sanitizeSender(from: QueuedMessageSender): QueuedMessageSender {
     messageId: from.messageId,
     replyTo: from.replyTo ?? null,
     depth: from.depth,
+    ...(from.hold ? { hold: from.hold } : {}),
   }
 }
 

@@ -163,6 +163,14 @@ describe('mailbox delivery', () => {
     expect(q('A')[0].held).toBe(true)
   })
 
+  it('running recipient: mail the backend held enters held, not ready', async () => {
+    setRunning('A', true)
+    fake.envelope('A', 'a1', { hops: 3, chainId: 'c1', hold: 'chain_wakes' })
+    await delivery.onEvent({ sessionId: 'A', messageId: 'a1' })
+    expect(q('A')[0].held).toBe(true)
+    expect(q('A')[0].from?.hold).toBe('chain_wakes')
+  })
+
   it('still wakes on relayed mail the backend did not hold', async () => {
     useSessionMessaging.setState({ autoWake: {} })
     fake.envelope('A', 'a1', { hops: 2, chainId: 'c1' })

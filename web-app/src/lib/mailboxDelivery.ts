@@ -268,7 +268,12 @@ export function createMailboxDelivery(
     for (const envelope of envelopes) {
       if (envelope.to?.sessionId && envelope.to.sessionId !== sid) continue
       if (isKnownEnvelope(sid, envelope.id)) continue
-      useMessageQueue.getState().enqueue(sid, envelopeToQueued(envelope, held))
+      useMessageQueue.getState().enqueue(
+        sid,
+        // Mail the backend held for its chain guard never skips the wait,
+        // even when the session is running.
+        envelopeToQueued(envelope, held || Boolean(envelope.hold))
+      )
     }
   }
 
