@@ -13,6 +13,7 @@ import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
+import { deferredPersistStorage } from '@/lib/deferredPersistStorage'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
 import type { HandoffRecord } from '@/lib/sessionHandoff'
 import type { ContinuityRecord } from '@/lib/coworkContinuity'
@@ -1026,7 +1027,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // hydrateBackendStores() once the ServiceHub is ready.
       // Tool arguments and results are redacted on their way to disk only; the
       // live history the model reads stays raw.
-      storage: createJSONStorage(() => redactingSessionStorage(backendStorage)),
+      // Written off the click path: see deferredPersistStorage.
+      storage: deferredPersistStorage(
+        createJSONStorage(() => redactingSessionStorage(backendStorage))!
+      ),
       skipHydration: true,
       // Images a tool returned (a `read` of a png) are in the live history for
       // the model to see; the saved session keeps only the text of the result.
