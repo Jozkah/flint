@@ -154,16 +154,21 @@ export function KpiRow({
   children: ReactNode
   columns?: 3 | 4
 }) {
+  // A container query, not a media query: the interface scale zooms the
+  // shell, so the pane is narrower than the window (20px at 360 wide leaves
+  // ~260px) and two tiles would clip their titles and figures.
   return (
-    <div
-      className={cn(
-        'grid gap-4',
-        columns === 4
-          ? 'grid-cols-2 xl:grid-cols-4'
-          : 'grid-cols-2 sm:grid-cols-3 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2'
-      )}
-    >
-      {children}
+    <div className="@container">
+      <div
+        className={cn(
+          'grid gap-4',
+          columns === 4
+            ? 'grid-cols-1 @[19rem]:grid-cols-2 xl:grid-cols-4'
+            : 'grid-cols-1 @[19rem]:grid-cols-2 sm:grid-cols-3 @[19rem]:max-sm:[&>*:last-child:nth-child(odd)]:col-span-2'
+        )}
+      >
+        {children}
+      </div>
     </div>
   )
 }

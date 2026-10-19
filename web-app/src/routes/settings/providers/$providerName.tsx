@@ -2226,7 +2226,13 @@ function ProviderDetail() {
                 ) : (
                   <Chip dot>{t('engine:status.off')}</Chip>
                 )}
-                <Chip data-testid="provider-reach-note">{reachNote}</Chip>
+                <Chip
+                  data-testid="provider-reach-note"
+                  // A long note wraps inside the header instead of running past it.
+                  className="h-auto min-h-[22px] max-w-full shrink py-1 leading-tight whitespace-normal"
+                >
+                  {reachNote}
+                </Chip>
                 <Chip>
                   {t('engine:providers.modelsCount', {
                     count: provider?.models.length ?? 0,

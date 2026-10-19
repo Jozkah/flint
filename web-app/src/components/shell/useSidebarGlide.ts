@@ -14,6 +14,29 @@ import { useLocation } from '@tanstack/react-router'
  * again whenever a transition inside the nav ends, so it never stays parked
  * at a stale position between two rows.
  */
+type Box = { left: number; top: number; width: number; height: number }
+
+/**
+ * Where the card goes, in the nav's own (unzoomed) pixels. Rects are measured
+ * in the zoomed viewport when the shell is scaled (interface scale, 20px
+ * font), but the card's transform and size are laid out inside that same
+ * zoom, so the zoom factor (rect width over layout width) is divided out.
+ */
+export function glideBox(
+  nav: Box,
+  navLayoutWidth: number,
+  row: Box,
+  scroll: { left: number; top: number }
+) {
+  const k = navLayoutWidth > 0 && nav.width > 0 ? nav.width / navLayoutWidth : 1
+  return {
+    x: (row.left - nav.left) / k + scroll.left,
+    y: (row.top - nav.top) / k + scroll.top,
+    width: row.width / k,
+    height: row.height / k,
+  }
+}
+
 export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
   const { pathname } = useLocation()
 
@@ -50,8 +73,10 @@ export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
       }
       const cr = nav.getBoundingClientRect()
       const rr = row.getBoundingClientRect()
-      const x = rr.left - cr.left + nav.scrollLeft
-      const y = rr.top - cr.top + nav.scrollTop
+      const { x, y, width, height } = glideBox(cr, nav.offsetWidth, rr, {
+        left: nav.scrollLeft,
+        top: nav.scrollTop,
+      })
       if (!placed) {
         // First placement jumps there; later ones glide.
         glide.style.transition = 'none'
@@ -59,8 +84,8 @@ export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
         requestAnimationFrame(() => (glide.style.transition = ''))
       }
       glide.style.transform = `translate(${x}px, ${y}px)`
-      glide.style.width = `${rr.width}px`
-      glide.style.height = `${rr.height}px`
+      glide.style.width = `${width}px`
+      glide.style.height = `${height}px`
       glide.style.opacity = '1'
       nav.setAttribute('data-glide', '')
     }
@@ -97,6 +122,9 @@ export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
     }
     nav.addEventListener('transitionend', onTransitionEnd)
     nav.addEventListener('transitioncancel', onTransitionEnd)
+    // The start-up groups rise in with a transform; place once they land.
+    nav.addEventListener('animationend', soon)
+    nav.addEventListener('animationcancel', soon)
     window.addEventListener('resize', soon)
     return () => {
       cancelAnimationFrame(frame)
@@ -105,6 +133,8 @@ export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
       ro.disconnect()
       nav.removeEventListener('transitionend', onTransitionEnd)
       nav.removeEventListener('transitioncancel', onTransitionEnd)
+      nav.removeEventListener('animationend', soon)
+      nav.removeEventListener('animationcancel', soon)
       window.removeEventListener('resize', soon)
     }
   }, [navRef, pathname])

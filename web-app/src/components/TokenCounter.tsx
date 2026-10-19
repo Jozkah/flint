@@ -33,6 +33,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import { fixedPromptTokens, reconcileBreakdown } from '@/lib/contextBreakdown'
 import { contextUsage, type ContextUsage } from '@/lib/contextUsage'
+import { smallContextActive } from '@/lib/smallContext'
 import {
   DEFAULT_COMPACTION_POLICY,
   effectiveReserve,
@@ -410,7 +411,8 @@ export const TokenCounter = memo(function TokenCounter({
                 autoCompactBuffer={effectiveReserve(tokenData.maxTokens, policy)}
                 onCompact={onCompact}
               />
-              {stored?.smallContextSaved != null && (
+              {stored?.smallContextSaved != null &&
+                smallContextActive(smallContextMode, tokenData.maxTokens) && (
                 <p
                   data-testid="context-small-mode"
                   className="px-4 pb-1 text-[length:calc(var(--ui-font-base)*0.6875)] leading-snug text-muted-foreground"
