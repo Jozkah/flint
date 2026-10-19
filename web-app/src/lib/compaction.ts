@@ -48,6 +48,8 @@ export type CompactionRecord = {
   at: number
   /** Why it ran. */
   reason: 'threshold' | 'context-error' | 'manual'
+  /** The model that wrote the summary, when it was asked for by the user. */
+  model?: string
 }
 
 export const SUMMARY_HEADER =
@@ -403,6 +405,17 @@ export function summaryMessage(
   } as UIMessage
 }
 
+/**
+ * A summary a manual compaction could not get from any model. Nothing was
+ * replaced: the conversation is as it was.
+ */
+export class CompactionSummaryError extends Error {
+  constructor(readonly reason: string) {
+    super(reason)
+    this.name = 'CompactionSummaryError'
+  }
+}
+
 /** Summarizes a transcript; may throw, and then the fallback is used. */
 export type Summarize = (transcript: string, signal?: AbortSignal) => Promise<string>
 
@@ -426,6 +439,15 @@ export async function compactHistory(
     splitTurn?: boolean
     reason: CompactionRecord['reason']
     signal?: AbortSignal
+    /**
+     * Whether a failed or empty summary is replaced by the first-line digest
+     * (default). A manual compaction turns this off: a digest that silently
+     * stands in for the conversation reads as lost history, so it throws
+     * `CompactionSummaryError` and the caller keeps the conversation.
+     */
+    fallback?: boolean
+    /** The model that wrote the summary, read once it has been written. */
+    summarizedBy?: () => string | null
     now?: () => number
     /** A summary already being written for exactly these messages, if any. */
     reuse?: (summarize: UIMessage[]) => Promise<string | null> | null
@@ -453,6 +475,7 @@ export async function compactHistory(
   }
   const transcript = transcriptForSummary(plan.summarize)
   let summary = ''
+  let failure = ''
   try {
     const ready = prefix ? await prefix.summary : await opts.reuse?.(plan.summarize)
     summary = extractSummary(
@@ -461,8 +484,14 @@ export async function compactHistory(
   } catch (error) {
     if (opts.signal?.aborted) throw error
     summary = ''
+    failure = error instanceof Error ? error.message : String(error ?? '')
   }
-  if (!summary) summary = fallbackSummary(plan.summarize)
+  if (!summary) {
+    if (opts.fallback === false) {
+      throw new CompactionSummaryError(failure || 'the model returned an empty summary')
+    }
+    summary = fallbackSummary(plan.summarize)
+  }
   const record: CompactionRecord = {
     summarizedCount: plan.summarize.filter((m) => !isSummaryMessage(m)).length +
       plan.summarize
@@ -471,6 +500,7 @@ export async function compactHistory(
     summary,
     at: (opts.now ?? Date.now)(),
     reason: opts.reason,
+    ...(opts.summarizedBy?.() ? { model: opts.summarizedBy() as string } : {}),
   }
   // A long agent run has one user turn at its start. When that turn is folded
   // and nothing the user said is kept, its words travel with the summary, so

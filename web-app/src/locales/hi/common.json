@@ -1151,7 +1151,11 @@
     "compacting": "संक्षिप्त किया जा रहा है…",
     "compactFailed": "अभी संक्षिप्त करने के लिए कुछ नहीं है।",
     "newSession": "नया सत्र",
-    "compactSuperseded": "संक्षिप्त करते समय बातचीत बदल गई, इसलिए कुछ भी नहीं बदला गया। फिर से संक्षिप्त करें।"
+    "compactSuperseded": "संक्षिप्त करते समय बातचीत बदल गई, इसलिए कुछ भी नहीं बदला गया। फिर से संक्षिप्त करें।",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "ऑटो-कॉम्पैक्ट के लिए कॉन्टेक्स्ट आकार चाहिए, और {{model}} का कोई आकार Flint को नहीं मिल रहा। इस मॉडल के लिए Max Context Tokens सेट करें ताकि लंबी चैट भरने से पहले संक्षिप्त हो जाएँ। अगर प्रोवाइडर लंबाई के कारण अनुरोध अस्वीकार करता है, तो Flint संक्षिप्त करके एक बार दोबारा कोशिश करता है।",
   "compaction": {

@@ -2,8 +2,10 @@ import type { LanguageModel } from 'ai'
 import { runUtilityAgent } from '@/lib/utilityAgents'
 import { ModelFactory } from '@/lib/model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useAppState } from '@/hooks/useAppState'
 import { BACKGROUND_SLOT_ID } from '@/constants/models'
 import { SUMMARY_SYSTEM_PROMPT, type Summarize } from '@/lib/compaction'
+import { canModelSummarize } from '@/lib/continueFromSummary'
 
 /**
  * A summarizer for `compactHistory` that uses the conversation's own model.
@@ -58,4 +60,100 @@ export function modelSummarizer(input: {
       abortSignal: signal,
     })
   }
+}
+
+export type SummarizerCandidate = {
+  /** Shown to the user as the model that wrote the summary. */
+  label: string
+  summarize: Summarize
+}
+
+/**
+ * Try each candidate in order and use the first that returns text. The model
+ * that wrote the summary is reported through `onUsed`; when none does, the
+ * last failure is thrown (an empty answer counts as one) so the caller can
+ * keep the conversation and say why.
+ */
+export function summarizeWithFallback(
+  candidates: SummarizerCandidate[],
+  onUsed?: (label: string) => void
+): Summarize {
+  return async (full, signal) => {
+    let failure = 'no model is available to write the summary'
+    for (const candidate of candidates) {
+      try {
+        const text = await candidate.summarize(full, signal)
+        if (text.trim()) {
+          onUsed?.(candidate.label)
+          return text
+        }
+        failure = `${candidate.label} returned an empty summary`
+      } catch (error) {
+        if (signal?.aborted) throw error
+        failure = `${candidate.label}: ${error instanceof Error ? error.message : String(error)}`
+      }
+    }
+    throw new Error(failure)
+  }
+}
+
+/**
+ * The models a manual compaction may summarize with, best first: the selected
+ * model when it can answer now (remote, or local and loaded), then the other
+ * local models already loaded, and last the selected model anyway (a local
+ * one then has to load, which may fail with a reason the user is told).
+ */
+export function summarizerModels(input: {
+  provider: string
+  modelId: string
+  activeModels: readonly string[]
+  localProvider?: string
+}): Array<{ provider: string; modelId: string }> {
+  const selected = { provider: input.provider, modelId: input.modelId }
+  const local = input.localProvider ?? 'llamacpp'
+  const others = input.activeModels
+    .filter((id) => id !== input.modelId)
+    .map((id) => ({ provider: local, modelId: id }))
+  return canModelSummarize(input.provider, input.modelId, input.activeModels)
+    ? [selected, ...others]
+    : [...others, selected]
+}
+
+/**
+ * The summarizer for a compaction the user asked for: `summarizerModels`
+ * order, the first model that answers wins, and `usedBy()` names it after the
+ * call so the user can be told which model wrote the summary.
+ */
+export function manualSummarizer(input: {
+  provider: string
+  modelId: string
+  session: string
+  maxOutputTokens?: number
+  window?: number | null | (() => number | null | undefined)
+  /** Reused for the selected model so no second one is created. */
+  model?: () => LanguageModel | null | undefined
+}): { summarize: Summarize; usedBy: () => string | null } {
+  let used: string | null = null
+  const models = summarizerModels({
+    provider: input.provider,
+    modelId: input.modelId,
+    activeModels: useAppState.getState().activeModels ?? [],
+  })
+  const summarize = summarizeWithFallback(
+    models.map((m) => ({
+      label: m.modelId,
+      summarize: modelSummarizer({
+        provider: m.provider,
+        modelId: m.modelId,
+        session: input.session,
+        maxOutputTokens: input.maxOutputTokens,
+        window: input.window,
+        model: m.modelId === input.modelId ? input.model : undefined,
+      }),
+    })),
+    (label) => {
+      used = label
+    }
+  )
+  return { summarize, usedBy: () => used }
 }

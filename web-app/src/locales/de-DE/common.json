@@ -1153,7 +1153,11 @@
     "compacting": "Wird komprimiert…",
     "compactFailed": "Noch nichts zu komprimieren.",
     "newSession": "Neue Sitzung",
-    "compactSuperseded": "Die Unterhaltung hat sich während des Komprimierens geändert, daher wurde nichts ersetzt. Bitte erneut komprimieren."
+    "compactSuperseded": "Die Unterhaltung hat sich während des Komprimierens geändert, daher wurde nichts ersetzt. Bitte erneut komprimieren.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "Die automatische Komprimierung braucht eine Kontextgröße, und für {{model}} kann Flint keine finden. Lege für dieses Modell „Max. Kontext-Tokens“ fest, damit lange Chats komprimiert werden, bevor sie ihn füllen. Wenn der Anbieter eine Anfrage wegen ihrer Länge ablehnt, komprimiert Flint und versucht es einmal erneut.",
   "compaction": {

@@ -1160,7 +1160,11 @@
     "compacting": "Compattazione…",
     "compactFailed": "Ancora niente da compattare.",
     "newSession": "Nuova sessione",
-    "compactSuperseded": "La conversazione è cambiata durante la compattazione, quindi non è stato sostituito nulla. Compatta di nuovo."
+    "compactSuperseded": "La conversazione è cambiata durante la compattazione, quindi non è stato sostituito nulla. Compatta di nuovo.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "L'auto-compattazione richiede una dimensione del contesto, e {{model}} non ne ha una che Flint riesca a trovare. Imposta Max Context Tokens per questo modello così le chat lunghe vengono compattate prima di riempirlo. Se il provider rifiuta una richiesta per la sua lunghezza, Flint compatta e riprova una volta.",
   "compaction": {

@@ -1153,7 +1153,11 @@
     "compacting": "正在壓縮…",
     "compactFailed": "目前沒有可壓縮的內容。",
     "newSession": "新工作階段",
-    "compactSuperseded": "壓縮期間對話已變更，因此未取代任何內容。請重新壓縮。"
+    "compactSuperseded": "壓縮期間對話已變更，因此未取代任何內容。請重新壓縮。",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "自動壓縮需要上下文大小，而 Flint 找不到 {{model}} 的上下文大小。請為此模型設定最大上下文 Token 數，以便長聊天在填滿之前被壓縮。如果供應商因長度拒絕請求，Flint 會壓縮並重試一次。",
   "compaction": {

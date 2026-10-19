@@ -1153,7 +1153,11 @@
     "compacting": "Đang nén…",
     "compactFailed": "Chưa có gì để nén.",
     "newSession": "Phiên mới",
-    "compactSuperseded": "Cuộc trò chuyện đã thay đổi trong lúc nén nên không có gì bị thay thế. Hãy nén lại."
+    "compactSuperseded": "Cuộc trò chuyện đã thay đổi trong lúc nén nên không có gì bị thay thế. Hãy nén lại.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "Tự động nén cần kích thước ngữ cảnh, và {{model}} không có kích thước nào Flint tìm được. Hãy đặt Số token ngữ cảnh tối đa cho mô hình này để các cuộc trò chuyện dài được nén trước khi đầy. Nếu nhà cung cấp từ chối một yêu cầu vì độ dài, Flint nén và thử lại một lần.",
   "compaction": {

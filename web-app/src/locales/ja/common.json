@@ -1151,7 +1151,11 @@
     "compacting": "圧縮中…",
     "compactFailed": "まだ圧縮するものはありません。",
     "newSession": "新しいセッション",
-    "compactSuperseded": "圧縮中に会話が変更されたため、何も置き換えられませんでした。もう一度圧縮してください。"
+    "compactSuperseded": "圧縮中に会話が変更されたため、何も置き換えられませんでした。もう一度圧縮してください。",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "自動圧縮にはコンテキストサイズが必要ですが、Flint は {{model}} のコンテキストサイズを見つけられません。長いチャットがいっぱいになる前に圧縮されるよう、このモデルの最大コンテキストトークン数を設定してください。長さを理由にプロバイダーがリクエストを拒否した場合、Flint は圧縮して 1 回だけ再試行します。",
   "compaction": {
