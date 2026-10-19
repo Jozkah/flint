@@ -1546,6 +1546,19 @@ pub async fn agent_campaign_cancel(
     .await
 }
 
+/// Delete an idle campaign's record folder. Branches and worktrees stay.
+#[tauri::command]
+pub async fn agent_campaign_delete(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<(), ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::delete(&data_folder, &id).map_err(campaign_failure)
+    })
+    .await
+}
+
 /// Append to the campaign's `decisions.md`. Coordinator only.
 #[tauri::command]
 pub async fn agent_campaign_decisions_append(

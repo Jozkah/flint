@@ -164,13 +164,16 @@ export function lineDiff(a: string | null, b: string | null): DiffLine[] {
 
 /**
  * Remove a deleted session's worktree (or copy), when the user chose to.
- * Forced: the choice was made with the list of what it destroys on screen.
+ * Forced by default: the choice was made with the list of what it destroys on
+ * screen. Pass `force = false` to have the backend refuse a worktree that
+ * holds unfinished work instead.
  */
 export async function removeSessionWorktree(
-  sessionId: string
+  sessionId: string,
+  force = true
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const dataFolder =
     (await getServiceHub().app().getJanDataFolder().catch(() => '')) ?? ''
   if (!dataFolder) return { ok: false, reason: 'no data folder' }
-  return useCoworkWorktrees.getState().discard(sessionId, dataFolder, true)
+  return useCoworkWorktrees.getState().discard(sessionId, dataFolder, force)
 }

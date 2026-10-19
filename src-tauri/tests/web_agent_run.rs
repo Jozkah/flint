@@ -1029,6 +1029,49 @@ fn a_server_without_the_bypass_flag_refuses_unattended_task_access() {
 }
 
 #[test]
+fn a_client_deletes_an_idle_campaign_but_never_a_running_one() {
+    let (dir, app) = git_scratch("campaign-delete");
+    let server = start(&dir, &["--agent-allow-bypass"]);
+    let folder = app.to_string_lossy().into_owned();
+    let listed = |server: &Server| -> Vec<String> {
+        let (status, all) = server.rpc("agent_campaign_list", json!({}));
+        assert_eq!(status, 200, "{all}");
+        all.as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap().to_owned()).collect()
+    };
+
+    // A plan that was never approved has no run and no worktree: it may go.
+    let plan = json!([{ "id": "a", "title": "a", "brief": "WRITE_FILE a.txt", "paths": ["a.txt"] }]);
+    let idle = start_campaign(&server, &folder, "never approved", plan);
+    assert!(listed(&server).contains(&idle));
+    let (status, gone) = server.rpc("agent_campaign_delete", json!({ "id": idle }));
+    assert_eq!(status, 200, "{gone}");
+    assert!(!listed(&server).contains(&idle));
+    assert_ne!(server.rpc("agent_campaign_get", json!({ "id": idle })).0, 200);
+    // Deleting twice, or a made-up id, is an error and changes nothing.
+    assert_ne!(server.rpc("agent_campaign_delete", json!({ "id": idle })).0, 200);
+    assert_ne!(server.rpc("agent_campaign_delete", json!({ "id": "../x" })).0, 200);
+
+    // A campaign that is running is refused until it is stopped.
+    let plan = json!([{ "id": "a", "title": "a", "brief": "SLOW WRITE_FILE a.txt", "paths": ["a.txt"] }]);
+    let busy = start_campaign(&server, &folder, "running", plan);
+    let (status, _) = server.rpc("agent_campaign_approve", json!({ "id": busy, "access": "worktree" }));
+    assert_eq!(status, 200);
+    wait_for("the task to be running", Duration::from_secs(60), || {
+        statuses(&campaign_of(&server, &busy))[0] == "running"
+    });
+    let (status, refused) = server.rpc("agent_campaign_delete", json!({ "id": busy }));
+    assert_ne!(status, 200, "{refused}");
+    assert!(listed(&server).contains(&busy));
+    let (status, cancelled) = server.rpc("agent_campaign_cancel", json!({ "id": busy }));
+    assert_eq!(status, 200, "{cancelled}");
+    let (status, gone) = server.rpc("agent_campaign_delete", json!({ "id": busy }));
+    assert_eq!(status, 200, "{gone}");
+    assert!(!listed(&server).contains(&busy));
+    // The project folder is untouched.
+    assert!(app.join("README.md").exists());
+}
+
+#[test]
 fn a_campaign_continues_by_itself_after_the_server_restarts_mid_run() {
     let (dir, app) = git_scratch("campaign-restart");
     let folder = app.to_string_lossy().into_owned();

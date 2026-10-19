@@ -278,6 +278,20 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:others.spellCheckDesc',
     keywords: ['spelling', 'typo'],
   }),
+  item('general', 'bulk-conversations', 'settings:bulk.title', {
+    descriptionKey: 'settings:bulk.desc',
+    keywords: [
+      'archive all',
+      'delete all',
+      'clear chats',
+      'clean up',
+      'bulk',
+      'rooms',
+      'cowork',
+      'campaigns',
+      'threads',
+    ],
+  }),
   item('general', 'factory-reset', 'settings:others.resetFactory', {
     descriptionKey: 'settings:others.resetFactoryDesc',
     keywords: ['reset', 'defaults', 'wipe'],

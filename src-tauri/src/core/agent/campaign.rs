@@ -1600,6 +1600,24 @@ pub fn cancel(data_folder: &Path, id: &str, detail: &str) -> Result<Campaign, Ca
     Ok(c)
 }
 
+/// Remove a campaign's record folder (plan, events, decisions, handoffs). Only
+/// a campaign that is not running may go: finished ones (done, failed,
+/// cancelled) and ones that never started (draft, planned). Git branches,
+/// worktrees and the project folder are left exactly where they are.
+pub fn delete(data_folder: &Path, id: &str) -> Result<(), CampaignError> {
+    let _held = lock(data_folder);
+    let dir = campaign_dir(data_folder, id)?;
+    let c = load_reconciled(data_folder, id)?;
+    let idle = c.status.is_terminal() || matches!(c.status, CampaignStatus::Draft | CampaignStatus::Planned);
+    if !idle {
+        return Err(CampaignError::new(
+            CampaignErrorKind::IllegalTransition,
+            format!("campaign {id} is {:?}; cancel or finish it before deleting", c.status),
+        ));
+    }
+    std::fs::remove_dir_all(&dir).map_err(io)
+}
+
 /// Append to `decisions.md`. Written by the coordinator only.
 pub fn decisions_append(data_folder: &Path, id: &str, text: &str) -> Result<(), CampaignError> {
     let text = text.trim();
@@ -2781,6 +2799,28 @@ pub(crate) mod tests {
             integration: None,
         };
         assert!(transition(&d, "c", mv).is_err());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn delete_removes_only_idle_campaigns() {
+        let d = data_dir("delete");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        // A planned campaign has not started: it may go.
+        assert!(delete(&d, "c").is_ok());
+        assert_eq!(get(&d, "c").unwrap_err().kind, CampaignErrorKind::NotFound);
+        assert_eq!(delete(&d, "c").unwrap_err().kind, CampaignErrorKind::NotFound);
+
+        create(&d, input(Some("r"), vec![plan("a", &[], &[])])).unwrap();
+        let mut c = read_raw(&d, "r").unwrap();
+        c.status = CampaignStatus::Running;
+        c.process_epoch = epoch();
+        save(&d, &c).unwrap();
+        assert!(delete(&d, "r").is_err());
+        assert!(get(&d, "r").is_ok());
+        cancel(&d, "r", "stop").unwrap();
+        assert!(delete(&d, "r").is_ok());
+        assert!(delete(&d, "../x").is_err());
         std::fs::remove_dir_all(&d).ok();
     }
 

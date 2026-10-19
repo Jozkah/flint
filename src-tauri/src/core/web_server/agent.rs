@@ -98,6 +98,7 @@ pub fn handles(command: &str) -> bool {
             | "agent_campaign_events"
             | "agent_campaign_transition"
             | "agent_campaign_cancel"
+            | "agent_campaign_delete"
             | "agent_campaign_plan_update"
             | "agent_campaign_diff"
             | "agent_campaign_task_diff"
@@ -829,6 +830,11 @@ with campaign_decide, and tell the person how it went. Do not do the tasks' work
                     campaign::cancel(&self.data_folder, id, detail)
                         .map_err(|e| failure(e.message))?,
                 )
+            }
+            "agent_campaign_delete" => {
+                let id = text(args, "id")?;
+                campaign::delete(&self.data_folder, id).map_err(|e| failure(e.message))?;
+                Ok(Value::Null)
             }
             "agent_campaign_plan_update" => {
                 let id = text(args, "id")?;

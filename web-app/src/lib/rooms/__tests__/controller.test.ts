@@ -242,6 +242,18 @@ describe('room editor', () => {
     expect(persistence.rooms.has(room.id)).toBe(false)
     expect(useRoomsStore.getState().summaries.some((s) => s.id === room.id)).toBe(false)
   })
+
+  it('deleteRoom with permanent bypasses the archiving delete when the port can', async () => {
+    const { ctl, persistence } = setup(scriptedStream(() => ({ text: 'x' })).fn)
+    const room = await createDefault(ctl)
+    const permanent = vi.fn(async () => undefined)
+    const archiving = vi.spyOn(persistence, 'deleteRoom')
+    persistence.deleteRoomPermanently = permanent
+    await ctl.deleteRoom(room.id, { permanent: true })
+    expect(permanent).toHaveBeenCalledWith(room.id)
+    expect(archiving).not.toHaveBeenCalled()
+    expect(useRoomsStore.getState().summaries.some((s) => s.id === room.id)).toBe(false)
+  })
 })
 
 describe('room controller', () => {
