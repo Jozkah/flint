@@ -357,6 +357,8 @@
     "closeOverlay": "पैनल बंद करें"
   },
   "composerOptions": "विकल्प",
+  "chatShell": "शेल",
+  "chatShellHint": "सैंडबॉक्स में कमांड चलाएँ",
   "coworkBars": {
     "showMore": "{{count}} और दिखाएँ",
     "showFewer": "कम दिखाएँ",

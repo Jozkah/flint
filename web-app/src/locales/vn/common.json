@@ -357,6 +357,8 @@
     "closeOverlay": "Đóng bảng"
   },
   "composerOptions": "Tùy chọn",
+  "chatShell": "Shell",
+  "chatShellHint": "Chạy lệnh trong môi trường sandbox",
   "coworkBars": {
     "showMore": "Hiện thêm {{count}}",
     "showFewer": "Hiện ít hơn",

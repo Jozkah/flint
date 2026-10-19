@@ -357,6 +357,8 @@
     "closeOverlay": "Paneli kapat"
   },
   "composerOptions": "Seçenekler",
+  "chatShell": "Kabuk",
+  "chatShellHint": "Komutları korumalı alanda çalıştır",
   "coworkBars": {
     "showMore": "{{count}} tane daha göster",
     "showFewer": "Daha az göster",

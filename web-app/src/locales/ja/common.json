@@ -357,6 +357,8 @@
     "closeOverlay": "パネルを閉じる"
   },
   "composerOptions": "オプション",
+  "chatShell": "シェル",
+  "chatShellHint": "サンドボックス内でコマンドを実行",
   "coworkBars": {
     "showMore": "さらに {{count}} 件を表示",
     "showFewer": "表示を減らす",

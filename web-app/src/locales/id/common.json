@@ -355,6 +355,8 @@
     "closeOverlay": "Tutup panel"
   },
   "composerOptions": "Opsi",
+  "chatShell": "Shell",
+  "chatShellHint": "Jalankan perintah di sandbox",
   "coworkBars": {
     "showMore": "Tampilkan {{count}} lagi",
     "showFewer": "Tampilkan lebih sedikit",

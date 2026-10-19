@@ -190,6 +190,9 @@ import {
 } from '@/types/attachment'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchChoice, useWebSearchOn } from '@/hooks/useWebSearchChoice'
+import { useChatShell } from '@/hooks/useChatShell'
+import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { getSandboxStatus } from '@/lib/agentTools'
 import {
   formatPathReferenceText,
   parsePromptForReferences,
@@ -1032,6 +1035,26 @@ const ChatInput = memo(function ChatInput({
   const conversationModel = modelSelection ?? threadModelSelection
   const selectedModel = conversationModel.selectedModel
   const toolsEnabled = useModelToolsEnabled(selectedModel, currentThreadId)
+  // Chat's shell switch. Offered only where there is a shell to turn off: Agent
+  // tools and the Settings shell on, a sandbox that can confine it, and a model
+  // that takes tools. Cowork owns its tool set and never shows it.
+  const chatShellOn = useChatShell((s) => s.shellEnabled)
+  const setChatShellOn = useChatShell((s) => s.setShellEnabled)
+  const agentToolsOn = useAgentToolsConfig(
+    (s) => s.agentToolsEnabled && s.shellEnabled
+  )
+  const [sandboxEnforcesShell, setSandboxEnforcesShell] = useState(false)
+  useEffect(() => {
+    let live = true
+    void getSandboxStatus()
+      .then((s) => {
+        if (live) setSandboxEnforcesShell(Boolean(s?.enforces))
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
 
   /** The general picker handles images; audio and video have their own entries. */
   const attachmentAccept = acceptAttribute({
@@ -3803,6 +3826,13 @@ const ChatInput = memo(function ChatInput({
                           onChange: setWebSearchEnabled,
                         }
                       : undefined
+                  const shellToggle =
+                    slashSurface !== 'cowork' &&
+                    toolsEnabled &&
+                    agentToolsOn &&
+                    sandboxEnforcesShell
+                      ? { enabled: chatShellOn, onChange: setChatShellOn }
+                      : undefined
                   const options = (
                     <>
                 <AssistantSwitcher
@@ -3819,6 +3849,7 @@ const ChatInput = memo(function ChatInput({
                   modelId={selectedModel?.id}
                   draftOffThread={slashSurface !== 'cowork'}
                   webSearch={groupOptions ? undefined : webSearchToggle}
+                  shell={groupOptions ? undefined : shellToggle}
                   assistantSwitcher={{
                     assistants,
                     currentThread: slashSurface === 'cowork' ? undefined : currentThread,
@@ -4129,6 +4160,7 @@ const ChatInput = memo(function ChatInput({
                     <ComposerOptionsMenu
                       label={t('common:composerOptions')}
                       webSearch={webSearchToggle}
+                      shell={shellToggle}
                       active={
                         webSearchEnabled && !effectiveAgentMode
                           ? [t('common:web_search')]

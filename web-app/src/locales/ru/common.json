@@ -361,6 +361,8 @@
     "closeOverlay": "Закрыть панель"
   },
   "composerOptions": "Параметры",
+  "chatShell": "Оболочка",
+  "chatShellHint": "Выполнять команды в песочнице",
   "coworkBars": {
     "showMore": "Показать ещё {{count}}",
     "showFewer": "Показать меньше",

@@ -359,6 +359,8 @@
     "closeOverlay": "Tanca el tauler"
   },
   "composerOptions": "Opcions",
+  "chatShell": "Shell",
+  "chatShellHint": "Executa ordres en un entorn aïllat",
   "coworkBars": {
     "showMore": "Mostra'n {{count}} més",
     "showFewer": "Mostra'n menys",

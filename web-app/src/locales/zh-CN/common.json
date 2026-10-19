@@ -357,6 +357,8 @@
     "closeOverlay": "关闭面板"
   },
   "composerOptions": "选项",
+  "chatShell": "Shell",
+  "chatShellHint": "在沙盒中运行命令",
   "coworkBars": {
     "showMore": "再显示 {{count}} 个",
     "showFewer": "显示更少",

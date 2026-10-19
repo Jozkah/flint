@@ -40,6 +40,7 @@ import {
   WebSearchToggleRow,
   type WebSearchToggle,
 } from '@/containers/WebSearchToggleRow'
+import { ShellToggleRow, type ShellToggle } from '@/containers/ShellToggleRow'
 
 interface SamplerPopoverProps {
   /** Provider ID of the currently-selected model, if any. Used to scope the
@@ -62,6 +63,8 @@ interface SamplerPopoverProps {
   draftOffThread?: boolean
   /** Web search for this chat, as a row in the panel (no separate button). */
   webSearch?: WebSearchToggle
+  /** Chat's shell switch, a row beside web search. */
+  shell?: ShellToggle
 }
 
 export function SamplerPopover({
@@ -70,6 +73,7 @@ export function SamplerPopover({
   assistantSwitcher,
   draftOffThread = false,
   webSearch,
+  shell,
 }: SamplerPopoverProps) {
   const { t } = useTranslation()
   const currentAssistant = useAssistant((s) => s.currentAssistant)
@@ -178,7 +182,7 @@ export function SamplerPopover({
     const reason = t('common:sampler.notSupported', { provider: providerName })
     // Web search still lives behind this button, so it opens; the panel says
     // why sampling is not there.
-    if (webSearch) {
+    if (webSearch || shell) {
       return (
         <Popover>
           <PopoverTrigger asChild>
@@ -203,7 +207,8 @@ export function SamplerPopover({
             }}
             className="w-[320px] p-1"
           >
-            <WebSearchToggleRow {...webSearch} />
+            {webSearch && <WebSearchToggleRow {...webSearch} />}
+            {shell && <ShellToggleRow {...shell} />}
             <p
               data-testid="sampler-unsupported"
               className="border-t px-2 py-1.5 text-xs text-muted-foreground"
@@ -254,7 +259,7 @@ export function SamplerPopover({
               aria-label={t('common:sampler.label')}
               className="relative size-7 rounded-[7px] pointer-coarse:size-11"
               // Web search in the panel is reachable while assistants load.
-              disabled={assistantsLoading && !webSearch}
+              disabled={assistantsLoading && !webSearch && !shell}
             >
               <SlidersHorizontal
                 className={cn(
@@ -316,9 +321,10 @@ export function SamplerPopover({
             </Tooltip>
           </div>
         </div>
-        {webSearch && (
+        {(webSearch || shell) && (
           <div className="border-b px-2 py-1">
-            <WebSearchToggleRow {...webSearch} />
+            {webSearch && <WebSearchToggleRow {...webSearch} />}
+            {shell && <ShellToggleRow {...shell} />}
           </div>
         )}
         {activeAssistant ? (

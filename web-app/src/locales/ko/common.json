@@ -357,6 +357,8 @@
     "closeOverlay": "패널 닫기"
   },
   "composerOptions": "옵션",
+  "chatShell": "셸",
+  "chatShellHint": "샌드박스에서 명령 실행",
   "coworkBars": {
     "showMore": "{{count}}개 더 보기",
     "showFewer": "간단히 보기",

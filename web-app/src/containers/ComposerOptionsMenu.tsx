@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { COMPOSER_ICON, COMPOSER_ICON_BUTTON } from '@/containers/composerIconButton'
 import { WebSearchToggleRow, type WebSearchToggle } from '@/containers/WebSearchToggleRow'
+import { ShellToggleRow, type ShellToggle } from '@/containers/ShellToggleRow'
 
 /** The composer's less-used controls behind one compact icon button. */
 export function ComposerOptionsMenu({
   label,
   children,
   webSearch,
+  shell,
 }: {
   label: string
   /** Kept at call sites for compatibility; active state is visible in the panel. */
@@ -17,6 +19,8 @@ export function ComposerOptionsMenu({
   children: ReactNode
   /** Web search for this session, as a row above the other options. */
   webSearch?: WebSearchToggle
+  /** Chat's shell switch, a row under web search. */
+  shell?: ShellToggle
 }) {
   // The panel opens above the whole composer box, not above its own trigger:
   // anchored to the trigger it floated over the input text.
@@ -63,6 +67,7 @@ export function ComposerOptionsMenu({
         data-testid="composer-options-panel"
       >
         {webSearch && <WebSearchToggleRow {...webSearch} />}
+        {shell && <ShellToggleRow {...shell} />}
         <div className="flex flex-wrap items-center gap-1">{children}</div>
       </PopoverContent>
     </Popover>
