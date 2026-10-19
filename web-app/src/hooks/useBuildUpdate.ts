@@ -2,28 +2,18 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { toast } from 'sonner'
-import { checkForNewerBuild, releaseUrl, type BuildCheck } from '@/lib/buildUpdate'
+import { checkForNewerBuild, type BuildCheck } from '@/lib/buildUpdate'
+import i18n from '@/i18n/setup'
 import { getServiceHub } from '@/hooks/useServiceHub'
 
 /** At most one automatic look per this long, so opening the app often costs nothing. */
 export const CHECK_EVERY_MS = 12 * 60 * 60 * 1000
 
-/**
- * What the "newer build" notice tells the person. Only a nightly keeps its
- * version number between builds; a stable release has a new number, so telling
- * a v1.0.0 user "this version is a nightly" was simply wrong.
- */
-export function newerBuildDescription(version: string): string {
-  return version.includes('-')
-    ? 'This version is a nightly, so the number stays the same. Download it again to update; installed copies do not update themselves.'
-    : 'A newer build of this version is available. Download it from the release page to update; installed copies do not update themselves.'
-}
-
 type State = {
   /** Off by default: Flint makes no request nobody asked for. */
   enabled: boolean
   checkedAt: number
-  /** The release commit the person was last told about, so a notice is not repeated. */
+  /** The latest stable version the person was last told about, so a notice is not repeated. */
   notifiedFor: string
   last: BuildCheck | null
   setEnabled: (on: boolean) => void
@@ -39,18 +29,18 @@ export const useBuildUpdate = create<State>()(
       last: null,
       setEnabled: (enabled) => set({ enabled }),
       run: async ({ manual = false } = {}) => {
-        const result = await checkForNewerBuild(BUILD_COMMIT, VERSION)
+        const result = await checkForNewerBuild(VERSION)
         const remembered = get().notifiedFor
         set({ last: result, ...(result.state === 'unknown' ? {} : { checkedAt: Date.now() }) })
         if (result.state === 'newer' && (manual || result.latest !== remembered)) {
           set({ notifiedFor: result.latest })
-          toast.warning('A newer Flint build is available', {
-            description: newerBuildDescription(VERSION),
+          toast.warning(i18n.t('settings:general.buildToastTitle', { version: result.latest }), {
+            description: i18n.t('settings:general.buildToastDesc'),
             duration: 15000,
             action: {
-              label: 'Open release',
+              label: i18n.t('settings:general.buildOpenRelease'),
               // window.open does nothing in the desktop webview; the opener plugin does.
-              onClick: () => void getServiceHub().opener().openUrl(releaseUrl(VERSION)),
+              onClick: () => void getServiceHub().opener().openUrl(result.url),
             },
           })
         }

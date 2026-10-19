@@ -1,44 +1,95 @@
 import { describe, expect, it, vi } from 'vitest'
-import { checkForNewerBuild, compareBuild, fetchTagCommit, releaseUrl } from '../buildUpdate'
+import {
+  checkForNewerBuild,
+  compareVersions,
+  fetchLatestStable,
+  pickStable,
+  releaseUrl,
+} from '../buildUpdate'
 
-const A = 'a'.repeat(40)
-const B = 'b'.repeat(40)
-const reply = (body: string, ok = true) => vi.fn().mockResolvedValue({ ok, text: async () => body }) as unknown as typeof fetch
+const rel = (tag: string, extra: Record<string, unknown> = {}) => ({
+  tag_name: tag,
+  html_url: `https://github.com/Jozkah/flint/releases/tag/${tag}`,
+  draft: false,
+  prerelease: false,
+  ...extra,
+})
+const reply = (body: unknown, ok = true, status = 200) =>
+  vi.fn().mockResolvedValue({ ok, status, json: async () => body }) as unknown as typeof fetch
 
-describe('compareBuild', () => {
-  it('is current when the build is the commit the tag points at, short hash included', () => {
-    expect(compareBuild(A, A).state).toBe('current')
-    expect(compareBuild(A.slice(0, 9), A).state).toBe('current')
+describe('compareVersions', () => {
+  it('orders numerically with a v prefix', () => {
+    expect(compareVersions('0.9.0', 'v1.0.1')).toBe(-1)
+    expect(compareVersions('v1.0.1', '1.0.1')).toBe(0)
+    expect(compareVersions('1.0.2', '1.0.1')).toBe(1)
+    expect(compareVersions('1.10.0', '1.9.0')).toBe(1)
   })
-
-  it('is newer when the tag has moved on', () => {
-    expect(compareBuild(A, B)).toEqual({ state: 'newer', latest: B })
+  it('sorts a pre-release below its release', () => {
+    expect(compareVersions('1.0.1-nightly.20261019', '1.0.1')).toBe(-1)
+    expect(compareVersions('1.0.2-nightly.1', '1.0.1')).toBe(1)
+    expect(compareVersions('1.0.0-rc.2', '1.0.0-rc.10')).toBe(-1)
   })
-
-  it('does not guess without a recorded commit or a reachable release', () => {
-    expect(compareBuild('', B).state).toBe('unknown')
-    expect(compareBuild('not a hash', B).state).toBe('unknown')
-    expect(compareBuild(A, null).state).toBe('unknown')
+  it('is null for unreadable versions', () => {
+    expect(compareVersions('test', '1.0.0')).toBeNull()
   })
 })
 
-describe('fetchTagCommit', () => {
-  it('asks for the bare commit of the release tag', async () => {
-    const f = reply(B)
-    expect(await fetchTagCommit('0.9.0', f)).toBe(B)
-    const [url, init] = (f as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
-    expect(url).toBe('https://api.github.com/repos/Jozkah/flint/commits/v0.9.0')
-    expect((init as RequestInit).headers).toEqual({ Accept: 'application/vnd.github.sha' })
+describe('pickStable', () => {
+  it('ignores prereleases, drafts and nightlies even when first in a list', () => {
+    const list = [
+      rel('nightly-20261019', { prerelease: true }),
+      rel('v1.0.5-nightly.3'),
+      rel('v1.0.4', { draft: true }),
+      rel('v1.0.3', { prerelease: true }),
+      rel('v1.0.1'),
+      rel('v1.0.0'),
+    ]
+    expect(pickStable(list)).toEqual({ version: '1.0.1', url: 'https://github.com/Jozkah/flint/releases/tag/v1.0.1' })
   })
-
-  it('returns null for an error status, an odd body or a network failure', async () => {
-    expect(await fetchTagCommit('0.9.0', reply(B, false))).toBeNull()
-    expect(await fetchTagCommit('0.9.0', reply('<html>'))).toBeNull()
-    expect(await fetchTagCommit('0.9.0', vi.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch)).toBeNull()
+  it('rejects a lone nightly or an odd payload', () => {
+    expect(pickStable(rel('nightly-1', { prerelease: true }))).toBeNull()
+    expect(pickStable({ message: 'Not Found' })).toBeNull()
+    expect(pickStable(null)).toBeNull()
   })
+  it('falls back to the tag page when html_url is missing or foreign', () => {
+    expect(pickStable(rel('v1.0.1', { html_url: 'https://evil.example/x' }))?.url).toBe(releaseUrl('1.0.1'))
+  })
+})
 
-  it('checkForNewerBuild joins the two', async () => {
-    expect((await checkForNewerBuild(A, '0.9.0', reply(B))).state).toBe('newer')
+describe('fetchLatestStable', () => {
+  it('asks the latest-release endpoint', async () => {
+    const f = reply(rel('v1.0.1'))
+    expect((await fetchLatestStable(f))?.version).toBe('1.0.1')
+    expect((f as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      'https://api.github.com/repos/Jozkah/flint/releases/latest'
+    )
+  })
+  it('is null for 404, rate limit and offline', async () => {
+    expect(await fetchLatestStable(reply({}, false, 404))).toBeNull()
+    expect(await fetchLatestStable(reply({}, false, 403))).toBeNull()
+    expect(await fetchLatestStable(vi.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch)).toBeNull()
+  })
+})
+
+describe('checkForNewerBuild', () => {
+  const latest = reply(rel('v1.0.1'))
+  it('0.9.0 vs 1.0.1 is newer', async () => {
+    expect(await checkForNewerBuild('0.9.0', latest)).toEqual({
+      state: 'newer',
+      latest: '1.0.1',
+      url: 'https://github.com/Jozkah/flint/releases/tag/v1.0.1',
+    })
+  })
+  it('1.0.1 vs 1.0.1 is up to date', async () => {
+    expect((await checkForNewerBuild('1.0.1', latest)).state).toBe('current')
+  })
+  it('an installed build ahead of the latest stable is up to date', async () => {
+    expect((await checkForNewerBuild('1.0.2', latest)).state).toBe('current')
+    expect((await checkForNewerBuild('1.0.2-nightly.5', latest)).state).toBe('current')
+  })
+  it('is unknown with no readable latest or an unreadable installed version', async () => {
+    expect(await checkForNewerBuild('0.9.0', reply({}, false, 404))).toEqual({ state: 'unknown' })
+    expect((await checkForNewerBuild('test', latest)).state).toBe('unknown')
   })
 })
 

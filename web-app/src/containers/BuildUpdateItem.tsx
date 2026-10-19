@@ -5,10 +5,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Switch } from '@/components/ui/switch'
 import { CardItem } from '@/containers/Card'
 import { useBuildUpdate } from '@/hooks/useBuildUpdate'
+import { getServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
 /**
- * Settings, General: whether a newer nightly build exists. Off by default, so
+ * Settings, General: whether a newer stable release exists. Off by default, so
  * Flint asks GitHub nothing until the person turns this on or presses Check now.
  */
 export function BuildUpdateItem() {
@@ -30,7 +31,7 @@ export function BuildUpdateItem() {
 
   const status =
     last?.state === 'newer'
-      ? t('settings:general.buildNewer')
+      ? t('settings:general.buildNewer', { version: last.latest })
       : last?.state === 'current'
         ? t('settings:general.buildCurrent')
         : last?.state === 'unknown'
@@ -63,6 +64,11 @@ export function BuildUpdateItem() {
       description={status ? <span className="text-foreground">{status}</span> : undefined}
       actions={
         <div className="flex items-center gap-3">
+          {last?.state === 'newer' && (
+            <Button size="sm" onClick={() => void getServiceHub().opener().openUrl(last.url)}>
+              {t('settings:general.buildDownload')}
+            </Button>
+          )}
           <Button variant="outline" size="sm" disabled={busy} onClick={() => void check()}>
             {busy ? t('settings:general.buildChecking') : t('settings:general.buildCheckNow')}
           </Button>
