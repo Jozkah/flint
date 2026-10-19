@@ -183,7 +183,7 @@ import {
   acceptsSystemRole,
   foldSummaryIntoSystem,
 } from '@/lib/compactionSystemRole'
-import { modelSummarizer } from '@/lib/compactionSummarizer'
+import { manualSummarizer, modelSummarizer } from '@/lib/compactionSummarizer'
 import {
   applyChatCompaction,
   readChatCompaction,
@@ -2564,15 +2564,31 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       signal?: AbortSignal
     }
   ) {
+    // Asked for by the user: a model that cannot summarize is an error they
+    // are told about, never a digest in place of their conversation.
+    const manual = opts.reason === 'manual'
+    const chosen = manual
+      ? manualSummarizer({
+          provider: opts.provider,
+          modelId: opts.modelId,
+          session: opts.session,
+          maxOutputTokens: opts.summaryMaxTokens,
+          window: opts.window,
+          model: () => this.model,
+        })
+      : null
     const result = await compactHistory(history, {
-      summarize: modelSummarizer({
-        provider: opts.provider,
-        modelId: opts.modelId,
-        session: opts.session,
-        maxOutputTokens: opts.summaryMaxTokens,
-        window: opts.window,
-        model: () => this.model,
-      }),
+      summarize:
+        chosen?.summarize ??
+        modelSummarizer({
+          provider: opts.provider,
+          modelId: opts.modelId,
+          session: opts.session,
+          maxOutputTokens: opts.summaryMaxTokens,
+          window: opts.window,
+          model: () => this.model,
+        }),
+      ...(manual ? { fallback: false, summarizedBy: chosen?.usedBy } : {}),
       keepRecent: opts.keepRecent,
       splitTurn: opts.splitTurn,
       reason: opts.reason,

@@ -1172,7 +1172,11 @@
     "compacting": "Сжатие…",
     "compactFailed": "Пока нечего сжимать.",
     "newSession": "Новая сессия",
-    "compactSuperseded": "Беседа изменилась во время сжатия, поэтому ничего не заменено. Сожмите её ещё раз."
+    "compactSuperseded": "Беседа изменилась во время сжатия, поэтому ничего не заменено. Сожмите её ещё раз.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "Для автосжатия нужен размер контекста, а у {{model}} Flint не может его найти. Задайте «Макс. токенов контекста» для этой модели, чтобы длинные чаты сжимались до заполнения. Если провайдер отклоняет запрос из-за длины, Flint сжимает и повторяет один раз.",
   "compaction": {

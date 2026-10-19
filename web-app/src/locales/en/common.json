@@ -1191,7 +1191,11 @@
     "compacting": "Compacting…",
     "compactFailed": "Nothing to compact yet.",
     "newSession": "New session",
-    "compactSuperseded": "The conversation changed while it was being compacted, so nothing was replaced. Compact again."
+    "compactSuperseded": "The conversation changed while it was being compacted, so nothing was replaced. Compact again.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "Auto-compact needs a context size, and {{model}} has none Flint can find. Set Max Context Tokens for this model so long chats compact before they fill it. If the provider refuses a request for its length, Flint compacts and retries once.",
   "compaction": {

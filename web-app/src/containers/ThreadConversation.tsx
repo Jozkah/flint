@@ -155,6 +155,7 @@ import { toast } from 'sonner'
 import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import {
   readChatCompaction,
+  writeChatCompaction,
   registerChatCompactor,
 } from '@/lib/chatCompaction'
 import {
@@ -162,7 +163,7 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { unloadForContextResize } from '@/lib/contextResizeUnload'
-import { resolveAutoCompact } from '@/lib/compaction'
+import { CompactionSummaryError, resolveAutoCompact } from '@/lib/compaction'
 import { getCompactionPolicy } from '@/lib/compactionPolicy'
 import { Button } from '@/components/ui/button'
 import {
@@ -2761,18 +2762,41 @@ export function ThreadConversation({
   const handleCompact = async (opts: { thenRegenerate?: boolean } = {}) => {
     if (compacting || status === 'streaming' || status === 'submitted') return
     setCompacting(true)
+    const before = readChatCompaction(threadId)
     try {
       const record = await compactNow(chatMessages)
       if (!record) {
         toast.info(t('common:budget.compactFailed'))
         return
       }
+      toast.success(
+        t('common:budget.compactDone', { model: record.model ?? '' }),
+        {
+          action: {
+            label: t('common:budget.compactUndo'),
+            onClick: () => {
+              // Messages are kept whole in Chat; undoing forgets the summary
+              // so requests send the full history again. Only while it is
+              // still this compaction in force.
+              if (readChatCompaction(threadId)?.record.at !== record.at) {
+                toast.info(t('common:budget.compactUndoStale'))
+                return
+              }
+              writeChatCompaction(threadId, before)
+            },
+          },
+        }
+      )
       // From the context banner: the request failed for room, so it is sent
       // again on the room compaction freed.
       if (opts.thenRegenerate) handleRegenerate()
     } catch (e) {
       console.warn('[chat] compaction failed', e)
-      toast.error(t('common:budget.compactFailed'))
+      toast.error(
+        e instanceof CompactionSummaryError
+          ? t('common:budget.compactFailedReason', { reason: e.reason })
+          : t('common:budget.compactFailed')
+      )
     } finally {
       setCompacting(false)
     }

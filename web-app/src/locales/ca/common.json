@@ -1162,7 +1162,11 @@
     "compacting": "Compactant…",
     "compactFailed": "Encara no hi ha res a compactar.",
     "newSession": "Sessió nova",
-    "compactSuperseded": "La conversa ha canviat mentre es compactava, així que no s'ha substituït res. Torna-la a compactar."
+    "compactSuperseded": "La conversa ha canviat mentre es compactava, així que no s'ha substituït res. Torna-la a compactar.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "La compactació automàtica necessita una mida de context, i {{model}} no en té cap que Flint pugui trobar. Estableix el màxim de tokens de context per a aquest model perquè els xats llargs es compactin abans d'omplir-lo. Si el proveïdor rebutja una petició per la seva longitud, Flint compacta i ho torna a provar una vegada.",
   "compaction": {

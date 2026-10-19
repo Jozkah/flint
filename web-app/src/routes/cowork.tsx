@@ -336,7 +336,10 @@ import {
   DEFAULT_KEEP_RECENT,
   type CompactionRecord,
 } from '@/lib/compaction'
-import { modelSummarizer } from '@/lib/compactionSummarizer'
+import { manualSummarizer, modelSummarizer } from '@/lib/compactionSummarizer'
+import { CompactionSummaryError, estimateHistoryTokens } from '@/lib/compaction'
+import { fixedPromptTokens } from '@/lib/contextBreakdown'
+import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import {
   getCompactionPolicy,
   DEFAULT_COMPACTION_POLICY,
@@ -5212,20 +5215,31 @@ export function CoworkPage() {
     setCompacting(true)
     const snapshot = cur.messages
     try {
-      const result = await compactHistory(cur.messages ?? [], {
-        summarize: modelSummarizer({
-          provider: selectedProvider,
-          modelId: selectedModel.id,
-          session: sid,
-          maxOutputTokens: policy.summaryMaxTokens,
-          window: configuredContextTokens(
-            modelCapabilities,
-            largestAcceptedPrompt(cur.turns)
-          ),
-        }),
-        keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
-        reason: 'manual',
+      const summarizer = manualSummarizer({
+        provider: selectedProvider,
+        modelId: selectedModel.id,
+        session: sid,
+        maxOutputTokens: policy.summaryMaxTokens,
+        window: configuredContextTokens(
+          modelCapabilities,
+          largestAcceptedPrompt(cur.turns)
+        ),
       })
+      let result: Awaited<ReturnType<typeof compactHistory>>
+      try {
+        result = await compactHistory(cur.messages ?? [], {
+          summarize: summarizer.summarize,
+          keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
+          reason: 'manual',
+          // Never swap the conversation for a first-line digest unasked.
+          fallback: false,
+          summarizedBy: summarizer.usedBy,
+        })
+      } catch (error) {
+        if (!(error instanceof CompactionSummaryError)) throw error
+        toast.error(t('common:budget.compactFailedReason', { reason: error.reason }))
+        return
+      }
       if (!result) {
         toast.info(t('common:budget.compactFailed'))
         return
@@ -5239,6 +5253,12 @@ export function CoworkPage() {
         toast.info(t('common:budget.compactSuperseded'))
         return
       }
+      // The counter reads the last reply's usage, which described the long
+      // history. Until the next reply it shows what the compacted request
+      // will carry: the summary and kept turns plus the fixed prompt.
+      const estimated =
+        estimateHistoryTokens(result.messages) +
+        fixedPromptTokens(useContextBreakdown.getState().byId[sid])
       useCoworkSessions
         .getState()
         .commitTurns(
@@ -5246,8 +5266,38 @@ export function CoworkPage() {
           [{ role: 'assistant', content: '', compaction: result.record }],
           result.messages,
           [],
-          undefined
+          {
+            prompt_tokens: estimated,
+            completion_tokens: 0,
+            total_tokens: estimated,
+          } as Usage
         )
+      const committed = useCoworkSessions
+        .getState()
+        .sessions.find((one) => one.id === sid)?.messages
+      toast.success(
+        t('common:budget.compactDone', { model: result.record.model ?? '' }),
+        {
+          action: {
+            label: t('common:budget.compactUndo'),
+            onClick: () => {
+              const now = useCoworkSessions
+                .getState()
+                .sessions.find((one) => one.id === sid)
+              // Only while nothing was sent since: otherwise it would drop it.
+              if (now?.messages !== committed) {
+                toast.info(t('common:budget.compactUndoStale'))
+                return
+              }
+              useCoworkSessions.setState((st) => ({
+                sessions: st.sessions.map((one) =>
+                  one.id === sid ? { ...one, messages: snapshot } : one
+                ),
+              }))
+            },
+          },
+        }
+      )
       void recordLifecycle(
         { session: sid, run: '', source: 'cowork' },
         {

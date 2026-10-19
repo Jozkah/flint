@@ -1151,7 +1151,11 @@
     "compacting": "압축 중…",
     "compactFailed": "아직 압축할 내용이 없습니다.",
     "newSession": "새 세션",
-    "compactSuperseded": "압축하는 동안 대화가 바뀌어 아무것도 교체하지 않았습니다. 다시 압축하세요."
+    "compactSuperseded": "압축하는 동안 대화가 바뀌어 아무것도 교체하지 않았습니다. 다시 압축하세요.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "자동 압축에는 컨텍스트 크기가 필요한데, {{model}}에서 Flint가 찾을 수 있는 값이 없습니다. 긴 채팅이 가득 차기 전에 압축되도록 이 모델의 최대 컨텍스트 토큰을 설정하세요. 공급자가 길이 때문에 요청을 거부하면 Flint가 압축한 뒤 한 번 다시 시도합니다.",
   "compaction": {

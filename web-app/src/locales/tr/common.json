@@ -1151,7 +1151,11 @@
     "compacting": "Sıkıştırılıyor…",
     "compactFailed": "Henüz sıkıştırılacak bir şey yok.",
     "newSession": "Yeni oturum",
-    "compactSuperseded": "Sohbet sıkıştırılırken değişti, bu yüzden hiçbir şey değiştirilmedi. Yeniden sıkıştırın."
+    "compactSuperseded": "Sohbet sıkıştırılırken değişti, bu yüzden hiçbir şey değiştirilmedi. Yeniden sıkıştırın.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "Otomatik sıkıştırma bir bağlam boyutu gerektirir ve {{model}} için Flint'in bulabildiği bir boyut yok. Uzun sohbetlerin dolmadan önce sıkıştırılması için bu model için En Yüksek Bağlam Token'ını ayarlayın. Sağlayıcı bir isteği uzunluğu nedeniyle reddederse Flint sıkıştırır ve bir kez yeniden dener.",
   "compaction": {

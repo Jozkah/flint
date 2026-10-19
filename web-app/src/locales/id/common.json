@@ -1146,7 +1146,11 @@
     "compacting": "Memadatkan…",
     "compactFailed": "Belum ada yang perlu dipadatkan.",
     "newSession": "Sesi baru",
-    "compactSuperseded": "Percakapan berubah saat sedang dipadatkan, jadi tidak ada yang diganti. Padatkan lagi."
+    "compactSuperseded": "Percakapan berubah saat sedang dipadatkan, jadi tidak ada yang diganti. Padatkan lagi.",
+    "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
+    "compactDone": "Compacted. Summary written by {{model}}.",
+    "compactUndo": "Undo",
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
   },
   "autoCompactNeedsWindow": "Auto-compact membutuhkan ukuran konteks, dan {{model}} tidak memilikinya yang dapat ditemukan Flint. Atur Max Context Tokens untuk model ini agar obrolan panjang dipadatkan sebelum penuh. Jika provider menolak permintaan karena panjangnya, Flint memadatkan dan mencoba sekali lagi.",
   "compaction": {
