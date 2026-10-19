@@ -1417,6 +1417,10 @@
     "undo": "Undo",
     "undoing": "Restoring...",
     "restored": "Restored {{n}}.",
-    "restoreFailed": "{{n}} could not be restored."
+    "restoreFailed": "{{n}} could not be restored.",
+    "deleteAllMenu": "Delete all...",
+    "deleteAllEmpty": "Nothing to delete.",
+    "scopeAll": "Covers everything in the list, not only the rows the current filter shows.",
+    "archiveInstead": "Archive instead"
   }
 }

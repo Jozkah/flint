@@ -1414,6 +1414,10 @@
     "undo": "復原",
     "undoing": "正在還原...",
     "restored": "已還原 {{n}} 項。",
-    "restoreFailed": "有 {{n}} 項無法還原。"
+    "restoreFailed": "有 {{n}} 項無法還原。",
+    "deleteAllMenu": "全部刪除...",
+    "deleteAllEmpty": "沒有可刪除的內容。",
+    "scopeAll": "範圍是清單中的全部內容，而不只是目前篩選顯示的列。",
+    "archiveInstead": "改為封存"
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Progress } from '@/components/ui/progress'
 import {
   Dialog,
@@ -44,6 +45,12 @@ type Props = {
   onFinished?: () => void
   /** Where the Archive page is (the desktop app only); absent hides the link. */
   onOpenArchive?: () => void
+  /** Shows a "keep pinned" switch on the delete confirmation (entry points scoped to one kind). */
+  keepPinned?: { value: boolean; onChange: (v: boolean) => void; count: number }
+  /** One line saying what the count covers (for example that a list filter is ignored). */
+  scopeNote?: string
+  /** Offers Archive as the safer way out of the delete confirmation. */
+  onSwitchToArchive?: () => void
 }
 
 /**
@@ -60,6 +67,9 @@ export function BulkConversationsDialog({
   canStart,
   onFinished,
   onOpenArchive,
+  keepPinned,
+  scopeNote,
+  onSwitchToArchive,
 }: Props) {
   const { t } = useTranslation()
   const archivePage = !!onOpenArchive
@@ -185,6 +195,26 @@ export function BulkConversationsDialog({
                 </li>
               ))}
             </ul>
+            {scopeNote && (
+              <p className="text-xs text-muted-foreground" data-testid="bulk-scope">
+                {scopeNote}
+              </p>
+            )}
+            {isDelete && keepPinned && keepPinned.count > 0 && (
+              <label className="flex min-h-11 items-center justify-between gap-3 text-sm sm:min-h-0">
+                <span>
+                  {t('settings:bulk.keepPinned')}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {t('settings:bulk.pinnedCount', { n: keepPinned.count })}
+                  </span>
+                </span>
+                <Switch
+                  checked={keepPinned.value}
+                  onCheckedChange={keepPinned.onChange}
+                  data-testid="bulk-keep-pinned"
+                />
+              </label>
+            )}
             {isDelete && (
               <p className="text-xs text-muted-foreground">
                 {t('settings:bulk.projectsSafe')}
@@ -228,6 +258,16 @@ export function BulkConversationsDialog({
               >
                 {t('common:cancel')}
               </Button>
+              {isDelete && onSwitchToArchive && (
+                <Button
+                  variant="surface"
+                  className="w-full sm:w-auto pointer-coarse:h-11"
+                  onClick={onSwitchToArchive}
+                  data-testid="bulk-switch-archive"
+                >
+                  {t('settings:bulk.archiveInstead')}
+                </Button>
+              )}
               <Button
                 variant={isDelete ? 'destructive' : 'default'}
                 className="w-full sm:w-auto pointer-coarse:h-11"

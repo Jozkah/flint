@@ -65,7 +65,7 @@ import { ThreadStatusMark, updatedMs } from '@/containers/ThreadStatusMark'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import type { ProjectModel } from '@/services/projects/types'
 import { DeleteProjectDialog } from '@/containers/dialogs/DeleteProjectDialog'
-import { DeleteAllThreadsDialog } from '@/containers/dialogs/DeleteAllThreadsDialog'
+import { BulkKindDialog } from '@/containers/BulkKindDialog'
 import { DeleteSelectedThreadsDialog } from '@/containers/dialogs/DeleteSelectedThreadsDialog'
 import { Button } from '@/components/ui/button'
 import { useThreads } from '@/hooks/useThreads'
@@ -431,7 +431,10 @@ export function ChatsNav() {
   const hasSeveralThreads = useThreads((s) => Object.keys(s.threads).length > 1)
   const hasNoThreads = useThreads((s) => Object.keys(s.threads).length === 0)
   const isLoadingThreads = useThreads((s) => s.isLoadingThreads)
-  const deleteAllThreads = useThreads((s) => s.deleteAllThreads)
+  const hasBulkThreads = useThreads((s) =>
+    Object.keys(s.threads).some((id) => id !== TEMPORARY_CHAT_ID)
+  )
+  const [bulkOpen, setBulkOpen] = useState(false)
   const deleteThread = useThreads((s) => s.deleteThread)
   const folders = useThreadManagement((s) => s.folders)
   const addFolder = useThreadManagement((s) => s.addFolder)
@@ -613,18 +616,26 @@ export function ChatsNav() {
                   <span>{t('common:shell.status.none')}</span>
                 </div>
               </div>
+              <DropdownMenuSeparator />
               {hasSeveralThreads && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setSelecting(true)}>
-                    <CheckSquare className="size-4" />
-                    <span>{t('chat:bulkDelete.select')}</span>
-                  </DropdownMenuItem>
-                  <DeleteAllThreadsDialog
-                    onDeleteAll={deleteAllThreads}
-                    onDropdownClose={() => setFilterMenuOpen(false)}
-                  />
-                </>
+                <DropdownMenuItem onSelect={() => setSelecting(true)}>
+                  <CheckSquare className="size-4" />
+                  <span>{t('chat:bulkDelete.select')}</span>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={!hasBulkThreads}
+                onSelect={() => setBulkOpen(true)}
+                data-testid="chats-delete-all"
+              >
+                <Trash2 className="size-4" />
+                <span>{t('settings:bulk.deleteAllMenu')}</span>
+              </DropdownMenuItem>
+              {!hasBulkThreads && (
+                <p className="px-2 pb-1 text-xs text-muted-foreground">
+                  {t('settings:bulk.deleteAllEmpty')}
+                </p>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -710,6 +721,17 @@ export function ChatsNav() {
         onOpenChange={setConfirmBulk}
         onDone={stopSelecting}
       />
+      {bulkOpen && (
+        <BulkKindDialog
+          kind="thread"
+          onClose={() => setBulkOpen(false)}
+          onDone={() => {
+            const open = currentThreadId
+            if (open && !useThreads.getState().threads[open])
+              void navigate({ to: route.home })
+          }}
+        />
+      )}
       <GroupPrompts surface="home" />
       {foldersGroup && (
         <GroupFoldersDialog

@@ -1420,6 +1420,10 @@
     "undo": "Annulla",
     "undoing": "Ripristino...",
     "restored": "{{n}} ripristinati.",
-    "restoreFailed": "{{n}} non è stato possibile ripristinarli."
+    "restoreFailed": "{{n}} non è stato possibile ripristinarli.",
+    "deleteAllMenu": "Elimina tutto...",
+    "deleteAllEmpty": "Niente da eliminare.",
+    "scopeAll": "Riguarda tutto l'elenco, non solo le righe mostrate dal filtro attuale.",
+    "archiveInstead": "Archivia invece"
   }
 }

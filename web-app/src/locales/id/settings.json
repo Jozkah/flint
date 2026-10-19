@@ -1411,6 +1411,10 @@
     "undo": "Urungkan",
     "undoing": "Memulihkan...",
     "restored": "{{n}} dipulihkan.",
-    "restoreFailed": "{{n}} tidak dapat dipulihkan."
+    "restoreFailed": "{{n}} tidak dapat dipulihkan.",
+    "deleteAllMenu": "Hapus semua...",
+    "deleteAllEmpty": "Tidak ada yang bisa dihapus.",
+    "scopeAll": "Mencakup semua isi daftar, bukan hanya baris yang ditampilkan filter saat ini.",
+    "archiveInstead": "Arsipkan saja"
   }
 }

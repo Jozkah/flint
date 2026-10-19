@@ -1463,6 +1463,10 @@
     "undo": "Cofnij",
     "undoing": "Przywracanie...",
     "restored": "Przywrócono: {{n}}.",
-    "restoreFailed": "Nie udało się przywrócić: {{n}}."
+    "restoreFailed": "Nie udało się przywrócić: {{n}}.",
+    "deleteAllMenu": "Usuń wszystko...",
+    "deleteAllEmpty": "Nie ma czego usuwać.",
+    "scopeAll": "Obejmuje wszystko z listy, a nie tylko wiersze pokazane przez bieżący filtr.",
+    "archiveInstead": "Zarchiwizuj zamiast tego"
   }
 }

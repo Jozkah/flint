@@ -1414,6 +1414,10 @@
     "undo": "撤销",
     "undoing": "正在恢复...",
     "restored": "已恢复 {{n}} 项。",
-    "restoreFailed": "有 {{n}} 项无法恢复。"
+    "restoreFailed": "有 {{n}} 项无法恢复。",
+    "deleteAllMenu": "全部删除...",
+    "deleteAllEmpty": "没有可删除的内容。",
+    "scopeAll": "范围是列表中的全部内容，而不仅是当前筛选显示的行。",
+    "archiveInstead": "改为归档"
   }
 }
