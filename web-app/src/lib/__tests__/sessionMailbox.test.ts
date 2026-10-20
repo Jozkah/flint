@@ -102,6 +102,41 @@ describe('sessionMailbox', () => {
     expect(toMailboxError(typed)).toBe(typed)
   })
 
+  it('registers an inbound hold and calls the held-mail commands', async () => {
+    invoke.mockResolvedValue(true)
+    await sessionMailbox.register({
+      sessionId: 'S2',
+      displayName: 'T',
+      acceptsMessages: true,
+      inbound: 'hold',
+    })
+    expect(invoke).toHaveBeenLastCalledWith('plugin:agent-tools|mailbox_session_register', {
+      dataFolder: '/mock/jan/data',
+      sessionId: 'S2',
+      displayName: 'T',
+      folder: null,
+      acceptsMessages: true,
+      inbound: 'hold',
+    })
+    await sessionMailbox.held('S2')
+    expect(invoke).toHaveBeenLastCalledWith('plugin:agent-tools|mailbox_held', {
+      dataFolder: '/mock/jan/data',
+      sessionId: 'S2',
+    })
+    await sessionMailbox.approveHeld('S2', 'm1')
+    expect(invoke).toHaveBeenLastCalledWith('plugin:agent-tools|mailbox_held_approve', {
+      dataFolder: '/mock/jan/data',
+      sessionId: 'S2',
+      messageId: 'm1',
+    })
+    await sessionMailbox.denyHeld('S2', 'm1')
+    expect(invoke).toHaveBeenLastCalledWith('plugin:agent-tools|mailbox_held_deny', {
+      dataFolder: '/mock/jan/data',
+      sessionId: 'S2',
+      messageId: 'm1',
+    })
+  })
+
   it('calls the contract commands with the data folder', async () => {
     invoke.mockResolvedValue([])
     await sessionMailbox.takeForDelivery('S2')

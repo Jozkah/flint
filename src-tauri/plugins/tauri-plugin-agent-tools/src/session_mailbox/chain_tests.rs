@@ -191,6 +191,7 @@ fn a_chain_that_comes_back_round_twice_is_held_not_woken() {
         hops: 1,
         chain_path: vec!["r1".into(), "r2".into()],
         hold: None,
+        inbound_hold: false,
     };
     append_jsonl(&mb.inbox_path("r1"), &chained).unwrap();
     wake(&mb, "r1", "w1");

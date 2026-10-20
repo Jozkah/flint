@@ -11,7 +11,7 @@
 import { sessionMailbox, type SessionMailbox } from '@/lib/sessionMailbox'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
-import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { inboundModeOf, useSessionMessaging } from '@/hooks/useSessionMessaging'
 import {
   selectPendingApprovalCount,
   useToolApprovalRequests,
@@ -76,6 +76,9 @@ export function notifySessionRestored(sessionId: string): void {
 const acceptsMessages = (sessionId: string) =>
   useSessionMessaging.getState().optOut[sessionId] !== true
 
+const inboundMode = (sessionId: string) =>
+  inboundModeOf(useSessionMessaging.getState(), sessionId)
+
 /** Isolated in a worktree or copy: awareness only for shared-folder claims. */
 const isIsolated = (s: CoworkSession) => s.access === 'managed-worktree'
 
@@ -83,7 +86,7 @@ const registrationKey = (s: CoworkSession) =>
   JSON.stringify([
     s.title,
     s.folder ?? null,
-    acceptsMessages(s.id),
+    inboundMode(s.id),
     s.access ?? null,
   ])
 
@@ -127,6 +130,8 @@ export function createPresenceSync(
       displayName: latest.title,
       folder: latest.folder,
       acceptsMessages: acceptsMessages(latest.id),
+      // Only a hold is sent: accept and refuse are the existing flag.
+      ...(inboundMode(latest.id) === 'hold' ? { inbound: 'hold' as const } : {}),
       // Only sessions that have an access mode say how they share the folder.
       ...(latest.access !== undefined
         ? { access: latest.access, isolated: isIsolated(latest) }
@@ -296,9 +301,11 @@ export function createPresenceSync(
     // Turning the opt-out on or off is registered at once, not after the
     // debounce: the setting is a promise about who may write to this session.
     const offOptOut = useSessionMessaging.subscribe((state, prev) => {
-      if (state.optOut === prev.optOut) return
+      if (state.optOut === prev.optOut && state.holdInbound === prev.holdInbound) {
+        return
+      }
       for (const s of useCoworkSessions.getState().sessions) {
-        if ((state.optOut[s.id] === true) !== (prev.optOut[s.id] === true)) {
+        if (inboundModeOf(state, s.id) !== inboundModeOf(prev, s.id)) {
           registerNow(s.id)
         }
       }

@@ -23,6 +23,10 @@
     "label": "Przyjmuj wiadomości z innych sesji",
     "description": "Gdy wyłączone, inne sesje dowiadują się, że ta nie przyjmuje wiadomości, a nic, co wyślą, do niej nie dotrze."
   },
+  "hold": {
+    "label": "Ask me before delivering",
+    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+  },
   "subagentQuestion": {
     "title": "{{name}} pyta agenta",
     "open": "Oczekuje na odpowiedź",
@@ -86,5 +90,16 @@
   "waitingIn_one": "{{count}} wiadomość w {{session}}",
   "waitingIn_few": "{{count}} wiadomości w {{session}}",
   "waitingIn_many": "{{count}} wiadomości w {{session}}",
-  "waitingIn_other": "{{count}} wiadomości w {{session}}"
+  "waitingIn_other": "{{count}} wiadomości w {{session}}",
+  "held": {
+    "title": "Messages waiting for approval",
+    "banner": "Waiting for your approval ({{count}})",
+    "from": "From {{name}}",
+    "notice": "Status notice",
+    "expires": "Expires in {{minutes}} min",
+    "approve": "Approve",
+    "deny": "Deny",
+    "approveLabel": "Approve the message from {{name}}",
+    "denyLabel": "Deny the message from {{name}}"
+  }
 }

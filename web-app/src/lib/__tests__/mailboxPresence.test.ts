@@ -269,6 +269,30 @@ describe('mailbox presence', () => {
     })
   })
 
+  it('registers an inbound hold at once, and drops it when the session refuses', async () => {
+    await vi.advanceTimersByTimeAsync(100)
+    mailbox.register.mockClear()
+    useSessionMessaging.getState().setHoldInbound('A', true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+      acceptsMessages: true,
+      inbound: 'hold',
+    })
+    // Refusing wins over holding, and is the old flag alone.
+    useSessionMessaging.getState().setAcceptsMessages('A', false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+      acceptsMessages: false,
+    })
+    useSessionMessaging.setState({ optOut: {}, holdInbound: {} })
+  })
+
   it('reports an approval wait while running, and clears it', async () => {
     await vi.advanceTimersByTimeAsync(100)
     useCoworkRun.getState().startRun('A', 'r1')
