@@ -85,6 +85,7 @@ import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { SPAWN_SESSION_TOOL_NAME, runSpawnSession } from '@/lib/spawnSession'
 import { CAMPAIGN_TOOLS } from '@/lib/campaignToolNames'
 import { gateStopSession } from '@/lib/sessionStopGate'
+import { gateWorkflowLaunch } from '@/lib/workflowLaunchGate'
 import {
   GIT_TOOL_NAME,
   gitApproval,
@@ -1397,6 +1398,8 @@ async function routeCoworkTool(
           return { output: `ERROR: ${converted}`, isError: true }
         }
         teamInput = converted
+        const declined = await gateWorkflowLaunch(call, ctx, signal)
+        if (declined) return declined
       }
       const onTeam = ctx.onTeam
       const inputOf = call.input as Record<string, unknown> | null

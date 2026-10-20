@@ -11,7 +11,9 @@ import { jsonSchema, type Tool } from 'ai'
 import { MAX_TEAM_TASKS } from '@/lib/coworkTeam'
 import { schemaProblem } from '@/lib/coworkWorkflowSchema'
 
-export const WORKFLOW_TOOL_NAME = 'workflow'
+import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
+
+export { WORKFLOW_TOOL_NAME }
 
 type Raw = Record<string, unknown>
 const isObject = (v: unknown): v is Raw =>

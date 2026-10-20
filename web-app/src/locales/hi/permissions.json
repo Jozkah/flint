@@ -41,6 +41,7 @@
     "gitRemote": "Flint {{command}} चलाना चाहता है, जो {{target}} को बदलता है",
     "gitDestructive": "Flint {{command}} चलाना चाहता है, जिससे काम खो सकता है",
     "approveCampaign": "Flint कैंपेन \"{{title}}\" ({{count}} कार्य) शुरू करना चाहता है",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
     "spendPause": "Flint इस रन को उसके खर्च-विराम से आगे जारी रखना चाहता है",
     "changeFileOutside": "Flint {{target}} बदलना चाहता है, जो {{workspace}} के बाहर है",
     "changeManyFilesOutside": "Flint {{count}} फ़ाइलें बदलना चाहता है, कुछ {{workspace}} के बाहर हैं"
@@ -63,6 +64,7 @@
     "gitRemote": "यह किसी रिमोट रिपॉज़िटरी में बदलाव भेजता है जिसे दूसरे लोग देख सकते हैं। Flint हर बार पूछता है, जब तक आप इस बातचीत के लिए सामान्य रिमोट Git क्रियाओं की अस्थायी अनुमति न दें।",
     "gitDestructive": "यह जो हटाता या ओवरराइट करता है, वह शायद वापस न पाया जा सके।",
     "campaignPlan": "यह अलग-अलग सत्र शुरू करता है, हर एक अपनी वर्कट्री ब्रांच पर, जो फ़ाइलें पढ़ते और बदलते हैं और आपके मॉडल का कोटा साथ-साथ इस्तेमाल करते हैं। योजना को स्वीकृत करने से किसी कार्य की कोई कॉल स्वीकृत नहीं होती। Flint हर बार पूछता है।",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
     "spendPause": "रन तब तक सशुल्क मॉडल कोटा इस्तेमाल करता रहता है जब तक वह खत्म न हो या अपनी सीमा तक न पहुँच जाए। अस्वीकार करने पर रन रुक जाता है।"
   },
   "repeat": {

@@ -82,4 +82,23 @@ describe('workflow', () => {
     expect(tasks.find((t) => t.id === 'a')?.phase).toEqual({ name: 'Survey', index: 0 })
     expect(tasks.find((t) => t.id === 'm')?.phase).toEqual({ name: 'Phase 2', index: 1 })
   })
+
+  it('never hands a failed agent’s answer to the next phase, and says what was blocked', async () => {
+    const tasks = plan([
+      { agents: [{ id: 'a', description: 'x' }, { id: 'b', description: 'y' }] },
+      { agents: [{ id: 'm', description: 'merge' }] },
+    ])
+    const ran: string[] = []
+    const outcome = await runTeam(tasks, {
+      runTask: async (t) => {
+        ran.push(t.id)
+        return t.id === 'b'
+          ? { taskId: t.id, ok: false, output: 'boom', producedBy: t.id }
+          : { taskId: t.id, ok: true, output: 'fine', producedBy: t.id }
+      },
+    })
+    expect(ran.sort()).toEqual(['a', 'b'])
+    expect(outcome.ok && outcome.state.m.status).toBe('blocked')
+    expect(outcome.ok && outcome.report.allDone).toBe(false)
+  })
 })

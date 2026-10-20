@@ -866,6 +866,21 @@ describe('what holds a session in place while it works', () => {
       expect(got.output).toBe('combined report')
     })
 
+    it('asks before a large run and does not start it on a no', async () => {
+      const tasks = new BackgroundTasks()
+      const onTeam = vi.fn(async () => ({ output: 'report' }))
+      const onApprove = vi.fn(async () => false)
+      const agents = Array.from({ length: 9 }, () => ({ description: 'd' }))
+      const out = await dispatchCoworkTool(
+        call('workflow', { background: true, phases: [{ agents }] }),
+        ctx({ tasks, onTeam, onApprove, mode: 'ask' as CoworkMode })
+      )
+      expect(out.isError).toBe(true)
+      expect(onApprove).toHaveBeenCalledTimes(1)
+      expect(onTeam).not.toHaveBeenCalled()
+      expect(tasks.status('c1')).toBeUndefined()
+    })
+
     it('runs in the foreground without the flag', async () => {
       const tasks = new BackgroundTasks()
       const onTeam = vi.fn(async () => ({ output: 'report' }))

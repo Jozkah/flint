@@ -41,6 +41,7 @@
     "gitRemote": "Flint chce uruchomić {{command}}, co zmienia {{target}}",
     "gitDestructive": "Flint chce uruchomić {{command}}, co może spowodować utratę pracy",
     "approveCampaign": "Flint chce rozpocząć kampanię „{{title}}” (zadań: {{count}})",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
     "spendPause": "Flint chce kontynuować to uruchomienie po przekroczeniu progu wstrzymania wydatków",
     "changeFileOutside": "Flint chce zmienić {{target}}, który jest poza {{workspace}}",
     "changeManyFilesOutside": "Flint chce zmienić {{count}} plików, część poza {{workspace}}"
@@ -63,6 +64,7 @@
     "gitRemote": "Wysyła zmiany do zdalnego repozytorium, które mogą zobaczyć inni ludzie. Flint pyta za każdym razem, chyba że tymczasowo zezwolisz na zwykłe zdalne akcje Git w tej rozmowie.",
     "gitDestructive": "To, co usuwa lub nadpisuje, może nie dać się odzyskać.",
     "campaignPlan": "Uruchamia osobne sesje, każdą na własnym worktree branchu, które czytają i zmieniają pliki oraz równolegle zużywają limit Twojego modelu. Zatwierdzenie planu nie zatwierdza żadnego wywołania wykonywanego przez zadanie. Flint pyta za każdym razem.",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
     "spendPause": "Uruchomienie nadal zużywa płatny limit modelu, aż się zakończy lub osiągnie pułap. Odmowa je zatrzymuje."
   },
   "repeat": {
