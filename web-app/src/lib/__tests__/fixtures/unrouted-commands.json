@@ -404,6 +404,10 @@
     "web-app/src/containers/extensions/PluginsTab.tsx (via getPluginSources)",
     "web-app/src/lib/pluginStore.ts"
   ],
+  "agent_policy_rule_warnings": [
+    "web-app/src/containers/PolicyRuleWarningsCard.tsx",
+    "web-app/src/routes/settings/permissions.tsx (via PolicyRuleWarningsCard)"
+  ],
   "agent_pr_check_log": [
     "web-app/src/containers/PrBar.tsx"
   ],
