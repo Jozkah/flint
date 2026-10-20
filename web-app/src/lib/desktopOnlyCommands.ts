@@ -185,6 +185,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'agent_git_pr_for_commit',
       'agent_pr_check_log',
       'agent_pr_status',
+      'agent_policy_rule_warnings',
       'agent_projects_list',
       'agent_projects_register',
       'agent_proposal_from_worktree',

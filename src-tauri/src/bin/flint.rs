@@ -4518,8 +4518,19 @@ fn handle_models_delete(id: &str, yes: bool) {
 
 fn handle_doctor(json: bool) {
     let info = tauri_plugin_hardware::get_system_info();
+    // A mistyped rule is dropped when the policy loads, so a `deny` typo
+    // silently removes the protection it was written for. Doctor says so.
+    let root = std::env::current_dir().unwrap_or_default();
+    let rule_warnings = app_lib::core::agent::project::policy_rule_warnings(&root);
     if json {
-        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+        let mut value = serde_json::to_value(&info).unwrap();
+        if let Some(map) = value.as_object_mut() {
+            map.insert(
+                "permission_rule_warnings".into(),
+                serde_json::to_value(&rule_warnings).unwrap(),
+            );
+        }
+        println!("{}", serde_json::to_string_pretty(&value).unwrap());
     } else {
         let bold = Style::new().bold();
         println!("{}", bold.apply_to("System Information"));
@@ -4545,6 +4556,26 @@ fn handle_doctor(json: bool) {
                 println!(
                     "  {} ({:?}, VRAM {}, driver {})",
                     gpu.name, gpu.vendor, vram, gpu.driver_version
+                );
+            }
+        }
+        let bold_warn = Style::new().bold().yellow();
+        if rule_warnings.is_empty() {
+            println!("{}", bold.apply_to("Permission rules"));
+            println!("  no problems found in agent.toml");
+        } else {
+            println!("{}", bold_warn.apply_to("Permission rules: PROBLEMS"));
+            for w in &rule_warnings {
+                println!(
+                    "  [{}] `{}`: {}{}",
+                    w.list,
+                    w.rule,
+                    w.reason,
+                    if w.weakens_restriction() {
+                        " (this restriction is NOT in effect as written)"
+                    } else {
+                        ""
+                    }
                 );
             }
         }

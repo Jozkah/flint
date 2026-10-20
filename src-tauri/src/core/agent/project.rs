@@ -2027,3 +2027,15 @@ skills = ["two", "three"]
         assert!(ignored_mcp_allowlist_note(&one, path).unwrap().contains("allow_hosts is ignored"));
     }
 }
+
+/// The rules in `root`'s `agent.toml` that were dropped or can never fire.
+/// The policy still loads with the sound rules, so this (plus stderr) is the
+/// only place a mistyped `deny` shows up.
+pub fn policy_rule_warnings(
+    root: &std::path::Path,
+) -> Vec<tauri_plugin_agent_tools::permissions::RuleWarning> {
+    tauri_plugin_agent_tools::policy::load(Some(root), None)
+        .permissions
+        .warnings()
+        .to_vec()
+}

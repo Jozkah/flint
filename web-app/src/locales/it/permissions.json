@@ -354,5 +354,10 @@
     "lineLabel": "Riga",
     "ruleLabel": "Regola",
     "more": "E altre {{count}} righe segnalate"
+  },
+  "ruleWarnings": {
+    "title": "Regole di autorizzazione con problemi",
+    "description": "Alcune regole dell'agent.toml di un progetto sono state scartate o non possono mai corrispondere. Il resto viene caricato, ma queste regole non fanno ciò che dicono.",
+    "notProtecting": "Una regola restrittiva non è attiva: la protezione è inferiore a quella scritta. Correggi la regola."
   }
 }

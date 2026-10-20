@@ -354,5 +354,10 @@
     "lineLabel": "Línea",
     "ruleLabel": "Regla",
     "more": "Y {{count}} líneas marcadas más"
+  },
+  "ruleWarnings": {
+    "title": "Reglas de permisos con problemas",
+    "description": "Algunas reglas del agent.toml de un proyecto se descartaron o nunca pueden coincidir. El resto se carga, pero estas reglas no hacen lo que dicen.",
+    "notProtecting": "Una regla restrictiva no está en vigor: hay menos protección de la escrita. Corrige la regla."
   }
 }

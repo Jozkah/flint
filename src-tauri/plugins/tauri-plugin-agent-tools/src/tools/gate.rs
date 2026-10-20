@@ -687,6 +687,27 @@ pub fn resolve_decision(
             return Decision::HardDeny(DenyReason::GitInternals);
         }
     }
+    // Files that run code later -- Git hooks, editor tasks, dev containers, CI
+    // definitions, shell startup files, `.envrc`, `.npmrc` -- are persistence:
+    // a write outlives the run and executes outside the sandbox. They are asked
+    // about every time (`Ask`: no session grant, saved rule or mode that only
+    // removes prompts covers it), though an explicit allow rule that names the
+    // path is not honoured either, since a repository ships its own allow list.
+    if mutating {
+        let path_hits = tool.path_args.iter().any(|key| {
+            args.get(key)
+                .and_then(|v| v.as_str())
+                .is_some_and(crate::tools::sandbox::names_protected_persistence)
+        });
+        let command_hits = tool.capability == Capability::Exec
+            && args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .is_some_and(crate::tools::sandbox::command_names_protected_persistence);
+        if path_hits || command_hits {
+            return Decision::Prompt(PromptKind::Ask);
+        }
+    }
     // Deleting a home directory or a filesystem root is asked about every
     // time, in every mode: no allow rule, session grant or auto-approval
     // covers it. Not a hard deny -- the user may mean it -- but it is the one
@@ -912,7 +933,17 @@ pub fn resolve_decision(
             {
                 return Decision::Allow;
             }
-            if grants.covers_command(command) {
+            // Known read-only commands (`ls`, `cat src/x`, `git status`) do not
+            // need a question. Every check above has already run, and the
+            // command still runs inside the same sandbox.
+            if grants.covers_command(command)
+                || (tool.name == "bash"
+                    && perms.readonly_shell()
+                    && crate::tools::readonly_shell::is_read_only(
+                        command,
+                        crate::tools::proc::shell().flavor,
+                    ))
+            {
                 Decision::Allow
             } else {
                 Decision::Prompt(PromptKind::Exec)
@@ -1003,6 +1034,138 @@ mod tests {
 
     fn s(items: &[&str]) -> Vec<String> {
         items.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn read_only_shell_commands_run_without_a_prompt_unless_switched_off() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        let decide = |perms: &ToolPermissions, command: &str| {
+            resolve_decision(
+                lookup("bash").unwrap(),
+                &json!({ "command": command }),
+                &root,
+                None,
+                &[],
+                perms,
+                &grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let on = ToolPermissions::allow_all();
+        assert_eq!(decide(&on, "ls -la"), Decision::Allow);
+        assert_eq!(decide(&on, "git status && git diff"), Decision::Allow);
+        assert_eq!(decide(&on, "cat x > y"), Decision::Prompt(PromptKind::Exec));
+        assert_eq!(decide(&on, "ls; rm -rf x"), Decision::Prompt(PromptKind::Exec));
+        assert_eq!(decide(&on, "git diff --output=f"), Decision::Prompt(PromptKind::Exec));
+        // A credential file in the arguments is never "known read-only".
+        assert_eq!(decide(&on, "cat .env"), Decision::Prompt(PromptKind::Exec));
+        assert_eq!(decide(&on, "cat /etc/passwd"), Decision::Prompt(PromptKind::Exec));
+        // Switched off: every shell command asks again.
+        let off = ToolPermissions::allow_all().with_readonly_shell(false);
+        assert_eq!(decide(&off, "ls -la"), Decision::Prompt(PromptKind::Exec));
+        // A deny rule or an ask rule still wins over the allowlist.
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &s(&["bash(ls*)"]), &[]);
+        assert_eq!(decide(&denied, "ls -la"), Decision::HardDeny(DenyReason::Policy));
+        let asked = ToolPermissions::allow_all().with_ask(&s(&["bash(git:push)", "bash(ls *)"]));
+        assert_eq!(decide(&asked, "ls -la"), Decision::Prompt(PromptKind::Ask));
+        // Hidden state and git internals stay refused.
+        assert_eq!(decide(&on, "cat .jan/agent/agent.toml"), Decision::HardDeny(DenyReason::Hidden));
+    }
+
+    #[test]
+    fn persistence_paths_are_asked_about_every_time() {
+        let root = unique_root();
+        // Even a blanket allow and a granted write do not cover them.
+        let perms = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &s(&["write", "edit", "bash"]),
+            &[],
+            &s(&["write", "edit"]),
+        );
+        let mut grants = SessionGrants::default();
+        grants.grant(PromptKind::Write);
+        let decide = |tool: &str, args: serde_json::Value| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let ask = Decision::Prompt(PromptKind::Ask);
+        for path in [
+            ".husky/pre-commit",
+            ".vscode/tasks.json",
+            ".devcontainer/devcontainer.json",
+            ".github/workflows/ci.yml",
+            ".GitHub\\Workflows\\ci.yml",
+            ".gitlab-ci.yml",
+            ".bashrc",
+            "sub/.zshrc",
+            ".profile",
+            ".bash_profile",
+            "Documents/PowerShell/Microsoft.PowerShell_profile.ps1",
+            "profile.ps1",
+            ".envrc",
+            "lefthook.yml",
+            "lefthook.yaml",
+            ".lefthook.yml",
+            ".pre-commit-config.yaml",
+        ] {
+            for tool in ["write", "edit"] {
+                assert_eq!(
+                    decide(tool, json!({"path": path, "content": "x", "edits": []})),
+                    ask,
+                    "{tool} {path}"
+                );
+            }
+        }
+        for command in [
+            "echo x >> .bashrc",
+            "printf x > .husky/pre-commit",
+            "tee .github/workflows/ci.yml",
+            "cp evil '.vscode/tasks.json'",
+            "echo y > .env''rc",
+            "sed -i s/a/b/ lefthook.yml",
+        ] {
+            assert_eq!(decide("bash", json!({"command": command})), ask, "{command}");
+        }
+        // `.npmrc` can carry registry tokens, so the secret-file guard refuses
+        // it outright, which is stronger than the prompt.
+        assert!(matches!(
+            decide("write", json!({"path": ".npmrc", "content": "x"})),
+            Decision::HardDeny(DenyReason::SecretFile(_))
+        ));
+        // Not persistence files: lookalikes and ordinary neighbours.
+        for path in [
+            "src/main.rs",
+            ".github/CODEOWNERS",
+            ".github/workflows-notes.md",
+            "docs/vscode.md",
+            ".husky-notes.md",
+            "my.bashrc.md",
+            ".profile.d/readme",
+            "lefthook-notes.md",
+            ".envrc.example",
+        ] {
+            assert_eq!(
+                decide("write", json!({"path": path, "content": "x"})),
+                Decision::Allow,
+                "{path} wrongly protected"
+            );
+        }
+        // Reading them is not a write.
+        assert_eq!(
+            decide("read", json!({"path": ".bashrc"})),
+            Decision::Allow
+        );
     }
 
     #[test]
@@ -1548,7 +1711,8 @@ mod tests {
     #[test]
     fn bash_prompts_exec() {
         let root = unique_root();
-        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])
+            .with_readonly_shell(false);
         let grants = SessionGrants::default();
         let d = resolve_decision(
             lookup("bash").unwrap(),
@@ -1568,7 +1732,8 @@ mod tests {
     #[test]
     fn bash_command_with_spurious_job_id_still_prompts_exec() {
         let root = unique_root();
-        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])
+            .with_readonly_shell(false);
         let grants = SessionGrants::default();
         for job_id in ["", " ", "x"] {
             let d = resolve_decision(
@@ -1634,7 +1799,8 @@ mod tests {
     #[test]
     fn exec_grant_is_scoped_to_the_exact_command() {
         let root = unique_root();
-        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])
+            .with_readonly_shell(false);
         let mut grants = SessionGrants::default();
         grants.grant_command("git status");
 
@@ -1717,7 +1883,8 @@ mod tests {
     #[test]
     fn approving_a_compound_covers_that_compound_and_not_its_parts() {
         let root = unique_root();
-        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])
+            .with_readonly_shell(false);
         let mut grants = SessionGrants::default();
         // The user saw this whole string and approved it.
         grants.grant_command("git status && rm foo");

@@ -353,5 +353,10 @@
     "lineLabel": "Baris",
     "ruleLabel": "Aturan",
     "more": "Dan {{count}} baris bertanda lainnya"
+  },
+  "ruleWarnings": {
+    "title": "Aturan izin bermasalah",
+    "description": "Beberapa aturan di agent.toml proyek dibuang atau tidak akan pernah cocok. Sisanya tetap dimuat, tetapi aturan ini tidak berfungsi seperti yang tertulis.",
+    "notProtecting": "Aturan pembatas tidak berlaku, jadi perlindungan lebih lemah dari yang tertulis. Perbaiki aturannya."
   }
 }

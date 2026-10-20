@@ -167,6 +167,43 @@ A [subagent's](/docs/agent/subagents) tools are narrowed, never widened. For a s
 allowlist further restricts its own; for a one-off it is its toolset. Either way a subagent reaches
 a subset of what the parent could, so delegation can't be used to escape this policy.
 
+## Read-only shell commands
+
+Shell commands that only look at things run without a prompt when you are asked about commands:
+`ls`, `cat`, `head`, `tail`, `wc`, `pwd`, `echo`, `grep` (not recursive), `find` (without `-exec`,
+`-delete` or `-fprint*`) and `git status`, `log`, `diff`, `show`, `rev-parse`, `ls-files`, `blame` and
+`branch --list`. They can be joined with `|`, `&&`, `||` and `;` as long as every part is on the list.
+
+Anything Flint cannot prove is read-only still asks: a redirection (`>`), a substitution or variable
+(`$(...)`, backticks, `$HOME`), a background `&`, a flag that is not listed (`git diff --output=f`,
+`git -c ...`, `tail -f`), a path outside the project or a credential file such as `.env`, and any
+program not on the list (`rg` and recursive `grep` included, since they can read every file under a
+folder). Deny rules, `ask` rules and the sandbox apply exactly as before. To switch it off, so every
+shell command asks again:
+
+```toml
+[tools]
+readonly_shell = false
+```
+
+## Files that always ask
+
+Some files run code the next time someone opens the project, a shell or a commit, or change what a CI
+runner executes. A write to one outlives the run, so Flint asks about it every time. Auto-approval,
+Always, a session grant and an `allow`/`allow_write` rule do not cover it, and a shell command that
+names one asks too.
+
+- Git hook managers: `.husky`, `lefthook.*`, `.pre-commit-config.yaml`
+- Editor and container config: `.vscode`, `.devcontainer`
+- CI definitions: `.github/workflows`, `.gitlab-ci.yml`
+- Shell startup files: `.bashrc`, `.bash_profile`, `.bash_login`, `.bash_logout`, `.profile`, `.zshrc`,
+  `.zshenv`, `.zprofile`, `.zlogin`, `.zlogout`, and PowerShell profiles (`profile.ps1`,
+  `Microsoft.PowerShell_profile.ps1`)
+- `.envrc`
+
+A repository's `.git` folder and `.jan/agent/` are refused outright, and `.npmrc` and other
+credential files are refused by the secret-file guard.
+
 ## Turning the prompts on
 
 Approval prompts are opt-in: by default every call above is auto-approved. Start the session with

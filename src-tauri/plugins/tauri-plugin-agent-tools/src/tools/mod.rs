@@ -43,6 +43,7 @@ pub mod owned;
 pub mod path_repair;
 pub mod nul_programs;
 pub mod proc;
+pub mod readonly_shell;
 /// Path containment for the filesystem tools. Distinct from [`jail`], which is
 /// kernel-level confinement for spawned commands.
 pub mod sandbox;

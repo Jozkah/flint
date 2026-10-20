@@ -356,5 +356,10 @@
     "lineLabel": "Řádek",
     "ruleLabel": "Pravidlo",
     "more": "A dalších označených řádků: {{count}}"
+  },
+  "ruleWarnings": {
+    "title": "Pravidla oprávnění s problémy",
+    "description": "Některá pravidla v agent.toml projektu byla zahozena nebo nikdy nemohou odpovídat. Zbytek se načte, ale tato pravidla nedělají, co říkají.",
+    "notProtecting": "Omezující pravidlo neplatí, ochrana je tedy slabší, než je napsáno. Pravidlo opravte."
   }
 }
