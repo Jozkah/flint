@@ -12082,7 +12082,8 @@ mod tests {
                 "edit",
                 json!({ "path": "a.txt", "edits": [{ "old_string": "one", "new_string": "two" }] }),
             ),
-            call("c2", "bash", json!({ "command": "echo hi" })),
+            // A redirect is not on the read-only shell allowlist, so this is still asked about.
+            call("c2", "bash", json!({ "command": "echo hi > out.txt" })),
         ];
         let record = |o: &ToolOutcome| heard.lock().unwrap().push(o.id.clone());
         let (out, at_prompt) = tokio::time::timeout(std::time::Duration::from_secs(20), async {
@@ -14735,7 +14736,7 @@ mod tests {
         let call = vec![serde_json::json!({
             "id": "call_subject_1",
             "type": "function",
-            "function": { "name": "bash", "arguments": "{\"command\":\"echo hi\"}" }
+            "function": { "name": "bash", "arguments": "{\"command\":\"echo hi > out.txt\"}" }
         })];
 
         // The reviewer: refused by the policy, before any prompt.
