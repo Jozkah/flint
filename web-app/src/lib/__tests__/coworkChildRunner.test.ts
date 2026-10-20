@@ -417,3 +417,32 @@ describe('a background child asking its parent', () => {
     expect(runSubagent).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('forked subagent', () => {
+  const forkEnv = () =>
+    env({ fork: { history: () => [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'earlier' }] }] as never, system: () => 'PARENT SYSTEM' } })
+
+  it('starts from a copy of the parent conversation and its system prompt, on its model', async () => {
+    answers('forked answer')
+    const out = await createChildRunner(forkEnv())('f1', { subagent_name: 'fork', description: 'continue', fork: true })
+    const opts = runSubagent.mock.calls.at(-1)![0]
+    expect(opts.systemOverride).toBe('PARENT SYSTEM')
+    expect(opts.history).toHaveLength(1)
+    expect(opts.description).toBe('continue')
+    // The child cannot spawn, whatever the depth setting says.
+    expect(opts.spawn).toEqual({ depth: 1, maxDepth: 1 })
+    expect(out.output).toContain('forked answer')
+    // Not resumable: nothing is remembered for a follow-up.
+    expect(out.output).not.toContain('resume_agent_id')
+  })
+  it('refuses where it cannot fork, in the background, in a team, nested, or with a custom prompt', async () => {
+    const run = createChildRunner(forkEnv())
+    const req = { subagent_name: 'fork', description: 'd', fork: true as const }
+    expect((await createChildRunner(env())('a', req)).output).toContain('not available')
+    expect((await run('b', { ...req, background: true })).output).toContain('foreground only')
+    expect((await run('c', req, undefined, 'team-row')).output).toContain('foreground only')
+    expect((await run('d', req, undefined, undefined, undefined, undefined, 1)).output).toContain('cannot fork')
+    expect((await run('e', { ...req, system_prompt: 'x' })).output).toContain('inherits')
+    expect(runSubagent).not.toHaveBeenCalled()
+  })
+})

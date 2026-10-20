@@ -16,7 +16,7 @@
  * Extracted from `routes/cowork.tsx` (`dispatchChild`); the behaviour there is
  * unchanged.
  */
-import type { LanguageModel, Tool } from 'ai'
+import type { LanguageModel, Tool, UIMessage } from 'ai'
 import { applyInnerToTurns, type StreamEvent } from '@/hooks/useCoworkRun'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { recordEvents } from '@/lib/eventLog'
@@ -155,6 +155,12 @@ export type ChildRunnerEnv = {
     mode: (resolved: ResolvedSubagent) => CoworkMode | undefined
     ask: (info: LaunchInfo & { signal: AbortSignal }) => Promise<boolean>
   }
+  /**
+   * What a forked subagent inherits: the conversation the run started this turn
+   * with (prior turns and the message that began it) and the system prompt the
+   * parent sends. Absent where a surface cannot fork.
+   */
+  fork?: { history: () => UIMessage[]; system: () => string }
   /** Test seam for the memory commands. */
   memoryDeps?: MemoryDeps
   /** Told how many tokens each finished child used, for a surface that keeps a
@@ -179,7 +185,8 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     const limits = currentSubagentSettings()
     const spawn: SpawnLimits = {
       depth: callerDepth + 1,
-      maxDepth: clampMaxDepth(limits.maxDepth),
+      // A fork never spawns, whatever the depth setting allows.
+      maxDepth: req.fork ? callerDepth + 1 : clampMaxDepth(limits.maxDepth),
     }
     const maxConcurrent = clampMaxConcurrent(limits.maxConcurrent)
     // A follow-up runs as the agent that finished, on what it already knows.
@@ -204,6 +211,19 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     if ('error' in resolved) {
       return { output: `ERROR: ${resolved.error}`, isError: true }
     }
+    const forking = resolved.fork === true
+    if (forking) {
+      const why = !env.fork
+        ? 'fork is not available on this surface'
+        : req.background || parentTaskId !== undefined
+          ? 'a forked subagent runs in the foreground only'
+          : callerDepth > 0
+            ? 'a subagent cannot fork'
+            : resumeId
+              ? 'a fork cannot be resumed'
+              : null
+      if (why) return { output: `ERROR: ${why}`, isError: true }
+    }
     const model = env.model()
     if (!model) {
       return {
@@ -218,12 +238,12 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       role: resolved.name,
       parentModel: { provider: env.providerId ?? '', id: env.modelId },
       parent: env.parent?.(),
-      requestedModel: req.model,
+      requestedModel: forking ? undefined : req.model,
     })
     // A reasoning effort asked for by the call or the definition: a model
     // instance of its own, built with that level, in place of the parent's.
     let effortChoice: Awaited<ReturnType<typeof resolveChildEffort>> | undefined
-    if (resolved.effort && choice.providerId) {
+    if (!forking && resolved.effort && choice.providerId) {
       effortChoice = await resolveChildEffort({
         providerId: choice.providerId,
         modelId: choice.modelId,
@@ -438,12 +458,22 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
 ${req.description}`
             : req.description,
         ...(remembered ? { history: remembered.messages } : {}),
+        // A fork: a copy of the parent's conversation and its own system prompt,
+        // so nothing the child does reaches the parent's transcript.
+        ...(forking && env.fork
+          ? {
+              history: structuredClone(env.fork.history()),
+              systemOverride: env.fork.system(),
+            }
+          : {}),
         // The same identity the child's dispatched calls carry, for the calls
         // the runner refuses without dispatching.
         activity: setup.activity,
-        model: (effortChoice && 'model' in effortChoice ? effortChoice.model : undefined) ?? choice.model ?? model,
+        model: forking
+          ? model
+          : (effortChoice && 'model' in effortChoice ? effortChoice.model : undefined) ?? choice.model ?? model,
         supportsVision: choice.supportsVision ?? env.supportsVision?.() ?? false,
-        ...(choice.extraSystem.length + preloaded.blocks.length + (memoryBlockText ? 1 : 0) + (siblingBlock ? 1 : 0) > 0
+        ...(!forking && choice.extraSystem.length + preloaded.blocks.length + (memoryBlockText ? 1 : 0) + (siblingBlock ? 1 : 0) > 0
           ? {
               extraSystem: [
                 ...choice.extraSystem,
@@ -454,7 +484,7 @@ ${req.description}`
             }
           : {}),
         providerOptions:
-          effortChoice && 'model' in effortChoice
+          !forking && effortChoice && 'model' in effortChoice
             ? effortChoice.providerOptions
             : env.providerOptions(),
         parentTools: env.parentTools(),
@@ -557,7 +587,7 @@ ${req.description}`
       // tell, so it is not kept.
       const agentId = resumeId ?? callId
       const keep =
-        !parentTaskId && !childAbort.signal.aborted && child.messages !== undefined
+        !forking && !parentTaskId && !childAbort.signal.aborted && child.messages !== undefined
       if (keep && child.messages) {
         rememberSubagent(env.sessionId, agentId, {
           name: resolved.name,
