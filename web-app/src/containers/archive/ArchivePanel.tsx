@@ -240,19 +240,22 @@ export function ArchivePanel() {
         }
       >
         <div className="flex flex-wrap items-center justify-between gap-2 p-3">
-          <Segmented<Filter>
-            aria-label={t('archive:filter')}
-            value={filter}
-            onValueChange={setFilter}
-            size="sm"
-            options={[
-              { value: 'all', label: t('archive:kind.all') },
-              ...KINDS.map((k) => ({
-                value: k as Filter,
-                label: kindLabel(k),
-              })),
-            ]}
-          />
+          <div className="min-w-0 flex-1 overflow-x-auto">
+            <Segmented<Filter>
+              aria-label={t('archive:filter')}
+              className="min-w-[34rem]"
+              value={filter}
+              onValueChange={setFilter}
+              size="sm"
+              options={[
+                { value: 'all', label: t('archive:kind.all') },
+                ...KINDS.map((k) => ({
+                  value: k as Filter,
+                  label: kindLabel(k),
+                })),
+              ]}
+            />
+          </div>
           <Button
             size="sm"
             variant="destructive"
