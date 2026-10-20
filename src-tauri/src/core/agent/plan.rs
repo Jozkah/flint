@@ -27,7 +27,7 @@ disabled. Investigate thoroughly, then stage the full phased plan by calling \
 the `todo` tool with an `init` action listing every task. When the plan is \
 ready, call `ask` with exactly one question: {\"questions\": [{\"id\": \
 \"plan_review\", \"question\": \"<one-sentence plan summary; the staged todos are shown with it>\", \"options\": \
-[{\"label\": \"Execute plan\"}, {\"label\": \"Keep planning\"}, {\"label\": \
+[{\"label\": \"Execute plan\"}, {\"label\": \"Execute plan, clear context\"}, {\"label\": \"Keep planning\"}, {\"label\": \
 \"Exit plan mode\"}]}]}. Do not ask for plan review until the todos are staged. If \
 the plan depends on a decision that is the user's to make, ask it first with your own `ask` \
 question (concrete options, a description each, your recommended pick), then plan around the \
@@ -40,6 +40,9 @@ pub const PLAN_REVIEW_QUESTION_ID: &str = "plan_review";
 
 /// The three plan-review option labels, in order.
 pub const EXECUTE_PLAN_LABEL: &str = "Execute plan";
+/// Executes the plan after clearing the conversation: the work starts from the
+/// plan text alone, which suits a small context window. Never the default.
+pub const EXECUTE_FRESH_LABEL: &str = "Execute plan, clear context";
 pub const KEEP_PLANNING_LABEL: &str = "Keep planning";
 pub const EXIT_PLAN_LABEL: &str = "Exit plan mode";
 

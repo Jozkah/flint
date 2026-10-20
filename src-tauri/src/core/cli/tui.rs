@@ -973,6 +973,8 @@ struct PendingMessage {
     display: bool,
     invocation: Option<(String, String, String)>,
     run_mode: Option<crate::core::agent::plan::RunMode>,
+    /// Start this turn from an empty conversation (execute-plan-in-fresh-context).
+    fresh_context: bool,
 }
 
 #[cfg(test)]
@@ -985,6 +987,7 @@ impl From<&str> for PendingMessage {
             display: true,
             invocation: None,
             run_mode: None,
+            fresh_context: false,
         }
     }
 }
@@ -4210,6 +4213,7 @@ impl App {
             images: names,
             display,
             run_mode: Some(self.run_mode),
+            fresh_context: false,
         };
         if self.status == Status::Running {
             self.message_queue.push_back(pending);
@@ -4240,6 +4244,13 @@ impl App {
     }
 
     fn start_pending_message(&mut self, pending: PendingMessage) {
+        if pending.fresh_context {
+            // Execute-in-fresh-context: the plan text in this message is all the
+            // model gets. The staged todos live outside the history and stay.
+            self.history.clear();
+            self.tokens = 0;
+            self.note("◈ context cleared; implementing from the plan alone");
+        }
         self.ensure_base_snapshot();
         self.record_pending_message(pending);
         self.begin_turn();
@@ -4274,6 +4285,7 @@ impl App {
             display: true,
             invocation: Some((name.to_string(), args.to_string(), description.to_string())),
             run_mode: Some(self.run_mode),
+            fresh_context: false,
         });
         self.note(&format!(
             "message pending for next agent step ({} pending)",
@@ -9658,6 +9670,12 @@ async fn resolve_front_ask(
                 .and_then(|a| a.selected.first().cloned())
         })
         .flatten();
+    let plan_summary = ask
+        .request
+        .questions
+        .first()
+        .map(|q| q.question.clone())
+        .unwrap_or_default();
     let outcome = if cancelled {
         Err(crate::core::agent::interaction::AskError::Cancelled)
     } else {
@@ -9666,7 +9684,7 @@ async fn resolve_front_ask(
     // Always respond so the model's in-flight turn completes normally.
     let _ = crate::core::agent::interaction::respond(registry, &ask.request_id, outcome).await;
     if let Some(label) = plan_choice {
-        apply_plan_review(app, &label);
+        apply_plan_review(app, &label, &plan_summary);
     }
 }
 
@@ -9674,7 +9692,26 @@ async fn resolve_front_ask(
 /// already staged todos via `todo(init)` earlier in the same turn; here we only
 /// flip the mode (and, for Execute, queue the continuation turn). Persists so
 /// the mode survives resume.
-fn apply_plan_review(app: &mut App, label: &str) {
+/// The only thing a fresh-context execution starts from: the plan summary and
+/// every staged todo, phase by phase.
+fn fresh_plan_message(summary: &str, todos: &crate::core::agent::todo::TodoList) -> String {
+    let mut out = String::from(
+        "Implement the plan below. The earlier conversation was cleared on purpose, so work from this plan alone and read the project as needed.\n\n",
+    );
+    if !summary.trim().is_empty() {
+        out.push_str(&format!("Plan: {}\n\n", summary.trim()));
+    }
+    for phase in &todos.phases {
+        out.push_str(&format!("## {}\n", phase.name));
+        for task in &phase.tasks {
+            out.push_str(&format!("- {}\n", task.content));
+        }
+        out.push('\n');
+    }
+    out.trim_end().to_string()
+}
+
+fn apply_plan_review(app: &mut App, label: &str, summary: &str) {
     use crate::core::agent::plan::{self, RunMode};
     match label {
         plan::EXECUTE_PLAN_LABEL => {
@@ -9690,6 +9727,30 @@ fn apply_plan_review(app: &mut App, label: &str) {
             // Enqueues while the ask turn is still running; on_done dequeues it,
             // starting execution only after the mode switch has committed.
             app.submit_user("Proceed with the plan.".to_string());
+        }
+        plan::EXECUTE_FRESH_LABEL => {
+            if app.todos.is_empty() {
+                app.note("cannot execute: no plan staged (todo init first); staying in plan mode");
+                return;
+            }
+            app.run_mode = RunMode::Normal;
+            app.persist();
+            app.note("▶ executing plan in a fresh context (normal mode)");
+            let message = fresh_plan_message(summary, &app.todos);
+            // Queued like "Execute plan": the ask turn finishes first, then the
+            // conversation is cleared and this is the only thing the model sees.
+            app.message_queue.push_back(PendingMessage {
+                text: "Implement the plan (fresh context).".to_string(),
+                message: serde_json::json!({ "role": "user", "content": message }),
+                images: Vec::new(),
+                display: true,
+                invocation: None,
+                run_mode: Some(app.run_mode),
+                fresh_context: true,
+            });
+            if app.status != Status::Running {
+                app.dequeue_next();
+            }
         }
         plan::KEEP_PLANNING_LABEL => app.note("continuing to plan (read only)"),
         plan::EXIT_PLAN_LABEL => {
@@ -33016,6 +33077,28 @@ mod tests {
             answers[0].selected,
             vec![crate::core::agent::plan::EXECUTE_PLAN_LABEL]
         );
+    }
+
+    #[tokio::test]
+    async fn execute_in_fresh_context_queues_the_plan_alone_and_clears_history_on_start() {
+        use crate::core::agent::plan::{RunMode, EXECUTE_FRESH_LABEL};
+        let mut app = test_app();
+        app.run_mode = RunMode::Plan;
+        app.apply(StreamEvent::TodoUpdate { list: staged_todos() });
+        app.history.push(serde_json::json!({ "role": "user", "content": "long old talk" }));
+        app.status = Status::Running;
+        super::apply_plan_review(&mut app, EXECUTE_FRESH_LABEL, "ship it");
+        assert_eq!(app.run_mode, RunMode::Normal);
+        let queued = app.message_queue.front().expect("a queued turn");
+        assert!(queued.fresh_context);
+        let text = queued.message["content"].as_str().unwrap();
+        assert!(text.contains("ship it") && text.contains("do the thing"), "{text}");
+        // Nothing is cleared while the ask turn still runs.
+        assert_eq!(app.history.len(), 1);
+        app.status = Status::Idle;
+        app.dequeue_next();
+        assert_eq!(app.history.len(), 1, "old talk gone, only the plan message remains");
+        assert!(app.history[0]["content"].as_str().unwrap().contains("do the thing"));
     }
 
     #[tokio::test]
