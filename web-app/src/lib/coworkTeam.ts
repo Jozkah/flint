@@ -105,6 +105,14 @@ export type TeamTask = {
    * the "waits for changes it cannot see" mistake [`refuseGraph`] refuses.
    */
   after?: string[]
+  /**
+   * Ids whose answers are put at the head of this task's brief when it starts.
+   *
+   * Filled in by [`runTeam`] from the recorded results, never from prose, so a
+   * failed or missing predecessor is named as such rather than skipped. Set by
+   * the `workflow` front end for every phase after the first.
+   */
+  carry?: string[]
 }
 
 /** The most extra attempts a task may ask for. */
@@ -784,6 +792,7 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       ...(deletes.length ? { deletes } : {}),
       ...(renames.length ? { renames } : {}),
       ...(one.isolate === true ? { isolate: true } : {}),
+      ...(stringList(one.carry).length ? { carry: stringList(one.carry) } : {}),
       ...(typeof one.retries === 'number' && one.retries > 0
         ? { retries: Math.min(Math.floor(one.retries), MAX_TASK_RETRIES) }
         : {}),
@@ -910,6 +919,26 @@ function refuseIsolation(tasks: readonly TeamTask[]): string | null {
   )
 }
 
+/** The task with the answers it asked to carry put ahead of its own brief. */
+export function briefed(
+  task: TeamTask,
+  results: readonly TaskResult[]
+): TeamTask {
+  if (!task.carry?.length) return task
+  const parts = task.carry.map((id) => {
+    const found = [...results].reverse().find((one) => one.taskId === id)
+    if (!found) return `### ${id}\n(no result was recorded)`
+    return `### ${id}${found.ok ? '' : ' (FAILED)'}\n${found.output}`
+  })
+  const plural = task.carry.length === 1 ? '' : 's'
+  return {
+    ...task,
+    description:
+      `Answers from the earlier step${plural}:\n\n` +
+      `${parts.join('\n\n')}\n\n---\n\nYour task:\n${task.description}`,
+  }
+}
+
 export type TeamRunDeps = {
   /** Runs one task as a child. The only thing here that touches a model. */
   runTask: (task: TeamTask, signal: AbortSignal) => Promise<TaskResult>
@@ -1014,7 +1043,7 @@ export async function runTeam(
      * child is a decision, and a retry past it would be ignoring the decision.
      */
     const attempt = async (left: number): Promise<TaskResult> => {
-      const result = await deps.runTask(task, child.signal)
+      const result = await deps.runTask(briefed(task, results), child.signal)
       if (result.ok || left <= 0 || child.signal.aborted) return result
       return attempt(left - 1)
     }

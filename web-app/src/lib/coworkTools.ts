@@ -11,6 +11,7 @@ import {
   answerSubagentTool,
 } from '@/lib/coworkSubagentQuestions'
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
+import { WORKFLOW_TOOL_NAME, workflowTool } from '@/lib/coworkWorkflow'
 import { offerSignature, type ToolGroupId } from '@/lib/coworkToolGroups'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
@@ -56,7 +57,11 @@ export const PLAN_DENIED_TOOLS = new Set([
   'memory_write',
   'skill_write',
   'task',
+<<<<<<< HEAD
   'spawn_session',
+=======
+  WORKFLOW_TOOL_NAME,
+>>>>>>> cd03fd450 (feat(cowork): workflow tool, phased fan-out over the team scheduler)
 ])
 
 /**
@@ -71,7 +76,7 @@ export const isReviewDeniedBrowserTool = (name: string): boolean =>
 
 /** Named `todo` to match the Rust tool: the plan-mode addendum instructs the
  * model to call `todo` by name, so renaming it here breaks that prompt. */
-export { TEAM_TOOL_NAME }
+export { TEAM_TOOL_NAME, WORKFLOW_TOOL_NAME }
 export const TODO_TOOL_NAME = 'todo'
 
 export const ASK_TOOL_NAME = 'ask'
@@ -84,6 +89,7 @@ export const CLIENT_TOOL_NAMES = new Set([
   TASK_TOOL_NAME,
   SPAWN_SESSION_TOOL_NAME,
   TEAM_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
   ...BACKGROUND_TASK_TOOLS,
 ])
 
@@ -842,6 +848,7 @@ export function coworkToolsFromSchemas(
       team: teamOffered,
     })
     tools[TEAM_TOOL_NAME] = teamTool(opts.subagentNames)
+    tools[WORKFLOW_TOOL_NAME] = workflowTool(opts.subagentNames)
     tools[AWAIT_TASK_TOOL_NAME] = awaitTaskTool
     tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
     tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
