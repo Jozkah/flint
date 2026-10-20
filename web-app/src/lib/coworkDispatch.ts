@@ -1324,6 +1324,14 @@ async function routeCoworkTool(
       return await ctx.onAsk(call.toolCallId, call.input)
     }
     if (toolName === SPAWN_SESSION_TOOL_NAME) {
+      // A subagent's dispatcher has no team, and its session id is its parent's:
+      // letting it through would start nested chats on the parent's behalf.
+      if (!ctx.onTeam) {
+        return {
+          output: 'You cannot start a nested chat. Do this work yourself.',
+          isError: true,
+        }
+      }
       return await runSpawnSession(ctx.sessionId, call.input)
     }
     if (toolName === ENABLE_TOOLS_NAME) {
