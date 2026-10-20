@@ -944,9 +944,15 @@ pub async fn call_tool<R: Runtime>(
             }
         };
 
-        if !tools.iter().any(|t| t.name == tool_name) {
+        let Some(found_tool) = tools.iter().find(|t| t.name == tool_name) else {
             continue; // Tool not found in this server, try next
-        }
+        };
+        // Models write the argument names of the tool they know best (Flint's
+        // `edit` says old_string, the filesystem server's edit_file says
+        // oldText); the server's own schema decides the spelling.
+        let aligned_arguments = arguments
+            .clone()
+            .map(|args| super::arg_align::align_arguments(args, &found_tool.input_schema));
 
         log::info!("Found tool {tool_name} in server {srv_name}");
 
@@ -994,7 +1000,7 @@ pub async fn call_tool<R: Runtime>(
 
         // Call the tool with timeout and cancellation support
         let mut params = CallToolRequestParams::new(tool_name.clone());
-        if let Some(args) = arguments.clone() {
+        if let Some(args) = aligned_arguments {
             params = params.with_arguments(args);
         }
         // The timeout rides on the request, so a stuck call is cancelled on the

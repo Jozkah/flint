@@ -4243,9 +4243,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               'bash runs sandboxed in the workspace: writes only there, no reading of the home',
               'directory.',
             ]),
-        'For a path outside the workspace use a configured filesystem MCP tool that allows it',
-        '(approval does not widen its roots; report a path as denied only after its own error),',
-        'or, after a refusal, call request_access with the narrowest absolute path, a one-sentence',
+        'For a path outside the workspace, after a refusal, call request_access with the narrowest',
+        'absolute path, a one-sentence',
         'reason and access_mode "write" when needed; if denied, do not ask again for that path.',
         ...(bashOff
           ? []
@@ -4306,11 +4305,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         )
       }
       parts.push(
-        'This limit applies only to these built-in tools. For a location outside',
-        'the workspace, use a configured filesystem MCP tool when its allowed',
-        'directories include that location. Tool approval approves a call; it',
-        'does not expand a tool\'s filesystem roots. Do not report an MCP path',
-        'as denied until that MCP tool returns its own error.'
+        'This limit applies only to these built-in tools.'
       )
       parts.push(
         'When a file or folder outside the workspace is needed and a tool was',

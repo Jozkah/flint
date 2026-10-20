@@ -2544,14 +2544,13 @@ mod manager_bookkeeping_tests {
 }
 
 #[test]
-fn test_seeded_default_config_has_no_placeholder_dir() {
-    use super::constants::{default_mcp_config, DEFAULT_FILESYSTEM_PLACEHOLDER_DIR};
-    let seeded = default_mcp_config();
-    if dirs::home_dir().is_some() {
-        assert!(!seeded.contains(DEFAULT_FILESYSTEM_PLACEHOLDER_DIR));
-    }
+fn test_seeded_default_config_has_no_filesystem_server() {
+    // Flint's own file tools cover files; the reference filesystem server's
+    // `edit_file` (oldText/newText) was confused with the built-in `edit`.
+    let seeded = super::constants::default_mcp_config();
     let value: serde_json::Value = serde_json::from_str(&seeded).expect("seeded config is JSON");
-    assert!(value["mcpServers"]["filesystem"]["args"][2].is_string());
+    assert!(value["mcpServers"].get("filesystem").is_none());
+    assert!(!seeded.contains("server-filesystem"));
 }
 
 #[test]
