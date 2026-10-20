@@ -28,7 +28,7 @@ use crate::core::server::proxy::engine_upstream;
 use crate::core::server::MlxBackendSession;
 use crate::core::{
     mcp::models::McpSettings,
-    mcp::truncate::truncate_tool_result,
+    mcp::truncate::truncate_or_spill,
     state::{ProviderConfig, SharedMcpServers},
 };
 
@@ -1346,7 +1346,9 @@ pub(crate) async fn collect_mcp_openai_tools_noted(
         futures_util::future::join_all(servers.iter().map(|(server_name, service)| async move {
             let result =
                 match tokio::time::timeout(timeout_duration, service.list_all_tools()).await {
-                    Ok(Ok(tools)) => Some(
+                    Ok(Ok(tools)) => {
+                        record_read_only_tools(server_name, &tools);
+                        Some(
                         tools
                             .iter()
                             .map(|tool| {
@@ -1383,7 +1385,8 @@ pub(crate) async fn collect_mcp_openai_tools_noted(
                                 )
                             })
                             .collect::<Vec<RenderedTool>>(),
-                    ),
+                        )
+                    }
                     Ok(Err(e)) => {
                         log::warn!("MCP server {} failed to list tools: {}", server_name, e);
                         None
@@ -1418,6 +1421,27 @@ pub(crate) async fn execute_mcp_tool_calls(
     mcp_servers: &SharedMcpServers,
     mcp_settings: &Arc<Mutex<McpSettings>>,
 ) -> Vec<(String, String)> {
+    execute_mcp_tool_calls_spilling(
+        tool_calls,
+        tool_to_server,
+        tool_call_names,
+        mcp_servers,
+        mcp_settings,
+        None,
+    )
+    .await
+}
+
+/// [`execute_mcp_tool_calls`], with a directory an over-long result is saved
+/// to in full (see [`truncate_or_spill`]) instead of only being cut.
+pub(crate) async fn execute_mcp_tool_calls_spilling(
+    tool_calls: &[serde_json::Value],
+    tool_to_server: &HashMap<String, String>,
+    tool_call_names: &HashMap<String, String>,
+    mcp_servers: &SharedMcpServers,
+    mcp_settings: &Arc<Mutex<McpSettings>>,
+    spill_dir: Option<&std::path::Path>,
+) -> Vec<(String, String)> {
     let (timeout_duration, tool_output_cap) = {
         let settings = mcp_settings.lock().await;
         (
@@ -1433,134 +1457,260 @@ pub(crate) async fn execute_mcp_tool_calls(
         &crate::core::app::commands::resolve_jan_data_folder(),
     );
 
-    let mut results = Vec::with_capacity(tool_calls.len());
+    let ctx = McpCallContext {
+        tool_to_server,
+        tool_call_names,
+        servers: &servers,
+        server_configs: &server_configs,
+        timeout_duration,
+        tool_output_cap,
+        spill_dir,
+    };
+    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
+    let saved = crate::core::mcp::commands::saved_server_configs(&data_folder);
+    let jobs: Vec<(bool, std::pin::Pin<Box<dyn std::future::Future<Output = (String, String)> + Send + '_>>)> =
+        tool_calls
+            .iter()
+            .map(|tc| {
+                let parallel = tool_call_runs_in_parallel(tc, &ctx, &data_folder, &saved);
+                let fut: std::pin::Pin<Box<dyn std::future::Future<Output = (String, String)> + Send + '_>> =
+                    Box::pin(execute_one_mcp_tool_call(tc, &ctx));
+                (parallel, fut)
+            })
+            .collect();
+    run_ordered_in_waves(jobs, MCP_PARALLEL_CALLS).await
+}
 
-    for tc in tool_calls {
-        let tool_call_id = tc
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let tool_name = tc
-            .get("function")
-            .and_then(|f| f.get("name"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+/// Most read-only MCP calls in flight at once.
+const MCP_PARALLEL_CALLS: usize = 4;
 
-        // Same conservative recovery as the native tools: unrecoverable
-        // arguments are refused, never sent to the server as `{}`.
-        let Some(args_value) = parse_tool_args(tc) else {
-            let raw: String = tc
-                .get("function")
-                .and_then(|f| f.get("arguments"))
-                .map(|v| v.as_str().map(String::from).unwrap_or_else(|| v.to_string()))
-                .unwrap_or_default()
-                .chars()
-                .take(300)
-                .collect();
-            results.push((
-                tool_call_id,
-                format!(
-                    "ERROR: invalid-args: the arguments for '{tool_name}' are not a valid JSON object and were not sent. Re-issue the call with well-formed JSON. Received: {raw}"
-                ),
-            ));
-            continue;
-        };
+/// What one MCP call needs from its batch, read once per batch.
+struct McpCallContext<'a> {
+    tool_to_server: &'a HashMap<String, String>,
+    tool_call_names: &'a HashMap<String, String>,
+    servers: &'a HashMap<String, rmcp::Peer<rmcp::RoleClient>>,
+    server_configs: &'a serde_json::Map<String, Value>,
+    timeout_duration: std::time::Duration,
+    tool_output_cap: u64,
+    spill_dir: Option<&'a std::path::Path>,
+}
 
-        let args_map: serde_json::Map<String, serde_json::Value> =
-            if let Some(obj) = args_value.as_object() {
-                obj.clone()
-            } else {
-                serde_json::Map::new()
-            };
+/// Server name -> its tools that advertise `readOnlyHint: true`, refreshed
+/// from every successful listing.
+fn read_only_tools() -> &'static std::sync::Mutex<HashMap<String, std::collections::HashSet<String>>> {
+    static TOOLS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, std::collections::HashSet<String>>>> =
+        std::sync::OnceLock::new();
+    TOOLS.get_or_init(Default::default)
+}
 
-        let Some(server_name) = tool_to_server.get(&tool_name) else {
-            results.push((
-                tool_call_id,
-                format!("ERROR: No MCP server registered for tool '{tool_name}'"),
-            ));
-            continue;
-        };
+fn record_read_only_tools(server: &str, tools: &[rmcp::model::Tool]) {
+    let names = tools
+        .iter()
+        .filter(|t| t.annotations.as_ref().and_then(|a| a.read_only_hint) == Some(true))
+        .map(|t| t.name.to_string())
+        .collect();
+    read_only_tools()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(server.to_string(), names);
+}
 
-        let Some(service) = servers.get(server_name) else {
-            results.push((
-                tool_call_id,
-                format!("ERROR: MCP server '{server_name}' not found in runtime state"),
-            ));
-            continue;
-        };
+fn is_read_only_tool(server: &str, tool: &str) -> bool {
+    read_only_tools()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(server)
+        .is_some_and(|names| names.contains(tool))
+}
 
-        // AH-144: this server's own budget, checked before its arguments are
-        // sent -- a refusal after the call has already spent what it refuses.
-        let budget = crate::core::mcp::budget::ServerBudget::for_server(
-            &crate::core::app::commands::resolve_jan_data_folder(),
-            server_name,
-        );
-        if let Err(refusal) = crate::core::mcp::budget::check(server_name, &budget) {
-            results.push((tool_call_id, format!("ERROR: {refusal}")));
-            continue;
-        }
-        let server_cap = budget.result_cap(tool_output_cap);
-
-        // A tool renamed to resolve a collision is advertised under a
-        // namespaced name but must be called on the server under the name the
-        // server actually knows. Non-renamed tools have no entry and dispatch
-        // by their advertised name unchanged.
-        let call_name = tool_call_names
-            .get(&tool_name)
-            .cloned()
-            .unwrap_or_else(|| tool_name.clone());
-
-        // The timeout rides on the request so the server is told to cancel,
-        // and a server that keeps timing out is stopped (it restarts lazily).
-        let call_timeout = crate::core::mcp::stall::server_timeout(
-            server_configs.get(server_name),
-            timeout_duration,
-        );
-        let outcome = crate::core::mcp::stall::call_tool_cancellable(
-            service,
-            CallToolRequestParams::new(call_name).with_arguments(args_map),
-            call_timeout,
+/// A call may run alongside others only when its tool says it is read-only AND
+/// the user has a standing trust grant for the server as configured now.
+fn tool_call_runs_in_parallel(
+    tc: &Value,
+    ctx: &McpCallContext<'_>,
+    data_folder: &std::path::Path,
+    saved: &serde_json::Map<String, Value>,
+) -> bool {
+    let Some(tool_name) = tc.get("function").and_then(|f| f.get("name")).and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(server) = ctx.tool_to_server.get(tool_name) else {
+        return false;
+    };
+    let call_name = ctx.tool_call_names.get(tool_name).map(String::as_str).unwrap_or(tool_name);
+    if !is_read_only_tool(server, call_name) {
+        return false;
+    }
+    saved.get(server).is_some_and(|cfg| {
+        tauri_plugin_agent_tools::mcp_trust::is_trusted(
+            data_folder,
+            server,
+            &tauri_plugin_agent_tools::mcp_identity::fingerprint(cfg),
         )
-        .await;
-        let stop_stalled = crate::core::mcp::stall::note_outcome(server_name, &outcome);
-        let result = outcome.map_err(|failure| match failure {
-            crate::core::mcp::stall::CallFailure::TimedOut => format!(
-                "Tool call '{tool_name}' timed out after {} seconds",
-                call_timeout.as_secs()
-            ),
-            crate::core::mcp::stall::CallFailure::Cancelled => {
-                format!("Tool call '{tool_name}' was cancelled")
-            }
-            crate::core::mcp::stall::CallFailure::Other(e) => e,
-        });
-        if stop_stalled {
-            log::warn!(
-                "MCP server {server_name} timed out {} calls in a row; stopping it",
-                crate::core::mcp::stall::STALL_STOP_THRESHOLD
-            );
-            crate::core::mcp::stall::request_stop(server_name).await;
-        }
+    })
+}
 
-        let tool_result_string = match result {
-            // Same cap as the desktop path: this string is appended to the agent's
-            // message history, so an unbounded result would blow the context here too.
-            Ok(res) => {
-                let capped = truncate_tool_result(&res, server_cap);
-                crate::core::mcp::budget::charge(
-                    server_name,
-                    crate::core::mcp::budget::result_chars(&capped),
-                );
-                mcp_call_result_to_string(&capped)
-            }
-            Err(e) => format!("ERROR: {e}"),
+/// Run `jobs` in order, except that a run of consecutive parallel-eligible jobs
+/// goes `limit` at a time. Results come back in job order, and a job that is
+/// not eligible starts only after everything before it has finished.
+async fn run_ordered_in_waves<T>(
+    jobs: Vec<(bool, std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + '_>>)>,
+    limit: usize,
+) -> Vec<T> {
+    let mut out = Vec::with_capacity(jobs.len());
+    let mut wave = Vec::new();
+    for (parallel, job) in jobs {
+        if parallel {
+            wave.push(job);
+            continue;
+        }
+        if !wave.is_empty() {
+            out.extend(
+                futures_util::stream::iter(std::mem::take(&mut wave))
+                    .buffered(limit.max(1))
+                    .collect::<Vec<_>>()
+                    .await,
+            );
+        }
+        out.push(job.await);
+    }
+    out.extend(
+        futures_util::stream::iter(wave)
+            .buffered(limit.max(1))
+            .collect::<Vec<_>>()
+            .await,
+    );
+    out
+}
+
+async fn execute_one_mcp_tool_call(tc: &Value, ctx: &McpCallContext<'_>) -> (String, String) {
+    let McpCallContext {
+        tool_to_server,
+        tool_call_names,
+        servers,
+        server_configs,
+        timeout_duration,
+        tool_output_cap,
+        spill_dir,
+    } = *ctx;
+    let tool_call_id = tc
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let tool_name = tc
+        .get("function")
+        .and_then(|f| f.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Same conservative recovery as the native tools: unrecoverable
+    // arguments are refused, never sent to the server as `{}`.
+    let Some(args_value) = parse_tool_args(tc) else {
+        let raw: String = tc
+            .get("function")
+            .and_then(|f| f.get("arguments"))
+            .map(|v| v.as_str().map(String::from).unwrap_or_else(|| v.to_string()))
+            .unwrap_or_default()
+            .chars()
+            .take(300)
+            .collect();
+        return (
+            tool_call_id,
+            format!(
+                "ERROR: invalid-args: the arguments for '{tool_name}' are not a valid JSON object and were not sent. Re-issue the call with well-formed JSON. Received: {raw}"
+            ),
+        );
+    };
+
+    let args_map: serde_json::Map<String, serde_json::Value> =
+        if let Some(obj) = args_value.as_object() {
+            obj.clone()
+        } else {
+            serde_json::Map::new()
         };
 
-        results.push((tool_call_id, tool_result_string));
+    let Some(server_name) = tool_to_server.get(&tool_name) else {
+        return (
+            tool_call_id,
+            format!("ERROR: No MCP server registered for tool '{tool_name}'"),
+        );
+    };
+
+    let Some(service) = servers.get(server_name) else {
+        return (
+            tool_call_id,
+            format!("ERROR: MCP server '{server_name}' not found in runtime state"),
+        );
+    };
+
+    // AH-144: this server's own budget, checked before its arguments are
+    // sent -- a refusal after the call has already spent what it refuses.
+    let budget = crate::core::mcp::budget::ServerBudget::for_server(
+        &crate::core::app::commands::resolve_jan_data_folder(),
+        server_name,
+    );
+    if let Err(refusal) = crate::core::mcp::budget::check(server_name, &budget) {
+        return (tool_call_id, format!("ERROR: {refusal}"));
+    }
+    let server_cap = budget.result_cap(tool_output_cap);
+
+    // A tool renamed to resolve a collision is advertised under a
+    // namespaced name but must be called on the server under the name the
+    // server actually knows. Non-renamed tools have no entry and dispatch
+    // by their advertised name unchanged.
+    let call_name = tool_call_names
+        .get(&tool_name)
+        .cloned()
+        .unwrap_or_else(|| tool_name.clone());
+
+    // The timeout rides on the request so the server is told to cancel,
+    // and a server that keeps timing out is stopped (it restarts lazily).
+    let call_timeout = crate::core::mcp::stall::server_timeout(
+        server_configs.get(server_name),
+        timeout_duration,
+    );
+    let outcome = crate::core::mcp::stall::call_tool_cancellable(
+        service,
+        CallToolRequestParams::new(call_name).with_arguments(args_map),
+        call_timeout,
+    )
+    .await;
+    let stop_stalled = crate::core::mcp::stall::note_outcome(server_name, &outcome);
+    let result = outcome.map_err(|failure| match failure {
+        crate::core::mcp::stall::CallFailure::TimedOut => format!(
+            "Tool call '{tool_name}' timed out after {} seconds",
+            call_timeout.as_secs()
+        ),
+        crate::core::mcp::stall::CallFailure::Cancelled => {
+            format!("Tool call '{tool_name}' was cancelled")
+        }
+        crate::core::mcp::stall::CallFailure::Other(e) => e,
+    });
+    if stop_stalled {
+        log::warn!(
+            "MCP server {server_name} timed out {} calls in a row; stopping it",
+            crate::core::mcp::stall::STALL_STOP_THRESHOLD
+        );
+        crate::core::mcp::stall::request_stop(server_name).await;
     }
 
-    results
+    let tool_result_string = match result {
+        // Same cap as the desktop path: this string is appended to the agent's
+        // message history, so an unbounded result would blow the context here too.
+        Ok(res) => {
+            let capped = truncate_or_spill(&res, server_cap, spill_dir, &tool_name);
+            crate::core::mcp::budget::charge(
+                server_name,
+                crate::core::mcp::budget::result_chars(&capped),
+            );
+            mcp_call_result_to_string(&capped)
+        }
+        Err(e) => format!("ERROR: {e}"),
+    };
+
+    (tool_call_id, tool_result_string)
 }
 
 // ---- AH-137: an MCP server's resources ------------------------------------
@@ -2654,6 +2804,78 @@ mod provider_quirks;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    type FakeJob = (bool, std::pin::Pin<Box<dyn std::future::Future<Output = usize> + Send>>);
+
+    fn fake_job(
+        id: usize,
+        parallel: bool,
+        sleep_ms: u64,
+        live: Arc<std::sync::atomic::AtomicUsize>,
+        peak: Arc<std::sync::atomic::AtomicUsize>,
+    ) -> FakeJob {
+        use std::sync::atomic::Ordering::SeqCst;
+        (
+            parallel,
+            Box::pin(async move {
+                let now = live.fetch_add(1, SeqCst) + 1;
+                peak.fetch_max(now, SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
+                live.fetch_sub(1, SeqCst);
+                id
+            }),
+        )
+    }
+
+    /// Read-only calls overlap (bounded at 4) and results keep call order even
+    /// when a later call finishes first.
+    #[tokio::test]
+    async fn read_only_mcp_calls_run_concurrently_in_call_order() {
+        let live = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let peak = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let jobs: Vec<FakeJob> = (0..8)
+            .map(|i| fake_job(i, true, if i == 0 { 60 } else { 10 }, live.clone(), peak.clone()))
+            .collect();
+        let out = run_ordered_in_waves(jobs, MCP_PARALLEL_CALLS).await;
+        assert_eq!(out, (0..8).collect::<Vec<_>>());
+        let peak = peak.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(peak > 1 && peak <= MCP_PARALLEL_CALLS, "peak {peak}");
+    }
+
+    /// A call that is not eligible never overlaps anything: it waits for the
+    /// calls before it and the calls after it wait for it.
+    #[tokio::test]
+    async fn non_read_only_mcp_call_is_a_barrier() {
+        let live = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let peak = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let flags = [true, true, false, true, true];
+        let jobs: Vec<FakeJob> = flags
+            .iter()
+            .enumerate()
+            .map(|(i, p)| fake_job(i, *p, 10, live.clone(), peak.clone()))
+            .collect();
+        let out = run_ordered_in_waves(jobs, MCP_PARALLEL_CALLS).await;
+        assert_eq!(out, vec![0, 1, 2, 3, 4]);
+        // The barrier ran alone: live never exceeded the two-wide waves.
+        assert_eq!(peak.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+        let live = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let peak = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let jobs: Vec<FakeJob> = (0..4).map(|i| fake_job(i, false, 10, live.clone(), peak.clone())).collect();
+        run_ordered_in_waves(jobs, MCP_PARALLEL_CALLS).await;
+        assert_eq!(peak.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn read_only_hint_is_recorded_per_server() {
+        let mut ro = rmcp::model::Tool::new("search", "d", std::sync::Arc::new(serde_json::Map::new()));
+        ro.annotations = Some(rmcp::model::ToolAnnotations::new().read_only(true));
+        let plain = rmcp::model::Tool::new("write", "d", std::sync::Arc::new(serde_json::Map::new()));
+        record_read_only_tools("srv-ro-test", &[ro, plain]);
+        assert!(is_read_only_tool("srv-ro-test", "search"));
+        assert!(!is_read_only_tool("srv-ro-test", "write"));
+        assert!(!is_read_only_tool("other-srv", "search"));
+    }
 
     /// Jozkah/jan#46: a truncated ("poisoned") MCP call is refused with an
     /// invalid-args result, never dispatched with `{}`. `/orchestrations`

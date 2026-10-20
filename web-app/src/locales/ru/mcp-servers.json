@@ -276,5 +276,15 @@
   "cwdPlaceholder": "Необязательно, например C:\\tools\\my-server",
   "cwdHint": "Папка, в которой запускается сервер. Оставьте пустым, чтобы запускать из папки самого Flint.",
   "autoApproveServerHint": "Автоматически одобряет только инструменты этого сервера. Переключатель для всех инструментов MCP находится в Настройки > Разрешения.",
-  "allowAllMoved": "Переключатель, позволяющий запускать все инструменты MCP без запроса, находится в Настройки > Разрешения."
+  "allowAllMoved": "Переключатель, позволяющий запускать все инструменты MCP без запроса, находится в Настройки > Разрешения.",
+  "elicitation": {
+    "title": "{{server}} needs your input",
+    "urlTitle": "{{server}} wants to open a page",
+    "urlHost": "Opens {{host}}",
+    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "submit": "Submit",
+    "decline": "Decline",
+    "cancel": "Cancel",
+    "openPage": "Open page"
+  }
 }

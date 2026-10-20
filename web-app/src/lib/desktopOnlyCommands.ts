@@ -238,6 +238,8 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'get_server_status',
       'get_server_summaries',
       'mcp_allow_once',
+      'mcp_elicitation_ready',
+      'mcp_elicitation_respond',
       'mcp_forget_server',
       'mcp_revoke_server',
       'mcp_server_fingerprints',

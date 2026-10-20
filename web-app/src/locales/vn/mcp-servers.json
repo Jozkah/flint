@@ -270,5 +270,15 @@
   "cwdPlaceholder": "Tùy chọn, ví dụ C:\\tools\\my-server",
   "cwdHint": "Thư mục mà máy chủ khởi động trong đó. Để trống để khởi động từ thư mục của chính Flint.",
   "autoApproveServerHint": "Chỉ tự động duyệt công cụ của máy chủ này. Công tắc cho mọi công cụ MCP nằm ở Cài đặt > Quyền.",
-  "allowAllMoved": "Công tắc cho phép mọi công cụ MCP chạy mà không cần hỏi nằm ở Cài đặt > Quyền."
+  "allowAllMoved": "Công tắc cho phép mọi công cụ MCP chạy mà không cần hỏi nằm ở Cài đặt > Quyền.",
+  "elicitation": {
+    "title": "{{server}} needs your input",
+    "urlTitle": "{{server}} wants to open a page",
+    "urlHost": "Opens {{host}}",
+    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "submit": "Submit",
+    "decline": "Decline",
+    "cancel": "Cancel",
+    "openPage": "Open page"
+  }
 }

@@ -1,5 +1,8 @@
 use rmcp::{
-    model::{ClientCapabilities, ClientInfo, Implementation},
+    model::{
+        ClientCapabilities, ClientInfo, ElicitationCapability, FormElicitationCapability,
+        Implementation, UrlElicitationCapability,
+    },
     transport::{
         streamable_http_client::StreamableHttpClient,
         streamable_http_client::StreamableHttpClientTransportConfig,
@@ -514,6 +517,10 @@ async fn schedule_mcp_start_task<R: Runtime>(
     name: String,
     config: Value,
 ) -> Result<(), String> {
+    // `${VAR}` placeholders are resolved here, on a launch-time copy: the stored
+    // config and its trust fingerprint keep the placeholder, so a resolved
+    // secret is never persisted or part of the server's identity.
+    let config = super::envexpand::expand_config(&name, &config)?;
     let app_path = get_jan_data_folder_path(app.clone());
     let exe_path = env::current_exe()
         .map_err(|e| format!("Failed to get current exe path: {e}"))?;
@@ -974,8 +981,17 @@ fn header_map(headers: &serde_json::Map<String, Value>) -> reqwest13::header::He
 /// Identity sent on `initialize` for every transport, so servers see one
 /// consistent "Flint" client with the real app version.
 pub(super) fn flint_client_info() -> ClientInfo {
+    // The desktop app can put an elicitation in front of the user (form and URL
+    // modes); a headless run declines. The CLI connects through its own client
+    // and does not declare the capability.
+    let mut capabilities = ClientCapabilities::default();
+    capabilities.elicitation = Some(
+        ElicitationCapability::new()
+            .with_form(FormElicitationCapability::new())
+            .with_url(UrlElicitationCapability::new()),
+    );
     ClientInfo::new(
-        ClientCapabilities::default(),
+        capabilities,
         Implementation::new("Flint", env!("CARGO_PKG_VERSION")),
     )
 }

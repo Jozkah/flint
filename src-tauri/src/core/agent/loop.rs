@@ -28,7 +28,7 @@ use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
     arguments_are_executable, collect_mcp_openai_tools_noted,
     copy_optional_chat_params,
-    drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
+    drop_malformed_tool_calls, execute_mcp_tool_calls_spilling, extract_choice_message, extract_tool_calls,
     load_assistant_config, neutralize_malformed_tool_calls, normalize_tool_call_args,
     parse_openai_messages, parse_tool_args, resolve_api_type_for_model, resolve_upstream_for_model,
     set_system_prompt, stream_openai_chat_completions, MalformedCall,
@@ -1673,18 +1673,22 @@ struct McpToolInvoker {
     tool_call_names: HashMap<String, String>,
     mcp_servers: SharedMcpServers,
     mcp_settings: Arc<Mutex<McpSettings>>,
+    /// Where an over-long MCP result is saved in full, for the model to `read`.
+    /// `None` when the run has no scratch directory or no `read` tool.
+    spill_dir: Option<std::path::PathBuf>,
 }
 
 #[async_trait]
 impl ToolInvoker for McpToolInvoker {
     // The MCP invoker forks nothing; the default is what it wants.
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
-        let results = execute_mcp_tool_calls(
+        let results = execute_mcp_tool_calls_spilling(
             tool_calls,
             &self.tool_to_server,
             &self.tool_call_names,
             &self.mcp_servers,
             &self.mcp_settings,
+            self.spill_dir.as_deref(),
         )
         .await;
         Ok(results
@@ -7629,11 +7633,12 @@ async fn orchestrate_inner(
             kind: Default::default(),
         },
     };
-    let mcp_tools = McpToolInvoker {
+    let mut mcp_tools = McpToolInvoker {
         tool_to_server,
         tool_call_names,
         mcp_servers: mcp_servers.clone(),
         mcp_settings: mcp_settings.clone(),
+        spill_dir: None,
     };
 
     let max_session_tokens = body_session_budget(json_body);
@@ -7680,6 +7685,11 @@ async fn orchestrate_inner(
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
         let available_tools = available_tool_names(&mcp_tools, allowed_names.as_ref());
+        // An over-long MCP result is saved under the run's scratch directory,
+        // but only when the model has `read` to page through it.
+        if available_tools.iter().any(|t| t == "read") {
+            mcp_tools.spill_dir = Some(scratch_root.join("mcp-results"));
+        }
         // Stale large tool results may be moved into this run's scratch, but
         // only when the model has the `read` tool to get them back.
         let offload_body = {
@@ -14128,6 +14138,7 @@ mod tests {
                 tool_call_names: HashMap::new(),
                 mcp_servers: Arc::new(Mutex::new(HashMap::new())),
                 mcp_settings: Arc::new(Mutex::new(McpSettings::default())),
+                spill_dir: None,
             },
             store_root: tauri_plugin_agent_tools::workspace::project_store(&root),
             enabled_skills: Vec::new(),
