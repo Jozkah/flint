@@ -3780,6 +3780,22 @@ export function CoworkPage() {
       providerOptions: () => transport.reasoningProviderOptions(),
       // A subagent's own memory is the user's to approve, write by write. Review
       // and plan modes change nothing, so a write is refused there without asking.
+      launchGate: {
+        mode: (resolved) => {
+          const live = liveSessionMode(sid) ?? runMode
+          return capMode(live, resolved.permissionMode)
+        },
+        ask: ({ agent, tools, model, signal }) =>
+          useToolApprovalRequests
+            .getState()
+            .requestApproval(`agent-launch:${agent}:${Date.now()}`, 'task', sid, undefined, {
+              input: { agent, tools, model },
+              alwaysAsk: true,
+              taskContext: `Run subagent "${agent}" with ${tools.join(', ')} on ${model}? It will ask before each change as usual; this is asked once for this session.`,
+              origin: agent,
+              signal,
+            }),
+      },
       approveMemoryWrite: async ({ agent, scope, content, signal }) => {
         const live = liveSessionMode(sid) ?? runMode
         if (isReadOnly(live)) return false
