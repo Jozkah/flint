@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { Route as InterfaceRoute } from '../interface'
+import { Route as InterfaceRoute } from '../appearance'
 
 // Mock all the dependencies
 vi.mock('@/containers/SettingsMenu', () => ({
@@ -86,7 +86,7 @@ vi.mock('sonner', () => ({
 vi.mock('@/constants/routes', () => ({
   route: {
     settings: {
-      interface: '/settings/interface',
+      appearance: '/settings/appearance',
     },
   },
 }))
@@ -188,13 +188,15 @@ describe('Interface Settings Route', () => {
     const Component = InterfaceRoute.component as React.ComponentType
     render(<Component />)
 
+    expect(screen.queryByTestId('reduce-motion-switch')).toBeNull()
+    fireEvent.click(screen.getByText('settings:appearance.tabMotion'))
     const toggle = screen.getByTestId('reduce-motion-switch')
     expect(toggle).toHaveAttribute('aria-checked', 'false')
     fireEvent.click(toggle)
     expect(setReduceMotion).toHaveBeenCalledWith(true)
   })
 
-  it('reads theme, reading, the full-width sidebar items, chat display, reset and motion in order', () => {
+  it('reads theme, reading, layout, reset and the full-width sidebar items on the Look tab', () => {
     const Component = InterfaceRoute.component as React.ComponentType
     render(<Component />)
 
@@ -204,13 +206,29 @@ describe('Interface Settings Route', () => {
     const order = [
       'settings:appearance.themeGroup',
       'settings:appearance.readingGroup',
-      'settings:sidebarItems.title',
-      'settings:appearance.behaviourGroup',
+      'settings:appearance.layoutGroup',
       'settings:appearance.resetGroup',
-      'settings:appearance.motionGroup',
+      'settings:sidebarItems.title',
     ].map((title) => titles.indexOf(title))
     expect(order.every((at) => at >= 0)).toBe(true)
     expect([...order].sort((x, y) => x - y)).toEqual(order)
+    expect(titles).not.toContain('settings:appearance.motionGroup')
+    expect(titles).not.toContain('settings:interface.transcriptView')
+    expect(titles).not.toContain('settings:appearance.behaviourGroup')
+  })
+
+  it('holds motion and sounds on the Motion and sound tab', () => {
+    const Component = InterfaceRoute.component as React.ComponentType
+    render(<Component />)
+
+    fireEvent.click(screen.getByText('settings:appearance.tabMotion'))
+    const titles = screen
+      .getAllByTestId('card-title')
+      .map((el) => el.textContent)
+    expect(titles).toEqual([
+      'settings:appearance.motionGroup',
+      'settings:appearance.soundGroup',
+    ])
   })
 
   it('should render main layout structure', () => {

@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Izinkan sertifikat tidak valid",
     "description": "Lewati verifikasi sertifikat hanya untuk alamat penyedia ini. Gunakan untuk server yang Anda kelola sendiri, seperti gateway dengan sertifikat yang ditandatangani sendiri. Nonaktif secara default.",
-    "warning": "Verifikasi sertifikat dimatikan untuk penyedia ini. Siapa pun di jalur jaringan dapat membaca dan mengubah permintaannya, termasuk kunci API Anda. Matikan kecuali Anda memercayai jaringan."
+    "warning": "Verifikasi sertifikat dimatikan untuk penyedia ini. Siapa pun di jalur jaringan dapat membaca dan mengubah permintaannya, termasuk kunci API Anda. Matikan kecuali Anda memercayai jaringan.",
+    "scope": "Hanya alamat penyedia ini. Untuk mengizinkan sertifikat tidak valid bagi semua lalu lintas proksi, gunakan sakelar yang sama di Pengaturan > Proksi jaringan > Sertifikat."
   },
   "customHeaders": {
     "title": "Header kustom",

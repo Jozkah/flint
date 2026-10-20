@@ -258,7 +258,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "プラットフォームの認証局のみが信頼されます。",
     "caBundleInUse": "プラットフォームの認証局に加えて、このバンドルの {{count}} 個の証明書を信頼しています。",
-    "caBundleBroken": "このバンドルは使用できません ({{kind}})。修正または削除するまで、外部への HTTPS は何も信頼しません。"
+    "caBundleBroken": "このバンドルは使用できません ({{kind}})。修正または削除するまで、外部への HTTPS は何も信頼しません。",
+    "ignoreSslScope": "プロキシ経由のすべての通信に適用されます。個別のプロバイダーも、モデルプロバイダー のそのページで自身のアドレスに限り無効な証明書を許可できます。"
   },
   "webSearch": {
     "showKey": "キーを表示",
@@ -367,7 +368,14 @@
     "deleteFailed": "削除できませんでした",
     "revealFailed": "フォルダーを開けませんでした",
     "nameExists": "「{{name}}」は既に存在します。別の名前を選ぶか、既存のものを編集してください。",
-    "deleted": "「{{name}}」を削除しました"
+    "deleted": "「{{name}}」を削除しました",
+    "tabRun": "実行",
+    "tabContext": "コンテキスト",
+    "tabSandbox": "サンドボックスとツール",
+    "coworkRuns": "Cowork の実行",
+    "shellSandboxTitle": "シェルとサンドボックス",
+    "computerUse": "コンピューター操作",
+    "gitCredit": "Git クレジット"
   },
   "localApiServer": {
     "title": "ローカルAPIサーバー",
@@ -542,7 +550,9 @@
       "uninstall": "アンインストール",
       "uninstalling": "アンインストール中…",
       "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。"
-    }
+    },
+    "startupGroup": "起動とトレイ",
+    "cliGroup": "コマンドライン"
   },
   "extensions": {
     "title": "拡張機能"
@@ -715,7 +725,10 @@
     "perfReasonFrames": "フレームが遅い",
     "perfReasonMotion": "システムが動きを減らす設定",
     "perfReasonData": "データセーバー",
-    "perfReasonChosen": "ここで選択"
+    "perfReasonChosen": "ここで選択",
+    "tabLook": "外観",
+    "tabMotion": "モーションとサウンド",
+    "layoutGroup": "レイアウト"
   },
   "pageDesc": {
     "general": "言語、データフォルダー、ログ、アプリ全体のオプションです。",
@@ -730,7 +743,10 @@
     "extensions": "この Flint にインストールされている拡張機能です。",
     "agentTools": "Flint の組み込みエージェントツールによる、ファイル、シェル、ネットワークへのアクセスです。",
     "localApiServer": "他のアプリがモデルにアクセスするために使える、OpenAI 互換のサーバーです。",
-    "httpsProxy": "Flint のインターネットリクエストを、プロキシ経由で送信します。"
+    "httpsProxy": "Flint のインターネットリクエストを、プロキシ経由で送信します。",
+    "chat": "会話の表示、送信、動作のしかたを設定します。",
+    "data": "Flint がデータを保存する場所と、その移動、バックアップ、削除の方法です。",
+    "integrations": "Claude Code、Jev、インストール済みの拡張機能です。"
   },
   "imageDescription": {
     "title": "画像とテキスト専用モデル",
@@ -1353,7 +1369,8 @@
     "fileActionsAria": "記憶をエクスポートまたはインポート",
     "noMatchHint": "綴りを確認するか、検索をクリアしてすべて表示してください。",
     "emptyHint": "上に書き込むか、チャット中に Flint に覚えさせてください。",
-    "footerCount_other": "この範囲に {{count}} 件の記憶"
+    "footerCount_other": "この範囲に {{count}} 件の記憶",
+    "agentNotes": "エージェントメモ"
   },
   "chatMentions": {
     "title": "会話のメンション",
@@ -1423,5 +1440,21 @@
     "deleteAllEmpty": "削除するものがありません。",
     "scopeAll": "現在のフィルターで表示されている行だけでなく、リスト内のすべてが対象です。",
     "archiveInstead": "代わりにアーカイブ"
+  },
+  "chat": {
+    "tabInput": "入力と返信",
+    "tabDisplay": "表示",
+    "composerGroup": "入力欄",
+    "repliesGroup": "返信",
+    "linksGroup": "リンク",
+    "artifactsGroup": "アーティファクトとウィジェット"
+  },
+  "data": {
+    "tabStorage": "ストレージ",
+    "tabCleanup": "クリーンアップ",
+    "dangerGroup": "危険な操作"
+  },
+  "modelDefaults": {
+    "title": "デフォルト"
   }
 }

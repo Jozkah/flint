@@ -14,7 +14,7 @@ export function AutomationCard() {
   return (
     <Card title={t('common:jev.automationTitle')}>
       <CardItem
-        anchor="settings-jev-route"
+        anchor="settings-integrations-jev-route"
         align="start"
         title={t('common:jev.routeToggle')}
         description={<p>{t('common:jev.routeExplained')}</p>}
@@ -30,7 +30,7 @@ export function AutomationCard() {
         }
       />
       <CardItem
-        anchor="settings-jev-activate"
+        anchor="settings-integrations-jev-activate"
         align="start"
         title={t('common:jev.activateToggle')}
         description={<p>{t('common:jev.activateExplained')}</p>}

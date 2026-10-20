@@ -265,5 +265,7 @@
   },
   "cwd": "Direktori kerja",
   "cwdPlaceholder": "Opsional, mis. C:\\tools\\my-server",
-  "cwdHint": "Folder tempat server dimulai. Biarkan kosong untuk memulainya dari folder Flint sendiri."
+  "cwdHint": "Folder tempat server dimulai. Biarkan kosong untuk memulainya dari folder Flint sendiri.",
+  "autoApproveServerHint": "Hanya menyetujui otomatis alat milik server ini. Sakelar untuk semua alat MCP ada di Pengaturan > Izin.",
+  "allowAllMoved": "Sakelar yang membuat semua alat MCP berjalan tanpa bertanya ada di Pengaturan > Izin."
 }

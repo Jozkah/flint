@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "General",
+  "groupApp": "App",
+  "groupChatAndAgent": "Chat and agent",
   "groupModelsAndTools": "Models and tools",
+  "groupData": "Data",
+  "groupGeneral": "General",
   "advancedSettings": "Advanced",
   "advancedSettingsHint": "Local API server, proxy, hardware and agent tool configuration. Grouping them changes nothing about how they work."
 }

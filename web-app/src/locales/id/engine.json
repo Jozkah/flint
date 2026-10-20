@@ -111,7 +111,8 @@
     "danger": "Zona berbahaya",
     "networkNote": "Di jaringan Anda · dikirim ke {{host}}",
     "reachUnknownNote": "Memeriksa di mana penyedia ini berjalan",
-    "reachUnconfirmedNote": "Tidak dapat memastikan di mana penyedia ini berjalan · anggap pesan dapat keluar dari komputer ini"
+    "reachUnconfirmedNote": "Tidak dapat memastikan di mana penyedia ini berjalan · anggap pesan dapat keluar dari komputer ini",
+    "engineBasics": "Dasar engine"
   },
   "mcp": {
     "title": "Alat & MCP",
@@ -144,7 +145,8 @@
     "needsExtension": "Memerlukan ekstensi peramban",
     "moreActions": "Tindakan lain untuk {{serverName}}",
     "addTile": "Tambah server MCP",
-    "addTileHint": "STDIO, HTTP atau SSE"
+    "addTileHint": "STDIO, HTTP atau SSE",
+    "tabToolRuntime": "Runtime alat"
   },
   "extensions": {
     "description": "Plugin, skill, dan bagian engine yang menyusun Flint.",
@@ -223,5 +225,9 @@
       "verify": "Unduhan tidak lolos verifikasi dan tidak dipasang.",
       "mismatch": "Add-on ini dibuat untuk versi Flint lain."
     }
+  },
+  "tabs": {
+    "providersAndModels": "Penyedia dan model",
+    "defaults": "Default"
   }
 }

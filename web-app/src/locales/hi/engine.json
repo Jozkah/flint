@@ -113,7 +113,8 @@
     "danger": "खतरे का क्षेत्र",
     "networkNote": "आपके नेटवर्क पर · {{host}} को भेजा जाता है",
     "reachUnknownNote": "जाँच रहे हैं कि यह प्रदाता कहाँ चलता है",
-    "reachUnconfirmedNote": "यह पुष्टि नहीं हो सकी कि यह प्रदाता कहाँ चलता है · मानें कि संदेश इस कंप्यूटर से बाहर जा सकते हैं"
+    "reachUnconfirmedNote": "यह पुष्टि नहीं हो सकी कि यह प्रदाता कहाँ चलता है · मानें कि संदेश इस कंप्यूटर से बाहर जा सकते हैं",
+    "engineBasics": "इंजन की मूल बातें"
   },
   "mcp": {
     "title": "टूल और MCP",
@@ -146,7 +147,8 @@
     "needsExtension": "ब्राउज़र एक्सटेंशन चाहिए",
     "moreActions": "{{serverName}} के लिए और क्रियाएँ",
     "addTile": "MCP सर्वर जोड़ें",
-    "addTileHint": "STDIO, HTTP या SSE"
+    "addTileHint": "STDIO, HTTP या SSE",
+    "tabToolRuntime": "टूल रनटाइम"
   },
   "extensions": {
     "description": "प्लगइन, स्किल और इंजन के वे हिस्से जिनसे Flint बना है।",
@@ -228,5 +230,9 @@
       "verify": "डाउनलोड जाँच में पास नहीं हुआ और इंस्टॉल नहीं किया गया।",
       "mismatch": "यह ऐड-ऑन Flint के किसी दूसरे वर्शन के लिए बना है।"
     }
+  },
+  "tabs": {
+    "providersAndModels": "प्रदाता और मॉडल",
+    "defaults": "डिफ़ॉल्ट"
   }
 }

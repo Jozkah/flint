@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "General",
+  "groupApp": "Aplicació",
+  "groupChatAndAgent": "Xat i agent",
   "groupModelsAndTools": "Models i eines",
+  "groupData": "Dades",
+  "groupGeneral": "General",
   "advancedSettings": "Avançat",
   "advancedSettingsHint": "Servidor d'API local, servidor intermediari, maquinari i configuració de les eines de l'agent. Agrupar-los no canvia res de com funcionen."
 }

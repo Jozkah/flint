@@ -268,5 +268,7 @@
   },
   "cwd": "工作目录",
   "cwdPlaceholder": "可选,例如 C:\\tools\\my-server",
-  "cwdHint": "服务器启动时所在的文件夹。留空则从 Flint 自身的文件夹启动。"
+  "cwdHint": "服务器启动时所在的文件夹。留空则从 Flint 自身的文件夹启动。",
+  "autoApproveServerHint": "仅自动批准此服务器的工具。所有 MCP 工具的开关在设置 > 权限中。",
+  "allowAllMoved": "允许所有 MCP 工具无需询问即可运行的开关在设置 > 权限中。"
 }

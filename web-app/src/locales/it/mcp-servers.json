@@ -271,5 +271,7 @@
   },
   "cwd": "Directory di lavoro",
   "cwdPlaceholder": "Facoltativo, ad es. C:\\tools\\my-server",
-  "cwdHint": "La cartella in cui parte il server. Lascia vuoto per avviarlo dalla cartella di Flint."
+  "cwdHint": "La cartella in cui parte il server. Lascia vuoto per avviarlo dalla cartella di Flint.",
+  "autoApproveServerHint": "Approva automaticamente solo gli strumenti di questo server. L'interruttore per tutti gli strumenti MCP è in Impostazioni > Permessi.",
+  "allowAllMoved": "L'interruttore che consente di eseguire tutti gli strumenti MCP senza chiedere è in Impostazioni > Permessi."
 }

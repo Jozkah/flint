@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "Общие",
+  "groupApp": "Приложение",
+  "groupChatAndAgent": "Чат и агент",
   "groupModelsAndTools": "Модели и инструменты",
+  "groupData": "Данные",
+  "groupGeneral": "Общие",
   "advancedSettings": "Дополнительно",
   "advancedSettingsHint": "Локальный API-сервер, прокси, оборудование и настройка инструментов агента. Группировка никак не влияет на их работу."
 }

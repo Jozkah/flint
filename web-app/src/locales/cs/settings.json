@@ -260,7 +260,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Důvěřuje se jen certifikačním autoritám platformy.",
     "caBundleInUse": "Důvěřuje se certifikátům z tohoto balíčku ({{count}}) i certifikátům platformy.",
-    "caBundleBroken": "Tento balíček nelze použít ({{kind}}): odchozí HTTPS nedůvěřuje ničemu, dokud se to neopraví nebo balíček neodebere."
+    "caBundleBroken": "Tento balíček nelze použít ({{kind}}): odchozí HTTPS nedůvěřuje ničemu, dokud se to neopraví nebo balíček neodebere.",
+    "ignoreSslScope": "Platí pro veškerý provoz přes proxy. Jednotlivý poskytovatel může také povolit neplatné certifikáty pro svou vlastní adresu, na své stránce v části Poskytovatelé modelů."
   },
   "webSearch": {
     "showKey": "Zobrazit klíč",
@@ -371,7 +372,14 @@
     "deleteFailed": "Smazání se nepodařilo",
     "revealFailed": "Složku se nepodařilo otevřít",
     "nameExists": "\"{{name}}\" již existuje. Zvolte jiný název nebo upravte stávající.",
-    "deleted": "\"{{name}}\" bylo smazáno"
+    "deleted": "\"{{name}}\" bylo smazáno",
+    "tabRun": "Spuštění",
+    "tabContext": "Kontext",
+    "tabSandbox": "Sandbox a nástroje",
+    "coworkRuns": "Běhy Cowork",
+    "shellSandboxTitle": "Shell a sandbox",
+    "computerUse": "Ovládání počítače",
+    "gitCredit": "Připsání v Gitu"
   },
   "localApiServer": {
     "title": "Lokální API server",
@@ -546,7 +554,9 @@
       "uninstall": "Odinstalovat",
       "uninstalling": "Odinstalovává se…",
       "foreignDesc": "Nalezeno v {{path}}, nainstalováno jinou kopií Flintu. Nainstalujte zde, abyste použili CLI této kopie."
-    }
+    },
+    "startupGroup": "Spuštění a lišta",
+    "cliGroup": "Příkazový řádek"
   },
   "extensions": {
     "title": "Rozšíření"
@@ -719,7 +729,10 @@
     "perfReasonFrames": "pomalé snímky",
     "perfReasonMotion": "systém omezuje pohyb",
     "perfReasonData": "spořič dat",
-    "perfReasonChosen": "zvoleno zde"
+    "perfReasonChosen": "zvoleno zde",
+    "tabLook": "Vzhled",
+    "tabMotion": "Animace a zvuk",
+    "layoutGroup": "Rozvržení"
   },
   "pageDesc": {
     "general": "Jazyk, datová složka, protokoly a možnosti celé aplikace.",
@@ -734,7 +747,10 @@
     "extensions": "Rozšíření nainstalovaná v této kopii Flintu.",
     "agentTools": "Soubory, shell a přístup k síti pro vestavěné nástroje agenta Flintu.",
     "localApiServer": "Server kompatibilní s OpenAI, přes který se k vašim modelům mohou dostat další aplikace.",
-    "httpsProxy": "Posílat internetové požadavky Flintu přes proxy."
+    "httpsProxy": "Posílat internetové požadavky Flintu přes proxy.",
+    "chat": "Jak konverzace vypadají, odesílají se a chovají.",
+    "data": "Kde Flint ukládá vaše data a jak je přesunout, zálohovat nebo odstranit.",
+    "integrations": "Claude Code, Jev a nainstalovaná rozšíření."
   },
   "imageDescription": {
     "title": "Obrázky a textové modely",
@@ -1396,7 +1412,8 @@
     "footerCount_one": "1 paměť v tomto rozsahu",
     "footerCount_few": "{{count}} paměti v tomto rozsahu",
     "footerCount_many": "{{count}} paměti v tomto rozsahu",
-    "footerCount_other": "{{count}} pamětí v tomto rozsahu"
+    "footerCount_other": "{{count}} pamětí v tomto rozsahu",
+    "agentNotes": "Poznámky agenta"
   },
   "chatMentions": {
     "title": "Zmínky o konverzacích",
@@ -1472,5 +1489,21 @@
     "deleteAllEmpty": "Není co mazat.",
     "scopeAll": "Týká se všeho v seznamu, nejen řádků, které ukazuje aktuální filtr.",
     "archiveInstead": "Raději archivovat"
+  },
+  "chat": {
+    "tabInput": "Vstup a odpovědi",
+    "tabDisplay": "Zobrazení",
+    "composerGroup": "Editor zpráv",
+    "repliesGroup": "Odpovědi",
+    "linksGroup": "Odkazy",
+    "artifactsGroup": "Artefakty a widgety"
+  },
+  "data": {
+    "tabStorage": "Úložiště",
+    "tabCleanup": "Úklid",
+    "dangerGroup": "Nebezpečná zóna"
+  },
+  "modelDefaults": {
+    "title": "Výchozí"
   }
 }

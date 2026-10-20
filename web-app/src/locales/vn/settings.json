@@ -258,7 +258,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Chỉ tin cậy các tổ chức phát hành chứng chỉ của nền tảng.",
     "caBundleInUse": "Đang tin cậy {{count}} chứng chỉ từ gói này cùng với của nền tảng.",
-    "caBundleBroken": "Không thể dùng gói này ({{kind}}): HTTPS đi ra không tin cậy gì cho đến khi nó được sửa hoặc gỡ."
+    "caBundleBroken": "Không thể dùng gói này ({{kind}}): HTTPS đi ra không tin cậy gì cho đến khi nó được sửa hoặc gỡ.",
+    "ignoreSslScope": "Áp dụng cho toàn bộ lưu lượng qua proxy. Từng nhà cung cấp cũng có thể cho phép chứng chỉ không hợp lệ cho địa chỉ riêng của mình, trên trang của nhà cung cấp đó trong Nhà cung cấp Mô hình."
   },
   "webSearch": {
     "showKey": "Hiện khóa",
@@ -367,7 +368,14 @@
     "deleteFailed": "Không thể xóa",
     "revealFailed": "Không thể mở thư mục",
     "nameExists": "\"{{name}}\" đã tồn tại. Hãy chọn tên khác hoặc chỉnh sửa mục hiện có.",
-    "deleted": "Đã xóa \"{{name}}\""
+    "deleted": "Đã xóa \"{{name}}\"",
+    "tabRun": "Chạy",
+    "tabContext": "Ngữ cảnh",
+    "tabSandbox": "Sandbox và công cụ",
+    "coworkRuns": "Lượt chạy Cowork",
+    "shellSandboxTitle": "Shell và sandbox",
+    "computerUse": "Điều khiển máy tính",
+    "gitCredit": "Ghi công Git"
   },
   "localApiServer": {
     "title": "Máy chủ API cục bộ",
@@ -542,7 +550,9 @@
       "uninstall": "Gỡ cài đặt",
       "uninstalling": "Đang gỡ cài đặt…",
       "foreignDesc": "Tìm thấy tại {{path}}, do một bản Flint khác cài đặt. Cài ở đây để dùng CLI của bản này."
-    }
+    },
+    "startupGroup": "Khởi động và khay hệ thống",
+    "cliGroup": "Dòng lệnh"
   },
   "extensions": {
     "title": "Tiện ích mở rộng"
@@ -715,7 +725,10 @@
     "perfReasonFrames": "khung hình chậm",
     "perfReasonMotion": "hệ thống giảm chuyển động",
     "perfReasonData": "tiết kiệm dữ liệu",
-    "perfReasonChosen": "đã chọn ở đây"
+    "perfReasonChosen": "đã chọn ở đây",
+    "tabLook": "Giao diện",
+    "tabMotion": "Chuyển động và âm thanh",
+    "layoutGroup": "Bố cục"
   },
   "pageDesc": {
     "general": "Ngôn ngữ, thư mục dữ liệu, nhật ký và các tùy chọn toàn ứng dụng.",
@@ -730,7 +743,10 @@
     "extensions": "Các tiện ích mở rộng được cài trong bản Flint này.",
     "agentTools": "Quyền truy cập tệp, shell và mạng cho các công cụ tác tử tích hợp của Flint.",
     "localApiServer": "Một máy chủ tương thích OpenAI mà các ứng dụng khác có thể dùng để truy cập các mô hình của bạn.",
-    "httpsProxy": "Gửi các yêu cầu internet của Flint qua một proxy."
+    "httpsProxy": "Gửi các yêu cầu internet của Flint qua một proxy.",
+    "chat": "Cách cuộc trò chuyện hiển thị, gửi và hoạt động.",
+    "data": "Nơi Flint lưu dữ liệu của bạn và cách di chuyển, sao lưu hoặc xóa chúng.",
+    "integrations": "Claude Code, Jev và các tiện ích mở rộng đã cài."
   },
   "imageDescription": {
     "title": "Hình ảnh và mô hình chỉ văn bản",
@@ -1353,7 +1369,8 @@
     "fileActionsAria": "Xuất hoặc nhập ký ức",
     "noMatchHint": "Kiểm tra chính tả, hoặc xóa tìm kiếm để xem tất cả.",
     "emptyHint": "Viết một ký ức ở trên, hoặc để Flint ghi nhớ khi bạn trò chuyện.",
-    "footerCount_other": "{{count}} ký ức trong phạm vi này"
+    "footerCount_other": "{{count}} ký ức trong phạm vi này",
+    "agentNotes": "Ghi chú của agent"
   },
   "chatMentions": {
     "title": "Nhắc đến hội thoại",
@@ -1423,5 +1440,21 @@
     "deleteAllEmpty": "Không có gì để xóa.",
     "scopeAll": "Áp dụng cho mọi mục trong danh sách, không chỉ các dòng bộ lọc hiện tại đang hiển thị.",
     "archiveInstead": "Lưu trữ thay vì xóa"
+  },
+  "chat": {
+    "tabInput": "Nhập liệu và phản hồi",
+    "tabDisplay": "Hiển thị",
+    "composerGroup": "Khung soạn thảo",
+    "repliesGroup": "Phản hồi",
+    "linksGroup": "Liên kết",
+    "artifactsGroup": "Artifact và widget"
+  },
+  "data": {
+    "tabStorage": "Lưu trữ",
+    "tabCleanup": "Dọn dẹp",
+    "dangerGroup": "Vùng nguy hiểm"
+  },
+  "modelDefaults": {
+    "title": "Mặc định"
   }
 }

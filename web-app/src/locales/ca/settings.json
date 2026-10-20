@@ -261,7 +261,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Només es confia en les autoritats de certificació de la plataforma.",
     "caBundleInUse": "Es confia en {{count}} certificat(s) d'aquest paquet, a més dels de la plataforma.",
-    "caBundleBroken": "Aquest paquet no es pot usar ({{kind}}): l'HTTPS de sortida no confia en res fins que es corregeixi o s'elimini."
+    "caBundleBroken": "Aquest paquet no es pot usar ({{kind}}): l'HTTPS de sortida no confia en res fins que es corregeixi o s'elimini.",
+    "ignoreSslScope": "S'aplica a tot el trànsit passat pel proxy. Un sol proveïdor també pot permetre certificats no vàlids per a la seva pròpia adreça, a la seva pàgina a Proveïdors de models."
   },
   "webSearch": {
     "showKey": "Mostra la clau",
@@ -371,7 +372,14 @@
     "deleteFailed": "No s'ha pogut suprimir",
     "revealFailed": "No s'ha pogut obrir la carpeta",
     "nameExists": "\"{{name}}\" ja existeix. Tria un altre nom o edita l'existent.",
-    "deleted": "S'ha suprimit \"{{name}}\""
+    "deleted": "S'ha suprimit \"{{name}}\"",
+    "tabRun": "Execució",
+    "tabContext": "Context",
+    "tabSandbox": "Sandbox i eines",
+    "coworkRuns": "Execucions de Cowork",
+    "shellSandboxTitle": "Shell i sandbox",
+    "computerUse": "Ús de l'ordinador",
+    "gitCredit": "Crèdit de Git"
   },
   "localApiServer": {
     "title": "Servidor API local",
@@ -546,7 +554,9 @@
       "uninstall": "Desinstal·la",
       "uninstalling": "S'està desinstal·lant…",
       "foreignDesc": "Trobada a {{path}}, instal·lada per una altra còpia de Flint. Instal·la aquí per fer servir la CLI d'aquesta còpia."
-    }
+    },
+    "startupGroup": "Inici i safata",
+    "cliGroup": "Línia d'ordres"
   },
   "extensions": {
     "title": "Extensions"
@@ -719,7 +729,10 @@
     "perfReasonFrames": "fotogrames lents",
     "perfReasonMotion": "el sistema redueix el moviment",
     "perfReasonData": "estalvi de dades",
-    "perfReasonChosen": "triat aquí"
+    "perfReasonChosen": "triat aquí",
+    "tabLook": "Aspecte",
+    "tabMotion": "Moviment i so",
+    "layoutGroup": "Disseny"
   },
   "pageDesc": {
     "general": "Idioma, carpeta de dades, registres i opcions de tota l'aplicació.",
@@ -734,7 +747,10 @@
     "extensions": "Extensions instal·lades en aquesta còpia de Flint.",
     "agentTools": "Accés a fitxers, shell i xarxa per a les eines d'agent integrades de Flint.",
     "localApiServer": "Un servidor compatible amb OpenAI que altres aplicacions poden usar per arribar als teus models.",
-    "httpsProxy": "Envia les sol·licituds d'internet de Flint a través d'un servidor intermediari."
+    "httpsProxy": "Envia les sol·licituds d'internet de Flint a través d'un servidor intermediari.",
+    "chat": "Com es mostren, s'envien i es comporten les converses.",
+    "data": "On guarda Flint les teves dades i com moure-les, copiar-les o eliminar-les.",
+    "integrations": "Claude Code, Jev i les extensions instal·lades."
   },
   "imageDescription": {
     "title": "Imatges i models només de text",
@@ -1359,7 +1375,8 @@
     "noMatchHint": "Revisa l'ortografia o esborra la cerca per veure-ho tot.",
     "emptyHint": "Escriu-ne una a dalt, o deixa que Flint recordi mentre xateges.",
     "footerCount_one": "1 memòria en aquest àmbit",
-    "footerCount_other": "{{count}} memòries en aquest àmbit"
+    "footerCount_other": "{{count}} memòries en aquest àmbit",
+    "agentNotes": "Notes de l'agent"
   },
   "chatMentions": {
     "title": "Mencions de converses",
@@ -1431,5 +1448,21 @@
     "deleteAllEmpty": "No hi ha res per suprimir.",
     "scopeAll": "Inclou tot el que hi ha a la llista, no només les files que mostra el filtre actual.",
     "archiveInstead": "Arxiva en lloc de suprimir"
+  },
+  "chat": {
+    "tabInput": "Entrada i respostes",
+    "tabDisplay": "Pantalla",
+    "composerGroup": "Compositor",
+    "repliesGroup": "Respostes",
+    "linksGroup": "Enllaços",
+    "artifactsGroup": "Artefactes i ginys"
+  },
+  "data": {
+    "tabStorage": "Emmagatzematge",
+    "tabCleanup": "Neteja",
+    "dangerGroup": "Zona de perill"
+  },
+  "modelDefaults": {
+    "title": "Valors per defecte"
   }
 }

@@ -212,7 +212,7 @@ describe('CoworkEnvironmentReadiness', () => {
     render(<CoworkEnvironmentReadiness />)
     await userEvent.click(await screen.findByText('Shell'))
     await userEvent.click(screen.getByTestId('readiness-action-shell'))
-    expect(navigate).toHaveBeenCalledWith({ to: '/settings/agent-tools' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/settings/agent' })
   })
 
   it('reports a failure to read readiness instead of rendering nothing', async () => {

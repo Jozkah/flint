@@ -257,7 +257,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Hanya otoritas sertifikat platform yang dipercaya.",
     "caBundleInUse": "Mempercayai {{count}} sertifikat dari bundel ini serta milik platform.",
-    "caBundleBroken": "Bundel ini tidak dapat dipakai ({{kind}}): HTTPS keluar tidak mempercayai apa pun sampai diperbaiki atau dihapus."
+    "caBundleBroken": "Bundel ini tidak dapat dipakai ({{kind}}): HTTPS keluar tidak mempercayai apa pun sampai diperbaiki atau dihapus.",
+    "ignoreSslScope": "Berlaku untuk semua lalu lintas proksi. Satu penyedia juga dapat mengizinkan sertifikat tidak valid untuk alamatnya sendiri, di halamannya pada Penyedia Model."
   },
   "webSearch": {
     "showKey": "Tampilkan kunci",
@@ -365,7 +366,14 @@
     "deleteFailed": "Tidak dapat menghapus",
     "revealFailed": "Tidak dapat membuka folder",
     "nameExists": "\"{{name}}\" sudah ada. Pilih nama lain atau edit yang sudah ada.",
-    "deleted": "\"{{name}}\" dihapus"
+    "deleted": "\"{{name}}\" dihapus",
+    "tabRun": "Jalankan",
+    "tabContext": "Konteks",
+    "tabSandbox": "Sandbox dan alat",
+    "coworkRuns": "Eksekusi Cowork",
+    "shellSandboxTitle": "Shell dan sandbox",
+    "computerUse": "Penggunaan komputer",
+    "gitCredit": "Kredit Git"
   },
   "localApiServer": {
     "title": "Server API Lokal",
@@ -540,7 +548,9 @@
       "uninstall": "Copot",
       "uninstalling": "Mencopot…",
       "foreignDesc": "Ditemukan di {{path}}, dipasang oleh salinan Flint lain. Pasang di sini untuk memakai CLI salinan ini."
-    }
+    },
+    "startupGroup": "Startup dan tray",
+    "cliGroup": "Baris perintah"
   },
   "extensions": {
     "title": "Ekstensi"
@@ -713,7 +723,10 @@
     "perfReasonFrames": "frame lambat",
     "perfReasonMotion": "sistem mengurangi gerakan",
     "perfReasonData": "penghemat data",
-    "perfReasonChosen": "dipilih di sini"
+    "perfReasonChosen": "dipilih di sini",
+    "tabLook": "Tampilan",
+    "tabMotion": "Gerakan dan suara",
+    "layoutGroup": "Tata letak"
   },
   "pageDesc": {
     "general": "Bahasa, folder data, log, dan opsi seluruh aplikasi.",
@@ -728,7 +741,10 @@
     "extensions": "Ekstensi yang terpasang di salinan Flint ini.",
     "agentTools": "Akses file, shell, dan jaringan untuk alat agen bawaan Flint.",
     "localApiServer": "Server kompatibel OpenAI yang dapat dipakai aplikasi lain untuk menjangkau model Anda.",
-    "httpsProxy": "Kirim permintaan internet Flint melalui proxy."
+    "httpsProxy": "Kirim permintaan internet Flint melalui proxy.",
+    "chat": "Tampilan, pengiriman, dan perilaku percakapan.",
+    "data": "Tempat Flint menyimpan data Anda, serta cara memindahkan, mencadangkan, atau menghapusnya.",
+    "integrations": "Claude Code, Jev, dan ekstensi yang terpasang."
   },
   "imageDescription": {
     "title": "Gambar dan model teks saja",
@@ -1350,7 +1366,8 @@
     "fileActionsAria": "Ekspor atau impor memori",
     "noMatchHint": "Periksa ejaannya, atau hapus pencarian untuk melihat semuanya.",
     "emptyHint": "Tulis satu di atas, atau biarkan Flint mengingat saat Anda mengobrol.",
-    "footerCount_other": "{{count}} memori dalam cakupan ini"
+    "footerCount_other": "{{count}} memori dalam cakupan ini",
+    "agentNotes": "Catatan agen"
   },
   "chatMentions": {
     "title": "Sebutan percakapan",
@@ -1420,5 +1437,21 @@
     "deleteAllEmpty": "Tidak ada yang bisa dihapus.",
     "scopeAll": "Mencakup semua isi daftar, bukan hanya baris yang ditampilkan filter saat ini.",
     "archiveInstead": "Arsipkan saja"
+  },
+  "chat": {
+    "tabInput": "Input dan balasan",
+    "tabDisplay": "Tampilan layar",
+    "composerGroup": "Komposer",
+    "repliesGroup": "Balasan",
+    "linksGroup": "Tautan",
+    "artifactsGroup": "Artefak dan widget"
+  },
+  "data": {
+    "tabStorage": "Penyimpanan",
+    "tabCleanup": "Pembersihan",
+    "dangerGroup": "Zona berbahaya"
+  },
+  "modelDefaults": {
+    "title": "Default"
   }
 }

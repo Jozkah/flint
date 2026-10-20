@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Ungültige Zertifikate zulassen",
     "description": "Überspringt die Zertifikatsprüfung nur für die Adresse dieses Anbieters. Nutze das für einen Server, den du selbst betreibst, etwa ein Gateway mit selbstsigniertem Zertifikat. Standardmäßig aus.",
-    "warning": "Die Zertifikatsprüfung ist für diesen Anbieter ausgeschaltet. Jeder auf dem Netzwerkweg kann seine Anfragen lesen und ändern, auch deinen API-Schlüssel. Schalte das aus, wenn du dem Netzwerk nicht vertraust."
+    "warning": "Die Zertifikatsprüfung ist für diesen Anbieter ausgeschaltet. Jeder auf dem Netzwerkweg kann seine Anfragen lesen und ändern, auch deinen API-Schlüssel. Schalte das aus, wenn du dem Netzwerk nicht vertraust.",
+    "scope": "Nur die Adresse dieses Anbieters. Um ungültige Zertifikate für den gesamten Proxy-Verkehr zuzulassen, verwende denselben Schalter unter Einstellungen > Netzwerk-Proxy > Zertifikate."
   },
   "customHeaders": {
     "title": "Benutzerdefinierte Header",

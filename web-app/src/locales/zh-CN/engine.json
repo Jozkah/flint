@@ -112,7 +112,8 @@
     "danger": "危险区域",
     "networkNote": "在你的网络中 · 发送到 {{host}}",
     "reachUnknownNote": "正在检查此提供商的运行位置",
-    "reachUnconfirmedNote": "无法确认此提供商的运行位置 · 消息可能会离开这台电脑"
+    "reachUnconfirmedNote": "无法确认此提供商的运行位置 · 消息可能会离开这台电脑",
+    "engineBasics": "引擎基础"
   },
   "mcp": {
     "title": "工具和 MCP",
@@ -145,7 +146,8 @@
     "needsExtension": "需要浏览器扩展",
     "moreActions": "{{serverName}} 的更多操作",
     "addTile": "添加 MCP 服务器",
-    "addTileHint": "STDIO、HTTP 或 SSE"
+    "addTileHint": "STDIO、HTTP 或 SSE",
+    "tabToolRuntime": "工具运行时"
   },
   "extensions": {
     "description": "插件、技能以及构成 Flint 的引擎组件。",
@@ -227,5 +229,9 @@
       "verify": "下载未通过校验，未安装。",
       "mismatch": "此附加组件是为其他 Flint 版本构建的。"
     }
+  },
+  "tabs": {
+    "providersAndModels": "提供商与模型",
+    "defaults": "默认值"
   }
 }

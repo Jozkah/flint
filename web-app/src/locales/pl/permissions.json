@@ -213,7 +213,11 @@
     "modeAuto": "Zatwierdzaj automatycznie bezpieczne wywołania; pytaj o niebezpieczne",
     "modeBypass": "Pomijaj uprawnienia do zamknięcia Flint",
     "modeDetails": "Automatyczne zatwierdzanie pyta o polecenia destrukcyjne, akcje na hoście, zdalne zmiany i inne wrażliwe wywołania. Pominięcie omija także te prośby o zatwierdzenie.",
-    "bypassConfirm": "Pomijanie uprawnień wykonuje wszystko bez pytania, w tym polecenia hosta (PowerShell, WSL, SSH, instalacje), polecenia destrukcyjne, zapisy poza folderem projektu i git push. Tryb planu, napisane przez ciebie reguły odmowy, limity wydatków i ukrywanie sekretów nadal odmawiają. Włączyć Pomijanie do zamknięcia Flinta?"
+    "bypassConfirm": "Pomijanie uprawnień wykonuje wszystko bez pytania, w tym polecenia hosta (PowerShell, WSL, SSH, instalacje), polecenia destrukcyjne, zapisy poza folderem projektu i git push. Tryb planu, napisane przez ciebie reguły odmowy, limity wydatków i ukrywanie sekretów nadal odmawiają. Włączyć Pomijanie do zamknięcia Flinta?",
+    "tabRules": "Reguły",
+    "tabAccess": "Dostęp",
+    "tabRemembered": "Zapamiętane",
+    "tabActivity": "Aktywność"
   },
   "badge": {
     "reachesRemote": "Sięga do {{target}}",

@@ -213,7 +213,11 @@
     "modeAuto": "Tự động phê duyệt lệnh gọi an toàn; hỏi với lệnh gọi nguy hiểm",
     "modeBypass": "Bỏ qua quyền cho đến khi Flint đóng",
     "modeDetails": "Tự động phê duyệt vẫn hỏi với lệnh phá hủy, thao tác trên máy chủ, thay đổi từ xa và các lệnh gọi nhạy cảm khác. Bỏ qua cũng bỏ qua cả các lời nhắc phê duyệt đó.",
-    "bypassConfirm": "Bỏ qua quyền chạy mọi thứ mà không hỏi, gồm lệnh máy chủ (PowerShell, WSL, SSH, cài đặt), lệnh phá hủy, ghi ngoài thư mục dự án và git push. Chế độ kế hoạch, quy tắc từ chối do bạn viết, giới hạn chi tiêu và che bí mật vẫn từ chối. Bật Bỏ qua cho đến khi Flint đóng?"
+    "bypassConfirm": "Bỏ qua quyền chạy mọi thứ mà không hỏi, gồm lệnh máy chủ (PowerShell, WSL, SSH, cài đặt), lệnh phá hủy, ghi ngoài thư mục dự án và git push. Chế độ kế hoạch, quy tắc từ chối do bạn viết, giới hạn chi tiêu và che bí mật vẫn từ chối. Bật Bỏ qua cho đến khi Flint đóng?",
+    "tabRules": "Quy tắc",
+    "tabAccess": "Truy cập",
+    "tabRemembered": "Đã ghi nhớ",
+    "tabActivity": "Hoạt động"
   },
   "badge": {
     "reachesRemote": "Truy cập {{target}}",

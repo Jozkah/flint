@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Autoriser les certificats non valides",
     "description": "Ignore la vérification du certificat pour l'adresse de ce fournisseur uniquement. À utiliser pour un serveur que vous gérez vous-même, comme une passerelle avec un certificat auto-signé. Désactivé par défaut.",
-    "warning": "La vérification du certificat est désactivée pour ce fournisseur. Toute personne sur le chemin réseau peut lire et modifier ses requêtes, y compris votre clé d'API. Désactivez-la sauf si vous faites confiance au réseau."
+    "warning": "La vérification du certificat est désactivée pour ce fournisseur. Toute personne sur le chemin réseau peut lire et modifier ses requêtes, y compris votre clé d'API. Désactivez-la sauf si vous faites confiance au réseau.",
+    "scope": "Uniquement l'adresse de ce fournisseur. Pour autoriser les certificats non valides pour tout le trafic via le proxy, utilisez le même interrupteur dans Configurations > Proxy réseau > Certificats."
   },
   "customHeaders": {
     "title": "En-têtes personnalisés",

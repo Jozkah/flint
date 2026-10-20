@@ -115,7 +115,8 @@
     "danger": "Zona de perill",
     "networkNote": "A la teva xarxa · s'envia a {{host}}",
     "reachUnknownNote": "Comprovant on s'executa aquest proveïdor",
-    "reachUnconfirmedNote": "No s'ha pogut confirmar on s'executa aquest proveïdor · suposa que els missatges poden sortir d'aquest ordinador"
+    "reachUnconfirmedNote": "No s'ha pogut confirmar on s'executa aquest proveïdor · suposa que els missatges poden sortir d'aquest ordinador",
+    "engineBasics": "Bàsics del motor"
   },
   "mcp": {
     "title": "Eines i MCP",
@@ -148,7 +149,8 @@
     "needsExtension": "Requereix l'extensió del navegador",
     "moreActions": "Més accions per a {{serverName}}",
     "addTile": "Afegeix un servidor MCP",
-    "addTileHint": "STDIO, HTTP o SSE"
+    "addTileHint": "STDIO, HTTP o SSE",
+    "tabToolRuntime": "Execució d'eines"
   },
   "extensions": {
     "description": "Connectors, habilitats i les peces del motor amb què es construeix Flint.",
@@ -233,5 +235,9 @@
       "verify": "La baixada no ha superat la verificació i no s'ha instal·lat.",
       "mismatch": "Aquest complement es va crear per a una altra versió de Flint."
     }
+  },
+  "tabs": {
+    "providersAndModels": "Proveïdors i models",
+    "defaults": "Valors per defecte"
   }
 }

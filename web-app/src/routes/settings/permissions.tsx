@@ -15,6 +15,14 @@ import {
 import { FolderAccessCard } from '@/containers/FolderAccessCard'
 import { TrustedFoldersCard } from '@/containers/TrustedFoldersCard'
 import { ApprovalRulesCard } from '@/containers/ApprovalRulesCard'
+import { BrowserSitePermissions } from '@/containers/BrowserAgentSettings'
+import { ChatMentionSettings } from '@/containers/ChatMentionSettings'
+import {
+  SettingsTabStrip,
+  useSettingsTab,
+  type SettingsTab,
+} from '@/containers/SettingsTabs'
+import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -51,6 +59,8 @@ export const Route = createFileRoute(route.settings.permissions as any)({
 const HISTORY_LIMIT = 50
 /** Decisions shown before "Show all": the log is reference, not the page. */
 const HISTORY_PREVIEW = 10
+
+type PermissionsTab = 'rules' | 'access' | 'remembered' | 'activity'
 
 /** Whether a standing server grant still describes the configured server. */
 type GrantState = 'current' | 'changed' | 'missing' | 'unknown'
@@ -179,7 +189,7 @@ function PermissionsSettings() {
   )
   const revokeToolEverywhere = useToolApproval((s) => s.revokeToolEverywhere)
   const revokeServerTrust = useToolApproval((s) => s.revokeServerTrust)
-  const revokeAllowAll = useToolApproval((s) => s.revokeAllowAllMCPPermissions)
+  const setAllowAll = useToolApproval((s) => s.setAllowAllMCPPermissions)
   const threads = useThreads((s) => s.threads)
   const coworkSessions = useCoworkSessions((s) => s.sessions)
 
@@ -199,6 +209,48 @@ function PermissionsSettings() {
   const permissionMode = useToolApproval((s) => s.permissionMode)
   const setPermissionMode = useToolApproval((s) => s.setPermissionMode)
   const [historyError, setHistoryError] = useState<string | null>(null)
+
+  // A search result opens the tab that holds the setting it names.
+  const tabs: SettingsTab<PermissionsTab>[] = [
+    {
+      id: 'rules',
+      label: t('permissions:settings.tabRules', { defaultValue: 'Rules' }),
+      anchors: [
+        'settings-permissions-mode',
+        'settings-permissions-auto-approve-limit*',
+        'settings-permissions-allow-permissions',
+        'settings-permissions-renewal',
+        'settings-permissions-chat-mentions',
+      ],
+    },
+    {
+      id: 'access',
+      label: t('permissions:settings.tabAccess', { defaultValue: 'Access' }),
+      anchors: [
+        'settings-permissions-folder-access',
+        'settings-permissions-trusted-folders',
+        'settings-permissions-browser-*',
+      ],
+    },
+    {
+      id: 'remembered',
+      label: t('permissions:settings.tabRemembered', { defaultValue: 'Remembered' }),
+      anchors: [
+        'settings-permissions-conversations',
+        'settings-permissions-everywhere',
+        'settings-permissions-approval-rules',
+      ],
+    },
+    {
+      id: 'activity',
+      label: t('permissions:settings.tabActivity', { defaultValue: 'Activity' }),
+      anchors: [
+        'settings-permissions-deferred-approvals',
+        'settings-permissions-history',
+      ],
+    },
+  ]
+  const [tab, setTab] = useSettingsTab(tabs)
 
   useEffect(() => {
     let cancelled = false
@@ -381,327 +433,201 @@ function PermissionsSettings() {
             <span>{t('permissions:settings.revokeEffect')}</span>
           </>
         }
-        layout={[0, 1, 0, 1, 0, 1, 0, 0, 1]}
+        actions={
+          <SettingsTabStrip<PermissionsTab>
+            label={t('permissions:settings.title')}
+            tabs={tabs}
+            value={tab}
+            onChange={setTab}
+          />
+        }
       >
-        {/* 0. How long an auto-approved run goes before checking in */}
-        <AutoApproveLimitCard />
-
-        <Card
-          anchor="settings-permissions-mode"
-          title={t('permissions:settings.permissionMode')}
-          description={t('permissions:settings.permissionModeDesc')}
-        >
-          <span id="tool-permission-mode-label" className="text-sm font-medium">
-            {t('permissions:settings.approvalBehavior')}
-          </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="mt-2 w-full justify-between text-sm"
-                aria-labelledby="tool-permission-mode-label"
-              >
-                {t(
-                  permissionMode === 'ask'
-                    ? 'permissions:settings.modeAsk'
-                    : permissionMode === 'auto-approve'
-                      ? 'permissions:settings.modeAuto'
-                      : 'permissions:settings.modeBypass'
-                )}
-                <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
-              {([
-                ['ask', 'permissions:settings.modeAsk'],
-                ['auto-approve', 'permissions:settings.modeAuto'],
-                ['bypass', 'permissions:settings.modeBypass'],
-              ] as const).map(([mode, label]) => (
-                <DropdownMenuItem
-                  key={mode}
-                  role="menuitemradio"
-                  aria-checked={permissionMode === mode}
-                  onSelect={() => {
-                    void (async () => {
-                      if (
-                        mode === 'bypass' &&
-                        !(await confirmBypass(t('permissions:settings.bypassConfirm')))
-                      ) return
-                      setPermissionMode(mode as PermissionMode)
-                    })()
-                  }}
-                >
-                  <span className="flex-1">{t(label)}</span>
-                  {permissionMode === mode && <Check aria-hidden className="size-4" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t('permissions:settings.modeDetails')}
-          </p>
-        </Card>
-
-        {/* 1. Allowed in one conversation */}
-        <Card
-          anchor="settings-permissions-conversations"
-          title={t('permissions:settings.conversations')}
-          description={t('permissions:settings.conversationsDesc')}
-          aside={
-            <span className="tabular-nums">
-              {conversations.reduce(
-                (n, row) => n + row.tools.length + row.mcpTools.length,
-                0
-              )}
+        {tab === 'rules' && (
+          <Card
+            anchor="settings-permissions-mode"
+            title={t('permissions:settings.permissionMode')}
+            description={t('permissions:settings.permissionModeDesc')}
+          >
+            <span id="tool-permission-mode-label" className="text-sm font-medium">
+              {t('permissions:settings.approvalBehavior')}
             </span>
-          }
-        >
-          {conversations.length === 0 ? (
-            <p className={EMPTY}>
-              {t('permissions:settings.noConversationGrants')}
-            </p>
-          ) : (
-            // Bounded: dozens of per-conversation grants scroll inside the
-            // card instead of stretching the whole page.
-            <ul
-              data-testid="permissions-conversation-list"
-              className="flex max-h-[26rem] flex-col divide-y divide-border overflow-y-auto pr-1 [scrollbar-width:thin]"
-            >
-              {conversations.map(({ id: threadId, tools, mcpTools }) => (
-                <li key={threadId} className="py-1.5">
-                  <p className="truncate pt-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
-                    {conversationTitle(threadId)}
-                  </p>
-                  <ul className="flex flex-col">
-                    {tools.map((tool) => (
-                      <li key={tool} className={ROW}>
-                        <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                          {similarToolCallLabel(tool) ?? t('permissions:settings.toolLabel', { tool })}
-                        </span>
-                        <Button
-                          variant="destructive"
-                          className={REVOKE}
-                          aria-label={t('permissions:settings.revokeLabel', {
-                            name: `${tool} (${conversationTitle(threadId)})`,
-                          })}
-                          onClick={() => revokeToolForThread(threadId, tool)}
-                        >
-                          {t('permissions:settings.revoke')}
-                        </Button>
-                      </li>
-                    ))}
-                    {mcpTools.map((grant) => (
-                      <li
-                        key={`${grant.server}::${grant.tool}`}
-                        className={ROW}
-                      >
-                        <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                          {t('permissions:settings.mcpToolLabel', {
-                            server: grant.server,
-                            tool: grant.tool,
-                          })}
-                        </span>
-                        <Button
-                          variant="destructive"
-                          className={REVOKE}
-                          aria-label={t('permissions:settings.revokeLabel', {
-                            name: `${grant.server} ${grant.tool} (${conversationTitle(threadId)})`,
-                          })}
-                          onClick={() =>
-                            revokeMcpToolForThread(
-                              threadId,
-                              grant.server,
-                              grant.tool
-                            )
-                          }
-                        >
-                          {t('permissions:settings.revoke')}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        {/* 2. Tools allowed in every conversation */}
-        <Card
-          anchor="settings-permissions-everywhere"
-          title={t('permissions:settings.toolsEverywhere')}
-          description={t('permissions:settings.toolsEverywhereDesc')}
-          aside={
-            <span className="tabular-nums">{approvedToolsGlobal.length + approvedSimilarCalls.length}</span>
-          }
-        >
-          {approvedToolsGlobal.length === 0 && approvedSimilarCalls.length === 0 ? (
-            <p className={EMPTY}>
-              {t('permissions:settings.noToolsEverywhere')}
-            </p>
-          ) : (
-            <ul className="flex flex-col">
-              {approvedToolsGlobal.map((tool) => (
-                <li key={`tool-${tool}`} className={ROW}>
-                  <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                    {t('permissions:settings.toolLabel', { tool })}
-                  </span>
-                  <Button
-                    variant="destructive"
-                    className={REVOKE}
-                    aria-label={t('permissions:settings.revokeLabel', {
-                      name: tool,
-                    })}
-                    onClick={() => revokeToolEverywhere(tool)}
-                  >
-                    {t('permissions:settings.revoke')}
-                  </Button>
-                </li>
-              ))}
-              {approvedSimilarCalls.map((grant) => (
-                <li key={grant.key} className={ROW}>
-                  <span className="min-w-0 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                    {grant.label}
-                  </span>
-                  <Button
-                    variant="destructive"
-                    className={REVOKE}
-                    aria-label={t('permissions:settings.revokeLabel', { name: grant.label })}
-                    onClick={() => revokeSimilarCall(grant.key)}
-                  >
-                    {t('permissions:settings.revoke')}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        {/* Folders granted through request_access */}
-        <FolderAccessCard />
-        <TrustedFoldersCard />
-        <ApprovalRulesCard />
-
-        {/* 3. Trusted MCP servers, with the state of each approval */}
-        <Card
-          title={t('permissions:settings.trustedServers')}
-          description={t('permissions:settings.trustedServersDesc')}
-        >
-          {serversError && (
-            <InlineError>
-              {t('permissions:settings.loadServersFailed', {
-                error: serversError,
-              })}
-            </InlineError>
-          )}
-          {servers.length === 0 ? (
-            <p className={EMPTY}>
-              {t('permissions:settings.noTrustedServers')}
-            </p>
-          ) : (
-            <ul className="flex flex-col">
-              {servers.map((server) => (
-                <li
-                  key={`server-${server.name}`}
-                  className="border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="mt-2 w-full justify-between text-sm"
+                  aria-labelledby="tool-permission-mode-label"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 [&>:first-child]:flex-[1_1_10rem]">
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                        {t('permissions:settings.serverLabel', {
-                          server: server.name,
-                        })}
-                      </p>
-                      {server.state === 'changed' && (
-                        <p className="text-xs leading-[1.4] text-muted-foreground">
-                          {t('permissions:settings.serverChanged')}
-                        </p>
-                      )}
-                      {server.state === 'missing' && (
-                        <p className="text-xs leading-[1.4] text-muted-foreground">
-                          {t('permissions:settings.serverMissing')}
-                        </p>
-                      )}
-                      {server.inApp && !server.inBackend && report && (
-                        <p className="text-xs leading-[1.4] text-muted-foreground">
-                          {t('permissions:settings.serverAppOnly')}
-                        </p>
-                      )}
-                      {server.inBackend && !server.inApp && (
-                        <p className="text-xs leading-[1.4] text-muted-foreground">
-                          {t('permissions:settings.serverBackendOnly')}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      <StatusChip
-                        tone={GRANT_TONE[server.state]}
-                        data-testid={`permissions-server-state-${server.name}`}
-                      >
-                        {grantLabel(server.state)}
-                      </StatusChip>
-                      <Button
-                        variant="destructive"
-                        className={REVOKE}
-                        disabled={busyServer === server.name}
-                        aria-busy={busyServer === server.name}
-                        aria-describedby={
-                          serverErrors[server.name]
-                            ? errorId(server.name)
-                            : undefined
-                        }
-                        aria-label={t('permissions:settings.revokeLabel', {
-                          name: server.name,
-                        })}
-                        onClick={() => void onRevokeServer(server.name)}
-                      >
-                        {t('permissions:settings.revoke')}
-                      </Button>
-                    </div>
-                  </div>
-                  {serverErrors[server.name] && (
-                    <InlineError id={errorId(server.name)}>
-                      {serverErrors[server.name]}
-                    </InlineError>
+                  {t(
+                    permissionMode === 'ask'
+                      ? 'permissions:settings.modeAsk'
+                      : permissionMode === 'auto-approve'
+                        ? 'permissions:settings.modeAuto'
+                        : 'permissions:settings.modeBypass'
                   )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+                  <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                {([
+                  ['ask', 'permissions:settings.modeAsk'],
+                  ['auto-approve', 'permissions:settings.modeAuto'],
+                  ['bypass', 'permissions:settings.modeBypass'],
+                ] as const).map(([mode, label]) => (
+                  <DropdownMenuItem
+                    key={mode}
+                    role="menuitemradio"
+                    aria-checked={permissionMode === mode}
+                    onSelect={() => {
+                      void (async () => {
+                        if (
+                          mode === 'bypass' &&
+                          !(await confirmBypass(t('permissions:settings.bypassConfirm')))
+                        ) return
+                        setPermissionMode(mode as PermissionMode)
+                      })()
+                    }}
+                  >
+                    <span className="flex-1">{t(label)}</span>
+                    {permissionMode === mode && <Check aria-hidden className="size-4" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t('permissions:settings.modeDetails')}
+            </p>
+          </Card>
+        )}
 
-        {/* 4. Every MCP tool, without asking */}
-        <Card title={t('permissions:settings.allowAllGroup')}>
-          {allowAll ? (
-            <div className={ROW}>
-              <div className="min-w-0 space-y-0.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                    {t('permissions:settings.allowAll')}
-                  </p>
-                  <StatusChip tone="warning">
-                    {t('permissions:settings.allowAllOn')}
-                  </StatusChip>
+        {/* 0. How long an auto-approved run goes before checking in */}
+        {tab === 'rules' && (
+          <AutoApproveLimitCard />
+        )}
+
+        {/* 4. Every MCP tool, without asking. The one switch for it: the MCP
+            page links here. */}
+        {tab === 'rules' && (
+          <Card title={t('permissions:settings.allowAllGroup')}>
+            <CardItem
+              wrapDescription
+              anchor="settings-permissions-allow-permissions"
+              title={
+                <span className="flex flex-wrap items-center gap-2">
+                  {t('mcp-servers:allowPermissions')}
+                  {allowAll && (
+                    <StatusChip tone="warning">
+                      {t('permissions:settings.allowAllOn')}
+                    </StatusChip>
+                  )}
+                </span>
+              }
+              description={t('mcp-servers:allowPermissionsDesc')}
+              actions={
+                <div className="shrink-0">
+                  <Switch
+                    data-testid="permissions-allow-all"
+                    aria-label={t('mcp-servers:allowPermissions')}
+                    checked={allowAll}
+                    onCheckedChange={setAllowAll}
+                  />
                 </div>
-                <p className="text-xs leading-[1.4] text-muted-foreground">
-                  {t('permissions:settings.allowAllDesc')}
-                </p>
-              </div>
-              <Button
-                variant="destructive"
-                className={REVOKE}
-                onClick={revokeAllowAll}
-              >
-                {t('permissions:settings.revokeAll')}
-              </Button>
-            </div>
-          ) : (
-            <p className={EMPTY}>{t('permissions:settings.allowAllOff')}</p>
-          )}
-        </Card>
+              }
+            />
+          </Card>
+        )}
+        {/* 3. Trusted MCP servers, with the state of each approval */}
+        {tab === 'rules' && (
+          <Card
+            title={t('permissions:settings.trustedServers')}
+            description={t('permissions:settings.trustedServersDesc')}
+          >
+            {serversError && (
+              <InlineError>
+                {t('permissions:settings.loadServersFailed', {
+                  error: serversError,
+                })}
+              </InlineError>
+            )}
+            {servers.length === 0 ? (
+              <p className={EMPTY}>
+                {t('permissions:settings.noTrustedServers')}
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {servers.map((server) => (
+                  <li
+                    key={`server-${server.name}`}
+                    className="border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 [&>:first-child]:flex-[1_1_10rem]">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
+                          {t('permissions:settings.serverLabel', {
+                            server: server.name,
+                          })}
+                        </p>
+                        {server.state === 'changed' && (
+                          <p className="text-xs leading-[1.4] text-muted-foreground">
+                            {t('permissions:settings.serverChanged')}
+                          </p>
+                        )}
+                        {server.state === 'missing' && (
+                          <p className="text-xs leading-[1.4] text-muted-foreground">
+                            {t('permissions:settings.serverMissing')}
+                          </p>
+                        )}
+                        {server.inApp && !server.inBackend && report && (
+                          <p className="text-xs leading-[1.4] text-muted-foreground">
+                            {t('permissions:settings.serverAppOnly')}
+                          </p>
+                        )}
+                        {server.inBackend && !server.inApp && (
+                          <p className="text-xs leading-[1.4] text-muted-foreground">
+                            {t('permissions:settings.serverBackendOnly')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <StatusChip
+                          tone={GRANT_TONE[server.state]}
+                          data-testid={`permissions-server-state-${server.name}`}
+                        >
+                          {grantLabel(server.state)}
+                        </StatusChip>
+                        <Button
+                          variant="destructive"
+                          className={REVOKE}
+                          disabled={busyServer === server.name}
+                          aria-busy={busyServer === server.name}
+                          aria-describedby={
+                            serverErrors[server.name]
+                              ? errorId(server.name)
+                              : undefined
+                          }
+                          aria-label={t('permissions:settings.revokeLabel', {
+                            name: server.name,
+                          })}
+                          onClick={() => void onRevokeServer(server.name)}
+                        >
+                          {t('permissions:settings.revoke')}
+                        </Button>
+                      </div>
+                    </div>
+                    {serverErrors[server.name] && (
+                      <InlineError id={errorId(server.name)}>
+                        {serverErrors[server.name]}
+                      </InlineError>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
 
         {/* 5. Approvals that stopped applying, with the reason */}
-        {pendingRenewals.length > 0 && (
+        {tab === 'rules' && pendingRenewals.length > 0 && (
           <Card
             anchor="settings-permissions-renewal"
             title={t('permissions:settings.needsRenewal')}
@@ -759,112 +685,271 @@ function PermissionsSettings() {
           </Card>
         )}
 
-        {/* 6. Recent decisions: the audit log, last 50 */}
-        <Card
-          anchor="settings-permissions-history"
-          title={t('permissions:settings.history')}
-          description={t('permissions:settings.historyDesc')}
-          aside={t('permissions:settings.historyLimit', {
-            count: HISTORY_LIMIT,
-          })}
-        >
-          {isServedByFlint() ? (
-            <p className={EMPTY} data-testid="history-desktop-only">
-              {t('permissions:desktopOnly')}
-            </p>
-          ) : historyError ? (
-            <p className={EMPTY}>
-              {t('permissions:settings.historyUnavailable', {
-                error: historyError,
-              })}
-            </p>
-          ) : history && history.length === 0 ? (
-            <p className={EMPTY}>{t('permissions:settings.historyEmpty')}</p>
-          ) : history === null ? (
-            <p className={EMPTY} aria-busy>
-              {t('permissions:settings.loading')}
-            </p>
-          ) : (
-            // A real table at every width; on a narrow screen it scrolls
-            // sideways inside this container, never the page.
-            <div
-              className="min-w-0 overflow-x-auto"
-              tabIndex={0}
-              role="region"
-              aria-label={t('permissions:settings.history')}
-            >
-              <table className="w-full min-w-[26rem] border-collapse text-left text-[length:calc(var(--ui-font-base)*0.78125)] tabular-nums">
-                <thead>
-                  <tr className="border-b border-dashed border-border text-xs text-muted-foreground">
-                    <th scope="col" className="px-0.5 py-2 pr-3 font-normal">
-                      {t('permissions:settings.historyTime')}
-                    </th>
-                    <th scope="col" className="w-24 px-0.5 py-2 font-normal">
-                      {t('permissions:settings.historyTool')}
-                    </th>
-                    <th scope="col" className="px-0.5 py-2 font-normal">
-                      {t('permissions:settings.historyScope')}
-                    </th>
-                    <th scope="col" className="w-24 px-0.5 py-2 font-normal">
-                      {t('permissions:settings.historyDecision')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(historyExpanded
-                    ? history
-                    : history.slice(0, HISTORY_PREVIEW)
-                  ).map((record, index) => (
-                    <tr
-                      key={`${record.at}-${record.call}-${index}`}
-                      className="border-b border-dashed border-border last:border-b-0"
-                    >
-                      <td className="px-0.5 py-2 pr-3 align-middle whitespace-nowrap">
-                        <WhenCell at={record.at} />
-                      </td>
-                      <td className="max-w-24 px-0.5 py-2 align-middle">
-                        <span
-                          className="block truncate font-mono text-xs text-foreground"
-                          title={record.tool}
+        {/* Desktop only: the setting is the desktop app's. */}
+        {tab === 'rules' && !isServedByFlint() && <ChatMentionSettings />}
+        {/* Folders granted through request_access */}
+        {tab === 'access' && (
+          <FolderAccessCard />
+        )}
+        {tab === 'access' && (
+          <TrustedFoldersCard />
+        )}
+
+        {/* The browser pane is the desktop app's. */}
+        {tab === 'access' && !isServedByFlint() && <BrowserSitePermissions />}
+        {/* 1. Allowed in one conversation */}
+        {tab === 'remembered' && (
+          <Card
+            anchor="settings-permissions-conversations"
+            title={t('permissions:settings.conversations')}
+            description={t('permissions:settings.conversationsDesc')}
+            aside={
+              <span className="tabular-nums">
+                {conversations.reduce(
+                  (n, row) => n + row.tools.length + row.mcpTools.length,
+                  0
+                )}
+              </span>
+            }
+          >
+            {conversations.length === 0 ? (
+              <p className={EMPTY}>
+                {t('permissions:settings.noConversationGrants')}
+              </p>
+            ) : (
+              // Bounded: dozens of per-conversation grants scroll inside the
+              // card instead of stretching the whole page.
+              <ul
+                data-testid="permissions-conversation-list"
+                className="flex max-h-[26rem] flex-col divide-y divide-border overflow-y-auto pr-1 [scrollbar-width:thin]"
+              >
+                {conversations.map(({ id: threadId, tools, mcpTools }) => (
+                  <li key={threadId} className="py-1.5">
+                    <p className="truncate pt-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+                      {conversationTitle(threadId)}
+                    </p>
+                    <ul className="flex flex-col">
+                      {tools.map((tool) => (
+                        <li key={tool} className={ROW}>
+                          <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
+                            {similarToolCallLabel(tool) ?? t('permissions:settings.toolLabel', { tool })}
+                          </span>
+                          <Button
+                            variant="destructive"
+                            className={REVOKE}
+                            aria-label={t('permissions:settings.revokeLabel', {
+                              name: `${tool} (${conversationTitle(threadId)})`,
+                            })}
+                            onClick={() => revokeToolForThread(threadId, tool)}
+                          >
+                            {t('permissions:settings.revoke')}
+                          </Button>
+                        </li>
+                      ))}
+                      {mcpTools.map((grant) => (
+                        <li
+                          key={`${grant.server}::${grant.tool}`}
+                          className={ROW}
                         >
-                          {record.tool}
-                        </span>
-                      </td>
-                      <td className="w-full max-w-0 min-w-0 px-0.5 py-2 align-middle">
-                        <DecisionScope
-                          resource={record.resource}
-                          reason={record.reason}
-                        />
-                      </td>
-                      <td className="px-0.5 py-2 align-middle">
-                        <StatusChip tone={decisionTone(record.decision)}>
-                          {decisionKey(record.decision)
-                            ? t(decisionKey(record.decision)!)
-                            : record.decision}
-                        </StatusChip>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {history.length > HISTORY_PREVIEW && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-testid="permissions-history-toggle"
-                  className="mt-1"
-                  onClick={() => setHistoryExpanded((v) => !v)}
-                >
-                  {historyExpanded
-                    ? t('permissions:settings.historyShowFewer')
-                    : t('permissions:settings.historyShowAll', {
-                        count: history.length,
+                          <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
+                            {t('permissions:settings.mcpToolLabel', {
+                              server: grant.server,
+                              tool: grant.tool,
+                            })}
+                          </span>
+                          <Button
+                            variant="destructive"
+                            className={REVOKE}
+                            aria-label={t('permissions:settings.revokeLabel', {
+                              name: `${grant.server} ${grant.tool} (${conversationTitle(threadId)})`,
+                            })}
+                            onClick={() =>
+                              revokeMcpToolForThread(
+                                threadId,
+                                grant.server,
+                                grant.tool
+                              )
+                            }
+                          >
+                            {t('permissions:settings.revoke')}
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
+
+        {/* 2. Tools allowed in every conversation */}
+        {tab === 'remembered' && (
+          <Card
+            anchor="settings-permissions-everywhere"
+            title={t('permissions:settings.toolsEverywhere')}
+            description={t('permissions:settings.toolsEverywhereDesc')}
+            aside={
+              <span className="tabular-nums">{approvedToolsGlobal.length + approvedSimilarCalls.length}</span>
+            }
+          >
+            {approvedToolsGlobal.length === 0 && approvedSimilarCalls.length === 0 ? (
+              <p className={EMPTY}>
+                {t('permissions:settings.noToolsEverywhere')}
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {approvedToolsGlobal.map((tool) => (
+                  <li key={`tool-${tool}`} className={ROW}>
+                    <span className="min-w-0 break-all text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
+                      {t('permissions:settings.toolLabel', { tool })}
+                    </span>
+                    <Button
+                      variant="destructive"
+                      className={REVOKE}
+                      aria-label={t('permissions:settings.revokeLabel', {
+                        name: tool,
                       })}
-                </Button>
-              )}
-            </div>
-          )}
-        </Card>
+                      onClick={() => revokeToolEverywhere(tool)}
+                    >
+                      {t('permissions:settings.revoke')}
+                    </Button>
+                  </li>
+                ))}
+                {approvedSimilarCalls.map((grant) => (
+                  <li key={grant.key} className={ROW}>
+                    <span className="min-w-0 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
+                      {grant.label}
+                    </span>
+                    <Button
+                      variant="destructive"
+                      className={REVOKE}
+                      aria-label={t('permissions:settings.revokeLabel', { name: grant.label })}
+                      onClick={() => revokeSimilarCall(grant.key)}
+                    >
+                      {t('permissions:settings.revoke')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
+
+        {tab === 'remembered' && (
+          <ApprovalRulesCard show="rules" />
+        )}
+        {tab === 'activity' && (
+          <ApprovalRulesCard show="waiting" />
+        )}
+        {/* 6. Recent decisions: the audit log, last 50 */}
+        {tab === 'activity' && (
+          <Card
+            anchor="settings-permissions-history"
+            title={t('permissions:settings.history')}
+            description={t('permissions:settings.historyDesc')}
+            aside={t('permissions:settings.historyLimit', {
+              count: HISTORY_LIMIT,
+            })}
+          >
+            {isServedByFlint() ? (
+              <p className={EMPTY} data-testid="history-desktop-only">
+                {t('permissions:desktopOnly')}
+              </p>
+            ) : historyError ? (
+              <p className={EMPTY}>
+                {t('permissions:settings.historyUnavailable', {
+                  error: historyError,
+                })}
+              </p>
+            ) : history && history.length === 0 ? (
+              <p className={EMPTY}>{t('permissions:settings.historyEmpty')}</p>
+            ) : history === null ? (
+              <p className={EMPTY} aria-busy>
+                {t('permissions:settings.loading')}
+              </p>
+            ) : (
+              // A real table at every width; on a narrow screen it scrolls
+              // sideways inside this container, never the page.
+              <div
+                className="min-w-0 overflow-x-auto"
+                tabIndex={0}
+                role="region"
+                aria-label={t('permissions:settings.history')}
+              >
+                <table className="w-full min-w-[26rem] border-collapse text-left text-[length:calc(var(--ui-font-base)*0.78125)] tabular-nums">
+                  <thead>
+                    <tr className="border-b border-dashed border-border text-xs text-muted-foreground">
+                      <th scope="col" className="px-0.5 py-2 pr-3 font-normal">
+                        {t('permissions:settings.historyTime')}
+                      </th>
+                      <th scope="col" className="w-24 px-0.5 py-2 font-normal">
+                        {t('permissions:settings.historyTool')}
+                      </th>
+                      <th scope="col" className="px-0.5 py-2 font-normal">
+                        {t('permissions:settings.historyScope')}
+                      </th>
+                      <th scope="col" className="w-24 px-0.5 py-2 font-normal">
+                        {t('permissions:settings.historyDecision')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(historyExpanded
+                      ? history
+                      : history.slice(0, HISTORY_PREVIEW)
+                    ).map((record, index) => (
+                      <tr
+                        key={`${record.at}-${record.call}-${index}`}
+                        className="border-b border-dashed border-border last:border-b-0"
+                      >
+                        <td className="px-0.5 py-2 pr-3 align-middle whitespace-nowrap">
+                          <WhenCell at={record.at} />
+                        </td>
+                        <td className="max-w-24 px-0.5 py-2 align-middle">
+                          <span
+                            className="block truncate font-mono text-xs text-foreground"
+                            title={record.tool}
+                          >
+                            {record.tool}
+                          </span>
+                        </td>
+                        <td className="w-full max-w-0 min-w-0 px-0.5 py-2 align-middle">
+                          <DecisionScope
+                            resource={record.resource}
+                            reason={record.reason}
+                          />
+                        </td>
+                        <td className="px-0.5 py-2 align-middle">
+                          <StatusChip tone={decisionTone(record.decision)}>
+                            {decisionKey(record.decision)
+                              ? t(decisionKey(record.decision)!)
+                              : record.decision}
+                          </StatusChip>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {history.length > HISTORY_PREVIEW && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="permissions-history-toggle"
+                    className="mt-1"
+                    onClick={() => setHistoryExpanded((v) => !v)}
+                  >
+                    {historyExpanded
+                      ? t('permissions:settings.historyShowFewer')
+                      : t('permissions:settings.historyShowAll', {
+                          count: history.length,
+                        })}
+                  </Button>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
       </SettingsPageBody>
     </div>
   )

@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "Obecné",
+  "groupApp": "Aplikace",
+  "groupChatAndAgent": "Chat a agent",
   "groupModelsAndTools": "Modely a nástroje",
+  "groupData": "Data",
+  "groupGeneral": "Obecné",
   "advancedSettings": "Pokročilé",
   "advancedSettingsHint": "Lokální server API, proxy, hardware a konfigurace nástrojů agenta. Jejich seskupení nemění nic na tom, jak fungují."
 }

@@ -15,9 +15,7 @@ const DESKTOP_ONLY = [
   'local-api-server',
   'remote-access',
   'https-proxy',
-  'claude-code',
   'schedules',
-  'extensions',
 ]
 
 describe('settings in a plain browser', () => {
@@ -32,5 +30,13 @@ describe('settings in a plain browser', () => {
     expect(
       index.some((e) => e.kind === 'setting' && e.route.includes('local-api-server'))
     ).toBe(false)
+  })
+
+  it('keeps Integrations for its Jev tab, without the Claude Code settings', () => {
+    expect(isSettingsPageAvailable('integrations')).toBe(true)
+    const ids = buildSettingsIndex((k) => k).map((e) => e.id)
+    expect(ids).toContain('page-integrations')
+    expect(ids).toContain('settings-integrations-jev-key')
+    expect(ids.some((id) => id.startsWith('settings-integrations-claude-code-'))).toBe(false)
   })
 })

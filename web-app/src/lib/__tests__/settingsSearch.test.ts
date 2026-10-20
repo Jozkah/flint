@@ -23,6 +23,9 @@ import enMcpServers from '@/locales/en/mcp-servers.json'
 import enPermissions from '@/locales/en/permissions.json'
 import enRemote from '@/locales/en/remote.json'
 import enSchedules from '@/locales/en/schedules.json'
+import enProvider from '@/locales/en/provider.json'
+import enBrowserAgent from '@/locales/en/browser-agent.json'
+import enProviders from '@/locales/en/providers.json'
 
 // A fake translator, so the tests control the translated text the index is
 // built from and can tell "found the key" apart from "found the label".
@@ -279,6 +282,9 @@ describe('registry i18n keys', () => {
     permissions: enPermissions,
     remote: enRemote,
     schedules: enSchedules,
+    provider: enProvider,
+    'browser-agent': enBrowserAgent,
+    providers: enProviders,
   }
 
   const resolve = (key: string): string | undefined => {
@@ -455,25 +461,32 @@ const CARD_FILES: Record<string, string[]> = {
   permissions: [
     'containers/TrustedFoldersCard.tsx',
     'containers/ApprovalRulesCard.tsx',
+    'containers/BrowserAgentSettings.tsx',
+    'containers/ChatMentionSettings.tsx',
   ],
   'agent-tools': ['containers/CompactionPolicySettings.tsx'],
+  data: ['containers/SettingsBackupCard.tsx'],
+  'model-providers': ['containers/ModelDefaultsCard.tsx'],
+  integrations: ['containers/ClaudeCodeSettings.tsx'],
 }
 
 /** Where each page's source lives, relative to `web-app/src`. */
 const ROUTE_FILES: Record<string, string> = {
   general: 'routes/settings/general.tsx',
-  appearance: 'routes/settings/interface.tsx',
-  jev: 'routes/settings/jev.tsx',
+  appearance: 'routes/settings/appearance.tsx',
+  chat: 'routes/settings/chat.tsx',
+  data: 'routes/settings/data.tsx',
+  'model-providers': 'routes/settings/providers/index.tsx',
   assistants: 'routes/settings/assistant.tsx',
   attachments: 'routes/settings/attachments.tsx',
   'local-api-server': 'routes/settings/local-api-server.tsx',
-  'https-proxy': 'routes/settings/https-proxy.tsx',
+  'https-proxy': 'routes/settings/network-proxy.tsx',
   'web-search': 'routes/settings/web-search.tsx',
-  'agent-tools': 'routes/settings/agent-tools.tsx',
+  'agent-tools': 'routes/settings/agent.tsx',
   permissions: 'routes/settings/permissions.tsx',
   shortcuts: 'routes/settings/shortcuts.tsx',
   'mcp-servers': 'routes/settings/mcp-servers.tsx',
-  'claude-code': 'routes/settings/claude-code.tsx',
+  integrations: 'routes/settings/integrations.tsx',
 }
 
 describe('cards added by the merged features are searchable', () => {
@@ -486,12 +499,27 @@ describe('cards added by the merged features are searchable', () => {
     ['settings-agent-tools-compaction', 'agent-tools'],
     ['settings-mcp-servers-idle-shutdown', 'mcp-servers'],
     ['settings-appearance-sidebar-items', 'appearance'],
-    ['settings-general-spell-check', 'general'],
+    ['settings-chat-spell-check', 'chat'],
+    ['settings-data-factory-reset', 'data'],
+    ['settings-model-providers-huggingface-token', 'model-providers'],
+    ['settings-permissions-allow-permissions', 'permissions'],
+    ['settings-permissions-chat-mentions', 'permissions'],
+    ['settings-permissions-browser-sites', 'permissions'],
+    ['settings-permissions-browser-rules', 'permissions'],
   ])('%s is indexed on its own page', (id, pageId) => {
     const entry = byId(id)
     expect(entry, id).toBeDefined()
     expect(entry!.anchor).toBe(id)
     expect(entry!.route).toBe(SETTINGS_PAGES.find((p) => p.id === pageId)!.route)
+  })
+
+  it('indexes the allow-all MCP switch once, on Permissions', () => {
+    const hits = SETTINGS_ITEMS.filter(
+      (i) => i.titleKey === 'mcp-servers:allowPermissions'
+    )
+    expect(hits.map((i) => i.id)).toEqual([
+      'settings-permissions-allow-permissions',
+    ])
   })
 
   it('finds the per-server tool timeout, on the MCP page without an anchor', () => {
@@ -511,5 +539,57 @@ describe('live-test search misses', () => {
     'settings-permissions-auto-approve-limit',
   ])('indexes %s', (id) => {
     expect(ids).toContain(id)
+  })
+})
+
+describe('the Integrations hub', () => {
+  const page = SETTINGS_PAGES.find((p) => p.id === 'integrations')!
+
+  it('replaces the Claude Code, Jev and Extensions pages', () => {
+    const pageIds = SETTINGS_PAGES.map((p) => p.id) as string[]
+    for (const gone of ['claude-code', 'jev', 'extensions']) {
+      expect(pageIds).not.toContain(gone)
+    }
+    expect(page.route).toBe(route.settings.integrations)
+    expect('coverage' in page).toBe(false)
+  })
+
+  it('keeps the old pages findable by their keywords', () => {
+    for (const k of ['claude', 'cli', 'typesafe', 'rerank', 'plugins', 'add-ons']) {
+      expect(page.keywords).toContain(k)
+    }
+    expect(ids(find('add-ons'))).toContain('page-integrations')
+  })
+
+  it.each([
+    'settings-integrations-claude-code-fable-model',
+    'settings-integrations-claude-code-large-model',
+    'settings-integrations-claude-code-medium-model',
+    'settings-integrations-claude-code-small-model',
+    'settings-integrations-jev-key',
+    'settings-integrations-jev-skills',
+    'settings-integrations-jev-rerank',
+  ])('indexes %s on the integrations route', (id) => {
+    const entry = SETTINGS_ITEMS.find((i) => i.id === id)
+    expect(entry?.anchor).toBe(id)
+    expect(entry?.route).toBe(route.settings.integrations)
+  })
+})
+
+describe('settings that left a popover', () => {
+  it.each([
+    'host',
+    'port',
+    'api-prefix',
+    'api-key',
+    'trusted-hosts',
+    'request-timeout',
+    'cors',
+    'verbose-logs',
+  ])('anchors the Local API Server %s setting', (name) => {
+    const id = `settings-local-api-server-${name}`
+    const entry = SETTINGS_ITEMS.find((i) => i.id === id)
+    expect(entry?.anchor).toBe(id)
+    expect(entry?.anchorNote).toBeUndefined()
   })
 })

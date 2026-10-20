@@ -259,7 +259,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Sono considerate attendibili solo le autorità di certificazione della piattaforma.",
     "caBundleInUse": "Considero attendibili {{count}} certificati di questo bundle oltre a quelli della piattaforma.",
-    "caBundleBroken": "Questo bundle non può essere usato ({{kind}}): l'HTTPS in uscita non considera attendibile nulla finché non viene corretto o rimosso."
+    "caBundleBroken": "Questo bundle non può essere usato ({{kind}}): l'HTTPS in uscita non considera attendibile nulla finché non viene corretto o rimosso.",
+    "ignoreSslScope": "Vale per tutto il traffico tramite proxy. Un singolo fornitore può anche consentire certificati non validi per il proprio indirizzo, nella sua pagina in Fornitori di modelli."
   },
   "webSearch": {
     "showKey": "Mostra chiave",
@@ -369,7 +370,14 @@
     "deleteFailed": "Impossibile eliminare",
     "revealFailed": "Impossibile aprire la cartella",
     "nameExists": "\"{{name}}\" esiste già. Scegli un altro nome o modifica quello esistente.",
-    "deleted": "\"{{name}}\" eliminato"
+    "deleted": "\"{{name}}\" eliminato",
+    "tabRun": "Esecuzione",
+    "tabContext": "Contesto",
+    "tabSandbox": "Sandbox e strumenti",
+    "coworkRuns": "Esecuzioni Cowork",
+    "shellSandboxTitle": "Shell e sandbox",
+    "computerUse": "Uso del computer",
+    "gitCredit": "Credito Git"
   },
   "localApiServer": {
     "title": "Server API locale",
@@ -544,7 +552,9 @@
       "uninstall": "Disinstalla",
       "uninstalling": "Disinstallazione…",
       "foreignDesc": "Trovata in {{path}}, installata da un'altra copia di Flint. Installa qui per usare la CLI di questa copia."
-    }
+    },
+    "startupGroup": "Avvio e area di notifica",
+    "cliGroup": "Riga di comando"
   },
   "extensions": {
     "title": "Estensioni"
@@ -717,7 +727,10 @@
     "perfReasonFrames": "fotogrammi lenti",
     "perfReasonMotion": "il sistema riduce il movimento",
     "perfReasonData": "risparmio dati",
-    "perfReasonChosen": "scelta qui"
+    "perfReasonChosen": "scelta qui",
+    "tabLook": "Aspetto",
+    "tabMotion": "Movimento e suono",
+    "layoutGroup": "Layout"
   },
   "pageDesc": {
     "general": "Lingua, cartella dati, log e opzioni dell'intera app.",
@@ -732,7 +745,10 @@
     "extensions": "Estensioni installate in questa copia di Flint.",
     "agentTools": "Accesso a file, shell e rete per gli strumenti integrati dell'agente di Flint.",
     "localApiServer": "Un server compatibile con OpenAI che altre app possono usare per raggiungere i tuoi modelli.",
-    "httpsProxy": "Invia le richieste internet di Flint tramite un proxy."
+    "httpsProxy": "Invia le richieste internet di Flint tramite un proxy.",
+    "chat": "Come appaiono, si inviano e si comportano le conversazioni.",
+    "data": "Dove Flint conserva i tuoi dati e come spostarli, salvarne una copia o rimuoverli.",
+    "integrations": "Claude Code, Jev e le estensioni installate."
   },
   "imageDescription": {
     "title": "Immagini e modelli solo testo",
@@ -1357,7 +1373,8 @@
     "noMatchHint": "Controlla l'ortografia o cancella la ricerca per vedere tutto.",
     "emptyHint": "Scrivine uno qui sopra, o lascia che Flint ricordi mentre chatti.",
     "footerCount_one": "1 ricordo in questo ambito",
-    "footerCount_other": "{{count}} ricordi in questo ambito"
+    "footerCount_other": "{{count}} ricordi in questo ambito",
+    "agentNotes": "Note dell'agente"
   },
   "chatMentions": {
     "title": "Menzioni di conversazioni",
@@ -1429,5 +1446,21 @@
     "deleteAllEmpty": "Niente da eliminare.",
     "scopeAll": "Riguarda tutto l'elenco, non solo le righe mostrate dal filtro attuale.",
     "archiveInstead": "Archivia invece"
+  },
+  "chat": {
+    "tabInput": "Input e risposte",
+    "tabDisplay": "Schermo",
+    "composerGroup": "Compositore",
+    "repliesGroup": "Risposte",
+    "linksGroup": "Link",
+    "artifactsGroup": "Artefatti e widget"
+  },
+  "data": {
+    "tabStorage": "Archiviazione",
+    "tabCleanup": "Pulizia",
+    "dangerGroup": "Zona pericolosa"
+  },
+  "modelDefaults": {
+    "title": "Predefiniti"
   }
 }

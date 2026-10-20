@@ -268,5 +268,7 @@
   },
   "cwd": "Working directory",
   "cwdPlaceholder": "Optional, e.g. C:\\tools\\my-server",
-  "cwdHint": "The folder the server starts in. Leave empty to start it from Flint's own folder."
+  "cwdHint": "The folder the server starts in. Leave empty to start it from Flint's own folder.",
+  "autoApproveServerHint": "Auto-approves this server's tools only. The switch for every MCP tool is under Settings > Permissions.",
+  "allowAllMoved": "The switch that lets every MCP tool run without asking is under Settings > Permissions."
 }

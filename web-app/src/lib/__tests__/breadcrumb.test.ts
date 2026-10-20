@@ -10,7 +10,8 @@ describe('crumbForPath', () => {
     ['/settings/mcp-servers', 'common:shell.engine', 'common:shell.toolsAndMcp'],
     ['/system-monitor', 'common:shell.engine', 'common:shell.systemMonitor'],
     ['/logs', 'common:shell.support', 'common:shell.logs'],
-    ['/settings/interface', 'common:settings', 'common:appearance'],
+    ['/settings/appearance', 'common:settings', 'common:appearance'],
+    ['/settings/network-proxy', 'common:settings', 'common:network_proxy'],
   ])('%s is %s / %s', (path, parent, current) => {
     const c = crumbForPath(path)
     expect(c.parentKey).toBe(parent)

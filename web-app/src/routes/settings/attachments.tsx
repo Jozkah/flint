@@ -27,6 +27,47 @@ const SETTING_ANCHORS: Record<string, string> = {
   enabled: 'settings-attachments-enable',
   parse_mode: 'settings-attachments-parse-mode',
   max_file_size_mb: 'settings-attachments-max-file',
+  auto_inline_context_ratio: 'settings-attachments-auto-inline',
+  retrieval_limit: 'settings-attachments-top-k',
+  retrieval_threshold: 'settings-attachments-threshold',
+  search_mode: 'settings-attachments-search-mode',
+  chunk_size_chars: 'settings-attachments-chunk-size',
+  overlap_chars: 'settings-attachments-chunk-overlap',
+}
+
+// The cards the schema's rows are grouped into, by schema key, in the order
+// they render. A key the extension adds later lands in the first card.
+const SETTING_GROUPS: { titleKey: string; keys: readonly string[] }[] = [
+  {
+    titleKey: 'settings:attachments.featureTitle',
+    keys: [
+      'enabled',
+      'parse_mode',
+      'auto_inline_context_ratio',
+      'max_file_size_mb',
+    ],
+  },
+  {
+    titleKey: 'settings:attachments.retrievalTitle',
+    keys: ['retrieval_limit', 'retrieval_threshold', 'search_mode'],
+  },
+  {
+    titleKey: 'settings:attachments.chunkingTitle',
+    keys: ['chunk_size_chars', 'overlap_chars'],
+  },
+]
+
+/** The schema's rows split into {@link SETTING_GROUPS}, keeping schema order
+ * inside each group. */
+function groupAttachmentDefs<T extends { key: string }>(
+  defs: readonly T[]
+): T[][] {
+  const groups: T[][] = SETTING_GROUPS.map(() => [])
+  for (const d of defs) {
+    const at = SETTING_GROUPS.findIndex((g) => g.keys.includes(d.key))
+    groups[at < 0 ? 0 : at].push(d)
+  }
+  return groups
 }
 
 // Helper to extract constraints from settingsDefs
@@ -198,95 +239,102 @@ function AttachmentsSettings() {
         title={t('common:attachments')}
         description={t('settings:pageDesc.attachments')}
       >
-        <Card title={t('common:attachments') || 'Attachments'}>
-          {defs.map((d) => {
-            // Use local value if typing, else use store value
-            const storeValue = (() => {
-              switch (d.key) {
-                case 'enabled':
-                  return sel.enabled
-                case 'max_file_size_mb':
-                  return sel.maxFileSizeMB
-                case 'retrieval_limit':
-                  return sel.retrievalLimit
-                case 'retrieval_threshold':
-                  return sel.retrievalThreshold
-                case 'chunk_size_chars':
-                  return sel.chunkSizeChars
-                case 'overlap_chars':
-                  return sel.overlapChars
-                case 'search_mode':
-                  return sel.searchMode
-                case 'parse_mode':
-                  return sel.parseMode
-                case 'auto_inline_context_ratio':
-                  return sel.autoInlineContextRatio
-                default:
-                  return d?.controllerProps?.value
-              }
-            })()
+        {groupAttachmentDefs(defs).map((group, i) =>
+          group.length === 0 ? null : (
+            <Card
+              key={SETTING_GROUPS[i].titleKey}
+              title={t(SETTING_GROUPS[i].titleKey)}
+            >
+              {group.map((d) => {
+                // Use local value if typing, else use store value
+                const storeValue = (() => {
+                  switch (d.key) {
+                    case 'enabled':
+                      return sel.enabled
+                    case 'max_file_size_mb':
+                      return sel.maxFileSizeMB
+                    case 'retrieval_limit':
+                      return sel.retrievalLimit
+                    case 'retrieval_threshold':
+                      return sel.retrievalThreshold
+                    case 'chunk_size_chars':
+                      return sel.chunkSizeChars
+                    case 'overlap_chars':
+                      return sel.overlapChars
+                    case 'search_mode':
+                      return sel.searchMode
+                    case 'parse_mode':
+                      return sel.parseMode
+                    case 'auto_inline_context_ratio':
+                      return sel.autoInlineContextRatio
+                    default:
+                      return d?.controllerProps?.value
+                  }
+                })()
 
-            const currentValue =
-              localValues[d.key] !== undefined
-                ? localValues[d.key]
-                : storeValue
+                const currentValue =
+                  localValues[d.key] !== undefined
+                    ? localValues[d.key]
+                    : storeValue
 
-            // Convert to DynamicControllerSetting compatible props
-            const baseProps = d.controllerProps
-            const normalizedValue: string | number | boolean = (() => {
-              if (Array.isArray(currentValue)) {
-                return currentValue.join(',')
-              }
-              return currentValue as string | number | boolean
-            })()
+                // Convert to DynamicControllerSetting compatible props
+                const baseProps = d.controllerProps
+                const normalizedValue: string | number | boolean = (() => {
+                  if (Array.isArray(currentValue)) {
+                    return currentValue.join(',')
+                  }
+                  return currentValue as string | number | boolean
+                })()
 
-            const props = {
-              value: normalizedValue,
-              placeholder:
-                'placeholder' in baseProps
-                  ? baseProps.placeholder
-                  : undefined,
-              type: 'type' in baseProps ? baseProps.type : undefined,
-              options:
-                'options' in baseProps ? baseProps.options : undefined,
-              input_actions:
-                'inputActions' in baseProps
-                  ? baseProps.inputActions
-                  : undefined,
-              rows: undefined,
-              min: 'min' in baseProps ? baseProps.min : undefined,
-              max: 'max' in baseProps ? baseProps.max : undefined,
-              step: 'step' in baseProps ? baseProps.step : undefined,
-              recommended:
-                'recommended' in baseProps
-                  ? baseProps.recommended
-                  : undefined,
-            }
-
-            const title = d.titleKey ? t(d.titleKey) : d.title
-            const description = d.descriptionKey
-              ? t(d.descriptionKey)
-              : d.description
-
-            const card = (
-              <CardItem
-                key={d.key}
-                anchor={SETTING_ANCHORS[d.key]}
-                title={title}
-                description={description}
-                actions={
-                  <DynamicControllerSetting
-                    controllerType={d.controllerType}
-                    controllerProps={props}
-                    onChange={(val) => debouncedSet(d.key, val, d)}
-                  />
+                const props = {
+                  value: normalizedValue,
+                  placeholder:
+                    'placeholder' in baseProps
+                      ? baseProps.placeholder
+                      : undefined,
+                  type: 'type' in baseProps ? baseProps.type : undefined,
+                  options:
+                    'options' in baseProps ? baseProps.options : undefined,
+                  input_actions:
+                    'inputActions' in baseProps
+                      ? baseProps.inputActions
+                      : undefined,
+                  rows: undefined,
+                  min: 'min' in baseProps ? baseProps.min : undefined,
+                  max: 'max' in baseProps ? baseProps.max : undefined,
+                  step: 'step' in baseProps ? baseProps.step : undefined,
+                  recommended:
+                    'recommended' in baseProps
+                      ? baseProps.recommended
+                      : undefined,
                 }
-              />
-            )
 
-            return card
-          })}
-        </Card>
+                const title = d.titleKey ? t(d.titleKey) : d.title
+                const description = d.descriptionKey
+                  ? t(d.descriptionKey)
+                  : d.description
+
+                const card = (
+                  <CardItem
+                    key={d.key}
+                    anchor={SETTING_ANCHORS[d.key]}
+                    title={title}
+                    description={description}
+                    actions={
+                      <DynamicControllerSetting
+                        controllerType={d.controllerType}
+                        controllerProps={props}
+                        onChange={(val) => debouncedSet(d.key, val, d)}
+                      />
+                    }
+                  />
+                )
+
+                return card
+              })}
+            </Card>
+          )
+        )}
         <ImageDescriptionCard />
       </SettingsPageBody>
     </div>

@@ -258,7 +258,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "플랫폼의 인증 기관만 신뢰합니다.",
     "caBundleInUse": "플랫폼 인증서와 함께 이 번들의 인증서 {{count}}개를 신뢰합니다.",
-    "caBundleBroken": "이 번들을 사용할 수 없습니다({{kind}}): 수정하거나 제거할 때까지 외부 HTTPS는 아무것도 신뢰하지 않습니다."
+    "caBundleBroken": "이 번들을 사용할 수 없습니다({{kind}}): 수정하거나 제거할 때까지 외부 HTTPS는 아무것도 신뢰하지 않습니다.",
+    "ignoreSslScope": "프록시를 거치는 모든 트래픽에 적용됩니다. 개별 제공자도 모델 제공자의 해당 페이지에서 자신의 주소에 한해 잘못된 인증서를 허용할 수 있습니다."
   },
   "webSearch": {
     "showKey": "키 표시",
@@ -367,7 +368,14 @@
     "deleteFailed": "삭제할 수 없습니다",
     "revealFailed": "폴더를 열 수 없습니다",
     "nameExists": "\"{{name}}\"이(가) 이미 있습니다. 다른 이름을 고르거나 기존 항목을 편집하세요.",
-    "deleted": "\"{{name}}\"을(를) 삭제했습니다"
+    "deleted": "\"{{name}}\"을(를) 삭제했습니다",
+    "tabRun": "실행",
+    "tabContext": "컨텍스트",
+    "tabSandbox": "샌드박스 및 도구",
+    "coworkRuns": "Cowork 실행",
+    "shellSandboxTitle": "셸 및 샌드박스",
+    "computerUse": "컴퓨터 사용",
+    "gitCredit": "Git 크레딧"
   },
   "localApiServer": {
     "title": "로컬 API 서버",
@@ -542,7 +550,9 @@
       "uninstall": "제거",
       "uninstalling": "제거 중…",
       "foreignDesc": "{{path}}에서 찾았습니다. 다른 Flint 사본이 설치한 것입니다. 이 사본의 CLI를 쓰려면 여기에 설치하세요."
-    }
+    },
+    "startupGroup": "시작 및 트레이",
+    "cliGroup": "명령줄"
   },
   "extensions": {
     "title": "확장 프로그램"
@@ -715,7 +725,10 @@
     "perfReasonFrames": "느린 프레임",
     "perfReasonMotion": "시스템 동작 줄이기",
     "perfReasonData": "데이터 절약",
-    "perfReasonChosen": "여기서 선택함"
+    "perfReasonChosen": "여기서 선택함",
+    "tabLook": "모양",
+    "tabMotion": "모션 및 소리",
+    "layoutGroup": "레이아웃"
   },
   "pageDesc": {
     "general": "언어, 데이터 폴더, 로그, 앱 전체 옵션입니다.",
@@ -730,7 +743,10 @@
     "extensions": "이 Flint 사본에 설치된 확장 프로그램입니다.",
     "agentTools": "Flint 기본 제공 에이전트 도구의 파일, 셸, 네트워크 접근입니다.",
     "localApiServer": "다른 앱이 모델에 접근할 때 사용할 수 있는 OpenAI 호환 서버입니다.",
-    "httpsProxy": "Flint의 인터넷 요청을 프록시를 통해 보냅니다."
+    "httpsProxy": "Flint의 인터넷 요청을 프록시를 통해 보냅니다.",
+    "chat": "대화가 표시되고 전송되고 동작하는 방식입니다.",
+    "data": "Flint가 데이터를 보관하는 위치와 이동, 백업, 삭제 방법입니다.",
+    "integrations": "Claude Code, Jev 및 설치된 확장 기능입니다."
   },
   "imageDescription": {
     "title": "이미지와 텍스트 전용 모델",
@@ -1526,7 +1542,8 @@
     "fileActionsAria": "기억 내보내기 또는 가져오기",
     "noMatchHint": "철자를 확인하거나 검색을 지워 전체를 보세요.",
     "emptyHint": "위에 하나 적거나, 대화하면서 Flint가 기억하게 두세요.",
-    "footerCount_other": "이 범위의 기억 {{count}}개"
+    "footerCount_other": "이 범위의 기억 {{count}}개",
+    "agentNotes": "에이전트 메모"
   },
   "chatMentions": {
     "title": "대화 언급",
@@ -1596,5 +1613,21 @@
     "deleteAllEmpty": "삭제할 항목이 없습니다.",
     "scopeAll": "현재 필터가 보여 주는 항목만이 아니라 목록 전체가 대상입니다.",
     "archiveInstead": "대신 보관"
+  },
+  "chat": {
+    "tabInput": "입력 및 답변",
+    "tabDisplay": "표시",
+    "composerGroup": "입력창",
+    "repliesGroup": "답변",
+    "linksGroup": "링크",
+    "artifactsGroup": "아티팩트 및 위젯"
+  },
+  "data": {
+    "tabStorage": "저장소",
+    "tabCleanup": "정리",
+    "dangerGroup": "위험 구역"
+  },
+  "modelDefaults": {
+    "title": "기본값"
   }
 }

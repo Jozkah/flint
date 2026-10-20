@@ -112,7 +112,8 @@
     "danger": "위험 영역",
     "networkNote": "내 네트워크 · {{host}}(으)로 전송",
     "reachUnknownNote": "이 공급자가 실행되는 위치 확인 중",
-    "reachUnconfirmedNote": "이 공급자가 실행되는 위치를 확인하지 못했습니다 · 메시지가 이 컴퓨터 밖으로 나갈 수 있습니다"
+    "reachUnconfirmedNote": "이 공급자가 실행되는 위치를 확인하지 못했습니다 · 메시지가 이 컴퓨터 밖으로 나갈 수 있습니다",
+    "engineBasics": "엔진 기본"
   },
   "mcp": {
     "title": "도구 및 MCP",
@@ -145,7 +146,8 @@
     "needsExtension": "브라우저 확장 프로그램이 필요합니다",
     "moreActions": "{{serverName}} 추가 작업",
     "addTile": "MCP 서버 추가",
-    "addTileHint": "STDIO, HTTP 또는 SSE"
+    "addTileHint": "STDIO, HTTP 또는 SSE",
+    "tabToolRuntime": "도구 런타임"
   },
   "extensions": {
     "description": "플러그인, 스킬, 그리고 Flint를 구성하는 엔진 구성 요소입니다.",
@@ -227,5 +229,9 @@
       "verify": "다운로드가 검증을 통과하지 못해 설치하지 않았습니다.",
       "mismatch": "이 애드온은 다른 Flint 버전용으로 빌드되었습니다."
     }
+  },
+  "tabs": {
+    "providersAndModels": "제공자 및 모델",
+    "defaults": "기본값"
   }
 }

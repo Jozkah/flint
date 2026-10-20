@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "सामान्य",
+  "groupApp": "ऐप",
+  "groupChatAndAgent": "चैट और एजेंट",
   "groupModelsAndTools": "मॉडल और टूल",
+  "groupData": "डेटा",
+  "groupGeneral": "सामान्य",
   "advancedSettings": "उन्नत",
   "advancedSettingsHint": "लोकल API सर्वर, प्रॉक्सी, हार्डवेयर और एजेंट टूल कॉन्फ़िगरेशन। इन्हें समूह में रखने से इनके काम करने के तरीके में कुछ नहीं बदलता।"
 }

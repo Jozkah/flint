@@ -213,7 +213,11 @@
     "modeAuto": "Sichere Aufrufe automatisch genehmigen, bei gefährlichen nachfragen",
     "modeBypass": "Berechtigungen umgehen, bis Flint geschlossen wird",
     "modeDetails": "Bei der automatischen Genehmigung wird bei destruktiven Befehlen, Host-Aktionen, Remote-Änderungen und anderen sensiblen Aufrufen nachgefragt. Beim Umgehen entfallen auch diese Abfragen.",
-    "bypassConfirm": "Das Umgehen von Berechtigungen führt alles ohne Nachfrage aus, auch Host-Befehle (PowerShell, WSL, SSH, Installationen), destruktive Befehle, Schreibzugriffe außerhalb des Projektordners und git push. Planmodus, von dir geschriebene Verbotsregeln, Ausgabenlimits und das Schwärzen von Geheimnissen lehnen weiterhin ab. Umgehen aktivieren, bis Flint geschlossen wird?"
+    "bypassConfirm": "Das Umgehen von Berechtigungen führt alles ohne Nachfrage aus, auch Host-Befehle (PowerShell, WSL, SSH, Installationen), destruktive Befehle, Schreibzugriffe außerhalb des Projektordners und git push. Planmodus, von dir geschriebene Verbotsregeln, Ausgabenlimits und das Schwärzen von Geheimnissen lehnen weiterhin ab. Umgehen aktivieren, bis Flint geschlossen wird?",
+    "tabRules": "Regeln",
+    "tabAccess": "Zugriff",
+    "tabRemembered": "Gemerkt",
+    "tabActivity": "Aktivität"
   },
   "badge": {
     "reachesRemote": "Erreicht {{target}}",

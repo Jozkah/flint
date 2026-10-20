@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Consenti certificati non validi",
     "description": "Salta la verifica del certificato solo per l'indirizzo di questo provider. Usalo per un server che gestisci tu, come un gateway con certificato autofirmato. Disattivato per impostazione predefinita.",
-    "warning": "La verifica del certificato è disattivata per questo provider. Chiunque si trovi sul percorso di rete può leggere e modificare le sue richieste, inclusa la tua chiave API. Disattivala a meno che tu non ti fidi della rete."
+    "warning": "La verifica del certificato è disattivata per questo provider. Chiunque si trovi sul percorso di rete può leggere e modificare le sue richieste, inclusa la tua chiave API. Disattivala a meno che tu non ti fidi della rete.",
+    "scope": "Solo l'indirizzo di questo fornitore. Per consentire certificati non validi a tutto il traffico tramite proxy, usa lo stesso interruttore in Impostazioni > Proxy di rete > Certificati."
   },
   "customHeaders": {
     "title": "Intestazioni personalizzate",

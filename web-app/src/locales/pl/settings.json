@@ -260,7 +260,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Zaufane są tylko urzędy certyfikacji platformy.",
     "caBundleInUse": "Zaufano certyfikatom z tego pakietu ({{count}}) oraz certyfikatom platformy.",
-    "caBundleBroken": "Tego pakietu nie można użyć ({{kind}}): wychodzące HTTPS nikomu nie ufa, dopóki nie zostanie naprawiony lub usunięty."
+    "caBundleBroken": "Tego pakietu nie można użyć ({{kind}}): wychodzące HTTPS nikomu nie ufa, dopóki nie zostanie naprawiony lub usunięty.",
+    "ignoreSslScope": "Dotyczy całego ruchu przez serwer proxy. Pojedynczy dostawca może też zezwolić na nieprawidłowe certyfikaty dla własnego adresu, na swojej stronie w Dostawcy Modeli."
   },
   "webSearch": {
     "showKey": "Pokaż klucz",
@@ -371,7 +372,14 @@
     "deleteFailed": "Nie udało się usunąć",
     "revealFailed": "Nie udało się otworzyć folderu",
     "nameExists": "„{{name}}” już istnieje. Wybierz inną nazwę lub edytuj istniejący wpis.",
-    "deleted": "Usunięto „{{name}}”"
+    "deleted": "Usunięto „{{name}}”",
+    "tabRun": "Uruchamianie",
+    "tabContext": "Kontekst",
+    "tabSandbox": "Piaskownica i narzędzia",
+    "coworkRuns": "Uruchomienia Cowork",
+    "shellSandboxTitle": "Powłoka i piaskownica",
+    "computerUse": "Sterowanie komputerem",
+    "gitCredit": "Autorstwo w Git"
   },
   "localApiServer": {
     "title": "Lokalny Serwer API",
@@ -546,7 +554,9 @@
       "uninstall": "Odinstaluj",
       "uninstalling": "Odinstalowywanie…",
       "foreignDesc": "Znaleziono w {{path}}, zainstalowane przez inną kopię Flinta. Zainstaluj tutaj, aby używać CLI tej kopii."
-    }
+    },
+    "startupGroup": "Uruchamianie i zasobnik",
+    "cliGroup": "Wiersz poleceń"
   },
   "extensions": {
     "title": "Rozszerzenia"
@@ -719,7 +729,10 @@
     "perfReasonFrames": "wolne klatki",
     "perfReasonMotion": "system ogranicza ruch",
     "perfReasonData": "oszczędzanie danych",
-    "perfReasonChosen": "wybrano tutaj"
+    "perfReasonChosen": "wybrano tutaj",
+    "tabLook": "Wygląd",
+    "tabMotion": "Animacje i dźwięk",
+    "layoutGroup": "Układ"
   },
   "pageDesc": {
     "general": "Język, folder danych, dzienniki i opcje całej aplikacji.",
@@ -734,7 +747,10 @@
     "extensions": "Rozszerzenia zainstalowane w tej kopii Flint.",
     "agentTools": "Dostęp do plików, powłoki i sieci dla wbudowanych narzędzi agenta Flint.",
     "localApiServer": "Serwer zgodny z OpenAI, którego inne aplikacje mogą używać, aby dotrzeć do Twoich modeli.",
-    "httpsProxy": "Wysyłaj żądania internetowe Flint przez proxy."
+    "httpsProxy": "Wysyłaj żądania internetowe Flint przez proxy.",
+    "chat": "Jak rozmowy wyglądają, są wysyłane i się zachowują.",
+    "data": "Gdzie Flint przechowuje dane oraz jak je przenieść, zarchiwizować lub usunąć.",
+    "integrations": "Claude Code, Jev i zainstalowane rozszerzenia."
   },
   "imageDescription": {
     "title": "Obrazy i modele tylko tekstowe",
@@ -1396,7 +1412,8 @@
     "footerCount_one": "1 wspomnienie w tym zakresie",
     "footerCount_few": "{{count}} wspomnienia w tym zakresie",
     "footerCount_many": "{{count}} wspomnień w tym zakresie",
-    "footerCount_other": "{{count}} wspomnienia w tym zakresie"
+    "footerCount_other": "{{count}} wspomnienia w tym zakresie",
+    "agentNotes": "Notatki agenta"
   },
   "chatMentions": {
     "title": "Wzmianki o rozmowach",
@@ -1472,5 +1489,21 @@
     "deleteAllEmpty": "Nie ma czego usuwać.",
     "scopeAll": "Obejmuje wszystko z listy, a nie tylko wiersze pokazane przez bieżący filtr.",
     "archiveInstead": "Zarchiwizuj zamiast tego"
+  },
+  "chat": {
+    "tabInput": "Wprowadzanie i odpowiedzi",
+    "tabDisplay": "Wyświetlanie",
+    "composerGroup": "Pole wiadomości",
+    "repliesGroup": "Odpowiedzi",
+    "linksGroup": "Linki",
+    "artifactsGroup": "Artefakty i widżety"
+  },
+  "data": {
+    "tabStorage": "Pamięć",
+    "tabCleanup": "Czyszczenie",
+    "dangerGroup": "Strefa zagrożenia"
+  },
+  "modelDefaults": {
+    "title": "Domyślne"
   }
 }

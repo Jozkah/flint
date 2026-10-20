@@ -258,7 +258,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Yalnızca platformun sertifika yetkililerine güvenilir.",
     "caBundleInUse": "Platformunkilerin yanı sıra bu paketteki {{count}} sertifikaya güveniliyor.",
-    "caBundleBroken": "Bu paket kullanılamıyor ({{kind}}): düzeltilene veya kaldırılana kadar giden HTTPS hiçbir şeye güvenmez."
+    "caBundleBroken": "Bu paket kullanılamıyor ({{kind}}): düzeltilene veya kaldırılana kadar giden HTTPS hiçbir şeye güvenmez.",
+    "ignoreSslScope": "Proxy üzerinden geçen tüm trafiğe uygulanır. Tek bir sağlayıcı da kendi adresi için geçersiz sertifikalara izin verebilir; bunu Sağlayıcılar altındaki sayfasında yapabilirsiniz."
   },
   "webSearch": {
     "showKey": "Anahtarı göster",
@@ -367,7 +368,14 @@
     "deleteFailed": "Silinemedi",
     "revealFailed": "Klasör açılamadı",
     "nameExists": "\"{{name}}\" zaten var. Başka bir ad seçin veya mevcut olanı düzenleyin.",
-    "deleted": "\"{{name}}\" silindi"
+    "deleted": "\"{{name}}\" silindi",
+    "tabRun": "Çalıştırma",
+    "tabContext": "Bağlam",
+    "tabSandbox": "Sandbox ve araçlar",
+    "coworkRuns": "Cowork çalıştırmaları",
+    "shellSandboxTitle": "Kabuk ve sandbox",
+    "computerUse": "Bilgisayar kullanımı",
+    "gitCredit": "Git katkı notu"
   },
   "localApiServer": {
     "title": "Yerel API Sunucusu",
@@ -542,7 +550,9 @@
       "uninstall": "Kaldır",
       "uninstalling": "Kaldırılıyor…",
       "foreignDesc": "{{path}} konumunda bulundu, Flint'in başka bir kopyası kurmuş. Bu kopyanın CLI'sini kullanmak için buraya kurun."
-    }
+    },
+    "startupGroup": "Başlangıç ve tepsi",
+    "cliGroup": "Komut satırı"
   },
   "extensions": {
     "title": "Uzantılar"
@@ -715,7 +725,10 @@
     "perfReasonFrames": "yavaş kareler",
     "perfReasonMotion": "sistem hareketi azaltıyor",
     "perfReasonData": "veri tasarrufu",
-    "perfReasonChosen": "burada seçildi"
+    "perfReasonChosen": "burada seçildi",
+    "tabLook": "Görünüm",
+    "tabMotion": "Hareket ve ses",
+    "layoutGroup": "Düzen"
   },
   "pageDesc": {
     "general": "Dil, veri klasörü, günlükler ve uygulama genelindeki seçenekler.",
@@ -730,7 +743,10 @@
     "extensions": "Flint'in bu kopyasında yüklü uzantılar.",
     "agentTools": "Flint'in yerleşik ajan araçları için dosya, kabuk ve ağ erişimi.",
     "localApiServer": "Diğer uygulamaların modellerinize ulaşmak için kullanabileceği OpenAI uyumlu bir sunucu.",
-    "httpsProxy": "Flint'in internet isteklerini bir vekil sunucu üzerinden gönderin."
+    "httpsProxy": "Flint'in internet isteklerini bir vekil sunucu üzerinden gönderin.",
+    "chat": "Sohbetlerin görünümü, gönderimi ve davranışı.",
+    "data": "Flint'in verilerinizi nerede tuttuğu ve bunları nasıl taşıyacağınız, yedekleyeceğiniz veya kaldıracağınız.",
+    "integrations": "Claude Code, Jev ve yüklü uzantılar."
   },
   "imageDescription": {
     "title": "Görseller ve yalnızca metin modelleri",
@@ -1354,7 +1370,8 @@
     "noMatchHint": "Yazımı kontrol edin ya da her şeyi görmek için aramayı temizleyin.",
     "emptyHint": "Yukarıya bir tane yazın ya da sohbet ederken Flint'in hatırlamasına izin verin.",
     "footerCount_one": "Bu kapsamda 1 anı",
-    "footerCount_other": "Bu kapsamda {{count}} anı"
+    "footerCount_other": "Bu kapsamda {{count}} anı",
+    "agentNotes": "Ajan notları"
   },
   "chatMentions": {
     "title": "Konuşma anmaları",
@@ -1426,5 +1443,21 @@
     "deleteAllEmpty": "Silinecek bir şey yok.",
     "scopeAll": "Yalnızca geçerli filtrenin gösterdiği satırları değil, listedeki her şeyi kapsar.",
     "archiveInstead": "Bunun yerine arşivle"
+  },
+  "chat": {
+    "tabInput": "Girdi ve yanıtlar",
+    "tabDisplay": "Ekran",
+    "composerGroup": "Mesaj alanı",
+    "repliesGroup": "Yanıtlar",
+    "linksGroup": "Bağlantılar",
+    "artifactsGroup": "Yapıtlar ve widget'lar"
+  },
+  "data": {
+    "tabStorage": "Depolama",
+    "tabCleanup": "Temizlik",
+    "dangerGroup": "Tehlikeli bölge"
+  },
+  "modelDefaults": {
+    "title": "Varsayılanlar"
   }
 }

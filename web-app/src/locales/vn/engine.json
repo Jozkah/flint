@@ -112,7 +112,8 @@
     "danger": "Vùng nguy hiểm",
     "networkNote": "Trong mạng của bạn · gửi tới {{host}}",
     "reachUnknownNote": "Đang kiểm tra nhà cung cấp này chạy ở đâu",
-    "reachUnconfirmedNote": "Không xác nhận được nhà cung cấp này chạy ở đâu · hãy coi như tin nhắn có thể rời khỏi máy tính này"
+    "reachUnconfirmedNote": "Không xác nhận được nhà cung cấp này chạy ở đâu · hãy coi như tin nhắn có thể rời khỏi máy tính này",
+    "engineBasics": "Kiến thức cơ bản về engine"
   },
   "mcp": {
     "title": "Công cụ và MCP",
@@ -145,7 +146,8 @@
     "needsExtension": "Yêu cầu tiện ích mở rộng trình duyệt",
     "moreActions": "Thêm thao tác cho {{serverName}}",
     "addTile": "Thêm máy chủ MCP",
-    "addTileHint": "STDIO, HTTP hoặc SSE"
+    "addTileHint": "STDIO, HTTP hoặc SSE",
+    "tabToolRuntime": "Môi trường chạy công cụ"
   },
   "extensions": {
     "description": "Plugin, kỹ năng và các thành phần engine mà Flint được xây dựng từ đó.",
@@ -227,5 +229,9 @@
       "verify": "Bản tải không qua được bước kiểm tra nên chưa được cài.",
       "mismatch": "Tiện ích này được dựng cho một phiên bản Flint khác."
     }
+  },
+  "tabs": {
+    "providersAndModels": "Nhà cung cấp và mô hình",
+    "defaults": "Mặc định"
   }
 }

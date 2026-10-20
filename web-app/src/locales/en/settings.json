@@ -258,7 +258,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Only the platform's certificate authorities are trusted.",
     "caBundleInUse": "Trusting {{count}} certificate(s) from this bundle as well as the platform's.",
-    "caBundleBroken": "This bundle cannot be used ({{kind}}): outbound HTTPS trusts nothing until it is fixed or removed."
+    "caBundleBroken": "This bundle cannot be used ({{kind}}): outbound HTTPS trusts nothing until it is fixed or removed.",
+    "ignoreSslScope": "Applies to all proxied traffic. A single provider can also allow invalid certificates for its own address, on its page under Model Providers."
   },
   "webSearch": {
     "showKey": "Show key",
@@ -367,7 +368,14 @@
     "deleteFailed": "Could not delete",
     "revealFailed": "Could not open the folder",
     "nameExists": "\"{{name}}\" already exists. Choose another name or edit the existing one.",
-    "deleted": "Deleted \"{{name}}\""
+    "deleted": "Deleted \"{{name}}\"",
+    "tabRun": "Run",
+    "tabContext": "Context",
+    "tabSandbox": "Sandbox and tools",
+    "coworkRuns": "Cowork runs",
+    "shellSandboxTitle": "Shell and sandbox",
+    "computerUse": "Computer use",
+    "gitCredit": "Git credit"
   },
   "localApiServer": {
     "title": "Local API Server",
@@ -542,7 +550,9 @@
       "uninstall": "Uninstall",
       "uninstalling": "Uninstalling…",
       "foreignDesc": "Found at {{path}}, installed by another copy of Flint. Install here to use this copy's CLI."
-    }
+    },
+    "startupGroup": "Startup and tray",
+    "cliGroup": "Command line"
   },
   "extensions": {
     "title": "Extensions"
@@ -715,7 +725,10 @@
     "perfReasonFrames": "slow frames",
     "perfReasonMotion": "system reduces motion",
     "perfReasonData": "data saver",
-    "perfReasonChosen": "chosen here"
+    "perfReasonChosen": "chosen here",
+    "tabLook": "Look",
+    "tabMotion": "Motion and sound",
+    "layoutGroup": "Layout"
   },
   "pageDesc": {
     "general": "Language, the data folder, logs and app-wide options.",
@@ -730,7 +743,10 @@
     "extensions": "Extensions installed in this copy of Flint.",
     "agentTools": "Files, shell and network access for Flint's built-in agent tools.",
     "localApiServer": "An OpenAI-compatible server other apps can use to reach your models.",
-    "httpsProxy": "Send Flint's internet requests through a proxy."
+    "httpsProxy": "Send Flint's internet requests through a proxy.",
+    "chat": "How conversations look, send and behave.",
+    "data": "Where Flint keeps your data, and how to move, back up or remove it.",
+    "integrations": "Claude Code, Jev and installed extensions."
   },
   "imageDescription": {
     "title": "Images and text-only models",
@@ -1354,7 +1370,8 @@
     "noMatchHint": "Check the spelling, or clear the search to see everything here.",
     "emptyHint": "Write one above, or let Flint remember as you chat.",
     "footerCount_one": "1 memory in this scope",
-    "footerCount_other": "{{count}} memories in this scope"
+    "footerCount_other": "{{count}} memories in this scope",
+    "agentNotes": "Agent notes"
   },
   "chatMentions": {
     "title": "Conversation mentions",
@@ -1426,5 +1443,21 @@
     "deleteAllEmpty": "Nothing to delete.",
     "scopeAll": "Covers everything in the list, not only the rows the current filter shows.",
     "archiveInstead": "Archive instead"
+  },
+  "chat": {
+    "tabInput": "Input and replies",
+    "tabDisplay": "Display",
+    "composerGroup": "Composer",
+    "repliesGroup": "Replies",
+    "linksGroup": "Links",
+    "artifactsGroup": "Artifacts and widgets"
+  },
+  "data": {
+    "tabStorage": "Storage",
+    "tabCleanup": "Cleanup",
+    "dangerGroup": "Danger zone"
+  },
+  "modelDefaults": {
+    "title": "Defaults"
   }
 }

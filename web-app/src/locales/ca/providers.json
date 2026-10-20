@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Permet certificats no vàlids",
     "description": "Omet la verificació del certificat només per a l'adreça d'aquest proveïdor. Fes-ho servir per a un servidor que gestiones tu, com una passarel·la amb certificat autosignat. Desactivat per defecte.",
-    "warning": "La verificació del certificat està desactivada per a aquest proveïdor. Qualsevol persona a la ruta de la xarxa pot llegir i modificar les seves peticions, inclosa la teva clau d'API. Desactiva-ho tret que confiïs en la xarxa."
+    "warning": "La verificació del certificat està desactivada per a aquest proveïdor. Qualsevol persona a la ruta de la xarxa pot llegir i modificar les seves peticions, inclosa la teva clau d'API. Desactiva-ho tret que confiïs en la xarxa.",
+    "scope": "Només l'adreça d'aquest proveïdor. Per permetre certificats no vàlids a tot el trànsit passat pel proxy, usa el mateix interruptor a Configuració > Proxy de xarxa > Certificats."
   },
   "customHeaders": {
     "title": "Capçaleres personalitzades",

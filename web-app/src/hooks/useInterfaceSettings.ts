@@ -158,7 +158,10 @@ interface InterfaceSettingsState {
   setCompletionSound: (mode: CompletionSound) => void
   setCompletionSoundVolume: (volume: number) => void
   setShowComposerRailButtons: (show: boolean) => void
+  /** Reset what the Appearance page shows. */
   resetInterface: () => void
+  /** Reset the transcript and reply display settings on the Chat page. */
+  resetChatDisplay: () => void
 }
 
 type InterfaceSettingsPersistedSlice = Pick<
@@ -267,18 +270,23 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             increaseContrast: false,
             performanceMode: 'auto',
             notificationPosition: getDefaultNotificationPosition(),
-            showTokenSpeed: true,
             coloredUserBubble: false,
+            sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+            hiddenNavItems: [],
+            completionSound: 'off',
+            completionSoundVolume: defaultCompletionSoundVolume,
+          })
+        },
+
+        resetChatDisplay: () => {
+          set({
+            showTokenSpeed: true,
             renderUserMarkdown: false,
             renderHtmlArtifacts: false,
             wrapCodeLines: false,
             showInlineCitations: true,
             autoGenerateTitle: true,
             transcriptView: DEFAULT_TRANSCRIPT_VIEW,
-            sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
-            hiddenNavItems: [],
-            completionSound: 'off',
-            completionSoundVolume: defaultCompletionSoundVolume,
             showComposerRailButtons: false,
           })
         },

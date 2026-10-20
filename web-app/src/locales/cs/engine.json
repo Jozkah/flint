@@ -117,7 +117,8 @@
     "danger": "Nebezpečná zóna",
     "networkNote": "Ve vaší síti · odesílá se na {{host}}",
     "reachUnknownNote": "Zjišťuje se, kde tento poskytovatel běží",
-    "reachUnconfirmedNote": "Nepodařilo se zjistit, kde tento poskytovatel běží · předpokládejte, že zprávy mohou opustit tento počítač"
+    "reachUnconfirmedNote": "Nepodařilo se zjistit, kde tento poskytovatel běží · předpokládejte, že zprávy mohou opustit tento počítač",
+    "engineBasics": "Základy enginu"
   },
   "mcp": {
     "title": "Nástroje a MCP",
@@ -152,7 +153,8 @@
     "needsExtension": "Vyžaduje rozšíření prohlížeče",
     "moreActions": "Další akce pro {{serverName}}",
     "addTile": "Přidat server MCP",
-    "addTileHint": "STDIO, HTTP nebo SSE"
+    "addTileHint": "STDIO, HTTP nebo SSE",
+    "tabToolRuntime": "Běhové prostředí nástrojů"
   },
   "extensions": {
     "description": "Pluginy, dovednosti a součásti enginu, ze kterých se Flint skládá.",
@@ -240,5 +242,9 @@
       "verify": "Stažená data neprošla kontrolou a nebyla nainstalována.",
       "mismatch": "Tento doplněk byl sestaven pro jinou verzi Flintu."
     }
+  },
+  "tabs": {
+    "providersAndModels": "Poskytovatelé a modely",
+    "defaults": "Výchozí"
   }
 }

@@ -32,13 +32,26 @@ export type SettingsSearchItem = {
   providerName?: string
 }
 
+/** The sidebar groups, in display order. */
+export const SETTINGS_GROUPS = [
+  'app',
+  'chat',
+  'models',
+  'data',
+  'advanced',
+] as const
+export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]
+
 /** One settings page. The same list renders the sidebar, so a page added here
  * appears in navigation and search together. */
 export type SettingsPage = {
   id: string
   route: string
   titleKey: string
-  group: 'core' | 'integrations'
+  /** The sidebar group the page sits under; groups render in this order. */
+  group: SettingsGroup
+  /** Shown with the flask mark in the menu. */
+  experimental?: boolean
   keywords?: readonly string[]
   /**
    * How this page is searchable.
@@ -66,63 +79,42 @@ export const SETTINGS_PAGES = [
     id: 'general',
     route: route.settings.general,
     titleKey: 'common:general',
-    group: 'core',
-    keywords: ['updates', 'data folder', 'language'],
+    group: 'app',
+    keywords: ['updates', 'language', 'startup', 'tray', 'cli'],
   },
   {
     id: 'appearance',
-    route: route.settings.interface,
+    route: route.settings.appearance,
     titleKey: 'common:appearance',
-    group: 'core',
+    group: 'app',
     keywords: ['interface', 'theme', 'font'],
+  },
+  {
+    id: 'shortcuts',
+    route: route.settings.shortcuts,
+    titleKey: 'common:keyboardShortcuts',
+    group: 'app',
+    keywords: ['keyboard', 'hotkeys', 'keybindings'],
+  },
+  {
+    id: 'chat',
+    route: route.settings.chat,
+    titleKey: 'common:settingsChat',
+    group: 'chat',
+    keywords: ['conversation', 'composer', 'transcript', 'reply', 'enter key'],
   },
   {
     id: 'assistants',
     route: route.settings.assistant,
     titleKey: 'common:assistants',
-    group: 'core',
+    group: 'chat',
     keywords: ['persona', 'instructions'],
-  },
-  {
-    id: 'attachments',
-    route: route.settings.attachments,
-    titleKey: 'common:attachments',
-    group: 'core',
-    keywords: ['files', 'documents', 'rag'],
-  },
-  {
-    id: 'local-api-server',
-    route: route.settings.local_api_server,
-    titleKey: 'common:local_api_server',
-    group: 'core',
-    keywords: ['server', 'openai compatible', 'port'],
-  },
-  {
-    id: 'remote-access',
-    route: route.settings.remote_access,
-    titleKey: 'remote:title',
-    group: 'core',
-    keywords: ['phone', 'mobile', 'tailscale', 'pair', 'remote', 'qr code'],
-  },
-  {
-    id: 'https-proxy',
-    route: route.settings.https_proxy,
-    titleKey: 'common:https_proxy',
-    group: 'core',
-    keywords: ['proxy', 'network', 'ssl'],
-  },
-  {
-    id: 'web-search',
-    route: route.settings.web_search,
-    titleKey: 'common:web_search',
-    group: 'core',
-    keywords: ['internet', 'browse', 'search engine'],
   },
   {
     id: 'memory',
     route: route.settings.memory,
     titleKey: 'common:memory',
-    group: 'core',
+    group: 'chat',
     keywords: [
       'remember',
       'forget',
@@ -130,6 +122,8 @@ export const SETTINGS_PAGES = [
       'across chats',
       'project memory',
       'personalisation',
+      'agent notes',
+      'memory_write',
     ],
   },
   {
@@ -140,7 +134,7 @@ export const SETTINGS_PAGES = [
       'state; there is no static setting to anchor. Reached by page title.',
     route: route.settings.schedules,
     titleKey: 'schedules:title',
-    group: 'core',
+    group: 'chat',
     keywords: [
       'scheduled tasks',
       'cron',
@@ -155,7 +149,7 @@ export const SETTINGS_PAGES = [
     id: 'permissions',
     route: route.settings.permissions,
     titleKey: 'permissions:settings.title',
-    group: 'core',
+    group: 'chat',
     keywords: [
       'approval',
       'allow',
@@ -167,49 +161,90 @@ export const SETTINGS_PAGES = [
   },
   {
     id: 'agent-tools',
-    route: route.settings.agent_tools,
+    route: route.settings.agent,
     titleKey: 'common:agent_tools',
-    group: 'core',
-    keywords: ['sandbox', 'shell', 'memory', 'skills'],
+    group: 'chat',
+    keywords: ['sandbox', 'shell', 'skills', 'browser', 'subagents'],
   },
   {
-    id: 'shortcuts',
-    route: route.settings.shortcuts,
-    titleKey: 'common:keyboardShortcuts',
-    group: 'core',
-    keywords: ['keyboard', 'hotkeys', 'keybindings'],
+    id: 'model-providers',
+    route: route.settings.model_providers,
+    titleKey: 'common:modelProviders',
+    group: 'models',
+    keywords: ['models', 'providers', 'api key', 'openai', 'anthropic', 'llama'],
   },
   {
     id: 'mcp-servers',
     route: route.settings.mcp_servers,
     titleKey: 'common:mcp-servers',
-    group: 'integrations',
+    group: 'models',
+    experimental: true,
     keywords: ['mcp', 'model context protocol', 'tools'],
   },
   {
-    id: 'claude-code',
-    route: route.settings.claude_code,
-    titleKey: 'common:claude_code',
-    group: 'integrations',
-    keywords: ['claude', 'cli', 'code'],
+    id: 'web-search',
+    route: route.settings.web_search,
+    titleKey: 'common:web_search',
+    group: 'models',
+    keywords: ['internet', 'browse', 'search engine'],
   },
   {
-    id: 'jev',
-    route: route.settings.jev,
-    titleKey: 'common:jev.tab',
-    group: 'integrations',
-    keywords: ['jev', 'typesafe', 'decision', 'rerank', 'skill suggestion'],
+    id: 'attachments',
+    route: route.settings.attachments,
+    titleKey: 'common:attachments',
+    group: 'models',
+    keywords: ['files', 'documents', 'rag'],
   },
   {
-    id: 'extensions',
-    coverage: 'page-only',
-    coverageNote:
-      'The page lists the extensions actually installed, which is runtime ' +
-      'state; there is no static setting to anchor. Reached by page title.',
-    route: route.settings.extensions,
-    titleKey: 'common:extensions',
-    group: 'integrations',
-    keywords: ['plugins', 'add-ons'],
+    id: 'integrations',
+    route: route.settings.integrations,
+    titleKey: 'common:integrations',
+    group: 'models',
+    experimental: true,
+    // Claude Code, Jev and Extensions were pages of their own; they are its
+    // tabs now, and their keywords still find it.
+    keywords: [
+      'claude code',
+      'claude',
+      'cli',
+      'code',
+      'jev',
+      'typesafe',
+      'decision',
+      'rerank',
+      'skill suggestion',
+      'extensions',
+      'plugins',
+      'add-ons',
+    ],
+  },
+  {
+    id: 'data',
+    route: route.settings.data,
+    titleKey: 'common:settingsData',
+    group: 'data',
+    keywords: ['storage', 'backup', 'logs', 'import', 'export', 'reset', 'folder'],
+  },
+  {
+    id: 'local-api-server',
+    route: route.settings.local_api_server,
+    titleKey: 'common:local_api_server',
+    group: 'advanced',
+    keywords: ['server', 'openai compatible', 'port'],
+  },
+  {
+    id: 'remote-access',
+    route: route.settings.remote_access,
+    titleKey: 'remote:title',
+    group: 'advanced',
+    keywords: ['phone', 'mobile', 'tailscale', 'pair', 'remote', 'qr code'],
+  },
+  {
+    id: 'https-proxy',
+    route: route.settings.network_proxy,
+    titleKey: 'common:network_proxy',
+    group: 'advanced',
+    keywords: ['proxy', 'network', 'ssl'],
   },
 ] as const satisfies readonly SettingsPage[]
 
@@ -266,19 +301,96 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('general', 'language', 'common:language', {
     keywords: ['locale', 'translation', 'idioma', 'sprache', 'langue'],
   }),
-  item('general', 'data-folder', 'common:dataFolder', {
-    descriptionKey: 'settings:dataFolder.appDataDesc',
-    keywords: ['storage', 'location', 'move data', 'disk'],
-  }),
   item('general', 'start-with-computer', 'settings:startup.title', {
     descriptionKey: 'settings:startup.off',
     keywords: ['autostart', 'startup', 'login', 'boot', 'launch at sign in'],
   }),
-  item('general', 'spell-check', 'settings:others.spellCheck', {
+  // Chat
+  item('chat', 'enter-newline', 'settings:others.enterKeyNewline', {
+    descriptionKey: 'settings:others.enterKeyNewlineDesc',
+    keywords: ['enter newline', 'enter key', 'send', 'shift enter', 'new line'],
+  }),
+  item('chat', 'spell-check', 'settings:others.spellCheck', {
     descriptionKey: 'settings:others.spellCheckDesc',
     keywords: ['spelling', 'typo'],
   }),
-  item('general', 'bulk-conversations', 'settings:bulk.title', {
+  item('chat', 'composer-rail-buttons', 'settings:interface.composerRailButtons', {
+    descriptionKey: 'settings:interface.composerRailButtonsDesc',
+    keywords: ['cowork', 'output', 'preview', 'changes', 'activity', 'timeline', 'composer', 'buttons'],
+  }),
+  item('chat', 'reply-language', 'settings:general.replyLanguage', {
+    descriptionKey: 'settings:general.replyLanguageDesc',
+    keywords: ['answer language', 'respond in', 'reply in', 'language'],
+  }),
+  item('chat', 'auto-title', 'settings:interface.autoGenerateTitle', {
+    descriptionKey: 'settings:interface.autoGenerateTitleDesc',
+    keywords: ['thread title', 'naming'],
+  }),
+  item('chat', 'strip-reasoning', 'provider:stripReasoning', {
+    descriptionKey: 'provider:stripReasoningDesc',
+    keywords: ['reasoning', 'thinking', 'context', 'strip'],
+  }),
+  item('chat', 'web-preview', 'common:webPreview.interceptSetting', {
+    descriptionKey: 'common:webPreview.interceptSettingDesc',
+    keywords: ['links', 'browser', 'open links', 'preview'],
+  }),
+  item('chat', 'transcript-view', 'settings:interface.transcriptView', {
+    descriptionKey: 'settings:interface.transcriptViewDesc',
+    keywords: ['thinking', 'reasoning', 'verbose', 'tool calls', 'steps'],
+  }),
+  item('chat', 'token-speed', 'settings:interface.showTokenSpeed', {
+    descriptionKey: 'settings:interface.showTokenSpeedDesc',
+    keywords: ['tokens per second', 'performance'],
+  }),
+  item('chat', 'user-markdown', 'settings:interface.renderUserMarkdown', {
+    descriptionKey: 'settings:interface.renderUserMarkdownDesc',
+    keywords: ['markdown', 'my messages', 'formatting'],
+  }),
+  item('chat', 'wrap-code-lines', 'settings:interface.wrapCodeLines', {
+    descriptionKey: 'settings:interface.wrapCodeLinesDesc',
+    keywords: ['code', 'wrap', 'line', 'scroll'],
+  }),
+  item('chat', 'inline-citations', 'settings:interface.inlineCitations', {
+    descriptionKey: 'settings:interface.inlineCitationsDesc',
+    keywords: ['sources', 'favicon', 'web search', 'links'],
+  }),
+  item('chat', 'hide-completed', 'common:coworkDisplay.hideCompletedTools', {
+    descriptionKey: 'common:coworkDisplay.hideCompletedToolsDescription',
+    keywords: ['tool activity', 'collapse', 'tool calls', 'hide'],
+  }),
+  item('chat', 'model-received', 'common:coworkDisplay.showModelReceived', {
+    descriptionKey: 'common:coworkDisplay.showModelReceivedDescription',
+    keywords: ['prompt', 'request', 'snapshot', 'what the model saw'],
+  }),
+  item('chat', 'html-artifacts', 'settings:interface.renderHtmlArtifacts', {
+    descriptionKey: 'settings:interface.renderHtmlArtifactsDesc',
+    keywords: ['html', 'preview', 'artifacts', 'library'],
+  }),
+  // Data
+  item('data', 'data-folder', 'common:dataFolder', {
+    descriptionKey: 'settings:dataFolder.appDataDesc',
+    keywords: ['storage', 'location', 'move data', 'disk'],
+  }),
+  item('data', 'logs', 'settings:dataFolder.appLogs', {
+    descriptionKey: 'settings:dataFolder.appLogsDesc',
+    keywords: ['logs', 'export logs', 'debug', 'diagnostics'],
+  }),
+  item('data', 'backup-export', 'settings:backup.exportTitle', {
+    descriptionKey: 'settings:backup.exportDesc',
+    keywords: ['backup', 'export settings', 'sync'],
+  }),
+  item('data', 'backup-import', 'settings:backup.importTitle', {
+    keywords: ['backup', 'restore', 'import settings', 'sync'],
+  }),
+  item('data', 'migrate-from-jan', 'settings:general.migrateJan.title', {
+    descriptionKey: 'settings:general.migrateJan.desc',
+    keywords: ['jan', 'migrate', 'import'],
+  }),
+  item('data', 'import-chatgpt', 'settings:general.importChatGpt', {
+    descriptionKey: 'settings:general.importChatGptDesc',
+    keywords: ['chatgpt', 'openai', 'import', 'conversations'],
+  }),
+  item('data', 'bulk-conversations', 'settings:bulk.title', {
     descriptionKey: 'settings:bulk.desc',
     keywords: [
       'archive all',
@@ -292,9 +404,22 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
       'threads',
     ],
   }),
-  item('general', 'factory-reset', 'settings:others.resetFactory', {
+  item('data', 'factory-reset', 'settings:others.resetFactory', {
     descriptionKey: 'settings:others.resetFactoryDesc',
-    keywords: ['reset', 'defaults', 'wipe'],
+    keywords: ['factory reset', 'reset', 'defaults', 'wipe'],
+  }),
+  // Model providers: the defaults card (containers/ModelDefaultsCard.tsx)
+  item('model-providers', 'fallback-models', 'settings:general.fallbackModels', {
+    descriptionKey: 'settings:general.fallbackModelsDesc',
+    keywords: ['fallback', 'retry', 'model unavailable'],
+  }),
+  item('model-providers', 'huggingface-token', 'settings:general.huggingfaceToken', {
+    descriptionKey: 'settings:general.huggingfaceTokenDesc',
+    keywords: ['hugging face', 'hf token', 'download', 'gated'],
+  }),
+  item('model-providers', 'download-limit', 'settings:general.downloadLimit', {
+    descriptionKey: 'settings:general.downloadLimitDesc',
+    keywords: ['bandwidth', 'download speed', 'throttle'],
   }),
   // Appearance
   item('appearance', 'theme', 'settings:interface.theme', {
@@ -312,10 +437,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('appearance', 'performance-mode', 'settings:appearance.performanceMode', {
     descriptionKey: 'settings:appearance.performanceModeDesc',
     keywords: ['performance', 'slow', 'lag', 'blur', 'battery', 'reduced', 'speed'],
-  }),
-  item('appearance', 'composer-rail-buttons', 'settings:interface.composerRailButtons', {
-    descriptionKey: 'settings:interface.composerRailButtonsDesc',
-    keywords: ['cowork', 'output', 'preview', 'changes', 'activity', 'timeline', 'composer', 'buttons'],
   }),
   item('appearance', 'sidebar-items', 'settings:sidebarItems.title', {
     descriptionKey: 'settings:sidebarItems.description',
@@ -338,35 +459,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
       keywords: ['toast', 'alerts'],
     }
   ),
-  item('appearance', 'token-speed', 'settings:interface.showTokenSpeed', {
-    descriptionKey: 'settings:interface.showTokenSpeedDesc',
-    keywords: ['tokens per second', 'performance'],
-  }),
-  item('appearance', 'transcript-view', 'settings:interface.transcriptView', {
-    descriptionKey: 'settings:interface.transcriptViewDesc',
-    keywords: ['thinking', 'reasoning', 'verbose', 'tool calls', 'steps'],
-  }),
-  item(
-    'appearance',
-    'html-artifacts',
-    'settings:interface.renderHtmlArtifacts',
-    {
-      descriptionKey: 'settings:interface.renderHtmlArtifactsDesc',
-      keywords: ['html', 'preview', 'artifacts', 'library'],
-    }
-  ),
-  item('appearance', 'wrap-code-lines', 'settings:interface.wrapCodeLines', {
-    descriptionKey: 'settings:interface.wrapCodeLinesDesc',
-    keywords: ['code', 'wrap', 'line', 'scroll'],
-  }),
-  item('appearance', 'inline-citations', 'settings:interface.inlineCitations', {
-    descriptionKey: 'settings:interface.inlineCitationsDesc',
-    keywords: ['sources', 'favicon', 'web search', 'links'],
-  }),
-  item('appearance', 'auto-title', 'settings:interface.autoGenerateTitle', {
-    descriptionKey: 'settings:interface.autoGenerateTitleDesc',
-    keywords: ['thread title', 'naming'],
-  }),
   // HTTPS proxy
   item('https-proxy', 'proxy-url', 'settings:httpsProxy.proxyUrl', {
     descriptionKey: 'settings:httpsProxy.proxyUrlDesc',
@@ -376,9 +468,16 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:httpsProxy.noProxyDesc',
     keywords: ['bypass', 'exclusions'],
   }),
-  item('https-proxy', 'ignore-ssl', 'settings:httpsProxy.ignoreSsl', {
+  // Labelled as the per-provider switch is; the old label stays a keyword.
+  item('https-proxy', 'ignore-ssl', 'providers:tlsTrust.title', {
     descriptionKey: 'settings:httpsProxy.ignoreSslDesc',
-    keywords: ['certificates', 'tls', 'ssl verification'],
+    keywords: [
+      'ignore ssl certificates',
+      'certificates',
+      'tls',
+      'ssl verification',
+      'self-signed',
+    ],
   }),
   // Web search
   item('web-search', 'enable', 'settings:webSearch.enable', {
@@ -447,6 +546,23 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'permissions:settings.historyDesc',
     keywords: ['audit', 'log', 'decisions', 'denied'],
   }),
+  // Moved from the MCP page: the one switch for every MCP tool.
+  item('permissions', 'allow-permissions', 'mcp-servers:allowPermissions', {
+    descriptionKey: 'mcp-servers:allowPermissionsDesc',
+    keywords: ['approve', 'tool permission', 'trust', 'mcp', 'all mcp tools', 'auto approve'],
+  }),
+  // Moved from the Agent page.
+  item('permissions', 'chat-mentions', 'settings:chatMentions.readAny', {
+    descriptionKey: 'settings:chatMentions.readAnyDesc',
+    keywords: ['conversation mentions', 'chat_read', 'read chats', 'other conversations'],
+  }),
+  item('permissions', 'browser-sites', 'browser-agent:settings.grantsTitle', {
+    keywords: ['browser', 'websites', 'site approvals', 'forget approvals', 'browser pane'],
+  }),
+  item('permissions', 'browser-rules', 'browser-agent:settings.rulesTitle', {
+    descriptionKey: 'browser-agent:settings.rulesDesc',
+    keywords: ['browser', 'block site', 'allow site', 'websites', 'domains'],
+  }),
   // Agent tools
   item('agent-tools', 'enable', 'settings:agentTools.enable', {
     descriptionKey: 'settings:agentTools.enableDesc',
@@ -469,28 +585,38 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:agentTools.networkDesc',
     keywords: ['bash network', 'sandbox network'],
   }),
-  // Local API server.
-  //
-  // Host and port live inside the page's "Configuration" popover, which is
-  // closed on arrival and unmounts its content. There is nothing on the page
-  // to scroll to, so these carry no anchor: the result still finds them and
-  // opens the page, and the search stops promising a highlight it cannot
-  // deliver. Give them an anchor again if the controls move into the page.
+  // Local API server: the Settings tab's Connection and Behaviour cards
   item('local-api-server', 'host', 'settings:localApiServer.serverHost', {
-    anchor: undefined,
-    anchorNote:
-      'Rendered inside the Configuration popover, which is unmounted until it ' +
-      'is opened, so there is nothing to scroll to on arrival.',
     descriptionKey: 'settings:localApiServer.serverHostDesc',
     keywords: ['host', 'address', 'bind'],
   }),
   item('local-api-server', 'port', 'settings:localApiServer.serverPort', {
-    anchor: undefined,
-    anchorNote:
-      'Rendered inside the Configuration popover, which is unmounted until it ' +
-      'is opened, so there is nothing to scroll to on arrival.',
     descriptionKey: 'settings:localApiServer.serverPortDesc',
     keywords: ['port', 'listen'],
+  }),
+  item('local-api-server', 'api-prefix', 'settings:localApiServer.apiPrefix', {
+    descriptionKey: 'settings:localApiServer.apiPrefixDesc',
+    keywords: ['path', 'endpoint', 'v1'],
+  }),
+  item('local-api-server', 'api-key', 'settings:localApiServer.apiKey', {
+    descriptionKey: 'settings:localApiServer.apiKeyDesc',
+    keywords: ['authentication', 'token', 'bearer'],
+  }),
+  item('local-api-server', 'trusted-hosts', 'settings:localApiServer.trustedHosts', {
+    descriptionKey: 'settings:localApiServer.trustedHostsDesc',
+    keywords: ['allowed hosts', 'host header', 'lan'],
+  }),
+  item('local-api-server', 'request-timeout', 'settings:localApiServer.proxyTimeout', {
+    descriptionKey: 'settings:localApiServer.proxyTimeoutDesc',
+    keywords: ['timeout', 'seconds', 'slow model'],
+  }),
+  item('local-api-server', 'cors', 'settings:localApiServer.cors', {
+    descriptionKey: 'settings:localApiServer.corsDesc',
+    keywords: ['cross origin', 'browser requests'],
+  }),
+  item('local-api-server', 'verbose-logs', 'settings:localApiServer.verboseLogs', {
+    descriptionKey: 'settings:localApiServer.verboseLogsDesc',
+    keywords: ['debug', 'logging'],
   }),
   item(
     'local-api-server',
@@ -517,6 +643,30 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('attachments', 'max-file', 'settings:attachments.maxFile', {
     descriptionKey: 'settings:attachments.maxFileDesc',
     keywords: ['file size', 'limit'],
+  }),
+  item('attachments', 'auto-inline', 'settings:attachments.autoInlineThreshold', {
+    descriptionKey: 'settings:attachments.autoInlineThresholdDesc',
+    keywords: ['inline', 'context', 'cutoff'],
+  }),
+  item('attachments', 'top-k', 'settings:attachments.topK', {
+    descriptionKey: 'settings:attachments.topKDesc',
+    keywords: ['citations', 'results', 'retrieval'],
+  }),
+  item('attachments', 'threshold', 'settings:attachments.threshold', {
+    descriptionKey: 'settings:attachments.thresholdDesc',
+    keywords: ['similarity', 'score', 'retrieval'],
+  }),
+  item('attachments', 'search-mode', 'settings:attachments.searchMode', {
+    descriptionKey: 'settings:attachments.searchModeDesc',
+    keywords: ['ann', 'vector', 'cosine', 'sqlite-vec'],
+  }),
+  item('attachments', 'chunk-size', 'settings:attachments.chunkSize', {
+    descriptionKey: 'settings:attachments.chunkSizeDesc',
+    keywords: ['chunking', 'embeddings'],
+  }),
+  item('attachments', 'chunk-overlap', 'settings:attachments.chunkOverlap', {
+    descriptionKey: 'settings:attachments.chunkOverlapDesc',
+    keywords: ['chunking', 'overlap'],
   }),
   // Hardware has no individual entries: the page is a read-out of the
   // detected CPU, RAM and GPUs plus a switch per device, none of which is a
@@ -568,9 +718,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   }),
 
   // MCP servers
-  item('mcp-servers', 'allow-permissions', 'mcp-servers:allowPermissions', {
-    keywords: ['approve', 'tool permission', 'trust'],
-  }),
   item(
     'mcp-servers',
     'tool-call-timeout',
@@ -610,14 +757,14 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     keywords: ['router', 'model selection'],
   }),
 
-  // Claude Code
-  item('jev', 'key', 'common:jev.key', {
+  // Integrations: Jev tab
+  item('integrations', 'jev-key', 'common:jev.key', {
     keywords: ['typesafe', 'api key'],
   }),
-  item('jev', 'skills', 'common:jev.skillTitle', {
+  item('integrations', 'jev-skills', 'common:jev.skillTitle', {
     keywords: ['skill suggestion', 'typesafe'],
   }),
-  item('jev', 'rerank', 'common:jev.rerankTitle', {
+  item('integrations', 'jev-rerank', 'common:jev.rerankTitle', {
     keywords: ['rerank', 'retrieval', 'attachments', 'typesafe'],
   }),
   // Remote access
@@ -635,19 +782,20 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('remote-access', 'devices', 'remote:cardDevices', {
     keywords: ['pair', 'qr code', 'unpair', 'devices'],
   }),
-  item('claude-code', 'fable-model', 'settings:claudeCode.fableModel', {
+  // Integrations: Claude Code tab (desktop only)
+  item('integrations', 'claude-code-fable-model', 'settings:claudeCode.fableModel', {
     descriptionKey: 'settings:claudeCode.fableModelDesc',
     keywords: ['fable', 'model', 'claude code'],
   }),
-  item('claude-code', 'large-model', 'settings:claudeCode.largeModel', {
+  item('integrations', 'claude-code-large-model', 'settings:claudeCode.largeModel', {
     descriptionKey: 'settings:claudeCode.largeModelDesc',
     keywords: ['opus', 'model', 'claude code'],
   }),
-  item('claude-code', 'medium-model', 'settings:claudeCode.mediumModel', {
+  item('integrations', 'claude-code-medium-model', 'settings:claudeCode.mediumModel', {
     descriptionKey: 'settings:claudeCode.mediumModelDesc',
     keywords: ['sonnet', 'model', 'claude code'],
   }),
-  item('claude-code', 'small-model', 'settings:claudeCode.smallModel', {
+  item('integrations', 'claude-code-small-model', 'settings:claudeCode.smallModel', {
     descriptionKey: 'settings:claudeCode.smallModelDesc',
     keywords: ['haiku', 'model', 'claude code'],
   }),
@@ -688,19 +836,25 @@ const stripMarkdown = (text: string): string =>
 
 /**
  * Pages whose controls drive this machine through desktop-only commands (the
- * local API server, phone pairing, the HTTPS proxy, coding CLIs, OS schedules,
- * extensions). The browser client of `flint serve` has no route for them, so
+ * local API server, phone pairing, the HTTPS proxy, OS schedules,
+ * agent tools). The browser client of `flint serve` has no route for them, so
  * they are left out of its menu and search rather than shown as dead controls.
  */
 const DESKTOP_ONLY_PAGES: ReadonlySet<string> = new Set([
   'local-api-server',
   'remote-access',
   'https-proxy',
-  'claude-code',
   'schedules',
-  'extensions',
   'agent-tools',
 ])
+
+/**
+ * Settings on a desktop-only tab of a page the browser client still shows
+ * (Integrations keeps its Jev tab there), so the page stays but these go.
+ */
+const DESKTOP_ONLY_ITEM_PREFIXES: readonly string[] = [
+  'settings-integrations-claude-code-',
+]
 
 /** Whether a settings page works on this platform. */
 export function isSettingsPageAvailable(id: string): boolean {
@@ -738,8 +892,14 @@ export function buildSettingsIndex(
       keywords: [...(page.keywords ?? [])],
     })
   }
+  const desktop = isPlatformTauri()
   for (const setting of SETTINGS_ITEMS) {
     if (hiddenRoutes.has(setting.route)) continue
+    if (
+      !desktop &&
+      DESKTOP_ONLY_ITEM_PREFIXES.some((p) => setting.id.startsWith(p))
+    )
+      continue
     entries.push({
       kind: 'setting',
       id: setting.id,

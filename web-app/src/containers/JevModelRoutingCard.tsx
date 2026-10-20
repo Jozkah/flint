@@ -50,7 +50,7 @@ export function JevModelRoutingCard() {
   return (
     <Card title={t('common:jev.modelRoutingTitle')}>
       <CardItem
-        anchor="settings-jev-model-routing"
+        anchor="settings-integrations-jev-model-routing"
         align="start"
         title={t('common:jev.modelRoutingMode')}
         description={

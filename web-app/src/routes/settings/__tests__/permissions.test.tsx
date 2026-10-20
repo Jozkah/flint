@@ -67,11 +67,21 @@ vi.mock('@/lib/permissionAudit', () => ({
 }))
 
 import { useToolApproval } from '@/hooks/useToolApproval'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
 import { Route } from '../permissions'
 
 const Page = () => {
   const Component = (Route as any).component as React.ComponentType
   return <Component />
+}
+
+/** Opens one of the page's tabs; Rules is the one showing first. */
+const openTab = async (
+  name: 'Rules' | 'Access' | 'Remembered' | 'Activity'
+) => {
+  await userEvent.click(
+    screen.getByRole('radio', { name: `permissions:settings.tab${name}` })
+  )
 }
 
 const GH = 'sha256:github'
@@ -93,6 +103,7 @@ beforeEach(() => {
   mcp.serverFingerprints.mockResolvedValue({ github: GH, 'local-only': LOCAL })
   mcp.revokeServer.mockResolvedValue(undefined)
   auditRecent.mockResolvedValue([])
+  useSettingsSearch.setState({ pendingTarget: null })
   useToolApproval.setState({
     approvedTools: { 'thread-1': ['bash', 'write'], 'session-7': ['edit'] },
     approvedMcpTools: {
@@ -117,6 +128,7 @@ describe('Permissions settings', () => {
     ] })
     const user = userEvent.setup()
     render(<Page />)
+    await openTab('Remembered')
     expect(screen.getByText('PowerShell: Stop-Process -Id')).toBeInTheDocument()
     await user.click(screen.getByRole('button', {
       name: 'permissions:settings.revokeLabel:PowerShell: Stop-Process -Id',
@@ -125,6 +137,7 @@ describe('Permissions settings', () => {
   })
   it('lists conversation grants by title, global tools and every trusted server', async () => {
     render(<Page />)
+    await openTab('Remembered')
     expect(screen.getByText('Fix the parser')).toBeInTheDocument()
     expect(screen.getByText('Forma cleanup')).toBeInTheDocument()
     expect(screen.getByText('permissions:settings.toolLabel:bash')).toBeInTheDocument()
@@ -134,6 +147,7 @@ describe('Permissions settings', () => {
     expect(
       screen.getByText('permissions:settings.toolLabel:web_fetch')
     ).toBeInTheDocument()
+    await openTab('Rules')
     expect(
       await screen.findByText('permissions:settings.serverLabel:github')
     ).toBeInTheDocument()
@@ -153,6 +167,7 @@ describe('Permissions settings', () => {
   it('revokes a conversation grant', async () => {
     const user = userEvent.setup()
     render(<Page />)
+    await openTab('Remembered')
     await user.click(
       screen.getByRole('button', {
         name: 'permissions:settings.revokeLabel:bash (Fix the parser)',
@@ -167,6 +182,7 @@ describe('Permissions settings', () => {
   it('revokes a server-bound conversation grant', async () => {
     const user = userEvent.setup()
     render(<Page />)
+    await openTab('Remembered')
     await user.click(
       screen.getByRole('button', {
         name: 'permissions:settings.revokeLabel:github create_issue (Fix the parser)',
@@ -178,6 +194,7 @@ describe('Permissions settings', () => {
   it('revokes a tool allowed everywhere', async () => {
     const user = userEvent.setup()
     render(<Page />)
+    await openTab('Remembered')
     await user.click(
       screen.getByRole('button', { name: 'permissions:settings.revokeLabel:web_fetch' })
     )
@@ -313,8 +330,52 @@ describe('Permissions settings', () => {
     useToolApproval.setState({ allowAllMCPPermissions: true })
     const user = userEvent.setup()
     render(<Page />)
-    await user.click(screen.getByText('permissions:settings.revokeAll'))
+    expect(screen.getByText('permissions:settings.allowAllOn')).toBeInTheDocument()
+    await user.click(screen.getByTestId('permissions-allow-all'))
     expect(useToolApproval.getState().allowAllMCPPermissions).toBe(false)
+  })
+
+  // The one switch for every MCP tool: the MCP page only links here.
+  it('turns allow-all on as well as off', async () => {
+    const user = userEvent.setup()
+    render(<Page />)
+    const toggle = screen.getByTestId('permissions-allow-all')
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    await user.click(toggle)
+    expect(useToolApproval.getState().allowAllMCPPermissions).toBe(true)
+  })
+
+  it('opens the tab that holds a search result', async () => {
+    // The arrival scrolls the setting into view; jsdom has no layout.
+    Element.prototype.scrollIntoView = vi.fn()
+    render(<Page />)
+    expect(
+      document.querySelector('[data-setting-anchor="settings-permissions-history"]')
+    ).toBeNull()
+    useSettingsSearch.setState({ pendingTarget: 'settings-permissions-history' })
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-setting-anchor="settings-permissions-history"]')
+      ).toBeInTheDocument()
+    )
+  })
+
+  it('keeps conversation access with the rules and browser sites with access', async () => {
+    render(<Page />)
+    expect(
+      document.querySelector('[data-setting-anchor="settings-permissions-chat-mentions"]')
+    ).toBeInTheDocument()
+    await openTab('Access')
+    for (const anchor of [
+      'settings-permissions-folder-access',
+      'settings-permissions-trusted-folders',
+      'settings-permissions-browser-sites',
+      'settings-permissions-browser-rules',
+    ]) {
+      expect(
+        document.querySelector(`[data-setting-anchor="${anchor}"]`)
+      ).toBeInTheDocument()
+    }
   })
 
   it('offers safe auto approval and confirms session bypass', async () => {
@@ -357,6 +418,7 @@ describe('Permissions settings', () => {
       },
     ])
     render(<Page />)
+    await openTab('Activity')
     expect(await screen.findByText('git reset --hard')).toBeInTheDocument()
     expect(auditRecent).toHaveBeenCalledWith('/data', 50)
   })
@@ -381,6 +443,7 @@ describe('Permissions settings', () => {
       }))
     )
     render(<Page />)
+    await openTab('Activity')
     expect(await screen.findByText('cmd-0')).toBeInTheDocument()
     expect(screen.getByText('cmd-9')).toBeInTheDocument()
     expect(screen.queryByText('cmd-10')).not.toBeInTheDocument()
@@ -410,6 +473,7 @@ describe('Permissions settings', () => {
       },
     ])
     render(<Page />)
+    await openTab('Activity')
     await screen.findByText('old-command')
     const time = document.querySelector('time[datetime="2020-03-04T09:15:00Z"]')!
     expect(time.children).toHaveLength(2)
@@ -421,6 +485,7 @@ describe('Permissions settings', () => {
   it('says when decision history cannot be read', async () => {
     auditRecent.mockRejectedValue(new Error('not in the desktop app'))
     render(<Page />)
+    await openTab('Activity')
     expect(
       await screen.findByText(
         'permissions:settings.historyUnavailable:not in the desktop app'
@@ -428,13 +493,19 @@ describe('Permissions settings', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders the settings-search anchors', () => {
+  it('renders the settings-search anchors', async () => {
     render(<Page />)
+    await openTab('Remembered')
     for (const anchor of [
       'settings-permissions-conversations',
       'settings-permissions-everywhere',
-      'settings-permissions-history',
     ]) {
+      expect(
+        document.querySelector(`[data-setting-anchor="${anchor}"]`)
+      ).toBeInTheDocument()
+    }
+    await openTab('Activity')
+    for (const anchor of ['settings-permissions-history']) {
       expect(
         document.querySelector(`[data-setting-anchor="${anchor}"]`)
       ).toBeInTheDocument()

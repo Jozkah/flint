@@ -274,5 +274,7 @@
   },
   "cwd": "Katalog roboczy",
   "cwdPlaceholder": "Opcjonalnie, np. C:\\tools\\my-server",
-  "cwdHint": "Folder, w którym uruchamia się serwer. Zostaw puste, aby uruchomić go z folderu samego Flinta."
+  "cwdHint": "Folder, w którym uruchamia się serwer. Zostaw puste, aby uruchomić go z folderu samego Flinta.",
+  "autoApproveServerHint": "Automatycznie zatwierdza tylko narzędzia tego serwera. Przełącznik dla wszystkich narzędzi MCP znajdziesz w Ustawienia > Uprawnienia.",
+  "allowAllMoved": "Przełącznik, który pozwala uruchamiać wszystkie narzędzia MCP bez pytania, znajdziesz w Ustawienia > Uprawnienia."
 }

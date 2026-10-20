@@ -24,14 +24,23 @@ export const route = {
     model_providers: '/settings/providers',
     providers: '/settings/providers/$providerName',
     general: '/settings/general',
+    chat: '/settings/chat',
+    data: '/settings/data',
+    integrations: '/settings/integrations',
     attachments: '/settings/attachments',
+    appearance: '/settings/appearance',
+    /** Redirects to `appearance`; kept so old links and bookmarks still open. */
     interface: '/settings/interface',
     shortcuts: '/settings/shortcuts',
     extensions: '/settings/extensions',
     local_api_server: '/settings/local-api-server',
     mcp_servers: '/settings/mcp-servers',
+    network_proxy: '/settings/network-proxy',
+    /** Redirects to `network_proxy`. */
     https_proxy: '/settings/https-proxy',
     web_search: '/settings/web-search',
+    agent: '/settings/agent',
+    /** Redirects to `agent`. */
     agent_tools: '/settings/agent-tools',
     memory: '/settings/memory',
     schedules: '/settings/schedules',
