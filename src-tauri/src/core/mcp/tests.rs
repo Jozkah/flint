@@ -614,9 +614,9 @@ fn test_default_mcp_config_parses_as_valid_json() {
         serde_json::from_str(DEFAULT_MCP_CONFIG).expect("DEFAULT_MCP_CONFIG must be valid JSON");
     assert!(value["mcpServers"].is_object());
     assert!(value["mcpSettings"].is_object());
-    // Spot-check known servers
-    assert!(value["mcpServers"]["fetch"].is_object());
-    assert_eq!(value["mcpServers"]["fetch"]["command"], "uvx");
+    // Only the unfinished community browser server is seeded.
+    assert!(value["mcpServers"]["Browser MCP (WIP)"].is_object());
+    assert_eq!(value["mcpServers"].as_object().unwrap().len(), 1);
     assert_eq!(
         value["mcpSettings"]["toolCallTimeoutSeconds"],
         super::constants::DEFAULT_MCP_TOOL_CALL_TIMEOUT_SECS
@@ -2544,14 +2544,24 @@ mod manager_bookkeeping_tests {
 }
 
 #[test]
-fn test_seeded_default_config_has_no_placeholder_dir() {
-    use super::constants::{default_mcp_config, DEFAULT_FILESYSTEM_PLACEHOLDER_DIR};
-    let seeded = default_mcp_config();
-    if dirs::home_dir().is_some() {
-        assert!(!seeded.contains(DEFAULT_FILESYSTEM_PLACEHOLDER_DIR));
-    }
+fn test_seeded_default_config_has_no_filesystem_server() {
+    // Flint's own file tools cover files; the reference filesystem server's
+    // `edit_file` (oldText/newText) was confused with the built-in `edit`.
+    let seeded = super::constants::default_mcp_config();
     let value: serde_json::Value = serde_json::from_str(&seeded).expect("seeded config is JSON");
-    assert!(value["mcpServers"]["filesystem"]["args"][2].is_string());
+    assert!(value["mcpServers"].get("filesystem").is_none());
+    assert!(!seeded.contains("server-filesystem"));
+}
+
+#[test]
+fn test_seeded_default_config_has_no_servers_a_builtin_replaces() {
+    // web_fetch / web_search (Serper, DuckDuckGo providers) are built in, and
+    // reasoning models think natively.
+    let value: serde_json::Value =
+        serde_json::from_str(&super::constants::default_mcp_config()).unwrap();
+    for name in ["fetch", "duckduckgo", "serper", "sequential-thinking"] {
+        assert!(value["mcpServers"].get(name).is_none(), "{name} should not be seeded");
+    }
 }
 
 #[test]

@@ -391,6 +391,51 @@ pub fn resolve_all(grant_id: &str, session_id: &str) -> Vec<PathBuf> {
     }
 }
 
+/// Cover a folder the run itself created, in the session's live grant.
+///
+/// A worktree or clone the agent makes beside the project it was authorized to
+/// edit is the same project's work: leaving it unwritable made the model unable
+/// to touch the folder it had just created. This is deliberately not a general
+/// way to widen a root. The folder must be inside the granted root or a direct
+/// sibling of it, and it is validated like any grant (never the profile, a
+/// drive root, a system location, or Flint's data folder). Without a live grant
+/// for the session -- a run that was never authorized to edit -- it does
+/// nothing, and the run keeps writing to its sandbox.
+///
+/// Returns whether the folder is now covered (already or newly).
+#[cfg(any(feature = "tauri", test))]
+pub fn extend_session(
+    session_id: &str,
+    folder: &Path,
+    workspace: &Path,
+    data_folder: &Path,
+) -> Result<bool, String> {
+    if session_id.is_empty() {
+        return Ok(false);
+    }
+    let folder = grantable(folder, workspace, data_folder)?;
+    if !capability() && !is_owned_worktree(&folder, data_folder) {
+        return Ok(false);
+    }
+    let mut grants = registry().lock().map_err(|_| "grant registry poisoned")?;
+    let Some(grant) = grants.values_mut().find(|g| g.session_id == session_id) else {
+        return Ok(false);
+    };
+    let near = std::iter::once(&grant.root).chain(grant.extra_roots.iter()).any(|root| {
+        folder.starts_with(root) || (folder.parent().is_some() && folder.parent() == root.parent())
+    });
+    if !near {
+        return Err(format!(
+            "{} is neither inside nor beside a folder this session may edit",
+            folder.display()
+        ));
+    }
+    if folder != grant.root && !grant.extra_roots.contains(&folder) && !folder.starts_with(&grant.root) {
+        grant.extra_roots.push(folder);
+    }
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,6 +488,59 @@ mod tests {
         assert_eq!(resolve(&id, "another-session"), None);
 
         revoke(&id);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn a_folder_the_run_made_beside_the_project_joins_the_grant() {
+        require_capability!();
+        let (ws, data, repo, session) = fixture();
+        let id = authorize(&session, &repo.to_string_lossy(), &ws, &data).unwrap();
+        let sibling = repo.parent().unwrap().join("catalog-home-2");
+        std::fs::create_dir_all(&sibling).unwrap();
+
+        assert_eq!(extend_session(&session, &sibling, &ws, &data), Ok(true));
+        let roots = resolve_all(&id, &session);
+        assert_eq!(
+            roots,
+            vec![repo.canonicalize().unwrap(), sibling.canonicalize().unwrap()]
+        );
+        // Asking again adds nothing.
+        assert_eq!(extend_session(&session, &sibling, &ws, &data), Ok(true));
+        assert_eq!(resolve_all(&id, &session).len(), 2);
+        // A folder inside the project is already covered and is not listed.
+        let inside = repo.join("worktrees").join("x");
+        std::fs::create_dir_all(&inside).unwrap();
+        assert_eq!(extend_session(&session, &inside, &ws, &data), Ok(true));
+        assert_eq!(resolve_all(&id, &session).len(), 2);
+
+        revoke(&id);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn a_folder_far_from_the_project_is_not_added() {
+        require_capability!();
+        let (ws, data, repo, session) = fixture();
+        let id = authorize(&session, &repo.to_string_lossy(), &ws, &data).unwrap();
+        let far = ws.parent().unwrap().join("deeper").join("elsewhere");
+        std::fs::create_dir_all(&far).unwrap();
+
+        assert!(extend_session(&session, &far, &ws, &data).is_err());
+        assert_eq!(resolve_all(&id, &session), vec![repo.canonicalize().unwrap()]);
+
+        revoke(&id);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn a_session_without_a_grant_gets_nothing_extended() {
+        require_capability!();
+        let (ws, data, repo, session) = fixture();
+        let sibling = repo.parent().unwrap().join("beside");
+        std::fs::create_dir_all(&sibling).unwrap();
+        assert_eq!(extend_session(&session, &sibling, &ws, &data), Ok(false));
+        assert_eq!(extend_session("", &sibling, &ws, &data), Ok(false));
         let _ = std::fs::remove_dir_all(ws.parent().unwrap());
     }
 

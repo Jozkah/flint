@@ -305,6 +305,22 @@ export function schemaIssues(errorText: string): string[] {
   return out
 }
 
+/**
+ * Why a `bash` call was refused when the shell is not offered, and what to use
+ * instead. Without it the model saw only a list of tool names, called `bash`
+ * again with a different command, and each retry counted toward the loop guard.
+ */
+function noShellAdvice(base: string, tool: string | undefined): string {
+  if (tool !== 'bash' || refusalKindOf(base) !== 'tool-not-offered') return ''
+  return (
+    ' `bash` is not offered in this run (the shell is unavailable on this machine or turned' +
+    ' off), so no command can run through it. ' +
+    (/(^|[^a-z_])host_powershell($|[^a-z_])/.test(base)
+      ? 'Use `host_powershell` for commands, and the file tools for files.'
+      : 'Use the file tools (read, ls, find, grep, write, edit) instead.')
+  )
+}
+
 function explainInvalid(base: string, tool: string | undefined, raw: unknown): string {
   const issues = schemaIssues(base)
   const shape = tool ? EXPECTED_SHAPES[tool] : undefined
@@ -314,6 +330,7 @@ function explainInvalid(base: string, tool: string | undefined, raw: unknown): s
       : []
   return (
     (issues.length ? ` Invalid or missing: ${issues.join('; ')}.` : '') +
+    noShellAdvice(base, tool) +
     (shape ? ` Expected call shape: ${shape}.` : '') +
     (shape && sent.length
       ? ` You sent: ${sent.map((k) => `\`${k}\``).join(', ')}.`

@@ -21,7 +21,7 @@ export type LoopReason =
 
 export type LoopVerdict =
   | { tripped: false }
-  | { tripped: true; reason: LoopReason; detail: string }
+  | { tripped: true; reason: LoopReason; detail: string; hint?: string }
 
 export const REPEAT_LIMIT = 5
 export const FAILURE_LIMIT = 3
@@ -480,7 +480,43 @@ function genericFailureScope(call: ObservedCall, error: string): string {
   return ''
 }
 
+const MISSING_PATH_ERROR =
+  /File not found|cannot find the (path|file)|path specified|no such file or directory|os error [23]\b/i
+
+/** File tools whose failures can be a project-relative path that missed. */
+const PATH_TOOLS = new Set(['read', 'ls', 'find', 'grep'])
+
+/**
+ * What a model that keeps missing paths needs to hear. Relative paths resolve
+ * in its scratch workspace, not the attached project, so a run of
+ * path-not-found failures is usually one wrong assumption, not bad luck; a
+ * stop that only says "not making progress" left the model guessing at
+ * symlinks and asking for access to the workspace itself.
+ */
+export const MISSING_PATH_HINT =
+  'Several lookups failed with path-not-found. Relative paths resolve in your ' +
+  'scratch workspace, not in the attached project: use the absolute path of the ' +
+  'project folder (named in the Workspace section and in the error), and never ' +
+  'request access to the workspace itself.'
+
+function missesPaths(calls: ObservedCall[]): boolean {
+  let misses = 0
+  for (const call of calls) {
+    if (!call.failed || !PATH_TOOLS.has(call.tool)) continue
+    if (MISSING_PATH_ERROR.test(call.error ?? '')) misses += 1
+  }
+  return misses >= 2
+}
+
 export function detectLoop(calls: ObservedCall[]): LoopVerdict {
+  const verdict = detectLoopCore(calls)
+  if (verdict.tripped && !verdict.hint && missesPaths(calls)) {
+    return { ...verdict, hint: MISSING_PATH_HINT }
+  }
+  return verdict
+}
+
+function detectLoopCore(calls: ObservedCall[]): LoopVerdict {
   if (calls.length === 0) return { tripped: false }
 
   const deepest = calls.reduce((max, call) => Math.max(max, call.depth ?? 0), 0)
@@ -703,7 +739,11 @@ export function loopStopNotice(
   return (
     `${detail}, so Flint stopped the run. The last reply says what it was ` +
     'trying to do and what got in the way. Answer it, or change the request, ' +
-    'to carry on.'
+    'to carry on.' +
+    (verdict.hint
+      ? ' The attached project folder is read by absolute path; relative paths ' +
+        'point into the run scratch workspace.'
+      : '')
   )
 }
 
@@ -712,7 +752,9 @@ export function loopFinalTurnNote(
 ): string {
   return (
     `[Flint stopped tool use: ${verdict.detail}. No more tools can run in this ` +
-    'turn.] Reply to the user in plain text: say what you tried, what is ' +
+    'turn.] ' +
+    (verdict.hint ? `${verdict.hint} ` : '') +
+    'Reply to the user in plain text: say what you tried, what is ' +
     'blocking it, and what they could do (for example a command to run ' +
     'themselves). Do not call any tools.'
   )
