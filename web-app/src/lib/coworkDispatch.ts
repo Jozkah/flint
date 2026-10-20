@@ -1,4 +1,5 @@
 import { workflowToTeamInput } from '@/lib/coworkWorkflow'
+import { runWorkflowControl } from '@/lib/workflowControl'
 import { pushNotice } from '@/lib/coworkRunNotices'
 import { registerToolCallStop, stopBackendCall } from '@/lib/toolCallStop'
 import {
@@ -1411,6 +1412,8 @@ async function routeCoworkTool(
       // same way one `task` does: its children are this run's children.
       let teamInput: unknown = call.input
       if (toolName === WORKFLOW_TOOL_NAME) {
+        const op = (call.input as { control?: unknown } | null)?.control
+        if (op !== undefined) return runWorkflowControl(ctx.sessionId, op)
         const converted = workflowToTeamInput(call.input)
         if (typeof converted === 'string') {
           return { output: `ERROR: ${converted}`, isError: true }

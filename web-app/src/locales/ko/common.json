@@ -1506,7 +1506,11 @@
     "shellCount_other": "명령 {{count}}개",
     "stopWorkflow": "{{name}} 중지",
     "stopWorkflowPartial": "{{cancelled}}개를 중지했고, {{failed}}개는 중지할 수 없었습니다.",
-    "cancelKillFailed": "시스템이 중지를 거부했습니다: {{error}}"
+    "cancelKillFailed": "시스템이 중지를 거부했습니다: {{error}}",
+    "pauseRun": "일시 중지",
+    "resumeRun": "다시 시작",
+    "restartAgent": "에이전트 다시 시작",
+    "runPaused": "일시 중지됨"
   },
   "reasoningEffort": {
     "label": "추론 강도",

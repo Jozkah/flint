@@ -1505,7 +1505,11 @@
     "shellCount_other": "{{count}} lệnh",
     "stopWorkflow": "Dừng {{name}}",
     "stopWorkflowPartial": "Đã dừng {{cancelled}}; không thể dừng {{failed}}.",
-    "cancelKillFailed": "Hệ thống từ chối dừng nó: {{error}}"
+    "cancelKillFailed": "Hệ thống từ chối dừng nó: {{error}}",
+    "pauseRun": "Tạm dừng",
+    "resumeRun": "Tiếp tục",
+    "restartAgent": "Khởi động lại tác tử",
+    "runPaused": "Đã tạm dừng"
   },
   "reasoningEffort": {
     "label": "Mức độ suy luận",

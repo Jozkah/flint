@@ -14,6 +14,11 @@ import {
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
+import {
+  WorkflowAgentRestart,
+  WorkflowPauseButton,
+  WorkflowPausedBadge,
+} from '@/containers/WorkflowRunControls'
 import { formatCompactDuration } from '@/lib/duration'
 import {
   groupByWorkflowPhase,
@@ -77,11 +82,11 @@ export function CoworkWorkflowCard({
   const runningTools = running.some((task) => task.kind === 'shell')
 
   const taskRow = (task: ActivityTask) => (
-    <li key={task.id}>
+    <li key={task.id} className="flex items-center">
       <button
         type="button"
         onClick={() => onOpenTask(task)}
-        className="flex h-[26px] w-full items-center gap-2 rounded-md px-1.5 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+        className="flex h-[26px] min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
       >
         {isCheckFailure(task) ? (
           <TriangleAlert
@@ -117,6 +122,7 @@ export function CoworkWorkflowCard({
           {formatCompactDuration(taskElapsedMs(task, now) / 1000, t)}
         </span>
       </button>
+      <WorkflowAgentRestart task={task} tasks={tasks} />
     </li>
   )
 
@@ -130,6 +136,7 @@ export function CoworkWorkflowCard({
         <p className="min-w-0 truncate font-semibold">
           {t('common:tasks.activityTitle')}
         </p>
+        <WorkflowPausedBadge tasks={tasks} />
         <p
           className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
           data-testid="workflow-summary"
@@ -172,6 +179,7 @@ export function CoworkWorkflowCard({
                   ]
             )}
         </p>
+        <WorkflowPauseButton tasks={tasks} />
         <Button
           variant="surface"
           size="xs"

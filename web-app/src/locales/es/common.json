@@ -1530,7 +1530,11 @@
     "shellCount_other": "{{count}} comandos",
     "stopWorkflow": "Detener {{name}}",
     "stopWorkflowPartial": "Detenidas {{cancelled}}; {{failed}} no se pudieron detener.",
-    "cancelKillFailed": "El sistema se negó a detenerla: {{error}}"
+    "cancelKillFailed": "El sistema se negó a detenerla: {{error}}",
+    "pauseRun": "Pausar",
+    "resumeRun": "Reanudar",
+    "restartAgent": "Reiniciar agente",
+    "runPaused": "En pausa"
   },
   "reasoningEffort": {
     "label": "Esfuerzo de razonamiento",

@@ -1529,7 +1529,11 @@
     "shellCount_many": "{{count}} de comandos",
     "stopWorkflow": "Parar {{name}}",
     "stopWorkflowPartial": "{{cancelled}} interrompida(s); {{failed}} não puderam ser interrompidas.",
-    "cancelKillFailed": "O sistema se recusou a pará-la: {{error}}"
+    "cancelKillFailed": "O sistema se recusou a pará-la: {{error}}",
+    "pauseRun": "Pausar",
+    "resumeRun": "Retomar",
+    "restartAgent": "Reiniciar agente",
+    "runPaused": "Pausado"
   },
   "reasoningEffort": {
     "label": "Esforço de raciocínio",

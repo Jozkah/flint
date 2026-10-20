@@ -96,6 +96,20 @@ export function workflowTool(subagentNames: string[]): Tool {
             'Start it and return a task_id at once; collect the combined report with await_task, ' +
             'check task_status, or cancel_task. Default false.',
         },
+        control: {
+          type: 'object',
+          description:
+            'Steer a RUNNING background workflow instead of starting one (give only this field). ' +
+            '`pause` starts no new agent (running ones finish); `resume` undoes it; `restart` stops one ' +
+            'agent and runs it again (`agent_id` required).',
+          properties: {
+            run_id: { type: 'string', minLength: 1, description: 'The task_id the workflow returned.' },
+            action: { type: 'string', enum: ['pause', 'resume', 'restart'] },
+            agent_id: { type: 'string', minLength: 1, description: 'For restart: the agent id.' },
+          },
+          required: ['run_id', 'action'],
+          additionalProperties: false,
+        },
         phases: {
           type: 'array',
           minItems: 1,
@@ -129,7 +143,6 @@ export function workflowTool(subagentNames: string[]): Tool {
           },
         },
       },
-      required: ['phases'],
       additionalProperties: false,
     }),
   } as Tool

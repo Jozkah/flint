@@ -4649,8 +4649,10 @@ export function CoworkPage() {
                       allowParallel,
                       control: teamControl,
                       decisionWindowMs: COWORK_DECISION_WINDOW_MS,
+                      onPause: (paused) =>
+                        useCoworkActivity.getState().patchTask(teamTaskId, { paused }),
                       onControl: (request, result) => {
-                        if (!result.ok || request.kind === 'finish') {
+                        if (!result.ok || request.kind === 'finish' || request.kind === 'pause' || request.kind === 'resume') {
                           if (!result.ok) toast.error(result.refusal.message)
                           return
                         }

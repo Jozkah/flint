@@ -1546,7 +1546,11 @@
     "shellCount_other": "{{count}} commands",
     "stopWorkflow": "Stop {{name}}",
     "stopWorkflowPartial": "Stopped {{cancelled}}; {{failed}} could not be stopped.",
-    "cancelKillFailed": "The system refused to stop it: {{error}}"
+    "cancelKillFailed": "The system refused to stop it: {{error}}",
+    "pauseRun": "Pause",
+    "resumeRun": "Resume",
+    "restartAgent": "Restart agent",
+    "runPaused": "Paused"
   },
   "reasoningEffort": {
     "label": "Reasoning effort",

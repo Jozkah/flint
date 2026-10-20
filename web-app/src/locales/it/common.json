@@ -1529,7 +1529,11 @@
     "shellCount_many": "{{count}} di comandi",
     "stopWorkflow": "Ferma {{name}}",
     "stopWorkflowPartial": "Fermati {{cancelled}}; {{failed}} non è stato possibile fermarli.",
-    "cancelKillFailed": "Il sistema ha rifiutato di fermarlo: {{error}}"
+    "cancelKillFailed": "Il sistema ha rifiutato di fermarlo: {{error}}",
+    "pauseRun": "Metti in pausa",
+    "resumeRun": "Riprendi",
+    "restartAgent": "Riavvia agente",
+    "runPaused": "In pausa"
   },
   "reasoningEffort": {
     "label": "Impegno di ragionamento",

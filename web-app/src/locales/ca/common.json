@@ -1531,7 +1531,11 @@
     "shellCount_other": "{{count}} ordres",
     "stopWorkflow": "Atura {{name}}",
     "stopWorkflowPartial": "S'han aturat {{cancelled}}; {{failed}} no s'han pogut aturar.",
-    "cancelKillFailed": "El sistema ha refusat aturar-la: {{error}}"
+    "cancelKillFailed": "El sistema ha refusat aturar-la: {{error}}",
+    "pauseRun": "Atura",
+    "resumeRun": "Reprèn",
+    "restartAgent": "Reinicia l'agent",
+    "runPaused": "En pausa"
   },
   "reasoningEffort": {
     "label": "Esforç de raonament",
