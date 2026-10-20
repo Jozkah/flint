@@ -596,7 +596,7 @@ pub async fn get_mcp_server_log(name: String, lines: Option<usize>) -> Result<Ve
 
 /// Server definitions saved in `mcp_config.json`, by name. Empty when the file
 /// is missing or unreadable: identity is then unknown, which permits nothing.
-fn saved_server_configs(data_folder: &Path) -> Map<String, Value> {
+pub(crate) fn saved_server_configs(data_folder: &Path) -> Map<String, Value> {
     fs::read_to_string(data_folder.join("mcp_config.json"))
         .ok()
         .and_then(|body| serde_json::from_str::<Value>(&body).ok())
