@@ -43,6 +43,8 @@ export type SubagentDefinition = {
   initial_prompt?: string
   /** Skip project instructions (JAN.md and compatible files). */
   omit_instructions?: boolean
+  /** Reasoning effort for this agent, where its model offers one. */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh'
 }
 
 let cache: SubagentDefinition[] | null = null

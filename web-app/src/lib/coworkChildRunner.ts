@@ -47,6 +47,7 @@ import {
 } from '@/lib/coworkSubagentHistory'
 import { recordToolActivity, type ToolActivityContext } from '@/lib/toolActivity'
 import type { Destination } from '@/lib/coworkTeamDestinations'
+import { resolveChildEffort } from '@/lib/coworkSubagentEffort'
 import { prepareChildChoice, profileLabel, type ParentPersona } from '@/lib/subagentChoice'
 import type { CoworkTurn, Usage } from '@/types/coworkSession'
 
@@ -158,6 +159,19 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       parent: env.parent?.(),
       requestedModel: req.model,
     })
+    // A reasoning effort asked for by the call or the definition: a model
+    // instance of its own, built with that level, in place of the parent's.
+    let effortChoice: Awaited<ReturnType<typeof resolveChildEffort>> | undefined
+    if (resolved.effort && choice.providerId) {
+      effortChoice = await resolveChildEffort({
+        providerId: choice.providerId,
+        modelId: choice.modelId,
+        level: resolved.effort,
+      })
+      if ('note' in effortChoice && effortChoice.note) {
+        choice.note = [choice.note, effortChoice.note].filter(Boolean).join('; ')
+      }
+    }
     // Recorded before the child starts: the dispatch is the only moment the
     // agent name, description and model are known together, and the record has
     // to exist for the queue position that arrives next to land on something.
@@ -287,10 +301,13 @@ ${req.description}`
         // The same identity the child's dispatched calls carry, for the calls
         // the runner refuses without dispatching.
         activity: setup.activity,
-        model: choice.model ?? model,
+        model: (effortChoice && 'model' in effortChoice ? effortChoice.model : undefined) ?? choice.model ?? model,
         supportsVision: choice.supportsVision ?? env.supportsVision?.() ?? false,
         ...(choice.extraSystem.length > 0 ? { extraSystem: choice.extraSystem } : {}),
-        providerOptions: env.providerOptions(),
+        providerOptions:
+          effortChoice && 'model' in effortChoice
+            ? effortChoice.providerOptions
+            : env.providerOptions(),
         parentTools: env.parentTools(),
         system: setup.system,
         signal: childAbort.signal,

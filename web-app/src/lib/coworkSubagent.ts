@@ -21,6 +21,7 @@ import {
 } from '@/lib/coworkTools'
 import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSession'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { isEffortLevel, type EffortLevel } from '@/lib/modelEffort'
 import { isCoworkMode, type CoworkMode } from '@/lib/coworkMode'
 import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
 import { BACKGROUND_TASK_TOOLS } from '@/lib/coworkBackgroundTasks'
@@ -150,6 +151,8 @@ export type SubagentRequest = {
   title?: string
   /** A configured model to run this child on, checked when it starts. */
   model?: string
+  /** Reasoning effort for this child, checked against what its model offers. */
+  effort?: EffortLevel
   /** The `workflow` phase this child belongs to; set by the team runner, never by the model. */
   phase?: { name: string; index: number }
   /**
@@ -179,6 +182,8 @@ export type ResolvedSubagent = {
   initialPrompt?: string
   /** Skip project instructions for this child. */
   omitInstructions?: boolean
+  /** Reasoning effort: the call's, else the definition's. */
+  effort?: EffortLevel
 }
 
 /**
@@ -217,6 +222,7 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
   if (raw.background === true) req.background = true
   if (typeof raw.title === 'string' && raw.title.trim()) req.title = raw.title.trim()
   if (typeof raw.model === 'string' && raw.model.trim()) req.model = raw.model.trim().slice(0, 200)
+  if (isEffortLevel(raw.effort)) req.effort = raw.effort
   if (typeof raw.resume_agent_id === 'string' && raw.resume_agent_id.trim()) {
     req.resume_agent_id = raw.resume_agent_id.trim().slice(0, 200)
   }
@@ -312,6 +318,7 @@ export function resolveSubagent(
         }
       }
     }
+    const effort = req.effort ?? (isEffortLevel(saved.effort) ? saved.effort : undefined)
     return {
       name: saved.name,
       systemPrompt: saved.system_prompt,
@@ -331,6 +338,7 @@ export function resolveSubagent(
         : {}),
       ...(saved.initial_prompt?.trim() ? { initialPrompt: saved.initial_prompt.trim() } : {}),
       ...(saved.omit_instructions === true ? { omitInstructions: true } : {}),
+      ...(effort ? { effort } : {}),
     }
   }
   if (!req.system_prompt) {
@@ -345,6 +353,7 @@ export function resolveSubagent(
     systemPrompt: req.system_prompt,
     allowedTools: narrowed.tools,
     model: null,
+    ...(req.effort ? { effort: req.effort } : {}),
   }
 }
 

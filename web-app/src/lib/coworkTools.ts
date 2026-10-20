@@ -386,6 +386,11 @@ export function taskTool(
           type: 'string',
           description: 'Optional. A configured model id to run this on instead of the default, for example a faster one for a read-only survey. Leave out unless you have a reason.',
         },
+        effort: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'xhigh'],
+          description: 'Optional. Reasoning effort for this subagent where its model offers one; ignored otherwise. Leave out to use the default.',
+        },
         description: { type: 'string', minLength: 1 },
         resume_agent_id: {
           type: 'string',
