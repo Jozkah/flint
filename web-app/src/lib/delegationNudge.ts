@@ -6,7 +6,7 @@
  * (the streak is never reached), never twice, never after the run has delegated,
  * and never when the run has no delegation tool to point at.
  */
-import { TASK_TOOL_NAME, TEAM_TOOL_NAME } from '@/lib/coworkTools'
+import { TASK_TOOL_NAME, TEAM_TOOL_NAME, WORKFLOW_TOOL_NAME } from '@/lib/coworkTools'
 
 export const NUDGE_AFTER = 4
 export const EXPLORATION_TOOLS: ReadonlySet<string> = new Set(['read', 'grep', 'ls', 'glob', 'find'])
@@ -23,7 +23,7 @@ export class DelegationNudge {
   /** Feed one finished tool call; returns the hint when it is time to give it. */
   observe(toolName: string): string | undefined {
     if (this.done || !this.offered()) return undefined
-    if (toolName === TASK_TOOL_NAME || toolName === TEAM_TOOL_NAME) {
+    if (toolName === TASK_TOOL_NAME || toolName === TEAM_TOOL_NAME || toolName === WORKFLOW_TOOL_NAME) {
       // It found the tool on its own.
       this.done = true
       return undefined

@@ -1,3 +1,4 @@
+import { workflowToTeamInput } from '@/lib/coworkWorkflow'
 import { pushNotice } from '@/lib/coworkRunNotices'
 import { registerToolCallStop, stopBackendCall } from '@/lib/toolCallStop'
 import {
@@ -31,6 +32,7 @@ import {
   isReviewDeniedBrowserTool,
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { isolatedTaskAsTeam } from '@/lib/coworkTeam'
@@ -1337,7 +1339,7 @@ async function routeCoworkTool(
     if (toolName === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(toolName)) {
       return await routeDelegationTool(call, ctx, signal)
     }
-    if (toolName === TEAM_TOOL_NAME) {
+    if (toolName === TEAM_TOOL_NAME || toolName === WORKFLOW_TOOL_NAME) {
       // A subagent's dispatcher has no team, so the call is refused by name
       // rather than executed: a model can emit a call to a tool that was never
       // advertised, and a child dispatching a team would be one level of
@@ -1352,9 +1354,17 @@ async function routeCoworkTool(
       }
       // The team holds the parent's subagent slot for as long as it runs, the
       // same way one `task` does: its children are this run's children.
+      let teamInput: unknown = call.input
+      if (toolName === WORKFLOW_TOOL_NAME) {
+        const converted = workflowToTeamInput(call.input)
+        if (typeof converted === 'string') {
+          return { output: `ERROR: ${converted}`, isError: true }
+        }
+        teamInput = converted
+      }
       const teamDone = ctx.trackSubagent?.()
       try {
-        return await ctx.onTeam(call.toolCallId, call.input)
+        return await ctx.onTeam(call.toolCallId, teamInput)
       } finally {
         teamDone?.()
       }
