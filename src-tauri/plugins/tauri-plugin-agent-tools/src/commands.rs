@@ -1160,6 +1160,9 @@ async fn execute_tool_inner(
         &thread_id,
         crate::access::now_secs(),
     );
+    // The attached folder the user let this run edit: where a bare relative
+    // file path should land, ahead of any `request_access` grants appended below.
+    let edit_folder = write_roots.first().cloned();
     let mut write_roots = write_roots;
     for root in access_write {
         if !write_roots.contains(&root) {
@@ -1185,7 +1188,12 @@ async fn execute_tool_inner(
     // `write check.py` lands in the workspace and `python check.py` looks for
     // it in the worktree.
     let mut args = args;
-    if let Some(base) = handlers::working_folder(&write_roots, Path::new(&data_folder)) {
+    // A run with direct edit access to a folder resolves them there as well:
+    // "create some files" with no absolute path belongs in the folder the user
+    // attached for editing, not the scratch workspace.
+    let rebase_base = handlers::working_folder(&write_roots, Path::new(&data_folder))
+        .or_else(|| edit_folder.filter(|f| f.is_dir()));
+    if let Some(base) = rebase_base {
         handlers::rebase_relative_paths(&name, &mut args, &base);
     }
 

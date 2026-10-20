@@ -591,7 +591,7 @@ describe('where bash runs (#322)', () => {
 
     expect(prompt).toContain('`bash` starts in your sandbox workspace')
     expect(prompt).toContain('the project is writable')
-    expect(prompt).toContain('Relative file-tool paths still resolve in the workspace.')
+    expect(prompt).toContain('Relative file-tool paths resolve in the project')
     expect(prompt).not.toContain('cannot cd into the project')
     expect(prompt).not.toContain('starts in the session worktree')
   })
