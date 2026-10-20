@@ -3,6 +3,7 @@
 pub mod arg_align;
 pub mod budget;
 pub mod elicitation;
+pub mod envexpand;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod server_log;
