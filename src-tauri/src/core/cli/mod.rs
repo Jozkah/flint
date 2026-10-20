@@ -1600,6 +1600,10 @@ pub struct SessionFlags {
     pub effort: Option<String>,
     /// `--ephemeral`: do not write the session to disk.
     pub ephemeral: bool,
+    /// `--json-schema`: the final answer must validate against this schema.
+    pub json_schema: Option<serde_json::Value>,
+    /// `--json-schema-attempts`: repair attempts before giving up.
+    pub json_schema_attempts: Option<u64>,
 }
 
 /// Check the names `--allow-tool`/`--deny-tool` carry, by the rule a schedule's
@@ -2192,8 +2196,21 @@ fn prepare_agent_run(
     if let Some(effort) = flags.effort.as_deref() {
         body["reasoning_effort"] = serde_json::json!(effort);
     }
-    if let Some(text) = flags.append_system_prompt.as_deref().filter(|t| !t.trim().is_empty()) {
-        body["jan_append_system_prompt"] = serde_json::json!(text);
+    let mut append = flags.append_system_prompt.clone().unwrap_or_default();
+    if let Some(schema) = flags.json_schema.as_ref() {
+        body["jan_json_schema"] = schema.clone();
+        if let Some(n) = flags.json_schema_attempts {
+            body["jan_json_schema_attempts"] = serde_json::json!(n);
+        }
+        if !append.is_empty() {
+            append.push_str("\n\n");
+        }
+        append.push_str(&format!(
+            "Your final answer must be a single JSON value that validates against this JSON Schema, with no prose and no code fence:\n{schema}"
+        ));
+    }
+    if !append.trim().is_empty() {
+        body["jan_append_system_prompt"] = serde_json::json!(append);
     }
     // Emit resolved references stderr so the user sees what was injected
     if !injected.is_empty() {
@@ -2654,7 +2671,7 @@ async fn run_agent_loop(
     let aborted = outcome.is_none();
     let result = outcome.unwrap_or_else(|| Err(ABORTED_BY_CLIENT.into()));
     drop(tx);
-    let (report, conversation) = printer.await.unwrap_or_default();
+    let (mut report, conversation) = printer.await.unwrap_or_default();
     if let Some(input) = input.as_ref() {
         report_dropped_follow_ups(input, format);
     }
@@ -2688,6 +2705,13 @@ async fn run_agent_loop(
 
     // Write the turn back so the session stays continuable with --resume.
     let model = persist.model.clone();
+    let structured = result.as_ref().ok().and_then(|c| c.get("structured_output").cloned());
+    let structured_error = result
+        .as_ref()
+        .ok()
+        .and_then(|c| c.get("structured_output_error"))
+        .and_then(|v| v.as_str().map(str::to_string));
+    report.set_structured(structured.clone(), structured_error.clone());
     let persisted = persist_headless_run(persist, &result, conversation, Some(&session_id));
     let (session_id, final_text) = (persisted.session_id, persisted.final_text);
     // Saved, so nothing is in flight any more. A run that failed before its
@@ -2724,6 +2748,16 @@ async fn run_agent_loop(
             ),
         );
     }
+    // The validated value on its own line, for a caller reading stdout in text
+    // mode. Machine formats carry it as `structured_output` in the result.
+    if !format.is_machine() {
+        if let Some(value) = structured.as_ref() {
+            println!("{value}");
+        }
+    }
+    if let Some(reason) = structured_error.as_deref() {
+        eprintln!("Error: the final answer never validated against --json-schema: {reason}");
+    }
     // The stream belongs to this run (AH-183); a later command in the same
     // process is not it.
     tauri_plugin_agent_tools::event_log::unwatch();
@@ -2734,6 +2768,12 @@ async fn run_agent_loop(
     }
     if aborted {
         return Ok(());
+    }
+    if let Some(reason) = structured_error {
+        return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+            format!("the final answer never validated against --json-schema: {reason}"),
+        ));
     }
     result.map(|_| ())
 }

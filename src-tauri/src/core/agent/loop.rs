@@ -8902,6 +8902,13 @@ async fn run_turn_cycle(
     let final_checks = crate::core::agent::final_checks::from_body(json_body);
     let mut final_checks_retried = false;
     let mut run_end_blocks = 0usize;
+    // `--json-schema`: the final answer must validate; a bounded repair loop.
+    let json_schema = json_body.get("jan_json_schema").cloned();
+    let json_schema_attempts = json_body
+        .get("jan_json_schema_attempts")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(crate::core::agent::structured_output::DEFAULT_ATTEMPTS);
+    let mut json_schema_repairs = 0u64;
     // `!cmd` from a composer: the turn's first "model reply" is this tool call,
     // dispatched through the same gate, sandbox and approvals as any bash call
     // the model made, and the run ends once its result is in. No model call.
@@ -9517,6 +9524,40 @@ Address it and continue."
                     );
                     turn += 1;
                     continue;
+                }
+            }
+            // `--json-schema`: validate the final answer. A bad one goes back to
+            // the model with the validation error, up to the attempt cap.
+            if let Some(schema) = json_schema.as_ref() {
+                match crate::core::agent::structured_output::check_answer(schema, &final_text) {
+                    Ok(value) => {
+                        if let Some(obj) = completion.as_object_mut() {
+                            obj.insert("structured_output".to_string(), value);
+                        }
+                    }
+                    Err(reason) => {
+                        if json_schema_repairs < json_schema_attempts
+                            && !budget.exhausted()
+                            && (unlimited || turn + 1 < max_turns)
+                        {
+                            json_schema_repairs += 1;
+                            conversation_messages.push(serde_json::json!({
+                                "role": "assistant",
+                                "content": final_text,
+                            }));
+                            crate::core::agent::reminder::attach(
+                                &mut conversation_messages,
+                                &format!(
+                                    "[structured output {json_schema_repairs}/{json_schema_attempts}] Your final answer did not validate against the required JSON Schema: {reason}\n\nReply again with only the corrected JSON value, no prose and no code fence."
+                                ),
+                            );
+                            turn += 1;
+                            continue;
+                        }
+                        if let Some(obj) = completion.as_object_mut() {
+                            obj.insert("structured_output_error".to_string(), serde_json::json!(reason));
+                        }
+                    }
                 }
             }
             // Independent completion verification. The worker does not grade
@@ -18652,6 +18693,29 @@ profile = \"tiny\"
             "id": "w1", "type": "function",
             "function": { "name": "write", "arguments": json!({"path": path, "content": content}).to_string() }
         }]}, "finish_reason": "tool_calls"}]})
+    }
+
+    #[tokio::test]
+    async fn a_json_schema_answer_is_repaired_then_attached_as_structured_output() {
+        let root = std::env::temp_dir().join(format!("flint-schema-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let schema = json!({"type": "object", "required": ["n"], "properties": {"n": {"type": "integer"}}});
+        let body = json!({ "jan_json_schema": schema });
+        // First answer is prose, second has the wrong type, third is valid.
+        let model = MockModel::new(vec![answer("sorry, no json"), answer("{\"n\": \"x\"}"), answer("{\"n\": 4}")]);
+        let tool = FolderTool::new(&root);
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert_eq!(done["structured_output"], json!({"n": 4}));
+        assert_eq!(model.requests.lock().unwrap().len(), 3);
+        let second = model.requests.lock().unwrap()[1].to_string();
+        assert!(second.contains("did not validate") && second.contains("no JSON"), "{second}");
+        // Out of attempts: the error is reported and nothing is attached.
+        let model = MockModel::new(vec![answer("a"), answer("b")]);
+        let body = json!({ "jan_json_schema": json!(schema), "jan_json_schema_attempts": 1 });
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert!(done.get("structured_output").is_none());
+        assert!(done["structured_output_error"].as_str().unwrap().contains("no JSON"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]
