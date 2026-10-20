@@ -110,9 +110,13 @@ describe('SettingsMenu', () => {
   it('renders integrations links flagged as experimental', () => {
     render(<SettingsMenu />)
     expect(screen.getByText('common:mcp-servers')).toBeInTheDocument()
-    expect(screen.getByText('common:claude_code')).toBeInTheDocument()
+    // Claude Code, Jev and Extensions are tabs of Integrations, not entries.
+    expect(screen.getByText('common:integrations')).toBeInTheDocument()
+    expect(screen.queryByText('common:claude_code')).toBeNull()
+    expect(screen.queryByText('common:jev.tab')).toBeNull()
+    expect(screen.queryByText('common:extensions')).toBeNull()
     expect(
       screen.getAllByText('common:experimental').length
-    ).toBeGreaterThanOrEqual(3)
+    ).toBeGreaterThanOrEqual(2)
   })
 })

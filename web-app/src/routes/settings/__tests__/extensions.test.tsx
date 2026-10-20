@@ -1,54 +1,47 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { isRedirect } from '@tanstack/react-router'
+import { ExtensionsSettings } from '@/containers/ExtensionsSettings'
 import { Route as ExtensionsRoute } from '../extensions'
-
-// Mock dependencies
-vi.mock('@/containers/SettingsMenu', () => ({
-  default: () => <div data-testid="settings-menu">Settings Menu</div>,
-}))
-
-vi.mock('@/containers/HeaderPage', () => ({
-  default: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="header-page">{children}</div>
-  ),
-}))
 
 vi.mock('@/containers/Card', () => ({
   Card: ({
     title,
     aside,
-    header,
     children,
   }: {
     title?: React.ReactNode
     aside?: React.ReactNode
-    header?: React.ReactNode
     children: React.ReactNode
   }) => (
     <div data-testid="card">
-      {(title || aside || header) && (
+      {(title || aside) && (
         <div data-testid="card-header">
           {title}
           {aside}
-          {header}
         </div>
       )}
       {children}
     </div>
   ),
-  CardItem: ({ title, description, actions }: { title?: string; description?: string; actions?: React.ReactNode }) => (
-    <div data-testid="card-item" data-title={title}>
+  CardItem: ({
+    title,
+    description,
+  }: {
+    title?: React.ReactNode
+    description?: React.ReactNode
+  }) => (
+    <div data-testid="card-item" data-title={title ? 'yes' : undefined}>
       {title && <div data-testid="card-item-title">{title}</div>}
-      {description && <div data-testid="card-item-description">{description}</div>}
-      {actions && <div data-testid="card-item-actions">{actions}</div>}
+      {description && (
+        <div data-testid="card-item-description">{description}</div>
+      )}
     </div>
   ),
 }))
 
 vi.mock('@/containers/RenderMarkdown', () => ({
-  RenderMarkdown: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="render-markdown">{children}</div>
-  ),
+  RenderMarkdown: () => <div data-testid="render-markdown" />,
 }))
 
 vi.mock('@/lib/extension', () => ({
@@ -83,166 +76,57 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   }),
 }))
 
-vi.mock('@/constants/routes', () => ({
-  route: {
-    settings: {
-      extensions: '/settings/extensions',
-    },
-  },
-}))
-
-vi.mock('@tanstack/react-router', () => ({
-  createFileRoute: (path: string) => (config: any) => ({
-    ...config,
-    component: config.component,
-  }),
-}))
-
-describe('Extensions Settings Route', () => {
+describe('Extensions tab of Integrations', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('should render the extensions settings page', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.queryByTestId('settings-menu')).toBeNull()
-    expect(screen.getByText('common:settings')).toBeInTheDocument()
-  })
-
-  it('should render extensions card with header', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
+  it('renders the extensions card with its header', () => {
+    render(<ExtensionsSettings />)
     expect(screen.getByTestId('card')).toBeInTheDocument()
     expect(screen.getByTestId('card-header')).toBeInTheDocument()
     expect(screen.getByText('settings:extensions.title')).toBeInTheDocument()
   })
 
-  it('should render list of extensions', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    const cardItems = screen.getAllByTestId('card-item')
-    expect(cardItems).toHaveLength(3)
+  it('renders only cards: the page header belongs to Integrations', () => {
+    render(<ExtensionsSettings />)
+    expect(screen.queryByText('common:extensions')).toBeNull()
+    expect(screen.queryByText('settings:pageDesc.extensions')).toBeNull()
   })
 
-  it('should render extension with productName when available', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
+  it('lists every installed extension with its description', () => {
+    render(<ExtensionsSettings />)
+    expect(screen.getAllByTestId('card-item')).toHaveLength(3)
+    expect(screen.getAllByTestId('render-markdown')).toHaveLength(3)
+  })
 
+  it('names an extension by productName, falling back to name', () => {
+    render(<ExtensionsSettings />)
     expect(screen.getByText('Test Extension 1')).toBeInTheDocument()
     expect(screen.getByText('Test Extension 2')).toBeInTheDocument()
-  })
-
-  it('should render extension with name when productName is not available', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
     expect(screen.getByText('test-extension-3')).toBeInTheDocument()
   })
 
-  it('should render extension descriptions', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    // Test that markdown content is rendered
-    const markdownElements = screen.getAllByTestId('render-markdown')
-    expect(markdownElements.length).toBeGreaterThan(0)
+  it('shows each version chip', () => {
+    render(<ExtensionsSettings />)
+    expect(screen.getByText('v1.0.0')).toBeInTheDocument()
+    expect(screen.getByText('v3.0.0')).toBeInTheDocument()
   })
 
-  it('should render markdown content for descriptions', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    const markdownElements = screen.getAllByTestId('render-markdown')
-    expect(markdownElements).toHaveLength(3)
-  })
-
-  it('should call ExtensionManager.getInstance().listExtensions()', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    // Test that extensions are listed
-    const cardItems = screen.getAllByTestId('card-item')
-    expect(cardItems).toHaveLength(3)
-  })
-
-  it('should handle empty extensions list', () => {
-    // Test with the default mock that returns 3 extensions
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    // Should render the card structure
-    expect(screen.getByTestId('card')).toBeInTheDocument()
-    expect(screen.getByTestId('card-header')).toBeInTheDocument()
-  })
-
-  it('should have proper layout structure', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    const headerPage = screen.getByTestId('header-page')
-    expect(headerPage).toBeInTheDocument()
-    
-    // The shell's contextual sidebar renders the settings navigation.
-    expect(screen.queryByTestId('settings-menu')).toBeNull()
-  })
-
-  it('should render card items with proper structure', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    const cardItems = screen.getAllByTestId('card-item')
-    
-    cardItems.forEach((item, index) => {
-      expect(item).toBeInTheDocument()
-      expect(item).toHaveAttribute('data-title')
+  it('redirects the old /settings/extensions route to the tab', () => {
+    let thrown: unknown
+    try {
+      ;(
+        ExtensionsRoute.options.beforeLoad as unknown as (ctx: {
+          search: object
+        }) => void
+      )({ search: {} })
+    } catch (e) {
+      thrown = e
+    }
+    expect(isRedirect(thrown)).toBe(true)
+    expect((thrown as { options: { search: object } }).options.search).toEqual({
+      tab: 'extensions',
     })
-  })
-
-  it('should call translation function with correct keys', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    // Test that translations are rendered
-    expect(screen.getByText('common:settings')).toBeInTheDocument()
-    expect(screen.getByText('settings:extensions.title')).toBeInTheDocument()
-  })
-
-  it('should render extensions with correct key prop', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    const cardItems = screen.getAllByTestId('card-item')
-    expect(cardItems).toHaveLength(3)
-    
-    // Each card item should be rendered (checking that map function works correctly)
-    expect(cardItems[0]).toBeInTheDocument()
-    expect(cardItems[1]).toBeInTheDocument()
-    expect(cardItems[2]).toBeInTheDocument()
-  })
-
-  it('should handle extension data correctly', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    // Test that extensions are rendered properly
-    expect(screen.getByText('Test Extension 1')).toBeInTheDocument()
-    expect(screen.getByText('Test Extension 2')).toBeInTheDocument()
-    expect(screen.getByText('test-extension-3')).toBeInTheDocument()
-  })
-
-  it('should render with proper responsive classes', () => {
-    const Component = ExtensionsRoute.component as React.ComponentType
-    render(<Component />)
-
-    // The settings navigation lives in the shell's sidebar now.
-    expect(screen.queryByTestId('settings-menu')).toBeNull()
-    const settingsContent = screen.getAllByTestId('card-item')[0].closest('.overflow-y-auto')
-    // Scrolls vertically inside its own container and never sideways.
-    expect(settingsContent).toHaveClass('w-full', 'overflow-y-auto', 'overflow-x-hidden')
   })
 })

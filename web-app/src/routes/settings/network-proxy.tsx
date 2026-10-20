@@ -169,17 +169,6 @@ function HTTPSProxyContent() {
               </div>
             }
           />
-          <CardItem
-            anchor="settings-https-proxy-ignore-ssl"
-            title={t('settings:httpsProxy.ignoreSsl')}
-            description={t('settings:httpsProxy.ignoreSslDesc')}
-            actions={
-              <Switch
-                checked={proxyIgnoreSSL}
-                onCheckedChange={(checked) => setProxyIgnoreSSL(checked)}
-              />
-            }
-          />
         </Card>
         <Card title={t('settings:httpsProxy.caBundle')}>
           <CardItem
@@ -198,6 +187,27 @@ function HTTPSProxyContent() {
                 />
                 <CaBundleStatus status={caStatus} />
               </div>
+            }
+          />
+          {/* The same switch a provider has for its own address, here for
+              everything that goes through the proxy. */}
+          <CardItem
+            anchor="settings-https-proxy-ignore-ssl"
+            title={t('providers:tlsTrust.title')}
+            description={
+              <>
+                {t('settings:httpsProxy.ignoreSslDesc')}{' '}
+                {t('settings:httpsProxy.ignoreSslScope', {
+                  defaultValue:
+                    'Applies to all proxied traffic. A single provider can also allow invalid certificates for its own address, on its page under Model Providers.',
+                })}
+              </>
+            }
+            actions={
+              <Switch
+                checked={proxyIgnoreSSL}
+                onCheckedChange={(checked) => setProxyIgnoreSSL(checked)}
+              />
             }
           />
         </Card>

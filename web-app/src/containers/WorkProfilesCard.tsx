@@ -16,7 +16,7 @@ export function WorkProfilesCard() {
   return (
     <Card title={t('common:jev.profilesTitle')}>
       <CardItem
-        anchor="settings-jev-profiles"
+        anchor="settings-integrations-jev-profiles"
         align="start"
         title={t('common:jev.profilesToggle')}
         description={<p>{t('common:jev.profilesExplained')}</p>}

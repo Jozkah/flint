@@ -25,6 +25,7 @@ import enRemote from '@/locales/en/remote.json'
 import enSchedules from '@/locales/en/schedules.json'
 import enProvider from '@/locales/en/provider.json'
 import enBrowserAgent from '@/locales/en/browser-agent.json'
+import enProviders from '@/locales/en/providers.json'
 
 // A fake translator, so the tests control the translated text the index is
 // built from and can tell "found the key" apart from "found the label".
@@ -283,6 +284,7 @@ describe('registry i18n keys', () => {
     schedules: enSchedules,
     provider: enProvider,
     'browser-agent': enBrowserAgent,
+    providers: enProviders,
   }
 
   const resolve = (key: string): string | undefined => {
@@ -465,6 +467,7 @@ const CARD_FILES: Record<string, string[]> = {
   'agent-tools': ['containers/CompactionPolicySettings.tsx'],
   data: ['containers/SettingsBackupCard.tsx'],
   'model-providers': ['containers/ModelDefaultsCard.tsx'],
+  integrations: ['containers/ClaudeCodeSettings.tsx'],
 }
 
 /** Where each page's source lives, relative to `web-app/src`. */
@@ -474,7 +477,6 @@ const ROUTE_FILES: Record<string, string> = {
   chat: 'routes/settings/chat.tsx',
   data: 'routes/settings/data.tsx',
   'model-providers': 'routes/settings/providers/index.tsx',
-  jev: 'routes/settings/jev.tsx',
   assistants: 'routes/settings/assistant.tsx',
   attachments: 'routes/settings/attachments.tsx',
   'local-api-server': 'routes/settings/local-api-server.tsx',
@@ -484,7 +486,7 @@ const ROUTE_FILES: Record<string, string> = {
   permissions: 'routes/settings/permissions.tsx',
   shortcuts: 'routes/settings/shortcuts.tsx',
   'mcp-servers': 'routes/settings/mcp-servers.tsx',
-  'claude-code': 'routes/settings/claude-code.tsx',
+  integrations: 'routes/settings/integrations.tsx',
 }
 
 describe('cards added by the merged features are searchable', () => {
@@ -537,5 +539,57 @@ describe('live-test search misses', () => {
     'settings-permissions-auto-approve-limit',
   ])('indexes %s', (id) => {
     expect(ids).toContain(id)
+  })
+})
+
+describe('the Integrations hub', () => {
+  const page = SETTINGS_PAGES.find((p) => p.id === 'integrations')!
+
+  it('replaces the Claude Code, Jev and Extensions pages', () => {
+    const pageIds = SETTINGS_PAGES.map((p) => p.id) as string[]
+    for (const gone of ['claude-code', 'jev', 'extensions']) {
+      expect(pageIds).not.toContain(gone)
+    }
+    expect(page.route).toBe(route.settings.integrations)
+    expect('coverage' in page).toBe(false)
+  })
+
+  it('keeps the old pages findable by their keywords', () => {
+    for (const k of ['claude', 'cli', 'typesafe', 'rerank', 'plugins', 'add-ons']) {
+      expect(page.keywords).toContain(k)
+    }
+    expect(ids(find('add-ons'))).toContain('page-integrations')
+  })
+
+  it.each([
+    'settings-integrations-claude-code-fable-model',
+    'settings-integrations-claude-code-large-model',
+    'settings-integrations-claude-code-medium-model',
+    'settings-integrations-claude-code-small-model',
+    'settings-integrations-jev-key',
+    'settings-integrations-jev-skills',
+    'settings-integrations-jev-rerank',
+  ])('indexes %s on the integrations route', (id) => {
+    const entry = SETTINGS_ITEMS.find((i) => i.id === id)
+    expect(entry?.anchor).toBe(id)
+    expect(entry?.route).toBe(route.settings.integrations)
+  })
+})
+
+describe('settings that left a popover', () => {
+  it.each([
+    'host',
+    'port',
+    'api-prefix',
+    'api-key',
+    'trusted-hosts',
+    'request-timeout',
+    'cors',
+    'verbose-logs',
+  ])('anchors the Local API Server %s setting', (name) => {
+    const id = `settings-local-api-server-${name}`
+    const entry = SETTINGS_ITEMS.find((i) => i.id === id)
+    expect(entry?.anchor).toBe(id)
+    expect(entry?.anchorNote).toBeUndefined()
   })
 })
