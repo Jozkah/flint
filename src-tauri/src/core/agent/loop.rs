@@ -7236,6 +7236,12 @@ async fn orchestrate_inner(
         None,
     )?;
     let mut annotated_body = attach_compaction(json_body, &compaction);
+    // The project's "Compact instructions" steer every compaction of this run.
+    if let (Some(root), Some(map)) = (project_root.as_deref(), annotated_body.as_object_mut()) {
+        if let Some(focus) = crate::core::agent::context::compact_instructions(root) {
+            map.insert(crate::core::agent::compaction::BODY_FOCUS.into(), serde_json::json!(focus));
+        }
+    }
     // jan#8976: resolve the proactive compaction thresholds from the model
     // window and reserved output (profile-aware `[agent]` config, or the
     // documented 128K/16K defaults when unconfigured) and carry them on the
@@ -8491,6 +8497,7 @@ pub(crate) async fn compact_history(
     model_id: &str,
     messages: &[serde_json::Value],
     keep_recent: usize,
+    focus: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, HarnessError> {
     let (upstream_url, api_keys) = resolve_upstream_for_model(
         model_id,
@@ -8562,7 +8569,16 @@ pub(crate) async fn compact_history(
         messages,
         model_id,
         &model,
-        &crate::core::agent::compaction::CompactOptions::from_policy(&policy, keep_recent),
+        &crate::core::agent::compaction::CompactOptions {
+            focus: crate::core::agent::compaction::join_focus(&[
+                focus,
+                args.project_root
+                    .as_deref()
+                    .and_then(crate::core::agent::context::compact_instructions)
+                    .as_deref(),
+            ]),
+            ..crate::core::agent::compaction::CompactOptions::from_policy(&policy, keep_recent)
+        },
     )
     .await
 }
@@ -9505,7 +9521,7 @@ async fn run_turn_cycle(
                             model,
                             &crate::core::agent::compaction::CompactOptions {
                                 keep_recent,
-                                ..policy_options
+                                ..policy_options.clone()
                             },
                         )
                         .await

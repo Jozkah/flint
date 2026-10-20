@@ -676,8 +676,14 @@ const ChatInput = memo(function ChatInput({
                   {
                     name: 'compact',
                     description: t('slash:builtin.compact'),
-                    run: () => {
-                      if (!requestChatCompaction(currentThreadId)) {
+                    argumentHint: '[focus]',
+                    run: (args: string) => {
+                      if (
+                        !requestChatCompaction(
+                          currentThreadId,
+                          args.trim() || undefined
+                        )
+                      ) {
                         toast.info(t('common:budget.compactFailed'))
                       }
                     },

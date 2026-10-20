@@ -2814,12 +2814,14 @@ export function ThreadConversation({
    * sends it in place of the older messages; the divider marks where.
    */
   const [compacting, setCompacting] = useState(false)
-  const handleCompact = async (opts: { thenRegenerate?: boolean } = {}) => {
+  const handleCompact = async (
+    opts: { thenRegenerate?: boolean; focus?: string } = {}
+  ) => {
     if (compacting || status === 'streaming' || status === 'submitted') return
     setCompacting(true)
     const before = readChatCompaction(threadId)
     try {
-      const record = await compactNow(chatMessages)
+      const record = await compactNow(chatMessages, opts.focus)
       if (!record) {
         toast.info(t('common:budget.compactFailed'))
         return
@@ -2893,7 +2895,9 @@ export function ThreadConversation({
   }
   useEffect(
     () =>
-      registerChatCompactor(threadId, () => handleCompactRef.current()),
+      registerChatCompactor(threadId, (focus) =>
+        handleCompactRef.current({ focus })
+      ),
     [threadId]
   )
   // The compaction in force, drawn at its boundary unless the reply after it

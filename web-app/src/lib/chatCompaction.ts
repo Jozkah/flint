@@ -100,7 +100,7 @@ export function stateAfter(
  * Manual compaction from the composer (`/compact`): the open conversation
  * registers how to compact itself, and the composer asks by thread id.
  */
-type Compactor = () => Promise<void>
+type Compactor = (focus?: string) => Promise<void>
 const compactors = new Map<string, Compactor>()
 
 export function registerChatCompactor(threadId: string, fn: Compactor): () => void {
@@ -110,10 +110,13 @@ export function registerChatCompactor(threadId: string, fn: Compactor): () => vo
   }
 }
 
-export function requestChatCompaction(threadId: string): boolean {
+export function requestChatCompaction(
+  threadId: string,
+  focus?: string
+): boolean {
   const fn = compactors.get(threadId)
   if (!fn) return false
-  void fn()
+  void fn(focus)
   return true
 }
 
