@@ -46,6 +46,7 @@ import { applyCustomHeaders } from '@/lib/customHeaders'
 import { applyProviderAuthHeader } from '@/lib/anthropicHeaders'
 import { Switch } from '@/components/ui/switch'
 import {
+  ChevronDown,
   CircleCheck,
   Circle,
   FolderOpen,
@@ -124,6 +125,13 @@ import { modelLogo, providerLogo } from '@/lib/brandLogos'
 import { effectiveContextLength, formatTps, recentSpeeds } from '@/lib/engineModels'
 import { providerSettingAnchor } from '@/lib/settingsSearch'
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
+import { SettingsTabStrip, useSettingsTab } from '@/containers/SettingsTabs'
+import {
   contextColumn,
   useLoadedContextWindows,
 } from '@/hooks/useLoadedContextWindows'
@@ -194,6 +202,20 @@ const REMOTE_COLS = '30px minmax(140px,1fr) 72px 130px auto'
 
 /** How many recent replies the speed chart shows. */
 const SPEED_WINDOW = 24
+
+/** The engine settings a user reaches for first: open by default. */
+const ENGINE_BASIC_KEYS = new Set([
+  'ctx_size',
+  'fit',
+  'fit_target',
+  'models_max',
+  'idle_unload_minutes',
+  'timeout',
+  'threads',
+  'threads_batch',
+])
+
+type DetailTab = 'models' | 'connection' | 'engine'
 
 const CHIP_TONE = {
   success: 'ok',
@@ -1339,15 +1361,26 @@ function ProviderDetail() {
   const settingGroups = isEngineProvider
     ? [
         {
-          id: 'engine',
-          title: t('engine:provider.engineSettings'),
-          icon: <Icon name="x-sliders" />,
-          rows: settingRows.filter(({ setting }) => !isMemorySetting(setting.key)),
+          id: 'basics',
+          title: t('engine:provider.engineBasics', { defaultValue: 'Engine basics' }),
+          rows: settingRows.filter(
+            ({ setting }) =>
+              !isMemorySetting(setting.key) &&
+              ENGINE_BASIC_KEYS.has(setting.key)
+          ),
+        },
+        {
+          id: 'performance',
+          title: t('system-monitor:performance'),
+          rows: settingRows.filter(
+            ({ setting }) =>
+              !isMemorySetting(setting.key) &&
+              !ENGINE_BASIC_KEYS.has(setting.key)
+          ),
         },
         {
           id: 'memory',
           title: t('engine:provider.memorySettings'),
-          icon: <Icon name="x-disk" />,
           rows: settingRows.filter(({ setting }) => isMemorySetting(setting.key)),
         },
       ].filter((g) => g.rows.length > 0)
@@ -1355,10 +1388,58 @@ function ProviderDetail() {
         {
           id: 'settings',
           title: t('engine:provider.connection'),
-          icon: <Icon name="x-sliders" />,
           rows: settingRows,
         },
       ]
+
+  // Engine groups: basics open, the long lists folded. A search result that
+  // lands inside a folded group opens it first so the arrival scroll lands.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(
+    () => new Set(['basics'])
+  )
+  const pendingTarget = useSettingsSearch((s) => s.pendingTarget)
+  useEffect(() => {
+    if (!pendingTarget || !provider) return
+    const owner = settingGroups.find((g) =>
+      g.rows.some(
+        ({ setting }) =>
+          providerSettingAnchor(provider.provider, setting.key) === pendingTarget
+      )
+    )
+    if (owner) setOpenGroups((prev) => new Set(prev).add(owner.id))
+    // `settingGroups` is rebuilt on every render; the target triggers this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTarget])
+  const setGroupOpen = (id: string, open: boolean) =>
+    setOpenGroups((prev) => {
+      const next = new Set(prev)
+      if (open) next.add(id)
+      else next.delete(id)
+      return next
+    })
+
+  const detailTabs = isEngineProvider
+    ? [
+        { id: 'models' as DetailTab, label: t('engine:models.title') },
+        {
+          id: 'engine' as DetailTab,
+          label: t('common:shell.engine'),
+          anchors: ['provider-setting-*'],
+        },
+      ]
+    : [
+        { id: 'models' as DetailTab, label: t('engine:models.title') },
+        {
+          id: 'connection' as DetailTab,
+          label: t('engine:provider.connection'),
+          anchors: ['provider-setting-*'],
+        },
+      ]
+  const [detailTab, setDetailTab] = useSettingsTab<DetailTab>(detailTabs)
+  // The tab set differs by provider kind: never show a tab this page lacks.
+  const activeTab = detailTabs.some((d) => d.id === detailTab)
+    ? detailTab
+    : 'models'
 
   const renderSetting = ({
     setting: stored,
@@ -2154,18 +2235,58 @@ function ProviderDetail() {
     </>
   )
 
-  const settingsFrames = showSettings
-    ? settingGroups.map((group, i) => (
-        <Frame
-          key={group.id}
-          className="motion-safe:animate-rise-in"
-          style={{ animationDelay: `${300 + i * 50}ms` }}
-        >
-          <FrameHeader icon={group.icon} title={group.title} />
-          <FrameBody className="px-3">{group.rows.map(renderSetting)}</FrameBody>
-        </Frame>
-      ))
-    : null
+  const settingsFrames = !showSettings
+    ? null
+    : isEngineProvider
+      ? settingGroups.length > 0 && (
+          <Frame className="motion-safe:animate-rise-in [animation-delay:300ms]">
+            <FrameHeader
+              icon={<Icon name="x-sliders" />}
+              title={t('engine:provider.engineSettings')}
+            />
+            <FrameBody className="px-3 py-1">
+              {settingGroups.map((group) => (
+                <Collapsible
+                  key={group.id}
+                  open={openGroups.has(group.id)}
+                  onOpenChange={(open) => setGroupOpen(group.id, open)}
+                  data-testid={`engine-group-${group.id}`}
+                  className="border-b border-dashed border-border last:border-b-0"
+                >
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      data-testid={`engine-group-toggle-${group.id}`}
+                      className="flex w-full items-center gap-1.5 rounded-md px-3 py-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground outline-none hover:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
+                    >
+                      <ChevronDown
+                        className={cn(
+                          'size-3.5 text-muted-foreground transition-transform duration-200',
+                          !openGroups.has(group.id) && '-rotate-90'
+                        )}
+                        aria-hidden
+                      />
+                      {group.title}
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    {group.rows.map(renderSetting)}
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </FrameBody>
+          </Frame>
+        )
+      : settingGroups.map((group, i) => (
+          <Frame
+            key={group.id}
+            className="motion-safe:animate-rise-in"
+            style={{ animationDelay: `${300 + i * 50}ms` }}
+          >
+            <FrameHeader icon={<Icon name="x-sliders" />} title={group.title} />
+            <FrameBody className="px-3">{group.rows.map(renderSetting)}</FrameBody>
+          </Frame>
+        ))
 
   const dangerFrame = showSettings && !isEngineProvider && (
     <Frame className="motion-safe:animate-rise-in [animation-delay:340ms]">
@@ -2257,6 +2378,14 @@ function ProviderDetail() {
           </label>
         </div>
 
+        <SettingsTabStrip<DetailTab>
+          tabs={detailTabs}
+          value={activeTab}
+          onChange={setDetailTab}
+          label={title}
+        />
+
+        {activeTab === 'models' && (
         <KpiRow>
           {isEngineProvider ? (
             <>
@@ -2331,12 +2460,13 @@ function ProviderDetail() {
             delay={160}
           />
         </KpiRow>
+        )}
 
         {/* janhq/jan#8374. A local model list read from the default data
             folder because the configured one could not be used is not
             an empty library: say so here, where the models are missing,
             not only in Settings > General. */}
-        {unavailableDataFolder && isEngineProvider && (
+        {activeTab === 'models' && unavailableDataFolder && isEngineProvider && (
           <p
             role="alert"
             data-testid="data-folder-unavailable-notice"
@@ -2348,32 +2478,28 @@ function ProviderDetail() {
           </p>
         )}
 
-        {isEngineProvider ? (
+        {activeTab === 'models' && (
           <>
             {/* The library is the page: full width, so a long row never
-                squeezes its actions. The cards under it share equal-height
-                rows instead of two ragged columns. */}
+                squeezes its actions. */}
             <div className="min-w-0">{modelsFrame}</div>
-            {/* An odd last card spans the row: no half-empty row at the foot. */}
-            <div className="grid items-stretch gap-4 min-[1000px]:grid-cols-2 [&>*]:min-w-0 [&>*:last-child:nth-child(odd)]:col-span-full">
-              {speedFrame}
-              {note}
-              {isLlamacpp && <EngineAddonFrame />}
-              {settingsFrames}
-            </div>
+            {!isEngineProvider && note}
+            {speedFrame}
           </>
-        ) : (
-          <div className="grid items-start gap-4 min-[1150px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-            <div className="flex min-w-0 flex-col gap-4">
-              {modelsFrame}
-              {speedFrame}
-            </div>
-            <div className="flex min-w-0 flex-col gap-4">
-              {note}
-              {apiFrame}
-              {settingsFrames}
-              {dangerFrame}
-            </div>
+        )}
+        {activeTab === 'engine' && (
+          // An odd last card spans the row: no half-empty row at the foot.
+          <div className="grid items-stretch gap-4 min-[1000px]:grid-cols-2 [&>*]:min-w-0 [&>*:last-child:nth-child(odd)]:col-span-full">
+            {note}
+            {isLlamacpp && <EngineAddonFrame />}
+          </div>
+        )}
+        {activeTab === 'engine' && settingsFrames}
+        {activeTab === 'connection' && (
+          <div className="flex min-w-0 flex-col gap-4">
+            {apiFrame}
+            {settingsFrames}
+            {dangerFrame}
           </div>
         )}
       </EnginePage>

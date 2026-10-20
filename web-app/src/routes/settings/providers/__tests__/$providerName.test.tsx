@@ -343,11 +343,18 @@ vi.mock('zustand/shallow', () => ({
 import { Route } from '../$providerName'
 import { useModelLibrary } from '@/hooks/useModelLibrary'
 import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
+import { providerSettingAnchor } from '@/lib/settingsSearch'
 
-const renderComponent = () => {
+const renderComponent = (tab?: string) => {
   const Component = Route.component as React.ComponentType
-  return render(<Component />)
+  const view = render(<Component />)
+  // The API, connection and engine settings sit on the page's second tab.
+  if (tab) fireEvent.click(screen.getByRole('radio', { name: tab }))
+  return view
 }
+const CONNECTION_TAB = 'engine:provider.connection'
+const ENGINE_TAB = 'common:shell.engine'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -613,7 +620,7 @@ describe('ProviderDetail route', () => {
 
     it('renders essentially empty tree for an unknown provider', () => {
       h.params.providerName = 'does-not-exist'
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       expect(screen.getByText('Title:does-not-exist')).toBeInTheDocument()
       // delete-provider renders "none" when provider is undefined
       expect(screen.getByTestId('delete-provider')).toHaveTextContent('none')
@@ -636,7 +643,7 @@ describe('ProviderDetail route', () => {
       expect(asked).not.toHaveBeenCalled()
 
       h.params.providerName = 'llamacpp'
-      renderComponent()
+      renderComponent(ENGINE_TAB)
       await waitFor(() => expect(asked).toHaveBeenCalled())
     })
   })
@@ -653,13 +660,13 @@ describe('ProviderDetail route', () => {
 
   describe('API key management', () => {
     it('seeds the primary key input from api_key', () => {
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       const primary = screen.getByPlaceholderText('providers:apiKeys.primaryPlaceholder') as HTMLInputElement
       expect(primary.value).toBe('sk-primary')
     })
 
     it('commits a changed primary key on blur', () => {
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       const primary = screen.getByPlaceholderText('providers:apiKeys.primaryPlaceholder')
       fireEvent.change(primary, { target: { value: 'sk-new' } })
       fireEvent.blur(primary)
@@ -670,7 +677,7 @@ describe('ProviderDetail route', () => {
     })
 
     it('does nothing on blur when unchanged', () => {
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       const primary = screen.getByPlaceholderText('providers:apiKeys.primaryPlaceholder')
       fireEvent.blur(primary)
       // updateProvider should not have been called from commit
@@ -692,7 +699,7 @@ describe('ProviderDetail route', () => {
           },
         ],
       }
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       const field = screen.getByTestId('azure-api-version') as HTMLInputElement
       fireEvent.change(field, { target: { value: '2024-10-21' } })
       fireEvent.blur(field)
@@ -724,7 +731,7 @@ describe('ProviderDetail route', () => {
           },
         ],
       }
-      const view = renderComponent()
+      const view = renderComponent(CONNECTION_TAB)
       expect(screen.queryByText('Azure API version row')).not.toBeInTheDocument()
       expect(screen.getAllByDisplayValue('2024-10-21')).toHaveLength(1)
       // The stored value changes elsewhere: the draft follows it.
@@ -746,7 +753,7 @@ describe('ProviderDetail route', () => {
     })
 
     it('toggles advanced mode and reveals key rows + add button', () => {
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       fireEvent.click(screen.getByText('providers:apiKeys.advanced'))
       expect(screen.getByText('providers:apiKeys.test')).toBeInTheDocument()
       expect(screen.getByText(/providers:apiKeys.addKey/)).toBeInTheDocument()
@@ -756,7 +763,7 @@ describe('ProviderDetail route', () => {
     })
 
     it('adds and removes key lines in advanced mode', () => {
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       fireEvent.click(screen.getByText('providers:apiKeys.advanced'))
       // current rows: primary + 1 fallback = 2 rows
       const initialPwInputs = document.querySelectorAll('input[type="password"]').length
@@ -773,7 +780,7 @@ describe('ProviderDetail route', () => {
     })
 
     it('runs handleTestApiKeys and shows OK status', async () => {
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       fireEvent.click(screen.getByText('providers:apiKeys.advanced'))
       await act(async () => {
         fireEvent.click(screen.getByText('providers:apiKeys.test'))
@@ -785,7 +792,7 @@ describe('ProviderDetail route', () => {
 
     it('handleTestApiKeys shows error toast when base_url missing', async () => {
       h.openaiProvider.base_url = ''
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       fireEvent.click(screen.getByText('providers:apiKeys.advanced'))
       await act(async () => {
         fireEvent.click(screen.getByText('providers:apiKeys.test'))
@@ -798,7 +805,7 @@ describe('ProviderDetail route', () => {
     it('handleTestApiKeys shows error toast when no keys are filled', async () => {
       h.openaiProvider.api_key = ''
       h.openaiProvider.api_key_fallbacks = []
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       fireEvent.click(screen.getByText('providers:apiKeys.advanced'))
       await act(async () => {
         fireEvent.click(screen.getByText('providers:apiKeys.test'))
@@ -812,7 +819,7 @@ describe('ProviderDetail route', () => {
         .mockResolvedValueOnce({ ok: false, status: 401, statusText: 'Unauthorized' })
         .mockResolvedValueOnce({ ok: false, status: 403, statusText: 'Forbidden' })
       h.providersSvc.fetch = vi.fn(() => fetchImpl)
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       fireEvent.click(screen.getByText('providers:apiKeys.advanced'))
       await act(async () => {
         fireEvent.click(screen.getByText('providers:apiKeys.test'))
@@ -1056,13 +1063,13 @@ describe('ProviderDetail route', () => {
 
     it('for a non-predefined provider, only the base-url dynamic control renders (api-key input is hidden)', () => {
       setupCustomProvider()
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       expect(screen.getAllByTestId('dynamic-ctrl')).toHaveLength(1)
     })
 
     it('changing the base-url setting propagates to base_url and calls updateSettings', () => {
       setupCustomProvider()
-      renderComponent()
+      renderComponent(CONNECTION_TAB)
       const dyn = screen.getByTestId('dynamic-ctrl')
       fireEvent.click(dyn)
       expect(h.providersSvc.updateSettings).toHaveBeenCalled()
@@ -1074,7 +1081,7 @@ describe('ProviderDetail route', () => {
 
     it('shows the engine settings localized, with an info tip and the per-model link', () => {
       h.params.providerName = 'llamacpp'
-      renderComponent()
+      renderComponent(ENGINE_TAB)
       // The test translator echoes keys: the title came from engineSettings.
       expect(screen.getByText('engineSettings:ctx_size.title')).toBeInTheDocument()
       expect(screen.getByTestId('engine-setting-info-ctx_size')).toHaveAttribute(
@@ -1091,7 +1098,7 @@ describe('ProviderDetail route', () => {
       try {
         h.params.providerName = 'llamacpp'
         h.modelsSvc.getActiveModels = vi.fn().mockResolvedValue(['local-model'])
-        renderComponent()
+        renderComponent(ENGINE_TAB)
         const dyns = screen.getAllByTestId('dynamic-ctrl')
         await act(async () => {
           fireEvent.click(dyns[0])
@@ -1116,7 +1123,7 @@ describe('ProviderDetail route', () => {
       vi.useFakeTimers()
       try {
         setupCustomProvider()
-        renderComponent()
+        renderComponent(CONNECTION_TAB)
         await act(async () => {
           fireEvent.click(screen.getByTestId('dynamic-ctrl'))
           await vi.advanceTimersByTimeAsync(1000)
@@ -1126,6 +1133,40 @@ describe('ProviderDetail route', () => {
       } finally {
         vi.useRealTimers()
       }
+    })
+  })
+
+  describe('Tabs', () => {
+    it('keeps the engine settings off the Models tab, basics open and the rest folded', () => {
+      h.params.providerName = 'llamacpp'
+      renderComponent()
+      expect(screen.queryByTestId('dynamic-ctrl')).toBeNull()
+      fireEvent.click(screen.getByRole('radio', { name: ENGINE_TAB }))
+      // Context size is a basic; the device row sits in the folded Performance group.
+      expect(screen.getAllByTestId('dynamic-ctrl')).toHaveLength(1)
+      fireEvent.click(screen.getByTestId('engine-group-toggle-performance'))
+      expect(screen.getAllByTestId('dynamic-ctrl')).toHaveLength(2)
+    })
+
+    it('opens the tab and the folded group that hold a search target', () => {
+      h.params.providerName = 'llamacpp'
+      useSettingsSearch.setState({
+        pendingTarget: providerSettingAnchor('llamacpp', 'device'),
+      })
+      try {
+        renderComponent()
+        expect(screen.getAllByTestId('dynamic-ctrl')).toHaveLength(2)
+      } finally {
+        useSettingsSearch.setState({ pendingTarget: null })
+      }
+    })
+
+    it('puts the API card and the danger zone on the Connection tab', () => {
+      h.params.providerName = 'does-not-exist'
+      renderComponent()
+      expect(screen.queryByTestId('delete-provider')).toBeNull()
+      fireEvent.click(screen.getByRole('radio', { name: CONNECTION_TAB }))
+      expect(screen.getByTestId('delete-provider')).toBeInTheDocument()
     })
   })
 })
