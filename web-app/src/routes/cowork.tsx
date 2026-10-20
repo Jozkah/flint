@@ -281,6 +281,7 @@ import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
+import { CoworkReviewAction } from '@/containers/CoworkReviewAction'
 import {
   applySandboxFile,
   applySandboxHunk,
@@ -7165,6 +7166,15 @@ export function CoworkPage() {
               {/* A server session's own checkout: merge, discard, review. */}
               {session?.id && session.remote ? (
                 <RemoteWorktreePanel sessionId={session.id} />
+              ) : null}
+              {/* One-command review of the current diff: ranked findings, each
+                  checked by a second pass; fixes go through the session. */}
+              {folder && session?.id ? (
+                <CoworkReviewAction
+                  folder={folder}
+                  sessionId={session.id}
+                  onFix={(text) => widgetHost.sendPrompt(text)}
+                />
               ) : null}
               {/* AH-109: each isolated team child's worktree, for review. */}
               {folder && session?.id ? (

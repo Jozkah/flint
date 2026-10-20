@@ -2932,5 +2932,26 @@
     "waiting_other": "{{count}} đang chờ",
     "count_other": "{{count}} mục lồng",
     "fewer": "Thu gọn mục lồng"
+  },
+  "diffReview": {
+    "title": "Xem xét thay đổi",
+    "button": "Xem xét",
+    "running": "Đang xem xét…",
+    "security": "Bao gồm xem xét bảo mật",
+    "progress": "Đang kiểm tra phát hiện {{done}}/{{total}}…",
+    "failed": "Xem xét thất bại: {{error}}",
+    "summary": "{{count}} phát hiện trong {{files}} tệp; {{refuted}} bị bác bỏ ở lần xem lại.",
+    "truncated": "Diff quá lớn nên bị cắt; phần còn lại chưa được xem xét.",
+    "none": "Không có phát hiện nào.",
+    "listLabel": "Các phát hiện, nghiêm trọng nhất trước",
+    "unverified": "chưa xác minh",
+    "fix": "Cách sửa: {{fix}}",
+    "fixButton": "Sửa bằng agent",
+    "fixBusy": "Hãy đợi lần chạy hiện tại kết thúc rồi thử lại.",
+    "severity": {
+      "high": "Cao",
+      "medium": "Trung bình",
+      "low": "Thấp"
+    }
   }
 }

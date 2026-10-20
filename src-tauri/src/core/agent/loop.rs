@@ -1901,6 +1901,8 @@ struct CompositeToolInvoker {
     /// Whether the sandboxed shell may read `$HOME`. Resolved once per run
     /// from `[tools].allow_home_read`, falling back to `true` on the CLI.
     allow_home_read: bool,
+    /// `[tools.fs]`: the sandbox's path allow/deny lists.
+    sandbox_fs: tauri_plugin_agent_tools::tools::fs_policy::FsConfig,
     /// Whether `bash` is confined at all. Resolved once per run by
     /// [`resolve_sandbox`]; always true on the desktop.
     sandbox: bool,
@@ -2120,6 +2122,7 @@ struct ResolvedSettings {
     enabled_skills: Vec<String>,
     allow_network: bool,
     allow_home_read: bool,
+    sandbox_fs: tauri_plugin_agent_tools::tools::fs_policy::FsConfig,
     sandbox: bool,
     /// `[tools].format_on_edit` (AH-149): unset is off, on every surface.
     format_on_edit: bool,
@@ -2146,6 +2149,7 @@ fn resolve_run_settings(
         enabled_skills: settings.enabled_skills,
         allow_network: resolve_allow_network(settings.allow_network),
         allow_home_read: resolve_allow_home_read(settings.allow_home_read),
+        sandbox_fs: settings.sandbox_fs,
         sandbox: resolve_sandbox(sandbox_flag, settings.sandbox),
         format_on_edit: settings.format_on_edit,
         check_syntax: settings.check_syntax,
@@ -2443,6 +2447,7 @@ impl CompositeToolInvoker {
         )
         .with_network(self.allow_network)
         .with_home_readonly(self.allow_home_read)
+        .with_fs_config(Some(&self.sandbox_fs))
         .with_sandbox(self.sandbox)
         .with_scratch_root(&self.scratch_root)
         .with_user_skills(self.user_skills.as_deref())
@@ -7824,6 +7829,7 @@ async fn orchestrate_inner(
             allow_domains: settings.allow_domains.clone(),
             deny_domains: settings.deny_domains.clone(),
             allow_home_read: settings.allow_home_read,
+            sandbox_fs: settings.sandbox_fs.clone(),
             sandbox: settings.sandbox,
             scratch_root: scratch_root.clone(),
             user_skills: crate::core::agent::skills::user_skill_store(),
@@ -14146,6 +14152,7 @@ mod tests {
             allow_domains: Vec::new(),
             deny_domains: Vec::new(),
             allow_home_read: DEFAULT_ALLOW_HOME_READ,
+            sandbox_fs: Default::default(),
             scratch_root: tauri_plugin_agent_tools::workspace::scratch_dir("test-session"),
             user_skills: None,
             project_root: root,

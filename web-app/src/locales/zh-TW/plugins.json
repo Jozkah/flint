@@ -53,7 +53,10 @@
     "accessNoPermissions": "安裝或啟用外掛程式不會執行其任何檔案，也不會授予任何工具權限。",
     "mcpPresent": "此外掛程式包含 .mcp.json 檔案。Flint 不會載入它：外掛程式不新增 MCP 伺服器。請在「設定」中設定 MCP 伺服器。",
     "executables": "指令碼檔案（{{count}}）",
-    "executablesMore": "以及另外 {{count}} 個"
+    "executablesMore": "以及另外 {{count}} 個",
+    "commit": "提交",
+    "pinned": "固定至",
+    "marketplace": "外掛市集"
   },
   "toggle": {
     "label": "為此專案啟用 {{name}}",
@@ -126,6 +129,17 @@
     "project_unavailable": "專案資料夾無法使用。{{detail}}",
     "config": "無法讀取或寫入專案的 agent.toml。{{detail}}",
     "io": "檔案操作失敗。{{detail}}",
-    "unknown": "發生錯誤。{{detail}}"
+    "unknown": "發生錯誤。{{detail}}",
+    "sha_mismatch": "來源與固定的提交不再一致,未做任何變更。{{detail}}"
+  },
+  "update": {
+    "button": "更新",
+    "running": "更新中…",
+    "done": "已更新 {{name}}。",
+    "upToDate": "{{name}} 已是最新。",
+    "failed": "無法更新 {{name}}:{{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}}(另一個市集中也有同名外掛)"
   }
 }

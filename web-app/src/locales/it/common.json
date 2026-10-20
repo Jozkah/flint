@@ -2995,5 +2995,26 @@
     "count_one": "{{count}} annidato",
     "count_other": "{{count}} annidati",
     "fewer": "Mostra meno annidati"
+  },
+  "diffReview": {
+    "title": "Rivedi le modifiche",
+    "button": "Rivedi",
+    "running": "Revisione…",
+    "security": "Includi la revisione di sicurezza",
+    "progress": "Verifica del rilievo {{done}} di {{total}}…",
+    "failed": "Revisione non riuscita: {{error}}",
+    "summary": "{{count}} rilievo/i in {{files}} file; {{refuted}} confutati a un secondo esame.",
+    "truncated": "Il diff era troppo grande ed è stato tagliato; il resto non è stato rivisto.",
+    "none": "Nessun rilievo.",
+    "listLabel": "Rilievi, dal più grave",
+    "unverified": "non verificato",
+    "fix": "Correzione: {{fix}}",
+    "fixButton": "Correggi con l'agente",
+    "fixBusy": "Attendi la fine dell'esecuzione corrente e riprova.",
+    "severity": {
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Bassa"
+    }
   }
 }

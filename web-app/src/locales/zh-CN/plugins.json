@@ -53,7 +53,10 @@
     "accessNoPermissions": "安装或启用插件不会运行其任何文件，也不会授予任何工具权限。",
     "mcpPresent": "此插件包含 .mcp.json 文件。Flint 不会加载它：插件不添加 MCP 服务器。请在“设置”中配置 MCP 服务器。",
     "executables": "脚本文件（{{count}}）",
-    "executablesMore": "以及另外 {{count}} 个"
+    "executablesMore": "以及另外 {{count}} 个",
+    "commit": "提交",
+    "pinned": "固定到",
+    "marketplace": "插件市场"
   },
   "toggle": {
     "label": "为此项目启用 {{name}}",
@@ -126,6 +129,17 @@
     "project_unavailable": "项目文件夹不可用。{{detail}}",
     "config": "无法读取或写入项目的 agent.toml。{{detail}}",
     "io": "文件操作失败。{{detail}}",
-    "unknown": "出了点问题。{{detail}}"
+    "unknown": "出了点问题。{{detail}}",
+    "sha_mismatch": "来源与固定的提交不再一致,未做任何更改。{{detail}}"
+  },
+  "update": {
+    "button": "更新",
+    "running": "正在更新…",
+    "done": "已更新 {{name}}。",
+    "upToDate": "{{name}} 已是最新。",
+    "failed": "无法更新 {{name}}:{{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}}(另一个市场中也有同名插件)"
   }
 }

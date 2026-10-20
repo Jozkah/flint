@@ -1801,7 +1801,10 @@ pub(crate) fn worktree_add(
             base,
         ],
     )
-    .map(|_| ())
+    .map(|_| {
+        // Notes are dropped here: the CLI record has no field for them.
+        let _ = crate::core::agent::worktree::copy_worktreeinclude(repo, path);
+    })
 }
 
 /// The worktree checkouts registered with `repo`, main worktree included.

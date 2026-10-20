@@ -399,6 +399,29 @@
     "web-app/src/containers/extensions/PluginsTab.tsx (via setPluginEnabled)",
     "web-app/src/lib/pluginStore.ts"
   ],
+  "agent_plugin_update": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via updatePlugin)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via updatePlugin)",
+    "web-app/src/lib/pluginStore.ts"
+  ],
+  "agent_review_fix_task": [
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_parse": [
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_prepare": [
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_rank": [
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_verdict": [
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_verify_prompt": [
+    "web-app/src/lib/coworkReview.ts"
+  ],
   "agent_plugin_sources": [
     "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via getPluginSources)",
     "web-app/src/containers/extensions/PluginsTab.tsx (via getPluginSources)",

@@ -3069,5 +3069,26 @@
     "count_many": "{{count}} vnořených",
     "count_other": "{{count}} vnořených",
     "fewer": "Zobrazit méně vnořených"
+  },
+  "diffReview": {
+    "title": "Zkontrolovat změny",
+    "button": "Zkontrolovat",
+    "running": "Kontroluji…",
+    "security": "Zahrnout bezpečnostní kontrolu",
+    "progress": "Ověřuji nález {{done}} z {{total}}…",
+    "failed": "Kontrola selhala: {{error}}",
+    "summary": "{{count}} nález(ů) v {{files}} souboru(ech); {{refuted}} vyvráceno při druhém pohledu.",
+    "truncated": "Diff byl příliš velký a byl oříznut; zbytek nebyl zkontrolován.",
+    "none": "Žádné nálezy.",
+    "listLabel": "Nálezy od nejzávažnějších",
+    "unverified": "neověřeno",
+    "fix": "Oprava: {{fix}}",
+    "fixButton": "Opravit pomocí agenta",
+    "fixBusy": "Počkejte na dokončení aktuálního běhu a zkuste to znovu.",
+    "severity": {
+      "high": "Vysoká",
+      "medium": "Střední",
+      "low": "Nízká"
+    }
   }
 }

@@ -36,7 +36,7 @@ use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
     cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui,
     cli_get_thread, cli_list_messages, cli_list_threads, cli_plugin_install, cli_plugin_list,
-    cli_plugin_remove, cli_plugin_search, ResumeRequest, SessionFlags,
+    cli_plugin_remove, cli_plugin_search, cli_plugin_update, cli_review, ResumeRequest, SessionFlags,
 };
 use std::fmt::Write as _;
 
@@ -387,6 +387,25 @@ enum Commands {
         #[command(subcommand)]
         cmd: AgentConfigCommands,
     },
+    /// Review the current diff: ranked findings, each checked by a second pass
+    Review {
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Compare against this branch or commit instead of HEAD
+        #[arg(long)]
+        base: Option<String>,
+        /// Also review as the security reviewer
+        #[arg(long)]
+        security: bool,
+        #[arg(long)]
+        model: Option<String>,
+        /// Hand the findings to an agent run that fixes them (normal approvals)
+        #[arg(long)]
+        fix: bool,
+        /// Print the findings as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Manage project-local plugins and their skills
     #[command(display_order = 5)]
     Plugin {
@@ -508,6 +527,12 @@ enum PluginCommands {
     },
     /// Remove an installed plugin by name
     Remove {
+        name: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Update a git or marketplace plugin if its source has a newer commit
+    Update {
         name: String,
         #[arg(long, default_value = ".")]
         project: String,
@@ -2391,6 +2416,19 @@ async fn run() {
             }
         }
         Commands::Plugin { cmd } => handle_plugin(cmd).await,
+        Commands::Review {
+            project,
+            base,
+            security,
+            model,
+            fix,
+            json,
+        } => {
+            if let Err(e) = cli_review(&project, base.as_deref(), security, model, fix, json).await {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
         Commands::BugReport {
             thread,
             show,
@@ -2581,6 +2619,9 @@ async fn handle_plugin(cmd: PluginCommands) {
             PluginCommands::Remove { name, project } => {
                 cli_plugin_remove(&project, &name).map(|()| println!("Removed plugin '{name}'"))
             }
+            PluginCommands::Update { name, project } => cli_plugin_update(&project, &name)
+                .await
+                .map(|report| println!("{}", report.message)),
             PluginCommands::Search { query, project } => {
                 cli_plugin_search(&project, query.as_deref().unwrap_or(""))
                     .await

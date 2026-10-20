@@ -53,7 +53,10 @@
     "accessNoPermissions": "플러그인을 설치하거나 사용 설정해도 그 파일은 실행되지 않으며 도구 권한도 부여되지 않습니다.",
     "mcpPresent": "이 플러그인에는 .mcp.json 파일이 포함되어 있습니다. Flint는 이를 불러오지 않습니다. 플러그인은 MCP 서버를 추가하지 않습니다. MCP 서버는 설정에서 구성하세요.",
     "executables": "스크립트 파일({{count}})",
-    "executablesMore": "외 {{count}}개"
+    "executablesMore": "외 {{count}}개",
+    "commit": "커밋",
+    "pinned": "고정됨",
+    "marketplace": "마켓플레이스"
   },
   "toggle": {
     "label": "이 프로젝트에서 {{name}} 사용",
@@ -126,6 +129,17 @@
     "project_unavailable": "프로젝트 폴더를 사용할 수 없습니다. {{detail}}",
     "config": "프로젝트의 agent.toml을 읽거나 쓸 수 없습니다. {{detail}}",
     "io": "파일 작업에 실패했습니다. {{detail}}",
-    "unknown": "문제가 발생했습니다. {{detail}}"
+    "unknown": "문제가 발생했습니다. {{detail}}",
+    "sha_mismatch": "소스가 고정된 커밋과 더 이상 일치하지 않아 아무것도 변경하지 않았습니다. {{detail}}"
+  },
+  "update": {
+    "button": "업데이트",
+    "running": "업데이트 중…",
+    "done": "{{name}}을(를) 업데이트했습니다.",
+    "upToDate": "{{name}}은(는) 이미 최신입니다.",
+    "failed": "{{name}}을(를) 업데이트할 수 없습니다: {{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}} (같은 이름이 다른 마켓플레이스에도 있음)"
   }
 }

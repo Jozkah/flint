@@ -376,6 +376,20 @@ pub fn agent_plugin_install_cancel(operation_id: String) -> bool {
     plugins::cancel_install(&operation_id)
 }
 
+/// Re-resolve an installed git or marketplace plugin and reinstall it only when
+/// its commit changed. Enable state is kept.
+#[tauri::command]
+pub async fn agent_plugin_update(
+    project: String,
+    id: String,
+    operation_id: String,
+    scope: Option<String>,
+) -> Result<plugins::UpdateReport, plugins::PluginError> {
+    let guard = plugins::begin_install(&operation_id)?;
+    let scope = resolve_plugin_scope(&project, scope.as_deref());
+    plugins::update_plugin_scoped(&scope, &id, guard.ctx()).await
+}
+
 /// Enable or disable an installed plugin for this project
 /// (`[plugins].disabled` in agent.toml). Returns the plugin's new state.
 #[tauri::command]
@@ -3252,6 +3266,91 @@ pub async fn session_import_open() -> Result<Option<serde_json::Value>, String> 
     })
     .await
     .map_err(|e| format!("could not read the file: {e}"))?
+}
+
+/// A chat request split for the desktop's own model call.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewPrompt {
+    pub system: String,
+    pub user: String,
+}
+
+fn review_prompt(request: &serde_json::Value) -> ReviewPrompt {
+    let part = |i: usize| {
+        request["messages"][i]["content"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    ReviewPrompt { system: part(0), user: part(1) }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewPrepared {
+    pub input: crate::core::agent::review::DiffInput,
+    pub prompt: ReviewPrompt,
+}
+
+/// Collect the diff (staged, unstaged and untracked changes against `base`,
+/// default HEAD) and the reviewer prompt for it. The desktop makes the model
+/// call itself; the model gets no tools.
+#[tauri::command]
+pub async fn agent_review_prepare(
+    project: String,
+    base: Option<String>,
+    security: bool,
+) -> Result<ReviewPrepared, String> {
+    tokio::task::spawn_blocking(move || {
+        let input = crate::core::agent::review::collect_diff(
+            std::path::Path::new(&project),
+            base.as_deref(),
+        )?;
+        let request = crate::core::agent::review::build_review_request("", &input, security);
+        Ok(ReviewPrepared { prompt: review_prompt(&request), input })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The findings in a reviewer reply.
+#[tauri::command]
+pub fn agent_review_parse(reply: String) -> Vec<crate::core::agent::review::Finding> {
+    crate::core::agent::review::parse_findings(&reply)
+}
+
+/// The prompt that asks a verifier to refute one finding.
+#[tauri::command]
+pub fn agent_review_verify_prompt(
+    input: crate::core::agent::review::DiffInput,
+    finding: crate::core::agent::review::Finding,
+) -> ReviewPrompt {
+    review_prompt(&crate::core::agent::review::build_verify_request("", &input, &finding))
+}
+
+/// `true` confirmed, `false` refuted, `null` no usable verdict.
+#[tauri::command]
+pub fn agent_review_verdict(reply: String) -> Option<bool> {
+    crate::core::agent::review::parse_verdict(&reply)
+}
+
+/// Rank findings: highest severity first, then file and line.
+#[tauri::command]
+pub fn agent_review_rank(
+    mut findings: Vec<crate::core::agent::review::Finding>,
+) -> Vec<crate::core::agent::review::Finding> {
+    crate::core::agent::review::rank(&mut findings);
+    findings
+}
+
+/// The task text that asks an agent session to fix these findings.
+#[tauri::command]
+pub fn agent_review_fix_task(findings: Vec<crate::core::agent::review::Finding>) -> String {
+    crate::core::agent::review::fix_task(&crate::core::agent::review::DiffReview {
+        findings,
+        ..Default::default()
+    })
 }
 
 /// Record one hidden utility-agent invocation. AH-208.

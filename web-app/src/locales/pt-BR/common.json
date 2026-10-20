@@ -2993,5 +2993,26 @@
     "count_one": "{{count}} aninhado",
     "count_other": "{{count}} aninhados",
     "fewer": "Mostrar menos aninhados"
+  },
+  "diffReview": {
+    "title": "Revisar alterações",
+    "button": "Revisar",
+    "running": "Revisando…",
+    "security": "Incluir revisão de segurança",
+    "progress": "Verificando achado {{done}} de {{total}}…",
+    "failed": "A revisão falhou: {{error}}",
+    "summary": "{{count}} achado(s) em {{files}} arquivo(s); {{refuted}} refutados em uma segunda olhada.",
+    "truncated": "O diff era grande demais e foi cortado; o restante não foi revisado.",
+    "none": "Nenhum achado.",
+    "listLabel": "Achados, do mais grave ao menos",
+    "unverified": "não verificado",
+    "fix": "Correção: {{fix}}",
+    "fixButton": "Corrigir com o agente",
+    "fixBusy": "Aguarde o fim da execução atual e tente de novo.",
+    "severity": {
+      "high": "Alta",
+      "medium": "Média",
+      "low": "Baixa"
+    }
   }
 }
