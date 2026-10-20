@@ -43,6 +43,8 @@
     "approveCampaign": "Flint 想要開始戰役「{{title}}」（{{count}} 個任務）",
     "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
     "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
+    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
+    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
     "spendPause": "Flint 想在超過支出暫停額度後繼續此次執行",
     "changeFileOutside": "Flint 想修改 {{workspace}} 之外的 {{target}}",
     "changeManyFilesOutside": "Flint 想修改 {{count}} 個檔案,其中一些在 {{workspace}} 之外"
@@ -67,6 +69,8 @@
     "campaignPlan": "它會啟動各自獨立的工作階段，每個工作階段位於自己的 worktree 分支上，讀取並變更檔案，並平行消耗你的模型配額。核准計畫並不等於核准任務發出的任何呼叫。Flint 每次都會詢問。",
     "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
     "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
+    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "執行會繼續消耗付費模型額度，直到結束或達到上限。拒絕則停止執行。"
   },
   "repeat": {

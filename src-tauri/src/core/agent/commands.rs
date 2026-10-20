@@ -821,6 +821,22 @@ pub async fn agent_worktree_ensure(
     .await?
 }
 
+/// A reopened session's own worktree, if it still exists and is a linked
+/// worktree of the project. Never creates one: `None` means it is gone, an
+/// error means what is there is not safe to re-enter.
+#[tauri::command]
+pub async fn agent_worktree_resume(
+    data_folder: String,
+    session_id: String,
+    project: String,
+) -> Result<Option<worktree::WorktreeRecord>, String> {
+    blocking(move || {
+        let roots = owned_worktrees_root(&data_folder)?;
+        worktree::resume_existing(std::path::Path::new(&project), &roots, &session_id)
+    })
+    .await?
+}
+
 /// Whether a folder is inside a Git working tree. Asked before a new session
 /// is put in its own worktree, so a plain folder is offered a copy instead.
 #[tauri::command]

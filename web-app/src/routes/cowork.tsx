@@ -227,6 +227,7 @@ import {
   modeOf,
   type CoworkMode,
 } from '@/lib/coworkMode'
+import { isSpawnedSession } from '@/lib/spawnSession'
 import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
@@ -3558,6 +3559,7 @@ export function CoworkPage() {
       // Always on at depth 0, even with nothing saved: a one-off subagent with
       // an inline `system_prompt` is first-class, as it is in Rust.
       allowSubagents: !campaignSlim,
+      spawned: !!current && isSpawnedSession(current),
       slim: campaignSlim,
       // Lean tool set: specialist groups this run's message, history or
       // sender call for; the rest wait behind `enable_tools`. A campaign's

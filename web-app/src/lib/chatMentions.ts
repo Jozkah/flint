@@ -114,10 +114,17 @@ export type ParsedMention = {
 
 /** Read `chat:some-title-3f9a1c2e` (or with `#summary`) back; null if it is not one. */
 export function parseMention(raw: string): ParsedMention | null {
-  const m = /^(chat|session|room):([A-Za-z0-9][A-Za-z0-9_.-]*)(#summary)?$/.exec(
-    raw
-  )
+  const m =
+    /^(chat|session|room):("[^"\r\n]{1,80}"|[A-Za-z0-9][A-Za-z0-9_.-]*)(#summary)?$/.exec(
+      raw
+    )
   if (!m) return null
+  // `@session:"My notes"`: a quoted title (spaces allowed) names by title only.
+  if (m[2].startsWith('"')) {
+    const slug = slugify(m[2].slice(1, -1))
+    if (!slug) return null
+    return { kind: m[1] as MentionKind, body: slug, slug, tag: '', summary: !!m[3] }
+  }
   const body = m[2].toLowerCase()
   const cut = body.lastIndexOf('-')
   const tag = cut === -1 ? body : body.slice(cut + 1)
@@ -494,7 +501,7 @@ export async function resolveMentions(
         missingBlock(
           token,
           match.reason === 'ambiguous'
-            ? 'more than one conversation matches that name'
+            ? 'more than one conversation has that name, so ask the user which one they mean (the @ menu inserts an unambiguous token)'
             : 'that conversation no longer exists'
         )
       )

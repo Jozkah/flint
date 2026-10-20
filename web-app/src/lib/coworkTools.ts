@@ -38,6 +38,12 @@ import { visualizeSchemas } from '@/lib/visualize/tools'
 import { chatReadSchema } from '@/lib/chatReadTool'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { SPAWN_SESSION_TOOL_NAME, spawnSessionTool } from '@/lib/spawnSession'
+import {
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
+  enterWorktreeTool,
+  exitWorktreeTool,
+} from '@/lib/worktreeTools'
 import { campaignToolSchemas } from '@/lib/campaignToolSchemas'
 import {
   WEB_FETCH_DESCRIPTION,
@@ -58,6 +64,8 @@ export const PLAN_DENIED_TOOLS = new Set([
   'skill_write',
   'task',
   'spawn_session',
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
 ])
 
@@ -85,6 +93,8 @@ export const CLIENT_TOOL_NAMES = new Set([
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
   SPAWN_SESSION_TOOL_NAME,
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
   TEAM_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
   ...BACKGROUND_TASK_TOOLS,
@@ -510,6 +520,11 @@ export type CoworkToolOptions = {
   /** Depth 1+ cannot spawn further subagents; mirrors the Rust loop's cap. */
   allowSubagents: boolean
   /**
+   * This session was itself started by `spawn_session`: it cannot start another
+   * nested chat, so it is never offered the tool (the dispatcher still refuses).
+   */
+  spawned?: boolean
+  /**
    * Follows the global web-search setting, the same one chat reads. Cowork has
    * no toggle of its own: the surface configures nothing about its tool set, so
    * this is a Settings-level capability rather than a per-session choice.
@@ -612,6 +627,8 @@ export function coworkToolSignature(
     opts.planMode ? 'plan' : 'normal',
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
+    opts.spawned ? 'spawned' : 'top',
+    opts.projectRoot ? 'wt' : 'nowt',
     opts.webSearch ? 'web' : 'noweb',
     opts.campaignCoordinator ? 'campaign' : 'nocampaign',
     opts.slim ?? 'full',
@@ -766,6 +783,8 @@ export function coworkToolsFromSchemas(
     | 'planMode'
     | 'webSearch'
     | 'allowSubagents'
+    | 'spawned'
+    | 'projectRoot'
     | 'subagentNames'
     | 'campaignCoordinator'
     | 'slim'
@@ -860,7 +879,13 @@ export function coworkToolsFromSchemas(
     tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
     tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
     tools[ANSWER_SUBAGENT_TOOL_NAME] = answerSubagentTool
-    tools[SPAWN_SESSION_TOOL_NAME] = spawnSessionTool
+    if (!opts.spawned) tools[SPAWN_SESSION_TOOL_NAME] = spawnSessionTool
+  }
+  // Worktree tools move the session's write access: not in review mode, and
+  // only with a project to branch from.
+  if (!opts.planMode && opts.projectRoot) {
+    tools[ENTER_WORKTREE_TOOL_NAME] = enterWorktreeTool
+    tools[EXIT_WORKTREE_TOOL_NAME] = exitWorktreeTool
   }
   return tools
 }

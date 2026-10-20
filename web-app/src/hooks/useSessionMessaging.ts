@@ -35,6 +35,13 @@ type SessionMessagingState = {
    */
   holdInbound: Record<string, boolean>
   setHoldInbound: (sessionId: string, hold: boolean) => void
+  /**
+   * Sessions whose user wants to be asked before each nested chat
+   * (`spawn_session`) is started. Absent starts it unprompted, as a fresh child
+   * has no folder and no grants.
+   */
+  askNested: Record<string, boolean>
+  setAskNested: (sessionId: string, ask: boolean) => void
   /** An automatic wake-up released mail that the session's next run will take. */
   pendingWake: Record<string, boolean>
   /** Whether the session's current or last run was started by a wake-up. */
@@ -70,6 +77,7 @@ export const useSessionMessaging = create<SessionMessagingState>()(
       autoWake: {},
       optOut: {},
       holdInbound: {},
+      askNested: {},
       pendingWake: {},
       lastRunWasWake: {},
 
@@ -94,6 +102,13 @@ export const useSessionMessaging = create<SessionMessagingState>()(
             : omit(s.holdInbound ?? {}, sessionId),
         })),
 
+      setAskNested: (sessionId, ask) =>
+        set((s) => ({
+          askNested: ask
+            ? { ...s.askNested, [sessionId]: true }
+            : omit(s.askNested ?? {}, sessionId),
+        })),
+
       markWakeRequested: (sessionId) =>
         set((s) => ({ pendingWake: { ...s.pendingWake, [sessionId]: true } })),
 
@@ -111,6 +126,7 @@ export const useSessionMessaging = create<SessionMessagingState>()(
           autoWake: omit(s.autoWake, sessionId),
           optOut: omit(s.optOut, sessionId),
           holdInbound: omit(s.holdInbound ?? {}, sessionId),
+          askNested: omit(s.askNested ?? {}, sessionId),
           pendingWake: omit(s.pendingWake, sessionId),
           lastRunWasWake: omit(s.lastRunWasWake, sessionId),
         })),
@@ -123,6 +139,7 @@ export const useSessionMessaging = create<SessionMessagingState>()(
         autoWake: state.autoWake,
         optOut: state.optOut,
         holdInbound: state.holdInbound,
+        askNested: state.askNested,
       }),
     }
   )

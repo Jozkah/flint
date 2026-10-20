@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
+import { resumeSessionWorktree } from '@/lib/worktreeResume'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
@@ -44,6 +46,9 @@ type Input = {
  */
 export function useAutoSessionWorktree(input: Input) {
   const serviceHub = useServiceHub()
+  const { t } = useTranslation()
+  const tRef = useRef(t)
+  tRef.current = t
   const enabled = useCoworkParallel((s) => s.autoWorktree)
   const mark = useCoworkParallel((s) =>
     input.sessionId && input.folder
@@ -171,13 +176,20 @@ export function useAutoSessionWorktree(input: Input) {
           return
         }
         const title = inputRef.current.title
-        const made = await useCoworkWorktrees.getState().ensure(sid, folder, dataFolder, {
-          title: isPlaceholderTitle(title) ? undefined : title,
-        })
+        // A reopened session only finds its own checkout: when that is gone
+        // it goes back to review only and says so, never into a new one.
+        const made =
+          action === 'resume'
+            ? await resumeSessionWorktree(sid, folder, dataFolder)
+            : await useCoworkWorktrees.getState().ensure(sid, folder, dataFolder, {
+                title: isPlaceholderTitle(title) ? undefined : title,
+              })
         if (!made.ok) {
           // The default is a convenience: when it cannot apply, the session
           // stays where it was, and says why only when it had been isolated.
           if (action === 'start') parallel.mark(sid, folder, 'skipped')
+          else if (action === 'resume')
+            toast.error(tRef.current('common:coworkParallel.resumeGone', { reason: made.reason }))
           else toast.error(made.reason)
           return
         }

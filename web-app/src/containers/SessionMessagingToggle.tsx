@@ -20,6 +20,9 @@ export function SessionMessagingToggle({ sessionId }: { sessionId: string }) {
   const on = useSessionMessaging((s) => s.autoWake[sessionId] !== false)
   const accepts = useSessionMessaging((s) => s.optOut[sessionId] !== true)
   const holds = useSessionMessaging((s) => s.holdInbound?.[sessionId] === true)
+  const asks = useSessionMessaging((s) => s.askNested?.[sessionId] === true)
+  const askNestedId = useId()
+  const askNestedDescriptionId = useId()
   const holdId = useId()
   const holdDescriptionId = useId()
   const switchId = useId()
@@ -76,6 +79,15 @@ export function SessionMessagingToggle({ sessionId }: { sessionId: string }) {
         'session-messaging-hold',
         (checked) => useSessionMessaging.getState().setHoldInbound(sessionId, checked),
         !accepts
+      )}
+      {row(
+        askNestedId,
+        askNestedDescriptionId,
+        t('messaging:askNested.label'),
+        t('messaging:askNested.description'),
+        asks,
+        'session-messaging-ask-nested',
+        (checked) => useSessionMessaging.getState().setAskNested(sessionId, checked)
       )}
       {row(
         switchId,
