@@ -1365,6 +1365,8 @@
     "workflows_one": "{{count}} वर्कफ़्लो",
     "workflows_other": "{{count}} वर्कफ़्लो",
     "phase": "चरण {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "अन्य कार्य",
     "progress": "{{total}} में से {{finished}} पूरे हुए",
     "runningTasks_one": "{{count}} कार्य चल रहा है",

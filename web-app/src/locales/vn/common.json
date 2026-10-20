@@ -1364,6 +1364,8 @@
     "workflows_one": "{{count}} quy trình",
     "workflows_other": "{{count}} quy trình",
     "phase": "Giai đoạn {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Việc khác",
     "progress": "Đã xong {{finished}}/{{total}}",
     "runningTasks_one": "{{count}} tác vụ đang chạy",

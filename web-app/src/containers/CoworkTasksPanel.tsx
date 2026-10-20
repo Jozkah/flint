@@ -11,11 +11,13 @@ import { WorkStatus, type WorkState } from '@/containers/StatusChip'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
+import { PhaseRow } from '@/containers/CoworkWorkflowCard'
 import { formatCompactDuration } from '@/lib/duration'
 import {
   INTERRUPTED_BY_RUN_END,
   cancellabilityOf,
   cancellableTasks,
+  groupByWorkflowPhase,
   isLive,
   taskElapsedMs,
   type Cancellability,
@@ -504,7 +506,25 @@ function WorkflowSection({
                   {t('common:tasks.unphased')}
                 </p>
               )}
-              {view.unphased.map(taskRow)}
+              {(() => {
+                const { groups, rest } = groupByWorkflowPhase(view.unphased)
+                return (
+                  <>
+                    {groups.length > 0 && (
+                      <ul>
+                        {groups.map((group) => (
+                          <PhaseRow key={group.key} group={group}>
+                            {group.tasks.map((task) => (
+                              <li key={task.id}>{taskRow(task)}</li>
+                            ))}
+                          </PhaseRow>
+                        ))}
+                      </ul>
+                    )}
+                    {rest.map(taskRow)}
+                  </>
+                )
+              })()}
             </div>
           )}
         </div>

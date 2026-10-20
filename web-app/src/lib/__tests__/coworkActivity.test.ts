@@ -5,6 +5,7 @@ import {
   dismissFinished,
   emptyActivityState,
   findTaskByJob,
+  groupByWorkflowPhase,
   endWorkflow,
   forgetSession,
   isCancellable,
@@ -820,6 +821,34 @@ describe('isCheckFailure', () => {
     ).toBe(false)
     expect(isCheckFailure(shell({ exitCode: 0, status: 'done' }))).toBe(false)
     expect(isCheckFailure(task({ id: 'y', status: 'error', exitCode: 1 }))).toBe(false)
+  })
+})
+
+describe('groupByWorkflowPhase', () => {
+  const mk = (id: string, over: Partial<ActivityTask>): ActivityTask => ({
+    id,
+    callId: id,
+    sessionId: 's',
+    workflowId: 'w',
+    kind: 'agent',
+    title: id,
+    status: 'done',
+    startedAt: 1,
+    ...over,
+  })
+  it('groups by phase, counts finished, hides the host row', () => {
+    const { groups, rest } = groupByWorkflowPhase([
+      mk('team', {}),
+      mk('b', { parentTaskId: 'team', phase: { name: 'B', index: 1 }, status: 'running', startedAt: 3 }),
+      mk('a1', { parentTaskId: 'team', phase: { name: 'A', index: 0 }, startedAt: 2 }),
+      mk('a2', { parentTaskId: 'team', phase: { name: 'A', index: 0 }, status: 'error', startedAt: 2 }),
+      mk('other', {}),
+    ])
+    expect(groups.map((g) => [g.name, g.finished, g.tasks.length, g.status])).toEqual([
+      ['A', 2, 2, 'error'],
+      ['B', 0, 1, 'running'],
+    ])
+    expect(rest.map((t) => t.id)).toEqual(['other'])
   })
 })
 })

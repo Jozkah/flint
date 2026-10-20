@@ -1365,6 +1365,8 @@
     "workflows_one": "{{count}} iş akışı",
     "workflows_other": "{{count}} iş akışı",
     "phase": "Aşama {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Diğer işler",
     "progress": "{{total}} içinden {{finished}} bitti",
     "runningTasks_one": "{{count}} çalışan görev",

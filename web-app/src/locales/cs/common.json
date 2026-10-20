@@ -1408,6 +1408,8 @@
     "workflows_many": "{{count}} pracovního postupu",
     "workflows_other": "{{count}} pracovních postupů",
     "phase": "Fáze {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Ostatní práce",
     "progress": "Dokončeno {{finished}} z {{total}}",
     "runningTasks_one": "{{count}} běžící úloha",

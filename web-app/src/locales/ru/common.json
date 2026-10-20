@@ -1408,6 +1408,8 @@
     "workflows_many": "{{count}} рабочих процессов",
     "workflows_other": "{{count}} рабочих процесса",
     "phase": "Фаза {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Другая работа",
     "progress": "Завершено {{finished}} из {{total}}",
     "runningTasks_one": "{{count}} выполняемая задача",

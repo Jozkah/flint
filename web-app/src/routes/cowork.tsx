@@ -4726,6 +4726,7 @@ export function CoworkPage() {
                               description: one.description,
                               ...(one.title ? { title: one.title } : {}),
                               ...(one.model ? { model: one.model } : {}),
+                              ...(one.phase ? { phase: one.phase } : {}),
                               // A task that names no saved agent still has to be
                               // runnable: without a prompt it resolves to nothing
                               // and is refused as unknown, which would make the

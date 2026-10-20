@@ -1382,6 +1382,8 @@
     "workflows_other": "{{count}} workflows",
     "workflows_many": "{{count}} de workflows",
     "phase": "Fase {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Outro trabalho",
     "progress": "{{finished}} de {{total}} concluídas",
     "runningTasks_one": "{{count}} tarefa em execução",

@@ -149,6 +149,8 @@ export type SubagentRequest = {
   title?: string
   /** A configured model to run this child on, checked when it starts. */
   model?: string
+  /** The `workflow` phase this child belongs to; set by the team runner, never by the model. */
+  phase?: { name: string; index: number }
   /**
    * Continue a subagent that already finished, by the agent id its result gave:
    * `description` is then the follow-up, sent to the same conversation.

@@ -44,6 +44,8 @@ export type TeamTask = {
   subagentName?: string
   /** A short name for the row this task gets (3-6 words). */
   title?: string
+  /** The `workflow` phase this task belongs to; set by `workflowToTeamInput`. */
+  phase?: { name: string; index: number }
   /** A configured model to run this task on. */
   model?: string
   /** Ids that must be `completed` before this may start. */
@@ -770,6 +772,11 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       typeof one.title === 'string' && one.title.trim() ? one.title.trim() : undefined
     const model =
       typeof one.model === 'string' && one.model.trim() ? one.model.trim().slice(0, 200) : undefined
+    const rawPhase = one.phase as Record<string, unknown> | null | undefined
+    const phase =
+      rawPhase && typeof rawPhase.name === 'string' && Number.isInteger(rawPhase.index)
+        ? { name: rawPhase.name.slice(0, 200), index: rawPhase.index as number }
+        : undefined
     const renames = Array.isArray(one.renames)
       ? one.renames.flatMap((move) => {
           const m = move as Record<string, unknown> | null
@@ -785,6 +792,7 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       description,
       ...(subagentName ? { subagentName } : {}),
       ...(title ? { title } : {}),
+      ...(phase ? { phase } : {}),
       ...(model ? { model } : {}),
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),
