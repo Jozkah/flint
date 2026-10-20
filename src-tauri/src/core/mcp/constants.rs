@@ -32,38 +32,6 @@ pub const DEFAULT_MCP_CONFIG: &str = r#"{
       "args": ["@browsermcp/mcp"],
       "env": {},
       "active": false
-    },
-    "fetch": {
-      "command": "uvx",
-      "args": ["mcp-server-fetch"],
-      "env": {},
-      "active": false
-    },
-    "duckduckgo": {
-      "command": "uvx",
-      "args": [
-        "duckduckgo-mcp-server",
-        "--transport",
-        "streamable-http",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8000"
-      ],
-      "env": {},
-      "active": false
-    },
-    "serper": {
-      "command": "npx",
-      "args": ["-y", "serper-search-scrape-mcp-server"],
-      "env": { "SERPER_API_KEY": "YOUR_SERPER_API_KEY_HERE" },
-      "active": false
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-      "env": {},
-      "active": false
     }
   },
   "mcpSettings": {

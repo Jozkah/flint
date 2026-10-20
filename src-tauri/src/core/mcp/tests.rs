@@ -615,8 +615,8 @@ fn test_default_mcp_config_parses_as_valid_json() {
     assert!(value["mcpServers"].is_object());
     assert!(value["mcpSettings"].is_object());
     // Spot-check known servers
-    assert!(value["mcpServers"]["fetch"].is_object());
-    assert_eq!(value["mcpServers"]["fetch"]["command"], "uvx");
+    assert!(value["mcpServers"]["browsermcp"].is_object());
+    assert_eq!(value["mcpServers"]["browsermcp"]["command"], "npx");
     assert_eq!(
         value["mcpSettings"]["toolCallTimeoutSeconds"],
         super::constants::DEFAULT_MCP_TOOL_CALL_TIMEOUT_SECS
@@ -2551,6 +2551,17 @@ fn test_seeded_default_config_has_no_filesystem_server() {
     let value: serde_json::Value = serde_json::from_str(&seeded).expect("seeded config is JSON");
     assert!(value["mcpServers"].get("filesystem").is_none());
     assert!(!seeded.contains("server-filesystem"));
+}
+
+#[test]
+fn test_seeded_default_config_has_no_servers_a_builtin_replaces() {
+    // web_fetch / web_search (Serper, DuckDuckGo providers) are built in, and
+    // reasoning models think natively.
+    let value: serde_json::Value =
+        serde_json::from_str(&super::constants::default_mcp_config()).unwrap();
+    for name in ["fetch", "duckduckgo", "serper", "sequential-thinking"] {
+        assert!(value["mcpServers"].get(name).is_none(), "{name} should not be seeded");
+    }
 }
 
 #[test]
