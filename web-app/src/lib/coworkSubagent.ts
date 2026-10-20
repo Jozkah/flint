@@ -21,6 +21,7 @@ import {
 } from '@/lib/coworkTools'
 import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSession'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { parseSkillList, skillListError } from '@/lib/coworkSubagentSkills'
 import { isEffortLevel, type EffortLevel } from '@/lib/modelEffort'
 import { isCoworkMode, type CoworkMode } from '@/lib/coworkMode'
 import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
@@ -182,6 +183,8 @@ export type ResolvedSubagent = {
   initialPrompt?: string
   /** Skip project instructions for this child. */
   omitInstructions?: boolean
+  /** Skills preloaded into the child's context at start. */
+  skills?: string[]
   /** Reasoning effort: the call's, else the definition's. */
   effort?: EffortLevel
 }
@@ -318,6 +321,8 @@ export function resolveSubagent(
         }
       }
     }
+    const skillError = skillListError(parseSkillList(saved.skills) ?? [])
+    if (skillError) return { error: `subagent '${saved.name}': ${skillError}` }
     const effort = req.effort ?? (isEffortLevel(saved.effort) ? saved.effort : undefined)
     return {
       name: saved.name,
@@ -338,6 +343,7 @@ export function resolveSubagent(
         : {}),
       ...(saved.initial_prompt?.trim() ? { initialPrompt: saved.initial_prompt.trim() } : {}),
       ...(saved.omit_instructions === true ? { omitInstructions: true } : {}),
+      ...(parseSkillList(saved.skills) ? { skills: parseSkillList(saved.skills) } : {}),
       ...(effort ? { effort } : {}),
     }
   }

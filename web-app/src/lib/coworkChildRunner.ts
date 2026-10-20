@@ -47,6 +47,7 @@ import {
 } from '@/lib/coworkSubagentHistory'
 import { recordToolActivity, type ToolActivityContext } from '@/lib/toolActivity'
 import type { Destination } from '@/lib/coworkTeamDestinations'
+import { preloadSkills } from '@/lib/coworkSubagentSkills'
 import { resolveChildEffort } from '@/lib/coworkSubagentEffort'
 import { prepareChildChoice, profileLabel, type ParentPersona } from '@/lib/subagentChoice'
 import type { CoworkTurn, Usage } from '@/types/coworkSession'
@@ -287,6 +288,17 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
             },
           }
         : built
+      // Skills the definition preloads: read through the child's own dispatcher,
+      // so a missing or model-invocation-disabled one fails the launch by name.
+      const preloaded = resolved.skills?.length
+        ? await preloadSkills(resolved.skills, setup.dispatch, childAbort.signal)
+        : { blocks: [] as string[] }
+      if ('error' in preloaded) {
+        const message = `ERROR: subagent '${resolved.name}' not started: ${preloaded.error}`
+        env.lane?.attach(callId, message)
+        settleChild(true, message)
+        return { output: message, isError: true }
+      }
       const child = await runSubagent({
         resolved,
         // The definition's opening lines go before the parent's message. A
@@ -303,7 +315,9 @@ ${req.description}`
         activity: setup.activity,
         model: (effortChoice && 'model' in effortChoice ? effortChoice.model : undefined) ?? choice.model ?? model,
         supportsVision: choice.supportsVision ?? env.supportsVision?.() ?? false,
-        ...(choice.extraSystem.length > 0 ? { extraSystem: choice.extraSystem } : {}),
+        ...(choice.extraSystem.length + preloaded.blocks.length > 0
+          ? { extraSystem: [...choice.extraSystem, ...preloaded.blocks] }
+          : {}),
         providerOptions:
           effortChoice && 'model' in effortChoice
             ? effortChoice.providerOptions

@@ -43,6 +43,8 @@ export type SubagentDefinition = {
   initial_prompt?: string
   /** Skip project instructions (JAN.md and compatible files). */
   omit_instructions?: boolean
+  /** Skills whose full content is preloaded into the child's context (max 32). */
+  skills?: string[]
   /** Reasoning effort for this agent, where its model offers one. */
   effort?: 'low' | 'medium' | 'high' | 'xhigh'
 }
