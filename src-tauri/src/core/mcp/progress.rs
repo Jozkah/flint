@@ -1,7 +1,13 @@
+use crate::core::mcp::elicitation::{
+    handle_request, ElicitRequest, ElicitationUi, EventUi, MCP_ELICITATION_EVENT,
+};
 use rmcp::{
     handler::client::ClientHandler,
-    model::{ClientInfo, ProgressNotificationParam},
-    service::NotificationContext,
+    model::{
+        ClientInfo, ElicitRequestParams, ElicitResult, ErrorData as McpError,
+        ProgressNotificationParam,
+    },
+    service::{NotificationContext, RequestContext},
     RoleClient,
 };
 use serde::Serialize;
@@ -59,17 +65,28 @@ pub struct JanClientHandler {
     info: ClientInfo,
     server: String,
     emit: ProgressSink,
+    /// Asks the user when the server elicits input; `None` declines.
+    elicit: Option<Arc<dyn ElicitationUi>>,
 }
 
 impl JanClientHandler {
     pub fn new<R: Runtime>(info: ClientInfo, server: String, app: AppHandle<R>) -> Self {
         let name = server.clone();
+        let elicit_app = app.clone();
+        let elicit_name = server.clone();
+        let elicit: Arc<dyn ElicitationUi> = Arc::new(EventUi::new(Arc::new(
+            move |request: &ElicitRequest| {
+                if let Err(e) = elicit_app.emit(MCP_ELICITATION_EVENT, request) {
+                    log::warn!("Failed to emit MCP elicitation for {elicit_name}: {e}");
+                }
+            },
+        )));
         let emit: ProgressSink = Arc::new(move |payload| {
             if let Err(e) = app.emit(MCP_TOOL_PROGRESS_EVENT, &payload) {
                 log::warn!("Failed to emit MCP progress for {name}: {e}");
             }
         });
-        Self { info, server, emit }
+        Self { info, server, emit, elicit: Some(elicit) }
     }
 
     /// The same handler, without a Tauri app behind it.
@@ -85,6 +102,7 @@ impl JanClientHandler {
             info,
             server,
             emit: Arc::new(|_| {}),
+            elicit: None,
         }
     }
 }
@@ -100,6 +118,14 @@ impl ClientHandler for JanClientHandler {
         _context: NotificationContext<RoleClient>,
     ) {
         (self.emit)(tool_progress(&self.server, &params));
+    }
+
+    async fn create_elicitation(
+        &self,
+        request: ElicitRequestParams,
+        _context: RequestContext<RoleClient>,
+    ) -> Result<ElicitResult, McpError> {
+        Ok(handle_request(self.elicit.as_deref(), &self.server, request).await)
     }
 }
 
