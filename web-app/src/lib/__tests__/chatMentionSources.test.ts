@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ThreadMessage } from '@janhq/core'
 import { useThreads } from '@/hooks/useThreads'
+import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import {
   listConversations,
@@ -163,6 +164,16 @@ describe('messagingHintFor', () => {
     expect(hint).toContain('send_message')
     expect(hint).toContain('still apply')
     expect(hint).toContain('does not grant anything')
+  })
+  it('offers notify_when_idle, and says when the session holds mail for its user', () => {
+    useSessionMessaging.setState({ optOut: {}, holdInbound: {} })
+    expect(messagingHintFor(session)).toContain('notify_when_idle: true')
+    expect(messagingHintFor(session)).not.toContain('approves each message')
+    useSessionMessaging.setState({ holdInbound: { 'sess-1': true } })
+    expect(messagingHintFor(session)).toContain('approves each message')
+    useSessionMessaging.setState({ optOut: { 'sess-1': true } })
+    expect(messagingHintFor(session)).toContain('does not accept messages')
+    useSessionMessaging.setState({ optOut: {}, holdInbound: {} })
   })
   it('is only for sessions', () => {
     expect(messagingHintFor({ ...session, kind: 'chat' })).toBeUndefined()

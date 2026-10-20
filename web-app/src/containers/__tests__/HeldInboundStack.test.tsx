@@ -8,11 +8,10 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   }),
 }))
 vi.mock('@/lib/platform/utils', () => ({ isPlatformTauri: () => true }))
-vi.mock('@/hooks/useServiceHub', () => ({
-  useServiceHub: () => ({
-    events: () => ({ listen: vi.fn(async () => () => {}) }),
-  }),
+const hub = vi.hoisted(() => ({
+  events: () => ({ listen: async () => () => {} }),
 }))
+vi.mock('@/hooks/useServiceHub', () => ({ useServiceHub: () => hub }))
 
 const { held, approveHeld, denyHeld } = vi.hoisted(() => ({
   held: vi.fn(),
