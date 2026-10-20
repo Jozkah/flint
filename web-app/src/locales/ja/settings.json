@@ -730,7 +730,10 @@
     "extensions": "この Flint にインストールされている拡張機能です。",
     "agentTools": "Flint の組み込みエージェントツールによる、ファイル、シェル、ネットワークへのアクセスです。",
     "localApiServer": "他のアプリがモデルにアクセスするために使える、OpenAI 互換のサーバーです。",
-    "httpsProxy": "Flint のインターネットリクエストを、プロキシ経由で送信します。"
+    "httpsProxy": "Flint のインターネットリクエストを、プロキシ経由で送信します。",
+    "chat": "会話の表示、送信、動作のしかたを設定します。",
+    "data": "Flint がデータを保存する場所と、その移動、バックアップ、削除の方法です。",
+    "integrations": "Claude Code、Jev、インストール済みの拡張機能です。"
   },
   "imageDescription": {
     "title": "画像とテキスト専用モデル",

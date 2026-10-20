@@ -24,6 +24,9 @@ export const route = {
     model_providers: '/settings/providers',
     providers: '/settings/providers/$providerName',
     general: '/settings/general',
+    chat: '/settings/chat',
+    data: '/settings/data',
+    integrations: '/settings/integrations',
     attachments: '/settings/attachments',
     appearance: '/settings/appearance',
     /** Redirects to `appearance`; kept so old links and bookmarks still open. */

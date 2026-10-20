@@ -728,7 +728,10 @@
     "extensions": "Ekstensi yang terpasang di salinan Flint ini.",
     "agentTools": "Akses file, shell, dan jaringan untuk alat agen bawaan Flint.",
     "localApiServer": "Server kompatibel OpenAI yang dapat dipakai aplikasi lain untuk menjangkau model Anda.",
-    "httpsProxy": "Kirim permintaan internet Flint melalui proxy."
+    "httpsProxy": "Kirim permintaan internet Flint melalui proxy.",
+    "chat": "Tampilan, pengiriman, dan perilaku percakapan.",
+    "data": "Tempat Flint menyimpan data Anda, serta cara memindahkan, mencadangkan, atau menghapusnya.",
+    "integrations": "Claude Code, Jev, dan ekstensi yang terpasang."
   },
   "imageDescription": {
     "title": "Gambar dan model teks saja",

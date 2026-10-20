@@ -34,10 +34,13 @@ import { Route as SettingsMcpServersRouteImport } from './routes/settings/mcp-se
 import { Route as SettingsLocalApiServerRouteImport } from './routes/settings/local-api-server'
 import { Route as SettingsJevRouteImport } from './routes/settings/jev'
 import { Route as SettingsInterfaceRouteImport } from './routes/settings/interface'
+import { Route as SettingsIntegrationsRouteImport } from './routes/settings/integrations'
 import { Route as SettingsHttpsProxyRouteImport } from './routes/settings/https-proxy'
 import { Route as SettingsGeneralRouteImport } from './routes/settings/general'
 import { Route as SettingsExtensionsRouteImport } from './routes/settings/extensions'
+import { Route as SettingsDataRouteImport } from './routes/settings/data'
 import { Route as SettingsClaudeCodeRouteImport } from './routes/settings/claude-code'
+import { Route as SettingsChatRouteImport } from './routes/settings/chat'
 import { Route as SettingsAttachmentsRouteImport } from './routes/settings/attachments'
 import { Route as SettingsAssistantRouteImport } from './routes/settings/assistant'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
@@ -176,6 +179,11 @@ const SettingsInterfaceRoute = SettingsInterfaceRouteImport.update({
   path: '/settings/interface',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIntegrationsRoute = SettingsIntegrationsRouteImport.update({
+  id: '/settings/integrations',
+  path: '/settings/integrations',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsHttpsProxyRoute = SettingsHttpsProxyRouteImport.update({
   id: '/settings/https-proxy',
   path: '/settings/https-proxy',
@@ -191,9 +199,19 @@ const SettingsExtensionsRoute = SettingsExtensionsRouteImport.update({
   path: '/settings/extensions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsDataRoute = SettingsDataRouteImport.update({
+  id: '/settings/data',
+  path: '/settings/data',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsClaudeCodeRoute = SettingsClaudeCodeRouteImport.update({
   id: '/settings/claude-code',
   path: '/settings/claude-code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsChatRoute = SettingsChatRouteImport.update({
+  id: '/settings/chat',
+  path: '/settings/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsAttachmentsRoute = SettingsAttachmentsRouteImport.update({
@@ -279,10 +297,13 @@ export interface FileRoutesByFullPath {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
+  '/settings/chat': typeof SettingsChatRoute
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
+  '/settings/data': typeof SettingsDataRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
+  '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/interface': typeof SettingsInterfaceRoute
   '/settings/jev': typeof SettingsJevRoute
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
@@ -322,10 +343,13 @@ export interface FileRoutesByTo {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
+  '/settings/chat': typeof SettingsChatRoute
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
+  '/settings/data': typeof SettingsDataRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
+  '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/interface': typeof SettingsInterfaceRoute
   '/settings/jev': typeof SettingsJevRoute
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
@@ -366,10 +390,13 @@ export interface FileRoutesById {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
+  '/settings/chat': typeof SettingsChatRoute
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
+  '/settings/data': typeof SettingsDataRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
+  '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/interface': typeof SettingsInterfaceRoute
   '/settings/jev': typeof SettingsJevRoute
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
@@ -411,10 +438,13 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/assistant'
     | '/settings/attachments'
+    | '/settings/chat'
     | '/settings/claude-code'
+    | '/settings/data'
     | '/settings/extensions'
     | '/settings/general'
     | '/settings/https-proxy'
+    | '/settings/integrations'
     | '/settings/interface'
     | '/settings/jev'
     | '/settings/local-api-server'
@@ -454,10 +484,13 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/assistant'
     | '/settings/attachments'
+    | '/settings/chat'
     | '/settings/claude-code'
+    | '/settings/data'
     | '/settings/extensions'
     | '/settings/general'
     | '/settings/https-proxy'
+    | '/settings/integrations'
     | '/settings/interface'
     | '/settings/jev'
     | '/settings/local-api-server'
@@ -497,10 +530,13 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/assistant'
     | '/settings/attachments'
+    | '/settings/chat'
     | '/settings/claude-code'
+    | '/settings/data'
     | '/settings/extensions'
     | '/settings/general'
     | '/settings/https-proxy'
+    | '/settings/integrations'
     | '/settings/interface'
     | '/settings/jev'
     | '/settings/local-api-server'
@@ -541,10 +577,13 @@ export interface RootRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsAssistantRoute: typeof SettingsAssistantRoute
   SettingsAttachmentsRoute: typeof SettingsAttachmentsRoute
+  SettingsChatRoute: typeof SettingsChatRoute
   SettingsClaudeCodeRoute: typeof SettingsClaudeCodeRoute
+  SettingsDataRoute: typeof SettingsDataRoute
   SettingsExtensionsRoute: typeof SettingsExtensionsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsHttpsProxyRoute: typeof SettingsHttpsProxyRoute
+  SettingsIntegrationsRoute: typeof SettingsIntegrationsRoute
   SettingsInterfaceRoute: typeof SettingsInterfaceRoute
   SettingsJevRoute: typeof SettingsJevRoute
   SettingsLocalApiServerRoute: typeof SettingsLocalApiServerRoute
@@ -741,6 +780,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsInterfaceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/integrations': {
+      id: '/settings/integrations'
+      path: '/settings/integrations'
+      fullPath: '/settings/integrations'
+      preLoaderRoute: typeof SettingsIntegrationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/https-proxy': {
       id: '/settings/https-proxy'
       path: '/settings/https-proxy'
@@ -762,11 +808,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsExtensionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/data': {
+      id: '/settings/data'
+      path: '/settings/data'
+      fullPath: '/settings/data'
+      preLoaderRoute: typeof SettingsDataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/claude-code': {
       id: '/settings/claude-code'
       path: '/settings/claude-code'
       fullPath: '/settings/claude-code'
       preLoaderRoute: typeof SettingsClaudeCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/chat': {
+      id: '/settings/chat'
+      path: '/settings/chat'
+      fullPath: '/settings/chat'
+      preLoaderRoute: typeof SettingsChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/attachments': {
@@ -877,10 +937,13 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsAssistantRoute: SettingsAssistantRoute,
   SettingsAttachmentsRoute: SettingsAttachmentsRoute,
+  SettingsChatRoute: SettingsChatRoute,
   SettingsClaudeCodeRoute: SettingsClaudeCodeRoute,
+  SettingsDataRoute: SettingsDataRoute,
   SettingsExtensionsRoute: SettingsExtensionsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsHttpsProxyRoute: SettingsHttpsProxyRoute,
+  SettingsIntegrationsRoute: SettingsIntegrationsRoute,
   SettingsInterfaceRoute: SettingsInterfaceRoute,
   SettingsJevRoute: SettingsJevRoute,
   SettingsLocalApiServerRoute: SettingsLocalApiServerRoute,

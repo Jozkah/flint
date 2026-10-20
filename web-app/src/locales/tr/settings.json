@@ -730,7 +730,10 @@
     "extensions": "Flint'in bu kopyasında yüklü uzantılar.",
     "agentTools": "Flint'in yerleşik ajan araçları için dosya, kabuk ve ağ erişimi.",
     "localApiServer": "Diğer uygulamaların modellerinize ulaşmak için kullanabileceği OpenAI uyumlu bir sunucu.",
-    "httpsProxy": "Flint'in internet isteklerini bir vekil sunucu üzerinden gönderin."
+    "httpsProxy": "Flint'in internet isteklerini bir vekil sunucu üzerinden gönderin.",
+    "chat": "Sohbetlerin görünümü, gönderimi ve davranışı.",
+    "data": "Flint'in verilerinizi nerede tuttuğu ve bunları nasıl taşıyacağınız, yedekleyeceğiniz veya kaldıracağınız.",
+    "integrations": "Claude Code, Jev ve yüklü uzantılar."
   },
   "imageDescription": {
     "title": "Görseller ve yalnızca metin modelleri",

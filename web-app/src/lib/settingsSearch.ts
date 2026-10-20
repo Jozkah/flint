@@ -97,6 +97,15 @@ export const SETTINGS_PAGES = [
     keywords: ['keyboard', 'hotkeys', 'keybindings'],
   },
   {
+    id: 'chat',
+    coverage: 'page-only',
+    coverageNote: 'Being filled in: settings move here from General, Appearance and Agent.',
+    route: route.settings.chat,
+    titleKey: 'common:settingsChat',
+    group: 'chat',
+    keywords: ['conversation', 'composer', 'transcript', 'reply', 'enter key'],
+  },
+  {
     id: 'assistants',
     route: route.settings.assistant,
     titleKey: 'common:assistants',
@@ -192,6 +201,16 @@ export const SETTINGS_PAGES = [
     keywords: ['files', 'documents', 'rag'],
   },
   {
+    id: 'integrations',
+    coverage: 'page-only',
+    coverageNote: 'Being filled in: Claude Code, Jev and Extensions become its tabs.',
+    route: route.settings.integrations,
+    titleKey: 'common:integrations',
+    group: 'models',
+    experimental: true,
+    keywords: ['claude code', 'jev', 'typesafe', 'extensions', 'plugins'],
+  },
+  {
     id: 'claude-code',
     route: route.settings.claude_code,
     titleKey: 'common:claude_code',
@@ -218,6 +237,15 @@ export const SETTINGS_PAGES = [
     group: 'models',
     experimental: true,
     keywords: ['plugins', 'add-ons'],
+  },
+  {
+    id: 'data',
+    coverage: 'page-only',
+    coverageNote: 'Being filled in: settings move here from General.',
+    route: route.settings.data,
+    titleKey: 'common:settingsData',
+    group: 'data',
+    keywords: ['storage', 'backup', 'logs', 'import', 'export', 'reset', 'folder'],
   },
   {
     id: 'local-api-server',

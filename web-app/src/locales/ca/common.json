@@ -128,6 +128,8 @@
   "claude_code": "Claude Code",
   "https_proxy": "Proxy HTTPS",
   "network_proxy": "Proxy de xarxa",
+  "settingsChat": "Xat",
+  "settingsData": "Dades i emmagatzematge",
   "web_search": "Cerca web",
   "agent_tools": "Eines de l'agent",
   "memory": "Memòria",

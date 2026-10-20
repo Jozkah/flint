@@ -734,7 +734,10 @@
     "extensions": "Extensions instal·lades en aquesta còpia de Flint.",
     "agentTools": "Accés a fitxers, shell i xarxa per a les eines d'agent integrades de Flint.",
     "localApiServer": "Un servidor compatible amb OpenAI que altres aplicacions poden usar per arribar als teus models.",
-    "httpsProxy": "Envia les sol·licituds d'internet de Flint a través d'un servidor intermediari."
+    "httpsProxy": "Envia les sol·licituds d'internet de Flint a través d'un servidor intermediari.",
+    "chat": "Com es mostren, s'envien i es comporten les converses.",
+    "data": "On guarda Flint les teves dades i com moure-les, copiar-les o eliminar-les.",
+    "integrations": "Claude Code, Jev i les extensions instal·lades."
   },
   "imageDescription": {
     "title": "Imatges i models només de text",

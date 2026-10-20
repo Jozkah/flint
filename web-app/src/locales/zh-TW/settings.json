@@ -730,7 +730,10 @@
     "extensions": "此 Flint 副本中安裝的擴充功能。",
     "agentTools": "Flint 內建代理程式工具的檔案、Shell 和網路存取。",
     "localApiServer": "其他應用程式可用來存取你的模型的 OpenAI 相容伺服器。",
-    "httpsProxy": "透過 Proxy 傳送 Flint 的網際網路請求。"
+    "httpsProxy": "透過 Proxy 傳送 Flint 的網際網路請求。",
+    "chat": "對話的顯示、傳送與行為方式。",
+    "data": "Flint 儲存資料的位置，以及如何移動、備份或刪除資料。",
+    "integrations": "Claude Code、Jev 與已安裝的擴充功能。"
   },
   "imageDescription": {
     "title": "圖片與純文字模型",

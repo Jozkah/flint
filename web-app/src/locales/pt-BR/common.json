@@ -128,6 +128,8 @@
   "claude_code": "Claude Code",
   "https_proxy": "Proxy HTTPS",
   "network_proxy": "Proxy de rede",
+  "settingsChat": "Chat",
+  "settingsData": "Dados e armazenamento",
   "web_search": "Pesquisa na web",
   "agent_tools": "Ferramentas do agente",
   "memory": "Memória",

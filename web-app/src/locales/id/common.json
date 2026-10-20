@@ -126,6 +126,8 @@
   "claude_code": "Claude Code",
   "https_proxy": "Proksi HTTPS",
   "network_proxy": "Proksi jaringan",
+  "settingsChat": "Obrolan",
+  "settingsData": "Data dan penyimpanan",
   "web_search": "Pencarian Web",
   "agent_tools": "Alat Agen",
   "memory": "Memori",

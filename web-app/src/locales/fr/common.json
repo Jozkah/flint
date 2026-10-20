@@ -128,6 +128,8 @@
   "claude_code": "Claude Code",
   "https_proxy": "Mandataire Proxy HTTPS",
   "network_proxy": "Proxy réseau",
+  "settingsChat": "Discussion",
+  "settingsData": "Données et stockage",
   "web_search": "Recherche web",
   "agent_tools": "Outils de l'agent",
   "memory": "Mémoire",

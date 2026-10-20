@@ -734,7 +734,10 @@
     "extensions": "Rozszerzenia zainstalowane w tej kopii Flint.",
     "agentTools": "Dostęp do plików, powłoki i sieci dla wbudowanych narzędzi agenta Flint.",
     "localApiServer": "Serwer zgodny z OpenAI, którego inne aplikacje mogą używać, aby dotrzeć do Twoich modeli.",
-    "httpsProxy": "Wysyłaj żądania internetowe Flint przez proxy."
+    "httpsProxy": "Wysyłaj żądania internetowe Flint przez proxy.",
+    "chat": "Jak rozmowy wyglądają, są wysyłane i się zachowują.",
+    "data": "Gdzie Flint przechowuje dane oraz jak je przenieść, zarchiwizować lub usunąć.",
+    "integrations": "Claude Code, Jev i zainstalowane rozszerzenia."
   },
   "imageDescription": {
     "title": "Obrazy i modele tylko tekstowe",

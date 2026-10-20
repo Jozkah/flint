@@ -730,7 +730,10 @@
     "extensions": "Các tiện ích mở rộng được cài trong bản Flint này.",
     "agentTools": "Quyền truy cập tệp, shell và mạng cho các công cụ tác tử tích hợp của Flint.",
     "localApiServer": "Một máy chủ tương thích OpenAI mà các ứng dụng khác có thể dùng để truy cập các mô hình của bạn.",
-    "httpsProxy": "Gửi các yêu cầu internet của Flint qua một proxy."
+    "httpsProxy": "Gửi các yêu cầu internet của Flint qua một proxy.",
+    "chat": "Cách cuộc trò chuyện hiển thị, gửi và hoạt động.",
+    "data": "Nơi Flint lưu dữ liệu của bạn và cách di chuyển, sao lưu hoặc xóa chúng.",
+    "integrations": "Claude Code, Jev và các tiện ích mở rộng đã cài."
   },
   "imageDescription": {
     "title": "Hình ảnh và mô hình chỉ văn bản",

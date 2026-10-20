@@ -730,7 +730,10 @@
     "extensions": "此 Flint 副本中安装的扩展。",
     "agentTools": "Flint 内置智能体工具的文件、Shell 和网络访问。",
     "localApiServer": "其他应用可用来访问你的模型的 OpenAI 兼容服务器。",
-    "httpsProxy": "通过代理发送 Flint 的互联网请求。"
+    "httpsProxy": "通过代理发送 Flint 的互联网请求。",
+    "chat": "对话的显示、发送和行为方式。",
+    "data": "Flint 保存数据的位置，以及如何迁移、备份或删除数据。",
+    "integrations": "Claude Code、Jev 和已安装的扩展。"
   },
   "imageDescription": {
     "title": "图片与纯文本模型",

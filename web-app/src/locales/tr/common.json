@@ -127,6 +127,8 @@
   "claude_code": "Claude Code",
   "https_proxy": "HTTPS Vekili (Proxy)",
   "network_proxy": "Ağ proxy'si",
+  "settingsChat": "Sohbet",
+  "settingsData": "Veri ve depolama",
   "web_search": "Web Arama",
   "agent_tools": "Ajan araçları",
   "memory": "Bellek",

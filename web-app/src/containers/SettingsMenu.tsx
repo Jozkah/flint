@@ -49,6 +49,9 @@ const mark =
 
 const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
   general: mark('x-sliders'),
+  chat: mark('comment'),
+  data: mark('x-disk'),
+  integrations: mark('x-puzzle'),
   // Appearance lives at /settings/appearance; /settings/interface redirects there.
   appearance: mark('x-palette'),
   assistants: mark('x-feather'),

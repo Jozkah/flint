@@ -730,7 +730,10 @@
     "extensions": "이 Flint 사본에 설치된 확장 프로그램입니다.",
     "agentTools": "Flint 기본 제공 에이전트 도구의 파일, 셸, 네트워크 접근입니다.",
     "localApiServer": "다른 앱이 모델에 접근할 때 사용할 수 있는 OpenAI 호환 서버입니다.",
-    "httpsProxy": "Flint의 인터넷 요청을 프록시를 통해 보냅니다."
+    "httpsProxy": "Flint의 인터넷 요청을 프록시를 통해 보냅니다.",
+    "chat": "대화가 표시되고 전송되고 동작하는 방식입니다.",
+    "data": "Flint가 데이터를 보관하는 위치와 이동, 백업, 삭제 방법입니다.",
+    "integrations": "Claude Code, Jev 및 설치된 확장 기능입니다."
   },
   "imageDescription": {
     "title": "이미지와 텍스트 전용 모델",

@@ -129,6 +129,8 @@
   "claude_code": "Claude Code",
   "https_proxy": "HTTPS Proxy",
   "network_proxy": "Síťový proxy",
+  "settingsChat": "Chat",
+  "settingsData": "Data a úložiště",
   "web_search": "Vyhledávání na webu",
   "agent_tools": "Nástroje agenta",
   "memory": "Paměť",

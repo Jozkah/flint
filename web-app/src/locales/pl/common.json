@@ -129,6 +129,8 @@
   "claude_code": "Claude Code",
   "https_proxy": "Pośrednik HTTPS",
   "network_proxy": "Serwer proxy sieci",
+  "settingsChat": "Czat",
+  "settingsData": "Dane i pamięć",
   "web_search": "Wyszukiwanie w sieci",
   "agent_tools": "Narzędzia agenta",
   "memory": "Pamięć",
