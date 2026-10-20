@@ -18,6 +18,7 @@ import {
 import { CAMPAIGN_PLAN_TOOL_NAME } from '@/lib/campaignToolNames'
 import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
 import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSessionName'
+import { ENTER_WORKTREE_TOOL_NAME } from '@/lib/worktreeToolNames'
 import { phaseSizes } from '@/lib/workflowLaunchGate'
 import {
   GIT_TOOL_NAME,
@@ -396,6 +397,8 @@ function resourcesFor(
               )
             : []
         )
+      } else if (toolName === ENTER_WORKTREE_TOOL_NAME) {
+        raw = [str(args.folder), str(args.branch), str(args.base)].filter(Boolean) as string[]
       } else if (toolName === SPAWN_SESSION_TOOL_NAME) {
         raw = [str(args.folder), str(args.branch)].filter(Boolean) as string[]
       } else if (toolName === WORKFLOW_TOOL_NAME && Array.isArray(args.phases)) {
@@ -582,6 +585,16 @@ function actionFor(
           },
         }
       }
+      if (toolName === ENTER_WORKTREE_TOOL_NAME) {
+        return {
+          key: 'permissions:action.enterWorktree',
+          values: {
+            folder: sanitizeResource(str(args.folder) ?? '', 120),
+            branch: sanitizeResource(str(args.branch) ?? '', 80),
+            base: sanitizeResource(str(args.base) ?? '', 80),
+          },
+        }
+      }
       if (toolName === SPAWN_SESSION_TOOL_NAME && args.worktree !== true) {
         return {
           key: 'permissions:action.spawnChat',
@@ -655,6 +668,9 @@ function consequencesFor(
       }
       if (toolName === CAMPAIGN_PLAN_TOOL_NAME) {
         return [{ key: 'permissions:consequence.campaignPlan' }]
+      }
+      if (toolName === ENTER_WORKTREE_TOOL_NAME) {
+        return [{ key: 'permissions:consequence.enterWorktree' }]
       }
       if (toolName === SPAWN_SESSION_TOOL_NAME) {
         return [

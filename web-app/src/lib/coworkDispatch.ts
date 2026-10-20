@@ -87,6 +87,12 @@ import {
 } from '@/lib/nullDeviceRetry'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { SPAWN_SESSION_TOOL_NAME, runSpawnSession } from '@/lib/spawnSession'
+import {
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
+  runEnterWorktree,
+  runExitWorktree,
+} from '@/lib/worktreeTools'
 import { CAMPAIGN_TOOLS } from '@/lib/campaignToolNames'
 import { gateStopSession } from '@/lib/sessionStopGate'
 import { gateWorkflowLaunch } from '@/lib/workflowLaunchGate'
@@ -1378,6 +1384,28 @@ async function routeCoworkTool(
         signal,
         onApprove: ctx.onApprove,
       })
+    }
+    if (
+      toolName === ENTER_WORKTREE_TOOL_NAME ||
+      toolName === EXIT_WORKTREE_TOOL_NAME
+    ) {
+      // A subagent shares its parent's session id: it must not move the
+      // parent's write access.
+      if (!ctx.onTeam) {
+        return {
+          output: 'You cannot change the session worktree. Do this work yourself.',
+          isError: true,
+        }
+      }
+      const worktree = {
+        mode: ctx.mode,
+        toolCallId: call.toolCallId,
+        signal,
+        onApprove: ctx.onApprove,
+      }
+      return toolName === ENTER_WORKTREE_TOOL_NAME
+        ? await runEnterWorktree(ctx.sessionId, call.input, worktree)
+        : await runExitWorktree(ctx.sessionId, call.input, worktree)
     }
     if (toolName === ENABLE_TOOLS_NAME) {
       if (!ctx.onEnableTools) {

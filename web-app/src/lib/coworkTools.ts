@@ -38,6 +38,12 @@ import { visualizeSchemas } from '@/lib/visualize/tools'
 import { chatReadSchema } from '@/lib/chatReadTool'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { SPAWN_SESSION_TOOL_NAME, spawnSessionTool } from '@/lib/spawnSession'
+import {
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
+  enterWorktreeTool,
+  exitWorktreeTool,
+} from '@/lib/worktreeTools'
 import { campaignToolSchemas } from '@/lib/campaignToolSchemas'
 import {
   WEB_FETCH_DESCRIPTION,
@@ -57,11 +63,10 @@ export const PLAN_DENIED_TOOLS = new Set([
   'memory_write',
   'skill_write',
   'task',
-<<<<<<< HEAD
   'spawn_session',
-=======
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
->>>>>>> cd03fd450 (feat(cowork): workflow tool, phased fan-out over the team scheduler)
 ])
 
 /**
@@ -88,6 +93,8 @@ export const CLIENT_TOOL_NAMES = new Set([
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
   SPAWN_SESSION_TOOL_NAME,
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
   TEAM_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
   ...BACKGROUND_TASK_TOOLS,
@@ -621,6 +628,7 @@ export function coworkToolSignature(
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
     opts.spawned ? 'spawned' : 'top',
+    opts.projectRoot ? 'wt' : 'nowt',
     opts.webSearch ? 'web' : 'noweb',
     opts.campaignCoordinator ? 'campaign' : 'nocampaign',
     opts.slim ?? 'full',
@@ -776,6 +784,7 @@ export function coworkToolsFromSchemas(
     | 'webSearch'
     | 'allowSubagents'
     | 'spawned'
+    | 'projectRoot'
     | 'subagentNames'
     | 'campaignCoordinator'
     | 'slim'
@@ -871,6 +880,12 @@ export function coworkToolsFromSchemas(
     tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
     tools[ANSWER_SUBAGENT_TOOL_NAME] = answerSubagentTool
     if (!opts.spawned) tools[SPAWN_SESSION_TOOL_NAME] = spawnSessionTool
+  }
+  // Worktree tools move the session's write access: not in review mode, and
+  // only with a project to branch from.
+  if (!opts.planMode && opts.projectRoot) {
+    tools[ENTER_WORKTREE_TOOL_NAME] = enterWorktreeTool
+    tools[EXIT_WORKTREE_TOOL_NAME] = exitWorktreeTool
   }
   return tools
 }
