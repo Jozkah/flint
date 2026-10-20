@@ -247,6 +247,12 @@ vi.mock('@/hooks/useServiceHub', () => ({
 //   open: vi.fn(),
 // }))
 
+vi.mock('@/containers/StartupItems', () => ({ StartupItems: () => null }))
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue({ installed: false, path: null }),
+}))
+
 vi.mock('@tauri-apps/plugin-opener', () => ({
   revealItemInDir: vi.fn(),
   openPath: vi.fn(),
@@ -342,52 +348,6 @@ describe('General Settings Route', () => {
     vi.clearAllMocks()
     mockGetUnavailableJanDataFolder.mockResolvedValue(undefined)
     dataFolderMocks.open.mockResolvedValue('/test/path')
-    // Reset the mock to return a promise that resolves immediately by default
-  })
-
-  // The suite runs with IS_WINDOWS = true, so drive roots are what isRootDir
-  // treats as root here.
-  it.each(['C:\\', 'D:'])(
-    'rejects root data folder %s before unloading models (#232)',
-    async (rootPath) => {
-      const { toast } = await import('sonner')
-      dataFolderMocks.open.mockResolvedValue(rootPath)
-      const Component = GeneralRoute.component as React.ComponentType
-      await act(async () => {
-        render(<Component />)
-      })
-
-      await act(async () => {
-        fireEvent.click(screen.getByTitle('settings:dataFolder.appData'))
-      })
-      const confirm = screen.queryByTestId('confirm-data-folder-change')
-      if (confirm) {
-        await act(async () => {
-          fireEvent.click(confirm)
-        })
-      }
-
-      expect(dataFolderMocks.stopAllModels).not.toHaveBeenCalled()
-      expect(dataFolderMocks.emit).not.toHaveBeenCalled()
-      expect(toast.error).toHaveBeenCalledWith(
-        'settings:general.couldNotRelocateToRoot'
-      )
-    }
-  )
-
-  it('leaves the data folder and update check out of the browser client', async () => {
-    platform.tauri = false
-    try {
-      const Component = GeneralRoute.component as React.ComponentType
-      await act(async () => {
-        render(<Component />)
-      })
-      expect(screen.queryByTestId('open-migration-assistant')).toBeNull()
-      expect(screen.queryByText('common:dataFolder')).toBeNull()
-      expect(screen.getByText('common:language')).toBeInTheDocument()
-    } finally {
-      platform.tauri = true
-    }
   })
 
   it('should render the general settings page', async () => {
@@ -413,29 +373,6 @@ describe('General Settings Route', () => {
     expect(titles).not.toContain('settings:general.credits')
   })
 
-  it('says so when the saved data folder is unavailable (#8855)', async () => {
-    // Not Once: the mocked hub is a new object every render, so the page
-    // fetches again on each one.
-    mockGetUnavailableJanDataFolder.mockResolvedValue('/gone/drive/Jan/data')
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'settings:dataFolder.unavailable'
-    )
-  })
-
-  it('shows no data folder warning when the saved folder is in use', async () => {
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  })
-
   it('should render app version', async () => {
     const Component = GeneralRoute.component as React.ComponentType
     await act(async () => {
@@ -443,90 +380,6 @@ describe('General Settings Route', () => {
     })
 
     expect(screen.getByText('v1.0.0')).toBeInTheDocument()
-  })
-
-  // TODO: This test is currently commented out due to missing implementation
-  // it('should render language switcher', () => {
-  //   const Component = GeneralRoute.component as React.ComponentType
-  //   render(<Component />)
-
-  //   expect(screen.getByTestId('language-switcher')).toBeInTheDocument()
-  // })
-
-  it('should render huggingface token input', async () => {
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    const input = screen.getByTestId('input')
-    expect(input).toBeInTheDocument()
-    expect(input).toHaveValue('test-token')
-  })
-
-  it('should handle spell check toggle', async () => {
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    const switches = screen.getAllByTestId('switch')
-    expect(switches.length).toBeGreaterThan(0)
-
-    // Test that switches are interactive
-    await act(async () => {
-      fireEvent.click(switches[0])
-    })
-    expect(switches[0]).toBeInTheDocument()
-  })
-
-  it('should handle huggingface token change', async () => {
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    const input = screen.getByTestId('input')
-    expect(input).toBeInTheDocument()
-
-    // Test that input is interactive
-    await act(async () => {
-      fireEvent.change(input, { target: { value: 'new-token' } })
-    })
-    expect(input).toBeInTheDocument()
-  })
-
-  it('should handle data folder display', async () => {
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    // Test that component renders without errors
-    expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.queryByTestId('settings-menu')).toBeNull()
-  })
-
-  it('should handle copy to clipboard', async () => {
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    // Test that component renders without errors
-    expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.queryByTestId('settings-menu')).toBeNull()
-  })
-
-  it('should handle factory reset dialog', async () => {
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    expect(screen.getByTestId('dialog')).toBeInTheDocument()
-    expect(screen.getByTestId('dialog-trigger')).toBeInTheDocument()
-    expect(screen.getByTestId('dialog-content')).toBeInTheDocument()
   })
 
   it('offers no link that leaves the device', async () => {
@@ -544,60 +397,24 @@ describe('General Settings Route', () => {
     expect(external).toEqual([])
   })
 
-  it('should handle logs window opening', async () => {
+  it('keeps only the app, startup and command line groups', async () => {
+    global.IS_TAURI = true
     const Component = GeneralRoute.component as React.ComponentType
     await act(async () => {
       render(<Component />)
     })
-
-    const buttons = screen.getAllByTestId('button')
-    const openLogsButton = buttons.find((button) =>
-      button.textContent?.includes('openLogs')
-    )
-
-    if (openLogsButton) {
-      expect(openLogsButton).toBeInTheDocument()
-      // Test that button is interactive
-      await act(async () => {
-        fireEvent.click(openLogsButton)
-      })
-      expect(openLogsButton).toBeInTheDocument()
-    }
+    const titles = screen
+      .getAllByTestId('card')
+      .map((c) => c.getAttribute('data-title'))
+    expect(titles).toContain('common:general')
+    expect(titles).toContain('settings:general.cliGroup')
+    expect(titles).not.toContain('common:dataFolder')
+    expect(titles).not.toContain('settings:general.advanced')
+    expect(titles).not.toContain('common:others')
+    expect(screen.queryByText('settings:general.replyLanguage')).toBeNull()
+    expect(screen.queryByText('settings:general.huggingfaceToken')).toBeNull()
+    expect(screen.queryByText('settings:others.resetFactory')).toBeNull()
+    expect(screen.queryByText('settings:others.spellCheck')).toBeNull()
+    global.IS_TAURI = false
   })
-
-  it('should handle reveal logs folder', async () => {
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    const buttons = screen.getAllByTestId('button')
-    const revealLogsButton = buttons.find((button) =>
-      button.textContent?.includes('showInFileExplorer')
-    )
-
-    if (revealLogsButton) {
-      expect(revealLogsButton).toBeInTheDocument()
-      // Test that button is interactive
-      await act(async () => {
-        fireEvent.click(revealLogsButton)
-      })
-      expect(revealLogsButton).toBeInTheDocument()
-    }
-  })
-
-  it('should show correct file explorer text for Windows', async () => {
-    global.IS_WINDOWS = true
-    global.IS_MACOS = false
-
-    const Component = GeneralRoute.component as React.ComponentType
-    await act(async () => {
-      render(<Component />)
-    })
-
-    expect(
-      screen.getByText('settings:general.showInFileExplorer')
-    ).toBeInTheDocument()
-  })
-
 })

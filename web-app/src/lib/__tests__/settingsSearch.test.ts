@@ -23,6 +23,7 @@ import enMcpServers from '@/locales/en/mcp-servers.json'
 import enPermissions from '@/locales/en/permissions.json'
 import enRemote from '@/locales/en/remote.json'
 import enSchedules from '@/locales/en/schedules.json'
+import enProvider from '@/locales/en/provider.json'
 
 // A fake translator, so the tests control the translated text the index is
 // built from and can tell "found the key" apart from "found the label".
@@ -279,6 +280,7 @@ describe('registry i18n keys', () => {
     permissions: enPermissions,
     remote: enRemote,
     schedules: enSchedules,
+    provider: enProvider,
   }
 
   const resolve = (key: string): string | undefined => {
@@ -457,12 +459,17 @@ const CARD_FILES: Record<string, string[]> = {
     'containers/ApprovalRulesCard.tsx',
   ],
   'agent-tools': ['containers/CompactionPolicySettings.tsx'],
+  data: ['containers/SettingsBackupCard.tsx'],
+  'model-providers': ['containers/ModelDefaultsCard.tsx'],
 }
 
 /** Where each page's source lives, relative to `web-app/src`. */
 const ROUTE_FILES: Record<string, string> = {
   general: 'routes/settings/general.tsx',
   appearance: 'routes/settings/appearance.tsx',
+  chat: 'routes/settings/chat.tsx',
+  data: 'routes/settings/data.tsx',
+  'model-providers': 'routes/settings/providers/index.tsx',
   jev: 'routes/settings/jev.tsx',
   assistants: 'routes/settings/assistant.tsx',
   attachments: 'routes/settings/attachments.tsx',
@@ -486,7 +493,9 @@ describe('cards added by the merged features are searchable', () => {
     ['settings-agent-tools-compaction', 'agent-tools'],
     ['settings-mcp-servers-idle-shutdown', 'mcp-servers'],
     ['settings-appearance-sidebar-items', 'appearance'],
-    ['settings-general-spell-check', 'general'],
+    ['settings-chat-spell-check', 'chat'],
+    ['settings-data-factory-reset', 'data'],
+    ['settings-model-providers-huggingface-token', 'model-providers'],
   ])('%s is indexed on its own page', (id, pageId) => {
     const entry = byId(id)
     expect(entry, id).toBeDefined()
