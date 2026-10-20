@@ -582,6 +582,12 @@ function actionFor(
           },
         }
       }
+      if (toolName === SPAWN_SESSION_TOOL_NAME && args.worktree !== true) {
+        return {
+          key: 'permissions:action.spawnChat',
+          values: { title: sanitizeResource(str(args.title) ?? '', 80) },
+        }
+      }
       if (toolName === SPAWN_SESSION_TOOL_NAME) {
         return {
           key: 'permissions:action.spawnWorktree',
@@ -651,7 +657,14 @@ function consequencesFor(
         return [{ key: 'permissions:consequence.campaignPlan' }]
       }
       if (toolName === SPAWN_SESSION_TOOL_NAME) {
-        return [{ key: 'permissions:consequence.spawnWorktree' }]
+        return [
+          {
+            key:
+              args.worktree === true
+                ? 'permissions:consequence.spawnWorktree'
+                : 'permissions:consequence.spawnChat',
+          },
+        ]
       }
       if (toolName === WORKFLOW_TOOL_NAME) {
         return [{ key: 'permissions:consequence.workflow' }]

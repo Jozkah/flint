@@ -43,6 +43,7 @@
     "approveCampaign": "Flint \"{{title}}\" kampanyasını başlatmak istiyor ({{count}} görev)",
     "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
     "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
+    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
     "spendPause": "Flint, harcama duraklatmasını aşarak bu çalıştırmayı sürdürmek istiyor",
     "changeFileOutside": "Flint, {{workspace}} dışındaki {{target}} dosyasını değiştirmek istiyor",
     "changeManyFilesOutside": "Flint {{count}} dosyayı değiştirmek istiyor, bazıları {{workspace}} dışında"
@@ -67,6 +68,7 @@
     "campaignPlan": "Her biri kendi worktree dalında olan, dosyaları okuyan ve değiştiren, model kotanızı paralel kullanan ayrı oturumlar başlatır. Planı onaylamak, bir görevin yaptığı hiçbir çağrıyı onaylamak anlamına gelmez. Flint her seferinde sorar.",
     "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
     "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
     "spendPause": "Çalıştırma, bitene veya üst sınırına ulaşana kadar ücretli model kotasını kullanmayı sürdürür. Reddetmek çalıştırmayı durdurur."
   },
   "repeat": {
