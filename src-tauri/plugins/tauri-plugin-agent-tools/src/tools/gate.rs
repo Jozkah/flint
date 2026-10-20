@@ -687,6 +687,27 @@ pub fn resolve_decision(
             return Decision::HardDeny(DenyReason::GitInternals);
         }
     }
+    // Files that run code later -- Git hooks, editor tasks, dev containers, CI
+    // definitions, shell startup files, `.envrc`, `.npmrc` -- are persistence:
+    // a write outlives the run and executes outside the sandbox. They are asked
+    // about every time (`Ask`: no session grant, saved rule or mode that only
+    // removes prompts covers it), though an explicit allow rule that names the
+    // path is not honoured either, since a repository ships its own allow list.
+    if mutating {
+        let path_hits = tool.path_args.iter().any(|key| {
+            args.get(key)
+                .and_then(|v| v.as_str())
+                .is_some_and(crate::tools::sandbox::names_protected_persistence)
+        });
+        let command_hits = tool.capability == Capability::Exec
+            && args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .is_some_and(crate::tools::sandbox::command_names_protected_persistence);
+        if path_hits || command_hits {
+            return Decision::Prompt(PromptKind::Ask);
+        }
+    }
     // Deleting a home directory or a filesystem root is asked about every
     // time, in every mode: no allow rule, session grant or auto-approval
     // covers it. Not a hard deny -- the user may mean it -- but it is the one
@@ -1003,6 +1024,100 @@ mod tests {
 
     fn s(items: &[&str]) -> Vec<String> {
         items.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn persistence_paths_are_asked_about_every_time() {
+        let root = unique_root();
+        // Even a blanket allow and a granted write do not cover them.
+        let perms = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &s(&["write", "edit", "bash"]),
+            &[],
+            &s(&["write", "edit"]),
+        );
+        let mut grants = SessionGrants::default();
+        grants.grant(PromptKind::Write);
+        let decide = |tool: &str, args: serde_json::Value| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let ask = Decision::Prompt(PromptKind::Ask);
+        for path in [
+            ".husky/pre-commit",
+            ".vscode/tasks.json",
+            ".devcontainer/devcontainer.json",
+            ".github/workflows/ci.yml",
+            ".GitHub\\Workflows\\ci.yml",
+            ".gitlab-ci.yml",
+            ".bashrc",
+            "sub/.zshrc",
+            ".profile",
+            ".bash_profile",
+            "Documents/PowerShell/Microsoft.PowerShell_profile.ps1",
+            "profile.ps1",
+            ".envrc",
+            "lefthook.yml",
+            "lefthook.yaml",
+            ".lefthook.yml",
+            ".pre-commit-config.yaml",
+        ] {
+            for tool in ["write", "edit"] {
+                assert_eq!(
+                    decide(tool, json!({"path": path, "content": "x", "edits": []})),
+                    ask,
+                    "{tool} {path}"
+                );
+            }
+        }
+        for command in [
+            "echo x >> .bashrc",
+            "printf x > .husky/pre-commit",
+            "tee .github/workflows/ci.yml",
+            "cp evil '.vscode/tasks.json'",
+            "echo y > .env''rc",
+            "sed -i s/a/b/ lefthook.yml",
+        ] {
+            assert_eq!(decide("bash", json!({"command": command})), ask, "{command}");
+        }
+        // `.npmrc` can carry registry tokens, so the secret-file guard refuses
+        // it outright, which is stronger than the prompt.
+        assert!(matches!(
+            decide("write", json!({"path": ".npmrc", "content": "x"})),
+            Decision::HardDeny(DenyReason::SecretFile(_))
+        ));
+        // Not persistence files: lookalikes and ordinary neighbours.
+        for path in [
+            "src/main.rs",
+            ".github/CODEOWNERS",
+            ".github/workflows-notes.md",
+            "docs/vscode.md",
+            ".husky-notes.md",
+            "my.bashrc.md",
+            ".profile.d/readme",
+            "lefthook-notes.md",
+            ".envrc.example",
+        ] {
+            assert_eq!(
+                decide("write", json!({"path": path, "content": "x"})),
+                Decision::Allow,
+                "{path} wrongly protected"
+            );
+        }
+        // Reading them is not a write.
+        assert_eq!(
+            decide("read", json!({"path": ".bashrc"})),
+            Decision::Allow
+        );
     }
 
     #[test]
