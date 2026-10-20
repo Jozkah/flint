@@ -368,14 +368,14 @@ pub fn names_git_internals(raw: &str) -> bool {
         .any(|c| c.trim_end_matches(['.', ' ']).eq_ignore_ascii_case(".git"))
 }
 
-/// [`names_git_internals`] for each token of a shell command, including the
-/// text with quotes and backslash escapes removed (`.g''it`, `.g\it`). A bare
-/// `git` word or a `repo.git` URL is not a `.git` path.
-pub fn command_names_git_internals(command: &str) -> bool {
+/// Whether any token of a shell command satisfies `names`, judged on the text
+/// as written and with quotes and backslash escapes removed (`.g''it`,
+/// `.g\it`), which is how the shell will read it.
+fn command_tokens_any(command: &str, names: fn(&str) -> bool) -> bool {
     let hits = |text: &str| {
         text.split(|c: char| c.is_whitespace() || ";|&><()\"'`=".contains(c))
             .filter(|t| !t.is_empty())
-            .any(names_git_internals)
+            .any(names)
     };
     if hits(command) {
         return true;
@@ -385,6 +385,75 @@ pub fn command_names_git_internals(command: &str) -> bool {
         .filter(|c| !matches!(c, '\'' | '"'))
         .collect();
     hits(&dequoted) || hits(&dequoted.replace('\\', ""))
+}
+
+/// [`names_git_internals`] for each token of a shell command, including the
+/// text with quotes and backslash escapes removed (`.g''it`, `.g\it`). A bare
+/// `git` word or a `repo.git` URL is not a `.git` path.
+pub fn command_names_git_internals(command: &str) -> bool {
+    command_tokens_any(command, names_git_internals)
+}
+
+/// File and folder names that run code the next time someone opens the
+/// project, a shell or a commit, or that change what a CI runner executes.
+/// Writing one is persistence: it outlives the run and executes outside the
+/// sandbox. Lowercase; compared ignoring case.
+const PROTECTED_PERSISTENCE_NAMES: &[&str] = &[
+    ".husky",
+    ".vscode",
+    ".devcontainer",
+    ".gitlab-ci.yml",
+    ".envrc",
+    ".npmrc",
+    ".pre-commit-config.yaml",
+    // Shell startup files.
+    ".bashrc",
+    ".bash_profile",
+    ".bash_login",
+    ".bash_logout",
+    ".profile",
+    ".zshrc",
+    ".zshenv",
+    ".zprofile",
+    ".zlogin",
+    ".zlogout",
+    // PowerShell profiles (`profile.ps1`, `Microsoft.PowerShell_profile.ps1`,
+    // `Microsoft.VSCode_profile.ps1`).
+    "profile.ps1",
+];
+
+/// Whether a path names a file the agent must not change without being asked,
+/// whichever mode is on: Git-hook managers (`.husky`, `lefthook.*`,
+/// `.pre-commit-config.yaml`), editor and container configuration that can run
+/// tasks (`.vscode`, `.devcontainer`), CI definitions (`.github/workflows`,
+/// `.gitlab-ci.yml`), shell and PowerShell startup files, `.envrc` and
+/// `.npmrc`. Matched per path component, so `src/.husky-notes` and
+/// `my.vscode.md` are not hits. The `.git` folder and `.jan/agent` have their
+/// own hard denies and are not repeated here.
+pub fn names_protected_persistence(raw: &str) -> bool {
+    let parts: Vec<String> = raw
+        .split(['/', '\\'])
+        .map(|c| c.trim_end_matches(['.', ' ']).to_ascii_lowercase())
+        .collect();
+    let single = parts.iter().any(|c| {
+        PROTECTED_PERSISTENCE_NAMES.contains(&c.as_str())
+            || c.ends_with("_profile.ps1")
+            || c.starts_with("lefthook.")
+            || c.starts_with(".lefthook.")
+            || c.starts_with("lefthook-local.")
+    });
+    single
+        || parts
+            .windows(2)
+            .any(|w| w[0] == ".github" && w[1] == "workflows")
+}
+
+/// [`names_protected_persistence`] for each token of a shell command, read the
+/// way [`command_names_git_internals`] reads it. A cd followed by a bare
+/// relative name (`cd .github && tee workflows/x`) is not followed: this
+/// narrows the surprise, it does not replace the sandbox.
+pub fn command_names_protected_persistence(command: &str) -> bool {
+    command_tokens_any(command, names_protected_persistence)
 }
 
 /// [`is_hidden_jan_path`] for the project and every granted write root.
