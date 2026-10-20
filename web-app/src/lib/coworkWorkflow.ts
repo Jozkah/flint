@@ -9,6 +9,7 @@
 
 import { jsonSchema, type Tool } from 'ai'
 import { MAX_TEAM_TASKS } from '@/lib/coworkTeam'
+import { schemaProblem } from '@/lib/coworkWorkflowSchema'
 
 export const WORKFLOW_TOOL_NAME = 'workflow'
 
@@ -44,6 +45,10 @@ export function workflowToTeamInput(
       if (!description) {
         return `${where}.description is empty; the agent sees nothing else`
       }
+      if (agent.schema !== undefined) {
+        const problem = schemaProblem(agent.schema, `${where}.schema`)
+        if (problem) return problem
+      }
       const id = text(agent.id) || `p${p + 1}a${a + 1}`
       if (seen.has(id)) return `${where}.id '${id}' appears twice`
       seen.add(id)
@@ -55,6 +60,7 @@ export function workflowToTeamInput(
         description,
         ...(subagent ? { subagent_name: subagent } : {}),
         ...(title ? { title } : {}),
+        ...(isObject(agent.schema) ? { schema: agent.schema } : {}),
         phase: { name: text(phase.name) || `Phase ${p + 1}`, index: p },
         ...(previous.length ? { depends_on: previous, carry: previous } : {}),
       })
@@ -105,6 +111,11 @@ export function workflowTool(subagentNames: string[]): Tool {
                     subagent_name: { type: 'string', minLength: 1 },
                     title: { type: 'string', description: 'Short row name, 3-6 words.' },
                     description: { type: 'string', minLength: 1, description: 'The whole brief.' },
+                    schema: {
+                      type: 'object',
+                      description:
+                        'Optional JSON schema an agent answer must match. It is checked and the agent retried; later phases receive the parsed JSON.',
+                    },
                   },
                   required: ['description'],
                   additionalProperties: false,
