@@ -22,7 +22,7 @@ export type { FilePickerEntry }
  * `isReferenceToken` applies the remaining rules (URL, IPv4) on top.
  */
 export const REFERENCE_PATTERN =
-  /(^|[^A-Za-z0-9_])@((?:skill|agent|alias):[A-Za-z0-9][A-Za-z0-9_.-]*|(?:chat|session|room):[A-Za-z0-9][A-Za-z0-9_.-]*(?:#summary)?|[^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
+  /(^|[^A-Za-z0-9_])@((?:skill|agent|alias):[A-Za-z0-9][A-Za-z0-9_.-]*|(?:chat|session|room):(?:"[^"\r\n]{1,80}"|[A-Za-z0-9][A-Za-z0-9_.-]*)(?:#summary)?|[^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
 
 /** The kinds of `@` reference that name something other than a path. */
 export type TypedReferenceKind =
@@ -44,7 +44,7 @@ export function typedReference(
   raw: string
 ): { kind: TypedReferenceKind; name: string; summary?: boolean } | null {
   const match =
-    /^(?:(skill|agent|alias):([A-Za-z0-9][A-Za-z0-9_.-]*)|(chat|session|room):([A-Za-z0-9][A-Za-z0-9_.-]*)(#summary)?)$/.exec(
+    /^(?:(skill|agent|alias):([A-Za-z0-9][A-Za-z0-9_.-]*)|(chat|session|room):("[^"\r\n]{1,80}"|[A-Za-z0-9][A-Za-z0-9_.-]*)(#summary)?)$/.exec(
       raw
     )
   if (!match) return null
