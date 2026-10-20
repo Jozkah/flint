@@ -1468,6 +1468,16 @@
         "completed_with_failures": {
           "description": "`true` when the run finished without an error but at least one of its\ntool calls failed along the way (see `tool_failures`), whether or not\na later call recovered from it. Absent otherwise.",
           "type": "boolean"
+        },
+        "structured_output": {
+          "description": "`--json-schema`: the final answer, parsed and validated against the\nschema. Absent when no schema was given or the answer never validated."
+        },
+        "structured_output_error": {
+          "description": "`--json-schema`: why the answer never validated within the attempts.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
