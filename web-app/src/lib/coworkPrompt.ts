@@ -441,7 +441,9 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
     } else {
       lines.push(
         `You have one writable directory, your workspace: \`${opts.workspacePath}\`.`,
-        'Relative paths resolve against it. Everything you create must live here.'
+        opts.readOnlyFolder && opts.folderAccess === 'editable'
+          ? 'Scratch files belong here; relative file-tool paths resolve in the attached project.'
+          : 'Relative paths resolve against it. Everything you create must live here.'
       )
     }
     if (!inWorktree && opts.bashAvailable && opts.readOnlyFolder) {
@@ -450,7 +452,9 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
         ...(opts.folderAccess === 'editable'
           ? [
               'the project is writable. For project commands, change location to its absolute',
-              'path first. Relative file-tool paths still resolve in the workspace.',
+              'path first. Relative file-tool paths resolve in the project, so files you',
+              'create without an absolute path land there; use an absolute workspace path',
+              'for throwaway scratch files.',
             ]
           : [
               'it has no cwd parameter and cannot cd into the project. Put absolute project',
