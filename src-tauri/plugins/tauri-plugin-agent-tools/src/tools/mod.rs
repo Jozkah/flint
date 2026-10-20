@@ -35,6 +35,7 @@ pub mod syntax_check;
 pub mod host_tools;
 pub mod image;
 pub mod ocr;
+pub mod fs_policy;
 pub mod jail;
 pub mod sandbox_integrity;
 pub mod mcp_confine;
@@ -120,6 +121,10 @@ pub struct ToolContext<'a> {
     /// Expose `$HOME` to the sandboxed shell read-only (the CLI) instead of
     /// hiding it (the desktop). Passed through to the `bash` sandbox policy.
     pub home_readonly: bool,
+    /// `[tools.fs]`: the sandbox's filesystem allow/deny lists. `None` is the
+    /// defaults only (the credential folders stay closed where the home is
+    /// readable).
+    pub fs: Option<&'a fs_policy::FsConfig>,
     /// A session-scoped host directory the shell and the filesystem tools share
     /// for temporary work, so scratch files persist across `bash` calls in the
     /// run. See [`Policy::scratch_root`] for how each backend exposes it, and
@@ -278,6 +283,7 @@ impl std::fmt::Debug for ToolContext<'_> {
             .field("confine_writes", &self.confine_writes)
             .field("mask_root", &self.mask_root)
             .field("home_readonly", &self.home_readonly)
+            .field("fs", &self.fs)
             .field("scratch_root", &self.scratch_root)
             .field("sandbox", &self.sandbox)
             .field("on_output", &self.on_output.is_some())
@@ -310,6 +316,7 @@ impl<'a> ToolContext<'a> {
             confine_writes: false,
             mask_root: None,
             home_readonly: false,
+            fs: None,
             scratch_root: None,
             session_id: None,
             run_id: None,
@@ -487,6 +494,12 @@ impl<'a> ToolContext<'a> {
 
     pub fn with_mask_root(mut self, mask_root: &'a Path) -> Self {
         self.mask_root = Some(mask_root);
+        self
+    }
+
+    /// Apply the `[tools.fs]` sandbox lists. See [`Self::fs`].
+    pub fn with_fs_config(mut self, fs: Option<&'a fs_policy::FsConfig>) -> Self {
+        self.fs = fs;
         self
     }
 

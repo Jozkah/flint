@@ -33,6 +33,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use super::appcontainer;
+use super::fs_policy::{self, FsConfig, FsRules};
 use super::sandbox_integrity;
 use super::proc::{self, OriginRoots, ProbeOutcome, ShellConfig, ShellReport};
 
@@ -133,6 +134,10 @@ pub struct Policy {
     /// MCP server) instead of as the session shell. Only AppContainer, whose
     /// grants outlive a spawn, reads it.
     pub own_grant_holder: bool,
+    /// `[tools.fs]`: the configured allow/deny lists. Resolved against the rest
+    /// of the policy by [`fs_rules`] when a backend builds its rules, never
+    /// earlier, so the workspace and the other layers are known by then.
+    pub fs: FsConfig,
 }
 
 impl Policy {
@@ -150,7 +155,14 @@ impl Policy {
             unreachable_grants: Vec::new(),
             unreachable_read_grants: Vec::new(),
             own_grant_holder: false,
+            fs: FsConfig::default(),
         }
+    }
+
+    /// Apply the configured `[tools.fs]` lists. See [`Policy::fs`].
+    pub fn with_fs_config(mut self, fs: FsConfig) -> Self {
+        self.fs = fs;
+        self
     }
 
     /// Record grants the shell cannot reach. See [`Policy::unreachable_grants`].
@@ -713,6 +725,81 @@ const RUN_KEEP: &[&str] = &["/run/current-system", "/run/booted-system", "/run/o
 /// resolution reads when `/etc/resolv.conf` points into systemd-resolved.
 const RUN_KEEP_NETWORK: &[&str] = &["/run/systemd/resolve"];
 
+/// The filesystem rules for `policy`: the configured lists resolved against the
+/// workspace, the granted roots and the hidden state, plus the credential-folder
+/// defaults wherever the shell can otherwise read `$HOME`.
+pub fn fs_rules(policy: &Policy) -> FsRules {
+    let mut must: Vec<PathBuf> = vec![policy.workspace.clone()];
+    must.extend(policy.write_roots.iter().cloned());
+    must.extend(policy.scratch_root.iter().cloned());
+    must.extend(policy.read_roots.iter().cloned());
+    let mut hidden: Vec<PathBuf> = policy.hide_roots.clone();
+    hidden.extend(policy.mask_root.iter().cloned());
+    let home = home_dir();
+    fs_policy::resolve(&fs_policy::FsInput {
+        config: &policy.fs,
+        home: home.as_deref(),
+        default_credentials: policy.home_readonly,
+        must_stay: &must,
+        hidden: &hidden,
+    })
+}
+
+/// Whether the shell can see `path` at all: under the masked home only the
+/// bound roots exist. A mount over a path the shell cannot see would either
+/// fail (no mountpoint in a read-only root) or, for an allow or a read-only
+/// re-bind, expose what the mask hides.
+fn visible_to_shell(policy: &Policy, rules: &FsRules, path: &Path) -> bool {
+    let Some(home) = home_dir().map(|h| fs_policy::canonical(&h)) else {
+        return true;
+    };
+    if policy.home_readonly || !path.starts_with(&home) {
+        return true;
+    }
+    let bound = std::iter::once(&policy.workspace)
+        .chain(policy.read_roots.iter())
+        .chain(policy.write_roots.iter())
+        .chain(policy.scratch_root.iter())
+        .chain(rules.allow_read.iter())
+        .chain(rules.allow_write.iter());
+    bound.map(|b| fs_policy::canonical(b)).any(|b| path.starts_with(&b))
+}
+
+/// bubblewrap arguments for the `[tools.fs]` rules. Order is the enforcement:
+/// denies first, then the allows (carve-outs inside a denied credential folder
+/// need the deny under them), then `deny_write` last so it wins over every
+/// writable bind, the workspace included.
+fn bwrap_fs_args(args: &mut Vec<String>, policy: &Policy) {
+    let rules = fs_rules(policy);
+    for d in &rules.deny_read {
+        let Ok(meta) = std::fs::symlink_metadata(d) else { continue };
+        if !visible_to_shell(policy, &rules, d) {
+            continue;
+        }
+        let path = d.to_string_lossy();
+        if meta.is_dir() {
+            push(args, &["--tmpfs", &path]);
+        } else {
+            push(args, &["--ro-bind", "/dev/null", &path]);
+        }
+    }
+    for a in &rules.allow_read {
+        let path = a.to_string_lossy();
+        push(args, &["--ro-bind-try", &path, &path]);
+    }
+    for a in &rules.allow_write {
+        let path = a.to_string_lossy();
+        push(args, &["--bind-try", &path, &path]);
+    }
+    for d in &rules.deny_write {
+        if std::fs::symlink_metadata(d).is_err() || !visible_to_shell(policy, &rules, d) {
+            continue;
+        }
+        let path = d.to_string_lossy();
+        push(args, &["--ro-bind-try", &path, &path]);
+    }
+}
+
 /// Build bubblewrap's argv. Operations apply in order, which the layering below
 /// depends on: the read-only root comes first, then the tmpfs that hides `$HOME`,
 /// then the workspace bind that punches back through it.
@@ -825,6 +912,7 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     for hide in &policy.hide_roots {
         push(&mut args, &["--tmpfs", &hide.to_string_lossy()]);
     }
+    bwrap_fs_args(&mut args, policy);
     push(&mut args, &["--chdir", &policy.start_dir().to_string_lossy()]);
 
     // Drops the network, pid, ipc, uts and cgroup namespaces along with the
@@ -953,6 +1041,33 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
              (deny file-write* (subpath (param \"{name}\")))\n"
         ));
     }
+    // `[tools.fs]`, after everything above so a deny beats the workspace and
+    // home allows (later rules win). Denies first, then the allows -- a
+    // carve-out inside a denied credential folder must come after the deny --
+    // then `deny_write` last. Paths travel as parameters, one per entry.
+    let rules = fs_rules(policy);
+    for i in 0..rules.deny_read.len() {
+        p.push_str(&format!(
+            "(deny file-read* (subpath (param \"FS_DENY_READ_{i}\")))\n\
+             (deny file-write* (subpath (param \"FS_DENY_READ_{i}\")))\n"
+        ));
+    }
+    for i in 0..rules.allow_read.len() {
+        p.push_str(&format!(
+            "(allow file-read* (subpath (param \"FS_ALLOW_READ_{i}\")))\n"
+        ));
+    }
+    for i in 0..rules.allow_write.len() {
+        p.push_str(&format!(
+            "(allow file-read* (subpath (param \"FS_ALLOW_WRITE_{i}\")))\n\
+             (allow file-write* (subpath (param \"FS_ALLOW_WRITE_{i}\")))\n"
+        ));
+    }
+    for i in 0..rules.deny_write.len() {
+        p.push_str(&format!(
+            "(deny file-write* (subpath (param \"FS_DENY_WRITE_{i}\")))\n"
+        ));
+    }
     // IP only (Jozkah/jan#206). A bare `(allow network*)` also covers
     // `network-outbound` to a `unix-socket` remote, i.e. connect() to any
     // unix socket the command can name -- among them the launchd ssh-agent
@@ -1013,6 +1128,17 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     }
     for (i, hide) in policy.hide_roots.iter().enumerate() {
         args.push(format!("-D{}={}", hide_param(i), hide.to_string_lossy()));
+    }
+    let rules = fs_rules(policy);
+    for (name, list) in [
+        ("FS_DENY_READ", &rules.deny_read),
+        ("FS_ALLOW_READ", &rules.allow_read),
+        ("FS_ALLOW_WRITE", &rules.allow_write),
+        ("FS_DENY_WRITE", &rules.deny_write),
+    ] {
+        for (i, path) in list.iter().enumerate() {
+            args.push(format!("-D{name}_{i}={}", path.to_string_lossy()));
+        }
     }
     args.push(format!(
         "-DTMPDIR={}",
@@ -3432,5 +3558,120 @@ mod enforcement_tests {
         assert_eq!(chosen, None);
         assert!(!cacheable);
         assert_eq!(pick_bwrap(&[], |_| Probe::Usable), (None, true));
+    }
+
+    // ---- `[tools.fs]` lists: argument construction. The decisions themselves
+    // are tested in `fs_policy`; these check that each backend applies them in
+    // the order that makes deny win. No sandbox is launched.
+
+    fn fs_fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let ws = root.join("ws");
+        let other = root.join("other");
+        for sub in ["ws", "other/secret", "other/ro", "other/out"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        (dir, ws, other)
+    }
+
+    fn fs_config(other: &Path) -> FsConfig {
+        let p = |s: &str| other.join(s).to_string_lossy().to_string();
+        FsConfig {
+            deny_read: vec![p("secret")],
+            allow_read: vec![p("ro")],
+            allow_write: vec![p("out")],
+            deny_write: vec![p("ro")],
+        }
+    }
+
+    #[test]
+    fn bwrap_applies_deny_read_then_allows_then_deny_write_before_chdir() {
+        let (_dir, ws, other) = fs_fixture();
+        // home_readonly keeps every path visible to the shell.
+        let policy = Policy::new(&ws, false)
+            .with_home_readonly(true)
+            .with_fs_config(fs_config(&other));
+        let args = bwrap_args(&policy, &cfg());
+        let at = |needle: &[&str]| {
+            args.windows(needle.len())
+                .position(|w| w.iter().zip(needle).all(|(a, b)| a == b))
+                .unwrap_or_else(|| panic!("{needle:?} missing in {args:?}"))
+        };
+        let secret = other.join("secret").to_string_lossy().to_string();
+        let ro = other.join("ro").to_string_lossy().to_string();
+        let out = other.join("out").to_string_lossy().to_string();
+        let deny_read = at(&["--tmpfs", &secret]);
+        let allow_read = at(&["--ro-bind-try", &ro, &ro]);
+        let allow_write = at(&["--bind-try", &out, &out]);
+        let deny_write = args.iter().rposition(|a| a == &ro).unwrap() - 2;
+        let chdir = at(&["--chdir"]);
+        assert!(deny_read < allow_read && allow_read < allow_write, "{args:?}");
+        assert!(allow_write < deny_write && deny_write < chdir, "{args:?}");
+        // The workspace bind comes first, so every deny sits on top of it.
+        assert!(at(&["--bind", &ws.to_string_lossy(), &ws.to_string_lossy()]) < deny_read);
+    }
+
+    #[test]
+    fn bwrap_does_not_mount_over_paths_the_masked_home_already_hides() {
+        let (_dir, ws, other) = fs_fixture();
+        // Without home_readonly, anything under $HOME the workspace does not
+        // bind is invisible; a tmpfs over it would fail to create its mountpoint.
+        let home = home_dir().map(|h| fs_policy::canonical(&h));
+        let inside_home = home.as_ref().is_some_and(|h| other.starts_with(h));
+        let policy = Policy::new(&ws, false).with_fs_config(fs_config(&other));
+        let rules = fs_rules(&policy);
+        let args = joined(&bwrap_args(&policy, &cfg()));
+        let secret = other.join("secret").to_string_lossy().to_string();
+        assert_eq!(args.contains(&format!("--tmpfs {secret}")), !inside_home, "{args}");
+        assert!(!rules.deny_read.is_empty());
+    }
+
+    #[test]
+    fn credential_folders_are_denied_wherever_the_home_is_readable() {
+        let on = fs_rules(&policy().with_home_readonly(true));
+        assert!(on.deny_read.iter().any(|d| d.ends_with(".ssh")), "{:?}", on.deny_read);
+        assert!(on.deny_read.iter().any(|d| d.ends_with(".aws")));
+        // The desktop masks the whole home, so nothing extra is listed.
+        assert!(fs_rules(&policy()).deny_read.is_empty());
+        // Naming a credential folder in allow_read lifts exactly that one.
+        let home = home_dir().expect("a home directory");
+        let lifted = fs_rules(
+            &policy()
+                .with_home_readonly(true)
+                .with_fs_config(FsConfig {
+                    allow_read: vec![home.join(".aws").to_string_lossy().to_string()],
+                    ..Default::default()
+                }),
+        );
+        assert!(!lifted.deny_read.iter().any(|d| d.ends_with(".aws")));
+        assert!(lifted.deny_read.iter().any(|d| d.ends_with(".ssh")));
+    }
+
+    #[test]
+    fn seatbelt_orders_denies_before_allows_and_deny_write_last_and_passes_paths_as_parameters() {
+        let (_dir, ws, other) = fs_fixture();
+        let policy = Policy::new(&ws, false)
+            .with_home_readonly(true)
+            .with_hide_root(&ws.join(".jan"))
+            .with_fs_config(fs_config(&other));
+        let profile = seatbelt_policy(&policy);
+        let find = |needle: &str| {
+            profile
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle} missing in {profile}"))
+        };
+        let hide = find("(deny file-read* (subpath (param \"HIDE_ROOT\")))");
+        let rules = fs_rules(&policy);
+        let last_cred_deny = find(&format!("(deny file-read* (subpath (param \"FS_DENY_READ_{}\")))", rules.deny_read.len() - 1));
+        let allow_read = find("(allow file-read* (subpath (param \"FS_ALLOW_READ_0\")))");
+        let allow_write = find("(allow file-write* (subpath (param \"FS_ALLOW_WRITE_0\")))");
+        let deny_write = find("(deny file-write* (subpath (param \"FS_DENY_WRITE_0\")))");
+        assert!(hide < find("(deny file-read* (subpath (param \"FS_DENY_READ_0\")))"));
+        assert!(last_cred_deny < allow_read && allow_read < allow_write && allow_write < deny_write);
+        let args = joined(&seatbelt_args(&policy, &cfg()));
+        assert!(args.contains(&format!("-DFS_ALLOW_WRITE_0={}", other.join("out").display())), "{args}");
+        // No fs lists and no readable home: no fs rules in the profile at all.
+        assert!(!seatbelt_policy(&Policy::new(&ws, false)).contains("FS_"));
     }
 }

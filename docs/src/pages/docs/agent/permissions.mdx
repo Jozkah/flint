@@ -90,6 +90,36 @@ directory, and reaches the network only if allowed. Reads are looser: the CLI ke
 so `git` and `ssh` credential helpers work (`[tools].allow_home_read`, set it to `false` to close
 that), while the desktop masks it entirely.
 
+### Path lists: `[tools.fs]`
+
+Four lists in `agent.toml` shape what a confined command can reach. Entries are absolute paths or
+start with `~`; they are resolved through symlinks, and `..` is refused.
+
+```toml
+[tools.fs]
+allow_read = ["~/.ssh/config"]       # open a path that would otherwise be closed
+deny_read = ["~/Documents/private"]  # no reads (and no writes) at all
+allow_write = ["~/.cache/build"]     # an extra writable folder
+deny_write = ["~/proj/dist"]         # read-only, even inside the project
+```
+
+- **Deny wins over allow.** An `allow_read` or `allow_write` inside a denied path is dropped.
+  `allow_write` is also dropped inside the agent's hidden state, inside a credential folder, and
+  for the filesystem root or your home folder. A deny that would hide the project itself is
+  dropped, since the run could not work.
+- **Credential folders are closed by default** wherever the shell can read your home (the CLI's
+  default): `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gcloud`, `~/.azure`, `~/.kube` and the
+  browser profile folders. Naming one in `allow_read` opens that one (`~/.ssh/config` alone opens
+  just that file). Nothing makes them writable. `git` over `ssh` inside the sandbox therefore
+  needs `allow_read = ["~/.ssh"]` (or just the files it needs). The desktop masks the whole home,
+  so the lists add nothing there beyond paths outside it.
+- **A project you have not trusted** keeps its `deny_*` entries but loses `allow_read` and
+  `allow_write`, like every other loosening key.
+- **Where it is enforced:** bubblewrap (Linux) and Seatbelt (macOS). AppContainer (Windows) can
+  already read only what grants `ALL APPLICATION PACKAGES`, so it never exposes these folders; it
+  cannot carve a read-only or hidden path out of a folder it has granted, so `deny_write` inside
+  the project and the allow lists are not applied there.
+
 Whether it is on depends on the surface:
 
 | Surface | Sandbox | Can it be changed? |
