@@ -28,6 +28,7 @@ import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcu
 import { Route as SettingsSchedulesRouteImport } from './routes/settings/schedules'
 import { Route as SettingsRemoteAccessRouteImport } from './routes/settings/remote-access'
 import { Route as SettingsPermissionsRouteImport } from './routes/settings/permissions'
+import { Route as SettingsNetworkProxyRouteImport } from './routes/settings/network-proxy'
 import { Route as SettingsMemoryRouteImport } from './routes/settings/memory'
 import { Route as SettingsMcpServersRouteImport } from './routes/settings/mcp-servers'
 import { Route as SettingsLocalApiServerRouteImport } from './routes/settings/local-api-server'
@@ -39,7 +40,9 @@ import { Route as SettingsExtensionsRouteImport } from './routes/settings/extens
 import { Route as SettingsClaudeCodeRouteImport } from './routes/settings/claude-code'
 import { Route as SettingsAttachmentsRouteImport } from './routes/settings/attachments'
 import { Route as SettingsAssistantRouteImport } from './routes/settings/assistant'
+import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as SettingsAgentToolsRouteImport } from './routes/settings/agent-tools'
+import { Route as SettingsAgentRouteImport } from './routes/settings/agent'
 import { Route as RoomsRoomIdRouteImport } from './routes/rooms/$roomId'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as LocalApiServerLogsRouteImport } from './routes/local-api-server/logs'
@@ -143,6 +146,11 @@ const SettingsPermissionsRoute = SettingsPermissionsRouteImport.update({
   path: '/settings/permissions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsNetworkProxyRoute = SettingsNetworkProxyRouteImport.update({
+  id: '/settings/network-proxy',
+  path: '/settings/network-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsMemoryRoute = SettingsMemoryRouteImport.update({
   id: '/settings/memory',
   path: '/settings/memory',
@@ -198,9 +206,19 @@ const SettingsAssistantRoute = SettingsAssistantRouteImport.update({
   path: '/settings/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
+  id: '/settings/appearance',
+  path: '/settings/appearance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsAgentToolsRoute = SettingsAgentToolsRouteImport.update({
   id: '/settings/agent-tools',
   path: '/settings/agent-tools',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsAgentRoute = SettingsAgentRouteImport.update({
+  id: '/settings/agent',
+  path: '/settings/agent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RoomsRoomIdRoute = RoomsRoomIdRouteImport.update({
@@ -256,7 +274,9 @@ export interface FileRoutesByFullPath {
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
+  '/settings/agent': typeof SettingsAgentRoute
   '/settings/agent-tools': typeof SettingsAgentToolsRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
@@ -268,6 +288,7 @@ export interface FileRoutesByFullPath {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/network-proxy': typeof SettingsNetworkProxyRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/schedules': typeof SettingsSchedulesRoute
@@ -296,7 +317,9 @@ export interface FileRoutesByTo {
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
+  '/settings/agent': typeof SettingsAgentRoute
   '/settings/agent-tools': typeof SettingsAgentToolsRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
@@ -308,6 +331,7 @@ export interface FileRoutesByTo {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/network-proxy': typeof SettingsNetworkProxyRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/schedules': typeof SettingsSchedulesRoute
@@ -337,7 +361,9 @@ export interface FileRoutesById {
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
+  '/settings/agent': typeof SettingsAgentRoute
   '/settings/agent-tools': typeof SettingsAgentToolsRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
@@ -349,6 +375,7 @@ export interface FileRoutesById {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/network-proxy': typeof SettingsNetworkProxyRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/schedules': typeof SettingsSchedulesRoute
@@ -379,7 +406,9 @@ export interface FileRouteTypes {
     | '/local-api-server/logs'
     | '/project/$projectId'
     | '/rooms/$roomId'
+    | '/settings/agent'
     | '/settings/agent-tools'
+    | '/settings/appearance'
     | '/settings/assistant'
     | '/settings/attachments'
     | '/settings/claude-code'
@@ -391,6 +420,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/network-proxy'
     | '/settings/permissions'
     | '/settings/remote-access'
     | '/settings/schedules'
@@ -419,7 +449,9 @@ export interface FileRouteTypes {
     | '/local-api-server/logs'
     | '/project/$projectId'
     | '/rooms/$roomId'
+    | '/settings/agent'
     | '/settings/agent-tools'
+    | '/settings/appearance'
     | '/settings/assistant'
     | '/settings/attachments'
     | '/settings/claude-code'
@@ -431,6 +463,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/network-proxy'
     | '/settings/permissions'
     | '/settings/remote-access'
     | '/settings/schedules'
@@ -459,7 +492,9 @@ export interface FileRouteTypes {
     | '/local-api-server/logs'
     | '/project/$projectId'
     | '/rooms/$roomId'
+    | '/settings/agent'
     | '/settings/agent-tools'
+    | '/settings/appearance'
     | '/settings/assistant'
     | '/settings/attachments'
     | '/settings/claude-code'
@@ -471,6 +506,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/network-proxy'
     | '/settings/permissions'
     | '/settings/remote-access'
     | '/settings/schedules'
@@ -500,7 +536,9 @@ export interface RootRouteChildren {
   LocalApiServerLogsRoute: typeof LocalApiServerLogsRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRoute
   RoomsRoomIdRoute: typeof RoomsRoomIdRoute
+  SettingsAgentRoute: typeof SettingsAgentRoute
   SettingsAgentToolsRoute: typeof SettingsAgentToolsRoute
+  SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsAssistantRoute: typeof SettingsAssistantRoute
   SettingsAttachmentsRoute: typeof SettingsAttachmentsRoute
   SettingsClaudeCodeRoute: typeof SettingsClaudeCodeRoute
@@ -512,6 +550,7 @@ export interface RootRouteChildren {
   SettingsLocalApiServerRoute: typeof SettingsLocalApiServerRoute
   SettingsMcpServersRoute: typeof SettingsMcpServersRoute
   SettingsMemoryRoute: typeof SettingsMemoryRoute
+  SettingsNetworkProxyRoute: typeof SettingsNetworkProxyRoute
   SettingsPermissionsRoute: typeof SettingsPermissionsRoute
   SettingsRemoteAccessRoute: typeof SettingsRemoteAccessRoute
   SettingsSchedulesRoute: typeof SettingsSchedulesRoute
@@ -660,6 +699,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsPermissionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/network-proxy': {
+      id: '/settings/network-proxy'
+      path: '/settings/network-proxy'
+      fullPath: '/settings/network-proxy'
+      preLoaderRoute: typeof SettingsNetworkProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/memory': {
       id: '/settings/memory'
       path: '/settings/memory'
@@ -737,11 +783,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/appearance': {
+      id: '/settings/appearance'
+      path: '/settings/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof SettingsAppearanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/agent-tools': {
       id: '/settings/agent-tools'
       path: '/settings/agent-tools'
       fullPath: '/settings/agent-tools'
       preLoaderRoute: typeof SettingsAgentToolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/agent': {
+      id: '/settings/agent'
+      path: '/settings/agent'
+      fullPath: '/settings/agent'
+      preLoaderRoute: typeof SettingsAgentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rooms/$roomId': {
@@ -812,7 +872,9 @@ const rootRouteChildren: RootRouteChildren = {
   LocalApiServerLogsRoute: LocalApiServerLogsRoute,
   ProjectProjectIdRoute: ProjectProjectIdRoute,
   RoomsRoomIdRoute: RoomsRoomIdRoute,
+  SettingsAgentRoute: SettingsAgentRoute,
   SettingsAgentToolsRoute: SettingsAgentToolsRoute,
+  SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsAssistantRoute: SettingsAssistantRoute,
   SettingsAttachmentsRoute: SettingsAttachmentsRoute,
   SettingsClaudeCodeRoute: SettingsClaudeCodeRoute,
@@ -824,6 +886,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsLocalApiServerRoute: SettingsLocalApiServerRoute,
   SettingsMcpServersRoute: SettingsMcpServersRoute,
   SettingsMemoryRoute: SettingsMemoryRoute,
+  SettingsNetworkProxyRoute: SettingsNetworkProxyRoute,
   SettingsPermissionsRoute: SettingsPermissionsRoute,
   SettingsRemoteAccessRoute: SettingsRemoteAccessRoute,
   SettingsSchedulesRoute: SettingsSchedulesRoute,

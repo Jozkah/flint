@@ -175,7 +175,7 @@ export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
                   useSettingsSearch
                     .getState()
                     .requestTarget('settings-appearance-sidebar-items')
-                  navigate({ to: route.settings.interface })
+                  navigate({ to: route.settings.appearance })
                 }}
               >
                 {t('onboarding:sidebar.customize')}

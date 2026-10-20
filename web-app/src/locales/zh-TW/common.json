@@ -126,6 +126,7 @@
   "experimental": "實驗性",
   "claude_code": "Claude Code",
   "https_proxy": "HTTPS 代理",
+  "network_proxy": "網路代理",
   "web_search": "網路搜尋",
   "agent_tools": "代理程式工具",
   "memory": "記憶",

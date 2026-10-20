@@ -126,6 +126,7 @@
   "experimental": "Thử nghiệm",
   "claude_code": "Claude Code",
   "https_proxy": "Proxy HTTPS",
+  "network_proxy": "Proxy mạng",
   "web_search": "Tìm kiếm web",
   "agent_tools": "Công cụ tác tử",
   "memory": "Bộ nhớ",

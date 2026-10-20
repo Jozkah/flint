@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "一般",
+  "groupApp": "アプリ",
+  "groupChatAndAgent": "チャットとエージェント",
   "groupModelsAndTools": "モデルとツール",
+  "groupData": "データ",
+  "groupGeneral": "一般",
   "advancedSettings": "詳細設定",
   "advancedSettingsHint": "ローカル API サーバー、プロキシ、ハードウェア、エージェントツールの設定です。まとめても、それらの動作は何も変わりません。"
 }

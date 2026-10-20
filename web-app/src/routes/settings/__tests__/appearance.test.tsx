@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { Route as InterfaceRoute } from '../interface'
+import { Route as InterfaceRoute } from '../appearance'
 
 // Mock all the dependencies
 vi.mock('@/containers/SettingsMenu', () => ({
@@ -86,7 +86,7 @@ vi.mock('sonner', () => ({
 vi.mock('@/constants/routes', () => ({
   route: {
     settings: {
-      interface: '/settings/interface',
+      appearance: '/settings/appearance',
     },
   },
 }))

@@ -126,6 +126,7 @@
   "experimental": "Experimentell",
   "claude_code": "Claude Code",
   "https_proxy": "HTTPS Proxy",
+  "network_proxy": "Netzwerk-Proxy",
   "web_search": "Websuche",
   "agent_tools": "Agent-Tools",
   "memory": "Gedächtnis",

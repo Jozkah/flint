@@ -462,14 +462,14 @@ const CARD_FILES: Record<string, string[]> = {
 /** Where each page's source lives, relative to `web-app/src`. */
 const ROUTE_FILES: Record<string, string> = {
   general: 'routes/settings/general.tsx',
-  appearance: 'routes/settings/interface.tsx',
+  appearance: 'routes/settings/appearance.tsx',
   jev: 'routes/settings/jev.tsx',
   assistants: 'routes/settings/assistant.tsx',
   attachments: 'routes/settings/attachments.tsx',
   'local-api-server': 'routes/settings/local-api-server.tsx',
-  'https-proxy': 'routes/settings/https-proxy.tsx',
+  'https-proxy': 'routes/settings/network-proxy.tsx',
   'web-search': 'routes/settings/web-search.tsx',
-  'agent-tools': 'routes/settings/agent-tools.tsx',
+  'agent-tools': 'routes/settings/agent.tsx',
   permissions: 'routes/settings/permissions.tsx',
   shortcuts: 'routes/settings/shortcuts.tsx',
   'mcp-servers': 'routes/settings/mcp-servers.tsx',

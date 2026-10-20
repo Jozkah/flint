@@ -126,6 +126,7 @@
   "experimental": "실험실",
   "claude_code": "Claude Code",
   "https_proxy": "HTTPS 프록시",
+  "network_proxy": "네트워크 프록시",
   "web_search": "웹 검색",
   "agent_tools": "에이전트 도구",
   "memory": "메모리",

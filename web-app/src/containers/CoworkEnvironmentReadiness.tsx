@@ -169,8 +169,8 @@ const ROW_ACTION: Partial<
 > = {
   model: { label: 'Open provider', href: '/settings/providers' },
   context: { label: 'Configure context', href: '/settings/providers' },
-  shell: { label: 'Choose shell', href: '/settings/agent-tools' },
-  sandbox: { label: 'Open settings', href: '/settings/agent-tools' },
+  shell: { label: 'Choose shell', href: '/settings/agent' },
+  sandbox: { label: 'Open settings', href: '/settings/agent' },
   mcp: { label: 'Open MCP settings', href: '/settings/mcp-servers' },
 }
 

@@ -56,12 +56,14 @@ describe('SettingsMenu', () => {
     expect(screen.getByText('common:assistants')).toBeInTheDocument()
   })
 
-  it('groups pages under General, Models and tools, and Advanced, in that order', () => {
+  it('groups pages under App, Chat and agent, Models and tools, and Advanced, in that order', () => {
     render(<SettingsMenu />)
-    const general = screen.getByText('navigation:groupGeneral')
+    const app = screen.getByText('navigation:groupApp')
+    const chat = screen.getByText('navigation:groupChatAndAgent')
     const tools = screen.getByText('navigation:groupModelsAndTools')
     const advanced = screen.getByText('navigation:advancedSettings')
-    expect(position(general, tools)).toBeTruthy()
+    expect(position(app, chat)).toBeTruthy()
+    expect(position(chat, tools)).toBeTruthy()
     expect(position(tools, advanced)).toBeTruthy()
     // Web search sits with models and tools, before the advanced group.
     const webSearch = screen.getByText('common:web_search')
@@ -69,10 +71,21 @@ describe('SettingsMenu', () => {
     expect(position(webSearch, advanced)).toBeTruthy()
   })
 
+  it('puts the agent pages under Chat and agent, not Advanced', () => {
+    render(<SettingsMenu />)
+    const chat = screen.getByText('navigation:groupChatAndAgent')
+    const tools = screen.getByText('navigation:groupModelsAndTools')
+    for (const key of ['common:agent_tools', 'common:memory']) {
+      const entry = screen.getByText(key)
+      expect(position(chat, entry)).toBeTruthy()
+      expect(position(entry, tools)).toBeTruthy()
+    }
+  })
+
   it('keeps the advanced pages visible, not behind a disclosure', () => {
     render(<SettingsMenu />)
     expect(screen.getByText('common:local_api_server')).toBeInTheDocument()
-    expect(screen.getByText('common:agent_tools')).toBeInTheDocument()
+    expect(screen.getByText('common:network_proxy')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'navigation:advancedSettings' })
     ).toBeNull()

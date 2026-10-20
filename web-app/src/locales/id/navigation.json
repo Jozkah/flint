@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "Umum",
+  "groupApp": "Aplikasi",
+  "groupChatAndAgent": "Obrolan dan agen",
   "groupModelsAndTools": "Model dan alat",
+  "groupData": "Data",
+  "groupGeneral": "Umum",
   "advancedSettings": "Lanjutan",
   "advancedSettingsHint": "Server API lokal, proxy, perangkat keras, dan konfigurasi alat agen. Mengelompokkannya tidak mengubah cara kerjanya."
 }

@@ -125,6 +125,7 @@
   "experimental": "Eksperimental",
   "claude_code": "Claude Code",
   "https_proxy": "Proksi HTTPS",
+  "network_proxy": "Proksi jaringan",
   "web_search": "Pencarian Web",
   "agent_tools": "Alat Agen",
   "memory": "Memori",

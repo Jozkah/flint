@@ -126,6 +126,7 @@
   "experimental": "प्रायोगिक",
   "claude_code": "Claude कोड",
   "https_proxy": "HTTPS प्रॉक्सी",
+  "network_proxy": "नेटवर्क प्रॉक्सी",
   "web_search": "वेब सर्च",
   "agent_tools": "एजेंट टूल",
   "memory": "मेमोरी",

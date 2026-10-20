@@ -32,13 +32,26 @@ export type SettingsSearchItem = {
   providerName?: string
 }
 
+/** The sidebar groups, in display order. */
+export const SETTINGS_GROUPS = [
+  'app',
+  'chat',
+  'models',
+  'data',
+  'advanced',
+] as const
+export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]
+
 /** One settings page. The same list renders the sidebar, so a page added here
  * appears in navigation and search together. */
 export type SettingsPage = {
   id: string
   route: string
   titleKey: string
-  group: 'core' | 'integrations'
+  /** The sidebar group the page sits under; groups render in this order. */
+  group: SettingsGroup
+  /** Shown with the flask mark in the menu. */
+  experimental?: boolean
   keywords?: readonly string[]
   /**
    * How this page is searchable.
@@ -66,63 +79,35 @@ export const SETTINGS_PAGES = [
     id: 'general',
     route: route.settings.general,
     titleKey: 'common:general',
-    group: 'core',
+    group: 'app',
     keywords: ['updates', 'data folder', 'language'],
   },
   {
     id: 'appearance',
-    route: route.settings.interface,
+    route: route.settings.appearance,
     titleKey: 'common:appearance',
-    group: 'core',
+    group: 'app',
     keywords: ['interface', 'theme', 'font'],
+  },
+  {
+    id: 'shortcuts',
+    route: route.settings.shortcuts,
+    titleKey: 'common:keyboardShortcuts',
+    group: 'app',
+    keywords: ['keyboard', 'hotkeys', 'keybindings'],
   },
   {
     id: 'assistants',
     route: route.settings.assistant,
     titleKey: 'common:assistants',
-    group: 'core',
+    group: 'chat',
     keywords: ['persona', 'instructions'],
-  },
-  {
-    id: 'attachments',
-    route: route.settings.attachments,
-    titleKey: 'common:attachments',
-    group: 'core',
-    keywords: ['files', 'documents', 'rag'],
-  },
-  {
-    id: 'local-api-server',
-    route: route.settings.local_api_server,
-    titleKey: 'common:local_api_server',
-    group: 'core',
-    keywords: ['server', 'openai compatible', 'port'],
-  },
-  {
-    id: 'remote-access',
-    route: route.settings.remote_access,
-    titleKey: 'remote:title',
-    group: 'core',
-    keywords: ['phone', 'mobile', 'tailscale', 'pair', 'remote', 'qr code'],
-  },
-  {
-    id: 'https-proxy',
-    route: route.settings.https_proxy,
-    titleKey: 'common:https_proxy',
-    group: 'core',
-    keywords: ['proxy', 'network', 'ssl'],
-  },
-  {
-    id: 'web-search',
-    route: route.settings.web_search,
-    titleKey: 'common:web_search',
-    group: 'core',
-    keywords: ['internet', 'browse', 'search engine'],
   },
   {
     id: 'memory',
     route: route.settings.memory,
     titleKey: 'common:memory',
-    group: 'core',
+    group: 'chat',
     keywords: [
       'remember',
       'forget',
@@ -140,7 +125,7 @@ export const SETTINGS_PAGES = [
       'state; there is no static setting to anchor. Reached by page title.',
     route: route.settings.schedules,
     titleKey: 'schedules:title',
-    group: 'core',
+    group: 'chat',
     keywords: [
       'scheduled tasks',
       'cron',
@@ -155,7 +140,7 @@ export const SETTINGS_PAGES = [
     id: 'permissions',
     route: route.settings.permissions,
     titleKey: 'permissions:settings.title',
-    group: 'core',
+    group: 'chat',
     keywords: [
       'approval',
       'allow',
@@ -167,37 +152,59 @@ export const SETTINGS_PAGES = [
   },
   {
     id: 'agent-tools',
-    route: route.settings.agent_tools,
+    route: route.settings.agent,
     titleKey: 'common:agent_tools',
-    group: 'core',
+    group: 'chat',
     keywords: ['sandbox', 'shell', 'memory', 'skills'],
   },
   {
-    id: 'shortcuts',
-    route: route.settings.shortcuts,
-    titleKey: 'common:keyboardShortcuts',
-    group: 'core',
-    keywords: ['keyboard', 'hotkeys', 'keybindings'],
+    id: 'model-providers',
+    coverage: 'page-only',
+    coverageNote:
+      'The page lists the providers and models the user has set up, which is ' +
+      'runtime state, and the live provider list is indexed separately. ' +
+      'Reached by page title.',
+    route: route.settings.model_providers,
+    titleKey: 'common:modelProviders',
+    group: 'models',
+    keywords: ['models', 'providers', 'api key', 'openai', 'anthropic', 'llama'],
   },
   {
     id: 'mcp-servers',
     route: route.settings.mcp_servers,
     titleKey: 'common:mcp-servers',
-    group: 'integrations',
+    group: 'models',
+    experimental: true,
     keywords: ['mcp', 'model context protocol', 'tools'],
+  },
+  {
+    id: 'web-search',
+    route: route.settings.web_search,
+    titleKey: 'common:web_search',
+    group: 'models',
+    keywords: ['internet', 'browse', 'search engine'],
+  },
+  {
+    id: 'attachments',
+    route: route.settings.attachments,
+    titleKey: 'common:attachments',
+    group: 'models',
+    keywords: ['files', 'documents', 'rag'],
   },
   {
     id: 'claude-code',
     route: route.settings.claude_code,
     titleKey: 'common:claude_code',
-    group: 'integrations',
+    group: 'models',
+    experimental: true,
     keywords: ['claude', 'cli', 'code'],
   },
   {
     id: 'jev',
     route: route.settings.jev,
     titleKey: 'common:jev.tab',
-    group: 'integrations',
+    group: 'models',
+    experimental: true,
     keywords: ['jev', 'typesafe', 'decision', 'rerank', 'skill suggestion'],
   },
   {
@@ -208,8 +215,30 @@ export const SETTINGS_PAGES = [
       'state; there is no static setting to anchor. Reached by page title.',
     route: route.settings.extensions,
     titleKey: 'common:extensions',
-    group: 'integrations',
+    group: 'models',
+    experimental: true,
     keywords: ['plugins', 'add-ons'],
+  },
+  {
+    id: 'local-api-server',
+    route: route.settings.local_api_server,
+    titleKey: 'common:local_api_server',
+    group: 'advanced',
+    keywords: ['server', 'openai compatible', 'port'],
+  },
+  {
+    id: 'remote-access',
+    route: route.settings.remote_access,
+    titleKey: 'remote:title',
+    group: 'advanced',
+    keywords: ['phone', 'mobile', 'tailscale', 'pair', 'remote', 'qr code'],
+  },
+  {
+    id: 'https-proxy',
+    route: route.settings.network_proxy,
+    titleKey: 'common:network_proxy',
+    group: 'advanced',
+    keywords: ['proxy', 'network', 'ssl'],
   },
 ] as const satisfies readonly SettingsPage[]
 

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
-import { PerformanceModeSetting } from '../interface'
+import { PerformanceModeSetting } from '../appearance'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 describe('Performance mode radiogroup', () => {

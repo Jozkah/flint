@@ -1,5 +1,4 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ReactNode } from 'react'
 import { ChevronDown, FlaskConical } from 'lucide-react'
@@ -15,8 +14,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  SETTINGS_GROUPS,
   SETTINGS_PAGES,
   isSettingsPageAvailable,
+  type SettingsGroup,
   type SettingsPage,
   type SettingsPageId,
 } from '@/lib/settingsSearch'
@@ -24,46 +25,17 @@ import {
 type IconComponent = (props: { size?: number; className?: string }) => ReactNode
 
 /**
- * The three groups of the Sections list, in the design's order. Pages are
- * named by registry id, so the list and settings search cannot drift apart; a
- * registry page missing from every group still shows up (under its registry
- * group) instead of silently disappearing from navigation.
+ * The group headings of the Sections list. Which page sits in which group, and
+ * in what order, is declared once, on the registry's pages, so this list and
+ * settings search cannot drift apart.
  */
-const GROUPS: {
-  key: 'general' | 'tools' | 'advanced'
-  labelKey: string
-  ids: readonly SettingsPageId[]
-}[] = [
-  {
-    key: 'general',
-    labelKey: 'navigation:groupGeneral',
-    ids: [
-      'general',
-      'appearance',
-      'assistants',
-      'attachments',
-      'memory',
-      'schedules',
-      'permissions',
-      'shortcuts',
-    ],
-  },
-  {
-    key: 'tools',
-    labelKey: 'navigation:groupModelsAndTools',
-    ids: ['mcp-servers', 'web-search', 'claude-code', 'jev', 'extensions'],
-  },
-  {
-    key: 'advanced',
-    labelKey: 'navigation:advancedSettings',
-    ids: [
-      'local-api-server',
-      'remote-access',
-      'https-proxy',
-      'agent-tools',
-    ],
-  },
-]
+const GROUP_LABELS: Record<SettingsGroup, string> = {
+  app: 'navigation:groupApp',
+  chat: 'navigation:groupChatAndAgent',
+  models: 'navigation:groupModelsAndTools',
+  data: 'navigation:groupData',
+  advanced: 'navigation:advancedSettings',
+}
 
 // Only the icons live here: they are JSX, and the registry stays pure data
 // the search index can import. Keyed by the registry's id union, so adding or
@@ -77,7 +49,7 @@ const mark =
 
 const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
   general: mark('x-sliders'),
-  // "Appearance" is implemented by the existing Interface settings route.
+  // Appearance lives at /settings/appearance; /settings/interface redirects there.
   appearance: mark('x-palette'),
   assistants: mark('x-feather'),
   attachments: mark('x-clip'),
@@ -90,6 +62,7 @@ const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
   permissions: mark('x-shield'),
   'agent-tools': mark('x-terminal'),
   shortcuts: mark('command'),
+  'model-providers': mark('x-cube'),
   'mcp-servers': mark('flow'),
   extensions: mark('x-puzzle'),
   // TypeSafe's mark: Jev is its model.
@@ -119,48 +92,17 @@ const toEntry = (page: SettingsPage): MenuEntry => ({
   route: page.route,
   titleKey: page.titleKey,
   icon: PAGE_ICONS[page.id as SettingsPageId],
-  experimental: page.group === 'integrations',
+  experimental: Boolean(page.experimental),
 })
 
-/**
- * Model providers live on the Models page now; the Sections list keeps one
- * link to it so settings still reach every place a model is configured.
- */
-const MODEL_PROVIDERS_ENTRY: MenuEntry = {
-  key: 'model-providers',
-  route: route.settings.model_providers,
-  titleKey: 'common:modelProviders',
-  icon: mark('x-cube'),
-  experimental: false,
-}
-
 function buildGroups() {
-  const byId = new Map(
-    SETTINGS_PAGES.filter((p) => isSettingsPageAvailable(p.id)).map((p) => [
-      p.id as string,
-      p,
-    ])
-  )
-  const placed = new Set<string>(GROUPS.flatMap((g) => [...g.ids]))
-  return GROUPS.map((group) => {
-    const pages = group.ids
-      .map((id) => byId.get(id))
-      .filter((p): p is (typeof SETTINGS_PAGES)[number] => Boolean(p))
-    const unplaced = SETTINGS_PAGES.filter(
-      (p) =>
-        !placed.has(p.id) &&
-        isSettingsPageAvailable(p.id) &&
-        (group.key === 'tools'
-          ? p.group === 'integrations'
-          : group.key === 'general' && p.group === 'core')
-    )
-    const entries = [...pages, ...unplaced].map(toEntry)
-    return {
-      ...group,
-      entries:
-        group.key === 'tools' ? [MODEL_PROVIDERS_ENTRY, ...entries] : entries,
-    }
-  }).filter((group) => group.entries.length > 0) // no heading over nothing
+  return SETTINGS_GROUPS.map((key) => ({
+    key,
+    labelKey: GROUP_LABELS[key],
+    entries: SETTINGS_PAGES.filter(
+      (p) => p.group === key && isSettingsPageAvailable(p.id)
+    ).map(toEntry),
+  })).filter((group) => group.entries.length > 0) // no heading over nothing
 }
 
 type SettingsMenuProps = {

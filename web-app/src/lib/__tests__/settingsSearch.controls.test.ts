@@ -23,7 +23,7 @@ describe('settings search finds controls, not only pages', () => {
 
   it('ranks Agent Tools first for compaction, with an anchor to scroll to', () => {
     const [first] = searchSettings(index(), 'compaction')
-    expect(first.route).toContain('agent-tools')
+    expect(first.route).toContain('/settings/agent')
     expect(first.anchor).toBeTruthy()
   })
 })

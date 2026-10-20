@@ -128,6 +128,7 @@
   "experimental": "Экспериментально",
   "claude_code": "Claude Code",
   "https_proxy": "HTTPS-прокси",
+  "network_proxy": "Сетевой прокси",
   "web_search": "Веб-поиск",
   "agent_tools": "Инструменты агента",
   "memory": "Память",

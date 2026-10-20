@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "Genel",
+  "groupApp": "Uygulama",
+  "groupChatAndAgent": "Sohbet ve ajan",
   "groupModelsAndTools": "Modeller ve araçlar",
+  "groupData": "Veri",
+  "groupGeneral": "Genel",
   "advancedSettings": "Gelişmiş",
   "advancedSettingsHint": "Yerel API sunucusu, proxy, donanım ve ajan aracı yapılandırması. Bunları gruplamak çalışma şekillerini değiştirmez."
 }

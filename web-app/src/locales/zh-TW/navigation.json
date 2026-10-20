@@ -1,6 +1,9 @@
 {
-  "groupGeneral": "一般",
+  "groupApp": "應用程式",
+  "groupChatAndAgent": "聊天與代理",
   "groupModelsAndTools": "模型與工具",
+  "groupData": "資料",
+  "groupGeneral": "一般",
   "advancedSettings": "進階",
   "advancedSettingsHint": "本機 API 伺服器、代理伺服器、硬體與代理程式工具設定。將它們分組不會改變其運作方式。"
 }

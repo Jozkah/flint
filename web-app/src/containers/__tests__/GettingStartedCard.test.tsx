@@ -69,7 +69,7 @@ describe('GettingStartedCard', () => {
       'onboarding:sidebar.title'
     )
     fireEvent.click(screen.getByTestId('guide-customize-sidebar'))
-    expect(navigate).toHaveBeenCalledWith({ to: '/settings/interface' })
+    expect(navigate).toHaveBeenCalledWith({ to: '/settings/appearance' })
     expect(useSettingsSearch.getState().pendingTarget).toBe(
       'settings-appearance-sidebar-items'
     )
