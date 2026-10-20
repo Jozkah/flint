@@ -53,7 +53,10 @@
     "accessNoPermissions": "Instal·lar o activar un connector no executa cap dels seus fitxers ni concedeix cap permís d'eina.",
     "mcpPresent": "Aquest connector inclou un fitxer .mcp.json. Flint no el carrega: els connectors no afegeixen servidors MCP. Configura els servidors MCP a la Configuració.",
     "executables": "Fitxers de script ({{count}})",
-    "executablesMore": "i {{count}} més"
+    "executablesMore": "i {{count}} més",
+    "commit": "Commit",
+    "pinned": "Fixat a",
+    "marketplace": "Marketplace"
   },
   "toggle": {
     "label": "Activa {{name}} per a aquest projecte",
@@ -126,6 +129,17 @@
     "project_unavailable": "La carpeta del projecte no està disponible. {{detail}}",
     "config": "No s'ha pogut llegir ni escriure l'agent.toml del projecte. {{detail}}",
     "io": "Ha fallat una operació amb fitxers. {{detail}}",
-    "unknown": "Alguna cosa ha anat malament. {{detail}}"
+    "unknown": "Alguna cosa ha anat malament. {{detail}}",
+    "sha_mismatch": "L'origen ja no coincideix amb el commit fixat; no s'ha canviat res. {{detail}}"
+  },
+  "update": {
+    "button": "Actualitza",
+    "running": "Actualitzant…",
+    "done": "{{name}} actualitzat.",
+    "upToDate": "{{name}} ja està actualitzat.",
+    "failed": "No s'ha pogut actualitzar {{name}}: {{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}} (el nom també és en un altre marketplace)"
   }
 }

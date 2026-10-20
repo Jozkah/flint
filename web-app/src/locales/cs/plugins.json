@@ -53,7 +53,10 @@
     "accessNoPermissions": "Instalace ani povolení pluginu nespouští žádný z jeho souborů a neuděluje žádná oprávnění k nástrojům.",
     "mcpPresent": "Tento plugin obsahuje soubor .mcp.json. Flint jej nenačítá: pluginy nepřidávají žádné servery MCP. Servery MCP konfigurujte v Nastavení.",
     "executables": "Soubory skriptů ({{count}})",
-    "executablesMore": "a dalších {{count}}"
+    "executablesMore": "a dalších {{count}}",
+    "commit": "Commit",
+    "pinned": "Připnuto na",
+    "marketplace": "Marketplace"
   },
   "toggle": {
     "label": "Povolit {{name}} pro tento projekt",
@@ -126,6 +129,17 @@
     "project_unavailable": "Složka projektu není dostupná. {{detail}}",
     "config": "Soubor agent.toml projektu se nepodařilo přečíst nebo zapsat. {{detail}}",
     "io": "Souborová operace selhala. {{detail}}",
-    "unknown": "Něco se pokazilo. {{detail}}"
+    "unknown": "Něco se pokazilo. {{detail}}",
+    "sha_mismatch": "Zdroj již neodpovídá připnutému commitu, nic se nezměnilo. {{detail}}"
+  },
+  "update": {
+    "button": "Aktualizovat",
+    "running": "Aktualizuji…",
+    "done": "{{name}} aktualizován.",
+    "upToDate": "{{name}} je již aktuální.",
+    "failed": "{{name}} se nepodařilo aktualizovat: {{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}} (název je i v jiném marketplace)"
   }
 }

@@ -346,6 +346,10 @@ pub(crate) struct PluginsSection {
     /// Unset disables name-based installs; direct git URLs still work.
     #[serde(default)]
     pub marketplace: Option<String>,
+    /// Further marketplace index URLs, searched alongside `marketplace`. A
+    /// name offered by more than one is reported as a clash, never shadowed.
+    #[serde(default)]
+    pub marketplaces: Vec<String>,
     /// Installed plugins (by directory name) that stay on disk but contribute
     /// nothing: their skills, commands and agents are skipped by discovery.
     /// Absent or empty means every installed plugin is enabled.

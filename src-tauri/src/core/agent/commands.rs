@@ -376,6 +376,20 @@ pub fn agent_plugin_install_cancel(operation_id: String) -> bool {
     plugins::cancel_install(&operation_id)
 }
 
+/// Re-resolve an installed git or marketplace plugin and reinstall it only when
+/// its commit changed. Enable state is kept.
+#[tauri::command]
+pub async fn agent_plugin_update(
+    project: String,
+    id: String,
+    operation_id: String,
+    scope: Option<String>,
+) -> Result<plugins::UpdateReport, plugins::PluginError> {
+    let guard = plugins::begin_install(&operation_id)?;
+    let scope = resolve_plugin_scope(&project, scope.as_deref());
+    plugins::update_plugin_scoped(&scope, &id, guard.ctx()).await
+}
+
 /// Enable or disable an installed plugin for this project
 /// (`[plugins].disabled` in agent.toml). Returns the plugin's new state.
 #[tauri::command]

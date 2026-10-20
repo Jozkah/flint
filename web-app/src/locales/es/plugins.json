@@ -53,7 +53,10 @@
     "accessNoPermissions": "Instalar o activar un plugin no ejecuta ninguno de sus archivos ni concede permisos de herramientas.",
     "mcpPresent": "Este plugin incluye un archivo .mcp.json. Flint no lo carga: los plugins no añaden servidores MCP. Configura los servidores MCP en Ajustes.",
     "executables": "Archivos de script ({{count}})",
-    "executablesMore": "y {{count}} más"
+    "executablesMore": "y {{count}} más",
+    "commit": "Commit",
+    "pinned": "Fijado a",
+    "marketplace": "Marketplace"
   },
   "toggle": {
     "label": "Activar {{name}} para este proyecto",
@@ -126,6 +129,17 @@
     "project_unavailable": "La carpeta del proyecto no está disponible. {{detail}}",
     "config": "No se pudo leer ni escribir el agent.toml del proyecto. {{detail}}",
     "io": "Falló una operación de archivo. {{detail}}",
-    "unknown": "Algo salió mal. {{detail}}"
+    "unknown": "Algo salió mal. {{detail}}",
+    "sha_mismatch": "El origen ya no coincide con el commit fijado; no se cambió nada. {{detail}}"
+  },
+  "update": {
+    "button": "Actualizar",
+    "running": "Actualizando…",
+    "done": "{{name}} actualizado.",
+    "upToDate": "{{name}} ya está actualizado.",
+    "failed": "No se pudo actualizar {{name}}: {{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}} (el nombre también está en otro marketplace)"
   }
 }

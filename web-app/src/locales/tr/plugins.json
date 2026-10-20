@@ -53,7 +53,10 @@
     "accessNoPermissions": "Bir eklentiyi yüklemek veya etkinleştirmek dosyalarından hiçbirini çalıştırmaz ve araç izni vermez.",
     "mcpPresent": "Bu eklenti bir .mcp.json dosyası içeriyor. Flint onu yüklemez: eklentiler MCP sunucusu eklemez. MCP sunucularını Ayarlar'da yapılandırın.",
     "executables": "Betik dosyaları ({{count}})",
-    "executablesMore": "ve {{count}} tane daha"
+    "executablesMore": "ve {{count}} tane daha",
+    "commit": "Commit",
+    "pinned": "Sabitlendi",
+    "marketplace": "Marketplace"
   },
   "toggle": {
     "label": "{{name}} eklentisini bu proje için etkinleştir",
@@ -126,6 +129,17 @@
     "project_unavailable": "Proje klasörü kullanılamıyor. {{detail}}",
     "config": "Projenin agent.toml dosyası okunamadı veya yazılamadı. {{detail}}",
     "io": "Bir dosya işlemi başarısız oldu. {{detail}}",
-    "unknown": "Bir şeyler ters gitti. {{detail}}"
+    "unknown": "Bir şeyler ters gitti. {{detail}}",
+    "sha_mismatch": "Kaynak artık sabitlenen commit ile eşleşmiyor, hiçbir şey değiştirilmedi. {{detail}}"
+  },
+  "update": {
+    "button": "Güncelle",
+    "running": "Güncelleniyor…",
+    "done": "{{name}} güncellendi.",
+    "upToDate": "{{name}} zaten güncel.",
+    "failed": "{{name}} güncellenemedi: {{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}} (ad başka bir marketplace'te de var)"
   }
 }

@@ -8,6 +8,7 @@ import {
   Plus,
   Power,
   Search,
+  RefreshCw,
   Sparkles,
   Trash2,
   X,
@@ -31,6 +32,7 @@ import {
   removePlugin,
   searchPlugins,
   setPluginEnabled,
+  updatePlugin,
   toPluginError,
   urlHost,
   type InstallSource,
@@ -91,6 +93,7 @@ export default function PluginsTab({
   const [mode, setMode] = useState<'list' | 'browse' | 'install'>('list')
   const [query, setQuery] = useState('')
   const [entries, setEntries] = useState<MarketEntry[]>([])
+  const [updating, setUpdating] = useState<string | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [installingName, setInstallingName] = useState<string | null>(null)
@@ -207,6 +210,27 @@ export default function PluginsTab({
       if (toPluginError(e).code === 'not_installed') void refresh()
     } finally {
       setToggling(null)
+    }
+  }
+
+  const runUpdate = async (plugin: PluginDetails) => {
+    setUpdating(plugin.id)
+    setRemoveError(null)
+    try {
+      const report = await updatePlugin('', plugin.id, crypto.randomUUID(), 'global')
+      toast.success(
+        report.updated
+          ? t('plugins:update.done', { name: plugin.name })
+          : t('plugins:update.upToDate', { name: plugin.name })
+      )
+      if (report.updated) invalidateSkills()
+      await refresh()
+    } catch (e) {
+      setRemoveError(
+        t('plugins:update.failed', { name: plugin.name, error: pluginErrorText(t, e) })
+      )
+    } finally {
+      setUpdating(null)
     }
   }
 
@@ -601,6 +625,13 @@ export default function PluginsTab({
               <span className="min-w-0 truncate font-mono" title={entry.repo}>
                 {urlHost(entry.repo) || entry.repo}
               </span>
+              {entry.marketplace && (
+                <span className="min-w-0 truncate" title={entry.marketplace}>
+                  {entry.clash
+                    ? t('plugins:market.clash', { marketplace: urlHost(entry.marketplace) })
+                    : urlHost(entry.marketplace)}
+                </span>
+              )}
               <Button
                 size="sm"
                 className="h-7 shrink-0 pointer-coarse:h-11"
@@ -741,6 +772,24 @@ export default function PluginsTab({
                 {sourceLabel(details)}
                 {details.source ? `: ${details.source}` : ''}
               </dd>
+              {details.commitSha && (
+                <>
+                  <dt className="text-muted-foreground">{t('plugins:details.commit')}</dt>
+                  <dd className="break-all font-mono">{details.commitSha.slice(0, 12)}</dd>
+                </>
+              )}
+              {details.pinnedSha && (
+                <>
+                  <dt className="text-muted-foreground">{t('plugins:details.pinned')}</dt>
+                  <dd className="break-all font-mono">{details.pinnedSha.slice(0, 12)}</dd>
+                </>
+              )}
+              {details.marketplace && (
+                <>
+                  <dt className="text-muted-foreground">{t('plugins:details.marketplace')}</dt>
+                  <dd className="break-all">{details.marketplace}</dd>
+                </>
+              )}
               <dt className="text-muted-foreground">{t('plugins:details.installedPath')}</dt>
               <dd className="break-all">{details.installedPath}</dd>
             </dl>
@@ -754,7 +803,23 @@ export default function PluginsTab({
                   "Governs this plugin's skills, subagents and slash commands on each surface."}
               </p>
             </div>
-            <div>
+            <div className="flex flex-wrap gap-2">
+              {(details.sourceKind === 'git' || details.sourceKind === 'marketplace') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={updating !== null}
+                  onClick={() => void runUpdate(details)}
+                >
+                  {updating === details.id ? (
+                    <Loader2 size={14} className="animate-spin" aria-hidden />
+                  ) : (
+                    <RefreshCw size={14} aria-hidden />
+                  )}
+                  {updating === details.id ? t('plugins:update.running') : t('plugins:update.button')}
+                </Button>
+              )}
               <Button
                 variant="destructive"
                 size="sm"

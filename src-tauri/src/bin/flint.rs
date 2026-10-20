@@ -36,7 +36,7 @@ use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
     cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui,
     cli_get_thread, cli_list_messages, cli_list_threads, cli_plugin_install, cli_plugin_list,
-    cli_plugin_remove, cli_plugin_search, ResumeRequest, SessionFlags,
+    cli_plugin_remove, cli_plugin_search, cli_plugin_update, ResumeRequest, SessionFlags,
 };
 use std::fmt::Write as _;
 
@@ -508,6 +508,12 @@ enum PluginCommands {
     },
     /// Remove an installed plugin by name
     Remove {
+        name: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Update a git or marketplace plugin if its source has a newer commit
+    Update {
         name: String,
         #[arg(long, default_value = ".")]
         project: String,
@@ -2581,6 +2587,9 @@ async fn handle_plugin(cmd: PluginCommands) {
             PluginCommands::Remove { name, project } => {
                 cli_plugin_remove(&project, &name).map(|()| println!("Removed plugin '{name}'"))
             }
+            PluginCommands::Update { name, project } => cli_plugin_update(&project, &name)
+                .await
+                .map(|report| println!("{}", report.message)),
             PluginCommands::Search { query, project } => {
                 cli_plugin_search(&project, query.as_deref().unwrap_or(""))
                     .await

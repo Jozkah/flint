@@ -1177,6 +1177,14 @@ pub fn cli_plugin_remove(project: &str, name: &str) -> Result<(), String> {
     crate::core::agent::plugins::remove(&resolve_project_root(project), name)
 }
 
+/// Update a git or marketplace plugin when its source moved to a new commit.
+pub async fn cli_plugin_update(
+    project: &str,
+    name: &str,
+) -> Result<crate::core::agent::plugins::UpdateReport, String> {
+    crate::core::agent::plugins::update(&resolve_project_root(project), name).await
+}
+
 /// Search the configured plugin marketplace for a project.
 pub async fn cli_plugin_search(
     project: &str,
