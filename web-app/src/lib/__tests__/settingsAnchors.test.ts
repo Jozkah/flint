@@ -86,14 +86,12 @@ describe('settings anchors', () => {
   })
 
   it('lets a setting be indexed without an anchor', () => {
-    // Host and port live in a popover that unmounts, so they deliberately
-    // carry none: findable and navigable, with no highlight promised.
+    // Only a setting with no single target may go without: findable and
+    // navigable, with no highlight promised.
     const hostless = SETTINGS_ITEMS.filter((item) => !item.anchor).map(
       (item) => item.id
     )
     expect(hostless).toEqual([
-      'settings-local-api-server-host',
-      'settings-local-api-server-port',
       // Sits inside each server's own card, so there is no single target.
       'settings-mcp-servers-server-tool-timeout',
     ])

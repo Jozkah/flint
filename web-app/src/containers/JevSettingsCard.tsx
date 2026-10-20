@@ -58,13 +58,13 @@ function ModePicker({
 type JevTab = 'setup' | 'automatic' | 'profiles' | 'receipts'
 
 const TAB_OF_ANCHOR: Record<string, JevTab> = {
-  'settings-jev-key': 'setup',
-  'settings-jev-skills': 'setup',
-  'settings-jev-rerank': 'setup',
-  'settings-jev-route': 'automatic',
-  'settings-jev-activate': 'automatic',
-  'settings-jev-model-routing': 'automatic',
-  'settings-jev-profiles': 'profiles',
+  'settings-integrations-jev-key': 'setup',
+  'settings-integrations-jev-skills': 'setup',
+  'settings-integrations-jev-rerank': 'setup',
+  'settings-integrations-jev-route': 'automatic',
+  'settings-integrations-jev-activate': 'automatic',
+  'settings-integrations-jev-model-routing': 'automatic',
+  'settings-integrations-jev-profiles': 'profiles',
 }
 
 /**

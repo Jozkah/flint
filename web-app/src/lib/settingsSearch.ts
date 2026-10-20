@@ -202,41 +202,26 @@ export const SETTINGS_PAGES = [
   },
   {
     id: 'integrations',
-    coverage: 'page-only',
-    coverageNote: 'Being filled in: Claude Code, Jev and Extensions become its tabs.',
     route: route.settings.integrations,
     titleKey: 'common:integrations',
     group: 'models',
     experimental: true,
-    keywords: ['claude code', 'jev', 'typesafe', 'extensions', 'plugins'],
-  },
-  {
-    id: 'claude-code',
-    route: route.settings.claude_code,
-    titleKey: 'common:claude_code',
-    group: 'models',
-    experimental: true,
-    keywords: ['claude', 'cli', 'code'],
-  },
-  {
-    id: 'jev',
-    route: route.settings.jev,
-    titleKey: 'common:jev.tab',
-    group: 'models',
-    experimental: true,
-    keywords: ['jev', 'typesafe', 'decision', 'rerank', 'skill suggestion'],
-  },
-  {
-    id: 'extensions',
-    coverage: 'page-only',
-    coverageNote:
-      'The page lists the extensions actually installed, which is runtime ' +
-      'state; there is no static setting to anchor. Reached by page title.',
-    route: route.settings.extensions,
-    titleKey: 'common:extensions',
-    group: 'models',
-    experimental: true,
-    keywords: ['plugins', 'add-ons'],
+    // Claude Code, Jev and Extensions were pages of their own; they are its
+    // tabs now, and their keywords still find it.
+    keywords: [
+      'claude code',
+      'claude',
+      'cli',
+      'code',
+      'jev',
+      'typesafe',
+      'decision',
+      'rerank',
+      'skill suggestion',
+      'extensions',
+      'plugins',
+      'add-ons',
+    ],
   },
   {
     id: 'data',
@@ -433,9 +418,16 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:httpsProxy.noProxyDesc',
     keywords: ['bypass', 'exclusions'],
   }),
-  item('https-proxy', 'ignore-ssl', 'settings:httpsProxy.ignoreSsl', {
+  // Labelled as the per-provider switch is; the old label stays a keyword.
+  item('https-proxy', 'ignore-ssl', 'providers:tlsTrust.title', {
     descriptionKey: 'settings:httpsProxy.ignoreSslDesc',
-    keywords: ['certificates', 'tls', 'ssl verification'],
+    keywords: [
+      'ignore ssl certificates',
+      'certificates',
+      'tls',
+      'ssl verification',
+      'self-signed',
+    ],
   }),
   // Web search
   item('web-search', 'enable', 'settings:webSearch.enable', {
@@ -526,28 +518,38 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:agentTools.networkDesc',
     keywords: ['bash network', 'sandbox network'],
   }),
-  // Local API server.
-  //
-  // Host and port live inside the page's "Configuration" popover, which is
-  // closed on arrival and unmounts its content. There is nothing on the page
-  // to scroll to, so these carry no anchor: the result still finds them and
-  // opens the page, and the search stops promising a highlight it cannot
-  // deliver. Give them an anchor again if the controls move into the page.
+  // Local API server: the Settings tab's Connection and Behaviour cards
   item('local-api-server', 'host', 'settings:localApiServer.serverHost', {
-    anchor: undefined,
-    anchorNote:
-      'Rendered inside the Configuration popover, which is unmounted until it ' +
-      'is opened, so there is nothing to scroll to on arrival.',
     descriptionKey: 'settings:localApiServer.serverHostDesc',
     keywords: ['host', 'address', 'bind'],
   }),
   item('local-api-server', 'port', 'settings:localApiServer.serverPort', {
-    anchor: undefined,
-    anchorNote:
-      'Rendered inside the Configuration popover, which is unmounted until it ' +
-      'is opened, so there is nothing to scroll to on arrival.',
     descriptionKey: 'settings:localApiServer.serverPortDesc',
     keywords: ['port', 'listen'],
+  }),
+  item('local-api-server', 'api-prefix', 'settings:localApiServer.apiPrefix', {
+    descriptionKey: 'settings:localApiServer.apiPrefixDesc',
+    keywords: ['path', 'endpoint', 'v1'],
+  }),
+  item('local-api-server', 'api-key', 'settings:localApiServer.apiKey', {
+    descriptionKey: 'settings:localApiServer.apiKeyDesc',
+    keywords: ['authentication', 'token', 'bearer'],
+  }),
+  item('local-api-server', 'trusted-hosts', 'settings:localApiServer.trustedHosts', {
+    descriptionKey: 'settings:localApiServer.trustedHostsDesc',
+    keywords: ['allowed hosts', 'host header', 'lan'],
+  }),
+  item('local-api-server', 'request-timeout', 'settings:localApiServer.proxyTimeout', {
+    descriptionKey: 'settings:localApiServer.proxyTimeoutDesc',
+    keywords: ['timeout', 'seconds', 'slow model'],
+  }),
+  item('local-api-server', 'cors', 'settings:localApiServer.cors', {
+    descriptionKey: 'settings:localApiServer.corsDesc',
+    keywords: ['cross origin', 'browser requests'],
+  }),
+  item('local-api-server', 'verbose-logs', 'settings:localApiServer.verboseLogs', {
+    descriptionKey: 'settings:localApiServer.verboseLogsDesc',
+    keywords: ['debug', 'logging'],
   }),
   item(
     'local-api-server',
@@ -574,6 +576,30 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('attachments', 'max-file', 'settings:attachments.maxFile', {
     descriptionKey: 'settings:attachments.maxFileDesc',
     keywords: ['file size', 'limit'],
+  }),
+  item('attachments', 'auto-inline', 'settings:attachments.autoInlineThreshold', {
+    descriptionKey: 'settings:attachments.autoInlineThresholdDesc',
+    keywords: ['inline', 'context', 'cutoff'],
+  }),
+  item('attachments', 'top-k', 'settings:attachments.topK', {
+    descriptionKey: 'settings:attachments.topKDesc',
+    keywords: ['citations', 'results', 'retrieval'],
+  }),
+  item('attachments', 'threshold', 'settings:attachments.threshold', {
+    descriptionKey: 'settings:attachments.thresholdDesc',
+    keywords: ['similarity', 'score', 'retrieval'],
+  }),
+  item('attachments', 'search-mode', 'settings:attachments.searchMode', {
+    descriptionKey: 'settings:attachments.searchModeDesc',
+    keywords: ['ann', 'vector', 'cosine', 'sqlite-vec'],
+  }),
+  item('attachments', 'chunk-size', 'settings:attachments.chunkSize', {
+    descriptionKey: 'settings:attachments.chunkSizeDesc',
+    keywords: ['chunking', 'embeddings'],
+  }),
+  item('attachments', 'chunk-overlap', 'settings:attachments.chunkOverlap', {
+    descriptionKey: 'settings:attachments.chunkOverlapDesc',
+    keywords: ['chunking', 'overlap'],
   }),
   // Hardware has no individual entries: the page is a read-out of the
   // detected CPU, RAM and GPUs plus a switch per device, none of which is a
@@ -667,14 +693,14 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     keywords: ['router', 'model selection'],
   }),
 
-  // Claude Code
-  item('jev', 'key', 'common:jev.key', {
+  // Integrations: Jev tab
+  item('integrations', 'jev-key', 'common:jev.key', {
     keywords: ['typesafe', 'api key'],
   }),
-  item('jev', 'skills', 'common:jev.skillTitle', {
+  item('integrations', 'jev-skills', 'common:jev.skillTitle', {
     keywords: ['skill suggestion', 'typesafe'],
   }),
-  item('jev', 'rerank', 'common:jev.rerankTitle', {
+  item('integrations', 'jev-rerank', 'common:jev.rerankTitle', {
     keywords: ['rerank', 'retrieval', 'attachments', 'typesafe'],
   }),
   // Remote access
@@ -692,19 +718,20 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('remote-access', 'devices', 'remote:cardDevices', {
     keywords: ['pair', 'qr code', 'unpair', 'devices'],
   }),
-  item('claude-code', 'fable-model', 'settings:claudeCode.fableModel', {
+  // Integrations: Claude Code tab (desktop only)
+  item('integrations', 'claude-code-fable-model', 'settings:claudeCode.fableModel', {
     descriptionKey: 'settings:claudeCode.fableModelDesc',
     keywords: ['fable', 'model', 'claude code'],
   }),
-  item('claude-code', 'large-model', 'settings:claudeCode.largeModel', {
+  item('integrations', 'claude-code-large-model', 'settings:claudeCode.largeModel', {
     descriptionKey: 'settings:claudeCode.largeModelDesc',
     keywords: ['opus', 'model', 'claude code'],
   }),
-  item('claude-code', 'medium-model', 'settings:claudeCode.mediumModel', {
+  item('integrations', 'claude-code-medium-model', 'settings:claudeCode.mediumModel', {
     descriptionKey: 'settings:claudeCode.mediumModelDesc',
     keywords: ['sonnet', 'model', 'claude code'],
   }),
-  item('claude-code', 'small-model', 'settings:claudeCode.smallModel', {
+  item('integrations', 'claude-code-small-model', 'settings:claudeCode.smallModel', {
     descriptionKey: 'settings:claudeCode.smallModelDesc',
     keywords: ['haiku', 'model', 'claude code'],
   }),
@@ -745,19 +772,25 @@ const stripMarkdown = (text: string): string =>
 
 /**
  * Pages whose controls drive this machine through desktop-only commands (the
- * local API server, phone pairing, the HTTPS proxy, coding CLIs, OS schedules,
- * extensions). The browser client of `flint serve` has no route for them, so
+ * local API server, phone pairing, the HTTPS proxy, OS schedules,
+ * agent tools). The browser client of `flint serve` has no route for them, so
  * they are left out of its menu and search rather than shown as dead controls.
  */
 const DESKTOP_ONLY_PAGES: ReadonlySet<string> = new Set([
   'local-api-server',
   'remote-access',
   'https-proxy',
-  'claude-code',
   'schedules',
-  'extensions',
   'agent-tools',
 ])
+
+/**
+ * Settings on a desktop-only tab of a page the browser client still shows
+ * (Integrations keeps its Jev tab there), so the page stays but these go.
+ */
+const DESKTOP_ONLY_ITEM_PREFIXES: readonly string[] = [
+  'settings-integrations-claude-code-',
+]
 
 /** Whether a settings page works on this platform. */
 export function isSettingsPageAvailable(id: string): boolean {
@@ -795,8 +828,14 @@ export function buildSettingsIndex(
       keywords: [...(page.keywords ?? [])],
     })
   }
+  const desktop = isPlatformTauri()
   for (const setting of SETTINGS_ITEMS) {
     if (hiddenRoutes.has(setting.route)) continue
+    if (
+      !desktop &&
+      DESKTOP_ONLY_ITEM_PREFIXES.some((p) => setting.id.startsWith(p))
+    )
+      continue
     entries.push({
       kind: 'setting',
       id: setting.id,

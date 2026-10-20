@@ -3,7 +3,6 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ReactNode } from 'react'
 import { ChevronDown, FlaskConical } from 'lucide-react'
 import { Icon, type IconName } from '@/components/ui/icon'
-import { TypeSafeMark } from '@/components/ui/TypeSafeMark'
 import { cn } from '@/lib/utils'
 import { SettingsSearch } from '@/containers/SettingsSearch'
 import {
@@ -67,19 +66,6 @@ const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
   shortcuts: mark('command'),
   'model-providers': mark('x-cube'),
   'mcp-servers': mark('flow'),
-  extensions: mark('x-puzzle'),
-  // TypeSafe's mark: Jev is its model.
-  jev: ({ size, className }) => <TypeSafeMark size={size} className={className} />,
-  // Claude's own mark keeps its colour in both themes.
-  'claude-code': ({ size, className }) => (
-    <img
-      src="/images/logos/claude-color.svg"
-      width={size}
-      height={size}
-      alt=""
-      className={className}
-    />
-  ),
 }
 
 type MenuEntry = {

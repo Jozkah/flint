@@ -59,7 +59,7 @@ describe('web mode desktop-only surfaces', () => {
 
   it('keeps desktop-only pages out of the browser settings menu', async () => {
     const { isSettingsPageAvailable } = await import('@/lib/settingsSearch')
-    for (const id of ['agent-tools', 'extensions', 'schedules', 'local-api-server']) {
+    for (const id of ['agent-tools', 'schedules', 'local-api-server']) {
       expect(isSettingsPageAvailable(id), id).toBe(false)
     }
     expect(isSettingsPageAvailable('memory')).toBe(true)
@@ -68,7 +68,6 @@ describe('web mode desktop-only surfaces', () => {
   it.each([
     ['settings/local-api-server', '@/routes/settings/local-api-server'],
     ['settings/remote-access', '@/routes/settings/remote-access'],
-    ['settings/extensions', '@/routes/settings/extensions'],
     ['extensions', '@/routes/extensions'],
     ['studio', '@/routes/studio'],
   ])('opens /%s by URL as the desktop-only page, never an error', async (_name, path) => {
