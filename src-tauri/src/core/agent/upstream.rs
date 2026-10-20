@@ -28,7 +28,7 @@ use crate::core::server::proxy::engine_upstream;
 use crate::core::server::MlxBackendSession;
 use crate::core::{
     mcp::models::McpSettings,
-    mcp::truncate::truncate_tool_result,
+    mcp::truncate::truncate_or_spill,
     state::{ProviderConfig, SharedMcpServers},
 };
 
@@ -1421,6 +1421,27 @@ pub(crate) async fn execute_mcp_tool_calls(
     mcp_servers: &SharedMcpServers,
     mcp_settings: &Arc<Mutex<McpSettings>>,
 ) -> Vec<(String, String)> {
+    execute_mcp_tool_calls_spilling(
+        tool_calls,
+        tool_to_server,
+        tool_call_names,
+        mcp_servers,
+        mcp_settings,
+        None,
+    )
+    .await
+}
+
+/// [`execute_mcp_tool_calls`], with a directory an over-long result is saved
+/// to in full (see [`truncate_or_spill`]) instead of only being cut.
+pub(crate) async fn execute_mcp_tool_calls_spilling(
+    tool_calls: &[serde_json::Value],
+    tool_to_server: &HashMap<String, String>,
+    tool_call_names: &HashMap<String, String>,
+    mcp_servers: &SharedMcpServers,
+    mcp_settings: &Arc<Mutex<McpSettings>>,
+    spill_dir: Option<&std::path::Path>,
+) -> Vec<(String, String)> {
     let (timeout_duration, tool_output_cap) = {
         let settings = mcp_settings.lock().await;
         (
@@ -1443,6 +1464,7 @@ pub(crate) async fn execute_mcp_tool_calls(
         server_configs: &server_configs,
         timeout_duration,
         tool_output_cap,
+        spill_dir,
     };
     let data_folder = crate::core::app::commands::resolve_jan_data_folder();
     let saved = crate::core::mcp::commands::saved_server_configs(&data_folder);
@@ -1470,6 +1492,7 @@ struct McpCallContext<'a> {
     server_configs: &'a serde_json::Map<String, Value>,
     timeout_duration: std::time::Duration,
     tool_output_cap: u64,
+    spill_dir: Option<&'a std::path::Path>,
 }
 
 /// Server name -> its tools that advertise `readOnlyHint: true`, refreshed
@@ -1568,6 +1591,7 @@ async fn execute_one_mcp_tool_call(tc: &Value, ctx: &McpCallContext<'_>) -> (Str
         server_configs,
         timeout_duration,
         tool_output_cap,
+        spill_dir,
     } = *ctx;
     let tool_call_id = tc
         .get("id")
@@ -1676,7 +1700,7 @@ async fn execute_one_mcp_tool_call(tc: &Value, ctx: &McpCallContext<'_>) -> (Str
         // Same cap as the desktop path: this string is appended to the agent's
         // message history, so an unbounded result would blow the context here too.
         Ok(res) => {
-            let capped = truncate_tool_result(&res, server_cap);
+            let capped = truncate_or_spill(&res, server_cap, spill_dir, &tool_name);
             crate::core::mcp::budget::charge(
                 server_name,
                 crate::core::mcp::budget::result_chars(&capped),
