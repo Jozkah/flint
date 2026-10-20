@@ -41,6 +41,7 @@
     "gitRemote": "Flint ingin menjalankan {{command}}, yang mengubah {{target}}",
     "gitDestructive": "Flint ingin menjalankan {{command}}, yang dapat menghilangkan pekerjaan",
     "approveCampaign": "Flint ingin memulai campaign \"{{title}}\" ({{count}} tugas)",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
     "spendPause": "Flint ingin melanjutkan proses ini melewati jeda pengeluarannya",
     "changeFileOutside": "Flint ingin mengubah {{target}}, yang berada di luar {{workspace}}",
     "changeManyFilesOutside": "Flint ingin mengubah {{count}} berkas, sebagian di luar {{workspace}}"
@@ -63,6 +64,7 @@
     "gitRemote": "Mengirim perubahan ke repositori jarak jauh yang dapat dilihat orang lain. Flint bertanya setiap kali kecuali Anda mengizinkan sementara aksi Git jarak jauh biasa untuk percakapan ini.",
     "gitDestructive": "Apa yang dihapus atau ditimpanya mungkin tidak dapat dipulihkan.",
     "campaignPlan": "Ini memulai sesi terpisah, masing-masing di branch worktree sendiri, yang membaca dan mengubah file serta memakai kuota model Anda secara paralel. Menyetujui rencana tidak menyetujui panggilan apa pun yang dibuat tugas. Flint bertanya setiap kali.",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
     "spendPause": "Proses terus memakai kuota model berbayar sampai selesai atau mencapai batasnya. Menolak akan menghentikannya."
   },
   "repeat": {

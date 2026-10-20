@@ -41,6 +41,7 @@
     "gitRemote": "Flint 想要运行 {{command}}，这会更改 {{target}}",
     "gitDestructive": "Flint 想要运行 {{command}}，这可能会丢失工作成果",
     "approveCampaign": "Flint 想要开始战役“{{title}}”（{{count}} 个任务）",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
     "spendPause": "Flint 想在超过支出暂停额度后继续此次运行",
     "changeFileOutside": "Flint 想修改 {{workspace}} 之外的 {{target}}",
     "changeManyFilesOutside": "Flint 想修改 {{count}} 个文件,其中一些在 {{workspace}} 之外"
@@ -63,6 +64,7 @@
     "gitRemote": "它会将更改发送到其他人可见的远程仓库。除非你为此对话临时允许普通的远程 Git 操作，否则 Flint 每次都会询问。",
     "gitDestructive": "它删除或覆盖的内容可能无法恢复。",
     "campaignPlan": "它会启动各自独立的会话，每个会话位于自己的 worktree 分支上，读取并更改文件，并并行消耗你的模型配额。批准计划并不等于批准任务发起的任何调用。Flint 每次都会询问。",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
     "spendPause": "运行会继续消耗付费模型额度，直到结束或达到上限。拒绝则停止运行。"
   },
   "repeat": {

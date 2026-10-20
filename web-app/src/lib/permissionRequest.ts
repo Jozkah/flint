@@ -16,6 +16,8 @@ import {
   STOP_SESSION_TOOL_NAME,
 } from '@/lib/sessionMessagingTools'
 import { CAMPAIGN_PLAN_TOOL_NAME } from '@/lib/campaignToolNames'
+import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
+import { phaseSizes } from '@/lib/workflowLaunchGate'
 import {
   GIT_TOOL_NAME,
   gitAlwaysAsks,
@@ -393,6 +395,12 @@ function resourcesFor(
               )
             : []
         )
+      } else if (toolName === WORKFLOW_TOOL_NAME && Array.isArray(args.phases)) {
+        // Each phase by name and size, in order.
+        raw = args.phases.map((phase, i) => {
+          const name = isPlainObject(phase) ? str(phase.name) : undefined
+          return `${i + 1}. ${name ?? `Phase ${i + 1}`} (${phaseSizes(args)[i]})`
+        })
       } else if (toolName === 'team' && Array.isArray(args.tasks)) {
         raw = args.tasks.flatMap((task) =>
           isPlainObject(task) ? strings(task.writes) : []
@@ -571,6 +579,13 @@ function actionFor(
           },
         }
       }
+      if (toolName === WORKFLOW_TOOL_NAME) {
+        const sizes = phaseSizes(args)
+        return {
+          key: 'permissions:action.runWorkflow',
+          values: { agents: sizes.reduce((a, b) => a + b, 0), phases: sizes.length },
+        }
+      }
       if (toolName === SPEND_PAUSE_TOOL_NAME)
         return { key: 'permissions:action.spendPause' }
       if (HELPER_TOOLS.has(toolName)) return { key: 'permissions:action.startHelper' }
@@ -622,6 +637,9 @@ function consequencesFor(
       }
       if (toolName === CAMPAIGN_PLAN_TOOL_NAME) {
         return [{ key: 'permissions:consequence.campaignPlan' }]
+      }
+      if (toolName === WORKFLOW_TOOL_NAME) {
+        return [{ key: 'permissions:consequence.workflow' }]
       }
       if (toolName === SPEND_PAUSE_TOOL_NAME) {
         return [{ key: 'permissions:consequence.spendPause' }]

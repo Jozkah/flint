@@ -41,6 +41,7 @@
     "gitRemote": "Flint, {{target}} hedefini değiştiren {{command}} komutunu çalıştırmak istiyor",
     "gitDestructive": "Flint, çalışma kaybına yol açabilecek {{command}} komutunu çalıştırmak istiyor",
     "approveCampaign": "Flint \"{{title}}\" kampanyasını başlatmak istiyor ({{count}} görev)",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
     "spendPause": "Flint, harcama duraklatmasını aşarak bu çalıştırmayı sürdürmek istiyor",
     "changeFileOutside": "Flint, {{workspace}} dışındaki {{target}} dosyasını değiştirmek istiyor",
     "changeManyFilesOutside": "Flint {{count}} dosyayı değiştirmek istiyor, bazıları {{workspace}} dışında"
@@ -63,6 +64,7 @@
     "gitRemote": "Başkalarının görebileceği uzak bir depoya değişiklik gönderir. Bu konuşma için sıradan uzak Git eylemlerine geçici olarak izin vermediyseniz Flint her seferinde sorar.",
     "gitDestructive": "Kaldırdığı veya üzerine yazdığı şeyler geri alınamayabilir.",
     "campaignPlan": "Her biri kendi worktree dalında olan, dosyaları okuyan ve değiştiren, model kotanızı paralel kullanan ayrı oturumlar başlatır. Planı onaylamak, bir görevin yaptığı hiçbir çağrıyı onaylamak anlamına gelmez. Flint her seferinde sorar.",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
     "spendPause": "Çalıştırma, bitene veya üst sınırına ulaşana kadar ücretli model kotasını kullanmayı sürdürür. Reddetmek çalıştırmayı durdurur."
   },
   "repeat": {

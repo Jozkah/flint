@@ -41,6 +41,7 @@
     "gitRemote": "Flint vol executar {{command}}, que canvia {{target}}",
     "gitDestructive": "Flint vol executar {{command}}, que pot fer perdre feina",
     "approveCampaign": "Flint vol iniciar la campanya \"{{title}}\" ({{count}} tasques)",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
     "spendPause": "Flint vol continuar aquesta execució més enllà de la seva pausa de despesa",
     "changeFileOutside": "Flint vol canviar {{target}}, que és fora de {{workspace}}",
     "changeManyFilesOutside": "Flint vol canviar {{count}} fitxers, alguns fora de {{workspace}}"
@@ -63,6 +64,7 @@
     "gitRemote": "Envia canvis a un repositori remot que altres persones poden veure. Flint ho pregunta cada vegada tret que permetis temporalment les accions Git remotes ordinàries per a aquesta conversa.",
     "gitDestructive": "El que elimina o sobreescriu pot no ser recuperable.",
     "campaignPlan": "Inicia sessions separades, cadascuna en la seva pròpia branca de worktree, que llegeixen i canvien fitxers i fan servir la quota del teu model en paral·lel. Aprovar el pla no aprova cap crida que faci una tasca. Flint pregunta cada vegada.",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
     "spendPause": "L'execució continua gastant quota de model de pagament fins que acabi o arribi al límit. Si ho denegues, s'atura."
   },
   "repeat": {
