@@ -210,3 +210,16 @@ Nothing needs polling:
   the sender is running, or by waking it when it is idle, with the usual
   "from <title>" card. A run that handled a message and ended without replying
   has its final answer sent back automatically.
+
+## Not supported
+
+Messaging is local to this machine. Sessions reach each other through the app's
+own in-process mailbox, so a session cannot message one on another computer, on
+a phone paired to this app, or in another user's Flint, and there is no setting
+to allow it (Claude Code's "isolate peer machines" switch has nothing to
+switch here). Reaching across machines would need a relay both sides trust:
+somewhere to authenticate each peer, route and queue messages while one is
+offline, and decide what a remote message may do. Flint runs no such service,
+and a message is untrusted text that must never become authority, which a relay
+would make much harder to keep true. Until there is one, run the sessions that
+need to talk on the same machine.
