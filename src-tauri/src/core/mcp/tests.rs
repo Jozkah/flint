@@ -614,9 +614,9 @@ fn test_default_mcp_config_parses_as_valid_json() {
         serde_json::from_str(DEFAULT_MCP_CONFIG).expect("DEFAULT_MCP_CONFIG must be valid JSON");
     assert!(value["mcpServers"].is_object());
     assert!(value["mcpSettings"].is_object());
-    // Spot-check known servers
-    assert!(value["mcpServers"]["browsermcp"].is_object());
-    assert_eq!(value["mcpServers"]["browsermcp"]["command"], "npx");
+    // Only the unfinished community browser server is seeded.
+    assert!(value["mcpServers"]["Browser MCP (WIP)"].is_object());
+    assert_eq!(value["mcpServers"].as_object().unwrap().len(), 1);
     assert_eq!(
         value["mcpSettings"]["toolCallTimeoutSeconds"],
         super::constants::DEFAULT_MCP_TOOL_CALL_TIMEOUT_SECS
