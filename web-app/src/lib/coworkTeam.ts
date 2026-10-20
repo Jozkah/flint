@@ -19,6 +19,7 @@
  * is why [`assembleReport`] takes results rather than prose about them.
  */
 
+import { MAX_LOOP_TASKS, type LoopMeta } from '@/lib/workflowLoops'
 import {
   TeamControl,
   applyReplacement,
@@ -117,6 +118,8 @@ export type TeamTask = {
    * the `workflow` front end for every phase after the first.
    */
   carry?: string[]
+  /** Set by `workflowToTeamInput` for a step of an expanded `repeat_until` loop. */
+  loop?: LoopMeta
 }
 
 /** The most extra attempts a task may ask for. */
@@ -745,8 +748,13 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
   if (!Array.isArray(input.tasks) || input.tasks.length === 0) {
     return 'team needs a non-empty `tasks` array'
   }
-  if (input.tasks.length > MAX_TEAM_TASKS) {
-    return `a team is at most ${MAX_TEAM_TASKS} tasks; split the work`
+  // A workflow holding a loop expands past the team cap; it says so itself.
+  const cap =
+    typeof input.max_tasks === 'number' && input.max_tasks > MAX_TEAM_TASKS
+      ? Math.min(Math.floor(input.max_tasks), MAX_LOOP_TASKS)
+      : MAX_TEAM_TASKS
+  if (input.tasks.length > cap) {
+    return `a team is at most ${cap} tasks; split the work`
   }
 
   const tasks: TeamTask[] = []
@@ -787,6 +795,22 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
             : []
         })
       : []
+    const rawLoop = one.loop as Record<string, unknown> | null | undefined
+    const loop: LoopMeta | undefined =
+      rawLoop &&
+      Number.isInteger(rawLoop.phase) &&
+      Number.isInteger(rawLoop.round) &&
+      Number.isInteger(rawLoop.max) &&
+      (rawLoop.kind === 'agent' || rawLoop.kind === 'check')
+        ? {
+            phase: rawLoop.phase as number,
+            round: rawLoop.round as number,
+            kind: rawLoop.kind,
+            ...(typeof rawLoop.base === 'string' ? { base: rawLoop.base } : {}),
+            max: rawLoop.max as number,
+            noProgress: rawLoop.noProgress === true,
+          }
+        : undefined
     const reads = stringList(one.reads)
     const deletes = stringList(one.deletes)
     tasks.push({
@@ -799,6 +823,7 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
         ? { schema: one.schema as Record<string, unknown> }
         : {}),
       ...(model ? { model } : {}),
+      ...(loop ? { loop } : {}),
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),
       ...(reads.length ? { reads } : {}),

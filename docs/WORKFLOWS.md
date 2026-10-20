@@ -115,7 +115,7 @@ round's results carried into their briefs; after every round a check agent
   `stop_when_no_progress`, when its agents' aggregated results are identical to
   the previous round's (then that round's check is not even run).
 - Expanded agents count toward the total and toward the approval threshold at
-  their worst case (`agents * max_rounds + max_rounds`). Workflows with loops
+  their worst case (`agents * max_rounds + (max_rounds - 1)` checks). Workflows with loops
   may have up to 40 agents in the expansion; without loops the 12 cap stands.
 - A failed agent blocks its round's check and so ends the loop, as in any
   graph. Resuming (section 2) works through loops: cached checks reproduce the

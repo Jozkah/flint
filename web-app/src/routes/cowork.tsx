@@ -479,6 +479,7 @@ import {
   type TeamTask,
 } from '@/lib/coworkTeam'
 import { openRunLog, withRunLog } from '@/lib/workflowRuns'
+import { wrapLoops } from '@/lib/workflowLoops'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
@@ -4711,7 +4712,7 @@ export function CoworkPage() {
                               ? `${teamProgress(state)} · waiting for a decision on the failed tasks`
                               : teamProgress(state),
                         }),
-                      runTask: withLog(async (one: TeamTask, signal: AbortSignal) => {
+                      runTask: wrapLoops(withLog(async (one: TeamTask, signal: AbortSignal) => {
                         // One call id per task, so each child gets its own
                         // transcript lane and its own entry in the Tasks panel.
                         const childId = `${callId}:${one.id}`
@@ -4835,7 +4836,7 @@ export function CoworkPage() {
                             useTeamChildrenVersion.getState().bump()
                           }
                         }
-                      }),
+                      })),
                     })
                     await runLog?.settled()
                     if (!outcome.ok) {
