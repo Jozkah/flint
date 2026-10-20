@@ -124,6 +124,7 @@ export function JevSettingsCard({
     <>
     <Segmented<JevTab>
       size="sm"
+      wrap
       aria-label={t('common:jev.tab')}
       value={tab}
       onValueChange={setTab}
