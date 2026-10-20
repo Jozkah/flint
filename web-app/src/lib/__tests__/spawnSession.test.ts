@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import {
@@ -126,6 +127,51 @@ describe('spawn_session', () => {
 
     it('rejects an unknown context', async () => {
       const out = await runSpawnSession('p1', { title: 'a', prompt: 'b', context: 'share' })
+      expect(out.isError).toBe(true)
+      expect(children()).toHaveLength(0)
+    })
+  })
+
+  describe('ask before nested chats start', () => {
+    const approve = vi.fn()
+    const input = { title: 'Side job', prompt: 'go' }
+
+    beforeEach(() => {
+      approve.mockReset().mockResolvedValue(true)
+      useSessionMessaging.getState().setAskNested('p1', true)
+    })
+    afterEach(() => useSessionMessaging.getState().setAskNested('p1', false))
+
+    it('starts unprompted while the setting is off', async () => {
+      useSessionMessaging.getState().setAskNested('p1', false)
+      const out = await runSpawnSession('p1', input, { mode: 'ask', onApprove: approve })
+      expect(out.isError).toBeFalsy()
+      expect(approve).not.toHaveBeenCalled()
+    })
+
+    it('asks first and starts on a yes', async () => {
+      const out = await runSpawnSession('p1', input, { mode: 'ask', onApprove: approve })
+      expect(out.isError).toBeFalsy()
+      expect(approve).toHaveBeenCalledWith(
+        expect.any(String),
+        'spawn_session',
+        { title: 'Side job', worktree: false },
+        undefined,
+        undefined
+      )
+      expect(children()).toHaveLength(1)
+    })
+
+    it('starts nothing on a no', async () => {
+      approve.mockResolvedValue(false)
+      const out = await runSpawnSession('p1', input, { mode: 'ask', onApprove: approve })
+      expect(out.isError).toBe(true)
+      expect(out.output).toContain('did not allow')
+      expect(children()).toHaveLength(0)
+    })
+
+    it('refuses where nothing can ask', async () => {
+      const out = await runSpawnSession('p1', input, { mode: 'ask' })
       expect(out.isError).toBe(true)
       expect(children()).toHaveLength(0)
     })

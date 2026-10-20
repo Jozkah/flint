@@ -172,6 +172,37 @@ export async function runSpawnSession(
     }
   }
 
+  // A fresh child has no folder and no grants, so it starts unprompted unless
+  // the user turned on "ask before nested chats start" for this session. (A
+  // worktree child is always asked, below.)
+  if (!worktree) {
+    const { useSessionMessaging } = await import('@/hooks/useSessionMessaging')
+    if (useSessionMessaging.getState().askNested?.[parentId] === true) {
+      if (!spawn.onApprove) {
+        return refuse(
+          'the user asks before nested chats start, and nothing here can ask them.'
+        )
+      }
+      let allowed = false
+      try {
+        allowed = await spawn.onApprove(
+          spawn.toolCallId ?? `spawn-${parentId}-${Date.now()}`,
+          SPAWN_SESSION_TOOL_NAME,
+          { title, worktree: false },
+          undefined,
+          spawn.signal
+        )
+      } catch {
+        allowed = false
+      }
+      if (!allowed || spawn.signal?.aborted) {
+        return refuse(
+          'the user did not allow this nested chat. Do not retry it unchanged; do the work here or wait for instructions.'
+        )
+      }
+    }
+  }
+
   const now = Date.now()
   const shownTitle = title.slice(0, MAX_TITLE_CHARS)
   let id: string
