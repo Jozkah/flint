@@ -108,6 +108,8 @@ export type ChildChoice = {
   supportsVision?: boolean
   /** The model id the row shows. */
   modelId: string
+  /** The provider that model belongs to, when known. */
+  providerId?: string
   assistant?: { id: string; name: string }
   profile?: WorkProfileId
   /** The assistant / profile came from the parent run, not from a setting. */
@@ -180,6 +182,7 @@ export async function prepareChildChoice(input: {
   let model: LanguageModel | undefined
   let supportsVision: boolean | undefined
   let modelId = input.parentModel.id
+  let providerId: string | undefined = input.parentModel.provider || undefined
   let note: string | undefined = argNote
   const ref = choice.model.value
   const differs =
@@ -193,6 +196,7 @@ export async function prepareChildChoice(input: {
         model = created.model
         supportsVision = created.supportsVision
         modelId = ref.id
+        providerId = ref.provider
       } else {
         note = note ?? `model ${ref.id} is not available for subagents; used the parent's model`
       }
@@ -204,6 +208,7 @@ export async function prepareChildChoice(input: {
   return {
     ...(model ? { model, supportsVision } : {}),
     modelId,
+    providerId,
     assistant,
     profile,
     inherited: {
