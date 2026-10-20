@@ -517,6 +517,10 @@ async fn schedule_mcp_start_task<R: Runtime>(
     name: String,
     config: Value,
 ) -> Result<(), String> {
+    // `${VAR}` placeholders are resolved here, on a launch-time copy: the stored
+    // config and its trust fingerprint keep the placeholder, so a resolved
+    // secret is never persisted or part of the server's identity.
+    let config = super::envexpand::expand_config(&name, &config)?;
     let app_path = get_jan_data_folder_path(app.clone());
     let exe_path = env::current_exe()
         .map_err(|e| format!("Failed to get current exe path: {e}"))?;
