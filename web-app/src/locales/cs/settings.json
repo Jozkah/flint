@@ -560,7 +560,9 @@
       "foreignDesc": "Nalezeno v {{path}}, nainstalováno jinou kopií Flintu. Nainstalujte zde, abyste použili CLI této kopie."
     },
     "startupGroup": "Spuštění a lišta",
-    "cliGroup": "Příkazový řádek"
+    "cliGroup": "Příkazový řádek",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "Rozšíření"

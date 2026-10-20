@@ -556,7 +556,9 @@
       "foreignDesc": "{{path}} पर मिला, Flint की किसी दूसरी कॉपी ने इंस्टॉल किया है। इस कॉपी का CLI इस्तेमाल करने के लिए यहाँ इंस्टॉल करें।"
     },
     "startupGroup": "स्टार्टअप और ट्रे",
-    "cliGroup": "कमांड लाइन"
+    "cliGroup": "कमांड लाइन",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "एक्सटेंशन"

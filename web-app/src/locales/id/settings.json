@@ -554,7 +554,9 @@
       "foreignDesc": "Ditemukan di {{path}}, dipasang oleh salinan Flint lain. Pasang di sini untuk memakai CLI salinan ini."
     },
     "startupGroup": "Startup dan tray",
-    "cliGroup": "Baris perintah"
+    "cliGroup": "Baris perintah",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "Ekstensi"
