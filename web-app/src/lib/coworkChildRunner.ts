@@ -260,10 +260,29 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     let localTurns: CoworkTurn[] = []
     const askable = req.background === true && parentTaskId === undefined
     try {
-      const setup = env.setup(resolved, destination)
+      const built = env.setup(resolved, destination)
+      // A definition that omits instructions hands its child none: neither the
+      // `JAN.md` nor the compatibility files the parent was given.
+      const setup = resolved.omitInstructions
+        ? {
+            ...built,
+            system: {
+              ...built.system,
+              projectInstructions: null,
+              compatInstructions: [],
+            },
+          }
+        : built
       const child = await runSubagent({
         resolved,
-        description: req.description,
+        // The definition's opening lines go before the parent's message. A
+        // resumed child already has them in its history.
+        description:
+          resolved.initialPrompt && !remembered
+            ? `${resolved.initialPrompt}
+
+${req.description}`
+            : req.description,
         ...(remembered ? { history: remembered.messages } : {}),
         // The same identity the child's dispatched calls carry, for the calls
         // the runner refuses without dispatching.

@@ -356,6 +356,7 @@ fn read_markdown(path: &Path, skipped: &mut Vec<String>) -> Result<Option<Import
             // is dispatched, saying so.
             model: fm.model.clone().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()),
             auto_compact_window: None,
+            extras: Default::default(),
             scope: SubagentScope::User,
         },
         dialect,
@@ -461,6 +462,7 @@ fn read_opencode_json(path: &Path, skipped: &mut Vec<String>) -> Result<Vec<Impo
                 allowed_tools,
                 model: fm.model.clone().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()),
                 auto_compact_window: None,
+                extras: Default::default(),
                 scope: SubagentScope::User,
             },
             dialect: Dialect::OpenCode,

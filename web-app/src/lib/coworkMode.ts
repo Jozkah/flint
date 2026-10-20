@@ -49,6 +49,22 @@ export const isReadOnly = (mode: CoworkMode): boolean => mode === 'review'
 /** Does a mutation in this mode wait for the user? */
 export const gatesMutations = (mode: CoworkMode): boolean => mode === 'ask'
 
+/** Least to most permissive, for comparing two modes. */
+const MODE_RANK: Record<CoworkMode, number> = { review: 0, ask: 1, auto: 2, bypass: 3 }
+
+export const isCoworkMode = (value: unknown): value is CoworkMode =>
+  typeof value === 'string' && (COWORK_MODES as readonly string[]).includes(value)
+
+/**
+ * The mode a child runs in: the one it asked for, but never more permissive than
+ * its parent's. A child can be made stricter than the run; nothing makes it
+ * looser. An absent or unknown request leaves the parent's mode as it is.
+ */
+export function capMode(parent: CoworkMode, requested: unknown): CoworkMode {
+  if (!isCoworkMode(requested)) return parent
+  return MODE_RANK[requested] < MODE_RANK[parent] ? requested : parent
+}
+
 const EMPTY: ReadonlySet<string> = new Set()
 
 /**
