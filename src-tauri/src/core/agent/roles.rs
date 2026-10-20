@@ -148,6 +148,7 @@ pub fn definitions() -> Vec<SubagentDefinition> {
             allowed_tools: Some(r.tools.iter().map(|t| t.to_string()).collect()),
             model: None,
             auto_compact_window: None,
+            extras: Default::default(),
             scope: SubagentScope::Builtin,
         })
         .collect()

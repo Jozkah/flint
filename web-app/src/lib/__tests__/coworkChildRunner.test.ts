@@ -268,6 +268,55 @@ describe('createChildRunner', () => {
   })
 })
 
+describe('per-agent options in the child runner', () => {
+  const withOptions = (over: Record<string, unknown>) => [
+    { ...defs[0], name: 'tuned', ...over },
+  ]
+  const setupWithInstructions: ChildRunnerEnv['setup'] = () => ({
+    system: {
+      workspacePath: '/ws',
+      readOnlyFolder: null,
+      bashAvailable: false,
+      projectInstructions: 'be careful',
+      compatInstructions: [{ name: 'CLAUDE.md', content: 'x' }],
+    },
+    dispatch: vi.fn(async () => ({ output: 'ok' })),
+    activity: () => ({ session: SID, run: RUN, agent: 'tuned' }) as never,
+  })
+
+  it('prepends the initial_prompt to the delegation, but not to a resumed follow-up', async () => {
+    answers('done', { messages: [] })
+    const run = createChildRunner(env({ definitions: withOptions({ initial_prompt: 'Start with X.' }) }))
+    await run('c1', { subagent_name: 'tuned', description: 'look at Y' })
+    expect(runSubagent.mock.calls[0][0].description).toBe('Start with X.\n\nlook at Y')
+    await run('c2', { subagent_name: 'tuned', description: 'and Z', resume_agent_id: 'c1' })
+    expect(runSubagent.mock.calls[1][0].description).toBe('and Z')
+  })
+
+  it('hands a definition with omit_instructions no project instructions', async () => {
+    answers('done')
+    await createChildRunner(
+      env({ definitions: withOptions({ omit_instructions: true }), setup: setupWithInstructions })
+    )('c1', { subagent_name: 'tuned', description: 'd' })
+    expect(runSubagent.mock.calls[0][0].system).toMatchObject({
+      projectInstructions: null,
+      compatInstructions: [],
+    })
+  })
+
+  it('keeps the parent’s instructions for a definition that does not omit them', async () => {
+    answers('done')
+    await createChildRunner(env({ definitions: withOptions({}), setup: setupWithInstructions }))(
+      'c1',
+      { subagent_name: 'tuned', description: 'd' }
+    )
+    expect(runSubagent.mock.calls[0][0].system).toMatchObject({
+      projectInstructions: 'be careful',
+      compatInstructions: [{ name: 'CLAUDE.md', content: 'x' }],
+    })
+  })
+})
+
 describe('resuming a finished subagent', () => {
   const history = [
     { id: 'sub-user-0', role: 'user', parts: [{ type: 'text', text: 'first brief' }] },

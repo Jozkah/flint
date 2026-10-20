@@ -706,6 +706,9 @@ pub struct SubagentDefinitionDto {
     pub model: Option<String>,
     /// `builtin` for a role Flint ships, `user` for one saved on this machine.
     pub scope: subagent::SubagentScope,
+    /// Optional per-agent options; absent keys are left out of the JSON.
+    #[serde(flatten)]
+    pub extras: subagent::SubagentOptions,
 }
 
 /// The roles Flint ships (AH-094..099), then every subagent saved for the
@@ -743,6 +746,7 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
             allowed_tools: d.allowed_tools,
             model: d.model,
             scope: d.scope,
+            extras: d.extras,
         })
         .collect())
 }
