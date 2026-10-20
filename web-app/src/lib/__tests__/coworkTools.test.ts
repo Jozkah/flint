@@ -74,6 +74,17 @@ describe('buildCoworkTools', () => {
     expect(tools[TASK_TOOL_NAME]).toBeUndefined()
   })
 
+  it('offers spawn_session to a top-level session and not to a spawned one', async () => {
+    const top = await buildCoworkTools(opts())
+    expect(top['spawn_session']).toBeDefined()
+    const child = await buildCoworkTools(opts({ spawned: true }))
+    expect(child['spawn_session']).toBeUndefined()
+    expect(child[TASK_TOOL_NAME]).toBeDefined()
+    expect(coworkToolSignature(opts({ spawned: true }), true)).not.toBe(
+      coworkToolSignature(opts(), true)
+    )
+  })
+
   it('names the saved subagents in the task description', async () => {
     const tools = await buildCoworkTools(
       opts({ subagentNames: ['researcher', 'planner', 'writer'] })
