@@ -560,6 +560,7 @@ import {
   subagentActorId,
   SUBAGENT_RESULT_HEAD_CHARS,
 } from '@/lib/coworkSubagent'
+import { AGENT_MEMORY_TOOL_NAME } from '@/lib/coworkSubagentMemory'
 import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
 import { createChildRunner } from '@/lib/coworkChildRunner'
 import { DelegationNudge } from '@/lib/delegationNudge'
@@ -3773,6 +3774,22 @@ export function CoworkPage() {
       supportsVision: () =>
         selectedModel?.capabilities?.includes('vision') ?? false,
       providerOptions: () => transport.reasoningProviderOptions(),
+      // A subagent's own memory is the user's to approve, write by write. Review
+      // and plan modes change nothing, so a write is refused there without asking.
+      approveMemoryWrite: async ({ agent, scope, content, signal }) => {
+        const live = liveSessionMode(sid) ?? runMode
+        if (isReadOnly(live)) return false
+        return useToolApprovalRequests
+          .getState()
+          .requestApproval(`agent-memory:${agent}:${Date.now()}`, AGENT_MEMORY_TOOL_NAME, sid, undefined, {
+            input: { agent, scope, content },
+            alwaysAsk: true,
+            taskContext: `${agent} wants to replace its ${scope} memory (MEMORY.md)`,
+            preview: content,
+            origin: agent,
+            signal,
+          })
+      },
       parentTools: () => transport.childToolSet,
       anchorMessageId,
       lane: {
