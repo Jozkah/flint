@@ -2408,6 +2408,8 @@
   "coworkParallel": {
     "settingTitle": "Phiên mới trong thư mục Git làm việc trong worktree riêng",
     "settingDescription": "Mỗi phiên mới gắn với một kho Git có worktree và nhánh riêng (flint/<title>), để nhiều phiên có thể làm việc cùng lúc trong một thư mục mà không đụng vào nhau hay vào bản checkout của bạn. Xem lại, hợp nhất hoặc bỏ từng nhánh ngay trong phiên.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "Phiên này làm việc trên nhánh {{branch}}, trong worktree riêng",
     "basedOn": "từ {{base}}",
     "openFolder": "Mở thư mục",

@@ -2447,6 +2447,8 @@
   "coworkParallel": {
     "settingTitle": "Le nuove sessioni in una cartella Git lavorano nel proprio worktree",
     "settingDescription": "Ogni nuova sessione collegata a un repository Git riceve un proprio worktree e branch (flint/<title>), così più sessioni possono lavorare nella stessa cartella senza interferire tra loro o con il tuo checkout. Rivedi, unisci o scarta ogni branch dalla sessione.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "Questa sessione lavora sul branch {{branch}}, nel proprio worktree",
     "basedOn": "da {{base}}",
     "openFolder": "Apri cartella",

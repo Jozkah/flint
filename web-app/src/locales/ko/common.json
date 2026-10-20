@@ -2409,6 +2409,8 @@
   "coworkParallel": {
     "settingTitle": "Git 폴더의 새 세션은 자체 worktree에서 작업",
     "settingDescription": "Git 저장소에 연결된 새 세션마다 자체 worktree와 브랜치(flint/<title>)가 생겨, 여러 세션이 서로나 내 체크아웃을 건드리지 않고 한 폴더에서 동시에 작업할 수 있습니다. 각 브랜치는 세션에서 검토, 병합 또는 폐기하세요.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "이 세션은 자체 worktree에서 {{branch}} 브랜치로 작업합니다",
     "basedOn": "{{base}}에서",
     "openFolder": "폴더 열기",

@@ -130,6 +130,27 @@ describe('enter_worktree', () => {
     expect(ensure).not.toHaveBeenCalled()
   })
 
+  it('turns pr into the backend pull request base and a pr-<n> name', async () => {
+    ensure.mockResolvedValue({ ok: true, record: { ...record, baseBranch: null } })
+    await runEnterWorktree('s1', { pr: '#42' }, { mode: 'ask', onApprove: approve })
+    expect(ensure).toHaveBeenCalledWith('s1', '/proj', '/data', { title: 'pr-42', base: 'pr:42' })
+    expect(approve.mock.calls[0][2]).toMatchObject({ base: 'pull request #42' })
+    ensure.mockClear()
+    await runEnterWorktree(
+      's1',
+      { pr: 'https://github.com/acme/app/pull/9/files' },
+      { mode: 'ask', onApprove: approve }
+    )
+    expect(ensure.mock.calls[0][3]).toEqual({ title: 'pr-9', base: 'pr:acme/app#9' })
+  })
+
+  it('rejects a bad pr, and pr together with base', async () => {
+    for (const input of [{ pr: 'x1' }, { pr: 0 }, { pr: 'https://evil.test/a/b/pull/1' }, { pr: 3, base: 'main' }]) {
+      expect((await runEnterWorktree('s1', input, { mode: 'ask', onApprove: approve })).isError).toBe(true)
+    }
+    expect(ensure).not.toHaveBeenCalled()
+  })
+
   it('rejects a base that looks like an option', async () => {
     const out = await runEnterWorktree('s1', { base: '--upload-pack=x' }, { mode: 'ask', onApprove: approve })
     expect(out.isError).toBe(true)
