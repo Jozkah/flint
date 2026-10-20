@@ -71,6 +71,7 @@ import {
 import { useEngineActivity } from '@/stores/engine-activity-store'
 import { cn } from '@/lib/utils'
 import { SettingsTabStrip, useSettingsTab } from '@/containers/SettingsTabs'
+import { ModelDefaultsCard } from '@/containers/ModelDefaultsCard'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.model_providers as any)({
@@ -120,7 +121,11 @@ function ModelProviders() {
         defaultValue: 'Providers and models',
       }),
     },
-    { id: 'defaults' as OverviewTab, label: t('engine:tabs.defaults', { defaultValue: 'Defaults' }) },
+    {
+      id: 'defaults' as OverviewTab,
+      label: t('engine:tabs.defaults', { defaultValue: 'Defaults' }),
+      anchors: ['settings-model-providers-*'],
+    },
   ]
   const [pageTab, setPageTab] = useSettingsTab<OverviewTab>(pageTabs)
 
@@ -875,7 +880,7 @@ function ModelProviders() {
         )}
 
         {pageTab === 'defaults' && (
-          <>{/* DefaultsTab: mounted by integration step */}</>
+          <ModelDefaultsCard />
         )}
 
         <RenameProviderDialog

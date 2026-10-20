@@ -213,7 +213,11 @@
     "modeAuto": "自動核准安全呼叫；對危險呼叫詢問",
     "modeBypass": "略過權限直到 Flint 關閉",
     "modeDetails": "自動核准會對破壞性指令、主機動作、遠端變更和其他敏感呼叫詢問。略過會同時跳過這些核准提示。",
-    "bypassConfirm": "略過權限會在不詢問的情況下執行所有操作,包括主機指令(PowerShell、WSL、SSH、安裝)、破壞性指令、專案資料夾以外的寫入和 git push。計畫模式、你寫的拒絕規則、支出上限和機密資訊遮蔽仍會拒絕。在 Flint 關閉前啟用略過權限?"
+    "bypassConfirm": "略過權限會在不詢問的情況下執行所有操作,包括主機指令(PowerShell、WSL、SSH、安裝)、破壞性指令、專案資料夾以外的寫入和 git push。計畫模式、你寫的拒絕規則、支出上限和機密資訊遮蔽仍會拒絕。在 Flint 關閉前啟用略過權限?",
+    "tabRules": "規則",
+    "tabAccess": "存取",
+    "tabRemembered": "已記住",
+    "tabActivity": "活動"
   },
   "badge": {
     "reachesRemote": "存取 {{target}}",

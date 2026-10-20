@@ -259,7 +259,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "Apenas as autoridades certificadoras da plataforma são confiáveis.",
     "caBundleInUse": "Confiando em {{count}} certificado(s) deste bundle, além dos da plataforma.",
-    "caBundleBroken": "Este bundle não pode ser usado ({{kind}}): o HTTPS de saída não confia em nada até que ele seja corrigido ou removido."
+    "caBundleBroken": "Este bundle não pode ser usado ({{kind}}): o HTTPS de saída não confia em nada até que ele seja corrigido ou removido.",
+    "ignoreSslScope": "Vale para todo o tráfego via proxy. Um único provedor também pode permitir certificados inválidos para o próprio endereço, na página dele em Provedores de Modelo."
   },
   "webSearch": {
     "showKey": "Mostrar chave",
@@ -369,7 +370,14 @@
     "deleteFailed": "Não foi possível excluir",
     "revealFailed": "Não foi possível abrir a pasta",
     "nameExists": "\"{{name}}\" já existe. Escolha outro nome ou edite o existente.",
-    "deleted": "\"{{name}}\" excluído"
+    "deleted": "\"{{name}}\" excluído",
+    "tabRun": "Execução",
+    "tabContext": "Contexto",
+    "tabSandbox": "Sandbox e ferramentas",
+    "coworkRuns": "Execuções do Cowork",
+    "shellSandboxTitle": "Shell e sandbox",
+    "computerUse": "Uso do computador",
+    "gitCredit": "Crédito do Git"
   },
   "localApiServer": {
     "title": "Servidor de API Local",
@@ -544,7 +552,9 @@
       "uninstall": "Desinstalar",
       "uninstalling": "Desinstalando…",
       "foreignDesc": "Encontrada em {{path}}, instalada por outra cópia do Flint. Instale aqui para usar a CLI desta cópia."
-    }
+    },
+    "startupGroup": "Inicialização e bandeja",
+    "cliGroup": "Linha de comando"
   },
   "extensions": {
     "title": "Extensões"
@@ -746,7 +756,10 @@
     "perfReasonFrames": "quadros lentos",
     "perfReasonMotion": "o sistema reduz o movimento",
     "perfReasonData": "economia de dados",
-    "perfReasonChosen": "escolhido aqui"
+    "perfReasonChosen": "escolhido aqui",
+    "tabLook": "Aparência",
+    "tabMotion": "Movimento e som",
+    "layoutGroup": "Layout"
   },
   "pageDesc": {
     "general": "Idioma, a pasta de dados, logs e opções de todo o app.",
@@ -1389,7 +1402,8 @@
     "noMatchHint": "Confira a grafia ou limpe a busca para ver tudo.",
     "emptyHint": "Escreva uma acima, ou deixe o Flint lembrar enquanto você conversa.",
     "footerCount_one": "1 memória neste escopo",
-    "footerCount_other": "{{count}} memórias neste escopo"
+    "footerCount_other": "{{count}} memórias neste escopo",
+    "agentNotes": "Notas do agente"
   },
   "chatMentions": {
     "title": "Menções a conversas",
@@ -1461,5 +1475,21 @@
     "deleteAllEmpty": "Nada para excluir.",
     "scopeAll": "Inclui tudo da lista, não apenas as linhas que o filtro atual mostra.",
     "archiveInstead": "Arquivar em vez disso"
+  },
+  "chat": {
+    "tabInput": "Entrada e respostas",
+    "tabDisplay": "Exibição",
+    "composerGroup": "Compositor",
+    "repliesGroup": "Respostas",
+    "linksGroup": "Links",
+    "artifactsGroup": "Artefatos e widgets"
+  },
+  "data": {
+    "tabStorage": "Armazenamento",
+    "tabCleanup": "Limpeza",
+    "dangerGroup": "Zona de perigo"
+  },
+  "modelDefaults": {
+    "title": "Padrões"
   }
 }

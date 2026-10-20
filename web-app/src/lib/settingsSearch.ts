@@ -168,11 +168,6 @@ export const SETTINGS_PAGES = [
   },
   {
     id: 'model-providers',
-    coverage: 'page-only',
-    coverageNote:
-      'The page lists the providers and models the user has set up, which is ' +
-      'runtime state, and the live provider list is indexed separately. ' +
-      'Reached by page title.',
     route: route.settings.model_providers,
     titleKey: 'common:modelProviders',
     group: 'models',

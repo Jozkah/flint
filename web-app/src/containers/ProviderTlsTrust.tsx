@@ -28,6 +28,9 @@ export function ProviderTlsTrust({ provider }: { provider: ModelProvider }) {
           <span className="block text-sm leading-normal text-muted-foreground">
             {t('providers:tlsTrust.description')}
           </span>
+          <span className="block text-xs leading-normal text-muted-foreground">
+            {t('providers:tlsTrust.scope')}
+          </span>
         </span>
         <Switch
           data-testid="tls-trust-switch"

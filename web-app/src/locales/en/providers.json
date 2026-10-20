@@ -200,7 +200,8 @@
   "tlsTrust": {
     "title": "Allow invalid certificates",
     "description": "Skip certificate verification for this provider's address only. Use it for a server you run yourself, such as a gateway with a self-signed certificate. Off by default.",
-    "warning": "Certificate verification is off for this provider. Anyone on the network path can read and change its requests, including your API key. Turn this off unless you trust the network."
+    "warning": "Certificate verification is off for this provider. Anyone on the network path can read and change its requests, including your API key. Turn this off unless you trust the network.",
+    "scope": "Only this provider's address. To allow invalid certificates for all proxied traffic, use the same switch in Settings > Network Proxy > Certificates."
   },
   "customHeaders": {
     "title": "Custom headers",

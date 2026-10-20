@@ -258,7 +258,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "仅信任平台的证书颁发机构。",
     "caBundleInUse": "除平台的证书外，还信任此包中的 {{count}} 个证书。",
-    "caBundleBroken": "此包无法使用（{{kind}}）：在修复或移除之前，出站 HTTPS 不信任任何内容。"
+    "caBundleBroken": "此包无法使用（{{kind}}）：在修复或移除之前，出站 HTTPS 不信任任何内容。",
+    "ignoreSslScope": "适用于所有经代理的流量。单个提供商也可以只对自己的地址允许无效证书，设置在模型提供商中该提供商的页面上。"
   },
   "webSearch": {
     "showKey": "显示密钥",
@@ -367,7 +368,14 @@
     "deleteFailed": "无法删除",
     "revealFailed": "无法打开文件夹",
     "nameExists": "“{{name}}”已存在。请换一个名称或编辑现有项。",
-    "deleted": "已删除“{{name}}”"
+    "deleted": "已删除“{{name}}”",
+    "tabRun": "运行",
+    "tabContext": "上下文",
+    "tabSandbox": "沙盒与工具",
+    "coworkRuns": "Cowork 运行",
+    "shellSandboxTitle": "Shell 与沙盒",
+    "computerUse": "电脑操作",
+    "gitCredit": "Git 署名"
   },
   "localApiServer": {
     "title": "本地 API 服务器",
@@ -542,7 +550,9 @@
       "uninstall": "卸载",
       "uninstalling": "正在卸载…",
       "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安装。在此安装即可使用本份的 CLI。"
-    }
+    },
+    "startupGroup": "启动与托盘",
+    "cliGroup": "命令行"
   },
   "extensions": {
     "title": "扩展"
@@ -715,7 +725,10 @@
     "perfReasonFrames": "帧速慢",
     "perfReasonMotion": "系统减少动态效果",
     "perfReasonData": "省流量",
-    "perfReasonChosen": "在此选择"
+    "perfReasonChosen": "在此选择",
+    "tabLook": "外观",
+    "tabMotion": "动效与声音",
+    "layoutGroup": "布局"
   },
   "pageDesc": {
     "general": "语言、数据文件夹、日志和应用范围的选项。",
@@ -1356,7 +1369,8 @@
     "fileActionsAria": "导出或导入记忆",
     "noMatchHint": "检查拼写，或清除搜索以查看全部。",
     "emptyHint": "在上方写一条，或让 Flint 在聊天时自动记住。",
-    "footerCount_other": "此范围内有 {{count}} 条记忆"
+    "footerCount_other": "此范围内有 {{count}} 条记忆",
+    "agentNotes": "智能体笔记"
   },
   "chatMentions": {
     "title": "对话提及",
@@ -1426,5 +1440,21 @@
     "deleteAllEmpty": "没有可删除的内容。",
     "scopeAll": "范围是列表中的全部内容，而不仅是当前筛选显示的行。",
     "archiveInstead": "改为归档"
+  },
+  "chat": {
+    "tabInput": "输入与回复",
+    "tabDisplay": "显示",
+    "composerGroup": "输入框",
+    "repliesGroup": "回复",
+    "linksGroup": "链接",
+    "artifactsGroup": "工件与小组件"
+  },
+  "data": {
+    "tabStorage": "存储",
+    "tabCleanup": "清理",
+    "dangerGroup": "危险区域"
+  },
+  "modelDefaults": {
+    "title": "默认值"
   }
 }

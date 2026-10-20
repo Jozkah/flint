@@ -258,7 +258,8 @@
     "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
     "caBundleNone": "僅信任平台的憑證授權單位。",
     "caBundleInUse": "除平台的憑證外，還信任此套件中的 {{count}} 個憑證。",
-    "caBundleBroken": "此套件無法使用（{{kind}}）：在修復或移除之前，對外的 HTTPS 不信任任何內容。"
+    "caBundleBroken": "此套件無法使用（{{kind}}）：在修復或移除之前，對外的 HTTPS 不信任任何內容。",
+    "ignoreSslScope": "適用於所有經代理的流量。個別提供者也可以只對自己的位址允許無效憑證，設定在模型提供者中該提供者的頁面上。"
   },
   "webSearch": {
     "showKey": "顯示金鑰",
@@ -367,7 +368,14 @@
     "deleteFailed": "無法刪除",
     "revealFailed": "無法開啟資料夾",
     "nameExists": "「{{name}}」已存在。請換一個名稱或編輯現有項目。",
-    "deleted": "已刪除「{{name}}」"
+    "deleted": "已刪除「{{name}}」",
+    "tabRun": "執行",
+    "tabContext": "內容",
+    "tabSandbox": "沙盒與工具",
+    "coworkRuns": "Cowork 執行",
+    "shellSandboxTitle": "Shell 與沙盒",
+    "computerUse": "電腦操作",
+    "gitCredit": "Git 署名"
   },
   "localApiServer": {
     "title": "本機 API 伺服器",
@@ -542,7 +550,9 @@
       "uninstall": "解除安裝",
       "uninstalling": "正在解除安裝…",
       "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安裝。在此安裝即可使用本份的 CLI。"
-    }
+    },
+    "startupGroup": "啟動與系統匣",
+    "cliGroup": "命令列"
   },
   "extensions": {
     "title": "擴充功能"
@@ -715,7 +725,10 @@
     "perfReasonFrames": "畫面更新慢",
     "perfReasonMotion": "系統減少動態效果",
     "perfReasonData": "數據節省",
-    "perfReasonChosen": "在此選擇"
+    "perfReasonChosen": "在此選擇",
+    "tabLook": "外觀",
+    "tabMotion": "動態與聲音",
+    "layoutGroup": "版面配置"
   },
   "pageDesc": {
     "general": "語言、資料夾、記錄和應用程式範圍的選項。",
@@ -1356,7 +1369,8 @@
     "fileActionsAria": "匯出或匯入記憶",
     "noMatchHint": "檢查拼字，或清除搜尋以查看全部。",
     "emptyHint": "在上方寫一條，或讓 Flint 在聊天時自動記住。",
-    "footerCount_other": "此範圍內有 {{count}} 條記憶"
+    "footerCount_other": "此範圍內有 {{count}} 條記憶",
+    "agentNotes": "代理筆記"
   },
   "chatMentions": {
     "title": "對話提及",
@@ -1426,5 +1440,21 @@
     "deleteAllEmpty": "沒有可刪除的內容。",
     "scopeAll": "範圍是清單中的全部內容，而不只是目前篩選顯示的列。",
     "archiveInstead": "改為封存"
+  },
+  "chat": {
+    "tabInput": "輸入與回覆",
+    "tabDisplay": "顯示",
+    "composerGroup": "輸入框",
+    "repliesGroup": "回覆",
+    "linksGroup": "連結",
+    "artifactsGroup": "成品與小工具"
+  },
+  "data": {
+    "tabStorage": "儲存空間",
+    "tabCleanup": "清理",
+    "dangerGroup": "危險區域"
+  },
+  "modelDefaults": {
+    "title": "預設值"
   }
 }

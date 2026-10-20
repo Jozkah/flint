@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Cho phép chứng chỉ không hợp lệ",
     "description": "Bỏ qua việc xác minh chứng chỉ chỉ với địa chỉ của nhà cung cấp này. Dùng cho máy chủ do chính bạn vận hành, như cổng kết nối dùng chứng chỉ tự ký. Mặc định là tắt.",
-    "warning": "Việc xác minh chứng chỉ đang tắt với nhà cung cấp này. Bất kỳ ai trên đường truyền mạng đều có thể đọc và sửa yêu cầu của nó, kể cả khóa API của bạn. Hãy tắt trừ khi bạn tin tưởng mạng."
+    "warning": "Việc xác minh chứng chỉ đang tắt với nhà cung cấp này. Bất kỳ ai trên đường truyền mạng đều có thể đọc và sửa yêu cầu của nó, kể cả khóa API của bạn. Hãy tắt trừ khi bạn tin tưởng mạng.",
+    "scope": "Chỉ áp dụng cho địa chỉ của nhà cung cấp này. Để cho phép chứng chỉ không hợp lệ cho toàn bộ lưu lượng qua proxy, dùng cùng công tắc trong Cài đặt > Proxy mạng > Chứng chỉ."
   },
   "customHeaders": {
     "title": "Header tùy chỉnh",

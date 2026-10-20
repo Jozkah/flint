@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Permitir certificados inválidos",
     "description": "Ignora a verificação do certificado somente para o endereço deste provedor. Use para um servidor que você mesmo administra, como um gateway com certificado autoassinado. Desativado por padrão.",
-    "warning": "A verificação do certificado está desativada para este provedor. Qualquer pessoa no caminho da rede pode ler e alterar suas requisições, inclusive sua chave de API. Desative, a menos que você confie na rede."
+    "warning": "A verificação do certificado está desativada para este provedor. Qualquer pessoa no caminho da rede pode ler e alterar suas requisições, inclusive sua chave de API. Desative, a menos que você confie na rede.",
+    "scope": "Somente o endereço deste provedor. Para permitir certificados inválidos em todo o tráfego via proxy, use a mesma chave em Configurações > Proxy de rede > Certificados."
   },
   "customHeaders": {
     "title": "Cabeçalhos personalizados",

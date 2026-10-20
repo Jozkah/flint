@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Permitir certificados no válidos",
     "description": "Omite la verificación del certificado solo para la dirección de este proveedor. Úsalo con un servidor que administras tú, como una pasarela con certificado autofirmado. Desactivado por defecto.",
-    "warning": "La verificación del certificado está desactivada para este proveedor. Cualquiera en la ruta de red puede leer y modificar sus solicitudes, incluida tu clave de API. Desactívalo salvo que confíes en la red."
+    "warning": "La verificación del certificado está desactivada para este proveedor. Cualquiera en la ruta de red puede leer y modificar sus solicitudes, incluida tu clave de API. Desactívalo salvo que confíes en la red.",
+    "scope": "Solo la dirección de este proveedor. Para permitir certificados no válidos en todo el tráfico por proxy, usa el mismo interruptor en Configuración > Proxy de red > Certificados."
   },
   "customHeaders": {
     "title": "Encabezados personalizados",

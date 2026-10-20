@@ -115,7 +115,8 @@
     "danger": "Zona de perigo",
     "networkNote": "Na sua rede · enviado para {{host}}",
     "reachUnknownNote": "Verificando onde este provedor roda",
-    "reachUnconfirmedNote": "Não foi possível confirmar onde este provedor roda · considere que as mensagens podem sair deste computador"
+    "reachUnconfirmedNote": "Não foi possível confirmar onde este provedor roda · considere que as mensagens podem sair deste computador",
+    "engineBasics": "Básico do mecanismo"
   },
   "mcp": {
     "title": "Ferramentas e MCP",
@@ -148,7 +149,8 @@
     "needsExtension": "Requer a extensão do navegador",
     "moreActions": "Mais ações para {{serverName}}",
     "addTile": "Adicionar servidor MCP",
-    "addTileHint": "STDIO, HTTP ou SSE"
+    "addTileHint": "STDIO, HTTP ou SSE",
+    "tabToolRuntime": "Runtime das ferramentas"
   },
   "extensions": {
     "description": "Plugins, skills e as peças do motor com as quais o Flint é construído.",
@@ -233,5 +235,9 @@
       "verify": "O download não passou na verificação e não foi instalado.",
       "mismatch": "Este complemento foi feito para outra versão do Flint."
     }
+  },
+  "tabs": {
+    "providersAndModels": "Provedores e modelos",
+    "defaults": "Padrões"
   }
 }

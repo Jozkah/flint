@@ -112,7 +112,8 @@
     "danger": "危険な操作",
     "networkNote": "ネットワーク内 · {{host}} に送信",
     "reachUnknownNote": "このプロバイダーの実行場所を確認中",
-    "reachUnconfirmedNote": "このプロバイダーの実行場所を確認できませんでした · メッセージがこのコンピューターの外に送信される可能性があります"
+    "reachUnconfirmedNote": "このプロバイダーの実行場所を確認できませんでした · メッセージがこのコンピューターの外に送信される可能性があります",
+    "engineBasics": "エンジンの基本"
   },
   "mcp": {
     "title": "ツールと MCP",
@@ -145,7 +146,8 @@
     "needsExtension": "ブラウザ拡張機能が必要です",
     "moreActions": "{{serverName}} のその他の操作",
     "addTile": "MCP サーバーを追加",
-    "addTileHint": "STDIO、HTTP、SSE"
+    "addTileHint": "STDIO、HTTP、SSE",
+    "tabToolRuntime": "ツールランタイム"
   },
   "extensions": {
     "description": "プラグイン、スキル、そして Flint を構成するエンジンの部品です。",
@@ -227,5 +229,9 @@
       "verify": "ダウンロードが検証に失敗したため、インストールしませんでした。",
       "mismatch": "このアドオンは別の Flint バージョン用にビルドされています。"
     }
+  },
+  "tabs": {
+    "providersAndModels": "プロバイダーとモデル",
+    "defaults": "デフォルト"
   }
 }

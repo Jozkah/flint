@@ -55,7 +55,15 @@ export function SettingsTabStrip<T extends string>({
   label: string
 }) {
   return (
-    <div style={{ width: `min(100%, ${tabs.length * 8}rem)` }}>
+    // As wide as the longest label needs (the equal-width cells follow it),
+    // never wider than the room it has, so no tab name is cut off.
+    <div
+      style={{
+        width: 'max-content',
+        maxWidth: '100%',
+        minWidth: `min(100%, ${tabs.length * 6}rem)`,
+      }}
+    >
       <Segmented<T>
         size="sm"
         aria-label={label}

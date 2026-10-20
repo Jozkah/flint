@@ -113,7 +113,8 @@
     "danger": "Tehlikeli bölge",
     "networkNote": "Ağınızda · {{host}} adresine gönderilir",
     "reachUnknownNote": "Bu sağlayıcının nerede çalıştığı denetleniyor",
-    "reachUnconfirmedNote": "Bu sağlayıcının nerede çalıştığı doğrulanamadı · mesajlar bu bilgisayardan çıkabilir"
+    "reachUnconfirmedNote": "Bu sağlayıcının nerede çalıştığı doğrulanamadı · mesajlar bu bilgisayardan çıkabilir",
+    "engineBasics": "Motor temelleri"
   },
   "mcp": {
     "title": "Araçlar ve MCP",
@@ -146,7 +147,8 @@
     "needsExtension": "Tarayıcı uzantısı gerektirir",
     "moreActions": "{{serverName}} için diğer eylemler",
     "addTile": "MCP sunucusu ekle",
-    "addTileHint": "STDIO, HTTP veya SSE"
+    "addTileHint": "STDIO, HTTP veya SSE",
+    "tabToolRuntime": "Araç çalışma zamanı"
   },
   "extensions": {
     "description": "Eklentiler, beceriler ve Flint'in oluşturulduğu motor parçaları.",
@@ -228,5 +230,9 @@
       "verify": "İndirme doğrulamayı geçemedi ve kurulmadı.",
       "mismatch": "Bu eklenti başka bir Flint sürümü için derlendi."
     }
+  },
+  "tabs": {
+    "providersAndModels": "Sağlayıcılar ve modeller",
+    "defaults": "Varsayılanlar"
   }
 }

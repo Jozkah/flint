@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Geçersiz sertifikalara izin ver",
     "description": "Sertifika doğrulamasını yalnızca bu sağlayıcının adresi için atlar. Kendi işlettiğiniz bir sunucu için kullanın; örneğin kendinden imzalı sertifikalı bir ağ geçidi. Varsayılan olarak kapalıdır.",
-    "warning": "Bu sağlayıcı için sertifika doğrulaması kapalı. Ağ yolundaki herkes API anahtarınız dahil isteklerini okuyabilir ve değiştirebilir. Ağa güvenmiyorsanız kapatın."
+    "warning": "Bu sağlayıcı için sertifika doğrulaması kapalı. Ağ yolundaki herkes API anahtarınız dahil isteklerini okuyabilir ve değiştirebilir. Ağa güvenmiyorsanız kapatın.",
+    "scope": "Yalnızca bu sağlayıcının adresi. Proxy üzerinden geçen tüm trafikte geçersiz sertifikalara izin vermek için Ayarlar > Ağ proxy'si > Sertifikalar altındaki aynı anahtarı kullanın."
   },
   "customHeaders": {
     "title": "Özel üstbilgiler",

@@ -213,7 +213,11 @@
     "modeAuto": "Aprova automàticament les crides segures; pregunta per les perilloses",
     "modeBypass": "Omet els permisos fins que es tanqui Flint",
     "modeDetails": "L'aprovació automàtica pregunta per a ordres destructives, accions de l'amfitrió, canvis remots i altres crides sensibles. Ometre els permisos també omet aquests avisos d'aprovació.",
-    "bypassConfirm": "Ometre els permisos executa tot sense preguntar, incloses les ordres de l'amfitrió (PowerShell, WSL, SSH, instal·lacions), les ordres destructives, les escriptures fora de la carpeta del projecte i els git push. El mode de pla, les regles de denegació que has escrit, els límits de despesa i l'ocultació de secrets continuen refusant. Vols activar Ometre fins que es tanqui Flint?"
+    "bypassConfirm": "Ometre els permisos executa tot sense preguntar, incloses les ordres de l'amfitrió (PowerShell, WSL, SSH, instal·lacions), les ordres destructives, les escriptures fora de la carpeta del projecte i els git push. El mode de pla, les regles de denegació que has escrit, els límits de despesa i l'ocultació de secrets continuen refusant. Vols activar Ometre fins que es tanqui Flint?",
+    "tabRules": "Regles",
+    "tabAccess": "Accés",
+    "tabRemembered": "Recordat",
+    "tabActivity": "Activitat"
   },
   "badge": {
     "reachesRemote": "Arriba a {{target}}",

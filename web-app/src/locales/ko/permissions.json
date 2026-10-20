@@ -213,7 +213,11 @@
     "modeAuto": "안전한 호출은 자동 승인, 위험한 호출은 요청",
     "modeBypass": "Flint를 닫을 때까지 권한 우회",
     "modeDetails": "자동 승인은 파괴적인 명령, 호스트 작업, 원격 변경, 기타 민감한 호출은 묻습니다. 우회는 그런 승인 요청도 건너뜁니다.",
-    "bypassConfirm": "우회는 호스트 명령(PowerShell, WSL, SSH, 설치), 파괴적인 명령, 프로젝트 폴더 밖 쓰기, git push를 포함해 모든 것을 묻지 않고 실행합니다. 계획 모드, 직접 작성한 거부 규칙, 지출 한도, 비밀 정보 가리기는 계속 거부합니다. Flint가 종료될 때까지 우회를 켤까요?"
+    "bypassConfirm": "우회는 호스트 명령(PowerShell, WSL, SSH, 설치), 파괴적인 명령, 프로젝트 폴더 밖 쓰기, git push를 포함해 모든 것을 묻지 않고 실행합니다. 계획 모드, 직접 작성한 거부 규칙, 지출 한도, 비밀 정보 가리기는 계속 거부합니다. Flint가 종료될 때까지 우회를 켤까요?",
+    "tabRules": "규칙",
+    "tabAccess": "접근",
+    "tabRemembered": "기억됨",
+    "tabActivity": "활동"
   },
   "badge": {
     "reachesRemote": "{{target}}에 접근",

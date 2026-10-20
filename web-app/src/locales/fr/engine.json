@@ -115,7 +115,8 @@
     "danger": "Zone de danger",
     "networkNote": "Sur votre réseau · envoyé à {{host}}",
     "reachUnknownNote": "Vérification de l'emplacement de ce fournisseur",
-    "reachUnconfirmedNote": "Impossible de confirmer où s'exécute ce fournisseur · les messages peuvent quitter cet ordinateur"
+    "reachUnconfirmedNote": "Impossible de confirmer où s'exécute ce fournisseur · les messages peuvent quitter cet ordinateur",
+    "engineBasics": "Bases du moteur"
   },
   "mcp": {
     "title": "Outils et MCP",
@@ -148,7 +149,8 @@
     "needsExtension": "Nécessite l'extension de navigateur",
     "moreActions": "Autres actions pour {{serverName}}",
     "addTile": "Ajouter un serveur MCP",
-    "addTileHint": "STDIO, HTTP ou SSE"
+    "addTileHint": "STDIO, HTTP ou SSE",
+    "tabToolRuntime": "Exécution des outils"
   },
   "extensions": {
     "description": "Les plugins, les skills et les éléments du moteur dont Flint est constitué.",
@@ -233,5 +235,9 @@
       "verify": "Le téléchargement n'a pas passé la vérification et n'a pas été installé.",
       "mismatch": "Ce module a été compilé pour une autre version de Flint."
     }
+  },
+  "tabs": {
+    "providersAndModels": "Fournisseurs et modèles",
+    "defaults": "Valeurs par défaut"
   }
 }

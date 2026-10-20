@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Povolit neplatné certifikáty",
     "description": "Přeskočí ověření certifikátu pouze pro adresu tohoto poskytovatele. Použijte pro server, který sami provozujete, například bránu s certifikátem podepsaným sebou samým. Ve výchozím nastavení vypnuto.",
-    "warning": "Ověření certifikátu je pro tohoto poskytovatele vypnuto. Kdokoli na síťové cestě může číst a měnit jeho požadavky, včetně vašeho klíče API. Vypněte, pokud nedůvěřujete síti."
+    "warning": "Ověření certifikátu je pro tohoto poskytovatele vypnuto. Kdokoli na síťové cestě může číst a měnit jeho požadavky, včetně vašeho klíče API. Vypněte, pokud nedůvěřujete síti.",
+    "scope": "Jen adresa tohoto poskytovatele. Chcete-li povolit neplatné certifikáty pro veškerý provoz přes proxy, použijte stejný přepínač v Nastavení > Síťový proxy > Certifikáty."
   },
   "customHeaders": {
     "title": "Vlastní hlavičky",

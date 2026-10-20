@@ -113,7 +113,8 @@
     "danger": "Gefahrenbereich",
     "networkNote": "In deinem Netzwerk · gesendet an {{host}}",
     "reachUnknownNote": "Prüfe, wo dieser Anbieter läuft",
-    "reachUnconfirmedNote": "Konnte nicht bestätigen, wo dieser Anbieter läuft · Nachrichten können diesen Computer verlassen"
+    "reachUnconfirmedNote": "Konnte nicht bestätigen, wo dieser Anbieter läuft · Nachrichten können diesen Computer verlassen",
+    "engineBasics": "Engine-Grundlagen"
   },
   "mcp": {
     "title": "Tools & MCP",
@@ -146,7 +147,8 @@
     "needsExtension": "Erfordert die Browsererweiterung",
     "moreActions": "Weitere Aktionen für {{serverName}}",
     "addTile": "MCP-Server hinzufügen",
-    "addTileHint": "STDIO, HTTP oder SSE"
+    "addTileHint": "STDIO, HTTP oder SSE",
+    "tabToolRuntime": "Tool-Laufzeit"
   },
   "extensions": {
     "description": "Plugins, Skills und die Engine-Bausteine, aus denen Flint besteht.",
@@ -228,5 +230,9 @@
       "verify": "Der Download hat die Prüfung nicht bestanden und wurde nicht installiert.",
       "mismatch": "Diese Erweiterung wurde für eine andere Flint-Version gebaut."
     }
+  },
+  "tabs": {
+    "providersAndModels": "Anbieter und Modelle",
+    "defaults": "Standardwerte"
   }
 }

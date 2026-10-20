@@ -69,6 +69,11 @@ const h = vi.hoisted(() => {
   }
 })
 
+// The defaults card has its own tests; here it only has to be on its tab.
+vi.mock('@/containers/ModelDefaultsCard', () => ({
+  ModelDefaultsCard: () => <div data-testid="model-defaults-card" />,
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (config: any) => ({ ...config }),
   useNavigate: () => h.navigate,
@@ -175,6 +180,7 @@ describe('Models page (/settings/providers)', () => {
     expect(screen.queryByText('engine:kpi.installed')).toBeNull()
     fireEvent.click(screen.getByRole('radio', { name: /^engine:tabs.defaults/ }))
     expect(screen.queryByTestId('provider-row-openai')).toBeNull()
+    expect(screen.getByTestId('model-defaults-card')).toBeInTheDocument()
     // Strip reasoning moved to the Chat page: not on any tab here.
     expect(screen.queryByText('provider:stripReasoning')).toBeNull()
   })

@@ -187,7 +187,8 @@
   "tlsTrust": {
     "title": "Zezwalaj na nieprawidłowe certyfikaty",
     "description": "Pomija weryfikację certyfikatu tylko dla adresu tego dostawcy. Używaj dla serwera, który sam prowadzisz, np. bramy z certyfikatem z podpisem własnym. Domyślnie wyłączone.",
-    "warning": "Weryfikacja certyfikatu jest wyłączona dla tego dostawcy. Każdy na trasie sieciowej może czytać i zmieniać jego żądania, w tym Twój klucz API. Wyłącz, jeśli nie ufasz sieci."
+    "warning": "Weryfikacja certyfikatu jest wyłączona dla tego dostawcy. Każdy na trasie sieciowej może czytać i zmieniać jego żądania, w tym Twój klucz API. Wyłącz, jeśli nie ufasz sieci.",
+    "scope": "Tylko adres tego dostawcy. Aby zezwolić na nieprawidłowe certyfikaty dla całego ruchu przez serwer proxy, użyj tego samego przełącznika w Ustawienia > Serwer proxy sieci > Certyfikaty."
   },
   "customHeaders": {
     "title": "Własne nagłówki",
