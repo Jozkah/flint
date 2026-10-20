@@ -46,6 +46,8 @@ export type TeamTask = {
   title?: string
   /** The `workflow` phase this task belongs to; set by `workflowToTeamInput`. */
   phase?: { name: string; index: number }
+  /** A JSON schema the answer must fit; set by `workflowToTeamInput`. */
+  schema?: Record<string, unknown>
   /** A configured model to run this task on. */
   model?: string
   /** Ids that must be `completed` before this may start. */
@@ -793,6 +795,9 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       ...(subagentName ? { subagentName } : {}),
       ...(title ? { title } : {}),
       ...(phase ? { phase } : {}),
+      ...(one.schema && typeof one.schema === 'object' && !Array.isArray(one.schema)
+        ? { schema: one.schema as Record<string, unknown> }
+        : {}),
       ...(model ? { model } : {}),
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),

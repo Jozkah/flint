@@ -514,6 +514,7 @@ import {
   webSearchOnFor,
 } from '@/hooks/useWebSearchChoice'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
+import { runTyped, schemaInstruction } from '@/lib/coworkWorkflowSchema'
 import {
   abortRun,
   abortAll,
@@ -4729,27 +4730,47 @@ export function CoworkPage() {
                           'failed'
                         let detail = ''
                         try {
-                          const result = await dispatchChild(
-                            childId,
-                            {
-                              subagent_name: one.subagentName ?? 'worker',
-                              description: one.description,
-                              ...(one.title ? { title: one.title } : {}),
-                              ...(one.model ? { model: one.model } : {}),
-                              ...(one.phase ? { phase: one.phase } : {}),
-                              // A task that names no saved agent still has to be
-                              // runnable: without a prompt it resolves to nothing
-                              // and is refused as unknown, which would make the
-                              // ordinary case the one that cannot run. A named
-                              // agent ignores this, as `resolveSubagent` prefers
-                              // the saved definition.
-                              system_prompt: TEAM_DEFAULT_PROMPT,
-                            },
-                            signal,
-                            teamTaskId,
-                            destination,
-                            one.id
-                          )
+                          // A task that names no saved agent still has to be
+                          // runnable: without a prompt it resolves to nothing
+                          // and is refused as unknown. A named agent ignores
+                          // `system_prompt`, as `resolveSubagent` prefers the
+                          // saved definition.
+                          const dispatchOne = (
+                            id: string,
+                            description: string,
+                            title: string | undefined
+                          ) =>
+                            dispatchChild(
+                              id,
+                              {
+                                subagent_name: one.subagentName ?? 'worker',
+                                description,
+                                ...(title ? { title } : {}),
+                                ...(one.model ? { model: one.model } : {}),
+                                ...(one.phase ? { phase: one.phase } : {}),
+                                system_prompt: TEAM_DEFAULT_PROMPT,
+                              },
+                              signal,
+                              teamTaskId,
+                              destination,
+                              one.id
+                            )
+                          // A typed answer is checked and re-asked; each retry is
+                          // its own row, so every attempt stays visible.
+                          const result = one.schema
+                            ? await runTyped(
+                                one.description + schemaInstruction(one.schema),
+                                one.schema,
+                                (brief, attempt) =>
+                                  dispatchOne(
+                                    attempt === 1 ? childId : `${childId}~r${attempt}`,
+                                    brief,
+                                    attempt === 1 || !one.title
+                                      ? one.title
+                                      : `${one.title} (try ${attempt})`
+                                  )
+                              )
+                            : await dispatchOne(childId, one.description, one.title)
                           status = endedAs(result.isError === true)
                           detail = result.output.slice(0, 500)
                           return {
