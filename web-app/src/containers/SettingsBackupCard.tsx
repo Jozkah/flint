@@ -125,7 +125,7 @@ export function SettingsBackupCard() {
   return (
     <Card title={t('settings:backup.title')} data-testid="settings-backup-card">
       <CardItem
-        anchor="settings-general-backup-export"
+        anchor="settings-data-backup-export"
         title={t('settings:backup.exportTitle')}
         description={t('settings:backup.exportDesc')}
         column
@@ -151,7 +151,7 @@ export function SettingsBackupCard() {
         }
       />
       <CardItem
-        anchor="settings-general-backup-import"
+        anchor="settings-data-backup-import"
         title={t('settings:backup.importTitle')}
         description={t('settings:backup.importDesc')}
         column={pending !== null}

@@ -80,7 +80,7 @@ export const SETTINGS_PAGES = [
     route: route.settings.general,
     titleKey: 'common:general',
     group: 'app',
-    keywords: ['updates', 'data folder', 'language'],
+    keywords: ['updates', 'language', 'startup', 'tray', 'cli'],
   },
   {
     id: 'appearance',
@@ -98,8 +98,6 @@ export const SETTINGS_PAGES = [
   },
   {
     id: 'chat',
-    coverage: 'page-only',
-    coverageNote: 'Being filled in: settings move here from General, Appearance and Agent.',
     route: route.settings.chat,
     titleKey: 'common:settingsChat',
     group: 'chat',
@@ -240,8 +238,6 @@ export const SETTINGS_PAGES = [
   },
   {
     id: 'data',
-    coverage: 'page-only',
-    coverageNote: 'Being filled in: settings move here from General.',
     route: route.settings.data,
     titleKey: 'common:settingsData',
     group: 'data',
@@ -323,19 +319,96 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('general', 'language', 'common:language', {
     keywords: ['locale', 'translation', 'idioma', 'sprache', 'langue'],
   }),
-  item('general', 'data-folder', 'common:dataFolder', {
-    descriptionKey: 'settings:dataFolder.appDataDesc',
-    keywords: ['storage', 'location', 'move data', 'disk'],
-  }),
   item('general', 'start-with-computer', 'settings:startup.title', {
     descriptionKey: 'settings:startup.off',
     keywords: ['autostart', 'startup', 'login', 'boot', 'launch at sign in'],
   }),
-  item('general', 'spell-check', 'settings:others.spellCheck', {
+  // Chat
+  item('chat', 'enter-newline', 'settings:others.enterKeyNewline', {
+    descriptionKey: 'settings:others.enterKeyNewlineDesc',
+    keywords: ['enter newline', 'enter key', 'send', 'shift enter', 'new line'],
+  }),
+  item('chat', 'spell-check', 'settings:others.spellCheck', {
     descriptionKey: 'settings:others.spellCheckDesc',
     keywords: ['spelling', 'typo'],
   }),
-  item('general', 'bulk-conversations', 'settings:bulk.title', {
+  item('chat', 'composer-rail-buttons', 'settings:interface.composerRailButtons', {
+    descriptionKey: 'settings:interface.composerRailButtonsDesc',
+    keywords: ['cowork', 'output', 'preview', 'changes', 'activity', 'timeline', 'composer', 'buttons'],
+  }),
+  item('chat', 'reply-language', 'settings:general.replyLanguage', {
+    descriptionKey: 'settings:general.replyLanguageDesc',
+    keywords: ['answer language', 'respond in', 'reply in', 'language'],
+  }),
+  item('chat', 'auto-title', 'settings:interface.autoGenerateTitle', {
+    descriptionKey: 'settings:interface.autoGenerateTitleDesc',
+    keywords: ['thread title', 'naming'],
+  }),
+  item('chat', 'strip-reasoning', 'provider:stripReasoning', {
+    descriptionKey: 'provider:stripReasoningDesc',
+    keywords: ['reasoning', 'thinking', 'context', 'strip'],
+  }),
+  item('chat', 'web-preview', 'common:webPreview.interceptSetting', {
+    descriptionKey: 'common:webPreview.interceptSettingDesc',
+    keywords: ['links', 'browser', 'open links', 'preview'],
+  }),
+  item('chat', 'transcript-view', 'settings:interface.transcriptView', {
+    descriptionKey: 'settings:interface.transcriptViewDesc',
+    keywords: ['thinking', 'reasoning', 'verbose', 'tool calls', 'steps'],
+  }),
+  item('chat', 'token-speed', 'settings:interface.showTokenSpeed', {
+    descriptionKey: 'settings:interface.showTokenSpeedDesc',
+    keywords: ['tokens per second', 'performance'],
+  }),
+  item('chat', 'user-markdown', 'settings:interface.renderUserMarkdown', {
+    descriptionKey: 'settings:interface.renderUserMarkdownDesc',
+    keywords: ['markdown', 'my messages', 'formatting'],
+  }),
+  item('chat', 'wrap-code-lines', 'settings:interface.wrapCodeLines', {
+    descriptionKey: 'settings:interface.wrapCodeLinesDesc',
+    keywords: ['code', 'wrap', 'line', 'scroll'],
+  }),
+  item('chat', 'inline-citations', 'settings:interface.inlineCitations', {
+    descriptionKey: 'settings:interface.inlineCitationsDesc',
+    keywords: ['sources', 'favicon', 'web search', 'links'],
+  }),
+  item('chat', 'hide-completed', 'common:coworkDisplay.hideCompletedTools', {
+    descriptionKey: 'common:coworkDisplay.hideCompletedToolsDescription',
+    keywords: ['tool activity', 'collapse', 'tool calls', 'hide'],
+  }),
+  item('chat', 'model-received', 'common:coworkDisplay.showModelReceived', {
+    descriptionKey: 'common:coworkDisplay.showModelReceivedDescription',
+    keywords: ['prompt', 'request', 'snapshot', 'what the model saw'],
+  }),
+  item('chat', 'html-artifacts', 'settings:interface.renderHtmlArtifacts', {
+    descriptionKey: 'settings:interface.renderHtmlArtifactsDesc',
+    keywords: ['html', 'preview', 'artifacts', 'library'],
+  }),
+  // Data
+  item('data', 'data-folder', 'common:dataFolder', {
+    descriptionKey: 'settings:dataFolder.appDataDesc',
+    keywords: ['storage', 'location', 'move data', 'disk'],
+  }),
+  item('data', 'logs', 'settings:dataFolder.appLogs', {
+    descriptionKey: 'settings:dataFolder.appLogsDesc',
+    keywords: ['logs', 'export logs', 'debug', 'diagnostics'],
+  }),
+  item('data', 'backup-export', 'settings:backup.exportTitle', {
+    descriptionKey: 'settings:backup.exportDesc',
+    keywords: ['backup', 'export settings', 'sync'],
+  }),
+  item('data', 'backup-import', 'settings:backup.importTitle', {
+    keywords: ['backup', 'restore', 'import settings', 'sync'],
+  }),
+  item('data', 'migrate-from-jan', 'settings:general.migrateJan.title', {
+    descriptionKey: 'settings:general.migrateJan.desc',
+    keywords: ['jan', 'migrate', 'import'],
+  }),
+  item('data', 'import-chatgpt', 'settings:general.importChatGpt', {
+    descriptionKey: 'settings:general.importChatGptDesc',
+    keywords: ['chatgpt', 'openai', 'import', 'conversations'],
+  }),
+  item('data', 'bulk-conversations', 'settings:bulk.title', {
     descriptionKey: 'settings:bulk.desc',
     keywords: [
       'archive all',
@@ -349,9 +422,22 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
       'threads',
     ],
   }),
-  item('general', 'factory-reset', 'settings:others.resetFactory', {
+  item('data', 'factory-reset', 'settings:others.resetFactory', {
     descriptionKey: 'settings:others.resetFactoryDesc',
-    keywords: ['reset', 'defaults', 'wipe'],
+    keywords: ['factory reset', 'reset', 'defaults', 'wipe'],
+  }),
+  // Model providers: the defaults card (containers/ModelDefaultsCard.tsx)
+  item('model-providers', 'fallback-models', 'settings:general.fallbackModels', {
+    descriptionKey: 'settings:general.fallbackModelsDesc',
+    keywords: ['fallback', 'retry', 'model unavailable'],
+  }),
+  item('model-providers', 'huggingface-token', 'settings:general.huggingfaceToken', {
+    descriptionKey: 'settings:general.huggingfaceTokenDesc',
+    keywords: ['hugging face', 'hf token', 'download', 'gated'],
+  }),
+  item('model-providers', 'download-limit', 'settings:general.downloadLimit', {
+    descriptionKey: 'settings:general.downloadLimitDesc',
+    keywords: ['bandwidth', 'download speed', 'throttle'],
   }),
   // Appearance
   item('appearance', 'theme', 'settings:interface.theme', {
@@ -369,10 +455,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('appearance', 'performance-mode', 'settings:appearance.performanceMode', {
     descriptionKey: 'settings:appearance.performanceModeDesc',
     keywords: ['performance', 'slow', 'lag', 'blur', 'battery', 'reduced', 'speed'],
-  }),
-  item('appearance', 'composer-rail-buttons', 'settings:interface.composerRailButtons', {
-    descriptionKey: 'settings:interface.composerRailButtonsDesc',
-    keywords: ['cowork', 'output', 'preview', 'changes', 'activity', 'timeline', 'composer', 'buttons'],
   }),
   item('appearance', 'sidebar-items', 'settings:sidebarItems.title', {
     descriptionKey: 'settings:sidebarItems.description',
@@ -395,35 +477,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
       keywords: ['toast', 'alerts'],
     }
   ),
-  item('appearance', 'token-speed', 'settings:interface.showTokenSpeed', {
-    descriptionKey: 'settings:interface.showTokenSpeedDesc',
-    keywords: ['tokens per second', 'performance'],
-  }),
-  item('appearance', 'transcript-view', 'settings:interface.transcriptView', {
-    descriptionKey: 'settings:interface.transcriptViewDesc',
-    keywords: ['thinking', 'reasoning', 'verbose', 'tool calls', 'steps'],
-  }),
-  item(
-    'appearance',
-    'html-artifacts',
-    'settings:interface.renderHtmlArtifacts',
-    {
-      descriptionKey: 'settings:interface.renderHtmlArtifactsDesc',
-      keywords: ['html', 'preview', 'artifacts', 'library'],
-    }
-  ),
-  item('appearance', 'wrap-code-lines', 'settings:interface.wrapCodeLines', {
-    descriptionKey: 'settings:interface.wrapCodeLinesDesc',
-    keywords: ['code', 'wrap', 'line', 'scroll'],
-  }),
-  item('appearance', 'inline-citations', 'settings:interface.inlineCitations', {
-    descriptionKey: 'settings:interface.inlineCitationsDesc',
-    keywords: ['sources', 'favicon', 'web search', 'links'],
-  }),
-  item('appearance', 'auto-title', 'settings:interface.autoGenerateTitle', {
-    descriptionKey: 'settings:interface.autoGenerateTitleDesc',
-    keywords: ['thread title', 'naming'],
-  }),
   // HTTPS proxy
   item('https-proxy', 'proxy-url', 'settings:httpsProxy.proxyUrl', {
     descriptionKey: 'settings:httpsProxy.proxyUrlDesc',

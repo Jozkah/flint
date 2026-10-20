@@ -4,6 +4,11 @@ import {
   SettingsPageBody,
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
+import {
+  SettingsTabStrip,
+  useSettingsTab,
+  type SettingsTab,
+} from '@/containers/SettingsTabs'
 import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { FontSizeSwitcher } from '@/containers/FontSizeSwitcher'
@@ -21,9 +26,8 @@ import { useTheme } from '@/hooks/useTheme'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { RadioGroup } from '@/components/ui/radio-group'
 import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
-import { TRANSCRIPT_VIEWS } from '@/lib/transcriptView'
 import { toast } from 'sonner'
 import { switchTheme } from '@/lib/themeTransition'
 import {
@@ -39,6 +43,8 @@ export const Route = createFileRoute(route.settings.appearance as any)({
 })
 
 type ThemeChoice = 'auto' | 'light' | 'dark'
+
+type AppearanceTab = 'look' | 'motion'
 
 /**
  * Light / Dark / System as one segmented control: every choice is visible,
@@ -101,27 +107,40 @@ function InterfaceSettings() {
   const { t } = useTranslation()
   const {
     resetInterface,
-    showTokenSpeed,
-    setShowTokenSpeed,
     coloredUserBubble,
     setColoredUserBubble,
-    renderUserMarkdown,
-    setRenderUserMarkdown,
-    renderHtmlArtifacts,
-    setRenderHtmlArtifacts,
-    wrapCodeLines,
-    setWrapCodeLines,
-    showInlineCitations,
-    setShowInlineCitations,
-    autoGenerateTitle,
-    setAutoGenerateTitle,
     reduceMotion,
     setReduceMotion,
     increaseContrast,
     setIncreaseContrast,
-    showComposerRailButtons,
-    setShowComposerRailButtons,
   } = useInterfaceSettings()
+
+  const tabs: SettingsTab<AppearanceTab>[] = [
+    {
+      id: 'look',
+      label: t('settings:appearance.tabLook', { defaultValue: 'Look' }),
+      anchors: [
+        'settings-appearance-theme',
+        'settings-appearance-accent*',
+        'settings-appearance-font-size',
+        'settings-appearance-increase-contrast',
+        'settings-appearance-notification-position',
+        'settings-appearance-sidebar-items',
+      ],
+    },
+    {
+      id: 'motion',
+      label: t('settings:appearance.tabMotion', {
+        defaultValue: 'Motion and sound',
+      }),
+      anchors: [
+        'settings-appearance-reduce-motion',
+        'settings-appearance-performance-mode',
+        'settings-appearance-completion-sound*',
+      ],
+    },
+  ]
+  const [tab, setTab] = useSettingsTab(tabs)
 
   const theme = (
     <Card title={t('settings:appearance.themeGroup')}>
@@ -185,38 +204,6 @@ function InterfaceSettings() {
           />
         }
       />
-      <CardItem
-        anchor="settings-appearance-user-markdown"
-        title={t('settings:interface.renderUserMarkdown')}
-        description={t('settings:interface.renderUserMarkdownDesc')}
-        actions={
-          <Switch
-            aria-label={t('settings:interface.renderUserMarkdown')}
-            data-testid="render-user-markdown-switch"
-            checked={renderUserMarkdown}
-            onCheckedChange={setRenderUserMarkdown}
-          />
-        }
-      />
-      <CardItem
-        anchor="settings-appearance-token-speed"
-        title={t('settings:interface.showTokenSpeed')}
-        description={t('settings:interface.showTokenSpeedDesc')}
-        actions={
-          <Switch checked={showTokenSpeed} onCheckedChange={setShowTokenSpeed} />
-        }
-      />
-    </Card>
-  )
-
-  const transcript = (
-    <Card title={t('settings:interface.transcriptView')}>
-      <CardItem
-        anchor="settings-appearance-transcript-view"
-        title={t('settings:interface.transcriptView')}
-        description={t('settings:interface.transcriptViewDesc')}
-      />
-      <TranscriptViewPicker />
     </Card>
   )
 
@@ -230,79 +217,15 @@ function InterfaceSettings() {
     </Card>
   )
 
-  const chatDisplay = (
-    <Card title={t('settings:appearance.behaviourGroup')}>
+  const layout = (
+    <Card
+      title={t('settings:appearance.layoutGroup', { defaultValue: 'Layout' })}
+    >
       <CardItem
         anchor="settings-appearance-notification-position"
         title={t('settings:interface.notificationPosition')}
         description={t('settings:interface.notificationPositionDesc')}
         actions={<NotificationPositionSwitcher />}
-      />
-      <CardItem
-        anchor="settings-appearance-html-artifacts"
-        title={
-          <span className="inline-flex flex-wrap items-baseline gap-1.5">
-            <span>{t('settings:interface.renderHtmlArtifacts')}</span>
-            <span className="text-[length:calc(var(--ui-font-base)*0.65625)] font-normal text-subtle-foreground">
-              {t('common:experimental')}
-            </span>
-          </span>
-        }
-        description={t('settings:interface.renderHtmlArtifactsDesc')}
-        actions={
-          <Switch
-            checked={renderHtmlArtifacts}
-            onCheckedChange={setRenderHtmlArtifacts}
-          />
-        }
-      />
-      <CardItem
-        anchor="settings-appearance-wrap-code-lines"
-        title={t('settings:interface.wrapCodeLines')}
-        description={t('settings:interface.wrapCodeLinesDesc')}
-        actions={
-          <Switch
-            aria-label={t('settings:interface.wrapCodeLines')}
-            checked={wrapCodeLines}
-            onCheckedChange={setWrapCodeLines}
-          />
-        }
-      />
-      <CardItem
-        anchor="settings-appearance-inline-citations"
-        title={t('settings:interface.inlineCitations')}
-        description={t('settings:interface.inlineCitationsDesc')}
-        actions={
-          <Switch
-            aria-label={t('settings:interface.inlineCitations')}
-            checked={showInlineCitations}
-            onCheckedChange={setShowInlineCitations}
-          />
-        }
-      />
-      <CardItem
-        anchor="settings-appearance-composer-rail-buttons"
-        title={t('settings:interface.composerRailButtons')}
-        description={t('settings:interface.composerRailButtonsDesc')}
-        actions={
-          <Switch
-            aria-label={t('settings:interface.composerRailButtons')}
-            data-testid="composer-rail-buttons-switch"
-            checked={Boolean(showComposerRailButtons)}
-            onCheckedChange={(v) => setShowComposerRailButtons?.(v)}
-          />
-        }
-      />
-      <CardItem
-        anchor="settings-appearance-auto-title"
-        title={t('settings:interface.autoGenerateTitle')}
-        description={t('settings:interface.autoGenerateTitleDesc')}
-        actions={
-          <Switch
-            checked={autoGenerateTitle}
-            onCheckedChange={setAutoGenerateTitle}
-          />
-        }
       />
     </Card>
   )
@@ -337,76 +260,29 @@ function InterfaceSettings() {
       <SettingsPageBody
         title={t('common:appearance')}
         description={t('settings:pageDesc.appearance')}
-        // Two columns of about equal height, so neither ends in a long empty
-        // stretch. The Sidebar items card (2) is wide and holds a long list,
-        // so it spans both columns between two balanced rows: theme and
-        // reading against accent and transcript view above it; chat display
-        // against reset, motion and sounds below.
-        layout={[0, 1, 0, 1, 2, 0, 1, 1, 1]}
+        actions={
+          <SettingsTabStrip
+            tabs={tabs}
+            value={tab}
+            onChange={setTab}
+            label={t('common:appearance')}
+          />
+        }
+        // Slots count hidden groups, so each tab keeps its own columns. The
+        // Sidebar items card is wide and holds a long list, so it spans both
+        // columns under the balanced rows.
+        layout={[0, 1, 0, 1, 1, 2, 0, 1]}
       >
-        {theme}
-        <AccentSettings />
-        {reading}
-        {transcript}
-        {sidebarItems}
-        {chatDisplay}
-        {reset}
-        {motion}
-        <CompletionSoundSettings />
+        {tab === 'look' && theme}
+        {tab === 'look' && <AccentSettings />}
+        {tab === 'look' && reading}
+        {tab === 'look' && layout}
+        {tab === 'look' && reset}
+        {tab === 'look' && sidebarItems}
+        {tab === 'motion' && motion}
+        {tab === 'motion' && <CompletionSoundSettings />}
       </SettingsPageBody>
     </div>
-  )
-}
-
-/** The Transcript view setting: one radio per mode, each with its summary. */
-function TranscriptViewPicker() {
-  const { t } = useTranslation()
-  const value = useInterfaceSettings((s) => s.transcriptView)
-  const setValue = useInterfaceSettings((s) => s.setTranscriptView)
-  const label = {
-    normal: t('settings:interface.transcriptViewNormal'),
-    thinking: t('settings:interface.transcriptViewThinking'),
-    verbose: t('settings:interface.transcriptViewVerbose'),
-  }
-  const desc = {
-    normal: t('settings:interface.transcriptViewNormalDesc'),
-    thinking: t('settings:interface.transcriptViewThinkingDesc'),
-    verbose: t('settings:interface.transcriptViewVerboseDesc'),
-  }
-  return (
-    <RadioGroup
-      value={value}
-      onValueChange={(v) => setValue(v as typeof value)}
-      aria-label={t('settings:interface.transcriptView')}
-      data-testid="transcript-view-picker"
-      className="gap-2 pb-2"
-    >
-      {TRANSCRIPT_VIEWS.map((mode) => {
-        const id = `transcript-view-${mode}`
-        return (
-          <label
-            key={mode}
-            htmlFor={id}
-            className="flex cursor-pointer items-start gap-2.5 rounded-md px-1 py-1.5"
-          >
-            <RadioGroupItem
-              id={id}
-              value={mode}
-              aria-describedby={`${id}-desc`}
-              className="mt-0.5"
-            />
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-sm font-medium text-foreground">
-                {label[mode]}
-              </span>
-              <span id={`${id}-desc`} className="text-xs text-muted-foreground">
-                {desc[mode]}
-              </span>
-            </span>
-          </label>
-        )
-      })}
-    </RadioGroup>
   )
 }
 
