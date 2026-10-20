@@ -1,5 +1,6 @@
 // Tauri command surface + the AppHandle-driven server lifecycle are
 // desktop-only; the CLI drives MCP through `core::cli::mcp`.
+pub mod arg_align;
 pub mod budget;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
