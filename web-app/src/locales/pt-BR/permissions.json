@@ -354,5 +354,10 @@
     "lineLabel": "Linha",
     "ruleLabel": "Regra",
     "more": "E mais {{count}} linhas sinalizadas"
+  },
+  "ruleWarnings": {
+    "title": "Regras de permissão com problemas",
+    "description": "Algumas regras do agent.toml de um projeto foram descartadas ou nunca podem corresponder. O resto carrega, mas essas regras não fazem o que dizem.",
+    "notProtecting": "Uma regra restritiva não está em vigor: há menos proteção do que o escrito. Corrija a regra."
   }
 }

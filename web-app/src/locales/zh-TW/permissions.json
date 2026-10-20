@@ -353,5 +353,10 @@
     "lineLabel": "行",
     "ruleLabel": "規則",
     "more": "另有 {{count}} 行被標記"
+  },
+  "ruleWarnings": {
+    "title": "有問題的權限規則",
+    "description": "專案 agent.toml 中的部分規則被捨棄或永遠無法比對。其餘規則仍會載入，但這些規則不會依所寫生效。",
+    "notProtecting": "限制性規則未生效，保護比所寫的更弱。請修正該規則。"
   }
 }

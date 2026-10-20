@@ -15,6 +15,7 @@ import {
 import { FolderAccessCard } from '@/containers/FolderAccessCard'
 import { TrustedFoldersCard } from '@/containers/TrustedFoldersCard'
 import { ApprovalRulesCard } from '@/containers/ApprovalRulesCard'
+import { PolicyRuleWarningsCard } from '@/containers/PolicyRuleWarningsCard'
 import { BrowserSitePermissions } from '@/containers/BrowserAgentSettings'
 import { ChatMentionSettings } from '@/containers/ChatMentionSettings'
 import {
@@ -442,6 +443,7 @@ function PermissionsSettings() {
           />
         }
       >
+        {tab === 'rules' && <PolicyRuleWarningsCard />}
         {tab === 'rules' && (
           <Card
             anchor="settings-permissions-mode"

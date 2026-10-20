@@ -12,7 +12,10 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 use crate::resource::{Resource, ResourceRule};
+use crate::tools::{Capability, BUILTIN_TOOLS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PermissionDefault {
@@ -60,6 +63,148 @@ pub struct ToolPermissions {
     /// still be asked before, say, a push. Empty by default (no `ask` key), so a
     /// project that never writes one behaves exactly as before.
     ask: Vec<ResourceRule>,
+    /// Rules that were dropped or can never fire, with why. Loading never
+    /// fails over one -- a typo must not brick a session -- but a dropped
+    /// `deny` is a restriction that silently vanished, so callers surface
+    /// these (`flint doctor`, the permissions settings page, stderr).
+    warnings: Vec<RuleWarning>,
+}
+
+/// Why a configured rule was rejected or cannot take effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuleWarningKind {
+    /// Does not parse; the rule was dropped.
+    Malformed,
+    /// Names a tool that is not built in and does not look like an MCP tool.
+    UnknownTool,
+    /// Carries a resource pattern the named tool never produces, so it can
+    /// never match.
+    IneffectiveResource,
+    /// A `*` glued to a command's program name, so it also matches other
+    /// programs sharing the prefix (`bash(git*)` covers `gitk`).
+    UnsafeWildcard,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuleWarning {
+    /// The `agent.toml` list the rule came from: `allow`, `deny`, ...
+    pub list: String,
+    pub rule: String,
+    pub kind: RuleWarningKind,
+    pub reason: String,
+}
+
+impl RuleWarning {
+    /// Whether the rule is a restriction (`deny`, `ask`) that is not doing its
+    /// job: the cases that must be read as "less protected than written".
+    pub fn weakens_restriction(&self) -> bool {
+        matches!(self.list.as_str(), "deny" | "ask")
+    }
+}
+
+/// The resource kinds a built-in tool's calls actually produce, as the rule
+/// grammar spells them. Empty means the tool has no resources, so a
+/// resource-qualified rule on it never matches.
+fn resource_kinds(tool: &crate::tools::BuiltinTool) -> &'static [&'static str] {
+    if !tool.path_args.is_empty() {
+        return &["path"];
+    }
+    match (tool.name, tool.capability) {
+        ("bash" | "browser", _) => &["command"],
+        (_, Capability::Net) => &["net"],
+        _ => &[],
+    }
+}
+
+/// Check one rule string; empty when it is sound.
+fn lint_rule(list: &str, raw: &str) -> Vec<RuleWarning> {
+    let warn = |kind, reason: String| RuleWarning {
+        list: list.to_string(),
+        rule: raw.to_string(),
+        kind,
+        reason,
+    };
+    let rule = raw.trim();
+    if rule.is_empty() {
+        return vec![warn(RuleWarningKind::Malformed, "the rule is empty".into())];
+    }
+    if ResourceRule::parse(rule).is_none() {
+        return vec![warn(
+            RuleWarningKind::Malformed,
+            "it is not a valid rule (bad glob, empty tool name, or an unrecognised subject prefix) and was dropped".into(),
+        )];
+    }
+    // The grammar is `[subject/]tool[(pattern)]`; split it the way `parse` does.
+    let head_end = rule.find('(').unwrap_or(rule.len());
+    let rest = match rule[..head_end].find('/') {
+        Some(slash) => rule[slash + 1..].trim(),
+        None => rule,
+    };
+    let (tool, resource) = match rest.strip_suffix(')').and_then(|r| r.split_once('(')) {
+        Some((tool, inner)) => (tool.trim(), Some(inner.trim())),
+        None => (rest, None),
+    };
+    if tool.contains(['(', ')']) {
+        return vec![warn(
+            RuleWarningKind::Malformed,
+            "unbalanced parentheses: the rule names a tool that cannot exist, so it never matches".into(),
+        )];
+    }
+
+    let mut out = Vec::new();
+    let builtin = BUILTIN_TOOLS.iter().find(|t| t.name == tool);
+    let is_glob = tool.contains(['*', '?', '[']);
+    // MCP tools are `server.tool` or `mcp.*`-shaped; anything else that is not
+    // built in is most likely a misspelling of a built-in name.
+    if builtin.is_none() && !is_glob && !tool.contains(['.', ':']) {
+        out.push(warn(
+            RuleWarningKind::UnknownTool,
+            format!("`{tool}` is not a built-in tool and does not look like an MCP tool, so the rule matches nothing"),
+        ));
+    }
+
+    let Some(pattern) = resource.filter(|p| !p.is_empty()) else {
+        return out;
+    };
+    // `git:` names an operation class of a command, so it counts as one.
+    let (kind, body) = match pattern.split_once(':') {
+        Some(("git", _)) => (Some("command"), pattern),
+        Some((k, rest)) if ["path", "command", "mcp", "net", "process", "unknown"].contains(&k) => {
+            (Some(k), rest)
+        }
+        _ => (None, pattern),
+    };
+    if let Some(tool) = builtin {
+        let kinds = resource_kinds(tool);
+        if kinds.is_empty() {
+            out.push(warn(
+                RuleWarningKind::IneffectiveResource,
+                format!("`{}` has no path, command or address for `({pattern})` to match, so the rule never fires; write the bare tool name", tool.name),
+            ));
+        } else if let Some(k) = kind.filter(|k| !kinds.contains(k)) {
+            out.push(warn(
+                RuleWarningKind::IneffectiveResource,
+                format!("`{}` works on {} resources, so a `{k}:` pattern never matches", tool.name, kinds.join("/")),
+            ));
+        }
+        if kinds == ["command"] && kind != Some("path") && !body.starts_with("git:") {
+            let program = body.split_whitespace().next().unwrap_or("");
+            if program != "*" && program.contains(['*', '?']) {
+                out.push(warn(
+                    RuleWarningKind::UnsafeWildcard,
+                    format!("the wildcard in `{program}` also matches other programs that share the prefix; put a space before `*` to match arguments only"),
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Lint every rule of a list, for `ToolPermissions` and for callers that want
+/// to check a rule set without compiling it.
+pub fn lint_rules(list: &str, patterns: &[String]) -> Vec<RuleWarning> {
+    patterns.iter().flat_map(|p| lint_rule(list, p)).collect()
 }
 
 /// A rule that will not parse is dropped rather than guessed at: half a rule
@@ -84,7 +229,18 @@ impl ToolPermissions {
             deny: compile(deny),
             allow_write: compile(allow_write),
             ask: Vec::new(),
+            warnings: [
+                lint_rules("allow", allow),
+                lint_rules("deny", deny),
+                lint_rules("allow_write", allow_write),
+            ]
+            .concat(),
         }
+    }
+
+    /// Rules dropped or ineffective, with why. See [`RuleWarning`].
+    pub fn warnings(&self) -> &[RuleWarning] {
+        &self.warnings
     }
 
     /// Add the confirm-every-time `ask` rules, compiled the same way as the
@@ -92,6 +248,7 @@ impl ToolPermissions {
     /// existing call sites and tests are untouched.
     pub fn with_ask(mut self, patterns: &[String]) -> Self {
         self.ask = compile(patterns);
+        self.warnings.extend(lint_rules("ask", patterns));
         self
     }
 
@@ -104,6 +261,7 @@ impl ToolPermissions {
             deny: Vec::new(),
             allow_write: Vec::new(),
             ask: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -509,5 +667,101 @@ mod subject_rules {
         );
         assert!(rule("mcp:github/read").covers_subject(&Subject::McpServer("github".to_string())));
         assert!(!rule("mcp:github/read").covers_subject(&Subject::McpServer("gitlab".to_string())));
+    }
+}
+
+#[cfg(test)]
+mod rule_warnings {
+    use super::*;
+
+    fn s(items: &[&str]) -> Vec<String> {
+        items.iter().map(|v| v.to_string()).collect()
+    }
+
+    fn kinds(list: &str, rules: &[&str]) -> Vec<RuleWarningKind> {
+        lint_rules(list, &s(rules)).into_iter().map(|w| w.kind).collect()
+    }
+
+    #[test]
+    fn sound_rules_raise_no_warning() {
+        for rule in [
+            "bash",
+            "bash(git:force-push)",
+            "bash(git push*)",
+            "bash(*)",
+            "read(**/.ssh/**)",
+            "read(path:/etc/**)",
+            "write(src/locked/**)",
+            "agent:reviewer/bash(git:push)",
+            "web_fetch(net:example.com)",
+            "mcp.search",
+            "fs.*",
+            "rag*",
+            "browser(open*)",
+        ] {
+            assert!(kinds("deny", &[rule]).is_empty(), "{rule} wrongly warned");
+        }
+    }
+
+    #[test]
+    fn malformed_rules_are_reported_not_silently_dropped() {
+        for rule in ["[", "", "  ", "bash([)", "nobody:x/bash"] {
+            assert_eq!(kinds("deny", &[rule]), vec![RuleWarningKind::Malformed], "{rule:?}");
+        }
+        // A missing close paren parses, but as a tool that cannot exist.
+        assert_eq!(kinds("deny", &["bash(git push"]), vec![RuleWarningKind::Malformed]);
+    }
+
+    #[test]
+    fn a_misspelled_tool_is_reported() {
+        assert_eq!(kinds("deny", &["bsh"]), vec![RuleWarningKind::UnknownTool]);
+        assert_eq!(kinds("deny", &["rread(**/.env)"]), vec![RuleWarningKind::UnknownTool]);
+        // Dotted and globbed names may be MCP tools.
+        assert!(kinds("deny", &["server.tool", "mcp*"]).is_empty());
+    }
+
+    #[test]
+    fn a_resource_rule_on_a_tool_without_that_resource_is_reported() {
+        // `web_search` and `memory_write` have no path to match.
+        assert_eq!(kinds("deny", &["memory_write(secrets/**)"]), vec![RuleWarningKind::IneffectiveResource]);
+        // Wrong kind for the tool.
+        assert_eq!(kinds("deny", &["read(git:force-push)"]), vec![RuleWarningKind::IneffectiveResource]);
+        assert_eq!(kinds("deny", &["bash(path:/etc/**)"]), vec![RuleWarningKind::IneffectiveResource]);
+        assert_eq!(kinds("deny", &["web_fetch(command:curl*)"]), vec![RuleWarningKind::IneffectiveResource]);
+    }
+
+    #[test]
+    fn a_wildcard_glued_to_the_program_is_reported() {
+        assert_eq!(kinds("allow", &["bash(git*)"]), vec![RuleWarningKind::UnsafeWildcard]);
+        assert_eq!(kinds("allow", &["bash(rm?)"]), vec![RuleWarningKind::UnsafeWildcard]);
+        assert_eq!(kinds("allow", &["bash(command:npm*)"]), vec![RuleWarningKind::UnsafeWildcard]);
+        // Spaced wildcards and the git class are fine.
+        assert!(kinds("allow", &["bash(git *)", "bash(git:push)", "bash(npm run *)"]).is_empty());
+    }
+
+    #[test]
+    fn load_succeeds_and_carries_warnings_with_their_list() {
+        let perms = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &s(&["bash(git*)"]),
+            &s(&["rread(**/.env)", "["]),
+            &s(&["write(src/**)"]),
+        )
+        .with_ask(&s(&["bash(path:/x)"]));
+        let got: Vec<(&str, RuleWarningKind)> =
+            perms.warnings().iter().map(|w| (w.list.as_str(), w.kind)).collect();
+        assert_eq!(
+            got,
+            vec![
+                ("allow", RuleWarningKind::UnsafeWildcard),
+                ("deny", RuleWarningKind::UnknownTool),
+                ("deny", RuleWarningKind::Malformed),
+                ("ask", RuleWarningKind::IneffectiveResource),
+            ]
+        );
+        assert!(perms.warnings().iter().filter(|w| w.list == "deny").all(RuleWarning::weakens_restriction));
+        assert!(!perms.warnings()[0].weakens_restriction());
+        // Rules that survived still work.
+        assert!(perms.advertises_mcp("x", &crate::subject::Subject::MainAgent));
     }
 }

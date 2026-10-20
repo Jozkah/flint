@@ -354,5 +354,10 @@
     "lineLabel": "Ligne",
     "ruleLabel": "Règle",
     "more": "Et {{count}} autres lignes signalées"
+  },
+  "ruleWarnings": {
+    "title": "Règles d'autorisation avec problèmes",
+    "description": "Certaines règles du agent.toml d'un projet ont été ignorées ou ne peuvent jamais correspondre. Le reste se charge, mais ces règles ne font pas ce qu'elles disent.",
+    "notProtecting": "Une règle restrictive n'est pas appliquée : la protection est plus faible que prévu. Corrigez la règle."
   }
 }
