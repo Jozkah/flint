@@ -12,7 +12,6 @@ use tauri_plugin_store::Store;
 
 use crate::core::app::commands::get_jan_data_folder_path;
 use crate::core::mcp::constants::default_mcp_config;
-use crate::core::mcp::helpers::add_server_config;
 
 use super::{mcp::helpers::run_mcp_commands, state::AppState};
 
@@ -35,44 +34,24 @@ pub fn migrate_mcp_servers(
         log::info!("MCP schema version 1 (default Exa server) is superseded; nothing to add");
     }
     if mcp_version < 2 {
-        log::info!("Migrating MCP schema version 2: Adding Jan Browser MCP");
-        // A fresh install has no mcp_config.json yet; the default config written
-        // at startup already carries this entry, so there is nothing to add.
-        let config_exists = get_jan_data_folder_path(app_handle.clone())
-            .join("mcp_config.json")
-            .exists();
-        let result = if !config_exists {
-            Ok(())
-        } else {
-            add_server_config(
-                app_handle.clone(),
-                "Jan Browser MCP".to_string(),
-                serde_json::json!({
-                    "command": "npx",
-                    "args": ["-y", "search-mcp-server@latest"],
-                    "env": {
-                        "BRIDGE_HOST": "127.0.0.1",
-                        "BRIDGE_PORT": "17389"
-                    },
-                    "active": false,
-                    "official": true
-                }),
-            )
-        };
-        if let Err(e) = result {
-            log::error!("Failed to add Jan Browser MCP server config: {e}");
-        }
+        log::info!("MCP schema version 2 (Jan Browser MCP) is superseded; nothing to add");
     }
     if mcp_version < 3 {
         log::info!("MCP schema version 3 (hosted Exa) is superseded; nothing to change");
     }
     if mcp_version < 5 {
         log::info!("Migrating MCP schema version 5: removing the default Exa server");
-        if let Err(e) = remove_exa_server(app_handle) {
+        if let Err(e) = remove_exa_server(app_handle.clone()) {
             log::error!("Failed to remove Exa MCP server: {e}");
         }
     }
-    store.set("mcp_version", 5);
+    if mcp_version < 6 {
+        log::info!("Migrating MCP schema version 6: removing the default browser servers");
+        if let Err(e) = remove_browser_servers(app_handle) {
+            log::error!("Failed to remove browser MCP servers: {e}");
+        }
+    }
+    store.set("mcp_version", 6);
     store.save().map_err(|e| format!("could not save the store: {e}"))?;
     Ok(())
 }
@@ -122,6 +101,56 @@ pub(crate) fn remove_default_exa(config: &mut serde_json::Value) -> bool {
     } else {
         false
     }
+}
+
+/// The two browser servers Flint's earlier default config shipped, as the
+/// command line each one carried. The built-in `browser` tools replace them.
+const DEFAULT_BROWSER_SERVERS: [(&str, &[&str]); 2] = [
+    ("Jan Browser MCP", &["-y", "search-mcp-server@latest"]),
+    ("browsermcp", &["@browsermcp/mcp"]),
+];
+
+/// Drop the default browser entries, if they are still the shipped ones: the
+/// same `npx` command line and not switched on. An entry the user enabled or
+/// edited keeps its configuration. Returns whether anything was removed.
+pub(crate) fn remove_default_browser_servers(config: &mut serde_json::Value) -> bool {
+    let Some(servers) = config.get_mut("mcpServers").and_then(|s| s.as_object_mut()) else {
+        return false;
+    };
+    let mut removed = false;
+    for (name, args) in DEFAULT_BROWSER_SERVERS {
+        let untouched = servers.get(name).and_then(|e| e.as_object()).is_some_and(|e| {
+            e.get("command").and_then(|c| c.as_str()) == Some("npx")
+                && e.get("active").and_then(|v| v.as_bool()) != Some(true)
+                && e.get("args").and_then(|a| a.as_array()).is_some_and(|a| {
+                    a.iter().map(|v| v.as_str()).eq(args.iter().map(|s| Some(*s)))
+                })
+        });
+        if untouched {
+            servers.remove(name);
+            removed = true;
+        }
+    }
+    removed
+}
+
+fn remove_browser_servers(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let config_path = get_jan_data_folder_path(app_handle).join("mcp_config.json");
+    if !config_path.exists() {
+        return Ok(());
+    }
+    let config_str =
+        fs::read_to_string(&config_path).map_err(|e| format!("Failed to read MCP config: {e}"))?;
+    let mut config: serde_json::Value = serde_json::from_str(&config_str)
+        .map_err(|e| format!("Failed to parse MCP config: {e}"))?;
+
+    if remove_default_browser_servers(&mut config) {
+        let serialized = serde_json::to_string_pretty(&config)
+            .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
+        crate::core::threads::helpers::write_file_atomically(&config_path, serialized.as_bytes())
+            .map_err(|e| format!("Failed to write MCP config: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Native web search owns web search now: remove the default Exa MCP server
@@ -816,5 +845,57 @@ mod exa_migration_tests {
         assert!(!remove_default_exa(&mut c));
         let mut empty = json!({});
         assert!(!remove_default_exa(&mut empty));
+    }
+}
+
+#[cfg(test)]
+mod browser_migration_tests {
+    use super::remove_default_browser_servers;
+    use serde_json::json;
+
+    fn jan() -> serde_json::Value {
+        json!({
+            "command": "npx", "args": ["-y", "search-mcp-server@latest"],
+            "env": { "BRIDGE_HOST": "127.0.0.1", "BRIDGE_PORT": "17389" },
+            "active": false, "official": true
+        })
+    }
+
+    fn browsermcp() -> serde_json::Value {
+        json!({ "command": "npx", "args": ["@browsermcp/mcp"], "env": {}, "active": false })
+    }
+
+    #[test]
+    fn both_untouched_defaults_are_removed() {
+        let mut c = json!({ "mcpServers": { "Jan Browser MCP": jan(), "browsermcp": browsermcp(), "other": {} } });
+        assert!(remove_default_browser_servers(&mut c));
+        assert!(c["mcpServers"].get("Jan Browser MCP").is_none());
+        assert!(c["mcpServers"].get("browsermcp").is_none());
+        assert!(c["mcpServers"].get("other").is_some());
+    }
+
+    #[test]
+    fn an_entry_the_user_switched_on_is_kept() {
+        let mut on = jan();
+        on["active"] = json!(true);
+        let mut c = json!({ "mcpServers": { "Jan Browser MCP": on } });
+        assert!(!remove_default_browser_servers(&mut c));
+        assert!(c["mcpServers"].get("Jan Browser MCP").is_some());
+    }
+
+    #[test]
+    fn an_entry_with_an_edited_command_line_is_kept() {
+        let mut edited = browsermcp();
+        edited["args"] = json!(["@browsermcp/mcp", "--port", "9999"]);
+        let mut c = json!({ "mcpServers": { "browsermcp": edited } });
+        assert!(!remove_default_browser_servers(&mut c));
+    }
+
+    #[test]
+    fn no_entries_is_a_no_op() {
+        let mut c = json!({ "mcpServers": {} });
+        assert!(!remove_default_browser_servers(&mut c));
+        let mut empty = json!({});
+        assert!(!remove_default_browser_servers(&mut empty));
     }
 }
