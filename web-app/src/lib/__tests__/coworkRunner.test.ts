@@ -85,6 +85,26 @@ const deps = (
 const user = (text: string): UIMessage =>
   ({ id: 'u1', role: 'user', parts: [{ type: 'text', text }] }) as UIMessage
 
+describe('finishing a worked turn', () => {
+  it('does not request duplicate confirmations after a final answer', async () => {
+    const steps = [
+      ...Array.from({ length: 8 }, (_, i) => toolStep(`read-${i}`, `c${i}`)),
+      textStep('Done. The change is live.'),
+    ]
+    const d = deps(steps)
+    const out = await runTurn({
+      messages: [user('make the change')],
+      signal: new AbortController().signal,
+      deps: d,
+    })
+
+    expect(out.stoppedBy).toBe('done')
+    expect(d.sendStep).toHaveBeenCalledTimes(9)
+    expect(out.messages.filter((m) => m.role === 'assistant' &&
+      m.parts.some((part) => part.type === 'text'))).toHaveLength(1)
+  })
+})
+
 describe('consumeStep', () => {
   it('folds text, tool calls and usage out of the chunk stream', async () => {
     const sink = noopSink()
@@ -1035,46 +1055,6 @@ describe('run guards', () => {
       operationTimeoutMs: 5,
     })
     expect(out.stoppedBy).toBe('done')
-  })
-})
-
-describe('a wrap-up after a long stretch of work', () => {
-  const work = (n: number) =>
-    Array.from({ length: n }, (_, i) => toolStep(`tool${i}`, `c${i}`))
-
-  it('is questioned, and the run continues if the model keeps working', async () => {
-    const d = deps([...work(8), textStep('all done'), toolStep('more', 'cx'), textStep('really done')])
-    const out = await runTurn({
-      messages: [user('big job')],
-      signal: new AbortController().signal,
-      deps: d,
-    } as never)
-    expect(out.stoppedBy).toBe('done')
-    // 8 tool steps, wrap-up, one more tool step, wrap-up that is then checked
-    // again and finally accepted: 8 + 1 + 1 + 1 + 1.
-    expect(d.sendStep).toHaveBeenCalledTimes(12)
-  })
-
-  it('asks at most twice, so a finished model is never stuck', async () => {
-    const d = deps([...work(8), textStep('done'), textStep('done'), textStep('done')])
-    const out = await runTurn({
-      messages: [user('big job')],
-      signal: new AbortController().signal,
-      deps: d,
-    } as never)
-    expect(out.stoppedBy).toBe('done')
-    expect(d.sendStep).toHaveBeenCalledTimes(11)
-  })
-
-  it('leaves a short run alone', async () => {
-    const d = deps([...work(2), textStep('done')])
-    const out = await runTurn({
-      messages: [user('small job')],
-      signal: new AbortController().signal,
-      deps: d,
-    } as never)
-    expect(out.stoppedBy).toBe('done')
-    expect(d.sendStep).toHaveBeenCalledTimes(3)
   })
 })
 

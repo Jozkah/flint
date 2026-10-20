@@ -115,8 +115,9 @@ export function runStatus(
       key: `after:${last.callId ?? ''}`,
       label: byAge([
         [0, 'Reading tool results…'],
-        [10 * S, 'Deciding what to do next…'],
-        [45 * S, 'Still deciding what to do next…'],
+        [10 * S, 'Waiting for the model…'],
+        [45 * S, 'Still waiting for the model…'],
+        [60 * S, 'The model is taking a while…'],
       ]),
     }
   }

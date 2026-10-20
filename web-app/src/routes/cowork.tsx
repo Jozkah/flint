@@ -3646,15 +3646,27 @@ export function CoworkPage() {
       model: selectedModel.id,
     }
 
+    // Only rows streamed by the current model step may receive new deltas.
+    // A previous step can end with an assistant row, and the next model reply
+    // must not append to it before the settled row replaces the live one.
+    const streamedAssistantTurns = new Set<CoworkTurn>()
+    const clearStreamedTurns = () => {
+      if (streamedAssistantTurns.size === 0) return
+      runTurns = runTurns.filter((turn) => !streamedAssistantTurns.has(turn))
+      streamedAssistantTurns.clear()
+      publish()
+    }
     const sink: StreamSink = {
       onOutput: (chars) => decodeClock.tick(chars),
       onText: (delta) => {
         const last = runTurns[runTurns.length - 1]
-        if (last && last.role === 'assistant') {
+        if (last && last.role === 'assistant' && streamedAssistantTurns.has(last)) {
           last.content += delta
           textFrame.schedule()
         } else {
           pushLive([{ role: 'assistant', content: delta }])
+          const added = runTurns[runTurns.length - 1]
+          if (added?.role === 'assistant') streamedAssistantTurns.add(added)
         }
       },
       onToolStart: (callId, name) =>
@@ -4153,6 +4165,9 @@ export function CoworkPage() {
           onBatchFinished: (names) =>
             notifyToolBatch(sid, names, 'session'),
           sendStep: (msgs, signal, stepOpts) => {
+            // A retry starts a fresh stream; discard its predecessor's
+            // unfinished optimistic rows before the new request.
+            clearStreamedTurns()
             transport.textOnlyNext = stepOpts?.textOnly === true
             return transport.sendMessages({
               chatId: sid,
@@ -4877,8 +4892,9 @@ export function CoworkPage() {
             runTurns = runTurns.filter(
               (turn) =>
                 !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
-                !(turn.role === 'assistant' && turn.content === result.text)
+                !streamedAssistantTurns.has(turn)
             )
+            streamedAssistantTurns.clear()
             const liveStats = useAppState.getState().liveTokenStatsByThread[sid]
             // Prefer llama.cpp's reported generation speed; otherwise derive it
             // from output tokens over the streaming span, so remote providers
