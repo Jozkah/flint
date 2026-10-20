@@ -4635,10 +4635,12 @@ export function CoworkPage() {
                   // is cancelled through this (`cancel_task`, the panel's Stop)
                   // without ending the turn.
                   const teamAbort = registerSubagent(sid, teamTaskId)
-                  const teamSignal = AbortSignal.any([
-                    controller.signal,
-                    teamAbort.signal,
-                  ])
+                  // Registered only while the run is live; with no run to hang it
+                  // off, the handle comes back already aborted, which must not
+                  // cancel a team the turn itself has not stopped.
+                  const teamSignal = hasSubagent(sid, teamTaskId)
+                    ? AbortSignal.any([controller.signal, teamAbort.signal])
+                    : controller.signal
                   try {
                     const outcome = await runTeam(tasks, {
                       // The turn's controller: stopping the run stops the team,
