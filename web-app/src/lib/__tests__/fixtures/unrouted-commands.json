@@ -262,6 +262,7 @@
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
     "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
   ],
@@ -284,6 +285,7 @@
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
     "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
   ],
@@ -403,32 +405,14 @@
     "web-app/src/containers/extensions/PluginsTab.tsx (via setPluginEnabled)",
     "web-app/src/lib/pluginStore.ts"
   ],
-  "agent_plugin_update": [
-    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via updatePlugin)",
-    "web-app/src/containers/extensions/PluginsTab.tsx (via updatePlugin)",
-    "web-app/src/lib/pluginStore.ts"
-  ],
-  "agent_review_fix_task": [
-    "web-app/src/lib/coworkReview.ts"
-  ],
-  "agent_review_parse": [
-    "web-app/src/lib/coworkReview.ts"
-  ],
-  "agent_review_prepare": [
-    "web-app/src/lib/coworkReview.ts"
-  ],
-  "agent_review_rank": [
-    "web-app/src/lib/coworkReview.ts"
-  ],
-  "agent_review_verdict": [
-    "web-app/src/lib/coworkReview.ts"
-  ],
-  "agent_review_verify_prompt": [
-    "web-app/src/lib/coworkReview.ts"
-  ],
   "agent_plugin_sources": [
     "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via getPluginSources)",
     "web-app/src/containers/extensions/PluginsTab.tsx (via getPluginSources)",
+    "web-app/src/lib/pluginStore.ts"
+  ],
+  "agent_plugin_update": [
+    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via updatePlugin)",
+    "web-app/src/containers/extensions/PluginsTab.tsx (via updatePlugin)",
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_policy_rule_warnings": [
@@ -483,6 +467,30 @@
   "agent_replays_list": [
     "web-app/src/containers/PromptSnapshotView.tsx (via listReplays)",
     "web-app/src/lib/contextReplay.ts"
+  ],
+  "agent_review_fix_task": [
+    "web-app/src/containers/CoworkReviewAction.tsx (via reviewFixTask)",
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_parse": [
+    "web-app/src/containers/CoworkReviewAction.tsx (via runDiffReview)",
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_prepare": [
+    "web-app/src/containers/CoworkReviewAction.tsx (via runDiffReview)",
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_rank": [
+    "web-app/src/containers/CoworkReviewAction.tsx (via runDiffReview)",
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_verdict": [
+    "web-app/src/containers/CoworkReviewAction.tsx (via runDiffReview)",
+    "web-app/src/lib/coworkReview.ts"
+  ],
+  "agent_review_verify_prompt": [
+    "web-app/src/containers/CoworkReviewAction.tsx (via runDiffReview)",
+    "web-app/src/lib/coworkReview.ts"
   ],
   "agent_sandbox_apply_file": [
     "web-app/src/lib/coworkSandboxApply.ts",
@@ -587,6 +595,7 @@
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
     "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
   ],
@@ -608,6 +617,25 @@
     "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
     "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
     "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
+    "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
+    "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
+  ],
+  "agent_worktree_resume": [
+    "web-app/src/components/shell/nav/CoworkNav.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/CoworkSessionWorktreeBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/PrBar.tsx (via useCoworkWorktrees)",
+    "web-app/src/containers/SessionWorktreeDeleteChoice.tsx (via useCoworkWorktrees)",
+    "web-app/src/hooks/useAutoSessionWorktree.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkSessions.ts (via useCoworkWorktrees)",
+    "web-app/src/hooks/useCoworkWorktrees.ts",
+    "web-app/src/lib/bulkConversationsDeps.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/campaignHost.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkParallel.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/hydrateStores.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/remote/sources.ts (via useCoworkWorktrees)",
+    "web-app/src/lib/worktreeResume.ts (via useCoworkWorktrees)",
     "web-app/src/routes/cowork.tsx (via useCoworkWorktrees)",
     "web-app/src/stores/pr-status-store.ts (via useCoworkWorktrees)"
   ],
@@ -1135,6 +1163,10 @@
   "get_tools_for_servers": [
     "web-app/src/services/mcp/tauri.ts"
   ],
+  "get_usage_attribution": [
+    "web-app/src/containers/UsageAttributionCard.tsx",
+    "web-app/src/routes/settings/local-api-server.tsx (via UsageAttributionCard)"
+  ],
   "get_usage_ceilings": [
     "web-app/src/containers/UsageCeilingsCard.tsx",
     "web-app/src/routes/settings/local-api-server.tsx (via UsageCeilingsCard)"
@@ -1466,6 +1498,14 @@
   ],
   "mcp_allow_once": [
     "web-app/src/services/mcp/tauri.ts"
+  ],
+  "mcp_elicitation_ready": [
+    "web-app/src/hooks/useMcpElicitation.ts",
+    "web-app/src/providers/GlobalEventHandler.tsx (via useMcpElicitation)"
+  ],
+  "mcp_elicitation_respond": [
+    "web-app/src/containers/McpElicitationCard.tsx (via respondToElicitation)",
+    "web-app/src/hooks/useMcpElicitation.ts"
   ],
   "mcp_forget_server": [
     "web-app/src/services/mcp/tauri.ts"
@@ -2238,6 +2278,10 @@
     "web-app/src/components/solo/SoloRoot.tsx (via ThemeProvider)",
     "web-app/src/providers/ThemeProvider.tsx",
     "web-app/src/shell/MainRoot.tsx (via ThemeProvider)"
+  ],
+  "set_keep_awake": [
+    "web-app/src/lib/keepAwake.ts",
+    "web-app/src/providers/DataProvider.tsx (via startKeepAwakeSync)"
   ],
   "set_model_param_defaults": [
     "web-app/src/providers/DataProvider.tsx"
