@@ -1294,6 +1294,10 @@ enum AgentCommands {
         /// Print it as JSON instead of text.
         #[arg(long)]
         json: bool,
+        /// Attribute calls and subagent tokens to skills, MCP servers, plugins
+        /// and subagents, and list what is configured but unused.
+        #[arg(long)]
+        by_item: bool,
     },
     /// What this harness writes to disk, at which version (AH-010)
     State {
@@ -3631,8 +3635,21 @@ async fn handle_agent(cmd: AgentCommands) {
             since,
             session,
             json,
+            by_item,
         } => {
             let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            if by_item {
+                let root = std::env::current_dir().ok();
+                app_lib::core::agent::attribution::report(&data, since.as_deref(), root.as_deref())
+                    .map_err(|e| HarnessError::from(&e))
+                    .map(|a| {
+                        if json {
+                            println!("{}", serde_json::to_string_pretty(&a).unwrap_or_default());
+                        } else {
+                            print!("{}", app_lib::core::agent::attribution::render(&a));
+                        }
+                    })
+            } else {
             app_lib::core::agent::spend::report(&data, since.as_deref(), session.as_deref())
                 .map_err(|e| HarnessError::from(&e))
                 .map(|report| {
@@ -3645,6 +3662,7 @@ async fn handle_agent(cmd: AgentCommands) {
                         print!("{}", app_lib::core::agent::spend::render(&report));
                     }
                 })
+            }
         }
         AgentCommands::State { json } => {
             if json {
