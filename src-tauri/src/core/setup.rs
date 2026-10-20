@@ -46,7 +46,7 @@ pub fn migrate_mcp_servers(
         }
     }
     if mcp_version < 6 {
-        log::info!("Migrating MCP schema version 6: removing the default browser servers");
+        log::info!("Migrating MCP schema version 6: default browser servers");
         if let Err(e) = remove_browser_servers(app_handle) {
             log::error!("Failed to remove browser MCP servers: {e}");
         }
@@ -103,35 +103,46 @@ pub(crate) fn remove_default_exa(config: &mut serde_json::Value) -> bool {
     }
 }
 
-/// The two browser servers Flint's earlier default config shipped, as the
-/// command line each one carried. The built-in `browser` tools replace them.
-const DEFAULT_BROWSER_SERVERS: [(&str, &[&str]); 2] = [
-    ("Jan Browser MCP", &["-y", "search-mcp-server@latest"]),
-    ("browsermcp", &["@browsermcp/mcp"]),
-];
+/// Key the shipped `browsermcp` entry now carries, so it reads as unfinished.
+const BROWSER_MCP_WIP_NAME: &str = "Browser MCP (WIP)";
 
-/// Drop the default browser entries, if they are still the shipped ones: the
-/// same `npx` command line and not switched on. An entry the user enabled or
-/// edited keeps its configuration. Returns whether anything was removed.
-pub(crate) fn remove_default_browser_servers(config: &mut serde_json::Value) -> bool {
+/// Whether `name` is still the shipped entry: the same `npx` command line and
+/// not switched on. An entry the user enabled or edited is theirs.
+fn is_untouched_default(
+    servers: &serde_json::Map<String, serde_json::Value>,
+    name: &str,
+    args: &[&str],
+) -> bool {
+    servers.get(name).and_then(|e| e.as_object()).is_some_and(|e| {
+        e.get("command").and_then(|c| c.as_str()) == Some("npx")
+            && e.get("active").and_then(|v| v.as_bool()) != Some(true)
+            && e.get("args").and_then(|a| a.as_array()).is_some_and(|a| {
+                a.iter().map(|v| v.as_str()).eq(args.iter().map(|s| Some(*s)))
+            })
+    })
+}
+
+/// `Jan Browser MCP` needs Jan's own browser extension, which Flint does not
+/// ship, so an untouched copy is dropped. The community `browsermcp` entry is
+/// kept, renamed to say it is unfinished. Returns whether the config changed.
+pub(crate) fn migrate_default_browser_servers(config: &mut serde_json::Value) -> bool {
     let Some(servers) = config.get_mut("mcpServers").and_then(|s| s.as_object_mut()) else {
         return false;
     };
-    let mut removed = false;
-    for (name, args) in DEFAULT_BROWSER_SERVERS {
-        let untouched = servers.get(name).and_then(|e| e.as_object()).is_some_and(|e| {
-            e.get("command").and_then(|c| c.as_str()) == Some("npx")
-                && e.get("active").and_then(|v| v.as_bool()) != Some(true)
-                && e.get("args").and_then(|a| a.as_array()).is_some_and(|a| {
-                    a.iter().map(|v| v.as_str()).eq(args.iter().map(|s| Some(*s)))
-                })
-        });
-        if untouched {
-            servers.remove(name);
-            removed = true;
+    let mut changed = false;
+    if is_untouched_default(servers, "Jan Browser MCP", &["-y", "search-mcp-server@latest"]) {
+        servers.remove("Jan Browser MCP");
+        changed = true;
+    }
+    if !servers.contains_key(BROWSER_MCP_WIP_NAME)
+        && is_untouched_default(servers, "browsermcp", &["@browsermcp/mcp"])
+    {
+        if let Some(entry) = servers.remove("browsermcp") {
+            servers.insert(BROWSER_MCP_WIP_NAME.to_string(), entry);
+            changed = true;
         }
     }
-    removed
+    changed
 }
 
 fn remove_browser_servers(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -144,7 +155,7 @@ fn remove_browser_servers(app_handle: tauri::AppHandle) -> Result<(), String> {
     let mut config: serde_json::Value = serde_json::from_str(&config_str)
         .map_err(|e| format!("Failed to parse MCP config: {e}"))?;
 
-    if remove_default_browser_servers(&mut config) {
+    if migrate_default_browser_servers(&mut config) {
         let serialized = serde_json::to_string_pretty(&config)
             .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
         crate::core::threads::helpers::write_file_atomically(&config_path, serialized.as_bytes())
@@ -850,7 +861,7 @@ mod exa_migration_tests {
 
 #[cfg(test)]
 mod browser_migration_tests {
-    use super::remove_default_browser_servers;
+    use super::migrate_default_browser_servers;
     use serde_json::json;
 
     fn jan() -> serde_json::Value {
@@ -866,11 +877,12 @@ mod browser_migration_tests {
     }
 
     #[test]
-    fn both_untouched_defaults_are_removed() {
+    fn jan_browser_mcp_is_dropped_and_browsermcp_renamed() {
         let mut c = json!({ "mcpServers": { "Jan Browser MCP": jan(), "browsermcp": browsermcp(), "other": {} } });
-        assert!(remove_default_browser_servers(&mut c));
+        assert!(migrate_default_browser_servers(&mut c));
         assert!(c["mcpServers"].get("Jan Browser MCP").is_none());
         assert!(c["mcpServers"].get("browsermcp").is_none());
+        assert_eq!(c["mcpServers"]["Browser MCP (WIP)"], browsermcp());
         assert!(c["mcpServers"].get("other").is_some());
     }
 
@@ -879,8 +891,13 @@ mod browser_migration_tests {
         let mut on = jan();
         on["active"] = json!(true);
         let mut c = json!({ "mcpServers": { "Jan Browser MCP": on } });
-        assert!(!remove_default_browser_servers(&mut c));
+        assert!(!migrate_default_browser_servers(&mut c));
         assert!(c["mcpServers"].get("Jan Browser MCP").is_some());
+        let mut on = browsermcp();
+        on["active"] = json!(true);
+        let mut c = json!({ "mcpServers": { "browsermcp": on } });
+        assert!(!migrate_default_browser_servers(&mut c));
+        assert!(c["mcpServers"].get("browsermcp").is_some());
     }
 
     #[test]
@@ -888,14 +905,14 @@ mod browser_migration_tests {
         let mut edited = browsermcp();
         edited["args"] = json!(["@browsermcp/mcp", "--port", "9999"]);
         let mut c = json!({ "mcpServers": { "browsermcp": edited } });
-        assert!(!remove_default_browser_servers(&mut c));
+        assert!(!migrate_default_browser_servers(&mut c));
     }
 
     #[test]
     fn no_entries_is_a_no_op() {
         let mut c = json!({ "mcpServers": {} });
-        assert!(!remove_default_browser_servers(&mut c));
+        assert!(!migrate_default_browser_servers(&mut c));
         let mut empty = json!({});
-        assert!(!remove_default_browser_servers(&mut empty));
+        assert!(!migrate_default_browser_servers(&mut empty));
     }
 }

@@ -16,7 +16,14 @@ pub const DEFAULT_MCP_MAX_RESTART_DELAY_MS: u64 = 30000; // Cap at 30 seconds
 pub const DEFAULT_MCP_BACKOFF_MULTIPLIER: f64 = 2.0; // Double the delay each time
 
 pub const DEFAULT_MCP_CONFIG: &str = r#"{
-  "mcpServers": {},
+  "mcpServers": {
+    "Browser MCP (WIP)": {
+      "command": "npx",
+      "args": ["@browsermcp/mcp"],
+      "env": {},
+      "active": false
+    }
+  },
   "mcpSettings": {
     "toolCallTimeoutSeconds": 30,
     "baseRestartDelayMs": 1000,
