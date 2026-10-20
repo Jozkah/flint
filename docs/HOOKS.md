@@ -23,8 +23,11 @@ command = "npm run lint"    # required: a shell command, at most 4096 characters
 on_failure = "block"        # optional: block | warn | ignore (default warn)
 timeout_secs = 30           # optional: 1 to 120 (default 30)
 tools = ["write", "edit"]   # optional: tool names; empty or absent = every tool
+if = "bash(git\s+push)"    # optional, pre-tool/post-tool: run only for this tool and arguments (tool or tool(regex))
 stdin_json = true           # optional, pre-tool/post-tool: pass the tool call as JSON on stdin (default false)
 ```
+
+`if` is `tool` or `tool(regex)`; the tool may be `*`. The regex is tested against every string in the call's arguments, so `bash(git\s+push)` runs only for a `bash` call whose command contains `git push`. A bad regex, or `if` on an event that is not `pre-tool`/`post-tool`, disables the file.
 
 At most 32 hooks are read. Hooks run in the order the file declares them.
 

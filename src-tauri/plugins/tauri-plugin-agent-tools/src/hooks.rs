@@ -271,6 +271,48 @@ pub struct Hook {
     /// before this existed still sees an empty stdin.
     #[serde(default)]
     pub stdin_json: bool,
+    /// `if = "bash(git push)"`: run only for a call whose tool matches and
+    /// whose arguments match the regex in parentheses. `"bash"` alone is a tool
+    /// match; the tool may be `*`. Checked on `pre-tool` and `post-tool`.
+    #[serde(default, rename = "if")]
+    pub if_filter: Option<String>,
+}
+
+/// Split `tool(pattern)` into its parts. `None` pattern means tool only.
+fn split_if(spec: &str) -> Option<(&str, Option<&str>)> {
+    let spec = spec.trim();
+    match spec.find('(') {
+        None => (!spec.is_empty()).then_some((spec, None)),
+        Some(i) => {
+            let tool = spec[..i].trim();
+            let pat = spec[i + 1..].strip_suffix(')')?;
+            (!tool.is_empty()).then_some((tool, Some(pat)))
+        }
+    }
+}
+
+/// The strings of a call's arguments a pattern is tested against: every string
+/// value, so `command`, `path`, `url`, `pattern` all count.
+fn arg_strings(v: &serde_json::Value, out: &mut Vec<String>) {
+    match v {
+        serde_json::Value::String(s) => out.push(s.clone()),
+        serde_json::Value::Array(a) => a.iter().for_each(|x| arg_strings(x, out)),
+        serde_json::Value::Object(m) => m.values().for_each(|x| arg_strings(x, out)),
+        _ => {}
+    }
+}
+
+fn if_matches(spec: &str, input: Option<&HookInput>) -> bool {
+    let Some(input) = input else { return false };
+    let Some((tool, pat)) = split_if(spec) else { return false };
+    if tool != "*" && tool != input.tool_name {
+        return false;
+    }
+    let Some(pat) = pat else { return true };
+    let Ok(re) = regex::Regex::new(pat) else { return false };
+    let mut strings = Vec::new();
+    arg_strings(&input.tool_input, &mut strings);
+    strings.iter().any(|s| re.is_match(s))
 }
 
 impl Hook {
@@ -460,7 +502,29 @@ pub fn parse(raw: &str) -> Result<Vec<Hook>, HookError> {
                 ))
             }
         };
-        hooks.push(Hook { event, command, on_failure, timeout_secs, tools, stdin_json });
+        let if_filter = match item.get("if") {
+            None => None,
+            Some(toml::Value::String(spec)) => {
+                let bad = |why: &str| {
+                    HookError::new(HookErrorKind::Malformed, format!("hook {at}: `if` {why}"))
+                };
+                if !matches!(event, Event::PreTool | Event::PostTool) {
+                    return Err(bad("only applies to pre-tool and post-tool hooks"));
+                }
+                let (_, pat) = split_if(spec).ok_or_else(|| bad("must look like `tool` or `tool(regex)`"))?;
+                if let Some(pat) = pat {
+                    regex::Regex::new(pat).map_err(|e| bad(&format!("has an invalid regex: {e}")))?;
+                }
+                Some(spec.trim().to_string())
+            }
+            Some(_) => {
+                return Err(HookError::new(
+                    HookErrorKind::Malformed,
+                    format!("hook {at}: `if` must be a string"),
+                ))
+            }
+        };
+        hooks.push(Hook { event, command, on_failure, timeout_secs, tools, stdin_json, if_filter });
     }
     Ok(hooks)
 }
@@ -588,6 +652,11 @@ async fn run_with_env(
 ) -> Decision {
     let mut decision = Decision::default();
     for hook in hooks.iter().filter(|h| h.applies_to(event, tool)) {
+        if let Some(spec) = &hook.if_filter {
+            if !if_matches(spec, input) {
+                continue;
+            }
+        }
         let started = std::time::Instant::now();
         let (ok, output, error) = execute(hook, event, tool, ctx, extra_env, input.filter(|_| hook.stdin_json)).await;
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -1176,6 +1245,41 @@ on_failure = \"warn\"
         let decision = run_with_input(&hooks, Event::PreTool, Some("bash"), &ctx(&root), &input).await;
         assert!(decision.runs[0].ok, "opted-in hook did not see stdin: {:?}", decision.runs[0]);
         assert!(!decision.runs[1].ok, "hook without the flag must see empty stdin");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_if_filter_matches_tool_and_argument_pattern() {
+        let root = dir("iffilter");
+        write_config(
+            &root,
+            &format!("[[hook]]
+event = \"pre-tool\"
+command = \"{OK}\"
+if = \"bash(git[ ]+push)\"
+"),
+        );
+        let hooks = load(&root).unwrap();
+        let call = |tool: &str, cmd: &str| HookInput {
+            tool_name: tool.into(),
+            tool_input: serde_json::json!({ "command": cmd }),
+            ..HookInput::default()
+        };
+        let ran = |d: Decision| d.runs.len();
+        let c = ctx(&root);
+        assert_eq!(ran(run_with_input(&hooks, Event::PreTool, Some("bash"), &c, &call("bash", "git push origin")).await), 1);
+        assert_eq!(ran(run_with_input(&hooks, Event::PreTool, Some("bash"), &c, &call("bash", "git status")).await), 0);
+        assert_eq!(ran(run_with_input(&hooks, Event::PreTool, Some("write"), &c, &call("write", "git push")).await), 0);
+        assert!(parse("[[hook]]
+event=\"pre-tool\"
+command=\"x\"
+if=\"bash(\"
+").is_err());
+        assert!(parse("[[hook]]
+event=\"run-end\"
+command=\"x\"
+if=\"bash\"
+").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
