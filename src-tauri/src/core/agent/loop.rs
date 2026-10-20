@@ -1847,6 +1847,9 @@ struct CompositeToolInvoker {
     /// (AH-100), so a dispatch asked to fork has something to copy. Shared
     /// rather than passed because the turn loop sees only the trait.
     live_conversation: std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    /// `advisor` calls made this run, against `advisor::MAX_CALLS_PER_RUN`.
+    #[cfg_attr(not(feature = "cli"), allow(dead_code))]
+    advisor_calls: std::sync::atomic::AtomicU32,
     /// The project's routing rules (AH-194), resolved once per run, so a rule
     /// about a subagent by name reaches the dispatch that starts it.
     routing: Vec<crate::core::agent::routing::Rule>,
@@ -2794,6 +2797,35 @@ impl CompositeToolInvoker {
             PermissionDecision::Deny => Err(format!(
                 "ERROR [approval_refused]: {action} a pull request through {api} was not approved. It changes a service outside this machine, so it needs a person's approval, or `allow = [\"pull_request\"]` in the project's agent.toml; nothing was sent."
             )),
+        }
+    }
+
+    /// `advisor`: one tool-free completion on the configured stronger model,
+    /// shown the transcript so far. Counted against the per-run cap; it is a
+    /// dispatch like any other, so its tokens appear in the spend report under
+    /// the advisor's model.
+    #[cfg(feature = "cli")]
+    async fn handle_advisor(&self, args: &serde_json::Value) -> String {
+        use crate::core::agent::advisor;
+        let Some(model) = crate::core::agent::global_config::advisor_model() else {
+            return "ERROR [invalid_input]: no advisor model is configured".to_string();
+        };
+        let Some(ctx) = &self.subagents else {
+            return "ERROR [invalid_input]: the advisor is not available in this run".to_string();
+        };
+        let used = self.advisor_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if used >= advisor::MAX_CALLS_PER_RUN {
+            return format!(
+                "ERROR [budget_exhausted]: the advisor was already consulted {} times this run",
+                advisor::MAX_CALLS_PER_RUN
+            );
+        }
+        let messages = self.live_conversation.lock().map(|m| m.clone()).unwrap_or_default();
+        let question = args.get("question").and_then(|v| v.as_str()).unwrap_or_default();
+        let request = advisor::request(&model, &messages, question);
+        match utility_completion(&ctx.parent_args, &model, "advisor", &request).await {
+            Ok(completion) => advisor::note(&model, &completion),
+            Err(e) => format!("ERROR [upstream]: the advisor call failed: {}", e.message()),
         }
     }
 
@@ -5006,6 +5038,14 @@ impl CompositeToolInvoker {
                 out.push(ToolOutcome::plain(id, content));
                 continue;
             }
+            #[cfg(feature = "cli")]
+            if name == "advisor" {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let args = parse_tool_args(tc).unwrap_or_default();
+                let content = self.handle_advisor(&args).await;
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
             if name == "schedule_task" {
                 let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let Some(args) = parse_tool_args(tc) else {
@@ -6383,6 +6423,29 @@ fn advertise_local_tools(
                 && allowed_names.is_none_or(|allow| allow.contains(named));
             if offered {
                 openai_tools.push(message);
+            }
+
+            // A stronger model to consult, only when `advisor_model` is set.
+            #[cfg(feature = "cli")]
+            if matches!(subject, tauri_plugin_agent_tools::subject::Subject::MainAgent)
+                && crate::core::agent::global_config::advisor_model().is_some()
+                && !permissions.is_denied("advisor", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("advisor"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "advisor",
+                        "description": "Consult a stronger model with this whole conversation before you plan a hard task or before you declare it finished. It has no tools and cannot see files beyond what the conversation shows. Returns short guidance; weigh it, you decide. Limited to a few calls per run.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "question": { "type": "string", "description": "What you want advice on. Optional." }
+                            },
+                            "required": []
+                        }
+                    }
+                }));
             }
 
             // Scheduled tasks: create, list, delete, and run once at a time.
@@ -8002,6 +8065,7 @@ async fn orchestrate_inner(
             nul_programs: settings.nul_programs.clone(),
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            advisor_calls: std::sync::atomic::AtomicU32::new(0),
             allowed_tools: allowed_names.clone(),
             record_to: (!jan_data_folder.is_empty())
                 .then(|| std::path::PathBuf::from(jan_data_folder.as_str())),
@@ -14409,6 +14473,7 @@ mod tests {
                 .map(|t| t.name.to_string())
                 .collect(),
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            advisor_calls: std::sync::atomic::AtomicU32::new(0),
             allowed_tools: None,
             record_to: None,
             session_messaging: false,

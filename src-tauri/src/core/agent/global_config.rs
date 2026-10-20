@@ -17,6 +17,8 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Jan Agent global provider config.
 # default_model = "my-model"        # used when no --model / agent.toml model is set
 # smol_model = "my-fast-model"       # fast model for the `smol` role (/goal evaluation);
 #                                     # defaults to `default_model` when unset
+# advisor_model = "provider/strong-model"  # a stronger model the agent may consult (`advisor` tool,
+#                                     # 3 calls per run, no tools); off when unset
 # mouse = false                      # disable TUI mouse tracking (scroll wheel,
 #                                     # click-to-expand); on by default
 # sandbox = true                      # run `bash` under OS confinement (same as
@@ -72,6 +74,10 @@ struct GlobalConfigToml {
     /// lightweight side calls. Falls back to `default_model` when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     smol_model: Option<String>,
+    /// A stronger model the working model may consult with the `advisor` tool
+    /// (`provider/model`). Unset: the tool is not offered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    advisor_model: Option<String>,
     /// TUI mouse tracking (wheel scrolling, click-to-expand). `None` = the
     /// default, on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -266,6 +272,11 @@ pub(crate) fn smol_model() -> Result<Option<String>, String> {
     Ok(config.smol_model.filter(|m| !m.trim().is_empty()))
 }
 
+/// The `advisor_model` key, when set; `None` turns the advisor tool off.
+pub(crate) fn advisor_model() -> Option<String> {
+    load_raw().ok()?.advisor_model.filter(|m| !m.trim().is_empty())
+}
+
 /// The CA bundle named in `~/.jan/config.toml` (AH-190), if any.
 pub fn ca_bundle() -> Result<Option<String>, String> {
     let config = load_raw()?;
@@ -451,6 +462,7 @@ pub(crate) fn wave_glyph() -> Option<String> {
 const ROOT_KEYS: &[&str] = &[
     "default_model",
     "smol_model",
+    "advisor_model",
     "mouse",
     "sandbox",
     "think_tags",
