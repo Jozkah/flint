@@ -20,6 +20,7 @@ import {
   WORKFLOW_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSession'
+import { ENTER_WORKTREE_TOOL_NAME, EXIT_WORKTREE_TOOL_NAME } from '@/lib/worktreeToolNames'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
 import { isCoworkMode, type CoworkMode } from '@/lib/coworkMode'
 import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
@@ -126,6 +127,8 @@ const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   TEAM_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
   SPAWN_SESSION_TOOL_NAME,
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
   ASK_TOOL_NAME,
   TODO_TOOL_NAME,
   // Managing the parent's background tasks is the parent's business.

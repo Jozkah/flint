@@ -85,6 +85,15 @@ describe('buildCoworkTools', () => {
     )
   })
 
+  it('offers the worktree tools only with a project and outside review mode', async () => {
+    const withProject = await buildCoworkTools(opts({ projectRoot: '/p' } as never))
+    expect(withProject['enter_worktree']).toBeDefined()
+    expect(withProject['exit_worktree']).toBeDefined()
+    expect((await buildCoworkTools(opts()))['enter_worktree']).toBeUndefined()
+    const review = await buildCoworkTools(opts({ projectRoot: '/p', planMode: true } as never))
+    expect(review['enter_worktree']).toBeUndefined()
+  })
+
   it('names the saved subagents in the task description', async () => {
     const tools = await buildCoworkTools(
       opts({ subagentNames: ['researcher', 'planner', 'writer'] })
