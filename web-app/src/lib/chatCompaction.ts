@@ -124,3 +124,30 @@ export function requestChatCompaction(
 export function canCompactChat(threadId: string): boolean {
   return compactors.has(threadId)
 }
+
+/**
+ * `/btw`: the open conversation registers how to answer a side question from a
+ * snapshot of itself, and the composer asks by thread id.
+ */
+type SideAsker = (question: string) => Promise<void>
+const sideAskers = new Map<string, SideAsker>()
+
+export function registerChatSideQuestion(
+  threadId: string,
+  fn: SideAsker
+): () => void {
+  sideAskers.set(threadId, fn)
+  return () => {
+    if (sideAskers.get(threadId) === fn) sideAskers.delete(threadId)
+  }
+}
+
+export function requestChatSideQuestion(
+  threadId: string,
+  question: string
+): boolean {
+  const fn = sideAskers.get(threadId)
+  if (!fn) return false
+  void fn(question)
+  return true
+}

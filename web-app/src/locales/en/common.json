@@ -1234,7 +1234,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Could not answer the side question."
   },
   "autoCompactNeedsWindow": "Auto-compact needs a context size, and {{model}} has none Flint can find. Set Max Context Tokens for this model so long chats compact before they fill it. If the provider refuses a request for its length, Flint compacts and retries once.",
   "compaction": {

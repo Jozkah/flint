@@ -184,6 +184,7 @@ import {
   foldSummaryIntoSystem,
 } from '@/lib/compactionSystemRole'
 import { manualSummarizer, modelSummarizer } from '@/lib/compactionSummarizer'
+import { askSideQuestion } from '@/lib/sideQuestion'
 import {
   applyChatCompaction,
   readChatCompaction,
@@ -2671,6 +2672,37 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       })
     }
     return result?.record ?? null
+  }
+
+  /**
+   * `/btw`: answer one side question from a snapshot of the thread, with no
+   * tools and nothing written back. Reads a copy, so it works mid-stream.
+   */
+  async sideQuestion(
+    threadId: string,
+    messages: UIMessage[],
+    question: string,
+    signal?: AbortSignal
+  ): Promise<string | null> {
+    const selection = this.getModelSelection()
+    const modelId = selection.selectedModel?.id
+    if (!modelId) return null
+    let model = this.model
+    if (!model) {
+      const provider = useModelProvider
+        .getState()
+        .getProviderByName(selection.selectedProvider)
+      if (!provider) return null
+      model = await ModelFactory.createModel(modelId, provider, {})
+    }
+    return askSideQuestion({
+      model,
+      modelId,
+      session: threadId,
+      messages,
+      question,
+      signal,
+    })
   }
 
   /**

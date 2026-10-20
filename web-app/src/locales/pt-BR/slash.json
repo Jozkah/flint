@@ -20,7 +20,8 @@
     "help": "Listar comandos disponíveis",
     "new": "Iniciar uma nova conversa",
     "newSession": "Iniciar uma nova sessão do Cowork",
-    "compact": "Resumir mensagens antigas para liberar a janela de contexto"
+    "compact": "Resumir mensagens antigas para liberar a janela de contexto",
+    "btw": "Faça uma pergunta paralela sobre este tópico; respondida sem ferramentas e nunca adicionada a ele"
   },
   "sent": {
     "command": "Comando",

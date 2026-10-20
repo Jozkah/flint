@@ -1204,7 +1204,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "No se pudo responder la pregunta aparte."
   },
   "autoCompactNeedsWindow": "La compactación automática necesita un tamaño de contexto, y {{model}} no tiene ninguno que Flint pueda encontrar. Define los tokens de contexto máximos para este modelo para que los chats largos se compacten antes de llenarlo. Si el proveedor rechaza una solicitud por su longitud, Flint compacta y reintenta una vez.",
   "compaction": {

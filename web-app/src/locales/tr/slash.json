@@ -20,7 +20,8 @@
     "help": "Kullanılabilir komutları listele",
     "new": "Yeni bir konuşma başlat",
     "newSession": "Yeni bir Cowork oturumu başlat",
-    "compact": "Bağlam penceresini boşaltmak için eski mesajları özetle"
+    "compact": "Bağlam penceresini boşaltmak için eski mesajları özetle",
+    "btw": "Bu konuşma hakkında yan bir soru sorun; araçsız yanıtlanır, konuşmaya eklenmez"
   },
   "sent": {
     "command": "Komut",

@@ -265,8 +265,18 @@ export function useChat(
     [sessionId]
   )
 
+  // `/btw`: a tool-less answer from a snapshot, never added to the thread.
+  const sideQuestion = useCallback(
+    async (messages: UIMessage[], question: string) =>
+      sessionId && transportRef.current
+        ? transportRef.current.sideQuestion(sessionId, messages, question)
+        : null,
+    [sessionId]
+  )
+
   return {
     ...chatResult,
+    sideQuestion,
     stop,
     updateRagToolsAvailability,
     setContinueFromContent,

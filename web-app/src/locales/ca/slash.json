@@ -20,7 +20,8 @@
     "help": "Llista les ordres disponibles",
     "new": "Inicia una conversa nova",
     "newSession": "Inicia una sessió de Cowork nova",
-    "compact": "Resumeix els missatges antics per alliberar la finestra de context"
+    "compact": "Resumeix els missatges antics per alliberar la finestra de context",
+    "btw": "Fes una pregunta lateral sobre aquest fil; es respon sense eines i no s'hi afegeix"
   },
   "sent": {
     "command": "Ordre",

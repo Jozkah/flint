@@ -1186,7 +1186,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Tidak dapat menjawab pertanyaan sampingan."
   },
   "autoCompactNeedsWindow": "Auto-compact membutuhkan ukuran konteks, dan {{model}} tidak memilikinya yang dapat ditemukan Flint. Atur Max Context Tokens untuk model ini agar obrolan panjang dipadatkan sebelum penuh. Jika provider menolak permintaan karena panjangnya, Flint memadatkan dan mencoba sekali lagi.",
   "compaction": {
