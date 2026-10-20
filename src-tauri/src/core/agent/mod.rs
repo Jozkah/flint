@@ -111,6 +111,7 @@ pub mod slash;
 pub mod spend;
 pub mod state_schema;
 pub mod subagent;
+pub mod subagent_memory;
 pub mod team_children;
 pub mod test_triage;
 pub mod todo;

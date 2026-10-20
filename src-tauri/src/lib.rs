@@ -317,6 +317,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_git_blame,
         core::agent::commands::agent_git_pr_for_commit,
         core::agent::commands::agent_subagent_list,
+        core::agent::commands::agent_subagent_memory_load,
+        core::agent::commands::agent_subagent_memory_write,
         core::agent::commands::consolidate_memory,
         // Remote provider commands
         core::server::remote_provider_commands::register_provider_config,

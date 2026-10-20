@@ -394,6 +394,8 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'agent_deferred_list',
       'agent_emergency_stop',
       'agent_subagent_list',
+      'agent_subagent_memory_load',
+      'agent_subagent_memory_write',
       'agent_team_child_begin',
       'agent_team_child_propose',
       'agent_team_child_settle',

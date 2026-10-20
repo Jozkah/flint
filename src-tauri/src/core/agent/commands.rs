@@ -751,6 +751,48 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
         .collect())
 }
 
+/// A subagent's persistent memory, as loaded at its start (first 200 lines or
+/// 25 KB of its `MEMORY.md`). `scope` is `user` or `project`; a project scope
+/// needs `project_root`, used only to derive an identity.
+#[tauri::command]
+pub async fn agent_subagent_memory_load<R: tauri::Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    name: String,
+    scope: String,
+    project_root: Option<String>,
+) -> Result<crate::core::agent::subagent_memory::LoadedMemory, String> {
+    use crate::core::agent::subagent_memory as mem;
+    let data = get_jan_data_folder_path(app_handle);
+    let dir = mem::memory_dir(
+        &data,
+        &name,
+        &scope,
+        project_root.as_deref().map(std::path::Path::new),
+    )?;
+    Ok(mem::load(&dir))
+}
+
+/// Replace a subagent's `MEMORY.md`. The renderer asks the user first; this
+/// only ever writes that one file in the agent's own directory.
+#[tauri::command]
+pub async fn agent_subagent_memory_write<R: tauri::Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    name: String,
+    scope: String,
+    project_root: Option<String>,
+    content: String,
+) -> Result<usize, String> {
+    use crate::core::agent::subagent_memory as mem;
+    let data = get_jan_data_folder_path(app_handle);
+    let dir = mem::memory_dir(
+        &data,
+        &name,
+        &scope,
+        project_root.as_deref().map(std::path::Path::new),
+    )?;
+    mem::write(&dir, &content)
+}
+
 /// Create, or reuse, the managed worktree for a Cowork session.
 ///
 /// Idempotent by design: a session that already has one gets the same record

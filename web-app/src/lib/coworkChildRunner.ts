@@ -23,7 +23,12 @@ import { recordEvents } from '@/lib/eventLog'
 import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 import { taskIdFor } from '@/lib/coworkActivity'
 import { recordAgentDispatch, type RunContext } from '@/lib/coworkActivityRecorder'
-import { registerSubagent, unregisterSubagent, type ToolOutcome } from '@/lib/coworkRunner'
+import {
+  registerSubagent,
+  unregisterSubagent,
+  type PendingToolCall,
+  type ToolOutcome,
+} from '@/lib/coworkRunner'
 import {
   parentToolNames,
   resolveSubagent,
@@ -47,6 +52,16 @@ import {
 } from '@/lib/coworkSubagentHistory'
 import { recordToolActivity, type ToolActivityContext } from '@/lib/toolActivity'
 import type { Destination } from '@/lib/coworkTeamDestinations'
+import {
+  AGENT_MEMORY_TOOL_NAME,
+  agentMemoryTool,
+  defaultMemoryDeps,
+  memoryBlock,
+  memoryLaunchError,
+  runMemoryWrite,
+  type MemoryDeps,
+  type MemoryScope,
+} from '@/lib/coworkSubagentMemory'
 import { preloadSkills } from '@/lib/coworkSubagentSkills'
 import { resolveChildEffort } from '@/lib/coworkSubagentEffort'
 import { prepareChildChoice, profileLabel, type ParentPersona } from '@/lib/subagentChoice'
@@ -105,6 +120,18 @@ export type ChildRunnerEnv = {
    * own: a child that reaches it stops with the token-budget status.
    */
   tokenLimit?: () => number | undefined
+  /**
+   * Asks the user before a subagent writes its persistent memory. Absent means
+   * the surface cannot ask, and the write is refused.
+   */
+  approveMemoryWrite?: (info: {
+    agent: string
+    scope: MemoryScope
+    content: string
+    signal: AbortSignal
+  }) => Promise<boolean>
+  /** Test seam for the memory commands. */
+  memoryDeps?: MemoryDeps
   /** Told how many tokens each finished child used, for a surface that keeps a
    * budget of its own (a Room). */
   onUsage?: (usage: Usage | null) => void
@@ -299,6 +326,47 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         settleChild(true, message)
         return { output: message, isError: true }
       }
+      // Persistent memory: its first lines go into the child's context and it
+      // gets one write tool, scoped to its own MEMORY.md and gated by the user.
+      let memoryBlockText: string | undefined
+      const memoryScope = resolved.memory
+      const memoryRoot = setup.system.readOnlyFolder ?? setup.system.workspacePath ?? null
+      if (memoryScope) {
+        const why = memoryLaunchError(memoryScope, memoryRoot)
+        let loaded: Awaited<ReturnType<MemoryDeps['load']>> | undefined
+        if (!why) {
+          try {
+            loaded = await (env.memoryDeps ?? defaultMemoryDeps).load(resolved.name, memoryScope, memoryRoot)
+          } catch (e) {
+            const message = `ERROR: subagent '${resolved.name}' not started: its memory could not be loaded (${e instanceof Error ? e.message : String(e)})`
+            env.lane?.attach(callId, message)
+            settleChild(true, message)
+            return { output: message, isError: true }
+          }
+        }
+        if (why || !loaded) {
+          const message = `ERROR: subagent '${resolved.name}' not started: ${why}`
+          env.lane?.attach(callId, message)
+          settleChild(true, message)
+          return { output: message, isError: true }
+        }
+        memoryBlockText = memoryBlock(memoryScope, loaded)
+      }
+      const memoryTools: Record<string, Tool> =
+        memoryScope && memoryBlockText ? { [AGENT_MEMORY_TOOL_NAME]: agentMemoryTool } : {}
+      const memoryHandled = (call: PendingToolCall, toolSignal: AbortSignal | undefined) =>
+        call.toolName === AGENT_MEMORY_TOOL_NAME && memoryScope
+          ? runMemoryWrite(call.input, {
+              agent: resolved.name,
+              scope: memoryScope,
+              projectRoot: memoryRoot,
+              deps: env.memoryDeps,
+              approve: async (info) =>
+                env.approveMemoryWrite
+                  ? env.approveMemoryWrite({ ...info, signal: toolSignal ?? childAbort.signal })
+                  : false,
+            })
+          : undefined
       const child = await runSubagent({
         resolved,
         // The definition's opening lines go before the parent's message. A
@@ -315,8 +383,14 @@ ${req.description}`
         activity: setup.activity,
         model: (effortChoice && 'model' in effortChoice ? effortChoice.model : undefined) ?? choice.model ?? model,
         supportsVision: choice.supportsVision ?? env.supportsVision?.() ?? false,
-        ...(choice.extraSystem.length + preloaded.blocks.length > 0
-          ? { extraSystem: [...choice.extraSystem, ...preloaded.blocks] }
+        ...(choice.extraSystem.length + preloaded.blocks.length + (memoryBlockText ? 1 : 0) > 0
+          ? {
+              extraSystem: [
+                ...choice.extraSystem,
+                ...preloaded.blocks,
+                ...(memoryBlockText ? [memoryBlockText] : []),
+              ],
+            }
           : {}),
         providerOptions:
           effortChoice && 'model' in effortChoice
@@ -330,10 +404,19 @@ ${req.description}`
         ...(env.maxSteps ? { maxSteps: env.maxSteps } : {}),
         // A background child may ask its parent; a foreground one cannot, the
         // parent being blocked in the call that started it.
-        ...(askable ? { extraTools: { [ASK_PARENT_TOOL_NAME]: askParentTool } } : {}),
-        dispatch: askable
+        ...(askable || memoryScope
+          ? {
+              extraTools: {
+                ...(askable ? { [ASK_PARENT_TOOL_NAME]: askParentTool } : {}),
+                ...memoryTools,
+              },
+            }
+          : {}),
+        dispatch: askable || memoryScope
           ? async (call, toolSignal) => {
-              if (call.toolName !== ASK_PARENT_TOOL_NAME) {
+              const wrote = memoryHandled(call, toolSignal)
+              if (wrote) return wrote
+              if (!askable || call.toolName !== ASK_PARENT_TOOL_NAME) {
                 return setup.dispatch(call, toolSignal)
               }
               const asked = await askParent({

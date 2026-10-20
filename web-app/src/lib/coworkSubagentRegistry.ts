@@ -45,6 +45,8 @@ export type SubagentDefinition = {
   omit_instructions?: boolean
   /** Skills whose full content is preloaded into the child's context (max 32). */
   skills?: string[]
+  /** A persistent memory directory of its own (in the data folder, never in a project). */
+  memory?: 'user' | 'project'
   /** Reasoning effort for this agent, where its model offers one. */
   effort?: 'low' | 'medium' | 'high' | 'xhigh'
 }

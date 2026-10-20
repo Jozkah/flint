@@ -21,6 +21,7 @@ import {
 } from '@/lib/coworkTools'
 import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSession'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { parseMemoryScope, type MemoryScope } from '@/lib/coworkSubagentMemory'
 import { parseSkillList, skillListError } from '@/lib/coworkSubagentSkills'
 import { isEffortLevel, type EffortLevel } from '@/lib/modelEffort'
 import { isCoworkMode, type CoworkMode } from '@/lib/coworkMode'
@@ -183,6 +184,8 @@ export type ResolvedSubagent = {
   initialPrompt?: string
   /** Skip project instructions for this child. */
   omitInstructions?: boolean
+  /** Persistent memory scope, when the definition has one. */
+  memory?: MemoryScope
   /** Skills preloaded into the child's context at start. */
   skills?: string[]
   /** Reasoning effort: the call's, else the definition's. */
@@ -344,6 +347,7 @@ export function resolveSubagent(
       ...(saved.initial_prompt?.trim() ? { initialPrompt: saved.initial_prompt.trim() } : {}),
       ...(saved.omit_instructions === true ? { omitInstructions: true } : {}),
       ...(parseSkillList(saved.skills) ? { skills: parseSkillList(saved.skills) } : {}),
+      ...(parseMemoryScope(saved.memory) ? { memory: parseMemoryScope(saved.memory) } : {}),
       ...(effort ? { effort } : {}),
     }
   }
