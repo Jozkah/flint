@@ -4407,6 +4407,12 @@ impl ToolInvoker for CompositeToolInvoker {
         tool_calls: &[serde_json::Value],
         on_complete: &OnComplete<'_>,
     ) -> Result<Vec<ToolOutcome>, HarnessError> {
+        // `monitor` is a backgrounded `bash` call: rewritten before anything
+        // looks at the call, so every rule, gate and sandbox that applies to
+        // `bash` applies to it, and nothing about it can be looser.
+        let monitor_ok = self.allowed_tools.as_ref().is_none_or(|a| a.contains("monitor"));
+        let (rewritten, monitors) = rewrite_monitor_calls(tool_calls, monitor_ok);
+        let tool_calls: &[serde_json::Value] = &rewritten;
         self.record_requested(tool_calls);
         let (allowed, refused) = self.apply_tool_rules(tool_calls);
         for (_, outcome) in &refused {
@@ -4419,6 +4425,10 @@ impl ToolInvoker for CompositeToolInvoker {
                 .await
                 .map(|ran| weave_refused(ran, refused, tool_calls))
         };
+        let mut out = out;
+        if let Ok(outcomes) = &mut out {
+            register_monitors(&monitors, outcomes);
+        }
         if let Ok(outcomes) = &out {
             self.record_outcomes(tool_calls, outcomes);
             // `[[tool_rules]] max_failures` reads what failed here.
@@ -6283,6 +6293,34 @@ fn advertise_local_tools(
                 && allowed_names.is_none_or(|allow| allow.contains(named));
             if offered {
                 openai_tools.push(message);
+            }
+
+            // A background watcher whose matching lines reach the run as they
+            // come. It is dispatched as a backgrounded `bash` call, so it is
+            // offered only where `bash` is, and a refused `bash` refuses it.
+            let bash_offered = openai_tools
+                .iter()
+                .any(|t| t["function"]["name"].as_str() == Some("bash"));
+            if !planning
+                && bash_offered
+                && !permissions.is_denied("monitor", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("monitor"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "monitor",
+                        "description": "Start a command in the background and get its matching output lines as short events while you keep working, instead of one notice when it ends. Use it to watch a log, a build, a test run or a poll loop. Runs under the same sandbox and approval as `bash`. Lines arrive at most about one per second and at most 100 per watcher. Stop it with the background tasks panel or `bash` with the job_id.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": { "type": "string", "description": "The command to watch. Its stdout is what is delivered." },
+                                "filter": { "type": "string", "description": "Optional regex; only lines that match are delivered." }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }));
             }
 
             let named = branches["function"]["name"].as_str().unwrap_or_default();
@@ -8519,6 +8557,59 @@ fn body_cost_ceiling(
     })
 }
 
+/// `monitor` calls rewritten as backgrounded `bash` calls, and the filter each
+/// was given by call id. A call whose arguments cannot be read, or whose filter
+/// is not a regex, is left as `monitor` and is refused downstream as an unknown
+/// tool rather than run unfiltered.
+fn rewrite_monitor_calls(
+    calls: &[serde_json::Value],
+    offered: bool,
+) -> (Vec<serde_json::Value>, Vec<(String, Option<regex::Regex>)>) {
+    let mut monitors = Vec::new();
+    let rewritten = calls
+        .iter()
+        .map(|tc| {
+            let name = tc.get("function").and_then(|f| f.get("name")).and_then(|v| v.as_str());
+            if name != Some("monitor") || !offered {
+                return tc.clone();
+            }
+            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let Some(args) = parse_tool_args(tc) else { return tc.clone() };
+            let command = args.get("command").and_then(|v| v.as_str()).unwrap_or_default();
+            let Ok(filter) = crate::core::agent::monitor::parse_filter(args.get("filter").and_then(|v| v.as_str()))
+            else {
+                return tc.clone();
+            };
+            if command.trim().is_empty() {
+                return tc.clone();
+            }
+            monitors.push((id, filter));
+            let mut bash = tc.clone();
+            bash["function"]["name"] = serde_json::json!("bash");
+            bash["function"]["arguments"] =
+                serde_json::json!(serde_json::json!({ "command": command, "background": true, "timeout": 0 }).to_string());
+            bash
+        })
+        .collect();
+    (rewritten, monitors)
+}
+
+/// Register a watcher for each rewritten call whose `bash` started a job, and
+/// say so in the result the model reads.
+fn register_monitors(monitors: &[(String, Option<regex::Regex>)], outcomes: &mut [ToolOutcome]) {
+    for (id, filter) in monitors {
+        let Some(outcome) = outcomes.iter_mut().find(|o| &o.id == id) else { continue };
+        let started = background_jobs_started(&[serde_json::json!({ "role": "tool", "content": outcome.content })]);
+        let Some(job) = started.first() else { continue };
+        crate::core::agent::monitor::register(job, filter.clone());
+        outcome.content = format!(
+            "Monitor started (job_id={job}). Matching output lines arrive as [monitor {job}] events, \
+             at most about one per second and 100 in all. Stop it with the background tasks panel or \
+             bash {{\"job_id\": \"{job}\"}}."
+        );
+    }
+}
+
 /// The `job_id`s of background `bash` commands started by the tool results in
 /// `messages`. The bash tool reports a backgrounded command as
 /// `(job_id=<id>)`; that fixed sentence is the one place the id appears.
@@ -8863,6 +8954,7 @@ async fn run_turn_cycle(
     // results as they land, and announced once at the next turn boundary after
     // the job finishes, so the model need not poll for them.
     let mut shells_owed: Vec<String> = Vec::new();
+    let mut monitored: Vec<String> = Vec::new();
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
@@ -8874,12 +8966,23 @@ async fn run_turn_cycle(
         // A compaction replaces the vector with a shorter one, so the index of
         // what was already scanned can be past the end: clamp it rather than
         // slice out of range (which panicked the whole run).
-        shells_owed.extend(background_jobs_started(unscanned(
-            &conversation_messages,
-            shells_scanned,
-        )));
+        let started_now = background_jobs_started(unscanned(&conversation_messages, shells_scanned));
+        // Watchers are claimed before the doorbell can drop a job that
+        // finished at once.
+        monitored.extend(
+            started_now
+                .iter()
+                .filter(|j| crate::core::agent::monitor::is_watched(j) && !monitored.contains(j))
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        shells_owed.extend(started_now);
         shells_scanned = conversation_messages.len();
         if let Some(text) = finished_background_jobs(&mut shells_owed) {
+            crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+            shells_scanned = conversation_messages.len();
+        }
+        if let Some(text) = crate::core::agent::monitor::collect(&monitored) {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
             shells_scanned = conversation_messages.len();
         }
@@ -10370,6 +10473,25 @@ mod tests {
 
     /// The doorbell reads the job ids a backgrounded `bash` result names, once
     /// each, and ignores everything that is not a tool result.
+    #[test]
+    fn monitor_is_dispatched_as_a_backgrounded_bash_call() {
+        let calls = vec![
+            json!({"id": "m1", "function": {"name": "monitor", "arguments": "{\"command\":\"tail -f log\",\"filter\":\"ERR\"}"}}),
+            json!({"id": "m2", "function": {"name": "monitor", "arguments": "{\"command\":\"x\",\"filter\":\"(\"}"}}),
+            json!({"id": "r1", "function": {"name": "read", "arguments": "{}"}}),
+        ];
+        let (out, monitors) = rewrite_monitor_calls(&calls, true);
+        assert_eq!(out[0]["function"]["name"], "bash");
+        let args: serde_json::Value =
+            serde_json::from_str(out[0]["function"]["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args, json!({"command": "tail -f log", "background": true, "timeout": 0}));
+        // A bad filter is not run unfiltered: it stays `monitor` and is refused.
+        assert_eq!(out[1]["function"]["name"], "monitor");
+        assert_eq!(out[2], calls[2]);
+        assert_eq!(monitors.len(), 1);
+        assert!(monitors[0].1.as_ref().unwrap().is_match("an ERR line"));
+    }
+
     #[test]
     fn background_job_ids_are_read_from_tool_results() {
         let messages = vec![

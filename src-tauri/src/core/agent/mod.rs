@@ -109,6 +109,7 @@ pub mod skills;
 #[cfg(not(feature = "cli"))]
 pub mod slash;
 pub mod attribution;
+pub mod monitor;
 pub mod spend;
 pub mod state_schema;
 pub mod subagent;
