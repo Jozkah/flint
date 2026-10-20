@@ -4602,6 +4602,7 @@ impl ToolInvoker for CompositeToolInvoker {
             timeout_secs,
             tools: Vec::new(),
             stdin_json: false,
+            if_filter: None,
         };
         let ctx = Context {
             project_root: &self.project_root,
