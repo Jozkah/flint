@@ -141,7 +141,7 @@ impl Event {
     /// what keeps a run inside its context window, and a hook that could stop
     /// it could wedge the run.
     pub fn can_block(self) -> bool {
-        matches!(self, Event::PreTool)
+        matches!(self, Event::PreTool | Event::RunEnd)
     }
 }
 
@@ -611,6 +611,9 @@ pub struct HookInput {
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    /// `run-end` only: the answer the run is about to finish with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_assistant_message: Option<String>,
 }
 
 impl HookInput {
@@ -1279,6 +1282,30 @@ if=\"bash(\"
 event=\"run-end\"
 command=\"x\"
 if=\"bash\"
+").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_failing_run_end_block_hook_blocks_with_its_reason() {
+        let root = dir("runend");
+        write_config(
+            &root,
+            &format!("[[hook]]
+event = \"run-end\"
+command = \"{FAIL}\"
+on_failure = \"block\"
+"),
+        );
+        let hooks = load(&root).unwrap();
+        let input = HookInput { last_assistant_message: Some("done".into()), ..HookInput::default() };
+        let d = run_with_input(&hooks, Event::RunEnd, None, &ctx(&root), &input).await;
+        assert!(d.blocked.is_some_and(|e| e.message.contains("the linter says no")));
+        // block is still refused for events that cannot gate.
+        assert!(parse("[[hook]]
+event=\"post-tool\"
+command=\"x\"
+on_failure=\"block\"
 ").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }

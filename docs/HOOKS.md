@@ -45,7 +45,7 @@ running the subset that happened to parse.
 | `post-tool-batch` | once per assistant turn, after all its tool calls have results, before the next model request | no |
 | `pre-compact` | just before the run summarizes its conversation to make room (a compaction) | no |
 | `post-compact` | just after a compaction has shrunk the conversation | no |
-| `run-end` | accepted by the parser; not fired by the current tool path | no |
+| `run-end` | when the agent is about to finish its run (final answer produced, final checks passed) | yes: a failing `block` hook sends the agent back to work |
 
 `post-tool-batch` is observe-only and runs detached: the next model request
 does not wait for it, its failure or timeout is logged and dropped (never added
@@ -74,6 +74,13 @@ outside that loop (the TUI's manual `/compact`, or one a renderer does itself)
 does not fire them. A `tools`
 list means nothing for these events and does not stop the hook from running.
 
+`run-end` is a Stop-style gate. With `on_failure = "block"`, a hook that exits
+non-zero refuses the finish: its output becomes a reminder attached to the
+conversation (never user text) and the agent keeps working. At most 8 blocks
+per run; after that the run finishes regardless. `warn`/`ignore` hooks only
+observe. Only the Rust agent loop (CLI runs) fires it; the desktop chat and
+Cowork loops do not yet. `stdin_json` hands it `last_assistant_message`.
+
 `session-start` is refused: nothing fires it yet.
 
 ## Failure policy
@@ -88,7 +95,7 @@ A hook fails when it exits non-zero, times out, is cancelled, or cannot start.
 
 Per event: `pre-tool` honors all three (`block` is the only way a hook stops a
 call; the default `warn` lets it run). `post-tool`, `post-tool-batch`,
-`post-compact` and `run-end` accept `warn` and `ignore` only, because the work
+`post-compact` accept `warn` and `ignore` only, because the work
 has already happened; `pre-compact` accepts only those two as well, because it
 is observe-only. There is no `prompt-submit` event in this file, so `block` cannot be
 configured for one: the `UserPromptSubmit` hooks imported from Claude Code
