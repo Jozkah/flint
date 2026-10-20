@@ -177,3 +177,22 @@ describe('capMode', () => {
     expect(capMode('ask', 'plan')).toBe('ask')
   })
 })
+
+describe('skills preload', () => {
+  const base = { subagent_name: 'researcher', description: 'go' }
+  const def = (skills: unknown) => ({
+    name: 'researcher',
+    description: 'd',
+    system_prompt: 'p',
+    allowed_tools: null as string[] | null,
+    model: null as string | null,
+    skills: skills as string[],
+  })
+  it('keeps a cleaned, deduped list and refuses one over the cap', () => {
+    expect(resolveSubagent(base, [def([' a ', 'a', 'b', 3, ''])], [])).toMatchObject({ skills: ['a', 'b'] })
+    expect(resolveSubagent(base, [def([])], [])).not.toHaveProperty('skills')
+    const many = Array.from({ length: 33 }, (_, i) => `s${i}`)
+    expect(resolveSubagent(base, [def(many)], [])).toMatchObject({ error: expect.stringContaining('limit is 32') })
+    expect(resolveSubagent(base, [def(many.slice(0, 32))], [])).toMatchObject({ skills: many.slice(0, 32) })
+  })
+})
