@@ -32,16 +32,12 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { LogViewer } from '@/components/LogViewer'
 import { ensureModelForServer } from '@/utils/ensureModelForServer'
-
 import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from '@/components/ui/popover'
-import {
-  LoaderCircle,
-} from 'lucide-react'
-import { Icon } from '@/components/ui/icon'
+  SettingsTabStrip,
+  useSettingsTab,
+  type SettingsTab,
+} from '@/containers/SettingsTabs'
+import { LoaderCircle } from 'lucide-react'
 import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,8 +45,36 @@ export const Route = createFileRoute(route.settings.local_api_server as any)({
   component: desktopOnlyRoute(LocalAPIServerContent, 'common:local_api_server'),
 })
 
+type ServerTab = 'server' | 'settings'
+
 function LocalAPIServerContent() {
   const { t } = useTranslation()
+  const tabs: SettingsTab<ServerTab>[] = [
+    {
+      id: 'server',
+      label: t('permissions:request.server'),
+      anchors: [
+        'settings-local-api-server-run-on-startup',
+        'settings-local-api-server-default-model',
+      ],
+    },
+    {
+      id: 'settings',
+      label: t('common:settings'),
+      anchors: [
+        'settings-local-api-server-host',
+        'settings-local-api-server-port',
+        'settings-local-api-server-api-prefix',
+        'settings-local-api-server-api-key',
+        'settings-local-api-server-trusted-hosts',
+        'settings-local-api-server-request-timeout',
+        'settings-local-api-server-server-tools',
+        'settings-local-api-server-cors',
+        'settings-local-api-server-verbose-logs',
+      ],
+    },
+  ]
+  const [tab, setTab] = useSettingsTab(tabs)
   const serviceHub = useServiceHub()
   const {
     corsEnabled,
@@ -107,7 +131,9 @@ function LocalAPIServerContent() {
     if (serverStatus === 'stopped') {
       console.log('Starting server with port:', serverPort)
       toast.info(t('uiLeftovers:localApi.starting'), {
-        description: t('uiLeftovers:localApi.startingDesc', { port: serverPort }),
+        description: t('uiLeftovers:localApi.startingDesc', {
+          port: serverPort,
+        }),
       })
 
       // if (!apiKey || apiKey.toString().trim().length === 0) {
@@ -272,287 +298,238 @@ function LocalAPIServerContent() {
         title={t('common:local_api_server')}
         description={t('settings:pageDesc.localApiServer')}
         actions={
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="pointer-coarse:h-11">
-                <Icon name="x-sliders" size={14} />
-                {t('uiLeftovers:configuration')}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              className="w-[min(100vw-1.5rem,480px)] max-h-[70vh] overflow-y-auto bg-card"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
-                    {t('settings:localApiServer.serverConfiguration')}
-                  </h2>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                        {t('settings:localApiServer.serverHost')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('settings:localApiServer.serverHostDesc')}
-                      </p>
-                    </div>
-                    <div>
-                      <ServerHostSwitcher isServerRunning={isServerRunning} />
-                    </div>
-                  </div>
-                  {serverHost === '0.0.0.0' && (
-                    <p role="note" className="text-xs text-warning">
-                      {t('settings:localApiServer.serverHostLanWarning')}
-                      {trustedHosts.length === 0 && (
-                        <> {t('settings:localApiServer.serverHostLanNoTrusted')}</>
-                      )}
-                    </p>
-                  )}
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                        {t('settings:localApiServer.serverPort')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('settings:localApiServer.serverPortDesc')}
-                      </p>
-                    </div>
-                    <PortInput isServerRunning={isServerRunning} />
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                        {t('settings:localApiServer.apiPrefix')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('settings:localApiServer.apiPrefixDesc')}
-                      </p>
-                    </div>
-                    <ApiPrefixInput isServerRunning={isServerRunning} />
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                      {t('settings:localApiServer.apiKey')}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {t('settings:localApiServer.apiKeyDesc')}
-                    </p>
-                    <div className="pt-1">
-                      <ApiKeyInput
-                        isServerRunning={isServerRunning}
-                        showError={showApiKeyError}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                      {t('settings:localApiServer.trustedHosts')}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {t('settings:localApiServer.trustedHostsDesc')}
-                    </p>
-                    <div className="pt-1">
-                      <TrustedHostsInput isServerRunning={isServerRunning} />
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                        {t('settings:localApiServer.proxyTimeout')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('settings:localApiServer.proxyTimeoutDesc')}
-                      </p>
-                    </div>
-                    <ProxyTimeoutInput isServerRunning={isServerRunning} />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <h2 className="text-[length:calc(var(--ui-font-base)*0.6875)] font-medium tracking-[.025em] text-subtle-foreground uppercase">
-                    {t('settings:localApiServer.advancedSettings')}
-                  </h2>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                        Execute tools on server
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Run tools server-side for chat endpoints.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={enableServerToolExecution}
-                      onCheckedChange={setEnableServerToolExecution}
-                      disabled={isServerRunning}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                        {t('settings:localApiServer.cors')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('settings:localApiServer.corsDesc')}
-                      </p>
-                    </div>
-                    <Switch
-                      checked={corsEnabled}
-                      onCheckedChange={setCorsEnabled}
-                      disabled={isServerRunning}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium">
-                        {t('settings:localApiServer.verboseLogs')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('settings:localApiServer.verboseLogsDesc')}
-                      </p>
-                    </div>
-                    <Switch
-                      checked={verboseLogs}
-                      onCheckedChange={setVerboseLogs}
-                      disabled={isServerRunning}
-                    />
-                  </div>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <SettingsTabStrip
+            tabs={tabs}
+            value={tab}
+            onChange={setTab}
+            label={t('common:local_api_server')}
+          />
         }
-        layout={[0, 1, 1]}
+        // One entry per slot below, shown or not: Server, Token limits and
+        // Server log on the Server tab; Connection and Behaviour on Settings.
+        layout={[0, 1, 1, 0, 1]}
       >
-              {/* General Settings */}
-              <Card
-                title={t('settings:localApiServer.title')}
-                description={t('settings:localApiServer.description')}
-                aside={
-                  <Button
-                    onClick={toggleAPIServer}
-                    variant={isServerRunning ? 'destructive' : 'default'}
-                    className="pointer-coarse:h-11"
-                    disabled={serverStatus === 'pending' || isModelLoading}
-                  >
-                    {getButtonContent()}
-                  </Button>
-                }
+        {tab === 'server' && (
+          <Card
+            title={t('settings:localApiServer.title')}
+            description={t('settings:localApiServer.description')}
+            aside={
+              <Button
+                onClick={toggleAPIServer}
+                variant={isServerRunning ? 'destructive' : 'default'}
+                className="pointer-coarse:h-11"
+                disabled={serverStatus === 'pending' || isModelLoading}
               >
-                <CardItem
-                  anchor="settings-local-api-server-run-on-startup"
-                  title={t('settings:localApiServer.runOnStartup')}
-                  description={t('settings:localApiServer.runOnStartupDesc')}
-                  actions={
-                    <Switch
-                      checked={enableOnStartup}
-                      onCheckedChange={(checked) => {
-                        setEnableOnStartup(checked)
-                      }}
-                    />
-                  }
-                />
-                {!IS_MACOS && (
-                  <CardItem
-                    title={t('settings:localApiServer.runInBackground')}
-                    description={t(
-                      'settings:localApiServer.runInBackgroundDesc'
-                    )}
-                    actions={
-                      <Switch
-                        checked={runInBackground}
-                        onCheckedChange={setRunInBackground}
-                      />
-                    }
-                  />
-                )}
-                <CardItem
-                  anchor="settings-local-api-server-default-model"
-                  title={t('settings:localApiServer.defaultModel')}
-                  description={t('settings:localApiServer.defaultModelDesc')}
-                  actions={
-                    <div className="w-full min-w-0 sm:w-64 sm:max-w-full">
-                      <LocalModelSelect
-                        value={defaultModelLocalApiServer}
-                        onChange={setDefaultModelLocalApiServer}
-                      />
-                    </div>
-                  }
-                />
-              </Card>
-
-              <Card>
-                <CardItem
-                  title={t('uiLeftovers:localApi.status')}
-                  description={
-                    isServerRunning
-                      ? t('uiLeftovers:localApi.runningDesc')
-                      : t('uiLeftovers:localApi.stoppedDesc')
-                  }
-                  actions={
-                    <>
-                      <Chip tone={isServerRunning ? 'ok' : 'neutral'} dot live={isServerRunning}>
-                        {isServerRunning
-                          ? t('uiLeftovers:localApi.running')
-                          : t('uiLeftovers:localApi.stopped')}
-                      </Chip>
-                      {isServerRunning && (
-                        <code className="inline-flex h-[30px] items-center rounded-lg bg-muted px-2.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
-                          {serverUrl}
-                          {apiPrefix}
-                        </code>
-                      )}
-                    </>
-                  }
-                />
-
-                <CardItem
-                  title={t('settings:localApiServer.swaggerDocs')}
-                  description={t('settings:localApiServer.swaggerDocsDesc')}
-                  actions={
-                    <a
-                      href={serverUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={cn(
-                        isServerRunning ? '' : 'pointer-events-none'
-                      )}
-                    >
-                      <Button
-                        variant="outline"
-                        disabled={!isServerRunning}
-                        title={t('settings:localApiServer.swaggerDocs')}
-                      >
-                        <span>{t('settings:localApiServer.openDocs')}</span>
-                      </Button>
-                    </a>
-                  }
-                />
-              </Card>
-
-              <UsageCeilingsCard />
-
-              <Card
-                title={t('settings:localApiServer.serverLog')}
-                aside={
+                {getButtonContent()}
+              </Button>
+            }
+          >
+            <CardItem
+              title={t('uiLeftovers:localApi.status')}
+              description={
+                isServerRunning
+                  ? t('uiLeftovers:localApi.runningDesc')
+                  : t('uiLeftovers:localApi.stoppedDesc')
+              }
+              actions={
+                <>
+                  <Chip
+                    tone={isServerRunning ? 'ok' : 'neutral'}
+                    dot
+                    live={isServerRunning}
+                  >
+                    {isServerRunning
+                      ? t('uiLeftovers:localApi.running')
+                      : t('uiLeftovers:localApi.stopped')}
+                  </Chip>
+                  {isServerRunning && (
+                    <code className="inline-flex h-[30px] items-center rounded-lg bg-muted px-2.5 font-mono text-[length:calc(var(--ui-font-base)*0.71875)] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
+                      {serverUrl}
+                      {apiPrefix}
+                    </code>
+                  )}
+                </>
+              }
+            />
+            <CardItem
+              title={t('settings:localApiServer.swaggerDocs')}
+              description={t('settings:localApiServer.swaggerDocsDesc')}
+              actions={
+                <a
+                  href={serverUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(isServerRunning ? '' : 'pointer-events-none')}
+                >
                   <Button
                     variant="outline"
-                    onClick={handleOpenLogs}
-                    className="pointer-coarse:h-11"
+                    disabled={!isServerRunning}
+                    title={t('settings:localApiServer.swaggerDocs')}
                   >
-                    {t('settings:localApiServer.openInNewWindow')}
+                    <span>{t('settings:localApiServer.openDocs')}</span>
                   </Button>
+                </a>
+              }
+            />
+            <CardItem
+              anchor="settings-local-api-server-run-on-startup"
+              title={t('settings:localApiServer.runOnStartup')}
+              description={t('settings:localApiServer.runOnStartupDesc')}
+              actions={
+                <Switch
+                  checked={enableOnStartup}
+                  onCheckedChange={(checked) => {
+                    setEnableOnStartup(checked)
+                  }}
+                />
+              }
+            />
+            {!IS_MACOS && (
+              <CardItem
+                title={t('settings:localApiServer.runInBackground')}
+                description={t('settings:localApiServer.runInBackgroundDesc')}
+                actions={
+                  <Switch
+                    checked={runInBackground}
+                    onCheckedChange={setRunInBackground}
+                  />
                 }
-              >
-                <div className="h-[160px]">
-                  <LogViewer />
+              />
+            )}
+            <CardItem
+              anchor="settings-local-api-server-default-model"
+              title={t('settings:localApiServer.defaultModel')}
+              description={t('settings:localApiServer.defaultModelDesc')}
+              actions={
+                <div className="w-full min-w-0 sm:w-64 sm:max-w-full">
+                  <LocalModelSelect
+                    value={defaultModelLocalApiServer}
+                    onChange={setDefaultModelLocalApiServer}
+                  />
                 </div>
-              </Card>
+              }
+            />
+          </Card>
+        )}
+
+        {tab === 'server' && <UsageCeilingsCard />}
+
+        {tab === 'server' && (
+          <Card
+            title={t('settings:localApiServer.serverLog')}
+            aside={
+              <Button
+                variant="outline"
+                onClick={handleOpenLogs}
+                className="pointer-coarse:h-11"
+              >
+                {t('settings:localApiServer.openInNewWindow')}
+              </Button>
+            }
+          >
+            <div className="h-[160px]">
+              <LogViewer />
+            </div>
+          </Card>
+        )}
+
+        {/* Read when the server starts, so every field locks while it runs. */}
+        {tab === 'settings' && (
+          <Card title={t('engine:provider.connection')}>
+            <CardItem
+              anchor="settings-local-api-server-host"
+              title={t('settings:localApiServer.serverHost')}
+              description={t('settings:localApiServer.serverHostDesc')}
+              actions={<ServerHostSwitcher isServerRunning={isServerRunning} />}
+            />
+            {serverHost === '0.0.0.0' && (
+              <p role="note" className="py-2 text-xs text-warning">
+                {t('settings:localApiServer.serverHostLanWarning')}
+                {trustedHosts.length === 0 && (
+                  <> {t('settings:localApiServer.serverHostLanNoTrusted')}</>
+                )}
+              </p>
+            )}
+            <CardItem
+              anchor="settings-local-api-server-port"
+              title={t('settings:localApiServer.serverPort')}
+              description={t('settings:localApiServer.serverPortDesc')}
+              actions={<PortInput isServerRunning={isServerRunning} />}
+            />
+            <CardItem
+              anchor="settings-local-api-server-api-prefix"
+              title={t('settings:localApiServer.apiPrefix')}
+              description={t('settings:localApiServer.apiPrefixDesc')}
+              actions={<ApiPrefixInput isServerRunning={isServerRunning} />}
+            />
+            <CardItem
+              anchor="settings-local-api-server-api-key"
+              column
+              title={t('settings:localApiServer.apiKey')}
+              description={t('settings:localApiServer.apiKeyDesc')}
+              actions={
+                <ApiKeyInput
+                  isServerRunning={isServerRunning}
+                  showError={showApiKeyError}
+                />
+              }
+            />
+            <CardItem
+              anchor="settings-local-api-server-trusted-hosts"
+              column
+              title={t('settings:localApiServer.trustedHosts')}
+              description={t('settings:localApiServer.trustedHostsDesc')}
+              actions={<TrustedHostsInput isServerRunning={isServerRunning} />}
+            />
+            <CardItem
+              anchor="settings-local-api-server-request-timeout"
+              title={t('settings:localApiServer.proxyTimeout')}
+              description={t('settings:localApiServer.proxyTimeoutDesc')}
+              actions={<ProxyTimeoutInput isServerRunning={isServerRunning} />}
+            />
+          </Card>
+        )}
+
+        {tab === 'settings' && (
+          <Card title={t('settings:agentTools.tabBehaviour')}>
+            <CardItem
+              anchor="settings-local-api-server-server-tools"
+              title="Execute tools on server"
+              description="Run tools server-side for chat endpoints."
+              actions={
+                <Switch
+                  checked={enableServerToolExecution}
+                  onCheckedChange={setEnableServerToolExecution}
+                  disabled={isServerRunning}
+                />
+              }
+            />
+            <CardItem
+              anchor="settings-local-api-server-cors"
+              title={t('settings:localApiServer.cors')}
+              description={t('settings:localApiServer.corsDesc')}
+              actions={
+                <Switch
+                  checked={corsEnabled}
+                  onCheckedChange={setCorsEnabled}
+                  disabled={isServerRunning}
+                />
+              }
+            />
+            <CardItem
+              anchor="settings-local-api-server-verbose-logs"
+              title={t('settings:localApiServer.verboseLogs')}
+              description={t('settings:localApiServer.verboseLogsDesc')}
+              actions={
+                <Switch
+                  checked={verboseLogs}
+                  onCheckedChange={setVerboseLogs}
+                  disabled={isServerRunning}
+                />
+              }
+            />
+          </Card>
+        )}
       </SettingsPageBody>
     </div>
   )
