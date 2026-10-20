@@ -513,6 +513,11 @@ export type CoworkToolOptions = {
   /** Depth 1+ cannot spawn further subagents; mirrors the Rust loop's cap. */
   allowSubagents: boolean
   /**
+   * This session was itself started by `spawn_session`: it cannot start another
+   * nested chat, so it is never offered the tool (the dispatcher still refuses).
+   */
+  spawned?: boolean
+  /**
    * Follows the global web-search setting, the same one chat reads. Cowork has
    * no toggle of its own: the surface configures nothing about its tool set, so
    * this is a Settings-level capability rather than a per-session choice.
@@ -615,6 +620,7 @@ export function coworkToolSignature(
     opts.planMode ? 'plan' : 'normal',
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
+    opts.spawned ? 'spawned' : 'top',
     opts.webSearch ? 'web' : 'noweb',
     opts.campaignCoordinator ? 'campaign' : 'nocampaign',
     opts.slim ?? 'full',
@@ -769,6 +775,7 @@ export function coworkToolsFromSchemas(
     | 'planMode'
     | 'webSearch'
     | 'allowSubagents'
+    | 'spawned'
     | 'subagentNames'
     | 'campaignCoordinator'
     | 'slim'
@@ -863,7 +870,7 @@ export function coworkToolsFromSchemas(
     tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
     tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
     tools[ANSWER_SUBAGENT_TOOL_NAME] = answerSubagentTool
-    tools[SPAWN_SESSION_TOOL_NAME] = spawnSessionTool
+    if (!opts.spawned) tools[SPAWN_SESSION_TOOL_NAME] = spawnSessionTool
   }
   return tools
 }
