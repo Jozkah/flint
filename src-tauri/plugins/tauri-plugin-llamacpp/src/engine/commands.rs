@@ -197,6 +197,20 @@ async fn record_nvidia_driver(versions: Arc<EngineVersions>) {
 fn offload_emitter<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) -> worker::OffloadCallback {
     use tauri::Emitter;
     Arc::new(move |report: worker::OffloadReport| {
+        // One line in the app log per update of a load's report; the last one is
+        // the final placement. Skipped for the bare "offloaded N/M" line, whose
+        // sizes are still zero. This is the line to ask for when a model decodes
+        // at CPU speed: `0/33 layers` or a large host figure says it ran there.
+        if report.gpu_mib + report.cpu_mib > 0.0 {
+            log::info!(
+                "model placement{}: {}/{} layers on the GPU, weights {:.0} MiB in device memory, {:.0} MiB in host memory",
+                report.model.as_deref().map(|m| format!(" ({m})")).unwrap_or_default(),
+                report.gpu_layers,
+                report.total_layers,
+                report.gpu_mib,
+                report.cpu_mib
+            );
+        }
         if let Err(e) = app_handle.emit("llamacpp-offload", report) {
             log::warn!("emit llamacpp-offload failed: {e}");
         }

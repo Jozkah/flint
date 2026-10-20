@@ -1359,4 +1359,31 @@ mod tests {
         assert_eq!(r.gpu_layers, 0);
         assert_eq!(t.feed("[12345] something unrelated"), None);
     }
+
+    /// The lines as the in-process engine prints them: a timestamp and a level
+    /// letter in front, and no router tag. A reporter's 24 GB card decoded at
+    /// CPU speed and the log could not say where the weights were; these are the
+    /// lines the shim now lets through, so the tracker has to read them as they
+    /// really arrive.
+    #[test]
+    fn offload_tracker_reads_the_prefixed_lines_the_engine_prints() {
+        let mut t = OffloadTracker::default();
+        let r = t
+            .feed("0.02.410.793 I load_tensors: offloaded 0/33 layers to GPU")
+            .unwrap();
+        assert_eq!((r.gpu_layers, r.total_layers, r.model.clone()), (0, 33, None));
+        t.feed("0.02.410.800 I load_tensors:   CPU_Mapped model buffer size =  5800.25 MiB");
+        let r = t
+            .feed("0.02.410.801 I load_tensors:      Vulkan0 model buffer size =     0.00 MiB")
+            .unwrap();
+        assert_eq!((r.gpu_mib, r.cpu_mib), (0.0, 5800.25));
+        let r = t
+            .feed("0.03.001.000 I load_tensors: offloaded 33/33 layers to GPU")
+            .unwrap();
+        assert_eq!((r.gpu_layers, r.gpu_mib, r.cpu_mib), (33, 0.0, 0.0));
+        let r = t
+            .feed("0.03.001.010 I load_tensors:      Vulkan0 model buffer size =  5800.25 MiB")
+            .unwrap();
+        assert_eq!((r.gpu_mib, r.cpu_mib), (5800.25, 0.0));
+    }
 }
