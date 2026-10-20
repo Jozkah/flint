@@ -1,8 +1,9 @@
-import { Pause, Play, RotateCcw } from 'lucide-react'
+import { Pause, Play, RotateCcw, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import type { ActivityTask } from '@/lib/coworkActivity'
+import { safeId } from '@/lib/workflowRuns'
 import type { TeamControl } from '@/lib/coworkTeamControl'
 
 /**
@@ -82,5 +83,44 @@ export function WorkflowPausedBadge({ tasks }: { tasks: ActivityTask[] }) {
     <span className="font-medium text-warning" data-testid="workflow-paused">
       {t('common:tasks.runPaused')}
     </span>
+  )
+}
+
+/**
+ * The run id of a workflow that stopped short, when it can be resumed: its host
+ * row ended in error, cancelled or interrupted. The id is the host's call id,
+ * which is the one its saved results are filed under.
+ */
+export function resumableRunId(tasks: ActivityTask[]): string | undefined {
+  const raw = tasks.find((task) => task.phase && task.parentTaskId)?.parentTaskId
+  if (!raw) return undefined
+  const host = tasks.find((task) => task.id === raw || task.callId === raw)
+  if (!host || !['error', 'cancelled', 'interrupted'].includes(host.status)) return undefined
+  return safeId(host.callId)
+}
+
+/** Resume for a stopped or failed run: relaunch it from its saved results. */
+export function WorkflowResumeButton({
+  tasks,
+  onResume,
+}: {
+  tasks: ActivityTask[]
+  onResume?: (runId: string) => void
+}) {
+  const { t } = useTranslation()
+  const runId = resumableRunId(tasks)
+  if (!runId || !onResume) return null
+  return (
+    <Button
+      variant="outline"
+      size="xs"
+      className="shrink-0 pointer-coarse:h-11"
+      data-testid="workflow-resume-run"
+      title={t('common:tasks.resumeFromSavedHint')}
+      onClick={() => onResume(runId)}
+    >
+      <History aria-hidden className="size-3" />
+      {t('common:tasks.resumeFromSaved')}
+    </Button>
   )
 }

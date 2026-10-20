@@ -1531,7 +1531,9 @@
     "pauseRun": "Mettre en pause",
     "resumeRun": "Reprendre",
     "restartAgent": "Relancer l'agent",
-    "runPaused": "En pause"
+    "runPaused": "En pause",
+    "resumeFromSaved": "Reprendre",
+    "resumeFromSavedHint": "Relancer ; les agents terminés renvoient leurs résultats enregistrés"
   },
   "reasoningEffort": {
     "label": "Effort de raisonnement",

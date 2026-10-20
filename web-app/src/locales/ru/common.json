@@ -1565,7 +1565,9 @@
     "pauseRun": "Пауза",
     "resumeRun": "Продолжить",
     "restartAgent": "Перезапустить агента",
-    "runPaused": "На паузе"
+    "runPaused": "На паузе",
+    "resumeFromSaved": "Возобновить",
+    "resumeFromSavedHint": "Запустить снова; завершённые агенты вернут сохранённые результаты"
   },
   "reasoningEffort": {
     "label": "Глубина рассуждения",

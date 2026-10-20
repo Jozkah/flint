@@ -1550,7 +1550,9 @@
     "pauseRun": "Pause",
     "resumeRun": "Resume",
     "restartAgent": "Restart agent",
-    "runPaused": "Paused"
+    "runPaused": "Paused",
+    "resumeFromSaved": "Resume",
+    "resumeFromSavedHint": "Run it again; finished agents return their saved results"
   },
   "reasoningEffort": {
     "label": "Reasoning effort",

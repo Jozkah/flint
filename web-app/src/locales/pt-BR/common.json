@@ -1533,7 +1533,9 @@
     "pauseRun": "Pausar",
     "resumeRun": "Retomar",
     "restartAgent": "Reiniciar agente",
-    "runPaused": "Pausado"
+    "runPaused": "Pausado",
+    "resumeFromSaved": "Retomar",
+    "resumeFromSavedHint": "Executar de novo; agentes concluídos devolvem os resultados salvos"
   },
   "reasoningEffort": {
     "label": "Esforço de raciocínio",

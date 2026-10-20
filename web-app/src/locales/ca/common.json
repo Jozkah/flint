@@ -1535,7 +1535,9 @@
     "pauseRun": "Atura",
     "resumeRun": "Reprèn",
     "restartAgent": "Reinicia l'agent",
-    "runPaused": "En pausa"
+    "runPaused": "En pausa",
+    "resumeFromSaved": "Reprèn",
+    "resumeFromSavedHint": "Torna-ho a executar; els agents acabats retornen els resultats desats"
   },
   "reasoningEffort": {
     "label": "Esforç de raonament",

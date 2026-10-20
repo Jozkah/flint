@@ -18,6 +18,7 @@ import {
   WorkflowAgentRestart,
   WorkflowPauseButton,
   WorkflowPausedBadge,
+  WorkflowResumeButton,
 } from '@/containers/WorkflowRunControls'
 import { formatCompactDuration } from '@/lib/duration'
 import {
@@ -46,6 +47,7 @@ export function CoworkWorkflowCard({
   onOpenTask,
   onOpenPanel,
   waiting = false,
+  onResume,
 }: {
   view: WorkflowView
   /** Clock for the elapsed labels, ticked by the conversation. */
@@ -56,6 +58,8 @@ export function CoworkWorkflowCard({
   onOpenPanel: (workflowId: string) => void
   /** Blocked on the user (approval/question): say so instead of a ticking clock. */
   waiting?: boolean
+  /** Relaunch a stopped run from its saved results. */
+  onResume?: (runId: string) => void
 }) {
   const { t } = useTranslation()
   const { workflow, progress, status, tasks } = view
@@ -180,6 +184,7 @@ export function CoworkWorkflowCard({
             )}
         </p>
         <WorkflowPauseButton tasks={tasks} />
+        <WorkflowResumeButton tasks={tasks} onResume={onResume} />
         <Button
           variant="surface"
           size="xs"

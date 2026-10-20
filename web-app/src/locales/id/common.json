@@ -1489,7 +1489,9 @@
     "pauseRun": "Jeda",
     "resumeRun": "Lanjutkan",
     "restartAgent": "Mulai ulang agen",
-    "runPaused": "Dijeda"
+    "runPaused": "Dijeda",
+    "resumeFromSaved": "Lanjutkan",
+    "resumeFromSavedHint": "Jalankan lagi; agen yang selesai memakai hasil tersimpan"
   },
   "reasoningEffort": {
     "label": "Upaya penalaran",

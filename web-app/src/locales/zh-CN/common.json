@@ -1512,7 +1512,9 @@
     "pauseRun": "暂停",
     "resumeRun": "继续",
     "restartAgent": "重启代理",
-    "runPaused": "已暂停"
+    "runPaused": "已暂停",
+    "resumeFromSaved": "恢复",
+    "resumeFromSavedHint": "重新运行；已完成的代理直接返回已保存的结果"
   },
   "reasoningEffort": {
     "label": "推理强度",

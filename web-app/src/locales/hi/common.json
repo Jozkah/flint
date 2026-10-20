@@ -1510,7 +1510,9 @@
     "pauseRun": "रोकें",
     "resumeRun": "फिर शुरू करें",
     "restartAgent": "एजेंट फिर चलाएँ",
-    "runPaused": "रुका हुआ"
+    "runPaused": "रुका हुआ",
+    "resumeFromSaved": "फिर शुरू करें",
+    "resumeFromSavedHint": "फिर चलाएँ; पूरे हो चुके एजेंट सहेजे परिणाम लौटाते हैं"
   },
   "reasoningEffort": {
     "label": "रीज़निंग प्रयास",

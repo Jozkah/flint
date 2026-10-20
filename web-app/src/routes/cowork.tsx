@@ -474,9 +474,11 @@ import {
   scopeConflicts,
   teamProgress,
   TEAM_DEFAULT_PROMPT,
+  type TaskResult,
   type TeamState,
   type TeamTask,
 } from '@/lib/coworkTeam'
+import { openRunLog, withRunLog } from '@/lib/workflowRuns'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
 import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
@@ -4641,6 +4643,30 @@ export function CoworkPage() {
                   const teamSignal = hasSubagent(sid, teamTaskId)
                     ? AbortSignal.any([controller.signal, teamAbort.signal])
                     : controller.signal
+                  // A workflow keeps each finished agent's result so a stopped run
+                  // can be resumed; a replay returns saved ones without running.
+                  const runMeta = (input as { run?: { phases: unknown[]; resumeRunId?: string } } | null)?.run
+                  const runLog = runMeta ? await openRunLog(sid, callId, runMeta) : null
+                  const withLog = (fn: (one: TeamTask, signal: AbortSignal) => Promise<TaskResult>) =>
+                    runLog
+                      ? withRunLog(runLog, fn, (one, output) => {
+                          const childId = `${callId}:${one.id}`
+                          recordAgentDispatch(run, {
+                            callId: childId,
+                            agentName: one.subagentName ?? 'worker',
+                            title: one.title,
+                            phase: one.phase,
+                            description: one.description,
+                            parentTaskId: teamTaskId,
+                          })
+                          useCoworkActivity.getState().patchTask(taskIdFor(sid, runId, childId), {
+                            status: 'done',
+                            output,
+                            detail: 'from saved result',
+                            endedAt: Date.now(),
+                          })
+                        })
+                      : fn
                   try {
                     const outcome = await runTeam(tasks, {
                       // The turn's controller: stopping the run stops the team,
@@ -4684,7 +4710,7 @@ export function CoworkPage() {
                               ? `${teamProgress(state)} · waiting for a decision on the failed tasks`
                               : teamProgress(state),
                         }),
-                      runTask: async (one: TeamTask, signal: AbortSignal) => {
+                      runTask: withLog(async (one: TeamTask, signal: AbortSignal) => {
                         // One call id per task, so each child gets its own
                         // transcript lane and its own entry in the Tasks panel.
                         const childId = `${callId}:${one.id}`
@@ -4808,8 +4834,9 @@ export function CoworkPage() {
                             useTeamChildrenVersion.getState().bump()
                           }
                         }
-                      },
+                      }),
                     })
+                    await runLog?.settled()
                     if (!outcome.ok) {
                       useCoworkActivity.getState().patchTask(teamTaskId, {
                         status: 'error',
@@ -4830,6 +4857,10 @@ export function CoworkPage() {
                           : ''),
                       where
                         ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
+                        : '',
+                      runLog?.summary() ?? '',
+                      runLog && !outcome.report.allDone
+                        ? `This run's run_id is ${runLog.runId}. Relaunch it with \`workflow {resume_run_id: "${runLog.runId}"}\`: finished agents return their saved results; the failed one and everything after it runs again.`
                         : '',
                       decided.length
                         ? `Decided by the user before the team ran:\n${decided.map((d) => `- ${d}`).join('\n')}`
@@ -6414,6 +6445,11 @@ export function CoworkPage() {
                               view={view}
                               now={activityNow}
                               waiting={waitingForUser}
+                              onResume={(id) =>
+                                void handleSubmit(
+                                  `Resume the stopped workflow run ${id}: call workflow with resume_run_id "${id}".`
+                                )
+                              }
                               onOpenTask={(task) => {
                                 showTaskInPanel(task)
                                 revealOutput()

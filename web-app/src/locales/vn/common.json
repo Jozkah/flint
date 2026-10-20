@@ -1509,7 +1509,9 @@
     "pauseRun": "Tạm dừng",
     "resumeRun": "Tiếp tục",
     "restartAgent": "Khởi động lại tác tử",
-    "runPaused": "Đã tạm dừng"
+    "runPaused": "Đã tạm dừng",
+    "resumeFromSaved": "Tiếp tục",
+    "resumeFromSavedHint": "Chạy lại; các tác tử đã xong trả về kết quả đã lưu"
   },
   "reasoningEffort": {
     "label": "Mức độ suy luận",
