@@ -63,7 +63,7 @@ export function ComposerOptionsMenu({
           event.preventDefault()
           ;(event.target as HTMLElement | null)?.focus?.()
         }}
-        className="flex w-auto min-w-64 flex-col gap-1 p-1.5"
+        className={`flex w-auto flex-col gap-1 p-1.5 ${webSearch || shell ? 'min-w-64' : ''}`}
         data-testid="composer-options-panel"
       >
         {webSearch && <WebSearchToggleRow {...webSearch} />}

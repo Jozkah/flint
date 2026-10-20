@@ -142,13 +142,6 @@ export function AssistantsMenu({
                   {assistant.description.trim()}
                 </p>
               )}
-              {assistant.instructions?.trim() && (
-                <p
-                  className="line-clamp-4 border-t border-border/70 pt-2 text-[length:calc(var(--ui-font-base)*0.6875)] leading-relaxed text-muted-foreground [mask-image:linear-gradient(to_bottom,#000_70%,transparent)]"
-                >
-                  {assistant.instructions.trim()}
-                </p>
-              )}
             </HoverCardContent>
             </HoverCard>
           )
