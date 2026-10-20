@@ -96,6 +96,23 @@ type ToolCallRuntimeState = ToolCallRuntimeSnapshot & {
 }
 
 /**
+ * Leaving a conversation drops its timings while a call may still be running.
+ * Its `markSettled` then finds nothing and never logs, so the reopened card
+ * showed 0s. Log what was running, ended now, before the entries go.
+ */
+function logRunningTimings(
+  timings: Record<string, ToolCallTiming>,
+  ids: string[]
+): void {
+  const endedAt = Date.now()
+  for (const id of ids) {
+    const t = timings[id]
+    if (t?.startedAt !== undefined && t.endedAt === undefined)
+      logToolTiming(id, t.startedAt, endedAt)
+  }
+}
+
+/**
  * The call currently executing, if any. Returns a primitive, so it is safe to
  * use directly as a store selector.
  */
@@ -240,19 +257,23 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
     }),
 
   reset: () =>
-    set({
-      queue: [],
-      timings: {},
-      progress: {},
-      diffs: {},
-      output: {},
-      firstAttempts: {},
-      owners: {},
+    set((s) => {
+      logRunningTimings(s.timings, Object.keys(s.timings))
+      return {
+        queue: [],
+        timings: {},
+        progress: {},
+        diffs: {},
+        output: {},
+        firstAttempts: {},
+        owners: {},
+      }
     }),
 
   forget: (toolCallIds) =>
     set((s) => {
       if (toolCallIds.length === 0) return s
+      logRunningTimings(s.timings, toolCallIds)
       const drop = new Set(toolCallIds)
       const keep = <T>(record: Record<string, T>) =>
         Object.fromEntries(
