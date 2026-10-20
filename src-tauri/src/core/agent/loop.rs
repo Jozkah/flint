@@ -7445,6 +7445,26 @@ async fn orchestrate_inner(
             resolved.model
         }
     };
+    // `role:plan`: a plan-mode run may be routed to a stronger model than the
+    // one that executes the plan afterwards. Only plan mode asks for this role.
+    let model_id = if run_mode == crate::core::agent::plan::RunMode::Plan {
+        let rules = project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
+            })
+            .map(|cfg| crate::core::agent::routing::rules(&cfg.routing).unwrap_or_default())
+            .unwrap_or_default();
+        match crate::core::agent::routing::plan_model(&rules, &model_id) {
+            Some(routed) => {
+                log::info!("agent: routing sends the plan-mode run to {routed:?}");
+                routed
+            }
+            None => model_id,
+        }
+    } else {
+        model_id
+    };
 
     let ((mut openai_tools, mut tool_to_server, tool_call_names), slow_mcp_notice) =
         collect_mcp_openai_tools_noted(mcp_servers, mcp_settings).await?;
