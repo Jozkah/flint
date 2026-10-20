@@ -17,7 +17,7 @@ export function ChatMentionSettings() {
       data-testid="chat-mention-settings"
     >
       <CardItem
-        anchor="settings-agent-tools-chat-mentions"
+        anchor="settings-permissions-chat-mentions"
         title={t('settings:chatMentions.readAny')}
         description={t('settings:chatMentions.readAnyDesc')}
         align="start"

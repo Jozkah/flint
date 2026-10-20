@@ -31,9 +31,12 @@ const whenText = (secs: number, language?: string) =>
 
 /**
  * What "Always" was narrowed to, one row per rule with a way to take it back,
- * and the questions runs put off to be answered later.
+ * and the questions runs put off to be answered later. `show` picks one of
+ * the two cards, for a page that puts them on different tabs.
  */
-export function ApprovalRulesCard() {
+export function ApprovalRulesCard({
+  show = 'both',
+}: { show?: 'rules' | 'waiting' | 'both' } = {}) {
   const { t, i18n } = useTranslation()
   const [rules, setRules] = useState<ScopedRule[] | null>(null)
   const [waiting, setWaiting] = useState<DeferredApproval[]>([])
@@ -89,6 +92,7 @@ export function ApprovalRulesCard() {
 
   return (
     <>
+      {show !== 'waiting' && (
       <Card
         anchor="settings-permissions-approval-rules"
         title={t('permissions:rules.title')}
@@ -140,6 +144,8 @@ export function ApprovalRulesCard() {
           </ul>
         )}
       </Card>
+      )}
+      {show !== 'rules' && (
       <Card
         anchor="settings-permissions-deferred-approvals"
         title={t('permissions:deferred.title')}
@@ -223,6 +229,7 @@ export function ApprovalRulesCard() {
           </ul>
         )}
       </Card>
+      )}
     </>
   )
 }
