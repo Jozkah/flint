@@ -694,11 +694,27 @@ pub fn resolve_decision(
     // removes prompts covers it), though an explicit allow rule that names the
     // path is not honoured either, since a repository ships its own allow list.
     if mutating {
-        let path_hits = tool.path_args.iter().any(|key| {
-            args.get(key)
-                .and_then(|v| v.as_str())
-                .is_some_and(crate::tools::sandbox::names_protected_persistence)
-        });
+        // A write that leaves the sandbox with no grant covering it keeps its
+        // own classification further down (`WriteEscape`, with its
+        // request-access route); asking here instead would hide that and turn a
+        // refusal into a prompt for something that is refused anyway. Once a
+        // grant covers the escape, the persistence prompt below still applies.
+        let escape_unapproved = !grants.covers(PromptKind::WriteEscape)
+            && tool.path_args.iter().any(|key| {
+                args.get(key)
+                    .and_then(|v| v.as_str())
+                    .map(|p| {
+                        escapes_write_roots(project_root, scratch, grants.write_roots(), p)
+                            .unwrap_or(true)
+                    })
+                    .unwrap_or(false)
+            });
+        let path_hits = !escape_unapproved
+            && tool.path_args.iter().any(|key| {
+                args.get(key)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(crate::tools::sandbox::names_protected_persistence)
+            });
         let command_hits = tool.capability == Capability::Exec
             && args
                 .get("command")
@@ -1072,6 +1088,34 @@ mod tests {
         assert_eq!(decide(&asked, "ls -la"), Decision::Prompt(PromptKind::Ask));
         // Hidden state and git internals stay refused.
         assert_eq!(decide(&on, "cat .jan/agent/agent.toml"), Decision::HardDeny(DenyReason::Hidden));
+    }
+
+    #[test]
+    fn an_escaping_persistence_write_keeps_its_write_escape_classification() {
+        let root = unique_root();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let decide = |grants: &SessionGrants, path: &str| {
+            resolve_decision(
+                lookup("write").unwrap(),
+                &json!({"path": path, "content": "x"}),
+                &root,
+                None,
+                &[],
+                &perms,
+                grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        // No grant covers it: the dedicated escape route decides (refused on a
+        // surface with no prompt), not a generic ask.
+        let none = SessionGrants::default();
+        assert_eq!(decide(&none, "/home/user/.bashrc"), Decision::Prompt(PromptKind::WriteEscape));
+        assert_eq!(decide(&none, "../.bashrc"), Decision::Prompt(PromptKind::WriteEscape));
+        // Once escapes are granted, a shell startup file is still asked about.
+        let mut granted = SessionGrants::default();
+        granted.grant(PromptKind::WriteEscape);
+        assert_eq!(decide(&granted, "/home/user/.bashrc"), Decision::Prompt(PromptKind::Ask));
     }
 
     #[test]
