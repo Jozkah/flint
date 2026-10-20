@@ -1562,7 +1562,11 @@
     "shellCount_many": "{{count}} poleceń",
     "stopWorkflow": "Zatrzymaj {{name}}",
     "stopWorkflowPartial": "Zatrzymano: {{cancelled}}; nie udało się zatrzymać: {{failed}}.",
-    "cancelKillFailed": "System odmówił zatrzymania: {{error}}"
+    "cancelKillFailed": "System odmówił zatrzymania: {{error}}",
+    "pauseRun": "Wstrzymaj",
+    "resumeRun": "Wznów",
+    "restartAgent": "Uruchom agenta ponownie",
+    "runPaused": "Wstrzymano"
   },
   "reasoningEffort": {
     "label": "Wysiłek rozumowania",

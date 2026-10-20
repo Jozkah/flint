@@ -1506,7 +1506,11 @@
     "shellCount_other": "{{count}} komut",
     "stopWorkflow": "{{name}} durdur",
     "stopWorkflowPartial": "{{cancelled}} durduruldu; {{failed}} durdurulamadı.",
-    "cancelKillFailed": "Sistem durdurmayı reddetti: {{error}}"
+    "cancelKillFailed": "Sistem durdurmayı reddetti: {{error}}",
+    "pauseRun": "Duraklat",
+    "resumeRun": "Devam et",
+    "restartAgent": "Aracıyı yeniden başlat",
+    "runPaused": "Duraklatıldı"
   },
   "reasoningEffort": {
     "label": "Akıl yürütme çabası",

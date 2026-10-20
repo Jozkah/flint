@@ -178,4 +178,81 @@ describe('a team with failures and no decision window', () => {
       'a failed (provider unreachable). Not retried automatically; re-dispatch it if needed.'
     )
   })
+  it('pauses: running agents finish, nothing new starts until resume', async () => {
+    const control = new TeamControl()
+    const started: string[] = []
+    const gate: Record<string, () => void> = {}
+    let state: TeamState = {}
+    const paused: boolean[] = []
+    const done = runTeam([task('a'), task('b', ['a'])], {
+      control,
+      onState: (s) => (state = s),
+      onPause: (p) => paused.push(p),
+      runTask: (t): Promise<TaskResult> => {
+        started.push(t.id)
+        return new Promise((resolve) => {
+          gate[t.id] = () => resolve({ taskId: t.id, ok: true, output: t.id, producedBy: t.id })
+        })
+      },
+    })
+    await until(() => state.a?.status === 'running')
+    control.request({ kind: 'pause' })
+    await until(() => control.paused)
+    gate.a()
+    await until(() => state.a?.status === 'completed')
+    await new Promise((r) => setTimeout(r, 30))
+    expect(started).toEqual(['a'])
+    expect(state.b?.status).toBe('pending')
+    control.request({ kind: 'resume' })
+    await until(() => state.b?.status === 'running')
+    gate.b()
+    const outcome = await done
+    expect(started).toEqual(['a', 'b'])
+    expect(paused).toEqual([true, false])
+    expect(outcome.ok && outcome.report.allDone).toBe(true)
+    expect(control.paused).toBe(false)
+  })
+
+  it('restarts a running task: its attempt is stopped, discarded and run again', async () => {
+    const control = new TeamControl()
+    let state: TeamState = {}
+    let attempts = 0
+    const done = runTeam([task('a'), task('b', ['a'])], {
+      control,
+      onState: (s) => (state = s),
+      runTask: (t, signal): Promise<TaskResult> => {
+        if (t.id === 'a') attempts += 1
+        if (t.id === 'a' && attempts === 1) {
+          return new Promise((resolve) =>
+            signal.addEventListener('abort', () =>
+              resolve({ taskId: 'a', ok: false, output: 'cancelled', producedBy: 'a' })
+            )
+          )
+        }
+        return Promise.resolve({ taskId: t.id, ok: true, output: `${t.id} ok`, producedBy: t.id })
+      },
+    })
+    await until(() => state.a?.status === 'running')
+    control.request({ kind: 'restart', taskId: 'a' })
+    const outcome = await done
+    expect(attempts).toBe(2)
+    // The stopped attempt is not a failure, and b was never blocked by it.
+    expect(outcome.ok && outcome.state).toEqual({ a: { status: 'completed' }, b: { status: 'completed' } })
+    expect(outcome.ok && outcome.report.failed).toEqual([])
+  })
+
+  it('a stopped paused team ends instead of waiting', async () => {
+    const stop = new AbortController()
+    const control = new TeamControl()
+    control.request({ kind: 'pause' })
+    const done = runTeam([task('a')], {
+      control,
+      signal: stop.signal,
+      runTask: async (t): Promise<TaskResult> => ({ taskId: t.id, ok: true, output: '', producedBy: t.id }),
+    })
+    await new Promise((r) => setTimeout(r, 20))
+    stop.abort()
+    const outcome = await done
+    expect(outcome.ok && outcome.report.unfinished).toEqual(['a'])
+  })
 })

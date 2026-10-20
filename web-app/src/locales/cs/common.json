@@ -1561,7 +1561,11 @@
     "shellCount_other": "{{count}} příkazů",
     "stopWorkflow": "Zastavit {{name}}",
     "stopWorkflowPartial": "Zastaveno: {{cancelled}}; nelze zastavit: {{failed}}.",
-    "cancelKillFailed": "Systém jeho zastavení odmítl: {{error}}"
+    "cancelKillFailed": "Systém jeho zastavení odmítl: {{error}}",
+    "pauseRun": "Pozastavit",
+    "resumeRun": "Pokračovat",
+    "restartAgent": "Restartovat agenta",
+    "runPaused": "Pozastaveno"
   },
   "reasoningEffort": {
     "label": "Úsilí při uvažování",

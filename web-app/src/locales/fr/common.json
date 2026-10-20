@@ -1527,7 +1527,11 @@
     "replacedAttempts_many": "Réessayé {{count}} de fois manuellement, la dernière en remplacement",
     "stepsRunning_many": "{{count}} d'étapes en cours",
     "agentCount_many": "{{count}} d'agents",
-    "shellCount_many": "{{count}} de commandes"
+    "shellCount_many": "{{count}} de commandes",
+    "pauseRun": "Mettre en pause",
+    "resumeRun": "Reprendre",
+    "restartAgent": "Relancer l'agent",
+    "runPaused": "En pause"
   },
   "reasoningEffort": {
     "label": "Effort de raisonnement",

@@ -136,6 +136,8 @@ export type ActivityTask = {
    * failed (AH-111). Absent for work that was never retried by hand.
    */
   attempts?: number
+  /** On a `workflow` host task: a person paused the run (nothing new starts). */
+  paused?: boolean
   /** What the latest replacement changed, when it was one. */
   replacedWith?: { agentName?: string; description?: string }
 

@@ -1508,7 +1508,11 @@
     "shellCount_other": "{{count}} 条命令",
     "stopWorkflow": "停止 {{name}}",
     "stopWorkflowPartial": "已停止 {{cancelled}} 个；{{failed}} 个无法停止。",
-    "cancelKillFailed": "系统拒绝停止它：{{error}}"
+    "cancelKillFailed": "系统拒绝停止它：{{error}}",
+    "pauseRun": "暂停",
+    "resumeRun": "继续",
+    "restartAgent": "重启代理",
+    "runPaused": "已暂停"
   },
   "reasoningEffort": {
     "label": "推理强度",

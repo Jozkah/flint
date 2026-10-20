@@ -1508,7 +1508,11 @@
     "shellCount_other": "{{count}} Befehle",
     "stopWorkflow": "{{name}} stoppen",
     "stopWorkflowPartial": "{{cancelled}} gestoppt; {{failed}} konnten nicht gestoppt werden.",
-    "cancelKillFailed": "Das System hat das Stoppen verweigert: {{error}}"
+    "cancelKillFailed": "Das System hat das Stoppen verweigert: {{error}}",
+    "pauseRun": "Pausieren",
+    "resumeRun": "Fortsetzen",
+    "restartAgent": "Agent neu starten",
+    "runPaused": "Pausiert"
   },
   "reasoningEffort": {
     "label": "Reasoning-Aufwand",

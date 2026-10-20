@@ -1506,7 +1506,11 @@
     "shellCount_other": "{{count}} 個のコマンド",
     "stopWorkflow": "{{name}} を停止",
     "stopWorkflowPartial": "{{cancelled}} 件を停止しました。{{failed}} 件は停止できませんでした。",
-    "cancelKillFailed": "システムが停止を拒否しました: {{error}}"
+    "cancelKillFailed": "システムが停止を拒否しました: {{error}}",
+    "pauseRun": "一時停止",
+    "resumeRun": "再開",
+    "restartAgent": "エージェントを再起動",
+    "runPaused": "一時停止中"
   },
   "reasoningEffort": {
     "label": "推論の強度",

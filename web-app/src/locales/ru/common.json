@@ -1561,7 +1561,11 @@
     "shellCount_other": "{{count}} команды",
     "stopWorkflow": "Остановить {{name}}",
     "stopWorkflowPartial": "Остановлено: {{cancelled}}; не удалось остановить: {{failed}}.",
-    "cancelKillFailed": "Система отказалась остановить это: {{error}}"
+    "cancelKillFailed": "Система отказалась остановить это: {{error}}",
+    "pauseRun": "Пауза",
+    "resumeRun": "Продолжить",
+    "restartAgent": "Перезапустить агента",
+    "runPaused": "На паузе"
   },
   "reasoningEffort": {
     "label": "Глубина рассуждения",

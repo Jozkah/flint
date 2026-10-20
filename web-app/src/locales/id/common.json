@@ -1485,7 +1485,11 @@
     "shellCount_other": "{{count}} perintah",
     "stopWorkflow": "Hentikan {{name}}",
     "stopWorkflowPartial": "{{cancelled}} dihentikan; {{failed}} tidak dapat dihentikan.",
-    "cancelKillFailed": "Sistem menolak menghentikannya: {{error}}"
+    "cancelKillFailed": "Sistem menolak menghentikannya: {{error}}",
+    "pauseRun": "Jeda",
+    "resumeRun": "Lanjutkan",
+    "restartAgent": "Mulai ulang agen",
+    "runPaused": "Dijeda"
   },
   "reasoningEffort": {
     "label": "Upaya penalaran",

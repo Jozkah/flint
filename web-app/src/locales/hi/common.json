@@ -1506,7 +1506,11 @@
     "shellCount_other": "{{count}} कमांड",
     "stopWorkflow": "{{name}} रोकें",
     "stopWorkflowPartial": "{{cancelled}} रोके गए; {{failed}} को रोका नहीं जा सका।",
-    "cancelKillFailed": "सिस्टम ने इसे रोकने से इनकार कर दिया: {{error}}"
+    "cancelKillFailed": "सिस्टम ने इसे रोकने से इनकार कर दिया: {{error}}",
+    "pauseRun": "रोकें",
+    "resumeRun": "फिर शुरू करें",
+    "restartAgent": "एजेंट फिर चलाएँ",
+    "runPaused": "रुका हुआ"
   },
   "reasoningEffort": {
     "label": "रीज़निंग प्रयास",

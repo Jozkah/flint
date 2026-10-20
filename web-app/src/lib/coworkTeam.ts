@@ -983,6 +983,8 @@ export type TeamRunDeps = {
    * [`DECISION_WINDOW_MS`] to hold for a person at the Tasks panel.
    */
   decisionWindowMs?: number
+  /** Told when a person pauses or resumes the run, for the card and panel. */
+  onPause?: (paused: boolean) => void
 }
 
 export type TeamOutcome =
@@ -1028,6 +1030,13 @@ export async function runTeam(
   const results: TaskResult[] = []
   const running = new Map<string, Promise<void>>()
   let finishRequested = false
+  // Paused: nothing new starts, what is running finishes. Only a control
+  // request sets it, so a team with no control is never paused.
+  let paused = false
+  // Live child controllers, so a person can restart a running task: its child
+  // is stopped and its (cancelled) result discarded, not reported.
+  const controllers = new Map<string, AbortController>()
+  const restarting = new Set<string>()
   let decision:
     | 'finished'
     | 'window-elapsed'
@@ -1041,6 +1050,7 @@ export async function runTeam(
   const start = (task: TeamTask) => {
     state = { ...state, [task.id]: { status: 'running' } }
     const child = new AbortController()
+    controllers.set(task.id, child)
     // Chained rather than shared: stopping the team stops every child, and a
     // child can still be stopped on its own without touching the others.
     const stop = () => child.abort('cancelled')
@@ -1064,6 +1074,10 @@ export async function runTeam(
     const work = attempt(Math.min(task.retries ?? 0, MAX_TASK_RETRIES))
       .then(
         (result) => {
+          if (restarting.delete(task.id)) {
+            state = reopen(graph, state, task.id)
+            return
+          }
           results.push(result)
           state = settle(
             graph,
@@ -1073,6 +1087,10 @@ export async function runTeam(
           )
         },
         (error: unknown) => {
+          if (restarting.delete(task.id)) {
+            state = reopen(graph, state, task.id)
+            return
+          }
           // A child that threw is a failed task, not a crashed team: the point
           // of running several is that one going wrong does not take the rest.
           const message = error instanceof Error ? error.message : String(error)
@@ -1094,6 +1112,7 @@ export async function runTeam(
       .finally(() => {
         deps.signal?.removeEventListener('abort', stop)
         running.delete(task.id)
+        controllers.delete(task.id)
         publish()
       })
 
@@ -1109,6 +1128,18 @@ export async function runTeam(
       if (request.kind === 'finish') {
         finishRequested = true
         decision = 'finished'
+        continue
+      }
+      if (request.kind === 'pause' || request.kind === 'resume') {
+        paused = request.kind === 'pause'
+        if (deps.control) deps.control.paused = paused
+        deps.onPause?.(paused)
+        continue
+      }
+      if (state[request.taskId]?.status === 'running') {
+        // Stop the live attempt; the settle handler reopens the task.
+        restarting.add(request.taskId)
+        controllers.get(request.taskId)?.abort('restart')
         continue
       }
       if (request.kind === 'replace') {
@@ -1128,7 +1159,7 @@ export async function runTeam(
 
   while (!deps.signal?.aborted) {
     applyControl()
-    for (const task of readyTasks(graph, state)) {
+    for (const task of paused ? [] : readyTasks(graph, state)) {
       if (running.size >= limit) break
       start(task)
     }
@@ -1136,6 +1167,15 @@ export async function runTeam(
     if (running.size === 0) {
       // Nothing left to run. With failures and a person able to decide, hold
       // rather than end: ending would make a restart impossible.
+      if (
+        paused &&
+        deps.control &&
+        !finishRequested &&
+        Object.values(state).some((one) => one.status === 'pending')
+      ) {
+        await deps.control.next(deps.signal)
+        continue
+      }
       const windowMs = deps.decisionWindowMs ?? 0
       if (deps.control && !finishRequested && awaitingDecision(state)) {
         // No window, no wait: the failures are reported straight away rather
@@ -1164,7 +1204,10 @@ export async function runTeam(
     await Promise.race([...running.values(), ...(deps.control ? [deps.control.next(wait)] : [])])
     settled.abort()
   }
-  if (deps.control) deps.control.finished = true
+  if (deps.control) {
+    deps.control.finished = true
+    deps.control.paused = false
+  }
   if (deps.signal?.aborted && deps.control && awaitingDecision(state)) decision = 'stopped'
   // Anything asked for after the team ended is refused, not silently dropped.
   for (const request of deps.control?.take() ?? []) {
