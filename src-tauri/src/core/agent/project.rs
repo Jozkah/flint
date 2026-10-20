@@ -327,6 +327,14 @@ pub(crate) fn drop_loosening_keys(cfg: &mut AgentToml) -> Vec<&'static str> {
         tools.allow_home_read = None;
         dropped.push("[tools] allow_home_read");
     }
+    if !tools.fs.allow_read.is_empty() {
+        tools.fs.allow_read.clear();
+        dropped.push("[tools.fs] allow_read");
+    }
+    if !tools.fs.allow_write.is_empty() {
+        tools.fs.allow_write.clear();
+        dropped.push("[tools.fs] allow_write");
+    }
     if !cfg.auto_mode.allow.is_empty() {
         cfg.auto_mode.allow.clear();
         dropped.push("[auto_mode] allow");
@@ -573,6 +581,33 @@ pub(crate) struct AgentSection {
 // which only the CLI calls: the desktop's tool gate lives in the plugin. They
 // stay parsed regardless so the desktop round-trips an `agent.toml` written by
 // the CLI instead of silently dropping the user's policy on save.
+/// `[tools.fs]`: filesystem lists for the sandboxed shell. Paths are absolute or
+/// start with `~`. A deny always wins over an allow; credential folders
+/// (`~/.ssh`, `~/.aws`, ...) are denied by default where the shell can read the
+/// home folder, and only `allow_read` naming one opens it.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct FsSection {
+    #[serde(default)]
+    pub allow_read: Vec<String>,
+    #[serde(default)]
+    pub deny_read: Vec<String>,
+    #[serde(default)]
+    pub allow_write: Vec<String>,
+    #[serde(default)]
+    pub deny_write: Vec<String>,
+}
+
+impl FsSection {
+    pub(crate) fn to_config(&self) -> tauri_plugin_agent_tools::tools::fs_policy::FsConfig {
+        tauri_plugin_agent_tools::tools::fs_policy::FsConfig {
+            allow_read: self.allow_read.clone(),
+            deny_read: self.deny_read.clone(),
+            allow_write: self.allow_write.clone(),
+            deny_write: self.deny_write.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub(crate) struct ToolsSection {
@@ -608,6 +643,9 @@ pub(crate) struct ToolsSection {
     /// `$HOME` entirely. Writes are confined to the workspace either way.
     #[serde(default)]
     pub allow_home_read: Option<bool>,
+    /// `[tools.fs]`: path allow/deny lists for the sandboxed shell.
+    #[serde(default)]
+    pub fs: FsSection,
     /// Whether the shell runs under OS confinement. `None` (unset) leaves the
     /// choice to the surface: the desktop always confines, the CLI defaults to
     /// off and opts in with `--sandbox` or the global `sandbox` setting.
@@ -703,6 +741,15 @@ allow_write = []
 # ~/.jan/config.toml; the desktop always confines. Set it here to require
 # confinement for anyone working in this project.
 # sandbox = true
+# Path lists for the sandboxed shell. Absolute paths or ~/...; deny beats allow.
+# Where the shell can read your home (the CLI default), ~/.ssh, ~/.aws, ~/.gnupg,
+# ~/.config/gcloud, ~/.azure, ~/.kube and browser profile folders are denied;
+# list one in allow_read to open it. Nothing makes them writable.
+# [tools.fs]
+# allow_read = ["~/.ssh/config"]
+# deny_read = ["~/Documents/private"]
+# allow_write = ["~/.cache/build"]
+# deny_write = ["~/proj/dist"]
 # Whether a file the agent edits is run through this project's own formatter
 # before you are shown the diff. Only ever runs a formatter the project itself
 # declares (rustfmt.toml/Cargo.toml, .prettierrc, pyproject [tool.ruff]/[tool.black],
@@ -877,6 +924,8 @@ pub(crate) struct RunSettings {
     /// `[tools].sandbox`; `None` when unset, so the caller applies the default
     /// appropriate to its surface.
     pub sandbox: Option<bool>,
+    /// `[tools.fs]`: the sandbox's path allow/deny lists.
+    pub sandbox_fs: tauri_plugin_agent_tools::tools::fs_policy::FsConfig,
     /// `[tools].format_on_edit` (AH-149); unset is off.
     pub format_on_edit: bool,
     /// `[tools].check_syntax`; unset is on.
@@ -924,6 +973,7 @@ pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> Ru
         allow_network: cfg.tools.allow_network,
         allow_home_read: cfg.tools.allow_home_read,
         sandbox: cfg.tools.sandbox,
+        sandbox_fs: cfg.tools.fs.to_config(),
         format_on_edit: cfg.tools.format_on_edit.unwrap_or(false),
         check_syntax: cfg.tools.check_syntax.unwrap_or(true),
         nul_programs: cfg.tools.nul_programs,
@@ -1196,6 +1246,28 @@ pub(crate) fn set_skills_enabled_in_agent_toml(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tools_fs_lists_parse_and_an_untrusted_project_keeps_only_the_denies() {
+        let mut cfg: AgentToml = toml::from_str(
+            r#"
+[tools.fs]
+allow_read = ["~/.ssh"]
+deny_read = ["~/private"]
+allow_write = ["~/out"]
+deny_write = ["~/proj/dist"]
+"#,
+        )
+        .unwrap();
+        let fs = cfg.tools.fs.to_config();
+        assert_eq!(fs.allow_read, ["~/.ssh"]);
+        assert_eq!(fs.deny_write, ["~/proj/dist"]);
+        let dropped = drop_loosening_keys(&mut cfg);
+        assert_eq!(dropped, ["[tools.fs] allow_read", "[tools.fs] allow_write"]);
+        assert_eq!(cfg.tools.fs.deny_read, ["~/private"]);
+        assert_eq!(cfg.tools.fs.deny_write, ["~/proj/dist"]);
+        assert!(cfg.tools.fs.allow_read.is_empty() && cfg.tools.fs.allow_write.is_empty());
+    }
+
     #[test]
     fn an_untrusted_project_cannot_loosen_but_can_tighten() {
         let mut cfg: AgentToml = toml::from_str(

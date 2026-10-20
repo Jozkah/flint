@@ -2337,6 +2337,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
 
     let mut policy =
         jail::Policy::new(root, ctx.allow_network).with_home_readonly(ctx.home_readonly);
+    if let Some(fs) = ctx.fs {
+        policy = policy.with_fs_config(fs.clone());
+    }
     // While the shell is sandboxed, hide the project's own `.jan` state directory
     // from it (see [`Policy::with_hide_root`]). When the shell runs unconfined the
     // hide is both pointless (there is no OS mount to layer it on) and wrong
