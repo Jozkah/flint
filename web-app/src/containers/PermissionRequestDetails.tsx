@@ -122,7 +122,7 @@ export function PermissionRequestDetails({
               <dt className="text-muted-foreground">
                 {t('permissions:request.affects')}
               </dt>
-              <dd className="min-w-0 font-mono text-xs leading-[19px] break-all">
+              <dd className="min-w-0 font-mono text-xs leading-[19px] [overflow-wrap:anywhere]">
                 {request.resources.join(' · ')}
               </dd>
             </>
@@ -157,7 +157,7 @@ export function PermissionRequestDetails({
                 {t('permissions:request.script')}
               </dt>
               <dd className="min-w-0">
-                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs leading-[19px] shadow-[inset_0_0_0_0.8px_var(--border)]">
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs leading-[19px] shadow-[inset_0_0_0_0.8px_var(--border)]">
                   <code>{request.script}</code>
                 </pre>
               </dd>
@@ -170,7 +170,7 @@ export function PermissionRequestDetails({
               </dt>
               <dd
                 data-testid="permission-arguments"
-                className="min-w-0 font-mono text-xs leading-[19px] break-all"
+                className="min-w-0 font-mono text-xs leading-[19px] [overflow-wrap:anywhere]"
               >
                 {request.argumentsSummary}
               </dd>
@@ -245,7 +245,7 @@ export function PermissionRequestDetails({
       {request.script && (
         <div className="space-y-1">
           <h4 className={LABEL}>{t('permissions:request.script')}</h4>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
             <code>{request.script}</code>
           </pre>
         </div>
@@ -258,7 +258,7 @@ export function PermissionRequestDetails({
           </dt>
           <dd
             data-testid="permission-arguments"
-            className="min-w-0 break-all font-mono text-xs text-foreground"
+            className="min-w-0 [overflow-wrap:anywhere] font-mono text-xs text-foreground"
           >
             {request.argumentsSummary}
           </dd>
@@ -326,7 +326,7 @@ export function PermissionRequestDetails({
                 </div>
                 <pre
                   tabIndex={0}
-                  className="max-h-48 overflow-auto rounded-lg bg-code-bg p-2 font-mono whitespace-pre-wrap break-all text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
+                  className="max-h-48 overflow-auto rounded-lg bg-code-bg p-2 font-mono whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
                 >
                   {technicalDetails.argumentsJson}
                 </pre>

@@ -5,7 +5,7 @@ import type { CampaignDot } from '@/lib/campaignView'
 const COLOR: Record<CampaignDot, string> = {
   queued: 'bg-muted-foreground/50',
   blocked: 'border border-muted-foreground bg-transparent',
-  running: 'bg-blue-500 animate-pulse',
+  running: 'bg-blue-500 motion-safe:animate-pulse',
   'needs-you': 'bg-yellow-500 motion-safe:animate-pulse',
   verifying: 'bg-violet-500',
   verified: 'bg-emerald-500',

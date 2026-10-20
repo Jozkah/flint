@@ -66,6 +66,7 @@ export function SettingsTabStrip<T extends string>({
     >
       <Segmented<T>
         size="sm"
+        wrap
         aria-label={label}
         value={value}
         onValueChange={onChange}
