@@ -1166,6 +1166,14 @@ async fn execute_tool_inner(
             write_roots.push(root);
         }
     }
+    // A folder the run may write is one it may read: the new worktree a call
+    // made beside the project joins the write roots only, and the model could
+    // write a file there that it was then refused permission to read back.
+    for root in &write_roots {
+        if !read_roots.contains(root) {
+            read_roots.push(root.clone());
+        }
+    }
     for root in access_read {
         if !read_roots.contains(&root) {
             read_roots.push(root);

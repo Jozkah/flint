@@ -351,6 +351,31 @@ describe('an invalid tool call', () => {
     expect(r.toolCalls[0].invalid).toContain('unavailable tool')
   })
 
+  it('says why bash is not offered and what to use instead', async () => {
+    const sent = (errorText: string) =>
+      consumeStep(
+        streamOf([
+          { type: 'tool-input-start', toolCallId: 'b1', toolName: 'bash' } as UIMessageChunk,
+          {
+            type: 'tool-input-error',
+            toolCallId: 'b1',
+            toolName: 'bash',
+            input: { command: 'pwd; ls' },
+            errorText,
+          } as unknown as UIMessageChunk,
+        ]),
+        noopSink()
+      )
+    const withPowershell = await sent(
+      "Model tried to call unavailable tool 'bash'. Available tools: read, ls, host_powershell."
+    )
+    expect(withPowershell.toolCalls[0].invalid).toContain('`bash` is not offered in this run')
+    expect(withPowershell.toolCalls[0].invalid).toContain('`host_powershell`')
+    const without = await sent("Model tried to call unavailable tool 'bash'. Available tools: read, ls.")
+    expect(without.toolCalls[0].invalid).toContain('file tools')
+    expect(without.toolCalls[0].invalid).not.toContain('host_powershell')
+  })
+
   it('is never dispatched, and the model is told why', async () => {
     const d = deps([
       [

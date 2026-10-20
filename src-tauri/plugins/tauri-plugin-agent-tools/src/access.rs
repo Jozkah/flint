@@ -492,6 +492,20 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
     }
     if let Some(data) = env.data_folder.as_deref() {
         let data = canonical_or_self(data);
+        // The session workspace sits inside the data folder on the desktop, so
+        // asking for it landed here and read as "forbidden". It is the model's
+        // own scratch space, already readable and writable: say that, and that
+        // the project is somewhere else.
+        if let Some(ws) = env.workspace.as_deref() {
+            if within(&canonical, &canonical_or_self(ws)) {
+                return Err(Refusal::new(
+                    RefusalCode::Workspace,
+                    format!(
+                        "{display} is your own session workspace: scratch space you can already read and write, and not the project. Relative paths resolve there. Files in the attached project folder need their absolute path; ask for that folder (or a folder under it), not the workspace"
+                    ),
+                ));
+            }
+        }
         if within(&canonical, &data) || within(&data, &canonical) {
             return Err(Refusal::new(
                 RefusalCode::DataFolder,
@@ -1089,6 +1103,23 @@ mod tests {
         assert_eq!(prepare(&s(&f.data), AccessMode::Read, &e).unwrap_err().code, RefusalCode::DataFolder);
         assert_eq!(
             prepare(&s(&f.data.join("agent-workspace")), AccessMode::Read, &e).unwrap_err().code,
+            RefusalCode::DataFolder
+        );
+    }
+
+    #[test]
+    fn the_session_workspace_is_named_as_scratch_not_as_forbidden() {
+        // On the desktop the workspace sits inside the data folder, so asking
+        // for it used to read as "overlaps Flint's data folder".
+        let f = fixture("wsname");
+        let e = env(&f);
+        let refusal = prepare(&s(&f.ws), AccessMode::Write, &e).unwrap_err();
+        assert_eq!(refusal.code, RefusalCode::Workspace);
+        assert!(refusal.message.contains("your own session workspace"), "{}", refusal.message);
+        assert!(refusal.message.contains("absolute path"), "{}", refusal.message);
+        // The data folder itself, and its other children, are still protected.
+        assert_eq!(
+            prepare(&s(&f.data.join("agent-workspace/sessions")), AccessMode::Read, &e).unwrap_err().code,
             RefusalCode::DataFolder
         );
     }

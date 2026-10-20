@@ -162,6 +162,23 @@ pub fn resolve_path(project_root: &Path, scratch: Option<&Path>, raw: &str) -> P
     }
 }
 
+/// `path` as a person (or a model) would write it: without the `\\?\` prefix
+/// canonicalizing adds on Windows. The prefix is correct for the tools and
+/// noise in a message, and a model that copies it back has typed a path nobody
+/// else uses.
+pub fn plain(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),
+        _ => path.to_path_buf(),
+    }
+}
+
+/// [`plain`], as text.
+pub fn plain_display(path: &Path) -> String {
+    plain(path).display().to_string()
+}
+
 /// Why `name` cannot safely be a file name on Windows, or `None` if it can.
 ///
 /// The tools address files through a `\\?\` path, and Windows skips its name
