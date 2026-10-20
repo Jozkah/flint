@@ -2459,6 +2459,7 @@
     "settingDescription": "Chaque nouvelle session rattachée à un dépôt Git reçoit son propre worktree et sa propre branche (flint/<title>), pour que plusieurs sessions puissent travailler dans le même dossier sans se gêner ni toucher à votre copie de travail. Relisez, fusionnez ou abandonnez chaque branche depuis la session.",
     "baseTitle": "Start worktrees from my current branch",
     "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Cette session travaille sur la branche {{branch}}, dans son propre worktree",
     "basedOn": "depuis {{base}}",
     "openFolder": "Ouvrir le dossier",

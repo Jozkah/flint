@@ -2511,6 +2511,7 @@
     "settingDescription": "Each new session attached to a Git repository gets its own worktree and branch (flint/<title>), so many sessions can work in one folder at once without touching each other or your checkout. Review, merge or discard each branch from the session.",
     "baseTitle": "Start worktrees from my current branch",
     "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "This session works on branch {{branch}}, in its own worktree",
     "basedOn": "from {{base}}",
     "openFolder": "Open folder",
