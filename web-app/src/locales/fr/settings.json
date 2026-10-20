@@ -25,7 +25,11 @@
     "advanced": "Avancé : réglages par rôle",
     "overridden_one": "{{count}} rôle configuré",
     "overridden_other": "{{count}} rôles configurés",
-    "overridden_many": "{{count}} de rôles configurés"
+    "overridden_many": "{{count}} de rôles configurés",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "Téléchargement automatique des nouvelles mises à jour",
   "checkForUpdates": "Vérifier les mises à jour",

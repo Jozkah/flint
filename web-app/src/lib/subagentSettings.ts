@@ -31,7 +31,30 @@ export type SubagentSettings = {
   letModelChoose: boolean
   global: SubagentPick
   roles: Record<string, SubagentPick>
+  /** Most subagents running at once; the rest queue. Absent is the default. */
+  maxConcurrent?: number
+  /** How deep subagents may nest: 1 means children cannot spawn. Absent is 1. */
+  maxDepth?: number
 }
+
+export const DEFAULT_MAX_CONCURRENT_SUBAGENTS = 8
+export const MAX_CONCURRENT_SUBAGENTS_LIMIT = 16
+export const DEFAULT_MAX_SUBAGENT_DEPTH = 1
+export const MAX_SUBAGENT_DEPTH_LIMIT = 3
+
+const clampInt = (value: unknown, min: number, max: number, fallback: number): number => {
+  const n = typeof value === 'string' && value.trim() !== '' ? Number(value) : value
+  if (typeof n !== 'number' || !Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, Math.floor(n)))
+}
+
+/** A concurrency value, clamped to 1..16; anything unreadable is the default. */
+export const clampMaxConcurrent = (value: unknown): number =>
+  clampInt(value, 1, MAX_CONCURRENT_SUBAGENTS_LIMIT, DEFAULT_MAX_CONCURRENT_SUBAGENTS)
+
+/** A depth value, clamped to 1..3; anything unreadable is the default (1). */
+export const clampMaxDepth = (value: unknown): number =>
+  clampInt(value, 1, MAX_SUBAGENT_DEPTH_LIMIT, DEFAULT_MAX_SUBAGENT_DEPTH)
 
 export const DEFAULT_SUBAGENT_SETTINGS: SubagentSettings = {
   letModelChoose: true,

@@ -21,6 +21,10 @@ import {
 } from '@/lib/coworkTools'
 import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSession'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { DEFAULT_MAX_CONCURRENT_SUBAGENTS } from '@/lib/subagentSettings'
+import { parseMemoryScope, type MemoryScope } from '@/lib/coworkSubagentMemory'
+import { parseSkillList, skillListError } from '@/lib/coworkSubagentSkills'
+import { isEffortLevel, type EffortLevel } from '@/lib/modelEffort'
 import { isCoworkMode, type CoworkMode } from '@/lib/coworkMode'
 import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
 import { BACKGROUND_TASK_TOOLS } from '@/lib/coworkBackgroundTasks'
@@ -62,8 +66,11 @@ import type { StreamEvent } from '@/hooks/useCoworkRun'
  * runner dispatches them in order, so a run id to await later buys nothing.
  */
 
-/** Concurrent children, mirroring `DEFAULT_MAX_PARALLEL_SUBAGENTS`. */
-export const MAX_PARALLEL_SUBAGENTS = 3
+/**
+ * Concurrent children when no setting says otherwise (Settings > Subagents sets
+ * it). It was a fixed 3 before the setting existed.
+ */
+export const MAX_PARALLEL_SUBAGENTS = DEFAULT_MAX_CONCURRENT_SUBAGENTS
 
 /**
  * Longest child answer handed to the parent whole. Past this the middle is cut:
@@ -121,6 +128,16 @@ const SUBAGENT_SKILL_TOOLS = ['skill_list', 'skill_read']
  * Withholding is only half of it: the dispatcher refuses these by name as well,
  * because a model can emit a call to a tool that was never advertised.
  */
+/**
+ * Where a child sits in the spawn tree. `depth` is its own level (a child of the
+ * main agent is 1); it may spawn only while `depth < maxDepth`, and then only
+ * with `task`: `team`, `workflow` and the rest stay withheld at every level.
+ */
+export type SpawnLimits = { depth: number; maxDepth: number }
+
+export const canSpawn = (limits: SpawnLimits | undefined): boolean =>
+  limits !== undefined && limits.depth < limits.maxDepth
+
 const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
@@ -150,6 +167,10 @@ export type SubagentRequest = {
   title?: string
   /** A configured model to run this child on, checked when it starts. */
   model?: string
+  /** Reasoning effort for this child, checked against what its model offers. */
+  effort?: EffortLevel
+  /** Start from a copy of the parent's conversation, system prompt, tools and model. */
+  fork?: boolean
   /** The `workflow` phase this child belongs to; set by the team runner, never by the model. */
   phase?: { name: string; index: number }
   /**
@@ -179,6 +200,14 @@ export type ResolvedSubagent = {
   initialPrompt?: string
   /** Skip project instructions for this child. */
   omitInstructions?: boolean
+  /** A forked child: the parent's own system prompt and conversation, not a definition. */
+  fork?: boolean
+  /** Persistent memory scope, when the definition has one. */
+  memory?: MemoryScope
+  /** Skills preloaded into the child's context at start. */
+  skills?: string[]
+  /** Reasoning effort: the call's, else the definition's. */
+  effort?: EffortLevel
 }
 
 /**
@@ -217,6 +246,8 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
   if (raw.background === true) req.background = true
   if (typeof raw.title === 'string' && raw.title.trim()) req.title = raw.title.trim()
   if (typeof raw.model === 'string' && raw.model.trim()) req.model = raw.model.trim().slice(0, 200)
+  if (isEffortLevel(raw.effort)) req.effort = raw.effort
+  if (raw.fork === true) req.fork = true
   if (typeof raw.resume_agent_id === 'string' && raw.resume_agent_id.trim()) {
     req.resume_agent_id = raw.resume_agent_id.trim().slice(0, 200)
   }
@@ -280,6 +311,17 @@ export function resolveSubagent(
   definitions: SubagentDefinition[],
   parentTools: string[]
 ): ResolvedSubagent | { error: string } {
+  // A fork is the parent again, not a saved role: its prompt, tools and model
+  // are the parent's, so no definition, allowlist or system_prompt applies.
+  if (req.fork) {
+    if (req.allowed_tools?.length || req.system_prompt) {
+      return {
+        error:
+          '`fork: true` inherits the parent\'s prompt and tools; do not pass `allowed_tools` or `system_prompt` with it.',
+      }
+    }
+    return { name: req.subagent_name, systemPrompt: '', allowedTools: null, model: null, fork: true }
+  }
   const saved = definitions.find((d) => d.name === req.subagent_name)
   const denied = saved?.disallowed_tools ?? []
   const asked = req.allowed_tools?.find((t) => denied.includes(t))
@@ -312,6 +354,9 @@ export function resolveSubagent(
         }
       }
     }
+    const skillError = skillListError(parseSkillList(saved.skills) ?? [])
+    if (skillError) return { error: `subagent '${saved.name}': ${skillError}` }
+    const effort = req.effort ?? (isEffortLevel(saved.effort) ? saved.effort : undefined)
     return {
       name: saved.name,
       systemPrompt: saved.system_prompt,
@@ -331,6 +376,9 @@ export function resolveSubagent(
         : {}),
       ...(saved.initial_prompt?.trim() ? { initialPrompt: saved.initial_prompt.trim() } : {}),
       ...(saved.omit_instructions === true ? { omitInstructions: true } : {}),
+      ...(parseSkillList(saved.skills) ? { skills: parseSkillList(saved.skills) } : {}),
+      ...(parseMemoryScope(saved.memory) ? { memory: parseMemoryScope(saved.memory) } : {}),
+      ...(effort ? { effort } : {}),
     }
   }
   if (!req.system_prompt) {
@@ -345,6 +393,7 @@ export function resolveSubagent(
     systemPrompt: req.system_prompt,
     allowedTools: narrowed.tools,
     model: null,
+    ...(req.effort ? { effort: req.effort } : {}),
   }
 }
 
@@ -409,11 +458,12 @@ export function applyTaskDefaults(
  * gets, then narrowed to its allowlist. */
 export function subagentTools(
   parentTools: Record<string, Tool>,
-  allowedTools: string[] | null
+  allowedTools: string[] | null,
+  limits?: SpawnLimits
 ): Record<string, Tool> {
   const out: Record<string, Tool> = {}
   for (const [name, tool] of Object.entries(parentTools)) {
-    if (WITHHELD_FROM_SUBAGENTS.has(name)) continue
+    if (WITHHELD_FROM_SUBAGENTS.has(name) && !(name === TASK_TOOL_NAME && canSpawn(limits))) continue
     if (allowedTools && !allowedTools.includes(name)) continue
     out[name] = tool
   }
@@ -433,11 +483,17 @@ export function parentToolNames(tools: Record<string, Tool>): string[] {
  * child actually gets.
  */
 class Semaphore {
-  private free: number
+  private active = 0
   private waiters: Array<() => void> = []
 
-  constructor(private readonly cap: number) {
-    this.free = Math.max(1, cap)
+  constructor(private cap: number) {
+    this.cap = Math.max(1, cap)
+  }
+
+  /** Change the cap; waiters that now fit start at once. */
+  setCap(cap: number): void {
+    this.cap = Math.max(1, Math.floor(cap))
+    this.drain()
   }
 
   /** Number of callers currently waiting, for the queued badge. */
@@ -447,12 +503,12 @@ class Semaphore {
 
   /** Free permits; zero means the next `acquire` will queue. */
   get available(): number {
-    return this.free
+    return Math.max(0, this.cap - this.active)
   }
 
   async acquire(): Promise<() => void> {
-    if (this.free > 0) {
-      this.free -= 1
+    if (this.active < this.cap) {
+      this.active += 1
       return () => this.release()
     }
     await new Promise<void>((resolve) => this.waiters.push(resolve))
@@ -460,12 +516,15 @@ class Semaphore {
   }
 
   private release(): void {
-    const next = this.waiters.shift()
-    if (next) {
-      next()
-      return
+    this.active -= 1
+    this.drain()
+  }
+
+  private drain(): void {
+    while (this.waiters.length > 0 && this.active < this.cap) {
+      this.active += 1
+      this.waiters.shift()?.()
     }
-    this.free = Math.min(this.cap, this.free + 1)
   }
 }
 
@@ -488,6 +547,12 @@ export type RunSubagentOptions = {
    * appended to it as the next user message instead of starting a fresh brief.
    */
   history?: UIMessage[]
+  /** The parent's own system prompt, replacing the one built for a definition (a fork). */
+  systemOverride?: string
+  /** The spawn depth: this child's level and the most levels allowed. */
+  spawn?: SpawnLimits
+  /** The most children running at once, from the Subagents settings. */
+  maxConcurrent?: number
   /** Tools only this child gets, beyond the parent's (`ask_parent`). */
   extraTools?: Record<string, Tool>
   /** The parent's model instance. Reused so no second load happens. */
@@ -641,6 +706,7 @@ export async function runSubagent(
 
   // Report the position before queueing, so the badge shows where this child
   // actually sits rather than "queued" with no sense of how far back.
+  if (opts.maxConcurrent !== undefined) gate.setCap(opts.maxConcurrent)
   if (gate.available === 0) events.onQueued(gate.waiting + 1)
   const release = await gate.acquire()
   try {
@@ -651,10 +717,10 @@ export async function runSubagent(
     events.onStart()
 
     const tools = {
-      ...subagentTools(opts.parentTools, resolved.allowedTools),
+      ...subagentTools(opts.parentTools, resolved.allowedTools, opts.spawn),
       ...(opts.extraTools ?? {}),
     }
-    const baseSystem = buildSubagentSystemPrompt(resolved.systemPrompt, {
+    const baseSystem = opts.systemOverride ?? buildSubagentSystemPrompt(resolved.systemPrompt, {
       availableTools: Object.keys(tools),
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,
@@ -670,7 +736,13 @@ export async function runSubagent(
       webSearch: 'web_search' in tools,
     })
 
-    const system = [baseSystem, ...(opts.extraSystem ?? [])].join('\n\n')
+    const depthNote = opts.spawn
+      ? `You are a subagent at depth ${opts.spawn.depth} of at most ${opts.spawn.maxDepth}. ` +
+        (canSpawn(opts.spawn) && 'task' in tools
+          ? 'You may hand a self-contained piece of your work to a further subagent with `task`; it will not see your conversation.'
+          : 'You cannot start further subagents.')
+      : undefined
+    const system = [baseSystem, ...(depthNote ? [depthNote] : []), ...(opts.extraSystem ?? [])].join('\n\n')
 
     // A fresh history: the child does not see the parent's conversation, so the
     // description is the whole brief.

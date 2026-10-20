@@ -25,7 +25,11 @@
     "advanced": "Avançado: configurações por função",
     "overridden_one": "{{count}} função configurada",
     "overridden_other": "{{count}} funções configuradas",
-    "overridden_many": "{{count}} de funções configuradas"
+    "overridden_many": "{{count}} de funções configuradas",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "Download automático de novas atualizações",
   "checkForUpdates": "Verificar Atualizações",

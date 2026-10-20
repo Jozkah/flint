@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -24,7 +25,14 @@ import { useSubagentSettings } from '@/hooks/useSubagentSettings'
 import { ICONS as PROFILE_ICONS } from '@/containers/CoworkWorkProfilePicker'
 import { SUBAGENT_ROLES } from '@/lib/coworkSubagentGuide'
 import { isWorkProfileId, WORK_PROFILES, type WorkProfileId } from '@/lib/workProfiles'
-import type { ModelRef, SubagentPick } from '@/lib/subagentSettings'
+import {
+  MAX_CONCURRENT_SUBAGENTS_LIMIT,
+  MAX_SUBAGENT_DEPTH_LIMIT,
+  clampMaxConcurrent,
+  clampMaxDepth,
+  type ModelRef,
+  type SubagentPick,
+} from '@/lib/subagentSettings'
 
 const SEP = '::'
 const refKey = (ref: ModelRef | undefined) => (ref ? `${ref.provider}${SEP}${ref.id}` : '')
@@ -222,6 +230,10 @@ export function SubagentSettings() {
   const { t } = useTranslation()
   const letModelChoose = useSubagentSettings((s) => s.letModelChoose)
   const setLetModelChoose = useSubagentSettings((s) => s.setLetModelChoose)
+  const maxConcurrent = useSubagentSettings((s) => s.maxConcurrent)
+  const setMaxConcurrent = useSubagentSettings((s) => s.setMaxConcurrent)
+  const maxDepth = useSubagentSettings((s) => s.maxDepth)
+  const setMaxDepth = useSubagentSettings((s) => s.setMaxDepth)
   const global = useSubagentSettings((s) => s.global)
   const roles = useSubagentSettings((s) => s.roles)
   const setGlobal = useSubagentSettings((s) => s.setGlobal)
@@ -329,6 +341,40 @@ export function SubagentSettings() {
             data-testid="subagents-let-model-choose"
             checked={letModelChoose}
             onCheckedChange={setLetModelChoose}
+          />
+        }
+      />
+      <CardItem
+        title={t('settings:subagents.maxConcurrent')}
+        description={t('settings:subagents.maxConcurrentDesc')}
+        actions={
+          <Input
+            type="number"
+            min={1}
+            max={MAX_CONCURRENT_SUBAGENTS_LIMIT}
+            aria-label={t('settings:subagents.maxConcurrent')}
+            data-testid="subagents-max-concurrent"
+            className="w-[90px] text-right tabular-nums"
+            defaultValue={clampMaxConcurrent(maxConcurrent)}
+            key={clampMaxConcurrent(maxConcurrent)}
+            onBlur={(e) => setMaxConcurrent(e.currentTarget.value)}
+          />
+        }
+      />
+      <CardItem
+        title={t('settings:subagents.maxDepth')}
+        description={t('settings:subagents.maxDepthDesc')}
+        actions={
+          <Input
+            type="number"
+            min={1}
+            max={MAX_SUBAGENT_DEPTH_LIMIT}
+            aria-label={t('settings:subagents.maxDepth')}
+            data-testid="subagents-max-depth"
+            className="w-[90px] text-right tabular-nums"
+            defaultValue={clampMaxDepth(maxDepth)}
+            key={clampMaxDepth(maxDepth)}
+            onBlur={(e) => setMaxDepth(e.currentTarget.value)}
           />
         }
       />

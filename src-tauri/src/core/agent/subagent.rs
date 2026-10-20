@@ -76,6 +76,17 @@ pub struct SubagentOptions {
     /// Skip loading project instructions (JAN.md and compatible files).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub omit_instructions: Option<bool>,
+    /// Reasoning effort (`low`/`medium`/`high`/`xhigh`) where the model offers one;
+    /// the renderer checks it against the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Skills whose full content the renderer preloads into the child (max 32).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<Vec<String>>,
+    /// `user` or `project`: a persistent memory directory of its own, kept in
+    /// the data folder (see `subagent_memory`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<String>,
 }
 
 /// On-disk shape of a subagent `.toml`; `scope` is derived from the directory,
@@ -111,6 +122,9 @@ const SUBAGENT_FILE_KEYS: &[&str] = &[
     "isolation",
     "initial_prompt",
     "omit_instructions",
+    "effort",
+    "skills",
+    "memory",
 ];
 
 /// Frontmatter keys a Claude Code agent file is read for.
@@ -3515,6 +3529,9 @@ background = true
 isolation = "worktree"
 initial_prompt = "start here"
 omit_instructions = true
+effort = "high"
+skills = ["a", "b"]
+memory = "project"
 "#;
         let file: SubagentFile = toml::from_str(full).expect("parses");
         assert_eq!(file.extras.disallowed_tools, Some(vec!["bash".to_string()]));
@@ -3524,6 +3541,9 @@ omit_instructions = true
         assert_eq!(file.extras.isolation.as_deref(), Some("worktree"));
         assert_eq!(file.extras.initial_prompt.as_deref(), Some("start here"));
         assert_eq!(file.extras.omit_instructions, Some(true));
+        assert_eq!(file.extras.effort.as_deref(), Some("high"));
+        assert_eq!(file.extras.skills, Some(vec!["a".to_string(), "b".to_string()]));
+        assert_eq!(file.extras.memory.as_deref(), Some("project"));
         let again: SubagentFile =
             toml::from_str(&toml::to_string_pretty(&file).expect("serializes")).expect("reparses");
         assert_eq!(again.extras, file.extras);

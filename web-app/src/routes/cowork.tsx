@@ -564,6 +564,7 @@ import {
   subagentActorId,
   SUBAGENT_RESULT_HEAD_CHARS,
 } from '@/lib/coworkSubagent'
+import { AGENT_MEMORY_TOOL_NAME } from '@/lib/coworkSubagentMemory'
 import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
 import { createChildRunner } from '@/lib/coworkChildRunner'
 import { DelegationNudge } from '@/lib/delegationNudge'
@@ -3777,6 +3778,43 @@ export function CoworkPage() {
       supportsVision: () =>
         selectedModel?.capabilities?.includes('vision') ?? false,
       providerOptions: () => transport.reasoningProviderOptions(),
+      // A subagent's own memory is the user's to approve, write by write. Review
+      // and plan modes change nothing, so a write is refused there without asking.
+      launchGate: {
+        mode: (resolved) => {
+          const live = liveSessionMode(sid) ?? runMode
+          return capMode(live, resolved.permissionMode)
+        },
+        ask: ({ agent, tools, model, signal }) =>
+          useToolApprovalRequests
+            .getState()
+            .requestApproval(`agent-launch:${agent}:${Date.now()}`, 'task', sid, undefined, {
+              input: { agent, tools, model },
+              alwaysAsk: true,
+              taskContext: `Run subagent "${agent}" with ${tools.join(', ')} on ${model}? It will ask before each change as usual; this is asked once for this session.`,
+              origin: agent,
+              signal,
+            }),
+      },
+      // A forked subagent starts from the conversation this turn began with.
+      fork: {
+        history: () => messages,
+        system: () => transport.forkSystemPrompt(messages),
+      },
+      approveMemoryWrite: async ({ agent, scope, content, signal }) => {
+        const live = liveSessionMode(sid) ?? runMode
+        if (isReadOnly(live)) return false
+        return useToolApprovalRequests
+          .getState()
+          .requestApproval(`agent-memory:${agent}:${Date.now()}`, AGENT_MEMORY_TOOL_NAME, sid, undefined, {
+            input: { agent, scope, content },
+            alwaysAsk: true,
+            taskContext: `${agent} wants to replace its ${scope} memory (MEMORY.md)`,
+            preview: content,
+            origin: agent,
+            signal,
+          })
+      },
       parentTools: () => transport.childToolSet,
       anchorMessageId,
       lane: {
@@ -3795,7 +3833,7 @@ export function CoworkPage() {
         attach: (callId, output) =>
           useCoworkRun.getState().attachSubagentOutput(sid, callId, output),
       },
-      setup: (resolved, destination) => {
+      setup: (resolved, destination, spawn) => {
         const childFolder = destination?.path ?? runReadRoot
         const childGrant = destination ? destination.grantId : runGrant
         // A child in the run's own tree shares its extra folders; one given an
@@ -3933,10 +3971,30 @@ export function CoworkPage() {
                 'You cannot ask the user questions. Decide, and say what you assumed.',
               isError: true,
             }),
-            onTask: async () => ({
-              output: 'A subagent cannot dispatch subagents.',
-              isError: true,
-            }),
+            // Nesting is off unless Settings > Subagents raises the depth: then a
+            // child below the limit runs its `task` as a child one level down,
+            // under the same caps. At the limit it is refused as before.
+            onTask: async (nestedCallId, input) => {
+              if (!spawn || spawn.depth >= spawn.maxDepth) {
+                return { output: 'A subagent cannot dispatch subagents.', isError: true }
+              }
+              const nested = parseSubagentRequest(input)
+              if (typeof nested === 'string') {
+                return { output: `ERROR: ${nested}`, isError: true }
+              }
+              if (nested.fork) {
+                return { output: 'A subagent cannot fork.', isError: true }
+              }
+              return dispatchChild(
+                nestedCallId,
+                nested,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                spawn.depth
+              )
+            },
           }, toolSignal),
         }
       },

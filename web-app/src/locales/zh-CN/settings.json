@@ -24,7 +24,11 @@
     "precedence": "顺序：模型请求的内容（如果允许），然后是角色的设置，然后是所有子智能体的设置，最后是父级。",
     "advanced": "高级：按角色设置",
     "overridden_one": "已设置 {{count}} 个角色",
-    "overridden_other": "已设置 {{count}} 个角色"
+    "overridden_other": "已设置 {{count}} 个角色",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "自动下载新更新",
   "checkForUpdates": "检查更新",

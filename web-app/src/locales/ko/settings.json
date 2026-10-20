@@ -24,7 +24,11 @@
     "precedence": "순서: 모델이 요청한 것(허용된 경우), 역할의 설정, 모든 서브에이전트 설정, 부모 순입니다.",
     "advanced": "고급: 역할별 설정",
     "overridden_one": "역할 {{count}}개 설정됨",
-    "overridden_other": "역할 {{count}}개 설정됨"
+    "overridden_other": "역할 {{count}}개 설정됨",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "새 업데이트 자동 다운로드",
   "checkForUpdates": "업데이트 확인",
