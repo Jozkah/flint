@@ -895,6 +895,36 @@ pub(crate) trait ToolInvoker: Send + Sync {
     }
 }
 
+/// The `!cmd` command a composer put on the run body, if any.
+fn scripted_command_of(body: &serde_json::Value) -> Option<String> {
+    body.get("jan_scripted_command")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
+}
+
+/// The assistant "reply" that stands for a user-typed `!cmd`: one `bash` call.
+fn scripted_bash_completion(command: &str) -> serde_json::Value {
+    serde_json::json!({
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": serde_json::Value::Null,
+                "tool_calls": [{
+                    "id": "call_user_shell",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": serde_json::json!({ "command": command }).to_string(),
+                    },
+                }],
+            },
+            "finish_reason": "tool_calls",
+        }]
+    })
+}
+
 /// How many times `run-end` hooks may send a run back to work.
 const MAX_RUN_END_BLOCKS: usize = 8;
 
@@ -9185,6 +9215,11 @@ async fn run_turn_cycle(
     let final_checks = crate::core::agent::final_checks::from_body(json_body);
     let mut final_checks_retried = false;
     let mut run_end_blocks = 0usize;
+    // `!cmd` from a composer: the turn's first "model reply" is this tool call,
+    // dispatched through the same gate, sandbox and approvals as any bash call
+    // the model made, and the run ends once its result is in. No model call.
+    let scripted_command = scripted_command_of(json_body);
+    let mut scripted_first_call = scripted_command.as_deref().map(scripted_bash_completion);
     let verify_completion = body_verification_enabled(json_body);
     let mut verify_budget = crate::core::agent::verification::RepairBudget::new(
         body_verification_retries(json_body),
@@ -9229,6 +9264,18 @@ async fn run_turn_cycle(
         if let Some(text) = crate::core::agent::monitor::collect(&monitored) {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
             shells_scanned = conversation_messages.len();
+        }
+        // A scripted `!cmd` turn is over once its tool result is in.
+        if scripted_command.is_some() && scripted_first_call.is_none() && turn > 0 {
+            let _ = events.send(StreamEvent::MessagesUpdated {
+                messages: conversation_messages.clone(),
+            });
+            return Ok(serde_json::json!({
+                "choices": [{
+                    "message": { "role": "assistant", "content": "" },
+                    "finish_reason": "stop",
+                }]
+            }));
         }
         // A call was put off to be answered later (`[approvals] defer`): the run
         // ends here instead of carrying on without it. Once the answer is given
@@ -9461,7 +9508,9 @@ async fn run_turn_cycle(
         // On a context-overflow error, compact the conversation and retry.
         // Compaction runs progressively (a smaller kept tail each attempt) and
         // the loop gives up if a pass fails to shrink the message list.
-        let mut completion = {
+        let mut completion = if let Some(scripted) = scripted_first_call.take() {
+            scripted
+        } else {
             let policy_options = crate::core::agent::compaction::CompactOptions::from_body(json_body);
             let mut keep_recent = policy_options.keep_recent;
             let mut attempts = 0usize;
@@ -18950,6 +18999,19 @@ profile = \"tiny\"
             "id": "w1", "type": "function",
             "function": { "name": "write", "arguments": json!({"path": path, "content": content}).to_string() }
         }]}, "finish_reason": "tool_calls"}]})
+    }
+
+    #[tokio::test]
+    async fn a_scripted_shell_turn_dispatches_its_call_and_asks_no_model() {
+        let root = std::env::temp_dir().join(format!("flint-scripted-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let model = MockModel::new(vec![]);
+        let tool = FolderTool::new(&root);
+        let body = json!({ "jan_scripted_command": "echo hi" });
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert!(model.requests.lock().unwrap().is_empty(), "no model request for !cmd");
+        assert_eq!(done["choices"][0]["finish_reason"], "stop");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     async fn cycle(
