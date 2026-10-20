@@ -364,6 +364,8 @@ windows-sys = { version = "0.60.2", features = [
   # Window placement (core::window_state): the OS's own record of the normal
   # frame, which survives maximise and minimise without guessing.
   "Win32_UI_WindowsAndMessaging",
+  # Hold off system sleep during a run (core::keep_awake).
+  "Win32_System_Power",
 ] }
 
 # MLX runs only on Apple Silicon, so the plugin is built solely for macOS.

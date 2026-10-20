@@ -1235,7 +1235,9 @@
     "interruptedNoReply_many": "{{calls}} de passos completats conservats.",
     "interruptedNoReply_other": "{{calls}} passos completats conservats.",
     "interruptedContinue": "Continua",
-    "interruptedDiscard": "Descarta la resposta inacabada i continua"
+    "interruptedDiscard": "Descarta la resposta inacabada i continua",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} no pot cridar eines, així que no pot actuar com a agent. Tria un model que cridi eines.",
   "sessionModelUnavailable": "{{model}} ja no està disponible. Tria un altre model al menú de models.",

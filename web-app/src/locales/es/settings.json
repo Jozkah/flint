@@ -558,7 +558,9 @@
       "foreignDesc": "Encontrada en {{path}}, instalada por otra copia de Flint. Instala aquí para usar la CLI de esta copia."
     },
     "startupGroup": "Inicio y bandeja",
-    "cliGroup": "Línea de comandos"
+    "cliGroup": "Línea de comandos",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "Extensiones"

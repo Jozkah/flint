@@ -69,6 +69,9 @@ type GeneralSettingState = {
   stripReasoningFromContext: boolean
   /** Hide to the tray instead of quitting when the window is closed. */
   closeToTray: boolean
+  /** Hold off system sleep while an agent run is live (Windows). */
+  keepAwakeDuringRuns: boolean
+  setKeepAwakeDuringRuns: (value: boolean) => void
   setCloseToTray: (value: boolean) => void
   /** Cap on model download speed in MB/s; 0 is unlimited. */
   downloadLimitMBps: number
@@ -96,6 +99,8 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       stripReasoningFromContext: false,
       closeToTray: false,
       setCloseToTray: (value) => set({ closeToTray: value }),
+      keepAwakeDuringRuns: true,
+      setKeepAwakeDuringRuns: (value) => set({ keepAwakeDuringRuns: value }),
       downloadLimitMBps: 0,
       setDownloadLimitMBps: (value) =>
         set({
@@ -149,6 +154,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
         tokenCounterCompact: state.tokenCounterCompact,
         stripReasoningFromContext: state.stripReasoningFromContext,
         closeToTray: state.closeToTray,
+        keepAwakeDuringRuns: state.keepAwakeDuringRuns,
         downloadLimitMBps: state.downloadLimitMBps,
       }),
     }

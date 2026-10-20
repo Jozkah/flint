@@ -1221,7 +1221,9 @@
     "interruptedNoReply_one": "{{calls}} पूरा हुआ चरण रखा गया।",
     "interruptedNoReply_other": "{{calls}} पूरे हुए चरण रखे गए।",
     "interruptedContinue": "जारी रखें",
-    "interruptedDiscard": "अधूरा उत्तर छोड़ें और जारी रखें"
+    "interruptedDiscard": "अधूरा उत्तर छोड़ें और जारी रखें",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} टूल कॉल नहीं कर सकता, इसलिए एजेंट के रूप में काम नहीं कर सकता। टूल-कॉलिंग वाला मॉडल चुनें।",
   "sessionModelUnavailable": "{{model}} अब उपलब्ध नहीं है। मॉडल मेनू से कोई दूसरा मॉडल चुनें।",

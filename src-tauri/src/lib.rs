@@ -426,6 +426,7 @@ macro_rules! invoke_commands_with_extras {
         core::schedule::commands::schedule_tools,
         core::autostart::autostart_get,
         core::autostart::autostart_set,
+        core::keep_awake::set_keep_awake,
         core::schedule::commands::schedule_os_status,
         core::schedule::commands::schedule_os_enable,
         core::schedule::commands::schedule_os_disable,

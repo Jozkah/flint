@@ -556,7 +556,9 @@
       "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。"
     },
     "startupGroup": "起動とトレイ",
-    "cliGroup": "コマンドライン"
+    "cliGroup": "コマンドライン",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "拡張機能"

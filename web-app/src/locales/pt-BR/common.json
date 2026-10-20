@@ -1233,7 +1233,9 @@
     "interruptedNoReply_other": "{{calls}} etapas concluídas mantidas.",
     "interruptedNoReply_many": "{{calls}} de etapas concluídas mantidas.",
     "interruptedContinue": "Continuar",
-    "interruptedDiscard": "Descartar a resposta inacabada e continuar"
+    "interruptedDiscard": "Descartar a resposta inacabada e continuar",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} não pode chamar ferramentas, então não pode atuar como agente. Escolha um modelo com chamada de ferramentas.",
   "sessionModelUnavailable": "{{model}} não está mais disponível. Escolha outro modelo no menu de modelos.",
