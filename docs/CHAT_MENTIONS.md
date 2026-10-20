@@ -92,7 +92,9 @@ chip for a deleted conversation is dimmed and inert.
 
 - Who to message: for a session mentioned from an agent surface the block adds
   "Session X (id ...) can be messaged with send_message(...)", or says it does
-  not accept messages. This is information only. `send_message` keeps its
+  not accept messages, or that its user approves each message first (inbound
+  hold), and offers `notify_when_idle` to be told when it next finishes a
+  turn. This is information only. `send_message` keeps its
   limits and approvals; a mention grants nothing.
 - Where to look: `chat_read({id, last_n?, query?, max_chars?})` is a read-only
   web-side tool (like the visualize and campaign tools, so no Rust). It is in

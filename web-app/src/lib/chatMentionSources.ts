@@ -11,7 +11,7 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { useThreads } from '@/hooks/useThreads'
 import { useMessages } from '@/hooks/useMessages'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
-import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { inboundModeOf, useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { useRoomsStore } from '@/lib/rooms/store'
 import { getRoomPersistence } from '@/lib/rooms/persistence'
 import { messagesFromJournal } from '@/lib/rooms/recovery'
@@ -286,10 +286,15 @@ export function messagingHintFor(
   if (entry.kind !== 'session') return undefined
   if (!sessionAcceptsMessages(entry.id))
     return `This session does not accept messages from other sessions.`
+  const held =
+    inboundModeOf(useSessionMessaging.getState(), entry.id) === 'hold'
+      ? " That session's user approves each message before it is delivered, so do not wait for a reply."
+      : ''
   return (
     `Session "${entry.title.replace(/["\r\n]+/g, ' ')}" (id ${entry.id}) can be messaged with ` +
     `${tool}({to: "${entry.id}", message}). The usual limits and approvals for ${tool} still apply; ` +
-    `mentioning a session does not grant anything.`
+    `mentioning a session does not grant anything.${held} ` +
+    `Pass notify_when_idle: true to be told when it next finishes a turn.`
   )
 }
 
