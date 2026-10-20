@@ -21,8 +21,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 
 /**
  * Settings for the assistant's use of the built-in browser pane: the on/off
- * switch, the action cap, and the list of sites the user allowed always or
- * blocked, which is where an "Always allow" is taken back.
+ * switch, the action cap, the pointer and its motion. The sites it may visit
+ * are permissions, in {@link BrowserSitePermissions}.
  */
 export function BrowserAgentSettings() {
   const { t } = useTranslation()
@@ -37,6 +37,85 @@ export function BrowserAgentSettings() {
     (s) => s.setBrowserAgentReduceMotion
   )
 
+  return (
+    <Card title={t('browser-agent:settings.title')} data-testid="browser-agent-settings">
+      <CardItem
+        anchor="settings-agent-tools-browser"
+        title={t('browser-agent:settings.enabled')}
+        description={t('browser-agent:settings.enabledDesc')}
+        align="start"
+        actions={
+          <Switch
+            data-testid="browser-agent-enabled"
+            checked={enabled}
+            onCheckedChange={setEnabled}
+          />
+        }
+      />
+      <CardItem
+        title={t('browser-agent:settings.maxActions')}
+        description={t('browser-agent:settings.maxActionsDesc')}
+        actions={
+          <Input
+            type="number"
+            min={1}
+            max={200}
+            aria-label={t('browser-agent:settings.maxActions')}
+            data-testid="browser-agent-max-actions"
+            className="w-[90px] text-right tabular-nums"
+            disabled={!enabled}
+            defaultValue={maxActions}
+            key={maxActions}
+            onBlur={(e) => setMaxActions(Number(e.currentTarget.value))}
+          />
+        }
+      />
+      <CardItem
+        title={t('browser-agent:settings.pointer')}
+        description={t('browser-agent:settings.pointerDesc')}
+        align="start"
+        actions={
+          <Switch
+            data-testid="browser-agent-pointer"
+            checked={pointer}
+            disabled={!enabled}
+            onCheckedChange={setPointer}
+          />
+        }
+      />
+      <CardItem
+        title={t('browser-agent:settings.reduceMotion')}
+        description={t('browser-agent:settings.reduceMotionDesc')}
+        actions={
+          <Select
+            aria-label={t('browser-agent:settings.reduceMotion')}
+            data-testid="browser-agent-reduce-motion"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            disabled={!enabled || !pointer}
+            value={reduceMotion}
+            onChange={(e) =>
+              setReduceMotion(e.target.value as 'system' | 'on' | 'off')
+            }
+          >
+            <option value="system">
+              {t('browser-agent:settings.reduceSystem')}
+            </option>
+            <option value="on">{t('browser-agent:settings.reduceOn')}</option>
+            <option value="off">{t('browser-agent:settings.reduceOff')}</option>
+          </Select>
+        }
+      />
+    </Card>
+  )
+}
+
+/**
+ * The sites the assistant may use in the browser pane: what was approved for
+ * this session, and the saved allow and block rules, which is where an
+ * "Always allow" is taken back.
+ */
+export function BrowserSitePermissions() {
+  const { t } = useTranslation()
   const [rules, setRules] = useState<BrowserRule[]>([])
   const [pattern, setPattern] = useState('')
   const [verdict, setVerdict] = useState<BrowserRule['verdict']>('allow')
@@ -82,73 +161,11 @@ export function BrowserAgentSettings() {
 
   return (
     <>
-      <Card title={t('browser-agent:settings.title')} data-testid="browser-agent-settings">
-        <CardItem
-          anchor="settings-agent-tools-browser"
-          title={t('browser-agent:settings.enabled')}
-          description={t('browser-agent:settings.enabledDesc')}
-          align="start"
-          actions={
-            <Switch
-              data-testid="browser-agent-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
-          }
-        />
-        <CardItem
-          title={t('browser-agent:settings.maxActions')}
-          description={t('browser-agent:settings.maxActionsDesc')}
-          actions={
-            <Input
-              type="number"
-              min={1}
-              max={200}
-              aria-label={t('browser-agent:settings.maxActions')}
-              data-testid="browser-agent-max-actions"
-              className="w-[90px] text-right tabular-nums"
-              disabled={!enabled}
-              defaultValue={maxActions}
-              key={maxActions}
-              onBlur={(e) => setMaxActions(Number(e.currentTarget.value))}
-            />
-          }
-        />
-        <CardItem
-          title={t('browser-agent:settings.pointer')}
-          description={t('browser-agent:settings.pointerDesc')}
-          align="start"
-          actions={
-            <Switch
-              data-testid="browser-agent-pointer"
-              checked={pointer}
-              disabled={!enabled}
-              onCheckedChange={setPointer}
-            />
-          }
-        />
-        <CardItem
-          title={t('browser-agent:settings.reduceMotion')}
-          description={t('browser-agent:settings.reduceMotionDesc')}
-          actions={
-            <Select
-              aria-label={t('browser-agent:settings.reduceMotion')}
-              data-testid="browser-agent-reduce-motion"
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              disabled={!enabled || !pointer}
-              value={reduceMotion}
-              onChange={(e) =>
-                setReduceMotion(e.target.value as 'system' | 'on' | 'off')
-              }
-            >
-              <option value="system">
-                {t('browser-agent:settings.reduceSystem')}
-              </option>
-              <option value="on">{t('browser-agent:settings.reduceOn')}</option>
-              <option value="off">{t('browser-agent:settings.reduceOff')}</option>
-            </Select>
-          }
-        />
+      <Card
+        anchor="settings-permissions-browser-sites"
+        title={t('browser-agent:settings.title')}
+        data-testid="browser-site-grants"
+      >
         <CardItem
           title={t('browser-agent:settings.forgetGrants')}
           actions={
@@ -201,6 +218,7 @@ export function BrowserAgentSettings() {
       </Card>
 
       <Card
+        anchor="settings-permissions-browser-rules"
         title={t('browser-agent:settings.rulesTitle')}
         description={t('browser-agent:settings.rulesDesc')}
         data-testid="browser-agent-rules"

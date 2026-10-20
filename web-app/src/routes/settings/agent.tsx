@@ -23,7 +23,11 @@ import {
 } from '@/components/ui/dialog'
 import { Lock, LockOpen, Search } from 'lucide-react'
 import { Chip } from '@/components/ui/chip'
-import { useSettingsSearch } from '@/hooks/useSettingsSearch'
+import {
+  SettingsTabStrip,
+  useSettingsTab,
+  type SettingsTab,
+} from '@/containers/SettingsTabs'
 import { isPluginSkill } from '@/lib/skillStore'
 import { Icon } from '@/components/ui/icon'
 import { toast } from 'sonner'
@@ -44,10 +48,6 @@ import {
   readSkill,
   writeSkill,
   deleteSkill,
-  listMemories,
-  readMemory,
-  writeMemory,
-  deleteMemory,
   type SkillMeta,
 } from '@/lib/agentWorkspace'
 import { errorText } from '@/lib/errorText'
@@ -57,9 +57,7 @@ import { ComputerExclusionSettings } from '@/containers/ComputerExclusionSetting
 import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
 import { BrowserAgentSettings } from '@/containers/BrowserAgentSettings'
 import { SubagentSettings } from '@/containers/SubagentSettings'
-import { CampaignSettings } from '@/containers/CampaignSettings'
-import { VisualizeSettings } from '@/containers/VisualizeSettings'
-import { ChatMentionSettings } from '@/containers/ChatMentionSettings'
+import { CampaignParallelSetting } from '@/containers/CampaignSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,12 +67,10 @@ export const Route = createFileRoute(route.settings.agent as any)({
     isServedByFlint() ? <DesktopOnlyTitle /> : <AgentToolsContent />,
 })
 
-type EntryKind = 'memory' | 'skill'
-
-/** An open editor. `original` is unset when creating, which is what unlocks the
- * name field: renaming an existing entry would mean a write plus a delete. */
+/** An open skill editor. `original` is unset when creating, which is what
+ * unlocks the name field: renaming an existing skill would mean a write plus a
+ * delete. Agent notes (memory_write files) are edited on the Memory page. */
 type Editor = {
-  kind: EntryKind
   original?: string
   name: string
   content: string
@@ -88,22 +84,16 @@ const LIST_CAP = 'max-h-[26rem] overflow-y-auto overscroll-contain pr-1 [scrollb
 
 const SKILL_TEMPLATE = '---\ndescription: \n---\n\n'
 
+type AgentTab = 'run' | 'context' | 'sandbox' | 'skills'
+
 function AgentToolsContent() {
   const { t } = useTranslation()
-  const hideCompletedTools = useCoworkDisplay((x) => x.hideCompletedTools)
-  const showPromptSnapshot = useCoworkDisplay((x) => x.showPromptSnapshot)
-  const setShowPromptSnapshot = useCoworkDisplay(
-    (x) => x.setShowPromptSnapshot
-  )
   const reviewOnlyFinish = useCoworkDisplay((x) => x.reviewOnlyFinish)
   const setReviewOnlyFinish = useCoworkDisplay((x) => x.setReviewOnlyFinish)
   const showFilesReadyBar = useCoworkDisplay((x) => x.showFilesReadyBar)
   const setShowFilesReadyBar = useCoworkDisplay((x) => x.setShowFilesReadyBar)
   const autoWorktree = useCoworkParallel((x) => x.autoWorktree)
   const setAutoWorktree = useCoworkParallel((x) => x.setAutoWorktree)
-  const setHideCompletedTools = useCoworkDisplay(
-    (x) => x.setHideCompletedTools
-  )
   const agentToolsEnabled = useAgentToolsConfig((s) => s.agentToolsEnabled)
   const setAgentToolsEnabled = useAgentToolsConfig(
     (s) => s.setAgentToolsEnabled
@@ -126,29 +116,55 @@ function AgentToolsContent() {
 
   const [path, setPath] = useState('')
   const [skills, setSkills] = useState<SkillMeta[]>([])
-  const [memories, setMemories] = useState<string[]>([])
   const [editor, setEditor] = useState<Editor | null>(null)
   const [saving, setSaving] = useState(false)
-  // The page is long when there are many skills, so each kind of thing gets
-  // its own tab and its own search instead of one scroll of everything.
-  const [tab, setTab] = useState<'behaviour' | 'skills' | 'memories'>('behaviour')
+  // The page is long, so each kind of thing gets its own tab; a search result
+  // opens the tab that holds the setting it names.
+  const tabs: SettingsTab<AgentTab>[] = [
+    {
+      id: 'run',
+      label: t('settings:agentTools.tabRun', { defaultValue: 'Run' }),
+      anchors: [
+        'settings-agent-tools-enable',
+        'settings-agent-tools-chat-delegation',
+        'settings-agent-tools-review-only-finish',
+        'settings-campaigns-*',
+        'settings-subagents-*',
+      ],
+    },
+    {
+      id: 'context',
+      label: t('settings:agentTools.tabContext', { defaultValue: 'Context' }),
+      anchors: ['settings-agent-tools-compaction'],
+    },
+    {
+      id: 'sandbox',
+      label: t('settings:agentTools.tabSandbox', { defaultValue: 'Sandbox and tools' }),
+      anchors: [
+        'settings-agent-tools-network',
+        'settings-agent-tools-toolchains',
+        'settings-agent-tools-computer-*',
+        'settings-agent-tools-coauthor',
+        'settings-agent-tools-pr-footer',
+        'settings-agent-tools-browser',
+      ],
+    },
+    {
+      id: 'skills',
+      label: `${t('settings:agentTools.skills')} (${skills.length})`,
+    },
+  ]
+  const [tab, setTab] = useSettingsTab(tabs)
   const [query, setQuery] = useState('')
-  // Every searchable setting here lives on Behaviour; a search result opens it.
-  const pendingTarget = useSettingsSearch((s) => s.pendingTarget)
-  useEffect(() => {
-    if (pendingTarget?.startsWith('settings-agent-tools')) setTab('behaviour')
-  }, [pendingTarget])
 
   const refresh = useCallback(async () => {
     try {
-      const [nextPath, nextSkills, nextMemories] = await Promise.all([
+      const [nextPath, nextSkills] = await Promise.all([
         storePath(),
         listSkills(),
-        listMemories(),
       ])
       setPath(nextPath)
       setSkills(nextSkills)
-      setMemories(nextMemories)
     } catch (e) {
       toast.error(t('settings:agentTools.loadFailed'), {
         description: messageOf(e),
@@ -164,19 +180,14 @@ function AgentToolsContent() {
     getSandboxStatus().then(setSandbox)
   }, [])
 
-  const openEditor = async (kind: EntryKind, name?: string) => {
+  const openEditor = async (name?: string) => {
     if (!name) {
-      setEditor({
-        kind,
-        name: '',
-        content: kind === 'skill' ? SKILL_TEMPLATE : '',
-      })
+      setEditor({ name: '', content: SKILL_TEMPLATE })
       return
     }
     try {
-      const content =
-        kind === 'skill' ? await readSkill(name) : await readMemory(name)
-      setEditor({ kind, original: name, name, content })
+      const content = await readSkill(name)
+      setEditor({ original: name, name, content })
     } catch (e) {
       toast.error(t('settings:agentTools.loadFailed'), {
         description: messageOf(e),
@@ -190,18 +201,14 @@ function AgentToolsContent() {
     if (!name) return
     // Writing has no create-only mode: a new (or renamed) entry must not
     // silently overwrite one that already has this name.
-    const taken =
-      editor.kind === 'skill'
-        ? skills.some((s) => s.name === name)
-        : memories.includes(name)
+    const taken = skills.some((s) => s.name === name)
     if (taken && name !== editor.original) {
       toast.error(t('settings:agentTools.nameExists', { name }))
       return
     }
     setSaving(true)
     try {
-      if (editor.kind === 'skill') await writeSkill(name, editor.content)
-      else await writeMemory(name, editor.content)
+      await writeSkill(name, editor.content)
       setEditor(null)
       await refresh()
     } catch (e) {
@@ -213,13 +220,11 @@ function AgentToolsContent() {
     }
   }
 
-  const remove = async (kind: EntryKind, name: string) => {
+  const remove = async (name: string) => {
     try {
       // Kept so the toast can undo a mistaken click on the trash icon.
-      const content =
-        kind === 'skill' ? await readSkill(name) : await readMemory(name)
-      if (kind === 'skill') await deleteSkill(name)
-      else await deleteMemory(name)
+      const content = await readSkill(name)
+      await deleteSkill(name)
       await refresh()
       toast.success(t('settings:agentTools.deleted', { name }), {
         action: {
@@ -227,8 +232,7 @@ function AgentToolsContent() {
           onClick: () => {
             void (async () => {
               try {
-                if (kind === 'skill') await writeSkill(name, content)
-                else await writeMemory(name, content)
+                await writeSkill(name, content)
                 await refresh()
               } catch (e) {
                 toast.error(t('settings:agentTools.saveFailed'), {
@@ -257,13 +261,12 @@ function AgentToolsContent() {
   }
 
   const entryRow = (
-    kind: EntryKind,
     name: string,
     description?: string,
     plugin?: string
   ) => (
     <CardItem
-      key={`${kind}-${name}`}
+      key={`skill-${name}`}
       title={name}
       description={
         description ? (
@@ -281,7 +284,7 @@ function AgentToolsContent() {
             className="text-muted-foreground pointer-coarse:size-11"
             title={t('common:edit')}
             aria-label={`${t('common:edit')} ${name}`}
-            onClick={() => openEditor(kind, name)}
+            onClick={() => openEditor(name)}
           >
             <Icon name="x-edit" size={16} />
           </Button>
@@ -291,7 +294,7 @@ function AgentToolsContent() {
             className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
             title={t('common:delete')}
             aria-label={`${t('common:delete')} ${name}`}
-            onClick={() => remove(kind, name)}
+            onClick={() => remove(name)}
           >
             <Icon name="x-trash" size={16} />
           </Button>
@@ -312,7 +315,6 @@ function AgentToolsContent() {
   const pluginSkills = skills.filter(
     (k) => isPluginSkill(k) && matches(k.name, k.description)
   )
-  const shownMemories = memories.filter((m) => matches(m))
   const searchBox = (
     <div className="relative w-56 max-w-full">
       <Search
@@ -331,11 +333,11 @@ function AgentToolsContent() {
     </div>
   )
 
-  const addButton = (kind: EntryKind) => (
+  const addButton = (
     <Button
       variant="outline"
       className="pointer-coarse:h-11"
-      onClick={() => openEditor(kind)}
+      onClick={() => openEditor()}
     >
       {t('settings:agentTools.add')}
     </Button>
@@ -347,36 +349,22 @@ function AgentToolsContent() {
       <SettingsPageBody
         title={t('common:agent_tools')}
         description={t('settings:pageDesc.agentTools')}
-        // Behaviour: tools | shell, then compaction | browser. Skills and
-        // memories are a lone group each and span the page.
-        layout={[0, 1, 0, 1]}
         actions={
-          <Segmented<'behaviour' | 'skills' | 'memories'>
-            // Remounted when the counts arrive: the gliding pill is measured
-            // once, and the labels grow after the lists load.
-            key={`${skills.length}-${memories.length}`}
-            size="sm"
-            aria-label={t('common:agent_tools')}
+          <SettingsTabStrip<AgentTab>
+            // Remounted when the count arrives: the gliding pill is measured
+            // once, and the Skills label grows after the list loads.
+            key={skills.length}
+            label={t('common:agent_tools')}
+            tabs={tabs}
             value={tab}
-            onValueChange={(v) => {
+            onChange={(v) => {
               setTab(v)
               setQuery('')
-                }}
-            options={[
-              { value: 'behaviour', label: t('settings:agentTools.tabBehaviour') },
-              {
-                value: 'skills',
-                label: `${t('settings:agentTools.skills')} (${skills.length})`,
-              },
-              {
-                value: 'memories',
-                label: `${t('settings:agentTools.memories')} (${memories.length})`,
-              },
-            ]}
+            }}
           />
         }
       >
-        {tab === 'behaviour' && (
+        {tab === 'run' && (
         <Card
           title={t('settings:agentTools.title')}
           description={t('settings:agentTools.description')}
@@ -423,37 +411,13 @@ function AgentToolsContent() {
               />
             }
           />
-          {/* A display preference, kept beside the tools it is about.
-              Nothing is deleted: hidden activity stays in the session, in
-              exports and in search. */}
-          <CardItem
-            anchor="settings-agent-tools-hide-completed"
-            title={t('common:coworkDisplay.hideCompletedTools')}
-            description={t('common:coworkDisplay.hideCompletedToolsDescription')}
-            align="start"
-            actions={
-              <Switch
-                data-testid="hide-completed-tools"
-                checked={hideCompletedTools}
-                onCheckedChange={setHideCompletedTools}
-              />
-            }
-          />
-          {/* The per-turn record of the request; still recorded when off,
-              and reachable from the session's details and timeline. */}
-          <CardItem
-            anchor="settings-agent-tools-model-received"
-            title={t('common:coworkDisplay.showModelReceived')}
-            description={t('common:coworkDisplay.showModelReceivedDescription')}
-            align="start"
-            actions={
-              <Switch
-                data-testid="show-model-received"
-                checked={showPromptSnapshot}
-                onCheckedChange={setShowPromptSnapshot}
-              />
-            }
-          />
+        </Card>
+        )}
+
+        {/* Cowork runs: what a run does when it finishes, where it works,
+            and how many campaign tasks run at once. */}
+        {tab === 'run' && (
+        <Card title={t('settings:agentTools.coworkRuns', { defaultValue: 'Cowork runs' })}>
           {/* What a finished Review only run does with its sandbox output.
               Only new files are ever applied without asking. */}
           <CardItem
@@ -504,12 +468,19 @@ function AgentToolsContent() {
               />
             }
           />
+          <CampaignParallelSetting />
         </Card>
         )}
 
-        {tab === 'behaviour' && (
+        {tab === 'run' && <SubagentSettings />}
+
+        {tab === 'context' && isPlatformTauri() && (
+          <CompactionPolicySettings />
+        )}
+
+        {tab === 'sandbox' && (
         <Card
-          title={t('settings:agentTools.shellTitle')}
+          title={t('settings:agentTools.shellSandboxTitle', { defaultValue: 'Shell and sandbox' })}
           description={t('settings:agentTools.shellDescription')}
         >
           <CardItem
@@ -564,41 +535,19 @@ function AgentToolsContent() {
             />
           )}
           {sandbox?.enforces && <SandboxToolchainGrants />}
-          <AttributionSettings />
-          <ComputerExclusionSettings />
         </Card>
         )}
-
-        {tab === 'behaviour' && <SubagentSettings />}
-        {tab === 'behaviour' && <CampaignSettings />}
-        {tab === 'behaviour' && isPlatformTauri() && (
-          <CompactionPolicySettings />
-        )}
-        {tab === 'behaviour' && <BrowserAgentSettings />}
-        {tab === 'behaviour' && <VisualizeSettings />}
-        {tab === 'behaviour' && <ChatMentionSettings />}
-        {tab === 'memories' && (
-          <Card
-            title={t('settings:agentTools.memories')}
-            aside={
-              <div className="flex items-center gap-2">
-                {memories.length > 6 && searchBox}
-                {addButton('memory')}
-              </div>
-            }
-          >
-            {memories.length === 0 ? (
-              <CardItem description={t('settings:agentTools.noMemories')} />
-            ) : shownMemories.length === 0 ? (
-              <CardItem description={t('settings:agentTools.noMatches')} />
-            ) : (
-              <div className={LIST_CAP}>
-                {shownMemories.map((name) => entryRow('memory', name))}
-              </div>
-            )}
+        {tab === 'sandbox' && (
+          <Card title={t('settings:agentTools.computerUse', { defaultValue: 'Computer use' })}>
+            <ComputerExclusionSettings />
           </Card>
         )}
-
+        {tab === 'sandbox' && (
+          <Card title={t('settings:agentTools.gitCredit', { defaultValue: 'Git credit' })}>
+            <AttributionSettings />
+          </Card>
+        )}
+        {tab === 'sandbox' && <BrowserAgentSettings />}
         {tab === 'skills' && (
           <Card
             title={t('settings:agentTools.skills')}
@@ -606,7 +555,7 @@ function AgentToolsContent() {
             aside={
               <div className="flex items-center gap-2">
                 {skills.length > 6 && searchBox}
-                {addButton('skill')}
+                {addButton}
               </div>
             }
           >
@@ -622,7 +571,7 @@ function AgentToolsContent() {
                   </p>
                 )}
                 {ownSkills.map((skill) =>
-                  entryRow('skill', skill.name, skill.description)
+                  entryRow(skill.name, skill.description)
                 )}
                 {pluginSkills.length > 0 && (
                   <p className="px-1 pt-3 text-xs font-medium text-muted-foreground">
@@ -630,7 +579,7 @@ function AgentToolsContent() {
                   </p>
                 )}
                 {pluginSkills.map((skill) =>
-                  entryRow('skill', skill.name, skill.description, skill.plugin)
+                  entryRow(skill.name, skill.description, skill.plugin)
                 )}
               </div>
             )}
@@ -644,19 +593,9 @@ function AgentToolsContent() {
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              {t(
-                editor?.kind === 'skill'
-                  ? 'settings:agentTools.editSkill'
-                  : 'settings:agentTools.editMemory'
-              )}
-            </DialogTitle>
+            <DialogTitle>{t('settings:agentTools.editSkill')}</DialogTitle>
             <DialogDescription>
-              {t(
-                editor?.kind === 'skill'
-                  ? 'settings:agentTools.editSkillDesc'
-                  : 'settings:agentTools.editMemoryDesc'
-              )}
+              {t('settings:agentTools.editSkillDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

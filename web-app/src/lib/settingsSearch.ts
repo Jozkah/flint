@@ -122,6 +122,8 @@ export const SETTINGS_PAGES = [
       'across chats',
       'project memory',
       'personalisation',
+      'agent notes',
+      'memory_write',
     ],
   },
   {
@@ -162,7 +164,7 @@ export const SETTINGS_PAGES = [
     route: route.settings.agent,
     titleKey: 'common:agent_tools',
     group: 'chat',
-    keywords: ['sandbox', 'shell', 'memory', 'skills'],
+    keywords: ['sandbox', 'shell', 'skills', 'browser', 'subagents'],
   },
   {
     id: 'model-providers',
@@ -557,6 +559,23 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'permissions:settings.historyDesc',
     keywords: ['audit', 'log', 'decisions', 'denied'],
   }),
+  // Moved from the MCP page: the one switch for every MCP tool.
+  item('permissions', 'allow-permissions', 'mcp-servers:allowPermissions', {
+    descriptionKey: 'mcp-servers:allowPermissionsDesc',
+    keywords: ['approve', 'tool permission', 'trust', 'mcp', 'all mcp tools', 'auto approve'],
+  }),
+  // Moved from the Agent page.
+  item('permissions', 'chat-mentions', 'settings:chatMentions.readAny', {
+    descriptionKey: 'settings:chatMentions.readAnyDesc',
+    keywords: ['conversation mentions', 'chat_read', 'read chats', 'other conversations'],
+  }),
+  item('permissions', 'browser-sites', 'browser-agent:settings.grantsTitle', {
+    keywords: ['browser', 'websites', 'site approvals', 'forget approvals', 'browser pane'],
+  }),
+  item('permissions', 'browser-rules', 'browser-agent:settings.rulesTitle', {
+    descriptionKey: 'browser-agent:settings.rulesDesc',
+    keywords: ['browser', 'block site', 'allow site', 'websites', 'domains'],
+  }),
   // Agent tools
   item('agent-tools', 'enable', 'settings:agentTools.enable', {
     descriptionKey: 'settings:agentTools.enableDesc',
@@ -678,9 +697,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   }),
 
   // MCP servers
-  item('mcp-servers', 'allow-permissions', 'mcp-servers:allowPermissions', {
-    keywords: ['approve', 'tool permission', 'trust'],
-  }),
   item(
     'mcp-servers',
     'tool-call-timeout',

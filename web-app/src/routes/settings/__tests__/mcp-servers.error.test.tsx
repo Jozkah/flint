@@ -203,6 +203,7 @@ vi.mock('@/types/events', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: (_path: string) => (config: { component: React.ComponentType }) => config,
+  Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
 }))
 
 vi.mock('@/constants/routes', () => ({
@@ -403,9 +404,9 @@ describe('max tool output characters control', () => {
     getConnectedServers.mockResolvedValue([])
   })
 
-  // Runtime limits live on the page's "Routing & limits" tab.
+  // Runtime limits live on the page's "Tool runtime" tab.
   const openRouting = () =>
-    fireEvent.click(screen.getByRole('radio', { name: 'engine:mcp.tabRouting' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'engine:mcp.tabToolRuntime' }))
 
   const capInput = (): HTMLInputElement => {
     openRouting()
@@ -452,7 +453,7 @@ describe('max tool output characters control', () => {
   it('rejects a zero or negative global tool timeout', () => {
     const Component = McpServersRoute.component as React.ComponentType
     render(<Component />)
-    fireEvent.click(screen.getByRole('radio', { name: 'engine:mcp.tabRouting' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'engine:mcp.tabToolRuntime' }))
     const input = screen
       .getAllByRole('spinbutton')
       .find((el) => (el as HTMLInputElement).value === '60')!

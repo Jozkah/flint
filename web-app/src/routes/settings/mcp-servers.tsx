@@ -1,5 +1,5 @@
 import type { MCPServerStatus } from '@/services/mcp/types'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { SettingsPageHeader, SettingsWithSections } from '@/containers/SettingsPageHeader'
 import { CardItem } from '@/containers/Card'
@@ -77,7 +77,11 @@ import {
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
-import { Segmented } from '@/components/ui/segmented'
+import {
+  SettingsTabStrip,
+  useSettingsTab,
+  type SettingsTab,
+} from '@/containers/SettingsTabs'
 import {
   EnginePage,
   KpiRow,
@@ -196,7 +200,6 @@ function MCPServersDesktop() {
   } = useMCPServers()
   const {
     allowAllMCPPermissions,
-    setAllowAllMCPPermissions,
     isServerApproved,
     approveServerTrust,
     revokeServerTrust,
@@ -225,7 +228,27 @@ function MCPServersDesktop() {
 
   // Search query to filter the server list by name.
   const [searchQuery, setSearchQuery] = useState('')
-  const [tab, setTab] = useState<ToolsTab>('servers')
+  // A search result for a runtime setting opens the Tool runtime tab.
+  const tabs: SettingsTab<ToolsTab>[] = [
+    { id: 'servers', label: t('engine:mcp.tabServers') },
+    {
+      id: 'routing',
+      label: t('engine:mcp.tabToolRuntime', { defaultValue: 'Tool runtime' }),
+      anchors: [
+        'settings-mcp-servers-tool-call-timeout',
+        'settings-mcp-servers-idle-shutdown',
+        'settings-mcp-servers-max-tool-output',
+        'settings-mcp-servers-smart-tool-routing',
+        'settings-mcp-servers-lightweight-router',
+        'settings-mcp-servers-generate-descriptions',
+        'settings-mcp-servers-router-model',
+      ],
+    },
+  ]
+  const [tab, setTab] = useSettingsTab(tabs)
+  // Each server card's Auto-approve covers that server only; the switch for
+  // every MCP tool is on the Permissions page.
+  const autoApproveHint = t('mcp-servers:autoApproveServerHint', { defaultValue: "Auto-approves this server's tools only. The switch for every MCP tool is under Settings > Permissions." })
   const [statusFilter, setStatusFilter] = useState<'all' | 'on' | 'off'>('all')
   const [view, setViewState] = useState<ServersView | null>(() => {
     try {
@@ -965,22 +988,22 @@ function MCPServersDesktop() {
 
   const settingsRows = (
     <>
+      {/* Allowing every MCP tool is a permission: its one switch is on the
+          Permissions page, so this only points there. */}
       <CardItem
-        // Several of these descriptions carry warnings: shown in full.
         wrapDescription
-        anchor="settings-mcp-servers-allow-permissions"
-        title={t('mcp-servers:allowPermissions')}
-        description={t('mcp-servers:allowPermissionsDesc')}
+        title={t('permissions:settings.allowAllGroup')}
+        description={t('mcp-servers:allowAllMoved', { defaultValue: 'The switch that lets every MCP tool run without asking is under Settings > Permissions.' })}
         actions={
-          <div className="shrink-0">
-            <Switch
-              checked={allowAllMCPPermissions}
-              onCheckedChange={setAllowAllMCPPermissions}
-            />
-          </div>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={route.settings.permissions}>
+              {t('permissions:settings.title')}
+            </Link>
+          </Button>
         }
       />
       <CardItem
+        // Several of these descriptions carry warnings: shown in full.
         wrapDescription
         anchor="settings-mcp-servers-tool-call-timeout"
         title={t('mcp-servers:runtimeSettings.toolCallTimeout')}
@@ -1401,7 +1424,10 @@ function MCPServersDesktop() {
             </p>
           )}
           <footer className="flex items-center gap-1 border-t border-dashed border-border pt-2">
-            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-medium text-secondary-foreground sm:min-h-0">
+            <label
+              className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-medium text-secondary-foreground sm:min-h-0"
+              title={autoApproveHint}
+            >
               <Switch
                 checked={isServerApproved(key, fingerprints[key])}
                 aria-label={t('mcp-servers:autoApproveServer')}
@@ -1525,7 +1551,10 @@ function MCPServersDesktop() {
             ? t('engine:mcp.toolsCount', { count: toolNames.length })
             : '—'}
         </span>
-        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-secondary-foreground">
+        <label
+          className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-secondary-foreground"
+          title={autoApproveHint}
+        >
           <Switch
             checked={isServerApproved(key, fingerprints[key])}
             aria-label={t('mcp-servers:autoApproveServer')}
@@ -1660,15 +1689,11 @@ function MCPServersDesktop() {
           </KpiRow>
 
           <div className="flex flex-wrap items-center gap-3 motion-safe:animate-rise-in [animation-delay:220ms]">
-            <Segmented<ToolsTab>
-              className="w-[320px] max-w-full"
-              aria-label={t('common:mcp-servers')}
+            <SettingsTabStrip<ToolsTab>
+              label={t('common:mcp-servers')}
+              tabs={tabs}
               value={tab}
-              onValueChange={setTab}
-              options={[
-                { value: 'servers', label: t('engine:mcp.tabServers') },
-                { value: 'routing', label: t('engine:mcp.tabRouting') },
-              ]}
+              onChange={setTab}
             />
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Chip tone="warn" className="h-5">

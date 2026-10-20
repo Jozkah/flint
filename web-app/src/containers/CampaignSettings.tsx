@@ -18,11 +18,20 @@ const OPTIONS = Array.from(
  */
 export function CampaignSettings() {
   const { t } = useTranslation()
+  return (
+    <Card title={t('settings:campaigns.title')}>
+      <CampaignParallelSetting />
+    </Card>
+  )
+}
+
+/** The parallel-tasks row alone, for a page that groups it with other runs. */
+export function CampaignParallelSetting() {
+  const { t } = useTranslation()
   const maxParallel = useCampaignSettings((s) => s.maxParallel)
   const setMaxParallel = useCampaignSettings((s) => s.setMaxParallel)
   const label = t('settings:campaigns.maxParallel')
   return (
-    <Card title={t('settings:campaigns.title')}>
       <CardItem
         anchor="settings-campaigns-max-parallel"
         title={label}
@@ -43,6 +52,5 @@ export function CampaignSettings() {
           </select>
         }
       />
-    </Card>
   )
 }

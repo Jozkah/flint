@@ -8,8 +8,19 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { BrowserAgentSettings } from '../BrowserAgentSettings'
+import {
+  BrowserAgentSettings,
+  BrowserSitePermissions,
+} from '../BrowserAgentSettings'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+
+/** The pane settings (Agent page) and the site grants (Permissions page). */
+const Both = () => (
+  <>
+    <BrowserAgentSettings />
+    <BrowserSitePermissions />
+  </>
+)
 
 let rules: Array<{
   pattern: string
@@ -55,7 +66,7 @@ beforeEach(() => {
 
 describe('BrowserAgentSettings', () => {
   it('lists the saved rules with their verdicts', async () => {
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     const items = await screen.findAllByTestId('browser-rule-pattern')
     expect(items.map((i) => i.textContent)).toEqual([
       'docs.rs',
@@ -68,7 +79,7 @@ describe('BrowserAgentSettings', () => {
   })
 
   it('removing a rule revokes it and refreshes the list', async () => {
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await screen.findAllByTestId('browser-rule-pattern')
     fireEvent.click(screen.getAllByTestId('browser-rule-remove')[0])
     await waitFor(() =>
@@ -85,7 +96,7 @@ describe('BrowserAgentSettings', () => {
 
   it('says so when there are no rules', async () => {
     rules = []
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await waitFor(() =>
       expect(screen.getByTestId('browser-agent-rules').textContent).toContain(
         'browser-agent:settings.empty'
@@ -95,7 +106,7 @@ describe('BrowserAgentSettings', () => {
   })
 
   it('adds a rule, with the local-address box only for allow rules', async () => {
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await screen.findAllByTestId('browser-rule-pattern')
     const input = screen.getByTestId('browser-rule-input')
     const add = screen.getByTestId('browser-rule-add') as HTMLButtonElement
@@ -122,7 +133,7 @@ describe('BrowserAgentSettings', () => {
 
   it('shows the backend error when a rule is refused', async () => {
     const { toast } = await import('sonner')
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await screen.findAllByTestId('browser-rule-pattern')
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'browser_agent_rule_set') throw 'a wildcard over a whole top-level domain is too broad'
@@ -139,7 +150,7 @@ describe('BrowserAgentSettings', () => {
   })
 
   it('the switch turns the tools on and the action cap is clamped', async () => {
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await screen.findAllByTestId('browser-rule-pattern')
     const cap = screen.getByTestId('browser-agent-max-actions') as HTMLInputElement
     expect(cap.disabled).toBe(true)
@@ -159,6 +170,22 @@ describe('BrowserAgentSettings', () => {
   })
 })
 
+describe('BrowserAgentSettings split', () => {
+  it('keeps the site grants and rules off the pane settings card', async () => {
+    render(<BrowserAgentSettings />)
+    expect(screen.getByTestId('browser-agent-settings')).toBeInTheDocument()
+    expect(screen.queryByTestId('browser-agent-rules')).toBeNull()
+    expect(screen.queryByText('browser-agent:settings.forgetGrants')).toBeNull()
+  })
+
+  it('shows the grants and the rules as permissions', async () => {
+    render(<BrowserSitePermissions />)
+    expect(await screen.findAllByTestId('browser-rule-pattern')).toHaveLength(3)
+    expect(screen.getByTestId('browser-site-grants')).toBeInTheDocument()
+    expect(screen.queryByTestId('browser-agent-enabled')).toBeNull()
+  })
+})
+
 describe('BrowserAgentSettings pointer', () => {
   beforeEach(() => {
     useAgentToolsConfig.setState({
@@ -169,7 +196,7 @@ describe('BrowserAgentSettings pointer', () => {
   })
 
   it('shows the pointer by default and follows the system for motion', async () => {
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await screen.findAllByTestId('browser-rule-pattern')
     expect(
       screen.getByTestId('browser-agent-pointer').getAttribute('data-state')
@@ -180,7 +207,7 @@ describe('BrowserAgentSettings pointer', () => {
   })
 
   it('the switch turns the pointer off, which also disables the motion choice', async () => {
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await screen.findAllByTestId('browser-rule-pattern')
     fireEvent.click(screen.getByTestId('browser-agent-pointer'))
     expect(useAgentToolsConfig.getState().browserAgentPointer).toBe(false)
@@ -192,7 +219,7 @@ describe('BrowserAgentSettings pointer', () => {
   })
 
   it('reduce motion can be forced on or off', async () => {
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await screen.findAllByTestId('browser-rule-pattern')
     const select = screen.getByTestId('browser-agent-reduce-motion')
     chooseOption(select, 'on')
@@ -203,7 +230,7 @@ describe('BrowserAgentSettings pointer', () => {
 
   it('both are unavailable while the agent browser is off', async () => {
     useAgentToolsConfig.setState({ browserAgentEnabled: false })
-    render(<BrowserAgentSettings />)
+    render(<Both />)
     await screen.findAllByTestId('browser-rule-pattern')
     expect(
       screen.getByTestId('browser-agent-pointer').hasAttribute('disabled')
