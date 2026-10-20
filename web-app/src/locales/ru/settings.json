@@ -556,7 +556,9 @@
       "foreignDesc": "Найдено в {{path}}, установлено другой копией Flint. Установите здесь, чтобы использовать CLI этой копии."
     },
     "startupGroup": "Запуск и трей",
-    "cliGroup": "Командная строка"
+    "cliGroup": "Командная строка",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "Расширения"

@@ -552,7 +552,9 @@
       "foreignDesc": "在 {{path}} 找到,由另一份 Flint 安装。在此安装即可使用本份的 CLI。"
     },
     "startupGroup": "启动与托盘",
-    "cliGroup": "命令行"
+    "cliGroup": "命令行",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "扩展"

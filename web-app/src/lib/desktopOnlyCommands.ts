@@ -336,6 +336,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'open_session_path',
       'save_attachment_file',
       'save_dialog',
+      'set_keep_awake',
       'set_close_to_tray',
       'set_gtk_prefer_dark',
       'set_server_run_in_background',
