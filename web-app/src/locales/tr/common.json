@@ -1220,7 +1220,9 @@
     "interruptedNoReply_one": "{{calls}} tamamlanmış adım korundu.",
     "interruptedNoReply_other": "{{calls}} tamamlanmış adım korundu.",
     "interruptedContinue": "Devam et",
-    "interruptedDiscard": "Tamamlanmamış yanıtı at ve devam et"
+    "interruptedDiscard": "Tamamlanmamış yanıtı at ve devam et",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} araç çağıramadığından ajan olarak hareket edemiyor. Araç çağırabilen bir model seçin.",
   "sessionModelUnavailable": "{{model}} artık kullanılamıyor. Model menüsünden başka bir model seçin.",

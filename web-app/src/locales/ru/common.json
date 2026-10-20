@@ -1253,7 +1253,9 @@
     "interruptedNoReply_many": "Сохранено {{calls}} завершённых шагов.",
     "interruptedNoReply_other": "Сохранено {{calls}} завершённых шага.",
     "interruptedContinue": "Продолжить",
-    "interruptedDiscard": "Отбросить незавершённый ответ и продолжить"
+    "interruptedDiscard": "Отбросить незавершённый ответ и продолжить",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} не может вызывать инструменты, поэтому не может работать как агент. Выберите модель с вызовом инструментов.",
   "sessionModelUnavailable": "{{model}} больше недоступна. Выберите другую модель в меню моделей.",

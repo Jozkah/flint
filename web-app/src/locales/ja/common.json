@@ -1220,7 +1220,9 @@
     "interruptedNoReply_one": "完了済みの {{calls}} ステップを保持。",
     "interruptedNoReply_other": "完了済みの {{calls}} ステップを保持。",
     "interruptedContinue": "続ける",
-    "interruptedDiscard": "未完了の返信を破棄して続ける"
+    "interruptedDiscard": "未完了の返信を破棄して続ける",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} はツールを呼び出せないため、エージェントとして動作できません。ツール呼び出しに対応したモデルを選んでください。",
   "sessionModelUnavailable": "{{model}} は利用できなくなりました。モデルメニューから別のモデルを選んでください。",

@@ -1220,7 +1220,9 @@
     "interruptedNoReply_one": "완료된 단계 {{calls}}개를 유지했습니다.",
     "interruptedNoReply_other": "완료된 단계 {{calls}}개를 유지했습니다.",
     "interruptedContinue": "계속",
-    "interruptedDiscard": "미완료 답변을 버리고 계속"
+    "interruptedDiscard": "미완료 답변을 버리고 계속",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}}은(는) 도구를 호출할 수 없어 에이전트로 동작할 수 없습니다. 도구 호출을 지원하는 모델을 선택하세요.",
   "sessionModelUnavailable": "{{model}}을(를) 더 이상 사용할 수 없습니다. 모델 메뉴에서 다른 모델을 선택하세요.",

@@ -1210,7 +1210,9 @@
     "interruptedDetail_other": "{{calls}} langkah selesai dipertahankan; balasan belum selesai sepanjang {{chars}} karakter.",
     "interruptedNoReply_other": "{{calls}} langkah selesai dipertahankan.",
     "interruptedContinue": "Lanjutkan",
-    "interruptedDiscard": "Buang balasan yang belum selesai dan lanjutkan"
+    "interruptedDiscard": "Buang balasan yang belum selesai dan lanjutkan",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} tidak dapat memanggil alat, jadi tidak dapat bertindak sebagai agen. Pilih model yang dapat memanggil alat.",
   "sessionModelUnavailable": "{{model}} tidak lagi tersedia. Pilih model lain di menu model.",

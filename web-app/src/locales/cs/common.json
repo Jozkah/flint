@@ -1253,7 +1253,9 @@
     "interruptedNoReply_many": "Zachováno {{calls}} dokončeného kroku.",
     "interruptedNoReply_other": "Zachováno {{calls}} dokončených kroků.",
     "interruptedContinue": "Pokračovat",
-    "interruptedDiscard": "Zahodit nedokončenou odpověď a pokračovat"
+    "interruptedDiscard": "Zahodit nedokončenou odpověď a pokračovat",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} neumí volat nástroje, takže nemůže fungovat jako agent. Vyberte model, který nástroje volat umí.",
   "sessionModelUnavailable": "{{model}} už není k dispozici. Vyberte jiný model v nabídce modelů.",

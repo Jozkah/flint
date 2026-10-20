@@ -1219,7 +1219,9 @@
     "interruptedNoReply_one": "Đã giữ {{calls}} bước đã hoàn tất.",
     "interruptedNoReply_other": "Đã giữ {{calls}} bước đã hoàn tất.",
     "interruptedContinue": "Tiếp tục",
-    "interruptedDiscard": "Bỏ câu trả lời dở dang và tiếp tục"
+    "interruptedDiscard": "Bỏ câu trả lời dở dang và tiếp tục",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} không thể gọi công cụ, nên không thể hoạt động như tác tử. Hãy chọn mô hình có gọi công cụ.",
   "sessionModelUnavailable": "{{model}} không còn khả dụng. Hãy chọn mô hình khác trong menu mô hình.",

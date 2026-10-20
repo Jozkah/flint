@@ -1222,7 +1222,9 @@
     "interruptedNoReply_one": "已保留 {{calls}} 个已完成的步骤。",
     "interruptedNoReply_other": "已保留 {{calls}} 个已完成的步骤。",
     "interruptedContinue": "继续",
-    "interruptedDiscard": "丢弃未完成的回复并继续"
+    "interruptedDiscard": "丢弃未完成的回复并继续",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} 无法调用工具，因此不能作为 Agent 使用。请选择支持工具调用的模型。",
   "sessionModelUnavailable": "{{model}} 已不可用。请在模型菜单中选择其他模型。",
