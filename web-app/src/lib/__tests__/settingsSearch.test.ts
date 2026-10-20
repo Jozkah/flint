@@ -23,6 +23,7 @@ import enMcpServers from '@/locales/en/mcp-servers.json'
 import enPermissions from '@/locales/en/permissions.json'
 import enRemote from '@/locales/en/remote.json'
 import enSchedules from '@/locales/en/schedules.json'
+import enBrowserAgent from '@/locales/en/browser-agent.json'
 
 // A fake translator, so the tests control the translated text the index is
 // built from and can tell "found the key" apart from "found the label".
@@ -279,6 +280,7 @@ describe('registry i18n keys', () => {
     permissions: enPermissions,
     remote: enRemote,
     schedules: enSchedules,
+    'browser-agent': enBrowserAgent,
   }
 
   const resolve = (key: string): string | undefined => {
@@ -455,6 +457,8 @@ const CARD_FILES: Record<string, string[]> = {
   permissions: [
     'containers/TrustedFoldersCard.tsx',
     'containers/ApprovalRulesCard.tsx',
+    'containers/BrowserAgentSettings.tsx',
+    'containers/ChatMentionSettings.tsx',
   ],
   'agent-tools': ['containers/CompactionPolicySettings.tsx'],
 }
@@ -487,11 +491,24 @@ describe('cards added by the merged features are searchable', () => {
     ['settings-mcp-servers-idle-shutdown', 'mcp-servers'],
     ['settings-appearance-sidebar-items', 'appearance'],
     ['settings-general-spell-check', 'general'],
+    ['settings-permissions-allow-permissions', 'permissions'],
+    ['settings-permissions-chat-mentions', 'permissions'],
+    ['settings-permissions-browser-sites', 'permissions'],
+    ['settings-permissions-browser-rules', 'permissions'],
   ])('%s is indexed on its own page', (id, pageId) => {
     const entry = byId(id)
     expect(entry, id).toBeDefined()
     expect(entry!.anchor).toBe(id)
     expect(entry!.route).toBe(SETTINGS_PAGES.find((p) => p.id === pageId)!.route)
+  })
+
+  it('indexes the allow-all MCP switch once, on Permissions', () => {
+    const hits = SETTINGS_ITEMS.filter(
+      (i) => i.titleKey === 'mcp-servers:allowPermissions'
+    )
+    expect(hits.map((i) => i.id)).toEqual([
+      'settings-permissions-allow-permissions',
+    ])
   })
 
   it('finds the per-server tool timeout, on the MCP page without an anchor', () => {
