@@ -350,5 +350,13 @@
     "lineLabel": "Linha",
     "ruleLabel": "Regra",
     "more": "E mais {{count}} linhas sinalizadas"
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Comandos que cada pasta confiável executa em torno de chamadas de ferramentas e no fim de uma execução. Somente leitura: edite .jan/agent/hooks.toml.",
+    "empty": "Nenhuma pasta confiável declara hooks.",
+    "none": "Esta pasta não declara hooks.",
+    "error": "Não foi possível ler o arquivo de hooks",
+    "loadFailed": "Não foi possível ler os hooks"
   }
 }

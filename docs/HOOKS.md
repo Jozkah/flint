@@ -37,6 +37,14 @@ unknown event or failure policy, a limit exceeded, `block` on an event that
 cannot block) disables all hooks in it and reports the reason, rather than
 running the subset that happened to parse.
 
+## Viewing hooks
+
+`/hooks` in the CLI TUI and Settings > Permissions > Hooks in the desktop app
+list the configured hooks read-only: the file they come from, whether the
+folder is trusted (an untrusted folder shows how many are held back, none run),
+each hook's event, failure policy, timeout and filters, and the `~/.claude`
+prompt hooks imported from Claude Code. Nothing is edited or run.
+
 ## Events
 
 | Event | When | Can block? |

@@ -350,5 +350,13 @@
     "lineLabel": "Line",
     "ruleLabel": "Rule",
     "more": "And {{count}} more flagged lines"
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Commands each trusted folder runs around tool calls and at the end of a run. Read-only: edit .jan/agent/hooks.toml to change them.",
+    "empty": "No trusted folder declares hooks.",
+    "none": "This folder declares no hooks.",
+    "error": "The hooks file could not be read",
+    "loadFailed": "Could not read the hooks"
   }
 }

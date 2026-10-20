@@ -362,6 +362,10 @@
     "web-app/src/containers/CodeGitOverlays.tsx (via loadCommitPr)",
     "web-app/src/lib/coworkGit.ts"
   ],
+  "agent_hooks_report": [
+    "web-app/src/containers/HooksViewerCard.tsx (via hooksReport)",
+    "web-app/src/lib/hooksReport.ts"
+  ],
   "agent_plugin_details": [
     "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via getPluginDetails)",
     "web-app/src/containers/extensions/PluginsTab.tsx (via getPluginDetails)",
@@ -1033,6 +1037,7 @@
     "web-app/src/lib/folderTrust.ts"
   ],
   "folder_trust_list": [
+    "web-app/src/containers/HooksViewerCard.tsx (via listTrustedFolders)",
     "web-app/src/containers/TrustedFoldersCard.tsx (via listTrustedFolders)",
     "web-app/src/lib/folderTrust.ts"
   ],

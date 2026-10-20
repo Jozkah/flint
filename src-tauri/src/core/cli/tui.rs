@@ -11215,6 +11215,12 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/hooks",
+        hint: "",
+        description: "List configured hooks, their source and trust state (read-only)",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/context",
         hint: "",
         description: "Show what is filling the context window, by category",
@@ -11536,6 +11542,7 @@ async fn run_command(
         }
         "compact" => compact_command(app),
         "context" => context_command(app),
+        "hooks" => hooks_command(app),
         "usage" => usage_command(app, arg),
         "threads" | "list" => match super::list_threads_in(&app.agent_dir) {
             Ok(threads) if threads.is_empty() => {
@@ -11677,6 +11684,22 @@ fn usage_command(app: &mut App, arg: &str) {
     };
     app.note(&format!("usage: asking Tokamak for {}...", query.label()));
     app.usage_request = Some(query);
+}
+
+/// `/hooks`: read-only list of the project's hooks and the Claude Code hooks
+/// imported from `~/.claude`.
+fn hooks_command(app: &mut App) {
+    let mut text = tauri_plugin_agent_tools::hooks::report(&app.project_root).render();
+    let imported = crate::core::agent::cc_hooks::active();
+    if !imported.is_empty() {
+        text.push_str("
+imported from ~/.claude (add context on prompt/session start):");
+        for h in &imported {
+            text.push_str(&format!("
+  {:?} {}s  {}", h.event, h.timeout_secs, h.command));
+        }
+    }
+    app.note(&text);
 }
 
 fn context_command(app: &mut App) {

@@ -350,5 +350,13 @@
     "lineLabel": "Línia",
     "ruleLabel": "Regla",
     "more": "I {{count}} línies marcades més"
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Ordres que cada carpeta de confiança executa al voltant de les crides d'eina i al final d'una execució. Només lectura: edita .jan/agent/hooks.toml.",
+    "empty": "Cap carpeta de confiança declara hooks.",
+    "none": "Aquesta carpeta no declara hooks.",
+    "error": "No s'ha pogut llegir el fitxer de hooks",
+    "loadFailed": "No s'han pogut llegir els hooks"
   }
 }

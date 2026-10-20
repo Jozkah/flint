@@ -350,5 +350,13 @@
     "lineLabel": "Ligne",
     "ruleLabel": "Règle",
     "more": "Et {{count}} autres lignes signalées"
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Commandes que chaque dossier de confiance exécute autour des appels d'outils et à la fin d'une exécution. Lecture seule : modifiez .jan/agent/hooks.toml.",
+    "empty": "Aucun dossier de confiance ne déclare de hooks.",
+    "none": "Ce dossier ne déclare aucun hook.",
+    "error": "Le fichier de hooks n'a pas pu être lu",
+    "loadFailed": "Impossible de lire les hooks"
   }
 }

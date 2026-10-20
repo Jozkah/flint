@@ -349,5 +349,13 @@
     "lineLabel": "行",
     "ruleLabel": "規則",
     "more": "另有 {{count}} 行被標記"
+  },
+  "hooksViewer": {
+    "title": "鉤子",
+    "description": "每個受信任資料夾在工具呼叫前後與執行結束時執行的命令。唯讀：請編輯 .jan/agent/hooks.toml 以變更。",
+    "empty": "沒有受信任的資料夾宣告鉤子。",
+    "none": "此資料夾未宣告鉤子。",
+    "error": "無法讀取鉤子檔案",
+    "loadFailed": "無法讀取鉤子"
   }
 }

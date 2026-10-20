@@ -350,5 +350,13 @@
     "lineLabel": "Riga",
     "ruleLabel": "Regola",
     "more": "E altre {{count}} righe segnalate"
+  },
+  "hooksViewer": {
+    "title": "Hook",
+    "description": "Comandi che ogni cartella attendibile esegue attorno alle chiamate agli strumenti e alla fine di un'esecuzione. Sola lettura: modifica .jan/agent/hooks.toml.",
+    "empty": "Nessuna cartella attendibile dichiara hook.",
+    "none": "Questa cartella non dichiara hook.",
+    "error": "Impossibile leggere il file degli hook",
+    "loadFailed": "Impossibile leggere gli hook"
   }
 }

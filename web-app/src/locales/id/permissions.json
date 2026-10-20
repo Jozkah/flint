@@ -349,5 +349,13 @@
     "lineLabel": "Baris",
     "ruleLabel": "Aturan",
     "more": "Dan {{count}} baris bertanda lainnya"
+  },
+  "hooksViewer": {
+    "title": "Hook",
+    "description": "Perintah yang dijalankan setiap folder tepercaya di sekitar panggilan alat dan di akhir sebuah run. Hanya baca: ubah .jan/agent/hooks.toml.",
+    "empty": "Tidak ada folder tepercaya yang mendeklarasikan hook.",
+    "none": "Folder ini tidak mendeklarasikan hook.",
+    "error": "File hook tidak dapat dibaca",
+    "loadFailed": "Hook tidak dapat dibaca"
   }
 }

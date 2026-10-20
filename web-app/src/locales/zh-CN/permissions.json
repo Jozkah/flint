@@ -349,5 +349,13 @@
     "lineLabel": "行",
     "ruleLabel": "规则",
     "more": "另有 {{count}} 行被标记"
+  },
+  "hooksViewer": {
+    "title": "钩子",
+    "description": "每个受信任文件夹在工具调用前后和运行结束时执行的命令。只读：请编辑 .jan/agent/hooks.toml 进行修改。",
+    "empty": "没有受信任的文件夹声明钩子。",
+    "none": "此文件夹未声明钩子。",
+    "error": "无法读取钩子文件",
+    "loadFailed": "无法读取钩子"
   }
 }

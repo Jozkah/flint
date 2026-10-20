@@ -349,5 +349,13 @@
     "lineLabel": "줄",
     "ruleLabel": "규칙",
     "more": "그 밖에 표시된 줄 {{count}}개"
+  },
+  "hooksViewer": {
+    "title": "훅",
+    "description": "신뢰한 각 폴더가 도구 호출 전후와 실행 종료 시 실행하는 명령입니다. 읽기 전용: 변경하려면 .jan/agent/hooks.toml을 편집하세요.",
+    "empty": "훅을 선언한 신뢰 폴더가 없습니다.",
+    "none": "이 폴더는 훅을 선언하지 않았습니다.",
+    "error": "훅 파일을 읽을 수 없습니다",
+    "loadFailed": "훅을 읽을 수 없습니다"
   }
 }

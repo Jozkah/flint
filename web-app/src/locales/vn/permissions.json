@@ -349,5 +349,13 @@
     "lineLabel": "Dòng",
     "ruleLabel": "Quy tắc",
     "more": "Và {{count}} dòng được đánh dấu khác"
+  },
+  "hooksViewer": {
+    "title": "Hook",
+    "description": "Các lệnh mà mỗi thư mục tin cậy chạy quanh lời gọi công cụ và khi kết thúc một lượt chạy. Chỉ đọc: sửa .jan/agent/hooks.toml.",
+    "empty": "Không có thư mục tin cậy nào khai báo hook.",
+    "none": "Thư mục này không khai báo hook.",
+    "error": "Không đọc được tệp hook",
+    "loadFailed": "Không đọc được các hook"
   }
 }

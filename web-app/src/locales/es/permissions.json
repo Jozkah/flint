@@ -350,5 +350,13 @@
     "lineLabel": "Línea",
     "ruleLabel": "Regla",
     "more": "Y {{count}} líneas marcadas más"
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Comandos que cada carpeta de confianza ejecuta alrededor de las llamadas a herramientas y al final de una ejecución. Solo lectura: edita .jan/agent/hooks.toml.",
+    "empty": "Ninguna carpeta de confianza declara hooks.",
+    "none": "Esta carpeta no declara hooks.",
+    "error": "No se pudo leer el archivo de hooks",
+    "loadFailed": "No se pudieron leer los hooks"
   }
 }

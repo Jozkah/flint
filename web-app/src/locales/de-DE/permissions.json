@@ -350,5 +350,13 @@
     "lineLabel": "Zeile",
     "ruleLabel": "Regel",
     "more": "Und {{count}} weitere markierte Zeilen"
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Befehle, die jeder vertrauenswürdige Ordner um Tool-Aufrufe und am Ende eines Laufs ausführt. Nur Lesen: .jan/agent/hooks.toml bearbeiten.",
+    "empty": "Kein vertrauenswürdiger Ordner deklariert Hooks.",
+    "none": "Dieser Ordner deklariert keine Hooks.",
+    "error": "Die Hooks-Datei konnte nicht gelesen werden",
+    "loadFailed": "Hooks konnten nicht gelesen werden"
   }
 }

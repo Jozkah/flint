@@ -352,5 +352,13 @@
     "lineLabel": "Řádek",
     "ruleLabel": "Pravidlo",
     "more": "A dalších označených řádků: {{count}}"
+  },
+  "hooksViewer": {
+    "title": "Hooky",
+    "description": "Příkazy, které každá důvěryhodná složka spouští kolem volání nástrojů a na konci běhu. Jen pro čtení: upravte .jan/agent/hooks.toml.",
+    "empty": "Žádná důvěryhodná složka nedeklaruje hooky.",
+    "none": "Tato složka nedeklaruje žádné hooky.",
+    "error": "Soubor hooků nelze přečíst",
+    "loadFailed": "Hooky nelze přečíst"
   }
 }
