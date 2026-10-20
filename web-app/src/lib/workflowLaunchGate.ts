@@ -9,6 +9,7 @@
 import type { PendingToolCall, ToolOutcome } from '@/lib/coworkRunner'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
+import { DEFAULT_LOOP_ROUNDS, MAX_LOOP_ROUNDS, loopWorstCase } from '@/lib/workflowLoops'
 
 /** Agents a workflow may run without asking. */
 export const WORKFLOW_APPROVAL_AGENTS = 8
@@ -32,7 +33,12 @@ export function phaseSizes(input: unknown): number[] {
   if (!Array.isArray(phases)) return []
   return phases.map((phase) => {
     const agents = (phase as { agents?: unknown } | null)?.agents
-    return Array.isArray(agents) ? agents.length : 0
+    const count = Array.isArray(agents) ? agents.length : 0
+    // A loop may start every round and every check: ask about the worst case.
+    const loop = (phase as { repeat_until?: { max_rounds?: unknown } } | null)?.repeat_until
+    if (!loop || typeof loop !== 'object') return count
+    const rounds = Number.isInteger(loop.max_rounds) ? (loop.max_rounds as number) : DEFAULT_LOOP_ROUNDS
+    return loopWorstCase(count, Math.min(Math.max(rounds, 1), MAX_LOOP_ROUNDS))
   })
 }
 
