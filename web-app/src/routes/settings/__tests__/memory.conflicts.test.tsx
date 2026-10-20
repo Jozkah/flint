@@ -92,6 +92,10 @@ const view = (id: string, content: string, scope: string) => ({
 const npm = view('mem-npm', 'Use npm for installs in this repository.', 'project')
 const yarn = view('mem-yarn', 'Use yarn for installs everywhere.', 'user')
 
+/** The remembered facts, proposals and conflicts sit on their own tab. */
+const showRemembered = () =>
+  userEvent.click(screen.getByRole('radio', { name: /remembered/i }))
+
 describe('Settings > Memory: memories that disagree', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -102,6 +106,7 @@ describe('Settings > Memory: memories that disagree', () => {
       { subject: 'package manager', left: npm, right: yarn },
     ])
     render(<Page />)
+    await showRemembered()
     const card = await screen.findByTestId('memory-conflict')
     expect(card).toHaveAttribute('data-left-id', 'mem-npm')
     expect(card).toHaveAttribute('data-right-id', 'mem-yarn')
@@ -126,6 +131,7 @@ describe('Settings > Memory: memories that disagree', () => {
       .mockResolvedValueOnce([{ subject: 'package manager', left: npm, right: yarn }])
       .mockResolvedValue([])
     render(<Page />)
+    await showRemembered()
     const keep = await screen.findAllByTestId('memory-conflict-keep')
     const keepNpm = keep.find((b) => b.getAttribute('data-keep-id') === 'mem-npm')!
     expect(keepNpm).toHaveAccessibleName(/Keep "Use npm/)

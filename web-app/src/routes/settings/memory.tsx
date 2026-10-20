@@ -76,6 +76,12 @@ import {
   type MemoryView,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { Select } from '@/components/ui/select'
+import {
+  SettingsTabStrip,
+  useSettingsTab,
+  type SettingsTab,
+} from '@/containers/SettingsTabs'
+import { AgentNotesSettings } from '@/containers/AgentNotesSettings'
 
 // `as any` matches every other settings route: the typed route tree is
 // generated during the build, after this file is typechecked, so the literal is
@@ -107,6 +113,9 @@ function scopeLabel(scope: MemoryScope, t: Translate): string {
 
 /** How many rows one request fetches. The backend clamps this too. */
 const PAGE_SIZE = 50
+
+/** The page's tabs: its switches, the remembered facts, and agent notes. */
+type MemoryTab = 'settings' | 'remembered' | 'notes'
 
 function formatWhen(
   seconds: number | null,
@@ -650,6 +659,36 @@ function MemorySettings() {
     return summary.userCount
   }
 
+  // Proposals and conflicts want an answer: their count rides on the tab.
+  const waitingCount =
+    (proposalLocation ? proposalsPending.length : 0) + conflicts.length
+  const tabs: SettingsTab<MemoryTab>[] = [
+    {
+      id: 'settings',
+      label: t('common:settings'),
+      anchors: [
+        'settings-memory-use-saved',
+        MEMORY_AUTOSAVE_ANCHOR,
+        MEMORY_STORAGE_ANCHOR,
+      ],
+    },
+    {
+      id: 'remembered',
+      label:
+        waitingCount > 0
+          ? `${t('settings:memory.remembered')} (${waitingCount})`
+          : t('settings:memory.remembered'),
+      anchors: [MEMORY_LIST_ANCHOR],
+    },
+    {
+      id: 'notes',
+      label: t('settings:memoryPage.agentNotes', { defaultValue: 'Agent notes' }),
+      anchors: ['settings-memory-agent-notes'],
+    },
+  ]
+  // A search result opens the tab that holds the setting it names.
+  const [tab, setTab] = useSettingsTab(tabs)
+
   return (
     <div className="flex flex-col h-full">
       <SettingsPageHeader title={t('common:memory')} />
@@ -657,12 +696,21 @@ function MemorySettings() {
         title={t('common:memory')}
         description={t('settings:pageDesc.memory')}
         width="wide"
+        actions={
+          <SettingsTabStrip<MemoryTab>
+            label={t('common:memory')}
+            tabs={tabs}
+            value={tab}
+            onChange={setTab}
+          />
+        }
       >
-      {/* The settings and the list of remembered facts read together on the
-          left; proposals and conflicts, which want an answer, sit beside. */}
+      {/* The remembered facts and the proposals and conflicts, which want an
+          answer, read side by side on their tab. */}
       <SettingsColumns
         left={
           <>
+            {tab === 'settings' && (
             <Card title={t('common:memory')}>
               <CardItem
                 anchor="settings-memory-use-saved"
@@ -756,10 +804,11 @@ function MemorySettings() {
                 />
               )}
             </Card>
+            )}
 
             {/* The facts live in the desktop app's memory store, which a
                 browser has no route to. */}
-            {isServedByFlint() ? (
+            {tab !== 'remembered' ? null : isServedByFlint() ? (
               <Card title={t('settings:memory.remembered')}>
                 <p className="pb-3 text-sm text-muted-foreground" data-testid="memory-desktop-only">
                   {t('permissions:desktopOnly')}
@@ -1283,10 +1332,23 @@ function MemorySettings() {
                 </div>
               </Card>
             )}
+
+            {/* The files the memory_write tool saves: a store of their own,
+                apart from the remembered facts. */}
+            {tab === 'notes' &&
+              (isServedByFlint() ? (
+                <Card title={t('settings:memoryPage.agentNotes', { defaultValue: 'Agent notes' })}>
+                  <p className="pb-3 text-sm text-muted-foreground">
+                    {t('permissions:desktopOnly')}
+                  </p>
+                </Card>
+              ) : (
+                <AgentNotesSettings />
+              ))}
           </>
         }
         right={[
-          proposalLocation && proposalsPending.length > 0 && (
+          tab === 'remembered' && proposalLocation && proposalsPending.length > 0 && (
               <Card
                 key="waiting"
                 title={t('settings:memoryPage.waitingTitle')}
@@ -1311,7 +1373,7 @@ function MemorySettings() {
                 </div>
               </Card>
             ),
-          conflicts.length > 0 && (
+          tab === 'remembered' && conflicts.length > 0 && (
               <Card key="conflicts" title={t('settings:memoryPage.conflictsTitle')}>
                 <p className="mb-1.5 text-[length:calc(var(--ui-font-base)*0.78125)] leading-normal text-muted-foreground">
                   {t('settings:memoryPage.conflictsBody')}

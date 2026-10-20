@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, afterAll, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import ja from '@/locales/ja/settings.json'
 
 const api = vi.hoisted(() => ({
@@ -63,6 +64,9 @@ describe('Settings > Memory is localized', () => {
     // Toggles, tabs, buttons and the empty state come from the locale.
     expect(await screen.findByText(page.useSaved)).toBeInTheDocument()
     expect(screen.getByText(page.useFacts)).toBeInTheDocument()
+    await userEvent.click(
+      screen.getByRole('radio', { name: ja.memory.remembered })
+    )
     expect(screen.getByRole('tab', { name: page.scope.chat.tab })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: page.scope.user.tab })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: page.remember })).toBeInTheDocument()

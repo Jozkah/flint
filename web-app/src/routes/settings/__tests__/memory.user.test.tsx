@@ -120,6 +120,9 @@ const Page = () => {
   const Component = (Route as any).component as React.ComponentType
   return <Component />
 }
+/** The remembered facts, proposals and conflicts sit on their own tab. */
+const showRemembered = () =>
+  userEvent.click(screen.getByRole('radio', { name: /remembered/i }))
 const LOCATION = { dataFolder: '/data', projectRoot: '/repo', sessionId: 's1' }
 
 describe('Settings > Memory: user memory controls (AH-082)', () => {
@@ -144,6 +147,7 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
       })
     )
     await waitFor(() => expect(user).toHaveAttribute('data-checked', 'false'))
+    await showRemembered()
     expect(screen.getByTestId('memory-recall-off-note')).toBeInTheDocument()
     // Records are only withheld: nothing was forgotten.
     expect(api.memoryRecordForget).not.toHaveBeenCalled()
@@ -185,6 +189,7 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
 
   it('saves a memory the user writes, in the tab scope, committing exactly what was proposed', async () => {
     render(<Page />)
+    await showRemembered()
     const box = await screen.findByTestId('memory-new-content')
     await userEvent.type(box, 'The user signs off as Quill.')
     await userEvent.click(screen.getByTestId('memory-new-save'))
@@ -235,6 +240,7 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
       total: 1,
     })
     render(<Page />)
+    await showRemembered()
     const clear = await screen.findByTestId('memory-clear-scope')
     await waitFor(() => expect(clear).not.toBeDisabled())
     await userEvent.click(clear)
@@ -284,6 +290,7 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
       total: 2,
     })
     render(<Page />)
+    await showRemembered()
     const versions = await screen.findAllByTestId('memory-provenance-version')
     expect(versions[0]).toHaveTextContent('2')
     expect(versions[1]).toHaveTextContent('unknown')
@@ -326,6 +333,7 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
       },
     ])
     render(<Page />)
+    await showRemembered()
     const keep = (await screen.findAllByTestId('memory-conflict-keep')).find(
       (b) => b.getAttribute('data-keep-id') === 'mem-npm'
     )!
@@ -379,6 +387,7 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
       total: 1,
     })
     render(<Page />)
+    await showRemembered()
     const exportButton = await screen.findByTestId('memory-export')
     await waitFor(() => expect(exportButton).not.toBeDisabled())
     await userEvent.click(exportButton)
@@ -403,6 +412,7 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
     api.memoryExport.mockClear()
     api.memoryImport.mockClear()
     render(<Page />)
+    await showRemembered()
     const importButton = await screen.findByTestId('memory-import')
     await waitFor(() => expect(importButton).not.toBeDisabled())
     await userEvent.click(importButton)
