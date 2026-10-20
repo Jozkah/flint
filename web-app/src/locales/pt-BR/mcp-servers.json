@@ -273,5 +273,15 @@
   "cwdPlaceholder": "Opcional, ex.: C:\\tools\\my-server",
   "cwdHint": "A pasta em que o servidor inicia. Deixe vazio para iniciá-lo a partir da pasta do próprio Flint.",
   "autoApproveServerHint": "Aprova automaticamente apenas as ferramentas deste servidor. A chave para todas as ferramentas MCP fica em Configurações > Permissões.",
-  "allowAllMoved": "A chave que permite executar todas as ferramentas MCP sem perguntar fica em Configurações > Permissões."
+  "allowAllMoved": "A chave que permite executar todas as ferramentas MCP sem perguntar fica em Configurações > Permissões.",
+  "elicitation": {
+    "title": "{{server}} needs your input",
+    "urlTitle": "{{server}} wants to open a page",
+    "urlHost": "Opens {{host}}",
+    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "submit": "Submit",
+    "decline": "Decline",
+    "cancel": "Cancel",
+    "openPage": "Open page"
+  }
 }

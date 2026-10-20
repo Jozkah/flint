@@ -270,5 +270,15 @@
   "cwdPlaceholder": "Optional, z. B. C:\\tools\\my-server",
   "cwdHint": "Der Ordner, in dem der Server startet. Leer lassen, um ihn aus Flints eigenem Ordner zu starten.",
   "autoApproveServerHint": "Genehmigt nur die Tools dieses Servers automatisch. Der Schalter für alle MCP-Tools befindet sich unter Einstellungen > Berechtigungen.",
-  "allowAllMoved": "Der Schalter, mit dem alle MCP-Tools ohne Nachfrage laufen, befindet sich unter Einstellungen > Berechtigungen."
+  "allowAllMoved": "Der Schalter, mit dem alle MCP-Tools ohne Nachfrage laufen, befindet sich unter Einstellungen > Berechtigungen.",
+  "elicitation": {
+    "title": "{{server}} needs your input",
+    "urlTitle": "{{server}} wants to open a page",
+    "urlHost": "Opens {{host}}",
+    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "submit": "Submit",
+    "decline": "Decline",
+    "cancel": "Cancel",
+    "openPage": "Open page"
+  }
 }
