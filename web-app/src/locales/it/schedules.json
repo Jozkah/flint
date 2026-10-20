@@ -47,7 +47,8 @@
     "daily": "Ogni giorno alle {{times}}",
     "weekdays": "Nei giorni feriali alle {{times}}",
     "weekly": "{{days}} alle {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "In esecuzione",

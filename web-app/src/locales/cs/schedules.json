@@ -47,7 +47,8 @@
     "daily": "Každý den v {{times}}",
     "weekdays": "Ve všední dny v {{times}}",
     "weekly": "{{days}} v {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "Běží",

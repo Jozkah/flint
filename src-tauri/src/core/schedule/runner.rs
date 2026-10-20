@@ -291,6 +291,12 @@ pub fn tick(store: &Store, data_folder: &Path, launcher: &dyn Launcher, now: Dat
             Ok(r) => report.started.push(r),
             Err(e) => report.errors.push(e.message),
         }
+        // A one-time task has had its one run (or its one chance).
+        if task.schedule.is_once() {
+            if let Err(e) = store.set_enabled(&task.id, false) {
+                report.errors.push(e.message);
+            }
+        }
     }
     report
 }

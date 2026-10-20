@@ -110,6 +110,7 @@ pub mod skills;
 pub mod slash;
 pub mod attribution;
 pub mod monitor;
+pub mod schedule_tool;
 pub mod spend;
 pub mod state_schema;
 pub mod subagent;

@@ -47,7 +47,8 @@
     "daily": "Каждый день в {{times}}",
     "weekdays": "По будням в {{times}}",
     "weekly": "{{days}} в {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "Выполняется",

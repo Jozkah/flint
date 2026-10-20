@@ -126,6 +126,12 @@ export function formToSchedule(form: ScheduleForm): ScheduleSpec | null {
 }
 
 export function scheduleToForm(spec: ScheduleSpec): ScheduleForm {
+  if (spec.kind === 'once') {
+    // The editor has no one-time preset; show the cron the time compiles to.
+    const m = /^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(spec.at)
+    const expr = m ? `${+m[4]} ${+m[3]} ${+m[2]} ${+m[1]} *` : ''
+    return { preset: 'cron', times: ['09:00'], days: [1, 2, 3, 4, 5], cron: expr }
+  }
   if (spec.kind === 'cron') {
     return { preset: 'cron', times: ['09:00'], days: [1, 2, 3, 4, 5], cron: spec.expr }
   }

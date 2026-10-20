@@ -47,7 +47,8 @@
     "daily": "Todos los días a las {{times}}",
     "weekdays": "Los días laborables a las {{times}}",
     "weekly": "{{days}} a las {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "En ejecución",

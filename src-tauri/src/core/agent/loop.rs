@@ -2788,6 +2788,86 @@ impl CompositeToolInvoker {
         }
     }
 
+    /// `schedule_task`: plan the call against this session's own limits, then
+    /// ask a person before anything is created or deleted. Unlike
+    /// `approve_repo_mutation` there is no allow rule, grant, auto-approval or
+    /// bypass that answers for the person: unattended work is approved each
+    /// time, by someone who has seen the prompt, schedule, folder and mode.
+    async fn handle_schedule_task(&self, args: &serde_json::Value) -> String {
+        use crate::core::agent::schedule_tool as tool;
+        use crate::core::schedule::store::Store;
+        if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+            return plan_mode_read_only_msg("schedule_task");
+        }
+        if self.permissions.is_denied("schedule_task", &self.subject) {
+            return denied_by_policy_msg("schedule_task", &self.project_root);
+        }
+        let creator = tool::Creator {
+            project_root: self.project_root.clone(),
+            model: self.subagents.as_ref().map(|c| c.model_id.clone()).unwrap_or_default(),
+            plan_mode: false,
+            allowed_tools: self.allowed_tools.as_ref().map(|a| a.iter().cloned().collect()),
+            denied_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
+                .iter()
+                .filter(|t| self.permissions.is_denied(t.name, &self.subject))
+                .map(|t| t.name.to_string())
+                .collect(),
+        };
+        let plan = match tool::plan(args, &creator) {
+            Ok(plan) => plan,
+            Err(e) => return format!("ERROR [invalid_input]: {e}"),
+        };
+        let store = Store::new(&crate::core::app::commands::resolve_jan_data_folder());
+        let tasks = store.load_tasks().unwrap_or_default();
+        if let Some(what) = plan.approval_text(&tasks) {
+            if let Err(refused) = self.ask_person("schedule_task", &what).await {
+                return refused;
+            }
+        }
+        match plan {
+            tool::Plan::List => tool::render_list(&tasks),
+            tool::Plan::Create(task) => match store.save_task(*task) {
+                Ok(saved) => format!("Scheduled task {} created: {}", saved.id, saved.schedule.describe()),
+                Err(e) => format!("ERROR [io]: {}", e.message),
+            },
+            tool::Plan::Delete { id } => match store.delete_task(&id) {
+                Ok(true) => format!("Deleted scheduled task {id}"),
+                Ok(false) => format!("ERROR [invalid_input]: no scheduled task {id}"),
+                Err(e) => format!("ERROR [io]: {}", e.message),
+            },
+        }
+    }
+
+    /// Put `what` to a person and wait. Always asks; offers no "always allow".
+    async fn ask_person(&self, name: &str, what: &str) -> Result<(), String> {
+        let request_id = next_permission_id();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.permission_requests.lock().await.insert(request_id.clone(), tx);
+        let _ = self.events.send(StreamEvent::PermissionRequest {
+            request_id: request_id.clone(),
+            tool_name: name.to_string(),
+            capability: "run".to_string(),
+            path: None,
+            command: Some(what.to_string()),
+            diff: None,
+            patch: None,
+            prompt_kind: "exec".to_string(),
+            offers_always: false,
+            reason: Some("This creates work that runs later with nobody watching, so it is asked every time.".to_string()),
+            args_digest: None,
+            call_id: None,
+        });
+        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
+        self.permission_requests.lock().await.remove(&request_id);
+        match decision {
+            PermissionDecision::Deny => Err(format!(
+                "ERROR [approval_refused]: {name} was not approved by a person, so nothing was changed."
+            )),
+            // `offers_always` is false, so a grant is only ever this once.
+            _ => Ok(()),
+        }
+    }
+
     /// Approve a repository-changing `git_split` / `git_history` /
     /// `git_branch` call. Same rules as a write through the gate: an explicit
     /// allow or a session grant runs it, auto-approval runs it subject to
@@ -4917,6 +4997,16 @@ impl CompositeToolInvoker {
                 out.push(ToolOutcome::plain(id, content));
                 continue;
             }
+            if name == "schedule_task" {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    continue;
+                };
+                let content = self.handle_schedule_task(&args).await;
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
             // Subagent tools are handled ahead of the fs/exec gate and the MCP
             // fallback: they orchestrate nested runs, not filesystem access.
             if name == "symbol_find"
@@ -6284,6 +6374,42 @@ fn advertise_local_tools(
                 && allowed_names.is_none_or(|allow| allow.contains(named));
             if offered {
                 openai_tools.push(message);
+            }
+
+            // Scheduled tasks: create, list, delete, and run once at a time.
+            // Creating or deleting always asks a person; a child run never
+            // schedules, and nothing in Plan mode does.
+            if !planning
+                && matches!(subject, tauri_plugin_agent_tools::subject::Subject::MainAgent)
+                && !permissions.is_denied("schedule_task", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("schedule_task"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "schedule_task",
+                        "description": "Manage scheduled tasks that run later with nobody watching. action `list` shows them. action `create` needs name, prompt and schedule (kind daily|weekdays|weekly|cron|once; daily/weekdays take times [\"09:00\"], weekly adds days [1,3] with 0 = Sunday, cron takes expr, once takes at \"YYYY-MM-DDTHH:MM\" in the task's timezone), and optionally timezone (default UTC), project, model, allow_tools, write (read_only default, or worktree), max_turns, max_tokens, max_wall_clock_secs. A task is read-only and limited to read tools unless you ask for more, and can never do more than this session can. action `delete` needs id. Creating and deleting are shown to the person and need their approval every time.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "action": { "type": "string", "enum": ["list", "create", "delete"] },
+                                "id": { "type": "string", "description": "The task, for delete." },
+                                "name": { "type": "string" },
+                                "prompt": { "type": "string", "description": "What the task does when it runs." },
+                                "schedule": { "type": "object", "description": "When it runs." },
+                                "timezone": { "type": "string", "description": "IANA name, default UTC." },
+                                "project": { "type": "string", "description": "A folder inside this session's folder; default the folder itself." },
+                                "model": { "type": "string", "description": "provider/model; default this session's." },
+                                "allow_tools": { "type": "array", "items": { "type": "string" } },
+                                "write": { "type": "string", "enum": ["read_only", "worktree"] },
+                                "max_turns": { "type": "integer" },
+                                "max_tokens": { "type": "integer" },
+                                "max_wall_clock_secs": { "type": "integer" }
+                            },
+                            "required": ["action"]
+                        }
+                    }
+                }));
             }
 
             // A background watcher whose matching lines reach the run as they

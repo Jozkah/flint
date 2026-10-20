@@ -202,6 +202,9 @@ fn push_skips(out: &mut Due, task_id: &str, mut dropped: Vec<(DateTime<Utc>, Ski
 fn fires_in(task: &Task, after: DateTime<Utc>, until: DateTime<Utc>) -> Result<Vec<DateTime<Utc>>, ()> {
     let tz = task.tz().map_err(|_| ())?;
     let exprs = task.schedule.compile().map_err(|_| ())?;
+    if task.schedule.is_once() {
+        return Ok(task.once_instant().filter(|at| *at > after && *at <= until).into_iter().collect());
+    }
     let mut all: Vec<DateTime<Utc>> = Vec::new();
     for e in exprs {
         all.extend(e.fires_between(tz, after, until, ENUMERATION_LIMIT));
