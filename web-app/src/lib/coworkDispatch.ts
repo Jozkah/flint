@@ -1357,7 +1357,12 @@ async function routeCoworkTool(
           isError: true,
         }
       }
-      return await runSpawnSession(ctx.sessionId, call.input)
+      return await runSpawnSession(ctx.sessionId, call.input, {
+        mode: ctx.mode,
+        toolCallId: call.toolCallId,
+        signal,
+        onApprove: ctx.onApprove,
+      })
     }
     if (toolName === ENABLE_TOOLS_NAME) {
       if (!ctx.onEnableTools) {

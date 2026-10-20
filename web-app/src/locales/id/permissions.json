@@ -42,6 +42,7 @@
     "gitDestructive": "Flint ingin menjalankan {{command}}, yang dapat menghilangkan pekerjaan",
     "approveCampaign": "Flint ingin memulai campaign \"{{title}}\" ({{count}} tugas)",
     "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
+    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
     "spendPause": "Flint ingin melanjutkan proses ini melewati jeda pengeluarannya",
     "changeFileOutside": "Flint ingin mengubah {{target}}, yang berada di luar {{workspace}}",
     "changeManyFilesOutside": "Flint ingin mengubah {{count}} berkas, sebagian di luar {{workspace}}"
@@ -65,6 +66,7 @@
     "gitDestructive": "Apa yang dihapus atau ditimpanya mungkin tidak dapat dipulihkan.",
     "campaignPlan": "Ini memulai sesi terpisah, masing-masing di branch worktree sendiri, yang membaca dan mengubah file serta memakai kuota model Anda secara paralel. Menyetujui rencana tidak menyetujui panggilan apa pun yang dibuat tugas. Flint bertanya setiap kali.",
     "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
+    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "Proses terus memakai kuota model berbayar sampai selesai atau mencapai batasnya. Menolak akan menghentikannya."
   },
   "repeat": {

@@ -42,6 +42,7 @@
     "gitDestructive": "Flint muốn chạy {{command}}, lệnh này có thể làm mất công việc",
     "approveCampaign": "Flint muốn bắt đầu chiến dịch \"{{title}}\" ({{count}} tác vụ)",
     "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
+    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
     "spendPause": "Flint muốn tiếp tục lượt chạy này vượt quá mức tạm dừng chi tiêu",
     "changeFileOutside": "Flint muốn thay đổi {{target}}, nằm ngoài {{workspace}}",
     "changeManyFilesOutside": "Flint muốn thay đổi {{count}} tệp, một số nằm ngoài {{workspace}}"
@@ -65,6 +66,7 @@
     "gitDestructive": "Những gì nó xóa hoặc ghi đè có thể không khôi phục được.",
     "campaignPlan": "Nó bắt đầu các phiên riêng biệt, mỗi phiên trên nhánh worktree của nó, đọc và thay đổi tệp và dùng song song hạn mức mô hình của bạn. Việc duyệt kế hoạch không duyệt bất kỳ lệnh gọi nào mà một tác vụ thực hiện. Flint hỏi mỗi lần.",
     "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
+    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "Lượt chạy tiếp tục dùng hạn mức mô hình trả phí cho đến khi xong hoặc chạm trần. Từ chối sẽ dừng lượt chạy."
   },
   "repeat": {
