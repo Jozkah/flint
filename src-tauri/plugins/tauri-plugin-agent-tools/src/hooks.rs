@@ -276,6 +276,46 @@ pub struct Hook {
     /// match; the tool may be `*`. Checked on `pre-tool` and `post-tool`.
     #[serde(default, rename = "if")]
     pub if_filter: Option<String>,
+    /// Opt-in: read a JSON decision from the hook's stdout when it exits 0
+    /// (`decision`, `reason`, `additionalContext`). See [`HookOutput`].
+    #[serde(default)]
+    pub json_output: bool,
+}
+
+/// A hook's JSON stdout. A decision can only tighten what the permission
+/// system already decided: `deny`/`block` refuses the call (or the finish, for
+/// `run-end`), `ask` is treated as a refusal because no prompt can be raised
+/// from here, and `allow` changes nothing. A hook never grants permission.
+#[derive(Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HookOutput {
+    #[serde(default)]
+    pub decision: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub additional_context: Option<String>,
+}
+
+impl HookOutput {
+    fn parse(stdout: &str) -> Option<Self> {
+        let t = stdout.trim();
+        if !t.starts_with('{') {
+            return None;
+        }
+        serde_json::from_str(t).ok()
+    }
+    /// The refusal this output asks for, if any.
+    fn refusal(&self) -> Option<String> {
+        match self.decision.as_deref()?.to_ascii_lowercase().as_str() {
+            "deny" | "block" => Some(self.reason.clone().unwrap_or_else(|| "refused by a hook decision".into())),
+            "ask" => Some(format!(
+                "a hook asked for confirmation, which cannot be raised here, so the call is refused{}",
+                self.reason.as_deref().map(|r| format!(": {r}")).unwrap_or_default()
+            )),
+            _ => None,
+        }
+    }
 }
 
 /// Split `tool(pattern)` into its parts. `None` pattern means tool only.
@@ -524,7 +564,17 @@ pub fn parse(raw: &str) -> Result<Vec<Hook>, HookError> {
                 ))
             }
         };
-        hooks.push(Hook { event, command, on_failure, timeout_secs, tools, stdin_json, if_filter });
+        let json_output = match item.get("json_output") {
+            None => false,
+            Some(toml::Value::Boolean(b)) => *b,
+            Some(_) => {
+                return Err(HookError::new(
+                    HookErrorKind::Malformed,
+                    format!("hook {at}: `json_output` must be true or false"),
+                ))
+            }
+        };
+        hooks.push(Hook { event, command, on_failure, timeout_secs, tools, stdin_json, if_filter, json_output });
     }
     Ok(hooks)
 }
@@ -558,6 +608,10 @@ pub struct Decision {
     /// Failures the run should be told about but not stopped for.
     #[serde(default)]
     pub warnings: Vec<HookError>,
+    /// `additionalContext` from hooks that exit 0 with a JSON decision. Shown to
+    /// the model as a labelled hook note, never as user text.
+    #[serde(default)]
+    pub notes: Vec<String>,
     pub runs: Vec<HookRun>,
 }
 
@@ -661,7 +715,8 @@ async fn run_with_env(
             }
         }
         let started = std::time::Instant::now();
-        let (ok, output, error) = execute(hook, event, tool, ctx, extra_env, input.filter(|_| hook.stdin_json)).await;
+        let parsed_slot = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let (ok, output, error) = execute(hook, event, tool, ctx, extra_env, input.filter(|_| hook.stdin_json), &parsed_slot).await;
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         log::debug!(
             "hook finished: event={} command={:?} ok={} outcome={} duration_ms={}",
@@ -671,6 +726,20 @@ async fn run_with_env(
             error.as_ref().map_or_else(|| "ok".to_string(), |e| format!("{:?}", e.kind)),
             duration_ms
         );
+        let parsed = parsed_slot.lock().ok().and_then(|mut p| p.take());
+        if let Some(out) = parsed {
+            if let Some(note) = out.additional_context.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+                decision.notes.push(bound(&crate::harness_error::scrub(note)));
+            }
+            if let Some(why) = out.refusal() {
+                if event.can_block() {
+                    decision.blocked = Some(HookError::new(
+                        HookErrorKind::Failed,
+                        format!("the {} hook decided: {}", event.as_str(), bound(&crate::harness_error::scrub(&why))),
+                    ));
+                }
+            }
+        }
         if !ok {
             let error = error.clone().unwrap_or_else(|| {
                 HookError::new(HookErrorKind::Failed, "the hook failed with no output")
@@ -705,6 +774,7 @@ async fn execute(
     ctx: &Context<'_>,
     extra_env: &[(&str, String)],
     input: Option<&HookInput>,
+    parsed_slot: &std::sync::Arc<std::sync::Mutex<Option<HookOutput>>>,
 ) -> (bool, String, Option<HookError>) {
     use crate::tools::{jail, proc};
 
@@ -802,6 +872,8 @@ async fn execute(
         std::sync::Arc::new(std::sync::Mutex::new(None));
     let spawned = running.clone();
     let event_name = event.as_str();
+    let want_json = hook.json_output;
+    let parsed_out = parsed_slot.clone();
     let stdin_payload = input.map(|i| i.to_stdin(event, ctx.project_root));
     let tool_name = tool.unwrap_or_default().to_string();
     let extra_env: Vec<(String, String)> =
@@ -887,6 +959,11 @@ async fn execute(
         match out {
             Ok(out) => {
                 let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+                if want_json && out.status.success() {
+                    if let (Some(parsed), Ok(mut slot)) = (HookOutput::parse(&text), parsed_out.lock()) {
+                        *slot = Some(parsed);
+                    }
+                }
                 text.push_str(&String::from_utf8_lossy(&out.stderr));
                 let text = bound(&crate::harness_error::scrub(&text));
                 if out.status.success() {
@@ -1307,6 +1384,33 @@ event=\"post-tool\"
 command=\"x\"
 on_failure=\"block\"
 ").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_json_decision_can_tighten_and_add_context_but_never_loosen() {
+        let root = dir("jsonout");
+        write_config(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"echo '{\\\"decision\\\":\\\"deny\\\",\\\"reason\\\":\\\"no pushes\\\",\\\"additionalContext\\\":\\\"see policy\\\"}'\"
+json_output = true
+
+             [[hook]]
+event = \"post-tool\"
+command = \"echo '{\\\"decision\\\":\\\"allow\\\"}'\"
+json_output = true
+",
+        );
+        let hooks = load(&root).unwrap();
+        let input = HookInput { tool_name: "bash".into(), ..HookInput::default() };
+        let d = run_with_input(&hooks, Event::PreTool, Some("bash"), &ctx(&root), &input).await;
+        assert!(d.blocked.as_ref().is_some_and(|e| e.message.contains("no pushes")), "{d:?}");
+        assert_eq!(d.notes, vec!["see policy".to_string()]);
+        // `allow` on a hook that cannot block, and on one that can, changes nothing.
+        let d = run_with_input(&hooks, Event::PostTool, Some("bash"), &ctx(&root), &input).await;
+        assert!(d.blocked.is_none() && d.notes.is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 

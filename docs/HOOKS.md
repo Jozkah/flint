@@ -24,6 +24,7 @@ on_failure = "block"        # optional: block | warn | ignore (default warn)
 timeout_secs = 30           # optional: 1 to 120 (default 30)
 tools = ["write", "edit"]   # optional: tool names; empty or absent = every tool
 if = "bash(git\s+push)"    # optional, pre-tool/post-tool: run only for this tool and arguments (tool or tool(regex))
+json_output = true          # optional: read a JSON decision from stdout on exit 0 (see "JSON decisions")
 stdin_json = true           # optional, pre-tool/post-tool: pass the tool call as JSON on stdin (default false)
 ```
 
@@ -82,6 +83,27 @@ observe. Only the Rust agent loop (CLI runs) fires it; the desktop chat and
 Cowork loops do not yet. `stdin_json` hands it `last_assistant_message`.
 
 `session-start` is refused: nothing fires it yet.
+
+## JSON decisions
+
+A hook with `json_output = true` that exits 0 and prints one JSON object on
+stdout can say:
+
+```json
+{ "decision": "deny", "reason": "no pushes on this branch", "additionalContext": "see CONTRIBUTING" }
+```
+
+- `additionalContext`: appended to the tool result as `[hook note (... hook, not
+  from the user)] ...`. It is a labelled note, never user text.
+- `decision`: `deny` (or `block`) refuses a `pre-tool` call, or the finish for
+  `run-end`. `ask` is treated as a refusal, because a hook cannot raise an
+  approval prompt from inside the tool path. `allow` changes nothing. A decision
+  can only tighten: it runs after the permission system has already allowed the
+  call, it can never grant what was refused, and it is ignored on events that
+  cannot block.
+
+Output that is not a JSON object, or a hook that exits non-zero, is read as
+plain text under the failure policy below.
 
 ## Failure policy
 
