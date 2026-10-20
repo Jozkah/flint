@@ -710,6 +710,7 @@ pub fn ensure_with(
     let path_str = path.to_string_lossy().to_string();
     crate::core::agent::vcs::refuse_filter_programs(repo)?;
     run(repo, &["worktree", "add", "-b", &branch, &path_str, &head])?;
+    notes.extend(copy_worktreeinclude(repo, &path));
 
     Ok(WorktreeRecord {
         path: path_str,
@@ -721,6 +722,89 @@ pub fn ensure_with(
         base_branch,
         notes,
     })
+}
+
+/// Largest file `.worktreeinclude` will copy into a new worktree.
+const WORKTREEINCLUDE_MAX_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Copy files that match the project's `.worktreeinclude` (gitignore syntax)
+/// AND are gitignored into a freshly created worktree, so `.env` and similar
+/// local files exist there. Tracked files are never copied (the checkout has
+/// them), symlinks are skipped, nothing lands in `.git`, and a file above
+/// 10 MB is skipped with a note. Returns notes; never fails worktree creation.
+pub(crate) fn copy_worktreeinclude(repo: &Path, worktree: &Path) -> Vec<String> {
+    let mut notes = Vec::new();
+    let include = repo.join(".worktreeinclude");
+    if !include.is_file() {
+        return notes;
+    }
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(repo);
+    if let Some(err) = builder.add(&include) {
+        notes.push(format!(".worktreeinclude was only partly read: {err}"));
+    }
+    let matcher = match builder.build() {
+        Ok(m) => m,
+        Err(e) => {
+            notes.push(format!(".worktreeinclude could not be read: {e}"));
+            return notes;
+        }
+    };
+    let Ok((true, listing)) = run_status(
+        repo,
+        &["ls-files", "-z", "--others", "--ignored", "--exclude-standard"],
+    ) else {
+        return notes;
+    };
+    let (Ok(repo_real), Ok(wt_real)) = (repo.canonicalize(), worktree.canonicalize()) else {
+        return notes;
+    };
+    let mut copied = 0usize;
+    for rel in listing.split(' ').filter(|r| !r.is_empty()) {
+        if validate_repo_rel(rel).is_err()
+            || !matcher.matched_path_or_any_parents(rel, false).is_ignore()
+        {
+            continue;
+        }
+        let from = repo.join(rel);
+        let Ok(meta) = std::fs::symlink_metadata(&from) else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue; // symlinks and directories are never followed
+        }
+        match from.canonicalize() {
+            Ok(real) if real.starts_with(&repo_real) => {}
+            _ => continue,
+        }
+        if meta.len() > WORKTREEINCLUDE_MAX_BYTES {
+            notes.push(format!(
+                ".worktreeinclude skipped {rel}: larger than {} MB",
+                WORKTREEINCLUDE_MAX_BYTES / (1024 * 1024)
+            ));
+            continue;
+        }
+        let to = worktree.join(rel);
+        if to.exists() {
+            continue;
+        }
+        if let Some(parent) = to.parent() {
+            if std::fs::create_dir_all(parent).is_err() {
+                continue;
+            }
+            // The destination directory must still resolve inside the worktree.
+            match parent.canonicalize() {
+                Ok(real) if real.starts_with(&wt_real) => {}
+                _ => continue,
+            }
+        }
+        if std::fs::copy(&from, &to).is_ok() {
+            copied += 1;
+        }
+    }
+    if copied > 0 {
+        notes.push(format!(".worktreeinclude copied {copied} ignored file(s) into the worktree."));
+    }
+    notes
 }
 
 /// The branch checked out in `repo`, or `None` on a detached HEAD.
@@ -1701,6 +1785,65 @@ mod tests {
     fn refuses_a_folder_that_is_not_a_repository() {
         let dir = tempfile::tempdir().unwrap();
         assert!(identity(dir.path()).is_err());
+    }
+
+    #[test]
+    fn worktreeinclude_copies_only_ignored_matching_files() {
+        let f = fixture();
+        std::fs::write(f.repo.join(".gitignore"), ".env
+big.bin
+other.log
+").unwrap();
+        std::fs::write(f.repo.join(".worktreeinclude"), ".env
+big.bin
+a.txt
+").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "cfg"]);
+        std::fs::write(f.repo.join(".env"), "SECRET=1").unwrap();
+        std::fs::write(f.repo.join("other.log"), "x").unwrap();
+        std::fs::write(
+            f.repo.join("big.bin"),
+            vec![0u8; (WORKTREEINCLUDE_MAX_BYTES + 1) as usize],
+        )
+        .unwrap();
+        let record = ensure(&f.repo, &f.worktrees, "s-inc").expect("create");
+        let wt = PathBuf::from(&record.path);
+        assert_eq!(std::fs::read_to_string(wt.join(".env")).unwrap(), "SECRET=1");
+        assert!(!wt.join("other.log").exists(), "not matched by the include file");
+        assert!(!wt.join("big.bin").exists(), "over the size cap");
+        assert!(record.notes.iter().any(|n| n.contains("big.bin")));
+        // a.txt matches but is tracked: the checkout owns it, content unchanged
+        assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "one");
+    }
+
+    #[test]
+    fn worktreeinclude_absent_changes_nothing() {
+        let f = fixture();
+        std::fs::write(f.repo.join(".gitignore"), ".env
+").unwrap();
+        std::fs::write(f.repo.join(".env"), "x").unwrap();
+        let record = ensure(&f.repo, &f.worktrees, "s-none").expect("create");
+        assert!(!PathBuf::from(&record.path).join(".env").exists());
+    }
+
+    #[test]
+    fn worktreeinclude_never_follows_symlinks_out_of_the_repo() {
+        let f = fixture();
+        let outside = f._dir.path().join("outside.txt");
+        std::fs::write(&outside, "private").unwrap();
+        std::fs::write(f.repo.join(".gitignore"), "link.txt
+").unwrap();
+        std::fs::write(f.repo.join(".worktreeinclude"), "link.txt
+").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "cfg"]);
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, f.repo.join("link.txt")).unwrap();
+        #[cfg(windows)]
+        let _ = std::os::windows::fs::symlink_file(&outside, f.repo.join("link.txt"));
+        let record = ensure(&f.repo, &f.worktrees, "s-link").expect("create");
+        assert!(!PathBuf::from(&record.path).join("link.txt").exists());
     }
 
     #[test]
