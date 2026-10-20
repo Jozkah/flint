@@ -74,7 +74,7 @@ const Capabilities = memo(function Capabilities({
                       className={
                         compact
                           ? 'flex size-3.5 items-center justify-center'
-                          : 'flex items-center gap-1 size-5 hover:bg-secondary rounded text-muted-foreground justify-center last:mr-1 transition-all'
+                          : 'flex items-center gap-1 size-5 hover:bg-secondary rounded text-muted-foreground justify-center last:mr-1 transition-colors duration-150 ease-expo'
                       }
                     >
                       {icon}

@@ -199,6 +199,7 @@ function InterfaceSettings() {
         description={t('settings:interface.coloredUserBubbleDesc')}
         actions={
           <Switch
+            aria-label={t('settings:interface.coloredUserBubble')}
             checked={coloredUserBubble}
             onCheckedChange={setColoredUserBubble}
           />

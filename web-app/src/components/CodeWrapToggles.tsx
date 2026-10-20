@@ -29,7 +29,7 @@ export function WrapCodeLinesButton({ className }: { className?: string }) {
       title={label}
       onClick={() => setWrap(!wrap)}
       className={cn(
-        'cursor-pointer rounded p-1 text-muted-foreground transition-all hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring',
+        'cursor-pointer rounded p-1 text-muted-foreground transition-colors duration-150 ease-expo hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring',
         className
       )}
     >
@@ -82,7 +82,7 @@ export function ExpandCodeBlockButton({ blockId }: { blockId: string }) {
         setCodeBlockExpanded(blockId, !expanded)
         setExpanded(!expanded)
       }}
-      className="cursor-pointer rounded p-1 text-muted-foreground transition-all hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+      className="cursor-pointer rounded p-1 text-muted-foreground transition-colors duration-150 ease-expo hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
     >
       {expanded ? <ChevronsDownUpIcon size={14} /> : <ChevronsUpDownIcon size={14} />}
     </button>

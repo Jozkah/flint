@@ -507,7 +507,7 @@ export const TokenCounter = memo(function TokenCounter({
             <div className="w-full h-1.5 bg-track rounded-full overflow-hidden">
               <div
                 className={cn(
-                  'h-full rounded-full transition-all duration-500 ease-out',
+                  'h-full rounded-full transition-[width,background-color] duration-500 ease-expo',
                   barCls
                 )}
                 style={{ width: `${usage.pct}%` }}
