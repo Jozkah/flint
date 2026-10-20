@@ -165,6 +165,33 @@ describe('useInterfaceSettings', () => {
     expect(result.current.notificationPosition).toBe('bottom-right')
   })
 
+  it('splits Reset between the Appearance and Chat pages', () => {
+    const { result } = renderHook(() => useInterfaceSettings())
+
+    act(() => {
+      result.current.setReduceMotion(true)
+      result.current.setWrapCodeLines(true)
+      result.current.setShowTokenSpeed(false)
+    })
+    act(() => {
+      result.current.resetInterface()
+    })
+    expect(result.current.reduceMotion).toBe(false)
+    expect(result.current.wrapCodeLines).toBe(true)
+    expect(result.current.showTokenSpeed).toBe(false)
+
+    act(() => {
+      result.current.setReduceMotion(true)
+      result.current.resetChatDisplay()
+    })
+    expect(result.current.wrapCodeLines).toBe(false)
+    expect(result.current.showTokenSpeed).toBe(true)
+    expect(result.current.reduceMotion).toBe(true)
+    act(() => {
+      result.current.resetInterface()
+    })
+  })
+
   it('toggles reduce motion and resets it with the interface', () => {
     const { result } = renderHook(() => useInterfaceSettings())
 
