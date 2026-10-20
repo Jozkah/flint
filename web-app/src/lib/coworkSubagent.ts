@@ -21,6 +21,7 @@ import {
 } from '@/lib/coworkTools'
 import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSession'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { isCoworkMode, type CoworkMode } from '@/lib/coworkMode'
 import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
 import { BACKGROUND_TASK_TOOLS } from '@/lib/coworkBackgroundTasks'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
@@ -170,6 +171,14 @@ export type ResolvedSubagent = {
    * rather than by an agent someone named (AH-110).
    */
   scope?: SubagentDefinition['scope']
+  /** The definition's own step cap, already clamped to [1, MAX_SUBAGENT_STEPS]. */
+  maxTurns?: number
+  /** The mode the definition asks for; capped by the parent's at the dispatcher. */
+  permissionMode?: CoworkMode
+  /** Prepended to the parent's delegation message. */
+  initialPrompt?: string
+  /** Skip project instructions for this child. */
+  omitInstructions?: boolean
 }
 
 /**
@@ -272,6 +281,13 @@ export function resolveSubagent(
   parentTools: string[]
 ): ResolvedSubagent | { error: string } {
   const saved = definitions.find((d) => d.name === req.subagent_name)
+  const denied = saved?.disallowed_tools ?? []
+  const asked = req.allowed_tools?.find((t) => denied.includes(t))
+  if (asked) {
+    return {
+      error: `tool '${asked}' is outside the subagent definition's disallowed_tools`,
+    }
+  }
   const narrowed = intersectAllowedTools(
     saved ? saved.allowed_tools : (req.allowed_tools ?? null),
     // An inline allowlist *is* the one-off's definition, so it is not also
@@ -281,12 +297,40 @@ export function resolveSubagent(
   )
   if ('error' in narrowed) return narrowed
   if (saved) {
+    let allowedTools = narrowed.tools
+    if (denied.length > 0) {
+      // The denylist applies last, to whatever the allowlist and the parent
+      // left, so it removes a tool however it got there. It needs an explicit
+      // list to subtract from, so an inheriting definition starts from the
+      // parent's set.
+      allowedTools = (allowedTools ?? parentTools).filter((t) => !denied.includes(t))
+      if (allowedTools.every((t) => SUBAGENT_SKILL_TOOLS.includes(t))) {
+        return {
+          error:
+            `subagent '${saved.name}' has no tools left: its disallowed_tools ` +
+            'remove every tool it would otherwise have. Edit the definition.',
+        }
+      }
+    }
     return {
       name: saved.name,
       systemPrompt: saved.system_prompt,
-      allowedTools: narrowed.tools,
+      allowedTools,
       model: saved.model,
       scope: saved.scope,
+      ...(typeof saved.max_turns === 'number' && Number.isFinite(saved.max_turns)
+        ? {
+            maxTurns: Math.min(
+              MAX_SUBAGENT_STEPS,
+              Math.max(1, Math.floor(saved.max_turns))
+            ),
+          }
+        : {}),
+      ...(isCoworkMode(saved.permission_mode)
+        ? { permissionMode: saved.permission_mode }
+        : {}),
+      ...(saved.initial_prompt?.trim() ? { initialPrompt: saved.initial_prompt.trim() } : {}),
+      ...(saved.omit_instructions === true ? { omitInstructions: true } : {}),
     }
   }
   if (!req.system_prompt) {
@@ -301,6 +345,63 @@ export function resolveSubagent(
     systemPrompt: req.system_prompt,
     allowedTools: narrowed.tools,
     model: null,
+  }
+}
+
+/**
+ * A `task` input with a saved definition's `background` / `isolation` defaults
+ * filled in where the call said nothing. An explicit `background` or `isolate`
+ * on the call (including `false`) always wins.
+ *
+ * `canBackground` / `canIsolate` say whether the surface offers each; a default
+ * the surface cannot honour is left alone rather than refused. The existing
+ * rule that a checkout cannot be combined with `allowed_tools` or `background`
+ * still holds, and a refusal here names the definition's field so the model
+ * knows where the combination came from.
+ */
+export function applyTaskDefaults(
+  input: unknown,
+  definition: Pick<SubagentDefinition, 'background' | 'isolation'> | undefined,
+  surface: { canBackground: boolean; canIsolate: boolean }
+): { input: unknown } | { error: string } {
+  if (!definition || !input || typeof input !== 'object') return { input }
+  const raw = input as Record<string, unknown>
+  const defBackground =
+    definition.background === true && surface.canBackground && raw.background === undefined
+  const defIsolate =
+    definition.isolation === 'worktree' && surface.canIsolate && raw.isolate === undefined
+  if (!defBackground && !defIsolate) return { input }
+  const background = defBackground || raw.background === true
+  const isolate = defIsolate || raw.isolate === true
+  if (background && isolate && (defBackground || defIsolate)) {
+    return {
+      error:
+        "This subagent's definition sets " +
+        [defBackground ? '`background: true`' : '', defIsolate ? '`isolation: worktree`' : '']
+          .filter(Boolean)
+          .join(' and ') +
+        ', and `background` cannot be combined with `isolate`. Pass ' +
+        (defBackground ? '`background: false`' : '`isolate: false`') +
+        ' to choose one.',
+    }
+  }
+  if (
+    defIsolate &&
+    Array.isArray(raw.allowed_tools) &&
+    raw.allowed_tools.length > 0
+  ) {
+    return {
+      error:
+        "This subagent's definition sets `isolation: worktree`, which cannot be " +
+        'combined with `allowed_tools` on `task`. Pass `isolate: false` or drop `allowed_tools`.',
+    }
+  }
+  return {
+    input: {
+      ...raw,
+      ...(defBackground ? { background: true } : {}),
+      ...(defIsolate ? { isolate: true } : {}),
+    },
   }
 }
 
@@ -601,10 +702,15 @@ export async function runSubagent(
 
     // Past the ids already in a resumed history, so none repeats.
     let n = prior.length + 1
+    // The tighter of the surface's budget and the definition's own `max_turns`.
+    const maxSteps = Math.min(
+      opts.maxSteps ?? MAX_SUBAGENT_STEPS,
+      resolved.maxTurns ?? MAX_SUBAGENT_STEPS
+    )
     const outcome = await runTurn({
       messages,
       signal: opts.signal,
-      maxSteps: opts.maxSteps ?? MAX_SUBAGENT_STEPS,
+      maxSteps,
       sessionTokens,
       ...(opts.tokenLimit !== undefined ? { sessionTokenLimit: opts.tokenLimit } : {}),
       deps: {
@@ -671,7 +777,9 @@ export async function runSubagent(
       // answer" told the parent nothing it could act on.
       const cap =
         outcome.stoppedBy === 'steps'
-          ? `its ${opts.maxSteps ?? MAX_SUBAGENT_STEPS}-step budget`
+          ? resolved.maxTurns !== undefined && resolved.maxTurns <= (opts.maxSteps ?? MAX_SUBAGENT_STEPS)
+            ? `its turn limit (max_turns ${resolved.maxTurns})`
+            : `its ${maxSteps}-step budget`
           : outcome.stoppedBy === 'tokens'
             ? 'the session token budget'
             : outcome.stoppedBy === 'deadline'

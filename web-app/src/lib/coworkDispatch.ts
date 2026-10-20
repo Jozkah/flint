@@ -36,6 +36,8 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { isolatedTaskAsTeam } from '@/lib/coworkTeam'
+import { applyTaskDefaults } from '@/lib/coworkSubagent'
+import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
 import {
   BACKGROUND_TASK_TOOLS,
@@ -253,6 +255,8 @@ export type DispatchContext = {
   tasks?: BackgroundTasks
   /** Stop one child by its call id; false when there was nothing to stop. */
   cancelChild?: (callId: string) => boolean
+  /** A saved subagent by name, for its `background` / `isolation` defaults. */
+  agentDefaults?: (name: string) => SubagentDefinition | undefined
   /**
    * Runs a declared task graph as several children.
    *
@@ -939,7 +943,7 @@ export async function routeDelegationTool(
   call: PendingToolCall,
   ctx: Pick<
     DispatchContext,
-    'tasks' | 'onTask' | 'onTeam' | 'trackSubagent' | 'cancelChild'
+    'tasks' | 'onTask' | 'onTeam' | 'trackSubagent' | 'cancelChild' | 'agentDefaults'
   > & { sessionId?: string },
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
@@ -955,6 +959,15 @@ export async function routeDelegationTool(
     return await runBackgroundTool(toolName, call.input, ctx.tasks, { signal })
   }
   if (toolName === TASK_TOOL_NAME) {
+    const defaulted = applyTaskDefaults(
+      call.input,
+      ctx.agentDefaults?.(
+        String((call.input as { subagent_name?: unknown } | null)?.subagent_name ?? '')
+      ),
+      { canBackground: Boolean(ctx.tasks), canIsolate: Boolean(ctx.onTeam) }
+    )
+    if ('error' in defaulted) return { output: `ERROR: ${defaulted.error}`, isError: true }
+    call = { ...call, input: defaulted.input }
     const taskInput = (
       call.input && typeof call.input === 'object' ? call.input : {}
     ) as Record<string, unknown>

@@ -470,6 +470,33 @@ describe('runSubagent', () => {
     expect(out.output).toContain('2-step budget')
   })
 
+  it("stops a child at its definition's max_turns and says so, keeping the history to resume", async () => {
+    mockSteps(
+      Array.from({ length: 4 }, (_, i) => toolStep(`c${i}`, 'read', { path: 'a' }))
+    )
+    const opts = baseOpts()
+    const out = await runSubagent({
+      ...opts,
+      resolved: { ...opts.resolved, maxTurns: 2 },
+    })
+    expect(out.isError).toBe(true)
+    expect(out.output).toContain('turn limit (max_turns 2)')
+    expect(out.stoppedAtLimit).toBe(true)
+    expect(out.messages).toBeDefined()
+  })
+
+  it("takes the tighter of the surface's budget and max_turns", async () => {
+    mockSteps(
+      Array.from({ length: 4 }, (_, i) => toolStep(`c${i}`, 'read', { path: 'a' }))
+    )
+    const opts = baseOpts({ maxSteps: 1 })
+    const out = await runSubagent({
+      ...opts,
+      resolved: { ...opts.resolved, maxTurns: 3 },
+    })
+    expect(out.output).toContain('1-step budget')
+  })
+
   it('has no step cap of its own by default', async () => {
     // Only the context window limits a run, so a long errand is not cut off
     // at a fixed number of steps.

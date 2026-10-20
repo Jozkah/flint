@@ -222,6 +222,7 @@ import {
   type DirectEditFacts,
 } from '@/containers/dialogs/DirectEditConfirmDialog'
 import {
+  capMode,
   isReadOnly,
   modeOf,
   type CoworkMode,
@@ -3851,8 +3852,13 @@ export function CoworkPage() {
             modelId: selectedModel?.id,
             readOnlyFolder: childFolder,
             extraFolders: childExtras,
-            mode: runMode,
-            liveMode: () => liveSessionMode(sid),
+            // The definition may ask for a stricter mode, never a looser one: the
+            // run's mode, live or frozen, is the ceiling.
+            mode: capMode(runMode, resolved.permissionMode),
+            liveMode: () => {
+              const live = liveSessionMode(sid)
+              return live ? capMode(live, resolved.permissionMode) : undefined
+            },
             readFailures: runReadFailures,
             writeGrant: childGrant,
             // A child in its own checkout is a managed-worktree run of its
@@ -4299,6 +4305,7 @@ export function CoworkPage() {
                 tasks: backgroundTasks,
                 cancelChild: (callId) =>
                   abortSubagent(sid, taskIdFor(sid, runId, callId)),
+                agentDefaults: (name) => runAgents.find((d) => d.name === name),
                 // Campaign tools exist only here, on the main run of a session
                 // that may coordinate: a task's, a subagent's and chat's
                 // contexts have no handler, so a call to one is refused.
