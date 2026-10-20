@@ -26,7 +26,7 @@ const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
  */
 export function workflowToTeamInput(
   raw: unknown
-): { tasks: Raw[] } | string {
+): { tasks: Raw[]; run: { phases: unknown[]; resumeRunId?: string } } | string {
   if (!isObject(raw) || !Array.isArray(raw.phases) || raw.phases.length === 0) {
     return 'workflow needs a non-empty `phases` array'
   }
@@ -72,7 +72,11 @@ export function workflowToTeamInput(
   if (tasks.length > MAX_TEAM_TASKS) {
     return `phases hold ${tasks.length} agents in all; at most ${MAX_TEAM_TASKS}`
   }
-  return { tasks }
+  const resume = text(raw.resume_run_id)
+  return {
+    tasks,
+    run: { phases: raw.phases as unknown[], ...(resume ? { resumeRunId: resume } : {}) },
+  }
 }
 
 export function workflowTool(subagentNames: string[]): Tool {
@@ -83,7 +87,7 @@ export function workflowTool(subagentNames: string[]): Tool {
     description:
       'Run a multi-phase job. Phases run in order; the agents inside one phase run in parallel; ' +
       'each agent in a later phase is given every earlier-phase answer ahead of its own brief. ' +
-      'Returns one combined report. Use for survey-then-act or fan-out-then-merge jobs; for one ' +
+      'Returns one combined report, which names the run_id to resume it with. Use for survey-then-act or fan-out-then-merge jobs; for one ' +
       'job use `task`, for a dependency graph use `team`. Each agent cannot see this chat, so ' +
       'every `description` must be a complete brief.' +
       named,
@@ -95,6 +99,15 @@ export function workflowTool(subagentNames: string[]): Tool {
           description:
             'Start it and return a task_id at once; collect the combined report with await_task, ' +
             'check task_status, or cancel_task. Default false.',
+        },
+        resume_run_id: {
+          type: 'string',
+          minLength: 1,
+          description:
+            'Relaunch a stopped or failed workflow of this chat by its run_id (named in its report). ' +
+            'Agents whose brief is unchanged return their saved result without running; the first agent ' +
+            'whose brief differs or that failed, and every agent after it, runs again. `phases` may be ' +
+            'omitted to reuse the saved ones, or given to change them.',
         },
         control: {
           type: 'object',

@@ -1566,7 +1566,9 @@
     "pauseRun": "Wstrzymaj",
     "resumeRun": "Wznów",
     "restartAgent": "Uruchom agenta ponownie",
-    "runPaused": "Wstrzymano"
+    "runPaused": "Wstrzymano",
+    "resumeFromSaved": "Wznów",
+    "resumeFromSavedHint": "Uruchom ponownie; zakończeni agenci zwrócą zapisane wyniki"
   },
   "reasoningEffort": {
     "label": "Wysiłek rozumowania",

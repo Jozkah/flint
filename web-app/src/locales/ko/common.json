@@ -1510,7 +1510,9 @@
     "pauseRun": "일시 중지",
     "resumeRun": "다시 시작",
     "restartAgent": "에이전트 다시 시작",
-    "runPaused": "일시 중지됨"
+    "runPaused": "일시 중지됨",
+    "resumeFromSaved": "이어서 실행",
+    "resumeFromSavedHint": "다시 실행합니다. 끝난 에이전트는 저장된 결과를 반환합니다"
   },
   "reasoningEffort": {
     "label": "추론 강도",

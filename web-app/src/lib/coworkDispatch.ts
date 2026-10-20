@@ -1,5 +1,6 @@
 import { workflowToTeamInput } from '@/lib/coworkWorkflow'
 import { runWorkflowControl } from '@/lib/workflowControl'
+import { resolveResume } from '@/lib/workflowRuns'
 import { pushNotice } from '@/lib/coworkRunNotices'
 import { registerToolCallStop, stopBackendCall } from '@/lib/toolCallStop'
 import {
@@ -930,7 +931,7 @@ export function startBackgroundCall(
   )
   return {
     output:
-      `${kind === 'workflow' ? 'Workflow' : 'Task'} started in the background. task_id=${id}. Keep working; call await_task with this task_id to collect its ${kind === 'workflow' ? 'combined report' : 'answer'}, ` +
+      `${kind === 'workflow' ? 'Workflow' : 'Task'} started in the background. task_id=${id}${kind === 'workflow' ? ' (also its run_id for resume_run_id and control)' : ''}. Keep working; call await_task with this task_id to collect its ${kind === 'workflow' ? 'combined report' : 'answer'}, ` +
       'task_status to check on it, or cancel_task to stop it. The run waits for it before it ends.',
   }
 }
@@ -1414,12 +1415,15 @@ async function routeCoworkTool(
       if (toolName === WORKFLOW_TOOL_NAME) {
         const op = (call.input as { control?: unknown } | null)?.control
         if (op !== undefined) return runWorkflowControl(ctx.sessionId, op)
-        const converted = workflowToTeamInput(call.input)
+        const resumed = await resolveResume(ctx.sessionId, call.input)
+        if ('error' in resumed) return { output: `ERROR: ${resumed.error}`, isError: true }
+        const converted = workflowToTeamInput(resumed.input)
         if (typeof converted === 'string') {
           return { output: `ERROR: ${converted}`, isError: true }
         }
         teamInput = converted
-        const declined = await gateWorkflowLaunch(call, ctx, signal)
+        // Gated on what will actually run: a resume names no phases itself.
+        const declined = await gateWorkflowLaunch({ ...call, input: resumed.input }, ctx, signal)
         if (declined) return declined
       }
       const onTeam = ctx.onTeam

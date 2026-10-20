@@ -1565,7 +1565,9 @@
     "pauseRun": "Pozastavit",
     "resumeRun": "Pokračovat",
     "restartAgent": "Restartovat agenta",
-    "runPaused": "Pozastaveno"
+    "runPaused": "Pozastaveno",
+    "resumeFromSaved": "Obnovit",
+    "resumeFromSavedHint": "Spustit znovu; dokončení agenti vrátí uložené výsledky"
   },
   "reasoningEffort": {
     "label": "Úsilí při uvažování",

@@ -1512,7 +1512,9 @@
     "pauseRun": "Pausieren",
     "resumeRun": "Fortsetzen",
     "restartAgent": "Agent neu starten",
-    "runPaused": "Pausiert"
+    "runPaused": "Pausiert",
+    "resumeFromSaved": "Fortsetzen",
+    "resumeFromSavedHint": "Erneut starten; fertige Agenten liefern ihre gespeicherten Ergebnisse"
   },
   "reasoningEffort": {
     "label": "Reasoning-Aufwand",

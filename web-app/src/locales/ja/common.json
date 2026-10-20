@@ -1510,7 +1510,9 @@
     "pauseRun": "一時停止",
     "resumeRun": "再開",
     "restartAgent": "エージェントを再起動",
-    "runPaused": "一時停止中"
+    "runPaused": "一時停止中",
+    "resumeFromSaved": "再開",
+    "resumeFromSavedHint": "再実行します。完了済みのエージェントは保存済みの結果を返します"
   },
   "reasoningEffort": {
     "label": "推論の強度",
