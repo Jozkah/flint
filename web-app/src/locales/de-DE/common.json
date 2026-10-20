@@ -1514,7 +1514,13 @@
     "restartAgent": "Agent neu starten",
     "runPaused": "Pausiert",
     "resumeFromSaved": "Fortsetzen",
-    "resumeFromSavedHint": "Erneut starten; fertige Agenten liefern ihre gespeicherten Ergebnisse"
+    "resumeFromSavedHint": "Erneut starten; fertige Agenten liefern ihre gespeicherten Ergebnisse",
+    "saveWorkflow": "Speichern",
+    "saveWorkflowName": "Name (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Was es tut",
+    "saveWorkflowConfirm": "Workflow speichern",
+    "saveWorkflowDone": "{{name}} gespeichert. Starten mit /workflow:{{name}}",
+    "saveWorkflowFailed": "Speichern fehlgeschlagen: {{error}}"
   },
   "reasoningEffort": {
     "label": "Reasoning-Aufwand",

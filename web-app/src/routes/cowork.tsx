@@ -479,6 +479,7 @@ import {
   type TeamTask,
 } from '@/lib/coworkTeam'
 import { openRunLog, withRunLog } from '@/lib/workflowRuns'
+import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
 import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
@@ -4645,7 +4646,7 @@ export function CoworkPage() {
                     : controller.signal
                   // A workflow keeps each finished agent's result so a stopped run
                   // can be resumed; a replay returns saved ones without running.
-                  const runMeta = (input as { run?: { phases: unknown[]; resumeRunId?: string } } | null)?.run
+                  const runMeta = (input as { run?: { phases: unknown[]; args?: Record<string, unknown>; resumeRunId?: string } } | null)?.run
                   const runLog = runMeta ? await openRunLog(sid, callId, runMeta) : null
                   const withLog = (fn: (one: TeamTask, signal: AbortSignal) => Promise<TaskResult>) =>
                     runLog
@@ -5409,6 +5410,9 @@ export function CoworkPage() {
   const compactNowRef = useRef(compactNow)
   compactNowRef.current = compactNow
 
+  const savedWorkflowBuiltins = useSavedWorkflowBuiltins(
+    useCallback((text: string) => void handleSubmit(text), [handleSubmit])
+  )
   const slashBuiltins = useMemo(
     () => [
       {
@@ -5439,8 +5443,9 @@ export function CoworkPage() {
           store.selectSession(id)
         },
       },
+      ...savedWorkflowBuiltins,
     ],
-    [t, running]
+    [t, running, savedWorkflowBuiltins]
   )
 
   /**

@@ -1512,7 +1512,13 @@
     "restartAgent": "에이전트 다시 시작",
     "runPaused": "일시 중지됨",
     "resumeFromSaved": "이어서 실행",
-    "resumeFromSavedHint": "다시 실행합니다. 끝난 에이전트는 저장된 결과를 반환합니다"
+    "resumeFromSavedHint": "다시 실행합니다. 끝난 에이전트는 저장된 결과를 반환합니다",
+    "saveWorkflow": "저장",
+    "saveWorkflowName": "이름 (a-z, 0-9, -)",
+    "saveWorkflowDescription": "하는 일",
+    "saveWorkflowConfirm": "워크플로 저장",
+    "saveWorkflowDone": "{{name}} 저장됨. /workflow:{{name}} 로 실행하세요",
+    "saveWorkflowFailed": "저장하지 못했습니다: {{error}}"
   },
   "reasoningEffort": {
     "label": "추론 강도",

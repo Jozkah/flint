@@ -1512,7 +1512,13 @@
     "restartAgent": "एजेंट फिर चलाएँ",
     "runPaused": "रुका हुआ",
     "resumeFromSaved": "फिर शुरू करें",
-    "resumeFromSavedHint": "फिर चलाएँ; पूरे हो चुके एजेंट सहेजे परिणाम लौटाते हैं"
+    "resumeFromSavedHint": "फिर चलाएँ; पूरे हो चुके एजेंट सहेजे परिणाम लौटाते हैं",
+    "saveWorkflow": "सहेजें",
+    "saveWorkflowName": "नाम (a-z, 0-9, -)",
+    "saveWorkflowDescription": "यह क्या करता है",
+    "saveWorkflowConfirm": "वर्कफ़्लो सहेजें",
+    "saveWorkflowDone": "{{name}} सहेजा गया। /workflow:{{name}} से चलाएँ",
+    "saveWorkflowFailed": "सहेजा नहीं जा सका: {{error}}"
   },
   "reasoningEffort": {
     "label": "रीज़निंग प्रयास",

@@ -1491,7 +1491,13 @@
     "restartAgent": "Mulai ulang agen",
     "runPaused": "Dijeda",
     "resumeFromSaved": "Lanjutkan",
-    "resumeFromSavedHint": "Jalankan lagi; agen yang selesai memakai hasil tersimpan"
+    "resumeFromSavedHint": "Jalankan lagi; agen yang selesai memakai hasil tersimpan",
+    "saveWorkflow": "Simpan",
+    "saveWorkflowName": "Nama (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Fungsinya",
+    "saveWorkflowConfirm": "Simpan alur kerja",
+    "saveWorkflowDone": "{{name}} disimpan. Jalankan dengan /workflow:{{name}}",
+    "saveWorkflowFailed": "Gagal menyimpan: {{error}}"
   },
   "reasoningEffort": {
     "label": "Upaya penalaran",

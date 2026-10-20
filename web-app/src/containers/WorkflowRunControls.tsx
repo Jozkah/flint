@@ -1,9 +1,12 @@
-import { Pause, Play, RotateCcw, History } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { Pause, Play, RotateCcw, History, BookmarkPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import type { ActivityTask } from '@/lib/coworkActivity'
 import { safeId } from '@/lib/workflowRuns'
+import { saveFromRun, slugName } from '@/lib/savedWorkflows'
 import type { TeamControl } from '@/lib/coworkTeamControl'
 
 /**
@@ -122,5 +125,76 @@ export function WorkflowResumeButton({
       <History aria-hidden className="size-3" />
       {t('common:tasks.resumeFromSaved')}
     </Button>
+  )
+}
+
+/** A finished workflow's host row, when there is one that is no longer running. */
+function finishedHost(tasks: ActivityTask[]): ActivityTask | undefined {
+  const raw = tasks.find((task) => task.phase && task.parentTaskId)?.parentTaskId
+  const host = raw ? tasks.find((task) => task.id === raw || task.callId === raw) : undefined
+  return host && ['done', 'error', 'cancelled', 'interrupted'].includes(host.status) ? host : undefined
+}
+
+/** Save a finished run's definition as a reusable workflow. */
+export function WorkflowSaveButton({ tasks, sessionId }: { tasks: ActivityTask[]; sessionId: string }) {
+  const { t } = useTranslation()
+  const host = finishedHost(tasks)
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  if (!host) return null
+  const save = async () => {
+    const result = await saveFromRun(sessionId, safeId(host.callId), { name: name.trim(), description })
+    if ('error' in result) {
+      toast.error(t('common:tasks.saveWorkflowFailed', { error: result.error }))
+      return
+    }
+    toast.success(t('common:tasks.saveWorkflowDone', { name: name.trim() }))
+    setOpen(false)
+  }
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="xs"
+        className="shrink-0 pointer-coarse:h-11"
+        data-testid="workflow-save"
+        onClick={() => {
+          setName(slugName(host.phase?.name ?? host.title ?? 'workflow'))
+          setOpen((v) => !v)
+        }}
+      >
+        <BookmarkPlus aria-hidden className="size-3" />
+        {t('common:tasks.saveWorkflow')}
+      </Button>
+      {open && (
+        <form
+          className="flex w-full flex-wrap items-center gap-2"
+          data-testid="workflow-save-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void save()
+          }}
+        >
+          <input
+            className="h-7 w-40 rounded-md border border-border bg-background px-2 text-xs"
+            aria-label={t('common:tasks.saveWorkflowName')}
+            placeholder={t('common:tasks.saveWorkflowName')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="h-7 min-w-40 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+            aria-label={t('common:tasks.saveWorkflowDescription')}
+            placeholder={t('common:tasks.saveWorkflowDescription')}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <Button type="submit" size="xs" variant="outline" disabled={!name.trim()}>
+            {t('common:tasks.saveWorkflowConfirm')}
+          </Button>
+        </form>
+      )}
+    </>
   )
 }

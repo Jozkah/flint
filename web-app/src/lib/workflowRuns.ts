@@ -30,6 +30,8 @@ export type RunRecord = {
   updatedAt: number
   /** The validated phases as launched; relaunching without `phases` reuses them. */
   phases: unknown[]
+  /** The `args` the phases' `{{args.x}}` placeholders were filled from. */
+  args?: Record<string, unknown>
   entries: Record<string, RunEntry>
 }
 
@@ -166,7 +168,7 @@ export class WorkflowRunLog {
 
   constructor(
     private readonly io: RunIo | null,
-    meta: { sessionId: string; runId: string; phases: unknown[]; now?: number },
+    meta: { sessionId: string; runId: string; phases: unknown[]; args?: Record<string, unknown>; now?: number },
     private readonly from: RunRecord | null = null
   ) {
     const now = meta.now ?? Date.now()
@@ -177,6 +179,7 @@ export class WorkflowRunLog {
       createdAt: now,
       updatedAt: now,
       phases: meta.phases,
+      ...(meta.args ? { args: meta.args } : {}),
       entries: {},
     }
   }
@@ -281,12 +284,12 @@ export function withRunLog(
 }
 
 /** The real folder access: the app data folder, through its confined commands. */
-export async function dataFolderIo(): Promise<RunIo | null> {
+export async function dataFolderIo(subdir: string = RUN_DIR): Promise<RunIo | null> {
   try {
     const folder = (await getServiceHub().app().getJanDataFolder())?.replace(/[\\/]+$/, '')
     if (!folder) return null
     return {
-      dir: `${folder}/${RUN_DIR}`,
+      dir: `${folder}/${subdir}`,
       mkdir: (path) => invoke('mkdir', { args: [path] }),
       list: (path) => invoke<string[]>('readdir_sync', { args: [path] }),
       read: (path) => invoke<string>('read_file_sync', { args: [path] }),
@@ -318,7 +321,7 @@ export async function resolveResume(
       error: `nothing to resume: no saved run '${id}' in this chat. Start the workflow again as a new run.`,
     }
   }
-  return { input: { ...raw, phases: raw.phases ?? record.phases } }
+  return { input: { ...raw, phases: raw.phases ?? record.phases, ...(raw.args === undefined && record.args ? { args: record.args } : {}) } }
 }
 
 /**
@@ -328,11 +331,11 @@ export async function resolveResume(
 export async function openRunLog(
   sessionId: string,
   runId: string,
-  run: { phases: unknown[]; resumeRunId?: string },
+  run: { phases: unknown[]; args?: Record<string, unknown>; resumeRunId?: string },
   io?: RunIo | null
 ): Promise<WorkflowRunLog> {
   const store = io === undefined ? await dataFolderIo() : io
   const from =
     store && run.resumeRunId ? await loadRun(store, sessionId, run.resumeRunId) : null
-  return new WorkflowRunLog(store, { sessionId, runId, phases: run.phases }, from)
+  return new WorkflowRunLog(store, { sessionId, runId, phases: run.phases, args: run.args }, from)
 }

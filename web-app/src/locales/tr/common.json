@@ -1512,7 +1512,13 @@
     "restartAgent": "Aracıyı yeniden başlat",
     "runPaused": "Duraklatıldı",
     "resumeFromSaved": "Sürdür",
-    "resumeFromSavedHint": "Yeniden çalıştır; biten aracılar kayıtlı sonuçlarını döndürür"
+    "resumeFromSavedHint": "Yeniden çalıştır; biten aracılar kayıtlı sonuçlarını döndürür",
+    "saveWorkflow": "Kaydet",
+    "saveWorkflowName": "Ad (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Ne yapar",
+    "saveWorkflowConfirm": "İş akışını kaydet",
+    "saveWorkflowDone": "{{name}} kaydedildi. /workflow:{{name}} ile çalıştırın",
+    "saveWorkflowFailed": "Kaydedilemedi: {{error}}"
   },
   "reasoningEffort": {
     "label": "Akıl yürütme çabası",

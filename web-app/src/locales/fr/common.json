@@ -1533,7 +1533,13 @@
     "restartAgent": "Relancer l'agent",
     "runPaused": "En pause",
     "resumeFromSaved": "Reprendre",
-    "resumeFromSavedHint": "Relancer ; les agents terminés renvoient leurs résultats enregistrés"
+    "resumeFromSavedHint": "Relancer ; les agents terminés renvoient leurs résultats enregistrés",
+    "saveWorkflow": "Enregistrer",
+    "saveWorkflowName": "Nom (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Ce qu'il fait",
+    "saveWorkflowConfirm": "Enregistrer le workflow",
+    "saveWorkflowDone": "{{name}} enregistré. Lancez-le avec /workflow:{{name}}",
+    "saveWorkflowFailed": "Enregistrement impossible : {{error}}"
   },
   "reasoningEffort": {
     "label": "Effort de raisonnement",

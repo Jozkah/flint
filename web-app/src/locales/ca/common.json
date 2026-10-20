@@ -1537,7 +1537,13 @@
     "restartAgent": "Reinicia l'agent",
     "runPaused": "En pausa",
     "resumeFromSaved": "Reprèn",
-    "resumeFromSavedHint": "Torna-ho a executar; els agents acabats retornen els resultats desats"
+    "resumeFromSavedHint": "Torna-ho a executar; els agents acabats retornen els resultats desats",
+    "saveWorkflow": "Desa",
+    "saveWorkflowName": "Nom (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Què fa",
+    "saveWorkflowConfirm": "Desa el flux de treball",
+    "saveWorkflowDone": "S'ha desat {{name}}. Executa'l amb /workflow:{{name}}",
+    "saveWorkflowFailed": "No s'ha pogut desar: {{error}}"
   },
   "reasoningEffort": {
     "label": "Esforç de raonament",

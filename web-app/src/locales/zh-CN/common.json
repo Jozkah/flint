@@ -1514,7 +1514,13 @@
     "restartAgent": "重启代理",
     "runPaused": "已暂停",
     "resumeFromSaved": "恢复",
-    "resumeFromSavedHint": "重新运行；已完成的代理直接返回已保存的结果"
+    "resumeFromSavedHint": "重新运行；已完成的代理直接返回已保存的结果",
+    "saveWorkflow": "保存",
+    "saveWorkflowName": "名称 (a-z, 0-9, -)",
+    "saveWorkflowDescription": "功能说明",
+    "saveWorkflowConfirm": "保存工作流",
+    "saveWorkflowDone": "已保存 {{name}}。用 /workflow:{{name}} 运行",
+    "saveWorkflowFailed": "无法保存：{{error}}"
   },
   "reasoningEffort": {
     "label": "推理强度",

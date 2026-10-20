@@ -1512,7 +1512,13 @@
     "restartAgent": "エージェントを再起動",
     "runPaused": "一時停止中",
     "resumeFromSaved": "再開",
-    "resumeFromSavedHint": "再実行します。完了済みのエージェントは保存済みの結果を返します"
+    "resumeFromSavedHint": "再実行します。完了済みのエージェントは保存済みの結果を返します",
+    "saveWorkflow": "保存",
+    "saveWorkflowName": "名前 (a-z, 0-9, -)",
+    "saveWorkflowDescription": "何をするか",
+    "saveWorkflowConfirm": "ワークフローを保存",
+    "saveWorkflowDone": "{{name}} を保存しました。/workflow:{{name}} で実行できます",
+    "saveWorkflowFailed": "保存できませんでした: {{error}}"
   },
   "reasoningEffort": {
     "label": "推論の強度",

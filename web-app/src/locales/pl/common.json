@@ -1568,7 +1568,13 @@
     "restartAgent": "Uruchom agenta ponownie",
     "runPaused": "Wstrzymano",
     "resumeFromSaved": "Wznów",
-    "resumeFromSavedHint": "Uruchom ponownie; zakończeni agenci zwrócą zapisane wyniki"
+    "resumeFromSavedHint": "Uruchom ponownie; zakończeni agenci zwrócą zapisane wyniki",
+    "saveWorkflow": "Zapisz",
+    "saveWorkflowName": "Nazwa (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Co robi",
+    "saveWorkflowConfirm": "Zapisz workflow",
+    "saveWorkflowDone": "Zapisano {{name}}. Uruchom przez /workflow:{{name}}",
+    "saveWorkflowFailed": "Nie udało się zapisać: {{error}}"
   },
   "reasoningEffort": {
     "label": "Wysiłek rozumowania",

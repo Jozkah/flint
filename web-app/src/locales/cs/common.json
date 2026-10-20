@@ -1567,7 +1567,13 @@
     "restartAgent": "Restartovat agenta",
     "runPaused": "Pozastaveno",
     "resumeFromSaved": "Obnovit",
-    "resumeFromSavedHint": "Spustit znovu; dokončení agenti vrátí uložené výsledky"
+    "resumeFromSavedHint": "Spustit znovu; dokončení agenti vrátí uložené výsledky",
+    "saveWorkflow": "Uložit",
+    "saveWorkflowName": "Název (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Co dělá",
+    "saveWorkflowConfirm": "Uložit workflow",
+    "saveWorkflowDone": "Uloženo: {{name}}. Spusťte přes /workflow:{{name}}",
+    "saveWorkflowFailed": "Uložení se nezdařilo: {{error}}"
   },
   "reasoningEffort": {
     "label": "Úsilí při uvažování",
