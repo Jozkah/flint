@@ -67,12 +67,20 @@ pub struct JanClientHandler {
     emit: ProgressSink,
     /// Asks the user when the server elicits input; `None` declines.
     elicit: Option<Arc<dyn ElicitationUi>>,
+    /// Told when the server's tool list changed (`notifications/tools/list_changed`).
+    list_changed: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl JanClientHandler {
     pub fn new<R: Runtime>(info: ClientInfo, server: String, app: AppHandle<R>) -> Self {
         let name = server.clone();
         let elicit_app = app.clone();
+        let list_app = app.clone();
+        let list_name = server.clone();
+        let list_changed: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            // The same event a connect fires: the web app re-lists the tools.
+            crate::core::mcp::helpers::emit_mcp_update_event(&list_app, &list_name);
+        });
         let elicit_name = server.clone();
         let elicit: Arc<dyn ElicitationUi> = Arc::new(EventUi::new(Arc::new(
             move |request: &ElicitRequest| {
@@ -86,7 +94,7 @@ impl JanClientHandler {
                 log::warn!("Failed to emit MCP progress for {name}: {e}");
             }
         });
-        Self { info, server, emit, elicit: Some(elicit) }
+        Self { info, server, emit, elicit: Some(elicit), list_changed }
     }
 
     /// The same handler, without a Tauri app behind it.
@@ -103,7 +111,15 @@ impl JanClientHandler {
             server,
             emit: Arc::new(|_| {}),
             elicit: None,
+            list_changed: Arc::new(|| {}),
         }
+    }
+
+    /// The server's tool list changed. The agent re-lists tools every turn, so
+    /// only the UI needs telling.
+    fn tool_list_changed(&self) {
+        log::debug!("MCP server {} reported a tool list change", self.server);
+        (self.list_changed)();
     }
 }
 
@@ -118,6 +134,10 @@ impl ClientHandler for JanClientHandler {
         _context: NotificationContext<RoleClient>,
     ) {
         (self.emit)(tool_progress(&self.server, &params));
+    }
+
+    async fn on_tool_list_changed(&self, _context: NotificationContext<RoleClient>) {
+        self.tool_list_changed();
     }
 
     async fn create_elicitation(
@@ -141,6 +161,19 @@ mod tests {
             p = p.with_total(total);
         }
         p
+    }
+
+    #[test]
+    fn a_tool_list_change_reaches_the_sink() {
+        let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = hits.clone();
+        let mut handler = JanClientHandler::for_test(ClientInfo::default(), "s".into());
+        handler.list_changed = Arc::new(move || {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        });
+        handler.tool_list_changed();
+        handler.tool_list_changed();
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 
     #[test]
