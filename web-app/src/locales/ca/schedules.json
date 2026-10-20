@@ -47,7 +47,8 @@
     "daily": "Cada dia a les {{times}}",
     "weekdays": "Els dies laborables a les {{times}}",
     "weekly": "{{days}} a les {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "En execució",

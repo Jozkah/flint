@@ -47,7 +47,8 @@
     "daily": "Mỗi ngày lúc {{times}}",
     "weekdays": "Các ngày trong tuần lúc {{times}}",
     "weekly": "{{days}} lúc {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "Đang chạy",

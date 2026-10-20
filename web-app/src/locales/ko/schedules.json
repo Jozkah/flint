@@ -47,7 +47,8 @@
     "daily": "매일 {{times}}",
     "weekdays": "평일 {{times}}",
     "weekly": "{{days}} {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "실행 중",
