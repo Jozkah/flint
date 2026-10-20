@@ -33,6 +33,7 @@ import {
   parentToolNames,
   resolveSubagent,
   runSubagent,
+  subagentTools,
   type ResolvedSubagent,
   type RunSubagentOptions,
   type SubagentRequest,
@@ -65,6 +66,8 @@ import {
 } from '@/lib/coworkSubagentMemory'
 import { currentSubagentSettings } from '@/hooks/useSubagentSettings'
 import { clampMaxConcurrent, clampMaxDepth } from '@/lib/subagentSettings'
+import { checkLaunch, type LaunchInfo } from '@/lib/coworkSubagentLaunchGate'
+import type { CoworkMode } from '@/lib/coworkMode'
 import { labelSubagentOutput } from '@/lib/coworkSubagentSafety'
 import { errandLine, joinRoster, rosterBlock } from '@/lib/coworkSubagentRoster'
 import { preloadSkills } from '@/lib/coworkSubagentSkills'
@@ -143,6 +146,15 @@ export type ChildRunnerEnv = {
     content: string
     signal: AbortSignal
   }) => Promise<boolean>
+  /**
+   * The one-time question before an editing subagent first runs in a session.
+   * Absent means the surface asks nothing up front.
+   */
+  launchGate?: {
+    /** The mode this child would run in, or undefined when unknown. */
+    mode: (resolved: ResolvedSubagent) => CoworkMode | undefined
+    ask: (info: LaunchInfo & { signal: AbortSignal }) => Promise<boolean>
+  }
   /** Test seam for the memory commands. */
   memoryDeps?: MemoryDeps
   /** Told how many tokens each finished child used, for a surface that keeps a
@@ -219,6 +231,25 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       })
       if ('note' in effortChoice && effortChoice.note) {
         choice.note = [choice.note, effortChoice.note].filter(Boolean).join('; ')
+      }
+    }
+    // An editing child, foreground, in a mode that would ask: one question first.
+    if (env.launchGate) {
+      const gate = env.launchGate
+      const ok = await checkLaunch({
+        sessionId: env.sessionId,
+        agent: resolved.name,
+        mode: gate.mode(resolved),
+        tools: Object.keys(subagentTools(env.parentTools(), resolved.allowedTools, spawn)),
+        model: choice.modelId,
+        foreground: req.background !== true && parentTaskId === undefined,
+        ask: (info) => gate.ask({ ...info, signal: env.signal }),
+      })
+      if (!ok) {
+        return {
+          output: `Subagent '${resolved.name}' was not started: the user did not approve running it with editing tools.`,
+          isError: true,
+        }
       }
     }
     // Recorded before the child starts: the dispatch is the only moment the
