@@ -632,7 +632,10 @@ pub(crate) async fn execute_text(
         // deliberately do not, which is what keeps an attached folder
         // readable and unwritable.
         "read" => read_or_list(args, ctx).await.0,
-        "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
+        "ls" => {
+            let out = ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
+            with_project_hint(out, ctx, args)
+        }
         "write" | "edit" => {
             let verb = if tool.name == "write" { "overwrite" } else { "edit" };
             // Another live session on this folder is editing the file: hold.
@@ -670,8 +673,14 @@ pub(crate) async fn execute_text(
             }
             bash(args, ctx).await
         }
-        "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
-        "grep" => grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
+        "find" => {
+            let out = find(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
+            with_project_hint(out, ctx, args)
+        }
+        "grep" => {
+            let out = grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
+            with_project_hint(out, ctx, args)
+        }
         // Memory and skills live in the store root, not the sandbox: they must
         // outlive the conversation the filesystem tools are scoped to.
         "memory_list" => memory_list(ctx.store_root).await,
@@ -1538,7 +1547,10 @@ async fn read_or_list(
             return (format!("{path} is a directory. Contents:\n{listing}"), None);
         }
     }
-    let out = read(args, ctx.project_root, ctx.scratch_root, ctx.read_roots).await;
+    let mut out = read(args, ctx.project_root, ctx.scratch_root, ctx.read_roots).await;
+    if is_missing_path_error(&out.0) {
+        out.0 = with_project_hint(out.0, ctx, args);
+    }
     // A text file that opens with "ERROR" is still a successful read, but it is
     // indistinguishable here; the model re-reads in that rare case.
     if !out.0.starts_with("ERROR") {
@@ -1547,6 +1559,144 @@ async fn read_or_list(
         }
     }
     out
+}
+
+/// Whether a file tool's error says the path does not exist.
+fn is_missing_path_error(out: &str) -> bool {
+    if !out.starts_with("ERROR") {
+        return false;
+    }
+    let lower = out.to_ascii_lowercase();
+    lower.contains("not found")
+        || lower.contains("os error 2)")
+        || lower.contains("os error 3)")
+        || lower.contains("cannot find the")
+        || lower.contains("no such file")
+}
+
+/// The first place under `base` (itself, then its subfolders to a small depth)
+/// where the relative `raw` names something that exists.
+///
+/// A repository often sits one level below the folder a session is rooted in
+/// (`pokemon_scans/pokemon-card-app`), or a worktree the model made sits under
+/// the worktree it was given, so `lib/db.ts` misses while `pokemon-card-app/lib/db.ts`
+/// is right there. Bounded, and it skips the folders no project file lives in.
+fn find_relative_match(base: &Path, raw: &str) -> Option<PathBuf> {
+    const MAX_DEPTH: usize = 3;
+    const MAX_DIRS: usize = 400;
+    let mut level = vec![base.to_path_buf()];
+    let mut visited = 0usize;
+    for depth in 0..=MAX_DEPTH {
+        let mut next = Vec::new();
+        for dir in &level {
+            let candidate = dir.join(raw);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+            if depth == MAX_DEPTH {
+                continue;
+            }
+            let Ok(entries) = std::fs::read_dir(dir) else { continue };
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if matches!(name.as_str(), ".git" | "node_modules" | "target" | ".next" | "dist") {
+                    continue;
+                }
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    visited += 1;
+                    if visited > MAX_DIRS {
+                        return None;
+                    }
+                    next.push(entry.path());
+                }
+            }
+        }
+        level = next;
+    }
+    None
+}
+
+/// Where a model that used a project-relative path should have looked.
+///
+/// Relative paths resolve against the sandbox workspace, which on the desktop
+/// is scratch space inside Flint's data folder (or, in a managed worktree, the
+/// worktree root). A model reading `lib/db.ts` in an attached project missed,
+/// was told only that relative paths resolve in that workspace, concluded the
+/// workspace was a symlink, and asked `request_access` for it (refused: it
+/// overlaps the data folder). The hint names the real file when one matches,
+/// and otherwise the attached folder.
+fn project_path_hint(ctx: &ToolContext<'_>, args: &serde_json::Value) -> Option<String> {
+    let raw = arg_str(args, "path")?;
+    if Path::new(raw).is_absolute() {
+        return rebased_path_hint(ctx, raw);
+    }
+    let root = ctx.project_root;
+    let scratch = ctx.scratch_root;
+    let folders: Vec<&PathBuf> = ctx
+        .write_roots
+        .iter()
+        .chain(ctx.read_roots.iter())
+        .filter(|f| f.as_path() != root && Some(f.as_path()) != scratch)
+        .collect();
+    let found = folders
+        .iter()
+        .filter_map(|f| find_relative_match(f, raw))
+        .chain(find_relative_match(root, raw))
+        .next();
+    if let Some(found) = found {
+        return Some(format!(
+            "A file with that relative path exists at {}. Use this absolute path.",
+            crate::tools::sandbox::plain_display(&found)
+        ));
+    }
+    let first = folders.first()?;
+    Some(format!(
+        "Your workspace is scratch space, not the project. The attached project folder is {}; \
+         use absolute paths for files in it (a relative path never resolves there).",
+        crate::tools::sandbox::plain_display(first)
+    ))
+}
+
+/// A session that works in a worktree rebases a relative path onto it before
+/// the tool runs, so `lib/db.ts` arrives as `<worktree>/lib/db.ts`, echoed back
+/// in the error as a long `\\\\?\\` path the model never typed. When the app sits
+/// one folder below the worktree root, the file is at
+/// `<worktree>/pokemon-card-app/lib/db.ts`; say so.
+fn rebased_path_hint(ctx: &ToolContext<'_>, raw: &str) -> Option<String> {
+    use crate::tools::sandbox::plain;
+    let wanted = plain(Path::new(raw));
+    let bases = ctx
+        .write_roots
+        .iter()
+        .chain(ctx.read_roots.iter())
+        .map(PathBuf::as_path)
+        .chain(std::iter::once(ctx.project_root));
+    for base in bases {
+        let base = plain(base);
+        let Ok(rest) = wanted.strip_prefix(&base) else { continue };
+        if rest.as_os_str().is_empty() || base.join(rest).exists() {
+            continue;
+        }
+        if let Some(found) = find_relative_match(&base, &rest.to_string_lossy()) {
+            return Some(format!(
+                "That file is not at the top of {}, but exists at {}. Use this absolute path.",
+                base.display(),
+                plain(&found).display()
+            ));
+        }
+    }
+    None
+}
+
+/// `out` with the project-path hint appended when a relative path missed.
+fn with_project_hint(out: String, ctx: &ToolContext<'_>, args: &serde_json::Value) -> String {
+    if !is_missing_path_error(&out) {
+        return out;
+    }
+    match project_path_hint(ctx, args) {
+        Some(hint) => format!("{out} {hint}"),
+        None => out,
+    }
 }
 
 async fn read(
@@ -9639,5 +9789,135 @@ export function verifyPassword(password: string, stored: string) {
         // costs it a turn.
         let description = schema["function"]["description"].as_str().unwrap();
         assert!(description.contains("credentials"), "{description}");
+    }
+}
+
+/// A model that used a project-relative path (`lib/db.ts`) in a session whose
+/// workspace is scratch space, or whose worktree root sits above the app.
+#[cfg(test)]
+mod project_path_hint_tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static N: AtomicUsize = AtomicUsize::new(0);
+
+    fn dir(label: &str) -> PathBuf {
+        let n = N.fetch_add(1, Ordering::SeqCst);
+        let d = std::env::temp_dir()
+            .join(format!("flint_hint_{label}_{}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// `<project>/pokemon-card-app/lib/db.ts`, the shape in the failing run.
+    fn project() -> PathBuf {
+        let p = dir("project");
+        std::fs::create_dir_all(p.join("pokemon-card-app").join("lib")).unwrap();
+        std::fs::write(p.join("pokemon-card-app").join("lib").join("db.ts"), "x").unwrap();
+        p
+    }
+
+    #[tokio::test]
+    async fn a_relative_read_names_the_project_file_it_missed() {
+        let workspace = dir("ws");
+        let project = project();
+        let store = dir("store");
+        let reads = [project.clone()];
+        let ctx = ToolContext::new(&workspace, &store, &[]).with_read_roots(&reads);
+        let (out, _) = read_or_list(&json!({"path": "lib/db.ts"}), &ctx).await;
+        assert!(out.starts_with("ERROR: File not found: lib/db.ts"), "{out}");
+        assert!(out.contains("exists at"), "{out}");
+        assert!(out.contains("pokemon-card-app"), "{out}");
+        assert!(out.contains(&project.display().to_string()), "{out}");
+    }
+
+    #[tokio::test]
+    async fn a_miss_with_no_match_names_the_attached_folder() {
+        let workspace = dir("ws");
+        let project = project();
+        let store = dir("store");
+        let reads = [project.clone()];
+        let ctx = ToolContext::new(&workspace, &store, &[]).with_read_roots(&reads);
+        let (out, _) = read_or_list(&json!({"path": "nothing/here.ts"}), &ctx).await;
+        assert!(out.contains("scratch space, not the project"), "{out}");
+        assert!(out.contains(&project.display().to_string()), "{out}");
+    }
+
+    #[tokio::test]
+    async fn a_worktree_root_above_the_app_gets_the_nested_path() {
+        // The session worktree is the project root; the app is one level down.
+        let worktree = project();
+        let store = dir("store");
+        let ctx = ToolContext::new(&worktree, &store, &[]);
+        let (out, _) = read_or_list(&json!({"path": "lib/db.ts"}), &ctx).await;
+        assert!(out.contains("exists at"), "{out}");
+        assert!(out.contains("pokemon-card-app"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn a_path_rebased_onto_the_worktree_still_finds_the_nested_file() {
+        // A worktree session rewrites `lib/db.ts` to `<worktree>/lib/db.ts`
+        // before the tool runs, so the path is absolute by the time it misses.
+        let worktree = project();
+        let store = dir("store");
+        let reads = [worktree.clone()];
+        let ctx = ToolContext::new(&worktree, &store, &[]).with_read_roots(&reads);
+        let rebased = worktree.join("lib").join("db.ts").display().to_string();
+        let (out, _) = read_or_list(&json!({"path": rebased}), &ctx).await;
+        assert!(out.starts_with("ERROR: File not found"), "{out}");
+        assert!(out.contains("exists at"), "{out}");
+        assert!(out.contains("pokemon-card-app"), "{out}");
+        // A path that really is somewhere else gets no invented match.
+        let elsewhere = dir("elsewhere").join("lib").join("db.ts").display().to_string();
+        let (out, _) = read_or_list(&json!({"path": elsewhere}), &ctx).await;
+        assert!(!out.contains("exists at"), "{out}");
+    }
+
+    #[test]
+    fn the_verbatim_prefix_is_dropped_from_shown_paths() {
+        use crate::tools::sandbox::plain_display;
+        assert_eq!(plain_display(Path::new(r"\\?\C:\tmp\a")), r"C:\tmp\a");
+        assert_eq!(plain_display(Path::new(r"C:\tmp\a")), r"C:\tmp\a");
+        // A UNC path keeps its prefix: stripping it would name another place.
+        assert_eq!(plain_display(Path::new(r"\\?\UNC\srv\share")), r"\\?\UNC\srv\share");
+    }
+
+    #[tokio::test]
+    async fn ls_gets_the_same_hint() {
+        let workspace = dir("ws");
+        let project = project();
+        let store = dir("store");
+        let reads = [project.clone()];
+        let ctx = ToolContext::new(&workspace, &store, &[]).with_read_roots(&reads);
+        let out = with_project_hint(
+            ls(&json!({"path": "lib"}), &workspace, None, false, &reads, &[]).await,
+            &ctx,
+            &json!({"path": "lib"}),
+        );
+        assert!(out.starts_with("ERROR"), "{out}");
+        assert!(out.contains("exists at"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn an_absolute_path_or_a_plain_workspace_gets_no_hint() {
+        let workspace = dir("ws");
+        let store = dir("store");
+        let ctx = ToolContext::new(&workspace, &store, &[]);
+        let (plain, _) = read_or_list(&json!({"path": "nope.md"}), &ctx).await;
+        assert!(plain.starts_with("ERROR: File not found: nope.md."), "{plain}");
+        assert!(!plain.contains("scratch space, not the project"), "{plain}");
+        let abs = workspace.join("missing.md").display().to_string();
+        let (out, _) = read_or_list(&json!({"path": abs}), &ctx).await;
+        assert!(!out.contains("exists at"), "{out}");
+    }
+
+    #[test]
+    fn only_missing_path_errors_are_recognised() {
+        assert!(is_missing_path_error("ERROR: File not found: a. Relative paths"));
+        assert!(is_missing_path_error("ERROR: The system cannot find the path specified. (os error 3)"));
+        assert!(!is_missing_path_error("ERROR: a is a directory; use ls."));
+        assert!(!is_missing_path_error("fine, file not found in the text"));
     }
 }

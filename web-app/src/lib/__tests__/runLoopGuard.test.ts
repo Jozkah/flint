@@ -4,8 +4,10 @@ import {
   canonicalKey,
   classifyStableFailure,
   detectLoop,
+  loopFinalTurnNote,
   loopStopMessage,
   loopStopNotice,
+  MISSING_PATH_HINT,
   type ObservedCall,
 } from '../runLoopGuard'
 
@@ -478,6 +480,45 @@ describe('stable failure counts', () => {
     })
     expect(detectLoop([missing('bash'), missing('bash')])).toMatchObject({
       tripped: true,
+    })
+  })
+})
+
+describe('a run that keeps missing project paths', () => {
+  const miss = (path: string, tool = 'read'): ObservedCall =>
+    call({
+      tool,
+      input: { path },
+      failed: true,
+      error: `ERROR: File not found: ${path}. Relative paths resolve against your workspace (C:/data/sessions/s1).`,
+    })
+
+  it('is stopped with the advice that relative paths do not reach the project', () => {
+    const verdict = detectLoop([
+      miss('lib/db.ts'),
+      miss('app/api/sets/route.ts'),
+      miss('components/add-card-dialog.tsx'),
+      miss('app/layout.tsx'),
+      miss('package.json'),
+    ])
+    expect(verdict).toMatchObject({ tripped: true, hint: MISSING_PATH_HINT })
+    const note = loopFinalTurnNote(verdict as never)
+    expect(note).toContain('absolute path of the project folder')
+    expect(note).toContain('never request access to the workspace itself')
+    expect(loopStopNotice(verdict as never)).toContain('absolute path')
+  })
+
+  it('does not add the advice to a stop that was not about missing paths', () => {
+    const failing = call({ tool: 'edit', failed: true, error: 'ERROR: old_string not found' })
+    const verdict = detectLoop([failing, failing, failing, failing, failing])
+    expect(verdict.tripped).toBe(true)
+    expect((verdict as { hint?: string }).hint).toBeUndefined()
+    expect(loopFinalTurnNote(verdict as never)).not.toContain('absolute path of the project')
+  })
+
+  it('is not stopped by a single miss', () => {
+    expect(detectLoop([miss('lib/db.ts'), call({ failed: false, result: 'ok' })])).toEqual({
+      tripped: false,
     })
   })
 })

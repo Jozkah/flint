@@ -1147,20 +1147,55 @@ fn created_dir(plan: &GitPlan) -> Option<String> {
     }
 }
 
-pub fn check_created_dir(plan: &GitPlan, cwd: &Path, roots: &Roots) -> Result<(), String> {
-    let Some(dir) = created_dir(plan) else {
-        return Ok(());
+/// A destination that is a direct sibling of a folder the user granted write
+/// access to: where `git worktree add ../name` puts a worktree by convention.
+/// Allowed, and then added to the session's grant, so the folder the agent just
+/// made is one it can read, write and run git in.
+fn beside_granted(dest: &Path, roots: &Roots) -> bool {
+    let Some(parent) = dest.parent() else {
+        return false;
     };
+    roots
+        .granted
+        .iter()
+        .filter_map(|g| canon(g))
+        .any(|g| g.parent() == Some(parent) && g != dest)
+}
+
+/// The absolute destination of a call that creates a folder, if it names one.
+fn created_path(plan: &GitPlan, cwd: &Path) -> Option<PathBuf> {
+    let dir = created_dir(plan)?;
     let target = if Path::new(&dir).is_absolute() {
         PathBuf::from(&dir)
     } else {
         cwd.join(&dir)
     };
+    canon_new(&target)
+}
+
+pub fn check_created_dir(plan: &GitPlan, cwd: &Path, roots: &Roots) -> Result<(), String> {
+    let Some(dir) = created_dir(plan) else {
+        return Ok(());
+    };
     let resolved =
-        canon_new(&target).ok_or_else(|| format!("`{dir}` is not a usable destination"))?;
-    if in_jan_dir(&resolved) || !inside(&resolved, &roots.write()) {
+        created_path(plan, cwd).ok_or_else(|| format!("`{dir}` is not a usable destination"))?;
+    if in_jan_dir(&resolved) || !(inside(&resolved, &roots.write()) || beside_granted(&resolved, roots)) {
+        // Said with where it resolved and where it may go: a bare "outside the
+        // folders" sent a model to ask for access to the wrong folder.
+        let granted: Vec<String> = roots
+            .granted
+            .iter()
+            .map(|r| format!("`{}`", crate::tools::sandbox::plain_display(r)))
+            .collect();
+        let allowed = if granted.is_empty() {
+            "none beyond the session workspace; the attached project folder is read-only, so ask the user to attach it with worktree or edit access"
+                .to_string()
+        } else {
+            format!("{}, or the session workspace", granted.join(", "))
+        };
         return Err(format!(
-            "`{dir}` is outside the folders this run may write to"
+            "`{dir}` resolves to `{}`, outside the folders this run may write to ({allowed}). Pick a destination inside one of them, or ask the user to attach the project with worktree access.",
+            crate::tools::sandbox::plain_display(&resolved)
         ));
     }
     Ok(())
@@ -1848,7 +1883,32 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
     ) {
         return held;
     }
-    execute(&plan, &cwd).await
+    let out = execute(&plan, &cwd).await;
+    // A folder the call made is reported by absolute path. The file tools
+    // resolve a relative path in the sandbox workspace, not in the folder the
+    // git call ran in, so a model that kept the relative name it typed here
+    // read and wrote the wrong place.
+    if !out.starts_with("ERROR") {
+        if let Some(made) = created_path(&plan, &cwd) {
+            // Beside the granted folder rather than inside it: the grant has to
+            // cover the new folder before the model's next call needs it.
+            #[cfg(feature = "tauri")]
+            if !inside(&made, &roots.write()) {
+                if let (Some(session), Some(data)) = (ctx.session_id, ctx.mask_root) {
+                    if let Err(e) = crate::grants::extend_session(session, &made, ctx.project_root, data) {
+                        return format!("{out}\n\n[not added to your write access: {e}]");
+                    }
+                }
+            }
+            return format!(
+                "{out}
+
+[created: {}. File tools take absolute paths for it; a relative path resolves in your workspace, not here.]",
+                crate::tools::sandbox::plain_display(&made)
+            );
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -1933,6 +1993,66 @@ mod tests {
         ]);
         assert_eq!(remote_identity("git@github.com:Jozkah/flint.git"), Some(("github.com", "Jozkah")));
         assert_eq!(remote_identity("https://user:token@github.com/Jozkah/flint.git"), Some(("github.com", "Jozkah")));
+    }
+
+    fn roots_with(granted: &Path, workspace: &Path) -> Roots {
+        Roots {
+            granted: vec![granted.to_path_buf()],
+            workspace: vec![workspace.to_path_buf()],
+            read: vec![],
+        }
+    }
+
+    fn scratch_dir(label: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("flint_git_{label}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn a_worktree_outside_the_writable_roots_is_refused_with_where_it_landed() {
+        let repo = scratch_dir("wt_out_repo");
+        let ws = scratch_dir("wt_out_ws");
+        let plan = p("git", &["worktree", "add", "../../elsewhere", "-b", "x"]).unwrap();
+        let err = check_created_dir(&plan, &repo, &roots_with(&repo, &ws)).unwrap_err();
+        assert!(err.contains("resolves to"), "{err}");
+        assert!(err.contains("elsewhere"), "{err}");
+        assert!(err.contains(&crate::tools::sandbox::plain_display(&repo)), "{err}");
+        assert!(err.contains("worktree access"), "{err}");
+    }
+
+    #[test]
+    fn a_worktree_inside_the_granted_folder_is_allowed_and_reported_absolute() {
+        let repo = scratch_dir("wt_in_repo");
+        let ws = scratch_dir("wt_in_ws");
+        let plan = p("git", &["worktree", "add", "worktrees/catalog-home-2", "-b", "x"]).unwrap();
+        assert!(check_created_dir(&plan, &repo, &roots_with(&repo, &ws)).is_ok());
+        let made = created_path(&plan, &repo).unwrap();
+        assert!(made.is_absolute(), "{made:?}");
+        assert!(made.ends_with("catalog-home-2"), "{made:?}");
+        assert!(made.starts_with(canon(&repo).unwrap()), "{made:?}");
+    }
+
+    #[test]
+    fn a_worktree_beside_the_granted_folder_is_allowed() {
+        let parent = scratch_dir("wt_side");
+        let repo = parent.join("pokemon_scans");
+        std::fs::create_dir_all(&repo).unwrap();
+        let ws = scratch_dir("wt_side_ws");
+        let roots = roots_with(&repo, &ws);
+        let beside = p("git", &["worktree", "add", "../catalog-home-2", "-b", "x"]).unwrap();
+        assert!(check_created_dir(&beside, &repo, &roots).is_ok());
+        // Two levels away is not beside it.
+        let far = p("git", &["worktree", "add", "../../catalog-home-2", "-b", "x"]).unwrap();
+        assert!(check_created_dir(&far, &repo, &roots).is_err());
+    }
+
+    #[test]
+    fn a_call_that_creates_nothing_has_no_created_path() {
+        let repo = scratch_dir("wt_none");
+        let plan = p("git", &["status"]).unwrap();
+        assert!(created_path(&plan, &repo).is_none());
     }
 
     #[test]
