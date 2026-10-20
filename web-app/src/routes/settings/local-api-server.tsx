@@ -28,6 +28,7 @@ import {
 import { ApiKeyInput } from '@/containers/ApiKeyInput'
 import { LocalModelSelect } from '@/containers/LocalModelSelect'
 import { UsageCeilingsCard } from '@/containers/UsageCeilingsCard'
+import { UsageAttributionCard } from '@/containers/UsageAttributionCard'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { LogViewer } from '@/components/LogViewer'
@@ -413,6 +414,8 @@ function LocalAPIServerContent() {
         )}
 
         {tab === 'server' && <UsageCeilingsCard />}
+
+        {tab === 'server' && <UsageAttributionCard />}
 
         {tab === 'server' && (
           <Card
