@@ -132,6 +132,7 @@ macro_rules! invoke_commands_with_extras {
         core::huggingface::set_download_speed_limit,
         // Agent commands
         core::agent::commands::agent_emergency_stop,
+        core::agent::commands::get_usage_attribution,
         core::agent::trust_commands::folder_trust_status,
         core::agent::trust_commands::folder_trust_grant,
         core::agent::trust_commands::folder_trust_revoke,

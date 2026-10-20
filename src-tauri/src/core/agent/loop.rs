@@ -1847,6 +1847,9 @@ struct CompositeToolInvoker {
     /// (AH-100), so a dispatch asked to fork has something to copy. Shared
     /// rather than passed because the turn loop sees only the trait.
     live_conversation: std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    /// `advisor` calls made this run, against `advisor::MAX_CALLS_PER_RUN`.
+    #[cfg_attr(not(feature = "cli"), allow(dead_code))]
+    advisor_calls: std::sync::atomic::AtomicU32,
     /// The project's routing rules (AH-194), resolved once per run, so a rule
     /// about a subagent by name reaches the dispatch that starts it.
     routing: Vec<crate::core::agent::routing::Rule>,
@@ -2794,6 +2797,115 @@ impl CompositeToolInvoker {
             PermissionDecision::Deny => Err(format!(
                 "ERROR [approval_refused]: {action} a pull request through {api} was not approved. It changes a service outside this machine, so it needs a person's approval, or `allow = [\"pull_request\"]` in the project's agent.toml; nothing was sent."
             )),
+        }
+    }
+
+    /// `advisor`: one tool-free completion on the configured stronger model,
+    /// shown the transcript so far. Counted against the per-run cap; it is a
+    /// dispatch like any other, so its tokens appear in the spend report under
+    /// the advisor's model.
+    #[cfg(feature = "cli")]
+    async fn handle_advisor(&self, args: &serde_json::Value) -> String {
+        use crate::core::agent::advisor;
+        let Some(model) = crate::core::agent::global_config::advisor_model() else {
+            return "ERROR [invalid_input]: no advisor model is configured".to_string();
+        };
+        let Some(ctx) = &self.subagents else {
+            return "ERROR [invalid_input]: the advisor is not available in this run".to_string();
+        };
+        let used = self.advisor_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if used >= advisor::MAX_CALLS_PER_RUN {
+            return format!(
+                "ERROR [budget_exhausted]: the advisor was already consulted {} times this run",
+                advisor::MAX_CALLS_PER_RUN
+            );
+        }
+        let messages = self.live_conversation.lock().map(|m| m.clone()).unwrap_or_default();
+        let question = args.get("question").and_then(|v| v.as_str()).unwrap_or_default();
+        let request = advisor::request(&model, &messages, question);
+        match utility_completion(&ctx.parent_args, &model, "advisor", &request).await {
+            Ok(completion) => advisor::note(&model, &completion),
+            Err(e) => format!("ERROR [upstream]: the advisor call failed: {}", e.message()),
+        }
+    }
+
+    /// `schedule_task`: plan the call against this session's own limits, then
+    /// ask a person before anything is created or deleted. Unlike
+    /// `approve_repo_mutation` there is no allow rule, grant, auto-approval or
+    /// bypass that answers for the person: unattended work is approved each
+    /// time, by someone who has seen the prompt, schedule, folder and mode.
+    async fn handle_schedule_task(&self, args: &serde_json::Value) -> String {
+        use crate::core::agent::schedule_tool as tool;
+        use crate::core::schedule::store::Store;
+        if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+            return plan_mode_read_only_msg("schedule_task");
+        }
+        if self.permissions.is_denied("schedule_task", &self.subject) {
+            return denied_by_policy_msg("schedule_task", &self.project_root);
+        }
+        let creator = tool::Creator {
+            project_root: self.project_root.clone(),
+            model: self.subagents.as_ref().map(|c| c.model_id.clone()).unwrap_or_default(),
+            plan_mode: false,
+            allowed_tools: self.allowed_tools.as_ref().map(|a| a.iter().cloned().collect()),
+            denied_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
+                .iter()
+                .filter(|t| self.permissions.is_denied(t.name, &self.subject))
+                .map(|t| t.name.to_string())
+                .collect(),
+        };
+        let plan = match tool::plan(args, &creator) {
+            Ok(plan) => plan,
+            Err(e) => return format!("ERROR [invalid_input]: {e}"),
+        };
+        let store = Store::new(&crate::core::app::commands::resolve_jan_data_folder());
+        let tasks = store.load_tasks().unwrap_or_default();
+        if let Some(what) = plan.approval_text(&tasks) {
+            if let Err(refused) = self.ask_person("schedule_task", &what).await {
+                return refused;
+            }
+        }
+        match plan {
+            tool::Plan::List => tool::render_list(&tasks),
+            tool::Plan::Create(task) => match store.save_task(*task) {
+                Ok(saved) => format!("Scheduled task {} created: {}", saved.id, saved.schedule.describe()),
+                Err(e) => format!("ERROR [io]: {}", e.message),
+            },
+            tool::Plan::Delete { id } => match store.delete_task(&id) {
+                Ok(true) => format!("Deleted scheduled task {id}"),
+                Ok(false) => format!("ERROR [invalid_input]: no scheduled task {id}"),
+                Err(e) => format!("ERROR [io]: {}", e.message),
+            },
+        }
+    }
+
+    /// Put `what` to a person and wait. Always asks; offers no "always allow".
+    async fn ask_person(&self, name: &str, what: &str) -> Result<(), String> {
+        let request_id = next_permission_id();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.permission_requests.lock().await.insert(request_id.clone(), tx);
+        let _ = self.events.send(StreamEvent::PermissionRequest {
+            request_id: request_id.clone(),
+            tool_name: name.to_string(),
+            capability: "run".to_string(),
+            path: None,
+            command: Some(what.to_string()),
+            diff: None,
+            patch: None,
+            prompt_kind: "exec".to_string(),
+            offers_always: false,
+            reason: Some("This creates work that runs later with nobody watching, so it is asked every time.".to_string()),
+            args_digest: None,
+            call_id: None,
+        });
+        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
+        self.permission_requests.lock().await.remove(&request_id);
+        match decision {
+            PermissionDecision::Deny => Err(format!(
+                "ERROR [approval_refused]: {name} was not approved by a person, so nothing was changed."
+            )),
+            // `offers_always` is false, so a grant is only ever this once.
+            _ => Ok(()),
         }
     }
 
@@ -4407,6 +4519,12 @@ impl ToolInvoker for CompositeToolInvoker {
         tool_calls: &[serde_json::Value],
         on_complete: &OnComplete<'_>,
     ) -> Result<Vec<ToolOutcome>, HarnessError> {
+        // `monitor` is a backgrounded `bash` call: rewritten before anything
+        // looks at the call, so every rule, gate and sandbox that applies to
+        // `bash` applies to it, and nothing about it can be looser.
+        let monitor_ok = self.allowed_tools.as_ref().is_none_or(|a| a.contains("monitor"));
+        let (rewritten, monitors) = rewrite_monitor_calls(tool_calls, monitor_ok);
+        let tool_calls: &[serde_json::Value] = &rewritten;
         self.record_requested(tool_calls);
         let (allowed, refused) = self.apply_tool_rules(tool_calls);
         for (_, outcome) in &refused {
@@ -4419,6 +4537,10 @@ impl ToolInvoker for CompositeToolInvoker {
                 .await
                 .map(|ran| weave_refused(ran, refused, tool_calls))
         };
+        let mut out = out;
+        if let Ok(outcomes) = &mut out {
+            register_monitors(&monitors, outcomes);
+        }
         if let Ok(outcomes) = &out {
             self.record_outcomes(tool_calls, outcomes);
             // `[[tool_rules]] max_failures` reads what failed here.
@@ -4913,6 +5035,24 @@ impl CompositeToolInvoker {
                     continue;
                 };
                 let content = self.handle_lsp_tool(&args).await;
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
+            #[cfg(feature = "cli")]
+            if name == "advisor" {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let args = parse_tool_args(tc).unwrap_or_default();
+                let content = self.handle_advisor(&args).await;
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
+            if name == "schedule_task" {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    continue;
+                };
+                let content = self.handle_schedule_task(&args).await;
                 out.push(ToolOutcome::plain(id, content));
                 continue;
             }
@@ -6285,6 +6425,93 @@ fn advertise_local_tools(
                 openai_tools.push(message);
             }
 
+            // A stronger model to consult, only when `advisor_model` is set.
+            #[cfg(feature = "cli")]
+            if matches!(subject, tauri_plugin_agent_tools::subject::Subject::MainAgent)
+                && crate::core::agent::global_config::advisor_model().is_some()
+                && !permissions.is_denied("advisor", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("advisor"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "advisor",
+                        "description": "Consult a stronger model with this whole conversation before you plan a hard task or before you declare it finished. It has no tools and cannot see files beyond what the conversation shows. Returns short guidance; weigh it, you decide. Limited to a few calls per run.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "question": { "type": "string", "description": "What you want advice on. Optional." }
+                            },
+                            "required": []
+                        }
+                    }
+                }));
+            }
+
+            // Scheduled tasks: create, list, delete, and run once at a time.
+            // Creating or deleting always asks a person; a child run never
+            // schedules, and nothing in Plan mode does.
+            if !planning
+                && matches!(subject, tauri_plugin_agent_tools::subject::Subject::MainAgent)
+                && !permissions.is_denied("schedule_task", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("schedule_task"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "schedule_task",
+                        "description": "Manage scheduled tasks that run later with nobody watching. action `list` shows them. action `create` needs name, prompt and schedule (kind daily|weekdays|weekly|cron|once; daily/weekdays take times [\"09:00\"], weekly adds days [1,3] with 0 = Sunday, cron takes expr, once takes at \"YYYY-MM-DDTHH:MM\" in the task's timezone), and optionally timezone (default UTC), project, model, allow_tools, write (read_only default, or worktree), max_turns, max_tokens, max_wall_clock_secs. A task is read-only and limited to read tools unless you ask for more, and can never do more than this session can. action `delete` needs id. Creating and deleting are shown to the person and need their approval every time.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "action": { "type": "string", "enum": ["list", "create", "delete"] },
+                                "id": { "type": "string", "description": "The task, for delete." },
+                                "name": { "type": "string" },
+                                "prompt": { "type": "string", "description": "What the task does when it runs." },
+                                "schedule": { "type": "object", "description": "When it runs." },
+                                "timezone": { "type": "string", "description": "IANA name, default UTC." },
+                                "project": { "type": "string", "description": "A folder inside this session's folder; default the folder itself." },
+                                "model": { "type": "string", "description": "provider/model; default this session's." },
+                                "allow_tools": { "type": "array", "items": { "type": "string" } },
+                                "write": { "type": "string", "enum": ["read_only", "worktree"] },
+                                "max_turns": { "type": "integer" },
+                                "max_tokens": { "type": "integer" },
+                                "max_wall_clock_secs": { "type": "integer" }
+                            },
+                            "required": ["action"]
+                        }
+                    }
+                }));
+            }
+
+            // A background watcher whose matching lines reach the run as they
+            // come. It is dispatched as a backgrounded `bash` call, so it is
+            // offered only where `bash` is, and a refused `bash` refuses it.
+            let bash_offered = openai_tools
+                .iter()
+                .any(|t| t["function"]["name"].as_str() == Some("bash"));
+            if !planning
+                && bash_offered
+                && !permissions.is_denied("monitor", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("monitor"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "monitor",
+                        "description": "Start a command in the background and get its matching output lines as short events while you keep working, instead of one notice when it ends. Use it to watch a log, a build, a test run or a poll loop. Runs under the same sandbox and approval as `bash`. Lines arrive at most about one per second and at most 100 per watcher. Stop it with the background tasks panel or `bash` with the job_id.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": { "type": "string", "description": "The command to watch. Its stdout is what is delivered." },
+                                "filter": { "type": "string", "description": "Optional regex; only lines that match are delivered." }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }));
+            }
+
             let named = branches["function"]["name"].as_str().unwrap_or_default();
             let offered = !planning
                 && !permissions.is_denied(named, subject)
@@ -7454,6 +7681,26 @@ async fn orchestrate_inner(
             resolved.model
         }
     };
+    // `role:plan`: a plan-mode run may be routed to a stronger model than the
+    // one that executes the plan afterwards. Only plan mode asks for this role.
+    let model_id = if run_mode == crate::core::agent::plan::RunMode::Plan {
+        let rules = project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
+            })
+            .map(|cfg| crate::core::agent::routing::rules(&cfg.routing).unwrap_or_default())
+            .unwrap_or_default();
+        match crate::core::agent::routing::plan_model(&rules, &model_id) {
+            Some(routed) => {
+                log::info!("agent: routing sends the plan-mode run to {routed:?}");
+                routed
+            }
+            None => model_id,
+        }
+    } else {
+        model_id
+    };
 
     let ((mut openai_tools, mut tool_to_server, tool_call_names), slow_mcp_notice) =
         collect_mcp_openai_tools_noted(mcp_servers, mcp_settings).await?;
@@ -7808,6 +8055,7 @@ async fn orchestrate_inner(
             nul_programs: settings.nul_programs.clone(),
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            advisor_calls: std::sync::atomic::AtomicU32::new(0),
             allowed_tools: allowed_names.clone(),
             record_to: (!jan_data_folder.is_empty())
                 .then(|| std::path::PathBuf::from(jan_data_folder.as_str())),
@@ -8489,6 +8737,59 @@ fn body_cost_ceiling(
     })
 }
 
+/// `monitor` calls rewritten as backgrounded `bash` calls, and the filter each
+/// was given by call id. A call whose arguments cannot be read, or whose filter
+/// is not a regex, is left as `monitor` and is refused downstream as an unknown
+/// tool rather than run unfiltered.
+fn rewrite_monitor_calls(
+    calls: &[serde_json::Value],
+    offered: bool,
+) -> (Vec<serde_json::Value>, Vec<(String, Option<regex::Regex>)>) {
+    let mut monitors = Vec::new();
+    let rewritten = calls
+        .iter()
+        .map(|tc| {
+            let name = tc.get("function").and_then(|f| f.get("name")).and_then(|v| v.as_str());
+            if name != Some("monitor") || !offered {
+                return tc.clone();
+            }
+            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let Some(args) = parse_tool_args(tc) else { return tc.clone() };
+            let command = args.get("command").and_then(|v| v.as_str()).unwrap_or_default();
+            let Ok(filter) = crate::core::agent::monitor::parse_filter(args.get("filter").and_then(|v| v.as_str()))
+            else {
+                return tc.clone();
+            };
+            if command.trim().is_empty() {
+                return tc.clone();
+            }
+            monitors.push((id, filter));
+            let mut bash = tc.clone();
+            bash["function"]["name"] = serde_json::json!("bash");
+            bash["function"]["arguments"] =
+                serde_json::json!(serde_json::json!({ "command": command, "background": true, "timeout": 0 }).to_string());
+            bash
+        })
+        .collect();
+    (rewritten, monitors)
+}
+
+/// Register a watcher for each rewritten call whose `bash` started a job, and
+/// say so in the result the model reads.
+fn register_monitors(monitors: &[(String, Option<regex::Regex>)], outcomes: &mut [ToolOutcome]) {
+    for (id, filter) in monitors {
+        let Some(outcome) = outcomes.iter_mut().find(|o| &o.id == id) else { continue };
+        let started = background_jobs_started(&[serde_json::json!({ "role": "tool", "content": outcome.content })]);
+        let Some(job) = started.first() else { continue };
+        crate::core::agent::monitor::register(job, filter.clone());
+        outcome.content = format!(
+            "Monitor started (job_id={job}). Matching output lines arrive as [monitor {job}] events, \
+             at most about one per second and 100 in all. Stop it with the background tasks panel or \
+             bash {{\"job_id\": \"{job}\"}}."
+        );
+    }
+}
+
 /// The `job_id`s of background `bash` commands started by the tool results in
 /// `messages`. The bash tool reports a backgrounded command as
 /// `(job_id=<id>)`; that fixed sentence is the one place the id appears.
@@ -8833,6 +9134,7 @@ async fn run_turn_cycle(
     // results as they land, and announced once at the next turn boundary after
     // the job finishes, so the model need not poll for them.
     let mut shells_owed: Vec<String> = Vec::new();
+    let mut monitored: Vec<String> = Vec::new();
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
@@ -8844,12 +9146,23 @@ async fn run_turn_cycle(
         // A compaction replaces the vector with a shorter one, so the index of
         // what was already scanned can be past the end: clamp it rather than
         // slice out of range (which panicked the whole run).
-        shells_owed.extend(background_jobs_started(unscanned(
-            &conversation_messages,
-            shells_scanned,
-        )));
+        let started_now = background_jobs_started(unscanned(&conversation_messages, shells_scanned));
+        // Watchers are claimed before the doorbell can drop a job that
+        // finished at once.
+        monitored.extend(
+            started_now
+                .iter()
+                .filter(|j| crate::core::agent::monitor::is_watched(j) && !monitored.contains(j))
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        shells_owed.extend(started_now);
         shells_scanned = conversation_messages.len();
         if let Some(text) = finished_background_jobs(&mut shells_owed) {
+            crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+            shells_scanned = conversation_messages.len();
+        }
+        if let Some(text) = crate::core::agent::monitor::collect(&monitored) {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
             shells_scanned = conversation_messages.len();
         }
@@ -10340,6 +10653,25 @@ mod tests {
 
     /// The doorbell reads the job ids a backgrounded `bash` result names, once
     /// each, and ignores everything that is not a tool result.
+    #[test]
+    fn monitor_is_dispatched_as_a_backgrounded_bash_call() {
+        let calls = vec![
+            json!({"id": "m1", "function": {"name": "monitor", "arguments": "{\"command\":\"tail -f log\",\"filter\":\"ERR\"}"}}),
+            json!({"id": "m2", "function": {"name": "monitor", "arguments": "{\"command\":\"x\",\"filter\":\"(\"}"}}),
+            json!({"id": "r1", "function": {"name": "read", "arguments": "{}"}}),
+        ];
+        let (out, monitors) = rewrite_monitor_calls(&calls, true);
+        assert_eq!(out[0]["function"]["name"], "bash");
+        let args: serde_json::Value =
+            serde_json::from_str(out[0]["function"]["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args, json!({"command": "tail -f log", "background": true, "timeout": 0}));
+        // A bad filter is not run unfiltered: it stays `monitor` and is refused.
+        assert_eq!(out[1]["function"]["name"], "monitor");
+        assert_eq!(out[2], calls[2]);
+        assert_eq!(monitors.len(), 1);
+        assert!(monitors[0].1.as_ref().unwrap().is_match("an ERR line"));
+    }
+
     #[test]
     fn background_job_ids_are_read_from_tool_results() {
         let messages = vec![
@@ -14131,6 +14463,7 @@ mod tests {
                 .map(|t| t.name.to_string())
                 .collect(),
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            advisor_calls: std::sync::atomic::AtomicU32::new(0),
             allowed_tools: None,
             record_to: None,
             session_messaging: false,

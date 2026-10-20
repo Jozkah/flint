@@ -108,6 +108,10 @@ pub mod skills;
 // The slash-command catalog serves the desktop popup only.
 #[cfg(not(feature = "cli"))]
 pub mod slash;
+pub mod advisor;
+pub mod attribution;
+pub mod monitor;
+pub mod schedule_tool;
 pub mod spend;
 pub mod state_schema;
 pub mod subagent;

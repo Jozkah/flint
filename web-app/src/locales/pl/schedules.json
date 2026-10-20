@@ -47,7 +47,8 @@
     "daily": "Codziennie o {{times}}",
     "weekdays": "W dni robocze o {{times}}",
     "weekly": "{{days}} o {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "W toku",

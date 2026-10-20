@@ -80,6 +80,23 @@ pub async fn agent_skill_list(project: String) -> Result<Vec<SkillMeta>, String>
     Ok(skills::list_meta(&workspace::project_store(&root)))
 }
 
+/// Tool calls and subagent tokens by skill, MCP server, plugin and subagent,
+/// plus what is configured but unused over `since` (`7d`, `24h`).
+#[tauri::command]
+pub async fn get_usage_attribution(
+    app: tauri::AppHandle,
+    since: Option<String>,
+    project: Option<String>,
+) -> Result<crate::core::agent::attribution::Attribution, String> {
+    let data = get_jan_data_folder_path(app);
+    crate::core::agent::attribution::report(
+        &data,
+        since.as_deref(),
+        project.as_deref().map(std::path::Path::new),
+    )
+    .map_err(|e| e.message)
+}
+
 /// The effective compaction policy (AH-076): defaults, the user's file, then
 /// the project's when one is given.
 #[tauri::command]

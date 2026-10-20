@@ -47,7 +47,8 @@
     "daily": "Setiap hari pukul {{times}}",
     "weekdays": "Hari kerja pukul {{times}}",
     "weekly": "{{days}} pukul {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "Berjalan",

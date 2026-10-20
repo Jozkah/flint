@@ -47,7 +47,8 @@
     "daily": "हर दिन {{times}} बजे",
     "weekdays": "कार्यदिवसों पर {{times}} बजे",
     "weekly": "{{days}} को {{times}} बजे",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "चल रहा है",

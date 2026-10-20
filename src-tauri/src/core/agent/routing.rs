@@ -170,6 +170,13 @@ pub fn route(rules: &[Rule], request: &Request<'_>) -> Option<String> {
         .filter(|model| model != request.model)
 }
 
+/// The model a plan-mode run should use, when a `role:plan` rule (or any rule
+/// that matches the plan role) says so. A stronger model can plan while the
+/// run that executes the plan stays on the `role:task` model.
+pub fn plan_model(rules: &[Rule], model: &str) -> Option<String> {
+    route(rules, &Request { role: "plan", agent: None, model })
+}
+
 /// What the rules do, as a person reads them.
 pub fn render(rules: &[Rule]) -> String {
     if rules.is_empty() {
@@ -345,6 +352,19 @@ mod tests {
             route(&rules, &request("task", Some("someone-else"), "base/model")).as_deref(),
             Some("default/model")
         );
+    }
+
+    /// A plan-mode run goes to the `role:plan` model; the run that executes
+    /// the plan keeps the `role:task` one.
+    #[test]
+    fn role_plan_routes_only_the_planning_run() {
+        let rules = rules(&declared(&[("role:plan", "strong/model")])).expect("read");
+        assert_eq!(plan_model(&rules, "fast/model").as_deref(), Some("strong/model"));
+        assert_eq!(route(&rules, &request("task", None, "fast/model")), None);
+        // Already on the planning model: nothing is redirected.
+        assert_eq!(plan_model(&rules, "strong/model"), None);
+        assert_eq!(render(&rules), "  role:plan -> strong/model
+");
     }
 
     /// With no rules, nothing is redirected: routing narrows nothing and

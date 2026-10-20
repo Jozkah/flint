@@ -47,7 +47,8 @@
     "daily": "每天 {{times}}",
     "weekdays": "平日 {{times}}",
     "weekly": "{{days}} {{times}}",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "執行中",
