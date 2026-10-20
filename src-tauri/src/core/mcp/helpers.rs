@@ -1,5 +1,8 @@
 use rmcp::{
-    model::{ClientCapabilities, ClientInfo, Implementation},
+    model::{
+        ClientCapabilities, ClientInfo, ElicitationCapability, FormElicitationCapability,
+        Implementation, UrlElicitationCapability,
+    },
     transport::{
         streamable_http_client::StreamableHttpClient,
         streamable_http_client::StreamableHttpClientTransportConfig,
@@ -974,8 +977,17 @@ fn header_map(headers: &serde_json::Map<String, Value>) -> reqwest13::header::He
 /// Identity sent on `initialize` for every transport, so servers see one
 /// consistent "Flint" client with the real app version.
 pub(super) fn flint_client_info() -> ClientInfo {
+    // The desktop app can put an elicitation in front of the user (form and URL
+    // modes); a headless run declines. The CLI connects through its own client
+    // and does not declare the capability.
+    let mut capabilities = ClientCapabilities::default();
+    capabilities.elicitation = Some(
+        ElicitationCapability::new()
+            .with_form(FormElicitationCapability::new())
+            .with_url(UrlElicitationCapability::new()),
+    );
     ClientInfo::new(
-        ClientCapabilities::default(),
+        capabilities,
         Implementation::new("Flint", env!("CARGO_PKG_VERSION")),
     )
 }
