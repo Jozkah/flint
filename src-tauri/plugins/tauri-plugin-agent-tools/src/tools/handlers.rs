@@ -329,6 +329,26 @@ fn peek_tail(job_id: &str, owner: Option<&str>) -> Option<(String, usize)> {
     Some((crate::audit::redact(&tail.text), tail.dropped))
 }
 
+/// A running job's output after absolute byte offset `offset` (offsets count
+/// from the start of the job's output, including what the bounded tail has
+/// since dropped), with the new offset. The text is redacted. Read only:
+/// nothing here consumes the result a collector is waiting for.
+pub fn bash_job_output_since(job_id: &str, owner: Option<&str>, offset: u64) -> Option<(String, u64)> {
+    let jobs = bash_jobs().lock().unwrap();
+    let job = jobs.get(job_id)?;
+    if job.owner.as_deref() != owner {
+        return None;
+    }
+    let tail = job.tail.lock().ok()?;
+    let total = (tail.dropped + tail.text.len()) as u64;
+    let start = offset.saturating_sub(tail.dropped as u64).min(tail.text.len() as u64) as usize;
+    let mut from = start;
+    while !tail.text.is_char_boundary(from) {
+        from += 1;
+    }
+    Some((crate::audit::redact(&tail.text[from..]), total))
+}
+
 /// Make room for one more job under `owner`. Drops the oldest *finished*
 /// uncollected job when the owner is at its limit; returns false when every
 /// job it holds is still running, so the caller refuses rather than grows.
