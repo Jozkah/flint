@@ -802,6 +802,45 @@ pub fn ensure_with(
     })
 }
 
+/// Find the worktree a reopened session was working in, and only find it:
+/// unlike [`ensure_with`] this never creates one. `Ok(None)` when it is gone.
+/// What is found must be a linked worktree of this project (its `.git` is a
+/// file, git's own metadata ties it to this repository), under the folder
+/// Flint owns once symlinks are resolved, and neither the main checkout nor
+/// inside it; anything else is an error that names why, never a quiet reuse.
+pub fn resume_existing(
+    repo: &Path,
+    worktrees_root: &Path,
+    session_id: &str,
+) -> Result<Option<WorktreeRecord>, String> {
+    let root = absolute(worktrees_root)?;
+    let identity = identity(repo)?;
+    let main = PathBuf::from(&identity.root);
+    for path in [
+        worktree_path(&root, &identity, session_id),
+        legacy_worktree_path(&root, &identity, session_id),
+    ] {
+        if !path.exists() {
+            continue;
+        }
+        if !contained(&path, &root) {
+            return Err(format!("{} resolves outside the folder Flint owns", path.display()));
+        }
+        let same_as_main = matches!((path.canonicalize(), main.canonicalize()), (Ok(a), Ok(b)) if a == b);
+        if same_as_main || contained(&path, repo) {
+            return Err(format!("{} is the project checkout itself, not a separate worktree", path.display()));
+        }
+        if !path.join(".git").is_file() {
+            return Err(format!("{} is not a linked git worktree", path.display()));
+        }
+        if !is_worktree_of(&path, repo) {
+            return Err(format!("{} is not a worktree of this project", path.display()));
+        }
+        return Ok(existing(repo, &root, session_id));
+    }
+    Ok(None)
+}
+
 /// The branch checked out in `repo`, or `None` on a detached HEAD.
 pub(crate) fn current_branch(repo: &Path) -> Option<String> {
     run(repo, &["symbolic-ref", "--short", "-q", "HEAD"])
@@ -1871,6 +1910,32 @@ mod tests {
         assert!(ensure_with(&f.repo, &f.worktrees, "s-pr3", &wrong).unwrap_err().contains("is not other/thing"));
         let junk = EnsureOptions { title: None, base: Some("pr:-1".into()) };
         assert!(ensure_with(&f.repo, &f.worktrees, "s-pr4", &junk).is_err());
+    }
+
+    #[test]
+    fn resuming_finds_its_worktree_and_never_makes_one() {
+        let f = fixture();
+        assert_eq!(resume_existing(&f.repo, &f.worktrees, "s-r").unwrap(), None);
+        assert!(!f.worktrees.exists() || std::fs::read_dir(&f.worktrees).map(|d| d.count() == 0).unwrap_or(true));
+        let made = ensure(&f.repo, &f.worktrees, "s-r").expect("create");
+        let found = resume_existing(&f.repo, &f.worktrees, "s-r").unwrap().expect("found");
+        assert_eq!(found.path, made.path);
+        // Removed behind its back: gone, not recreated.
+        run(&f.repo, &["worktree", "remove", "--force", &made.path]).unwrap();
+        assert_eq!(resume_existing(&f.repo, &f.worktrees, "s-r").unwrap(), None);
+        assert!(!PathBuf::from(&made.path).exists());
+    }
+
+    #[test]
+    fn resuming_refuses_a_directory_that_is_not_a_linked_worktree() {
+        let f = fixture();
+        let made = ensure(&f.repo, &f.worktrees, "s-x").expect("create");
+        run(&f.repo, &["worktree", "remove", "--force", &made.path]).unwrap();
+        // A separate clone-like repository in its place.
+        std::fs::create_dir_all(&made.path).unwrap();
+        git_in(&PathBuf::from(&made.path), &["init", "-q"]);
+        let err = resume_existing(&f.repo, &f.worktrees, "s-x").unwrap_err();
+        assert!(err.contains("not a linked git worktree"), "{err}");
     }
 
     #[test]

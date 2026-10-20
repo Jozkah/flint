@@ -2450,6 +2450,7 @@
     "settingDescription": "Cada sesión nueva en un repositorio Git obtiene su propio worktree y rama (flint/<title>), para que muchas sesiones trabajen a la vez en la misma carpeta sin tocarse entre sí ni tocar tu copia de trabajo. Revisa, fusiona o descarta cada rama desde la sesión.",
     "baseTitle": "Start worktrees from my current branch",
     "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Esta sesión trabaja en la rama {{branch}}, en su propio worktree",
     "basedOn": "desde {{base}}",
     "openFolder": "Abrir carpeta",

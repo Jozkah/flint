@@ -86,6 +86,16 @@ type WorktreesState = {
     options?: EnsureOptions
   ) => Promise<EnsureOutcome>
   /**
+   * Re-find the worktree a reopened session was in. Never creates one: a
+   * worktree that is gone, or that is not a separate linked checkout of the
+   * project, comes back as a reason, and the caller clears the binding.
+   */
+  resume: (
+    sessionId: string,
+    project: string,
+    dataFolder: string
+  ) => Promise<EnsureOutcome>
+  /**
    * Merge a session's branch into its base branch. Uncommitted work in the
    * worktree is committed first only when `commitMessage` is given.
    */
@@ -186,6 +196,24 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
         errorBySession: { ...s.errorBySession, [sessionId]: reason },
       }))
       return { ok: false, reason }
+    }
+  },
+
+  resume: async (sessionId, project, dataFolder) => {
+    try {
+      const record = await invoke<WorktreeRecord | null>('agent_worktree_resume', {
+        dataFolder,
+        sessionId,
+        project,
+      })
+      if (!record) return { ok: false, reason: 'the worktree no longer exists' }
+      set((s) => ({
+        bySession: { ...s.bySession, [sessionId]: record },
+        errorBySession: { ...s.errorBySession, [sessionId]: '' },
+      }))
+      return { ok: true, record }
+    } catch (e) {
+      return { ok: false, reason: messageOf(e) }
     }
   },
 
