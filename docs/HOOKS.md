@@ -23,6 +23,7 @@ command = "npm run lint"    # required: a shell command, at most 4096 characters
 on_failure = "block"        # optional: block | warn | ignore (default warn)
 timeout_secs = 30           # optional: 1 to 120 (default 30)
 tools = ["write", "edit"]   # optional: tool names; empty or absent = every tool
+stdin_json = true           # optional, pre-tool/post-tool: pass the tool call as JSON on stdin (default false)
 ```
 
 At most 32 hooks are read. Hooks run in the order the file declares them.
@@ -111,8 +112,12 @@ with the same values):
   value is reported as `main`. Observe-only like the event itself.
 - `FLINT_PROJECT_ROOT` / `JAN_PROJECT_ROOT`: the project root
 
-Stdin is empty. The prompt, the tool's arguments and provider keys are never
-passed. Captured output is capped at 4096 characters per hook and scrubbed.
+Stdin is empty unless the hook sets `stdin_json = true` on a `pre-tool` or
+`post-tool` hook. Then stdin carries one JSON object and closes:
+`hook_event_name`, `tool_name`, `tool_input` (the call's arguments), `cwd`,
+`session_id` / `run_id` when the run has them, and for `post-tool` also
+`tool_response` (the result text, bounded and scrubbed). The prompt and provider
+keys are never passed. Trust gating applies as for every hook. Captured output is capped at 4096 characters per hook and scrubbed.
 
 ## Confinement
 

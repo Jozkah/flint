@@ -4470,6 +4470,7 @@ impl ToolInvoker for CompositeToolInvoker {
             on_failure: OnFailure::Warn,
             timeout_secs,
             tools: Vec::new(),
+            stdin_json: false,
         };
         let ctx = Context {
             project_root: &self.project_root,
