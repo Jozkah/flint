@@ -101,7 +101,9 @@ describe('createChildRunner', () => {
   it('records the dispatch, streams the trace into the record, and settles done', async () => {
     answers('the answer')
     const out = await createChildRunner(env())('c1', { subagent_name: 'explorer', description: 'find it' })
-    expect(out).toEqual({ output: 'the answer', isError: undefined })
+    expect(out.output).toContain('the answer')
+    expect(out.output).toContain('<subagent-output agent="explorer">')
+    expect(out.isError).toBeUndefined()
     expect(task('c1')).toMatchObject({
       kind: 'agent',
       status: 'done',
@@ -362,10 +364,12 @@ describe('resuming a finished subagent', () => {
   it('does not offer a resume for a failed run or a team member', async () => {
     answers('x')
     const none = await createChildRunner(env())('c4', { subagent_name: 'explorer', description: 'd' })
-    expect(none.output).toBe('x')
+    expect(none.output).toContain('x')
+    expect(none.output).not.toContain('resume_agent_id')
     answers('y', { messages: history })
     const member = await createChildRunner(env())('c5', { subagent_name: 'explorer', description: 'd' }, undefined, 'team-row')
-    expect(member.output).toBe('y')
+    expect(member.output).toContain('y')
+    expect(member.output).not.toContain('resume_agent_id')
   })
 
   it('remembers at most a bounded number per session and forgets a deleted session', () => {

@@ -62,6 +62,7 @@ import {
   type MemoryDeps,
   type MemoryScope,
 } from '@/lib/coworkSubagentMemory'
+import { labelSubagentOutput } from '@/lib/coworkSubagentSafety'
 import { errandLine, joinRoster, rosterBlock } from '@/lib/coworkSubagentRoster'
 import { preloadSkills } from '@/lib/coworkSubagentSkills'
 import { resolveChildEffort } from '@/lib/coworkSubagentEffort'
@@ -512,7 +513,11 @@ ${req.description}`
         })
       }
       return {
-        output: keep ? child.output + resumeHint(agentId) : child.output,
+        // Labelled as a subagent's report, with fence tags defanged: the parent
+        // reads it as data with no user authority (coworkSubagentSafety.ts).
+        output:
+          labelSubagentOutput(resolved.name, child.output) +
+          (keep ? resumeHint(agentId) : ''),
         isError: child.isError,
         ...(child.full ? { full: child.full } : {}),
       }

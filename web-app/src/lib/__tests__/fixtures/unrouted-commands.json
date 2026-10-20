@@ -518,6 +518,14 @@
     "web-app/src/lib/surfaceDelegation.ts (via listSubagents)",
     "web-app/src/routes/cowork.tsx (via listSubagents)"
   ],
+  "agent_subagent_memory_load": [
+    "web-app/src/lib/coworkSubagent.ts (via parseMemoryScope)",
+    "web-app/src/lib/coworkSubagentMemory.ts"
+  ],
+  "agent_subagent_memory_write": [
+    "web-app/src/lib/coworkSubagent.ts (via parseMemoryScope)",
+    "web-app/src/lib/coworkSubagentMemory.ts"
+  ],
   "agent_team_child_begin": [
     "web-app/src/lib/teamChildren.ts",
     "web-app/src/routes/cowork.tsx (via beginTeamChild)"
