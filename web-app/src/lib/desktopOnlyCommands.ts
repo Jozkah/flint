@@ -406,6 +406,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'folder_trust_grandfather',
       'folder_trust_grant',
       'folder_trust_list',
+      'agent_hooks_report',
       'folder_trust_revoke',
       'mailbox_auto_reply',
       'mailbox_claim',

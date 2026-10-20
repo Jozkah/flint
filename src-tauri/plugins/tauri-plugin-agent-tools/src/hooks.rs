@@ -368,6 +368,100 @@ impl Hook {
     }
 }
 
+/// Read-only view of a project's hooks for `/hooks` and the settings panel.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct HooksReport {
+    /// The file the hooks come from.
+    pub source: String,
+    pub exists: bool,
+    pub trusted: bool,
+    /// Why the file could not be read, when it could not.
+    pub error: Option<String>,
+    /// Empty when untrusted or unreadable: hooks that would not run are not
+    /// presented as if they would. `declared` counts what the file holds.
+    pub hooks: Vec<Hook>,
+    pub declared: usize,
+}
+
+/// Describe the project's hooks without running anything.
+pub fn report(project_root: &Path) -> HooksReport {
+    let path = config_path(project_root);
+    let exists = path.is_file();
+    let trusted = crate::folder_trust::is_trusted(project_root);
+    let mut out = HooksReport {
+        source: path.to_string_lossy().into_owned(),
+        exists,
+        trusted,
+        error: None,
+        hooks: Vec::new(),
+        declared: 0,
+    };
+    if !exists {
+        return out;
+    }
+    // Parsed even when untrusted, so the viewer can say how many are held back.
+    match load_with(project_root, true) {
+        Ok(hooks) => {
+            out.declared = hooks.len();
+            if trusted {
+                out.hooks = hooks;
+            }
+        }
+        Err(e) => out.error = Some(e.message),
+    }
+    out
+}
+
+impl HooksReport {
+    /// Plain text for the terminal.
+    pub fn render(&self) -> String {
+        let mut lines = vec![format!(
+            "hooks · {} · {}",
+            self.source,
+            if !self.exists {
+                "no hooks file"
+            } else if self.trusted {
+                "folder trusted"
+            } else {
+                "folder NOT trusted (hooks off; run `flint trust`)"
+            }
+        )];
+        if let Some(e) = &self.error {
+            lines.push(format!("  error: {e}"));
+        }
+        if !self.trusted && self.declared > 0 {
+            lines.push(format!("  {} hook(s) declared, none will run until the folder is trusted", self.declared));
+        }
+        for (i, h) in self.hooks.iter().enumerate() {
+            let mut extra = Vec::new();
+            if !h.tools.is_empty() {
+                extra.push(format!("tools={}", h.tools.join(",")));
+            }
+            if let Some(f) = &h.if_filter {
+                extra.push(format!("if={f}"));
+            }
+            if h.stdin_json {
+                extra.push("stdin_json".into());
+            }
+            if h.json_output {
+                extra.push("json_output".into());
+            }
+            lines.push(format!(
+                "  {}. {} [{}] {}s  {}{}",
+                i + 1,
+                h.event.as_str(),
+                h.on_failure.as_str(),
+                h.timeout_secs,
+                h.command,
+                if extra.is_empty() { String::new() } else { format!("  ({})", extra.join(" ")) }
+            ));
+        }
+        lines.join("
+")
+    }
+}
+
 /// Where a project's hooks are declared.
 pub fn config_path(project_root: &Path) -> PathBuf {
     project_root.join(".jan").join("agent").join("hooks.toml")

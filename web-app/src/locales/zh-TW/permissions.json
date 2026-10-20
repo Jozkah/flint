@@ -358,5 +358,13 @@
     "title": "有問題的權限規則",
     "description": "專案 agent.toml 中的部分規則被捨棄或永遠無法比對。其餘規則仍會載入，但這些規則不會依所寫生效。",
     "notProtecting": "限制性規則未生效，保護比所寫的更弱。請修正該規則。"
+  },
+  "hooksViewer": {
+    "title": "鉤子",
+    "description": "每個受信任資料夾在工具呼叫前後與執行結束時執行的命令。唯讀：請編輯 .jan/agent/hooks.toml 以變更。",
+    "empty": "沒有受信任的資料夾宣告鉤子。",
+    "none": "此資料夾未宣告鉤子。",
+    "error": "無法讀取鉤子檔案",
+    "loadFailed": "無法讀取鉤子"
   }
 }

@@ -361,5 +361,13 @@
     "title": "Pravidla oprávnění s problémy",
     "description": "Některá pravidla v agent.toml projektu byla zahozena nebo nikdy nemohou odpovídat. Zbytek se načte, ale tato pravidla nedělají, co říkají.",
     "notProtecting": "Omezující pravidlo neplatí, ochrana je tedy slabší, než je napsáno. Pravidlo opravte."
+  },
+  "hooksViewer": {
+    "title": "Hooky",
+    "description": "Příkazy, které každá důvěryhodná složka spouští kolem volání nástrojů a na konci běhu. Jen pro čtení: upravte .jan/agent/hooks.toml.",
+    "empty": "Žádná důvěryhodná složka nedeklaruje hooky.",
+    "none": "Tato složka nedeklaruje žádné hooky.",
+    "error": "Soubor hooků nelze přečíst",
+    "loadFailed": "Hooky nelze přečíst"
   }
 }

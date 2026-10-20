@@ -358,5 +358,13 @@
     "title": "Quy tắc quyền có vấn đề",
     "description": "Một số quy tắc trong agent.toml của dự án đã bị bỏ hoặc không bao giờ khớp. Phần còn lại vẫn được tải, nhưng các quy tắc này không làm đúng như đã viết.",
     "notProtecting": "Một quy tắc hạn chế không có hiệu lực, nên mức bảo vệ thấp hơn đã viết. Hãy sửa quy tắc."
+  },
+  "hooksViewer": {
+    "title": "Hook",
+    "description": "Các lệnh mà mỗi thư mục tin cậy chạy quanh lời gọi công cụ và khi kết thúc một lượt chạy. Chỉ đọc: sửa .jan/agent/hooks.toml.",
+    "empty": "Không có thư mục tin cậy nào khai báo hook.",
+    "none": "Thư mục này không khai báo hook.",
+    "error": "Không đọc được tệp hook",
+    "loadFailed": "Không đọc được các hook"
   }
 }

@@ -359,5 +359,13 @@
     "title": "Permission rules with problems",
     "description": "Some rules in a project's agent.toml were dropped or can never match. Everything else still loads, but these rules are not doing what they say.",
     "notProtecting": "A rule that restricts something is not in effect, so this is less protected than written. Fix the rule."
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Commands each trusted folder runs around tool calls and at the end of a run. Read-only: edit .jan/agent/hooks.toml to change them.",
+    "empty": "No trusted folder declares hooks.",
+    "none": "This folder declares no hooks.",
+    "error": "The hooks file could not be read",
+    "loadFailed": "Could not read the hooks"
   }
 }

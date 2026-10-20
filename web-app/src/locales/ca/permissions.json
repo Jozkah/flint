@@ -359,5 +359,13 @@
     "title": "Regles de permisos amb problemes",
     "description": "Algunes regles de l'agent.toml d'un projecte s'han descartat o mai no poden coincidir. La resta es carrega, però aquestes regles no fan el que diuen.",
     "notProtecting": "Una regla restrictiva no està en vigor: hi ha menys protecció de l'escrita. Corregeix la regla."
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Ordres que cada carpeta de confiança executa al voltant de les crides d'eina i al final d'una execució. Només lectura: edita .jan/agent/hooks.toml.",
+    "empty": "Cap carpeta de confiança declara hooks.",
+    "none": "Aquesta carpeta no declara hooks.",
+    "error": "No s'ha pogut llegir el fitxer de hooks",
+    "loadFailed": "No s'han pogut llegir els hooks"
   }
 }
