@@ -107,6 +107,10 @@ struct Cli {
     /// parser runs; declaring it here keeps clap from rejecting it.
     #[arg(long, short = 'v', global = true)]
     verbose: bool,
+    /// Start with hooks, skills, plugins, MCP servers and project instruction
+    /// files off, to rule a customization out (also `FLINT_SAFE_MODE=1`).
+    #[arg(long = "safe-mode", global = true)]
+    safe_mode: bool,
 }
 
 /// Whether this invocation confines the shell, shared by every surface that
@@ -1082,6 +1086,33 @@ enum AgentCommands {
         /// (AH-181). Overrides [output].density.
         #[arg(long, value_name = "DENSITY")]
         output_density: Option<String>,
+        /// Text added to this run's system prompt
+        #[arg(long, value_name = "TEXT")]
+        append_system_prompt: Option<String>,
+        /// A file whose contents are added to this run's system prompt
+        #[arg(long, value_name = "FILE")]
+        append_system_prompt_file: Option<String>,
+        /// Limit this run to these tools (repeat); names as in `schedule tools`
+        #[arg(long = "allow-tool", value_name = "TOOL")]
+        allow_tools: Vec<String>,
+        /// Withhold these tools from this run (repeat), on top of the project's denies
+        #[arg(long = "deny-tool", value_name = "TOOL")]
+        deny_tools: Vec<String>,
+        /// Reasoning effort for this run: low, medium or high
+        #[arg(long, value_name = "LEVEL")]
+        effort: Option<String>,
+        /// Do not save this run's session to disk (it cannot be resumed)
+        #[arg(long)]
+        ephemeral: bool,
+        /// The final answer must be one JSON value valid against this JSON
+        /// Schema, given inline or as a file path. An invalid answer goes back
+        /// to the model with the error; the validated value is printed alone
+        /// (text mode) or as `structured_output` in the JSON result.
+        #[arg(long, value_name = "FILE|JSON")]
+        json_schema: Option<String>,
+        /// Repair attempts for --json-schema before the run fails (default 3)
+        #[arg(long, value_name = "N", requires = "json_schema")]
+        json_schema_attempts: Option<u64>,
     },
     /// Run one durable subagent from its spec, as a job's supervisor starts it
     /// (AH-101). Not meant to be run by hand.
@@ -2139,6 +2170,11 @@ fn main() {
     // `serve`/`stop --data-dir` must point every data-folder lookup at that
     // folder, including the grants, exclusions and log set up before the
     // command is parsed; and the variable is set before any thread exists.
+    // Safe mode is read from the raw arguments before any thread exists, so
+    // every loader sees one process-wide answer.
+    if std::env::args().skip(1).take_while(|a| a != "--").any(|a| a == "--safe-mode") {
+        tauri_plugin_agent_tools::safe_mode::enable();
+    }
     if let Some(dir) = pre_parse_data_dir(std::env::args().skip(1)) {
         std::env::set_var("JAN_DATA_FOLDER", dir);
     }
@@ -2158,6 +2194,41 @@ fn main() {
     if worker.join().is_err() {
         std::process::exit(70);
     }
+}
+
+/// `--append-system-prompt` and `--append-system-prompt-file`, joined. Giving
+/// both is allowed (text first); an unreadable or empty file is an error.
+fn resolve_append_prompt(text: Option<String>, file: Option<&str>) -> Result<Option<String>, String> {
+    let from_file = match file {
+        None => None,
+        Some(path) => {
+            let body = std::fs::read_to_string(path)
+                .map_err(|e| format!("cannot read --append-system-prompt-file '{path}': {e}"))?;
+            if body.trim().is_empty() {
+                return Err(format!("--append-system-prompt-file '{path}' is empty"));
+            }
+            Some(body)
+        }
+    };
+    Ok(match (text, from_file) {
+        (Some(a), Some(b)) => Some(format!("{a}\n\n{b}")),
+        (a, b) => a.or(b),
+    })
+}
+
+/// `--json-schema`: inline JSON when it looks like JSON, else a file path. The
+/// schema is checked for keywords the validator cannot enforce.
+fn resolve_json_schema(arg: &str) -> Result<serde_json::Value, String> {
+    let trimmed = arg.trim();
+    let raw = if trimmed.starts_with('{') || trimmed == "true" || trimmed == "false" {
+        trimmed.to_string()
+    } else {
+        std::fs::read_to_string(trimmed)
+            .map_err(|e| format!("cannot read --json-schema file '{trimmed}': {e}"))?
+    };
+    let value: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("--json-schema is not valid JSON: {e}"))?;
+    app_lib::core::agent::structured_output::load(value).map_err(|e| format!("--json-schema: {e}"))
 }
 
 /// The `--data-dir` value from raw args (only `serve` and `stop` accept it),
@@ -3095,7 +3166,38 @@ async fn handle_agent(cmd: AgentCommands) {
             events,
             profile,
             output_density,
+            append_system_prompt,
+            append_system_prompt_file,
+            allow_tools,
+            deny_tools,
+            effort,
+            ephemeral,
+            json_schema,
+            json_schema_attempts,
         } => {
+            let json_schema = match json_schema.as_deref().map(resolve_json_schema).transpose() {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(2);
+                }
+            };
+            let append_system_prompt = match resolve_append_prompt(
+                append_system_prompt,
+                append_system_prompt_file.as_deref(),
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(2);
+                }
+            };
+            if let Some(level) = effort.as_deref() {
+                if !matches!(level, "low" | "medium" | "high") {
+                    eprintln!("Error: --effort '{level}' is not one of: low, medium, high");
+                    std::process::exit(2);
+                }
+            }
             // AH-183: before the run, so a destination that cannot be written
             // fails the command instead of silently streaming nowhere.
             if let Some(destination) = events.as_deref() {
@@ -3147,6 +3249,13 @@ async fn handle_agent(cmd: AgentCommands) {
                     max_turns: budget.max_turns,
                     max_session_tokens: budget.max_session_tokens,
                     max_budget_usd: budget.max_budget_usd,
+                    append_system_prompt,
+                    allow_tools,
+                    deny_tools,
+                    effort,
+                    ephemeral,
+                    json_schema,
+                    json_schema_attempts,
                     ..Default::default()
                 },
                 resume.into_request(),
@@ -5040,6 +5149,49 @@ mod tests {
             parsed_budget(&["--max-budget-usd", "0"]).max_budget_usd,
             Some(0.0)
         );
+    }
+
+    #[test]
+    fn per_run_flags_parse_on_agent_run() {
+        let cli = Cli::parse_from([
+            "flint", "cli", "agent", "run", "task", "--append-system-prompt", "be brief",
+            "--allow-tool", "read", "--allow-tool", "grep", "--deny-tool", "bash",
+            "--effort", "high", "--ephemeral",
+        ]);
+        let Some(Commands::Cli { cmd: CliCommands::Agent { cmd: AgentCommands::Run {
+            append_system_prompt, allow_tools, deny_tools, effort, ephemeral, ..
+        }}}) = cli.command else { panic!("expected `cli agent run`") };
+        assert_eq!(append_system_prompt.as_deref(), Some("be brief"));
+        assert_eq!(allow_tools, ["read", "grep"]);
+        assert_eq!(deny_tools, ["bash"]);
+        assert_eq!(effort.as_deref(), Some("high"));
+        assert!(ephemeral);
+    }
+
+    #[test]
+    fn append_prompt_joins_text_and_file_and_refuses_an_empty_file() {
+        let dir = std::env::temp_dir().join(format!("flint-append-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let full = dir.join("p.txt");
+        let empty = dir.join("e.txt");
+        std::fs::write(&full, "from file").unwrap();
+        std::fs::write(&empty, "  ").unwrap();
+        assert_eq!(resolve_append_prompt(None, None).unwrap(), None);
+        assert_eq!(
+            resolve_append_prompt(Some("a".into()), full.to_str()).unwrap().as_deref(),
+            Some("a\n\nfrom file")
+        );
+        assert!(resolve_append_prompt(None, empty.to_str()).is_err());
+        assert!(resolve_append_prompt(None, Some("/no/such/file")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tool_flag_names_follow_the_schedule_rule() {
+        use app_lib::core::cli::validate_tool_flags;
+        assert!(validate_tool_flags(&["read".into()], &["bash".into()]).is_ok());
+        assert!(validate_tool_flags(&["*".into()], &[]).is_err());
+        assert!(validate_tool_flags(&[], &["has space".into()]).is_err());
     }
 
     #[test]

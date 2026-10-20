@@ -158,6 +158,7 @@ import {
   readChatCompaction,
   writeChatCompaction,
   registerChatCompactor,
+  registerChatSideQuestion,
 } from '@/lib/chatCompaction'
 import {
   parseServerContextLimit,
@@ -649,6 +650,7 @@ export function ThreadConversation({
     updateRagToolsAvailability,
     setContinueFromContent,
     compactNow,
+    sideQuestion,
   } = useChat({
     sessionId: threadId,
     sessionTitle: thread?.title,
@@ -2770,12 +2772,14 @@ export function ThreadConversation({
    * sends it in place of the older messages; the divider marks where.
    */
   const [compacting, setCompacting] = useState(false)
-  const handleCompact = async (opts: { thenRegenerate?: boolean } = {}) => {
+  const handleCompact = async (
+    opts: { thenRegenerate?: boolean; focus?: string } = {}
+  ) => {
     if (compacting || status === 'streaming' || status === 'submitted') return
     setCompacting(true)
     const before = readChatCompaction(threadId)
     try {
-      const record = await compactNow(chatMessages)
+      const record = await compactNow(chatMessages, opts.focus)
       if (!record) {
         toast.info(t('common:budget.compactFailed'))
         return
@@ -2849,8 +2853,35 @@ export function ThreadConversation({
   }
   useEffect(
     () =>
-      registerChatCompactor(threadId, () => handleCompactRef.current()),
+      registerChatCompactor(threadId, (focus) =>
+        handleCompactRef.current({ focus })
+      ),
     [threadId]
+  )
+  // `/btw <question>`: answered from a snapshot, shown in a toast, never
+  // added to the thread; reads a copy so it also works while a reply streams.
+  const sideQuestionRef = useRef(sideQuestion)
+  sideQuestionRef.current = sideQuestion
+  useEffect(
+    () =>
+      registerChatSideQuestion(threadId, async (question) => {
+        try {
+          const answer = await sideQuestionRef.current(
+            chatMessagesRef.current,
+            question
+          )
+          if (!answer) throw new Error('no answer')
+          toast.info(`/btw ${question}`, {
+            description: answer,
+            duration: 60_000,
+            closeButton: true,
+          })
+        } catch (e) {
+          console.warn('[chat] side question failed', e)
+          toast.error(t('common:budget.btwFailed'))
+        }
+      }),
+    [threadId, t]
   )
   // The compaction in force, drawn at its boundary unless the reply after it
   // already carries it.

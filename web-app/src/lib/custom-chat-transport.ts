@@ -184,6 +184,7 @@ import {
   foldSummaryIntoSystem,
 } from '@/lib/compactionSystemRole'
 import { manualSummarizer, modelSummarizer } from '@/lib/compactionSummarizer'
+import { askSideQuestion } from '@/lib/sideQuestion'
 import {
   applyChatCompaction,
   readChatCompaction,
@@ -2563,6 +2564,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       session: string
       reason: CompactionRecord['reason']
       signal?: AbortSignal
+      focus?: string
     }
   ) {
     // Asked for by the user: a model that cannot summarize is an error they
@@ -2573,6 +2575,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           provider: opts.provider,
           modelId: opts.modelId,
           session: opts.session,
+          focus: opts.focus,
           maxOutputTokens: opts.summaryMaxTokens,
           window: opts.window,
           model: () => this.model,
@@ -2625,7 +2628,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   async compactNow(
     threadId: string,
     messages: UIMessage[],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    focus?: string
   ): Promise<CompactionRecord | null> {
     const selection = this.getModelSelection()
     const modelId = selection.selectedModel?.id
@@ -2651,6 +2655,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       session: threadId,
       reason: 'manual' as const,
       signal,
+      focus,
     }
     const keepRecent = policy.keepRecent || DEFAULT_KEEP_RECENT
     let result = await this.runCompaction(threadId, history, {
@@ -2667,6 +2672,37 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       })
     }
     return result?.record ?? null
+  }
+
+  /**
+   * `/btw`: answer one side question from a snapshot of the thread, with no
+   * tools and nothing written back. Reads a copy, so it works mid-stream.
+   */
+  async sideQuestion(
+    threadId: string,
+    messages: UIMessage[],
+    question: string,
+    signal?: AbortSignal
+  ): Promise<string | null> {
+    const selection = this.getModelSelection()
+    const modelId = selection.selectedModel?.id
+    if (!modelId) return null
+    let model = this.model
+    if (!model) {
+      const provider = useModelProvider
+        .getState()
+        .getProviderByName(selection.selectedProvider)
+      if (!provider) return null
+      model = await ModelFactory.createModel(modelId, provider, {})
+    }
+    return askSideQuestion({
+      model,
+      modelId,
+      session: threadId,
+      messages,
+      question,
+      signal,
+    })
   }
 
   /**

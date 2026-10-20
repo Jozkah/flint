@@ -23,7 +23,12 @@ command = "npm run lint"    # required: a shell command, at most 4096 characters
 on_failure = "block"        # optional: block | warn | ignore (default warn)
 timeout_secs = 30           # optional: 1 to 120 (default 30)
 tools = ["write", "edit"]   # optional: tool names; empty or absent = every tool
+if = "bash(git\s+push)"    # optional, pre-tool/post-tool: run only for this tool and arguments (tool or tool(regex))
+json_output = true          # optional: read a JSON decision from stdout on exit 0 (see "JSON decisions")
+stdin_json = true           # optional, pre-tool/post-tool: pass the tool call as JSON on stdin (default false)
 ```
+
+`if` is `tool` or `tool(regex)`; the tool may be `*`. The regex is tested against every string in the call's arguments, so `bash(git\s+push)` runs only for a `bash` call whose command contains `git push`. A bad regex, or `if` on an event that is not `pre-tool`/`post-tool`, disables the file.
 
 At most 32 hooks are read. Hooks run in the order the file declares them.
 
@@ -31,6 +36,14 @@ A file with any mistake (invalid TOML, a missing `event` or `command`, an
 unknown event or failure policy, a limit exceeded, `block` on an event that
 cannot block) disables all hooks in it and reports the reason, rather than
 running the subset that happened to parse.
+
+## Viewing hooks
+
+`/hooks` in the CLI TUI and Settings > Permissions > Hooks in the desktop app
+list the configured hooks read-only: the file they come from, whether the
+folder is trusted (an untrusted folder shows how many are held back, none run),
+each hook's event, failure policy, timeout and filters, and the `~/.claude`
+prompt hooks imported from Claude Code. Nothing is edited or run.
 
 ## Events
 
@@ -41,7 +54,7 @@ running the subset that happened to parse.
 | `post-tool-batch` | once per assistant turn, after all its tool calls have results, before the next model request | no |
 | `pre-compact` | just before the run summarizes its conversation to make room (a compaction) | no |
 | `post-compact` | just after a compaction has shrunk the conversation | no |
-| `run-end` | accepted by the parser; not fired by the current tool path | no |
+| `run-end` | when the agent is about to finish its run (final answer produced, final checks passed) | yes: a failing `block` hook sends the agent back to work |
 
 `post-tool-batch` is observe-only and runs detached: the next model request
 does not wait for it, its failure or timeout is logged and dropped (never added
@@ -70,7 +83,35 @@ outside that loop (the TUI's manual `/compact`, or one a renderer does itself)
 does not fire them. A `tools`
 list means nothing for these events and does not stop the hook from running.
 
+`run-end` is a Stop-style gate. With `on_failure = "block"`, a hook that exits
+non-zero refuses the finish: its output becomes a reminder attached to the
+conversation (never user text) and the agent keeps working. At most 8 blocks
+per run; after that the run finishes regardless. `warn`/`ignore` hooks only
+observe. Only the Rust agent loop (CLI runs) fires it; the desktop chat and
+Cowork loops do not yet. `stdin_json` hands it `last_assistant_message`.
+
 `session-start` is refused: nothing fires it yet.
+
+## JSON decisions
+
+A hook with `json_output = true` that exits 0 and prints one JSON object on
+stdout can say:
+
+```json
+{ "decision": "deny", "reason": "no pushes on this branch", "additionalContext": "see CONTRIBUTING" }
+```
+
+- `additionalContext`: appended to the tool result as `[hook note (... hook, not
+  from the user)] ...`. It is a labelled note, never user text.
+- `decision`: `deny` (or `block`) refuses a `pre-tool` call, or the finish for
+  `run-end`. `ask` is treated as a refusal, because a hook cannot raise an
+  approval prompt from inside the tool path. `allow` changes nothing. A decision
+  can only tighten: it runs after the permission system has already allowed the
+  call, it can never grant what was refused, and it is ignored on events that
+  cannot block.
+
+Output that is not a JSON object, or a hook that exits non-zero, is read as
+plain text under the failure policy below.
 
 ## Failure policy
 
@@ -84,7 +125,7 @@ A hook fails when it exits non-zero, times out, is cancelled, or cannot start.
 
 Per event: `pre-tool` honors all three (`block` is the only way a hook stops a
 call; the default `warn` lets it run). `post-tool`, `post-tool-batch`,
-`post-compact` and `run-end` accept `warn` and `ignore` only, because the work
+`post-compact` accept `warn` and `ignore` only, because the work
 has already happened; `pre-compact` accepts only those two as well, because it
 is observe-only. There is no `prompt-submit` event in this file, so `block` cannot be
 configured for one: the `UserPromptSubmit` hooks imported from Claude Code
@@ -111,8 +152,12 @@ with the same values):
   value is reported as `main`. Observe-only like the event itself.
 - `FLINT_PROJECT_ROOT` / `JAN_PROJECT_ROOT`: the project root
 
-Stdin is empty. The prompt, the tool's arguments and provider keys are never
-passed. Captured output is capped at 4096 characters per hook and scrubbed.
+Stdin is empty unless the hook sets `stdin_json = true` on a `pre-tool` or
+`post-tool` hook. Then stdin carries one JSON object and closes:
+`hook_event_name`, `tool_name`, `tool_input` (the call's arguments), `cwd`,
+`session_id` / `run_id` when the run has them, and for `post-tool` also
+`tool_response` (the result text, bounded and scrubbed). The prompt and provider
+keys are never passed. Trust gating applies as for every hook. Captured output is capped at 4096 characters per hook and scrubbed.
 
 ## Confinement
 

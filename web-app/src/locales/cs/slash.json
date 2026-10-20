@@ -20,7 +20,8 @@
     "help": "Vypsat dostupné příkazy",
     "new": "Zahájit novou konverzaci",
     "newSession": "Zahájit novou relaci Cowork",
-    "compact": "Shrnout starší zprávy a uvolnit kontextové okno"
+    "compact": "Shrnout starší zprávy a uvolnit kontextové okno",
+    "btw": "Položte vedlejší otázku k tomuto vláknu; odpověď bez nástrojů, do vlákna se nepřidá"
   },
   "sent": {
     "command": "Příkaz",

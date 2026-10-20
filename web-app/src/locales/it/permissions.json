@@ -359,5 +359,13 @@
     "title": "Regole di autorizzazione con problemi",
     "description": "Alcune regole dell'agent.toml di un progetto sono state scartate o non possono mai corrispondere. Il resto viene caricato, ma queste regole non fanno ciò che dicono.",
     "notProtecting": "Una regola restrittiva non è attiva: la protezione è inferiore a quella scritta. Correggi la regola."
+  },
+  "hooksViewer": {
+    "title": "Hook",
+    "description": "Comandi che ogni cartella attendibile esegue attorno alle chiamate agli strumenti e alla fine di un'esecuzione. Sola lettura: modifica .jan/agent/hooks.toml.",
+    "empty": "Nessuna cartella attendibile dichiara hook.",
+    "none": "Questa cartella non dichiara hook.",
+    "error": "Impossibile leggere il file degli hook",
+    "loadFailed": "Impossibile leggere gli hook"
   }
 }

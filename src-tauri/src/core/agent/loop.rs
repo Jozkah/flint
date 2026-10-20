@@ -885,7 +885,48 @@ pub(crate) trait ToolInvoker: Send + Sync {
     async fn run_check_command(&self, _command: &str, _timeout_secs: u64) -> Option<(bool, String)> {
         None
     }
+
+    /// Run the project's `run-end` hooks for a run about to finish with
+    /// `final_text`. A `block` hook that fails returns its reason, which sends
+    /// the agent back to work. `None` when nothing blocks (no hooks, an
+    /// untrusted folder, or no surface for commands).
+    async fn run_end_hooks(&self, _final_text: &str) -> Option<String> {
+        None
+    }
 }
+
+/// The `!cmd` command a composer put on the run body, if any.
+fn scripted_command_of(body: &serde_json::Value) -> Option<String> {
+    body.get("jan_scripted_command")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
+}
+
+/// The assistant "reply" that stands for a user-typed `!cmd`: one `bash` call.
+fn scripted_bash_completion(command: &str) -> serde_json::Value {
+    serde_json::json!({
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": serde_json::Value::Null,
+                "tool_calls": [{
+                    "id": "call_user_shell",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": serde_json::json!({ "command": command }).to_string(),
+                    },
+                }],
+            },
+            "finish_reason": "tool_calls",
+        }]
+    })
+}
+
+/// How many times `run-end` hooks may send a run back to work.
+const MAX_RUN_END_BLOCKS: usize = 8;
 
 /// The answer to a spend pause (`[budget] pause_at_usd`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4588,6 +4629,29 @@ impl ToolInvoker for CompositeToolInvoker {
         Some(self.project_root.clone())
     }
 
+    async fn run_end_hooks(&self, final_text: &str) -> Option<String> {
+        use tauri_plugin_agent_tools::hooks::{self, Context, Event, HookInput};
+        // `load` is trust-gated: an untrusted folder has no hooks.
+        let hooks = hooks::load(&self.project_root).ok()?;
+        if !hooks.iter().any(|h| h.event == Event::RunEnd) {
+            return None;
+        }
+        let ctx = Context {
+            project_root: &self.project_root,
+            allow_network: self.allow_network,
+            home_readonly: self.allow_home_read,
+            sandbox: self.sandbox,
+            mask_root: None,
+            cancel: tauri_plugin_agent_tools::lifecycle::current(),
+        };
+        let input = HookInput {
+            last_assistant_message: Some(final_text.to_string()),
+            ..HookInput::default()
+        };
+        let decision = hooks::run_with_input(&hooks, Event::RunEnd, None, &ctx, &input).await;
+        decision.blocked.map(|e| e.message)
+    }
+
     async fn run_check_command(&self, command: &str, timeout_secs: u64) -> Option<(bool, String)> {
         use tauri_plugin_agent_tools::hooks::{self, Context, Event, Hook, OnFailure};
         // A folder the user has not trusted does not get to run its own
@@ -4601,6 +4665,9 @@ impl ToolInvoker for CompositeToolInvoker {
             on_failure: OnFailure::Warn,
             timeout_secs,
             tools: Vec::new(),
+            stdin_json: false,
+            if_filter: None,
+            json_output: false,
         };
         let ctx = Context {
             project_root: &self.project_root,
@@ -7169,6 +7236,20 @@ async fn orchestrate_inner(
     } else {
         (None, None)
     };
+    // `--append-system-prompt`: this run's extra instructions ride with the
+    // assistant's, ahead of the rest of the prompt.
+    let assistant_instructions = match (
+        assistant_instructions,
+        json_body
+            .get("jan_append_system_prompt")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|t| !t.is_empty()),
+    ) {
+        (Some(base), Some(extra)) => Some(format!("{base}\n\n{extra}")),
+        (None, Some(extra)) => Some(extra.to_string()),
+        (base, None) => base,
+    };
 
     // Resolved here rather than where the tools are built: the system prompt
     // names the scratch, and whether there *is* one is the sandbox decision, so
@@ -7199,6 +7280,12 @@ async fn orchestrate_inner(
         None,
     )?;
     let mut annotated_body = attach_compaction(json_body, &compaction);
+    // The project's "Compact instructions" steer every compaction of this run.
+    if let (Some(root), Some(map)) = (project_root.as_deref(), annotated_body.as_object_mut()) {
+        if let Some(focus) = crate::core::agent::context::compact_instructions(root) {
+            map.insert(crate::core::agent::compaction::BODY_FOCUS.into(), serde_json::json!(focus));
+        }
+    }
     // jan#8976: resolve the proactive compaction thresholds from the model
     // window and reserved output (profile-aware `[agent]` config, or the
     // documented 128K/16K defaults when unconfigured) and carry them on the
@@ -8444,6 +8531,7 @@ pub(crate) async fn compact_history(
     model_id: &str,
     messages: &[serde_json::Value],
     keep_recent: usize,
+    focus: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, HarnessError> {
     let (upstream_url, api_keys) = resolve_upstream_for_model(
         model_id,
@@ -8515,7 +8603,16 @@ pub(crate) async fn compact_history(
         messages,
         model_id,
         &model,
-        &crate::core::agent::compaction::CompactOptions::from_policy(&policy, keep_recent),
+        &crate::core::agent::compaction::CompactOptions {
+            focus: crate::core::agent::compaction::join_focus(&[
+                focus,
+                args.project_root
+                    .as_deref()
+                    .and_then(crate::core::agent::context::compact_instructions)
+                    .as_deref(),
+            ]),
+            ..crate::core::agent::compaction::CompactOptions::from_policy(&policy, keep_recent)
+        },
     )
     .await
 }
@@ -9121,6 +9218,19 @@ async fn run_turn_cycle(
     // exit 0 before the run may answer. One retry turn, then it finishes.
     let final_checks = crate::core::agent::final_checks::from_body(json_body);
     let mut final_checks_retried = false;
+    let mut run_end_blocks = 0usize;
+    // `--json-schema`: the final answer must validate; a bounded repair loop.
+    let json_schema = json_body.get("jan_json_schema").cloned();
+    let json_schema_attempts = json_body
+        .get("jan_json_schema_attempts")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(crate::core::agent::structured_output::DEFAULT_ATTEMPTS);
+    let mut json_schema_repairs = 0u64;
+    // `!cmd` from a composer: the turn's first "model reply" is this tool call,
+    // dispatched through the same gate, sandbox and approvals as any bash call
+    // the model made, and the run ends once its result is in. No model call.
+    let scripted_command = scripted_command_of(json_body);
+    let mut scripted_first_call = scripted_command.as_deref().map(scripted_bash_completion);
     let verify_completion = body_verification_enabled(json_body);
     let mut verify_budget = crate::core::agent::verification::RepairBudget::new(
         body_verification_retries(json_body),
@@ -9165,6 +9275,18 @@ async fn run_turn_cycle(
         if let Some(text) = crate::core::agent::monitor::collect(&monitored) {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
             shells_scanned = conversation_messages.len();
+        }
+        // A scripted `!cmd` turn is over once its tool result is in.
+        if scripted_command.is_some() && scripted_first_call.is_none() && turn > 0 {
+            let _ = events.send(StreamEvent::MessagesUpdated {
+                messages: conversation_messages.clone(),
+            });
+            return Ok(serde_json::json!({
+                "choices": [{
+                    "message": { "role": "assistant", "content": "" },
+                    "finish_reason": "stop",
+                }]
+            }));
         }
         // A call was put off to be answered later (`[approvals] defer`): the run
         // ends here instead of carrying on without it. Once the answer is given
@@ -9397,7 +9519,9 @@ async fn run_turn_cycle(
         // On a context-overflow error, compact the conversation and retry.
         // Compaction runs progressively (a smaller kept tail each attempt) and
         // the loop gives up if a pass fails to shrink the message list.
-        let mut completion = {
+        let mut completion = if let Some(scripted) = scripted_first_call.take() {
+            scripted
+        } else {
             let policy_options = crate::core::agent::compaction::CompactOptions::from_body(json_body);
             let mut keep_recent = policy_options.keep_recent;
             let mut attempts = 0usize;
@@ -9457,7 +9581,7 @@ async fn run_turn_cycle(
                             model,
                             &crate::core::agent::compaction::CompactOptions {
                                 keep_recent,
-                                ..policy_options
+                                ..policy_options.clone()
                             },
                         )
                         .await
@@ -9703,6 +9827,66 @@ async fn run_turn_cycle(
                 }
                 if let Some(obj) = completion.as_object_mut() {
                     obj.insert("final_checks".to_string(), fc::report(&outcomes, final_checks_retried));
+                }
+            }
+            // `run-end` hooks: a Stop-style gate. A `block` hook that fails sends
+            // the agent back to work with its message, at most 8 times per run.
+            if !awaiting_user
+                && run_mode == crate::core::agent::plan::RunMode::Normal
+                && run_end_blocks < MAX_RUN_END_BLOCKS
+                && !budget.exhausted()
+                && (unlimited || turn + 1 < max_turns)
+            {
+                if let Some(reason) = tools.run_end_hooks(&final_text).await {
+                    run_end_blocks += 1;
+                    conversation_messages.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": final_text,
+                    }));
+                    crate::core::agent::reminder::attach(
+                        &mut conversation_messages,
+                        &format!(
+                            "[run-end hook {run_end_blocks}/{MAX_RUN_END_BLOCKS}] A project hook                              refused to let this run finish: {reason}
+
+Address it and continue."
+                        ),
+                    );
+                    turn += 1;
+                    continue;
+                }
+            }
+            // `--json-schema`: validate the final answer. A bad one goes back to
+            // the model with the validation error, up to the attempt cap.
+            if let Some(schema) = json_schema.as_ref() {
+                match crate::core::agent::structured_output::check_answer(schema, &final_text) {
+                    Ok(value) => {
+                        if let Some(obj) = completion.as_object_mut() {
+                            obj.insert("structured_output".to_string(), value);
+                        }
+                    }
+                    Err(reason) => {
+                        if json_schema_repairs < json_schema_attempts
+                            && !budget.exhausted()
+                            && (unlimited || turn + 1 < max_turns)
+                        {
+                            json_schema_repairs += 1;
+                            conversation_messages.push(serde_json::json!({
+                                "role": "assistant",
+                                "content": final_text,
+                            }));
+                            crate::core::agent::reminder::attach(
+                                &mut conversation_messages,
+                                &format!(
+                                    "[structured output {json_schema_repairs}/{json_schema_attempts}] Your final answer did not validate against the required JSON Schema: {reason}\n\nReply again with only the corrected JSON value, no prose and no code fence."
+                                ),
+                            );
+                            turn += 1;
+                            continue;
+                        }
+                        if let Some(obj) = completion.as_object_mut() {
+                            obj.insert("structured_output_error".to_string(), serde_json::json!(reason));
+                        }
+                    }
                 }
             }
             // Independent completion verification. The worker does not grade
@@ -18860,6 +19044,42 @@ profile = \"tiny\"
             "id": "w1", "type": "function",
             "function": { "name": "write", "arguments": json!({"path": path, "content": content}).to_string() }
         }]}, "finish_reason": "tool_calls"}]})
+    }
+
+    #[tokio::test]
+    async fn a_json_schema_answer_is_repaired_then_attached_as_structured_output() {
+        let root = std::env::temp_dir().join(format!("flint-schema-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let schema = json!({"type": "object", "required": ["n"], "properties": {"n": {"type": "integer"}}});
+        let body = json!({ "jan_json_schema": schema });
+        // First answer is prose, second has the wrong type, third is valid.
+        let model = MockModel::new(vec![answer("sorry, no json"), answer("{\"n\": \"x\"}"), answer("{\"n\": 4}")]);
+        let tool = FolderTool::new(&root);
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert_eq!(done["structured_output"], json!({"n": 4}));
+        assert_eq!(model.requests.lock().unwrap().len(), 3);
+        let second = model.requests.lock().unwrap()[1].to_string();
+        assert!(second.contains("did not validate") && second.contains("no JSON"), "{second}");
+        // Out of attempts: the error is reported and nothing is attached.
+        let model = MockModel::new(vec![answer("a"), answer("b")]);
+        let body = json!({ "jan_json_schema": json!(schema), "jan_json_schema_attempts": 1 });
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert!(done.get("structured_output").is_none());
+        assert!(done["structured_output_error"].as_str().unwrap().contains("no JSON"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_scripted_shell_turn_dispatches_its_call_and_asks_no_model() {
+        let root = std::env::temp_dir().join(format!("flint-scripted-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let model = MockModel::new(vec![]);
+        let tool = FolderTool::new(&root);
+        let body = json!({ "jan_scripted_command": "echo hi" });
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert!(model.requests.lock().unwrap().is_empty(), "no model request for !cmd");
+        assert_eq!(done["choices"][0]["finish_reason"], "stop");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     async fn cycle(

@@ -1221,7 +1221,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Na vedlejší otázku se nepodařilo odpovědět."
   },
   "autoCompactNeedsWindow": "Automatické zhušťování potřebuje velikost kontextu a pro {{model}} žádnou Flint nenašel. Nastavte pro tento model Max. počet tokenů kontextu, aby se dlouhé chaty zhustily dřív, než ho zaplní. Pokud poskytovatel odmítne požadavek kvůli jeho délce, Flint zhustí a zkusí to jednou znovu.",
   "compaction": {

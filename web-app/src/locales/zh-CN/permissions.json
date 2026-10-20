@@ -358,5 +358,13 @@
     "title": "存在问题的权限规则",
     "description": "项目 agent.toml 中的一些规则被丢弃或永远无法匹配。其余规则仍会加载，但这些规则不会按所写生效。",
     "notProtecting": "限制性规则未生效，保护比所写的更弱。请修正该规则。"
+  },
+  "hooksViewer": {
+    "title": "钩子",
+    "description": "每个受信任文件夹在工具调用前后和运行结束时执行的命令。只读：请编辑 .jan/agent/hooks.toml 进行修改。",
+    "empty": "没有受信任的文件夹声明钩子。",
+    "none": "此文件夹未声明钩子。",
+    "error": "无法读取钩子文件",
+    "loadFailed": "无法读取钩子"
   }
 }

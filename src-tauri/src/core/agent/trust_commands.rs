@@ -87,3 +87,14 @@ pub async fn folder_trust_list() -> Vec<String> {
         .await
         .unwrap_or_default()
 }
+
+/// The folder's hooks, read-only: where they come from, whether the folder is
+/// trusted, and what each one is set to do. Runs nothing.
+#[tauri::command]
+pub async fn agent_hooks_report(folder: String) -> tauri_plugin_agent_tools::hooks::HooksReport {
+    tauri::async_runtime::spawn_blocking(move || {
+        tauri_plugin_agent_tools::hooks::report(Path::new(&folder))
+    })
+    .await
+    .expect("hooks report task")
+}

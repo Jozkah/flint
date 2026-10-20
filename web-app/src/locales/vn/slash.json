@@ -20,7 +20,8 @@
     "help": "Liệt kê các lệnh khả dụng",
     "new": "Bắt đầu cuộc trò chuyện mới",
     "newSession": "Bắt đầu phiên Cowork mới",
-    "compact": "Tóm tắt các tin nhắn cũ để giải phóng cửa sổ ngữ cảnh"
+    "compact": "Tóm tắt các tin nhắn cũ để giải phóng cửa sổ ngữ cảnh",
+    "btw": "Hỏi một câu phụ về cuộc trò chuyện này; trả lời không dùng công cụ, không thêm vào cuộc trò chuyện"
   },
   "sent": {
     "command": "Lệnh",

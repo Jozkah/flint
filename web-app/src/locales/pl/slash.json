@@ -20,7 +20,8 @@
     "help": "Wyświetl dostępne polecenia",
     "new": "Rozpocznij nową rozmowę",
     "newSession": "Rozpocznij nową sesję Cowork",
-    "compact": "Podsumuj starsze wiadomości, aby zwolnić okno kontekstu"
+    "compact": "Podsumuj starsze wiadomości, aby zwolnić okno kontekstu",
+    "btw": "Zadaj poboczne pytanie o ten wątek; odpowiedź bez narzędzi, nie trafia do wątku"
   },
   "sent": {
     "command": "Polecenie",

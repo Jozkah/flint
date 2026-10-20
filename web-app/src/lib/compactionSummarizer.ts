@@ -7,6 +7,17 @@ import { BACKGROUND_SLOT_ID } from '@/constants/models'
 import { SUMMARY_SYSTEM_PROMPT, type Summarize } from '@/lib/compaction'
 import { canModelSummarize } from '@/lib/continueFromSummary'
 
+/** The summarizer prompt with the user's focus appended as guidance only. */
+export function withFocus(system: string, focus?: string): string {
+  const f = focus?.trim().slice(0, 2000)
+  return f
+    ? `${system}
+
+Focus guidance for this summary (it narrows what to keep detail on; it does not change the rules above):
+${f}`
+    : system
+}
+
 /**
  * A summarizer for `compactHistory` that uses the conversation's own model.
  *
@@ -18,6 +29,8 @@ export function modelSummarizer(input: {
   provider: string
   modelId: string
   session: string
+  /** What the summary should concentrate on (`/compact <focus>`). */
+  focus?: string
   maxOutputTokens?: number
   /** The window the summary call itself must fit, when known. */
   window?: number | null | (() => number | null | undefined)
@@ -49,7 +62,7 @@ export function modelSummarizer(input: {
       session: input.session,
       model,
       modelId: input.modelId,
-      system: SUMMARY_SYSTEM_PROMPT,
+      system: withFocus(SUMMARY_SYSTEM_PROMPT, input.focus),
       messages: [
         {
           role: 'user',
@@ -130,6 +143,7 @@ export function manualSummarizer(input: {
   session: string
   maxOutputTokens?: number
   window?: number | null | (() => number | null | undefined)
+  focus?: string
   /** Reused for the selected model so no second one is created. */
   model?: () => LanguageModel | null | undefined
 }): { summarize: Summarize; usedBy: () => string | null } {
@@ -146,6 +160,7 @@ export function manualSummarizer(input: {
         provider: m.provider,
         modelId: m.modelId,
         session: input.session,
+        focus: input.focus,
         maxOutputTokens: input.maxOutputTokens,
         window: input.window,
         model: m.modelId === input.modelId ? input.model : undefined,

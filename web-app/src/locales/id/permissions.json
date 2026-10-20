@@ -358,5 +358,13 @@
     "title": "Aturan izin bermasalah",
     "description": "Beberapa aturan di agent.toml proyek dibuang atau tidak akan pernah cocok. Sisanya tetap dimuat, tetapi aturan ini tidak berfungsi seperti yang tertulis.",
     "notProtecting": "Aturan pembatas tidak berlaku, jadi perlindungan lebih lemah dari yang tertulis. Perbaiki aturannya."
+  },
+  "hooksViewer": {
+    "title": "Hook",
+    "description": "Perintah yang dijalankan setiap folder tepercaya di sekitar panggilan alat dan di akhir sebuah run. Hanya baca: ubah .jan/agent/hooks.toml.",
+    "empty": "Tidak ada folder tepercaya yang mendeklarasikan hook.",
+    "none": "Folder ini tidak mendeklarasikan hook.",
+    "error": "File hook tidak dapat dibaca",
+    "loadFailed": "Hook tidak dapat dibaca"
   }
 }

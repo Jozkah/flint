@@ -137,6 +137,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::trust_commands::folder_trust_grant,
         core::agent::trust_commands::folder_trust_revoke,
         core::agent::trust_commands::folder_trust_list,
+        core::agent::trust_commands::agent_hooks_report,
         core::agent::trust_commands::folder_trust_grandfather,
         core::agent::commands::get_compaction_policy,
         core::agent::commands::get_attribution_settings,

@@ -29,6 +29,7 @@ pub mod compaction_policy;
 pub mod context_report;
 pub mod harness_error;
 pub mod folder_trust;
+pub mod safe_mode;
 pub mod hooks;
 pub mod mailbox;
 pub mod org_policy;

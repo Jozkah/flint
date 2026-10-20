@@ -361,5 +361,13 @@
     "title": "Reguły uprawnień z problemami",
     "description": "Niektóre reguły w agent.toml projektu zostały odrzucone lub nigdy nie mogą pasować. Reszta się ładuje, ale te reguły nie robią tego, co mówią.",
     "notProtecting": "Reguła ograniczająca nie działa, więc ochrona jest słabsza, niż napisano. Popraw regułę."
+  },
+  "hooksViewer": {
+    "title": "Hooki",
+    "description": "Polecenia, które każdy zaufany folder uruchamia wokół wywołań narzędzi i na końcu przebiegu. Tylko do odczytu: edytuj .jan/agent/hooks.toml.",
+    "empty": "Żaden zaufany folder nie deklaruje hooków.",
+    "none": "Ten folder nie deklaruje hooków.",
+    "error": "Nie można odczytać pliku hooków",
+    "loadFailed": "Nie można odczytać hooków"
   }
 }

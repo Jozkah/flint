@@ -359,5 +359,13 @@
     "title": "Sorunlu izin kuralları",
     "description": "Bir projenin agent.toml dosyasındaki bazı kurallar atıldı veya hiçbir zaman eşleşemez. Geri kalanı yüklenir ama bu kurallar söylediklerini yapmaz.",
     "notProtecting": "Kısıtlayan bir kural yürürlükte değil; koruma yazılandan daha zayıf. Kuralı düzeltin."
+  },
+  "hooksViewer": {
+    "title": "Hook'lar",
+    "description": "Her güvenilen klasörün araç çağrılarının çevresinde ve bir çalıştırmanın sonunda yürüttüğü komutlar. Salt okunur: .jan/agent/hooks.toml dosyasını düzenleyin.",
+    "empty": "Hiçbir güvenilen klasör hook tanımlamıyor.",
+    "none": "Bu klasör hook tanımlamıyor.",
+    "error": "Hook dosyası okunamadı",
+    "loadFailed": "Hook'lar okunamadı"
   }
 }

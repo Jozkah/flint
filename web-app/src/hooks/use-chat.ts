@@ -258,15 +258,25 @@ export function useChat(
 
   // Manual compaction of this conversation (`/compact`, the banner's button).
   const compactNow = useCallback(
-    async (messages: UIMessage[]) =>
+    async (messages: UIMessage[], focus?: string) =>
       sessionId && transportRef.current
-        ? transportRef.current.compactNow(sessionId, messages)
+        ? transportRef.current.compactNow(sessionId, messages, undefined, focus)
+        : null,
+    [sessionId]
+  )
+
+  // `/btw`: a tool-less answer from a snapshot, never added to the thread.
+  const sideQuestion = useCallback(
+    async (messages: UIMessage[], question: string) =>
+      sessionId && transportRef.current
+        ? transportRef.current.sideQuestion(sessionId, messages, question)
         : null,
     [sessionId]
   )
 
   return {
     ...chatResult,
+    sideQuestion,
     stop,
     updateRagToolsAvailability,
     setContinueFromContent,
