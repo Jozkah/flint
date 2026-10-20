@@ -567,6 +567,7 @@ pub async fn execute_builtin(
         tool_response: None,
         session_id: ctx.session_id.map(str::to_string),
         run_id: ctx.run_id.map(str::to_string),
+        last_assistant_message: None,
     };
     let before = crate::hooks::run_with_input(
         &hooks,

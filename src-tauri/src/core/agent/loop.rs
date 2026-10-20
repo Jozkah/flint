@@ -885,7 +885,18 @@ pub(crate) trait ToolInvoker: Send + Sync {
     async fn run_check_command(&self, _command: &str, _timeout_secs: u64) -> Option<(bool, String)> {
         None
     }
+
+    /// Run the project's `run-end` hooks for a run about to finish with
+    /// `final_text`. A `block` hook that fails returns its reason, which sends
+    /// the agent back to work. `None` when nothing blocks (no hooks, an
+    /// untrusted folder, or no surface for commands).
+    async fn run_end_hooks(&self, _final_text: &str) -> Option<String> {
+        None
+    }
 }
+
+/// How many times `run-end` hooks may send a run back to work.
+const MAX_RUN_END_BLOCKS: usize = 8;
 
 /// The answer to a spend pause (`[budget] pause_at_usd`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4586,6 +4597,29 @@ impl ToolInvoker for CompositeToolInvoker {
 
     fn effect_root(&self) -> Option<std::path::PathBuf> {
         Some(self.project_root.clone())
+    }
+
+    async fn run_end_hooks(&self, final_text: &str) -> Option<String> {
+        use tauri_plugin_agent_tools::hooks::{self, Context, Event, HookInput};
+        // `load` is trust-gated: an untrusted folder has no hooks.
+        let hooks = hooks::load(&self.project_root).ok()?;
+        if !hooks.iter().any(|h| h.event == Event::RunEnd) {
+            return None;
+        }
+        let ctx = Context {
+            project_root: &self.project_root,
+            allow_network: self.allow_network,
+            home_readonly: self.allow_home_read,
+            sandbox: self.sandbox,
+            mask_root: None,
+            cancel: tauri_plugin_agent_tools::lifecycle::current(),
+        };
+        let input = HookInput {
+            last_assistant_message: Some(final_text.to_string()),
+            ..HookInput::default()
+        };
+        let decision = hooks::run_with_input(&hooks, Event::RunEnd, None, &ctx, &input).await;
+        decision.blocked.map(|e| e.message)
     }
 
     async fn run_check_command(&self, command: &str, timeout_secs: u64) -> Option<(bool, String)> {
@@ -9133,6 +9167,7 @@ async fn run_turn_cycle(
     // exit 0 before the run may answer. One retry turn, then it finishes.
     let final_checks = crate::core::agent::final_checks::from_body(json_body);
     let mut final_checks_retried = false;
+    let mut run_end_blocks = 0usize;
     let verify_completion = body_verification_enabled(json_body);
     let mut verify_budget = crate::core::agent::verification::RepairBudget::new(
         body_verification_retries(json_body),
@@ -9715,6 +9750,32 @@ async fn run_turn_cycle(
                 }
                 if let Some(obj) = completion.as_object_mut() {
                     obj.insert("final_checks".to_string(), fc::report(&outcomes, final_checks_retried));
+                }
+            }
+            // `run-end` hooks: a Stop-style gate. A `block` hook that fails sends
+            // the agent back to work with its message, at most 8 times per run.
+            if !awaiting_user
+                && run_mode == crate::core::agent::plan::RunMode::Normal
+                && run_end_blocks < MAX_RUN_END_BLOCKS
+                && !budget.exhausted()
+                && (unlimited || turn + 1 < max_turns)
+            {
+                if let Some(reason) = tools.run_end_hooks(&final_text).await {
+                    run_end_blocks += 1;
+                    conversation_messages.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": final_text,
+                    }));
+                    crate::core::agent::reminder::attach(
+                        &mut conversation_messages,
+                        &format!(
+                            "[run-end hook {run_end_blocks}/{MAX_RUN_END_BLOCKS}] A project hook                              refused to let this run finish: {reason}
+
+Address it and continue."
+                        ),
+                    );
+                    turn += 1;
+                    continue;
                 }
             }
             // Independent completion verification. The worker does not grade
