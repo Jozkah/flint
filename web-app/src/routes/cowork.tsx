@@ -521,6 +521,8 @@ import {
   endRun,
   hasSubagent,
   abortSubagent,
+  registerSubagent,
+  unregisterSubagent,
   isAbortLike,
   answerAsk,
   runTurn,
@@ -4621,11 +4623,19 @@ export function CoworkPage() {
                   // as the team does.
                   const teamControl = new TeamControl()
                   useTeamControls.getState().register(teamTaskId, teamControl)
+                  // Its own stop, chained to the turn's: a background workflow
+                  // is cancelled through this (`cancel_task`, the panel's Stop)
+                  // without ending the turn.
+                  const teamAbort = registerSubagent(sid, teamTaskId)
+                  const teamSignal = AbortSignal.any([
+                    controller.signal,
+                    teamAbort.signal,
+                  ])
                   try {
                     const outcome = await runTeam(tasks, {
                       // The turn's controller: stopping the run stops the team,
                       // and every child hangs off a signal chained to this one.
-                      signal: controller.signal,
+                      signal: teamSignal,
                       allowParallel,
                       control: teamControl,
                       decisionWindowMs: COWORK_DECISION_WINDOW_MS,
@@ -4798,7 +4808,7 @@ export function CoworkPage() {
                     useCoworkActivity.getState().patchTask(teamTaskId, {
                       // The team's own row settles on what actually happened, so a
                       // partial run cannot read as a finished one at a glance.
-                      status: controller.signal.aborted
+                      status: teamSignal.aborted
                         ? ('cancelled' as const)
                         : outcome.report.allDone
                           ? ('done' as const)
@@ -4815,6 +4825,7 @@ export function CoworkPage() {
                     }
                   } finally {
                     useTeamControls.getState().unregister(teamTaskId)
+                    unregisterSubagent(sid, teamTaskId)
                     // The children are done, so their authority goes back. The
                     // worktrees stay: they hold the work the team was run for,
                     // and the report names where each one is.

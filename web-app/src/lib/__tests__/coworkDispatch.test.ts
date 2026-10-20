@@ -847,6 +847,36 @@ describe('what holds a session in place while it works', () => {
     })
   })
 
+  describe('workflow in the background', () => {
+    const flow = { background: true, phases: [{ name: 'A', agents: [{ id: 'a', description: 'd' }] }] }
+
+    it('returns a handle at once, runs on, notifies, and is collected with await_task', async () => {
+      clearNotices('s1')
+      const gate = deferred<{ output: string }>()
+      const tasks = new BackgroundTasks()
+      const onTeam = vi.fn(() => gate.promise)
+      const out = await dispatchCoworkTool(call('workflow', flow), ctx({ tasks, onTeam }))
+      expect(out.output).toContain('task_id=c1')
+      expect(onTeam).toHaveBeenCalledWith('c1', expect.objectContaining({ tasks: expect.any(Array) }))
+      expect(tasks.status('c1')?.state).toBe('running')
+      gate.resolve({ output: 'combined report' })
+      await tasks.settleAll()
+      expect(takeNotices('s1')[0]).toContain("Background workflow 'workflow' (task_id=c1) finished")
+      const got = await dispatchCoworkTool(call('await_task', { task_id: 'c1' }), ctx({ tasks }))
+      expect(got.output).toBe('combined report')
+    })
+
+    it('runs in the foreground without the flag', async () => {
+      const tasks = new BackgroundTasks()
+      const onTeam = vi.fn(async () => ({ output: 'report' }))
+      const out = await dispatchCoworkTool(
+        call('workflow', { phases: flow.phases }),
+        ctx({ tasks, onTeam })
+      )
+      expect(out.output).toBe('report')
+    })
+  })
+
   describe('task with isolate', () => {
     it('runs as a one-task team so the team path provides the checkout', async () => {
       const onTeam = vi.fn(async () => ({ output: 'team report' }))

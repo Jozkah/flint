@@ -871,6 +871,65 @@ export function refreshPrStatusAfterGit(
 }
 
 /**
+ * Start `run` as one of this run's background tasks and return its task id at
+ * once. Shared by `task` and `workflow` with `background: true`, so a
+ * background run is held, announced, awaited and stopped the same way.
+ */
+export function startBackgroundCall(
+  call: PendingToolCall,
+  ctx: Pick<DispatchContext, 'tasks' | 'trackSubagent' | 'cancelChild'> & {
+    sessionId?: string
+  },
+  opts: {
+    kind: 'subagent' | 'workflow'
+    name: string
+    run: () => Promise<ToolOutcome>
+  }
+): ToolOutcome {
+  const { kind, name } = opts
+  // Held for as long as the child lives, not just for this call: the
+  // child inherits this run's authority until it is done.
+  const childDone = ctx.trackSubagent?.()
+  const id = call.toolCallId
+  ctx.tasks!.start(
+    id,
+    name,
+    async () => {
+      try {
+        const done = await opts.run()
+        // Pushed to the parent at its next step boundary, so it need not
+        // poll `task_status`. A stop the user asked for is not news.
+        if (ctx.sessionId && !(done.isError && /cancelled/i.test(done.output))) {
+          const preview = done.output.replace(/\s+/g, ' ').slice(0, 160)
+          pushNotice(
+            ctx.sessionId,
+            `Background ${kind} '${name}' (task_id=${id}) ${done.isError ? 'failed' : 'finished'}: "${preview}". ` +
+              'Read the full answer with await_task.'
+          )
+        }
+        return done
+      } catch (e) {
+        if (ctx.sessionId) {
+          pushNotice(
+            ctx.sessionId,
+            `Background ${kind} '${name}' (task_id=${id}) failed to run.`
+          )
+        }
+        throw e
+      } finally {
+        childDone?.()
+      }
+    },
+    () => ctx.cancelChild?.(id) ?? false
+  )
+  return {
+    output:
+      `${kind === 'workflow' ? 'Workflow' : 'Task'} started in the background. task_id=${id}. Keep working; call await_task with this task_id to collect its ${kind === 'workflow' ? 'combined report' : 'answer'}, ` +
+      'task_status to check on it, or cancel_task to stop it. The run waits for it before it ends.',
+  }
+}
+
+/**
  * `task` and the tools that manage its background children, for any surface
  * that offers delegation: Cowork's dispatcher, plain chat and Rooms all route
  * these calls here so a child is started, awaited, stopped and capped the same
@@ -907,50 +966,15 @@ export async function routeDelegationTool(
           isError: true,
         }
       }
-      // Held for as long as the child lives, not just for this call: the
-      // child inherits this run's authority until it is done.
-      const childDone = ctx.trackSubagent?.()
-      const id = call.toolCallId
       const name =
         typeof taskInput.subagent_name === 'string'
           ? taskInput.subagent_name
           : 'subagent'
-      ctx.tasks.start(
-        id,
+      return startBackgroundCall(call, ctx, {
+        kind: 'subagent',
         name,
-        async () => {
-          try {
-            const done = await ctx.onTask(id, call.input)
-            // Pushed to the parent at its next step boundary, so it need not
-            // poll `task_status`. A stop the user asked for is not news.
-            if (ctx.sessionId && !(done.isError && /cancelled/i.test(done.output))) {
-              const preview = done.output.replace(/\s+/g, ' ').slice(0, 160)
-              pushNotice(
-                ctx.sessionId,
-                `Background subagent '${name}' (task_id=${id}) ${done.isError ? 'failed' : 'finished'}: "${preview}". ` +
-                  'Read the full answer with await_task.'
-              )
-            }
-            return done
-          } catch (e) {
-            if (ctx.sessionId) {
-              pushNotice(
-                ctx.sessionId,
-                `Background subagent '${name}' (task_id=${id}) failed to run.`
-              )
-            }
-            throw e
-          } finally {
-            childDone?.()
-          }
-        },
-        () => ctx.cancelChild?.(id) ?? false
-      )
-      return {
-        output:
-          `Task started in the background. task_id=${id}. Keep working; call await_task with this task_id to collect its answer, ` +
-          'task_status to check on it, or cancel_task to stop it. The run waits for it before it ends.',
-      }
+        run: () => ctx.onTask(call.toolCallId, call.input),
+      })
     }
     // `isolate: true` is a team of one. The team path already provisions a
     // checkout for a task, records it for review, refuses when the project
@@ -1373,6 +1397,15 @@ async function routeCoworkTool(
           return { output: `ERROR: ${converted}`, isError: true }
         }
         teamInput = converted
+      }
+      const onTeam = ctx.onTeam
+      const inputOf = call.input as Record<string, unknown> | null
+      if (toolName === WORKFLOW_TOOL_NAME && inputOf?.background === true && ctx.tasks) {
+        return startBackgroundCall(call, ctx, {
+          kind: 'workflow',
+          name: 'workflow',
+          run: () => onTeam(call.toolCallId, teamInput),
+        })
       }
       const teamDone = ctx.trackSubagent?.()
       try {

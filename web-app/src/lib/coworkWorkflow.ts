@@ -82,6 +82,12 @@ export function workflowTool(subagentNames: string[]): Tool {
     inputSchema: jsonSchema({
       type: 'object',
       properties: {
+        background: {
+          type: 'boolean',
+          description:
+            'Start it and return a task_id at once; collect the combined report with await_task, ' +
+            'check task_status, or cancel_task. Default false.',
+        },
         phases: {
           type: 'array',
           minItems: 1,
