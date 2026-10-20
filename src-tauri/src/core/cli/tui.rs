@@ -2095,6 +2095,8 @@ struct App {
     compact_request: Option<CompactKind>,
     /// `/compact <focus>`: what the next manual compaction should keep detail on.
     compact_focus: Option<String>,
+    /// `!cmd` waiting to ride on the next run's body.
+    scripted_command: Option<String>,
     /// `/btw` answers arriving from their tasks, shown as notes.
     btw_tx: tokio::sync::mpsc::UnboundedSender<String>,
     btw_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
@@ -2603,6 +2605,7 @@ impl App {
             plugin_installing: false,
             compact_request: None,
             compact_focus: None,
+            scripted_command: None,
             btw_tx,
             btw_rx,
             compacting: None,
@@ -4127,6 +4130,26 @@ impl App {
         if frames > 0 {
             self.spinner_frame = self.spinner_frame.wrapping_add(frames);
             self.last_spinner_advance += Duration::from_millis(frames as u64 * SPINNER_ADVANCE_MS);
+        }
+    }
+
+    /// `!cmd`: run a shell command directly. It goes through the agent's own
+    /// `bash` path (same sandbox, same approvals), as the first step of a run
+    /// that makes no model call; the command and its output join the thread.
+    fn submit_shell(&mut self, command: &str) {
+        if command.is_empty() {
+            self.note("usage: !<command>");
+            return;
+        }
+        if self.status != Status::Idle {
+            self.note("!command runs only while idle");
+            return;
+        }
+        self.scripted_command = Some(command.to_string());
+        self.submit_user_text(format!("!{command}"), true);
+        if self.status != Status::Running {
+            // Refused (not signed in): nothing will consume it.
+            self.scripted_command = None;
         }
     }
 
@@ -9235,7 +9258,11 @@ async fn chat_loop<B: Backend>(
                 // The submission itself is one human turn toward the aging
                 // grace period; model roundtrips count via `Step` events.
                 age_closed_todos(app).await;
-                current = Some(spawn_run(&run_args(app, args), app.body()));
+                let mut body = app.body();
+                if let Some(command) = app.scripted_command.take() {
+                    body["jan_scripted_command"] = serde_json::json!(command);
+                }
+                current = Some(spawn_run(&run_args(app, args), body));
             } else if !loading_noted && !mcp_ready {
                 // The base snapshot gates silently; only the MCP connect notes.
                 loading_noted = true;
@@ -10870,6 +10897,8 @@ async fn handle_key(
                 app.record_submitted(&text);
                 if let Some(cmd) = text.strip_prefix('/') {
                     run_command(app, cmd, mcp_servers).await;
+                } else if let Some(cmd) = text.strip_prefix('!') {
+                    app.submit_shell(cmd.trim());
                 } else {
                     app.submit_user(text);
                 }
