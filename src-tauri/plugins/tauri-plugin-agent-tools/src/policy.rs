@@ -176,14 +176,27 @@ pub fn load_under_trust(
     // loosen it. The clamping happens on the lists, before they are compiled,
     // so there is one place where the two policies meet rather than a check
     // at every use.
+    let permissions = ToolPermissions::new(
+        org.clamp_default(default),
+        &tools.allow,
+        &org.clamp_deny(&tools.deny),
+        &tools.allow_write,
+    )
+    .with_ask(&tools.ask);
+    // The load still succeeds -- a typo must not brick a session -- but a
+    // dropped `deny` is a restriction that silently vanished, so say so here
+    // as well as wherever the warnings are shown.
+    for w in permissions.warnings() {
+        eprintln!(
+            "agent.toml: [tools].{} rule `{}` {}: {}",
+            w.list,
+            w.rule,
+            if w.weakens_restriction() { "is NOT protecting you" } else { "has no effect" },
+            w.reason
+        );
+    }
     ProjectPolicy {
-        permissions: ToolPermissions::new(
-            org.clamp_default(default),
-            &tools.allow,
-            &org.clamp_deny(&tools.deny),
-            &tools.allow_write,
-        )
-        .with_ask(&tools.ask),
+        permissions,
         network: NetworkPolicy {
             // The project's setting wins over the surface's default, which is
             // the point of writing it down in the repository -- within what

@@ -580,6 +580,34 @@ pub async fn agent_projects_list(
     Ok(crate::core::agent::projects_registry::list_projects())
 }
 
+/// One project's rule warnings, for the permissions settings page.
+#[derive(serde::Serialize)]
+pub struct ProjectRuleWarnings {
+    pub project: String,
+    pub folder: String,
+    pub warnings: Vec<tauri_plugin_agent_tools::permissions::RuleWarning>,
+}
+
+/// Rule warnings for every registered project that has any.
+#[tauri::command]
+pub async fn agent_policy_rule_warnings() -> Result<Vec<ProjectRuleWarnings>, String> {
+    blocking(|| {
+        crate::core::agent::projects_registry::list_projects()
+            .into_iter()
+            .filter_map(|p| {
+                let warnings = crate::core::agent::project::policy_rule_warnings(std::path::Path::new(&p.folder));
+                (!warnings.is_empty()).then_some(ProjectRuleWarnings {
+                    project: p.name,
+                    folder: p.folder,
+                    warnings,
+                })
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Register (or re-register) `folder` as a project, returning its stable entry.
 #[tauri::command]
 pub async fn agent_projects_register(

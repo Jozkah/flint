@@ -350,5 +350,10 @@
     "lineLabel": "Línia",
     "ruleLabel": "Regla",
     "more": "I {{count}} línies marcades més"
+  },
+  "ruleWarnings": {
+    "title": "Regles de permisos amb problemes",
+    "description": "Algunes regles de l'agent.toml d'un projecte s'han descartat o mai no poden coincidir. La resta es carrega, però aquestes regles no fan el que diuen.",
+    "notProtecting": "Una regla restrictiva no està en vigor: hi ha menys protecció de l'escrita. Corregeix la regla."
   }
 }

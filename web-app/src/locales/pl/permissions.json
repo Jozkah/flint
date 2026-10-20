@@ -352,5 +352,10 @@
     "lineLabel": "Wiersz",
     "ruleLabel": "Reguła",
     "more": "I jeszcze {{count}} oznaczonych wierszy"
+  },
+  "ruleWarnings": {
+    "title": "Reguły uprawnień z problemami",
+    "description": "Niektóre reguły w agent.toml projektu zostały odrzucone lub nigdy nie mogą pasować. Reszta się ładuje, ale te reguły nie robią tego, co mówią.",
+    "notProtecting": "Reguła ograniczająca nie działa, więc ochrona jest słabsza, niż napisano. Popraw regułę."
   }
 }

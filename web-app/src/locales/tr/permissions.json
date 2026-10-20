@@ -350,5 +350,10 @@
     "lineLabel": "Satır",
     "ruleLabel": "Kural",
     "more": "Ve işaretlenen {{count}} satır daha"
+  },
+  "ruleWarnings": {
+    "title": "Sorunlu izin kuralları",
+    "description": "Bir projenin agent.toml dosyasındaki bazı kurallar atıldı veya hiçbir zaman eşleşemez. Geri kalanı yüklenir ama bu kurallar söylediklerini yapmaz.",
+    "notProtecting": "Kısıtlayan bir kural yürürlükte değil; koruma yazılandan daha zayıf. Kuralı düzeltin."
   }
 }

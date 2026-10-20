@@ -349,5 +349,10 @@
     "lineLabel": "Dòng",
     "ruleLabel": "Quy tắc",
     "more": "Và {{count}} dòng được đánh dấu khác"
+  },
+  "ruleWarnings": {
+    "title": "Quy tắc quyền có vấn đề",
+    "description": "Một số quy tắc trong agent.toml của dự án đã bị bỏ hoặc không bao giờ khớp. Phần còn lại vẫn được tải, nhưng các quy tắc này không làm đúng như đã viết.",
+    "notProtecting": "Một quy tắc hạn chế không có hiệu lực, nên mức bảo vệ thấp hơn đã viết. Hãy sửa quy tắc."
   }
 }

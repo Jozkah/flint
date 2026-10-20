@@ -349,5 +349,10 @@
     "lineLabel": "줄",
     "ruleLabel": "규칙",
     "more": "그 밖에 표시된 줄 {{count}}개"
+  },
+  "ruleWarnings": {
+    "title": "문제가 있는 권한 규칙",
+    "description": "프로젝트 agent.toml의 일부 규칙이 버려졌거나 절대 일치할 수 없습니다. 나머지는 로드되지만 이 규칙들은 적힌 대로 동작하지 않습니다.",
+    "notProtecting": "제한 규칙이 적용되지 않아 적힌 것보다 보호가 약합니다. 규칙을 수정하세요."
   }
 }

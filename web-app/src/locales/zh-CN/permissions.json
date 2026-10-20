@@ -349,5 +349,10 @@
     "lineLabel": "行",
     "ruleLabel": "规则",
     "more": "另有 {{count}} 行被标记"
+  },
+  "ruleWarnings": {
+    "title": "存在问题的权限规则",
+    "description": "项目 agent.toml 中的一些规则被丢弃或永远无法匹配。其余规则仍会加载，但这些规则不会按所写生效。",
+    "notProtecting": "限制性规则未生效，保护比所写的更弱。请修正该规则。"
   }
 }

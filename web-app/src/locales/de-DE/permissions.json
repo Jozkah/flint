@@ -350,5 +350,10 @@
     "lineLabel": "Zeile",
     "ruleLabel": "Regel",
     "more": "Und {{count}} weitere markierte Zeilen"
+  },
+  "ruleWarnings": {
+    "title": "Berechtigungsregeln mit Problemen",
+    "description": "Einige Regeln in der agent.toml eines Projekts wurden verworfen oder können nie greifen. Der Rest wird weiter geladen, aber diese Regeln tun nicht, was sie sagen.",
+    "notProtecting": "Eine einschränkende Regel gilt nicht, der Schutz ist also geringer als geschrieben. Korrigiere die Regel."
   }
 }
