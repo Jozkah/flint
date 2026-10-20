@@ -1,3 +1,4 @@
+import { stripInvisible } from '@/lib/invisibleText'
 import { canModelSummarize } from '@/lib/continueFromSummary'
 import { refusedDraftToRestore, unescapeComposerMarkdown } from '@/lib/composerText'
 import { pendingComposerTokens } from '@/lib/context-manager'
@@ -1300,7 +1301,9 @@ const ChatInput = memo(function ChatInput({
   ) => {
     // The composer's Markdown escapes `*`, `_` and friends; the message is
     // sent and shown as typed.
-    const typed = unescapeComposerMarkdown(typedRaw)
+    // Tag characters and bidi controls pasted along with text are hidden
+    // instructions the sender cannot see; they never reach the model.
+    const typed = stripInvisible(unescapeComposerMarkdown(typedRaw)).text
     setWebOffPrompt(null)
     if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
       setWebOffPrompt(typed)
