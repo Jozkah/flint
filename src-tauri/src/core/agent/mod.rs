@@ -26,6 +26,7 @@ pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod btw;
+pub mod structured_output;
 pub mod compaction;
 /// Request correlation with the provider's billing records (upstream #9034).
 pub mod correlation;

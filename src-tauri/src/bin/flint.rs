@@ -1104,6 +1104,15 @@ enum AgentCommands {
         /// Do not save this run's session to disk (it cannot be resumed)
         #[arg(long)]
         ephemeral: bool,
+        /// The final answer must be one JSON value valid against this JSON
+        /// Schema, given inline or as a file path. An invalid answer goes back
+        /// to the model with the error; the validated value is printed alone
+        /// (text mode) or as `structured_output` in the JSON result.
+        #[arg(long, value_name = "FILE|JSON")]
+        json_schema: Option<String>,
+        /// Repair attempts for --json-schema before the run fails (default 3)
+        #[arg(long, value_name = "N", requires = "json_schema")]
+        json_schema_attempts: Option<u64>,
     },
     /// Run one durable subagent from its spec, as a job's supervisor starts it
     /// (AH-101). Not meant to be run by hand.
@@ -2207,6 +2216,21 @@ fn resolve_append_prompt(text: Option<String>, file: Option<&str>) -> Result<Opt
     })
 }
 
+/// `--json-schema`: inline JSON when it looks like JSON, else a file path. The
+/// schema is checked for keywords the validator cannot enforce.
+fn resolve_json_schema(arg: &str) -> Result<serde_json::Value, String> {
+    let trimmed = arg.trim();
+    let raw = if trimmed.starts_with('{') || trimmed == "true" || trimmed == "false" {
+        trimmed.to_string()
+    } else {
+        std::fs::read_to_string(trimmed)
+            .map_err(|e| format!("cannot read --json-schema file '{trimmed}': {e}"))?
+    };
+    let value: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("--json-schema is not valid JSON: {e}"))?;
+    app_lib::core::agent::structured_output::load(value).map_err(|e| format!("--json-schema: {e}"))
+}
+
 /// The `--data-dir` value from raw args (only `serve` and `stop` accept it),
 /// stopping at `--` so a task text can never be mistaken for it.
 fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
@@ -3148,7 +3172,16 @@ async fn handle_agent(cmd: AgentCommands) {
             deny_tools,
             effort,
             ephemeral,
+            json_schema,
+            json_schema_attempts,
         } => {
+            let json_schema = match json_schema.as_deref().map(resolve_json_schema).transpose() {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(2);
+                }
+            };
             let append_system_prompt = match resolve_append_prompt(
                 append_system_prompt,
                 append_system_prompt_file.as_deref(),
@@ -3221,6 +3254,8 @@ async fn handle_agent(cmd: AgentCommands) {
                     deny_tools,
                     effort,
                     ephemeral,
+                    json_schema,
+                    json_schema_attempts,
                     ..Default::default()
                 },
                 resume.into_request(),
