@@ -112,7 +112,40 @@ bool is_benign_probe_error(const std::string & line) {
     return line.find("ggml_metal_library_init_from_source") != std::string::npos;
 }
 
+// The lines that say where a load put the model. llama.cpp prints them at INFO,
+// which common's logger files under TRACE: above the default threshold, so
+// they never reached any log. A report of slow decoding then could not say
+// whether the GPU was used at all (a 24 GB card decoding at CPU speed looked
+// the same as a healthy one), and the worker's offload report -- which parses
+// exactly these lines for the model's status -- never fired.
+bool is_placement_line(const char * text) {
+    static const char * const keys[] = {
+        "offloading ",            // load_tensors: offloading N repeating layers to GPU
+        "offloaded ",             // load_tensors: offloaded N/M layers to GPU
+        "model buffer size",      // load_tensors:  Vulkan0 model buffer size = X MiB
+        "KV buffer size",         // llama_kv_cache: Vulkan0 KV buffer size = X MiB
+        "RS buffer size",         // recurrent state, hybrid models
+        "compute buffer size",    // llama_context: Vulkan0 compute buffer size = X MiB
+        "graph splits",           // more than a handful means layers are split across devices
+        "using device",           // llama_model_load_from_file_impl: using device Vulkan0 (...)
+        "CLIP using",             // clip_ctx: CLIP using Vulkan0 backend / CPU backend
+    };
+    for (const char * key : keys) {
+        if (std::strstr(text, key) != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void capture_log_callback(ggml_log_level level, const char * text, void * user_data) {
+    // Re-issued at a level that prints, but only when the logger would drop it:
+    // at -lv 4 and above it prints these itself and a second copy is noise.
+    if (level == GGML_LOG_LEVEL_INFO && text != nullptr && is_placement_line(text) &&
+        common_log_get_verbosity_thold() < LOG_LEVEL_TRACE) {
+        LOG_INF("%s", text);
+        return;
+    }
     if (level == GGML_LOG_LEVEL_ERROR && text != nullptr) {
         std::lock_guard<std::mutex> lock(g_capture_mu);
         if (g_capturing && g_captured.size() < LOG_CAPTURE_MAX_LINES) {
