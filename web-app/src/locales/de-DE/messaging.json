@@ -23,6 +23,10 @@
     "label": "Nachrichten aus anderen Sitzungen annehmen",
     "description": "Wenn deaktiviert, wird anderen Sitzungen mitgeteilt, dass diese keine Nachrichten annimmt, und nichts, was sie senden, erreicht sie."
   },
+  "hold": {
+    "label": "Ask me before delivering",
+    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+  },
   "subagentQuestion": {
     "title": "{{name}} fragt den Agenten",
     "open": "Wartet auf eine Antwort",
@@ -80,5 +84,16 @@
   "waitingCount_one": "{{count}} Nachricht wartet",
   "waitingCount_other": "{{count}} Nachrichten warten",
   "waitingIn_one": "{{count}} Nachricht in {{session}}",
-  "waitingIn_other": "{{count}} Nachrichten in {{session}}"
+  "waitingIn_other": "{{count}} Nachrichten in {{session}}",
+  "held": {
+    "title": "Messages waiting for approval",
+    "banner": "Waiting for your approval ({{count}})",
+    "from": "From {{name}}",
+    "notice": "Status notice",
+    "expires": "Expires in {{minutes}} min",
+    "approve": "Approve",
+    "deny": "Deny",
+    "approveLabel": "Approve the message from {{name}}",
+    "denyLabel": "Deny the message from {{name}}"
+  }
 }

@@ -378,11 +378,11 @@
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_list": [
+    "web-app/src/containers/ExtensionsSettings.tsx (via listPlugins)",
     "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via listPlugins)",
     "web-app/src/containers/extensions/PluginsTab.tsx (via listPlugins)",
     "web-app/src/lib/pluginInventory.ts (via listPlugins)",
-    "web-app/src/lib/pluginStore.ts",
-    "web-app/src/routes/settings/extensions.tsx (via listPlugins)"
+    "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_remove": [
     "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via removePlugin)",
@@ -394,10 +394,10 @@
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_set_enabled": [
+    "web-app/src/containers/ExtensionsSettings.tsx (via setPluginEnabled)",
     "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via setPluginEnabled)",
     "web-app/src/containers/extensions/PluginsTab.tsx (via setPluginEnabled)",
-    "web-app/src/lib/pluginStore.ts",
-    "web-app/src/routes/settings/extensions.tsx (via setPluginEnabled)"
+    "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_sources": [
     "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via getPluginSources)",
@@ -782,7 +782,8 @@
     "web-app/src/routes/settings/general.tsx"
   ],
   "clear_claude_code_env": [
-    "web-app/src/routes/settings/claude-code.tsx"
+    "web-app/src/containers/ClaudeCodeSettings.tsx",
+    "web-app/src/routes/settings/integrations.tsx (via ClaudeCodeSettings)"
   ],
   "clear_mcp_auth": [
     "web-app/src/services/mcp/tauri.ts"
@@ -805,7 +806,8 @@
     "web-app/src/services/threads/default.ts"
   ],
   "detect_claude_code_overrides": [
-    "web-app/src/routes/settings/claude-code.tsx"
+    "web-app/src/containers/ClaudeCodeSettings.tsx",
+    "web-app/src/routes/settings/integrations.tsx (via ClaudeCodeSettings)"
   ],
   "diffusion_add_custom_model": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
@@ -1135,7 +1137,8 @@
     "web-app/src/lib/skillActivation.ts (via jevSuggestSkill)"
   ],
   "launch_claude_code_with_config": [
-    "web-app/src/routes/settings/claude-code.tsx"
+    "web-app/src/containers/ClaudeCodeSettings.tsx",
+    "web-app/src/routes/settings/integrations.tsx (via ClaudeCodeSettings)"
   ],
   "list_open_apps": [
     "web-app/src/containers/ComputerExclusionSettings.tsx (via listOpenApps)",
@@ -1145,6 +1148,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1158,6 +1162,49 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_held": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_held_approve": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
+    "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
+    "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
+    "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxDelivery.ts (via sessionMailbox)",
+    "web-app/src/lib/mailboxPresence.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionMailbox.ts",
+    "web-app/src/lib/sessionStopGate.ts (via sessionMailbox)",
+    "web-app/src/lib/sessionStopListener.ts (via sessionMailbox)"
+  ],
+  "mailbox_held_deny": [
+    "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
+    "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
+    "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1171,6 +1218,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1184,6 +1232,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1197,6 +1246,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1210,6 +1260,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1223,6 +1274,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1236,6 +1288,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1249,6 +1302,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1262,6 +1316,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1275,6 +1330,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1288,6 +1344,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1301,6 +1358,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1314,6 +1372,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1327,6 +1386,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1340,6 +1400,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1353,6 +1414,7 @@
     "web-app/src/containers/AgentMessageCard.tsx (via sessionMailbox)",
     "web-app/src/containers/AgentReplyForm.tsx (via sessionMailbox)",
     "web-app/src/containers/CoworkHeldInput.tsx (via sessionMailbox)",
+    "web-app/src/containers/HeldInboundStack.tsx (via sessionMailbox)",
     "web-app/src/lib/campaignHost.ts (via sessionMailbox)",
     "web-app/src/lib/coworkSessionLifecycle.ts (via sessionMailbox)",
     "web-app/src/lib/mailAutoReply.ts (via sessionMailbox)",
@@ -1407,7 +1469,7 @@
     "web-app/src/lib/migration.ts"
   ],
   "network_ca_check": [
-    "web-app/src/routes/settings/https-proxy.tsx"
+    "web-app/src/routes/settings/network-proxy.tsx"
   ],
   "open_dialog": [
     "web-app/src/services/dialog/tauri.ts"
@@ -2157,11 +2219,11 @@
   ],
   "settings_backup_load": [
     "web-app/src/containers/SettingsBackupCard.tsx",
-    "web-app/src/routes/settings/general.tsx (via SettingsBackupCard)"
+    "web-app/src/routes/settings/data.tsx (via SettingsBackupCard)"
   ],
   "settings_backup_save": [
     "web-app/src/containers/SettingsBackupCard.tsx",
-    "web-app/src/routes/settings/general.tsx (via SettingsBackupCard)"
+    "web-app/src/routes/settings/data.tsx (via SettingsBackupCard)"
   ],
   "settings_backup_store_provider_keys": [
     "web-app/src/containers/SettingsBackupCard.tsx"

@@ -28,6 +28,13 @@ type SessionMessagingState = {
    */
   optOut: Record<string, boolean>
   setAcceptsMessages: (sessionId: string, accepts: boolean) => void
+  /**
+   * Sessions that hold incoming mail for their user to approve. Absent
+   * delivers as before. Only meaningful while the session accepts messages;
+   * refusing wins.
+   */
+  holdInbound: Record<string, boolean>
+  setHoldInbound: (sessionId: string, hold: boolean) => void
   /** An automatic wake-up released mail that the session's next run will take. */
   pendingWake: Record<string, boolean>
   /** Whether the session's current or last run was started by a wake-up. */
@@ -36,6 +43,18 @@ type SessionMessagingState = {
   /** Called when a run starts: it was a wake-up if one was requested. */
   noteRunStarted: (sessionId: string) => void
   forget: (sessionId: string) => void
+}
+
+/** What a session does with mail from other sessions. */
+export type InboundMode = 'accept' | 'hold' | 'refuse'
+
+/** The mode the settings give a session: refusing wins over holding. */
+export function inboundModeOf(
+  state: Pick<SessionMessagingState, 'optOut' | 'holdInbound'>,
+  sessionId: string
+): InboundMode {
+  if (state.optOut[sessionId] === true) return 'refuse'
+  return state.holdInbound?.[sessionId] === true ? 'hold' : 'accept'
 }
 
 function omit<T>(map: Record<string, T>, key: string): Record<string, T> {
@@ -50,6 +69,7 @@ export const useSessionMessaging = create<SessionMessagingState>()(
     (set) => ({
       autoWake: {},
       optOut: {},
+      holdInbound: {},
       pendingWake: {},
       lastRunWasWake: {},
 
@@ -65,6 +85,13 @@ export const useSessionMessaging = create<SessionMessagingState>()(
           optOut: accepts
             ? omit(s.optOut, sessionId)
             : { ...s.optOut, [sessionId]: true },
+        })),
+
+      setHoldInbound: (sessionId, hold) =>
+        set((s) => ({
+          holdInbound: hold
+            ? { ...s.holdInbound, [sessionId]: true }
+            : omit(s.holdInbound ?? {}, sessionId),
         })),
 
       markWakeRequested: (sessionId) =>
@@ -83,6 +110,7 @@ export const useSessionMessaging = create<SessionMessagingState>()(
         set((s) => ({
           autoWake: omit(s.autoWake, sessionId),
           optOut: omit(s.optOut, sessionId),
+          holdInbound: omit(s.holdInbound ?? {}, sessionId),
           pendingWake: omit(s.pendingWake, sessionId),
           lastRunWasWake: omit(s.lastRunWasWake, sessionId),
         })),
@@ -94,6 +122,7 @@ export const useSessionMessaging = create<SessionMessagingState>()(
       partialize: (state) => ({
         autoWake: state.autoWake,
         optOut: state.optOut,
+        holdInbound: state.holdInbound,
       }),
     }
   )

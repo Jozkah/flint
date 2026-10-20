@@ -23,6 +23,10 @@
     "label": "다른 세션의 메시지 수락",
     "description": "끄면 다른 세션에 이 세션이 메시지를 받지 않는다고 알리며, 보낸 메시지는 도달하지 않습니다."
   },
+  "hold": {
+    "label": "Ask me before delivering",
+    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+  },
   "subagentQuestion": {
     "title": "{{name}}이(가) 에이전트에게 질문함",
     "open": "답변 대기 중",
@@ -80,5 +84,16 @@
   "waitingCount_one": "대기 중인 메시지 {{count}}개",
   "waitingCount_other": "대기 중인 메시지 {{count}}개",
   "waitingIn_one": "{{session}}에 메시지 {{count}}개",
-  "waitingIn_other": "{{session}}에 메시지 {{count}}개"
+  "waitingIn_other": "{{session}}에 메시지 {{count}}개",
+  "held": {
+    "title": "Messages waiting for approval",
+    "banner": "Waiting for your approval ({{count}})",
+    "from": "From {{name}}",
+    "notice": "Status notice",
+    "expires": "Expires in {{minutes}} min",
+    "approve": "Approve",
+    "deny": "Deny",
+    "approveLabel": "Approve the message from {{name}}",
+    "denyLabel": "Deny the message from {{name}}"
+  }
 }

@@ -19,7 +19,7 @@ import { AgentMessageHeader } from '../AgentMessageHeader'
 import { CoworkHeldInput } from '../CoworkHeldInput'
 import { SessionMessagingToggle } from '../SessionMessagingToggle'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { inboundModeOf, useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { envelopeToQueued } from '@/lib/mailboxDelivery'
 import type { MailEnvelope } from '@/lib/sessionMailbox'
@@ -204,6 +204,24 @@ describe('SessionMessagingToggle', () => {
     expect(useSessionMessaging.getState().optOut).toEqual({ A: true })
     fireEvent.click(accept)
     expect(useSessionMessaging.getState().optOut).toEqual({})
+  })
+})
+
+describe('SessionMessagingToggle inbound hold', () => {
+  it('has an "ask me" switch that only applies while messages are accepted', () => {
+    useSessionMessaging.setState({ autoWake: {}, optOut: {}, holdInbound: {} })
+    render(<SessionMessagingToggle sessionId="A" />)
+    const hold = screen.getByRole('switch', { name: 'messaging:hold.label' })
+    expect(hold).toHaveAttribute('aria-checked', 'false')
+    expect(hold).toHaveAccessibleDescription('messaging:hold.description')
+    fireEvent.click(hold)
+    expect(useSessionMessaging.getState().holdInbound).toEqual({ A: true })
+    expect(inboundModeOf(useSessionMessaging.getState(), 'A')).toBe('hold')
+
+    fireEvent.click(screen.getByRole('switch', { name: 'messaging:accept.label' }))
+    expect(inboundModeOf(useSessionMessaging.getState(), 'A')).toBe('refuse')
+    expect(screen.getByRole('switch', { name: 'messaging:hold.label' })).toBeDisabled()
+    useSessionMessaging.setState({ optOut: {}, holdInbound: {} })
   })
 })
 
