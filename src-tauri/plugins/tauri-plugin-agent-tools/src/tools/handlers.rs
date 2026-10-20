@@ -561,8 +561,21 @@ pub async fn execute_builtin(
             );
         }
     };
-    let before =
-        crate::hooks::run(&hooks, crate::hooks::Event::PreTool, Some(tool.name), &hook_ctx).await;
+    let mut hook_input = crate::hooks::HookInput {
+        tool_name: tool.name.to_string(),
+        tool_input: args.clone(),
+        tool_response: None,
+        session_id: ctx.session_id.map(str::to_string),
+        run_id: ctx.run_id.map(str::to_string),
+    };
+    let before = crate::hooks::run_with_input(
+        &hooks,
+        crate::hooks::Event::PreTool,
+        Some(tool.name),
+        &hook_ctx,
+        &hook_input,
+    )
+    .await;
     if let Some(blocked) = before.blocked {
         let harness: crate::harness_error::HarnessError = (&blocked).into();
         return (
@@ -616,8 +629,15 @@ pub async fn execute_builtin(
     // A post-tool hook cannot undo what the tool did, so it never blocks. What
     // it can do is say something went wrong, where the model and the person
     // reading the transcript will both see it.
-    let after =
-        crate::hooks::run(&hooks, crate::hooks::Event::PostTool, Some(tool.name), &hook_ctx).await;
+    hook_input.tool_response = Some(content.clone());
+    let after = crate::hooks::run_with_input(
+        &hooks,
+        crate::hooks::Event::PostTool,
+        Some(tool.name),
+        &hook_ctx,
+        &hook_input,
+    )
+    .await;
     for warning in &after.warnings {
         content.push_str(&format!("\n\n[post-tool hook] {}", warning.message));
     }

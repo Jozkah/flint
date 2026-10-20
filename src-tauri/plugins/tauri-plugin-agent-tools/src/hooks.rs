@@ -266,6 +266,11 @@ pub struct Hook {
     /// events that are not about a tool.
     #[serde(default)]
     pub tools: Vec<String>,
+    /// Opt-in: hand the tool call to this hook as JSON on stdin
+    /// (`pre-tool` / `post-tool` only). Off by default, so a hook written
+    /// before this existed still sees an empty stdin.
+    #[serde(default)]
+    pub stdin_json: bool,
 }
 
 impl Hook {
@@ -445,7 +450,17 @@ pub fn parse(raw: &str) -> Result<Vec<Hook>, HookError> {
                 ))
             }
         };
-        hooks.push(Hook { event, command, on_failure, timeout_secs, tools });
+        let stdin_json = match item.get("stdin_json") {
+            None => false,
+            Some(toml::Value::Boolean(b)) => *b,
+            Some(_) => {
+                return Err(HookError::new(
+                    HookErrorKind::Malformed,
+                    format!("hook {at}: `stdin_json` must be true or false"),
+                ))
+            }
+        };
+        hooks.push(Hook { event, command, on_failure, timeout_secs, tools, stdin_json });
     }
     Ok(hooks)
 }
@@ -515,7 +530,50 @@ pub struct Context<'a> {
 /// already made, and running more commands after refusing the work is just
 /// more side effects.
 pub async fn run(hooks: &[Hook], event: Event, tool: Option<&str>, ctx: &Context<'_>) -> Decision {
-    run_with_env(hooks, event, tool, ctx, &[]).await
+    run_with_env(hooks, event, tool, ctx, &[], None).await
+}
+
+/// What a tool hook is handed as JSON on stdin: the call's name and
+/// arguments, who is running it and where. Provider keys and the prompt are
+/// never part of it.
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct HookInput {
+    pub tool_name: String,
+    pub tool_input: serde_json::Value,
+    /// `post-tool` only: the tool's result text, bounded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_response: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+}
+
+impl HookInput {
+    fn to_stdin(&self, event: Event, cwd: &Path) -> String {
+        let mut value = serde_json::to_value(self).unwrap_or_default();
+        if let Some(map) = value.as_object_mut() {
+            map.insert("hook_event_name".into(), event.as_str().into());
+            map.insert("cwd".into(), cwd.to_string_lossy().into_owned().into());
+            if let Some(resp) = map.get_mut("tool_response") {
+                if let Some(text) = resp.as_str() {
+                    *resp = bound(&crate::harness_error::scrub(text)).into();
+                }
+            }
+        }
+        value.to_string()
+    }
+}
+
+/// [`run`] that also writes the tool call as JSON on the hook's stdin.
+pub async fn run_with_input(
+    hooks: &[Hook],
+    event: Event,
+    tool: Option<&str>,
+    ctx: &Context<'_>,
+    input: &HookInput,
+) -> Decision {
+    run_with_env(hooks, event, tool, ctx, &[], Some(input)).await
 }
 
 /// [`run`] with extra environment variables for the hook (the batch event's
@@ -526,11 +584,12 @@ async fn run_with_env(
     tool: Option<&str>,
     ctx: &Context<'_>,
     extra_env: &[(&str, String)],
+    input: Option<&HookInput>,
 ) -> Decision {
     let mut decision = Decision::default();
     for hook in hooks.iter().filter(|h| h.applies_to(event, tool)) {
         let started = std::time::Instant::now();
-        let (ok, output, error) = execute(hook, event, tool, ctx, extra_env).await;
+        let (ok, output, error) = execute(hook, event, tool, ctx, extra_env, input.filter(|_| hook.stdin_json)).await;
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         log::debug!(
             "hook finished: event={} command={:?} ok={} outcome={} duration_ms={}",
@@ -573,6 +632,7 @@ async fn execute(
     tool: Option<&str>,
     ctx: &Context<'_>,
     extra_env: &[(&str, String)],
+    input: Option<&HookInput>,
 ) -> (bool, String, Option<HookError>) {
     use crate::tools::{jail, proc};
 
@@ -670,6 +730,7 @@ async fn execute(
         std::sync::Arc::new(std::sync::Mutex::new(None));
     let spawned = running.clone();
     let event_name = event.as_str();
+    let stdin_payload = input.map(|i| i.to_stdin(event, ctx.project_root));
     let tool_name = tool.unwrap_or_default().to_string();
     let extra_env: Vec<(String, String)> =
         extra_env.iter().map(|(k, v)| ((*k).to_string(), v.clone())).collect();
@@ -695,9 +756,8 @@ async fn execute(
             // A hook runs on the app's behalf and is never shown; its own
             // children inherit the hidden console.
             .background_in_new_group()
-            // What a hook is told, and all it is told. Not the prompt, not the
-            // tool's arguments, not a provider key: a hook is a trigger, not a
-            // window into the conversation.
+            // What a hook is told, and all it is told. Not the prompt, not a
+            // provider key. Tool hooks also get the call as JSON on stdin.
             //
             // Both the new `FLINT_` names and the legacy `JAN_` names carry the
             // same values, so hook scripts written against either keep working
@@ -709,13 +769,17 @@ async fn execute(
             .env("JAN_HOOK_TOOL", &tool_name)
             .env("JAN_PROJECT_ROOT", &root)
             .envs(extra_env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-            .stdin(std::process::Stdio::null())
+            .stdin(if stdin_payload.is_some() {
+                std::process::Stdio::piped()
+            } else {
+                std::process::Stdio::null()
+            })
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             // A hook that outlives its deadline is stopped, not backgrounded:
             // the deadline drops this future, and the child goes with it.
             .kill_on_drop(true);
-        let child = match cmd.spawn() {
+        let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
                 return (
@@ -725,6 +789,13 @@ async fn execute(
                 )
             }
         };
+        // The tool call goes in on stdin, then stdin closes. A hook that never
+        // reads it is fine: a broken pipe is ignored.
+        if let (Some(payload), Some(mut stdin)) = (stdin_payload, child.stdin.take()) {
+            use tokio::io::AsyncWriteExt;
+            let _ = stdin.write_all(payload.as_bytes()).await;
+            drop(stdin);
+        }
         // Registered so shutdown reaps it like any other child the harness
         // started; a hook must not outlive the app that ran it.
         if let Some(pid) = child.id() {
@@ -860,7 +931,7 @@ pub async fn run_post_tool_batch_as(
         ("FLINT_HOOK_AGENT", agent.clone()),
         ("JAN_HOOK_AGENT", agent),
     ];
-    let mut decision = run_with_env(&batch, Event::PostToolBatch, None, ctx, &extra).await;
+    let mut decision = run_with_env(&batch, Event::PostToolBatch, None, ctx, &extra, None).await;
     decision.blocked = None;
     decision
 }
@@ -954,7 +1025,7 @@ pub async fn run_compaction_as(
         return Decision::default();
     }
     let extra = [("FLINT_HOOK_AGENT", agent.clone()), ("JAN_HOOK_AGENT", agent)];
-    let mut decision = run_with_env(&matching, event, None, ctx, &extra).await;
+    let mut decision = run_with_env(&matching, event, None, ctx, &extra, None).await;
     decision.blocked = None;
     decision
 }
@@ -1073,6 +1144,38 @@ mod tests {
         assert!(run0.duration_ms < 60_000, "duration {} is not a plausible hook time", run0.duration_ms);
         let json = serde_json::to_value(run0).unwrap();
         assert!(json.get("durationMs").is_some(), "durationMs missing from {json}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Opt-in stdin: the hook sees the call as JSON, a hook without the flag
+    /// still sees nothing.
+    #[tokio::test]
+    async fn stdin_json_hands_the_tool_call_to_an_opted_in_hook_only() {
+        let root = dir("stdin");
+        write_config(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"grep -q git-push-marker\"
+on_failure = \"block\"
+stdin_json = true
+
+             [[hook]]
+event = \"pre-tool\"
+command = \"grep -q git-push-marker\"
+on_failure = \"warn\"
+",
+        );
+        let hooks = load(&root).unwrap();
+        assert!(hooks[0].stdin_json && !hooks[1].stdin_json);
+        let input = HookInput {
+            tool_name: "bash".into(),
+            tool_input: serde_json::json!({"command": "git-push-marker origin"}),
+            ..HookInput::default()
+        };
+        let decision = run_with_input(&hooks, Event::PreTool, Some("bash"), &ctx(&root), &input).await;
+        assert!(decision.runs[0].ok, "opted-in hook did not see stdin: {:?}", decision.runs[0]);
+        assert!(!decision.runs[1].ok, "hook without the flag must see empty stdin");
         let _ = std::fs::remove_dir_all(&root);
     }
 
