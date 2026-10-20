@@ -1929,15 +1929,56 @@ pub async fn mailbox_session_register(
     accepts_messages: Option<bool>,
     access: Option<String>,
     isolated: Option<bool>,
+    inbound: Option<String>,
 ) -> Result<SessionRecord, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).register_shared(
+    let inbound = match inbound.as_deref() {
+        None => None,
+        Some(v) => Some(crate::session_mailbox::Inbound::parse(v).ok_or_else(|| {
+            MailboxError::new("invalid_arguments", "inbound must be accept, hold or refuse")
+        })?),
+    };
+    Mailbox::open(Path::new(&data_folder)).register_inbound(
         &session_id,
         &display_name,
         folder.as_deref(),
         accepts_messages,
+        inbound,
         access.as_deref(),
         isolated,
     )
+}
+
+/// Messages waiting for `session_id`'s user to approve (`inbound: hold`),
+/// oldest first. Held mail past its deadline is dropped first.
+#[tauri::command]
+pub async fn mailbox_held(
+    data_folder: String,
+    session_id: String,
+) -> Result<Vec<MailEnvelope>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder))
+        .held_messages(&session_id)
+        .map(|all| all.into_iter().map(MailEnvelope::screened).collect())
+}
+
+/// The user approved a held message: it is delivered once. `false` when it
+/// is no longer held. Only the renderer's Approve button calls this.
+#[tauri::command]
+pub async fn mailbox_held_approve(
+    data_folder: String,
+    session_id: String,
+    message_id: String,
+) -> Result<bool, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).approve_held(&session_id, &message_id)
+}
+
+/// The user denied a held message: it is dropped.
+#[tauri::command]
+pub async fn mailbox_held_deny(
+    data_folder: String,
+    session_id: String,
+    message_id: String,
+) -> Result<bool, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).deny_held(&session_id, &message_id)
 }
 
 // ---------------------------------------------------------------------------

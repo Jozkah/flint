@@ -72,6 +72,19 @@ pub const CHAIN_ARM_TTL_MS: i64 = 120_000;
 /// every rate window; inbox envelopes older than this are dropped once read.
 /// Without it inbox/outbox/state files grew for the life of the project and
 /// every send and read re-parsed the whole history under the global lock.
+/// How long a message held for the recipient's user (`inbound: hold`) waits
+/// for Approve or Deny before it is dropped and the sender is told.
+pub const HELD_TTL_MS: i64 = 5 * 60_000;
+
+/// Most messages held for one session; past it the oldest is dropped.
+pub const MAX_HELD_PER_SESSION: usize = 100;
+
+/// How long a notify-when-idle subscription lasts.
+pub const IDLE_SUB_TTL_MS: i64 = 12 * 3_600_000;
+
+/// Most idle subscriptions one session may hold.
+pub const MAX_IDLE_SUBS_PER_SESSION: usize = 20;
+
 pub const MAIL_RETENTION_MS: i64 = 7 * 24 * 3_600_000;
 /// `wait_for_reply` bounds, in seconds.
 pub const MIN_WAIT_SECS: u64 = 1;
@@ -221,6 +234,38 @@ impl SessionStatus {
     }
 }
 
+/// What a session does with mail other sessions send it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Inbound {
+    /// Delivered as usual.
+    #[default]
+    Accept,
+    /// Stored undelivered until the session's user approves or denies it.
+    Hold,
+    /// Refused with `recipient_opted_out`.
+    Refuse,
+}
+
+impl Inbound {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Inbound::Accept => "accept",
+            Inbound::Hold => "hold",
+            Inbound::Refuse => "refuse",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "accept" => Some(Inbound::Accept),
+            "hold" => Some(Inbound::Hold),
+            "refuse" => Some(Inbound::Refuse),
+            _ => None,
+        }
+    }
+}
+
 /// A registry entry. On disk `status` is what was recorded (`running` or
 /// `idle`); every value handed out has it recomputed, see [`Mailbox::status_of`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -237,6 +282,10 @@ pub struct SessionRecord {
     /// records written before the setting existed, which accept.
     #[serde(default = "default_true")]
     pub accepts_messages: bool,
+    /// The inbound mode, when one was set. Absent in records written before
+    /// it existed: `accepts_messages` then decides (on is accept, off refuse).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbound: Option<Inbound>,
     pub status: SessionStatus,
     #[serde(default)]
     pub run_id: Option<String>,
@@ -264,6 +313,17 @@ pub struct SessionRecord {
     /// Which folder the session shares and how (shared-folder coordination).
     #[serde(default)]
     pub shared: crate::shared_folder::SharedMeta,
+}
+
+impl SessionRecord {
+    /// What this session does with incoming mail.
+    pub fn inbound_mode(&self) -> Inbound {
+        self.inbound.unwrap_or(if self.accepts_messages {
+            Inbound::Accept
+        } else {
+            Inbound::Refuse
+        })
+    }
 }
 
 /// Where a run sits in a chain of agent-to-agent messages. Host state only:
@@ -338,6 +398,7 @@ pub struct SessionSummary {
     pub status: SessionStatus,
     pub folder: Option<String>,
     pub accepts_messages: bool,
+    pub inbound: Inbound,
     /// Running, but stopped on an approval prompt. A message sent now is
     /// delivered at the next step boundary, which waits for the user.
     pub waiting_approval: bool,
@@ -355,6 +416,10 @@ pub enum Origin {
     /// A session's final answer sent back for it, because the message it
     /// answers was handled by a run that ended without replying itself.
     Auto,
+    /// A one-line status the host sent for a session (it went idle, was
+    /// deleted, or a message of the receiver's expired). Never answered
+    /// automatically.
+    Notice,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -398,6 +463,15 @@ pub struct MailEnvelope {
     /// recipient (see [`hold`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hold: Option<String>,
+    /// Stored for the recipient's user to approve (`inbound: hold`) rather
+    /// than delivered. Kept on the envelope so a rebuilt delivery state still
+    /// knows not to hand it to a model.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub inbound_hold: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl MailEnvelope {
@@ -435,6 +509,18 @@ pub enum DeliveryStatus {
     Queued,
     Delivered,
     Read,
+    /// Waiting for the recipient's user to approve it (`inbound: hold`);
+    /// `at` is when it was held.
+    Held,
+    /// Denied, expired or pushed out of the held list: never delivered.
+    Dropped,
+}
+
+impl DeliveryStatus {
+    /// Mail a model or the renderer may be handed.
+    fn is_open(self) -> bool {
+        matches!(self, DeliveryStatus::Queued | DeliveryStatus::Delivered)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -462,6 +548,8 @@ struct OutboxEntry {
 pub struct SendReceipt {
     pub message_id: String,
     pub delivered_to_status: SessionStatus,
+    /// The target holds mail for its user: the message waits for approval.
+    pub held: bool,
 }
 
 /// How a `wait_for_reply` ended, other than by error.
@@ -675,6 +763,16 @@ fn max_hops_in(folder: &Path, trusted: bool) -> u8 {
 // The mailbox
 // ---------------------------------------------------------------------------
 
+/// Host-only inputs to a send that no tool argument can reach.
+#[derive(Default)]
+struct SendExtras {
+    /// The chain a notice continues (the subscription's, or the expired
+    /// message's); a notice without one starts its own.
+    chain: Option<ChainContext>,
+    /// The sender may already be deleted (a notice that its session ended).
+    sender_may_be_gone: bool,
+}
+
 /// A handle on one data folder's mailbox. Cheap; holds no open files, so a new
 /// handle on the same folder sees exactly what the last one wrote.
 #[derive(Debug, Clone)]
@@ -822,6 +920,32 @@ impl Mailbox {
         access: Option<&str>,
         isolated: Option<bool>,
     ) -> Result<SessionRecord> {
+        self.register_inbound(
+            session_id,
+            display_name,
+            folder,
+            accepts_messages,
+            None,
+            access,
+            isolated,
+        )
+    }
+
+    /// [`Mailbox::register_shared`], also setting the inbound mode. An explicit
+    /// `inbound` wins over `accepts_messages`; `accepts_messages` alone (older
+    /// callers) moves a known session between accept and refuse and leaves a
+    /// hold alone when it still accepts.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_inbound(
+        &self,
+        session_id: &str,
+        display_name: &str,
+        folder: Option<&str>,
+        accepts_messages: Option<bool>,
+        inbound: Option<Inbound>,
+        access: Option<&str>,
+        isolated: Option<bool>,
+    ) -> Result<SessionRecord> {
         check_session_id(session_id)?;
         let folder = folder.map(str::trim).filter(|f| !f.is_empty());
         let project = folder.map(|f| messaging_project_key(Path::new(f)));
@@ -845,8 +969,16 @@ impl Mailbox {
                 existing.project = project;
                 existing.folder = folder_shown;
                 apply_shared(&mut existing.shared, folder, access, isolated, &self.epoch);
-                if let Some(accepts) = accepts_messages {
+                if let Some(mode) = inbound {
+                    existing.inbound = Some(mode);
+                    existing.accepts_messages = mode != Inbound::Refuse;
+                } else if let Some(accepts) = accepts_messages {
                     existing.accepts_messages = accepts;
+                    if let Some(mode) = existing.inbound {
+                        if (mode == Inbound::Refuse) == accepts {
+                            existing.inbound = None;
+                        }
+                    }
                 }
                 // Registering is what a session in the app's list does, so a
                 // session that registers is not archived (a restore).
@@ -884,7 +1016,11 @@ impl Mailbox {
                     display_name: name,
                     project,
                     folder: folder_shown,
-                    accepts_messages: accepts_messages.unwrap_or(true),
+                    accepts_messages: inbound
+                        .map(|m| m != Inbound::Refuse)
+                        .or(accepts_messages)
+                        .unwrap_or(true),
+                    inbound,
                     status: SessionStatus::Idle,
                     run_id: None,
                     heartbeat_at: None,
@@ -1008,6 +1144,9 @@ impl Mailbox {
             // baseline; the folder's other sessions see the state change.
             crate::shared_folder::on_run_boundary(session_id);
             crate::shared_folder::announce(folder_key, session_id, "state");
+            if !running {
+                self.on_turn_ended(session_id);
+            }
         }
         result
     }
@@ -1113,6 +1252,12 @@ impl Mailbox {
     /// Mark a session deleted. Unknown ids get a tombstone, so mail addressed
     /// to them later is refused as deleted rather than unknown.
     pub fn remove(&self, session_id: &str) -> Result<()> {
+        self.remove_locked(session_id)?;
+        self.on_session_deleted(session_id);
+        Ok(())
+    }
+
+    fn remove_locked(&self, session_id: &str) -> Result<()> {
         check_session_id(session_id)?;
         let _guard = lock();
         let mut registry = self.read_registry()?;
@@ -1125,6 +1270,7 @@ impl Mailbox {
                 project: None,
                 folder: None,
                 accepts_messages: true,
+                inbound: None,
                 status: SessionStatus::Idle,
                 run_id: None,
                 heartbeat_at: None,
@@ -1312,6 +1458,7 @@ impl Mailbox {
         caller_id: &str,
         include_archived: bool,
     ) -> Result<Vec<SessionSummary>> {
+        self.sweep_all();
         let registry = self.read_registry()?;
         self.live_caller(&registry, caller_id)?;
         let mut out: Vec<SessionSummary> = registry
@@ -1322,7 +1469,8 @@ impl Mailbox {
                 display_name: r.display_name.clone(),
                 status: self.status_of(r),
                 folder: r.folder.clone(),
-                accepts_messages: r.accepts_messages,
+                accepts_messages: r.inbound_mode() != Inbound::Refuse,
+                inbound: r.inbound_mode(),
                 waiting_approval: self.status_of(r) == SessionStatus::Running
                     && r.waiting_approval,
                 last_activity: r.updated_at,
@@ -1348,10 +1496,33 @@ impl Mailbox {
         reply_to: Option<&str>,
         origin: Origin,
     ) -> Result<SendReceipt> {
+        self.send_with(from_id, to_id, text, reply_to, origin, SendExtras::default())
+    }
+
+    /// [`Mailbox::send`] with the host-only knobs a notice needs.
+    fn send_with(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        text: &str,
+        reply_to: Option<&str>,
+        origin: Origin,
+        extras: SendExtras,
+    ) -> Result<SendReceipt> {
+        // A message held for the target that ran out of time is dropped (and
+        // its sender told) before this one lands, so the held list is current.
+        self.sweep_held(to_id);
         let (receipt, to) = {
             let _guard = lock();
             let registry = self.read_registry()?;
-            let caller = self.live_caller(&registry, from_id)?;
+            let caller = if extras.sender_may_be_gone {
+                check_session_id(from_id)?;
+                registry.get(from_id).ok_or_else(|| {
+                    MailboxError::new(code::UNKNOWN_SESSION, "this session is not registered yet")
+                })?
+            } else {
+                self.live_caller(&registry, from_id)?
+            };
             let project = caller.project.clone().unwrap_or_default();
             check_text(text)?;
             // Same scrubber as the run-to-run mailbox (AH-103): a credential
@@ -1380,7 +1551,8 @@ impl Mailbox {
                     "that session is archived; it gets no messages until it is restored",
                 ));
             }
-            if !target.accepts_messages {
+            let inbound = target.inbound_mode();
+            if inbound == Inbound::Refuse {
                 return Err(MailboxError::new(
                     code::RECIPIENT_OPTED_OUT,
                     "that session does not accept messages from other sessions",
@@ -1454,6 +1626,7 @@ impl Mailbox {
                 Origin::User => None,
                 Origin::Auto => parent_env.as_ref().map(|p| ChainContext::of(p, now)),
                 Origin::Agent => caller.chain.clone(),
+                Origin::Notice => extras.chain.clone(),
             };
             let (chain_id, hops, chain_path) = match inherited {
                 Some(c) => (c.chain_id, c.hops.saturating_add(1), c.path),
@@ -1520,6 +1693,7 @@ impl Mailbox {
                 hops,
                 chain_path,
                 hold: hold.map(str::to_string),
+                inbound_hold: inbound == Inbound::Hold,
             };
             // Outbox first: if the inbox append then fails, the attempt still
             // counts against the limits, which fails closed.
@@ -1533,15 +1707,56 @@ impl Mailbox {
                 },
             )?;
             append_jsonl(&self.inbox_path(to_id), &envelope)?;
+            let mut overflow: Vec<MailEnvelope> = Vec::new();
+            if inbound == Inbound::Hold {
+                let (inbox, mut state) = self.inbox_with_state(to_id);
+                state.insert(
+                    envelope.id.clone(),
+                    DeliveryEntry {
+                        status: DeliveryStatus::Held,
+                        at: now,
+                    },
+                );
+                // At most MAX_HELD_PER_SESSION wait: the oldest give way.
+                let mut held: Vec<&MailEnvelope> = inbox
+                    .iter()
+                    .filter(|e| Self::status_in(&state, &e.id) == DeliveryStatus::Held)
+                    .collect();
+                held.sort_by_key(|e| e.created_at);
+                while held.len() > MAX_HELD_PER_SESSION {
+                    let oldest = held.remove(0);
+                    state.insert(
+                        oldest.id.clone(),
+                        DeliveryEntry {
+                            status: DeliveryStatus::Dropped,
+                            at: now,
+                        },
+                    );
+                    overflow.push(oldest.clone());
+                }
+                write_json_atomically(&self.state_path(to_id), &state)?;
+            }
             (
-                SendReceipt {
-                    message_id: envelope.id,
-                    delivered_to_status: self.status_of(target),
-                },
+                (
+                    SendReceipt {
+                        message_id: envelope.id,
+                        delivered_to_status: self.status_of(target),
+                        held: inbound == Inbound::Hold,
+                    },
+                    overflow,
+                ),
                 to_id.to_string(),
             )
         };
+        let (receipt, overflow) = receipt;
         notify(&to, &receipt.message_id);
+        for e in &overflow {
+            self.tell_dropped(
+                &to,
+                e,
+                "was dropped: the recipient already had 100 messages waiting for approval",
+            );
+        }
         Ok(receipt)
     }
 
@@ -1606,7 +1821,7 @@ impl Mailbox {
                 "reply_to must name a message this session received",
             ));
         };
-        if parent.depth > 0 {
+        if parent.depth > 0 || parent.origin == Origin::Notice {
             return Ok(None);
         }
         let text: String = if text.chars().count() > MAX_TEXT_CHARS {
@@ -1693,13 +1908,14 @@ impl Mailbox {
         let now = self.now();
         let mut state = DeliveryState::new();
         for e in inbox {
-            state.insert(
-                e.id.clone(),
-                DeliveryEntry {
-                    status: DeliveryStatus::Delivered,
-                    at: now,
-                },
-            );
+            // Mail stored for the user's approval stays held (its clock
+            // restarts from its own send time).
+            let (status, at) = if e.inbound_hold {
+                (DeliveryStatus::Held, e.created_at)
+            } else {
+                (DeliveryStatus::Delivered, now)
+            };
+            state.insert(e.id.clone(), DeliveryEntry { status, at });
         }
         // Persist the rebuilt state so the recovery sticks and the corrupt
         // bytes are not read again. Best-effort: on failure the in-memory state
@@ -1724,6 +1940,7 @@ impl Mailbox {
     /// second call returns only what arrived in between.
     pub fn take_for_delivery(&self, session_id: &str) -> Result<Vec<MailEnvelope>> {
         check_session_id(session_id)?;
+        self.sweep_all();
         let _guard = lock();
         let (inbox, mut state) = self.inbox_with_state(session_id);
         let now = self.now();
@@ -1758,11 +1975,12 @@ impl Mailbox {
     /// and rebuild a corrupt `<id>.state.json` (see [`Mailbox::read_delivery_state`]).
     pub fn pending(&self, session_id: &str) -> Result<Vec<MailEnvelope>> {
         check_session_id(session_id)?;
+        self.sweep_all();
         let _guard = lock();
         let (inbox, state) = self.inbox_with_state(session_id);
         Ok(inbox
             .into_iter()
-            .filter(|e| Self::status_in(&state, &e.id) != DeliveryStatus::Read)
+            .filter(|e| Self::status_in(&state, &e.id).is_open())
             .collect())
     }
 
@@ -1778,7 +1996,11 @@ impl Mailbox {
     ) -> Result<bool> {
         let cutoff = self.now() - MAIL_RETENTION_MS;
         let expired = |e: &MailEnvelope| {
-            e.created_at < cutoff && Self::status_in(state, &e.id) == DeliveryStatus::Read
+            e.created_at < cutoff
+                && matches!(
+                    Self::status_in(state, &e.id),
+                    DeliveryStatus::Read | DeliveryStatus::Dropped
+                )
         };
         if !inbox.iter().any(expired) {
             return Ok(false);
@@ -1794,7 +2016,7 @@ impl Mailbox {
         let now = self.now();
         let mut changed = 0;
         for id in ids {
-            if Self::status_in(&state, id) == DeliveryStatus::Read {
+            if !Self::status_in(&state, id).is_open() {
                 continue;
             }
             if inbox.iter().any(|e| &e.id == id) {
@@ -1835,7 +2057,7 @@ impl Mailbox {
         let mut claimed = Vec::new();
         for id in ids {
             if claimed.contains(id)
-                || Self::status_in(&state, id) == DeliveryStatus::Read
+                || !Self::status_in(&state, id).is_open()
                 || !inbox.iter().any(|e| &e.id == id)
             {
                 continue;
@@ -1863,11 +2085,12 @@ impl Mailbox {
     /// the same locked step so a concurrent delivery cannot interleave.
     pub fn read_messages(&self, session_id: &str, mark_read: bool) -> Result<Vec<MailEnvelope>> {
         check_session_id(session_id)?;
+        self.sweep_all();
         let _guard = lock();
         let (inbox, state) = self.inbox_with_state(session_id);
         let unread: Vec<MailEnvelope> = inbox
             .into_iter()
-            .filter(|e| Self::status_in(&state, &e.id) != DeliveryStatus::Read)
+            .filter(|e| Self::status_in(&state, &e.id).is_open())
             .collect();
         if mark_read && !unread.is_empty() {
             let ids: Vec<String> = unread.iter().map(|e| e.id.clone()).collect();
@@ -1916,6 +2139,12 @@ impl Mailbox {
                 let replies: Vec<MailEnvelope> = inbox
                     .into_iter()
                     .filter(|e| e.reply_to.as_deref() == Some(message_id))
+                    .filter(|e| {
+                        !matches!(
+                            Self::status_in(&state, &e.id),
+                            DeliveryStatus::Held | DeliveryStatus::Dropped
+                        )
+                    })
                     .collect();
                 let unread = replies
                     .iter()
@@ -1953,6 +2182,8 @@ impl Mailbox {
 // Agent tools
 // ---------------------------------------------------------------------------
 
+mod inbound;
+pub use inbound::{IdleSub, SubscribeReceipt};
 mod stop;
 pub use stop::{
     set_stop_emitter, stop_code, StopParty, StopRequest, StopStatus, MAX_STOP_REASON_CHARS,
@@ -2031,6 +2262,7 @@ pub async fn run_tool(
                     "status": if s.waiting_approval { serde_json::json!("waiting_approval") } else { serde_json::json!(s.status) },
                     "folder": s.folder,
                     "accepts_messages": s.accepts_messages,
+                    "inbound": s.inbound.as_str(),
                     "last_activity": s.last_activity,
                     "archived": s.archived,
                 })).collect::<Vec<_>>(),
@@ -2049,6 +2281,10 @@ pub async fn run_tool(
                 .or_else(|| args.get("text"))
                 .and_then(|v| v.as_str());
             let reply_to = args.get("reply_to").and_then(|v| v.as_str());
+            let notify_idle = args
+                .get("notify_when_idle")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let wait_secs = match args.get("wait_seconds") {
                 None | Some(serde_json::Value::Null) => 0,
                 Some(v) => match v.as_u64() {
@@ -2087,7 +2323,30 @@ pub async fn run_tool(
                                     "The target is not running. The message is queued until that session picks it up."
                                 );
                             }
-                            if wait_secs > 0 && reply_to.is_none() {
+                            if r.held {
+                                out["inbound"] = serde_json::json!("held");
+                                out["note"] = serde_json::json!(
+                                    "That session holds incoming messages for its user. This one waits for approval and is dropped after 5 minutes if nobody answers; you are told if it expires. Do not wait on it."
+                                );
+                            }
+                            if notify_idle {
+                                match mailbox.subscribe_idle(session_id, &target_id) {
+                                    Ok(sub) => {
+                                        out["idle_notice"] = serde_json::json!({
+                                            "subscribed": true,
+                                            "expires_at": sub.expires_at,
+                                            "note": "One short notice reaches you as a message from that session when it next finishes a turn with nothing queued, or is deleted. The subscription lapses after 12 hours and you are told."
+                                        });
+                                    }
+                                    Err(e) => {
+                                        out["idle_notice"] = serde_json::json!({
+                                            "subscribed": false,
+                                            "error": { "code": e.code, "message": e.message },
+                                        });
+                                    }
+                                }
+                            }
+                            if wait_secs > 0 && reply_to.is_none() && !r.held {
                                 let cancel = ctx.cancel.clone().or_else(crate::lifecycle::current);
                                 match mailbox
                                     .wait_for_reply(
@@ -2123,9 +2382,31 @@ pub async fn run_tool(
                         }
                     }
                 }
+                (Some(target), None) if notify_idle => {
+                    mailbox.resolve_session(session_id, target).and_then(|id| {
+                        let name = mailbox.session(&id).map(|s| s.display_name);
+                        let to = serde_json::json!({ "session_id": id, "display_name": name });
+                        if mailbox.idle_now(&id) {
+                            return Ok(serde_json::json!({
+                                "to": to,
+                                "subscribed": false,
+                                "outcome": "already_idle",
+                                "note": "That session is idle with nothing queued right now, so there is nothing to wait for and no subscription was made.",
+                            }));
+                        }
+                        mailbox.subscribe_idle(session_id, &id).map(|sub| {
+                            serde_json::json!({
+                                "to": to,
+                                "subscribed": true,
+                                "expires_at": sub.expires_at,
+                                "note": "One short notice reaches you as a message from that session when it next finishes a turn with nothing queued, or is deleted. The subscription lapses after 12 hours and you are told.",
+                            })
+                        })
+                    })
+                }
                 _ => Err(MailboxError::new(
                     code::INVALID_ARGUMENTS,
-                    "send_message needs string `to` and `message`",
+                    "send_message needs string `to` and `message` (or `to` with notify_when_idle: true)",
                 )),
             }
         }
@@ -2205,3 +2486,5 @@ mod tests;
 mod stop_tests;
 #[cfg(test)]
 mod chain_tests;
+#[cfg(test)]
+mod inbound_tests;

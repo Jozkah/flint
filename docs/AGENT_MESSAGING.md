@@ -28,7 +28,7 @@ Source of truth: `src-tauri/plugins/tauri-plugin-agent-tools/src/session_mailbox
 ## Identity and presence
 
 The web app registers every Cowork session in `<data>/mailbox/sessions.json`
-(title, folder, accepts-messages flag) and reports run status. Registration is
+(title, folder, inbound mode) and reports run status. Registration is
 sequenced before a run's first status call, so a session that starts working
 right after it was created is never refused with `session not registered`.
 A `running` record without a heartbeat for 90 s, or from another process epoch,
@@ -87,20 +87,60 @@ max_hops = 3   # 1..=16; an untrusted folder may only lower the default
 Chain fields are persisted with the mail and the registry, so they survive a
 restart.
 
-## Opt-out
+## Inbound control
 
-Each session has an "accepts messages" switch (default on). A session that
-turned it off is still listed, but sends to it are refused with
-`recipient_opted_out`.
+Each session has an `inbound` mode, shown by `list_sessions`:
+
+- `accept` (default): delivered as usual.
+- `refuse`: still listed, but sends to it are refused with `recipient_opted_out`.
+  This is the old "Accept messages from other sessions" switch turned off; a
+  session written before the mode existed maps on to accept, off to refuse.
+- `hold`: the "Ask me before delivering" switch (Details tab, only while
+  messages are accepted). The message is stored undelivered and shown in that
+  session with Approve (delivered once, like any queued mail) and Deny
+  (dropped). Nothing wakes the session and no model sees it until Approve. The
+  sender's receipt says `inbound: held`; a held reply does not satisfy
+  `wait_for_reply`.
+
+Held mail has a 5-minute deadline (`HELD_TTL_MS`): unanswered, it is dropped
+and the sender gets a notice that it expired. At most 100 wait per session; the
+oldest is dropped (and its sender told) when a 101st arrives. Expiry is checked
+whenever the mailbox is read, so a deadline passes even for a session nobody is
+looking at. A dropped notice does not produce a notice of its own.
+
+Approving only releases untrusted text. A message can never approve a
+permission prompt or change a setting, held or not.
+
+## Notify when idle
+
+`send_message({to, notify_when_idle: true})`, with or without a message, asks
+for one short notice when `to` next finishes a turn with nothing queued for it,
+or is deleted. With no message nothing is sent to that session; if it is already
+idle with nothing queued, no subscription is made and the result says so.
+
+- The notice is an ordinary mailbox message from the watched session
+  (`origin: notice`, one line). It passes the same limits, loop guard and inbound
+  control as any message: it continues the chain the asker had when it
+  subscribed, so subscribe-and-wake loops stop at `max_hops`, and an asker that
+  holds mail sees it as a held message. A notice is never answered
+  automatically.
+- A subscription lapses after 12 hours and the asker is told. One per asker and
+  target (asking again restarts it), at most 20 per asker. Stored in
+  `mailbox/subscriptions.json`.
+- Only a main Cowork session can subscribe: subagents have no messaging tools.
+- A turn that ends while mail is still queued for the session does not fire; the
+  next turn that finishes with nothing queued does. The host cannot see input
+  the user typed into a session's own queue.
 
 ## Tools (Cowork sessions only)
 
 - `list_sessions({include_archived?})` -- other sessions: id, title, folder,
   status, accepts messages, last activity; `you` names the calling session.
   Archived sessions are left out unless asked for.
-- `send_message({to, message, wait_seconds?})` -- `to` is a title or id. Fire
-  and forget by default; with `wait_seconds` it waits for the answer and returns
-  it as the tool result.
+- `send_message({to, message?, wait_seconds?, reply_to?, notify_when_idle?})` --
+  `to` is a title or id. Fire and forget by default; with `wait_seconds` it waits
+  for the answer and returns it as the tool result. `message` may be left out only
+  with `notify_when_idle: true` (see above).
 - `read_messages`, `wait_for_reply` -- read the inbox / wait for a reply.
 - `stop_session` -- see the threat model.
 
