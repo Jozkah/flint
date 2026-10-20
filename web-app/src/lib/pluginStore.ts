@@ -25,6 +25,12 @@ export interface InstalledPlugin {
   /** Absent for a directory Flint did not install (copied in by hand). */
   sourceKind: PluginSourceKind | null
   source: string | null
+  /** Commit the install resolved to (git and marketplace installs). */
+  commitSha?: string | null
+  /** Commit the plugin's source pins, when it pins one. */
+  pinnedSha?: string | null
+  /** Marketplace index URL a marketplace install came from. */
+  marketplace?: string | null
 }
 
 export interface PluginDetails extends InstalledPlugin {
@@ -51,6 +57,8 @@ export interface RemoveReport {
 export interface PluginSources {
   /** Configured marketplace index URL; null when none is configured. */
   marketplace: string | null
+  /** Every configured marketplace index URL (the first is `marketplace`). */
+  marketplaces?: string[]
   gitAvailable: boolean
 }
 
@@ -73,6 +81,7 @@ export const PLUGIN_ERROR_CODES = [
   'marketplace_not_configured',
   'marketplace_unavailable',
   'marketplace_entry_not_found',
+  'sha_mismatch',
   'cancelled',
   'project_unavailable',
   'config',
@@ -166,6 +175,30 @@ export const installPlugin = (
 export const cancelPluginInstall = (operationId: string) =>
   call<boolean>('agent_plugin_install_cancel', { operationId })
 
+export interface UpdateReport {
+  id: string
+  /** False when the source still resolves to the installed commit. */
+  updated: boolean
+  fromSha: string | null
+  toSha: string | null
+  message: string
+}
+
+/** Re-resolve a git or marketplace plugin and reinstall only if its commit
+ *  changed. Enable state is kept. Cancel with `cancelPluginInstall`. */
+export const updatePlugin = (
+  project: string,
+  id: string,
+  operationId: string,
+  scope?: PluginScope
+) =>
+  call<UpdateReport>('agent_plugin_update', {
+    project,
+    id,
+    operationId,
+    ...scopeArgs(scope),
+  })
+
 export const setPluginEnabled = (
   project: string,
   id: string,
@@ -188,6 +221,12 @@ export interface MarketEntry {
   description: string
   repo: string
   ref: string | null
+  /** Pinned commit the entry's ref must resolve to. */
+  sha?: string | null
+  /** Index this entry was listed by. */
+  marketplace?: string | null
+  /** Another configured marketplace lists a plugin of the same name. */
+  clash?: boolean
 }
 
 /** Search the configured plugin marketplace (contacts the index URL).

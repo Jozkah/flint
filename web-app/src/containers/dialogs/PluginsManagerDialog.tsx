@@ -10,6 +10,7 @@ import {
   OctagonAlert,
   Plus,
   Puzzle,
+  RefreshCw,
   Trash2,
 } from 'lucide-react'
 import {
@@ -51,6 +52,7 @@ import {
   pluginErrorText,
   removePlugin,
   setPluginEnabled,
+  updatePlugin,
   toPluginError,
   urlHost,
   type InstallSource,
@@ -240,6 +242,7 @@ export default function PluginsManagerDialog({
   const [confirmRemove, setConfirmRemove] = useState<PluginDetails | null>(null)
   const [removing, setRemoving] = useState(false)
   const [removeError, setRemoveError] = useState<string | null>(null)
+  const [updating, setUpdating] = useState<string | null>(null)
 
   const fieldErrorId = useId()
   const noticeId = useId()
@@ -454,6 +457,29 @@ export default function PluginsManagerDialog({
     }
   }
 
+  const runUpdate = async (plugin: PluginDetails) => {
+    if (!folder) return
+    setUpdating(plugin.id)
+    setRemoveError(null)
+    try {
+      const report = await updatePlugin(folder, plugin.id, newOperationId())
+      toast.success(
+        report.updated
+          ? t('plugins:update.done', { name: plugin.name })
+          : t('plugins:update.upToDate', { name: plugin.name })
+      )
+      if (report.updated) invalidateSkills()
+      await refresh()
+      await loadDetails(report.id)
+    } catch (e) {
+      setRemoveError(
+        t('plugins:update.failed', { name: plugin.name, error: pluginErrorText(t, e) })
+      )
+    } finally {
+      setUpdating(null)
+    }
+  }
+
   const confirmRemoval = async () => {
     if (!folder || !confirmRemove) return
     const target = confirmRemove
@@ -663,6 +689,24 @@ export default function PluginsManagerDialog({
                   <dd className="break-all">{details.gitRef}</dd>
                 </>
               )}
+              {details.commitSha && (
+                <>
+                  <dt className="text-muted-foreground">{t('plugins:details.commit')}</dt>
+                  <dd className="break-all font-mono">{details.commitSha.slice(0, 12)}</dd>
+                </>
+              )}
+              {details.pinnedSha && (
+                <>
+                  <dt className="text-muted-foreground">{t('plugins:details.pinned')}</dt>
+                  <dd className="break-all font-mono">{details.pinnedSha.slice(0, 12)}</dd>
+                </>
+              )}
+              {details.marketplace && (
+                <>
+                  <dt className="text-muted-foreground">{t('plugins:details.marketplace')}</dt>
+                  <dd className="break-all">{details.marketplace}</dd>
+                </>
+              )}
               <dt className="text-muted-foreground">{t('plugins:details.installedPath')}</dt>
               <dd className="break-all">{details.installedPath}</dd>
               {details.installedAtMs !== null && (
@@ -718,7 +762,23 @@ export default function PluginsManagerDialog({
               )}
             </section>
 
-            <div>
+            <div className="flex flex-wrap gap-2">
+              {(details.sourceKind === 'git' || details.sourceKind === 'marketplace') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 pointer-coarse:h-11"
+                  disabled={updating !== null}
+                  onClick={() => void runUpdate(details)}
+                >
+                  {updating === details.id ? (
+                    <Loader2 size={14} className="animate-spin" aria-hidden />
+                  ) : (
+                    <RefreshCw size={14} aria-hidden />
+                  )}
+                  {updating === details.id ? t('plugins:update.running') : t('plugins:update.button')}
+                </Button>
+              )}
               <Button
                 variant="destructive"
                 size="sm"

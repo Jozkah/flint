@@ -448,6 +448,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'agent_plugin_search',
       'agent_plugin_set_enabled',
       'agent_plugin_sources',
+      'agent_plugin_update',
       'agent_skill_delete',
       'agent_skill_enabled_get',
       'agent_skill_enabled_set',

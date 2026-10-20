@@ -183,6 +183,31 @@ marketplace = "https://example.com/jan-plugins/index.json"
 `repo` is cloned with an optional pinned `ref` (branch or tag). Without a configured marketplace,
 `install <name>` and `search` report the missing config - direct git URLs always work.
 
+An entry may also carry `"sha"`, a commit id (7-64 hex digits) its `ref` must resolve to. An install
+or update that resolves anywhere else is refused and changes nothing.
+
+### Several marketplaces
+
+List more indexes under `marketplaces`; they are searched together with `marketplace`:
+
+```toml
+[plugins]
+marketplace = "https://example.com/jan-plugins/index.json"
+marketplaces = ["https://corp.example/plugins.json"]
+```
+
+Search results name the marketplace each plugin comes from. A name listed by more than one
+marketplace is flagged, never silently picked: `install <name>` refuses and asks for
+`install <name>@<part of the marketplace URL>`.
+
+## Updating
+
+Every git and marketplace install records the commit it resolved to (shown in `plugin list --json`
+and the plugin details). `jan plugin update <name>` (or **Update** in the plugin panel) re-resolves
+the source with `git ls-remote` and reinstalls only when the commit changed; enable state is kept.
+A failed update puts the previous install back. Local-folder installs have no source to re-resolve:
+reinstall them.
+
 <Callout type="info">
 Plugins are shared with Flint Desktop - the same project files, through the same directory. The
 desktop agent exposes `agent_plugin_list`, `agent_plugin_install`, `agent_plugin_remove`, and

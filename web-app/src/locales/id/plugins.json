@@ -53,7 +53,10 @@
     "accessNoPermissions": "Memasang atau mengaktifkan plugin tidak menjalankan file apa pun darinya dan tidak memberi izin alat.",
     "mcpPresent": "Plugin ini menyertakan file .mcp.json. Flint tidak memuatnya: plugin tidak menambahkan server MCP. Konfigurasikan server MCP di Pengaturan.",
     "executables": "File skrip ({{count}})",
-    "executablesMore": "dan {{count}} lagi"
+    "executablesMore": "dan {{count}} lagi",
+    "commit": "Commit",
+    "pinned": "Disematkan ke",
+    "marketplace": "Marketplace"
   },
   "toggle": {
     "label": "Aktifkan {{name}} untuk proyek ini",
@@ -126,6 +129,17 @@
     "project_unavailable": "Folder proyek tidak tersedia. {{detail}}",
     "config": "agent.toml proyek tidak dapat dibaca atau ditulis. {{detail}}",
     "io": "Operasi file gagal. {{detail}}",
-    "unknown": "Terjadi kesalahan. {{detail}}"
+    "unknown": "Terjadi kesalahan. {{detail}}",
+    "sha_mismatch": "Sumber tidak lagi cocok dengan commit yang disematkan, jadi tidak ada yang diubah. {{detail}}"
+  },
+  "update": {
+    "button": "Perbarui",
+    "running": "Memperbarui…",
+    "done": "{{name}} diperbarui.",
+    "upToDate": "{{name}} sudah yang terbaru.",
+    "failed": "Tidak dapat memperbarui {{name}}: {{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}} (nama juga ada di marketplace lain)"
   }
 }

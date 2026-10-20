@@ -214,6 +214,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_plugin_sources,
         core::agent::commands::agent_plugin_install,
         core::agent::commands::agent_plugin_install_cancel,
+        core::agent::commands::agent_plugin_update,
         core::agent::commands::agent_plugin_set_enabled,
         core::agent::commands::agent_plugin_remove,
         core::agent::commands::agent_plugin_search,
