@@ -628,11 +628,11 @@ describe('runSubagent', () => {
     expect(out.output).toContain('no answer')
   })
 
-  it('caps concurrency at three', () => {
-    expect(MAX_PARALLEL_SUBAGENTS).toBe(3)
+  it('defaults to eight concurrent children', () => {
+    expect(MAX_PARALLEL_SUBAGENTS).toBe(8)
   })
 
-  it('queues the fourth child and reports its position', async () => {
+  it('queues the child past the cap and reports its position', async () => {
     let releaseAll = () => {}
     const held = new Promise<void>((r) => {
       releaseAll = r
@@ -648,12 +648,12 @@ describe('runSubagent', () => {
         }),
     }))
 
-    const runs = Array.from({ length: 4 }, () => baseOpts())
+    const runs = Array.from({ length: 4 }, () => ({ ...baseOpts(), maxConcurrent: 3 }))
     const all = Promise.all(runs.map((o) => runSubagent(o)))
     // Let the three admitted children reach streamText.
     for (let i = 0; i < 20; i += 1) await Promise.resolve()
 
-    expect(streamText).toHaveBeenCalledTimes(MAX_PARALLEL_SUBAGENTS)
+    expect(streamText).toHaveBeenCalledTimes(3)
     const queued = runs.filter((o) => o.events.onQueued.mock.calls.length > 0)
     expect(queued).toHaveLength(1)
     expect(queued[0].events.onQueued).toHaveBeenCalledWith(1)

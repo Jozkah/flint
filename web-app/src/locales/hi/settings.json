@@ -24,7 +24,11 @@
     "precedence": "क्रम: मॉडल जो माँगे (अनुमति हो तो), फिर भूमिका की सेटिंग, फिर सभी सबएजेंट की सेटिंग, फिर पैरेंट।",
     "advanced": "उन्नत: भूमिका-वार सेटिंग",
     "overridden_one": "{{count}} भूमिका सेट है",
-    "overridden_other": "{{count}} भूमिकाएँ सेट हैं"
+    "overridden_other": "{{count}} भूमिकाएँ सेट हैं",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "अपडेट्स स्वचालित रूप से डाउनलोड करें",
   "checkForUpdates": "अपडेट्स जांचें",

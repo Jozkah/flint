@@ -3808,7 +3808,7 @@ export function CoworkPage() {
         attach: (callId, output) =>
           useCoworkRun.getState().attachSubagentOutput(sid, callId, output),
       },
-      setup: (resolved, destination) => {
+      setup: (resolved, destination, spawn) => {
         const childFolder = destination?.path ?? runReadRoot
         const childGrant = destination ? destination.grantId : runGrant
         // A child in the run's own tree shares its extra folders; one given an
@@ -3946,10 +3946,27 @@ export function CoworkPage() {
                 'You cannot ask the user questions. Decide, and say what you assumed.',
               isError: true,
             }),
-            onTask: async () => ({
-              output: 'A subagent cannot dispatch subagents.',
-              isError: true,
-            }),
+            // Nesting is off unless Settings > Subagents raises the depth: then a
+            // child below the limit runs its `task` as a child one level down,
+            // under the same caps. At the limit it is refused as before.
+            onTask: async (nestedCallId, input) => {
+              if (!spawn || spawn.depth >= spawn.maxDepth) {
+                return { output: 'A subagent cannot dispatch subagents.', isError: true }
+              }
+              const nested = parseSubagentRequest(input)
+              if (typeof nested === 'string') {
+                return { output: `ERROR: ${nested}`, isError: true }
+              }
+              return dispatchChild(
+                nestedCallId,
+                nested,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                spawn.depth
+              )
+            },
           }, toolSignal),
         }
       },

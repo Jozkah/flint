@@ -37,6 +37,7 @@ import {
   type RunSubagentOptions,
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
+import type { SpawnLimits } from '@/lib/coworkSubagent'
 import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import { countToolCalls } from '@/lib/coworkTasks'
 import {
@@ -62,6 +63,8 @@ import {
   type MemoryDeps,
   type MemoryScope,
 } from '@/lib/coworkSubagentMemory'
+import { currentSubagentSettings } from '@/hooks/useSubagentSettings'
+import { clampMaxConcurrent, clampMaxDepth } from '@/lib/subagentSettings'
 import { labelSubagentOutput } from '@/lib/coworkSubagentSafety'
 import { errandLine, joinRoster, rosterBlock } from '@/lib/coworkSubagentRoster'
 import { preloadSkills } from '@/lib/coworkSubagentSkills'
@@ -111,7 +114,15 @@ export type ChildRunnerEnv = {
   /** The tools the parent advertised; a child gets these, narrowed. */
   parentTools: () => Record<string, Tool>
   anchorMessageId: () => string | undefined
-  setup: (resolved: ResolvedSubagent, destination?: Destination) => ChildSetup
+  /**
+   * `spawn` is this child's place in the spawn tree; a surface that lets
+   * children nest routes their `task` calls back into the runner one level down.
+   */
+  setup: (
+    resolved: ResolvedSubagent,
+    destination?: Destination,
+    spawn?: SpawnLimits
+  ) => ChildSetup
   lane?: ChildLane
   /** Which surface the queued-for-a-slot line is recorded under. */
   activitySource?: 'cowork' | 'chat'
@@ -146,11 +157,19 @@ export type ChildRunner = (
   parentTaskId?: string,
   destination?: Destination,
   /** The team task id the checkout's review is listed under. */
-  checkoutTaskId?: string
+  checkoutTaskId?: string,
+  /** The depth of whoever is asking: 0 for the main agent, 1 for its child. */
+  callerDepth?: number
 ) => Promise<ToolOutcome>
 
 export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
-  return async (callId, req, teamSignal, parentTaskId, destination, checkoutTaskId) => {
+  return async (callId, req, teamSignal, parentTaskId, destination, checkoutTaskId, callerDepth = 0) => {
+    const limits = currentSubagentSettings()
+    const spawn: SpawnLimits = {
+      depth: callerDepth + 1,
+      maxDepth: clampMaxDepth(limits.maxDepth),
+    }
+    const maxConcurrent = clampMaxConcurrent(limits.maxConcurrent)
     // A follow-up runs as the agent that finished, on what it already knows.
     const resumeId = req.resume_agent_id
     const remembered = resumeId
@@ -310,7 +329,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     let localTurns: CoworkTurn[] = []
     const askable = req.background === true && parentTaskId === undefined
     try {
-      const built = env.setup(resolved, destination)
+      const built = env.setup(resolved, destination, spawn)
       // A definition that omits instructions hands its child none: neither the
       // `JAN.md` nor the compatibility files the parent was given.
       const setup = resolved.omitInstructions
@@ -377,6 +396,8 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
           : undefined
       const child = await runSubagent({
         resolved,
+        spawn,
+        maxConcurrent,
         // The definition's opening lines go before the parent's message. A
         // resumed child already has them in its history.
         description:
