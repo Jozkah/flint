@@ -1221,7 +1221,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Не удалось ответить на побочный вопрос."
   },
   "autoCompactNeedsWindow": "Для автосжатия нужен размер контекста, а у {{model}} Flint не может его найти. Задайте «Макс. токенов контекста» для этой модели, чтобы длинные чаты сжимались до заполнения. Если провайдер отклоняет запрос из-за длины, Flint сжимает и повторяет один раз.",
   "compaction": {

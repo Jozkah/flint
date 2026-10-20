@@ -154,7 +154,10 @@ import {
 import { ExtensionManager } from '@/lib/extension'
 import { useAttachments } from '@/hooks/useAttachments'
 import { toast } from 'sonner'
-import { requestChatCompaction } from '@/lib/chatCompaction'
+import {
+  requestChatCompaction,
+  requestChatSideQuestion,
+} from '@/lib/chatCompaction'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
 import {
@@ -685,6 +688,20 @@ const ChatInput = memo(function ChatInput({
                         )
                       ) {
                         toast.info(t('common:budget.compactFailed'))
+                      }
+                    },
+                  },
+                  {
+                    name: 'btw',
+                    description: t('slash:builtin.btw'),
+                    argumentHint: '<question>',
+                    run: (args: string) => {
+                      const question = args.trim()
+                      if (
+                        !question ||
+                        !requestChatSideQuestion(currentThreadId, question)
+                      ) {
+                        toast.info(t('common:budget.btwFailed'))
                       }
                     },
                   },

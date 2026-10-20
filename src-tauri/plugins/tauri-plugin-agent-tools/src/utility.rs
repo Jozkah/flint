@@ -23,6 +23,8 @@ pub enum UtilityKind {
     Classify,
     /// An "About this server" text for an MCP server, from its tool list.
     Describe,
+    /// A `/btw` side question answered from a snapshot of the thread.
+    Btw,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

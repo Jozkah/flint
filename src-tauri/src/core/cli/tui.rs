@@ -2095,6 +2095,9 @@ struct App {
     compact_request: Option<CompactKind>,
     /// `/compact <focus>`: what the next manual compaction should keep detail on.
     compact_focus: Option<String>,
+    /// `/btw` answers arriving from their tasks, shown as notes.
+    btw_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    btw_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
     /// A compaction is in flight: the header and the input box show a throbber,
     /// a second request is refused, and no run starts until it lands (its result
     /// replaces `history`, so a run reading the old one would be clobbered).
@@ -2477,6 +2480,7 @@ impl App {
         repo_root: Option<PathBuf>,
     ) -> Self {
         let slash_catalog = SlashCatalog::load(&project_root);
+        let (btw_tx, btw_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             smol_model: model.clone(),
             model,
@@ -2599,6 +2603,8 @@ impl App {
             plugin_installing: false,
             compact_request: None,
             compact_focus: None,
+            btw_tx,
+            btw_rx,
             compacting: None,
             compact_started: None,
             run_compacting: None,
@@ -9161,6 +9167,15 @@ async fn chat_loop<B: Backend>(
         // `/compact` (or the auto trigger) was requested: summarize off-loop.
         // One at a time -- both request sites already refuse while one is in
         // flight, and the result replaces `history` wholesale.
+        while let Ok(answer) = app.btw_rx.try_recv() {
+            for (i, line) in answer.lines().enumerate() {
+                if i == 0 {
+                    app.note(line);
+                } else {
+                    app.system_detail_text(line);
+                }
+            }
+        }
         if compact_task.is_none() {
             if let Some(kind) = app.compact_request.take() {
                 let args = args.clone();
@@ -11245,6 +11260,12 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/btw",
+        hint: "<question>",
+        description: "Ask a side question about this thread; answered without tools, never added to history",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/hooks",
         hint: "",
         description: "List configured hooks, their source and trust state (read-only)",
@@ -11573,6 +11594,7 @@ async fn run_command(
         "compact" => compact_command(app, arg),
         "context" => context_command(app),
         "hooks" => hooks_command(app),
+        "btw" => btw_command(app, arg),
         "usage" => usage_command(app, arg),
         "threads" | "list" => match super::list_threads_in(&app.agent_dir) {
             Ok(threads) if threads.is_empty() => {
@@ -11714,6 +11736,32 @@ fn usage_command(app: &mut App, arg: &str) {
     };
     app.note(&format!("usage: asking Tokamak for {}...", query.label()));
     app.usage_request = Some(query);
+}
+
+/// `/btw <question>`: one tool-less completion over a snapshot of the thread.
+/// Runs off the render loop and works mid-run; the answer is shown as a note
+/// and never reaches `history`.
+fn btw_command(app: &mut App, question: &str) {
+    let question = question.trim().to_string();
+    if question.is_empty() {
+        app.note("usage: /btw <question>");
+        return;
+    }
+    let Some(args) = app.args.clone() else {
+        app.note("/btw unavailable (no active session)");
+        return;
+    };
+    app.note(&format!("◈ btw · {question}"));
+    let model = app.model.clone();
+    let history = app.history.clone();
+    let tx = app.btw_tx.clone();
+    tokio::spawn(async move {
+        let text = match crate::core::agent::btw::ask(&args, &model, &history, &question).await {
+            Ok(answer) => answer,
+            Err(e) => format!("btw failed: {e}"),
+        };
+        let _ = tx.send(text);
+    });
 }
 
 /// `/hooks`: read-only list of the project's hooks and the Claude Code hooks
