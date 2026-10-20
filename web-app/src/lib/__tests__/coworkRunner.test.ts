@@ -19,6 +19,7 @@ import {
   type StepResult,
   type ToolOutcome,
   schemaIssues,
+  looksTruncatedArgs,
 } from '../coworkRunner'
 import { MAX_SESSION_TOKENS } from '../coworkBudget'
 
@@ -503,6 +504,39 @@ describe('an invalid tool call', () => {
     expect(told).toContain('`edit`')
     // The 4000-char blob is not echoed back into the transcript/context.
     expect(told).not.toContain('x'.repeat(1000))
+  })
+
+  it('does not give file-split advice for a non-file tool, and forbids inventing a result', async () => {
+    const truncated = `{"description":"${'x'.repeat(400)}`
+    const d = deps([
+      [
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c10',
+          toolName: 'task',
+          input: truncated,
+          errorText: 'Invalid input for tool task: JSON parsing failed',
+        } as unknown as UIMessageChunk,
+      ],
+      textStep('done'),
+    ])
+    const out = await runTurn({
+      messages: [user('spawn a session')],
+      signal: new AbortController().signal,
+      deadline: { at: Date.now() + 60_000, budgetMs: 60_000 },
+      now: Date.now,
+      sessionTokens: 0,
+      deps: d,
+    } as never)
+    const told = JSON.stringify(out.messages)
+    expect(told).toContain('cut off')
+    expect(told).not.toContain('first `write`')
+    expect(told).toContain('Never report an outcome')
+  })
+
+  it('treats complete-but-malformed JSON as invalid, not cut off', () => {
+    const malformed = `{"description":"${'x'.repeat(300)}","question_id": today-datee}`
+    expect(looksTruncatedArgs(malformed)).toBe(false)
   })
 })
 
