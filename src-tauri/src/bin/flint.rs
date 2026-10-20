@@ -1086,6 +1086,24 @@ enum AgentCommands {
         /// (AH-181). Overrides [output].density.
         #[arg(long, value_name = "DENSITY")]
         output_density: Option<String>,
+        /// Text added to this run's system prompt
+        #[arg(long, value_name = "TEXT")]
+        append_system_prompt: Option<String>,
+        /// A file whose contents are added to this run's system prompt
+        #[arg(long, value_name = "FILE")]
+        append_system_prompt_file: Option<String>,
+        /// Limit this run to these tools (repeat); names as in `schedule tools`
+        #[arg(long = "allow-tool", value_name = "TOOL")]
+        allow_tools: Vec<String>,
+        /// Withhold these tools from this run (repeat), on top of the project's denies
+        #[arg(long = "deny-tool", value_name = "TOOL")]
+        deny_tools: Vec<String>,
+        /// Reasoning effort for this run: low, medium or high
+        #[arg(long, value_name = "LEVEL")]
+        effort: Option<String>,
+        /// Do not save this run's session to disk (it cannot be resumed)
+        #[arg(long)]
+        ephemeral: bool,
     },
     /// Run one durable subagent from its spec, as a job's supervisor starts it
     /// (AH-101). Not meant to be run by hand.
@@ -2169,6 +2187,26 @@ fn main() {
     }
 }
 
+/// `--append-system-prompt` and `--append-system-prompt-file`, joined. Giving
+/// both is allowed (text first); an unreadable or empty file is an error.
+fn resolve_append_prompt(text: Option<String>, file: Option<&str>) -> Result<Option<String>, String> {
+    let from_file = match file {
+        None => None,
+        Some(path) => {
+            let body = std::fs::read_to_string(path)
+                .map_err(|e| format!("cannot read --append-system-prompt-file '{path}': {e}"))?;
+            if body.trim().is_empty() {
+                return Err(format!("--append-system-prompt-file '{path}' is empty"));
+            }
+            Some(body)
+        }
+    };
+    Ok(match (text, from_file) {
+        (Some(a), Some(b)) => Some(format!("{a}\n\n{b}")),
+        (a, b) => a.or(b),
+    })
+}
+
 /// The `--data-dir` value from raw args (only `serve` and `stop` accept it),
 /// stopping at `--` so a task text can never be mistaken for it.
 fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
@@ -3104,7 +3142,29 @@ async fn handle_agent(cmd: AgentCommands) {
             events,
             profile,
             output_density,
+            append_system_prompt,
+            append_system_prompt_file,
+            allow_tools,
+            deny_tools,
+            effort,
+            ephemeral,
         } => {
+            let append_system_prompt = match resolve_append_prompt(
+                append_system_prompt,
+                append_system_prompt_file.as_deref(),
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(2);
+                }
+            };
+            if let Some(level) = effort.as_deref() {
+                if !matches!(level, "low" | "medium" | "high") {
+                    eprintln!("Error: --effort '{level}' is not one of: low, medium, high");
+                    std::process::exit(2);
+                }
+            }
             // AH-183: before the run, so a destination that cannot be written
             // fails the command instead of silently streaming nowhere.
             if let Some(destination) = events.as_deref() {
@@ -3156,6 +3216,11 @@ async fn handle_agent(cmd: AgentCommands) {
                     max_turns: budget.max_turns,
                     max_session_tokens: budget.max_session_tokens,
                     max_budget_usd: budget.max_budget_usd,
+                    append_system_prompt,
+                    allow_tools,
+                    deny_tools,
+                    effort,
+                    ephemeral,
                     ..Default::default()
                 },
                 resume.into_request(),
@@ -5049,6 +5114,49 @@ mod tests {
             parsed_budget(&["--max-budget-usd", "0"]).max_budget_usd,
             Some(0.0)
         );
+    }
+
+    #[test]
+    fn per_run_flags_parse_on_agent_run() {
+        let cli = Cli::parse_from([
+            "flint", "cli", "agent", "run", "task", "--append-system-prompt", "be brief",
+            "--allow-tool", "read", "--allow-tool", "grep", "--deny-tool", "bash",
+            "--effort", "high", "--ephemeral",
+        ]);
+        let Some(Commands::Cli { cmd: CliCommands::Agent { cmd: AgentCommands::Run {
+            append_system_prompt, allow_tools, deny_tools, effort, ephemeral, ..
+        }}}) = cli.command else { panic!("expected `cli agent run`") };
+        assert_eq!(append_system_prompt.as_deref(), Some("be brief"));
+        assert_eq!(allow_tools, ["read", "grep"]);
+        assert_eq!(deny_tools, ["bash"]);
+        assert_eq!(effort.as_deref(), Some("high"));
+        assert!(ephemeral);
+    }
+
+    #[test]
+    fn append_prompt_joins_text_and_file_and_refuses_an_empty_file() {
+        let dir = std::env::temp_dir().join(format!("flint-append-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let full = dir.join("p.txt");
+        let empty = dir.join("e.txt");
+        std::fs::write(&full, "from file").unwrap();
+        std::fs::write(&empty, "  ").unwrap();
+        assert_eq!(resolve_append_prompt(None, None).unwrap(), None);
+        assert_eq!(
+            resolve_append_prompt(Some("a".into()), full.to_str()).unwrap().as_deref(),
+            Some("a\n\nfrom file")
+        );
+        assert!(resolve_append_prompt(None, empty.to_str()).is_err());
+        assert!(resolve_append_prompt(None, Some("/no/such/file")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tool_flag_names_follow_the_schedule_rule() {
+        use app_lib::core::cli::validate_tool_flags;
+        assert!(validate_tool_flags(&["read".into()], &["bash".into()]).is_ok());
+        assert!(validate_tool_flags(&["*".into()], &[]).is_err());
+        assert!(validate_tool_flags(&[], &["has space".into()]).is_err());
     }
 
     #[test]

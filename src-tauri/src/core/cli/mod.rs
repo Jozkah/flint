@@ -1423,6 +1423,8 @@ struct PersistTarget {
     /// `--resume` reattaches to it.
     #[cfg_attr(feature = "cli", allow(dead_code))]
     workspace: Option<worktree::Worktree>,
+    /// `--ephemeral`: nothing about this run is written to the thread store.
+    ephemeral: bool,
 }
 
 /// Per-run limits resolved from agent.toml. Grouped rather than passed as a
@@ -1680,6 +1682,33 @@ pub struct SessionFlags {
     /// `[budget].max_usd`. A run that asks for one but cannot be priced is
     /// refused (see `resolve_cost_ceiling`).
     pub max_budget_usd: Option<f64>,
+    /// `--append-system-prompt[-file]`: text added to this run's system prompt.
+    pub append_system_prompt: Option<String>,
+    /// `--allow-tool`: the run may use only these tools (empty: no restriction).
+    pub allow_tools: Vec<String>,
+    /// `--deny-tool`: tools withheld from this run, on top of the project's denies.
+    pub deny_tools: Vec<String>,
+    /// `--effort`: reasoning effort for this run.
+    pub effort: Option<String>,
+    /// `--ephemeral`: do not write the session to disk.
+    pub ephemeral: bool,
+}
+
+/// Check the names `--allow-tool`/`--deny-tool` carry, by the rule a schedule's
+/// allow-list uses (`Policy::validate`), except that a deny list may be empty.
+pub fn validate_tool_flags(allow: &[String], deny: &[String]) -> Result<(), String> {
+    use crate::core::schedule::spec::{Policy, WriteMode};
+    if !allow.is_empty() {
+        Policy { allow_tools: allow.to_vec(), write: WriteMode::ReadOnly }
+            .validate()
+            .map_err(|e| format!("--allow-tool: {e}"))?;
+    }
+    if !deny.is_empty() {
+        Policy { allow_tools: deny.to_vec(), write: WriteMode::ReadOnly }
+            .validate()
+            .map_err(|e| format!("--deny-tool: {e}"))?;
+    }
+    Ok(())
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -1830,7 +1859,10 @@ pub(crate) fn prepare_agent_session(
     // AH-186: the run's settings are the project's, with the chosen profile
     // folded in. An unknown profile is refused here -- before a provider, a
     // tool or a model is resolved from settings nobody asked for.
-    let cfg = load_agent_config_with_profile(&project_root, flags.profile.as_deref())?;
+    let mut cfg = load_agent_config_with_profile(&project_root, flags.profile.as_deref())?;
+    validate_tool_flags(&flags.allow_tools, &flags.deny_tools)?;
+    // `--deny-tool` only adds to the project's denies; it can never lift one.
+    cfg.tools.deny.extend(flags.deny_tools.iter().cloned());
     let permissions = permissions_from(&cfg);
 
     // Resolution order: --model flag, then agent.toml [agent].model, then the
@@ -2176,7 +2208,7 @@ fn prepare_agent_run(
             // `agent step` is a single turn by definition and outranks any
             // flag; `agent run` carries whatever `--max-turns` asked for.
             max_turns: if single_turn { Some(1) } else { flags.max_turns },
-            ..flags
+            ..flags.clone()
         },
         resume.as_ref(),
     )?;
@@ -2245,7 +2277,16 @@ fn prepare_agent_run(
         .map(|r| r.history.clone())
         .unwrap_or_default();
     history.push(serde_json::json!({ "role": "user", "content": final_task }));
-    let body = session.body(serde_json::json!(history.clone()));
+    let mut body = session.body(serde_json::json!(history.clone()));
+    if !flags.allow_tools.is_empty() {
+        body["allowed_tools"] = serde_json::json!(flags.allow_tools);
+    }
+    if let Some(effort) = flags.effort.as_deref() {
+        body["reasoning_effort"] = serde_json::json!(effort);
+    }
+    if let Some(text) = flags.append_system_prompt.as_deref().filter(|t| !t.trim().is_empty()) {
+        body["jan_append_system_prompt"] = serde_json::json!(text);
+    }
     // Emit resolved references stderr so the user sees what was injected
     if !injected.is_empty() {
         eprintln!("(resolved @path references)");
@@ -2264,6 +2305,7 @@ fn prepare_agent_run(
             model: session.model,
             history,
             workspace: session.workspace,
+            ephemeral: flags.ephemeral,
         },
     })
 }
@@ -2529,12 +2571,12 @@ async fn run_agent_loop(
     // The thread is written when the run starts, not only when it ends: a run
     // killed mid-turn otherwise leaves a checkpoint in a thread that no
     // listing knows, and `--resume` cannot name it.
-    if let Some(thread) = persist.thread_id.as_deref() {
+    if let Some(thread) = persist.thread_id.as_deref().filter(|_| !persist.ephemeral) {
         if let Err(e) = cli_save_thread(&persist.agent_dir, Some(thread), &persist.model, &persist.history, None) {
             eprintln!("(could not save session before the run: {e})");
         }
     }
-    let writer = match persist.thread_id.as_deref() {
+    let writer = match persist.thread_id.as_deref().filter(|_| !persist.ephemeral) {
         Some(thread) => match inflight::Writer::begin(
             &get_thread_dir(&persist.agent_dir, thread),
             &persist.model,
@@ -2811,11 +2853,20 @@ fn persist_headless_run(
         thread_id,
         model,
         mut history,
+        ephemeral,
         ..
     } = persist;
     let mut session_id = thread_id.clone();
     let mut final_text = None;
     let mut saved = false;
+    if ephemeral {
+        // Not written anywhere, and not resumable: the answer is all there is.
+        return PersistedRun {
+            session_id: None,
+            final_text: result.as_ref().ok().and_then(completion_text),
+            saved: false,
+        };
+    }
     if let Ok(completion) = result.as_ref() {
         final_text = completion_text(completion);
         // What the run actually did, when the loop published it: the user's

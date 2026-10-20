@@ -7236,6 +7236,20 @@ async fn orchestrate_inner(
     } else {
         (None, None)
     };
+    // `--append-system-prompt`: this run's extra instructions ride with the
+    // assistant's, ahead of the rest of the prompt.
+    let assistant_instructions = match (
+        assistant_instructions,
+        json_body
+            .get("jan_append_system_prompt")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|t| !t.is_empty()),
+    ) {
+        (Some(base), Some(extra)) => Some(format!("{base}\n\n{extra}")),
+        (None, Some(extra)) => Some(extra.to_string()),
+        (base, None) => base,
+    };
 
     // Resolved here rather than where the tools are built: the system prompt
     // names the scratch, and whether there *is* one is the sandbox decision, so
