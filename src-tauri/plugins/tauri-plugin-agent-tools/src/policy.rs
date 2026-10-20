@@ -36,6 +36,10 @@ struct ToolsSection {
     /// Calls to confirm every time, overriding allow but not deny.
     #[serde(default)]
     ask: Vec<String>,
+    /// Run known read-only shell commands without asking. Defaults to on;
+    /// `false` brings the prompt back for every shell command.
+    #[serde(default)]
+    readonly_shell: Option<bool>,
     #[serde(default)]
     allow_network: Option<bool>,
     /// Destinations this project may reach. Empty means "anywhere not denied".
@@ -182,7 +186,8 @@ pub fn load_under_trust(
         &org.clamp_deny(&tools.deny),
         &tools.allow_write,
     )
-    .with_ask(&tools.ask);
+    .with_ask(&tools.ask)
+    .with_readonly_shell(tools.readonly_shell.unwrap_or(true));
     // The load still succeeds -- a typo must not brick a session -- but a
     // dropped `deny` is a restriction that silently vanished, so say so here
     // as well as wherever the warnings are shown.

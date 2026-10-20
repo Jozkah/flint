@@ -933,7 +933,17 @@ pub fn resolve_decision(
             {
                 return Decision::Allow;
             }
-            if grants.covers_command(command) {
+            // Known read-only commands (`ls`, `cat src/x`, `git status`) do not
+            // need a question. Every check above has already run, and the
+            // command still runs inside the same sandbox.
+            if grants.covers_command(command)
+                || (tool.name == "bash"
+                    && perms.readonly_shell()
+                    && crate::tools::readonly_shell::is_read_only(
+                        command,
+                        crate::tools::proc::shell().flavor,
+                    ))
+            {
                 Decision::Allow
             } else {
                 Decision::Prompt(PromptKind::Exec)
@@ -1024,6 +1034,44 @@ mod tests {
 
     fn s(items: &[&str]) -> Vec<String> {
         items.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn read_only_shell_commands_run_without_a_prompt_unless_switched_off() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        let decide = |perms: &ToolPermissions, command: &str| {
+            resolve_decision(
+                lookup("bash").unwrap(),
+                &json!({ "command": command }),
+                &root,
+                None,
+                &[],
+                perms,
+                &grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let on = ToolPermissions::allow_all();
+        assert_eq!(decide(&on, "ls -la"), Decision::Allow);
+        assert_eq!(decide(&on, "git status && git diff"), Decision::Allow);
+        assert_eq!(decide(&on, "cat x > y"), Decision::Prompt(PromptKind::Exec));
+        assert_eq!(decide(&on, "ls; rm -rf x"), Decision::Prompt(PromptKind::Exec));
+        assert_eq!(decide(&on, "git diff --output=f"), Decision::Prompt(PromptKind::Exec));
+        // A credential file in the arguments is never "known read-only".
+        assert_eq!(decide(&on, "cat .env"), Decision::Prompt(PromptKind::Exec));
+        assert_eq!(decide(&on, "cat /etc/passwd"), Decision::Prompt(PromptKind::Exec));
+        // Switched off: every shell command asks again.
+        let off = ToolPermissions::allow_all().with_readonly_shell(false);
+        assert_eq!(decide(&off, "ls -la"), Decision::Prompt(PromptKind::Exec));
+        // A deny rule or an ask rule still wins over the allowlist.
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &s(&["bash(ls*)"]), &[]);
+        assert_eq!(decide(&denied, "ls -la"), Decision::HardDeny(DenyReason::Policy));
+        let asked = ToolPermissions::allow_all().with_ask(&s(&["bash(git:push)", "bash(ls *)"]));
+        assert_eq!(decide(&asked, "ls -la"), Decision::Prompt(PromptKind::Ask));
+        // Hidden state and git internals stay refused.
+        assert_eq!(decide(&on, "cat .jan/agent/agent.toml"), Decision::HardDeny(DenyReason::Hidden));
     }
 
     #[test]
@@ -1663,7 +1711,8 @@ mod tests {
     #[test]
     fn bash_prompts_exec() {
         let root = unique_root();
-        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])
+            .with_readonly_shell(false);
         let grants = SessionGrants::default();
         let d = resolve_decision(
             lookup("bash").unwrap(),
@@ -1683,7 +1732,8 @@ mod tests {
     #[test]
     fn bash_command_with_spurious_job_id_still_prompts_exec() {
         let root = unique_root();
-        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])
+            .with_readonly_shell(false);
         let grants = SessionGrants::default();
         for job_id in ["", " ", "x"] {
             let d = resolve_decision(
@@ -1749,7 +1799,8 @@ mod tests {
     #[test]
     fn exec_grant_is_scoped_to_the_exact_command() {
         let root = unique_root();
-        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])
+            .with_readonly_shell(false);
         let mut grants = SessionGrants::default();
         grants.grant_command("git status");
 
@@ -1832,7 +1883,8 @@ mod tests {
     #[test]
     fn approving_a_compound_covers_that_compound_and_not_its_parts() {
         let root = unique_root();
-        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[])
+            .with_readonly_shell(false);
         let mut grants = SessionGrants::default();
         // The user saw this whole string and approved it.
         grants.grant_command("git status && rm foo");
