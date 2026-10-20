@@ -4,7 +4,6 @@ import { route } from '@/constants/routes'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Copy,
@@ -71,6 +70,7 @@ import {
 } from '@/lib/engineModels'
 import { useEngineActivity } from '@/stores/engine-activity-store'
 import { cn } from '@/lib/utils'
+import { SettingsTabStrip, useSettingsTab } from '@/containers/SettingsTabs'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.model_providers as any)({
@@ -78,6 +78,8 @@ export const Route = createFileRoute(route.settings.model_providers as any)({
 })
 
 type Filter = 'all' | 'local' | 'remote'
+
+type OverviewTab = 'overview' | 'providers' | 'defaults'
 
 /** Installed-models table: logo, name, provider, capabilities, size, context, speed, status, menu.
  *  The name keeps 140px however narrow the window: at minmax(0,1fr) it was the
@@ -97,12 +99,6 @@ function ModelProviders() {
   const serviceHub = useServiceHub()
   const { providers, addProvider, updateProvider, setProviders } =
     useModelProvider()
-  const stripReasoningFromContext = useGeneralSetting(
-    (s) => s.stripReasoningFromContext
-  )
-  const setStripReasoningFromContext = useGeneralSetting(
-    (s) => s.setStripReasoningFromContext
-  )
   const navigate = useNavigate()
   const activeModels = useAppState((s) => s.activeModels) ?? []
   const setActiveModels = useAppState((s) => s.setActiveModels)
@@ -116,6 +112,17 @@ function ModelProviders() {
   )
   const removeProvider = useRemoveProvider()
   const [renaming, setRenaming] = useState<ProviderObject | null>(null)
+  const pageTabs = [
+    { id: 'overview' as OverviewTab, label: t('common:shell.overview') },
+    {
+      id: 'providers' as OverviewTab,
+      label: t('engine:tabs.providersAndModels', {
+        defaultValue: 'Providers and models',
+      }),
+    },
+    { id: 'defaults' as OverviewTab, label: t('engine:tabs.defaults', { defaultValue: 'Defaults' }) },
+  ]
+  const [pageTab, setPageTab] = useSettingsTab<OverviewTab>(pageTabs)
 
   const toggleProvider = async (provider: ProviderObject, active: boolean) => {
     const engine = provider.provider.toLowerCase()
@@ -370,6 +377,15 @@ function ModelProviders() {
           }
         />
 
+        <SettingsTabStrip<OverviewTab>
+          tabs={pageTabs}
+          value={pageTab}
+          onChange={setPageTab}
+          label={t('engine:models.title')}
+        />
+
+        {pageTab === 'overview' && (
+        <>
         <KpiRow>
           <KpiTile
             title={t('engine:kpi.installed')}
@@ -523,7 +539,11 @@ function ModelProviders() {
             </FrameBody>
           </Frame>
         </div>
+        </>
+        )}
 
+        {pageTab === 'providers' && (
+        <>
         <Frame className="motion-safe:animate-rise-in [animation-delay:300ms]">
           <FrameHeader
             icon={<Icon name="x-key" />}
@@ -851,27 +871,13 @@ function ModelProviders() {
             )}
           </FrameBody>
         </Frame>
+        </>
+        )}
 
-        <Frame className="motion-safe:animate-rise-in [animation-delay:400ms]">
-          <FrameHeader title={t('provider:globalSettings')} />
-          <FrameBody className="px-3">
-            <div className="flex items-center justify-between gap-6 py-3.5">
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <b className="text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground">
-                  {t('provider:stripReasoning')}
-                </b>
-                <small className="max-w-[60ch] text-xs leading-snug text-muted-foreground">
-                  {t('provider:stripReasoningDesc')}
-                </small>
-              </div>
-              <Switch
-                aria-label={t('provider:stripReasoning')}
-                checked={stripReasoningFromContext}
-                onCheckedChange={setStripReasoningFromContext}
-              />
-            </div>
-          </FrameBody>
-        </Frame>
+        {pageTab === 'defaults' && (
+          <>{/* DefaultsTab: mounted by integration step */}</>
+        )}
+
         <RenameProviderDialog
           provider={renaming}
           defaultTitle={renaming ? getDefaultProviderTitle(renaming.provider) : ''}

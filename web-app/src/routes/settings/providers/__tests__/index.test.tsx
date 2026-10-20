@@ -131,12 +131,15 @@ vi.mock('@/containers/dialogs', () => ({
 
 import { Route as ProvidersRoute } from '../index'
 
-const renderPage = async () => {
+const renderPage = async (tab?: RegExp) => {
   const Component = ProvidersRoute.component as React.ComponentType
   const utils = render(<Component />)
   await act(async () => {})
+  // The provider cards and the installed models sit on their own tab.
+  if (tab) fireEvent.click(screen.getByRole('radio', { name: tab }))
   return utils
 }
+const PROVIDERS_TAB = /^engine:tabs.providersAndModels/
 
 describe('Models page (/settings/providers)', () => {
   beforeEach(() => {
@@ -164,8 +167,20 @@ describe('Models page (/settings/providers)', () => {
     expect(within(disk).getByText(/8(\.0)? GB/)).toBeInTheDocument()
   })
 
-  it('lists every provider as a tile with its switch and status', async () => {
+  it('splits the page into Overview, Providers and models, and Defaults tabs', async () => {
     await renderPage()
+    expect(screen.queryByTestId('provider-row-openai')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: PROVIDERS_TAB }))
+    expect(screen.getByTestId('provider-row-openai')).toBeInTheDocument()
+    expect(screen.queryByText('engine:kpi.installed')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: /^engine:tabs.defaults/ }))
+    expect(screen.queryByTestId('provider-row-openai')).toBeNull()
+    // Strip reasoning moved to the Chat page: not on any tab here.
+    expect(screen.queryByText('provider:stripReasoning')).toBeNull()
+  })
+
+  it('lists every provider as a tile with its switch and status', async () => {
+    await renderPage(PROVIDERS_TAB)
     expect(screen.getByTestId('provider-row-llamacpp')).toHaveTextContent(
       'engine:status.running'
     )
@@ -188,7 +203,7 @@ describe('Models page (/settings/providers)', () => {
     const openai = h.providers.find((p: any) => p.provider === 'openai')
     openai.api_key = ''
     try {
-      await renderPage()
+      await renderPage(PROVIDERS_TAB)
       const tile = screen.getByTestId('provider-row-openai')
       expect(tile).toHaveTextContent('engine:status.noKey')
       expect(tile).not.toHaveTextContent('engine:status.connected')
@@ -202,7 +217,7 @@ describe('Models page (/settings/providers)', () => {
   })
 
   it('opens an enabled provider from its tile', async () => {
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     fireEvent.click(
       screen.getByRole('button', {
         name: /providers:openProvider.*openai/i,
@@ -215,7 +230,7 @@ describe('Models page (/settings/providers)', () => {
   })
 
   it('filters the installed models between local and remote', async () => {
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     expect(screen.getByTestId('models-row-qwen3-14b')).toBeInTheDocument()
     expect(screen.getByTestId('models-row-gpt-5')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: 'engine:filter.remote' }))
@@ -224,7 +239,7 @@ describe('Models page (/settings/providers)', () => {
   })
 
   it('names the provider, not the quantization, in the Provider column', async () => {
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     const cell = within(
       screen.getByTestId('models-row-gemma-3-4b-it:Q4_K_M')
     ).getByTestId('models-provider-cell')
@@ -261,7 +276,7 @@ describe('Models page (/settings/providers)', () => {
 
   it("opens a real menu from a model row's three dots", async () => {
     const user = userEvent.setup()
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     const row = screen.getByTestId('models-row-qwen3-14b')
     await user.click(
       within(row).getByRole('button', { name: /engine:menu.modelActions/ })
@@ -274,7 +289,7 @@ describe('Models page (/settings/providers)', () => {
   })
 
   it('offers adding a provider from the frame and the custom tile', async () => {
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     expect(screen.getAllByTestId('add-provider-dialog')).toHaveLength(2)
     expect(screen.getByTestId('import-gguf')).toBeInTheDocument()
   })
@@ -290,7 +305,7 @@ describe('Models page (/settings/providers)', () => {
 
   it('offers removing a provider the user added from its right-click menu', async () => {
     const user = userEvent.setup()
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     const menu = await openCardMenu(user, 'Qwen 3.8 500k (8081)')
     const items = within(menu)
       .getAllByRole('menuitem')
@@ -307,7 +322,7 @@ describe('Models page (/settings/providers)', () => {
     'never offers removing the built-in provider %s',
     async (provider) => {
       const user = userEvent.setup()
-      await renderPage()
+      await renderPage(PROVIDERS_TAB)
       const menu = await openCardMenu(user, provider)
       const items = within(menu)
         .getAllByRole('menuitem')
@@ -322,7 +337,7 @@ describe('Models page (/settings/providers)', () => {
 
   it('offers the same menu from the card three dots button', async () => {
     const user = userEvent.setup()
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     await user.click(
       within(screen.getByTestId('provider-row-mistral')).getByRole('button', {
         name: /providers:cardMenu.actions/,
@@ -340,7 +355,7 @@ describe('Models page (/settings/providers)', () => {
 
   it('confirms removal naming the provider and its model count, then removes it', async () => {
     const user = userEvent.setup()
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     await openCardMenu(user, 'Qwen 3.8 500k (8081)')
     await user.click(
       await screen.findByRole('menuitem', { name: 'providers:cardMenu.remove' })
@@ -361,7 +376,7 @@ describe('Models page (/settings/providers)', () => {
   })
 
   it('lays every installed-model row, and the header, on one column template', async () => {
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     const withCaps = screen.getByTestId('models-row-gpt-5')
     const noCaps = screen.getByTestId('models-row-qwen-b')
     const emptyCaps = screen.getByTestId('models-row-qwen-local')
@@ -382,7 +397,7 @@ describe('Models page (/settings/providers)', () => {
   })
 
   it('never lets the model name column collapse to nothing (T7-003, T7-089)', async () => {
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     const tbox = screen.getByTestId('models-row-gpt-5').closest('[data-slot="tbox"]') as HTMLElement
     const nameTrack = tbox.style.getPropertyValue('--tbox-cols').trim().split(/\s+(?![^(]*\))/)[1]
     expect(nameTrack).toMatch(/^minmax\((\d+)px,\s*1fr\)$/)
@@ -393,7 +408,7 @@ describe('Models page (/settings/providers)', () => {
 
   it('renames a provider for display only, keeping its internal key', async () => {
     const user = userEvent.setup()
-    await renderPage()
+    await renderPage(PROVIDERS_TAB)
     await openCardMenu(user, 'Qwen 3.8 500k (8081)')
     await user.click(
       await screen.findByRole('menuitem', { name: 'providers:cardMenu.rename' })
