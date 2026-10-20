@@ -2093,6 +2093,8 @@ struct App {
     /// Compaction handed off to the loop, which spawns the summarizing model
     /// call off the render loop. Taken once.
     compact_request: Option<CompactKind>,
+    /// `/compact <focus>`: what the next manual compaction should keep detail on.
+    compact_focus: Option<String>,
     /// A compaction is in flight: the header and the input box show a throbber,
     /// a second request is refused, and no run starts until it lands (its result
     /// replaces `history`, so a run reading the old one would be clobbered).
@@ -2596,6 +2598,7 @@ impl App {
             plugin_collection_url: None,
             plugin_installing: false,
             compact_request: None,
+            compact_focus: None,
             compacting: None,
             compact_started: None,
             run_compacting: None,
@@ -9164,6 +9167,7 @@ async fn chat_loop<B: Backend>(
                 let model = app.model.clone();
                 let history = app.history.clone();
                 let keep = kind.keep_recent(app.compaction_keep_recent);
+                let focus = app.compact_focus.take();
                 compact_base = history.len();
                 app.compacting = Some(kind);
                 app.compact_started = Some(Instant::now());
@@ -9173,6 +9177,7 @@ async fn chat_loop<B: Backend>(
                         &model,
                         &history,
                         keep,
+                        focus.as_deref(),
                     )
                     .await
                 }));
@@ -11210,7 +11215,7 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
     },
     SlashCommand {
         name: "/compact",
-        hint: "",
+        hint: "[focus]",
         description: "Summarize older turns to free up context",
         alias_of: None,
     },
@@ -11540,7 +11545,7 @@ async fn run_command(
             app.push_session_banner(true);
             app.note("started a new session");
         }
-        "compact" => compact_command(app),
+        "compact" => compact_command(app, arg),
         "context" => context_command(app),
         "hooks" => hooks_command(app),
         "usage" => usage_command(app, arg),
@@ -11750,7 +11755,7 @@ fn init_command(app: &mut App) {
 /// Manually compact the conversation: summarize older turns, keeping the recent
 /// tail, then persist. Blocks the event loop for one model call; runs only while
 /// idle (the caller gates on `Status::Idle`).
-fn compact_command(app: &mut App) {
+fn compact_command(app: &mut App, focus: &str) {
     if app.compacting.is_some() {
         app.note("already compacting");
         return;
@@ -11759,6 +11764,8 @@ fn compact_command(app: &mut App) {
         app.note("compaction unavailable (no active session)");
         return;
     }
+    let focus = focus.trim();
+    app.compact_focus = (!focus.is_empty()).then(|| focus.to_string());
     app.compact_request = Some(CompactKind::Manual);
 }
 

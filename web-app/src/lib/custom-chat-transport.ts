@@ -2563,6 +2563,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       session: string
       reason: CompactionRecord['reason']
       signal?: AbortSignal
+      focus?: string
     }
   ) {
     // Asked for by the user: a model that cannot summarize is an error they
@@ -2573,6 +2574,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           provider: opts.provider,
           modelId: opts.modelId,
           session: opts.session,
+          focus: opts.focus,
           maxOutputTokens: opts.summaryMaxTokens,
           window: opts.window,
           model: () => this.model,
@@ -2625,7 +2627,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   async compactNow(
     threadId: string,
     messages: UIMessage[],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    focus?: string
   ): Promise<CompactionRecord | null> {
     const selection = this.getModelSelection()
     const modelId = selection.selectedModel?.id
@@ -2651,6 +2654,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       session: threadId,
       reason: 'manual' as const,
       signal,
+      focus,
     }
     const keepRecent = policy.keepRecent || DEFAULT_KEEP_RECENT
     let result = await this.runCompaction(threadId, history, {

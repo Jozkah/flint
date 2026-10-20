@@ -258,9 +258,9 @@ export function useChat(
 
   // Manual compaction of this conversation (`/compact`, the banner's button).
   const compactNow = useCallback(
-    async (messages: UIMessage[]) =>
+    async (messages: UIMessage[], focus?: string) =>
       sessionId && transportRef.current
-        ? transportRef.current.compactNow(sessionId, messages)
+        ? transportRef.current.compactNow(sessionId, messages, undefined, focus)
         : null,
     [sessionId]
   )
