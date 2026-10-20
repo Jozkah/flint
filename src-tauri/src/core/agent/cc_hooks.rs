@@ -75,6 +75,9 @@ pub(crate) fn claude_home() -> Option<PathBuf> {
 
 /// The hooks that apply right now: none unless the user opted in.
 pub fn active() -> Vec<Hook> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return Vec::new();
+    }
     let links = cc_links::load();
     match claude_home() {
         Some(home) => discover(&home, &links),

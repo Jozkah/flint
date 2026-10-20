@@ -71,6 +71,9 @@ const LEGACY_CONTEXT_FILE_NAME: &str = "JAN.md";
 /// the model treats them as authoritative project instructions. Returns None
 /// when none exist.
 pub(crate) fn load_context_files(project_root: &Path) -> Option<String> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return None;
+    }
     let mut files: Vec<(std::path::PathBuf, String)> = Vec::new();
     let mut dir = Some(project_root);
     while let Some(current) = dir {
@@ -110,6 +113,9 @@ pub(crate) fn load_context_files(project_root: &Path) -> Option<String> {
 /// heading of that name, up to the next heading of the same or higher level.
 /// What a compaction should preserve; `None` when no file has one.
 pub(crate) fn compact_instructions(project_root: &Path) -> Option<String> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return None;
+    }
     let mut found = None;
     let mut dir = Some(project_root);
     let mut files = Vec::new();

@@ -1861,7 +1861,7 @@ pub(crate) fn prepare_agent_session(
     // no server is active.
     let mcp_servers: crate::core::state::SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     let mcp_settings = mcp::read_settings();
-    let mcp_task = if mcp::active_count() > 0 {
+    let mcp_task = if mcp::active_count() > 0 && !tauri_plugin_agent_tools::safe_mode::active() {
         let servers = mcp_servers.clone();
         Some(tokio::spawn(
             async move { mcp::connect_active(&servers).await },

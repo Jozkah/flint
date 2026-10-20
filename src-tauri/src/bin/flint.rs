@@ -107,6 +107,10 @@ struct Cli {
     /// parser runs; declaring it here keeps clap from rejecting it.
     #[arg(long, short = 'v', global = true)]
     verbose: bool,
+    /// Start with hooks, skills, plugins, MCP servers and project instruction
+    /// files off, to rule a customization out (also `FLINT_SAFE_MODE=1`).
+    #[arg(long = "safe-mode", global = true)]
+    safe_mode: bool,
 }
 
 /// Whether this invocation confines the shell, shared by every surface that
@@ -2110,6 +2114,11 @@ fn main() {
     // `serve`/`stop --data-dir` must point every data-folder lookup at that
     // folder, including the grants, exclusions and log set up before the
     // command is parsed; and the variable is set before any thread exists.
+    // Safe mode is read from the raw arguments before any thread exists, so
+    // every loader sees one process-wide answer.
+    if std::env::args().skip(1).take_while(|a| a != "--").any(|a| a == "--safe-mode") {
+        tauri_plugin_agent_tools::safe_mode::enable();
+    }
     if let Some(dir) = pre_parse_data_dir(std::env::args().skip(1)) {
         std::env::set_var("JAN_DATA_FOLDER", dir);
     }
