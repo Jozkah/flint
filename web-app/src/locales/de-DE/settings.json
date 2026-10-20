@@ -24,7 +24,11 @@
     "precedence": "Reihenfolge: was das Modell anfordert (falls erlaubt), dann die Einstellung der Rolle, dann die Einstellung für alle Subagenten, dann der übergeordnete Lauf.",
     "advanced": "Erweitert: Einstellungen pro Rolle",
     "overridden_one": "{{count}} Rolle festgelegt",
-    "overridden_other": "{{count}} Rollen festgelegt"
+    "overridden_other": "{{count}} Rollen festgelegt",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "Automatisch neue Updates herunterladen",
   "checkForUpdates": "Auf Updates prüfen",
