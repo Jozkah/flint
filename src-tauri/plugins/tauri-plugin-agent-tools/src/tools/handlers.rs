@@ -634,7 +634,7 @@ pub(crate) async fn execute_text(
         "read" => read_or_list(args, ctx).await.0,
         "ls" => {
             let out = ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
-            with_project_hint(out, ctx, args)
+            with_project_hint(crate::invisible::clean(out), ctx, args)
         }
         "write" | "edit" => {
             let verb = if tool.name == "write" { "overwrite" } else { "edit" };
@@ -675,11 +675,11 @@ pub(crate) async fn execute_text(
         }
         "find" => {
             let out = find(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
-            with_project_hint(out, ctx, args)
+            with_project_hint(crate::invisible::clean(out), ctx, args)
         }
         "grep" => {
             let out = grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
-            with_project_hint(out, ctx, args)
+            with_project_hint(crate::invisible::clean(out), ctx, args)
         }
         // Memory and skills live in the store root, not the sandbox: they must
         // outlive the conversation the filesystem tools are scoped to.
@@ -695,8 +695,10 @@ pub(crate) async fn execute_text(
         "skill_read" => skill_read(args, ctx),
         "skill_write" => skill_write(args, ctx),
         // Native web tools: compiled into the agent core, not an MCP server.
-        "web_search" => crate::tools::web::web_search(args).await,
-        "web_fetch" => crate::tools::web::web_fetch(args, ctx.read_roots).await,
+        "web_search" => crate::invisible::clean(crate::tools::web::web_search(args).await),
+        "web_fetch" => {
+            crate::invisible::clean(crate::tools::web::web_fetch(args, ctx.read_roots).await)
+        }
         "git_inspect" => crate::tools::git_native::git_inspect(args, ctx.read_roots).await,
         "windows_events" => crate::tools::win_events::windows_events(args).await,
         "host_query" => crate::tools::host_read::host_query(args).await,

@@ -64,6 +64,7 @@ pub mod secrets;
 pub mod skills;
 pub mod snapshot;
 pub mod subject;
+pub mod invisible;
 pub mod tools;
 pub mod undo;
 pub mod unsandboxed_retry;

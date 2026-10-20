@@ -1,0 +1,72 @@
+[
+  {
+    "name": "plain",
+    "input": "hello world",
+    "expected": "hello world"
+  },
+  {
+    "name": "tag characters",
+    "input": "a\udb40\udc41\udb40\udc42\udb40\udc7fb",
+    "expected": "ab"
+  },
+  {
+    "name": "tag block edges",
+    "input": "x\udb40\udc00y\udb40\udc7fz",
+    "expected": "xyz"
+  },
+  {
+    "name": "just outside tag block",
+    "input": "\udb40\udc80\udb3f\udfff",
+    "expected": "\udb40\udc80\udb3f\udfff"
+  },
+  {
+    "name": "bidi overrides",
+    "input": "a\u202ab\u202bc\u202cd\u202de\u202ef",
+    "expected": "abcdef"
+  },
+  {
+    "name": "bidi isolates",
+    "input": "a\u2066b\u2067c\u2068d\u2069e",
+    "expected": "abcde"
+  },
+  {
+    "name": "zero width",
+    "input": "a\u200bb\u200cc\u200dd\u200ee\u200ff",
+    "expected": "abcdef"
+  },
+  {
+    "name": "invisible operators",
+    "input": "1\u20602\u20613\u20624\u20635\u20646",
+    "expected": "123456"
+  },
+  {
+    "name": "bom inside",
+    "input": "a\ufeffb",
+    "expected": "ab"
+  },
+  {
+    "name": "leading bom kept",
+    "input": "\ufeffabc\ufeffd",
+    "expected": "\ufeffabcd"
+  },
+  {
+    "name": "neighbours kept",
+    "input": "\u200a\u2029\u2065\u2070\u202f",
+    "expected": "\u200a\u2029\u2065\u2070\u202f"
+  },
+  {
+    "name": "visible unicode kept",
+    "input": "h\u00e9llo \u2014 \u65e5\u672c\u8a9e \ud83d\ude42",
+    "expected": "h\u00e9llo \u2014 \u65e5\u672c\u8a9e \ud83d\ude42"
+  },
+  {
+    "name": "hidden instruction",
+    "input": "Summary\udb40\udc49\udb40\udc67\udb40\udc6e\udb40\udc6f\udb40\udc72\udb40\udc65 done",
+    "expected": "Summary done"
+  },
+  {
+    "name": "empty",
+    "input": "",
+    "expected": ""
+  }
+]
