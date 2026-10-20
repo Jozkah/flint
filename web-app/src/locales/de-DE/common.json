@@ -2946,5 +2946,26 @@
     "count_one": "{{count}} untergeordnet",
     "count_other": "{{count}} untergeordnet",
     "fewer": "Weniger untergeordnete anzeigen"
+  },
+  "diffReview": {
+    "title": "Änderungen prüfen",
+    "button": "Prüfen",
+    "running": "Prüfe…",
+    "security": "Sicherheitsprüfung einbeziehen",
+    "progress": "Prüfe Befund {{done}} von {{total}}…",
+    "failed": "Prüfung fehlgeschlagen: {{error}}",
+    "summary": "{{count}} Befund(e) in {{files}} Datei(en); {{refuted}} bei zweitem Blick widerlegt.",
+    "truncated": "Der Diff war zu groß und wurde abgeschnitten; der Rest wurde nicht geprüft.",
+    "none": "Keine Befunde.",
+    "listLabel": "Befunde, schwerste zuerst",
+    "unverified": "ungeprüft",
+    "fix": "Korrektur: {{fix}}",
+    "fixButton": "Mit Agent beheben",
+    "fixBusy": "Warte, bis der aktuelle Lauf endet, und versuche es erneut.",
+    "severity": {
+      "high": "Hoch",
+      "medium": "Mittel",
+      "low": "Niedrig"
+    }
   }
 }

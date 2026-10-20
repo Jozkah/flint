@@ -1185,6 +1185,90 @@ pub async fn cli_plugin_update(
     crate::core::agent::plugins::update(&resolve_project_root(project), name).await
 }
 
+/// Model calls for the diff review go through the same provider path a turn
+/// uses, with no tools.
+struct ReviewInvoker<'a> {
+    args: &'a OrchestrationArgs,
+    model: String,
+}
+
+#[async_trait::async_trait]
+impl crate::core::agent::r#loop::ModelInvoker for ReviewInvoker<'_> {
+    async fn invoke(
+        &self,
+        request: &serde_json::Value,
+        _events: &tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+    ) -> Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError> {
+        crate::core::agent::r#loop::utility_completion(self.args, &self.model, "reviewer", request)
+            .await
+    }
+}
+
+/// `flint review`: review the current diff (staged, unstaged and untracked
+/// changes against `base`, default HEAD) with a fresh-context reviewer, try to
+/// refute each finding, and print what survives, ranked. With `fix`, hand the
+/// findings to an ordinary agent run, so every edit goes through the normal
+/// tools and approvals.
+pub async fn cli_review(
+    project: &str,
+    base: Option<&str>,
+    security: bool,
+    model: Option<String>,
+    fix: bool,
+    json: bool,
+) -> Result<(), String> {
+    let root = resolve_project_root(project);
+    let input = crate::core::agent::review::collect_diff(&root, base)?;
+    let mut session = prepare_agent_session(
+        project,
+        model.clone(),
+        ProviderOverrides::default(),
+        SessionFlags {
+            plan: true,
+            require_model: true,
+            worktree: Some(false),
+            ..Default::default()
+        },
+        None,
+    )?;
+    if let Some(task) = session.mcp_task.take() {
+        task.abort();
+    }
+    let invoker = ReviewInvoker {
+        args: &session.args,
+        model: session.model.clone(),
+    };
+    let review = crate::core::agent::review::review_diff(&session.model, &input, security, &invoker)
+        .await
+        .map_err(|e| e.message().to_string())?;
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&review).map_err(|e| e.to_string())?
+        );
+    } else {
+        print!("{}", crate::core::agent::review::render_findings(&review));
+    }
+    if fix && !review.findings.is_empty() {
+        let task = crate::core::agent::review::fix_task(&review);
+        cli_agent_run(
+            project,
+            &task,
+            model,
+            ProviderOverrides::default(),
+            SessionFlags::default(),
+            None,
+            OutputFormat::Text,
+            InputFormat::Text,
+            None,
+            false,
+        )
+        .await
+        .map_err(|e| e.message().to_string())?;
+    }
+    Ok(())
+}
+
 /// Search the configured plugin marketplace for a project.
 pub async fn cli_plugin_search(
     project: &str,

@@ -2996,5 +2996,26 @@
     "count_one": "{{count}} imbricat",
     "count_other": "{{count}} imbricats",
     "fewer": "Mostra menys imbricats"
+  },
+  "diffReview": {
+    "title": "Revisa els canvis",
+    "button": "Revisa",
+    "running": "Revisant…",
+    "security": "Inclou la revisió de seguretat",
+    "progress": "Comprovant la troballa {{done}} de {{total}}…",
+    "failed": "La revisió ha fallat: {{error}}",
+    "summary": "{{count}} troballa(es) en {{files}} fitxer(s); {{refuted}} refutades en una segona mirada.",
+    "truncated": "El diff era massa gran i s'ha tallat; la resta no s'ha revisat.",
+    "none": "Cap troballa.",
+    "listLabel": "Troballes, de més a menys greu",
+    "unverified": "no verificada",
+    "fix": "Solució: {{fix}}",
+    "fixButton": "Corregeix amb l'agent",
+    "fixBusy": "Espera que acabi l'execució actual i torna-ho a provar.",
+    "severity": {
+      "high": "Alta",
+      "medium": "Mitjana",
+      "low": "Baixa"
+    }
   }
 }

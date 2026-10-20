@@ -2932,5 +2932,26 @@
     "waiting_other": "대기 중 {{count}}",
     "count_other": "중첩 {{count}}개",
     "fewer": "중첩 항목 접기"
+  },
+  "diffReview": {
+    "title": "변경 사항 검토",
+    "button": "검토",
+    "running": "검토 중…",
+    "security": "보안 검토 포함",
+    "progress": "발견 사항 {{done}}/{{total}} 확인 중…",
+    "failed": "검토 실패: {{error}}",
+    "summary": "파일 {{files}}개에서 {{count}}건 발견, 재검토에서 {{refuted}}건 반박됨.",
+    "truncated": "diff가 너무 커서 잘렸습니다. 나머지는 검토되지 않았습니다.",
+    "none": "발견 사항 없음.",
+    "listLabel": "발견 사항(심각도 순)",
+    "unverified": "미검증",
+    "fix": "수정: {{fix}}",
+    "fixButton": "에이전트로 수정",
+    "fixBusy": "현재 실행이 끝날 때까지 기다린 후 다시 시도하세요.",
+    "severity": {
+      "high": "높음",
+      "medium": "중간",
+      "low": "낮음"
+    }
   }
 }

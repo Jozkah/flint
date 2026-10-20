@@ -2889,5 +2889,26 @@
     "waiting_other": "{{count}} menunggu",
     "count_other": "{{count}} bersarang",
     "fewer": "Tampilkan lebih sedikit"
+  },
+  "diffReview": {
+    "title": "Tinjau perubahan",
+    "button": "Tinjau",
+    "running": "Meninjau…",
+    "security": "Sertakan tinjauan keamanan",
+    "progress": "Memeriksa temuan {{done}} dari {{total}}…",
+    "failed": "Tinjauan gagal: {{error}}",
+    "summary": "{{count}} temuan di {{files}} berkas; {{refuted}} dibantah pada pemeriksaan kedua.",
+    "truncated": "Diff terlalu besar dan dipotong; sisanya tidak ditinjau.",
+    "none": "Tidak ada temuan.",
+    "listLabel": "Temuan, dari yang paling parah",
+    "unverified": "belum diverifikasi",
+    "fix": "Perbaikan: {{fix}}",
+    "fixButton": "Perbaiki dengan agen",
+    "fixBusy": "Tunggu proses saat ini selesai, lalu coba lagi.",
+    "severity": {
+      "high": "Tinggi",
+      "medium": "Sedang",
+      "low": "Rendah"
+    }
   }
 }

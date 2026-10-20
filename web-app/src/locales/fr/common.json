@@ -2996,5 +2996,26 @@
     "count_one": "{{count}} imbriqué",
     "count_other": "{{count}} imbriqués",
     "fewer": "Afficher moins d’imbriqués"
+  },
+  "diffReview": {
+    "title": "Réviser les modifications",
+    "button": "Réviser",
+    "running": "Révision…",
+    "security": "Inclure la revue de sécurité",
+    "progress": "Vérification de la remarque {{done}} sur {{total}}…",
+    "failed": "La révision a échoué : {{error}}",
+    "summary": "{{count}} remarque(s) dans {{files}} fichier(s) ; {{refuted}} réfutée(s) au second examen.",
+    "truncated": "Le diff était trop volumineux et a été tronqué ; le reste n'a pas été révisé.",
+    "none": "Aucune remarque.",
+    "listLabel": "Remarques, de la plus grave à la moins grave",
+    "unverified": "non vérifiée",
+    "fix": "Correctif : {{fix}}",
+    "fixButton": "Corriger avec l'agent",
+    "fixBusy": "Attendez la fin de l'exécution en cours, puis réessayez.",
+    "severity": {
+      "high": "Haute",
+      "medium": "Moyenne",
+      "low": "Basse"
+    }
   }
 }
