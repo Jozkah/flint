@@ -1223,7 +1223,9 @@
     "interruptedNoReply_one": "已保留 {{calls}} 個已完成的步驟。",
     "interruptedNoReply_other": "已保留 {{calls}} 個已完成的步驟。",
     "interruptedContinue": "繼續",
-    "interruptedDiscard": "捨棄未完成的回覆並繼續"
+    "interruptedDiscard": "捨棄未完成的回覆並繼續",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} 無法呼叫工具，因此無法作為代理程式運作。請選擇支援工具呼叫的模型。",
   "sessionModelUnavailable": "{{model}} 已無法使用。請在模型選單中選擇其他模型。",

@@ -1255,7 +1255,9 @@
     "interruptedNoReply_few": "Zachowano {{calls}} ukończone kroki.",
     "interruptedNoReply_many": "Zachowano {{calls}} ukończonych kroków.",
     "interruptedContinue": "Kontynuuj",
-    "interruptedDiscard": "Odrzuć niedokończoną odpowiedź i kontynuuj"
+    "interruptedDiscard": "Odrzuć niedokończoną odpowiedź i kontynuuj",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} nie potrafi wywoływać narzędzi, więc nie może działać jako agent. Wybierz model wywołujący narzędzia.",
   "sessionModelUnavailable": "{{model}} nie jest już dostępny. Wybierz inny model w menu modeli.",

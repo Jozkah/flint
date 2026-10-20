@@ -1233,7 +1233,9 @@
     "interruptedNoReply_other": "{{calls}} passaggi completati conservati.",
     "interruptedNoReply_many": "{{calls}} di passaggi completati conservati.",
     "interruptedContinue": "Continua",
-    "interruptedDiscard": "Scarta la risposta incompleta e continua"
+    "interruptedDiscard": "Scarta la risposta incompleta e continua",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} non può chiamare strumenti, quindi non può fare da agente. Scegli un modello che chiami strumenti.",
   "sessionModelUnavailable": "{{model}} non è più disponibile. Scegli un altro modello dal menu dei modelli.",

@@ -1261,7 +1261,9 @@
     "interruptedNoReply_one": "{{calls}} completed step kept.",
     "interruptedNoReply_other": "{{calls}} completed steps kept.",
     "interruptedContinue": "Continue",
-    "interruptedDiscard": "Discard unfinished reply and continue"
+    "interruptedDiscard": "Discard unfinished reply and continue",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} can’t call tools, so it can’t act as an agent. Pick a tool-calling model.",
   "sessionModelUnavailable": "{{model}} is no longer available. Pick another model in the model menu.",

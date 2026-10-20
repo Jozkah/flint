@@ -578,6 +578,7 @@ import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
+import { CoworkRecap } from '@/containers/CoworkRecap'
 import { runStatus } from '@/lib/runStatus'
 import { stopToolCall } from '@/lib/toolCallStop'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
@@ -6738,6 +6739,9 @@ export function CoworkPage() {
                   {stoppedBy === 'aborted' && (
                     <CoworkRunNotice kind="stopped" />
                   )}
+                  {session?.id ? (
+                    <CoworkRecap sessionId={session.id} running={running} />
+                  ) : null}
                   {session?.id ? (
                     <CoworkInterruptedTurn
                       sessionId={session.id}

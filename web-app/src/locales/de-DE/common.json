@@ -1223,7 +1223,9 @@
     "interruptedNoReply_one": "{{calls}} abgeschlossener Schritt behalten.",
     "interruptedNoReply_other": "{{calls}} abgeschlossene Schritte behalten.",
     "interruptedContinue": "Fortfahren",
-    "interruptedDiscard": "Unfertige Antwort verwerfen und fortfahren"
+    "interruptedDiscard": "Unfertige Antwort verwerfen und fortfahren",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} kann keine Tools aufrufen und daher nicht als Agent arbeiten. Wähle ein Modell mit Tool-Aufrufen.",
   "sessionModelUnavailable": "{{model}} ist nicht mehr verfügbar. Wähle im Modellmenü ein anderes Modell.",

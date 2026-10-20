@@ -1231,7 +1231,9 @@
     "interruptedContinue": "Continuer",
     "interruptedDiscard": "Abandonner la réponse inachevée et continuer",
     "interruptedDetail_many": "{{calls}} d'étapes terminées conservées ; réponse inachevée de {{chars}} caractères.",
-    "interruptedNoReply_many": "{{calls}} d'étapes terminées conservées."
+    "interruptedNoReply_many": "{{calls}} d'étapes terminées conservées.",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} ne peut pas appeler d'outils et ne peut donc pas jouer le rôle d'agent. Choisissez un modèle compatible avec les appels d'outils.",
   "sessionModelUnavailable": "{{model}} n’est plus disponible. Choisissez un autre modèle dans le menu des modèles.",
