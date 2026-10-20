@@ -255,6 +255,8 @@ export function looksTruncatedArgs(raw: unknown): boolean {
   const t = raw.trimStart()
   if (t.length < 200) return false
   if (!t.startsWith('{') && !t.startsWith('[')) return false
+  // Ends where JSON ends: complete but malformed (an unquoted value), not cut off.
+  if (/[}\]]\s*$/.test(t)) return false
   return firstJsonObject(t) === undefined
 }
 
@@ -349,9 +351,11 @@ function invalidArgsMessage(
     return (
       `${base} -- the arguments were cut off before they were complete, which ` +
       'happens when the content is too large to return in one turn. Do not ' +
-      'resend the whole thing: create the file with a first `write` of its ' +
-      'opening portion, then extend it with `edit` in further calls (or write ' +
-      'fewer lines per call).'
+      'resend the whole thing: ' +
+      (tool === 'write' || tool === 'edit'
+        ? 'create the file with a first `write` of its opening portion, then ' +
+          'extend it with `edit` in further calls (or write fewer lines per call).'
+        : 'resend the call with shorter argument values.')
     )
   }
   return (
@@ -1409,7 +1413,8 @@ export async function runTurn(opts: {
               'that web search has to be turned on for this.'
             : `The call to \`${call.toolName}\` was not run: ${call.invalid} ` +
               'Use one of the tools you were given, with the arguments its ' +
-              'schema describes.',
+              'schema describes. It did not run and produced no result: retry ' +
+              'it, or tell the user it failed. Never report an outcome for it.',
           isError: true,
           refusal,
         }
