@@ -2055,7 +2055,20 @@ async fn run_subagent(
     let fwd_run_id = run_id.clone();
     let fwd_name = name.clone();
     let forwarder = tokio::spawn(async move {
+        // What the child said, kept (bounded) so a run that ends without an
+        // answer can still hand its last words to the parent.
+        let mut said = String::new();
         while let Some(ev) = child_rx.recv().await {
+            if let StreamEvent::Token { text } = &ev {
+                said.push_str(text);
+                if said.len() > PARTIAL_KEEP_BYTES * 2 {
+                    let mut cut = said.len() - PARTIAL_KEEP_BYTES;
+                    while !said.is_char_boundary(cut) {
+                        cut += 1;
+                    }
+                    said.drain(..cut);
+                }
+            }
             if forward_to_parent(&ev) {
                 let _ = parent_events.send(StreamEvent::Subagent {
                     run_id: fwd_run_id.clone(),
@@ -2064,11 +2077,12 @@ async fn run_subagent(
                 });
             }
         }
+        said
     });
 
     let result = run_orchestration_streamed(&child_tx, &body, &child_args).await;
     drop(child_tx);
-    let _ = forwarder.await;
+    let said = forwarder.await.unwrap_or_default();
 
     let (status, usage, detail) = finished_summary(&result, effective_child_turns(max_turns));
     let _ = events.send(StreamEvent::SubagentFinished {
@@ -2085,12 +2099,32 @@ async fn run_subagent(
 
     match result {
         Ok(completion) => Ok(child_answer_for_parent(&completion, &run_id)),
-        Err(message) => Err(SubagentError::Upstream(child_failure_text(
-            message.kind(),
-            message.message(),
-            effective_child_turns(max_turns),
-        ))),
+        Err(message) => {
+            let text = child_failure_text(message.kind(), message.message(), effective_child_turns(max_turns));
+            Err(SubagentError::Upstream(with_partial_output(text, &said)))
+        }
     }
+}
+
+/// Most of a child's own words kept for a run that ended without an answer.
+const PARTIAL_KEEP_BYTES: usize = 3_000;
+
+/// A turn-limit failure with what the child had said last, screened like any
+/// child text that re-enters the parent. Other failures are left as they are.
+pub(crate) fn with_partial_output(failure: String, said: &str) -> String {
+    let said = said.trim();
+    if said.is_empty() || !failure.starts_with("The subagent stopped after using all") {
+        return failure;
+    }
+    let mut start = said.len().saturating_sub(PARTIAL_KEEP_BYTES);
+    while !said.is_char_boundary(start) {
+        start += 1;
+    }
+    let tail = tauri_plugin_agent_tools::control_tags::screen(&said[start..]);
+    format!("{failure}
+
+Its last output before it stopped (partial, unverified):
+{tail}")
 }
 
 /// A child's final message as its parent reads it. The child's words re-enter
@@ -5419,6 +5453,17 @@ auto_compact_window = 9000
         // Any other failure, and a token-budget stop, pass through unchanged.
         assert_eq!(child_failure_text(ErrorKind::BudgetExhausted, "token budget spent", 60), "token budget spent");
         assert_eq!(child_failure_text(ErrorKind::InvalidInput, "bad", 60), "bad");
+    }
+
+    #[test]
+    fn a_turn_limit_failure_carries_the_childs_last_words_and_others_do_not() {
+        let limit = "The subagent stopped after using all 5 of its turns without finishing, so it returned no answer.".to_string();
+        let with = with_partial_output(limit.clone(), "found the bug in a.rs");
+        assert!(with.contains("found the bug in a.rs") && with.contains("partial"), "{with}");
+        assert_eq!(with_partial_output(limit.clone(), "  "), limit);
+        assert_eq!(with_partial_output("token budget spent".into(), "words"), "token budget spent");
+        let long = "y".repeat(10_000);
+        assert!(with_partial_output(limit, &long).len() < 3_400);
     }
 
     #[test]
