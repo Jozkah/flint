@@ -62,6 +62,7 @@ import {
   type MemoryDeps,
   type MemoryScope,
 } from '@/lib/coworkSubagentMemory'
+import { errandLine, joinRoster, rosterBlock } from '@/lib/coworkSubagentRoster'
 import { preloadSkills } from '@/lib/coworkSubagentSkills'
 import { resolveChildEffort } from '@/lib/coworkSubagentEffort'
 import { prepareChildChoice, profileLabel, type ParentPersona } from '@/lib/subagentChoice'
@@ -260,6 +261,12 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         ...(choice.note ? { detail: choice.note } : {}),
       })
     }
+    // The children of this run already going, told to the one starting now.
+    const roster = joinRoster(env.runId, callId, {
+      name: resolved.name,
+      errand: errandLine(req.title, req.description),
+    })
+    const siblingBlock = rosterBlock(roster.siblings)
     const childAbort = registerSubagent(env.sessionId, childTaskId)
     const stopChild = () => childAbort.abort('cancelled')
     env.signal.addEventListener('abort', stopChild, { once: true })
@@ -383,12 +390,13 @@ ${req.description}`
         activity: setup.activity,
         model: (effortChoice && 'model' in effortChoice ? effortChoice.model : undefined) ?? choice.model ?? model,
         supportsVision: choice.supportsVision ?? env.supportsVision?.() ?? false,
-        ...(choice.extraSystem.length + preloaded.blocks.length + (memoryBlockText ? 1 : 0) > 0
+        ...(choice.extraSystem.length + preloaded.blocks.length + (memoryBlockText ? 1 : 0) + (siblingBlock ? 1 : 0) > 0
           ? {
               extraSystem: [
                 ...choice.extraSystem,
                 ...preloaded.blocks,
                 ...(memoryBlockText ? [memoryBlockText] : []),
+                ...(siblingBlock ? [siblingBlock] : []),
               ],
             }
           : {}),
@@ -510,6 +518,7 @@ ${req.description}`
       }
     } finally {
       env.signal.removeEventListener('abort', stopChild)
+      roster.leave()
       unregisterSubagent(env.sessionId, childTaskId)
       // A throw from the dispatch would otherwise leave the record running with
       // nothing left to finish it.
