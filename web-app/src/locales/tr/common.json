@@ -2929,5 +2929,26 @@
     "count_one": "{{count}} iç içe",
     "count_other": "{{count}} iç içe",
     "fewer": "Daha az iç içe göster"
+  },
+  "diffReview": {
+    "title": "Değişiklikleri incele",
+    "button": "İncele",
+    "running": "İnceleniyor…",
+    "security": "Güvenlik incelemesini dahil et",
+    "progress": "Bulgu {{done}} / {{total}} denetleniyor…",
+    "failed": "İnceleme başarısız oldu: {{error}}",
+    "summary": "{{files}} dosyada {{count}} bulgu; ikinci bakışta {{refuted}} çürütüldü.",
+    "truncated": "Diff çok büyüktü ve kesildi; kalanı incelenmedi.",
+    "none": "Bulgu yok.",
+    "listLabel": "Bulgular, en ciddiden başlayarak",
+    "unverified": "doğrulanmadı",
+    "fix": "Düzeltme: {{fix}}",
+    "fixButton": "Ajanla düzelt",
+    "fixBusy": "Geçerli çalıştırmanın bitmesini bekleyin, sonra tekrar deneyin.",
+    "severity": {
+      "high": "Yüksek",
+      "medium": "Orta",
+      "low": "Düşük"
+    }
   }
 }

@@ -2920,5 +2920,26 @@
     "waiting_other": "{{count}} 个等待中",
     "count_other": "{{count}} 个嵌套",
     "fewer": "收起嵌套项"
+  },
+  "diffReview": {
+    "title": "审查更改",
+    "button": "审查",
+    "running": "正在审查…",
+    "security": "包含安全审查",
+    "progress": "正在核实第 {{done}} / {{total}} 项…",
+    "failed": "审查失败:{{error}}",
+    "summary": "{{files}} 个文件中有 {{count}} 项发现;复查后驳回 {{refuted}} 项。",
+    "truncated": "差异过大已被截断;其余部分未审查。",
+    "none": "没有发现。",
+    "listLabel": "发现项(按严重程度排序)",
+    "unverified": "未核实",
+    "fix": "修复建议:{{fix}}",
+    "fixButton": "交给智能体修复",
+    "fixBusy": "请等当前运行结束后再试。",
+    "severity": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    }
   }
 }

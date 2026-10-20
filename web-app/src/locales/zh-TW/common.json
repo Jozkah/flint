@@ -2920,5 +2920,26 @@
     "waiting_other": "{{count}} 個等待中",
     "count_other": "{{count}} 個巢狀",
     "fewer": "收合巢狀項目"
+  },
+  "diffReview": {
+    "title": "審查變更",
+    "button": "審查",
+    "running": "審查中…",
+    "security": "包含安全審查",
+    "progress": "正在核實第 {{done}} / {{total}} 項…",
+    "failed": "審查失敗:{{error}}",
+    "summary": "{{files}} 個檔案中有 {{count}} 項發現;複查後駁回 {{refuted}} 項。",
+    "truncated": "差異過大已被截斷;其餘部分未審查。",
+    "none": "沒有發現。",
+    "listLabel": "發現項(依嚴重程度排序)",
+    "unverified": "未核實",
+    "fix": "修正建議:{{fix}}",
+    "fixButton": "交給代理修正",
+    "fixBusy": "請等目前執行結束後再試。",
+    "severity": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    }
   }
 }

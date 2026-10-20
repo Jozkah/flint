@@ -3055,5 +3055,26 @@
     "count_many": "{{count}} zagnieżdżonych",
     "count_other": "{{count}} zagnieżdżonego",
     "fewer": "Pokaż mniej zagnieżdżonych"
+  },
+  "diffReview": {
+    "title": "Przejrzyj zmiany",
+    "button": "Przejrzyj",
+    "running": "Przeglądanie…",
+    "security": "Uwzględnij przegląd bezpieczeństwa",
+    "progress": "Sprawdzanie ustalenia {{done}} z {{total}}…",
+    "failed": "Przegląd nie powiódł się: {{error}}",
+    "summary": "{{count}} ustaleń w {{files}} plikach; {{refuted}} obalono przy drugim spojrzeniu.",
+    "truncated": "Diff był zbyt duży i został ucięty; reszta nie została sprawdzona.",
+    "none": "Brak ustaleń.",
+    "listLabel": "Ustalenia, od najpoważniejszych",
+    "unverified": "niezweryfikowane",
+    "fix": "Poprawka: {{fix}}",
+    "fixButton": "Napraw z agentem",
+    "fixBusy": "Poczekaj na koniec bieżącego uruchomienia i spróbuj ponownie.",
+    "severity": {
+      "high": "Wysoki",
+      "medium": "Średni",
+      "low": "Niski"
+    }
   }
 }

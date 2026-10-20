@@ -533,6 +533,27 @@ marketplace = "https://example.com/jan-plugins/index.json"
 ```
 
 
+## `flint review`
+
+Review the current diff in one command: staged, unstaged and untracked changes against `--base`
+(default `HEAD`).
+
+```bash
+flint review                 # ranked findings
+flint review --base main     # everything since main
+flint review --security      # also review as the security reviewer
+flint review --fix           # then hand the findings to an agent run that fixes them
+flint review --json
+```
+
+A fresh-context reviewer (the `reviewer` role's prompt) reads the diff and reports defects; a
+second pass then tries to refute each finding, and what survives is printed highest severity
+first, with file and line, the problem and a suggested fix. A finding the second pass could not
+check is kept and marked `(unverified)`. Put extra rules in a `REVIEW.md` at the repository root
+and the reviewer follows them. The model sees only the diff (cut at 120,000 characters, with a
+note) and has no tools. `--fix` is an ordinary agent run: its edits go through the usual tools
+and approvals. The desktop Changes panel has the same **Review** action.
+
 ## `flint config`
 
 Manage provider credentials in `~/.jan/config.toml`.

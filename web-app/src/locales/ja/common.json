@@ -2915,5 +2915,26 @@
     "waiting_other": "待機中 {{count}}",
     "count_other": "ネスト {{count}} 件",
     "fewer": "ネストを折りたたむ"
+  },
+  "diffReview": {
+    "title": "変更をレビュー",
+    "button": "レビュー",
+    "running": "レビュー中…",
+    "security": "セキュリティレビューを含める",
+    "progress": "指摘 {{done}} / {{total}} を確認中…",
+    "failed": "レビューに失敗しました: {{error}}",
+    "summary": "{{files}} 個のファイルで {{count}} 件の指摘、再確認で {{refuted}} 件を却下。",
+    "truncated": "差分が大きすぎて途中で切り捨てました。残りはレビューされていません。",
+    "none": "指摘はありません。",
+    "listLabel": "指摘(重大度順)",
+    "unverified": "未検証",
+    "fix": "修正案: {{fix}}",
+    "fixButton": "エージェントで修正",
+    "fixBusy": "現在の実行が終わるまで待ってから、もう一度お試しください。",
+    "severity": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    }
   }
 }

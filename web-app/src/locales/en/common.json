@@ -2929,5 +2929,26 @@
     "count_one": "{{count}} nested",
     "count_other": "{{count}} nested",
     "fewer": "Show fewer nested"
+  },
+  "diffReview": {
+    "title": "Review changes",
+    "button": "Review",
+    "running": "Reviewing…",
+    "security": "Include security review",
+    "progress": "Checking finding {{done}} of {{total}}…",
+    "failed": "Review failed: {{error}}",
+    "summary": "{{count}} finding(s) in {{files}} file(s); {{refuted}} refuted on a second look.",
+    "truncated": "The diff was too large and was cut; the rest was not reviewed.",
+    "none": "No findings.",
+    "listLabel": "Findings, most severe first",
+    "unverified": "unverified",
+    "fix": "Fix: {{fix}}",
+    "fixButton": "Fix with agent",
+    "fixBusy": "Wait for the current run to end, then try again.",
+    "severity": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    }
   }
 }
