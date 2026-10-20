@@ -68,6 +68,9 @@ pub struct ToolPermissions {
     /// `deny` is a restriction that silently vanished, so callers surface
     /// these (`flint doctor`, the permissions settings page, stderr).
     warnings: Vec<RuleWarning>,
+    /// Whether known read-only shell commands (`ls`, `cat`, `git status`, ...)
+    /// run without a prompt. On unless `[tools] readonly_shell = false`.
+    readonly_shell: bool,
 }
 
 /// Why a configured rule was rejected or cannot take effect.
@@ -235,7 +238,19 @@ impl ToolPermissions {
                 lint_rules("allow_write", allow_write),
             ]
             .concat(),
+            readonly_shell: true,
         }
+    }
+
+    /// Turn the built-in read-only shell allowlist on or off. On by default;
+    /// it only ever removes a prompt, in the modes that prompt.
+    pub fn with_readonly_shell(mut self, on: bool) -> Self {
+        self.readonly_shell = on;
+        self
+    }
+
+    pub fn readonly_shell(&self) -> bool {
+        self.readonly_shell
     }
 
     /// Rules dropped or ineffective, with why. See [`RuleWarning`].
@@ -262,6 +277,7 @@ impl ToolPermissions {
             allow_write: Vec::new(),
             ask: Vec::new(),
             warnings: Vec::new(),
+            readonly_shell: true,
         }
     }
 
