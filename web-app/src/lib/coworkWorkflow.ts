@@ -55,6 +55,7 @@ export function workflowToTeamInput(
         description,
         ...(subagent ? { subagent_name: subagent } : {}),
         ...(title ? { title } : {}),
+        phase: { name: text(phase.name) || `Phase ${p + 1}`, index: p },
         ...(previous.length ? { depends_on: previous, carry: previous } : {}),
       })
     }

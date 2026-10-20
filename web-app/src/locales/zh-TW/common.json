@@ -1367,6 +1367,8 @@
     "workflows_one": "{{count}} 個工作流程",
     "workflows_other": "{{count}} 個工作流程",
     "phase": "階段 {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "其他工作",
     "progress": "已完成 {{finished}} / {{total}}",
     "runningTasks_one": "{{count}} 個執行中的工作",

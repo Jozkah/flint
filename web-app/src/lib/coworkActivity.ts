@@ -105,6 +105,8 @@ export type ActivityTask = {
   workflowId: string
   /** The phase in progress when this was dispatched, when there was one. */
   phaseId?: string
+  /** The `workflow` tool phase this agent ran in (name, 0-based order). */
+  phase?: { name: string; index: number }
   /** The task that dispatched this one, when it was nested. */
   parentTaskId?: string
   kind: ActivityKind
@@ -757,6 +759,74 @@ export function workflowStatus(
   // workflow is itself the work in flight.
   if (workflow.endedAt == null && tasks.length === 0) return 'running'
   return 'done'
+}
+
+/** The agents one `workflow` phase ran, with how far along it is. */
+export type WorkflowPhaseGroup = {
+  /** Stable within a list: the dispatching team task and the phase order. */
+  key: string
+  name: string
+  index: number
+  tasks: ActivityTask[]
+  finished: number
+  status: WorkflowStatus
+}
+
+/**
+ * Split tasks into the `workflow` phases they ran in, in phase order, and
+ * everything else. Read from each task's own recorded `phase`: no second
+ * source of truth. The team row that hosts a workflow's agents is left out of
+ * `rest` when its agents are shown as phases, so it is not listed twice.
+ */
+export function groupByWorkflowPhase(tasks: ActivityTask[]): {
+  groups: WorkflowPhaseGroup[]
+  rest: ActivityTask[]
+} {
+  const byKey = new Map<string, WorkflowPhaseGroup>()
+  const hosts = new Set<string>()
+  const rest: ActivityTask[] = []
+  for (const task of tasks) {
+    if (!task.phase) continue
+    const host = task.parentTaskId ?? task.workflowId
+    const key = `${host}:${task.phase.index}`
+    let group = byKey.get(key)
+    if (!group) {
+      group = {
+        key,
+        name: task.phase.name,
+        index: task.phase.index,
+        tasks: [],
+        finished: 0,
+        status: 'done',
+      }
+      byKey.set(key, group)
+    }
+    group.tasks.push(task)
+    if (task.parentTaskId) hosts.add(task.parentTaskId)
+  }
+  for (const task of tasks) {
+    if (!task.phase && !hosts.has(task.id)) rest.push(task)
+  }
+  const groups = [...byKey.values()].sort(
+    (a, b) => a.tasks[0].startedAt - b.tasks[0].startedAt || a.index - b.index
+  )
+  for (const group of groups) {
+    group.finished = group.tasks.filter((task) => isFinished(task.status)).length
+    const has = (status: ActivityStatus) =>
+      group.tasks.some((task) => task.status === status)
+    group.status = has('running')
+      ? 'running'
+      : has('queued')
+        ? 'queued'
+        : has('error')
+          ? 'error'
+          : has('interrupted')
+            ? 'interrupted'
+            : has('cancelled')
+              ? 'cancelled'
+              : 'done'
+  }
+  return { groups, rest }
 }
 
 /** A workflow with everything a surface needs to render it. */

@@ -1405,6 +1405,8 @@
     "workflows_one": "{{count}} workflow",
     "workflows_other": "{{count}} workflows",
     "phase": "Phase {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Other work",
     "progress": "{{finished}} of {{total}} finished",
     "runningTasks_one": "{{count}} running task",

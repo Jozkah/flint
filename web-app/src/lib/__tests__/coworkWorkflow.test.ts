@@ -73,4 +73,13 @@ describe('workflow', () => {
     const agents = Array.from({ length: MAX_TEAM_TASKS + 1 }, (_, i) => ({ description: `d${i}` }))
     expect(workflowToTeamInput({ phases: [{ agents }] })).toContain(`${MAX_TEAM_TASKS}`)
   })
+
+  it('stamps each task with its phase name and order', () => {
+    const tasks = plan([
+      { name: 'Survey', agents: [{ id: 'a', description: 'x' }] },
+      { agents: [{ id: 'm', description: 'y' }] },
+    ])
+    expect(tasks.find((t) => t.id === 'a')?.phase).toEqual({ name: 'Survey', index: 0 })
+    expect(tasks.find((t) => t.id === 'm')?.phase).toEqual({ name: 'Phase 2', index: 1 })
+  })
 })

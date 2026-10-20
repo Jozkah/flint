@@ -1365,6 +1365,8 @@
     "workflows_one": "워크플로 {{count}}개",
     "workflows_other": "워크플로 {{count}}개",
     "phase": "단계 {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "기타 작업",
     "progress": "{{total}}개 중 {{finished}}개 완료",
     "runningTasks_one": "실행 중인 작업 {{count}}개",

@@ -1365,6 +1365,8 @@
     "workflows_one": "{{count}} 件のワークフロー",
     "workflows_other": "{{count}} 件のワークフロー",
     "phase": "フェーズ {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "その他の作業",
     "progress": "{{total}} 件中 {{finished}} 件が完了",
     "runningTasks_one": "実行中のタスク {{count}} 件",

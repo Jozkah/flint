@@ -178,6 +178,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       callId,
       agentName: resolved.name,
       title: req.title,
+      phase: req.phase,
       description: req.description,
       model: choice.modelId,
       // A team's children hang under the team's own row, so the panel shows one
