@@ -21,6 +21,7 @@ import {
   ENTER_WORKTREE_TOOL_NAME,
   EXIT_WORKTREE_TOOL_NAME,
 } from '@/lib/worktreeToolNames'
+import { parseWorktreePr } from '@/lib/worktreePr'
 
 export { ENTER_WORKTREE_TOOL_NAME, EXIT_WORKTREE_TOOL_NAME }
 
@@ -33,7 +34,7 @@ export const enterWorktreeTool: Tool = {
   description:
     "Move this session's write access into an isolated git worktree of its attached project, so changes land on their own branch and not in the user's checkout. " +
     'The user is asked to approve every call (it moves where you may write). The move applies from the next message in this session, not mid-turn. ' +
-    '`name` names the branch (and finds an existing worktree of that name to switch to); `base` is the branch to start from. ' +
+    '`name` names the branch (and finds an existing worktree of that name to switch to); `base` is the branch to start from; `pr` checks out a GitHub pull request (number or URL) by fetching its head from origin, and cannot be combined with `base`. ' +
     'Needs a project folder and a mode that allows changes.',
   inputSchema: jsonSchema({
     type: 'object',
@@ -45,7 +46,12 @@ export const enterWorktreeTool: Tool = {
       base: {
         type: 'string',
         description:
-          'The branch to start from. Default: the repository default branch.',
+          'The branch to start from. Default: the repository default branch (or the checked-out commit, if the user set that).',
+      },
+      pr: {
+        type: ['string', 'integer'],
+        description:
+          'A GitHub pull request to work on: 123, #123 or its URL. Fetched from origin; fails at once if origin has no such pull request or needs a login.',
       },
     },
     additionalProperties: false,
@@ -89,7 +95,7 @@ const refuse = (output: string): ToolOutcome => ({
   isError: true,
 })
 
-type Input = { name?: unknown; base?: unknown; keep?: unknown }
+type Input = { name?: unknown; base?: unknown; pr?: unknown; keep?: unknown }
 const asInput = (input: unknown): Input =>
   (input && typeof input === 'object' ? input : {}) as Input
 
@@ -120,11 +126,20 @@ export async function runEnterWorktree(
     return refuse('`name` must be a string.')
   if (raw.base !== undefined && typeof raw.base !== 'string')
     return refuse('`base` must be a string.')
-  const name = typeof raw.name === 'string' ? raw.name.trim() : ''
-  const base = typeof raw.base === 'string' ? raw.base.trim() : ''
+  let name = typeof raw.name === 'string' ? raw.name.trim() : ''
+  let base = typeof raw.base === 'string' ? raw.base.trim() : ''
+  let pr: number | undefined
+  if (raw.pr !== undefined) {
+    if (base) return refuse('use `pr` or `base`, not both.')
+    const parsed = parseWorktreePr(raw.pr)
+    if (!parsed.ok) return refuse(parsed.reason)
+    pr = parsed.number
+    base = parsed.base
+    if (!name) name = `pr-${parsed.number}`
+  }
   if (name.length > MAX_NAME_CHARS)
     return refuse(`\`name\` is over ${MAX_NAME_CHARS} characters. Shorten it.`)
-  if (base && (base.length > MAX_REF_CHARS || !REF.test(base) || base.includes('..')))
+  if (!pr && base && (base.length > MAX_REF_CHARS || !REF.test(base) || base.includes('..')))
     return refuse('`base` is not a valid branch name.')
   if (ctx.mode && isReadOnly(ctx.mode))
     return refuse(
@@ -197,7 +212,7 @@ export async function runEnterWorktree(
       {
         folder: target.path,
         branch: target.branch,
-        base: target.baseBranch ?? (base || 'the default branch'),
+        base: target.baseBranch ?? (pr ? `pull request #${pr}` : base || 'the default branch'),
         project,
       },
       undefined,

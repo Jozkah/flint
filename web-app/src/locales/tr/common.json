@@ -2421,6 +2421,8 @@
   "coworkParallel": {
     "settingTitle": "Git klasöründeki yeni oturumlar kendi worktree'lerinde çalışır",
     "settingDescription": "Bir Git deposuna bağlanan her yeni oturum kendi worktree'sini ve dalını (flint/<title>) alır; böylece birçok oturum aynı klasörde birbirine ve senin çalışma kopyana dokunmadan aynı anda çalışabilir. Her dalı oturumdan incele, birleştir veya at.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "Bu oturum kendi worktree'sinde {{branch}} dalında çalışıyor",
     "basedOn": "{{base}} tabanlı",
     "openFolder": "Klasörü aç",

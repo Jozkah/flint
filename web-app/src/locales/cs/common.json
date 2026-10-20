@@ -2513,6 +2513,8 @@
   "coworkParallel": {
     "settingTitle": "Nové relace ve složce Git pracují ve vlastním worktree",
     "settingDescription": "Každá nová relace v repozitáři Git dostane vlastní worktree a větev (flint/<title>), takže více relací může pracovat v jedné složce najednou, aniž by se ovlivňovaly navzájem nebo tvůj checkout. Každou větev zkontroluj, slouč nebo zahoď přímo z relace.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "Tato relace pracuje na větvi {{branch}} ve vlastním worktree",
     "basedOn": "z {{base}}",
     "openFolder": "Otevřít složku",

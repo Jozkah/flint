@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
 import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 
 /**
  * The Flint-owned worktrees this renderer knows about.
@@ -166,7 +167,10 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
         sessionId,
         project,
         title: options?.title ?? null,
-        base: options?.base ?? null,
+        // `HEAD` is the backend's name for the checked-out commit.
+        base:
+          options?.base ??
+          (useCoworkParallel.getState().worktreeBase === 'head' ? 'HEAD' : null),
       })
       set((s) => ({
         bySession: { ...s.bySession, [sessionId]: record },

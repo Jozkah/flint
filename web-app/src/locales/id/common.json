@@ -2375,6 +2375,8 @@
   "coworkParallel": {
     "settingTitle": "Sesi baru di folder Git bekerja di worktree sendiri",
     "settingDescription": "Setiap sesi baru di repositori Git mendapat worktree dan branch sendiri (flint/<title>), sehingga banyak sesi dapat bekerja di satu folder sekaligus tanpa saling mengganggu atau menyentuh checkout Anda. Tinjau, gabungkan, atau buang setiap branch dari sesi.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "Sesi ini bekerja di branch {{branch}}, di worktree sendiri",
     "basedOn": "dari {{base}}",
     "openFolder": "Buka folder",

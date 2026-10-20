@@ -94,6 +94,8 @@ function AgentToolsContent() {
   const setShowFilesReadyBar = useCoworkDisplay((x) => x.setShowFilesReadyBar)
   const autoWorktree = useCoworkParallel((x) => x.autoWorktree)
   const setAutoWorktree = useCoworkParallel((x) => x.setAutoWorktree)
+  const worktreeBase = useCoworkParallel((x) => x.worktreeBase)
+  const setWorktreeBase = useCoworkParallel((x) => x.setWorktreeBase)
   const agentToolsEnabled = useAgentToolsConfig((s) => s.agentToolsEnabled)
   const setAgentToolsEnabled = useAgentToolsConfig(
     (s) => s.setAgentToolsEnabled
@@ -465,6 +467,18 @@ function AgentToolsContent() {
                 data-testid="auto-worktree"
                 checked={autoWorktree}
                 onCheckedChange={setAutoWorktree}
+              />
+            }
+          />
+          <CardItem
+            title={t('common:coworkParallel.baseTitle')}
+            description={t('common:coworkParallel.baseDescription')}
+            align="start"
+            actions={
+              <Switch
+                data-testid="worktree-base-head"
+                checked={worktreeBase === 'head'}
+                onCheckedChange={(on) => setWorktreeBase(on ? 'head' : 'fresh')}
               />
             }
           />

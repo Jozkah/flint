@@ -2519,6 +2519,8 @@
   "coworkParallel": {
     "settingTitle": "Nowe sesje w folderze Git pracują we własnym worktree",
     "settingDescription": "Każda nowa sesja w repozytorium Git dostaje własny worktree i gałąź (flint/<title>), dzięki czemu wiele sesji może pracować w jednym folderze naraz, nie wchodząc sobie w drogę ani nie zmieniając twojego checkoutu. Przejrzyj, scal lub odrzuć każdą gałąź z poziomu sesji.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "Ta sesja pracuje na gałęzi {{branch}} we własnym worktree",
     "basedOn": "z {{base}}",
     "openFolder": "Otwórz folder",

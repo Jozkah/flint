@@ -2461,6 +2461,8 @@
   "coworkParallel": {
     "settingTitle": "Les sessions noves en una carpeta Git treballen en el seu propi worktree",
     "settingDescription": "Cada sessió nova en un repositori Git obté el seu propi worktree i branca (flint/<title>), perquè moltes sessions treballin alhora a la mateixa carpeta sense tocar-se entre elles ni tocar la teva còpia de treball. Revisa, fusiona o descarta cada branca des de la sessió.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "Aquesta sessió treballa a la branca {{branch}}, en el seu propi worktree",
     "basedOn": "des de {{base}}",
     "openFolder": "Obre la carpeta",

@@ -571,6 +571,80 @@ fn default_branch(repo: &Path) -> Option<String> {
         .find(|name| run(repo, &["rev-parse", "--verify", &format!("refs/heads/{name}^{{commit}}")]).is_ok())
 }
 
+/// `EnsureOptions::base` values that are not a branch name: `HEAD` (the
+/// checkout's current commit, carrying unpushed work) and `pr:<n>` or
+/// `pr:<owner>/<repo>#<n>` (a GitHub pull request's head, fetched from origin).
+fn is_special_base(base: &str) -> bool {
+    base == "HEAD" || base.starts_with("pr:")
+}
+
+/// Fetch `pull/<n>/head` from origin into `refs/flint/pr/<n>` and return its
+/// commit. Never waits for input: no terminal prompt, no credential GUI, and a
+/// stalled connection gives up after about 20 seconds. `repo_hint` is an
+/// `owner/repo` the caller read from a URL; origin must be that repository.
+fn fetch_pull_request(repo: &Path, number: u64, repo_hint: Option<&str>) -> Result<String, String> {
+    let origin = run(repo, &["remote", "get-url", "origin"])
+        .map_err(|_| "this repository has no origin remote to fetch a pull request from".to_string())?;
+    if let Some(hint) = repo_hint {
+        if !origin.to_lowercase().contains(&hint.to_lowercase()) {
+            return Err(format!("origin ({origin}) is not {hint}, so pull request #{number} cannot be fetched from it"));
+        }
+    }
+    let refspec = format!("pull/{number}/head:refs/flint/pr/{number}");
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(repo)
+        .args(crate::core::agent::vcs::HARDENED)
+        .args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=20"])
+        .args(["fetch", "--no-tags", "--force", "origin", &refspec])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GCM_INTERACTIVE", "never")
+        .env("GIT_ASKPASS", "")
+        .env("SSH_ASKPASS", "")
+        .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
+    if !out.status.success() {
+        let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(format!("could not fetch pull request #{number} from origin: {why}"));
+    }
+    run(repo, &["rev-parse", "--verify", &format!("refs/flint/pr/{number}^{{commit}}")])
+}
+
+/// The commit, branch and notes for a special base (see [`is_special_base`]).
+fn resolve_special_base(repo: &Path, base: &str) -> Result<(String, Option<String>, Vec<String>), String> {
+    if base == "HEAD" {
+        let sha = run(repo, &["rev-parse", "--verify", "HEAD^{commit}"])
+            .map_err(|_| "This repository has no commits yet, so a worktree cannot be created.".to_string())?;
+        let note = match current_branch(repo) {
+            Some(b) => format!("This worktree started from the checked-out branch {b}, including commits not yet pushed."),
+            None => "This worktree started from the checked-out commit.".to_string(),
+        };
+        return Ok((sha, current_branch(repo), vec![note]));
+    }
+    let spec = base.trim_start_matches("pr:");
+    let (hint, digits) = match spec.split_once('#') {
+        Some((repo_name, n)) => (Some(repo_name), n),
+        None => (None, spec),
+    };
+    let number: u64 = digits
+        .parse()
+        .ok()
+        .filter(|n| *n > 0)
+        .ok_or_else(|| format!("{base} is not a pull request number"))?;
+    if let Some(h) = hint {
+        let ok = h.split('/').count() == 2
+            && h.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.'));
+        if !ok {
+            return Err(format!("{h} is not an owner/repo"));
+        }
+    }
+    let sha = fetch_pull_request(repo, number, hint)?;
+    Ok((sha, None, vec![format!("This worktree holds pull request #{number}, fetched from origin (pull/{number}/head). It has no base branch to merge into.")]))
+}
+
 /// How a new worktree is named and what it starts from.
 #[derive(Debug, Clone, Default)]
 pub struct EnsureOptions {
@@ -656,6 +730,11 @@ pub fn ensure_with(
     }
 
     let (head, base_branch) = match options.base.as_deref().map(str::trim) {
+        Some(base) if is_special_base(base) => {
+            let (sha, branch, extra) = resolve_special_base(repo, base)?;
+            notes.extend(extra);
+            (sha, branch)
+        }
         Some(base) if !base.is_empty() => {
             if base.starts_with('-') {
                 return Err(format!("{base} is not a branch or commit"));
@@ -1746,6 +1825,52 @@ mod tests {
 
         assert_eq!(first.path, second.path);
         assert_eq!(first.branch, second.branch);
+    }
+
+    #[test]
+    fn a_head_base_carries_unpushed_commits_and_targets_the_current_branch() {
+        let f = fixture();
+        git_in(&f.repo, &["checkout", "-q", "-b", "topic"]);
+        std::fs::write(f.repo.join("b.txt"), "two").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "unpushed"]);
+        let opts = EnsureOptions { title: None, base: Some("HEAD".into()) };
+        let record = ensure_with(&f.repo, &f.worktrees, "s-head", &opts).expect("create");
+        assert!(PathBuf::from(&record.path).join("b.txt").exists());
+        assert_eq!(record.base_branch.as_deref(), Some("topic"));
+        // The default (fresh) base starts from main and does not have it.
+        let fresh = ensure(&f.repo, &f.worktrees, "s-fresh").expect("create");
+        assert!(!PathBuf::from(&fresh.path).join("b.txt").exists());
+        assert_eq!(fresh.base_branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn a_pull_request_base_fetches_pull_head_from_origin() {
+        let f = fixture();
+        let origin = f._dir.path().join("origin.git");
+        git_in(f._dir.path(), &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        git_in(&f.repo, &["remote", "add", "origin", &origin.to_string_lossy()]);
+        git_in(&f.repo, &["checkout", "-q", "-b", "pr-work"]);
+        std::fs::write(f.repo.join("pr.txt"), "from the pr").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "pr"]);
+        git_in(&f.repo, &["push", "-q", "origin", "HEAD:refs/pull/7/head"]);
+        git_in(&f.repo, &["checkout", "-q", "main"]);
+        git_in(&f.repo, &["branch", "-q", "-D", "pr-work"]);
+
+        let opts = EnsureOptions { title: Some("pr-7".into()), base: Some("pr:7".into()) };
+        let record = ensure_with(&f.repo, &f.worktrees, "s-pr", &opts).expect("create");
+        assert!(PathBuf::from(&record.path).join("pr.txt").exists());
+        assert_eq!(record.base_branch, None);
+        assert!(record.notes.iter().any(|n| n.contains("pull request #7")));
+
+        let missing = EnsureOptions { title: None, base: Some("pr:99".into()) };
+        let err = ensure_with(&f.repo, &f.worktrees, "s-pr2", &missing).unwrap_err();
+        assert!(err.contains("could not fetch pull request #99"), "{err}");
+        let wrong = EnsureOptions { title: None, base: Some("pr:other/thing#7".into()) };
+        assert!(ensure_with(&f.repo, &f.worktrees, "s-pr3", &wrong).unwrap_err().contains("is not other/thing"));
+        let junk = EnsureOptions { title: None, base: Some("pr:-1".into()) };
+        assert!(ensure_with(&f.repo, &f.worktrees, "s-pr4", &junk).is_err());
     }
 
     #[test]

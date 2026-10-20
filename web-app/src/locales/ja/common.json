@@ -2421,6 +2421,8 @@
   "coworkParallel": {
     "settingTitle": "Git フォルダーの新しいセッションは専用の worktree で作業する",
     "settingDescription": "Git リポジトリに接続した新しいセッションごとに専用の worktree とブランチ (flint/<title>) が作られるため、複数のセッションが同じフォルダーで互いにもあなたのチェックアウトにも触れずに同時に作業できます。各ブランチはセッションからレビュー、マージ、破棄できます。",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
     "branchTitle": "このセッションは専用の worktree でブランチ {{branch}} を使っています",
     "basedOn": "{{base}} から",
     "openFolder": "フォルダーを開く",
