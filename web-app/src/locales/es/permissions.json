@@ -42,6 +42,7 @@
     "gitDestructive": "Flint quiere ejecutar {{command}}, que puede hacer perder trabajo",
     "approveCampaign": "Flint quiere iniciar la campaña \"{{title}}\" ({{count}} tareas)",
     "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
+    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
     "spendPause": "Flint quiere continuar esta ejecución más allá de su pausa de gasto",
     "changeFileOutside": "Flint quiere cambiar {{target}}, que está fuera de {{workspace}}",
     "changeManyFilesOutside": "Flint quiere cambiar {{count}} archivos, algunos fuera de {{workspace}}"
@@ -65,6 +66,7 @@
     "gitDestructive": "Lo que elimina o sobrescribe puede no ser recuperable.",
     "campaignPlan": "Inicia sesiones separadas, cada una en su propia rama de worktree, que leen y cambian archivos y usan la cuota de tu modelo en paralelo. Aprobar el plan no aprueba ninguna llamada que haga una tarea. Flint pregunta cada vez.",
     "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
+    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "La ejecución sigue consumiendo cuota de modelo de pago hasta que termine o llegue a su tope. Denegar la detiene."
   },
   "repeat": {

@@ -9,6 +9,7 @@
 
 import { CAMPAIGN_PLAN_TOOL_NAME } from '@/lib/campaignToolNames'
 import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
+import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSessionName'
 
 /** The one messaging tool that acts on another session. */
 export const STOP_SESSION_TOOL_NAME = 'stop_session'
@@ -39,6 +40,8 @@ export const ALWAYS_ASK_TOOLS: ReadonlySet<string> = new Set([
   STOP_SESSION_TOOL_NAME,
   CAMPAIGN_PLAN_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
+  // Only asked for `worktree: true` (the gate runs in spawnSession).
+  SPAWN_SESSION_TOOL_NAME,
 ])
 
 /** Longest stop reason, matching the backend. */

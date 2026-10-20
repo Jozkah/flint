@@ -17,6 +17,7 @@ import {
 } from '@/lib/sessionMessagingTools'
 import { CAMPAIGN_PLAN_TOOL_NAME } from '@/lib/campaignToolNames'
 import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
+import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSessionName'
 import { phaseSizes } from '@/lib/workflowLaunchGate'
 import {
   GIT_TOOL_NAME,
@@ -395,6 +396,8 @@ function resourcesFor(
               )
             : []
         )
+      } else if (toolName === SPAWN_SESSION_TOOL_NAME) {
+        raw = [str(args.folder), str(args.branch)].filter(Boolean) as string[]
       } else if (toolName === WORKFLOW_TOOL_NAME && Array.isArray(args.phases)) {
         // Each phase by name and size, in order.
         raw = args.phases.map((phase, i) => {
@@ -579,6 +582,15 @@ function actionFor(
           },
         }
       }
+      if (toolName === SPAWN_SESSION_TOOL_NAME) {
+        return {
+          key: 'permissions:action.spawnWorktree',
+          values: {
+            folder: sanitizeResource(str(args.folder) ?? '', 120),
+            branch: sanitizeResource(str(args.branch) ?? '', 80),
+          },
+        }
+      }
       if (toolName === WORKFLOW_TOOL_NAME) {
         const sizes = phaseSizes(args)
         return {
@@ -637,6 +649,9 @@ function consequencesFor(
       }
       if (toolName === CAMPAIGN_PLAN_TOOL_NAME) {
         return [{ key: 'permissions:consequence.campaignPlan' }]
+      }
+      if (toolName === SPAWN_SESSION_TOOL_NAME) {
+        return [{ key: 'permissions:consequence.spawnWorktree' }]
       }
       if (toolName === WORKFLOW_TOOL_NAME) {
         return [{ key: 'permissions:consequence.workflow' }]
