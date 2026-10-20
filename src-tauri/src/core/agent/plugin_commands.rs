@@ -40,6 +40,9 @@ pub(crate) struct ParsedCommand {
 // through `discover_including_disabled`.
 #[cfg_attr(not(any(feature = "cli", test)), allow(dead_code))]
 pub(crate) fn discover(root: &Path) -> Vec<CommandEntry> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return Vec::new();
+    }
     let disabled = crate::core::agent::project::disabled_plugins(root);
     scan(root, &disabled)
 }

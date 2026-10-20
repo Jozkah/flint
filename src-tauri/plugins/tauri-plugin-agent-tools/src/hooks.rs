@@ -416,6 +416,9 @@ pub fn report(project_root: &Path) -> HooksReport {
 impl HooksReport {
     /// Plain text for the terminal.
     pub fn render(&self) -> String {
+        if crate::safe_mode::active() {
+            return format!("hooks · {}", crate::safe_mode::BANNER);
+        }
         let mut lines = vec![format!(
             "hooks · {} · {}",
             self.source,
@@ -492,6 +495,9 @@ pub fn untrusted_note(project_root: &Path) -> Option<String> {
 /// [`load`] with the trust decision made by the caller, so the gate can be
 /// tested without the process-wide trust list.
 pub fn load_with(project_root: &Path, trusted: bool) -> Result<Vec<Hook>, HookError> {
+    if crate::safe_mode::active() {
+        return Ok(Vec::new());
+    }
     let path = config_path(project_root);
     let raw = match std::fs::read_to_string(&path) {
         Ok(text) => text,

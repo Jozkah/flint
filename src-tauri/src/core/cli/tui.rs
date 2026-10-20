@@ -2832,6 +2832,10 @@ impl App {
     fn push_session_banner(&mut self, awaiting_first_message: bool) {
         let phrasing = self.approval_phrasing.clone();
         self.push_banner(&phrasing, awaiting_first_message);
+        // Safe mode stays visible: the banner is re-pushed on every new session.
+        if tauri_plugin_agent_tools::safe_mode::active() {
+            self.system(Level::Warn, tauri_plugin_agent_tools::safe_mode::BANNER);
+        }
     }
 
     /// Append a line the *app* is saying, in its own gutter column. Every other
