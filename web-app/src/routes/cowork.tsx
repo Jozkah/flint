@@ -3792,6 +3792,11 @@ export function CoworkPage() {
               signal,
             }),
       },
+      // A forked subagent starts from the conversation this turn began with.
+      fork: {
+        history: () => messages,
+        system: () => transport.forkSystemPrompt(messages),
+      },
       approveMemoryWrite: async ({ agent, scope, content, signal }) => {
         const live = liveSessionMode(sid) ?? runMode
         if (isReadOnly(live)) return false
@@ -3972,6 +3977,9 @@ export function CoworkPage() {
               const nested = parseSubagentRequest(input)
               if (typeof nested === 'string') {
                 return { output: `ERROR: ${nested}`, isError: true }
+              }
+              if (nested.fork) {
+                return { output: 'A subagent cannot fork.', isError: true }
               }
               return dispatchChild(
                 nestedCallId,

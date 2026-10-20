@@ -392,6 +392,11 @@ export function taskTool(
           description: 'Optional. Reasoning effort for this subagent where its model offers one; ignored otherwise. Leave out to use the default.',
         },
         description: { type: 'string', minLength: 1 },
+        fork: {
+          type: 'boolean',
+          description:
+            'Optional. true: the subagent starts with a read-only copy of this conversation so far, your system prompt, tools and model, then `description` as its next message. Foreground only, cannot start subagents, counts against the same limits. Use when the job depends on what was already discussed.',
+        },
         resume_agent_id: {
           type: 'string',
           minLength: 1,

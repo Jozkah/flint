@@ -169,6 +169,8 @@ export type SubagentRequest = {
   model?: string
   /** Reasoning effort for this child, checked against what its model offers. */
   effort?: EffortLevel
+  /** Start from a copy of the parent's conversation, system prompt, tools and model. */
+  fork?: boolean
   /** The `workflow` phase this child belongs to; set by the team runner, never by the model. */
   phase?: { name: string; index: number }
   /**
@@ -198,6 +200,8 @@ export type ResolvedSubagent = {
   initialPrompt?: string
   /** Skip project instructions for this child. */
   omitInstructions?: boolean
+  /** A forked child: the parent's own system prompt and conversation, not a definition. */
+  fork?: boolean
   /** Persistent memory scope, when the definition has one. */
   memory?: MemoryScope
   /** Skills preloaded into the child's context at start. */
@@ -243,6 +247,7 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
   if (typeof raw.title === 'string' && raw.title.trim()) req.title = raw.title.trim()
   if (typeof raw.model === 'string' && raw.model.trim()) req.model = raw.model.trim().slice(0, 200)
   if (isEffortLevel(raw.effort)) req.effort = raw.effort
+  if (raw.fork === true) req.fork = true
   if (typeof raw.resume_agent_id === 'string' && raw.resume_agent_id.trim()) {
     req.resume_agent_id = raw.resume_agent_id.trim().slice(0, 200)
   }
@@ -306,6 +311,17 @@ export function resolveSubagent(
   definitions: SubagentDefinition[],
   parentTools: string[]
 ): ResolvedSubagent | { error: string } {
+  // A fork is the parent again, not a saved role: its prompt, tools and model
+  // are the parent's, so no definition, allowlist or system_prompt applies.
+  if (req.fork) {
+    if (req.allowed_tools?.length || req.system_prompt) {
+      return {
+        error:
+          '`fork: true` inherits the parent\'s prompt and tools; do not pass `allowed_tools` or `system_prompt` with it.',
+      }
+    }
+    return { name: req.subagent_name, systemPrompt: '', allowedTools: null, model: null, fork: true }
+  }
   const saved = definitions.find((d) => d.name === req.subagent_name)
   const denied = saved?.disallowed_tools ?? []
   const asked = req.allowed_tools?.find((t) => denied.includes(t))
@@ -531,6 +547,8 @@ export type RunSubagentOptions = {
    * appended to it as the next user message instead of starting a fresh brief.
    */
   history?: UIMessage[]
+  /** The parent's own system prompt, replacing the one built for a definition (a fork). */
+  systemOverride?: string
   /** The spawn depth: this child's level and the most levels allowed. */
   spawn?: SpawnLimits
   /** The most children running at once, from the Subagents settings. */
@@ -702,7 +720,7 @@ export async function runSubagent(
       ...subagentTools(opts.parentTools, resolved.allowedTools, opts.spawn),
       ...(opts.extraTools ?? {}),
     }
-    const baseSystem = buildSubagentSystemPrompt(resolved.systemPrompt, {
+    const baseSystem = opts.systemOverride ?? buildSubagentSystemPrompt(resolved.systemPrompt, {
       availableTools: Object.keys(tools),
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,

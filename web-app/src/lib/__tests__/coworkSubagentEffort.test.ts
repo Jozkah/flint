@@ -63,3 +63,15 @@ describe('resolveChildEffort', () => {
     expect(out).toEqual({ note: expect.stringContaining('boom') })
   })
 })
+
+describe('fork on a request', () => {
+  it('parses fork and resolves to the parent, not a definition', () => {
+    expect(parseSubagentRequest({ ...req, fork: true })).toMatchObject({ fork: true })
+    expect(parseSubagentRequest({ ...req, fork: 'yes' })).not.toHaveProperty('fork')
+    expect(resolveSubagent({ ...req, fork: true }, [def({ allowed_tools: ['read'] })], ['read'])).toMatchObject({
+      fork: true,
+      allowedTools: null,
+      systemPrompt: '',
+    })
+  })
+})

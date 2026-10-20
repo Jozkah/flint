@@ -565,6 +565,11 @@ export class CoworkChatTransport extends CustomChatTransport {
     ]
   }
 
+  /** The system prompt this run sends, for a forked subagent to start from. */
+  forkSystemPrompt(messages: UIMessage[]): string {
+    return this.buildSystemPrompt(messages)
+  }
+
   protected override buildSystemPrompt(messages: UIMessage[]): string {
     const assistantProfile = this.routedAssistantInstructions?.trim()
       ? [
