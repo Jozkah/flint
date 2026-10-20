@@ -36,6 +36,7 @@ import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { visualizeSchemas } from '@/lib/visualize/tools'
 import { chatReadSchema } from '@/lib/chatReadTool'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import { SPAWN_SESSION_TOOL_NAME, spawnSessionTool } from '@/lib/spawnSession'
 import { campaignToolSchemas } from '@/lib/campaignToolSchemas'
 import {
   WEB_FETCH_DESCRIPTION,
@@ -55,6 +56,7 @@ export const PLAN_DENIED_TOOLS = new Set([
   'memory_write',
   'skill_write',
   'task',
+  'spawn_session',
 ])
 
 /**
@@ -80,6 +82,7 @@ export const CLIENT_TOOL_NAMES = new Set([
   TODO_TOOL_NAME,
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
+  SPAWN_SESSION_TOOL_NAME,
   TEAM_TOOL_NAME,
   ...BACKGROUND_TASK_TOOLS,
 ])
@@ -843,6 +846,7 @@ export function coworkToolsFromSchemas(
     tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
     tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
     tools[ANSWER_SUBAGENT_TOOL_NAME] = answerSubagentTool
+    tools[SPAWN_SESSION_TOOL_NAME] = spawnSessionTool
   }
   return tools
 }

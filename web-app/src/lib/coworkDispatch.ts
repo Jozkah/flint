@@ -80,6 +80,7 @@ import {
   nullRerunApprovalScope,
 } from '@/lib/nullDeviceRetry'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import { SPAWN_SESSION_TOOL_NAME, runSpawnSession } from '@/lib/spawnSession'
 import { CAMPAIGN_TOOLS } from '@/lib/campaignToolNames'
 import { gateStopSession } from '@/lib/sessionStopGate'
 import {
@@ -1319,6 +1320,9 @@ async function routeCoworkTool(
     if (toolName === TODO_TOOL_NAME) return await ctx.onTodo(call.input)
     if (toolName === ASK_TOOL_NAME) {
       return await ctx.onAsk(call.toolCallId, call.input)
+    }
+    if (toolName === SPAWN_SESSION_TOOL_NAME) {
+      return await runSpawnSession(ctx.sessionId, call.input)
     }
     if (toolName === ENABLE_TOOLS_NAME) {
       if (!ctx.onEnableTools) {
