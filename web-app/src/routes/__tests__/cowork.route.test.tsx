@@ -147,6 +147,7 @@ vi.mock('@/hooks/useServiceHub', () => {
   const hub = {
     app: () => ({ getJanDataFolder: h.dataFolder }),
     dialog: () => ({ open: h.pickFolder }),
+    events: () => ({ listen: vi.fn(async () => () => {}) }),
   }
   return { useServiceHub: () => hub, getServiceHub: () => hub }
 })
@@ -193,6 +194,9 @@ vi.mock('@/lib/coworkTransport', () => ({
       return this.advertisedTools
     }
     mcpServerFor() {
+      return undefined
+    }
+    answering() {
       return undefined
     }
     constructor(
@@ -664,6 +668,31 @@ const call = (name: string, input: unknown, id = 'c1') => ({
   toolCallId: id,
   toolName: name,
   input,
+})
+
+describe('streamed assistant turns', () => {
+  it('keeps each model reply in its own row across consecutive steps', async () => {
+    let observed: string[] = []
+    h.runTurn.mockImplementation(async ({ deps }: any) => {
+      for (const [step, text] of ['First reply.', 'Second reply.'].entries()) {
+        deps.sink.onText(text)
+        deps.onStep({
+          step: step + 1,
+          result: { text, toolCalls: [], usage: null, aborted: false },
+          turns: [{ role: 'assistant', content: text }],
+          outcomes: new Map(),
+        })
+      }
+      observed = (useCoworkRun.getState().liveTurns[SESSION] ?? [])
+        .filter((turn) => turn.role === 'assistant')
+        .map((turn) => turn.content)
+    })
+    await renderRoute()
+    await runOneTurn()
+
+    expect(h.runTurn).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(observed).toEqual(['First reply.', 'Second reply.']))
+  })
 })
 
 /** Open the access menu and choose one mode. */

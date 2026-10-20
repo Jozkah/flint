@@ -39,7 +39,8 @@ describe('runStatus', () => {
   it('reads results after a tool finishes', () => {
     const tool: CoworkTurn = { role: 'tool', content: 'ok', name: 'bash', status: 'done', callId: 'c1' }
     expect(at([user, tool])).toBe('Reading tool results…')
-    expect(at([user, tool], 12_000)).toBe('Deciding what to do next…')
+    expect(at([user, tool], 12_000)).toBe('Waiting for the model…')
+    expect(at([user, tool], 46_000)).toBe('Still waiting for the model…')
   })
 
   it('thinks inside an open think block, and escalates', () => {
