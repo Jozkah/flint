@@ -347,7 +347,8 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                     "type": "object",
                     "properties": {
                         "name": { "type": "string", "description": "Skill name, without the .md extension. Plugin skills are `<plugin>:<skill>`." },
-                        "file": { "type": "string", "description": "Optional. A file or folder bundled with the skill, relative to the skill's folder (e.g. `themes/ocean.md`). Omit to load the instructions." }
+                        "file": { "type": "string", "description": "Optional. A file or folder bundled with the skill, relative to the skill's folder (e.g. `themes/ocean.md`). Omit to load the instructions." },
+                        "inline": { "type": "boolean", "description": "Optional. Load a `context: fork` skill's instructions here instead of being told to run it in a subagent. Only for the subagent that runs the skill." }
                     },
                     "required": ["name"]
                 }

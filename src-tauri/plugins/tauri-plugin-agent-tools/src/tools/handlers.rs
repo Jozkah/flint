@@ -1351,7 +1351,12 @@ fn skill_list(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 ctx.enabled_skills,
                 &meta.name,
             ) {
-                Ok(raw) => skill_requirements_unmet(ctx, &meta.name, &skills::parse(&raw)).is_empty(),
+                Ok(raw) => {
+                    let parsed = skills::parse(&raw);
+                    // `paths:` skill: offered only where the project has a match.
+                    skills::paths_match(ctx.project_root, &parsed.paths)
+                        && skill_requirements_unmet(ctx, &meta.name, &parsed).is_empty()
+                }
                 Err(_) => true,
             }
         })
@@ -1404,6 +1409,20 @@ fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let parsed = skills::parse(&raw);
     if !parsed.model_invocable {
         return format!("ERROR: skill '{name}' not found");
+    }
+    if !skills::paths_match(ctx.project_root, &parsed.paths) {
+        return format!(
+            "ERROR: skill '{name}' applies only to files matching {}, and this project has none",
+            parsed.paths.join(", ")
+        );
+    }
+    // `context: fork`: the skill runs in a subagent so its instructions and
+    // working notes stay out of this conversation. `inline: true` is what the
+    // subagent passes to read the body itself.
+    if parsed.fork && arg_str(args, "file").is_none() && !arg_bool(args, "inline") {
+        return format!(
+            "The skill '{name}' runs in its own context. Call `dispatch_subagent` with              subagent_name \"skill-{name}\", a `description` that states the user's task and says              \"first call skill_read with name '{name}' and inline true, then carry it out\",              and `allowed_tools` including skill_read plus the tools the task needs. Report              only its answer back."
+        );
     }
     // AH-040: a skill that says which tools it needs is withheld where this
     // run may not use them. Handing over instructions whose every step will be
