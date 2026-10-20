@@ -1536,7 +1536,13 @@
     "restartAgent": "Reiniciar agente",
     "runPaused": "En pausa",
     "resumeFromSaved": "Reanudar",
-    "resumeFromSavedHint": "Ejecutar de nuevo; los agentes terminados devuelven sus resultados guardados"
+    "resumeFromSavedHint": "Ejecutar de nuevo; los agentes terminados devuelven sus resultados guardados",
+    "saveWorkflow": "Guardar",
+    "saveWorkflowName": "Nombre (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Qué hace",
+    "saveWorkflowConfirm": "Guardar flujo de trabajo",
+    "saveWorkflowDone": "Guardado {{name}}. Ejecútalo con /workflow:{{name}}",
+    "saveWorkflowFailed": "No se pudo guardar: {{error}}"
   },
   "reasoningEffort": {
     "label": "Esfuerzo de razonamiento",

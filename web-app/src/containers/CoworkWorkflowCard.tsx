@@ -19,6 +19,7 @@ import {
   WorkflowPauseButton,
   WorkflowPausedBadge,
   WorkflowResumeButton,
+  WorkflowSaveButton,
 } from '@/containers/WorkflowRunControls'
 import { formatCompactDuration } from '@/lib/duration'
 import {
@@ -185,6 +186,7 @@ export function CoworkWorkflowCard({
         </p>
         <WorkflowPauseButton tasks={tasks} />
         <WorkflowResumeButton tasks={tasks} onResume={onResume} />
+        <WorkflowSaveButton tasks={tasks} sessionId={workflow.sessionId} />
         <Button
           variant="surface"
           size="xs"

@@ -1511,7 +1511,13 @@
     "restartAgent": "Khởi động lại tác tử",
     "runPaused": "Đã tạm dừng",
     "resumeFromSaved": "Tiếp tục",
-    "resumeFromSavedHint": "Chạy lại; các tác tử đã xong trả về kết quả đã lưu"
+    "resumeFromSavedHint": "Chạy lại; các tác tử đã xong trả về kết quả đã lưu",
+    "saveWorkflow": "Lưu",
+    "saveWorkflowName": "Tên (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Chức năng",
+    "saveWorkflowConfirm": "Lưu quy trình",
+    "saveWorkflowDone": "Đã lưu {{name}}. Chạy bằng /workflow:{{name}}",
+    "saveWorkflowFailed": "Không lưu được: {{error}}"
   },
   "reasoningEffort": {
     "label": "Mức độ suy luận",

@@ -1514,7 +1514,13 @@
     "restartAgent": "重新啟動代理",
     "runPaused": "已暫停",
     "resumeFromSaved": "恢復",
-    "resumeFromSavedHint": "重新執行；已完成的代理直接回傳已儲存的結果"
+    "resumeFromSavedHint": "重新執行；已完成的代理直接回傳已儲存的結果",
+    "saveWorkflow": "儲存",
+    "saveWorkflowName": "名稱 (a-z, 0-9, -)",
+    "saveWorkflowDescription": "功能說明",
+    "saveWorkflowConfirm": "儲存工作流程",
+    "saveWorkflowDone": "已儲存 {{name}}。用 /workflow:{{name}} 執行",
+    "saveWorkflowFailed": "無法儲存：{{error}}"
   },
   "reasoningEffort": {
     "label": "推理強度",

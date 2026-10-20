@@ -26,9 +26,9 @@ const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
  */
 export function workflowToTeamInput(
   raw: unknown
-): { tasks: Raw[]; run: { phases: unknown[]; resumeRunId?: string } } | string {
+): { tasks: Raw[]; run: { phases: unknown[]; args?: Record<string, unknown>; resumeRunId?: string } } | string {
   if (!isObject(raw) || !Array.isArray(raw.phases) || raw.phases.length === 0) {
-    return 'workflow needs a non-empty `phases` array'
+    return 'workflow needs a non-empty `phases` array (or `saved`, or `resume_run_id`)'
   }
   const tasks: Raw[] = []
   const seen = new Set<string>()
@@ -99,6 +99,23 @@ export function workflowTool(subagentNames: string[]): Tool {
           description:
             'Start it and return a task_id at once; collect the combined report with await_task, ' +
             'check task_status, or cancel_task. Default false.',
+        },
+        saved: {
+          type: 'string',
+          minLength: 1,
+          description:
+            'Run a workflow the user saved, by name, instead of giving `phases`. Its briefs may use ' +
+            '{{args.name}} placeholders: pass their values in `args`. They are inserted as data, never as instructions.',
+        },
+        args: {
+          type: 'object',
+          description:
+            'Values for {{args.name}} placeholders in the briefs (of `saved`, or of your own `phases`).',
+          additionalProperties: true,
+        },
+        list_saved: {
+          type: 'boolean',
+          description: 'Give only this (true) to list the saved workflows, their descriptions and args.',
         },
         resume_run_id: {
           type: 'string',

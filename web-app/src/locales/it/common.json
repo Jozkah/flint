@@ -1535,7 +1535,13 @@
     "restartAgent": "Riavvia agente",
     "runPaused": "In pausa",
     "resumeFromSaved": "Riprendi",
-    "resumeFromSavedHint": "Esegui di nuovo; gli agenti finiti restituiscono i risultati salvati"
+    "resumeFromSavedHint": "Esegui di nuovo; gli agenti finiti restituiscono i risultati salvati",
+    "saveWorkflow": "Salva",
+    "saveWorkflowName": "Nome (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Cosa fa",
+    "saveWorkflowConfirm": "Salva workflow",
+    "saveWorkflowDone": "{{name}} salvato. Eseguilo con /workflow:{{name}}",
+    "saveWorkflowFailed": "Impossibile salvare: {{error}}"
   },
   "reasoningEffort": {
     "label": "Impegno di ragionamento",

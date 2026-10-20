@@ -1,6 +1,6 @@
 import { workflowToTeamInput } from '@/lib/coworkWorkflow'
 import { runWorkflowControl } from '@/lib/workflowControl'
-import { resolveResume } from '@/lib/workflowRuns'
+import { describeSaved, resolveWorkflowInput } from '@/lib/savedWorkflows'
 import { pushNotice } from '@/lib/coworkRunNotices'
 import { registerToolCallStop, stopBackendCall } from '@/lib/toolCallStop'
 import {
@@ -1415,13 +1415,18 @@ async function routeCoworkTool(
       if (toolName === WORKFLOW_TOOL_NAME) {
         const op = (call.input as { control?: unknown } | null)?.control
         if (op !== undefined) return runWorkflowControl(ctx.sessionId, op)
-        const resumed = await resolveResume(ctx.sessionId, call.input)
+        if ((call.input as { list_saved?: unknown } | null)?.list_saved === true) {
+          return { output: await describeSaved() }
+        }
+        const resumed = await resolveWorkflowInput(ctx.sessionId, call.input)
         if ('error' in resumed) return { output: `ERROR: ${resumed.error}`, isError: true }
         const converted = workflowToTeamInput(resumed.input)
         if (typeof converted === 'string') {
           return { output: `ERROR: ${converted}`, isError: true }
         }
-        teamInput = converted
+        // The run record keeps the phases as written (placeholders intact) and
+        // the values they were filled from.
+        teamInput = { ...converted, run: { ...converted.run, ...resumed.template } }
         // Gated on what will actually run: a resume names no phases itself.
         const declined = await gateWorkflowLaunch({ ...call, input: resumed.input }, ctx, signal)
         if (declined) return declined

@@ -1567,7 +1567,13 @@
     "restartAgent": "Перезапустить агента",
     "runPaused": "На паузе",
     "resumeFromSaved": "Возобновить",
-    "resumeFromSavedHint": "Запустить снова; завершённые агенты вернут сохранённые результаты"
+    "resumeFromSavedHint": "Запустить снова; завершённые агенты вернут сохранённые результаты",
+    "saveWorkflow": "Сохранить",
+    "saveWorkflowName": "Имя (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Что делает",
+    "saveWorkflowConfirm": "Сохранить workflow",
+    "saveWorkflowDone": "{{name}} сохранён. Запуск: /workflow:{{name}}",
+    "saveWorkflowFailed": "Не удалось сохранить: {{error}}"
   },
   "reasoningEffort": {
     "label": "Глубина рассуждения",
