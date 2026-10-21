@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "Metadaten",
   "regenerate": "Neu generieren",
+  "historyReadFailed": "Der Unterhaltungsverlauf konnte nicht geladen werden.",
   "threadImage": "Thread Bild",
   "editMessage": "Nachricht bearbeiten",
   "deleteMessage": "Nachricht löschen",

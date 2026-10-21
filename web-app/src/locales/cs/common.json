@@ -548,6 +548,7 @@
   "jan": "Flint",
   "metadata": "Metadata",
   "regenerate": "Regenerovat",
+  "historyReadFailed": "Historii konverzace se nepodařilo načíst.",
   "threadImage": "Obrázek vlákna",
   "editMessage": "Upravit zprávu",
   "deleteMessage": "Smazat zprávu",

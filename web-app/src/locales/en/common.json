@@ -571,6 +571,7 @@
   "jan": "Flint",
   "metadata": "Metadata",
   "regenerate": "Regenerate",
+  "historyReadFailed": "Unable to load conversation history.",
   "threadImage": "Thread image",
   "editMessage": "Edit Message",
   "deleteMessage": "Delete Message",

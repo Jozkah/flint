@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "मेटाडेटा",
   "regenerate": "पुनः उत्पन्न करें",
+  "historyReadFailed": "बातचीत का इतिहास लोड नहीं हो सका।",
   "threadImage": "थ्रेड की छवि",
   "editMessage": "संदेश संपादित करें",
   "deleteMessage": "संदेश हटाएं",

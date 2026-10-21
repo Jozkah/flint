@@ -548,6 +548,7 @@
   "jan": "Flint",
   "metadata": "Metadane",
   "regenerate": "Odtwórz",
+  "historyReadFailed": "Nie udało się wczytać historii rozmowy.",
   "threadImage": "Obraz wątku",
   "editMessage": "Edytuj Wiadomość",
   "deleteMessage": "Usuń Wiadomość",

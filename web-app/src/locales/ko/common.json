@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "메타데이터",
   "regenerate": "다시 생성",
+  "historyReadFailed": "대화 기록을 불러오지 못했습니다.",
   "threadImage": "스레드 이미지",
   "editMessage": "메시지 수정",
   "deleteMessage": "메시지 삭제",

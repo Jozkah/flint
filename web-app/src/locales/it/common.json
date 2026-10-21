@@ -537,6 +537,7 @@
   "jan": "Flint",
   "metadata": "Metadati",
   "regenerate": "Rigenera",
+  "historyReadFailed": "Impossibile caricare la cronologia della conversazione.",
   "threadImage": "Immagine conversazione",
   "editMessage": "Modifica messaggio",
   "deleteMessage": "Elimina messaggio",

@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "Meta veri",
   "regenerate": "Yeniden üret",
+  "historyReadFailed": "Konuşma geçmişi yüklenemedi.",
   "threadImage": "Konu görseli",
   "editMessage": "Mesajı düzenle",
   "deleteMessage": "Mesajı sil",

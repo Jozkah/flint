@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "元数据",
   "regenerate": "重新生成",
+  "historyReadFailed": "无法加载对话历史记录。",
   "threadImage": "会话图片",
   "editMessage": "编辑消息",
   "deleteMessage": "删除消息",

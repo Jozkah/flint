@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "メタデータ",
   "regenerate": "再生成",
+  "historyReadFailed": "会話履歴を読み込めませんでした。",
   "threadImage": "スレッド画像",
   "editMessage": "メッセージを編集",
   "deleteMessage": "メッセージを削除",

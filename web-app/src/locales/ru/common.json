@@ -548,6 +548,7 @@
   "jan": "Flint",
   "metadata": "Метаданные",
   "regenerate": "Сгенерировать заново",
+  "historyReadFailed": "Не удалось загрузить историю беседы.",
   "threadImage": "Изображение обсуждения",
   "editMessage": "Редактировать сообщение",
   "deleteMessage": "Удалить сообщение",

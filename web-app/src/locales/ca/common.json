@@ -537,6 +537,7 @@
   "jan": "Flint",
   "metadata": "Metadades",
   "regenerate": "Regenera",
+  "historyReadFailed": "No s'ha pogut carregar l'historial de la conversa.",
   "threadImage": "Imatge del fil",
   "editMessage": "Edita el missatge",
   "deleteMessage": "Suprimeix el missatge",

@@ -529,6 +529,7 @@
   "jan": "Flint",
   "metadata": "Siêu dữ liệu",
   "regenerate": "Tái tạo",
+  "historyReadFailed": "Không thể tải lịch sử cuộc trò chuyện.",
   "threadImage": "Hình ảnh chủ đề",
   "editMessage": "Chỉnh sửa tin nhắn",
   "deleteMessage": "Xóa tin nhắn",

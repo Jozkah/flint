@@ -526,6 +526,7 @@
   "jan": "Flint",
   "metadata": "Metadata",
   "regenerate": "Hasilkan Ulang",
+  "historyReadFailed": "Tidak dapat memuat riwayat percakapan.",
   "threadImage": "Gambar utas",
   "editMessage": "Edit Pesan",
   "deleteMessage": "Hapus Pesan",
