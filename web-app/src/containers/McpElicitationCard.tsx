@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import {
@@ -56,11 +57,11 @@ function FieldInput({
   }
   if (field.kind === 'choice') {
     return (
-      <select
+      <Select
         id={id}
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(e.target.value || undefined)}
-        className="h-8 rounded-md border-[0.8px] border-border bg-background px-2 text-sm"
+        className="w-full"
       >
         {!field.required && <option value="" />}
         {field.options.map((o) => (
@@ -68,7 +69,7 @@ function FieldInput({
             {o.label}
           </option>
         ))}
-      </select>
+      </Select>
     )
   }
   if (field.kind === 'multiChoice') {
