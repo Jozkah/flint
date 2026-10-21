@@ -127,7 +127,8 @@
     "previousPane": "Riquadro precedente",
     "previousPaneDesc": "Passa al riquadro precedente della vista divisa.",
     "findInChat": "Cerca nella chat",
-    "findInChatDesc": "Cerca nella conversazione sullo schermo."
+    "findInChatDesc": "Cerca nella conversazione sullo schermo.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Interfaccia",

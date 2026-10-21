@@ -126,7 +126,8 @@
     "previousPane": "上一個窗格",
     "previousPaneDesc": "切換到分割檢視中的上一個窗格。",
     "findInChat": "在聊天中尋找",
-    "findInChatDesc": "搜尋畫面上的對話。"
+    "findInChatDesc": "搜尋畫面上的對話。",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "外觀",

@@ -126,7 +126,8 @@
     "previousPane": "이전 창",
     "previousPaneDesc": "분할 보기의 이전 창으로 이동합니다.",
     "findInChat": "채팅에서 찾기",
-    "findInChatDesc": "화면에 보이는 대화를 검색합니다."
+    "findInChatDesc": "화면에 보이는 대화를 검색합니다.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "인터페이스",
