@@ -170,6 +170,31 @@ describe('TauriProvidersService', () => {
       warnSpy.mockRestore()
     })
 
+    it('keeps the other providers when one engine fails to list', async () => {
+      const good = {
+        list: vi.fn().mockResolvedValue([{ id: 'm1', name: 'M1', description: '' }]),
+        getSettings: vi.fn().mockResolvedValue([]),
+        isToolSupported: vi.fn().mockResolvedValue(false),
+      }
+      const bad = {
+        list: vi.fn().mockRejectedValue(new Error('engine down')),
+        getSettings: vi.fn().mockResolvedValue([]),
+        isToolSupported: vi.fn().mockResolvedValue(false),
+      }
+      vi.mocked(EngineManager.instance).mockReturnValue({
+        engines: new Map([
+          ['bad-engine', bad],
+          ['good-engine', good],
+        ]),
+      } as any)
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const result = await svc.getProviders()
+      expect(result.find((p: any) => p.provider === 'good-engine')).toBeDefined()
+      expect(result.find((p: any) => p.provider === 'bad-engine')).toBeUndefined()
+      expect(result.find((p: any) => p.provider === 'openai')).toBeDefined()
+      errSpy.mockRestore()
+    })
+
     it('returns empty array on top-level error', async () => {
       vi.mocked(EngineManager.instance).mockImplementation(() => {
         throw new Error('boom')
