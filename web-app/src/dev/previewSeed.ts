@@ -369,6 +369,47 @@ function bigAttachments(): Array<{ name: string; content: string }> {
   ]
 }
 
+/** A short chat with tool calls whose arguments are long, nested or empty. */
+function toolArgsMessages(id: string): ThreadMessage[] {
+  const base = { object: 'thread.message', thread_id: id, status: 'ready' }
+  const t = (m: number) => now - m * MIN
+  const done = { created_at: t(30), completed_at: t(30) }
+  if (id === 'escape') {
+    return [
+      { ...base, id: `${id}-m1`, role: 'user', ...done, content: [text('The radar feed times out a few times a day and the map goes blank. Add a bounded retry with a cached fallback.')] },
+      {
+        ...base,
+        id: `${id}-m2`,
+        role: 'assistant',
+        ...done,
+        content: [
+          tool('read', 'e1', { path: 'internal/radar/client.go' }, '118 lines · func (c *Client) Fetch(ctx context.Context, region string) (*Frame, error)'),
+          tool('bash', 'e2', { command: 'go test ./internal/radar/ -run TestFetchTimeout' }, `--- ${r('FAIL')}: TestFetchTimeout (2.00s)
+    client_test.go:88: got error "context deadline exceeded", want cached frame
+${r('FAIL')}`),
+          text('The client gives up on the first timeout. I will retry up to three times with jitter and serve the last cached frame when every attempt fails, then add a test for it.'),
+        ],
+      },
+    ] as unknown as ThreadMessage[]
+  }
+  return [
+    { ...base, id: `${id}-m1`, role: 'user', ...done, content: [text('Convert units in the API and cover the odd cases: empty input, nested lists, very long keys.')] },
+    {
+      ...base,
+      id: `${id}-m2`,
+      role: 'assistant',
+      ...done,
+      content: [
+        tool('write', 'u1', { path: 'internal/units/convert.go', content: '' }, 'Wrote 0 bytes'),
+        tool('edit_file', 'u2', { path: 'internal/units/convert_test.go', edits: [{ find: 'func TestConvert(t *testing.T) {', replace: 'func TestConvertTable(t *testing.T) {' }, { find: 'want := 1.0', replace: 'want := 1.0 // metres' }] }, 'Edited internal/units/convert_test.go (+2 -2)'),
+        tool('web_search', 'u3', { query: 'celsius to fahrenheit conversion rounding half away from zero versus banker rounding in go math package', filters: { site: ['pkg.go.dev', 'go.dev', 'stackoverflow.com'], freshness: 'year', language: 'en' }, top: 6 }, JSON.stringify([{ title: 'math package - Go documentation', url: 'https://pkg.go.dev/math' }])),
+        tool('bash', 'u4', { command: 'go test ./internal/units/... -run "TestConvert(Table|Empty|Nested)" -count=1 -v -race -timeout 60s -coverprofile=cover.out', cwd: '~/projects/acme-weather' }, 'ok  	github.com/acme/weather/internal/units	0.512s	coverage: 94.1% of statements'),
+        text('Empty input returns an empty result, nested lists convert element by element, and keys longer than 64 bytes are rejected with a clear error. Tests cover all three.'),
+      ],
+    },
+  ] as unknown as ThreadMessage[]
+}
+
 function releaseMessages(): ThreadMessage[] {
   const base = { object: 'thread.message', thread_id: 'release', status: 'ready' }
   const t = (m: number) => now - m * MIN
@@ -1305,6 +1346,7 @@ function patchServices() {
   }
   set('messagesService', 'fetchMessages', async (id: string) => {
     if (id === 'release') return releaseMessages()
+    if (id === 'escape' || id === 'toolargs') return toolArgsMessages(id)
     const chat = CHATS.find((c) => c[0] === id)
     return chat && /^(plan\d|longtitle|mdshow)$/.test(id) ? fillerMessages(id, chat[1]) : []
   })
