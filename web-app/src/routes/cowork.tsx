@@ -6406,7 +6406,10 @@ export function CoworkPage() {
               }
             />
           ) : null}
-          <div ref={transcriptRef} className="relative flex-1">
+          <div
+            ref={transcriptRef}
+            className="relative flex-1 [mask-image:linear-gradient(to_bottom,transparent,#000_14px)]"
+          >
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState
                 folder={folder}
