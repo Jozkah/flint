@@ -181,6 +181,10 @@ pub async fn load_mlx_model_impl(
     let mut command = Command::new(&bin_path);
     command.args(&args);
     command.envs(envs);
+    // Lets a later launch tell this server from one someone runs themselves, so
+    // it can stop it if this app dies without its exit cleanup. Set after `envs`:
+    // nothing the caller passes may remove it.
+    command.env(jan_utils::MLX_OWNER_ENV, "1");
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
     // The map is not locked during the load, so an exit cleanup can run

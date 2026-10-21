@@ -1076,6 +1076,25 @@ pub fn build_app() -> tauri::App {
                 });
             }
 
+            // A SIGTERM ends the process without RunEvent::Exit, so the exit
+            // cleanup never ran and mlx-server, which does not watch its
+            // parent, was left running. Turn the signal into a normal exit.
+            #[cfg(target_os = "macos")]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use tokio::signal::unix::{signal, SignalKind};
+                    let Ok(mut term) = signal(SignalKind::terminate()) else {
+                        log::warn!("Could not listen for SIGTERM");
+                        return;
+                    };
+                    term.recv().await;
+                    log::info!("Received SIGTERM; shutting down");
+                    SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+                    handle.exit(0);
+                });
+            }
+
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
             store_path.push("store.json");
