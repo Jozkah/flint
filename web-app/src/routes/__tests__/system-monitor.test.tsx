@@ -102,7 +102,8 @@ describe('SystemMonitor route', () => {
     expect(screen.getByText('16')).toBeInTheDocument()
     expect(screen.getByText('x86_64')).toBeInTheDocument()
     // The card's corner badge and its Current Usage line both show it.
-    expect(screen.getAllByText('42.50%')).toHaveLength(2)
+    // The charts also list their samples as visually hidden text; only the visible values count.
+    expect(screen.getAllByText('43%', { ignore: 'table *' })).toHaveLength(2)
   })
 
   it('draws its own bar in the standalone window', () => {
@@ -133,7 +134,7 @@ describe('SystemMonitor route', () => {
     expect(screen.getByText('32768MB')).toBeInTheDocument()
     expect(screen.getAllByText('16384MB').length).toBe(2) // both available & used are 16384
     // ram percentage = 16384/32768 * 100 = 50
-    expect(screen.getAllByText('50.00%').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('50%').length).toBeGreaterThan(0)
   })
 
   it('shows noGpus message on non-mac when no GPUs reported', () => {
@@ -174,7 +175,7 @@ describe('SystemMonitor route', () => {
     expect(screen.getByText('24576MB')).toBeInTheDocument()
     expect(screen.getByText('560.35')).toBeInTheDocument()
     // 6144/24576 = 25%
-    expect(screen.getAllByText('25.00%').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('25%').length).toBeGreaterThan(0)
   })
 
   it('hides GPU card on macOS', () => {
@@ -183,7 +184,7 @@ describe('SystemMonitor route', () => {
     expect(screen.queryByText('system-monitor:gpu')).not.toBeInTheDocument()
   })
 
-  it('says it is measuring, not 0.00%, until the first sample arrives', async () => {
+  it('says it is measuring, not 0.0%, until the first sample arrives', async () => {
     h.systemUsage = { cpu: 0, used_memory: 0, gpus: [] }
     let resolve!: (v: unknown) => void
     h.getSystemUsage.mockReturnValue(new Promise((r) => (resolve = r)))
@@ -191,7 +192,7 @@ describe('SystemMonitor route', () => {
     // The first sample is asked for at once, not after the 5 s poll.
     expect(h.getSystemUsage).toHaveBeenCalled()
     expect(screen.getAllByText('system-monitor:measuring').length).toBeGreaterThan(0)
-    expect(screen.queryByText('0.00%')).toBeNull()
+    expect(screen.queryAllByText('0.0%', { ignore: 'table *' })).toHaveLength(0)
     resolve({ cpu: 12, used_memory: 3 })
     await waitFor(() => expect(screen.queryByText('system-monitor:measuring')).toBeNull())
   })
@@ -288,9 +289,9 @@ describe('SystemMonitor route', () => {
       expect(screen.getByText('NTFS')).toBeInTheDocument()
       expect(screen.getByText('SSD')).toBeInTheDocument()
       expect(screen.getByText('system-monitor:removable')).toBeInTheDocument()
-      expect(screen.getByText('75.00%')).toBeInTheDocument()
+      expect(screen.getByText('75%')).toBeInTheDocument()
       expect(screen.getByText('2.0 GB / 8.0 GB')).toBeInTheDocument()
-      expect(screen.getByText('25.00%')).toBeInTheDocument()
+      expect(screen.getByText('25%')).toBeInTheDocument()
     })
 
     it('keeps per-core usage collapsed until expanded', async () => {

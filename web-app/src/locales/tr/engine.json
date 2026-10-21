@@ -2,7 +2,10 @@
   "live": "Canlı",
   "chart": {
     "peak": "tepe",
-    "avg": "ort."
+    "avg": "ort.",
+    "now": "now",
+    "ago": "{{count}} min ago",
+    "calls": "calls"
   },
   "models": {
     "title": "Modeller",

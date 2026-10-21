@@ -2,7 +2,10 @@
   "live": "Langsung",
   "chart": {
     "peak": "puncak",
-    "avg": "rata-rata"
+    "avg": "rata-rata",
+    "now": "now",
+    "ago": "{{count}} min ago",
+    "calls": "calls"
   },
   "models": {
     "title": "Model",

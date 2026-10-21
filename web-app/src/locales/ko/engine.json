@@ -2,7 +2,10 @@
   "live": "실시간",
   "chart": {
     "peak": "최대",
-    "avg": "평균"
+    "avg": "평균",
+    "now": "now",
+    "ago": "{{count}} min ago",
+    "calls": "calls"
   },
   "models": {
     "title": "모델",

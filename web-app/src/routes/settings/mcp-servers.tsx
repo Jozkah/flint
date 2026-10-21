@@ -1252,7 +1252,14 @@ function MCPServersDesktop() {
           </div>
           <LiveChart
             series={series}
-            color={color}
+            // One accent for every server: the avatar already says which one it is.
+            color="var(--series-a)"
+            readout={{
+              now: t('engine:chart.now'),
+              ago: (count) => t('engine:chart.ago', { count }),
+              windowStart: t('engine:chart.ago', { count: CHART_BUCKETS }),
+              unit: t('engine:chart.calls'),
+            }}
             // Recorded calls stay visible after a server stops; only a
             // server with nothing in the window reads as off.
             off={!snapshot.connected && series.every((v) => v === 0)}

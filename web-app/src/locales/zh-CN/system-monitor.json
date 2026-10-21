@@ -73,5 +73,7 @@
   "graphics": "图形",
   "freeVram": "可用显存",
   "apiVersion": "API 版本",
-  "measuring": "正在测量…"
+  "measuring": "正在测量…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }

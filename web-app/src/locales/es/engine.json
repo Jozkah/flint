@@ -2,7 +2,10 @@
   "live": "En vivo",
   "chart": {
     "peak": "máx.",
-    "avg": "prom."
+    "avg": "prom.",
+    "now": "now",
+    "ago": "{{count}} min ago",
+    "calls": "calls"
   },
   "models": {
     "title": "Modelos",
