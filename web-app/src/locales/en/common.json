@@ -2458,7 +2458,8 @@
     "refresh": "Refresh",
     "suggestion": "Jev suggests the skill /{{skill}} for this",
     "useSkill": "Use",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "introSummary": "What Jev does and does not do"
   },
   "pr": {
     "statusUnavailable": "Status unavailable",

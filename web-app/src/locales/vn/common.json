@@ -2369,7 +2369,8 @@
     "refresh": "Làm mới",
     "suggestion": "Jev gợi ý kỹ năng /{{skill}} cho việc này",
     "useSkill": "Dùng",
-    "dismiss": "Bỏ qua"
+    "dismiss": "Bỏ qua",
+    "introSummary": "Jev làm gì và không làm gì"
   },
   "pr": {
     "statusUnavailable": "Không có trạng thái",

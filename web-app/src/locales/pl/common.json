@@ -2462,7 +2462,8 @@
     "refresh": "Odśwież",
     "suggestion": "Jev sugeruje do tego umiejętność /{{skill}}",
     "useSkill": "Użyj",
-    "dismiss": "Zamknij"
+    "dismiss": "Zamknij",
+    "introSummary": "Co Jev robi, a czego nie robi"
   },
   "pr": {
     "statusUnavailable": "Stan niedostępny",

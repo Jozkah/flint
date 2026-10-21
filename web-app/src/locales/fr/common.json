@@ -2403,7 +2403,8 @@
     "refresh": "Actualiser",
     "suggestion": "Jev suggère la compétence /{{skill}} pour cela",
     "useSkill": "Utiliser",
-    "dismiss": "Ignorer"
+    "dismiss": "Ignorer",
+    "introSummary": "Ce que Jev fait et ne fait pas"
   },
   "pr": {
     "statusUnavailable": "État indisponible",

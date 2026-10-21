@@ -524,7 +524,7 @@ function AgentRuns() {
             action={<Button variant="outline" onClick={() => navigate({ to: route.cowork })}>{t('overview:openCowork')}</Button>}
           />
         ) : (
-          <table className="w-full min-w-[560px] border-separate border-spacing-0 text-[length:calc(var(--ui-font-base)*0.8125)]" aria-label={t('overview:runs')}>
+          <table className="w-full border-separate border-spacing-0 text-[length:calc(var(--ui-font-base)*0.8125)]" aria-label={t('overview:runs')}>
             <thead>
               <tr className="text-left text-secondary-foreground">
                 {columns.map((c, i) => (
@@ -536,7 +536,9 @@ function AgentRuns() {
                       i === 0 && 'rounded-l-lg',
                       // The task name takes the width the other columns leave.
                       c === 'task' && 'w-full',
-                      (c === 'speed' || c === 'tokens') && 'hidden w-px text-right @min-[900px]/runs:table-cell'
+                      (c === 'speed' || c === 'tokens') && 'hidden w-px text-right @min-[900px]/runs:table-cell',
+                      // Model and start time make way for the task name on a narrow card.
+                      (c === 'model' || c === 'started') && 'hidden @min-[560px]/runs:table-cell'
                     )}
                   >
                     <span className="inline-flex items-center gap-1.5">
@@ -559,7 +561,7 @@ function AgentRuns() {
                   >
                     <td className="border-b border-border/60 px-3 font-medium text-cell tabular-nums">#{1000 + r.index + 1}</td>
                     <td className="w-full max-w-0 min-w-28 truncate border-b border-border/60 px-3 font-medium text-cell group-hover/row:text-foreground" title={r.title}>{r.title}</td>
-                    <td className="border-b border-border/60 px-3 text-cell whitespace-nowrap">
+                    <td className="hidden border-b border-border/60 px-3 text-cell whitespace-nowrap @min-[560px]/runs:table-cell">
                       <span className="inline-flex items-center gap-1.5">
                         <BrandMark logo={modelLogo(r.model)} name={r.model} size={16} tone="bare" />
                         {r.model}
@@ -573,7 +575,7 @@ function AgentRuns() {
                       </span>
                     </td>
                     {columns.includes('started') && (
-                    <td className="border-b border-border/60 px-3 text-cell tabular-nums whitespace-nowrap">
+                    <td className="hidden border-b border-border/60 px-3 text-cell tabular-nums whitespace-nowrap @min-[560px]/runs:table-cell">
                       {r.started ? (
                         <time dateTime={new Date(r.started).toISOString()} title={new Date(r.started).toLocaleString(i18n.language)}>
                           {new Date(r.started).toLocaleString(i18n.language, {

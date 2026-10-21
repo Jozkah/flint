@@ -140,7 +140,14 @@ export function JevSettingsCard({
     <Card title={t('common:jev.cardKey')}>
       <CardItem
         align="start"
-        description={<p className="text-muted-foreground">{t('common:jev.intro', { model: status?.model ?? 'jev-1.13.0' })}</p>}
+        description={
+          <details className="group text-muted-foreground">
+            <summary className="cursor-pointer text-foreground marker:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring">
+              {t('common:jev.introSummary')}
+            </summary>
+            <p className="mt-1.5 text-pretty">{t('common:jev.intro', { model: status?.model ?? 'jev-1.13.0' })}</p>
+          </details>
+        }
       />
       <CardItem
         // The field and its buttons get their own line under the text: side
