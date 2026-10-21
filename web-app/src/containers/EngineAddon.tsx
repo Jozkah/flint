@@ -120,7 +120,7 @@ export function EngineAddonOffer() {
     body = (
       <div className="flex flex-col gap-2">
         <span>{line.text}</span>
-        <Progress value={line.percent ?? 100} className={cn(line.percent == null && 'animate-pulse')} />
+        <Progress value={line.percent ?? 100} className={cn(line.percent == null && 'motion-safe:animate-pulse')} />
         <span className="text-muted-foreground">{t('engine:addon.vulkanMeanwhile')}</span>
       </div>
     )
