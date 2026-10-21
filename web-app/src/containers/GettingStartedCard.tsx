@@ -92,7 +92,8 @@ export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
               </Button>
             </div>
           ) : (
-            <ol className="flex flex-col">
+            // Steps rise one after another once, as the card opens (40ms apart).
+            <ol className="flex flex-col motion-safe:[&>li]:animate-rise-in motion-safe:[&>li]:[animation-delay:160ms] motion-safe:[&>li:nth-child(2)]:[animation-delay:200ms] motion-safe:[&>li:nth-child(3)]:[animation-delay:240ms] motion-safe:[&>li:nth-child(n+4)]:[animation-delay:280ms]">
               {steps.map((step) => (
                 <GuideStep
                   key={step}
