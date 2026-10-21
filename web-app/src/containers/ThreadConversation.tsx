@@ -656,7 +656,8 @@ export function ThreadConversation({
     resolveModelSelection: isSplit ? resolvePaneModel : undefined,
     // One UI update per 50 ms of tokens (100 ms in reduced performance mode).
     experimental_throttle: streamingThrottle,
-    onFinish: ({ message, messages: finishedMessages, isAbort, isError, isDisconnect }) => {
+    onFinish: function handleFinish(info, skipContextRecovery = false) {
+      const { message, messages: finishedMessages, isAbort, isError, isDisconnect } = info
       const msgMeta = message.metadata as Record<string, unknown> | undefined
       const finishReason = msgMeta?.finishReason as string | undefined
       // Consume once per generation so a skipped persist (error/empty) can't
@@ -692,7 +693,7 @@ export function ThreadConversation({
           )
         )
 
-        if (isContextLimit) {
+        if (isContextLimit && !skipContextRecovery) {
           // Stash the partial so the manual "Increase Context Size" button can
           // resume from here. Surface the standard banner with the manual
           // button — auto-increase was removed; the user explicitly opts in.
@@ -713,15 +714,20 @@ export function ThreadConversation({
           const recover = recoverContextLimitRef.current
           if (recover) {
             void recover(message, partialText).then((recovered) => {
-              if (!recovered) showBanner()
+              if (recovered) return
+              showBanner()
+              // Nothing carried the reply on, so keep what the model wrote:
+              // finish again as a stopped turn, which persists the partial.
+              continueReplaceIdRef.current = continueReplaceId
+              handleFinish(info, true)
             })
-          } else {
-            showBanner()
+            return
           }
-          return
+          showBanner()
         }
-        // Non-context-limit length truncation: fall through and persist the
-        // partial marked as stopped so the "Continue" button can resume it.
+        // Otherwise (the output-token cap, or a window that could not be
+        // recovered): fall through and persist the partial marked as stopped so
+        // the "Continue" button can resume it.
       }
 
       if (!isAbort && message.parts.length) setPendingContinueMessage(null)
@@ -2745,10 +2751,13 @@ export function ThreadConversation({
     if (pending) {
       setContinueFromContentRef.current?.(pending.text)
       setPendingContinueMessage(pending.message)
+      // The partial is stored (see onFinish), so the resumed reply replaces it
+      // in place rather than forking a second version of the same answer.
+      continueReplaceIdRef.current = pending.message.id
     }
 
     setTimeout(() => {
-      handleRegenerate()
+      handleRegenerate(pending?.message.id)
     }, 1000)
   }, [
     selectedModel,
@@ -3376,9 +3385,11 @@ export function ThreadConversation({
                 // A banner error stands in for the failed assistant turn:
                 // regenerate/reload restarts it from scratch, so hide the
                 // partial (tool calls, "Worked for Ns") and show only the banner.
+                // A context-limit stop keeps its partial: that text was generated
+                // and stored, and the banner only offers a bigger window.
                 if (
                   isLastMessage &&
-                  hasBannerError &&
+                  (oomError || backendError) &&
                   message.role === 'assistant'
                 )
                   return null
