@@ -31,7 +31,8 @@
     "objectivePlaceholder": "参加者に何を議論または決定してほしいですか?",
     "submit": "ルームを作成",
     "cancel": "キャンセル",
-    "titleRequired": "タイトルを入力してください。"
+    "titleRequired": "タイトルを入力してください。",
+    "titlePlaceholder": "ルームの名前"
   },
   "delete": {
     "title": "ルームを削除しますか?",

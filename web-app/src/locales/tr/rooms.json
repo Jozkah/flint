@@ -33,7 +33,8 @@
     "objectivePlaceholder": "Katılımcılar neyi tartışmalı veya karara bağlamalı?",
     "submit": "Oda oluştur",
     "cancel": "İptal",
-    "titleRequired": "Bir başlık girin."
+    "titleRequired": "Bir başlık girin.",
+    "titlePlaceholder": "Odaya bir ad verin"
   },
   "delete": {
     "title": "Oda silinsin mi?",
