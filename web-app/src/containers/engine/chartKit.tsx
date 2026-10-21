@@ -141,7 +141,7 @@ export function ChartTip({ left, text }: { left: number; text: string }) {
   return (
     <div
       role="status"
-      className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 -translate-y-full rounded-md border border-border bg-popover px-2 py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] whitespace-nowrap text-popover-foreground tabular-nums shadow-md"
+      className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] whitespace-nowrap text-popover-foreground tabular-nums shadow-md"
       style={{ left: `${Math.max(14, Math.min(86, left))}%` }}
     >
       {text}
