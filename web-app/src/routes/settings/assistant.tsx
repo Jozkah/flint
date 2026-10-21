@@ -63,7 +63,12 @@ function AssistantContent() {
         toast.error(t('archive:deleteFailed'), { description: errorText(e) })
         return
       }
-      deleteAssistant(deletingId)
+      try {
+        await deleteAssistant(deletingId)
+      } catch (e) {
+        toast.error(t('archive:deleteFailed'), { description: errorText(e) })
+        return
+      }
       setDeleteConfirmOpen(false)
       setDeletingId(null)
     }

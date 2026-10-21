@@ -11,7 +11,7 @@ interface AssistantState {
   defaultAssistantId: string
   addAssistant: (assistant: Assistant) => void
   updateAssistant: (assistant: Assistant) => void
-  deleteAssistant: (id: string) => void
+  deleteAssistant: (id: string) => Promise<void>
   setCurrentAssistant: (
     assistant: Assistant | undefined,
     saveToStorage?: boolean
@@ -193,16 +193,16 @@ export const useAssistant = create<AssistantState>((set, get) => ({
       })
     }
   },
-  deleteAssistant: (id) => {
-    const state = get()
-    getServiceHub()
+  deleteAssistant: async (id) => {
+    // Delete on the backend first: when it fails the assistant stays in the
+    // list (it would otherwise reappear on the next launch) and the caller
+    // gets the error (janhq/jan#9378).
+    await getServiceHub()
       .assistants()
       .deleteAssistant(
-        state.assistants.find((e) => e.id === id) as unknown as CoreAssistant
+        get().assistants.find((e) => e.id === id) as unknown as CoreAssistant
       )
-      .catch((error) => {
-        console.error('Failed to delete assistant:', error)
-      })
+    const state = get()
 
     // Check if we're deleting the current or default assistant
     const wasCurrentAssistant = state.currentAssistant?.id === id

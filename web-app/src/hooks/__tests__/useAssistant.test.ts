@@ -105,7 +105,7 @@ describe('useAssistant', () => {
     expect(result.current.assistants[0].description).toBe('Updated description')
   })
 
-  it('should delete assistant', () => {
+  it('should delete assistant', async () => {
     const { result } = renderHook(() => useAssistant())
 
     const assistant2 = {
@@ -124,8 +124,8 @@ describe('useAssistant', () => {
 
     expect(result.current.assistants).toHaveLength(2)
 
-    act(() => {
-      result.current.deleteAssistant('assistant-2')
+    await act(async () => {
+      await result.current.deleteAssistant('assistant-2')
     })
 
     expect(result.current.assistants).toHaveLength(1)
