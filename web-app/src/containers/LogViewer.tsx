@@ -206,17 +206,19 @@ export function LogsDashboard({
             placeholder={t('logs:search')}
             className="w-full sm:w-[220px]"
           />
-          <Segmented<LogLevelFilter>
-            size="sm"
-            className="w-full sm:w-[440px]"
-            aria-label={t('logs:filterLabel')}
-            value={level}
-            onValueChange={setLevel}
-            options={LOG_LEVEL_FILTERS.map((value) => ({
-              value,
-              label: t(LEVEL_LABEL_KEY[value]),
-            }))}
-          />
+          <div className="max-w-full min-w-0 overflow-x-auto max-sm:w-full">
+            <Segmented<LogLevelFilter>
+              size="sm"
+              className="w-full min-w-[26rem] sm:w-[440px]"
+              aria-label={t('logs:filterLabel')}
+              value={level}
+              onValueChange={setLevel}
+              options={LOG_LEVEL_FILTERS.map((value) => ({
+                value,
+                label: t(LEVEL_LABEL_KEY[value]),
+              }))}
+            />
+          </div>
           <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
             {t('logs:shown', { shown: shown.length, total: logs.length })}
           </span>
