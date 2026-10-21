@@ -96,10 +96,13 @@ export const DialogDeleteAllModels = ({
             // best-effort stop; continue with delete
           }
         }
-        removeFavorite(id, provider.provider)
-        deleteModelCache(id)
+        // Favorites and the provider cache only change once the delete has
+        // succeeded, so a failed one stays visible and retryable
+        // (janhq/jan#9329).
         await serviceHub.models().deleteModel(id, provider.provider)
         deleted.push(id)
+        removeFavorite(id, provider.provider)
+        deleteModelCache(id)
       } catch (err) {
         failed++
         console.error(`Failed to delete model ${id}:`, err)
