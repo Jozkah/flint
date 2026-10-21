@@ -6990,6 +6990,16 @@ async fn orchestrate_inner(
             .and_then(|cfg| cfg.agent.context_window);
         #[cfg(not(feature = "cli"))]
         let ctx_window: Option<u64> = None;
+        // A client that knows the model's real window (a listed `max_model_len`,
+        // a loaded engine's n_ctx) says so on the body. It stands in for the
+        // CLI config, which a desktop or API-server run has none of, and for
+        // the 128K default below.
+        let ctx_window = ctx_window.or_else(|| {
+            json_body
+                .get("jan_context_window")
+                .and_then(|v| v.as_u64())
+                .filter(|w| *w >= 1_024)
+        });
         // No configured window: use what this model's own overflow errors
         // taught an earlier run, before the 128K default.
         let learned = match ctx_window {

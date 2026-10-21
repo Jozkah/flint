@@ -714,6 +714,11 @@ impl EngineServer {
         } else {
             body
         };
+        let body = if route.caches_prompt() {
+            pin_agent_slot(&engine, body)
+        } else {
+            body
+        };
 
         let (out, done) = run(engine, route, body, STREAM_BUFFER).await;
         release_when_done(guard, done).await;
@@ -846,6 +851,90 @@ impl SlotState {
 /// 0 when the slot has never run a task (upstream omits the count entirely in
 /// that case) or when the listing cannot be read, both of which mean "nothing
 /// worth saving".
+/// First slot id kept for requests that name none: chat is 0, background 1 and
+/// Cowork 2 (`web-app/src/constants/models.ts`), so subagents, workflow agents
+/// and API clients are spread over the ids above them. The extension adds the
+/// slots with its `agent_slots` setting; with none there is nothing to pick.
+const FIRST_AGENT_SLOT: i32 = 3;
+
+/// FNV-1a over what identifies a conversation across its turns: the first two
+/// messages (system prompt and opening request), or the start of a raw prompt.
+/// A growing agent prompt keeps its start, so the same agent maps to the same
+/// slot and finds its own prefix there.
+fn conversation_key(body: &serde_json::Value) -> u64 {
+    let basis: String = match body.get("messages").and_then(|m| m.as_array()) {
+        Some(messages) => messages
+            .iter()
+            .take(2)
+            .map(|m| m.to_string())
+            .collect::<Vec<_>>()
+            .join("
+"),
+        None => body
+            .get("prompt")
+            .map(|p| p.to_string().chars().take(512).collect())
+            .unwrap_or_default(),
+    };
+    basis.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+/// The agent slot for a request, or `None` when the engine has none to give.
+/// The slot the conversation hashes to, unless it is busy and another agent
+/// slot is idle: two agents that hash alike should run side by side rather
+/// than queue.
+fn choose_agent_slot(key: u64, slots: &serde_json::Value) -> Option<i32> {
+    let mut agents: Vec<(i32, bool)> = slots
+        .as_array()?
+        .iter()
+        .filter_map(|e| {
+            let id = i32::try_from(e.get("id")?.as_i64()?).ok()?;
+            let busy = e.get("is_processing").and_then(|b| b.as_bool()).unwrap_or(false);
+            (id >= FIRST_AGENT_SLOT).then_some((id, busy))
+        })
+        .collect();
+    if agents.is_empty() {
+        return None;
+    }
+    agents.sort_by_key(|(id, _)| *id);
+    let preferred = agents[(key % agents.len() as u64) as usize];
+    if !preferred.1 {
+        return Some(preferred.0);
+    }
+    Some(agents.iter().find(|(_, busy)| !busy).unwrap_or(&preferred).0)
+}
+
+/// Adds `id_slot` to a generating request that has none. Without it upstream
+/// puts the request on whichever slot matches best or was used longest ago,
+/// which can be the chat or Cowork slot and evicts the prefix kept there.
+fn pin_agent_slot(engine: &Arc<super::Engine>, body: String) -> String {
+    let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return body;
+    };
+    let Some(o) = v.as_object() else {
+        return body;
+    };
+    if o.contains_key("id_slot") {
+        return body;
+    }
+    let key = conversation_key(&v);
+    let engine = Arc::clone(engine);
+    let slots = tokio::task::block_in_place(move || {
+        engine.request(Route::Slots.as_shim_name(), "").body()
+    });
+    let Ok(slots) = serde_json::from_str::<serde_json::Value>(&slots) else {
+        return body;
+    };
+    match choose_agent_slot(key, &slots) {
+        Some(slot) => {
+            v["id_slot"] = serde_json::json!(slot);
+            v.to_string()
+        }
+        None => body,
+    }
+}
+
 async fn slot_tokens(engine: &Arc<super::Engine>, slot: i32) -> u64 {
     let engine = Arc::clone(engine);
     let body = tokio::task::block_in_place(move || {
@@ -1378,5 +1467,43 @@ mod tests {
         assert!(!authorized("secret", &headers(Some("secret"))));
         // Scheme comparison is case-sensitive, matching what the extension sends.
         assert!(!authorized("secret", &headers(Some("bearer secret"))));
+    }
+
+    #[test]
+    fn an_unpinned_request_takes_an_agent_slot_and_keeps_it() {
+        let slots = serde_json::json!([
+            {"id": 0, "is_processing": false}, {"id": 1, "is_processing": false},
+            {"id": 2, "is_processing": false}, {"id": 3, "is_processing": false},
+            {"id": 4, "is_processing": false}
+        ]);
+        let body = serde_json::json!({"messages": [{"role": "system", "content": "a"}, {"role": "user", "content": "go"}]});
+        let first = choose_agent_slot(conversation_key(&body), &slots).unwrap();
+        assert!(first >= FIRST_AGENT_SLOT);
+        let grown = serde_json::json!({"messages": [
+            {"role": "system", "content": "a"}, {"role": "user", "content": "go"},
+            {"role": "assistant", "content": "ok"}, {"role": "user", "content": "more"}
+        ]});
+        assert_eq!(choose_agent_slot(conversation_key(&grown), &slots), Some(first));
+    }
+
+    #[test]
+    fn a_busy_preferred_agent_slot_yields_to_an_idle_one() {
+        let key = 0; // prefers the first agent slot, id 3
+        let slots = serde_json::json!([
+            {"id": 0}, {"id": 1}, {"id": 2},
+            {"id": 3, "is_processing": true}, {"id": 4, "is_processing": false}
+        ]);
+        assert_eq!(choose_agent_slot(key, &slots), Some(4));
+        let all_busy = serde_json::json!([
+            {"id": 3, "is_processing": true}, {"id": 4, "is_processing": true}
+        ]);
+        assert_eq!(choose_agent_slot(key, &all_busy), Some(3));
+    }
+
+    #[test]
+    fn no_agent_slot_means_no_pin() {
+        let slots = serde_json::json!([{"id": 0}, {"id": 1}, {"id": 2}]);
+        assert_eq!(choose_agent_slot(7, &slots), None);
+        assert_eq!(choose_agent_slot(7, &serde_json::json!("not a list")), None);
     }
 }

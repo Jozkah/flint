@@ -170,6 +170,7 @@ const PRESET_AFFECTING_KEYS = new Set<string>([
   'ctx_checkpoints',
   'checkpoint_min_step',
   'kv_unified_per_slot',
+  'agent_slots',
   'reasoning_preserve',
   'lazy_mode',
 ])

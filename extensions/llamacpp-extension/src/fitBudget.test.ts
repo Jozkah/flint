@@ -24,12 +24,21 @@ describe('fitTargetFirstMiB', () => {
     expect(fitTargetFirstMiB('256,512')).toBe(256)
   })
   it('lets the slot plan see a 0 target instead of assuming 1 GiB', () => {
-    // 15.5 GiB of weights on a 16 GiB card: fits with 0 kept free, not with 1024.
-    const w = 15.5 * 1024 * 1024 * 1024
+    // 14.5 GiB of weights on a 16 GiB card: room to spare with 0 kept free,
+    // a near-spill with 1024.
+    const w = 14.5 * 1024 * 1024 * 1024
     expect(spillSlotPlan(w, 16384, fitTargetFirstMiB('0'), 4096, 3)).toBeUndefined()
     expect(spillSlotPlan(w, 16384, fitTargetFirstMiB(''), 4096, 3)).toEqual({
       fitCtx: 8192,
     })
+  })
+})
+
+describe('spillSlotPlan near-spill', () => {
+  it('treats weights that leave under the KV slack as spilling', () => {
+    const w = 14.2 * 1024 * 1024 * 1024
+    expect(spillSlotPlan(w, 16384, 1024, 4096, 3)).toEqual({ fitCtx: 8192 })
+    expect(spillSlotPlan(10 * 1024 ** 3, 16384, 1024, 4096, 3)).toBeUndefined()
   })
 })
 

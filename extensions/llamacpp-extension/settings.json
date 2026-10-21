@@ -323,6 +323,18 @@
     }
   },
   {
+    "key": "agent_slots",
+    "title": "Agent Slots",
+    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model.",
+    "controllerType": "input",
+    "controllerProps": {
+      "value": 2,
+      "placeholder": "2",
+      "type": "number",
+      "textAlign": "right"
+    }
+  },
+  {
     "key": "ngram_speculation",
     "title": "N-gram Speculative Decoding",
     "description": "Draft tokens from text already in the conversation (ngram-mod) and let the model verify them in one batch. Output is identical; repetitive output such as code edits or quoting generates 3-10x faster, other text is unaffected. Models with their own MTP draft use that instead.",
@@ -572,10 +584,10 @@
   {
     "key": "cache_reuse",
     "title": "Cache Reuse",
-    "description": "Min chunk size of matching prefix tokens to reuse from cache. 0 = disabled.",
+    "description": "Min chunk size of matching prefix tokens to reuse from cache, so a prompt whose middle changed (compaction, trimmed tool output) does not re-read everything after the change. 0 = disabled.",
     "controllerType": "input",
     "controllerProps": {
-      "value": 0,
+      "value": 256,
       "placeholder": "0",
       "type": "number",
       "textAlign": "right",
