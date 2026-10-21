@@ -81,6 +81,7 @@ import {
   SHELL_TOOL_NAME,
 } from '@/lib/agentTools'
 import { useChatShell } from '@/hooks/useChatShell'
+import { routeRefusedToolCalls } from '@/lib/disabledToolCalls'
 import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
 import { subagentGuide } from '@/lib/coworkPrompt'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
@@ -4017,9 +4018,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // When continuing a truncated response, inject the partial content as the
     // very first text-delta so the new message immediately shows it and the
     // user sees a seamless continuation rather than an empty box.
-    const finalStream = continueContent
+    const continuedStream = continueContent
       ? prependContinuationToUIStream(uiStream, continueContent)
       : uiStream
+
+    // A call to the shell while the composer has it switched off is not in
+    // `this.tools`, so the SDK would reject it and end the turn. Hand it to the
+    // tool loop instead, which answers it with the "turned off" refusal.
+    const finalStream = routeRefusedToolCalls(
+      continuedStream,
+      (toolName) =>
+        toolName === SHELL_TOOL_NAME &&
+        !(toolName in (this.tools ?? {})) &&
+        this.chatShellWithheld()
+    )
 
     const reasoningGuard = new ReasoningLoopGuard()
     let idle: ReturnType<typeof createIdleWatchdog> | undefined
