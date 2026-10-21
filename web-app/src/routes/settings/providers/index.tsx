@@ -88,9 +88,6 @@ type OverviewTab = 'overview' | 'providers' | 'defaults'
 const MODEL_COLS =
   '30px minmax(140px,1fr) 96px 112px 64px 68px 80px minmax(104px,max-content) 28px'
 
-/** Card entrance delay: staggered, but capped so a long list is never waiting on its tail. */
-const staggerDelay = (i: number) => 120 + Math.min(i, 8) * 25
-
 /** How many recent replies the speed charts show. */
 const SPEED_WINDOW = 24
 
@@ -571,7 +568,7 @@ function ModelProviders() {
           />
           <FrameBody className="p-3">
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2.5">
-              {visibleProviders.map((provider, i) => {
+              {visibleProviders.map((provider) => {
                 const title = getProviderTitle(provider.provider)
                 const local = isEngineProviderName(provider.provider)
                 const setUp =
@@ -580,7 +577,6 @@ function ModelProviders() {
                   <li
                     key={provider.provider}
                     data-testid={`provider-row-${provider.provider}`}
-                    style={{ animationDelay: `${staggerDelay(i)}ms` }}
                     onContextMenu={(e) => {
                       e.preventDefault()
                       setMenuFor(provider.provider)
@@ -657,11 +653,7 @@ function ModelProviders() {
                   </li>
                 )
               })}
-              {/* Enters after the last provider card, as part of the same stagger. */}
-              <li
-                className="motion-safe:animate-rise-in"
-                style={{ animationDelay: `${staggerDelay(visibleProviders.length)}ms` }}
-              >
+              <li className="motion-safe:animate-rise-in">
                 <AddProviderDialog onCreateProvider={createProvider}>
                   <button
                     type="button"
