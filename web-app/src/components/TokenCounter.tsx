@@ -709,7 +709,7 @@ function ContextRing({
           stroke={`url(#${gradientId})`}
           strokeDasharray={c}
           strokeDashoffset={c * (1 - usage.fraction)}
-          className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo"
+          className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-(--duration-very-slow) motion-safe:ease-expo"
         />
       )}
     </svg>

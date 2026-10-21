@@ -231,7 +231,7 @@ function Throughput({
                   >
                     <div
                       className={cn(
-                        'relative mx-auto w-[72%] origin-bottom rounded-t-lg rounded-b-sm transition-[height] duration-700 ease-expo motion-safe:animate-grow-y',
+                        'relative mx-auto w-[72%] origin-bottom rounded-t-lg rounded-b-sm transition-[height] duration-(--duration-very-slow) ease-expo motion-safe:animate-grow-y',
                         i === active
                           ? 'bg-grad shadow-[inset_0_0_0_.44px_var(--primary),0_2px_10px_rgba(31,41,55,.08)]'
                           : 'bg-[linear-gradient(to_bottom,var(--bar),var(--bar-2))] shadow-[inset_0_0_0_.444px_var(--bar-border),inset_0_0_0_1px_var(--bar-inner)]'

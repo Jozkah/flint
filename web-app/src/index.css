@@ -244,6 +244,16 @@
   animation: var(--animate-shim);
 }
 
+/* Photos and generated art get a faint inset edge so they do not blur into the
+   surface: black in light, white in dark, never tinted. */
+@utility img-outline {
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+  &:is(.dark *) {
+    outline-color: oklch(1 0 0 / 0.1);
+  }
+}
+
 /* A 40px-tall hit area for a 28px control, with no sideways growth: neighbours
    sit 2px apart, so widening the target would make them overlap. */
 @utility hit-y {
