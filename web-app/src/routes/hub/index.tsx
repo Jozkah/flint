@@ -7,20 +7,15 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Clock,
-  Cpu,
   Download,
   ExternalLink,
-  Eye,
   FileCode2,
   Heart,
-  Layers,
   LoaderCircle,
   LockKeyhole,
   Search,
   ShieldCheck,
   Sparkles,
-  Wrench,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -488,7 +483,7 @@ function ModelDiscoverRoute() {
                 type="button"
                 aria-label={t('sweep:hub.clearSearch')}
                 onClick={() => setQuery('')}
-                className="absolute top-1/2 right-3 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="absolute top-1/2 right-3 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted-foreground before:absolute before:-inset-2 hover:bg-accent hover:text-foreground"
               >
                 <X className="size-3.5" />
               </button>
@@ -672,7 +667,6 @@ function ModelDiscoverRoute() {
                   fitContext
                 )
                 const modalities = inferModalities(model, files)
-                const arch = inferArchitecture(model)
                 const opened = Boolean(expanded[model.id])
                 const installed = repoInstalled(model)
                 const hasTools = model.tags.some((tag) =>
@@ -737,32 +731,18 @@ function ModelDiscoverRoute() {
                                 {formatCount(model.likes)}
                               </span>
                               {parameterCount != null && (
-                                <span className="inline-flex items-center gap-1">
-                                  <Cpu className="size-3.5" />
-                                  {parameterCount}B
+                                <span className="tabular-nums">{parameterCount}B</span>
+                              )}
+                              {(hasVision || hasTools) && (
+                                <span>
+                                  {[hasVision && 'Vision', hasTools && 'Tools']
+                                    .filter(Boolean)
+                                    .join(' · ')}
                                 </span>
                               )}
-                              {arch && (
-                                <span className="inline-flex items-center gap-1 capitalize">
-                                  <Layers className="size-3.5" />
-                                  {arch}
-                                </span>
-                              )}
-                              {hasVision && (
-                                <span className="inline-flex items-center gap-1 text-info">
-                                  <Eye className="size-3.5" /> Vision
-                                </span>
-                              )}
-                              {hasTools && (
-                                <span className="inline-flex items-center gap-1 text-info">
-                                  <Wrench className="size-3.5" /> Tools
-                                </span>
-                              )}
-                              {updated && (
-                                <span className="inline-flex items-center gap-1">
-                                  <Clock className="size-3.5" />
-                                  {updated}
-                                </span>
+                              {/* The date only matters when the list is ordered by it. */}
+                              {updated && (sort === 'updated' || sort === 'newest') && (
+                                <span className="tabular-nums">{updated}</span>
                               )}
                             </span>
                           </span>
