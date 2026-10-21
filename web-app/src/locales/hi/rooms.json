@@ -33,7 +33,8 @@
     "objectivePlaceholder": "प्रतिभागी किस पर चर्चा करें या क्या तय करें?",
     "submit": "रूम बनाएँ",
     "cancel": "रद्द करें",
-    "titleRequired": "शीर्षक डालें।"
+    "titleRequired": "शीर्षक डालें।",
+    "titlePlaceholder": "कमरे को नाम दें"
   },
   "delete": {
     "title": "रूम हटाएँ?",

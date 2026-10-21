@@ -122,7 +122,7 @@ export function CardItem({
             {description && (
               <div
                 id={descriptionId}
-                // A plain-text explanation reads as one line, whole on hover;
+                // A plain-text explanation reads as up to two lines, whole on hover;
                 // assistive tech still gets all of it through the control's
                 // aria-describedby. Rich descriptions (lists, links) show in
                 // full.
@@ -131,7 +131,7 @@ export function CardItem({
                 }
                 className={cn(
                   'text-xs leading-[1.4] text-muted-foreground',
-                  typeof description === 'string' && !wrapDescription && 'line-clamp-1'
+                  typeof description === 'string' && !wrapDescription && 'line-clamp-2 text-pretty'
                 )}
               >
                 {description}

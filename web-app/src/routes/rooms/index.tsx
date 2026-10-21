@@ -504,6 +504,7 @@ function RoomsList() {
               <Label htmlFor={`${uid}-title`}>{t('rooms:create.titleLabel')}</Label>
               <Input
                 id={`${uid}-title`}
+                placeholder={t('rooms:create.titlePlaceholder')}
                 value={title}
                 aria-invalid={titleError || undefined}
                 aria-describedby={titleError ? `${uid}-title-error` : undefined}

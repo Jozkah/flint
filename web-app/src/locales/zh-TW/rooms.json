@@ -31,7 +31,8 @@
     "objectivePlaceholder": "參與者應該討論或決定什麼？",
     "submit": "建立房間",
     "cancel": "取消",
-    "titleRequired": "請輸入標題。"
+    "titleRequired": "請輸入標題。",
+    "titlePlaceholder": "為房間命名"
   },
   "delete": {
     "title": "刪除房間？",

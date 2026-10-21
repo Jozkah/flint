@@ -31,7 +31,8 @@
     "objectivePlaceholder": "참여자들이 무엇을 논의하거나 결정해야 하나요?",
     "submit": "룸 만들기",
     "cancel": "취소",
-    "titleRequired": "제목을 입력하세요."
+    "titleRequired": "제목을 입력하세요.",
+    "titlePlaceholder": "룸 이름"
   },
   "delete": {
     "title": "룸을 삭제할까요?",

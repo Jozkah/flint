@@ -31,7 +31,8 @@
     "objectivePlaceholder": "Apa yang harus dibahas atau diputuskan peserta?",
     "submit": "Buat ruang",
     "cancel": "Batal",
-    "titleRequired": "Masukkan judul."
+    "titleRequired": "Masukkan judul.",
+    "titlePlaceholder": "Beri nama ruang"
   },
   "delete": {
     "title": "Hapus ruang?",
