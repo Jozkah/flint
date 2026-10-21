@@ -238,8 +238,8 @@ function HuggingFaceModelDetail() {
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><Download className="size-4" /> {model.downloads.toLocaleString()} downloads</span>
-              <span className="inline-flex items-center gap-1.5"><Heart className="size-4" /> {model.likes.toLocaleString()} likes</span>
+              <span className="inline-flex items-center gap-1.5 tabular-nums"><Download className="size-4" /> {model.downloads.toLocaleString()} downloads</span>
+              <span className="inline-flex items-center gap-1.5 tabular-nums"><Heart className="size-4" /> {model.likes.toLocaleString()} likes</span>
               {modalities.some((value) => value === 'vision' || value === 'multimodal') && <span className="inline-flex items-center gap-1.5"><Eye className="size-4" /> Vision</span>}
               {hasTools && <span className="inline-flex items-center gap-1.5"><Wrench className="size-4" /> Tool use</span>}
               {model.lastModified && <span>Updated {new Date(model.lastModified).toLocaleDateString()}</span>}
