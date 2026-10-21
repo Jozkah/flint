@@ -209,6 +209,36 @@ describe('generatePreset MTP emission', () => {
   })
 })
 
+describe('generatePreset agent slots', () => {
+  it('adds the agent slots on top of the reserved ones', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { parallel: 1, agent_slots: 3 } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('parallel = 6')
+  })
+
+  it('adds none when agent_slots is 0', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { parallel: 1, agent_slots: 0 } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('parallel = 3')
+  })
+
+  it('adds none when the reservation is off, so ids 3 and up never wrap onto chat', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', {
+      parallel: 1,
+      reserve_background_slots: false,
+      agent_slots: 4,
+    } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('parallel = 1')
+  })
+
+  it('caps agent_slots', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { parallel: 1, agent_slots: 99 } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('parallel = 11')
+  })
+})
+
 describe('generatePreset parallel reservation', () => {
   it('runs exactly the configured slots when the reservation is off', async () => {
     setupModel('llama', {})
@@ -234,14 +264,14 @@ describe('generatePreset parallel reservation', () => {
     await generatePreset('/p', '/jan', { parallel: 1 } as any, {
     })
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini).toContain('parallel = 3')
+    expect(ini).toContain('parallel = 5')
   })
 
   it('adds the reserved background slots on top of a per-model parallel override', async () => {
     setupModel('llama', { parallel: 3 })
     await generatePreset('/p', '/jan', {} as any)
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini).toContain('parallel = 5')
+    expect(ini).toContain('parallel = 7')
   })
 
   it('omits parallel when unset, leaving llama.cpp auto-default untouched', async () => {
@@ -288,7 +318,7 @@ describe('generatePreset parallel reservation', () => {
   it('reserves the background slots by default, so slots 1 and 2 always exist', async () => {
     setupModel('llama', {})
     await generatePreset('/p', '/jan', { parallel: 1 } as any)
-    expect(writtenFiles['/p/router.preset.ini']).toContain('parallel = 3')
+    expect(writtenFiles['/p/router.preset.ini']).toContain('parallel = 5')
   })
 
   it('reserves it in the per-model section too, which overrides [*]', async () => {
@@ -297,8 +327,8 @@ describe('generatePreset parallel reservation', () => {
     const ini = writtenFiles['/p/router.preset.ini']
     // The provider-level value is what the old pin was computed from; the
     // section's own value is what llama.cpp actually applies.
-    expect(ini).toContain('parallel = 6')
-    expect(ini).toContain('parallel = 3')
+    expect(ini).toContain('parallel = 8')
+    expect(ini).toContain('parallel = 5')
   })
 })
 
@@ -432,7 +462,7 @@ describe('generatePreset parallel with speculative decoding', () => {
     setupModel('qwen', { mtp: true, mtp_layers: 1 })
     await generatePreset('/p', '/jan', { parallel: 2 } as any)
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini.split('[qwen]')[0]).toContain('parallel = 4')
+    expect(ini.split('[qwen]')[0]).toContain('parallel = 6')
     expect(section(ini, 'qwen')).not.toContain('parallel =')
   })
 
@@ -440,8 +470,8 @@ describe('generatePreset parallel with speculative decoding', () => {
     setupModel('qwen', { mtp: true, mtp_layers: 1, parallel: 2 })
     await generatePreset('/p', '/jan', {} as any)
     const qwen = section(writtenFiles['/p/router.preset.ini'], 'qwen')
-    expect(qwen).toContain('parallel = 4')
-    expect(qwen).not.toContain('parallel = 3')
+    expect(qwen).toContain('parallel = 6')
+    expect(qwen).not.toContain('parallel = 5')
   })
 
   it('respects an explicit kv-unified off', async () => {
@@ -458,7 +488,7 @@ describe('generatePreset parallel with speculative decoding', () => {
     setupModel('plain', {})
     await generatePreset('/p', '/jan', { parallel: 1 } as any)
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini.split('[plain]')[0]).toContain('parallel = 3')
+    expect(ini.split('[plain]')[0]).toContain('parallel = 5')
     expect(section(ini, 'qwen')).toContain('parallel = 1')
     expect(section(ini, 'plain')).not.toContain('parallel =')
   })
@@ -503,7 +533,7 @@ describe('generatePreset kv-unified', () => {
     await generatePreset('/p', '/jan', { parallel: 1 } as any, {
     })
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini).toContain('parallel = 3')
+    expect(ini).toContain('parallel = 5')
     expect(ini).toContain('kv-unified = true')
   })
 
@@ -1634,7 +1664,7 @@ describe('generatePreset slots for a model fit has to trim', () => {
     setupModel('moe', MOE)
     await generatePreset('/p', '/jan', { parallel: 1 } as any, GPU)
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini.split('[moe]')[0]).toContain('parallel = 3')
+    expect(ini.split('[moe]')[0]).toContain('parallel = 5')
     const moe = section(ini, 'moe')
     expect(moe).toContain('parallel = 1')
     expect(moe).toContain('kv-unified = true')
@@ -1651,7 +1681,7 @@ describe('generatePreset slots for a model fit has to trim', () => {
 
   it('keeps the slots when the fit floor already gives each 8192', async () => {
     setupModel('moe', MOE)
-    await generatePreset('/p', '/jan', { parallel: 1, fit_ctx: 24576 } as any, GPU)
+    await generatePreset('/p', '/jan', { parallel: 1, fit_ctx: 40960 } as any, GPU)
     expect(section(writtenFiles['/p/router.preset.ini'], 'moe')).not.toContain(
       'parallel ='
     )

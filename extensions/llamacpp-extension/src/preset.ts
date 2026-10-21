@@ -79,6 +79,16 @@ type ModelYaml = ModelConfig & {
 export const RESERVED_BACKGROUND_SLOTS = 2
 
 /**
+ * Slots, after the chat, background and Cowork slots (ids 0-2), for requests
+ * that name no slot: subagents, workflow agents, API-server clients. The engine
+ * proxy spreads them over ids `FIRST_AGENT_SLOT` and up (`engine/http.rs`), so
+ * they cannot land on, and evict, the chat or Cowork prefix. The KV pool is
+ * unified, so a slot adds no KV memory of its own.
+ */
+export const DEFAULT_AGENT_SLOTS = 2
+export const MAX_AGENT_SLOTS = 8
+
+/**
  * The ubatch every embedding model's preset section is pinned to.
  *
  * Exported because `embed()` has to budget its batches against the *embedder's*
@@ -175,6 +185,9 @@ export function describeFitBudget(
   })
 }
 
+/** Room beyond the weights below which a model counts as spilling for the slot plan. */
+export const NEAR_SPILL_SLACK_BYTES = 1.5 * GIB
+
 /** Smallest context one slot should get when auto-fit has to trim a model. */
 export const MIN_SLOT_CTX = 8192
 
@@ -197,7 +210,10 @@ export function spillSlotPlan(
     return undefined
   }
   const usable = (gpuMemoryMiB - fitTargetMiB) * 1024 * 1024
-  if (weightsBytes <= usable) return undefined
+  // A model that only just fits has the same problem: the KV and compute
+  // buffers take what the weights left, fit trims the context toward its floor
+  // and the slots share it. NEAR_SPILL_SLACK is the room those need.
+  if (weightsBytes + NEAR_SPILL_SLACK_BYTES <= usable) return undefined
   if (fitCtx / Math.max(1, slots) >= MIN_SLOT_CTX) return undefined
   return { fitCtx: Math.max(fitCtx, MIN_SLOT_CTX) }
 }
@@ -507,6 +523,8 @@ export async function generatePreset(
   config: LlamacppConfig,
   opts: {
     reservedBackgroundSlots?: number
+    /** Overridable for tests only, like `reservedBackgroundSlots`. */
+    agentSlots?: number
     /** Models whose KV cache defaults failed to load; they get f16 instead. */
     kvFallbackModels?: ReadonlySet<string>
     /**
@@ -550,6 +568,18 @@ export async function generatePreset(
       : config.reserve_background_slots === false
         ? 0
         : RESERVED_BACKGROUND_SLOTS
+  // Only alongside the reserved slots: with those off the user asked for
+  // exactly Parallel Sequences slots, and the proxy's agent ids (3 and up)
+  // would otherwise wrap onto the chat slot.
+  const configuredAgent =
+    typeof opts.agentSlots === 'number'
+      ? opts.agentSlots
+      : (asFiniteNumber((config as { agent_slots?: unknown }).agent_slots) ?? DEFAULT_AGENT_SLOTS)
+  const agentSlots =
+    reservedBackgroundSlots > 0
+      ? Math.min(MAX_AGENT_SLOTS, Math.max(0, Math.floor(configuredAgent)))
+      : 0
+  const extraSlots = reservedBackgroundSlots + agentSlots
   const modelsDir = await joinPath([providerPath, 'models'])
 
   // Ensure the directory exists; an empty install is fine — we still emit a
@@ -678,7 +708,7 @@ export async function generatePreset(
   // slot is added on top and never exposed in the setting's own value.
   const userParallel = asFiniteNumber(config.parallel)
   if (userParallel !== undefined && userParallel > 0) {
-    lines.push(`parallel = ${Math.floor(userParallel) + reservedBackgroundSlots}`)
+    lines.push(`parallel = ${Math.floor(userParallel) + extraSlots}`)
     // llama.cpp only turns on unified KV as part of resolving parallel = -1;
     // passing parallel explicitly leaves it off, which splits ctx-size into
     // ctx-size/parallel per slot. Restore the auto behaviour so the configured
@@ -1087,7 +1117,7 @@ export async function generatePreset(
 
     const mcParallel = asFiniteNumber(mc.parallel)
     if (mcParallel !== undefined && mcParallel > 0) {
-      lines.push(`parallel = ${Math.floor(mcParallel) + reservedBackgroundSlots}`)
+      lines.push(`parallel = ${Math.floor(mcParallel) + extraSlots}`)
       if (kvUnifiedIsAuto) lines.push('kv-unified = true')
     } else if (
       specDecoding &&
@@ -1123,7 +1153,7 @@ export async function generatePreset(
         opts.gpuMemoryMiB,
         fitTargetMiB,
         fitCtxFloor,
-        1 + reservedBackgroundSlots
+        1 + extraSlots
       )
       if (spill) {
         lines.push('parallel = 1')

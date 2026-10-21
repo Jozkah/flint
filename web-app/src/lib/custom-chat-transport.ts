@@ -3257,15 +3257,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // apply, but no context limit is enforced against a number nobody has.
     const configuredContextTokens =
       usableContextValue(inferenceParams.max_context_tokens) ?? 0
-    const contextShiftEnabled =
-      providerId === 'llamacpp' &&
-      resolveContextShift(
-        selectedModel?.settings?.ctx_shift?.controller_props?.value,
-        provider.settings?.find((setting) => setting.key === 'ctx_shift')
-          ?.controller_props?.value
-      )
     let liveContextTokens: number | undefined
-    if (contextShiftEnabled) {
+    // The engine's real n_ctx bounds the window whether or not Context Shift
+    // is on: with fit on and no Max Context Tokens set, it is the only size
+    // that is known to fit in memory.
+    if (providerId === 'llamacpp') {
       try {
         liveContextTokens = (
           await getLlamacppExtension()?.getModelProps?.(modelId)
@@ -3282,7 +3278,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       known: effectiveContextWindow(
         configuredContextTokens,
         liveContextTokens,
-        contextShiftEnabled
+        providerId === 'llamacpp'
       ),
       provider: providerWindow.bundled ? null : providerWindow.tokens,
       bundled: providerWindow.bundled ? providerWindow.tokens : null,

@@ -255,5 +255,9 @@
     "perModelSettings": "按模型设置",
     "perModelDefault": "默认（来自设置：{{value}}）",
     "perModelDefaultAuto": "默认（来自设置：自动）"
+  },
+  "agent_slots": {
+    "title": "Agent Slots",
+    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
   }
 }

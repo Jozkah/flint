@@ -236,12 +236,12 @@ export const providerModels = {
  *
  * Cowork needs its own slot because one agent turn re-prefills a growing prompt
  * dozens of times; sharing slot 0 would evict the viewed thread's prefix on
- * every step, and vice versa. Subagents deliberately reuse the background slot
- * rather than taking a fourth: their prefixes are worth nothing to preserve
- * (each has a different system prompt, so concurrent subagents evict each other
- * regardless), and all that matters is that a dispatch cannot evict the
- * *parent's* prefix on slot 2. Reserving one slot instead of two keeps the KV
- * cache split three ways rather than four.
+ * every step, and vice versa. Subagents run in the Rust agent loop, which
+ * sends no `id_slot`; the engine proxy (`engine/http.rs`, `pin_agent_slot`)
+ * gives such a request one of the agent slots, ids 3 and up (the extension's
+ * `agent_slots` setting), by a hash of the conversation's start so a growing
+ * agent prompt returns to its own prefix, and to an idle agent slot when its
+ * own is busy. They therefore cannot evict slot 0's or Cowork's prefix.
  *
  * Both are fixed indices rather than values derived from the "Parallel
  * Sequences" setting, because upstream *wraps* an out-of-range `id_slot`

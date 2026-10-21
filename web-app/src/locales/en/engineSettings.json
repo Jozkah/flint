@@ -124,6 +124,10 @@
     "title": "Reserve Background Slots",
     "description": "Keep two extra internal slots beyond Parallel Sequences for background requests (thread auto-titling, Cowork, subagents) so they do not evict your chat's KV cache. Turn off to run exactly Parallel Sequences slots (set it to 1 for a single slot); background requests then share your chat's slot and can evict its cache. Reloads the model."
   },
+  "agent_slots": {
+    "title": "Agent Slots",
+    "description": "Extra slots for subagents, workflow agents and other requests that name no slot, so parallel agents do not evict your chat's or Cowork's KV cache. They share one KV pool, so a slot costs little memory (hybrid models also keep recurrent state per slot). 0 turns them off. Needs Reserve Background Slots on. Reloads the model."
+  },
   "ngram_speculation": {
     "title": "N-gram Speculative Decoding",
     "description": "Draft tokens from text already in the conversation (ngram-mod) and let the model verify them in one batch. Output is identical; repetitive output such as code edits or quoting generates 3-10x faster, other text is unaffected. Models with their own MTP draft use that instead."
