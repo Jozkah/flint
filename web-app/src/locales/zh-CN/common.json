@@ -2192,6 +2192,7 @@
     "expandSidebar": "显示侧边栏",
     "darkMode": "深色模式",
     "lightMode": "浅色模式",
+    "skipToContent": "跳到内容",
     "deleteGroup": "删除分组",
     "editGroup": "重命名分组",
     "openGroup": "打开分组",

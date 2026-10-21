@@ -2278,6 +2278,7 @@
     "expandSidebar": "Show sidebar",
     "darkMode": "Dark mode",
     "lightMode": "Light mode",
+    "skipToContent": "Skip to content",
     "deleteGroup": "Delete group",
     "editGroup": "Rename group",
     "openGroup": "Open group",
