@@ -502,7 +502,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             title={t('common:shell.resume')}
             aria-current={pathname === route.overview ? 'page' : undefined}
             className={cn(
-              'grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 [&>svg]:size-4',
+              'hit-box [--hit-y:-8px] relative grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 [&>svg]:size-4',
               pathname === route.overview && 'bg-accent text-foreground'
             )}
           >
@@ -515,7 +515,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
               onClick={toggle}
               aria-label={t('common:shell.collapseSidebar')}
               title={t('common:shell.collapseSidebar')}
-              className="-m-1 grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&>svg]:size-4"
+              className="hit-box [--hit-y:-8px] relative -m-1 grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&>svg]:size-4"
             >
               <Icon name="sidebar-right" />
             </button>
