@@ -100,7 +100,7 @@ export function stateAfter(
  * Manual compaction from the composer (`/compact`): the open conversation
  * registers how to compact itself, and the composer asks by thread id.
  */
-type Compactor = () => Promise<void>
+type Compactor = (focus?: string) => Promise<void>
 const compactors = new Map<string, Compactor>()
 
 export function registerChatCompactor(threadId: string, fn: Compactor): () => void {
@@ -110,14 +110,44 @@ export function registerChatCompactor(threadId: string, fn: Compactor): () => vo
   }
 }
 
-export function requestChatCompaction(threadId: string): boolean {
+export function requestChatCompaction(
+  threadId: string,
+  focus?: string
+): boolean {
   const fn = compactors.get(threadId)
   if (!fn) return false
-  void fn()
+  void fn(focus)
   return true
 }
 
 /** Whether the chat is open on the desktop, so a compaction can run now. */
 export function canCompactChat(threadId: string): boolean {
   return compactors.has(threadId)
+}
+
+/**
+ * `/btw`: the open conversation registers how to answer a side question from a
+ * snapshot of itself, and the composer asks by thread id.
+ */
+type SideAsker = (question: string) => Promise<void>
+const sideAskers = new Map<string, SideAsker>()
+
+export function registerChatSideQuestion(
+  threadId: string,
+  fn: SideAsker
+): () => void {
+  sideAskers.set(threadId, fn)
+  return () => {
+    if (sideAskers.get(threadId) === fn) sideAskers.delete(threadId)
+  }
+}
+
+export function requestChatSideQuestion(
+  threadId: string,
+  question: string
+): boolean {
+  const fn = sideAskers.get(threadId)
+  if (!fn) return false
+  void fn(question)
+  return true
 }

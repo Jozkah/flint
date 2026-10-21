@@ -20,7 +20,8 @@
     "help": "Verfügbare Befehle auflisten",
     "new": "Eine neue Unterhaltung beginnen",
     "newSession": "Eine neue Cowork-Sitzung beginnen",
-    "compact": "Ältere Nachrichten zusammenfassen, um das Kontextfenster freizugeben"
+    "compact": "Ältere Nachrichten zusammenfassen, um das Kontextfenster freizugeben",
+    "btw": "Stelle eine Nebenfrage zu diesem Thread; Antwort ohne Tools, wird nie hinzugefügt"
   },
   "sent": {
     "command": "Befehl",

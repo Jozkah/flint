@@ -41,6 +41,10 @@
     "gitRemote": "Flint가 {{target}}을(를) 변경하는 {{command}}을(를) 실행하려고 합니다",
     "gitDestructive": "Flint가 작업 내용을 잃을 수 있는 {{command}}을(를) 실행하려고 합니다",
     "approveCampaign": "Flint가 캠페인 \"{{title}}\"({{count}}개 작업)을 시작하려 합니다",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
+    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
+    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
+    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
     "spendPause": "Flint가 지출 일시 중지 한도를 넘어 이 실행을 계속하려 합니다",
     "changeFileOutside": "Flint가 {{workspace}} 밖에 있는 {{target}}을(를) 변경하려고 합니다",
     "changeManyFilesOutside": "Flint가 파일 {{count}}개를 변경하려고 합니다(일부는 {{workspace}} 밖)"
@@ -63,6 +67,10 @@
     "gitRemote": "다른 사람이 볼 수 있는 원격 저장소로 변경 사항을 보냅니다. 이 대화에서 일반적인 원격 Git 작업을 일시적으로 허용하지 않는 한 Flint는 매번 묻습니다.",
     "gitDestructive": "제거되거나 덮어써진 내용은 복구할 수 없을 수 있습니다.",
     "campaignPlan": "각각 자체 worktree branch에서 별도의 세션을 시작하며, 이 세션들은 파일을 읽고 변경하고 모델 사용량을 병렬로 소비합니다. 계획을 승인해도 작업이 하는 호출이 승인되지는 않습니다. Flint는 매번 묻습니다.",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
+    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
+    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "실행은 끝나거나 한도에 이를 때까지 유료 모델 할당량을 계속 사용합니다. 거부하면 실행이 중지됩니다."
   },
   "repeat": {
@@ -345,5 +353,18 @@
     "lineLabel": "줄",
     "ruleLabel": "규칙",
     "more": "그 밖에 표시된 줄 {{count}}개"
+  },
+  "ruleWarnings": {
+    "title": "문제가 있는 권한 규칙",
+    "description": "프로젝트 agent.toml의 일부 규칙이 버려졌거나 절대 일치할 수 없습니다. 나머지는 로드되지만 이 규칙들은 적힌 대로 동작하지 않습니다.",
+    "notProtecting": "제한 규칙이 적용되지 않아 적힌 것보다 보호가 약합니다. 규칙을 수정하세요."
+  },
+  "hooksViewer": {
+    "title": "훅",
+    "description": "신뢰한 각 폴더가 도구 호출 전후와 실행 종료 시 실행하는 명령입니다. 읽기 전용: 변경하려면 .jan/agent/hooks.toml을 편집하세요.",
+    "empty": "훅을 선언한 신뢰 폴더가 없습니다.",
+    "none": "이 폴더는 훅을 선언하지 않았습니다.",
+    "error": "훅 파일을 읽을 수 없습니다",
+    "loadFailed": "훅을 읽을 수 없습니다"
   }
 }

@@ -16,22 +16,29 @@
  * Extracted from `routes/cowork.tsx` (`dispatchChild`); the behaviour there is
  * unchanged.
  */
-import type { LanguageModel, Tool } from 'ai'
+import type { LanguageModel, Tool, UIMessage } from 'ai'
 import { applyInnerToTurns, type StreamEvent } from '@/hooks/useCoworkRun'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { recordEvents } from '@/lib/eventLog'
 import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 import { taskIdFor } from '@/lib/coworkActivity'
 import { recordAgentDispatch, type RunContext } from '@/lib/coworkActivityRecorder'
-import { registerSubagent, unregisterSubagent, type ToolOutcome } from '@/lib/coworkRunner'
+import {
+  registerSubagent,
+  unregisterSubagent,
+  type PendingToolCall,
+  type ToolOutcome,
+} from '@/lib/coworkRunner'
 import {
   parentToolNames,
   resolveSubagent,
   runSubagent,
+  subagentTools,
   type ResolvedSubagent,
   type RunSubagentOptions,
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
+import type { SpawnLimits } from '@/lib/coworkSubagent'
 import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import { countToolCalls } from '@/lib/coworkTasks'
 import {
@@ -47,6 +54,24 @@ import {
 } from '@/lib/coworkSubagentHistory'
 import { recordToolActivity, type ToolActivityContext } from '@/lib/toolActivity'
 import type { Destination } from '@/lib/coworkTeamDestinations'
+import {
+  AGENT_MEMORY_TOOL_NAME,
+  agentMemoryTool,
+  defaultMemoryDeps,
+  memoryBlock,
+  memoryLaunchError,
+  runMemoryWrite,
+  type MemoryDeps,
+  type MemoryScope,
+} from '@/lib/coworkSubagentMemory'
+import { currentSubagentSettings } from '@/hooks/useSubagentSettings'
+import { clampMaxConcurrent, clampMaxDepth } from '@/lib/subagentSettings'
+import { checkLaunch, type LaunchInfo } from '@/lib/coworkSubagentLaunchGate'
+import type { CoworkMode } from '@/lib/coworkMode'
+import { labelSubagentOutput } from '@/lib/coworkSubagentSafety'
+import { errandLine, joinRoster, rosterBlock } from '@/lib/coworkSubagentRoster'
+import { preloadSkills } from '@/lib/coworkSubagentSkills'
+import { resolveChildEffort } from '@/lib/coworkSubagentEffort'
 import { prepareChildChoice, profileLabel, type ParentPersona } from '@/lib/subagentChoice'
 import type { CoworkTurn, Usage } from '@/types/coworkSession'
 
@@ -92,7 +117,15 @@ export type ChildRunnerEnv = {
   /** The tools the parent advertised; a child gets these, narrowed. */
   parentTools: () => Record<string, Tool>
   anchorMessageId: () => string | undefined
-  setup: (resolved: ResolvedSubagent, destination?: Destination) => ChildSetup
+  /**
+   * `spawn` is this child's place in the spawn tree; a surface that lets
+   * children nest routes their `task` calls back into the runner one level down.
+   */
+  setup: (
+    resolved: ResolvedSubagent,
+    destination?: Destination,
+    spawn?: SpawnLimits
+  ) => ChildSetup
   lane?: ChildLane
   /** Which surface the queued-for-a-slot line is recorded under. */
   activitySource?: 'cowork' | 'chat'
@@ -103,6 +136,33 @@ export type ChildRunnerEnv = {
    * own: a child that reaches it stops with the token-budget status.
    */
   tokenLimit?: () => number | undefined
+  /**
+   * Asks the user before a subagent writes its persistent memory. Absent means
+   * the surface cannot ask, and the write is refused.
+   */
+  approveMemoryWrite?: (info: {
+    agent: string
+    scope: MemoryScope
+    content: string
+    signal: AbortSignal
+  }) => Promise<boolean>
+  /**
+   * The one-time question before an editing subagent first runs in a session.
+   * Absent means the surface asks nothing up front.
+   */
+  launchGate?: {
+    /** The mode this child would run in, or undefined when unknown. */
+    mode: (resolved: ResolvedSubagent) => CoworkMode | undefined
+    ask: (info: LaunchInfo & { signal: AbortSignal }) => Promise<boolean>
+  }
+  /**
+   * What a forked subagent inherits: the conversation the run started this turn
+   * with (prior turns and the message that began it) and the system prompt the
+   * parent sends. Absent where a surface cannot fork.
+   */
+  fork?: { history: () => UIMessage[]; system: () => string }
+  /** Test seam for the memory commands. */
+  memoryDeps?: MemoryDeps
   /** Told how many tokens each finished child used, for a surface that keeps a
    * budget of its own (a Room). */
   onUsage?: (usage: Usage | null) => void
@@ -115,11 +175,20 @@ export type ChildRunner = (
   parentTaskId?: string,
   destination?: Destination,
   /** The team task id the checkout's review is listed under. */
-  checkoutTaskId?: string
+  checkoutTaskId?: string,
+  /** The depth of whoever is asking: 0 for the main agent, 1 for its child. */
+  callerDepth?: number
 ) => Promise<ToolOutcome>
 
 export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
-  return async (callId, req, teamSignal, parentTaskId, destination, checkoutTaskId) => {
+  return async (callId, req, teamSignal, parentTaskId, destination, checkoutTaskId, callerDepth = 0) => {
+    const limits = currentSubagentSettings()
+    const spawn: SpawnLimits = {
+      depth: callerDepth + 1,
+      // A fork never spawns, whatever the depth setting allows.
+      maxDepth: req.fork ? callerDepth + 1 : clampMaxDepth(limits.maxDepth),
+    }
+    const maxConcurrent = clampMaxConcurrent(limits.maxConcurrent)
     // A follow-up runs as the agent that finished, on what it already knows.
     const resumeId = req.resume_agent_id
     const remembered = resumeId
@@ -142,6 +211,19 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     if ('error' in resolved) {
       return { output: `ERROR: ${resolved.error}`, isError: true }
     }
+    const forking = resolved.fork === true
+    if (forking) {
+      const why = !env.fork
+        ? 'fork is not available on this surface'
+        : req.background || parentTaskId !== undefined
+          ? 'a forked subagent runs in the foreground only'
+          : callerDepth > 0
+            ? 'a subagent cannot fork'
+            : resumeId
+              ? 'a fork cannot be resumed'
+              : null
+      if (why) return { output: `ERROR: ${why}`, isError: true }
+    }
     const model = env.model()
     if (!model) {
       return {
@@ -156,8 +238,40 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       role: resolved.name,
       parentModel: { provider: env.providerId ?? '', id: env.modelId },
       parent: env.parent?.(),
-      requestedModel: req.model,
+      requestedModel: forking ? undefined : req.model,
     })
+    // A reasoning effort asked for by the call or the definition: a model
+    // instance of its own, built with that level, in place of the parent's.
+    let effortChoice: Awaited<ReturnType<typeof resolveChildEffort>> | undefined
+    if (!forking && resolved.effort && choice.providerId) {
+      effortChoice = await resolveChildEffort({
+        providerId: choice.providerId,
+        modelId: choice.modelId,
+        level: resolved.effort,
+      })
+      if ('note' in effortChoice && effortChoice.note) {
+        choice.note = [choice.note, effortChoice.note].filter(Boolean).join('; ')
+      }
+    }
+    // An editing child, foreground, in a mode that would ask: one question first.
+    if (env.launchGate) {
+      const gate = env.launchGate
+      const ok = await checkLaunch({
+        sessionId: env.sessionId,
+        agent: resolved.name,
+        mode: gate.mode(resolved),
+        tools: Object.keys(subagentTools(env.parentTools(), resolved.allowedTools, spawn)),
+        model: choice.modelId,
+        foreground: req.background !== true && parentTaskId === undefined,
+        ask: (info) => gate.ask({ ...info, signal: env.signal }),
+      })
+      if (!ok) {
+        return {
+          output: `Subagent '${resolved.name}' was not started: the user did not approve running it with editing tools.`,
+          isError: true,
+        }
+      }
+    }
     // Recorded before the child starts: the dispatch is the only moment the
     // agent name, description and model are known together, and the record has
     // to exist for the queue position that arrives next to land on something.
@@ -178,6 +292,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       callId,
       agentName: resolved.name,
       title: req.title,
+      phase: req.phase,
       description: req.description,
       model: choice.modelId,
       // A team's children hang under the team's own row, so the panel shows one
@@ -217,6 +332,12 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         ...(choice.note ? { detail: choice.note } : {}),
       })
     }
+    // The children of this run already going, told to the one starting now.
+    const roster = joinRoster(env.runId, callId, {
+      name: resolved.name,
+      errand: errandLine(req.title, req.description),
+    })
+    const siblingBlock = rosterBlock(roster.siblings)
     const childAbort = registerSubagent(env.sessionId, childTaskId)
     const stopChild = () => childAbort.abort('cancelled')
     env.signal.addEventListener('abort', stopChild, { once: true })
@@ -259,18 +380,113 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     let localTurns: CoworkTurn[] = []
     const askable = req.background === true && parentTaskId === undefined
     try {
-      const setup = env.setup(resolved, destination)
+      const built = env.setup(resolved, destination, spawn)
+      // A definition that omits instructions hands its child none: neither the
+      // `JAN.md` nor the compatibility files the parent was given.
+      const setup = resolved.omitInstructions
+        ? {
+            ...built,
+            system: {
+              ...built.system,
+              projectInstructions: null,
+              compatInstructions: [],
+            },
+          }
+        : built
+      // Skills the definition preloads: read through the child's own dispatcher,
+      // so a missing or model-invocation-disabled one fails the launch by name.
+      const preloaded = resolved.skills?.length
+        ? await preloadSkills(resolved.skills, setup.dispatch, childAbort.signal)
+        : { blocks: [] as string[] }
+      if ('error' in preloaded) {
+        const message = `ERROR: subagent '${resolved.name}' not started: ${preloaded.error}`
+        env.lane?.attach(callId, message)
+        settleChild(true, message)
+        return { output: message, isError: true }
+      }
+      // Persistent memory: its first lines go into the child's context and it
+      // gets one write tool, scoped to its own MEMORY.md and gated by the user.
+      let memoryBlockText: string | undefined
+      const memoryScope = resolved.memory
+      const memoryRoot = setup.system.readOnlyFolder ?? setup.system.workspacePath ?? null
+      if (memoryScope) {
+        const why = memoryLaunchError(memoryScope, memoryRoot)
+        let loaded: Awaited<ReturnType<MemoryDeps['load']>> | undefined
+        if (!why) {
+          try {
+            loaded = await (env.memoryDeps ?? defaultMemoryDeps).load(resolved.name, memoryScope, memoryRoot)
+          } catch (e) {
+            const message = `ERROR: subagent '${resolved.name}' not started: its memory could not be loaded (${e instanceof Error ? e.message : String(e)})`
+            env.lane?.attach(callId, message)
+            settleChild(true, message)
+            return { output: message, isError: true }
+          }
+        }
+        if (why || !loaded) {
+          const message = `ERROR: subagent '${resolved.name}' not started: ${why}`
+          env.lane?.attach(callId, message)
+          settleChild(true, message)
+          return { output: message, isError: true }
+        }
+        memoryBlockText = memoryBlock(memoryScope, loaded)
+      }
+      const memoryTools: Record<string, Tool> =
+        memoryScope && memoryBlockText ? { [AGENT_MEMORY_TOOL_NAME]: agentMemoryTool } : {}
+      const memoryHandled = (call: PendingToolCall, toolSignal: AbortSignal | undefined) =>
+        call.toolName === AGENT_MEMORY_TOOL_NAME && memoryScope
+          ? runMemoryWrite(call.input, {
+              agent: resolved.name,
+              scope: memoryScope,
+              projectRoot: memoryRoot,
+              deps: env.memoryDeps,
+              approve: async (info) =>
+                env.approveMemoryWrite
+                  ? env.approveMemoryWrite({ ...info, signal: toolSignal ?? childAbort.signal })
+                  : false,
+            })
+          : undefined
       const child = await runSubagent({
         resolved,
-        description: req.description,
+        spawn,
+        maxConcurrent,
+        // The definition's opening lines go before the parent's message. A
+        // resumed child already has them in its history.
+        description:
+          resolved.initialPrompt && !remembered
+            ? `${resolved.initialPrompt}
+
+${req.description}`
+            : req.description,
         ...(remembered ? { history: remembered.messages } : {}),
+        // A fork: a copy of the parent's conversation and its own system prompt,
+        // so nothing the child does reaches the parent's transcript.
+        ...(forking && env.fork
+          ? {
+              history: structuredClone(env.fork.history()),
+              systemOverride: env.fork.system(),
+            }
+          : {}),
         // The same identity the child's dispatched calls carry, for the calls
         // the runner refuses without dispatching.
         activity: setup.activity,
-        model: choice.model ?? model,
+        model: forking
+          ? model
+          : (effortChoice && 'model' in effortChoice ? effortChoice.model : undefined) ?? choice.model ?? model,
         supportsVision: choice.supportsVision ?? env.supportsVision?.() ?? false,
-        ...(choice.extraSystem.length > 0 ? { extraSystem: choice.extraSystem } : {}),
-        providerOptions: env.providerOptions(),
+        ...(!forking && choice.extraSystem.length + preloaded.blocks.length + (memoryBlockText ? 1 : 0) + (siblingBlock ? 1 : 0) > 0
+          ? {
+              extraSystem: [
+                ...choice.extraSystem,
+                ...preloaded.blocks,
+                ...(memoryBlockText ? [memoryBlockText] : []),
+                ...(siblingBlock ? [siblingBlock] : []),
+              ],
+            }
+          : {}),
+        providerOptions:
+          !forking && effortChoice && 'model' in effortChoice
+            ? effortChoice.providerOptions
+            : env.providerOptions(),
         parentTools: env.parentTools(),
         system: setup.system,
         signal: childAbort.signal,
@@ -279,10 +495,19 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         ...(env.maxSteps ? { maxSteps: env.maxSteps } : {}),
         // A background child may ask its parent; a foreground one cannot, the
         // parent being blocked in the call that started it.
-        ...(askable ? { extraTools: { [ASK_PARENT_TOOL_NAME]: askParentTool } } : {}),
-        dispatch: askable
+        ...(askable || memoryScope
+          ? {
+              extraTools: {
+                ...(askable ? { [ASK_PARENT_TOOL_NAME]: askParentTool } : {}),
+                ...memoryTools,
+              },
+            }
+          : {}),
+        dispatch: askable || memoryScope
           ? async (call, toolSignal) => {
-              if (call.toolName !== ASK_PARENT_TOOL_NAME) {
+              const wrote = memoryHandled(call, toolSignal)
+              if (wrote) return wrote
+              if (!askable || call.toolName !== ASK_PARENT_TOOL_NAME) {
                 return setup.dispatch(call, toolSignal)
               }
               const asked = await askParent({
@@ -362,7 +587,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       // tell, so it is not kept.
       const agentId = resumeId ?? callId
       const keep =
-        !parentTaskId && !childAbort.signal.aborted && child.messages !== undefined
+        !forking && !parentTaskId && !childAbort.signal.aborted && child.messages !== undefined
       if (keep && child.messages) {
         rememberSubagent(env.sessionId, agentId, {
           name: resolved.name,
@@ -370,12 +595,17 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         })
       }
       return {
-        output: keep ? child.output + resumeHint(agentId) : child.output,
+        // Labelled as a subagent's report, with fence tags defanged: the parent
+        // reads it as data with no user authority (coworkSubagentSafety.ts).
+        output:
+          labelSubagentOutput(resolved.name, child.output) +
+          (keep ? resumeHint(agentId) : ''),
         isError: child.isError,
         ...(child.full ? { full: child.full } : {}),
       }
     } finally {
       env.signal.removeEventListener('abort', stopChild)
+      roster.leave()
       unregisterSubagent(env.sessionId, childTaskId)
       // A throw from the dispatch would otherwise leave the record running with
       // nothing left to finish it.

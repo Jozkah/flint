@@ -80,6 +80,23 @@ pub async fn agent_skill_list(project: String) -> Result<Vec<SkillMeta>, String>
     Ok(skills::list_meta(&workspace::project_store(&root)))
 }
 
+/// Tool calls and subagent tokens by skill, MCP server, plugin and subagent,
+/// plus what is configured but unused over `since` (`7d`, `24h`).
+#[tauri::command]
+pub async fn get_usage_attribution(
+    app: tauri::AppHandle,
+    since: Option<String>,
+    project: Option<String>,
+) -> Result<crate::core::agent::attribution::Attribution, String> {
+    let data = get_jan_data_folder_path(app);
+    crate::core::agent::attribution::report(
+        &data,
+        since.as_deref(),
+        project.as_deref().map(std::path::Path::new),
+    )
+    .map_err(|e| e.message)
+}
+
 /// The effective compaction policy (AH-076): defaults, the user's file, then
 /// the project's when one is given.
 #[tauri::command]
@@ -376,6 +393,20 @@ pub fn agent_plugin_install_cancel(operation_id: String) -> bool {
     plugins::cancel_install(&operation_id)
 }
 
+/// Re-resolve an installed git or marketplace plugin and reinstall it only when
+/// its commit changed. Enable state is kept.
+#[tauri::command]
+pub async fn agent_plugin_update(
+    project: String,
+    id: String,
+    operation_id: String,
+    scope: Option<String>,
+) -> Result<plugins::UpdateReport, plugins::PluginError> {
+    let guard = plugins::begin_install(&operation_id)?;
+    let scope = resolve_plugin_scope(&project, scope.as_deref());
+    plugins::update_plugin_scoped(&scope, &id, guard.ctx()).await
+}
+
 /// Enable or disable an installed plugin for this project
 /// (`[plugins].disabled` in agent.toml). Returns the plugin's new state.
 #[tauri::command]
@@ -580,6 +611,34 @@ pub async fn agent_projects_list(
     Ok(crate::core::agent::projects_registry::list_projects())
 }
 
+/// One project's rule warnings, for the permissions settings page.
+#[derive(serde::Serialize)]
+pub struct ProjectRuleWarnings {
+    pub project: String,
+    pub folder: String,
+    pub warnings: Vec<tauri_plugin_agent_tools::permissions::RuleWarning>,
+}
+
+/// Rule warnings for every registered project that has any.
+#[tauri::command]
+pub async fn agent_policy_rule_warnings() -> Result<Vec<ProjectRuleWarnings>, String> {
+    blocking(|| {
+        crate::core::agent::projects_registry::list_projects()
+            .into_iter()
+            .filter_map(|p| {
+                let warnings = crate::core::agent::project::policy_rule_warnings(std::path::Path::new(&p.folder));
+                (!warnings.is_empty()).then_some(ProjectRuleWarnings {
+                    project: p.name,
+                    folder: p.folder,
+                    warnings,
+                })
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Register (or re-register) `folder` as a project, returning its stable entry.
 #[tauri::command]
 pub async fn agent_projects_register(
@@ -706,6 +765,9 @@ pub struct SubagentDefinitionDto {
     pub model: Option<String>,
     /// `builtin` for a role Flint ships, `user` for one saved on this machine.
     pub scope: subagent::SubagentScope,
+    /// Optional per-agent options; absent keys are left out of the JSON.
+    #[serde(flatten)]
+    pub extras: subagent::SubagentOptions,
 }
 
 /// The roles Flint ships (AH-094..099), then every subagent saved for the
@@ -743,8 +805,51 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
             allowed_tools: d.allowed_tools,
             model: d.model,
             scope: d.scope,
+            extras: d.extras,
         })
         .collect())
+}
+
+/// A subagent's persistent memory, as loaded at its start (first 200 lines or
+/// 25 KB of its `MEMORY.md`). `scope` is `user` or `project`; a project scope
+/// needs `project_root`, used only to derive an identity.
+#[tauri::command]
+pub async fn agent_subagent_memory_load<R: tauri::Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    name: String,
+    scope: String,
+    project_root: Option<String>,
+) -> Result<crate::core::agent::subagent_memory::LoadedMemory, String> {
+    use crate::core::agent::subagent_memory as mem;
+    let data = get_jan_data_folder_path(app_handle);
+    let dir = mem::memory_dir(
+        &data,
+        &name,
+        &scope,
+        project_root.as_deref().map(std::path::Path::new),
+    )?;
+    Ok(mem::load(&dir))
+}
+
+/// Replace a subagent's `MEMORY.md`. The renderer asks the user first; this
+/// only ever writes that one file in the agent's own directory.
+#[tauri::command]
+pub async fn agent_subagent_memory_write<R: tauri::Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    name: String,
+    scope: String,
+    project_root: Option<String>,
+    content: String,
+) -> Result<usize, String> {
+    use crate::core::agent::subagent_memory as mem;
+    let data = get_jan_data_folder_path(app_handle);
+    let dir = mem::memory_dir(
+        &data,
+        &name,
+        &scope,
+        project_root.as_deref().map(std::path::Path::new),
+    )?;
+    mem::write(&dir, &content)
 }
 
 /// Create, or reuse, the managed worktree for a Cowork session.
@@ -771,6 +876,22 @@ pub async fn agent_worktree_ensure(
             &session_id,
             &worktree::EnsureOptions { title, base },
         )
+    })
+    .await?
+}
+
+/// A reopened session's own worktree, if it still exists and is a linked
+/// worktree of the project. Never creates one: `None` means it is gone, an
+/// error means what is there is not safe to re-enter.
+#[tauri::command]
+pub async fn agent_worktree_resume(
+    data_folder: String,
+    session_id: String,
+    project: String,
+) -> Result<Option<worktree::WorktreeRecord>, String> {
+    blocking(move || {
+        let roots = owned_worktrees_root(&data_folder)?;
+        worktree::resume_existing(std::path::Path::new(&project), &roots, &session_id)
     })
     .await?
 }
@@ -3162,6 +3283,91 @@ pub async fn session_import_open() -> Result<Option<serde_json::Value>, String> 
     })
     .await
     .map_err(|e| format!("could not read the file: {e}"))?
+}
+
+/// A chat request split for the desktop's own model call.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewPrompt {
+    pub system: String,
+    pub user: String,
+}
+
+fn review_prompt(request: &serde_json::Value) -> ReviewPrompt {
+    let part = |i: usize| {
+        request["messages"][i]["content"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    ReviewPrompt { system: part(0), user: part(1) }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewPrepared {
+    pub input: crate::core::agent::review::DiffInput,
+    pub prompt: ReviewPrompt,
+}
+
+/// Collect the diff (staged, unstaged and untracked changes against `base`,
+/// default HEAD) and the reviewer prompt for it. The desktop makes the model
+/// call itself; the model gets no tools.
+#[tauri::command]
+pub async fn agent_review_prepare(
+    project: String,
+    base: Option<String>,
+    security: bool,
+) -> Result<ReviewPrepared, String> {
+    tokio::task::spawn_blocking(move || {
+        let input = crate::core::agent::review::collect_diff(
+            std::path::Path::new(&project),
+            base.as_deref(),
+        )?;
+        let request = crate::core::agent::review::build_review_request("", &input, security);
+        Ok(ReviewPrepared { prompt: review_prompt(&request), input })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The findings in a reviewer reply.
+#[tauri::command]
+pub fn agent_review_parse(reply: String) -> Vec<crate::core::agent::review::Finding> {
+    crate::core::agent::review::parse_findings(&reply)
+}
+
+/// The prompt that asks a verifier to refute one finding.
+#[tauri::command]
+pub fn agent_review_verify_prompt(
+    input: crate::core::agent::review::DiffInput,
+    finding: crate::core::agent::review::Finding,
+) -> ReviewPrompt {
+    review_prompt(&crate::core::agent::review::build_verify_request("", &input, &finding))
+}
+
+/// `true` confirmed, `false` refuted, `null` no usable verdict.
+#[tauri::command]
+pub fn agent_review_verdict(reply: String) -> Option<bool> {
+    crate::core::agent::review::parse_verdict(&reply)
+}
+
+/// Rank findings: highest severity first, then file and line.
+#[tauri::command]
+pub fn agent_review_rank(
+    mut findings: Vec<crate::core::agent::review::Finding>,
+) -> Vec<crate::core::agent::review::Finding> {
+    crate::core::agent::review::rank(&mut findings);
+    findings
+}
+
+/// The task text that asks an agent session to fix these findings.
+#[tauri::command]
+pub fn agent_review_fix_task(findings: Vec<crate::core::agent::review::Finding>) -> String {
+    crate::core::agent::review::fix_task(&crate::core::agent::review::DiffReview {
+        findings,
+        ..Default::default()
+    })
 }
 
 /// Record one hidden utility-agent invocation. AH-208.

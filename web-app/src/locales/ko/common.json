@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "메타데이터",
   "regenerate": "다시 생성",
+  "historyReadFailed": "대화 기록을 불러오지 못했습니다.",
   "threadImage": "스레드 이미지",
   "editMessage": "메시지 수정",
   "deleteMessage": "메시지 삭제",
@@ -1194,7 +1195,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "곁다리 질문에 답하지 못했습니다."
   },
   "autoCompactNeedsWindow": "자동 압축에는 컨텍스트 크기가 필요한데, {{model}}에서 Flint가 찾을 수 있는 값이 없습니다. 긴 채팅이 가득 차기 전에 압축되도록 이 모델의 최대 컨텍스트 토큰을 설정하세요. 공급자가 길이 때문에 요청을 거부하면 Flint가 압축한 뒤 한 번 다시 시도합니다.",
   "compaction": {
@@ -1220,7 +1222,9 @@
     "interruptedNoReply_one": "완료된 단계 {{calls}}개를 유지했습니다.",
     "interruptedNoReply_other": "완료된 단계 {{calls}}개를 유지했습니다.",
     "interruptedContinue": "계속",
-    "interruptedDiscard": "미완료 답변을 버리고 계속"
+    "interruptedDiscard": "미완료 답변을 버리고 계속",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}}은(는) 도구를 호출할 수 없어 에이전트로 동작할 수 없습니다. 도구 호출을 지원하는 모델을 선택하세요.",
   "sessionModelUnavailable": "{{model}}을(를) 더 이상 사용할 수 없습니다. 모델 메뉴에서 다른 모델을 선택하세요.",
@@ -1365,6 +1369,8 @@
     "workflows_one": "워크플로 {{count}}개",
     "workflows_other": "워크플로 {{count}}개",
     "phase": "단계 {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "기타 작업",
     "progress": "{{total}}개 중 {{finished}}개 완료",
     "runningTasks_one": "실행 중인 작업 {{count}}개",
@@ -1504,7 +1510,19 @@
     "shellCount_other": "명령 {{count}}개",
     "stopWorkflow": "{{name}} 중지",
     "stopWorkflowPartial": "{{cancelled}}개를 중지했고, {{failed}}개는 중지할 수 없었습니다.",
-    "cancelKillFailed": "시스템이 중지를 거부했습니다: {{error}}"
+    "cancelKillFailed": "시스템이 중지를 거부했습니다: {{error}}",
+    "pauseRun": "일시 중지",
+    "resumeRun": "다시 시작",
+    "restartAgent": "에이전트 다시 시작",
+    "runPaused": "일시 중지됨",
+    "resumeFromSaved": "이어서 실행",
+    "resumeFromSavedHint": "다시 실행합니다. 끝난 에이전트는 저장된 결과를 반환합니다",
+    "saveWorkflow": "저장",
+    "saveWorkflowName": "이름 (a-z, 0-9, -)",
+    "saveWorkflowDescription": "하는 일",
+    "saveWorkflowConfirm": "워크플로 저장",
+    "saveWorkflowDone": "{{name}} 저장됨. /workflow:{{name}} 로 실행하세요",
+    "saveWorkflowFailed": "저장하지 못했습니다: {{error}}"
   },
   "reasoningEffort": {
     "label": "추론 강도",
@@ -2407,6 +2425,9 @@
   "coworkParallel": {
     "settingTitle": "Git 폴더의 새 세션은 자체 worktree에서 작업",
     "settingDescription": "Git 저장소에 연결된 새 세션마다 자체 worktree와 브랜치(flint/<title>)가 생겨, 여러 세션이 서로나 내 체크아웃을 건드리지 않고 한 폴더에서 동시에 작업할 수 있습니다. 각 브랜치는 세션에서 검토, 병합 또는 폐기하세요.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "이 세션은 자체 worktree에서 {{branch}} 브랜치로 작업합니다",
     "basedOn": "{{base}}에서",
     "openFolder": "폴더 열기",
@@ -2915,5 +2936,26 @@
     "waiting_other": "대기 중 {{count}}",
     "count_other": "중첩 {{count}}개",
     "fewer": "중첩 항목 접기"
+  },
+  "diffReview": {
+    "title": "변경 사항 검토",
+    "button": "검토",
+    "running": "검토 중…",
+    "security": "보안 검토 포함",
+    "progress": "발견 사항 {{done}}/{{total}} 확인 중…",
+    "failed": "검토 실패: {{error}}",
+    "summary": "파일 {{files}}개에서 {{count}}건 발견, 재검토에서 {{refuted}}건 반박됨.",
+    "truncated": "diff가 너무 커서 잘렸습니다. 나머지는 검토되지 않았습니다.",
+    "none": "발견 사항 없음.",
+    "listLabel": "발견 사항(심각도 순)",
+    "unverified": "미검증",
+    "fix": "수정: {{fix}}",
+    "fixButton": "에이전트로 수정",
+    "fixBusy": "현재 실행이 끝날 때까지 기다린 후 다시 시도하세요.",
+    "severity": {
+      "high": "높음",
+      "medium": "중간",
+      "low": "낮음"
+    }
   }
 }

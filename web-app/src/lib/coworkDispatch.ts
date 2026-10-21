@@ -1,3 +1,6 @@
+import { workflowToTeamInput } from '@/lib/coworkWorkflow'
+import { runWorkflowControl } from '@/lib/workflowControl'
+import { describeSaved, resolveWorkflowInput } from '@/lib/savedWorkflows'
 import { pushNotice } from '@/lib/coworkRunNotices'
 import { registerToolCallStop, stopBackendCall } from '@/lib/toolCallStop'
 import {
@@ -31,9 +34,12 @@ import {
   isReviewDeniedBrowserTool,
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { isolatedTaskAsTeam } from '@/lib/coworkTeam'
+import { applyTaskDefaults } from '@/lib/coworkSubagent'
+import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
 import {
   BACKGROUND_TASK_TOOLS,
@@ -80,8 +86,16 @@ import {
   nullRerunApprovalScope,
 } from '@/lib/nullDeviceRetry'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import { SPAWN_SESSION_TOOL_NAME, runSpawnSession } from '@/lib/spawnSession'
+import {
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
+  runEnterWorktree,
+  runExitWorktree,
+} from '@/lib/worktreeTools'
 import { CAMPAIGN_TOOLS } from '@/lib/campaignToolNames'
 import { gateStopSession } from '@/lib/sessionStopGate'
+import { gateWorkflowLaunch } from '@/lib/workflowLaunchGate'
 import {
   GIT_TOOL_NAME,
   gitApproval,
@@ -250,6 +264,8 @@ export type DispatchContext = {
   tasks?: BackgroundTasks
   /** Stop one child by its call id; false when there was nothing to stop. */
   cancelChild?: (callId: string) => boolean
+  /** A saved subagent by name, for its `background` / `isolation` defaults. */
+  agentDefaults?: (name: string) => SubagentDefinition | undefined
   /**
    * Runs a declared task graph as several children.
    *
@@ -868,6 +884,65 @@ export function refreshPrStatusAfterGit(
 }
 
 /**
+ * Start `run` as one of this run's background tasks and return its task id at
+ * once. Shared by `task` and `workflow` with `background: true`, so a
+ * background run is held, announced, awaited and stopped the same way.
+ */
+export function startBackgroundCall(
+  call: PendingToolCall,
+  ctx: Pick<DispatchContext, 'tasks' | 'trackSubagent' | 'cancelChild'> & {
+    sessionId?: string
+  },
+  opts: {
+    kind: 'subagent' | 'workflow'
+    name: string
+    run: () => Promise<ToolOutcome>
+  }
+): ToolOutcome {
+  const { kind, name } = opts
+  // Held for as long as the child lives, not just for this call: the
+  // child inherits this run's authority until it is done.
+  const childDone = ctx.trackSubagent?.()
+  const id = call.toolCallId
+  ctx.tasks!.start(
+    id,
+    name,
+    async () => {
+      try {
+        const done = await opts.run()
+        // Pushed to the parent at its next step boundary, so it need not
+        // poll `task_status`. A stop the user asked for is not news.
+        if (ctx.sessionId && !(done.isError && /cancelled/i.test(done.output))) {
+          const preview = done.output.replace(/\s+/g, ' ').slice(0, 160)
+          pushNotice(
+            ctx.sessionId,
+            `Background ${kind} '${name}' (task_id=${id}) ${done.isError ? 'failed' : 'finished'}: "${preview}". ` +
+              'Read the full answer with await_task.'
+          )
+        }
+        return done
+      } catch (e) {
+        if (ctx.sessionId) {
+          pushNotice(
+            ctx.sessionId,
+            `Background ${kind} '${name}' (task_id=${id}) failed to run.`
+          )
+        }
+        throw e
+      } finally {
+        childDone?.()
+      }
+    },
+    () => ctx.cancelChild?.(id) ?? false
+  )
+  return {
+    output:
+      `${kind === 'workflow' ? 'Workflow' : 'Task'} started in the background. task_id=${id}${kind === 'workflow' ? ' (also its run_id for resume_run_id and control)' : ''}. Keep working; call await_task with this task_id to collect its ${kind === 'workflow' ? 'combined report' : 'answer'}, ` +
+      'task_status to check on it, or cancel_task to stop it. The run waits for it before it ends.',
+  }
+}
+
+/**
  * `task` and the tools that manage its background children, for any surface
  * that offers delegation: Cowork's dispatcher, plain chat and Rooms all route
  * these calls here so a child is started, awaited, stopped and capped the same
@@ -877,7 +952,7 @@ export async function routeDelegationTool(
   call: PendingToolCall,
   ctx: Pick<
     DispatchContext,
-    'tasks' | 'onTask' | 'onTeam' | 'trackSubagent' | 'cancelChild'
+    'tasks' | 'onTask' | 'onTeam' | 'trackSubagent' | 'cancelChild' | 'agentDefaults'
   > & { sessionId?: string },
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
@@ -893,6 +968,15 @@ export async function routeDelegationTool(
     return await runBackgroundTool(toolName, call.input, ctx.tasks, { signal })
   }
   if (toolName === TASK_TOOL_NAME) {
+    const defaulted = applyTaskDefaults(
+      call.input,
+      ctx.agentDefaults?.(
+        String((call.input as { subagent_name?: unknown } | null)?.subagent_name ?? '')
+      ),
+      { canBackground: Boolean(ctx.tasks), canIsolate: Boolean(ctx.onTeam) }
+    )
+    if ('error' in defaulted) return { output: `ERROR: ${defaulted.error}`, isError: true }
+    call = { ...call, input: defaulted.input }
     const taskInput = (
       call.input && typeof call.input === 'object' ? call.input : {}
     ) as Record<string, unknown>
@@ -904,50 +988,15 @@ export async function routeDelegationTool(
           isError: true,
         }
       }
-      // Held for as long as the child lives, not just for this call: the
-      // child inherits this run's authority until it is done.
-      const childDone = ctx.trackSubagent?.()
-      const id = call.toolCallId
       const name =
         typeof taskInput.subagent_name === 'string'
           ? taskInput.subagent_name
           : 'subagent'
-      ctx.tasks.start(
-        id,
+      return startBackgroundCall(call, ctx, {
+        kind: 'subagent',
         name,
-        async () => {
-          try {
-            const done = await ctx.onTask(id, call.input)
-            // Pushed to the parent at its next step boundary, so it need not
-            // poll `task_status`. A stop the user asked for is not news.
-            if (ctx.sessionId && !(done.isError && /cancelled/i.test(done.output))) {
-              const preview = done.output.replace(/\s+/g, ' ').slice(0, 160)
-              pushNotice(
-                ctx.sessionId,
-                `Background subagent '${name}' (task_id=${id}) ${done.isError ? 'failed' : 'finished'}: "${preview}". ` +
-                  'Read the full answer with await_task.'
-              )
-            }
-            return done
-          } catch (e) {
-            if (ctx.sessionId) {
-              pushNotice(
-                ctx.sessionId,
-                `Background subagent '${name}' (task_id=${id}) failed to run.`
-              )
-            }
-            throw e
-          } finally {
-            childDone?.()
-          }
-        },
-        () => ctx.cancelChild?.(id) ?? false
-      )
-      return {
-        output:
-          `Task started in the background. task_id=${id}. Keep working; call await_task with this task_id to collect its answer, ` +
-          'task_status to check on it, or cancel_task to stop it. The run waits for it before it ends.',
-      }
+        run: () => ctx.onTask(call.toolCallId, call.input),
+      })
     }
     // `isolate: true` is a team of one. The team path already provisions a
     // checkout for a task, records it for review, refuses when the project
@@ -1320,6 +1369,44 @@ async function routeCoworkTool(
     if (toolName === ASK_TOOL_NAME) {
       return await ctx.onAsk(call.toolCallId, call.input)
     }
+    if (toolName === SPAWN_SESSION_TOOL_NAME) {
+      // A subagent's dispatcher has no team, and its session id is its parent's:
+      // letting it through would start nested chats on the parent's behalf.
+      if (!ctx.onTeam) {
+        return {
+          output: 'You cannot start a nested chat. Do this work yourself.',
+          isError: true,
+        }
+      }
+      return await runSpawnSession(ctx.sessionId, call.input, {
+        mode: ctx.mode,
+        toolCallId: call.toolCallId,
+        signal,
+        onApprove: ctx.onApprove,
+      })
+    }
+    if (
+      toolName === ENTER_WORKTREE_TOOL_NAME ||
+      toolName === EXIT_WORKTREE_TOOL_NAME
+    ) {
+      // A subagent shares its parent's session id: it must not move the
+      // parent's write access.
+      if (!ctx.onTeam) {
+        return {
+          output: 'You cannot change the session worktree. Do this work yourself.',
+          isError: true,
+        }
+      }
+      const worktree = {
+        mode: ctx.mode,
+        toolCallId: call.toolCallId,
+        signal,
+        onApprove: ctx.onApprove,
+      }
+      return toolName === ENTER_WORKTREE_TOOL_NAME
+        ? await runEnterWorktree(ctx.sessionId, call.input, worktree)
+        : await runExitWorktree(ctx.sessionId, call.input, worktree)
+    }
     if (toolName === ENABLE_TOOLS_NAME) {
       if (!ctx.onEnableTools) {
         return { output: 'There is nothing to enable here.', isError: true }
@@ -1337,7 +1424,7 @@ async function routeCoworkTool(
     if (toolName === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(toolName)) {
       return await routeDelegationTool(call, ctx, signal)
     }
-    if (toolName === TEAM_TOOL_NAME) {
+    if (toolName === TEAM_TOOL_NAME || toolName === WORKFLOW_TOOL_NAME) {
       // A subagent's dispatcher has no team, so the call is refused by name
       // rather than executed: a model can emit a call to a tool that was never
       // advertised, and a child dispatching a team would be one level of
@@ -1352,9 +1439,38 @@ async function routeCoworkTool(
       }
       // The team holds the parent's subagent slot for as long as it runs, the
       // same way one `task` does: its children are this run's children.
+      let teamInput: unknown = call.input
+      if (toolName === WORKFLOW_TOOL_NAME) {
+        const op = (call.input as { control?: unknown } | null)?.control
+        if (op !== undefined) return runWorkflowControl(ctx.sessionId, op)
+        if ((call.input as { list_saved?: unknown } | null)?.list_saved === true) {
+          return { output: await describeSaved() }
+        }
+        const resumed = await resolveWorkflowInput(ctx.sessionId, call.input)
+        if ('error' in resumed) return { output: `ERROR: ${resumed.error}`, isError: true }
+        const converted = workflowToTeamInput(resumed.input)
+        if (typeof converted === 'string') {
+          return { output: `ERROR: ${converted}`, isError: true }
+        }
+        // The run record keeps the phases as written (placeholders intact) and
+        // the values they were filled from.
+        teamInput = { ...converted, run: { ...converted.run, ...resumed.template } }
+        // Gated on what will actually run: a resume names no phases itself.
+        const declined = await gateWorkflowLaunch({ ...call, input: resumed.input }, ctx, signal)
+        if (declined) return declined
+      }
+      const onTeam = ctx.onTeam
+      const inputOf = call.input as Record<string, unknown> | null
+      if (toolName === WORKFLOW_TOOL_NAME && inputOf?.background === true && ctx.tasks) {
+        return startBackgroundCall(call, ctx, {
+          kind: 'workflow',
+          name: 'workflow',
+          run: () => onTeam(call.toolCallId, teamInput),
+        })
+      }
       const teamDone = ctx.trackSubagent?.()
       try {
-        return await ctx.onTeam(call.toolCallId, call.input)
+        return await ctx.onTeam(call.toolCallId, teamInput)
       } finally {
         teamDone?.()
       }

@@ -529,6 +529,7 @@
   "jan": "Flint",
   "metadata": "Siêu dữ liệu",
   "regenerate": "Tái tạo",
+  "historyReadFailed": "Không thể tải lịch sử cuộc trò chuyện.",
   "threadImage": "Hình ảnh chủ đề",
   "editMessage": "Chỉnh sửa tin nhắn",
   "deleteMessage": "Xóa tin nhắn",
@@ -1193,7 +1194,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Không thể trả lời câu hỏi phụ."
   },
   "autoCompactNeedsWindow": "Tự động nén cần kích thước ngữ cảnh, và {{model}} không có kích thước nào Flint tìm được. Hãy đặt Số token ngữ cảnh tối đa cho mô hình này để các cuộc trò chuyện dài được nén trước khi đầy. Nếu nhà cung cấp từ chối một yêu cầu vì độ dài, Flint nén và thử lại một lần.",
   "compaction": {
@@ -1219,7 +1221,9 @@
     "interruptedNoReply_one": "Đã giữ {{calls}} bước đã hoàn tất.",
     "interruptedNoReply_other": "Đã giữ {{calls}} bước đã hoàn tất.",
     "interruptedContinue": "Tiếp tục",
-    "interruptedDiscard": "Bỏ câu trả lời dở dang và tiếp tục"
+    "interruptedDiscard": "Bỏ câu trả lời dở dang và tiếp tục",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} không thể gọi công cụ, nên không thể hoạt động như tác tử. Hãy chọn mô hình có gọi công cụ.",
   "sessionModelUnavailable": "{{model}} không còn khả dụng. Hãy chọn mô hình khác trong menu mô hình.",
@@ -1364,6 +1368,8 @@
     "workflows_one": "{{count}} quy trình",
     "workflows_other": "{{count}} quy trình",
     "phase": "Giai đoạn {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Việc khác",
     "progress": "Đã xong {{finished}}/{{total}}",
     "runningTasks_one": "{{count}} tác vụ đang chạy",
@@ -1503,7 +1509,19 @@
     "shellCount_other": "{{count}} lệnh",
     "stopWorkflow": "Dừng {{name}}",
     "stopWorkflowPartial": "Đã dừng {{cancelled}}; không thể dừng {{failed}}.",
-    "cancelKillFailed": "Hệ thống từ chối dừng nó: {{error}}"
+    "cancelKillFailed": "Hệ thống từ chối dừng nó: {{error}}",
+    "pauseRun": "Tạm dừng",
+    "resumeRun": "Tiếp tục",
+    "restartAgent": "Khởi động lại tác tử",
+    "runPaused": "Đã tạm dừng",
+    "resumeFromSaved": "Tiếp tục",
+    "resumeFromSavedHint": "Chạy lại; các tác tử đã xong trả về kết quả đã lưu",
+    "saveWorkflow": "Lưu",
+    "saveWorkflowName": "Tên (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Chức năng",
+    "saveWorkflowConfirm": "Lưu quy trình",
+    "saveWorkflowDone": "Đã lưu {{name}}. Chạy bằng /workflow:{{name}}",
+    "saveWorkflowFailed": "Không lưu được: {{error}}"
   },
   "reasoningEffort": {
     "label": "Mức độ suy luận",
@@ -2406,6 +2424,9 @@
   "coworkParallel": {
     "settingTitle": "Phiên mới trong thư mục Git làm việc trong worktree riêng",
     "settingDescription": "Mỗi phiên mới gắn với một kho Git có worktree và nhánh riêng (flint/<title>), để nhiều phiên có thể làm việc cùng lúc trong một thư mục mà không đụng vào nhau hay vào bản checkout của bạn. Xem lại, hợp nhất hoặc bỏ từng nhánh ngay trong phiên.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Phiên này làm việc trên nhánh {{branch}}, trong worktree riêng",
     "basedOn": "từ {{base}}",
     "openFolder": "Mở thư mục",
@@ -2915,5 +2936,26 @@
     "waiting_other": "{{count}} đang chờ",
     "count_other": "{{count}} mục lồng",
     "fewer": "Thu gọn mục lồng"
+  },
+  "diffReview": {
+    "title": "Xem xét thay đổi",
+    "button": "Xem xét",
+    "running": "Đang xem xét…",
+    "security": "Bao gồm xem xét bảo mật",
+    "progress": "Đang kiểm tra phát hiện {{done}}/{{total}}…",
+    "failed": "Xem xét thất bại: {{error}}",
+    "summary": "{{count}} phát hiện trong {{files}} tệp; {{refuted}} bị bác bỏ ở lần xem lại.",
+    "truncated": "Diff quá lớn nên bị cắt; phần còn lại chưa được xem xét.",
+    "none": "Không có phát hiện nào.",
+    "listLabel": "Các phát hiện, nghiêm trọng nhất trước",
+    "unverified": "chưa xác minh",
+    "fix": "Cách sửa: {{fix}}",
+    "fixButton": "Sửa bằng agent",
+    "fixBusy": "Hãy đợi lần chạy hiện tại kết thúc rồi thử lại.",
+    "severity": {
+      "high": "Cao",
+      "medium": "Trung bình",
+      "low": "Thấp"
+    }
   }
 }

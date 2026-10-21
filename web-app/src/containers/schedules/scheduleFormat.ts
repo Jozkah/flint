@@ -14,6 +14,7 @@ export function weekdayName(day: number, locale?: string): string {
 /** "Every day at 09:00, 17:30" in the user's language. */
 export function describeSchedule(spec: ScheduleSpec, t: Translate): string {
   if (spec.kind === 'cron') return t('schedules:summary.cron', { expr: spec.expr })
+  if (spec.kind === 'once') return t('schedules:summary.once', { at: spec.at.replace('T', ' ') })
   const times = spec.times.map(formatTime).join(', ')
   if (spec.kind === 'weekly') {
     return t('schedules:summary.weekly', {

@@ -23,6 +23,14 @@
     "label": "Accepter les messages d'autres sessions",
     "description": "Si désactivé, les autres sessions sont informées que celle-ci n'accepte pas de messages, et rien de ce qu'elles envoient ne lui parvient."
   },
+  "hold": {
+    "label": "Ask me before delivering",
+    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+  },
+  "askNested": {
+    "label": "Ask me before nested chats start",
+    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+  },
   "subagentQuestion": {
     "title": "{{name}} interroge l'agent",
     "open": "En attente d'une réponse",
@@ -80,5 +88,16 @@
   "waitingCount_one": "{{count}} message en attente",
   "waitingCount_other": "{{count}} messages en attente",
   "waitingIn_one": "{{count}} message dans {{session}}",
-  "waitingIn_other": "{{count}} messages dans {{session}}"
+  "waitingIn_other": "{{count}} messages dans {{session}}",
+  "held": {
+    "title": "Messages waiting for approval",
+    "banner": "Waiting for your approval ({{count}})",
+    "from": "From {{name}}",
+    "notice": "Status notice",
+    "expires": "Expires in {{minutes}} min",
+    "approve": "Approve",
+    "deny": "Deny",
+    "approveLabel": "Approve the message from {{name}}",
+    "denyLabel": "Deny the message from {{name}}"
+  }
 }

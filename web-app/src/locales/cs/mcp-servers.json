@@ -276,5 +276,15 @@
   "cwdPlaceholder": "Volitelné, např. C:\\tools\\my-server",
   "cwdHint": "Složka, ve které se server spustí. Nechte prázdné, aby se spustil ze složky samotného Flintu.",
   "autoApproveServerHint": "Automaticky schvaluje jen nástroje tohoto serveru. Přepínač pro všechny nástroje MCP najdete v Nastavení > Oprávnění.",
-  "allowAllMoved": "Přepínač, který povolí spuštění všech nástrojů MCP bez dotazu, najdete v Nastavení > Oprávnění."
+  "allowAllMoved": "Přepínač, který povolí spuštění všech nástrojů MCP bez dotazu, najdete v Nastavení > Oprávnění.",
+  "elicitation": {
+    "title": "{{server}} needs your input",
+    "urlTitle": "{{server}} wants to open a page",
+    "urlHost": "Opens {{host}}",
+    "secretNote": "Hidden fields go only to {{server}}. They are not shown in the chat.",
+    "submit": "Submit",
+    "decline": "Decline",
+    "cancel": "Cancel",
+    "openPage": "Open page"
+  }
 }

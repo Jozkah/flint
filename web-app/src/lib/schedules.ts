@@ -12,6 +12,8 @@ export type ScheduleSpec =
   | { kind: 'weekdays'; times: TimeOfDay[] }
   | { kind: 'weekly'; days: number[]; times: TimeOfDay[] }
   | { kind: 'cron'; expr: string }
+  /** One run, at this local date and time (`YYYY-MM-DDTHH:MM`). */
+  | { kind: 'once'; at: string }
 
 export type CatchUp = 'skip' | 'once' | 'all_capped'
 export type OnBlock = 'continue' | 'end'

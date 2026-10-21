@@ -12,6 +12,9 @@ pub mod app;
 // Uses the Tauri runtime for its commands, so it is not part of the CLI build.
 #[cfg(not(feature = "cli"))]
 pub mod autostart;
+// Holds off system sleep while a run is live; desktop-only.
+#[cfg(not(feature = "cli"))]
+pub mod keep_awake;
 // Saving files dropped onto the chat so they can be attached; desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod attachments;

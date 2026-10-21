@@ -128,6 +128,8 @@ export function recordAgentDispatch(
     agentName: string
     /** The model's short name for this errand, when it gave one. */
     title?: string
+    /** The `workflow` phase it belongs to. */
+    phase?: { name: string; index: number }
     description?: string
     /** The model this child will run on, which may not be the parent's. */
     model?: string
@@ -146,6 +148,7 @@ export function recordAgentDispatch(
     phaseId,
     parentTaskId: task.parentTaskId,
     ...(task.background ? { background: true } : {}),
+    ...(task.phase ? { phase: task.phase } : {}),
     kind: 'agent',
     // The errand's own name, not the role's: see `deriveTaskTitle`.
     title: deriveTaskTitle(task.title, task.description) ?? task.agentName,

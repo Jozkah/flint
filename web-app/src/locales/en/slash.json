@@ -20,7 +20,8 @@
     "help": "List available commands",
     "new": "Start a new conversation",
     "newSession": "Start a new Cowork session",
-    "compact": "Summarize older messages to free the context window"
+    "compact": "Summarize older messages to free the context window",
+    "btw": "Ask a side question about this thread; answered without tools, never added to it"
   },
   "sent": {
     "command": "Command",

@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "メタデータ",
   "regenerate": "再生成",
+  "historyReadFailed": "会話履歴を読み込めませんでした。",
   "threadImage": "スレッド画像",
   "editMessage": "メッセージを編集",
   "deleteMessage": "メッセージを削除",
@@ -1194,7 +1195,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "補足の質問に答えられませんでした。"
   },
   "autoCompactNeedsWindow": "自動圧縮にはコンテキストサイズが必要ですが、Flint は {{model}} のコンテキストサイズを見つけられません。長いチャットがいっぱいになる前に圧縮されるよう、このモデルの最大コンテキストトークン数を設定してください。長さを理由にプロバイダーがリクエストを拒否した場合、Flint は圧縮して 1 回だけ再試行します。",
   "compaction": {
@@ -1220,7 +1222,9 @@
     "interruptedNoReply_one": "完了済みの {{calls}} ステップを保持。",
     "interruptedNoReply_other": "完了済みの {{calls}} ステップを保持。",
     "interruptedContinue": "続ける",
-    "interruptedDiscard": "未完了の返信を破棄して続ける"
+    "interruptedDiscard": "未完了の返信を破棄して続ける",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} はツールを呼び出せないため、エージェントとして動作できません。ツール呼び出しに対応したモデルを選んでください。",
   "sessionModelUnavailable": "{{model}} は利用できなくなりました。モデルメニューから別のモデルを選んでください。",
@@ -1365,6 +1369,8 @@
     "workflows_one": "{{count}} 件のワークフロー",
     "workflows_other": "{{count}} 件のワークフロー",
     "phase": "フェーズ {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "その他の作業",
     "progress": "{{total}} 件中 {{finished}} 件が完了",
     "runningTasks_one": "実行中のタスク {{count}} 件",
@@ -1504,7 +1510,19 @@
     "shellCount_other": "{{count}} 個のコマンド",
     "stopWorkflow": "{{name}} を停止",
     "stopWorkflowPartial": "{{cancelled}} 件を停止しました。{{failed}} 件は停止できませんでした。",
-    "cancelKillFailed": "システムが停止を拒否しました: {{error}}"
+    "cancelKillFailed": "システムが停止を拒否しました: {{error}}",
+    "pauseRun": "一時停止",
+    "resumeRun": "再開",
+    "restartAgent": "エージェントを再起動",
+    "runPaused": "一時停止中",
+    "resumeFromSaved": "再開",
+    "resumeFromSavedHint": "再実行します。完了済みのエージェントは保存済みの結果を返します",
+    "saveWorkflow": "保存",
+    "saveWorkflowName": "名前 (a-z, 0-9, -)",
+    "saveWorkflowDescription": "何をするか",
+    "saveWorkflowConfirm": "ワークフローを保存",
+    "saveWorkflowDone": "{{name}} を保存しました。/workflow:{{name}} で実行できます",
+    "saveWorkflowFailed": "保存できませんでした: {{error}}"
   },
   "reasoningEffort": {
     "label": "推論の強度",
@@ -2407,6 +2425,9 @@
   "coworkParallel": {
     "settingTitle": "Git フォルダーの新しいセッションは専用の worktree で作業する",
     "settingDescription": "Git リポジトリに接続した新しいセッションごとに専用の worktree とブランチ (flint/<title>) が作られるため、複数のセッションが同じフォルダーで互いにもあなたのチェックアウトにも触れずに同時に作業できます。各ブランチはセッションからレビュー、マージ、破棄できます。",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "このセッションは専用の worktree でブランチ {{branch}} を使っています",
     "basedOn": "{{base}} から",
     "openFolder": "フォルダーを開く",
@@ -2913,5 +2934,26 @@
     "waiting_other": "待機中 {{count}}",
     "count_other": "ネスト {{count}} 件",
     "fewer": "ネストを折りたたむ"
+  },
+  "diffReview": {
+    "title": "変更をレビュー",
+    "button": "レビュー",
+    "running": "レビュー中…",
+    "security": "セキュリティレビューを含める",
+    "progress": "指摘 {{done}} / {{total}} を確認中…",
+    "failed": "レビューに失敗しました: {{error}}",
+    "summary": "{{files}} 個のファイルで {{count}} 件の指摘、再確認で {{refuted}} 件を却下。",
+    "truncated": "差分が大きすぎて途中で切り捨てました。残りはレビューされていません。",
+    "none": "指摘はありません。",
+    "listLabel": "指摘(重大度順)",
+    "unverified": "未検証",
+    "fix": "修正案: {{fix}}",
+    "fixButton": "エージェントで修正",
+    "fixBusy": "現在の実行が終わるまで待ってから、もう一度お試しください。",
+    "severity": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    }
   }
 }

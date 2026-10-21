@@ -7,6 +7,8 @@
 //! so the payload is bounded and the clipping is announced rather than silent.
 
 use rmcp::model::{CallToolResult, ContentBlock};
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Most characters of an MCP tool description (or server instructions) sent to
 /// the model. A server controls this text and it rides on every request, so an
@@ -99,9 +101,97 @@ pub fn truncate_tool_result(result: &CallToolResult, max_chars: u64) -> CallTool
     truncated
 }
 
+/// [`truncate_tool_result`], except that when the result is over the cap and
+/// `spill_dir` is given, the full text is first written to a file there and the
+/// marker points at it, so the model can page through the rest with `read`
+/// instead of calling the tool again. Any failure to write falls back to the
+/// plain truncation: a result is never lost to a full disk.
+pub fn truncate_or_spill(
+    result: &CallToolResult,
+    max_chars: u64,
+    spill_dir: Option<&Path>,
+    label: &str,
+) -> CallToolResult {
+    let mut capped = truncate_tool_result(result, max_chars);
+    let (Some(dir), true) = (spill_dir, max_chars > 0) else {
+        return capped;
+    };
+    let total = total_text_chars(result);
+    if total <= max_chars as usize {
+        return capped;
+    }
+    let Some(path) = write_spill(dir, label, result) else {
+        return capped;
+    };
+    // `truncate_tool_result` ended with its own marker; swap in the pointer.
+    capped.content.pop();
+    let kept = total_text_chars(&capped);
+    capped.content.push(ContentBlock::text(format!(
+        "[Tool output truncated: {kept} of {total} characters shown. The full output is saved to {}. Read it with the `read` tool (use offset and limit) rather than calling the tool again.]",
+        path.display()
+    )));
+    capped
+}
+
+fn write_spill(dir: &Path, label: &str, result: &CallToolResult) -> Option<std::path::PathBuf> {
+    static N: AtomicU64 = AtomicU64::new(1);
+    let safe: String = label
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .take(48)
+        .collect();
+    let text = result
+        .content
+        .iter()
+        .filter_map(|c| c.as_text())
+        .map(|t| t.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::create_dir_all(dir).ok()?;
+    let path = dir.join(format!("{safe}-{}.txt", N.fetch_add(1, Ordering::Relaxed)));
+    std::fs::write(&path, text).ok()?;
+    Some(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_oversized_result_spills_to_a_file_and_points_at_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = CallToolResult::success(vec![ContentBlock::text("x".repeat(500))]);
+        let out = truncate_or_spill(&big, 100, Some(dir.path()), "srv/tool name");
+        let blocks: Vec<String> = out.content.iter().filter_map(|c| c.as_text()).map(|t| t.text.clone()).collect();
+        assert_eq!(blocks[0].len(), 100, "head kept");
+        let marker = blocks.last().unwrap();
+        assert!(marker.contains("100 of 500") && marker.contains("`read`"), "{marker}");
+        let files: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(files.len(), 1);
+        let path = files[0].as_ref().unwrap().path();
+        assert!(marker.contains(&path.display().to_string()));
+        assert_eq!(std::fs::read_to_string(&path).unwrap().len(), 500, "full text saved");
+        assert!(path.file_name().unwrap().to_string_lossy().starts_with("srv_tool_name-"));
+    }
+
+    #[test]
+    fn a_small_result_or_no_spill_dir_is_unchanged_behaviour() {
+        let dir = tempfile::tempdir().unwrap();
+        let small = CallToolResult::success(vec![ContentBlock::text("hi")]);
+        assert_eq!(truncate_or_spill(&small, 100, Some(dir.path()), "t"), small);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        let big = CallToolResult::success(vec![ContentBlock::text("x".repeat(500))]);
+        assert_eq!(truncate_or_spill(&big, 100, None, "t"), truncate_tool_result(&big, 100));
+    }
+
+    #[test]
+    fn an_unwritable_spill_dir_falls_back_to_plain_truncation() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        // A file where the directory should be: create_dir_all fails.
+        let big = CallToolResult::success(vec![ContentBlock::text("x".repeat(500))]);
+        let out = truncate_or_spill(&big, 100, Some(&file.path().join("sub")), "t");
+        assert_eq!(out, truncate_tool_result(&big, 100));
+    }
 
     fn text_result(parts: &[&str]) -> CallToolResult {
         CallToolResult::success(parts.iter().map(|p| ContentBlock::text(*p)).collect())

@@ -548,6 +548,7 @@
   "jan": "Flint",
   "metadata": "Metadane",
   "regenerate": "Odtwórz",
+  "historyReadFailed": "Nie udało się wczytać historii rozmowy.",
   "threadImage": "Obraz wątku",
   "editMessage": "Edytuj Wiadomość",
   "deleteMessage": "Usuń Wiadomość",
@@ -1222,7 +1223,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Nie udało się odpowiedzieć na pytanie poboczne."
   },
   "autoCompactNeedsWindow": "Automatyczne kompaktowanie wymaga rozmiaru kontekstu, a {{model}} nie ma żadnego, który Flint potrafiłby znaleźć. Ustaw Maks. tokeny kontekstu dla tego modelu, aby długie czaty były kompaktowane, zanim go zapełnią. Jeśli dostawca odrzuci żądanie z powodu jego długości, Flint skompaktuje i spróbuje raz jeszcze.",
   "compaction": {
@@ -1254,7 +1256,9 @@
     "interruptedNoReply_few": "Zachowano {{calls}} ukończone kroki.",
     "interruptedNoReply_many": "Zachowano {{calls}} ukończonych kroków.",
     "interruptedContinue": "Kontynuuj",
-    "interruptedDiscard": "Odrzuć niedokończoną odpowiedź i kontynuuj"
+    "interruptedDiscard": "Odrzuć niedokończoną odpowiedź i kontynuuj",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} nie potrafi wywoływać narzędzi, więc nie może działać jako agent. Wybierz model wywołujący narzędzia.",
   "sessionModelUnavailable": "{{model}} nie jest już dostępny. Wybierz inny model w menu modeli.",
@@ -1409,6 +1413,8 @@
     "workflows_few": "{{count}} przepływy pracy",
     "workflows_many": "{{count}} przepływów pracy",
     "phase": "Faza {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Inne prace",
     "progress": "Zakończono {{finished}} z {{total}}",
     "runningTasks_one": "{{count}} uruchomione zadanie",
@@ -1560,7 +1566,19 @@
     "shellCount_many": "{{count}} poleceń",
     "stopWorkflow": "Zatrzymaj {{name}}",
     "stopWorkflowPartial": "Zatrzymano: {{cancelled}}; nie udało się zatrzymać: {{failed}}.",
-    "cancelKillFailed": "System odmówił zatrzymania: {{error}}"
+    "cancelKillFailed": "System odmówił zatrzymania: {{error}}",
+    "pauseRun": "Wstrzymaj",
+    "resumeRun": "Wznów",
+    "restartAgent": "Uruchom agenta ponownie",
+    "runPaused": "Wstrzymano",
+    "resumeFromSaved": "Wznów",
+    "resumeFromSavedHint": "Uruchom ponownie; zakończeni agenci zwrócą zapisane wyniki",
+    "saveWorkflow": "Zapisz",
+    "saveWorkflowName": "Nazwa (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Co robi",
+    "saveWorkflowConfirm": "Zapisz workflow",
+    "saveWorkflowDone": "Zapisano {{name}}. Uruchom przez /workflow:{{name}}",
+    "saveWorkflowFailed": "Nie udało się zapisać: {{error}}"
   },
   "reasoningEffort": {
     "label": "Wysiłek rozumowania",
@@ -2505,6 +2523,9 @@
   "coworkParallel": {
     "settingTitle": "Nowe sesje w folderze Git pracują we własnym worktree",
     "settingDescription": "Każda nowa sesja w repozytorium Git dostaje własny worktree i gałąź (flint/<title>), dzięki czemu wiele sesji może pracować w jednym folderze naraz, nie wchodząc sobie w drogę ani nie zmieniając twojego checkoutu. Przejrzyj, scal lub odrzuć każdą gałąź z poziomu sesji.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Ta sesja pracuje na gałęzi {{branch}} we własnym worktree",
     "basedOn": "z {{base}}",
     "openFolder": "Otwórz folder",
@@ -3053,5 +3074,26 @@
     "count_many": "{{count}} zagnieżdżonych",
     "count_other": "{{count}} zagnieżdżonego",
     "fewer": "Pokaż mniej zagnieżdżonych"
+  },
+  "diffReview": {
+    "title": "Przejrzyj zmiany",
+    "button": "Przejrzyj",
+    "running": "Przeglądanie…",
+    "security": "Uwzględnij przegląd bezpieczeństwa",
+    "progress": "Sprawdzanie ustalenia {{done}} z {{total}}…",
+    "failed": "Przegląd nie powiódł się: {{error}}",
+    "summary": "{{count}} ustaleń w {{files}} plikach; {{refuted}} obalono przy drugim spojrzeniu.",
+    "truncated": "Diff był zbyt duży i został ucięty; reszta nie została sprawdzona.",
+    "none": "Brak ustaleń.",
+    "listLabel": "Ustalenia, od najpoważniejszych",
+    "unverified": "niezweryfikowane",
+    "fix": "Poprawka: {{fix}}",
+    "fixButton": "Napraw z agentem",
+    "fixBusy": "Poczekaj na koniec bieżącego uruchomienia i spróbuj ponownie.",
+    "severity": {
+      "high": "Wysoki",
+      "medium": "Średni",
+      "low": "Niski"
+    }
   }
 }

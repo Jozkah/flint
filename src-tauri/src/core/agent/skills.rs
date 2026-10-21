@@ -122,6 +122,9 @@ pub(crate) fn user_plugins_dir() -> Option<PathBuf> {
 /// Global plugins' skills, tagged like project plugin skills. A project (or
 /// project-scoped) plugin of the same directory name shadows a global one.
 pub(crate) fn discover_user_plugins(project: &[SkillEntry]) -> Vec<SkillEntry> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return Vec::new();
+    }
     let Some(dir) = user_plugins_dir() else {
         return Vec::new();
     };
@@ -137,6 +140,9 @@ pub(crate) fn discover_user_plugins(project: &[SkillEntry]) -> Vec<SkillEntry> {
 
 /// User skills, minus any a project skill of the same name shadows.
 pub(crate) fn discover_user(project: &[SkillEntry]) -> Vec<SkillEntry> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return Vec::new();
+    }
     let Some(dir) = user_skills_dir() else {
         return Vec::new();
     };
@@ -283,6 +289,8 @@ pub(crate) fn unmet_requirements(
         requires: requires.to_vec(),
         always: false,
         triggers: Vec::new(),
+        paths: Vec::new(),
+        fork: false,
     };
     let lookup = |wanted: &str| {
         resolve_readable(root, wanted)
@@ -313,6 +321,9 @@ pub(crate) fn safe_stem(name: &str) -> Result<String, String> {
 
 /// All project skills (`.jan/agent/skills`), sorted by name.
 pub(crate) fn discover(root: &Path) -> Vec<SkillEntry> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return Vec::new();
+    }
     tool_skills::discover(&project_store(root))
 }
 
@@ -375,6 +386,9 @@ pub(crate) fn invocation_wrapper(name: &str, kind: &str) -> String {
 /// skills are neither advertised nor resolvable. Management views that must
 /// show what a disabled plugin ships use [`discover_plugins_including_disabled`].
 pub(crate) fn discover_plugins(root: &Path) -> Vec<SkillEntry> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return Vec::new();
+    }
     let disabled = crate::core::agent::project::disabled_plugins(root);
     scan_plugin_skills(root, &disabled)
 }

@@ -24,6 +24,31 @@ export type SubagentDefinition = {
    * A saved definition of the same name replaces the built-in.
    */
   scope?: 'builtin' | 'user' | 'project' | 'plugin'
+  /**
+   * Optional per-agent options. Every one is absent by default, and an absent
+   * option is the behaviour a definition without it always had. They mirror
+   * `SubagentOptions` in `core/agent/subagent.rs`.
+   */
+  /** Tools removed before `allowed_tools` applies. */
+  disallowed_tools?: string[]
+  /** Step cap for this agent, clamped to [1, MAX_SUBAGENT_STEPS]. */
+  max_turns?: number
+  /** A cowork mode for the child; it can tighten the parent's, never loosen it. */
+  permission_mode?: 'review' | 'ask' | 'auto' | 'bypass'
+  /** Run in the background unless the `task` call says otherwise. */
+  background?: boolean
+  /** `worktree`: its own checkout unless the `task` call says otherwise. */
+  isolation?: 'worktree'
+  /** Prepended to the parent's delegation message. */
+  initial_prompt?: string
+  /** Skip project instructions (JAN.md and compatible files). */
+  omit_instructions?: boolean
+  /** Skills whose full content is preloaded into the child's context (max 32). */
+  skills?: string[]
+  /** A persistent memory directory of its own (in the data folder, never in a project). */
+  memory?: 'user' | 'project'
+  /** Reasoning effort for this agent, where its model offers one. */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh'
 }
 
 let cache: SubagentDefinition[] | null = null

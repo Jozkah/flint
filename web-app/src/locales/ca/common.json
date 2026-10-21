@@ -537,6 +537,7 @@
   "jan": "Flint",
   "metadata": "Metadades",
   "regenerate": "Regenera",
+  "historyReadFailed": "No s'ha pogut carregar l'historial de la conversa.",
   "threadImage": "Imatge del fil",
   "editMessage": "Edita el missatge",
   "deleteMessage": "Suprimeix el missatge",
@@ -1205,7 +1206,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "No s'ha pogut respondre la pregunta lateral."
   },
   "autoCompactNeedsWindow": "La compactació automàtica necessita una mida de context, i {{model}} no en té cap que Flint pugui trobar. Estableix el màxim de tokens de context per a aquest model perquè els xats llargs es compactin abans d'omplir-lo. Si el proveïdor rebutja una petició per la seva longitud, Flint compacta i ho torna a provar una vegada.",
   "compaction": {
@@ -1234,7 +1236,9 @@
     "interruptedNoReply_many": "{{calls}} de passos completats conservats.",
     "interruptedNoReply_other": "{{calls}} passos completats conservats.",
     "interruptedContinue": "Continua",
-    "interruptedDiscard": "Descarta la resposta inacabada i continua"
+    "interruptedDiscard": "Descarta la resposta inacabada i continua",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} no pot cridar eines, així que no pot actuar com a agent. Tria un model que cridi eines.",
   "sessionModelUnavailable": "{{model}} ja no està disponible. Tria un altre model al menú de models.",
@@ -1384,6 +1388,8 @@
     "workflows_many": "{{count}} de fluxos de treball",
     "workflows_other": "{{count}} fluxos de treball",
     "phase": "Fase {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Altres tasques",
     "progress": "{{finished}} de {{total}} acabades",
     "runningTasks_one": "{{count}} tasca en execució",
@@ -1529,7 +1535,19 @@
     "shellCount_other": "{{count}} ordres",
     "stopWorkflow": "Atura {{name}}",
     "stopWorkflowPartial": "S'han aturat {{cancelled}}; {{failed}} no s'han pogut aturar.",
-    "cancelKillFailed": "El sistema ha refusat aturar-la: {{error}}"
+    "cancelKillFailed": "El sistema ha refusat aturar-la: {{error}}",
+    "pauseRun": "Atura",
+    "resumeRun": "Reprèn",
+    "restartAgent": "Reinicia l'agent",
+    "runPaused": "En pausa",
+    "resumeFromSaved": "Reprèn",
+    "resumeFromSavedHint": "Torna-ho a executar; els agents acabats retornen els resultats desats",
+    "saveWorkflow": "Desa",
+    "saveWorkflowName": "Nom (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Què fa",
+    "saveWorkflowConfirm": "Desa el flux de treball",
+    "saveWorkflowDone": "S'ha desat {{name}}. Executa'l amb /workflow:{{name}}",
+    "saveWorkflowFailed": "No s'ha pogut desar: {{error}}"
   },
   "reasoningEffort": {
     "label": "Esforç de raonament",
@@ -2447,6 +2465,9 @@
   "coworkParallel": {
     "settingTitle": "Les sessions noves en una carpeta Git treballen en el seu propi worktree",
     "settingDescription": "Cada sessió nova en un repositori Git obté el seu propi worktree i branca (flint/<title>), perquè moltes sessions treballin alhora a la mateixa carpeta sense tocar-se entre elles ni tocar la teva còpia de treball. Revisa, fusiona o descarta cada branca des de la sessió.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Aquesta sessió treballa a la branca {{branch}}, en el seu propi worktree",
     "basedOn": "des de {{base}}",
     "openFolder": "Obre la carpeta",
@@ -2979,5 +3000,26 @@
     "count_one": "{{count}} imbricat",
     "count_other": "{{count}} imbricats",
     "fewer": "Mostra menys imbricats"
+  },
+  "diffReview": {
+    "title": "Revisa els canvis",
+    "button": "Revisa",
+    "running": "Revisant…",
+    "security": "Inclou la revisió de seguretat",
+    "progress": "Comprovant la troballa {{done}} de {{total}}…",
+    "failed": "La revisió ha fallat: {{error}}",
+    "summary": "{{count}} troballa(es) en {{files}} fitxer(s); {{refuted}} refutades en una segona mirada.",
+    "truncated": "El diff era massa gran i s'ha tallat; la resta no s'ha revisat.",
+    "none": "Cap troballa.",
+    "listLabel": "Troballes, de més a menys greu",
+    "unverified": "no verificada",
+    "fix": "Solució: {{fix}}",
+    "fixButton": "Corregeix amb l'agent",
+    "fixBusy": "Espera que acabi l'execució actual i torna-ho a provar.",
+    "severity": {
+      "high": "Alta",
+      "medium": "Mitjana",
+      "low": "Baixa"
+    }
   }
 }

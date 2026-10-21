@@ -207,7 +207,7 @@ async fn a_saved_prefix_rule_covers_that_command_and_not_a_chained_one() {
             rx
         }
     });
-    let out = invoke_within(&invoker, &[bash("b2", "echo hello && echo again")]).await;
+    let out = invoke_within(&invoker, &[bash("b2", "echo hello && mkdir chained_probe")]).await;
     assert!(out[0].content.contains("denied by user"), "{}", out[0].content);
     let _ = asked.await;
 }

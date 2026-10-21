@@ -35,6 +35,8 @@ function General() {
   const { t } = useTranslation()
   const closeToTray = useGeneralSetting((s) => s.closeToTray)
   const setCloseToTray = useGeneralSetting((s) => s.setCloseToTray)
+  const keepAwakeDuringRuns = useGeneralSetting((s) => s.keepAwakeDuringRuns)
+  const setKeepAwakeDuringRuns = useGeneralSetting((s) => s.setKeepAwakeDuringRuns)
   const navigate = useNavigate()
   const [cliInstalled, setCliInstalled] = useState<boolean | null>(null)
   const [cliPath, setCliPath] = useState<string | null>(null)
@@ -145,6 +147,20 @@ function General() {
             })}
           >
             <StartupItems />
+            {IS_WINDOWS && (
+              <CardItem
+                anchor="settings-general-keep-awake"
+                title={t('settings:general.keepAwake')}
+                description={t('settings:general.keepAwakeDesc')}
+                actions={
+                  <Switch
+                    checked={keepAwakeDuringRuns}
+                    aria-label={t('settings:general.keepAwake')}
+                    onCheckedChange={(e) => setKeepAwakeDuringRuns(e)}
+                  />
+                }
+              />
+            )}
             {!IS_MACOS && (
               <CardItem
                 anchor="settings-general-close-to-tray"

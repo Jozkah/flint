@@ -20,7 +20,8 @@
     "help": "Daftar perintah yang tersedia",
     "new": "Mulai percakapan baru",
     "newSession": "Mulai sesi Cowork baru",
-    "compact": "Ringkas pesan lama untuk mengosongkan jendela konteks"
+    "compact": "Ringkas pesan lama untuk mengosongkan jendela konteks",
+    "btw": "Ajukan pertanyaan sampingan tentang utas ini; dijawab tanpa alat, tidak ditambahkan ke utas"
   },
   "sent": {
     "command": "Perintah",

@@ -41,6 +41,10 @@
     "gitRemote": "Flint muốn chạy {{command}}, lệnh này thay đổi {{target}}",
     "gitDestructive": "Flint muốn chạy {{command}}, lệnh này có thể làm mất công việc",
     "approveCampaign": "Flint muốn bắt đầu chiến dịch \"{{title}}\" ({{count}} tác vụ)",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
+    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
+    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
+    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
     "spendPause": "Flint muốn tiếp tục lượt chạy này vượt quá mức tạm dừng chi tiêu",
     "changeFileOutside": "Flint muốn thay đổi {{target}}, nằm ngoài {{workspace}}",
     "changeManyFilesOutside": "Flint muốn thay đổi {{count}} tệp, một số nằm ngoài {{workspace}}"
@@ -63,6 +67,10 @@
     "gitRemote": "Nó gửi các thay đổi đến một kho từ xa mà người khác có thể thấy. Flint hỏi mỗi lần trừ khi bạn tạm thời cho phép các thao tác Git từ xa thông thường cho cuộc trò chuyện này.",
     "gitDestructive": "Những gì nó xóa hoặc ghi đè có thể không khôi phục được.",
     "campaignPlan": "Nó bắt đầu các phiên riêng biệt, mỗi phiên trên nhánh worktree của nó, đọc và thay đổi tệp và dùng song song hạn mức mô hình của bạn. Việc duyệt kế hoạch không duyệt bất kỳ lệnh gọi nào mà một tác vụ thực hiện. Flint hỏi mỗi lần.",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
+    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
+    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "Lượt chạy tiếp tục dùng hạn mức mô hình trả phí cho đến khi xong hoặc chạm trần. Từ chối sẽ dừng lượt chạy."
   },
   "repeat": {
@@ -345,5 +353,18 @@
     "lineLabel": "Dòng",
     "ruleLabel": "Quy tắc",
     "more": "Và {{count}} dòng được đánh dấu khác"
+  },
+  "ruleWarnings": {
+    "title": "Quy tắc quyền có vấn đề",
+    "description": "Một số quy tắc trong agent.toml của dự án đã bị bỏ hoặc không bao giờ khớp. Phần còn lại vẫn được tải, nhưng các quy tắc này không làm đúng như đã viết.",
+    "notProtecting": "Một quy tắc hạn chế không có hiệu lực, nên mức bảo vệ thấp hơn đã viết. Hãy sửa quy tắc."
+  },
+  "hooksViewer": {
+    "title": "Hook",
+    "description": "Các lệnh mà mỗi thư mục tin cậy chạy quanh lời gọi công cụ và khi kết thúc một lượt chạy. Chỉ đọc: sửa .jan/agent/hooks.toml.",
+    "empty": "Không có thư mục tin cậy nào khai báo hook.",
+    "none": "Thư mục này không khai báo hook.",
+    "error": "Không đọc được tệp hook",
+    "loadFailed": "Không đọc được các hook"
   }
 }

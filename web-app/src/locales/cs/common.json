@@ -548,6 +548,7 @@
   "jan": "Flint",
   "metadata": "Metadata",
   "regenerate": "Regenerovat",
+  "historyReadFailed": "Historii konverzace se nepodařilo načíst.",
   "threadImage": "Obrázek vlákna",
   "editMessage": "Upravit zprávu",
   "deleteMessage": "Smazat zprávu",
@@ -1221,7 +1222,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Na vedlejší otázku se nepodařilo odpovědět."
   },
   "autoCompactNeedsWindow": "Automatické zhušťování potřebuje velikost kontextu a pro {{model}} žádnou Flint nenašel. Nastavte pro tento model Max. počet tokenů kontextu, aby se dlouhé chaty zhustily dřív, než ho zaplní. Pokud poskytovatel odmítne požadavek kvůli jeho délce, Flint zhustí a zkusí to jednou znovu.",
   "compaction": {
@@ -1253,7 +1255,9 @@
     "interruptedNoReply_many": "Zachováno {{calls}} dokončeného kroku.",
     "interruptedNoReply_other": "Zachováno {{calls}} dokončených kroků.",
     "interruptedContinue": "Pokračovat",
-    "interruptedDiscard": "Zahodit nedokončenou odpověď a pokračovat"
+    "interruptedDiscard": "Zahodit nedokončenou odpověď a pokračovat",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} neumí volat nástroje, takže nemůže fungovat jako agent. Vyberte model, který nástroje volat umí.",
   "sessionModelUnavailable": "{{model}} už není k dispozici. Vyberte jiný model v nabídce modelů.",
@@ -1408,6 +1412,8 @@
     "workflows_many": "{{count}} pracovního postupu",
     "workflows_other": "{{count}} pracovních postupů",
     "phase": "Fáze {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Ostatní práce",
     "progress": "Dokončeno {{finished}} z {{total}}",
     "runningTasks_one": "{{count}} běžící úloha",
@@ -1559,7 +1565,19 @@
     "shellCount_other": "{{count}} příkazů",
     "stopWorkflow": "Zastavit {{name}}",
     "stopWorkflowPartial": "Zastaveno: {{cancelled}}; nelze zastavit: {{failed}}.",
-    "cancelKillFailed": "Systém jeho zastavení odmítl: {{error}}"
+    "cancelKillFailed": "Systém jeho zastavení odmítl: {{error}}",
+    "pauseRun": "Pozastavit",
+    "resumeRun": "Pokračovat",
+    "restartAgent": "Restartovat agenta",
+    "runPaused": "Pozastaveno",
+    "resumeFromSaved": "Obnovit",
+    "resumeFromSavedHint": "Spustit znovu; dokončení agenti vrátí uložené výsledky",
+    "saveWorkflow": "Uložit",
+    "saveWorkflowName": "Název (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Co dělá",
+    "saveWorkflowConfirm": "Uložit workflow",
+    "saveWorkflowDone": "Uloženo: {{name}}. Spusťte přes /workflow:{{name}}",
+    "saveWorkflowFailed": "Uložení se nezdařilo: {{error}}"
   },
   "reasoningEffort": {
     "label": "Úsilí při uvažování",
@@ -2499,6 +2517,9 @@
   "coworkParallel": {
     "settingTitle": "Nové relace ve složce Git pracují ve vlastním worktree",
     "settingDescription": "Každá nová relace v repozitáři Git dostane vlastní worktree a větev (flint/<title>), takže více relací může pracovat v jedné složce najednou, aniž by se ovlivňovaly navzájem nebo tvůj checkout. Každou větev zkontroluj, slouč nebo zahoď přímo z relace.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Tato relace pracuje na větvi {{branch}} ve vlastním worktree",
     "basedOn": "z {{base}}",
     "openFolder": "Otevřít složku",
@@ -3052,5 +3073,26 @@
     "count_many": "{{count}} vnořených",
     "count_other": "{{count}} vnořených",
     "fewer": "Zobrazit méně vnořených"
+  },
+  "diffReview": {
+    "title": "Zkontrolovat změny",
+    "button": "Zkontrolovat",
+    "running": "Kontroluji…",
+    "security": "Zahrnout bezpečnostní kontrolu",
+    "progress": "Ověřuji nález {{done}} z {{total}}…",
+    "failed": "Kontrola selhala: {{error}}",
+    "summary": "{{count}} nález(ů) v {{files}} souboru(ech); {{refuted}} vyvráceno při druhém pohledu.",
+    "truncated": "Diff byl příliš velký a byl oříznut; zbytek nebyl zkontrolován.",
+    "none": "Žádné nálezy.",
+    "listLabel": "Nálezy od nejzávažnějších",
+    "unverified": "neověřeno",
+    "fix": "Oprava: {{fix}}",
+    "fixButton": "Opravit pomocí agenta",
+    "fixBusy": "Počkejte na dokončení aktuálního běhu a zkuste to znovu.",
+    "severity": {
+      "high": "Vysoká",
+      "medium": "Střední",
+      "low": "Nízká"
+    }
   }
 }

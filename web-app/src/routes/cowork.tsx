@@ -222,10 +222,12 @@ import {
   type DirectEditFacts,
 } from '@/containers/dialogs/DirectEditConfirmDialog'
 import {
+  capMode,
   isReadOnly,
   modeOf,
   type CoworkMode,
 } from '@/lib/coworkMode'
+import { isSpawnedSession } from '@/lib/spawnSession'
 import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
@@ -279,6 +281,7 @@ import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
+import { CoworkReviewAction } from '@/containers/CoworkReviewAction'
 import {
   applySandboxFile,
   applySandboxHunk,
@@ -473,9 +476,13 @@ import {
   scopeConflicts,
   teamProgress,
   TEAM_DEFAULT_PROMPT,
+  type TaskResult,
   type TeamState,
   type TeamTask,
 } from '@/lib/coworkTeam'
+import { openRunLog, withRunLog } from '@/lib/workflowRuns'
+import { wrapLoops } from '@/lib/workflowLoops'
+import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
 import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
@@ -514,6 +521,7 @@ import {
   webSearchOnFor,
 } from '@/hooks/useWebSearchChoice'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
+import { runTyped, schemaInstruction } from '@/lib/coworkWorkflowSchema'
 import {
   abortRun,
   abortAll,
@@ -521,6 +529,8 @@ import {
   endRun,
   hasSubagent,
   abortSubagent,
+  registerSubagent,
+  unregisterSubagent,
   isAbortLike,
   answerAsk,
   runTurn,
@@ -556,6 +566,7 @@ import {
   subagentActorId,
   SUBAGENT_RESULT_HEAD_CHARS,
 } from '@/lib/coworkSubagent'
+import { AGENT_MEMORY_TOOL_NAME } from '@/lib/coworkSubagentMemory'
 import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
 import { createChildRunner } from '@/lib/coworkChildRunner'
 import { DelegationNudge } from '@/lib/delegationNudge'
@@ -567,6 +578,7 @@ import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
+import { CoworkRecap } from '@/containers/CoworkRecap'
 import { runStatus } from '@/lib/runStatus'
 import { stopToolCall } from '@/lib/toolCallStop'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
@@ -3549,6 +3561,7 @@ export function CoworkPage() {
       // Always on at depth 0, even with nothing saved: a one-off subagent with
       // an inline `system_prompt` is first-class, as it is in Rust.
       allowSubagents: !campaignSlim,
+      spawned: !!current && isSpawnedSession(current),
       slim: campaignSlim,
       // Lean tool set: specialist groups this run's message, history or
       // sender call for; the rest wait behind `enable_tools`. A campaign's
@@ -3769,6 +3782,43 @@ export function CoworkPage() {
       supportsVision: () =>
         selectedModel?.capabilities?.includes('vision') ?? false,
       providerOptions: () => transport.reasoningProviderOptions(),
+      // A subagent's own memory is the user's to approve, write by write. Review
+      // and plan modes change nothing, so a write is refused there without asking.
+      launchGate: {
+        mode: (resolved) => {
+          const live = liveSessionMode(sid) ?? runMode
+          return capMode(live, resolved.permissionMode)
+        },
+        ask: ({ agent, tools, model, signal }) =>
+          useToolApprovalRequests
+            .getState()
+            .requestApproval(`agent-launch:${agent}:${Date.now()}`, 'task', sid, undefined, {
+              input: { agent, tools, model },
+              alwaysAsk: true,
+              taskContext: `Run subagent "${agent}" with ${tools.join(', ')} on ${model}? It will ask before each change as usual; this is asked once for this session.`,
+              origin: agent,
+              signal,
+            }),
+      },
+      // A forked subagent starts from the conversation this turn began with.
+      fork: {
+        history: () => messages,
+        system: () => transport.forkSystemPrompt(messages),
+      },
+      approveMemoryWrite: async ({ agent, scope, content, signal }) => {
+        const live = liveSessionMode(sid) ?? runMode
+        if (isReadOnly(live)) return false
+        return useToolApprovalRequests
+          .getState()
+          .requestApproval(`agent-memory:${agent}:${Date.now()}`, AGENT_MEMORY_TOOL_NAME, sid, undefined, {
+            input: { agent, scope, content },
+            alwaysAsk: true,
+            taskContext: `${agent} wants to replace its ${scope} memory (MEMORY.md)`,
+            preview: content,
+            origin: agent,
+            signal,
+          })
+      },
       parentTools: () => transport.childToolSet,
       anchorMessageId,
       lane: {
@@ -3787,7 +3837,7 @@ export function CoworkPage() {
         attach: (callId, output) =>
           useCoworkRun.getState().attachSubagentOutput(sid, callId, output),
       },
-      setup: (resolved, destination) => {
+      setup: (resolved, destination, spawn) => {
         const childFolder = destination?.path ?? runReadRoot
         const childGrant = destination ? destination.grantId : runGrant
         // A child in the run's own tree shares its extra folders; one given an
@@ -3849,8 +3899,13 @@ export function CoworkPage() {
             modelId: selectedModel?.id,
             readOnlyFolder: childFolder,
             extraFolders: childExtras,
-            mode: runMode,
-            liveMode: () => liveSessionMode(sid),
+            // The definition may ask for a stricter mode, never a looser one: the
+            // run's mode, live or frozen, is the ceiling.
+            mode: capMode(runMode, resolved.permissionMode),
+            liveMode: () => {
+              const live = liveSessionMode(sid)
+              return live ? capMode(live, resolved.permissionMode) : undefined
+            },
             readFailures: runReadFailures,
             writeGrant: childGrant,
             // A child in its own checkout is a managed-worktree run of its
@@ -3920,10 +3975,30 @@ export function CoworkPage() {
                 'You cannot ask the user questions. Decide, and say what you assumed.',
               isError: true,
             }),
-            onTask: async () => ({
-              output: 'A subagent cannot dispatch subagents.',
-              isError: true,
-            }),
+            // Nesting is off unless Settings > Subagents raises the depth: then a
+            // child below the limit runs its `task` as a child one level down,
+            // under the same caps. At the limit it is refused as before.
+            onTask: async (nestedCallId, input) => {
+              if (!spawn || spawn.depth >= spawn.maxDepth) {
+                return { output: 'A subagent cannot dispatch subagents.', isError: true }
+              }
+              const nested = parseSubagentRequest(input)
+              if (typeof nested === 'string') {
+                return { output: `ERROR: ${nested}`, isError: true }
+              }
+              if (nested.fork) {
+                return { output: 'A subagent cannot fork.', isError: true }
+              }
+              return dispatchChild(
+                nestedCallId,
+                nested,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                spawn.depth
+              )
+            },
           }, toolSignal),
         }
       },
@@ -4297,6 +4372,7 @@ export function CoworkPage() {
                 tasks: backgroundTasks,
                 cancelChild: (callId) =>
                   abortSubagent(sid, taskIdFor(sid, runId, callId)),
+                agentDefaults: (name) => runAgents.find((d) => d.name === name),
                 // Campaign tools exist only here, on the main run of a session
                 // that may coordinate: a task's, a subagent's and chat's
                 // contexts have no handler, so a call to one is refused.
@@ -4621,16 +4697,52 @@ export function CoworkPage() {
                   // as the team does.
                   const teamControl = new TeamControl()
                   useTeamControls.getState().register(teamTaskId, teamControl)
+                  // Its own stop, chained to the turn's: a background workflow
+                  // is cancelled through this (`cancel_task`, the panel's Stop)
+                  // without ending the turn.
+                  const teamAbort = registerSubagent(sid, teamTaskId)
+                  // Registered only while the run is live; with no run to hang it
+                  // off, the handle comes back already aborted, which must not
+                  // cancel a team the turn itself has not stopped.
+                  const teamSignal = hasSubagent(sid, teamTaskId)
+                    ? AbortSignal.any([controller.signal, teamAbort.signal])
+                    : controller.signal
+                  // A workflow keeps each finished agent's result so a stopped run
+                  // can be resumed; a replay returns saved ones without running.
+                  const runMeta = (input as { run?: { phases: unknown[]; args?: Record<string, unknown>; resumeRunId?: string } } | null)?.run
+                  const runLog = runMeta ? await openRunLog(sid, callId, runMeta) : null
+                  const withLog = (fn: (one: TeamTask, signal: AbortSignal) => Promise<TaskResult>) =>
+                    runLog
+                      ? withRunLog(runLog, fn, (one, output) => {
+                          const childId = `${callId}:${one.id}`
+                          recordAgentDispatch(run, {
+                            callId: childId,
+                            agentName: one.subagentName ?? 'worker',
+                            title: one.title,
+                            phase: one.phase,
+                            description: one.description,
+                            parentTaskId: teamTaskId,
+                          })
+                          useCoworkActivity.getState().patchTask(taskIdFor(sid, runId, childId), {
+                            status: 'done',
+                            output,
+                            detail: 'from saved result',
+                            endedAt: Date.now(),
+                          })
+                        })
+                      : fn
                   try {
                     const outcome = await runTeam(tasks, {
                       // The turn's controller: stopping the run stops the team,
                       // and every child hangs off a signal chained to this one.
-                      signal: controller.signal,
+                      signal: teamSignal,
                       allowParallel,
                       control: teamControl,
                       decisionWindowMs: COWORK_DECISION_WINDOW_MS,
+                      onPause: (paused) =>
+                        useCoworkActivity.getState().patchTask(teamTaskId, { paused }),
                       onControl: (request, result) => {
-                        if (!result.ok || request.kind === 'finish') {
+                        if (!result.ok || request.kind === 'finish' || request.kind === 'pause' || request.kind === 'resume') {
                           if (!result.ok) toast.error(result.refusal.message)
                           return
                         }
@@ -4662,7 +4774,7 @@ export function CoworkPage() {
                               ? `${teamProgress(state)} · waiting for a decision on the failed tasks`
                               : teamProgress(state),
                         }),
-                      runTask: async (one: TeamTask, signal: AbortSignal) => {
+                      runTask: wrapLoops(withLog(async (one: TeamTask, signal: AbortSignal) => {
                         // One call id per task, so each child gets its own
                         // transcript lane and its own entry in the Tasks panel.
                         const childId = `${callId}:${one.id}`
@@ -4719,26 +4831,47 @@ export function CoworkPage() {
                           'failed'
                         let detail = ''
                         try {
-                          const result = await dispatchChild(
-                            childId,
-                            {
-                              subagent_name: one.subagentName ?? 'worker',
-                              description: one.description,
-                              ...(one.title ? { title: one.title } : {}),
-                              ...(one.model ? { model: one.model } : {}),
-                              // A task that names no saved agent still has to be
-                              // runnable: without a prompt it resolves to nothing
-                              // and is refused as unknown, which would make the
-                              // ordinary case the one that cannot run. A named
-                              // agent ignores this, as `resolveSubagent` prefers
-                              // the saved definition.
-                              system_prompt: TEAM_DEFAULT_PROMPT,
-                            },
-                            signal,
-                            teamTaskId,
-                            destination,
-                            one.id
-                          )
+                          // A task that names no saved agent still has to be
+                          // runnable: without a prompt it resolves to nothing
+                          // and is refused as unknown. A named agent ignores
+                          // `system_prompt`, as `resolveSubagent` prefers the
+                          // saved definition.
+                          const dispatchOne = (
+                            id: string,
+                            description: string,
+                            title: string | undefined
+                          ) =>
+                            dispatchChild(
+                              id,
+                              {
+                                subagent_name: one.subagentName ?? 'worker',
+                                description,
+                                ...(title ? { title } : {}),
+                                ...(one.model ? { model: one.model } : {}),
+                                ...(one.phase ? { phase: one.phase } : {}),
+                                system_prompt: TEAM_DEFAULT_PROMPT,
+                              },
+                              signal,
+                              teamTaskId,
+                              destination,
+                              one.id
+                            )
+                          // A typed answer is checked and re-asked; each retry is
+                          // its own row, so every attempt stays visible.
+                          const result = one.schema
+                            ? await runTyped(
+                                one.description + schemaInstruction(one.schema),
+                                one.schema,
+                                (brief, attempt) =>
+                                  dispatchOne(
+                                    attempt === 1 ? childId : `${childId}~r${attempt}`,
+                                    brief,
+                                    attempt === 1 || !one.title
+                                      ? one.title
+                                      : `${one.title} (try ${attempt})`
+                                  )
+                              )
+                            : await dispatchOne(childId, one.description, one.title)
                           status = endedAs(result.isError === true)
                           detail = result.output.slice(0, 500)
                           return {
@@ -4765,8 +4898,9 @@ export function CoworkPage() {
                             useTeamChildrenVersion.getState().bump()
                           }
                         }
-                      },
+                      })),
                     })
+                    await runLog?.settled()
                     if (!outcome.ok) {
                       useCoworkActivity.getState().patchTask(teamTaskId, {
                         status: 'error',
@@ -4788,6 +4922,10 @@ export function CoworkPage() {
                       where
                         ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
                         : '',
+                      runLog?.summary() ?? '',
+                      runLog && !outcome.report.allDone
+                        ? `This run's run_id is ${runLog.runId}. Relaunch it with \`workflow {resume_run_id: "${runLog.runId}"}\`: finished agents return their saved results; the failed one and everything after it runs again.`
+                        : '',
                       decided.length
                         ? `Decided by the user before the team ran:\n${decided.map((d) => `- ${d}`).join('\n')}`
                         : '',
@@ -4797,7 +4935,7 @@ export function CoworkPage() {
                     useCoworkActivity.getState().patchTask(teamTaskId, {
                       // The team's own row settles on what actually happened, so a
                       // partial run cannot read as a finished one at a glance.
-                      status: controller.signal.aborted
+                      status: teamSignal.aborted
                         ? ('cancelled' as const)
                         : outcome.report.allDone
                           ? ('done' as const)
@@ -4814,6 +4952,7 @@ export function CoworkPage() {
                     }
                   } finally {
                     useTeamControls.getState().unregister(teamTaskId)
+                    unregisterSubagent(sid, teamTaskId)
                     // The children are done, so their authority goes back. The
                     // worktrees stay: they hold the work the team was run for,
                     // and the report names where each one is.
@@ -5334,6 +5473,9 @@ export function CoworkPage() {
   const compactNowRef = useRef(compactNow)
   compactNowRef.current = compactNow
 
+  const savedWorkflowBuiltins = useSavedWorkflowBuiltins(
+    useCallback((text: string) => void handleSubmit(text), [handleSubmit])
+  )
   const slashBuiltins = useMemo(
     () => [
       {
@@ -5364,8 +5506,9 @@ export function CoworkPage() {
           store.selectSession(id)
         },
       },
+      ...savedWorkflowBuiltins,
     ],
-    [t, running]
+    [t, running, savedWorkflowBuiltins]
   )
 
   /**
@@ -6370,6 +6513,11 @@ export function CoworkPage() {
                               view={view}
                               now={activityNow}
                               waiting={waitingForUser}
+                              onResume={(id) =>
+                                void handleSubmit(
+                                  `Resume the stopped workflow run ${id}: call workflow with resume_run_id "${id}".`
+                                )
+                              }
                               onOpenTask={(task) => {
                                 showTaskInPanel(task)
                                 revealOutput()
@@ -6591,6 +6739,9 @@ export function CoworkPage() {
                   {stoppedBy === 'aborted' && (
                     <CoworkRunNotice kind="stopped" />
                   )}
+                  {session?.id ? (
+                    <CoworkRecap sessionId={session.id} running={running} />
+                  ) : null}
                   {session?.id ? (
                     <CoworkInterruptedTurn
                       sessionId={session.id}
@@ -7019,6 +7170,15 @@ export function CoworkPage() {
               {/* A server session's own checkout: merge, discard, review. */}
               {session?.id && session.remote ? (
                 <RemoteWorktreePanel sessionId={session.id} />
+              ) : null}
+              {/* One-command review of the current diff: ranked findings, each
+                  checked by a second pass; fixes go through the session. */}
+              {folder && session?.id ? (
+                <CoworkReviewAction
+                  folder={folder}
+                  sessionId={session.id}
+                  onFix={(text) => widgetHost.sendPrompt(text)}
+                />
               ) : null}
               {/* AH-109: each isolated team child's worktree, for review. */}
               {folder && session?.id ? (

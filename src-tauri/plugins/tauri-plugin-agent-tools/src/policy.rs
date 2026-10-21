@@ -36,6 +36,10 @@ struct ToolsSection {
     /// Calls to confirm every time, overriding allow but not deny.
     #[serde(default)]
     ask: Vec<String>,
+    /// Run known read-only shell commands without asking. Defaults to on;
+    /// `false` brings the prompt back for every shell command.
+    #[serde(default)]
+    readonly_shell: Option<bool>,
     #[serde(default)]
     allow_network: Option<bool>,
     /// Destinations this project may reach. Empty means "anywhere not denied".
@@ -176,14 +180,28 @@ pub fn load_under_trust(
     // loosen it. The clamping happens on the lists, before they are compiled,
     // so there is one place where the two policies meet rather than a check
     // at every use.
+    let permissions = ToolPermissions::new(
+        org.clamp_default(default),
+        &tools.allow,
+        &org.clamp_deny(&tools.deny),
+        &tools.allow_write,
+    )
+    .with_ask(&tools.ask)
+    .with_readonly_shell(tools.readonly_shell.unwrap_or(true));
+    // The load still succeeds -- a typo must not brick a session -- but a
+    // dropped `deny` is a restriction that silently vanished, so say so here
+    // as well as wherever the warnings are shown.
+    for w in permissions.warnings() {
+        eprintln!(
+            "agent.toml: [tools].{} rule `{}` {}: {}",
+            w.list,
+            w.rule,
+            if w.weakens_restriction() { "is NOT protecting you" } else { "has no effect" },
+            w.reason
+        );
+    }
     ProjectPolicy {
-        permissions: ToolPermissions::new(
-            org.clamp_default(default),
-            &tools.allow,
-            &org.clamp_deny(&tools.deny),
-            &tools.allow_write,
-        )
-        .with_ask(&tools.ask),
+        permissions,
         network: NetworkPolicy {
             // The project's setting wins over the surface's default, which is
             // the point of writing it down in the repository -- within what

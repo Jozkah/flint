@@ -973,6 +973,8 @@ struct PendingMessage {
     display: bool,
     invocation: Option<(String, String, String)>,
     run_mode: Option<crate::core::agent::plan::RunMode>,
+    /// Start this turn from an empty conversation (execute-plan-in-fresh-context).
+    fresh_context: bool,
 }
 
 #[cfg(test)]
@@ -985,6 +987,7 @@ impl From<&str> for PendingMessage {
             display: true,
             invocation: None,
             run_mode: None,
+            fresh_context: false,
         }
     }
 }
@@ -2093,6 +2096,13 @@ struct App {
     /// Compaction handed off to the loop, which spawns the summarizing model
     /// call off the render loop. Taken once.
     compact_request: Option<CompactKind>,
+    /// `/compact <focus>`: what the next manual compaction should keep detail on.
+    compact_focus: Option<String>,
+    /// `!cmd` waiting to ride on the next run's body.
+    scripted_command: Option<String>,
+    /// `/btw` answers arriving from their tasks, shown as notes.
+    btw_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    btw_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
     /// A compaction is in flight: the header and the input box show a throbber,
     /// a second request is refused, and no run starts until it lands (its result
     /// replaces `history`, so a run reading the old one would be clobbered).
@@ -2475,6 +2485,7 @@ impl App {
         repo_root: Option<PathBuf>,
     ) -> Self {
         let slash_catalog = SlashCatalog::load(&project_root);
+        let (btw_tx, btw_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             smol_model: model.clone(),
             model,
@@ -2596,6 +2607,10 @@ impl App {
             plugin_collection_url: None,
             plugin_installing: false,
             compact_request: None,
+            compact_focus: None,
+            scripted_command: None,
+            btw_tx,
+            btw_rx,
             compacting: None,
             compact_started: None,
             run_compacting: None,
@@ -2820,6 +2835,10 @@ impl App {
     fn push_session_banner(&mut self, awaiting_first_message: bool) {
         let phrasing = self.approval_phrasing.clone();
         self.push_banner(&phrasing, awaiting_first_message);
+        // Safe mode stays visible: the banner is re-pushed on every new session.
+        if tauri_plugin_agent_tools::safe_mode::active() {
+            self.system(Level::Warn, tauri_plugin_agent_tools::safe_mode::BANNER);
+        }
     }
 
     /// Append a line the *app* is saying, in its own gutter column. Every other
@@ -4121,6 +4140,26 @@ impl App {
         }
     }
 
+    /// `!cmd`: run a shell command directly. It goes through the agent's own
+    /// `bash` path (same sandbox, same approvals), as the first step of a run
+    /// that makes no model call; the command and its output join the thread.
+    fn submit_shell(&mut self, command: &str) {
+        if command.is_empty() {
+            self.note("usage: !<command>");
+            return;
+        }
+        if self.status != Status::Idle {
+            self.note("!command runs only while idle");
+            return;
+        }
+        self.scripted_command = Some(command.to_string());
+        self.submit_user_text(format!("!{command}"), true);
+        if self.status != Status::Running {
+            // Refused (not signed in): nothing will consume it.
+            self.scripted_command = None;
+        }
+    }
+
     fn submit_user(&mut self, text: String) {
         self.submit_user_text(text, true)
     }
@@ -4174,6 +4213,7 @@ impl App {
             images: names,
             display,
             run_mode: Some(self.run_mode),
+            fresh_context: false,
         };
         if self.status == Status::Running {
             self.message_queue.push_back(pending);
@@ -4204,6 +4244,13 @@ impl App {
     }
 
     fn start_pending_message(&mut self, pending: PendingMessage) {
+        if pending.fresh_context {
+            // Execute-in-fresh-context: the plan text in this message is all the
+            // model gets. The staged todos live outside the history and stay.
+            self.history.clear();
+            self.tokens = 0;
+            self.note("◈ context cleared; implementing from the plan alone");
+        }
         self.ensure_base_snapshot();
         self.record_pending_message(pending);
         self.begin_turn();
@@ -4238,6 +4285,7 @@ impl App {
             display: true,
             invocation: Some((name.to_string(), args.to_string(), description.to_string())),
             run_mode: Some(self.run_mode),
+            fresh_context: false,
         });
         self.note(&format!(
             "message pending for next agent step ({} pending)",
@@ -9158,12 +9206,22 @@ async fn chat_loop<B: Backend>(
         // `/compact` (or the auto trigger) was requested: summarize off-loop.
         // One at a time -- both request sites already refuse while one is in
         // flight, and the result replaces `history` wholesale.
+        while let Ok(answer) = app.btw_rx.try_recv() {
+            for (i, line) in answer.lines().enumerate() {
+                if i == 0 {
+                    app.note(line);
+                } else {
+                    app.system_detail_text(line);
+                }
+            }
+        }
         if compact_task.is_none() {
             if let Some(kind) = app.compact_request.take() {
                 let args = args.clone();
                 let model = app.model.clone();
                 let history = app.history.clone();
                 let keep = kind.keep_recent(app.compaction_keep_recent);
+                let focus = app.compact_focus.take();
                 compact_base = history.len();
                 app.compacting = Some(kind);
                 app.compact_started = Some(Instant::now());
@@ -9173,6 +9231,7 @@ async fn chat_loop<B: Backend>(
                         &model,
                         &history,
                         keep,
+                        focus.as_deref(),
                     )
                     .await
                 }));
@@ -9215,7 +9274,11 @@ async fn chat_loop<B: Backend>(
                 // The submission itself is one human turn toward the aging
                 // grace period; model roundtrips count via `Step` events.
                 age_closed_todos(app).await;
-                current = Some(spawn_run(&run_args(app, args), app.body()));
+                let mut body = app.body();
+                if let Some(command) = app.scripted_command.take() {
+                    body["jan_scripted_command"] = serde_json::json!(command);
+                }
+                current = Some(spawn_run(&run_args(app, args), body));
             } else if !loading_noted && !mcp_ready {
                 // The base snapshot gates silently; only the MCP connect notes.
                 loading_noted = true;
@@ -9632,6 +9695,12 @@ async fn resolve_front_ask(
                 .and_then(|a| a.selected.first().cloned())
         })
         .flatten();
+    let plan_summary = ask
+        .request
+        .questions
+        .first()
+        .map(|q| q.question.clone())
+        .unwrap_or_default();
     let outcome = if cancelled {
         Err(crate::core::agent::interaction::AskError::Cancelled)
     } else {
@@ -9640,7 +9709,7 @@ async fn resolve_front_ask(
     // Always respond so the model's in-flight turn completes normally.
     let _ = crate::core::agent::interaction::respond(registry, &ask.request_id, outcome).await;
     if let Some(label) = plan_choice {
-        apply_plan_review(app, &label);
+        apply_plan_review(app, &label, &plan_summary);
     }
 }
 
@@ -9648,7 +9717,26 @@ async fn resolve_front_ask(
 /// already staged todos via `todo(init)` earlier in the same turn; here we only
 /// flip the mode (and, for Execute, queue the continuation turn). Persists so
 /// the mode survives resume.
-fn apply_plan_review(app: &mut App, label: &str) {
+/// The only thing a fresh-context execution starts from: the plan summary and
+/// every staged todo, phase by phase.
+fn fresh_plan_message(summary: &str, todos: &crate::core::agent::todo::TodoList) -> String {
+    let mut out = String::from(
+        "Implement the plan below. The earlier conversation was cleared on purpose, so work from this plan alone and read the project as needed.\n\n",
+    );
+    if !summary.trim().is_empty() {
+        out.push_str(&format!("Plan: {}\n\n", summary.trim()));
+    }
+    for phase in &todos.phases {
+        out.push_str(&format!("## {}\n", phase.name));
+        for task in &phase.tasks {
+            out.push_str(&format!("- {}\n", task.content));
+        }
+        out.push('\n');
+    }
+    out.trim_end().to_string()
+}
+
+fn apply_plan_review(app: &mut App, label: &str, summary: &str) {
     use crate::core::agent::plan::{self, RunMode};
     match label {
         plan::EXECUTE_PLAN_LABEL => {
@@ -9664,6 +9752,30 @@ fn apply_plan_review(app: &mut App, label: &str) {
             // Enqueues while the ask turn is still running; on_done dequeues it,
             // starting execution only after the mode switch has committed.
             app.submit_user("Proceed with the plan.".to_string());
+        }
+        plan::EXECUTE_FRESH_LABEL => {
+            if app.todos.is_empty() {
+                app.note("cannot execute: no plan staged (todo init first); staying in plan mode");
+                return;
+            }
+            app.run_mode = RunMode::Normal;
+            app.persist();
+            app.note("▶ executing plan in a fresh context (normal mode)");
+            let message = fresh_plan_message(summary, &app.todos);
+            // Queued like "Execute plan": the ask turn finishes first, then the
+            // conversation is cleared and this is the only thing the model sees.
+            app.message_queue.push_back(PendingMessage {
+                text: "Implement the plan (fresh context).".to_string(),
+                message: serde_json::json!({ "role": "user", "content": message }),
+                images: Vec::new(),
+                display: true,
+                invocation: None,
+                run_mode: Some(app.run_mode),
+                fresh_context: true,
+            });
+            if app.status != Status::Running {
+                app.dequeue_next();
+            }
         }
         plan::KEEP_PLANNING_LABEL => app.note("continuing to plan (read only)"),
         plan::EXIT_PLAN_LABEL => {
@@ -10875,6 +10987,8 @@ async fn handle_key(
                 app.record_submitted(&text);
                 if let Some(cmd) = text.strip_prefix('/') {
                     run_command(app, cmd, mcp_servers).await;
+                } else if let Some(cmd) = text.strip_prefix('!') {
+                    app.submit_shell(cmd.trim());
                 } else {
                     app.submit_user(text);
                 }
@@ -11235,8 +11349,20 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
     },
     SlashCommand {
         name: "/compact",
-        hint: "",
+        hint: "[focus]",
         description: "Summarize older turns to free up context",
+        alias_of: None,
+    },
+    SlashCommand {
+        name: "/btw",
+        hint: "<question>",
+        description: "Ask a side question about this thread; answered without tools, never added to history",
+        alias_of: None,
+    },
+    SlashCommand {
+        name: "/hooks",
+        hint: "",
+        description: "List configured hooks, their source and trust state (read-only)",
         alias_of: None,
     },
     SlashCommand {
@@ -11559,8 +11685,10 @@ async fn run_command(
             app.push_session_banner(true);
             app.note("started a new session");
         }
-        "compact" => compact_command(app),
+        "compact" => compact_command(app, arg),
         "context" => context_command(app),
+        "hooks" => hooks_command(app),
+        "btw" => btw_command(app, arg),
         "usage" => usage_command(app, arg),
         "threads" | "list" => match super::list_threads_in(&app.agent_dir) {
             Ok(threads) if threads.is_empty() => {
@@ -11704,6 +11832,48 @@ fn usage_command(app: &mut App, arg: &str) {
     app.usage_request = Some(query);
 }
 
+/// `/btw <question>`: one tool-less completion over a snapshot of the thread.
+/// Runs off the render loop and works mid-run; the answer is shown as a note
+/// and never reaches `history`.
+fn btw_command(app: &mut App, question: &str) {
+    let question = question.trim().to_string();
+    if question.is_empty() {
+        app.note("usage: /btw <question>");
+        return;
+    }
+    let Some(args) = app.args.clone() else {
+        app.note("/btw unavailable (no active session)");
+        return;
+    };
+    app.note(&format!("◈ btw · {question}"));
+    let model = app.model.clone();
+    let history = app.history.clone();
+    let tx = app.btw_tx.clone();
+    tokio::spawn(async move {
+        let text = match crate::core::agent::btw::ask(&args, &model, &history, &question).await {
+            Ok(answer) => answer,
+            Err(e) => format!("btw failed: {e}"),
+        };
+        let _ = tx.send(text);
+    });
+}
+
+/// `/hooks`: read-only list of the project's hooks and the Claude Code hooks
+/// imported from `~/.claude`.
+fn hooks_command(app: &mut App) {
+    let mut text = tauri_plugin_agent_tools::hooks::report(&app.project_root).render();
+    let imported = crate::core::agent::cc_hooks::active();
+    if !imported.is_empty() {
+        text.push_str("
+imported from ~/.claude (add context on prompt/session start):");
+        for h in &imported {
+            text.push_str(&format!("
+  {:?} {}s  {}", h.event, h.timeout_secs, h.command));
+        }
+    }
+    app.note(&text);
+}
+
 fn context_command(app: &mut App) {
     app.context_view = Some(ContextView::Loading);
     app.context_request = true;
@@ -11752,7 +11922,7 @@ fn init_command(app: &mut App) {
 /// Manually compact the conversation: summarize older turns, keeping the recent
 /// tail, then persist. Blocks the event loop for one model call; runs only while
 /// idle (the caller gates on `Status::Idle`).
-fn compact_command(app: &mut App) {
+fn compact_command(app: &mut App, focus: &str) {
     if app.compacting.is_some() {
         app.note("already compacting");
         return;
@@ -11761,6 +11931,8 @@ fn compact_command(app: &mut App) {
         app.note("compaction unavailable (no active session)");
         return;
     }
+    let focus = focus.trim();
+    app.compact_focus = (!focus.is_empty()).then(|| focus.to_string());
     app.compact_request = Some(CompactKind::Manual);
 }
 
@@ -32930,6 +33102,28 @@ mod tests {
             answers[0].selected,
             vec![crate::core::agent::plan::EXECUTE_PLAN_LABEL]
         );
+    }
+
+    #[tokio::test]
+    async fn execute_in_fresh_context_queues_the_plan_alone_and_clears_history_on_start() {
+        use crate::core::agent::plan::{RunMode, EXECUTE_FRESH_LABEL};
+        let mut app = test_app();
+        app.run_mode = RunMode::Plan;
+        app.apply(StreamEvent::TodoUpdate { list: staged_todos() });
+        app.history.push(serde_json::json!({ "role": "user", "content": "long old talk" }));
+        app.status = Status::Running;
+        super::apply_plan_review(&mut app, EXECUTE_FRESH_LABEL, "ship it");
+        assert_eq!(app.run_mode, RunMode::Normal);
+        let queued = app.message_queue.front().expect("a queued turn");
+        assert!(queued.fresh_context);
+        let text = queued.message["content"].as_str().unwrap();
+        assert!(text.contains("ship it") && text.contains("do the thing"), "{text}");
+        // Nothing is cleared while the ask turn still runs.
+        assert_eq!(app.history.len(), 1);
+        app.status = Status::Idle;
+        app.dequeue_next();
+        assert_eq!(app.history.len(), 1, "old talk gone, only the plan message remains");
+        assert!(app.history[0]["content"].as_str().unwrap().contains("do the thing"));
     }
 
     #[tokio::test]

@@ -17,8 +17,16 @@ import {
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
 } from '@/lib/coworkTools'
+import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSession'
+import { ENTER_WORKTREE_TOOL_NAME, EXIT_WORKTREE_TOOL_NAME } from '@/lib/worktreeToolNames'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { DEFAULT_MAX_CONCURRENT_SUBAGENTS } from '@/lib/subagentSettings'
+import { parseMemoryScope, type MemoryScope } from '@/lib/coworkSubagentMemory'
+import { parseSkillList, skillListError } from '@/lib/coworkSubagentSkills'
+import { isEffortLevel, type EffortLevel } from '@/lib/modelEffort'
+import { isCoworkMode, type CoworkMode } from '@/lib/coworkMode'
 import { ENABLE_TOOLS_NAME } from '@/lib/coworkToolGroups'
 import { BACKGROUND_TASK_TOOLS } from '@/lib/coworkBackgroundTasks'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
@@ -59,8 +67,11 @@ import type { StreamEvent } from '@/hooks/useCoworkRun'
  * runner dispatches them in order, so a run id to await later buys nothing.
  */
 
-/** Concurrent children, mirroring `DEFAULT_MAX_PARALLEL_SUBAGENTS`. */
-export const MAX_PARALLEL_SUBAGENTS = 3
+/**
+ * Concurrent children when no setting says otherwise (Settings > Subagents sets
+ * it). It was a fixed 3 before the setting existed.
+ */
+export const MAX_PARALLEL_SUBAGENTS = DEFAULT_MAX_CONCURRENT_SUBAGENTS
 
 /**
  * Longest child answer handed to the parent whole. Past this the middle is cut:
@@ -118,9 +129,23 @@ const SUBAGENT_SKILL_TOOLS = ['skill_list', 'skill_read']
  * Withholding is only half of it: the dispatcher refuses these by name as well,
  * because a model can emit a call to a tool that was never advertised.
  */
+/**
+ * Where a child sits in the spawn tree. `depth` is its own level (a child of the
+ * main agent is 1); it may spawn only while `depth < maxDepth`, and then only
+ * with `task`: `team`, `workflow` and the rest stay withheld at every level.
+ */
+export type SpawnLimits = { depth: number; maxDepth: number }
+
+export const canSpawn = (limits: SpawnLimits | undefined): boolean =>
+  limits !== undefined && limits.depth < limits.maxDepth
+
 const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
+  SPAWN_SESSION_TOOL_NAME,
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
   ASK_TOOL_NAME,
   TODO_TOOL_NAME,
   // Managing the parent's background tasks is the parent's business.
@@ -145,6 +170,12 @@ export type SubagentRequest = {
   title?: string
   /** A configured model to run this child on, checked when it starts. */
   model?: string
+  /** Reasoning effort for this child, checked against what its model offers. */
+  effort?: EffortLevel
+  /** Start from a copy of the parent's conversation, system prompt, tools and model. */
+  fork?: boolean
+  /** The `workflow` phase this child belongs to; set by the team runner, never by the model. */
+  phase?: { name: string; index: number }
   /**
    * Continue a subagent that already finished, by the agent id its result gave:
    * `description` is then the follow-up, sent to the same conversation.
@@ -164,6 +195,22 @@ export type ResolvedSubagent = {
    * rather than by an agent someone named (AH-110).
    */
   scope?: SubagentDefinition['scope']
+  /** The definition's own step cap, already clamped to [1, MAX_SUBAGENT_STEPS]. */
+  maxTurns?: number
+  /** The mode the definition asks for; capped by the parent's at the dispatcher. */
+  permissionMode?: CoworkMode
+  /** Prepended to the parent's delegation message. */
+  initialPrompt?: string
+  /** Skip project instructions for this child. */
+  omitInstructions?: boolean
+  /** A forked child: the parent's own system prompt and conversation, not a definition. */
+  fork?: boolean
+  /** Persistent memory scope, when the definition has one. */
+  memory?: MemoryScope
+  /** Skills preloaded into the child's context at start. */
+  skills?: string[]
+  /** Reasoning effort: the call's, else the definition's. */
+  effort?: EffortLevel
 }
 
 /**
@@ -202,6 +249,8 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
   if (raw.background === true) req.background = true
   if (typeof raw.title === 'string' && raw.title.trim()) req.title = raw.title.trim()
   if (typeof raw.model === 'string' && raw.model.trim()) req.model = raw.model.trim().slice(0, 200)
+  if (isEffortLevel(raw.effort)) req.effort = raw.effort
+  if (raw.fork === true) req.fork = true
   if (typeof raw.resume_agent_id === 'string' && raw.resume_agent_id.trim()) {
     req.resume_agent_id = raw.resume_agent_id.trim().slice(0, 200)
   }
@@ -265,7 +314,25 @@ export function resolveSubagent(
   definitions: SubagentDefinition[],
   parentTools: string[]
 ): ResolvedSubagent | { error: string } {
+  // A fork is the parent again, not a saved role: its prompt, tools and model
+  // are the parent's, so no definition, allowlist or system_prompt applies.
+  if (req.fork) {
+    if (req.allowed_tools?.length || req.system_prompt) {
+      return {
+        error:
+          '`fork: true` inherits the parent\'s prompt and tools; do not pass `allowed_tools` or `system_prompt` with it.',
+      }
+    }
+    return { name: req.subagent_name, systemPrompt: '', allowedTools: null, model: null, fork: true }
+  }
   const saved = definitions.find((d) => d.name === req.subagent_name)
+  const denied = saved?.disallowed_tools ?? []
+  const asked = req.allowed_tools?.find((t) => denied.includes(t))
+  if (asked) {
+    return {
+      error: `tool '${asked}' is outside the subagent definition's disallowed_tools`,
+    }
+  }
   const narrowed = intersectAllowedTools(
     saved ? saved.allowed_tools : (req.allowed_tools ?? null),
     // An inline allowlist *is* the one-off's definition, so it is not also
@@ -275,12 +342,46 @@ export function resolveSubagent(
   )
   if ('error' in narrowed) return narrowed
   if (saved) {
+    let allowedTools = narrowed.tools
+    if (denied.length > 0) {
+      // The denylist applies last, to whatever the allowlist and the parent
+      // left, so it removes a tool however it got there. It needs an explicit
+      // list to subtract from, so an inheriting definition starts from the
+      // parent's set.
+      allowedTools = (allowedTools ?? parentTools).filter((t) => !denied.includes(t))
+      if (allowedTools.every((t) => SUBAGENT_SKILL_TOOLS.includes(t))) {
+        return {
+          error:
+            `subagent '${saved.name}' has no tools left: its disallowed_tools ` +
+            'remove every tool it would otherwise have. Edit the definition.',
+        }
+      }
+    }
+    const skillError = skillListError(parseSkillList(saved.skills) ?? [])
+    if (skillError) return { error: `subagent '${saved.name}': ${skillError}` }
+    const effort = req.effort ?? (isEffortLevel(saved.effort) ? saved.effort : undefined)
     return {
       name: saved.name,
       systemPrompt: saved.system_prompt,
-      allowedTools: narrowed.tools,
+      allowedTools,
       model: saved.model,
       scope: saved.scope,
+      ...(typeof saved.max_turns === 'number' && Number.isFinite(saved.max_turns)
+        ? {
+            maxTurns: Math.min(
+              MAX_SUBAGENT_STEPS,
+              Math.max(1, Math.floor(saved.max_turns))
+            ),
+          }
+        : {}),
+      ...(isCoworkMode(saved.permission_mode)
+        ? { permissionMode: saved.permission_mode }
+        : {}),
+      ...(saved.initial_prompt?.trim() ? { initialPrompt: saved.initial_prompt.trim() } : {}),
+      ...(saved.omit_instructions === true ? { omitInstructions: true } : {}),
+      ...(parseSkillList(saved.skills) ? { skills: parseSkillList(saved.skills) } : {}),
+      ...(parseMemoryScope(saved.memory) ? { memory: parseMemoryScope(saved.memory) } : {}),
+      ...(effort ? { effort } : {}),
     }
   }
   if (!req.system_prompt) {
@@ -295,6 +396,64 @@ export function resolveSubagent(
     systemPrompt: req.system_prompt,
     allowedTools: narrowed.tools,
     model: null,
+    ...(req.effort ? { effort: req.effort } : {}),
+  }
+}
+
+/**
+ * A `task` input with a saved definition's `background` / `isolation` defaults
+ * filled in where the call said nothing. An explicit `background` or `isolate`
+ * on the call (including `false`) always wins.
+ *
+ * `canBackground` / `canIsolate` say whether the surface offers each; a default
+ * the surface cannot honour is left alone rather than refused. The existing
+ * rule that a checkout cannot be combined with `allowed_tools` or `background`
+ * still holds, and a refusal here names the definition's field so the model
+ * knows where the combination came from.
+ */
+export function applyTaskDefaults(
+  input: unknown,
+  definition: Pick<SubagentDefinition, 'background' | 'isolation'> | undefined,
+  surface: { canBackground: boolean; canIsolate: boolean }
+): { input: unknown } | { error: string } {
+  if (!definition || !input || typeof input !== 'object') return { input }
+  const raw = input as Record<string, unknown>
+  const defBackground =
+    definition.background === true && surface.canBackground && raw.background === undefined
+  const defIsolate =
+    definition.isolation === 'worktree' && surface.canIsolate && raw.isolate === undefined
+  if (!defBackground && !defIsolate) return { input }
+  const background = defBackground || raw.background === true
+  const isolate = defIsolate || raw.isolate === true
+  if (background && isolate && (defBackground || defIsolate)) {
+    return {
+      error:
+        "This subagent's definition sets " +
+        [defBackground ? '`background: true`' : '', defIsolate ? '`isolation: worktree`' : '']
+          .filter(Boolean)
+          .join(' and ') +
+        ', and `background` cannot be combined with `isolate`. Pass ' +
+        (defBackground ? '`background: false`' : '`isolate: false`') +
+        ' to choose one.',
+    }
+  }
+  if (
+    defIsolate &&
+    Array.isArray(raw.allowed_tools) &&
+    raw.allowed_tools.length > 0
+  ) {
+    return {
+      error:
+        "This subagent's definition sets `isolation: worktree`, which cannot be " +
+        'combined with `allowed_tools` on `task`. Pass `isolate: false` or drop `allowed_tools`.',
+    }
+  }
+  return {
+    input: {
+      ...raw,
+      ...(defBackground ? { background: true } : {}),
+      ...(defIsolate ? { isolate: true } : {}),
+    },
   }
 }
 
@@ -302,11 +461,12 @@ export function resolveSubagent(
  * gets, then narrowed to its allowlist. */
 export function subagentTools(
   parentTools: Record<string, Tool>,
-  allowedTools: string[] | null
+  allowedTools: string[] | null,
+  limits?: SpawnLimits
 ): Record<string, Tool> {
   const out: Record<string, Tool> = {}
   for (const [name, tool] of Object.entries(parentTools)) {
-    if (WITHHELD_FROM_SUBAGENTS.has(name)) continue
+    if (WITHHELD_FROM_SUBAGENTS.has(name) && !(name === TASK_TOOL_NAME && canSpawn(limits))) continue
     if (allowedTools && !allowedTools.includes(name)) continue
     out[name] = tool
   }
@@ -326,11 +486,17 @@ export function parentToolNames(tools: Record<string, Tool>): string[] {
  * child actually gets.
  */
 class Semaphore {
-  private free: number
+  private active = 0
   private waiters: Array<() => void> = []
 
-  constructor(private readonly cap: number) {
-    this.free = Math.max(1, cap)
+  constructor(private cap: number) {
+    this.cap = Math.max(1, cap)
+  }
+
+  /** Change the cap; waiters that now fit start at once. */
+  setCap(cap: number): void {
+    this.cap = Math.max(1, Math.floor(cap))
+    this.drain()
   }
 
   /** Number of callers currently waiting, for the queued badge. */
@@ -340,12 +506,12 @@ class Semaphore {
 
   /** Free permits; zero means the next `acquire` will queue. */
   get available(): number {
-    return this.free
+    return Math.max(0, this.cap - this.active)
   }
 
   async acquire(): Promise<() => void> {
-    if (this.free > 0) {
-      this.free -= 1
+    if (this.active < this.cap) {
+      this.active += 1
       return () => this.release()
     }
     await new Promise<void>((resolve) => this.waiters.push(resolve))
@@ -353,12 +519,15 @@ class Semaphore {
   }
 
   private release(): void {
-    const next = this.waiters.shift()
-    if (next) {
-      next()
-      return
+    this.active -= 1
+    this.drain()
+  }
+
+  private drain(): void {
+    while (this.waiters.length > 0 && this.active < this.cap) {
+      this.active += 1
+      this.waiters.shift()?.()
     }
-    this.free = Math.min(this.cap, this.free + 1)
   }
 }
 
@@ -381,6 +550,12 @@ export type RunSubagentOptions = {
    * appended to it as the next user message instead of starting a fresh brief.
    */
   history?: UIMessage[]
+  /** The parent's own system prompt, replacing the one built for a definition (a fork). */
+  systemOverride?: string
+  /** The spawn depth: this child's level and the most levels allowed. */
+  spawn?: SpawnLimits
+  /** The most children running at once, from the Subagents settings. */
+  maxConcurrent?: number
   /** Tools only this child gets, beyond the parent's (`ask_parent`). */
   extraTools?: Record<string, Tool>
   /** The parent's model instance. Reused so no second load happens. */
@@ -534,6 +709,7 @@ export async function runSubagent(
 
   // Report the position before queueing, so the badge shows where this child
   // actually sits rather than "queued" with no sense of how far back.
+  if (opts.maxConcurrent !== undefined) gate.setCap(opts.maxConcurrent)
   if (gate.available === 0) events.onQueued(gate.waiting + 1)
   const release = await gate.acquire()
   try {
@@ -544,10 +720,10 @@ export async function runSubagent(
     events.onStart()
 
     const tools = {
-      ...subagentTools(opts.parentTools, resolved.allowedTools),
+      ...subagentTools(opts.parentTools, resolved.allowedTools, opts.spawn),
       ...(opts.extraTools ?? {}),
     }
-    const baseSystem = buildSubagentSystemPrompt(resolved.systemPrompt, {
+    const baseSystem = opts.systemOverride ?? buildSubagentSystemPrompt(resolved.systemPrompt, {
       availableTools: Object.keys(tools),
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,
@@ -563,7 +739,13 @@ export async function runSubagent(
       webSearch: 'web_search' in tools,
     })
 
-    const system = [baseSystem, ...(opts.extraSystem ?? [])].join('\n\n')
+    const depthNote = opts.spawn
+      ? `You are a subagent at depth ${opts.spawn.depth} of at most ${opts.spawn.maxDepth}. ` +
+        (canSpawn(opts.spawn) && 'task' in tools
+          ? 'You may hand a self-contained piece of your work to a further subagent with `task`; it will not see your conversation.'
+          : 'You cannot start further subagents.')
+      : undefined
+    const system = [baseSystem, ...(depthNote ? [depthNote] : []), ...(opts.extraSystem ?? [])].join('\n\n')
 
     // A fresh history: the child does not see the parent's conversation, so the
     // description is the whole brief.
@@ -595,10 +777,15 @@ export async function runSubagent(
 
     // Past the ids already in a resumed history, so none repeats.
     let n = prior.length + 1
+    // The tighter of the surface's budget and the definition's own `max_turns`.
+    const maxSteps = Math.min(
+      opts.maxSteps ?? MAX_SUBAGENT_STEPS,
+      resolved.maxTurns ?? MAX_SUBAGENT_STEPS
+    )
     const outcome = await runTurn({
       messages,
       signal: opts.signal,
-      maxSteps: opts.maxSteps ?? MAX_SUBAGENT_STEPS,
+      maxSteps,
       sessionTokens,
       ...(opts.tokenLimit !== undefined ? { sessionTokenLimit: opts.tokenLimit } : {}),
       deps: {
@@ -665,7 +852,9 @@ export async function runSubagent(
       // answer" told the parent nothing it could act on.
       const cap =
         outcome.stoppedBy === 'steps'
-          ? `its ${opts.maxSteps ?? MAX_SUBAGENT_STEPS}-step budget`
+          ? resolved.maxTurns !== undefined && resolved.maxTurns <= (opts.maxSteps ?? MAX_SUBAGENT_STEPS)
+            ? `its turn limit (max_turns ${resolved.maxTurns})`
+            : `its ${maxSteps}-step budget`
           : outcome.stoppedBy === 'tokens'
             ? 'the session token budget'
             : outcome.stoppedBy === 'deadline'

@@ -47,7 +47,8 @@
     "daily": "Her gün {{times}} saatinde",
     "weekdays": "Hafta içi {{times}} saatinde",
     "weekly": "{{days}} {{times}} saatinde",
-    "cron": "Cron {{expr}}"
+    "cron": "Cron {{expr}}",
+    "once": "Once, on {{at}}"
   },
   "status": {
     "running": "Çalışıyor",

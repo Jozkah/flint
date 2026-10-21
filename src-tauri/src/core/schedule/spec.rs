@@ -12,7 +12,7 @@
 
 use std::collections::BTreeSet;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use chrono_tz::Tz;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -62,6 +62,9 @@ pub enum Schedule {
     Weekly { days: Vec<u8>, times: Vec<TimeOfDay> },
     /// A cron expression typed by hand.
     Cron { expr: String },
+    /// Once, at this local date and time (`YYYY-MM-DDTHH:MM`, on the task's own
+    /// clock). The task disables itself after it has fired.
+    Once { at: String },
 }
 
 impl Schedule {
@@ -70,6 +73,16 @@ impl Schedule {
     pub fn to_cron(&self) -> Result<Vec<String>, ScheduleError> {
         let (times, dow): (&[TimeOfDay], String) = match self {
             Schedule::Cron { expr } => return Ok(vec![expr.trim().to_string()]),
+            Schedule::Once { at } => {
+                let when = Self::parse_once(at)?;
+                return Ok(vec![format!(
+                    "{} {} {} {} *",
+                    when.minute(),
+                    when.hour(),
+                    when.day(),
+                    when.month()
+                )]);
+            }
             Schedule::Daily { times } => (times, "*".to_string()),
             Schedule::Weekdays { times } => (times, "1-5".to_string()),
             Schedule::Weekly { days, times } => {
@@ -103,6 +116,31 @@ impl Schedule {
                 format!("{minute} {hours} * * {dow}")
             })
             .collect())
+    }
+
+    fn parse_once(at: &str) -> Result<chrono::NaiveDateTime, ScheduleError> {
+        chrono::NaiveDateTime::parse_from_str(at.trim(), "%Y-%m-%dT%H:%M")
+            .map_err(|_| ScheduleError::new("a one-time schedule is a local date and time like 2026-11-02T09:30"))
+    }
+
+    pub fn is_once(&self) -> bool {
+        matches!(self, Schedule::Once { .. })
+    }
+
+    /// The schedule in words, for an approval prompt.
+    pub fn describe(&self) -> String {
+        let times = |ts: &[TimeOfDay]| {
+            ts.iter().map(|t| format!("{:02}:{:02}", t.hour, t.minute)).collect::<Vec<_>>().join(", ")
+        };
+        match self {
+            Schedule::Daily { times: ts } => format!("every day at {}", times(ts)),
+            Schedule::Weekdays { times: ts } => format!("Monday to Friday at {}", times(ts)),
+            Schedule::Weekly { days, times: ts } => {
+                format!("weekly on days {days:?} (0 = Sunday) at {}", times(ts))
+            }
+            Schedule::Cron { expr } => format!("cron `{}`", expr.trim()),
+            Schedule::Once { at } => format!("once, at {at}"),
+        }
     }
 
     /// Parse every expression, so a bad one is refused rather than silently
@@ -320,17 +358,35 @@ impl Task {
         // A schedule that never fires (31 February) is a mistake, not a task.
         let tz = self.tz()?;
         let now = Utc::now();
-        if exprs.iter().all(|e| e.next_fires(tz, now, 1).is_empty()) {
+        if self.schedule.is_once() {
+            if self.next_fires(now, 1)?.is_empty() {
+                return Err(bad("that time has already passed"));
+            }
+        } else if exprs.iter().all(|e| e.next_fires(tz, now, 1).is_empty()) {
             return Err(bad("this schedule never fires"));
         }
         self.policy.validate()?;
         self.budgets.validate()
     }
 
+    /// The one instant a one-time task fires at, on its own clock. The cron it
+    /// compiles to has no year, so a one-time task never goes through cron
+    /// enumeration, which would find the same date again a year later.
+    pub fn once_instant(&self) -> Option<DateTime<Utc>> {
+        use chrono::TimeZone;
+        let Schedule::Once { at } = &self.schedule else { return None };
+        let naive = Schedule::parse_once(at).ok()?;
+        self.tz().ok()?.from_local_datetime(&naive).earliest().map(|d| d.with_timezone(&Utc))
+    }
+
     /// The next `count` fire times after `after`, across all the schedule's
     /// expressions, soonest first.
     pub fn next_fires(&self, after: DateTime<Utc>, count: usize) -> Result<Vec<DateTime<Utc>>, ScheduleError> {
         let tz = self.tz()?;
+        if self.schedule.is_once() {
+            self.schedule.compile()?;
+            return Ok(self.once_instant().filter(|at| *at > after).into_iter().take(count).collect());
+        }
         let mut all: Vec<DateTime<Utc>> = Vec::new();
         for e in self.schedule.compile()? {
             all.extend(e.next_fires(tz, after, count));
@@ -465,6 +521,28 @@ mod tests {
         let f = task.next_fires(after, 5).unwrap();
         assert_eq!(f.len(), 5);
         assert_eq!(f[0].to_rfc3339(), "2026-05-02T09:00:00+00:00");
+    }
+
+    #[test]
+    fn a_one_time_schedule_fires_once_and_old_files_still_load() {
+        let mut x = task("a");
+        x.schedule = Schedule::Once { at: "2099-03-04T09:30".into() };
+        assert_eq!(x.schedule.to_cron().unwrap(), vec!["30 9 4 3 *"]);
+        x.validate().unwrap();
+        // Cron has no year: only the fire in 2099 counts, not 2100's.
+        let after = DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z").unwrap().with_timezone(&Utc);
+        let fires = x.next_fires(after, 3).unwrap();
+        assert_eq!(fires.len(), 1);
+        assert_eq!(fires[0].to_rfc3339(), "2099-03-04T09:30:00+00:00");
+        x.schedule = Schedule::Once { at: "2020-01-01T09:00".into() };
+        assert!(x.validate().unwrap_err().message.contains("passed"));
+        x.schedule = Schedule::Once { at: "tomorrow".into() };
+        assert!(x.validate().is_err());
+        // A stored task from before the variant existed deserializes unchanged.
+        let old: Schedule = serde_json::from_str(r#"{"kind":"cron","expr":"0 9 * * *"}"#).unwrap();
+        assert_eq!(old, Schedule::Cron { expr: "0 9 * * *".into() });
+        let once: Schedule = serde_json::from_str(r#"{"kind":"once","at":"2099-03-04T09:30"}"#).unwrap();
+        assert!(once.is_once());
     }
 
     #[test]

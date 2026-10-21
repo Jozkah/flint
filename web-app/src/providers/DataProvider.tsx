@@ -30,6 +30,7 @@ import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
+import { startKeepAwakeSync } from '@/lib/keepAwake'
 import { isChatWindow } from '@/lib/soloFlag'
 import { hostInvoke } from '@/lib/hostInvoke'
 import { grandfatherFolderTrust } from '@/lib/grandfatherFolderTrust'
@@ -519,6 +520,12 @@ export function DataProvider() {
   }, [serviceHub, setProviders])
 
   // Keep the backend's hide-to-tray-on-close flag in sync with the setting
+  // Hold off system sleep while a run is live (desktop, Windows).
+  useEffect(() => {
+    if (solo || !IS_TAURI) return
+    return startKeepAwakeSync()
+  }, [])
+
   useEffect(() => {
     if (solo) return
     serviceHub

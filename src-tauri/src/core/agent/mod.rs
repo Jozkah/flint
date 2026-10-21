@@ -25,6 +25,8 @@ pub mod cc_links;
 pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
+pub mod btw;
+pub mod structured_output;
 pub mod compaction;
 /// Request correlation with the provider's billing records (upstream #9034).
 pub mod correlation;
@@ -108,9 +110,14 @@ pub mod skills;
 // The slash-command catalog serves the desktop popup only.
 #[cfg(not(feature = "cli"))]
 pub mod slash;
+pub mod advisor;
+pub mod attribution;
+pub mod monitor;
+pub mod schedule_tool;
 pub mod spend;
 pub mod state_schema;
 pub mod subagent;
+pub mod subagent_memory;
 pub mod team_children;
 pub mod test_triage;
 pub mod todo;

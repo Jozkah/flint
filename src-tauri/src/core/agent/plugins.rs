@@ -92,6 +92,8 @@ pub enum PluginErrorCode {
     MarketplaceUnavailable,
     /// The marketplace index has no entry of that name.
     MarketplaceEntryNotFound,
+    /// The source resolved to a commit other than the pinned one.
+    ShaMismatch,
     /// The install was cancelled; nothing was installed.
     Cancelled,
     /// The project folder does not exist.
@@ -327,6 +329,12 @@ pub struct InstalledPlugin {
     pub source_kind: Option<String>,
     /// The folder path or URL the plugin was installed from.
     pub source: Option<String>,
+    /// The commit the install resolved to (git and marketplace installs).
+    pub commit_sha: Option<String>,
+    /// The commit this plugin is pinned to, when its source pins one.
+    pub pinned_sha: Option<String>,
+    /// The marketplace index URL a marketplace install came from.
+    pub marketplace: Option<String>,
 }
 
 /// Where a plugin was installed from, persisted as `.jan-install.json`.
@@ -340,6 +348,19 @@ pub struct InstallRecord {
     #[serde(default)]
     pub subdir: Option<String>,
     pub installed_at_ms: u64,
+    /// The commit the clone resolved to at install time.
+    #[serde(default)]
+    pub commit_sha: Option<String>,
+    /// A commit the source pins; an install or update resolving elsewhere is
+    /// refused.
+    #[serde(default)]
+    pub pinned_sha: Option<String>,
+    /// Marketplace index URL, for `marketplace` installs.
+    #[serde(default)]
+    pub marketplace: Option<String>,
+    /// The entry name within that marketplace.
+    #[serde(default)]
+    pub marketplace_entry: Option<String>,
 }
 
 /// Everything the management UI shows about one installed plugin.
@@ -384,6 +405,8 @@ pub struct RemoveReport {
 pub struct PluginSources {
     /// The configured marketplace index URL, if any.
     pub marketplace: Option<String>,
+    /// Every configured marketplace index URL (the first is `marketplace`).
+    pub marketplaces: Vec<String>,
     /// Whether `git` can be run (required for git and marketplace sources).
     pub git_available: bool,
 }
@@ -402,13 +425,22 @@ pub enum InstallSource {
 }
 
 /// A plugin available on the configured marketplace: JSON index entry.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MarketEntry {
     pub name: String,
     pub description: String,
     pub repo: String,
     #[serde(default)]
     pub r#ref: Option<String>,
+    /// Pin: the commit the entry's ref must resolve to.
+    #[serde(default)]
+    pub sha: Option<String>,
+    /// The index this entry was listed by (filled in on fetch).
+    #[serde(default)]
+    pub marketplace: Option<String>,
+    /// Another configured marketplace lists a plugin of the same name.
+    #[serde(default)]
+    pub clash: bool,
 }
 
 /// Optional metadata manifest at the plugin root. Every field is optional so
@@ -600,6 +632,9 @@ fn installed_entries(root: &Path) -> Vec<(String, InstalledPlugin)> {
                 agents: plugin_agents,
                 enabled: !disabled.iter().any(|d| d == directory),
                 source_kind: record.as_ref().map(|r| r.source_kind.clone()),
+                commit_sha: record.as_ref().and_then(|r| r.commit_sha.clone()),
+                pinned_sha: record.as_ref().and_then(|r| r.pinned_sha.clone()),
+                marketplace: record.as_ref().and_then(|r| r.marketplace.clone()),
                 source: record.map(|r| r.source),
             },
         ));
@@ -657,6 +692,9 @@ fn installed_entries_scoped(scope: &PluginScope) -> Vec<(String, InstalledPlugin
                 agents: 0,
                 enabled: true,
                 source_kind: record.as_ref().map(|r| r.source_kind.clone()),
+                commit_sha: record.as_ref().and_then(|r| r.commit_sha.clone()),
+                pinned_sha: record.as_ref().and_then(|r| r.pinned_sha.clone()),
+                marketplace: record.as_ref().and_then(|r| r.marketplace.clone()),
                 source: record.map(|r| r.source),
             },
         ));
@@ -1008,6 +1046,7 @@ pub(crate) fn remove_plugin_scoped(
 pub(crate) fn sources(root: &Path) -> PluginSources {
     PluginSources {
         marketplace: plugins_section(root).marketplace,
+        marketplaces: marketplace_urls(&PluginScope::Project(root.to_path_buf())),
         git_available: git_command()
             .arg("--version")
             .stdin(Stdio::null())
@@ -1023,6 +1062,7 @@ pub(crate) fn sources(root: &Path) -> PluginSources {
 pub(crate) fn sources_scoped(scope: &PluginScope) -> PluginSources {
     PluginSources {
         marketplace: plugins_section_for_scope(scope).marketplace,
+        marketplaces: marketplace_urls(scope),
         git_available: git_command()
             .arg("--version")
             .stdin(Stdio::null())
@@ -1554,6 +1594,73 @@ fn install_git(
     ctx: &InstallCtx,
     source_kind: &str,
 ) -> Result<GitInstall, PluginError> {
+    install_git_pinned(scope, url, r#ref, collection, ctx, source_kind, &GitPin::default())
+}
+
+/// Provenance carried into an install record beyond the clone itself.
+#[derive(Debug, Clone, Default)]
+struct GitPin {
+    sha: Option<String>,
+    marketplace: Option<String>,
+    marketplace_entry: Option<String>,
+}
+
+/// Whether `actual` satisfies a pin: the full SHA, or an unambiguous prefix of
+/// at least 7 hex digits.
+fn sha_matches(pin: &str, actual: &str) -> bool {
+    let pin = pin.trim().to_ascii_lowercase();
+    pin.len() >= 7
+        && pin.chars().all(|c| c.is_ascii_hexdigit())
+        && actual.to_ascii_lowercase().starts_with(&pin)
+}
+
+fn sha_mismatch(pin: &str, actual: &str) -> PluginError {
+    PluginError::new(
+        PluginErrorCode::ShaMismatch,
+        format!("source is pinned to commit {pin} but resolved to {actual}; nothing was changed"),
+    )
+}
+
+fn validate_pin(pin: &str) -> Result<(), PluginError> {
+    let ok = (7..=64).contains(&pin.len()) && pin.chars().all(|c| c.is_ascii_hexdigit());
+    if ok {
+        Ok(())
+    } else {
+        Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("pinned sha '{pin}' is not a hex commit id (7-64 digits)"),
+        ))
+    }
+}
+
+/// `git` in `dir`, trimmed stdout.
+fn git_output_in(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let out = git_command()
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+fn install_git_pinned(
+    scope: &PluginScope,
+    url: &str,
+    r#ref: Option<&str>,
+    collection: CollectionChoice,
+    ctx: &InstallCtx,
+    source_kind: &str,
+    pin: &GitPin,
+) -> Result<GitInstall, PluginError> {
+    if let Some(sha) = pin.sha.as_deref() {
+        validate_pin(sha)?;
+    }
     let source = parse_git_source(url)?;
     let r#ref = r#ref.or(source.r#ref.as_deref());
     reject_option_like(&source.url, "repository")?;
@@ -1600,6 +1707,16 @@ fn install_git(
         });
     }
 
+    let commit_sha = git_output_in(&tmp, &["rev-parse", "HEAD"])
+        .ok()
+        .filter(|s| !s.is_empty());
+    if let Some(pinned) = pin.sha.as_deref() {
+        let actual = commit_sha.clone().unwrap_or_default();
+        if !sha_matches(pinned, &actual) {
+            remove_staging(&tmp);
+            return Err(sha_mismatch(pinned, &actual));
+        }
+    }
     let payload_root = source
         .subdir
         .as_deref()
@@ -1639,6 +1756,10 @@ fn install_git(
             git_ref: r#ref.map(str::to_string),
             subdir: source.subdir.clone(),
             installed_at_ms: 0,
+            commit_sha,
+            pinned_sha: pin.sha.clone(),
+            marketplace: pin.marketplace.clone(),
+            marketplace_entry: pin.marketplace_entry.clone(),
         },
     };
     finish_install(scope, &plugins, staged, collection, ctx, &source.url)
@@ -1692,6 +1813,7 @@ fn install_local(
             git_ref: None,
             subdir: None,
             installed_at_ms: 0,
+            ..Default::default()
         },
         display,
     };
@@ -2184,6 +2306,108 @@ async fn spawn_blocking<T: Send + 'static>(
         .map_err(|e| PluginError::io(format!("install task failed: {e}")))?
 }
 
+/// Every configured marketplace index URL: `[plugins] marketplace` first, then
+/// `[plugins] marketplaces`, blanks and repeats dropped.
+fn marketplace_urls(scope: &PluginScope) -> Vec<String> {
+    let section = plugins_section_for_scope(scope);
+    let mut urls: Vec<String> = Vec::new();
+    for url in section.marketplace.into_iter().chain(section.marketplaces) {
+        let url = url.trim().to_string();
+        if !url.is_empty() && !urls.contains(&url) {
+            urls.push(url);
+        }
+    }
+    urls
+}
+
+/// Fetch every index, tag each entry with the index it came from, and flag
+/// names that more than one index lists. An unreachable index is skipped when
+/// another answered; with only failures, the first failure is the error.
+async fn fetch_all_indexes(
+    urls: &[String],
+    ctx: Option<&InstallCtx>,
+) -> Result<Vec<MarketEntry>, PluginError> {
+    let mut all: Vec<MarketEntry> = Vec::new();
+    let mut first_error: Option<PluginError> = None;
+    let mut answered = false;
+    for url in urls {
+        let fetched = match ctx {
+            Some(ctx) => fetch_index_cancellable(url, ctx).await,
+            None => fetch_index(url).await,
+        };
+        match fetched {
+            Ok(entries) => {
+                answered = true;
+                all.extend(entries.into_iter().map(|mut e| {
+                    e.marketplace = Some(url.clone());
+                    e
+                }));
+            }
+            Err(e) if e.code == PluginErrorCode::Cancelled => return Err(e),
+            Err(e) => {
+                first_error.get_or_insert(e);
+            }
+        }
+    }
+    if !answered {
+        if let Some(e) = first_error {
+            return Err(e);
+        }
+    }
+    mark_clashes(&mut all);
+    Ok(all)
+}
+
+/// Set `clash` on every entry whose name another marketplace also lists.
+fn mark_clashes(entries: &mut [MarketEntry]) {
+    let clashing: Vec<String> = entries
+        .iter()
+        .filter(|e| {
+            entries
+                .iter()
+                .any(|o| o.name == e.name && o.marketplace != e.marketplace)
+        })
+        .map(|e| e.name.clone())
+        .collect();
+    for e in entries.iter_mut() {
+        e.clash = clashing.contains(&e.name);
+    }
+}
+
+/// Pick the entry `spec` names. `name` alone must be unambiguous across
+/// marketplaces; `name@<part of the marketplace URL>` selects one.
+fn pick_entry(index: Vec<MarketEntry>, spec: &str) -> Result<MarketEntry, PluginError> {
+    let (name, selector) = match spec.split_once('@') {
+        Some((n, s)) if !n.is_empty() && !s.is_empty() => (n, Some(s)),
+        _ => (spec, None),
+    };
+    let mut hits: Vec<MarketEntry> = index
+        .into_iter()
+        .filter(|e| e.name == name)
+        .filter(|e| match selector {
+            Some(sel) => e.marketplace.as_deref().is_some_and(|m| m.contains(sel)),
+            None => true,
+        })
+        .collect();
+    match hits.len() {
+        0 => Err(PluginError::new(
+            PluginErrorCode::MarketplaceEntryNotFound,
+            format!("plugin '{name}' not found on the marketplace"),
+        )),
+        1 => Ok(hits.remove(0)),
+        _ => Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "plugin '{name}' is listed by several marketplaces ({}); choose one with {name}@<marketplace>",
+                hits.iter()
+                    .filter_map(|e| e.marketplace.as_deref())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        )),
+    }
+}
+
 async fn install_marketplace(
     scope: &PluginScope,
     name: &str,
@@ -2191,34 +2415,36 @@ async fn install_marketplace(
     ctx: InstallCtx,
     desktop: bool,
 ) -> Result<GitInstall, PluginError> {
-    let marketplace = plugins_section_for_scope(scope).marketplace.ok_or_else(|| {
-        PluginError::new(
+    let urls = marketplace_urls(scope);
+    if urls.is_empty() {
+        return Err(PluginError::new(
             PluginErrorCode::MarketplaceNotConfigured,
             if desktop {
                 "no marketplace configured - set [plugins] marketplace in agent.toml"
             } else {
                 "no marketplace configured - set [plugins] marketplace in agent.toml, or install a git URL directly"
             },
-        )
-    })?;
-    let index = fetch_index_cancellable(&marketplace, &ctx).await?;
-    let entry = index.into_iter().find(|e| e.name == name).ok_or_else(|| {
-        PluginError::new(
-            PluginErrorCode::MarketplaceEntryNotFound,
-            format!("plugin '{name}' not found on the marketplace"),
-        )
-    })?;
+        ));
+    }
+    let index = fetch_all_indexes(&urls, Some(&ctx)).await?;
+    let entry = pick_entry(index, name)?;
     validate_marketplace_entry(&entry.repo, entry.r#ref.as_deref())?;
+    let pin = GitPin {
+        sha: entry.sha.clone(),
+        marketplace: entry.marketplace.clone(),
+        marketplace_entry: Some(entry.name.clone()),
+    };
     // Marketplace installs clone a git repo too: same blocking-work treatment.
     let scope = scope.clone();
     spawn_blocking(move || {
-        install_git(
+        install_git_pinned(
             &scope,
             &entry.repo,
             entry.r#ref.as_deref(),
             collection,
             &ctx,
             "marketplace",
+            &pin,
         )
     })
     .await
@@ -2321,13 +2547,14 @@ pub(crate) async fn search_typed_scoped(
     scope: &PluginScope,
     query: &str,
 ) -> Result<Vec<MarketEntry>, PluginError> {
-    let url = plugins_section_for_scope(scope).marketplace.ok_or_else(|| {
-        PluginError::new(
+    let urls = marketplace_urls(scope);
+    if urls.is_empty() {
+        return Err(PluginError::new(
             PluginErrorCode::MarketplaceNotConfigured,
             "no marketplace configured - set [plugins] marketplace in agent.toml",
-        )
-    })?;
-    let mut entries = fetch_index(&url).await?;
+        ));
+    }
+    let mut entries = fetch_all_indexes(&urls, None).await?;
     let query = query.trim().to_lowercase();
     if !query.is_empty() {
         entries.retain(|e| {
@@ -2335,6 +2562,205 @@ pub(crate) async fn search_typed_scoped(
         });
     }
     Ok(entries)
+}
+
+/// What `update_plugin_scoped` did.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReport {
+    pub id: String,
+    /// False when the source still resolves to the installed commit.
+    pub updated: bool,
+    pub from_sha: Option<String>,
+    pub to_sha: Option<String>,
+    pub message: String,
+}
+
+fn short_sha(sha: Option<&str>) -> &str {
+    sha.map_or("unknown", |s| &s[..s.len().min(12)])
+}
+
+/// The commit `ref` (or HEAD) of `url` points at, without cloning.
+fn remote_sha(url: &str, r#ref: Option<&str>, ctx: &InstallCtx) -> Result<String, PluginError> {
+    let mut cmd = git_command();
+    cmd.arg("ls-remote").arg("--");
+    cmd.arg(url);
+    match r#ref {
+        Some(r) => {
+            cmd.arg(r).arg(format!("{r}^{{}}"));
+        }
+        None => {
+            cmd.arg("HEAD");
+        }
+    }
+    if !ctx.terminal_prompts {
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
+    }
+    let out = run_cancellable(cmd, &ctx.cancel).map_err(|e| match e {
+        RunError::Cancelled => cancelled_error(),
+        RunError::Spawn(e) if e.kind() == io::ErrorKind::NotFound => PluginError::new(
+            PluginErrorCode::GitUnavailable,
+            "git is not installed or not on PATH",
+        ),
+        RunError::Spawn(e) => PluginError::new(PluginErrorCode::GitFailed, format!("git: {e}")),
+        RunError::Failed(stderr) => {
+            PluginError::new(PluginErrorCode::GitFailed, format!("git: {stderr}"))
+        }
+    })?;
+    let rows: Vec<(&str, &str)> = out.lines().filter_map(|l| l.split_once('\t')).collect();
+    let find = |name: String| rows.iter().find(|(_, n)| *n == name).map(|(s, _)| *s);
+    let sha = match r#ref {
+        None => rows.first().map(|(s, _)| *s),
+        Some(r) => find(format!("refs/tags/{r}^{{}}"))
+            .or_else(|| find(format!("refs/heads/{r}")))
+            .or_else(|| find(format!("refs/tags/{r}")))
+            .or_else(|| rows.first().map(|(s, _)| *s)),
+    };
+    sha.map(str::to_string).ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::GitFailed,
+            format!("git: {url} has no ref {}", r#ref.unwrap_or("HEAD")),
+        )
+    })
+}
+
+/// Re-resolve an installed git or marketplace plugin's source and reinstall it
+/// only when the commit changed. Enable state lives in `agent.toml` keyed by
+/// the plugin's directory, which an update keeps. A failed reinstall puts the
+/// previous install back.
+pub(crate) async fn update_plugin_scoped(
+    scope: &PluginScope,
+    query: &str,
+    ctx: InstallCtx,
+) -> Result<UpdateReport, PluginError> {
+    let (directory, _) = find_installed_scoped(scope, query).ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::NotInstalled,
+            format!("plugin '{query}' is not installed"),
+        )
+    })?;
+    let plugins = plugin_root_dir(scope);
+    let current = plugins.join(&directory);
+    let record = read_install_record(&current).ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("'{directory}' has no install record; reinstall it to update"),
+        )
+    })?;
+    if record.source_kind != "git" && record.source_kind != "marketplace" {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("'{directory}' was installed from a local folder; reinstall it to update"),
+        ));
+    }
+
+    // Where the source points now. A marketplace install asks its index again,
+    // so a moved ref or a new pin in the index takes effect.
+    let mut spec = record.source.clone();
+    let mut r#ref = record.git_ref.clone();
+    let mut pin = GitPin {
+        sha: record.pinned_sha.clone(),
+        marketplace: record.marketplace.clone(),
+        marketplace_entry: record.marketplace_entry.clone(),
+    };
+    if record.source_kind == "marketplace" {
+        if let (Some(url), Some(entry_name)) = (
+            record.marketplace.as_deref(),
+            record.marketplace_entry.as_deref(),
+        ) {
+            let mut index = fetch_all_indexes(&[url.to_string()], Some(&ctx)).await?;
+            index.retain(|e| e.name == entry_name);
+            let entry = index.into_iter().next().ok_or_else(|| {
+                PluginError::new(
+                    PluginErrorCode::MarketplaceEntryNotFound,
+                    format!("plugin '{entry_name}' is no longer listed by {url}"),
+                )
+            })?;
+            validate_marketplace_entry(&entry.repo, entry.r#ref.as_deref())?;
+            spec = entry.repo;
+            r#ref = entry.r#ref;
+            pin.sha = entry.sha;
+        }
+    }
+
+    let scope = scope.clone();
+    spawn_blocking(move || {
+        let parsed = parse_git_source(&spec)?;
+        let effective_ref = r#ref.clone().or(parsed.r#ref.clone());
+        let remote = remote_sha(&parsed.url, effective_ref.as_deref(), &ctx)?;
+        if let Some(pinned) = pin.sha.as_deref() {
+            validate_pin(pinned)?;
+            if !sha_matches(pinned, &remote) {
+                return Err(sha_mismatch(pinned, &remote));
+            }
+        }
+        if record.commit_sha.as_deref() == Some(remote.as_str()) {
+            return Ok(UpdateReport {
+                id: directory.clone(),
+                updated: false,
+                from_sha: record.commit_sha.clone(),
+                to_sha: Some(remote.clone()),
+                message: format!("{directory} is up to date at {}", short_sha(Some(&remote))),
+            });
+        }
+        // Move the old install aside (a staging-prefixed name is never listed),
+        // install fresh, and restore the old one if that fails.
+        let aside = new_staging(&plugins);
+        std::fs::rename(&current, &aside).map_err(PluginError::io)?;
+        let choice = match (&parsed.subdir, &record.subdir) {
+            (None, Some(rel)) => CollectionChoice::Only(vec![rel.clone()]),
+            _ => CollectionChoice::ListError,
+        };
+        let installed = install_git_pinned(
+            &scope,
+            &spec,
+            r#ref.as_deref(),
+            choice,
+            &ctx,
+            &record.source_kind,
+            &pin,
+        );
+        let id = match installed {
+            Ok(GitInstall::Installed(list)) if !list.is_empty() => list[0].id.clone(),
+            other => {
+                let _ = std::fs::remove_dir_all(&current);
+                std::fs::rename(&aside, &current).map_err(PluginError::io)?;
+                return Err(match other {
+                    Err(e) => e,
+                    _ => PluginError::new(
+                        PluginErrorCode::NoPluginContent,
+                        format!("update of '{directory}' produced no plugin; kept the installed one"),
+                    ),
+                });
+            }
+        };
+        remove_staging(&aside);
+        let to = read_install_record(&plugins.join(&id)).and_then(|r| r.commit_sha);
+        Ok(UpdateReport {
+            message: format!(
+                "updated {id}: {} -> {}",
+                short_sha(record.commit_sha.as_deref()),
+                short_sha(to.as_deref())
+            ),
+            id,
+            updated: true,
+            from_sha: record.commit_sha.clone(),
+            to_sha: to,
+        })
+    })
+    .await
+}
+
+/// [`update_plugin_scoped`] for the CLI's string errors.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) async fn update(root: &Path, name: &str) -> Result<UpdateReport, String> {
+    update_plugin_scoped(
+        &PluginScope::Project(root.to_path_buf()),
+        name,
+        InstallCtx::interactive(),
+    )
+    .await
+    .map_err(String::from)
 }
 
 /// [`search_typed`] for the CLI's string errors.
@@ -3945,5 +4371,186 @@ mod scope_tests {
 
         skills::set_test_user_plugins(None);
         let _ = std::fs::remove_dir_all(&store);
+    }
+}
+
+#[cfg(all(test, feature = "cli"))]
+mod update_tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn make_repo(tag: &str) -> PathBuf {
+        let repo =
+            std::env::temp_dir().join(format!("jan_plugin_upd_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(repo.join("skills/prepare")).unwrap();
+        std::fs::write(
+            repo.join("skills/prepare/SKILL.md"),
+            "---\ndescription: Prepare\n---\n\nv1\n",
+        )
+        .unwrap();
+        std::fs::write(repo.join("plugin.toml"), "name = \"upd-tools\"\nversion = \"1.0.0\"\n")
+            .unwrap();
+        let r = repo.to_str().unwrap();
+        git(&["init", r]).unwrap();
+        commit(&repo, "init");
+        repo
+    }
+
+    fn commit(repo: &Path, msg: &str) {
+        let r = repo.to_str().unwrap();
+        git(&["-C", r, "add", "-A"]).unwrap();
+        git(&["-C", r, "commit", "-m", msg, "--author=Jan Test <test@jan.ai>"]).unwrap();
+    }
+
+    fn head(repo: &Path) -> String {
+        git(&["-C", repo.to_str().unwrap(), "rev-parse", "HEAD"]).unwrap()
+    }
+
+    fn root(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("jan_plugin_updroot_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[tokio::test]
+    async fn install_records_the_resolved_commit_and_listing_shows_it() {
+        let repo = make_repo("rec");
+        let root = root("rec");
+        let p = install(&root, &format!("file://{}", repo.display())).await.unwrap();
+        assert_eq!(p.commit_sha.as_deref(), Some(head(&repo).as_str()));
+        let listed = installed(&root);
+        assert_eq!(listed[0].commit_sha.as_deref(), Some(head(&repo).as_str()));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn a_legacy_install_record_without_new_fields_still_loads() {
+        let dir = root("legacy");
+        std::fs::write(
+            dir.join(INSTALL_RECORD_FILE),
+            r#"{"sourceKind":"git","source":"https://x/y.git","installedAtMs":5}"#,
+        )
+        .unwrap();
+        let rec = read_install_record(&dir).expect("legacy record loads");
+        assert_eq!(rec.source_kind, "git");
+        assert_eq!(rec.commit_sha, None);
+        assert_eq!(rec.pinned_sha, None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn update_reinstalls_only_when_the_commit_changed_and_keeps_enable_state() {
+        let repo = make_repo("upd");
+        let root = root("upd");
+        install(&root, &format!("file://{}", repo.display())).await.unwrap();
+        let scope = PluginScope::Project(root.clone());
+        set_enabled(&root, "upd-tools", false).unwrap();
+
+        let same = update_plugin_scoped(&scope, "upd-tools", InstallCtx::interactive())
+            .await
+            .unwrap();
+        assert!(!same.updated, "{}", same.message);
+
+        std::fs::write(
+            repo.join("skills/prepare/SKILL.md"),
+            "---\ndescription: Prepare\n---\n\nv2\n",
+        )
+        .unwrap();
+        commit(&repo, "v2");
+        let report = update_plugin_scoped(&scope, "upd-tools", InstallCtx::interactive())
+            .await
+            .unwrap();
+        assert!(report.updated, "{}", report.message);
+        assert_eq!(report.to_sha.as_deref(), Some(head(&repo).as_str()));
+        let body = std::fs::read_to_string(
+            skills::plugins_dir(&root).join("upd-tools/skills/prepare/SKILL.md"),
+        )
+        .unwrap();
+        assert!(body.contains("v2"));
+        let after = installed(&root);
+        assert_eq!(after.len(), 1);
+        assert!(!after[0].enabled, "disabled state survives an update");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[tokio::test]
+    async fn update_of_a_local_install_is_refused() {
+        let repo = make_repo("loc");
+        let root = root("loc");
+        let scope = PluginScope::Project(root.clone());
+        let src = repo.clone();
+        let sc = scope.clone();
+        spawn_blocking(move || {
+            install_local(&sc, &src, CollectionChoice::ListError, &InstallCtx::interactive(), &mut || {})
+        })
+        .await
+        .unwrap();
+        let err = update_plugin_scoped(&scope, "upd-tools", InstallCtx::interactive())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, PluginErrorCode::InvalidSource);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn a_pin_that_resolves_elsewhere_refuses_the_install_and_leaves_nothing() {
+        let repo = make_repo("pin");
+        let root = root("pin");
+        let scope = PluginScope::Project(root.clone());
+        let url = format!("file://{}", repo.display());
+        let wrong = GitPin { sha: Some("0123456789abcdef".into()), ..Default::default() };
+        let err = install_git_pinned(
+            &scope, &url, None, CollectionChoice::ListError, &InstallCtx::interactive(), "git", &wrong,
+        )
+        .err()
+        .expect("mismatch refuses");
+        assert_eq!(err.code, PluginErrorCode::ShaMismatch);
+        assert!(installed(&root).is_empty());
+        let right = GitPin { sha: Some(head(&repo)), ..Default::default() };
+        install_git_pinned(
+            &scope, &url, None, CollectionChoice::ListError, &InstallCtx::interactive(), "git", &right,
+        )
+        .ok()
+        .expect("matching pin installs");
+        assert_eq!(installed(&root)[0].pinned_sha.as_deref(), Some(head(&repo).as_str()));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn sha_matching_accepts_prefixes_but_not_short_or_non_hex() {
+        assert!(sha_matches("abcdef1", "abcdef1234"));
+        assert!(!sha_matches("abcdef", "abcdef1234"));
+        assert!(!sha_matches("abcdefg", "abcdefg123"));
+        assert!(!sha_matches("abcdef2", "abcdef1234"));
+    }
+
+    fn entry(name: &str, market: &str) -> MarketEntry {
+        MarketEntry {
+            name: name.into(),
+            description: String::new(),
+            repo: "https://example.com/r.git".into(),
+            r#ref: None,
+            sha: None,
+            marketplace: Some(market.into()),
+            clash: false,
+        }
+    }
+
+    #[test]
+    fn clashing_names_across_marketplaces_are_flagged_and_not_silently_picked() {
+        let mut all = vec![entry("a", "https://m1/i.json"), entry("a", "https://m2/i.json"), entry("b", "https://m1/i.json")];
+        mark_clashes(&mut all);
+        assert!(all[0].clash && all[1].clash && !all[2].clash);
+        let err = pick_entry(all.clone(), "a").unwrap_err();
+        assert!(err.message.contains("several marketplaces"), "{}", err.message);
+        assert_eq!(pick_entry(all.clone(), "a@m2").unwrap().marketplace.as_deref(), Some("https://m2/i.json"));
+        assert_eq!(pick_entry(all, "b").unwrap().name, "b");
     }
 }

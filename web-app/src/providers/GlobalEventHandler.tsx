@@ -4,6 +4,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useHardware } from '@/hooks/useHardware'
 import { useMcpToolProgress } from '@/hooks/useMcpToolProgress'
+import { useMcpElicitation } from '@/hooks/useMcpElicitation'
 import { useMailboxPresence } from '@/hooks/useMailboxPresence'
 import { useMailboxDelivery } from '@/hooks/useMailboxDelivery'
 import { useSessionStopRequests } from '@/hooks/useSessionStopRequests'
@@ -19,6 +20,8 @@ export function GlobalEventHandler() {
   const setHardwareData = useHardware((state) => state.setHardwareData)
 
   useMcpToolProgress()
+  // An MCP server asking the user for input mid-call (the card is in MainRoot).
+  useMcpElicitation()
   // Cross-session agent messaging: presence in the backend registry, and mail
   // delivered into Cowork sessions whichever screen is showing.
   useMailboxPresence()

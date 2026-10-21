@@ -1177,6 +1177,98 @@ pub fn cli_plugin_remove(project: &str, name: &str) -> Result<(), String> {
     crate::core::agent::plugins::remove(&resolve_project_root(project), name)
 }
 
+/// Update a git or marketplace plugin when its source moved to a new commit.
+pub async fn cli_plugin_update(
+    project: &str,
+    name: &str,
+) -> Result<crate::core::agent::plugins::UpdateReport, String> {
+    crate::core::agent::plugins::update(&resolve_project_root(project), name).await
+}
+
+/// Model calls for the diff review go through the same provider path a turn
+/// uses, with no tools.
+struct ReviewInvoker<'a> {
+    args: &'a OrchestrationArgs,
+    model: String,
+}
+
+#[async_trait::async_trait]
+impl crate::core::agent::r#loop::ModelInvoker for ReviewInvoker<'_> {
+    async fn invoke(
+        &self,
+        request: &serde_json::Value,
+        _events: &tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+    ) -> Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError> {
+        crate::core::agent::r#loop::utility_completion(self.args, &self.model, "reviewer", request)
+            .await
+    }
+}
+
+/// `flint review`: review the current diff (staged, unstaged and untracked
+/// changes against `base`, default HEAD) with a fresh-context reviewer, try to
+/// refute each finding, and print what survives, ranked. With `fix`, hand the
+/// findings to an ordinary agent run, so every edit goes through the normal
+/// tools and approvals.
+pub async fn cli_review(
+    project: &str,
+    base: Option<&str>,
+    security: bool,
+    model: Option<String>,
+    fix: bool,
+    json: bool,
+) -> Result<(), String> {
+    let root = resolve_project_root(project);
+    let input = crate::core::agent::review::collect_diff(&root, base)?;
+    let mut session = prepare_agent_session(
+        project,
+        model.clone(),
+        ProviderOverrides::default(),
+        SessionFlags {
+            plan: true,
+            require_model: true,
+            worktree: Some(false),
+            ..Default::default()
+        },
+        None,
+    )?;
+    if let Some(task) = session.mcp_task.take() {
+        task.abort();
+    }
+    let invoker = ReviewInvoker {
+        args: &session.args,
+        model: session.model.clone(),
+    };
+    let review = crate::core::agent::review::review_diff(&session.model, &input, security, &invoker)
+        .await
+        .map_err(|e| e.message().to_string())?;
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&review).map_err(|e| e.to_string())?
+        );
+    } else {
+        print!("{}", crate::core::agent::review::render_findings(&review));
+    }
+    if fix && !review.findings.is_empty() {
+        let task = crate::core::agent::review::fix_task(&review);
+        cli_agent_run(
+            project,
+            &task,
+            model,
+            ProviderOverrides::default(),
+            SessionFlags::default(),
+            None,
+            OutputFormat::Text,
+            InputFormat::Text,
+            None,
+            false,
+        )
+        .await
+        .map_err(|e| e.message().to_string())?;
+    }
+    Ok(())
+}
+
 /// Search the configured plugin marketplace for a project.
 pub async fn cli_plugin_search(
     project: &str,
@@ -1331,6 +1423,8 @@ struct PersistTarget {
     /// `--resume` reattaches to it.
     #[cfg_attr(feature = "cli", allow(dead_code))]
     workspace: Option<worktree::Worktree>,
+    /// `--ephemeral`: nothing about this run is written to the thread store.
+    ephemeral: bool,
 }
 
 /// Per-run limits resolved from agent.toml. Grouped rather than passed as a
@@ -1588,6 +1682,37 @@ pub struct SessionFlags {
     /// `[budget].max_usd`. A run that asks for one but cannot be priced is
     /// refused (see `resolve_cost_ceiling`).
     pub max_budget_usd: Option<f64>,
+    /// `--append-system-prompt[-file]`: text added to this run's system prompt.
+    pub append_system_prompt: Option<String>,
+    /// `--allow-tool`: the run may use only these tools (empty: no restriction).
+    pub allow_tools: Vec<String>,
+    /// `--deny-tool`: tools withheld from this run, on top of the project's denies.
+    pub deny_tools: Vec<String>,
+    /// `--effort`: reasoning effort for this run.
+    pub effort: Option<String>,
+    /// `--ephemeral`: do not write the session to disk.
+    pub ephemeral: bool,
+    /// `--json-schema`: the final answer must validate against this schema.
+    pub json_schema: Option<serde_json::Value>,
+    /// `--json-schema-attempts`: repair attempts before giving up.
+    pub json_schema_attempts: Option<u64>,
+}
+
+/// Check the names `--allow-tool`/`--deny-tool` carry, by the rule a schedule's
+/// allow-list uses (`Policy::validate`), except that a deny list may be empty.
+pub fn validate_tool_flags(allow: &[String], deny: &[String]) -> Result<(), String> {
+    use crate::core::schedule::spec::{Policy, WriteMode};
+    if !allow.is_empty() {
+        Policy { allow_tools: allow.to_vec(), write: WriteMode::ReadOnly }
+            .validate()
+            .map_err(|e| format!("--allow-tool: {e}"))?;
+    }
+    if !deny.is_empty() {
+        Policy { allow_tools: deny.to_vec(), write: WriteMode::ReadOnly }
+            .validate()
+            .map_err(|e| format!("--deny-tool: {e}"))?;
+    }
+    Ok(())
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -1738,7 +1863,10 @@ pub(crate) fn prepare_agent_session(
     // AH-186: the run's settings are the project's, with the chosen profile
     // folded in. An unknown profile is refused here -- before a provider, a
     // tool or a model is resolved from settings nobody asked for.
-    let cfg = load_agent_config_with_profile(&project_root, flags.profile.as_deref())?;
+    let mut cfg = load_agent_config_with_profile(&project_root, flags.profile.as_deref())?;
+    validate_tool_flags(&flags.allow_tools, &flags.deny_tools)?;
+    // `--deny-tool` only adds to the project's denies; it can never lift one.
+    cfg.tools.deny.extend(flags.deny_tools.iter().cloned());
     let permissions = permissions_from(&cfg);
 
     // Resolution order: --model flag, then agent.toml [agent].model, then the
@@ -1861,7 +1989,7 @@ pub(crate) fn prepare_agent_session(
     // no server is active.
     let mcp_servers: crate::core::state::SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     let mcp_settings = mcp::read_settings();
-    let mcp_task = if mcp::active_count() > 0 {
+    let mcp_task = if mcp::active_count() > 0 && !tauri_plugin_agent_tools::safe_mode::active() {
         let servers = mcp_servers.clone();
         Some(tokio::spawn(
             async move { mcp::connect_active(&servers).await },
@@ -2084,7 +2212,7 @@ fn prepare_agent_run(
             // `agent step` is a single turn by definition and outranks any
             // flag; `agent run` carries whatever `--max-turns` asked for.
             max_turns: if single_turn { Some(1) } else { flags.max_turns },
-            ..flags
+            ..flags.clone()
         },
         resume.as_ref(),
     )?;
@@ -2153,7 +2281,29 @@ fn prepare_agent_run(
         .map(|r| r.history.clone())
         .unwrap_or_default();
     history.push(serde_json::json!({ "role": "user", "content": final_task }));
-    let body = session.body(serde_json::json!(history.clone()));
+    let mut body = session.body(serde_json::json!(history.clone()));
+    if !flags.allow_tools.is_empty() {
+        body["allowed_tools"] = serde_json::json!(flags.allow_tools);
+    }
+    if let Some(effort) = flags.effort.as_deref() {
+        body["reasoning_effort"] = serde_json::json!(effort);
+    }
+    let mut append = flags.append_system_prompt.clone().unwrap_or_default();
+    if let Some(schema) = flags.json_schema.as_ref() {
+        body["jan_json_schema"] = schema.clone();
+        if let Some(n) = flags.json_schema_attempts {
+            body["jan_json_schema_attempts"] = serde_json::json!(n);
+        }
+        if !append.is_empty() {
+            append.push_str("\n\n");
+        }
+        append.push_str(&format!(
+            "Your final answer must be a single JSON value that validates against this JSON Schema, with no prose and no code fence:\n{schema}"
+        ));
+    }
+    if !append.trim().is_empty() {
+        body["jan_append_system_prompt"] = serde_json::json!(append);
+    }
     // Emit resolved references stderr so the user sees what was injected
     if !injected.is_empty() {
         eprintln!("(resolved @path references)");
@@ -2172,6 +2322,7 @@ fn prepare_agent_run(
             model: session.model,
             history,
             workspace: session.workspace,
+            ephemeral: flags.ephemeral,
         },
     })
 }
@@ -2437,12 +2588,12 @@ async fn run_agent_loop(
     // The thread is written when the run starts, not only when it ends: a run
     // killed mid-turn otherwise leaves a checkpoint in a thread that no
     // listing knows, and `--resume` cannot name it.
-    if let Some(thread) = persist.thread_id.as_deref() {
+    if let Some(thread) = persist.thread_id.as_deref().filter(|_| !persist.ephemeral) {
         if let Err(e) = cli_save_thread(&persist.agent_dir, Some(thread), &persist.model, &persist.history, None) {
             eprintln!("(could not save session before the run: {e})");
         }
     }
-    let writer = match persist.thread_id.as_deref() {
+    let writer = match persist.thread_id.as_deref().filter(|_| !persist.ephemeral) {
         Some(thread) => match inflight::Writer::begin(
             &get_thread_dir(&persist.agent_dir, thread),
             &persist.model,
@@ -2612,7 +2763,7 @@ async fn run_agent_loop(
     let aborted = outcome.is_none();
     let result = outcome.unwrap_or_else(|| Err(ABORTED_BY_CLIENT.into()));
     drop(tx);
-    let (report, conversation) = printer.await.unwrap_or_default();
+    let (mut report, conversation) = printer.await.unwrap_or_default();
     if let Some(input) = input.as_ref() {
         report_dropped_follow_ups(input, format);
     }
@@ -2646,6 +2797,13 @@ async fn run_agent_loop(
 
     // Write the turn back so the session stays continuable with --resume.
     let model = persist.model.clone();
+    let structured = result.as_ref().ok().and_then(|c| c.get("structured_output").cloned());
+    let structured_error = result
+        .as_ref()
+        .ok()
+        .and_then(|c| c.get("structured_output_error"))
+        .and_then(|v| v.as_str().map(str::to_string));
+    report.set_structured(structured.clone(), structured_error.clone());
     let persisted = persist_headless_run(persist, &result, conversation, Some(&session_id));
     let (session_id, final_text) = (persisted.session_id, persisted.final_text);
     // Saved, so nothing is in flight any more. A run that failed before its
@@ -2682,6 +2840,16 @@ async fn run_agent_loop(
             ),
         );
     }
+    // The validated value on its own line, for a caller reading stdout in text
+    // mode. Machine formats carry it as `structured_output` in the result.
+    if !format.is_machine() {
+        if let Some(value) = structured.as_ref() {
+            println!("{value}");
+        }
+    }
+    if let Some(reason) = structured_error.as_deref() {
+        eprintln!("Error: the final answer never validated against --json-schema: {reason}");
+    }
     // The stream belongs to this run (AH-183); a later command in the same
     // process is not it.
     tauri_plugin_agent_tools::event_log::unwatch();
@@ -2692,6 +2860,12 @@ async fn run_agent_loop(
     }
     if aborted {
         return Ok(());
+    }
+    if let Some(reason) = structured_error {
+        return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+            format!("the final answer never validated against --json-schema: {reason}"),
+        ));
     }
     result.map(|_| ())
 }
@@ -2719,11 +2893,20 @@ fn persist_headless_run(
         thread_id,
         model,
         mut history,
+        ephemeral,
         ..
     } = persist;
     let mut session_id = thread_id.clone();
     let mut final_text = None;
     let mut saved = false;
+    if ephemeral {
+        // Not written anywhere, and not resumable: the answer is all there is.
+        return PersistedRun {
+            session_id: None,
+            final_text: result.as_ref().ok().and_then(completion_text),
+            saved: false,
+        };
+    }
     if let Ok(completion) = result.as_ref() {
         final_text = completion_text(completion);
         // What the run actually did, when the loop published it: the user's

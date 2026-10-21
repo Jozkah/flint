@@ -71,6 +71,9 @@ const LEGACY_CONTEXT_FILE_NAME: &str = "JAN.md";
 /// the model treats them as authoritative project instructions. Returns None
 /// when none exist.
 pub(crate) fn load_context_files(project_root: &Path) -> Option<String> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return None;
+    }
     let mut files: Vec<(std::path::PathBuf, String)> = Vec::new();
     let mut dir = Some(project_root);
     while let Some(current) = dir {
@@ -103,6 +106,63 @@ pub(crate) fn load_context_files(project_root: &Path) -> Option<String> {
     }
     block.push_str("</project_context>");
     Some(block)
+}
+
+/// The "Compact instructions" section of the project instructions file
+/// (`FLINT.md`/`JAN.md`, nearest directory last so it wins): the text under a
+/// heading of that name, up to the next heading of the same or higher level.
+/// What a compaction should preserve; `None` when no file has one.
+pub(crate) fn compact_instructions(project_root: &Path) -> Option<String> {
+    if tauri_plugin_agent_tools::safe_mode::active() {
+        return None;
+    }
+    let mut found = None;
+    let mut dir = Some(project_root);
+    let mut files = Vec::new();
+    while let Some(current) = dir {
+        for name in [CONTEXT_FILE_NAME, LEGACY_CONTEXT_FILE_NAME] {
+            if let Ok(content) = std::fs::read_to_string(current.join(name)) {
+                if !content.trim().is_empty() {
+                    files.push(content);
+                    break;
+                }
+            }
+        }
+        dir = current.parent();
+    }
+    // Nearest first in `files`: the first with a section wins.
+    for content in &files {
+        if let Some(section) = compact_section(content) {
+            found = Some(section);
+            break;
+        }
+    }
+    found
+}
+
+fn compact_section(content: &str) -> Option<String> {
+    let mut level = 0usize;
+    let mut body: Vec<&str> = Vec::new();
+    let mut inside = false;
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let hashes = trimmed.chars().take_while(|c| *c == '#').count();
+        let is_heading = hashes > 0 && trimmed[hashes..].starts_with(' ');
+        if inside {
+            if is_heading && hashes <= level {
+                break;
+            }
+            body.push(line);
+        } else if is_heading
+            && trimmed[hashes..].trim().trim_end_matches(':').eq_ignore_ascii_case("compact instructions")
+        {
+            inside = true;
+            level = hashes;
+        }
+    }
+    let text = body.join("
+").trim().to_string();
+    (!text.is_empty()).then_some(text)
 }
 
 /// Whether this project has usable instructions, by the same rule the system
@@ -1738,5 +1798,33 @@ We build with make.")
             "path should be slash-normalised: {line}"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod compact_section_tests {
+    use super::compact_section;
+
+    #[test]
+    fn the_compact_instructions_heading_is_read_to_the_next_peer_heading() {
+        let md = "# Project
+intro
+
+## Compact instructions
+Keep the API list.
+### sub
+and this
+
+## Style
+no
+";
+        assert_eq!(compact_section(md).as_deref(), Some("Keep the API list.
+### sub
+and this"));
+        assert_eq!(compact_section("# Project
+nothing"), None);
+        assert_eq!(compact_section("## compact instructions:
+
+").as_deref(), None);
     }
 }

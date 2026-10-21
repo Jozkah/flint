@@ -16,6 +16,10 @@ import {
   STOP_SESSION_TOOL_NAME,
 } from '@/lib/sessionMessagingTools'
 import { CAMPAIGN_PLAN_TOOL_NAME } from '@/lib/campaignToolNames'
+import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
+import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSessionName'
+import { ENTER_WORKTREE_TOOL_NAME } from '@/lib/worktreeToolNames'
+import { phaseSizes } from '@/lib/workflowLaunchGate'
 import {
   GIT_TOOL_NAME,
   gitAlwaysAsks,
@@ -393,6 +397,16 @@ function resourcesFor(
               )
             : []
         )
+      } else if (toolName === ENTER_WORKTREE_TOOL_NAME) {
+        raw = [str(args.folder), str(args.branch), str(args.base)].filter(Boolean) as string[]
+      } else if (toolName === SPAWN_SESSION_TOOL_NAME) {
+        raw = [str(args.folder), str(args.branch)].filter(Boolean) as string[]
+      } else if (toolName === WORKFLOW_TOOL_NAME && Array.isArray(args.phases)) {
+        // Each phase by name and size, in order.
+        raw = args.phases.map((phase, i) => {
+          const name = isPlainObject(phase) ? str(phase.name) : undefined
+          return `${i + 1}. ${name ?? `Phase ${i + 1}`} (${phaseSizes(args)[i]})`
+        })
       } else if (toolName === 'team' && Array.isArray(args.tasks)) {
         raw = args.tasks.flatMap((task) =>
           isPlainObject(task) ? strings(task.writes) : []
@@ -571,6 +585,38 @@ function actionFor(
           },
         }
       }
+      if (toolName === ENTER_WORKTREE_TOOL_NAME) {
+        return {
+          key: 'permissions:action.enterWorktree',
+          values: {
+            folder: sanitizeResource(str(args.folder) ?? '', 120),
+            branch: sanitizeResource(str(args.branch) ?? '', 80),
+            base: sanitizeResource(str(args.base) ?? '', 80),
+          },
+        }
+      }
+      if (toolName === SPAWN_SESSION_TOOL_NAME && args.worktree !== true) {
+        return {
+          key: 'permissions:action.spawnChat',
+          values: { title: sanitizeResource(str(args.title) ?? '', 80) },
+        }
+      }
+      if (toolName === SPAWN_SESSION_TOOL_NAME) {
+        return {
+          key: 'permissions:action.spawnWorktree',
+          values: {
+            folder: sanitizeResource(str(args.folder) ?? '', 120),
+            branch: sanitizeResource(str(args.branch) ?? '', 80),
+          },
+        }
+      }
+      if (toolName === WORKFLOW_TOOL_NAME) {
+        const sizes = phaseSizes(args)
+        return {
+          key: 'permissions:action.runWorkflow',
+          values: { agents: sizes.reduce((a, b) => a + b, 0), phases: sizes.length },
+        }
+      }
       if (toolName === SPEND_PAUSE_TOOL_NAME)
         return { key: 'permissions:action.spendPause' }
       if (HELPER_TOOLS.has(toolName)) return { key: 'permissions:action.startHelper' }
@@ -622,6 +668,22 @@ function consequencesFor(
       }
       if (toolName === CAMPAIGN_PLAN_TOOL_NAME) {
         return [{ key: 'permissions:consequence.campaignPlan' }]
+      }
+      if (toolName === ENTER_WORKTREE_TOOL_NAME) {
+        return [{ key: 'permissions:consequence.enterWorktree' }]
+      }
+      if (toolName === SPAWN_SESSION_TOOL_NAME) {
+        return [
+          {
+            key:
+              args.worktree === true
+                ? 'permissions:consequence.spawnWorktree'
+                : 'permissions:consequence.spawnChat',
+          },
+        ]
+      }
+      if (toolName === WORKFLOW_TOOL_NAME) {
+        return [{ key: 'permissions:consequence.workflow' }]
       }
       if (toolName === SPEND_PAUSE_TOOL_NAME) {
         return [{ key: 'permissions:consequence.spendPause' }]

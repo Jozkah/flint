@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "Meta veri",
   "regenerate": "Yeniden üret",
+  "historyReadFailed": "Konuşma geçmişi yüklenemedi.",
   "threadImage": "Konu görseli",
   "editMessage": "Mesajı düzenle",
   "deleteMessage": "Mesajı sil",
@@ -1194,7 +1195,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Yan soru yanıtlanamadı."
   },
   "autoCompactNeedsWindow": "Otomatik sıkıştırma bir bağlam boyutu gerektirir ve {{model}} için Flint'in bulabildiği bir boyut yok. Uzun sohbetlerin dolmadan önce sıkıştırılması için bu model için En Yüksek Bağlam Token'ını ayarlayın. Sağlayıcı bir isteği uzunluğu nedeniyle reddederse Flint sıkıştırır ve bir kez yeniden dener.",
   "compaction": {
@@ -1220,7 +1222,9 @@
     "interruptedNoReply_one": "{{calls}} tamamlanmış adım korundu.",
     "interruptedNoReply_other": "{{calls}} tamamlanmış adım korundu.",
     "interruptedContinue": "Devam et",
-    "interruptedDiscard": "Tamamlanmamış yanıtı at ve devam et"
+    "interruptedDiscard": "Tamamlanmamış yanıtı at ve devam et",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} araç çağıramadığından ajan olarak hareket edemiyor. Araç çağırabilen bir model seçin.",
   "sessionModelUnavailable": "{{model}} artık kullanılamıyor. Model menüsünden başka bir model seçin.",
@@ -1365,6 +1369,8 @@
     "workflows_one": "{{count}} iş akışı",
     "workflows_other": "{{count}} iş akışı",
     "phase": "Aşama {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Diğer işler",
     "progress": "{{total}} içinden {{finished}} bitti",
     "runningTasks_one": "{{count}} çalışan görev",
@@ -1504,7 +1510,19 @@
     "shellCount_other": "{{count}} komut",
     "stopWorkflow": "{{name}} durdur",
     "stopWorkflowPartial": "{{cancelled}} durduruldu; {{failed}} durdurulamadı.",
-    "cancelKillFailed": "Sistem durdurmayı reddetti: {{error}}"
+    "cancelKillFailed": "Sistem durdurmayı reddetti: {{error}}",
+    "pauseRun": "Duraklat",
+    "resumeRun": "Devam et",
+    "restartAgent": "Aracıyı yeniden başlat",
+    "runPaused": "Duraklatıldı",
+    "resumeFromSaved": "Sürdür",
+    "resumeFromSavedHint": "Yeniden çalıştır; biten aracılar kayıtlı sonuçlarını döndürür",
+    "saveWorkflow": "Kaydet",
+    "saveWorkflowName": "Ad (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Ne yapar",
+    "saveWorkflowConfirm": "İş akışını kaydet",
+    "saveWorkflowDone": "{{name}} kaydedildi. /workflow:{{name}} ile çalıştırın",
+    "saveWorkflowFailed": "Kaydedilemedi: {{error}}"
   },
   "reasoningEffort": {
     "label": "Akıl yürütme çabası",
@@ -2407,6 +2425,9 @@
   "coworkParallel": {
     "settingTitle": "Git klasöründeki yeni oturumlar kendi worktree'lerinde çalışır",
     "settingDescription": "Bir Git deposuna bağlanan her yeni oturum kendi worktree'sini ve dalını (flint/<title>) alır; böylece birçok oturum aynı klasörde birbirine ve senin çalışma kopyana dokunmadan aynı anda çalışabilir. Her dalı oturumdan incele, birleştir veya at.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Bu oturum kendi worktree'sinde {{branch}} dalında çalışıyor",
     "basedOn": "{{base}} tabanlı",
     "openFolder": "Klasörü aç",
@@ -2927,5 +2948,26 @@
     "count_one": "{{count}} iç içe",
     "count_other": "{{count}} iç içe",
     "fewer": "Daha az iç içe göster"
+  },
+  "diffReview": {
+    "title": "Değişiklikleri incele",
+    "button": "İncele",
+    "running": "İnceleniyor…",
+    "security": "Güvenlik incelemesini dahil et",
+    "progress": "Bulgu {{done}} / {{total}} denetleniyor…",
+    "failed": "İnceleme başarısız oldu: {{error}}",
+    "summary": "{{files}} dosyada {{count}} bulgu; ikinci bakışta {{refuted}} çürütüldü.",
+    "truncated": "Diff çok büyüktü ve kesildi; kalanı incelenmedi.",
+    "none": "Bulgu yok.",
+    "listLabel": "Bulgular, en ciddiden başlayarak",
+    "unverified": "doğrulanmadı",
+    "fix": "Düzeltme: {{fix}}",
+    "fixButton": "Ajanla düzelt",
+    "fixBusy": "Geçerli çalıştırmanın bitmesini bekleyin, sonra tekrar deneyin.",
+    "severity": {
+      "high": "Yüksek",
+      "medium": "Orta",
+      "low": "Düşük"
+    }
   }
 }

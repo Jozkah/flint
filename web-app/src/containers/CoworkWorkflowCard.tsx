@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import {
   Bot,
   Check,
+  ChevronRight,
   OctagonAlert,
   CircleOff,
   CircleSlash,
@@ -12,10 +14,19 @@ import {
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
+import {
+  WorkflowAgentRestart,
+  WorkflowPauseButton,
+  WorkflowPausedBadge,
+  WorkflowResumeButton,
+  WorkflowSaveButton,
+} from '@/containers/WorkflowRunControls'
 import { formatCompactDuration } from '@/lib/duration'
 import {
+  groupByWorkflowPhase,
   isCheckFailure,
   taskElapsedMs,
+  type WorkflowPhaseGroup,
   type WorkflowStatus,
   type ActivityTask,
   type WorkflowView,
@@ -37,6 +48,7 @@ export function CoworkWorkflowCard({
   onOpenTask,
   onOpenPanel,
   waiting = false,
+  onResume,
 }: {
   view: WorkflowView
   /** Clock for the elapsed labels, ticked by the conversation. */
@@ -47,6 +59,8 @@ export function CoworkWorkflowCard({
   onOpenPanel: (workflowId: string) => void
   /** Blocked on the user (approval/question): say so instead of a ticking clock. */
   waiting?: boolean
+  /** Relaunch a stopped run from its saved results. */
+  onResume?: (runId: string) => void
 }) {
   const { t } = useTranslation()
   const { workflow, progress, status, tasks } = view
@@ -54,7 +68,12 @@ export function CoworkWorkflowCard({
   // This card is a live "background activity" notice, not permanent transcript
   // chrome. Completed/failed/cancelled work remains available in Activity, but
   // once nothing is queued or running the notice should get out of the way.
-  if (status !== 'running' && status !== 'queued') return null
+  // A `workflow` run is the exception: its phases are the result the user
+  // watches, so they stay after it finishes.
+  const { groups, rest } = groupByWorkflowPhase(tasks)
+  if (status !== 'running' && status !== 'queued' && groups.length === 0) {
+    return null
+  }
 
   // One line saying how long, how much, and what is happening right now:
   // "50m 10s · 11.4k tokens · 1 running task · Running tools…".
@@ -67,6 +86,51 @@ export function CoworkWorkflowCard({
   const running = tasks.filter((task) => task.status === 'running')
   const runningTools = running.some((task) => task.kind === 'shell')
 
+  const taskRow = (task: ActivityTask) => (
+    <li key={task.id} className="flex items-center">
+      <button
+        type="button"
+        onClick={() => onOpenTask(task)}
+        className="flex h-[26px] min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+      >
+        {isCheckFailure(task) ? (
+          <TriangleAlert
+            aria-label={t('common:tasks.statusCheckFailed', {
+              code: task.exitCode,
+            })}
+            data-testid={`task-check-failed-${task.id}`}
+            className="relative size-3.5 shrink-0 text-warning"
+          />
+        ) : (
+          <StatusIcon status={task.status} />
+        )}
+        {task.kind === 'shell' ? (
+          <Terminal className="size-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <Bot className="size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate',
+            task.kind === 'shell' && 'font-mono text-xs'
+          )}
+          title={task.title}
+        >
+          {task.title}
+        </span>
+        {isCheckFailure(task) && (
+          <span className="shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-warning">
+            {t('common:tasks.exitCode', { code: task.exitCode })}
+          </span>
+        )}
+        <span className="shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-muted-foreground">
+          {formatCompactDuration(taskElapsedMs(task, now) / 1000, t)}
+        </span>
+      </button>
+      <WorkflowAgentRestart task={task} tasks={tasks} />
+    </li>
+  )
+
   return (
     <div
       data-testid="workflow-card"
@@ -77,6 +141,7 @@ export function CoworkWorkflowCard({
         <p className="min-w-0 truncate font-semibold">
           {t('common:tasks.activityTitle')}
         </p>
+        <WorkflowPausedBadge tasks={tasks} />
         <p
           className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
           data-testid="workflow-summary"
@@ -119,6 +184,9 @@ export function CoworkWorkflowCard({
                   ]
             )}
         </p>
+        <WorkflowPauseButton tasks={tasks} />
+        <WorkflowResumeButton tasks={tasks} onResume={onResume} />
+        <WorkflowSaveButton tasks={tasks} sessionId={workflow.sessionId} />
         <Button
           variant="surface"
           size="xs"
@@ -156,56 +224,19 @@ export function CoworkWorkflowCard({
         </p>
       ) : (
         <ul className="-mx-1.5 flex flex-col">
-          {tasks.map((task) => (
-            <li key={task.id}>
-              <button
-                type="button"
-                onClick={() => onOpenTask(task)}
-                className="flex h-[26px] w-full items-center gap-2 rounded-md px-1.5 text-left text-[length:calc(var(--ui-font-base)*0.78125)] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
-              >
-                {isCheckFailure(task) ? (
-                  <TriangleAlert
-                    aria-label={t('common:tasks.statusCheckFailed', {
-                      code: task.exitCode,
-                    })}
-                    data-testid={`task-check-failed-${task.id}`}
-                    className="relative size-3.5 shrink-0 text-warning"
-                  />
-                ) : (
-                  <StatusIcon status={task.status} />
-                )}
-                {task.kind === 'shell' ? (
-                  <Terminal className="size-3.5 shrink-0 text-muted-foreground" />
-                ) : (
-                  <Bot className="size-3.5 shrink-0 text-muted-foreground" />
-                )}
-                <span
-                  className={cn(
-                    'min-w-0 flex-1 truncate',
-                    task.kind === 'shell' && 'font-mono text-xs'
-                  )}
-                  title={task.title}
-                >
-                  {task.title}
-                </span>
-                {isCheckFailure(task) && (
-                  <span className="shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-warning">
-                    {t('common:tasks.exitCode', { code: task.exitCode })}
-                  </span>
-                )}
-                <span className="shrink-0 font-mono text-[length:calc(var(--ui-font-base)*0.6875)] tabular-nums text-muted-foreground">
-                  {formatCompactDuration(taskElapsedMs(task, now) / 1000, t)}
-                </span>
-              </button>
-            </li>
+          {groups.map((group) => (
+            <PhaseRow key={group.key} group={group}>
+              {group.tasks.map(taskRow)}
+            </PhaseRow>
           ))}
+          {rest.map(taskRow)}
         </ul>
       )}
     </div>
   )
 }
 
-function StatusIcon({
+export function StatusIcon({
   status,
   size = 'size-3.5',
 }: {
@@ -271,4 +302,43 @@ function StatusIcon({
 function formatTokens(tokens: number): string {
   if (tokens < 1000) return String(tokens)
   return `${(tokens / 1000).toFixed(1)}k`
+}
+
+/**
+ * One `workflow` phase: its name, how many of its agents are done, and its
+ * agents beneath, open while any is still going.
+ */
+export function PhaseRow({
+  group,
+  children,
+}: {
+  group: WorkflowPhaseGroup
+  children: React.ReactNode
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState<boolean | null>(null)
+  const expanded = open ?? (group.status === 'running' || group.status === 'queued')
+  return (
+    <li data-testid={`workflow-phase-${group.index}`}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setOpen(!expanded)}
+        className="flex h-[26px] w-full items-center gap-2 rounded-md px-1.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] font-medium outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+      >
+        <ChevronRight
+          aria-hidden
+          className={cn('size-3 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')}
+        />
+        <StatusIcon status={group.status} />
+        <span className="min-w-0 flex-1 truncate" title={group.name}>
+          {t('common:tasks.workflowPhase', { index: group.index + 1, name: group.name })}
+        </span>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {t('common:tasks.phaseDone', { finished: group.finished, total: group.tasks.length })}
+        </span>
+      </button>
+      {expanded && <ul className="ml-4 flex flex-col">{children}</ul>}
+    </li>
+  )
 }

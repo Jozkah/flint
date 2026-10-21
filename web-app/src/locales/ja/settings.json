@@ -24,7 +24,11 @@
     "precedence": "優先順位: モデルが求めるもの (許可されている場合)、ロールの設定、すべてのサブエージェントの設定、親、の順です。",
     "advanced": "詳細設定: ロールごとの設定",
     "overridden_one": "{{count}} 個のロールを設定済み",
-    "overridden_other": "{{count}} 個のロールを設定済み"
+    "overridden_other": "{{count}} 個のロールを設定済み",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "新しいアップデートを自動的にダウンロード",
   "checkForUpdates": "アップデートを確認",
@@ -552,7 +556,9 @@
       "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。"
     },
     "startupGroup": "起動とトレイ",
-    "cliGroup": "コマンドライン"
+    "cliGroup": "コマンドライン",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "拡張機能"
@@ -1456,5 +1462,16 @@
   },
   "modelDefaults": {
     "title": "デフォルト"
+  },
+  "usageAttribution": {
+    "title": "Usage by item",
+    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "calls": "{{count}}×",
+    "empty": "Nothing recorded in this window.",
+    "subagents": "Subagents",
+    "skills": "Skills",
+    "mcp": "MCP servers",
+    "plugins": "Plugins",
+    "unused": "Configured but never used"
   }
 }

@@ -548,6 +548,7 @@
   "jan": "Flint",
   "metadata": "Метаданные",
   "regenerate": "Сгенерировать заново",
+  "historyReadFailed": "Не удалось загрузить историю беседы.",
   "threadImage": "Изображение обсуждения",
   "editMessage": "Редактировать сообщение",
   "deleteMessage": "Удалить сообщение",
@@ -1221,7 +1222,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Не удалось ответить на побочный вопрос."
   },
   "autoCompactNeedsWindow": "Для автосжатия нужен размер контекста, а у {{model}} Flint не может его найти. Задайте «Макс. токенов контекста» для этой модели, чтобы длинные чаты сжимались до заполнения. Если провайдер отклоняет запрос из-за длины, Flint сжимает и повторяет один раз.",
   "compaction": {
@@ -1253,7 +1255,9 @@
     "interruptedNoReply_many": "Сохранено {{calls}} завершённых шагов.",
     "interruptedNoReply_other": "Сохранено {{calls}} завершённых шага.",
     "interruptedContinue": "Продолжить",
-    "interruptedDiscard": "Отбросить незавершённый ответ и продолжить"
+    "interruptedDiscard": "Отбросить незавершённый ответ и продолжить",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} не может вызывать инструменты, поэтому не может работать как агент. Выберите модель с вызовом инструментов.",
   "sessionModelUnavailable": "{{model}} больше недоступна. Выберите другую модель в меню моделей.",
@@ -1408,6 +1412,8 @@
     "workflows_many": "{{count}} рабочих процессов",
     "workflows_other": "{{count}} рабочих процесса",
     "phase": "Фаза {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Другая работа",
     "progress": "Завершено {{finished}} из {{total}}",
     "runningTasks_one": "{{count}} выполняемая задача",
@@ -1559,7 +1565,19 @@
     "shellCount_other": "{{count}} команды",
     "stopWorkflow": "Остановить {{name}}",
     "stopWorkflowPartial": "Остановлено: {{cancelled}}; не удалось остановить: {{failed}}.",
-    "cancelKillFailed": "Система отказалась остановить это: {{error}}"
+    "cancelKillFailed": "Система отказалась остановить это: {{error}}",
+    "pauseRun": "Пауза",
+    "resumeRun": "Продолжить",
+    "restartAgent": "Перезапустить агента",
+    "runPaused": "На паузе",
+    "resumeFromSaved": "Возобновить",
+    "resumeFromSavedHint": "Запустить снова; завершённые агенты вернут сохранённые результаты",
+    "saveWorkflow": "Сохранить",
+    "saveWorkflowName": "Имя (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Что делает",
+    "saveWorkflowConfirm": "Сохранить workflow",
+    "saveWorkflowDone": "{{name}} сохранён. Запуск: /workflow:{{name}}",
+    "saveWorkflowFailed": "Не удалось сохранить: {{error}}"
   },
   "reasoningEffort": {
     "label": "Глубина рассуждения",
@@ -2504,6 +2522,9 @@
   "coworkParallel": {
     "settingTitle": "Новые сессии в папке Git работают в собственном worktree",
     "settingDescription": "Каждая новая сессия в репозитории Git получает собственный worktree и ветку (flint/<title>), поэтому много сессий могут работать в одной папке одновременно, не мешая друг другу и не трогая вашу рабочую копию. Просматривайте, сливайте или отбрасывайте каждую ветку прямо из сессии.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Эта сессия работает в ветке {{branch}}, в собственном worktree",
     "basedOn": "от {{base}}",
     "openFolder": "Открыть папку",
@@ -3052,5 +3073,26 @@
     "count_many": "{{count}} вложенных",
     "count_other": "{{count}} вложенного",
     "fewer": "Свернуть вложенные"
+  },
+  "diffReview": {
+    "title": "Проверить изменения",
+    "button": "Проверить",
+    "running": "Проверка…",
+    "security": "Включить проверку безопасности",
+    "progress": "Проверка замечания {{done}} из {{total}}…",
+    "failed": "Не удалось выполнить проверку: {{error}}",
+    "summary": "Замечаний: {{count}} в файлах: {{files}}; опровергнуто при повторной проверке: {{refuted}}.",
+    "truncated": "Diff слишком большой и был обрезан; остальное не проверено.",
+    "none": "Замечаний нет.",
+    "listLabel": "Замечания, от самых серьёзных",
+    "unverified": "не проверено",
+    "fix": "Исправление: {{fix}}",
+    "fixButton": "Исправить с агентом",
+    "fixBusy": "Дождитесь завершения текущего запуска и повторите.",
+    "severity": {
+      "high": "Высокая",
+      "medium": "Средняя",
+      "low": "Низкая"
+    }
   }
 }

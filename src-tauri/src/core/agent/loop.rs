@@ -28,7 +28,7 @@ use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
     arguments_are_executable, collect_mcp_openai_tools_noted,
     copy_optional_chat_params,
-    drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
+    drop_malformed_tool_calls, execute_mcp_tool_calls_spilling, extract_choice_message, extract_tool_calls,
     load_assistant_config, neutralize_malformed_tool_calls, normalize_tool_call_args,
     parse_openai_messages, parse_tool_args, resolve_api_type_for_model, resolve_upstream_for_model,
     set_system_prompt, stream_openai_chat_completions, MalformedCall,
@@ -885,7 +885,48 @@ pub(crate) trait ToolInvoker: Send + Sync {
     async fn run_check_command(&self, _command: &str, _timeout_secs: u64) -> Option<(bool, String)> {
         None
     }
+
+    /// Run the project's `run-end` hooks for a run about to finish with
+    /// `final_text`. A `block` hook that fails returns its reason, which sends
+    /// the agent back to work. `None` when nothing blocks (no hooks, an
+    /// untrusted folder, or no surface for commands).
+    async fn run_end_hooks(&self, _final_text: &str) -> Option<String> {
+        None
+    }
 }
+
+/// The `!cmd` command a composer put on the run body, if any.
+fn scripted_command_of(body: &serde_json::Value) -> Option<String> {
+    body.get("jan_scripted_command")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
+}
+
+/// The assistant "reply" that stands for a user-typed `!cmd`: one `bash` call.
+fn scripted_bash_completion(command: &str) -> serde_json::Value {
+    serde_json::json!({
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": serde_json::Value::Null,
+                "tool_calls": [{
+                    "id": "call_user_shell",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": serde_json::json!({ "command": command }).to_string(),
+                    },
+                }],
+            },
+            "finish_reason": "tool_calls",
+        }]
+    })
+}
+
+/// How many times `run-end` hooks may send a run back to work.
+const MAX_RUN_END_BLOCKS: usize = 8;
 
 /// The answer to a spend pause (`[budget] pause_at_usd`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1673,18 +1714,22 @@ struct McpToolInvoker {
     tool_call_names: HashMap<String, String>,
     mcp_servers: SharedMcpServers,
     mcp_settings: Arc<Mutex<McpSettings>>,
+    /// Where an over-long MCP result is saved in full, for the model to `read`.
+    /// `None` when the run has no scratch directory or no `read` tool.
+    spill_dir: Option<std::path::PathBuf>,
 }
 
 #[async_trait]
 impl ToolInvoker for McpToolInvoker {
     // The MCP invoker forks nothing; the default is what it wants.
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
-        let results = execute_mcp_tool_calls(
+        let results = execute_mcp_tool_calls_spilling(
             tool_calls,
             &self.tool_to_server,
             &self.tool_call_names,
             &self.mcp_servers,
             &self.mcp_settings,
+            self.spill_dir.as_deref(),
         )
         .await;
         Ok(results
@@ -1843,6 +1888,9 @@ struct CompositeToolInvoker {
     /// (AH-100), so a dispatch asked to fork has something to copy. Shared
     /// rather than passed because the turn loop sees only the trait.
     live_conversation: std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    /// `advisor` calls made this run, against `advisor::MAX_CALLS_PER_RUN`.
+    #[cfg_attr(not(feature = "cli"), allow(dead_code))]
+    advisor_calls: std::sync::atomic::AtomicU32,
     /// The project's routing rules (AH-194), resolved once per run, so a rule
     /// about a subagent by name reaches the dispatch that starts it.
     routing: Vec<crate::core::agent::routing::Rule>,
@@ -1897,6 +1945,8 @@ struct CompositeToolInvoker {
     /// Whether the sandboxed shell may read `$HOME`. Resolved once per run
     /// from `[tools].allow_home_read`, falling back to `true` on the CLI.
     allow_home_read: bool,
+    /// `[tools.fs]`: the sandbox's path allow/deny lists.
+    sandbox_fs: tauri_plugin_agent_tools::tools::fs_policy::FsConfig,
     /// Whether `bash` is confined at all. Resolved once per run by
     /// [`resolve_sandbox`]; always true on the desktop.
     sandbox: bool,
@@ -2116,6 +2166,7 @@ struct ResolvedSettings {
     enabled_skills: Vec<String>,
     allow_network: bool,
     allow_home_read: bool,
+    sandbox_fs: tauri_plugin_agent_tools::tools::fs_policy::FsConfig,
     sandbox: bool,
     /// `[tools].format_on_edit` (AH-149): unset is off, on every surface.
     format_on_edit: bool,
@@ -2142,6 +2193,7 @@ fn resolve_run_settings(
         enabled_skills: settings.enabled_skills,
         allow_network: resolve_allow_network(settings.allow_network),
         allow_home_read: resolve_allow_home_read(settings.allow_home_read),
+        sandbox_fs: settings.sandbox_fs,
         sandbox: resolve_sandbox(sandbox_flag, settings.sandbox),
         format_on_edit: settings.format_on_edit,
         check_syntax: settings.check_syntax,
@@ -2439,6 +2491,7 @@ impl CompositeToolInvoker {
         )
         .with_network(self.allow_network)
         .with_home_readonly(self.allow_home_read)
+        .with_fs_config(Some(&self.sandbox_fs))
         .with_sandbox(self.sandbox)
         .with_scratch_root(&self.scratch_root)
         .with_user_skills(self.user_skills.as_deref())
@@ -2785,6 +2838,115 @@ impl CompositeToolInvoker {
             PermissionDecision::Deny => Err(format!(
                 "ERROR [approval_refused]: {action} a pull request through {api} was not approved. It changes a service outside this machine, so it needs a person's approval, or `allow = [\"pull_request\"]` in the project's agent.toml; nothing was sent."
             )),
+        }
+    }
+
+    /// `advisor`: one tool-free completion on the configured stronger model,
+    /// shown the transcript so far. Counted against the per-run cap; it is a
+    /// dispatch like any other, so its tokens appear in the spend report under
+    /// the advisor's model.
+    #[cfg(feature = "cli")]
+    async fn handle_advisor(&self, args: &serde_json::Value) -> String {
+        use crate::core::agent::advisor;
+        let Some(model) = crate::core::agent::global_config::advisor_model() else {
+            return "ERROR [invalid_input]: no advisor model is configured".to_string();
+        };
+        let Some(ctx) = &self.subagents else {
+            return "ERROR [invalid_input]: the advisor is not available in this run".to_string();
+        };
+        let used = self.advisor_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if used >= advisor::MAX_CALLS_PER_RUN {
+            return format!(
+                "ERROR [budget_exhausted]: the advisor was already consulted {} times this run",
+                advisor::MAX_CALLS_PER_RUN
+            );
+        }
+        let messages = self.live_conversation.lock().map(|m| m.clone()).unwrap_or_default();
+        let question = args.get("question").and_then(|v| v.as_str()).unwrap_or_default();
+        let request = advisor::request(&model, &messages, question);
+        match utility_completion(&ctx.parent_args, &model, "advisor", &request).await {
+            Ok(completion) => advisor::note(&model, &completion),
+            Err(e) => format!("ERROR [upstream]: the advisor call failed: {}", e.message()),
+        }
+    }
+
+    /// `schedule_task`: plan the call against this session's own limits, then
+    /// ask a person before anything is created or deleted. Unlike
+    /// `approve_repo_mutation` there is no allow rule, grant, auto-approval or
+    /// bypass that answers for the person: unattended work is approved each
+    /// time, by someone who has seen the prompt, schedule, folder and mode.
+    async fn handle_schedule_task(&self, args: &serde_json::Value) -> String {
+        use crate::core::agent::schedule_tool as tool;
+        use crate::core::schedule::store::Store;
+        if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+            return plan_mode_read_only_msg("schedule_task");
+        }
+        if self.permissions.is_denied("schedule_task", &self.subject) {
+            return denied_by_policy_msg("schedule_task", &self.project_root);
+        }
+        let creator = tool::Creator {
+            project_root: self.project_root.clone(),
+            model: self.subagents.as_ref().map(|c| c.model_id.clone()).unwrap_or_default(),
+            plan_mode: false,
+            allowed_tools: self.allowed_tools.as_ref().map(|a| a.iter().cloned().collect()),
+            denied_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
+                .iter()
+                .filter(|t| self.permissions.is_denied(t.name, &self.subject))
+                .map(|t| t.name.to_string())
+                .collect(),
+        };
+        let plan = match tool::plan(args, &creator) {
+            Ok(plan) => plan,
+            Err(e) => return format!("ERROR [invalid_input]: {e}"),
+        };
+        let store = Store::new(&crate::core::app::commands::resolve_jan_data_folder());
+        let tasks = store.load_tasks().unwrap_or_default();
+        if let Some(what) = plan.approval_text(&tasks) {
+            if let Err(refused) = self.ask_person("schedule_task", &what).await {
+                return refused;
+            }
+        }
+        match plan {
+            tool::Plan::List => tool::render_list(&tasks),
+            tool::Plan::Create(task) => match store.save_task(*task) {
+                Ok(saved) => format!("Scheduled task {} created: {}", saved.id, saved.schedule.describe()),
+                Err(e) => format!("ERROR [io]: {}", e.message),
+            },
+            tool::Plan::Delete { id } => match store.delete_task(&id) {
+                Ok(true) => format!("Deleted scheduled task {id}"),
+                Ok(false) => format!("ERROR [invalid_input]: no scheduled task {id}"),
+                Err(e) => format!("ERROR [io]: {}", e.message),
+            },
+        }
+    }
+
+    /// Put `what` to a person and wait. Always asks; offers no "always allow".
+    async fn ask_person(&self, name: &str, what: &str) -> Result<(), String> {
+        let request_id = next_permission_id();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.permission_requests.lock().await.insert(request_id.clone(), tx);
+        let _ = self.events.send(StreamEvent::PermissionRequest {
+            request_id: request_id.clone(),
+            tool_name: name.to_string(),
+            capability: "run".to_string(),
+            path: None,
+            command: Some(what.to_string()),
+            diff: None,
+            patch: None,
+            prompt_kind: "exec".to_string(),
+            offers_always: false,
+            reason: Some("This creates work that runs later with nobody watching, so it is asked every time.".to_string()),
+            args_digest: None,
+            call_id: None,
+        });
+        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
+        self.permission_requests.lock().await.remove(&request_id);
+        match decision {
+            PermissionDecision::Deny => Err(format!(
+                "ERROR [approval_refused]: {name} was not approved by a person, so nothing was changed."
+            )),
+            // `offers_always` is false, so a grant is only ever this once.
+            _ => Ok(()),
         }
     }
 
@@ -4398,6 +4560,12 @@ impl ToolInvoker for CompositeToolInvoker {
         tool_calls: &[serde_json::Value],
         on_complete: &OnComplete<'_>,
     ) -> Result<Vec<ToolOutcome>, HarnessError> {
+        // `monitor` is a backgrounded `bash` call: rewritten before anything
+        // looks at the call, so every rule, gate and sandbox that applies to
+        // `bash` applies to it, and nothing about it can be looser.
+        let monitor_ok = self.allowed_tools.as_ref().is_none_or(|a| a.contains("monitor"));
+        let (rewritten, monitors) = rewrite_monitor_calls(tool_calls, monitor_ok);
+        let tool_calls: &[serde_json::Value] = &rewritten;
         self.record_requested(tool_calls);
         let (allowed, refused) = self.apply_tool_rules(tool_calls);
         for (_, outcome) in &refused {
@@ -4410,6 +4578,10 @@ impl ToolInvoker for CompositeToolInvoker {
                 .await
                 .map(|ran| weave_refused(ran, refused, tool_calls))
         };
+        let mut out = out;
+        if let Ok(outcomes) = &mut out {
+            register_monitors(&monitors, outcomes);
+        }
         if let Ok(outcomes) = &out {
             self.record_outcomes(tool_calls, outcomes);
             // `[[tool_rules]] max_failures` reads what failed here.
@@ -4457,6 +4629,29 @@ impl ToolInvoker for CompositeToolInvoker {
         Some(self.project_root.clone())
     }
 
+    async fn run_end_hooks(&self, final_text: &str) -> Option<String> {
+        use tauri_plugin_agent_tools::hooks::{self, Context, Event, HookInput};
+        // `load` is trust-gated: an untrusted folder has no hooks.
+        let hooks = hooks::load(&self.project_root).ok()?;
+        if !hooks.iter().any(|h| h.event == Event::RunEnd) {
+            return None;
+        }
+        let ctx = Context {
+            project_root: &self.project_root,
+            allow_network: self.allow_network,
+            home_readonly: self.allow_home_read,
+            sandbox: self.sandbox,
+            mask_root: None,
+            cancel: tauri_plugin_agent_tools::lifecycle::current(),
+        };
+        let input = HookInput {
+            last_assistant_message: Some(final_text.to_string()),
+            ..HookInput::default()
+        };
+        let decision = hooks::run_with_input(&hooks, Event::RunEnd, None, &ctx, &input).await;
+        decision.blocked.map(|e| e.message)
+    }
+
     async fn run_check_command(&self, command: &str, timeout_secs: u64) -> Option<(bool, String)> {
         use tauri_plugin_agent_tools::hooks::{self, Context, Event, Hook, OnFailure};
         // A folder the user has not trusted does not get to run its own
@@ -4470,6 +4665,9 @@ impl ToolInvoker for CompositeToolInvoker {
             on_failure: OnFailure::Warn,
             timeout_secs,
             tools: Vec::new(),
+            stdin_json: false,
+            if_filter: None,
+            json_output: false,
         };
         let ctx = Context {
             project_root: &self.project_root,
@@ -4904,6 +5102,24 @@ impl CompositeToolInvoker {
                     continue;
                 };
                 let content = self.handle_lsp_tool(&args).await;
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
+            #[cfg(feature = "cli")]
+            if name == "advisor" {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let args = parse_tool_args(tc).unwrap_or_default();
+                let content = self.handle_advisor(&args).await;
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
+            if name == "schedule_task" {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    continue;
+                };
+                let content = self.handle_schedule_task(&args).await;
                 out.push(ToolOutcome::plain(id, content));
                 continue;
             }
@@ -6276,6 +6492,93 @@ fn advertise_local_tools(
                 openai_tools.push(message);
             }
 
+            // A stronger model to consult, only when `advisor_model` is set.
+            #[cfg(feature = "cli")]
+            if matches!(subject, tauri_plugin_agent_tools::subject::Subject::MainAgent)
+                && crate::core::agent::global_config::advisor_model().is_some()
+                && !permissions.is_denied("advisor", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("advisor"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "advisor",
+                        "description": "Consult a stronger model with this whole conversation before you plan a hard task or before you declare it finished. It has no tools and cannot see files beyond what the conversation shows. Returns short guidance; weigh it, you decide. Limited to a few calls per run.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "question": { "type": "string", "description": "What you want advice on. Optional." }
+                            },
+                            "required": []
+                        }
+                    }
+                }));
+            }
+
+            // Scheduled tasks: create, list, delete, and run once at a time.
+            // Creating or deleting always asks a person; a child run never
+            // schedules, and nothing in Plan mode does.
+            if !planning
+                && matches!(subject, tauri_plugin_agent_tools::subject::Subject::MainAgent)
+                && !permissions.is_denied("schedule_task", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("schedule_task"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "schedule_task",
+                        "description": "Manage scheduled tasks that run later with nobody watching. action `list` shows them. action `create` needs name, prompt and schedule (kind daily|weekdays|weekly|cron|once; daily/weekdays take times [\"09:00\"], weekly adds days [1,3] with 0 = Sunday, cron takes expr, once takes at \"YYYY-MM-DDTHH:MM\" in the task's timezone), and optionally timezone (default UTC), project, model, allow_tools, write (read_only default, or worktree), max_turns, max_tokens, max_wall_clock_secs. A task is read-only and limited to read tools unless you ask for more, and can never do more than this session can. action `delete` needs id. Creating and deleting are shown to the person and need their approval every time.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "action": { "type": "string", "enum": ["list", "create", "delete"] },
+                                "id": { "type": "string", "description": "The task, for delete." },
+                                "name": { "type": "string" },
+                                "prompt": { "type": "string", "description": "What the task does when it runs." },
+                                "schedule": { "type": "object", "description": "When it runs." },
+                                "timezone": { "type": "string", "description": "IANA name, default UTC." },
+                                "project": { "type": "string", "description": "A folder inside this session's folder; default the folder itself." },
+                                "model": { "type": "string", "description": "provider/model; default this session's." },
+                                "allow_tools": { "type": "array", "items": { "type": "string" } },
+                                "write": { "type": "string", "enum": ["read_only", "worktree"] },
+                                "max_turns": { "type": "integer" },
+                                "max_tokens": { "type": "integer" },
+                                "max_wall_clock_secs": { "type": "integer" }
+                            },
+                            "required": ["action"]
+                        }
+                    }
+                }));
+            }
+
+            // A background watcher whose matching lines reach the run as they
+            // come. It is dispatched as a backgrounded `bash` call, so it is
+            // offered only where `bash` is, and a refused `bash` refuses it.
+            let bash_offered = openai_tools
+                .iter()
+                .any(|t| t["function"]["name"].as_str() == Some("bash"));
+            if !planning
+                && bash_offered
+                && !permissions.is_denied("monitor", subject)
+                && allowed_names.is_none_or(|allow| allow.contains("monitor"))
+            {
+                openai_tools.push(serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "monitor",
+                        "description": "Start a command in the background and get its matching output lines as short events while you keep working, instead of one notice when it ends. Use it to watch a log, a build, a test run or a poll loop. Runs under the same sandbox and approval as `bash`. Lines arrive at most about one per second and at most 100 per watcher. Stop it with the background tasks panel or `bash` with the job_id.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": { "type": "string", "description": "The command to watch. Its stdout is what is delivered." },
+                                "filter": { "type": "string", "description": "Optional regex; only lines that match are delivered." }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }));
+            }
+
             let named = branches["function"]["name"].as_str().unwrap_or_default();
             let offered = !planning
                 && !permissions.is_denied(named, subject)
@@ -6933,6 +7236,20 @@ async fn orchestrate_inner(
     } else {
         (None, None)
     };
+    // `--append-system-prompt`: this run's extra instructions ride with the
+    // assistant's, ahead of the rest of the prompt.
+    let assistant_instructions = match (
+        assistant_instructions,
+        json_body
+            .get("jan_append_system_prompt")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|t| !t.is_empty()),
+    ) {
+        (Some(base), Some(extra)) => Some(format!("{base}\n\n{extra}")),
+        (None, Some(extra)) => Some(extra.to_string()),
+        (base, None) => base,
+    };
 
     // Resolved here rather than where the tools are built: the system prompt
     // names the scratch, and whether there *is* one is the sandbox decision, so
@@ -6963,6 +7280,12 @@ async fn orchestrate_inner(
         None,
     )?;
     let mut annotated_body = attach_compaction(json_body, &compaction);
+    // The project's "Compact instructions" steer every compaction of this run.
+    if let (Some(root), Some(map)) = (project_root.as_deref(), annotated_body.as_object_mut()) {
+        if let Some(focus) = crate::core::agent::context::compact_instructions(root) {
+            map.insert(crate::core::agent::compaction::BODY_FOCUS.into(), serde_json::json!(focus));
+        }
+    }
     // jan#8976: resolve the proactive compaction thresholds from the model
     // window and reserved output (profile-aware `[agent]` config, or the
     // documented 128K/16K defaults when unconfigured) and carry them on the
@@ -7455,6 +7778,26 @@ async fn orchestrate_inner(
             resolved.model
         }
     };
+    // `role:plan`: a plan-mode run may be routed to a stronger model than the
+    // one that executes the plan afterwards. Only plan mode asks for this role.
+    let model_id = if run_mode == crate::core::agent::plan::RunMode::Plan {
+        let rules = project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
+            })
+            .map(|cfg| crate::core::agent::routing::rules(&cfg.routing).unwrap_or_default())
+            .unwrap_or_default();
+        match crate::core::agent::routing::plan_model(&rules, &model_id) {
+            Some(routed) => {
+                log::info!("agent: routing sends the plan-mode run to {routed:?}");
+                routed
+            }
+            None => model_id,
+        }
+    } else {
+        model_id
+    };
 
     let ((mut openai_tools, mut tool_to_server, tool_call_names), slow_mcp_notice) =
         collect_mcp_openai_tools_noted(mcp_servers, mcp_settings).await?;
@@ -7639,11 +7982,12 @@ async fn orchestrate_inner(
             kind: Default::default(),
         },
     };
-    let mcp_tools = McpToolInvoker {
+    let mut mcp_tools = McpToolInvoker {
         tool_to_server,
         tool_call_names,
         mcp_servers: mcp_servers.clone(),
         mcp_settings: mcp_settings.clone(),
+        spill_dir: None,
     };
 
     let max_session_tokens = body_session_budget(json_body);
@@ -7690,6 +8034,11 @@ async fn orchestrate_inner(
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
         let available_tools = available_tool_names(&mcp_tools, allowed_names.as_ref());
+        // An over-long MCP result is saved under the run's scratch directory,
+        // but only when the model has `read` to page through it.
+        if available_tools.iter().any(|t| t == "read") {
+            mcp_tools.spill_dir = Some(scratch_root.join("mcp-results"));
+        }
         // Stale large tool results may be moved into this run's scratch, but
         // only when the model has the `read` tool to get them back.
         let offload_body = {
@@ -7803,6 +8152,7 @@ async fn orchestrate_inner(
             nul_programs: settings.nul_programs.clone(),
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            advisor_calls: std::sync::atomic::AtomicU32::new(0),
             allowed_tools: allowed_names.clone(),
             record_to: (!jan_data_folder.is_empty())
                 .then(|| std::path::PathBuf::from(jan_data_folder.as_str())),
@@ -7824,6 +8174,7 @@ async fn orchestrate_inner(
             allow_domains: settings.allow_domains.clone(),
             deny_domains: settings.deny_domains.clone(),
             allow_home_read: settings.allow_home_read,
+            sandbox_fs: settings.sandbox_fs.clone(),
             sandbox: settings.sandbox,
             scratch_root: scratch_root.clone(),
             user_skills: crate::core::agent::skills::user_skill_store(),
@@ -8190,6 +8541,7 @@ pub(crate) async fn compact_history(
     model_id: &str,
     messages: &[serde_json::Value],
     keep_recent: usize,
+    focus: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, HarnessError> {
     let (upstream_url, api_keys) = resolve_upstream_for_model(
         model_id,
@@ -8261,7 +8613,16 @@ pub(crate) async fn compact_history(
         messages,
         model_id,
         &model,
-        &crate::core::agent::compaction::CompactOptions::from_policy(&policy, keep_recent),
+        &crate::core::agent::compaction::CompactOptions {
+            focus: crate::core::agent::compaction::join_focus(&[
+                focus,
+                args.project_root
+                    .as_deref()
+                    .and_then(crate::core::agent::context::compact_instructions)
+                    .as_deref(),
+            ]),
+            ..crate::core::agent::compaction::CompactOptions::from_policy(&policy, keep_recent)
+        },
     )
     .await
 }
@@ -8481,6 +8842,59 @@ fn body_cost_ceiling(
         },
         max_usd,
     })
+}
+
+/// `monitor` calls rewritten as backgrounded `bash` calls, and the filter each
+/// was given by call id. A call whose arguments cannot be read, or whose filter
+/// is not a regex, is left as `monitor` and is refused downstream as an unknown
+/// tool rather than run unfiltered.
+fn rewrite_monitor_calls(
+    calls: &[serde_json::Value],
+    offered: bool,
+) -> (Vec<serde_json::Value>, Vec<(String, Option<regex::Regex>)>) {
+    let mut monitors = Vec::new();
+    let rewritten = calls
+        .iter()
+        .map(|tc| {
+            let name = tc.get("function").and_then(|f| f.get("name")).and_then(|v| v.as_str());
+            if name != Some("monitor") || !offered {
+                return tc.clone();
+            }
+            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let Some(args) = parse_tool_args(tc) else { return tc.clone() };
+            let command = args.get("command").and_then(|v| v.as_str()).unwrap_or_default();
+            let Ok(filter) = crate::core::agent::monitor::parse_filter(args.get("filter").and_then(|v| v.as_str()))
+            else {
+                return tc.clone();
+            };
+            if command.trim().is_empty() {
+                return tc.clone();
+            }
+            monitors.push((id, filter));
+            let mut bash = tc.clone();
+            bash["function"]["name"] = serde_json::json!("bash");
+            bash["function"]["arguments"] =
+                serde_json::json!(serde_json::json!({ "command": command, "background": true, "timeout": 0 }).to_string());
+            bash
+        })
+        .collect();
+    (rewritten, monitors)
+}
+
+/// Register a watcher for each rewritten call whose `bash` started a job, and
+/// say so in the result the model reads.
+fn register_monitors(monitors: &[(String, Option<regex::Regex>)], outcomes: &mut [ToolOutcome]) {
+    for (id, filter) in monitors {
+        let Some(outcome) = outcomes.iter_mut().find(|o| &o.id == id) else { continue };
+        let started = background_jobs_started(&[serde_json::json!({ "role": "tool", "content": outcome.content })]);
+        let Some(job) = started.first() else { continue };
+        crate::core::agent::monitor::register(job, filter.clone());
+        outcome.content = format!(
+            "Monitor started (job_id={job}). Matching output lines arrive as [monitor {job}] events, \
+             at most about one per second and 100 in all. Stop it with the background tasks panel or \
+             bash {{\"job_id\": \"{job}\"}}."
+        );
+    }
 }
 
 /// The `job_id`s of background `bash` commands started by the tool results in
@@ -8814,6 +9228,19 @@ async fn run_turn_cycle(
     // exit 0 before the run may answer. One retry turn, then it finishes.
     let final_checks = crate::core::agent::final_checks::from_body(json_body);
     let mut final_checks_retried = false;
+    let mut run_end_blocks = 0usize;
+    // `--json-schema`: the final answer must validate; a bounded repair loop.
+    let json_schema = json_body.get("jan_json_schema").cloned();
+    let json_schema_attempts = json_body
+        .get("jan_json_schema_attempts")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(crate::core::agent::structured_output::DEFAULT_ATTEMPTS);
+    let mut json_schema_repairs = 0u64;
+    // `!cmd` from a composer: the turn's first "model reply" is this tool call,
+    // dispatched through the same gate, sandbox and approvals as any bash call
+    // the model made, and the run ends once its result is in. No model call.
+    let scripted_command = scripted_command_of(json_body);
+    let mut scripted_first_call = scripted_command.as_deref().map(scripted_bash_completion);
     let verify_completion = body_verification_enabled(json_body);
     let mut verify_budget = crate::core::agent::verification::RepairBudget::new(
         body_verification_retries(json_body),
@@ -8827,6 +9254,7 @@ async fn run_turn_cycle(
     // results as they land, and announced once at the next turn boundary after
     // the job finishes, so the model need not poll for them.
     let mut shells_owed: Vec<String> = Vec::new();
+    let mut monitored: Vec<String> = Vec::new();
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
@@ -8838,14 +9266,37 @@ async fn run_turn_cycle(
         // A compaction replaces the vector with a shorter one, so the index of
         // what was already scanned can be past the end: clamp it rather than
         // slice out of range (which panicked the whole run).
-        shells_owed.extend(background_jobs_started(unscanned(
-            &conversation_messages,
-            shells_scanned,
-        )));
+        let started_now = background_jobs_started(unscanned(&conversation_messages, shells_scanned));
+        // Watchers are claimed before the doorbell can drop a job that
+        // finished at once.
+        monitored.extend(
+            started_now
+                .iter()
+                .filter(|j| crate::core::agent::monitor::is_watched(j) && !monitored.contains(j))
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        shells_owed.extend(started_now);
         shells_scanned = conversation_messages.len();
         if let Some(text) = finished_background_jobs(&mut shells_owed) {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
             shells_scanned = conversation_messages.len();
+        }
+        if let Some(text) = crate::core::agent::monitor::collect(&monitored) {
+            crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+            shells_scanned = conversation_messages.len();
+        }
+        // A scripted `!cmd` turn is over once its tool result is in.
+        if scripted_command.is_some() && scripted_first_call.is_none() && turn > 0 {
+            let _ = events.send(StreamEvent::MessagesUpdated {
+                messages: conversation_messages.clone(),
+            });
+            return Ok(serde_json::json!({
+                "choices": [{
+                    "message": { "role": "assistant", "content": "" },
+                    "finish_reason": "stop",
+                }]
+            }));
         }
         // A call was put off to be answered later (`[approvals] defer`): the run
         // ends here instead of carrying on without it. Once the answer is given
@@ -9078,7 +9529,9 @@ async fn run_turn_cycle(
         // On a context-overflow error, compact the conversation and retry.
         // Compaction runs progressively (a smaller kept tail each attempt) and
         // the loop gives up if a pass fails to shrink the message list.
-        let mut completion = {
+        let mut completion = if let Some(scripted) = scripted_first_call.take() {
+            scripted
+        } else {
             let policy_options = crate::core::agent::compaction::CompactOptions::from_body(json_body);
             let mut keep_recent = policy_options.keep_recent;
             let mut attempts = 0usize;
@@ -9138,7 +9591,7 @@ async fn run_turn_cycle(
                             model,
                             &crate::core::agent::compaction::CompactOptions {
                                 keep_recent,
-                                ..policy_options
+                                ..policy_options.clone()
                             },
                         )
                         .await
@@ -9384,6 +9837,66 @@ async fn run_turn_cycle(
                 }
                 if let Some(obj) = completion.as_object_mut() {
                     obj.insert("final_checks".to_string(), fc::report(&outcomes, final_checks_retried));
+                }
+            }
+            // `run-end` hooks: a Stop-style gate. A `block` hook that fails sends
+            // the agent back to work with its message, at most 8 times per run.
+            if !awaiting_user
+                && run_mode == crate::core::agent::plan::RunMode::Normal
+                && run_end_blocks < MAX_RUN_END_BLOCKS
+                && !budget.exhausted()
+                && (unlimited || turn + 1 < max_turns)
+            {
+                if let Some(reason) = tools.run_end_hooks(&final_text).await {
+                    run_end_blocks += 1;
+                    conversation_messages.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": final_text,
+                    }));
+                    crate::core::agent::reminder::attach(
+                        &mut conversation_messages,
+                        &format!(
+                            "[run-end hook {run_end_blocks}/{MAX_RUN_END_BLOCKS}] A project hook                              refused to let this run finish: {reason}
+
+Address it and continue."
+                        ),
+                    );
+                    turn += 1;
+                    continue;
+                }
+            }
+            // `--json-schema`: validate the final answer. A bad one goes back to
+            // the model with the validation error, up to the attempt cap.
+            if let Some(schema) = json_schema.as_ref() {
+                match crate::core::agent::structured_output::check_answer(schema, &final_text) {
+                    Ok(value) => {
+                        if let Some(obj) = completion.as_object_mut() {
+                            obj.insert("structured_output".to_string(), value);
+                        }
+                    }
+                    Err(reason) => {
+                        if json_schema_repairs < json_schema_attempts
+                            && !budget.exhausted()
+                            && (unlimited || turn + 1 < max_turns)
+                        {
+                            json_schema_repairs += 1;
+                            conversation_messages.push(serde_json::json!({
+                                "role": "assistant",
+                                "content": final_text,
+                            }));
+                            crate::core::agent::reminder::attach(
+                                &mut conversation_messages,
+                                &format!(
+                                    "[structured output {json_schema_repairs}/{json_schema_attempts}] Your final answer did not validate against the required JSON Schema: {reason}\n\nReply again with only the corrected JSON value, no prose and no code fence."
+                                ),
+                            );
+                            turn += 1;
+                            continue;
+                        }
+                        if let Some(obj) = completion.as_object_mut() {
+                            obj.insert("structured_output_error".to_string(), serde_json::json!(reason));
+                        }
+                    }
                 }
             }
             // Independent completion verification. The worker does not grade
@@ -10334,6 +10847,25 @@ mod tests {
 
     /// The doorbell reads the job ids a backgrounded `bash` result names, once
     /// each, and ignores everything that is not a tool result.
+    #[test]
+    fn monitor_is_dispatched_as_a_backgrounded_bash_call() {
+        let calls = vec![
+            json!({"id": "m1", "function": {"name": "monitor", "arguments": "{\"command\":\"tail -f log\",\"filter\":\"ERR\"}"}}),
+            json!({"id": "m2", "function": {"name": "monitor", "arguments": "{\"command\":\"x\",\"filter\":\"(\"}"}}),
+            json!({"id": "r1", "function": {"name": "read", "arguments": "{}"}}),
+        ];
+        let (out, monitors) = rewrite_monitor_calls(&calls, true);
+        assert_eq!(out[0]["function"]["name"], "bash");
+        let args: serde_json::Value =
+            serde_json::from_str(out[0]["function"]["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args, json!({"command": "tail -f log", "background": true, "timeout": 0}));
+        // A bad filter is not run unfiltered: it stays `monitor` and is refused.
+        assert_eq!(out[1]["function"]["name"], "monitor");
+        assert_eq!(out[2], calls[2]);
+        assert_eq!(monitors.len(), 1);
+        assert!(monitors[0].1.as_ref().unwrap().is_match("an ERR line"));
+    }
+
     #[test]
     fn background_job_ids_are_read_from_tool_results() {
         let messages = vec![
@@ -11560,7 +12092,8 @@ mod tests {
                 "edit",
                 json!({ "path": "a.txt", "edits": [{ "old_string": "one", "new_string": "two" }] }),
             ),
-            call("c2", "bash", json!({ "command": "echo hi" })),
+            // A redirect is not on the read-only shell allowlist, so this is still asked about.
+            call("c2", "bash", json!({ "command": "echo hi > out.txt" })),
         ];
         let record = |o: &ToolOutcome| heard.lock().unwrap().push(o.id.clone());
         let (out, at_prompt) = tokio::time::timeout(std::time::Duration::from_secs(20), async {
@@ -14125,6 +14658,7 @@ mod tests {
                 .map(|t| t.name.to_string())
                 .collect(),
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            advisor_calls: std::sync::atomic::AtomicU32::new(0),
             allowed_tools: None,
             record_to: None,
             session_messaging: false,
@@ -14138,6 +14672,7 @@ mod tests {
                 tool_call_names: HashMap::new(),
                 mcp_servers: Arc::new(Mutex::new(HashMap::new())),
                 mcp_settings: Arc::new(Mutex::new(McpSettings::default())),
+                spill_dir: None,
             },
             store_root: tauri_plugin_agent_tools::workspace::project_store(&root),
             enabled_skills: Vec::new(),
@@ -14145,6 +14680,7 @@ mod tests {
             allow_domains: Vec::new(),
             deny_domains: Vec::new(),
             allow_home_read: DEFAULT_ALLOW_HOME_READ,
+            sandbox_fs: Default::default(),
             scratch_root: tauri_plugin_agent_tools::workspace::scratch_dir("test-session"),
             user_skills: None,
             project_root: root,
@@ -14210,7 +14746,7 @@ mod tests {
         let call = vec![serde_json::json!({
             "id": "call_subject_1",
             "type": "function",
-            "function": { "name": "bash", "arguments": "{\"command\":\"echo hi\"}" }
+            "function": { "name": "bash", "arguments": "{\"command\":\"echo hi > out.txt\"}" }
         })];
 
         // The reviewer: refused by the policy, before any prompt.
@@ -18519,6 +19055,42 @@ profile = \"tiny\"
             "id": "w1", "type": "function",
             "function": { "name": "write", "arguments": json!({"path": path, "content": content}).to_string() }
         }]}, "finish_reason": "tool_calls"}]})
+    }
+
+    #[tokio::test]
+    async fn a_json_schema_answer_is_repaired_then_attached_as_structured_output() {
+        let root = std::env::temp_dir().join(format!("flint-schema-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let schema = json!({"type": "object", "required": ["n"], "properties": {"n": {"type": "integer"}}});
+        let body = json!({ "jan_json_schema": schema });
+        // First answer is prose, second has the wrong type, third is valid.
+        let model = MockModel::new(vec![answer("sorry, no json"), answer("{\"n\": \"x\"}"), answer("{\"n\": 4}")]);
+        let tool = FolderTool::new(&root);
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert_eq!(done["structured_output"], json!({"n": 4}));
+        assert_eq!(model.requests.lock().unwrap().len(), 3);
+        let second = model.requests.lock().unwrap()[1].to_string();
+        assert!(second.contains("did not validate") && second.contains("no JSON"), "{second}");
+        // Out of attempts: the error is reported and nothing is attached.
+        let model = MockModel::new(vec![answer("a"), answer("b")]);
+        let body = json!({ "jan_json_schema": json!(schema), "jan_json_schema_attempts": 1 });
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert!(done.get("structured_output").is_none());
+        assert!(done["structured_output_error"].as_str().unwrap().contains("no JSON"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_scripted_shell_turn_dispatches_its_call_and_asks_no_model() {
+        let root = std::env::temp_dir().join(format!("flint-scripted-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let model = MockModel::new(vec![]);
+        let tool = FolderTool::new(&root);
+        let body = json!({ "jan_scripted_command": "echo hi" });
+        let done = cycle(&model, &tool, &body, None).await.expect("finishes");
+        assert!(model.requests.lock().unwrap().is_empty(), "no model request for !cmd");
+        assert_eq!(done["choices"][0]["finish_reason"], "stop");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     async fn cycle(

@@ -291,4 +291,33 @@ describe('CoworkWorkflowCard', () => {
       screen.getAllByLabelText('common:tasks.statusError').length
     ).toBeGreaterThan(0)
   })
+
+  it('shows a workflow run as phases with counts, open while running', () => {
+    render(
+      <Card
+        state={stateWith(
+          task({ id: 'a', title: 'scan a', status: 'done', endedAt: T0 + 1, phase: { name: 'Survey', index: 0 } }),
+          task({ id: 'b', title: 'scan b', status: 'done', endedAt: T0 + 1, phase: { name: 'Survey', index: 0 } }),
+          task({ id: 'm', title: 'merge', phase: { name: 'Merge', index: 1 } })
+        )}
+      />
+    )
+    expect(screen.getByText(/workflowPhase index=1 name=Survey/)).toBeInTheDocument()
+    expect(screen.getByText(/phaseDone finished=2 total=2/)).toBeInTheDocument()
+    expect(screen.getByText(/phaseDone finished=0 total=1/)).toBeInTheDocument()
+    // The finished phase is collapsed; the running one shows its agent.
+    expect(screen.queryByText('scan a')).not.toBeInTheDocument()
+    expect(screen.getByText('merge')).toBeInTheDocument()
+  })
+
+  it('keeps the phases after the workflow finishes', () => {
+    render(
+      <Card
+        state={stateWith(
+          task({ id: 'a', status: 'done', endedAt: T0 + 1, phase: { name: 'Survey', index: 0 } })
+        )}
+      />
+    )
+    expect(screen.getByTestId('workflow-card')).toBeInTheDocument()
+  })
 })

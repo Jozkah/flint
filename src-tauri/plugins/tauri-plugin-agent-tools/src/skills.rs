@@ -202,11 +202,21 @@ struct Frontmatter {
     /// comma/newline separated string. Spelled `triggers`, `trigger` or `when`.
     #[serde(alias = "trigger", alias = "when")]
     triggers: Option<serde_yaml::Value>,
+    /// Claude Code `paths`: glob patterns (list, or comma separated string);
+    /// the skill is offered only where the project has a matching file.
+    paths: Option<serde_yaml::Value>,
+    /// Claude Code `context: fork`: run the skill in an isolated subagent.
+    context: Option<String>,
 }
 
 /// The trigger phrases a frontmatter value declares: a list, or a string split
 /// on commas and newlines. Lowercased, trimmed, empties and duplicates dropped.
 fn parse_triggers(value: Option<serde_yaml::Value>) -> Vec<String> {
+    parse_list(value, true)
+}
+
+/// [`parse_triggers`] with the case choice (`paths` globs keep theirs).
+fn parse_list(value: Option<serde_yaml::Value>, lower: bool) -> Vec<String> {
     let raw: Vec<String> = match value {
         Some(serde_yaml::Value::String(s)) => s
             .split([',', '\n'])
@@ -224,7 +234,7 @@ fn parse_triggers(value: Option<serde_yaml::Value>) -> Vec<String> {
     };
     let mut out: Vec<String> = Vec::new();
     for phrase in raw {
-        let phrase = phrase.trim().to_lowercase();
+        let phrase = if lower { phrase.trim().to_lowercase() } else { phrase.trim().to_string() };
         if !phrase.is_empty() && !out.contains(&phrase) {
             out.push(phrase);
         }
@@ -395,6 +405,53 @@ pub struct ParsedSkill {
     pub always: bool,
     /// Phrases that mean this skill applies to a request, lowercased.
     pub triggers: Vec<String>,
+    /// `paths:` globs, relative to the project root. Empty means no condition.
+    pub paths: Vec<String>,
+    /// `context: fork`: the skill runs in a subagent of its own.
+    pub fork: bool,
+}
+
+/// True when the project holds a file matching one of `patterns` (always true
+/// for an empty list). The walk is bounded and skips VCS/build folders.
+pub fn paths_match(root: &Path, patterns: &[String]) -> bool {
+    if patterns.is_empty() {
+        return true;
+    }
+    let pats: Vec<glob::Pattern> = patterns
+        .iter()
+        .filter_map(|p| glob::Pattern::new(p.trim_start_matches("./")).ok())
+        .collect();
+    if pats.is_empty() {
+        // Nothing parseable: do not hide the skill over a typo.
+        return true;
+    }
+    let opts = glob::MatchOptions { require_literal_separator: true, ..Default::default() };
+    let mut budget = 20_000usize;
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            if budget == 0 {
+                return false;
+            }
+            budget -= 1;
+            let path = e.path();
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() {
+                let n = e.file_name();
+                let n = n.to_string_lossy();
+                if depth < 8 && !matches!(n.as_ref(), ".git" | "node_modules" | "target" | ".jan") {
+                    stack.push((path, depth + 1));
+                }
+            } else if let Ok(rel) = path.strip_prefix(root) {
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                if pats.iter().any(|p| p.matches_with(&rel, opts)) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Split leading `---\n...\n---` YAML frontmatter from the markdown body.
@@ -413,6 +470,8 @@ pub fn parse(content: &str) -> ParsedSkill {
             requires: Vec::new(),
             always: false,
             triggers: Vec::new(),
+            paths: Vec::new(),
+            fork: false,
         };
     }
     let mut yaml = String::new();
@@ -442,6 +501,8 @@ pub fn parse(content: &str) -> ParsedSkill {
             requires: Vec::new(),
             always: false,
             triggers: Vec::new(),
+            paths: Vec::new(),
+            fork: false,
         };
     }
     let fm = serde_yaml::from_str::<Frontmatter>(&yaml).unwrap_or_default();
@@ -477,6 +538,8 @@ pub fn parse(content: &str) -> ParsedSkill {
             .collect(),
         always: fm.always.unwrap_or(false),
         triggers: parse_triggers(fm.triggers),
+        paths: parse_list(fm.paths, false),
+        fork: fm.context.is_some_and(|c| c.trim().eq_ignore_ascii_case("fork")),
     }
 }
 
@@ -1600,6 +1663,30 @@ mod tests {
 
     /// A skill file that links outside the skills directory is never found,
     /// so the host file it points at is never read into the model.
+    #[cfg(unix)]
+    #[test]
+    fn paths_and_fork_frontmatter() {
+        let p = parse("---
+paths: [\"src/**/*.RS\", docs/*.md]
+context: fork
+---
+b");
+        assert_eq!(p.paths, vec!["src/**/*.RS", "docs/*.md"]);
+        assert!(p.fork);
+        let q = parse("---
+description: d
+---
+b");
+        assert!(q.paths.is_empty() && !q.fork);
+        let dir = std::env::temp_dir().join(format!("skillpaths-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src/a")).unwrap();
+        std::fs::write(dir.join("src/a/x.rs"), "").unwrap();
+        assert!(paths_match(&dir, &["src/**/*.rs".into()]));
+        assert!(!paths_match(&dir, &["*.py".into()]));
+        assert!(paths_match(&dir, &[]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_skill_linked_outside_the_store_is_ignored() {

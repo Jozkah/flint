@@ -77,6 +77,18 @@ describe('tokens', () => {
     expect(matchMention(parsed, dup)).toEqual({ ok: false, reason: 'ambiguous' })
   })
 
+  it('a quoted title with spaces names a session, and two of one name are ambiguous', () => {
+    const a = entry({ kind: 'session', title: 'Fix the login bug' })
+    const parsed = parseMention('session:"Fix the login bug"')!
+    expect(matchMention(parsed, [a]).ok).toBe(true)
+    const b = entry({ kind: 'session', id: 'qqqqqqqq11111111', title: 'Fix the login bug' })
+    expect(matchMention(parsed, [a, b])).toEqual({ ok: false, reason: 'ambiguous' })
+    expect(parsePromptForReferences('ask @session:"Fix the login bug" now')).toEqual([
+      'session:"Fix the login bug"',
+    ])
+    expect(typedReference('session:"Fix the login bug"')?.kind).toBe('session')
+  })
+
   it('does not treat other things as mentions', () => {
     expect(parseMention('skill:foo')).toBeNull()
     expect(parseMention('chat:')).toBeNull()

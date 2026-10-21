@@ -26,6 +26,7 @@ import OutOfContextPromiseModal from '@/containers/dialogs/OutOfContextDialog'
 import AccessRequestDialog from '@/containers/dialogs/AccessRequestDialog'
 import AttachmentIngestionDialog from '@/containers/dialogs/AttachmentIngestionDialog'
 import { GlobalEventHandler } from '@/providers/GlobalEventHandler'
+import { McpElicitationCard } from '@/containers/McpElicitationCard'
 import { ServiceHubProvider } from '@/providers/ServiceHubProvider'
 import { WebPreviewHost } from '@/containers/WebPreviewHost'
 import { BrowserDomainDialog } from '@/containers/BrowserDomainDialog'
@@ -170,6 +171,7 @@ export default function MainRootLayout() {
             <DataProvider />
             <ActiveModelsSync />
             <GlobalEventHandler />
+            <McpElicitationCard />
             {/* One mount, above every route: Search is offered from the
                 rail and from Cowork's own header, and a dialog that lived
                 inside the sidebar simply did not exist on a surface that did

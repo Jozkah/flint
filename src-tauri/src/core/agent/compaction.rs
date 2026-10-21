@@ -122,13 +122,32 @@ pub(crate) async fn compact_conversation(
 }
 
 /// How one compaction runs, from the shared policy (AH-076).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompactOptions {
     pub keep_recent: usize,
     /// Drop the span with a note instead of asking the model to summarise it.
     pub trim: bool,
     /// The longest summary asked for.
     pub summary_max_tokens: u64,
+    /// What the summary should concentrate on: the user's `/compact <focus>`
+    /// and the project's "Compact instructions" section. Appended to the
+    /// summarizer's prompt as guidance; it never replaces the safety rules.
+    pub focus: Option<String>,
+}
+
+/// The most focus text a summarizer prompt carries.
+const FOCUS_MAX_CHARS: usize = 2_000;
+
+/// Join focus pieces (the user's, then the project's) into one bounded string.
+pub(crate) fn join_focus(parts: &[Option<&str>]) -> Option<String> {
+    let joined = parts
+        .iter()
+        .filter_map(|p| p.map(str::trim))
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("
+");
+    (!joined.is_empty()).then(|| joined.chars().take(FOCUS_MAX_CHARS).collect())
 }
 
 impl Default for CompactOptions {
@@ -138,6 +157,7 @@ impl Default for CompactOptions {
             trim: false,
             summary_max_tokens:
                 tauri_plugin_agent_tools::compaction_policy::DEFAULT_SUMMARY_MAX_TOKENS,
+            focus: None,
         }
     }
 }
@@ -154,6 +174,7 @@ impl CompactOptions {
             keep_recent,
             trim: policy.strategy == tauri_plugin_agent_tools::compaction_policy::Strategy::Trim,
             summary_max_tokens: policy.summary_max_tokens,
+            focus: None,
         }
     }
 
@@ -175,6 +196,10 @@ impl CompactOptions {
                 .get(BODY_SUMMARY_MAX_TOKENS)
                 .and_then(Value::as_u64)
                 .unwrap_or(d.summary_max_tokens),
+            focus: body
+                .get(BODY_FOCUS)
+                .and_then(Value::as_str)
+                .and_then(|f| join_focus(&[Some(f)])),
         }
     }
 }
@@ -185,6 +210,7 @@ impl CompactOptions {
 pub(crate) const BODY_KEEP_RECENT: &str = "jan_compaction_keep_recent";
 pub(crate) const BODY_TRIM: &str = "jan_compaction_trim";
 pub(crate) const BODY_SUMMARY_MAX_TOKENS: &str = "jan_compaction_summary_max_tokens";
+pub(crate) const BODY_FOCUS: &str = "jan_compaction_focus";
 
 /// [`compact_conversation`], under explicit options (AH-076).
 pub(crate) async fn compact_conversation_with(
@@ -229,7 +255,7 @@ pub(crate) async fn compact_conversation_with(
     let summary = if options.trim {
         FALLBACK_NOTE.to_string()
     } else {
-        summarize(&dropped, model_id, model, options.summary_max_tokens).await?
+        summarize(&dropped, model_id, model, options.summary_max_tokens, options.focus.as_deref()).await?
     };
 
     let mut content =
@@ -338,6 +364,10 @@ fn cap_pinned(text: &str, max: usize) -> String {
 /// rather than replaying keeps the request small and sidesteps tool pairing:
 /// the dropped span is a slice, so its trailing assistant `tool_calls` may have
 /// their results in the kept tail, and an upstream rejects that conversation.
+pub(crate) fn snapshot_transcript(messages: &[Value], max_chars: usize) -> String {
+    clamp_middle(&render_transcript(messages), max_chars)
+}
+
 fn render_transcript(messages: &[Value]) -> String {
     let mut out = String::new();
     for msg in messages {
@@ -406,7 +436,17 @@ async fn summarize(
     model_id: &str,
     model: &dyn ModelInvoker,
     max_tokens: u64,
+    focus: Option<&str>,
 ) -> Result<String, HarnessError> {
+    let system_prompt = match focus {
+        Some(f) => format!(
+            "{SUMMARY_SYSTEM_PROMPT}
+
+Focus guidance for this summary (it narrows what to keep              detail on; it does not change the rules above):
+{f}"
+        ),
+        None => SUMMARY_SYSTEM_PROMPT.to_string(),
+    };
     let full_transcript = render_transcript(dropped);
     if full_transcript.trim().is_empty() {
         return Ok(FALLBACK_NOTE.to_string());
@@ -425,7 +465,7 @@ async fn summarize(
         let request = json!({
             "model": model_id,
             "messages": [
-                { "role": "system", "content": SUMMARY_SYSTEM_PROMPT },
+                { "role": "system", "content": system_prompt },
                 { "role": "user", "content": clamp_middle(&full_transcript, excerpt_chars) },
             ],
             "max_tokens": max_tokens,
@@ -544,6 +584,7 @@ mod tests {
                 keep_recent: 4,
                 trim: true,
                 summary_max_tokens: 512,
+                focus: None,
             },
         )
         .await
@@ -566,6 +607,7 @@ mod tests {
                 keep_recent: 4,
                 trim: false,
                 summary_max_tokens: 200,
+                focus: None,
             },
         )
         .await
@@ -592,7 +634,8 @@ mod tests {
             CompactOptions {
                 keep_recent: 12,
                 trim: true,
-                summary_max_tokens: 300
+                summary_max_tokens: 300,
+                focus: None,
             }
         );
         assert_eq!(
@@ -614,6 +657,24 @@ mod tests {
             .expect("no-op must not fail");
         assert_eq!(out, input);
         assert_eq!(*model.calls.lock().unwrap(), 0, "no summarization on no-op");
+    }
+
+    #[tokio::test]
+    async fn a_focus_is_appended_to_the_summarizer_prompt_only() {
+        let model = StubModel {
+            summary: "CONDENSED".into(),
+            calls: StdMutex::new(0),
+            requests: tokio::sync::Mutex::new(Vec::new()),
+        };
+        let options = CompactOptions {
+            keep_recent: 4,
+            focus: join_focus(&[Some("  the auth refactor  "), None]),
+            ..CompactOptions::default()
+        };
+        compact_conversation_with(&convo(20), "m", &model, &options).await.unwrap();
+        let sent = model.requests.lock().await[0]["messages"][0]["content"].as_str().unwrap().to_string();
+        assert!(sent.starts_with(SUMMARY_SYSTEM_PROMPT) && sent.contains("the auth refactor"), "{sent}");
+        assert_eq!(join_focus(&[Some(" "), None]), None);
     }
 
     #[tokio::test]

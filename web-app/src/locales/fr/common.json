@@ -537,6 +537,7 @@
   "jan": "Flint",
   "metadata": "Métadonnées",
   "regenerate": "Régénérer",
+  "historyReadFailed": "Impossible de charger l'historique de la conversation.",
   "threadImage": "Image de la discussion",
   "editMessage": "Modifier le message",
   "deleteMessage": "Supprimer le message",
@@ -1201,7 +1202,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Impossible de répondre à la question annexe."
   },
   "autoCompactNeedsWindow": "Le compactage automatique nécessite une taille de contexte, et Flint n'en trouve aucune pour {{model}}. Définissez le nombre maximal de jetons de contexte pour ce modèle afin que les longues conversations soient compactées avant de le saturer. Si le fournisseur refuse une requête à cause de sa longueur, Flint compacte et réessaie une fois.",
   "compaction": {
@@ -1230,7 +1232,9 @@
     "interruptedContinue": "Continuer",
     "interruptedDiscard": "Abandonner la réponse inachevée et continuer",
     "interruptedDetail_many": "{{calls}} d'étapes terminées conservées ; réponse inachevée de {{chars}} caractères.",
-    "interruptedNoReply_many": "{{calls}} d'étapes terminées conservées."
+    "interruptedNoReply_many": "{{calls}} d'étapes terminées conservées.",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} ne peut pas appeler d'outils et ne peut donc pas jouer le rôle d'agent. Choisissez un modèle compatible avec les appels d'outils.",
   "sessionModelUnavailable": "{{model}} n’est plus disponible. Choisissez un autre modèle dans le menu des modèles.",
@@ -1376,6 +1380,8 @@
     "workflows_one": "{{count}} workflow",
     "workflows_other": "{{count}} workflows",
     "phase": "Phase {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Autre travail",
     "progress": "{{finished}} sur {{total}} terminées",
     "runningTasks_one": "{{count}} tâche en cours",
@@ -1525,7 +1531,19 @@
     "replacedAttempts_many": "Réessayé {{count}} de fois manuellement, la dernière en remplacement",
     "stepsRunning_many": "{{count}} d'étapes en cours",
     "agentCount_many": "{{count}} d'agents",
-    "shellCount_many": "{{count}} de commandes"
+    "shellCount_many": "{{count}} de commandes",
+    "pauseRun": "Mettre en pause",
+    "resumeRun": "Reprendre",
+    "restartAgent": "Relancer l'agent",
+    "runPaused": "En pause",
+    "resumeFromSaved": "Reprendre",
+    "resumeFromSavedHint": "Relancer ; les agents terminés renvoient leurs résultats enregistrés",
+    "saveWorkflow": "Enregistrer",
+    "saveWorkflowName": "Nom (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Ce qu'il fait",
+    "saveWorkflowConfirm": "Enregistrer le workflow",
+    "saveWorkflowDone": "{{name}} enregistré. Lancez-le avec /workflow:{{name}}",
+    "saveWorkflowFailed": "Enregistrement impossible : {{error}}"
   },
   "reasoningEffort": {
     "label": "Effort de raisonnement",
@@ -2443,6 +2461,9 @@
   "coworkParallel": {
     "settingTitle": "Les nouvelles sessions dans un dossier Git travaillent dans leur propre worktree",
     "settingDescription": "Chaque nouvelle session rattachée à un dépôt Git reçoit son propre worktree et sa propre branche (flint/<title>), pour que plusieurs sessions puissent travailler dans le même dossier sans se gêner ni toucher à votre copie de travail. Relisez, fusionnez ou abandonnez chaque branche depuis la session.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Cette session travaille sur la branche {{branch}}, dans son propre worktree",
     "basedOn": "depuis {{base}}",
     "openFolder": "Ouvrir le dossier",
@@ -2979,5 +3000,26 @@
     "count_one": "{{count}} imbriqué",
     "count_other": "{{count}} imbriqués",
     "fewer": "Afficher moins d’imbriqués"
+  },
+  "diffReview": {
+    "title": "Réviser les modifications",
+    "button": "Réviser",
+    "running": "Révision…",
+    "security": "Inclure la revue de sécurité",
+    "progress": "Vérification de la remarque {{done}} sur {{total}}…",
+    "failed": "La révision a échoué : {{error}}",
+    "summary": "{{count}} remarque(s) dans {{files}} fichier(s) ; {{refuted}} réfutée(s) au second examen.",
+    "truncated": "Le diff était trop volumineux et a été tronqué ; le reste n'a pas été révisé.",
+    "none": "Aucune remarque.",
+    "listLabel": "Remarques, de la plus grave à la moins grave",
+    "unverified": "non vérifiée",
+    "fix": "Correctif : {{fix}}",
+    "fixButton": "Corriger avec l'agent",
+    "fixBusy": "Attendez la fin de l'exécution en cours, puis réessayez.",
+    "severity": {
+      "high": "Haute",
+      "medium": "Moyenne",
+      "low": "Basse"
+    }
   }
 }

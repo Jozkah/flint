@@ -41,6 +41,10 @@
     "gitRemote": "Flint wants to run {{command}}, which changes {{target}}",
     "gitDestructive": "Flint wants to run {{command}}, which can lose work",
     "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
+    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
+    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
+    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
     "spendPause": "Flint wants to keep this run going past its spend pause",
     "changeFileOutside": "Flint wants to change {{target}}, which is outside {{workspace}}",
     "changeManyFilesOutside": "Flint wants to change {{count}} files, some outside {{workspace}}"
@@ -63,6 +67,10 @@
     "gitRemote": "It sends changes to a remote repository that other people can see. Flint asks every time unless you temporarily allow ordinary remote Git actions for this conversation.",
     "gitDestructive": "What it removes or overwrites may not be recoverable.",
     "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time.",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
+    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
+    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "The run keeps using paid model quota until it finishes or reaches its ceiling. Deny stops the run."
   },
   "repeat": {
@@ -346,5 +354,18 @@
     "lineLabel": "Line",
     "ruleLabel": "Rule",
     "more": "And {{count}} more flagged lines"
+  },
+  "ruleWarnings": {
+    "title": "Permission rules with problems",
+    "description": "Some rules in a project's agent.toml were dropped or can never match. Everything else still loads, but these rules are not doing what they say.",
+    "notProtecting": "A rule that restricts something is not in effect, so this is less protected than written. Fix the rule."
+  },
+  "hooksViewer": {
+    "title": "Hooks",
+    "description": "Commands each trusted folder runs around tool calls and at the end of a run. Read-only: edit .jan/agent/hooks.toml to change them.",
+    "empty": "No trusted folder declares hooks.",
+    "none": "This folder declares no hooks.",
+    "error": "The hooks file could not be read",
+    "loadFailed": "Could not read the hooks"
   }
 }

@@ -1,3 +1,4 @@
+import { stripInvisible } from '@/lib/invisibleText'
 import { canModelSummarize } from '@/lib/continueFromSummary'
 import { refusedDraftToRestore, unescapeComposerMarkdown } from '@/lib/composerText'
 import { pendingComposerTokens } from '@/lib/context-manager'
@@ -153,7 +154,10 @@ import {
 import { ExtensionManager } from '@/lib/extension'
 import { useAttachments } from '@/hooks/useAttachments'
 import { toast } from 'sonner'
-import { requestChatCompaction } from '@/lib/chatCompaction'
+import {
+  requestChatCompaction,
+  requestChatSideQuestion,
+} from '@/lib/chatCompaction'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
 import {
@@ -675,9 +679,29 @@ const ChatInput = memo(function ChatInput({
                   {
                     name: 'compact',
                     description: t('slash:builtin.compact'),
-                    run: () => {
-                      if (!requestChatCompaction(currentThreadId)) {
+                    argumentHint: '[focus]',
+                    run: (args: string) => {
+                      if (
+                        !requestChatCompaction(
+                          currentThreadId,
+                          args.trim() || undefined
+                        )
+                      ) {
                         toast.info(t('common:budget.compactFailed'))
+                      }
+                    },
+                  },
+                  {
+                    name: 'btw',
+                    description: t('slash:builtin.btw'),
+                    argumentHint: '<question>',
+                    run: (args: string) => {
+                      const question = args.trim()
+                      if (
+                        !question ||
+                        !requestChatSideQuestion(currentThreadId, question)
+                      ) {
+                        toast.info(t('common:budget.btwFailed'))
                       }
                     },
                   },
@@ -1300,7 +1324,9 @@ const ChatInput = memo(function ChatInput({
   ) => {
     // The composer's Markdown escapes `*`, `_` and friends; the message is
     // sent and shown as typed.
-    const typed = unescapeComposerMarkdown(typedRaw)
+    // Tag characters and bidi controls pasted along with text are hidden
+    // instructions the sender cannot see; they never reach the model.
+    const typed = stripInvisible(unescapeComposerMarkdown(typedRaw)).text
     setWebOffPrompt(null)
     if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
       setWebOffPrompt(typed)

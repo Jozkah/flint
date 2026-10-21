@@ -101,7 +101,9 @@ describe('createChildRunner', () => {
   it('records the dispatch, streams the trace into the record, and settles done', async () => {
     answers('the answer')
     const out = await createChildRunner(env())('c1', { subagent_name: 'explorer', description: 'find it' })
-    expect(out).toEqual({ output: 'the answer', isError: undefined })
+    expect(out.output).toContain('the answer')
+    expect(out.output).toContain('<subagent-output agent="explorer">')
+    expect(out.isError).toBeUndefined()
     expect(task('c1')).toMatchObject({
       kind: 'agent',
       status: 'done',
@@ -268,6 +270,55 @@ describe('createChildRunner', () => {
   })
 })
 
+describe('per-agent options in the child runner', () => {
+  const withOptions = (over: Record<string, unknown>) => [
+    { ...defs[0], name: 'tuned', ...over },
+  ]
+  const setupWithInstructions: ChildRunnerEnv['setup'] = () => ({
+    system: {
+      workspacePath: '/ws',
+      readOnlyFolder: null,
+      bashAvailable: false,
+      projectInstructions: 'be careful',
+      compatInstructions: [{ name: 'CLAUDE.md', content: 'x' }],
+    },
+    dispatch: vi.fn(async () => ({ output: 'ok' })),
+    activity: () => ({ session: SID, run: RUN, agent: 'tuned' }) as never,
+  })
+
+  it('prepends the initial_prompt to the delegation, but not to a resumed follow-up', async () => {
+    answers('done', { messages: [] })
+    const run = createChildRunner(env({ definitions: withOptions({ initial_prompt: 'Start with X.' }) }))
+    await run('c1', { subagent_name: 'tuned', description: 'look at Y' })
+    expect(runSubagent.mock.calls[0][0].description).toBe('Start with X.\n\nlook at Y')
+    await run('c2', { subagent_name: 'tuned', description: 'and Z', resume_agent_id: 'c1' })
+    expect(runSubagent.mock.calls[1][0].description).toBe('and Z')
+  })
+
+  it('hands a definition with omit_instructions no project instructions', async () => {
+    answers('done')
+    await createChildRunner(
+      env({ definitions: withOptions({ omit_instructions: true }), setup: setupWithInstructions })
+    )('c1', { subagent_name: 'tuned', description: 'd' })
+    expect(runSubagent.mock.calls[0][0].system).toMatchObject({
+      projectInstructions: null,
+      compatInstructions: [],
+    })
+  })
+
+  it('keeps the parent’s instructions for a definition that does not omit them', async () => {
+    answers('done')
+    await createChildRunner(env({ definitions: withOptions({}), setup: setupWithInstructions }))(
+      'c1',
+      { subagent_name: 'tuned', description: 'd' }
+    )
+    expect(runSubagent.mock.calls[0][0].system).toMatchObject({
+      projectInstructions: 'be careful',
+      compatInstructions: [{ name: 'CLAUDE.md', content: 'x' }],
+    })
+  })
+})
+
 describe('resuming a finished subagent', () => {
   const history = [
     { id: 'sub-user-0', role: 'user', parts: [{ type: 'text', text: 'first brief' }] },
@@ -313,10 +364,12 @@ describe('resuming a finished subagent', () => {
   it('does not offer a resume for a failed run or a team member', async () => {
     answers('x')
     const none = await createChildRunner(env())('c4', { subagent_name: 'explorer', description: 'd' })
-    expect(none.output).toBe('x')
+    expect(none.output).toContain('x')
+    expect(none.output).not.toContain('resume_agent_id')
     answers('y', { messages: history })
     const member = await createChildRunner(env())('c5', { subagent_name: 'explorer', description: 'd' }, undefined, 'team-row')
-    expect(member.output).toBe('y')
+    expect(member.output).toContain('y')
+    expect(member.output).not.toContain('resume_agent_id')
   })
 
   it('remembers at most a bounded number per session and forgets a deleted session', () => {
@@ -362,5 +415,34 @@ describe('a background child asking its parent', () => {
     await createChildRunner(env())('fg', { subagent_name: 'explorer', description: 'd' })
     await createChildRunner(env())('tm', { subagent_name: 'explorer', description: 'd', background: true }, undefined, 'team-row')
     expect(runSubagent).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('forked subagent', () => {
+  const forkEnv = () =>
+    env({ fork: { history: () => [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'earlier' }] }] as never, system: () => 'PARENT SYSTEM' } })
+
+  it('starts from a copy of the parent conversation and its system prompt, on its model', async () => {
+    answers('forked answer')
+    const out = await createChildRunner(forkEnv())('f1', { subagent_name: 'fork', description: 'continue', fork: true })
+    const opts = runSubagent.mock.calls.at(-1)![0]
+    expect(opts.systemOverride).toBe('PARENT SYSTEM')
+    expect(opts.history).toHaveLength(1)
+    expect(opts.description).toBe('continue')
+    // The child cannot spawn, whatever the depth setting says.
+    expect(opts.spawn).toEqual({ depth: 1, maxDepth: 1 })
+    expect(out.output).toContain('forked answer')
+    // Not resumable: nothing is remembered for a follow-up.
+    expect(out.output).not.toContain('resume_agent_id')
+  })
+  it('refuses where it cannot fork, in the background, in a team, nested, or with a custom prompt', async () => {
+    const run = createChildRunner(forkEnv())
+    const req = { subagent_name: 'fork', description: 'd', fork: true as const }
+    expect((await createChildRunner(env())('a', req)).output).toContain('not available')
+    expect((await run('b', { ...req, background: true })).output).toContain('foreground only')
+    expect((await run('c', req, undefined, 'team-row')).output).toContain('foreground only')
+    expect((await run('d', req, undefined, undefined, undefined, undefined, 1)).output).toContain('cannot fork')
+    expect((await run('e', { ...req, system_prompt: 'x' })).output).toContain('inherits')
+    expect(runSubagent).not.toHaveBeenCalled()
   })
 })

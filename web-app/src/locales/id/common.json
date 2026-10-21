@@ -526,6 +526,7 @@
   "jan": "Flint",
   "metadata": "Metadata",
   "regenerate": "Hasilkan Ulang",
+  "historyReadFailed": "Tidak dapat memuat riwayat percakapan.",
   "threadImage": "Gambar utas",
   "editMessage": "Edit Pesan",
   "deleteMessage": "Hapus Pesan",
@@ -1186,7 +1187,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Tidak dapat menjawab pertanyaan sampingan."
   },
   "autoCompactNeedsWindow": "Auto-compact membutuhkan ukuran konteks, dan {{model}} tidak memilikinya yang dapat ditemukan Flint. Atur Max Context Tokens untuk model ini agar obrolan panjang dipadatkan sebelum penuh. Jika provider menolak permintaan karena panjangnya, Flint memadatkan dan mencoba sekali lagi.",
   "compaction": {
@@ -1210,7 +1212,9 @@
     "interruptedDetail_other": "{{calls}} langkah selesai dipertahankan; balasan belum selesai sepanjang {{chars}} karakter.",
     "interruptedNoReply_other": "{{calls}} langkah selesai dipertahankan.",
     "interruptedContinue": "Lanjutkan",
-    "interruptedDiscard": "Buang balasan yang belum selesai dan lanjutkan"
+    "interruptedDiscard": "Buang balasan yang belum selesai dan lanjutkan",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} tidak dapat memanggil alat, jadi tidak dapat bertindak sebagai agen. Pilih model yang dapat memanggil alat.",
   "sessionModelUnavailable": "{{model}} tidak lagi tersedia. Pilih model lain di menu model.",
@@ -1350,6 +1354,8 @@
     "untitledRun": "Eksekusi tanpa judul",
     "workflows_other": "{{count}} alur kerja",
     "phase": "Fase {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Pekerjaan lain",
     "progress": "{{finished}} dari {{total}} selesai",
     "runningTasks_other": "{{count}} tugas berjalan",
@@ -1483,7 +1489,19 @@
     "shellCount_other": "{{count}} perintah",
     "stopWorkflow": "Hentikan {{name}}",
     "stopWorkflowPartial": "{{cancelled}} dihentikan; {{failed}} tidak dapat dihentikan.",
-    "cancelKillFailed": "Sistem menolak menghentikannya: {{error}}"
+    "cancelKillFailed": "Sistem menolak menghentikannya: {{error}}",
+    "pauseRun": "Jeda",
+    "resumeRun": "Lanjutkan",
+    "restartAgent": "Mulai ulang agen",
+    "runPaused": "Dijeda",
+    "resumeFromSaved": "Lanjutkan",
+    "resumeFromSavedHint": "Jalankan lagi; agen yang selesai memakai hasil tersimpan",
+    "saveWorkflow": "Simpan",
+    "saveWorkflowName": "Nama (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Fungsinya",
+    "saveWorkflowConfirm": "Simpan alur kerja",
+    "saveWorkflowDone": "{{name}} disimpan. Jalankan dengan /workflow:{{name}}",
+    "saveWorkflowFailed": "Gagal menyimpan: {{error}}"
   },
   "reasoningEffort": {
     "label": "Upaya penalaran",
@@ -2361,6 +2379,9 @@
   "coworkParallel": {
     "settingTitle": "Sesi baru di folder Git bekerja di worktree sendiri",
     "settingDescription": "Setiap sesi baru di repositori Git mendapat worktree dan branch sendiri (flint/<title>), sehingga banyak sesi dapat bekerja di satu folder sekaligus tanpa saling mengganggu atau menyentuh checkout Anda. Tinjau, gabungkan, atau buang setiap branch dari sesi.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Sesi ini bekerja di branch {{branch}}, di worktree sendiri",
     "basedOn": "dari {{base}}",
     "openFolder": "Buka folder",
@@ -2872,5 +2893,26 @@
     "waiting_other": "{{count}} menunggu",
     "count_other": "{{count}} bersarang",
     "fewer": "Tampilkan lebih sedikit"
+  },
+  "diffReview": {
+    "title": "Tinjau perubahan",
+    "button": "Tinjau",
+    "running": "Meninjau…",
+    "security": "Sertakan tinjauan keamanan",
+    "progress": "Memeriksa temuan {{done}} dari {{total}}…",
+    "failed": "Tinjauan gagal: {{error}}",
+    "summary": "{{count}} temuan di {{files}} berkas; {{refuted}} dibantah pada pemeriksaan kedua.",
+    "truncated": "Diff terlalu besar dan dipotong; sisanya tidak ditinjau.",
+    "none": "Tidak ada temuan.",
+    "listLabel": "Temuan, dari yang paling parah",
+    "unverified": "belum diverifikasi",
+    "fix": "Perbaikan: {{fix}}",
+    "fixButton": "Perbaiki dengan agen",
+    "fixBusy": "Tunggu proses saat ini selesai, lalu coba lagi.",
+    "severity": {
+      "high": "Tinggi",
+      "medium": "Sedang",
+      "low": "Rendah"
+    }
   }
 }

@@ -11,8 +11,14 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { formatCompactDuration } from '@/lib/duration'
 import { redactSecrets } from '@/lib/redact'
+import { PhaseRow } from '@/containers/CoworkWorkflowCard'
+import {
+  WorkflowAgentRestart,
+  WorkflowPauseButton,
+} from '@/containers/WorkflowRunControls'
 import {
   cancellabilityOf,
+  groupByWorkflowPhase,
   isFinished,
   taskElapsedMs,
   type ActivityTask,
@@ -132,7 +138,51 @@ export function CoworkBackgroundTasksPanel({
           </button>
           {trailing}
         </div>
-        {!isClosed && <div className="space-y-2 px-3 pb-2">{items.map(row)}</div>}
+        {!isClosed && (
+          <div className="space-y-2 px-3 pb-2">
+            {(() => {
+              const { groups, rest } = groupByWorkflowPhase(items)
+              return (
+                <>
+                  {groups.length > 0 && (
+                    <div className="flex flex-wrap justify-end gap-1 pb-1">
+                      {[...new Set(groups.flatMap((g) => g.tasks.map((x) => x.parentTaskId ?? '')))]
+                        .filter(Boolean)
+                        .map((host) => (
+                          <WorkflowPauseButton
+                            key={host}
+                            tasks={items.filter(
+                              (x) => x.parentTaskId === host || x.id === host || x.callId === host
+                            )}
+                          />
+                        ))}
+                    </div>
+                  )}
+                  {groups.length > 0 && (
+                    <ul>
+                      {groups.map((group) => (
+                        <PhaseRow key={group.key} group={group}>
+                          {group.tasks.map((task) => (
+                            <li key={task.id} className="py-1">
+                              {row(task)}
+                              <WorkflowAgentRestart
+                                task={task}
+                                tasks={items.filter(
+                                  (x) => x.parentTaskId === task.parentTaskId || x.id === task.parentTaskId || x.callId === task.parentTaskId
+                                )}
+                              />
+                            </li>
+                          ))}
+                        </PhaseRow>
+                      ))}
+                    </ul>
+                  )}
+                  {rest.map(row)}
+                </>
+              )
+            })()}
+          </div>
+        )}
       </section>
     )
   }

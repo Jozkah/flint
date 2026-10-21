@@ -19,6 +19,13 @@ type ParallelState = {
   /** "New sessions in a Git folder work in their own worktree". */
   autoWorktree: boolean
   setAutoWorktree: (value: boolean) => void
+  /**
+   * What a new worktree starts from: `fresh` is the repository's default
+   * branch (the long-standing behaviour); `head` is the checked-out commit,
+   * which carries unpushed work. A base given explicitly always wins.
+   */
+  worktreeBase: 'fresh' | 'head'
+  setWorktreeBase: (value: 'fresh' | 'head') => void
   /** Keyed by `${sessionId}\u0000${folder}`. */
   auto: Record<string, AutoState>
   mark: (sessionId: string, folder: string, state: AutoState) => void
@@ -36,6 +43,8 @@ export const useCoworkParallel = create<ParallelState>()(
     (set, get) => ({
       autoWorktree: false,
       setAutoWorktree: (value) => set({ autoWorktree: value }),
+      worktreeBase: 'fresh',
+      setWorktreeBase: (value) => set({ worktreeBase: value }),
       auto: {},
       mark: (sessionId, folder, state) =>
         set((s) => ({ auto: { ...s.auto, [key(sessionId, folder)]: state } })),

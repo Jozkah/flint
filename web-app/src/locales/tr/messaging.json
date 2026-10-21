@@ -23,6 +23,14 @@
     "label": "Diğer oturumlardan gelen mesajları kabul et",
     "description": "Kapalıyken, diğer oturumlara bunun mesaj almadığı söylenir ve gönderdikleri hiçbir şey ona ulaşmaz."
   },
+  "hold": {
+    "label": "Ask me before delivering",
+    "description": "When on, each message from another session waits here for you to approve or deny it. Nothing is delivered or started until you approve, and a message you do not answer within 5 minutes is dropped and its sender is told. Only while messages are accepted."
+  },
+  "askNested": {
+    "label": "Ask me before nested chats start",
+    "description": "When on, each time the agent wants to start a nested chat (spawn_session) it asks you first. Off by default: a nested chat without a worktree starts with no folder access and none of this session's grants."
+  },
   "subagentQuestion": {
     "title": "{{name}} ajana soruyor",
     "open": "Cevap bekleniyor",
@@ -80,5 +88,16 @@
   "waitingCount_one": "{{count}} ileti bekliyor",
   "waitingCount_other": "{{count}} ileti bekliyor",
   "waitingIn_one": "{{session}} içinde {{count}} ileti",
-  "waitingIn_other": "{{session}} içinde {{count}} ileti"
+  "waitingIn_other": "{{session}} içinde {{count}} ileti",
+  "held": {
+    "title": "Messages waiting for approval",
+    "banner": "Waiting for your approval ({{count}})",
+    "from": "From {{name}}",
+    "notice": "Status notice",
+    "expires": "Expires in {{minutes}} min",
+    "approve": "Approve",
+    "deny": "Deny",
+    "approveLabel": "Approve the message from {{name}}",
+    "denyLabel": "Deny the message from {{name}}"
+  }
 }

@@ -268,6 +268,12 @@ export type ForkOrigin = {
   turns: number
   /** When the fork was taken. */
   at: number
+  /**
+   * Set when `spawn_session` made this session (a nested chat), so a spawn
+   * that copied the parent's turns (`context: 'fork'`) is still recognised
+   * as one. Older spawns are marked by `turns === 0` instead.
+   */
+  spawned?: boolean
 }
 
 /** One run's spend, as it stands. */

@@ -14,7 +14,9 @@ import {
 } from '@/hooks/useAutoApproveLimit'
 import { FolderAccessCard } from '@/containers/FolderAccessCard'
 import { TrustedFoldersCard } from '@/containers/TrustedFoldersCard'
+import { HooksViewerCard } from '@/containers/HooksViewerCard'
 import { ApprovalRulesCard } from '@/containers/ApprovalRulesCard'
+import { PolicyRuleWarningsCard } from '@/containers/PolicyRuleWarningsCard'
 import { BrowserSitePermissions } from '@/containers/BrowserAgentSettings'
 import { ChatMentionSettings } from '@/containers/ChatMentionSettings'
 import {
@@ -442,6 +444,7 @@ function PermissionsSettings() {
           />
         }
       >
+        {tab === 'rules' && <PolicyRuleWarningsCard />}
         {tab === 'rules' && (
           <Card
             anchor="settings-permissions-mode"
@@ -694,6 +697,7 @@ function PermissionsSettings() {
         {tab === 'access' && (
           <TrustedFoldersCard />
         )}
+        {tab === 'access' && <HooksViewerCard />}
 
         {/* The browser pane is the desktop app's. */}
         {tab === 'access' && !isServedByFlint() && <BrowserSitePermissions />}

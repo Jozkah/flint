@@ -36,6 +36,10 @@ export type ControlRequest =
   | { kind: 'restart'; taskId: string }
   | { kind: 'replace'; taskId: string; with: Replacement }
   | { kind: 'finish' }
+  /** Start no new agent; the ones running finish. */
+  | { kind: 'pause' }
+  /** Undo `pause`. */
+  | { kind: 'resume' }
 
 /**
  * Check a request against the team as it stands. Pure, so the rules are
@@ -50,14 +54,21 @@ export function checkRequest(
   if (finished) {
     return refuse('team-finished', 'the team has already ended; run it again to retry this task')
   }
-  if (request.kind === 'finish') return { ok: true }
+  if (request.kind === 'finish' || request.kind === 'pause' || request.kind === 'resume') {
+    return { ok: true }
+  }
   const task = tasks.find((t) => t.id === request.taskId)
   if (!task) return refuse('not-found', `no task "${request.taskId}" in this team`)
   const status: TaskStatus = state[task.id]?.status ?? 'pending'
-  if (status !== 'failed') {
+  // A running task can be restarted (stopped and started again); only a
+  // failed one can be replaced, because a replacement changes what ran.
+  const restartable = status === 'failed' || (status === 'running' && request.kind === 'restart')
+  if (!restartable) {
     return refuse(
       'not-failed',
-      `task "${task.id}" is ${status}; only a failed task can be restarted or replaced`
+      request.kind === 'restart'
+        ? `task "${task.id}" is ${status}; only a running or failed task can be restarted`
+        : `task "${task.id}" is ${status}; only a failed task can be replaced`
     )
   }
   if (request.kind === 'replace') {
@@ -169,6 +180,8 @@ export class TeamControl {
   private queue: ControlRequest[] = []
   private waiters: Array<() => void> = []
   finished = false
+  /** Whether the run is paused; kept by `runTeam`. */
+  paused = false
 
   request(request: ControlRequest): void {
     this.queue.push(request)

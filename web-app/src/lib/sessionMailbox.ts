@@ -47,6 +47,9 @@ export type StopRequest = {
 
 export type SessionStatus = 'running' | 'idle' | 'unavailable'
 
+/** What a session does with mail from other sessions. */
+export type InboundSetting = 'accept' | 'hold' | 'refuse'
+
 export type MailSessionSummary = {
   id: string
   displayName: string
@@ -55,6 +58,8 @@ export type MailSessionSummary = {
   folder?: string | null
   /** False when that session opted out of messages from other sessions. */
   acceptsMessages?: boolean
+  /** `hold`: each message waits for that session's user to approve it. */
+  inbound?: InboundSetting
   /** Epoch ms of the session's last registry change. */
   lastActivity?: number
 }
@@ -70,7 +75,7 @@ export type MailEnvelope = {
   replyTo?: string | null
   depth: number
   /** `auto`: the sender's final answer, sent for it when its run did not reply. */
-  origin: 'agent' | 'user' | 'auto'
+  origin: 'agent' | 'user' | 'auto' | 'notice'
   /** The chain this message belongs to; stamped by the backend. */
   chainId?: string
   /** Hops along the chain; 0 for a message a person started. */
@@ -208,6 +213,7 @@ export type SessionRecord = {
   project: string | null
   folder?: string | null
   acceptsMessages?: boolean
+  inbound?: InboundSetting
   status: SessionStatus
   runId?: string | null
   heartbeatAt?: number | null
@@ -249,6 +255,11 @@ export const sessionMailbox = {
     /** The per-session opt-out; omitted keeps what the backend has. */
     acceptsMessages?: boolean
     /**
+     * Hold incoming mail for the user to approve. Sent only for `hold`;
+     * `accept` and `refuse` are what `acceptsMessages` already says.
+     */
+    inbound?: InboundSetting
+    /**
      * How the session works in its folder, for shared-folder coordination:
      * its access mode, and whether it is isolated in a worktree or copy.
      * Omitted keeps what the backend has.
@@ -261,6 +272,7 @@ export const sessionMailbox = {
       displayName: input.displayName,
       folder: input.folder ?? null,
       acceptsMessages: input.acceptsMessages ?? null,
+      ...(input.inbound !== undefined ? { inbound: input.inbound } : {}),
       ...(input.access !== undefined ? { access: input.access } : {}),
       ...(input.isolated !== undefined ? { isolated: input.isolated } : {}),
     }),
@@ -322,6 +334,21 @@ export const sessionMailbox = {
 
   pending: (sessionId: string) =>
     call<MailEnvelope[]>('mailbox_pending', { sessionId }),
+
+  /**
+   * Messages waiting for this session's user to approve (`inbound: hold`),
+   * oldest first. One past its deadline is dropped by the backend first.
+   */
+  held: (sessionId: string) =>
+    call<MailEnvelope[]>('mailbox_held', { sessionId }),
+
+  /** Deliver a held message once. Resolves to false when it is no longer held. */
+  approveHeld: (sessionId: string, messageId: string) =>
+    call<boolean>('mailbox_held_approve', { sessionId, messageId }),
+
+  /** Drop a held message. Resolves to false when it is no longer held. */
+  denyHeld: (sessionId: string, messageId: string) =>
+    call<boolean>('mailbox_held_deny', { sessionId, messageId }),
 
   /** Resolves to how many envelopes changed state. */
   markRead: (sessionId: string, messageIds: string[]) =>

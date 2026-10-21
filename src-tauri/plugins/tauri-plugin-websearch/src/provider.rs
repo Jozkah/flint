@@ -25,7 +25,10 @@ use crate::ratelimit::{
     api_http_error, mentions_rate_limit, plain_snippet, rate_limited_marker, retry_after_of,
 };
 
-const FETCH_MAX_CHARS: usize = 40_000;
+/// Most readable characters a fetched page keeps. The agent `web_fetch` tool
+/// hands the model one window of this at a time (`offset`), so a page the model
+/// pages through is read once.
+pub const FETCH_MAX_CHARS: usize = 100_000;
 /// Hard cap on the bytes read from any response body (Jozkah/jan#182). The
 /// body is read chunk by chunk and reading stops here, so a huge or endless
 /// response never has to fit in memory before the character bound applies.
@@ -374,6 +377,13 @@ fn public_fetch_client() -> Result<&'static reqwest::Client, String> {
                     if attempt.previous().len() >= 10 {
                         return attempt.error("too many redirects");
                     }
+                    // A redirect to another host is handed back, not followed:
+                    // `public_get` reports the new address so the caller decides.
+                    if attempt.previous().last().and_then(|u| u.host_str().map(str::to_owned))
+                        != attempt.url().host_str().map(str::to_owned)
+                    {
+                        return attempt.stop();
+                    }
                     let checked = check_public_url(attempt.url()).and_then(|()| {
                         if proxy_configured() {
                             check_name_public_blocking(attempt.url())
@@ -404,11 +414,30 @@ async fn public_get(url: &str, provider: &str) -> Result<reqwest::Response, Stri
             .await
             .map_err(|e| format!("{provider} fetch: {e}"))??;
     }
-    public_fetch_client()?
-        .get(parsed)
+    let resp = public_fetch_client()?
+        .get(parsed.clone())
         .send()
         .await
-        .map_err(|e| format!("{provider} fetch request failed: {e}"))
+        .map_err(|e| format!("{provider} fetch request failed: {e}"))?;
+    if resp.status().is_redirection() {
+        if let Some(next) = resp
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|loc| parsed.join(loc).ok())
+        {
+            return Err(cross_host_redirect_message(&parsed, &next));
+        }
+    }
+    Ok(resp)
+}
+
+/// The error a cross-host redirect becomes: names the new address so the model
+/// can fetch it deliberately.
+fn cross_host_redirect_message(from: &reqwest::Url, to: &reqwest::Url) -> String {
+    format!(
+        "REDIRECT to a different host: {from} redirects to {to}. It was not followed; call web_fetch again with that URL if you want it."
+    )
 }
 
 /// Which Exa transport the adapter uses.
@@ -2049,6 +2078,14 @@ mod tests {
         for public in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "::ffff:8.8.8.8"] {
             assert!(is_public_ip(public.parse().unwrap()), "{public} counted as local");
         }
+    }
+
+    #[test]
+    fn cross_host_redirect_names_the_new_url() {
+        let from = reqwest::Url::parse("https://a.example/x").unwrap();
+        let to = reqwest::Url::parse("https://b.example/y").unwrap();
+        let msg = cross_host_redirect_message(&from, &to);
+        assert!(msg.contains("https://b.example/y") && msg.contains("not followed"), "{msg}");
     }
 
     #[test]

@@ -11,6 +11,7 @@ import {
   answerSubagentTool,
 } from '@/lib/coworkSubagentQuestions'
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
+import { WORKFLOW_TOOL_NAME, workflowTool } from '@/lib/coworkWorkflow'
 import { offerSignature, type ToolGroupId } from '@/lib/coworkToolGroups'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
@@ -36,6 +37,13 @@ import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { visualizeSchemas } from '@/lib/visualize/tools'
 import { chatReadSchema } from '@/lib/chatReadTool'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import { SPAWN_SESSION_TOOL_NAME, spawnSessionTool } from '@/lib/spawnSession'
+import {
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
+  enterWorktreeTool,
+  exitWorktreeTool,
+} from '@/lib/worktreeTools'
 import { campaignToolSchemas } from '@/lib/campaignToolSchemas'
 import {
   WEB_FETCH_DESCRIPTION,
@@ -55,6 +63,10 @@ export const PLAN_DENIED_TOOLS = new Set([
   'memory_write',
   'skill_write',
   'task',
+  'spawn_session',
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
 ])
 
 /**
@@ -69,7 +81,7 @@ export const isReviewDeniedBrowserTool = (name: string): boolean =>
 
 /** Named `todo` to match the Rust tool: the plan-mode addendum instructs the
  * model to call `todo` by name, so renaming it here breaks that prompt. */
-export { TEAM_TOOL_NAME }
+export { TEAM_TOOL_NAME, WORKFLOW_TOOL_NAME }
 export const TODO_TOOL_NAME = 'todo'
 
 export const ASK_TOOL_NAME = 'ask'
@@ -80,7 +92,11 @@ export const CLIENT_TOOL_NAMES = new Set([
   TODO_TOOL_NAME,
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
+  SPAWN_SESSION_TOOL_NAME,
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
   TEAM_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
   ...BACKGROUND_TASK_TOOLS,
 ])
 
@@ -380,7 +396,17 @@ export function taskTool(
           type: 'string',
           description: 'Optional. A configured model id to run this on instead of the default, for example a faster one for a read-only survey. Leave out unless you have a reason.',
         },
+        effort: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'xhigh'],
+          description: 'Optional. Reasoning effort for this subagent where its model offers one; ignored otherwise. Leave out to use the default.',
+        },
         description: { type: 'string', minLength: 1 },
+        fork: {
+          type: 'boolean',
+          description:
+            'Optional. true: the subagent starts with a read-only copy of this conversation so far, your system prompt, tools and model, then `description` as its next message. Foreground only, cannot start subagents, counts against the same limits. Use when the job depends on what was already discussed.',
+        },
         resume_agent_id: {
           type: 'string',
           minLength: 1,
@@ -494,6 +520,11 @@ export type CoworkToolOptions = {
   /** Depth 1+ cannot spawn further subagents; mirrors the Rust loop's cap. */
   allowSubagents: boolean
   /**
+   * This session was itself started by `spawn_session`: it cannot start another
+   * nested chat, so it is never offered the tool (the dispatcher still refuses).
+   */
+  spawned?: boolean
+  /**
    * Follows the global web-search setting, the same one chat reads. Cowork has
    * no toggle of its own: the surface configures nothing about its tool set, so
    * this is a Settings-level capability rather than a per-session choice.
@@ -596,6 +627,8 @@ export function coworkToolSignature(
     opts.planMode ? 'plan' : 'normal',
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
+    opts.spawned ? 'spawned' : 'top',
+    opts.projectRoot ? 'wt' : 'nowt',
     opts.webSearch ? 'web' : 'noweb',
     opts.campaignCoordinator ? 'campaign' : 'nocampaign',
     opts.slim ?? 'full',
@@ -750,6 +783,8 @@ export function coworkToolsFromSchemas(
     | 'planMode'
     | 'webSearch'
     | 'allowSubagents'
+    | 'spawned'
+    | 'projectRoot'
     | 'subagentNames'
     | 'campaignCoordinator'
     | 'slim'
@@ -839,10 +874,18 @@ export function coworkToolsFromSchemas(
       team: teamOffered,
     })
     tools[TEAM_TOOL_NAME] = teamTool(opts.subagentNames)
+    tools[WORKFLOW_TOOL_NAME] = workflowTool(opts.subagentNames)
     tools[AWAIT_TASK_TOOL_NAME] = awaitTaskTool
     tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
     tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
     tools[ANSWER_SUBAGENT_TOOL_NAME] = answerSubagentTool
+    if (!opts.spawned) tools[SPAWN_SESSION_TOOL_NAME] = spawnSessionTool
+  }
+  // Worktree tools move the session's write access: not in review mode, and
+  // only with a project to branch from.
+  if (!opts.planMode && opts.projectRoot) {
+    tools[ENTER_WORKTREE_TOOL_NAME] = enterWorktreeTool
+    tools[EXIT_WORKTREE_TOOL_NAME] = exitWorktreeTool
   }
   return tools
 }

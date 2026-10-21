@@ -29,6 +29,7 @@ pub mod compaction_policy;
 pub mod context_report;
 pub mod harness_error;
 pub mod folder_trust;
+pub mod safe_mode;
 pub mod hooks;
 pub mod mailbox;
 pub mod org_policy;
@@ -64,6 +65,7 @@ pub mod secrets;
 pub mod skills;
 pub mod snapshot;
 pub mod subject;
+pub mod invisible;
 pub mod tools;
 pub mod undo;
 pub mod unsandboxed_retry;
@@ -213,6 +215,9 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::mailbox_reply,
             commands::mailbox_auto_reply,
             commands::mailbox_list_sessions,
+            commands::mailbox_held,
+            commands::mailbox_held_approve,
+            commands::mailbox_held_deny,
             commands::mailbox_stop_approve,
             commands::mailbox_stop_pending,
             commands::mailbox_stop_resolve,

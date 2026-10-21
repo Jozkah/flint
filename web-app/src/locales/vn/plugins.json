@@ -53,7 +53,10 @@
     "accessNoPermissions": "Cài đặt hoặc bật một plugin không chạy tệp nào của nó và không cấp quyền công cụ nào.",
     "mcpPresent": "Plugin này có tệp .mcp.json. Flint không tải nó: plugin không thêm máy chủ MCP. Hãy cấu hình máy chủ MCP trong Cài đặt.",
     "executables": "Tệp tập lệnh ({{count}})",
-    "executablesMore": "và {{count}} nữa"
+    "executablesMore": "và {{count}} nữa",
+    "commit": "Commit",
+    "pinned": "Ghim tại",
+    "marketplace": "Marketplace"
   },
   "toggle": {
     "label": "Bật {{name}} cho dự án này",
@@ -126,6 +129,17 @@
     "project_unavailable": "Thư mục dự án không khả dụng. {{detail}}",
     "config": "Không thể đọc hoặc ghi agent.toml của dự án. {{detail}}",
     "io": "Một thao tác tệp thất bại. {{detail}}",
-    "unknown": "Đã xảy ra lỗi. {{detail}}"
+    "unknown": "Đã xảy ra lỗi. {{detail}}",
+    "sha_mismatch": "Nguồn không còn khớp với commit đã ghim nên không có gì thay đổi. {{detail}}"
+  },
+  "update": {
+    "button": "Cập nhật",
+    "running": "Đang cập nhật…",
+    "done": "Đã cập nhật {{name}}.",
+    "upToDate": "{{name}} đã là bản mới nhất.",
+    "failed": "Không thể cập nhật {{name}}: {{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}} (tên cũng có ở marketplace khác)"
   }
 }

@@ -329,6 +329,26 @@ fn peek_tail(job_id: &str, owner: Option<&str>) -> Option<(String, usize)> {
     Some((crate::audit::redact(&tail.text), tail.dropped))
 }
 
+/// A running job's output after absolute byte offset `offset` (offsets count
+/// from the start of the job's output, including what the bounded tail has
+/// since dropped), with the new offset. The text is redacted. Read only:
+/// nothing here consumes the result a collector is waiting for.
+pub fn bash_job_output_since(job_id: &str, owner: Option<&str>, offset: u64) -> Option<(String, u64)> {
+    let jobs = bash_jobs().lock().unwrap();
+    let job = jobs.get(job_id)?;
+    if job.owner.as_deref() != owner {
+        return None;
+    }
+    let tail = job.tail.lock().ok()?;
+    let total = (tail.dropped + tail.text.len()) as u64;
+    let start = offset.saturating_sub(tail.dropped as u64).min(tail.text.len() as u64) as usize;
+    let mut from = start;
+    while !tail.text.is_char_boundary(from) {
+        from += 1;
+    }
+    Some((crate::audit::redact(&tail.text[from..]), total))
+}
+
 /// Make room for one more job under `owner`. Drops the oldest *finished*
 /// uncollected job when the owner is at its limit; returns false when every
 /// job it holds is still running, so the caller refuses rather than grows.
@@ -541,8 +561,22 @@ pub async fn execute_builtin(
             );
         }
     };
-    let before =
-        crate::hooks::run(&hooks, crate::hooks::Event::PreTool, Some(tool.name), &hook_ctx).await;
+    let mut hook_input = crate::hooks::HookInput {
+        tool_name: tool.name.to_string(),
+        tool_input: args.clone(),
+        tool_response: None,
+        session_id: ctx.session_id.map(str::to_string),
+        run_id: ctx.run_id.map(str::to_string),
+        last_assistant_message: None,
+    };
+    let before = crate::hooks::run_with_input(
+        &hooks,
+        crate::hooks::Event::PreTool,
+        Some(tool.name),
+        &hook_ctx,
+        &hook_input,
+    )
+    .await;
     if let Some(blocked) = before.blocked {
         let harness: crate::harness_error::HarnessError = (&blocked).into();
         return (
@@ -596,8 +630,15 @@ pub async fn execute_builtin(
     // A post-tool hook cannot undo what the tool did, so it never blocks. What
     // it can do is say something went wrong, where the model and the person
     // reading the transcript will both see it.
-    let after =
-        crate::hooks::run(&hooks, crate::hooks::Event::PostTool, Some(tool.name), &hook_ctx).await;
+    hook_input.tool_response = Some(content.clone());
+    let after = crate::hooks::run_with_input(
+        &hooks,
+        crate::hooks::Event::PostTool,
+        Some(tool.name),
+        &hook_ctx,
+        &hook_input,
+    )
+    .await;
     for warning in &after.warnings {
         content.push_str(&format!("\n\n[post-tool hook] {}", warning.message));
     }
@@ -634,7 +675,7 @@ pub(crate) async fn execute_text(
         "read" => read_or_list(args, ctx).await.0,
         "ls" => {
             let out = ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
-            with_project_hint(out, ctx, args)
+            with_project_hint(crate::invisible::clean(out), ctx, args)
         }
         "write" | "edit" => {
             let verb = if tool.name == "write" { "overwrite" } else { "edit" };
@@ -675,11 +716,11 @@ pub(crate) async fn execute_text(
         }
         "find" => {
             let out = find(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
-            with_project_hint(out, ctx, args)
+            with_project_hint(crate::invisible::clean(out), ctx, args)
         }
         "grep" => {
             let out = grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await;
-            with_project_hint(out, ctx, args)
+            with_project_hint(crate::invisible::clean(out), ctx, args)
         }
         // Memory and skills live in the store root, not the sandbox: they must
         // outlive the conversation the filesystem tools are scoped to.
@@ -695,8 +736,10 @@ pub(crate) async fn execute_text(
         "skill_read" => skill_read(args, ctx),
         "skill_write" => skill_write(args, ctx),
         // Native web tools: compiled into the agent core, not an MCP server.
-        "web_search" => crate::tools::web::web_search(args).await,
-        "web_fetch" => crate::tools::web::web_fetch(args, ctx.read_roots).await,
+        "web_search" => crate::invisible::clean(crate::tools::web::web_search(args).await),
+        "web_fetch" => {
+            crate::invisible::clean(crate::tools::web::web_fetch(args, ctx.read_roots).await)
+        }
         "git_inspect" => crate::tools::git_native::git_inspect(args, ctx.read_roots).await,
         "windows_events" => crate::tools::win_events::windows_events(args).await,
         "host_query" => crate::tools::host_read::host_query(args).await,
@@ -1351,7 +1394,12 @@ fn skill_list(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 ctx.enabled_skills,
                 &meta.name,
             ) {
-                Ok(raw) => skill_requirements_unmet(ctx, &meta.name, &skills::parse(&raw)).is_empty(),
+                Ok(raw) => {
+                    let parsed = skills::parse(&raw);
+                    // `paths:` skill: offered only where the project has a match.
+                    skills::paths_match(ctx.project_root, &parsed.paths)
+                        && skill_requirements_unmet(ctx, &meta.name, &parsed).is_empty()
+                }
                 Err(_) => true,
             }
         })
@@ -1404,6 +1452,20 @@ fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let parsed = skills::parse(&raw);
     if !parsed.model_invocable {
         return format!("ERROR: skill '{name}' not found");
+    }
+    if !skills::paths_match(ctx.project_root, &parsed.paths) {
+        return format!(
+            "ERROR: skill '{name}' applies only to files matching {}, and this project has none",
+            parsed.paths.join(", ")
+        );
+    }
+    // `context: fork`: the skill runs in a subagent so its instructions and
+    // working notes stay out of this conversation. `inline: true` is what the
+    // subagent passes to read the body itself.
+    if parsed.fork && arg_str(args, "file").is_none() && !arg_bool(args, "inline") {
+        return format!(
+            "The skill '{name}' runs in its own context. Call `dispatch_subagent` with              subagent_name \"skill-{name}\", a `description` that states the user's task and says              \"first call skill_read with name '{name}' and inline true, then carry it out\",              and `allowed_tools` including skill_read plus the tools the task needs. Report              only its answer back."
+        );
     }
     // AH-040: a skill that says which tools it needs is withheld where this
     // run may not use them. Handing over instructions whose every step will be
@@ -2335,6 +2397,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
 
     let mut policy =
         jail::Policy::new(root, ctx.allow_network).with_home_readonly(ctx.home_readonly);
+    if let Some(fs) = ctx.fs {
+        policy = policy.with_fs_config(fs.clone());
+    }
     // While the shell is sandboxed, hide the project's own `.jan` state directory
     // from it (see [`Policy::with_hide_root`]). When the shell runs unconfined the
     // hide is both pointless (there is no OS mount to layer it on) and wrong

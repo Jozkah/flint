@@ -41,6 +41,10 @@
     "gitRemote": "Flint vuole eseguire {{command}}, che modifica {{target}}",
     "gitDestructive": "Flint vuole eseguire {{command}}, che può far perdere del lavoro",
     "approveCampaign": "Flint vuole avviare la campagna \"{{title}}\" ({{count}} attività)",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
+    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
+    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
+    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
     "spendPause": "Flint vuole proseguire questa esecuzione oltre la sua pausa di spesa",
     "changeFileOutside": "Flint vuole modificare {{target}}, che si trova fuori da {{workspace}}",
     "changeManyFilesOutside": "Flint vuole modificare {{count}} file, alcuni fuori da {{workspace}}"
@@ -63,6 +67,10 @@
     "gitRemote": "Invia modifiche a un repository remoto che altre persone possono vedere. Flint chiede ogni volta, a meno che tu non consenta temporaneamente le normali azioni Git remote per questa conversazione.",
     "gitDestructive": "Ciò che rimuove o sovrascrive potrebbe non essere recuperabile.",
     "campaignPlan": "Avvia sessioni separate, ciascuna sul proprio branch worktree, che leggono e modificano file e usano in parallelo la quota del tuo modello. Approvare il piano non approva alcuna chiamata fatta da un'attività. Flint chiede ogni volta.",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
+    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
+    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "L'esecuzione continua a consumare quota di modello a pagamento finché non termina o raggiunge il limite. Negare la ferma."
   },
   "repeat": {
@@ -346,5 +354,18 @@
     "lineLabel": "Riga",
     "ruleLabel": "Regola",
     "more": "E altre {{count}} righe segnalate"
+  },
+  "ruleWarnings": {
+    "title": "Regole di autorizzazione con problemi",
+    "description": "Alcune regole dell'agent.toml di un progetto sono state scartate o non possono mai corrispondere. Il resto viene caricato, ma queste regole non fanno ciò che dicono.",
+    "notProtecting": "Una regola restrittiva non è attiva: la protezione è inferiore a quella scritta. Correggi la regola."
+  },
+  "hooksViewer": {
+    "title": "Hook",
+    "description": "Comandi che ogni cartella attendibile esegue attorno alle chiamate agli strumenti e alla fine di un'esecuzione. Sola lettura: modifica .jan/agent/hooks.toml.",
+    "empty": "Nessuna cartella attendibile dichiara hook.",
+    "none": "Questa cartella non dichiara hook.",
+    "error": "Impossibile leggere il file degli hook",
+    "loadFailed": "Impossibile leggere gli hook"
   }
 }

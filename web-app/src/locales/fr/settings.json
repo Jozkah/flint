@@ -25,7 +25,11 @@
     "advanced": "Avancé : réglages par rôle",
     "overridden_one": "{{count}} rôle configuré",
     "overridden_other": "{{count}} rôles configurés",
-    "overridden_many": "{{count}} de rôles configurés"
+    "overridden_many": "{{count}} de rôles configurés",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "Téléchargement automatique des nouvelles mises à jour",
   "checkForUpdates": "Vérifier les mises à jour",
@@ -554,7 +558,9 @@
       "foreignDesc": "Trouvée dans {{path}}, installée par une autre copie de Flint. Installez ici pour utiliser la CLI de cette copie."
     },
     "startupGroup": "Démarrage et zone de notification",
-    "cliGroup": "Ligne de commande"
+    "cliGroup": "Ligne de commande",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "Extensions"
@@ -1462,5 +1468,16 @@
   },
   "modelDefaults": {
     "title": "Valeurs par défaut"
+  },
+  "usageAttribution": {
+    "title": "Usage by item",
+    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "calls": "{{count}}×",
+    "empty": "Nothing recorded in this window.",
+    "subagents": "Subagents",
+    "skills": "Skills",
+    "mcp": "MCP servers",
+    "plugins": "Plugins",
+    "unused": "Configured but never used"
   }
 }

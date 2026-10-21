@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "Metadaten",
   "regenerate": "Neu generieren",
+  "historyReadFailed": "Der Unterhaltungsverlauf konnte nicht geladen werden.",
   "threadImage": "Thread Bild",
   "editMessage": "Nachricht bearbeiten",
   "deleteMessage": "Nachricht löschen",
@@ -1196,7 +1197,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Die Nebenfrage konnte nicht beantwortet werden."
   },
   "autoCompactNeedsWindow": "Die automatische Komprimierung braucht eine Kontextgröße, und für {{model}} kann Flint keine finden. Lege für dieses Modell „Max. Kontext-Tokens“ fest, damit lange Chats komprimiert werden, bevor sie ihn füllen. Wenn der Anbieter eine Anfrage wegen ihrer Länge ablehnt, komprimiert Flint und versucht es einmal erneut.",
   "compaction": {
@@ -1222,7 +1224,9 @@
     "interruptedNoReply_one": "{{calls}} abgeschlossener Schritt behalten.",
     "interruptedNoReply_other": "{{calls}} abgeschlossene Schritte behalten.",
     "interruptedContinue": "Fortfahren",
-    "interruptedDiscard": "Unfertige Antwort verwerfen und fortfahren"
+    "interruptedDiscard": "Unfertige Antwort verwerfen und fortfahren",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} kann keine Tools aufrufen und daher nicht als Agent arbeiten. Wähle ein Modell mit Tool-Aufrufen.",
   "sessionModelUnavailable": "{{model}} ist nicht mehr verfügbar. Wähle im Modellmenü ein anderes Modell.",
@@ -1367,6 +1371,8 @@
     "workflows_one": "{{count}} Workflow",
     "workflows_other": "{{count}} Workflows",
     "phase": "Phase {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Sonstige Arbeit",
     "progress": "{{finished}} von {{total}} abgeschlossen",
     "runningTasks_one": "{{count}} laufende Aufgabe",
@@ -1506,7 +1512,19 @@
     "shellCount_other": "{{count}} Befehle",
     "stopWorkflow": "{{name}} stoppen",
     "stopWorkflowPartial": "{{cancelled}} gestoppt; {{failed}} konnten nicht gestoppt werden.",
-    "cancelKillFailed": "Das System hat das Stoppen verweigert: {{error}}"
+    "cancelKillFailed": "Das System hat das Stoppen verweigert: {{error}}",
+    "pauseRun": "Pausieren",
+    "resumeRun": "Fortsetzen",
+    "restartAgent": "Agent neu starten",
+    "runPaused": "Pausiert",
+    "resumeFromSaved": "Fortsetzen",
+    "resumeFromSavedHint": "Erneut starten; fertige Agenten liefern ihre gespeicherten Ergebnisse",
+    "saveWorkflow": "Speichern",
+    "saveWorkflowName": "Name (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Was es tut",
+    "saveWorkflowConfirm": "Workflow speichern",
+    "saveWorkflowDone": "{{name}} gespeichert. Starten mit /workflow:{{name}}",
+    "saveWorkflowFailed": "Speichern fehlgeschlagen: {{error}}"
   },
   "reasoningEffort": {
     "label": "Reasoning-Aufwand",
@@ -2404,6 +2422,9 @@
   "coworkParallel": {
     "settingTitle": "Neue Sitzungen in einem Git-Ordner arbeiten in einem eigenen Worktree",
     "settingDescription": "Jede neue Sitzung in einem Git-Repository erhält einen eigenen Worktree und Branch (flint/<title>), damit viele Sitzungen gleichzeitig im selben Ordner arbeiten können, ohne sich gegenseitig oder deinen Checkout zu berühren. Prüfe, merge oder verwirf jeden Branch in der Sitzung.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Diese Sitzung arbeitet auf Branch {{branch}} in einem eigenen Worktree",
     "basedOn": "von {{base}}",
     "openFolder": "Ordner öffnen",
@@ -2929,5 +2950,26 @@
     "count_one": "{{count}} untergeordnet",
     "count_other": "{{count}} untergeordnet",
     "fewer": "Weniger untergeordnete anzeigen"
+  },
+  "diffReview": {
+    "title": "Änderungen prüfen",
+    "button": "Prüfen",
+    "running": "Prüfe…",
+    "security": "Sicherheitsprüfung einbeziehen",
+    "progress": "Prüfe Befund {{done}} von {{total}}…",
+    "failed": "Prüfung fehlgeschlagen: {{error}}",
+    "summary": "{{count}} Befund(e) in {{files}} Datei(en); {{refuted}} bei zweitem Blick widerlegt.",
+    "truncated": "Der Diff war zu groß und wurde abgeschnitten; der Rest wurde nicht geprüft.",
+    "none": "Keine Befunde.",
+    "listLabel": "Befunde, schwerste zuerst",
+    "unverified": "ungeprüft",
+    "fix": "Korrektur: {{fix}}",
+    "fixButton": "Mit Agent beheben",
+    "fixBusy": "Warte, bis der aktuelle Lauf endet, und versuche es erneut.",
+    "severity": {
+      "high": "Hoch",
+      "medium": "Mittel",
+      "low": "Niedrig"
+    }
   }
 }

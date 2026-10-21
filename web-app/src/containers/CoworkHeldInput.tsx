@@ -8,6 +8,7 @@ import { useMessageQueue, type QueuedMessage } from '@/stores/message-queue-stor
 import { AgentMessageCard } from '@/containers/AgentMessageCard'
 import { revealInScroller } from '@/lib/revealInScroller'
 import { SessionMessagingToggle } from '@/containers/SessionMessagingToggle'
+import { HeldInboundStack } from '@/containers/HeldInboundStack'
 
 type MailMessage = QueuedMessage & { from: NonNullable<QueuedMessage['from']> }
 
@@ -39,9 +40,12 @@ export function CoworkHeldInput({
       s.getQueue(sessionId).filter((m): m is MailMessage => !!m.held && !!m.from)
     )
   )
-  if (held.length === 0 && mail.length === 0) return null
+  if (held.length === 0 && mail.length === 0) {
+    return <HeldInboundStack sessionId={sessionId} />
+  }
   return (
     <>
+      <HeldInboundStack sessionId={sessionId} />
       {held.length > 0 && (
         <div
           role="status"

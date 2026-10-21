@@ -124,9 +124,17 @@ pub(crate) struct RunReport {
     tool_names: std::collections::HashMap<String, String>,
     /// Failed tool calls of this run (not of its subagents), by tool.
     tool_failures: crate::core::agent::failure_stats::FailureStats,
+    /// `--json-schema`: the validated final value, or why it never validated.
+    structured: Option<serde_json::Value>,
+    structured_error: Option<String>,
 }
 
 impl RunReport {
+    pub(crate) fn set_structured(&mut self, value: Option<serde_json::Value>, error: Option<String>) {
+        self.structured = value;
+        self.structured_error = error;
+    }
+
     /// A run that failed before the event stream existed (bad config, no
     /// reachable provider): no turns, no usage, just the failure.
     pub(crate) fn setup_failure(message: &str) -> Self {
@@ -258,6 +266,8 @@ impl RunReport {
             resources: self.resources,
             completed_with_failures: !is_error && !self.tool_failures.is_empty(),
             tool_failures: self.tool_failures.by_tool().clone(),
+            structured_output: self.structured,
+            structured_output_error: self.structured_error,
         }
     }
 }
@@ -455,6 +465,13 @@ pub(crate) struct RunResult {
     /// a later call recovered from it. Absent otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     completed_with_failures: bool,
+    /// `--json-schema`: the final answer, parsed and validated against the
+    /// schema. Absent when no schema was given or the answer never validated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    structured_output: Option<serde_json::Value>,
+    /// `--json-schema`: why the answer never validated within the attempts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    structured_output_error: Option<String>,
 }
 
 #[derive(serde::Serialize, schemars::JsonSchema)]

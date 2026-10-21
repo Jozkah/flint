@@ -41,6 +41,10 @@
     "gitRemote": "Flint {{command}} चलाना चाहता है, जो {{target}} को बदलता है",
     "gitDestructive": "Flint {{command}} चलाना चाहता है, जिससे काम खो सकता है",
     "approveCampaign": "Flint कैंपेन \"{{title}}\" ({{count}} कार्य) शुरू करना चाहता है",
+    "runWorkflow": "Flint wants to run a workflow: {{agents}} agents in {{phases}} phases",
+    "spawnWorktree": "Flint wants to start a nested chat that can change files in a new worktree of {{folder}} (branch {{branch}})",
+    "spawnChat": "Flint wants to start a nested chat called \"{{title}}\"",
+    "enterWorktree": "Flint wants to move this session's write access into a worktree: {{folder}} (branch {{branch}}, based on {{base}})",
     "spendPause": "Flint इस रन को उसके खर्च-विराम से आगे जारी रखना चाहता है",
     "changeFileOutside": "Flint {{target}} बदलना चाहता है, जो {{workspace}} के बाहर है",
     "changeManyFilesOutside": "Flint {{count}} फ़ाइलें बदलना चाहता है, कुछ {{workspace}} के बाहर हैं"
@@ -63,6 +67,10 @@
     "gitRemote": "यह किसी रिमोट रिपॉज़िटरी में बदलाव भेजता है जिसे दूसरे लोग देख सकते हैं। Flint हर बार पूछता है, जब तक आप इस बातचीत के लिए सामान्य रिमोट Git क्रियाओं की अस्थायी अनुमति न दें।",
     "gitDestructive": "यह जो हटाता या ओवरराइट करता है, वह शायद वापस न पाया जा सके।",
     "campaignPlan": "यह अलग-अलग सत्र शुरू करता है, हर एक अपनी वर्कट्री ब्रांच पर, जो फ़ाइलें पढ़ते और बदलते हैं और आपके मॉडल का कोटा साथ-साथ इस्तेमाल करते हैं। योजना को स्वीकृत करने से किसी कार्य की कोई कॉल स्वीकृत नहीं होती। Flint हर बार पूछता है।",
+    "workflow": "It starts that many subagents, phase by phase, that read and change files and use your model quota. Flint asks every time for a workflow this large.",
+    "spawnWorktree": "The nested chat reads and changes files on its own branch of this project, uses your model quota, and keeps running while you do other things. Its changes stay on that branch until you merge them. Flint asks every time.",
+    "spawnChat": "The nested chat is a new session that uses your model quota and keeps running while you do other things. It starts with no folder access. Flint asks every time because you turned on \"Ask before nested chats start\" for this session.",
+    "enterWorktree": "This session can read and change files only in that worktree on its own branch, not in your project folder. Its changes stay on that branch until you merge them. Flint asks every time.",
     "spendPause": "रन तब तक सशुल्क मॉडल कोटा इस्तेमाल करता रहता है जब तक वह खत्म न हो या अपनी सीमा तक न पहुँच जाए। अस्वीकार करने पर रन रुक जाता है।"
   },
   "repeat": {
@@ -346,5 +354,18 @@
     "lineLabel": "पंक्ति",
     "ruleLabel": "नियम",
     "more": "और {{count}} चिह्नित पंक्तियाँ"
+  },
+  "ruleWarnings": {
+    "title": "समस्या वाले अनुमति नियम",
+    "description": "किसी प्रोजेक्ट की agent.toml के कुछ नियम हटा दिए गए या कभी मेल नहीं खा सकते। बाकी लोड होता है, पर ये नियम वैसा काम नहीं करते जैसा लिखा है।",
+    "notProtecting": "प्रतिबंध लगाने वाला नियम लागू नहीं है, इसलिए सुरक्षा लिखे से कम है। नियम ठीक करें।"
+  },
+  "hooksViewer": {
+    "title": "हुक",
+    "description": "हर भरोसेमंद फ़ोल्डर टूल कॉल के आसपास और रन के अंत में जो कमांड चलाता है। केवल पढ़ने के लिए: बदलने के लिए .jan/agent/hooks.toml संपादित करें।",
+    "empty": "किसी भरोसेमंद फ़ोल्डर में हुक घोषित नहीं हैं।",
+    "none": "इस फ़ोल्डर में कोई हुक घोषित नहीं है।",
+    "error": "हुक फ़ाइल पढ़ी नहीं जा सकी",
+    "loadFailed": "हुक पढ़े नहीं जा सके"
   }
 }

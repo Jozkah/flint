@@ -537,6 +537,7 @@
   "jan": "Flint",
   "metadata": "Metadati",
   "regenerate": "Rigenera",
+  "historyReadFailed": "Impossibile caricare la cronologia della conversazione.",
   "threadImage": "Immagine conversazione",
   "editMessage": "Modifica messaggio",
   "deleteMessage": "Elimina messaggio",
@@ -1203,7 +1204,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "Impossibile rispondere alla domanda a margine."
   },
   "autoCompactNeedsWindow": "L'auto-compattazione richiede una dimensione del contesto, e {{model}} non ne ha una che Flint riesca a trovare. Imposta Max Context Tokens per questo modello così le chat lunghe vengono compattate prima di riempirlo. Se il provider rifiuta una richiesta per la sua lunghezza, Flint compatta e riprova una volta.",
   "compaction": {
@@ -1232,7 +1234,9 @@
     "interruptedNoReply_other": "{{calls}} passaggi completati conservati.",
     "interruptedNoReply_many": "{{calls}} di passaggi completati conservati.",
     "interruptedContinue": "Continua",
-    "interruptedDiscard": "Scarta la risposta incompleta e continua"
+    "interruptedDiscard": "Scarta la risposta incompleta e continua",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} non può chiamare strumenti, quindi non può fare da agente. Scegli un modello che chiami strumenti.",
   "sessionModelUnavailable": "{{model}} non è più disponibile. Scegli un altro modello dal menu dei modelli.",
@@ -1382,6 +1386,8 @@
     "workflows_other": "{{count}} flussi di lavoro",
     "workflows_many": "{{count}} di flussi di lavoro",
     "phase": "Fase {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "Altro lavoro",
     "progress": "{{finished}} di {{total}} concluse",
     "runningTasks_one": "{{count}} attività in esecuzione",
@@ -1527,7 +1533,19 @@
     "shellCount_many": "{{count}} di comandi",
     "stopWorkflow": "Ferma {{name}}",
     "stopWorkflowPartial": "Fermati {{cancelled}}; {{failed}} non è stato possibile fermarli.",
-    "cancelKillFailed": "Il sistema ha rifiutato di fermarlo: {{error}}"
+    "cancelKillFailed": "Il sistema ha rifiutato di fermarlo: {{error}}",
+    "pauseRun": "Metti in pausa",
+    "resumeRun": "Riprendi",
+    "restartAgent": "Riavvia agente",
+    "runPaused": "In pausa",
+    "resumeFromSaved": "Riprendi",
+    "resumeFromSavedHint": "Esegui di nuovo; gli agenti finiti restituiscono i risultati salvati",
+    "saveWorkflow": "Salva",
+    "saveWorkflowName": "Nome (a-z, 0-9, -)",
+    "saveWorkflowDescription": "Cosa fa",
+    "saveWorkflowConfirm": "Salva workflow",
+    "saveWorkflowDone": "{{name}} salvato. Eseguilo con /workflow:{{name}}",
+    "saveWorkflowFailed": "Impossibile salvare: {{error}}"
   },
   "reasoningEffort": {
     "label": "Impegno di ragionamento",
@@ -2445,6 +2463,9 @@
   "coworkParallel": {
     "settingTitle": "Le nuove sessioni in una cartella Git lavorano nel proprio worktree",
     "settingDescription": "Ogni nuova sessione collegata a un repository Git riceve un proprio worktree e branch (flint/<title>), così più sessioni possono lavorare nella stessa cartella senza interferire tra loro o con il tuo checkout. Rivedi, unisci o scarta ogni branch dalla sessione.",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "Questa sessione lavora sul branch {{branch}}, nel proprio worktree",
     "basedOn": "da {{base}}",
     "openFolder": "Apri cartella",
@@ -2978,5 +2999,26 @@
     "count_one": "{{count}} annidato",
     "count_other": "{{count}} annidati",
     "fewer": "Mostra meno annidati"
+  },
+  "diffReview": {
+    "title": "Rivedi le modifiche",
+    "button": "Rivedi",
+    "running": "Revisione…",
+    "security": "Includi la revisione di sicurezza",
+    "progress": "Verifica del rilievo {{done}} di {{total}}…",
+    "failed": "Revisione non riuscita: {{error}}",
+    "summary": "{{count}} rilievo/i in {{files}} file; {{refuted}} confutati a un secondo esame.",
+    "truncated": "Il diff era troppo grande ed è stato tagliato; il resto non è stato rivisto.",
+    "none": "Nessun rilievo.",
+    "listLabel": "Rilievi, dal più grave",
+    "unverified": "non verificato",
+    "fix": "Correzione: {{fix}}",
+    "fixButton": "Correggi con l'agente",
+    "fixBusy": "Attendi la fine dell'esecuzione corrente e riprova.",
+    "severity": {
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Bassa"
+    }
   }
 }

@@ -8,6 +8,9 @@
  */
 
 import { CAMPAIGN_PLAN_TOOL_NAME } from '@/lib/campaignToolNames'
+import { WORKFLOW_TOOL_NAME } from '@/lib/workflowToolName'
+import { SPAWN_SESSION_TOOL_NAME } from '@/lib/spawnSessionName'
+import { ENTER_WORKTREE_TOOL_NAME } from '@/lib/worktreeToolNames'
 
 /** The one messaging tool that acts on another session. */
 export const STOP_SESSION_TOOL_NAME = 'stop_session'
@@ -31,11 +34,17 @@ export const SESSION_MESSAGING_TOOLS: ReadonlySet<string> = new Set(
  * session is an action on something the user of this session may not be
  * looking at, so each one is decided on its own. Approving a campaign plan
  * starts several sessions that spend and change files, so it is decided the
- * same way, and approving it does not pre-approve any call a task makes.
+ * same way, and approving it does not pre-approve any call a task makes. A
+ * large `workflow` is asked the same way (small ones never reach the prompt).
  */
 export const ALWAYS_ASK_TOOLS: ReadonlySet<string> = new Set([
   STOP_SESSION_TOOL_NAME,
   CAMPAIGN_PLAN_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
+  // Only asked for `worktree: true` (the gate runs in spawnSession).
+  SPAWN_SESSION_TOOL_NAME,
+  // Moves the session's write authority into a worktree.
+  ENTER_WORKTREE_TOOL_NAME,
 ])
 
 /** Longest stop reason, matching the backend. */

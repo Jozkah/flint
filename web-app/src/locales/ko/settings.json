@@ -24,7 +24,11 @@
     "precedence": "순서: 모델이 요청한 것(허용된 경우), 역할의 설정, 모든 서브에이전트 설정, 부모 순입니다.",
     "advanced": "고급: 역할별 설정",
     "overridden_one": "역할 {{count}}개 설정됨",
-    "overridden_other": "역할 {{count}}개 설정됨"
+    "overridden_other": "역할 {{count}}개 설정됨",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "새 업데이트 자동 다운로드",
   "checkForUpdates": "업데이트 확인",
@@ -552,7 +556,9 @@
       "foreignDesc": "{{path}}에서 찾았습니다. 다른 Flint 사본이 설치한 것입니다. 이 사본의 CLI를 쓰려면 여기에 설치하세요."
     },
     "startupGroup": "시작 및 트레이",
-    "cliGroup": "명령줄"
+    "cliGroup": "명령줄",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "확장 프로그램"
@@ -1629,5 +1635,16 @@
   },
   "modelDefaults": {
     "title": "기본값"
+  },
+  "usageAttribution": {
+    "title": "Usage by item",
+    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "calls": "{{count}}×",
+    "empty": "Nothing recorded in this window.",
+    "subagents": "Subagents",
+    "skills": "Skills",
+    "mcp": "MCP servers",
+    "plugins": "Plugins",
+    "unused": "Configured but never used"
   }
 }

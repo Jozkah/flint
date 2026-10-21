@@ -532,6 +532,7 @@
   "jan": "Flint",
   "metadata": "元數據",
   "regenerate": "重新產生",
+  "historyReadFailed": "無法載入對話歷史記錄。",
   "threadImage": "對話圖片",
   "editMessage": "編輯訊息",
   "deleteMessage": "刪除訊息",
@@ -1196,7 +1197,8 @@
     "compactFailedReason": "Compaction failed: {{reason}}. Your conversation is unchanged.",
     "compactDone": "Compacted. Summary written by {{model}}.",
     "compactUndo": "Undo",
-    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone."
+    "compactUndoStale": "The conversation moved on since, so the compaction can no longer be undone.",
+    "btwFailed": "無法回答旁支問題。"
   },
   "autoCompactNeedsWindow": "自動壓縮需要上下文大小，而 Flint 找不到 {{model}} 的上下文大小。請為此模型設定最大上下文 Token 數，以便長聊天在填滿之前被壓縮。如果供應商因長度拒絕請求，Flint 會壓縮並重試一次。",
   "compaction": {
@@ -1222,7 +1224,9 @@
     "interruptedNoReply_one": "已保留 {{calls}} 個已完成的步驟。",
     "interruptedNoReply_other": "已保留 {{calls}} 個已完成的步驟。",
     "interruptedContinue": "繼續",
-    "interruptedDiscard": "捨棄未完成的回覆並繼續"
+    "interruptedDiscard": "捨棄未完成的回覆並繼續",
+    "recap": "While you were away:",
+    "recapDismiss": "Dismiss recap"
   },
   "modelNoTools": "{{model}} 無法呼叫工具，因此無法作為代理程式運作。請選擇支援工具呼叫的模型。",
   "sessionModelUnavailable": "{{model}} 已無法使用。請在模型選單中選擇其他模型。",
@@ -1367,6 +1371,8 @@
     "workflows_one": "{{count}} 個工作流程",
     "workflows_other": "{{count}} 個工作流程",
     "phase": "階段 {{name}}",
+    "workflowPhase": "{{index}}. {{name}}",
+    "phaseDone": "{{finished}} of {{total}} done",
     "unphased": "其他工作",
     "progress": "已完成 {{finished}} / {{total}}",
     "runningTasks_one": "{{count}} 個執行中的工作",
@@ -1506,7 +1512,19 @@
     "shellCount_other": "{{count}} 個指令",
     "stopWorkflow": "停止 {{name}}",
     "stopWorkflowPartial": "已停止 {{cancelled}} 個；{{failed}} 個無法停止。",
-    "cancelKillFailed": "系統拒絕停止它：{{error}}"
+    "cancelKillFailed": "系統拒絕停止它：{{error}}",
+    "pauseRun": "暫停",
+    "resumeRun": "繼續",
+    "restartAgent": "重新啟動代理",
+    "runPaused": "已暫停",
+    "resumeFromSaved": "恢復",
+    "resumeFromSavedHint": "重新執行；已完成的代理直接回傳已儲存的結果",
+    "saveWorkflow": "儲存",
+    "saveWorkflowName": "名稱 (a-z, 0-9, -)",
+    "saveWorkflowDescription": "功能說明",
+    "saveWorkflowConfirm": "儲存工作流程",
+    "saveWorkflowDone": "已儲存 {{name}}。用 /workflow:{{name}} 執行",
+    "saveWorkflowFailed": "無法儲存：{{error}}"
   },
   "reasoningEffort": {
     "label": "推理強度",
@@ -2409,6 +2427,9 @@
   "coworkParallel": {
     "settingTitle": "Git 資料夾中的新工作階段在各自的 worktree 中工作",
     "settingDescription": "連接到 Git 儲存庫的每個新工作階段都會取得自己的 worktree 與分支（flint/<title>），讓多個工作階段能同時在同一資料夾中工作，互不干擾，也不會動到你的簽出。可在工作階段中審閱、合併或捨棄每個分支。",
+    "baseTitle": "Start worktrees from my current branch",
+    "baseDescription": "Off (default): a new worktree starts from the repository's default branch. On: it starts from the commit you have checked out, so it carries commits you have not pushed. A branch given explicitly (for example by the agent) always wins.",
+    "resumeGone": "This session's worktree could not be re-entered ({{reason}}), so it went back to review only. Nothing was recreated.",
     "branchTitle": "此工作階段在自己的 worktree 中使用分支 {{branch}}",
     "basedOn": "基於 {{base}}",
     "openFolder": "開啟資料夾",
@@ -2918,5 +2939,26 @@
     "waiting_other": "{{count}} 個等待中",
     "count_other": "{{count}} 個巢狀",
     "fewer": "收合巢狀項目"
+  },
+  "diffReview": {
+    "title": "審查變更",
+    "button": "審查",
+    "running": "審查中…",
+    "security": "包含安全審查",
+    "progress": "正在核實第 {{done}} / {{total}} 項…",
+    "failed": "審查失敗:{{error}}",
+    "summary": "{{files}} 個檔案中有 {{count}} 項發現;複查後駁回 {{refuted}} 項。",
+    "truncated": "差異過大已被截斷;其餘部分未審查。",
+    "none": "沒有發現。",
+    "listLabel": "發現項(依嚴重程度排序)",
+    "unverified": "未核實",
+    "fix": "修正建議:{{fix}}",
+    "fixButton": "交給代理修正",
+    "fixBusy": "請等目前執行結束後再試。",
+    "severity": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    }
   }
 }

@@ -266,9 +266,9 @@ describe('CustomChatTransport prompt-prefix stability across turns', () => {
     ).toBe(JSON.stringify(secondMessages))
   })
 
-  it('keeps the configured limit when llama.cpp context shift is disabled', async () => {
+  it('keeps the configured limit when the live llama.cpp context is large enough', async () => {
     h.providerId = 'llamacpp'
-    h.getModelProps.mockResolvedValue({ nCtx: 4096 })
+    h.getModelProps.mockResolvedValue({ nCtx: 65_536 })
     h.assistantParameters = {
       max_context_tokens: 12_000,
       max_output_tokens: 2048,
@@ -289,7 +289,7 @@ describe('CustomChatTransport prompt-prefix stability across turns', () => {
     )
 
     const requestMessages = streamTextCalls[0].messages as unknown[]
-    expect(h.getModelProps).not.toHaveBeenCalled()
+    expect(h.getModelProps).toHaveBeenCalledWith('llama-local')
     expect(requestMessages).toHaveLength(3)
   })
 })

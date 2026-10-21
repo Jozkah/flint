@@ -24,7 +24,11 @@
     "precedence": "क्रम: मॉडल जो माँगे (अनुमति हो तो), फिर भूमिका की सेटिंग, फिर सभी सबएजेंट की सेटिंग, फिर पैरेंट।",
     "advanced": "उन्नत: भूमिका-वार सेटिंग",
     "overridden_one": "{{count}} भूमिका सेट है",
-    "overridden_other": "{{count}} भूमिकाएँ सेट हैं"
+    "overridden_other": "{{count}} भूमिकाएँ सेट हैं",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "अपडेट्स स्वचालित रूप से डाउनलोड करें",
   "checkForUpdates": "अपडेट्स जांचें",
@@ -552,7 +556,9 @@
       "foreignDesc": "{{path}} पर मिला, Flint की किसी दूसरी कॉपी ने इंस्टॉल किया है। इस कॉपी का CLI इस्तेमाल करने के लिए यहाँ इंस्टॉल करें।"
     },
     "startupGroup": "स्टार्टअप और ट्रे",
-    "cliGroup": "कमांड लाइन"
+    "cliGroup": "कमांड लाइन",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "एक्सटेंशन"
@@ -1632,5 +1638,16 @@
   },
   "modelDefaults": {
     "title": "डिफ़ॉल्ट"
+  },
+  "usageAttribution": {
+    "title": "Usage by item",
+    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "calls": "{{count}}×",
+    "empty": "Nothing recorded in this window.",
+    "subagents": "Subagents",
+    "skills": "Skills",
+    "mcp": "MCP servers",
+    "plugins": "Plugins",
+    "unused": "Configured but never used"
   }
 }

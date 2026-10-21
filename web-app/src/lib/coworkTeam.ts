@@ -19,6 +19,7 @@
  * is why [`assembleReport`] takes results rather than prose about them.
  */
 
+import { MAX_LOOP_TASKS, type LoopMeta } from '@/lib/workflowLoops'
 import {
   TeamControl,
   applyReplacement,
@@ -44,6 +45,10 @@ export type TeamTask = {
   subagentName?: string
   /** A short name for the row this task gets (3-6 words). */
   title?: string
+  /** The `workflow` phase this task belongs to; set by `workflowToTeamInput`. */
+  phase?: { name: string; index: number }
+  /** A JSON schema the answer must fit; set by `workflowToTeamInput`. */
+  schema?: Record<string, unknown>
   /** A configured model to run this task on. */
   model?: string
   /** Ids that must be `completed` before this may start. */
@@ -105,6 +110,16 @@ export type TeamTask = {
    * the "waits for changes it cannot see" mistake [`refuseGraph`] refuses.
    */
   after?: string[]
+  /**
+   * Ids whose answers are put at the head of this task's brief when it starts.
+   *
+   * Filled in by [`runTeam`] from the recorded results, never from prose, so a
+   * failed or missing predecessor is named as such rather than skipped. Set by
+   * the `workflow` front end for every phase after the first.
+   */
+  carry?: string[]
+  /** Set by `workflowToTeamInput` for a step of an expanded `repeat_until` loop. */
+  loop?: LoopMeta
 }
 
 /** The most extra attempts a task may ask for. */
@@ -733,8 +748,13 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
   if (!Array.isArray(input.tasks) || input.tasks.length === 0) {
     return 'team needs a non-empty `tasks` array'
   }
-  if (input.tasks.length > MAX_TEAM_TASKS) {
-    return `a team is at most ${MAX_TEAM_TASKS} tasks; split the work`
+  // A workflow holding a loop expands past the team cap; it says so itself.
+  const cap =
+    typeof input.max_tasks === 'number' && input.max_tasks > MAX_TEAM_TASKS
+      ? Math.min(Math.floor(input.max_tasks), MAX_LOOP_TASKS)
+      : MAX_TEAM_TASKS
+  if (input.tasks.length > cap) {
+    return `a team is at most ${cap} tasks; split the work`
   }
 
   const tasks: TeamTask[] = []
@@ -762,6 +782,11 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       typeof one.title === 'string' && one.title.trim() ? one.title.trim() : undefined
     const model =
       typeof one.model === 'string' && one.model.trim() ? one.model.trim().slice(0, 200) : undefined
+    const rawPhase = one.phase as Record<string, unknown> | null | undefined
+    const phase =
+      rawPhase && typeof rawPhase.name === 'string' && Number.isInteger(rawPhase.index)
+        ? { name: rawPhase.name.slice(0, 200), index: rawPhase.index as number }
+        : undefined
     const renames = Array.isArray(one.renames)
       ? one.renames.flatMap((move) => {
           const m = move as Record<string, unknown> | null
@@ -770,6 +795,22 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
             : []
         })
       : []
+    const rawLoop = one.loop as Record<string, unknown> | null | undefined
+    const loop: LoopMeta | undefined =
+      rawLoop &&
+      Number.isInteger(rawLoop.phase) &&
+      Number.isInteger(rawLoop.round) &&
+      Number.isInteger(rawLoop.max) &&
+      (rawLoop.kind === 'agent' || rawLoop.kind === 'check')
+        ? {
+            phase: rawLoop.phase as number,
+            round: rawLoop.round as number,
+            kind: rawLoop.kind,
+            ...(typeof rawLoop.base === 'string' ? { base: rawLoop.base } : {}),
+            max: rawLoop.max as number,
+            noProgress: rawLoop.noProgress === true,
+          }
+        : undefined
     const reads = stringList(one.reads)
     const deletes = stringList(one.deletes)
     tasks.push({
@@ -777,13 +818,19 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       description,
       ...(subagentName ? { subagentName } : {}),
       ...(title ? { title } : {}),
+      ...(phase ? { phase } : {}),
+      ...(one.schema && typeof one.schema === 'object' && !Array.isArray(one.schema)
+        ? { schema: one.schema as Record<string, unknown> }
+        : {}),
       ...(model ? { model } : {}),
+      ...(loop ? { loop } : {}),
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),
       ...(reads.length ? { reads } : {}),
       ...(deletes.length ? { deletes } : {}),
       ...(renames.length ? { renames } : {}),
       ...(one.isolate === true ? { isolate: true } : {}),
+      ...(stringList(one.carry).length ? { carry: stringList(one.carry) } : {}),
       ...(typeof one.retries === 'number' && one.retries > 0
         ? { retries: Math.min(Math.floor(one.retries), MAX_TASK_RETRIES) }
         : {}),
@@ -910,6 +957,26 @@ function refuseIsolation(tasks: readonly TeamTask[]): string | null {
   )
 }
 
+/** The task with the answers it asked to carry put ahead of its own brief. */
+export function briefed(
+  task: TeamTask,
+  results: readonly TaskResult[]
+): TeamTask {
+  if (!task.carry?.length) return task
+  const parts = task.carry.map((id) => {
+    const found = [...results].reverse().find((one) => one.taskId === id)
+    if (!found) return `### ${id}\n(no result was recorded)`
+    return `### ${id}${found.ok ? '' : ' (FAILED)'}\n${found.output}`
+  })
+  const plural = task.carry.length === 1 ? '' : 's'
+  return {
+    ...task,
+    description:
+      `Answers from the earlier step${plural}:\n\n` +
+      `${parts.join('\n\n')}\n\n---\n\nYour task:\n${task.description}`,
+  }
+}
+
 export type TeamRunDeps = {
   /** Runs one task as a child. The only thing here that touches a model. */
   runTask: (task: TeamTask, signal: AbortSignal) => Promise<TaskResult>
@@ -941,6 +1008,8 @@ export type TeamRunDeps = {
    * [`DECISION_WINDOW_MS`] to hold for a person at the Tasks panel.
    */
   decisionWindowMs?: number
+  /** Told when a person pauses or resumes the run, for the card and panel. */
+  onPause?: (paused: boolean) => void
 }
 
 export type TeamOutcome =
@@ -986,6 +1055,13 @@ export async function runTeam(
   const results: TaskResult[] = []
   const running = new Map<string, Promise<void>>()
   let finishRequested = false
+  // Paused: nothing new starts, what is running finishes. Only a control
+  // request sets it, so a team with no control is never paused.
+  let paused = false
+  // Live child controllers, so a person can restart a running task: its child
+  // is stopped and its (cancelled) result discarded, not reported.
+  const controllers = new Map<string, AbortController>()
+  const restarting = new Set<string>()
   let decision:
     | 'finished'
     | 'window-elapsed'
@@ -999,6 +1075,7 @@ export async function runTeam(
   const start = (task: TeamTask) => {
     state = { ...state, [task.id]: { status: 'running' } }
     const child = new AbortController()
+    controllers.set(task.id, child)
     // Chained rather than shared: stopping the team stops every child, and a
     // child can still be stopped on its own without touching the others.
     const stop = () => child.abort('cancelled')
@@ -1014,7 +1091,7 @@ export async function runTeam(
      * child is a decision, and a retry past it would be ignoring the decision.
      */
     const attempt = async (left: number): Promise<TaskResult> => {
-      const result = await deps.runTask(task, child.signal)
+      const result = await deps.runTask(briefed(task, results), child.signal)
       if (result.ok || left <= 0 || child.signal.aborted) return result
       return attempt(left - 1)
     }
@@ -1022,6 +1099,10 @@ export async function runTeam(
     const work = attempt(Math.min(task.retries ?? 0, MAX_TASK_RETRIES))
       .then(
         (result) => {
+          if (restarting.delete(task.id)) {
+            state = reopen(graph, state, task.id)
+            return
+          }
           results.push(result)
           state = settle(
             graph,
@@ -1031,6 +1112,10 @@ export async function runTeam(
           )
         },
         (error: unknown) => {
+          if (restarting.delete(task.id)) {
+            state = reopen(graph, state, task.id)
+            return
+          }
           // A child that threw is a failed task, not a crashed team: the point
           // of running several is that one going wrong does not take the rest.
           const message = error instanceof Error ? error.message : String(error)
@@ -1052,6 +1137,7 @@ export async function runTeam(
       .finally(() => {
         deps.signal?.removeEventListener('abort', stop)
         running.delete(task.id)
+        controllers.delete(task.id)
         publish()
       })
 
@@ -1067,6 +1153,18 @@ export async function runTeam(
       if (request.kind === 'finish') {
         finishRequested = true
         decision = 'finished'
+        continue
+      }
+      if (request.kind === 'pause' || request.kind === 'resume') {
+        paused = request.kind === 'pause'
+        if (deps.control) deps.control.paused = paused
+        deps.onPause?.(paused)
+        continue
+      }
+      if (state[request.taskId]?.status === 'running') {
+        // Stop the live attempt; the settle handler reopens the task.
+        restarting.add(request.taskId)
+        controllers.get(request.taskId)?.abort('restart')
         continue
       }
       if (request.kind === 'replace') {
@@ -1086,7 +1184,7 @@ export async function runTeam(
 
   while (!deps.signal?.aborted) {
     applyControl()
-    for (const task of readyTasks(graph, state)) {
+    for (const task of paused ? [] : readyTasks(graph, state)) {
       if (running.size >= limit) break
       start(task)
     }
@@ -1094,6 +1192,15 @@ export async function runTeam(
     if (running.size === 0) {
       // Nothing left to run. With failures and a person able to decide, hold
       // rather than end: ending would make a restart impossible.
+      if (
+        paused &&
+        deps.control &&
+        !finishRequested &&
+        Object.values(state).some((one) => one.status === 'pending')
+      ) {
+        await deps.control.next(deps.signal)
+        continue
+      }
       const windowMs = deps.decisionWindowMs ?? 0
       if (deps.control && !finishRequested && awaitingDecision(state)) {
         // No window, no wait: the failures are reported straight away rather
@@ -1122,7 +1229,10 @@ export async function runTeam(
     await Promise.race([...running.values(), ...(deps.control ? [deps.control.next(wait)] : [])])
     settled.abort()
   }
-  if (deps.control) deps.control.finished = true
+  if (deps.control) {
+    deps.control.finished = true
+    deps.control.paused = false
+  }
   if (deps.signal?.aborted && deps.control && awaitingDecision(state)) decision = 'stopped'
   // Anything asked for after the team ended is refused, not silently dropped.
   for (const request of deps.control?.take() ?? []) {

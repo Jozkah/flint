@@ -26,7 +26,11 @@
     "overridden_one": "Задана {{count}} роль",
     "overridden_few": "Заданы {{count}} роли",
     "overridden_many": "Задано {{count}} ролей",
-    "overridden_other": "Заданы {{count}} роли"
+    "overridden_other": "Заданы {{count}} роли",
+    "maxConcurrent": "Subagents at once",
+    "maxConcurrentDesc": "Most subagents that run at the same time (1 to 16). The rest wait their turn.",
+    "maxDepth": "Subagent depth",
+    "maxDepthDesc": "1: subagents cannot start subagents. 2 or 3 lets them hand work down that many levels, under the same limits and approvals."
   },
   "autoDownload": "Автоматически загружать новые обновления",
   "checkForUpdates": "Проверить обновления",
@@ -556,7 +560,9 @@
       "foreignDesc": "Найдено в {{path}}, установлено другой копией Flint. Установите здесь, чтобы использовать CLI этой копии."
     },
     "startupGroup": "Запуск и трей",
-    "cliGroup": "Командная строка"
+    "cliGroup": "Командная строка",
+    "keepAwake": "Keep the computer awake during runs",
+    "keepAwakeDesc": "Stops Windows from going to sleep while an agent run is working. The screen may still turn off."
   },
   "extensions": {
     "title": "Расширения"
@@ -1505,5 +1511,16 @@
   },
   "modelDefaults": {
     "title": "По умолчанию"
+  },
+  "usageAttribution": {
+    "title": "Usage by item",
+    "description": "Calls and subagent tokens over the last {{window}}, from the session logs.",
+    "calls": "{{count}}×",
+    "empty": "Nothing recorded in this window.",
+    "subagents": "Subagents",
+    "skills": "Skills",
+    "mcp": "MCP servers",
+    "plugins": "Plugins",
+    "unused": "Configured but never used"
   }
 }

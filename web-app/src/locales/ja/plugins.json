@@ -53,7 +53,10 @@
     "accessNoPermissions": "プラグインのインストールや有効化では、そのファイルは何も実行されず、ツール権限も付与されません。",
     "mcpPresent": "このプラグインには .mcp.json ファイルが含まれています。Flint はこれを読み込みません。プラグインは MCP サーバーを追加しません。MCP サーバーは設定で構成してください。",
     "executables": "スクリプトファイル ({{count}})",
-    "executablesMore": "ほか {{count}} 件"
+    "executablesMore": "ほか {{count}} 件",
+    "commit": "コミット",
+    "pinned": "固定先",
+    "marketplace": "マーケットプレイス"
   },
   "toggle": {
     "label": "このプロジェクトで {{name}} を有効にする",
@@ -126,6 +129,17 @@
     "project_unavailable": "プロジェクトフォルダーを利用できません。{{detail}}",
     "config": "プロジェクトの agent.toml を読み書きできませんでした。{{detail}}",
     "io": "ファイル操作に失敗しました。{{detail}}",
-    "unknown": "問題が発生しました。{{detail}}"
+    "unknown": "問題が発生しました。{{detail}}",
+    "sha_mismatch": "ソースが固定されたコミットと一致しなくなったため、何も変更していません。{{detail}}"
+  },
+  "update": {
+    "button": "更新",
+    "running": "更新中…",
+    "done": "{{name}} を更新しました。",
+    "upToDate": "{{name}} は最新です。",
+    "failed": "{{name}} を更新できませんでした: {{error}}"
+  },
+  "market": {
+    "clash": "{{marketplace}}(同じ名前が別のマーケットプレイスにもあります)"
   }
 }

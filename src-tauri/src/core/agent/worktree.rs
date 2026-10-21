@@ -571,6 +571,80 @@ fn default_branch(repo: &Path) -> Option<String> {
         .find(|name| run(repo, &["rev-parse", "--verify", &format!("refs/heads/{name}^{{commit}}")]).is_ok())
 }
 
+/// `EnsureOptions::base` values that are not a branch name: `HEAD` (the
+/// checkout's current commit, carrying unpushed work) and `pr:<n>` or
+/// `pr:<owner>/<repo>#<n>` (a GitHub pull request's head, fetched from origin).
+fn is_special_base(base: &str) -> bool {
+    base == "HEAD" || base.starts_with("pr:")
+}
+
+/// Fetch `pull/<n>/head` from origin into `refs/flint/pr/<n>` and return its
+/// commit. Never waits for input: no terminal prompt, no credential GUI, and a
+/// stalled connection gives up after about 20 seconds. `repo_hint` is an
+/// `owner/repo` the caller read from a URL; origin must be that repository.
+fn fetch_pull_request(repo: &Path, number: u64, repo_hint: Option<&str>) -> Result<String, String> {
+    let origin = run(repo, &["remote", "get-url", "origin"])
+        .map_err(|_| "this repository has no origin remote to fetch a pull request from".to_string())?;
+    if let Some(hint) = repo_hint {
+        if !origin.to_lowercase().contains(&hint.to_lowercase()) {
+            return Err(format!("origin ({origin}) is not {hint}, so pull request #{number} cannot be fetched from it"));
+        }
+    }
+    let refspec = format!("pull/{number}/head:refs/flint/pr/{number}");
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(repo)
+        .args(crate::core::agent::vcs::HARDENED)
+        .args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=20"])
+        .args(["fetch", "--no-tags", "--force", "origin", &refspec])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GCM_INTERACTIVE", "never")
+        .env("GIT_ASKPASS", "")
+        .env("SSH_ASKPASS", "")
+        .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
+    if !out.status.success() {
+        let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(format!("could not fetch pull request #{number} from origin: {why}"));
+    }
+    run(repo, &["rev-parse", "--verify", &format!("refs/flint/pr/{number}^{{commit}}")])
+}
+
+/// The commit, branch and notes for a special base (see [`is_special_base`]).
+fn resolve_special_base(repo: &Path, base: &str) -> Result<(String, Option<String>, Vec<String>), String> {
+    if base == "HEAD" {
+        let sha = run(repo, &["rev-parse", "--verify", "HEAD^{commit}"])
+            .map_err(|_| "This repository has no commits yet, so a worktree cannot be created.".to_string())?;
+        let note = match current_branch(repo) {
+            Some(b) => format!("This worktree started from the checked-out branch {b}, including commits not yet pushed."),
+            None => "This worktree started from the checked-out commit.".to_string(),
+        };
+        return Ok((sha, current_branch(repo), vec![note]));
+    }
+    let spec = base.trim_start_matches("pr:");
+    let (hint, digits) = match spec.split_once('#') {
+        Some((repo_name, n)) => (Some(repo_name), n),
+        None => (None, spec),
+    };
+    let number: u64 = digits
+        .parse()
+        .ok()
+        .filter(|n| *n > 0)
+        .ok_or_else(|| format!("{base} is not a pull request number"))?;
+    if let Some(h) = hint {
+        let ok = h.split('/').count() == 2
+            && h.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.'));
+        if !ok {
+            return Err(format!("{h} is not an owner/repo"));
+        }
+    }
+    let sha = fetch_pull_request(repo, number, hint)?;
+    Ok((sha, None, vec![format!("This worktree holds pull request #{number}, fetched from origin (pull/{number}/head). It has no base branch to merge into.")]))
+}
+
 /// How a new worktree is named and what it starts from.
 #[derive(Debug, Clone, Default)]
 pub struct EnsureOptions {
@@ -656,6 +730,11 @@ pub fn ensure_with(
     }
 
     let (head, base_branch) = match options.base.as_deref().map(str::trim) {
+        Some(base) if is_special_base(base) => {
+            let (sha, branch, extra) = resolve_special_base(repo, base)?;
+            notes.extend(extra);
+            (sha, branch)
+        }
         Some(base) if !base.is_empty() => {
             if base.starts_with('-') {
                 return Err(format!("{base} is not a branch or commit"));
@@ -710,6 +789,7 @@ pub fn ensure_with(
     let path_str = path.to_string_lossy().to_string();
     crate::core::agent::vcs::refuse_filter_programs(repo)?;
     run(repo, &["worktree", "add", "-b", &branch, &path_str, &head])?;
+    notes.extend(copy_worktreeinclude(repo, &path));
 
     Ok(WorktreeRecord {
         path: path_str,
@@ -721,6 +801,128 @@ pub fn ensure_with(
         base_branch,
         notes,
     })
+}
+
+/// Find the worktree a reopened session was working in, and only find it:
+/// unlike [`ensure_with`] this never creates one. `Ok(None)` when it is gone.
+/// What is found must be a linked worktree of this project (its `.git` is a
+/// file, git's own metadata ties it to this repository), under the folder
+/// Flint owns once symlinks are resolved, and neither the main checkout nor
+/// inside it; anything else is an error that names why, never a quiet reuse.
+pub fn resume_existing(
+    repo: &Path,
+    worktrees_root: &Path,
+    session_id: &str,
+) -> Result<Option<WorktreeRecord>, String> {
+    let root = absolute(worktrees_root)?;
+    let identity = identity(repo)?;
+    let main = PathBuf::from(&identity.root);
+    for path in [
+        worktree_path(&root, &identity, session_id),
+        legacy_worktree_path(&root, &identity, session_id),
+    ] {
+        if !path.exists() {
+            continue;
+        }
+        if !contained(&path, &root) {
+            return Err(format!("{} resolves outside the folder Flint owns", path.display()));
+        }
+        let same_as_main = matches!((path.canonicalize(), main.canonicalize()), (Ok(a), Ok(b)) if a == b);
+        if same_as_main || contained(&path, repo) {
+            return Err(format!("{} is the project checkout itself, not a separate worktree", path.display()));
+        }
+        if !path.join(".git").is_file() {
+            return Err(format!("{} is not a linked git worktree", path.display()));
+        }
+        if !is_worktree_of(&path, repo) {
+            return Err(format!("{} is not a worktree of this project", path.display()));
+        }
+        return Ok(existing(repo, &root, session_id));
+    }
+    Ok(None)
+}
+
+/// Largest file `.worktreeinclude` will copy into a new worktree.
+const WORKTREEINCLUDE_MAX_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Copy files that match the project's `.worktreeinclude` (gitignore syntax)
+/// AND are gitignored into a freshly created worktree, so `.env` and similar
+/// local files exist there. Tracked files are never copied (the checkout has
+/// them), symlinks are skipped, nothing lands in `.git`, and a file above
+/// 10 MB is skipped with a note. Returns notes; never fails worktree creation.
+pub(crate) fn copy_worktreeinclude(repo: &Path, worktree: &Path) -> Vec<String> {
+    let mut notes = Vec::new();
+    let include = repo.join(".worktreeinclude");
+    if !include.is_file() {
+        return notes;
+    }
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(repo);
+    if let Some(err) = builder.add(&include) {
+        notes.push(format!(".worktreeinclude was only partly read: {err}"));
+    }
+    let matcher = match builder.build() {
+        Ok(m) => m,
+        Err(e) => {
+            notes.push(format!(".worktreeinclude could not be read: {e}"));
+            return notes;
+        }
+    };
+    let Ok((true, listing)) = run_status(
+        repo,
+        &["ls-files", "-z", "--others", "--ignored", "--exclude-standard"],
+    ) else {
+        return notes;
+    };
+    let (Ok(repo_real), Ok(wt_real)) = (repo.canonicalize(), worktree.canonicalize()) else {
+        return notes;
+    };
+    let mut copied = 0usize;
+    for rel in listing.split(' ').filter(|r| !r.is_empty()) {
+        if validate_repo_rel(rel).is_err()
+            || !matcher.matched_path_or_any_parents(rel, false).is_ignore()
+        {
+            continue;
+        }
+        let from = repo.join(rel);
+        let Ok(meta) = std::fs::symlink_metadata(&from) else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue; // symlinks and directories are never followed
+        }
+        match from.canonicalize() {
+            Ok(real) if real.starts_with(&repo_real) => {}
+            _ => continue,
+        }
+        if meta.len() > WORKTREEINCLUDE_MAX_BYTES {
+            notes.push(format!(
+                ".worktreeinclude skipped {rel}: larger than {} MB",
+                WORKTREEINCLUDE_MAX_BYTES / (1024 * 1024)
+            ));
+            continue;
+        }
+        let to = worktree.join(rel);
+        if to.exists() {
+            continue;
+        }
+        if let Some(parent) = to.parent() {
+            if std::fs::create_dir_all(parent).is_err() {
+                continue;
+            }
+            // The destination directory must still resolve inside the worktree.
+            match parent.canonicalize() {
+                Ok(real) if real.starts_with(&wt_real) => {}
+                _ => continue,
+            }
+        }
+        if std::fs::copy(&from, &to).is_ok() {
+            copied += 1;
+        }
+    }
+    if copied > 0 {
+        notes.push(format!(".worktreeinclude copied {copied} ignored file(s) into the worktree."));
+    }
+    notes
 }
 
 /// The branch checked out in `repo`, or `None` on a detached HEAD.
@@ -1704,6 +1906,65 @@ mod tests {
     }
 
     #[test]
+    fn worktreeinclude_copies_only_ignored_matching_files() {
+        let f = fixture();
+        std::fs::write(f.repo.join(".gitignore"), ".env
+big.bin
+other.log
+").unwrap();
+        std::fs::write(f.repo.join(".worktreeinclude"), ".env
+big.bin
+a.txt
+").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "cfg"]);
+        std::fs::write(f.repo.join(".env"), "SECRET=1").unwrap();
+        std::fs::write(f.repo.join("other.log"), "x").unwrap();
+        std::fs::write(
+            f.repo.join("big.bin"),
+            vec![0u8; (WORKTREEINCLUDE_MAX_BYTES + 1) as usize],
+        )
+        .unwrap();
+        let record = ensure(&f.repo, &f.worktrees, "s-inc").expect("create");
+        let wt = PathBuf::from(&record.path);
+        assert_eq!(std::fs::read_to_string(wt.join(".env")).unwrap(), "SECRET=1");
+        assert!(!wt.join("other.log").exists(), "not matched by the include file");
+        assert!(!wt.join("big.bin").exists(), "over the size cap");
+        assert!(record.notes.iter().any(|n| n.contains("big.bin")));
+        // a.txt matches but is tracked: the checkout owns it, content unchanged
+        assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "one");
+    }
+
+    #[test]
+    fn worktreeinclude_absent_changes_nothing() {
+        let f = fixture();
+        std::fs::write(f.repo.join(".gitignore"), ".env
+").unwrap();
+        std::fs::write(f.repo.join(".env"), "x").unwrap();
+        let record = ensure(&f.repo, &f.worktrees, "s-none").expect("create");
+        assert!(!PathBuf::from(&record.path).join(".env").exists());
+    }
+
+    #[test]
+    fn worktreeinclude_never_follows_symlinks_out_of_the_repo() {
+        let f = fixture();
+        let outside = f._dir.path().join("outside.txt");
+        std::fs::write(&outside, "private").unwrap();
+        std::fs::write(f.repo.join(".gitignore"), "link.txt
+").unwrap();
+        std::fs::write(f.repo.join(".worktreeinclude"), "link.txt
+").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "cfg"]);
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, f.repo.join("link.txt")).unwrap();
+        #[cfg(windows)]
+        let _ = std::os::windows::fs::symlink_file(&outside, f.repo.join("link.txt"));
+        let record = ensure(&f.repo, &f.worktrees, "s-link").expect("create");
+        assert!(!PathBuf::from(&record.path).join("link.txt").exists());
+    }
+
+    #[test]
     fn creates_a_worktree_outside_the_source_checkout() {
         let f = fixture();
         let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
@@ -1746,6 +2007,78 @@ mod tests {
 
         assert_eq!(first.path, second.path);
         assert_eq!(first.branch, second.branch);
+    }
+
+    #[test]
+    fn a_head_base_carries_unpushed_commits_and_targets_the_current_branch() {
+        let f = fixture();
+        git_in(&f.repo, &["checkout", "-q", "-b", "topic"]);
+        std::fs::write(f.repo.join("b.txt"), "two").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "unpushed"]);
+        let opts = EnsureOptions { title: None, base: Some("HEAD".into()) };
+        let record = ensure_with(&f.repo, &f.worktrees, "s-head", &opts).expect("create");
+        assert!(PathBuf::from(&record.path).join("b.txt").exists());
+        assert_eq!(record.base_branch.as_deref(), Some("topic"));
+        // The default (fresh) base starts from main and does not have it.
+        let fresh = ensure(&f.repo, &f.worktrees, "s-fresh").expect("create");
+        assert!(!PathBuf::from(&fresh.path).join("b.txt").exists());
+        assert_eq!(fresh.base_branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn a_pull_request_base_fetches_pull_head_from_origin() {
+        let f = fixture();
+        let origin = f._dir.path().join("origin.git");
+        git_in(f._dir.path(), &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        git_in(&f.repo, &["remote", "add", "origin", &origin.to_string_lossy()]);
+        git_in(&f.repo, &["checkout", "-q", "-b", "pr-work"]);
+        std::fs::write(f.repo.join("pr.txt"), "from the pr").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "pr"]);
+        git_in(&f.repo, &["push", "-q", "origin", "HEAD:refs/pull/7/head"]);
+        git_in(&f.repo, &["checkout", "-q", "main"]);
+        git_in(&f.repo, &["branch", "-q", "-D", "pr-work"]);
+
+        let opts = EnsureOptions { title: Some("pr-7".into()), base: Some("pr:7".into()) };
+        let record = ensure_with(&f.repo, &f.worktrees, "s-pr", &opts).expect("create");
+        assert!(PathBuf::from(&record.path).join("pr.txt").exists());
+        assert_eq!(record.base_branch, None);
+        assert!(record.notes.iter().any(|n| n.contains("pull request #7")));
+
+        let missing = EnsureOptions { title: None, base: Some("pr:99".into()) };
+        let err = ensure_with(&f.repo, &f.worktrees, "s-pr2", &missing).unwrap_err();
+        assert!(err.contains("could not fetch pull request #99"), "{err}");
+        let wrong = EnsureOptions { title: None, base: Some("pr:other/thing#7".into()) };
+        assert!(ensure_with(&f.repo, &f.worktrees, "s-pr3", &wrong).unwrap_err().contains("is not other/thing"));
+        let junk = EnsureOptions { title: None, base: Some("pr:-1".into()) };
+        assert!(ensure_with(&f.repo, &f.worktrees, "s-pr4", &junk).is_err());
+    }
+
+    #[test]
+    fn resuming_finds_its_worktree_and_never_makes_one() {
+        let f = fixture();
+        assert_eq!(resume_existing(&f.repo, &f.worktrees, "s-r").unwrap(), None);
+        assert!(!f.worktrees.exists() || std::fs::read_dir(&f.worktrees).map(|d| d.count() == 0).unwrap_or(true));
+        let made = ensure(&f.repo, &f.worktrees, "s-r").expect("create");
+        let found = resume_existing(&f.repo, &f.worktrees, "s-r").unwrap().expect("found");
+        assert_eq!(found.path, made.path);
+        // Removed behind its back: gone, not recreated.
+        run(&f.repo, &["worktree", "remove", "--force", &made.path]).unwrap();
+        assert_eq!(resume_existing(&f.repo, &f.worktrees, "s-r").unwrap(), None);
+        assert!(!PathBuf::from(&made.path).exists());
+    }
+
+    #[test]
+    fn resuming_refuses_a_directory_that_is_not_a_linked_worktree() {
+        let f = fixture();
+        let made = ensure(&f.repo, &f.worktrees, "s-x").expect("create");
+        run(&f.repo, &["worktree", "remove", "--force", &made.path]).unwrap();
+        // A separate clone-like repository in its place.
+        std::fs::create_dir_all(&made.path).unwrap();
+        git_in(&PathBuf::from(&made.path), &["init", "-q"]);
+        let err = resume_existing(&f.repo, &f.worktrees, "s-x").unwrap_err();
+        assert!(err.contains("not a linked git worktree"), "{err}");
     }
 
     #[test]

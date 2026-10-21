@@ -44,7 +44,49 @@ pub struct SubagentDefinition {
     /// lower the trigger the run would otherwise use, never raise it past the
     /// model's window (`apply_child_compact_window`).
     pub auto_compact_window: Option<u64>,
+    /// Optional per-agent options. Absent = the behaviour a definition without
+    /// them always had. The desktop reads them in the renderer; the Rust
+    /// dispatch keeps them so a saved definition round-trips unchanged.
+    pub extras: SubagentOptions,
     pub scope: SubagentScope,
+}
+
+/// Per-agent options beyond the prompt and toolset. Every field is optional and
+/// absent means "as before"; the renderer validates the values it acts on.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubagentOptions {
+    /// Tools removed before `allowed_tools` is applied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disallowed_tools: Option<Vec<String>>,
+    /// Step cap for this agent, clamped by the renderer to its own ceiling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
+    /// A cowork mode the child runs in; it can only tighten the parent's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+    /// Run in the background unless the call says otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<bool>,
+    /// `worktree`: a checkout of its own unless the call says otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isolation: Option<String>,
+    /// Prepended to the parent's delegation message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_prompt: Option<String>,
+    /// Skip loading project instructions (JAN.md and compatible files).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub omit_instructions: Option<bool>,
+    /// Reasoning effort (`low`/`medium`/`high`/`xhigh`) where the model offers one;
+    /// the renderer checks it against the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Skills whose full content the renderer preloads into the child (max 32).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<Vec<String>>,
+    /// `user` or `project`: a persistent memory directory of its own, kept in
+    /// the data folder (see `subagent_memory`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<String>,
 }
 
 /// On-disk shape of a subagent `.toml`; `scope` is derived from the directory,
@@ -60,6 +102,8 @@ struct SubagentFile {
     model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     auto_compact_window: Option<u64>,
+    #[serde(flatten)]
+    extras: SubagentOptions,
 }
 
 /// Keys a subagent `.toml` understands. Anything else is ignored; the loader
@@ -71,6 +115,16 @@ const SUBAGENT_FILE_KEYS: &[&str] = &[
     "allowed_tools",
     "model",
     "auto_compact_window",
+    "disallowed_tools",
+    "max_turns",
+    "permission_mode",
+    "background",
+    "isolation",
+    "initial_prompt",
+    "omit_instructions",
+    "effort",
+    "skills",
+    "memory",
 ];
 
 /// Frontmatter keys a Claude Code agent file is read for.
@@ -342,6 +396,7 @@ impl SubagentRegistry {
             allowed_tools: def.allowed_tools.clone(),
             model: def.model.clone(),
             auto_compact_window: def.auto_compact_window,
+            extras: def.extras.clone(),
         };
         let body = toml::to_string_pretty(&file)
             .map_err(|e| SubagentError::Upstream(format!("failed to serialize subagent: {e}")))?;
@@ -528,6 +583,7 @@ fn scan_agent_dir(dir: &Path, out: &mut Vec<SubagentDefinition>) {
                 allowed_tools: tools,
                 model: None,
                 auto_compact_window,
+                extras: SubagentOptions::default(),
                 scope: SubagentScope::Plugin,
             });
         }
@@ -732,6 +788,7 @@ fn load_dir(dir: &Path, scope: SubagentScope, out: &mut Vec<SubagentDefinition>)
                 allowed_tools: file.allowed_tools,
                 model: file.model,
                 auto_compact_window: file.auto_compact_window.filter(|w| *w > 0),
+                extras: file.extras,
                 scope,
             }),
             Err(e) => log::warn!("subagent: failed to parse {}: {e}", path.display()),
@@ -1037,6 +1094,7 @@ pub(crate) fn resolve_dispatch(
                 allowed_tools: req.allowed_tools.clone(),
                 model: None,
                 auto_compact_window: None,
+                extras: Default::default(),
                 scope: SubagentScope::Project,
             };
             // The inline allowed_tools IS the definition's toolset; only the
@@ -2011,7 +2069,20 @@ async fn run_subagent(
     let fwd_run_id = run_id.clone();
     let fwd_name = name.clone();
     let forwarder = tokio::spawn(async move {
+        // What the child said, kept (bounded) so a run that ends without an
+        // answer can still hand its last words to the parent.
+        let mut said = String::new();
         while let Some(ev) = child_rx.recv().await {
+            if let StreamEvent::Token { text } = &ev {
+                said.push_str(text);
+                if said.len() > PARTIAL_KEEP_BYTES * 2 {
+                    let mut cut = said.len() - PARTIAL_KEEP_BYTES;
+                    while !said.is_char_boundary(cut) {
+                        cut += 1;
+                    }
+                    said.drain(..cut);
+                }
+            }
             if forward_to_parent(&ev) {
                 let _ = parent_events.send(StreamEvent::Subagent {
                     run_id: fwd_run_id.clone(),
@@ -2020,11 +2091,12 @@ async fn run_subagent(
                 });
             }
         }
+        said
     });
 
     let result = run_orchestration_streamed(&child_tx, &body, &child_args).await;
     drop(child_tx);
-    let _ = forwarder.await;
+    let said = forwarder.await.unwrap_or_default();
 
     let (status, usage, detail) = finished_summary(&result, effective_child_turns(max_turns));
     let _ = events.send(StreamEvent::SubagentFinished {
@@ -2041,12 +2113,32 @@ async fn run_subagent(
 
     match result {
         Ok(completion) => Ok(child_answer_for_parent(&completion, &run_id)),
-        Err(message) => Err(SubagentError::Upstream(child_failure_text(
-            message.kind(),
-            message.message(),
-            effective_child_turns(max_turns),
-        ))),
+        Err(message) => {
+            let text = child_failure_text(message.kind(), message.message(), effective_child_turns(max_turns));
+            Err(SubagentError::Upstream(with_partial_output(text, &said)))
+        }
     }
+}
+
+/// Most of a child's own words kept for a run that ended without an answer.
+const PARTIAL_KEEP_BYTES: usize = 3_000;
+
+/// A turn-limit failure with what the child had said last, screened like any
+/// child text that re-enters the parent. Other failures are left as they are.
+pub(crate) fn with_partial_output(failure: String, said: &str) -> String {
+    let said = said.trim();
+    if said.is_empty() || !failure.starts_with("The subagent stopped after using all") {
+        return failure;
+    }
+    let mut start = said.len().saturating_sub(PARTIAL_KEEP_BYTES);
+    while !said.is_char_boundary(start) {
+        start += 1;
+    }
+    let tail = tauri_plugin_agent_tools::control_tags::screen(&said[start..]);
+    format!("{failure}
+
+Its last output before it stopped (partial, unverified):
+{tail}")
 }
 
 /// A child's final message as its parent reads it. The child's words re-enter
@@ -2972,6 +3064,7 @@ pub fn parse_create_args(
             allowed_tools: optional_tool_list(args),
             model: args.get("model").and_then(|v| v.as_str()).map(String::from),
             auto_compact_window: None,
+            extras: Default::default(),
             scope,
         },
         scope,
@@ -3424,6 +3517,7 @@ b")] {
             allowed_tools: Some(vec!["write".into()]),
             model: None,
             auto_compact_window: None,
+            extras: Default::default(),
             scope: SubagentScope::Builtin,
         };
         assert!(reg
@@ -3454,6 +3548,57 @@ b")] {
         assert_eq!(def.model.as_deref(), Some("m-1"));
         assert_eq!(def.scope, SubagentScope::Project);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn per_agent_options_load_and_round_trip_through_toml() {
+        let full = r#"
+name = "a"
+description = "d"
+system_prompt = "p"
+disallowed_tools = ["bash"]
+max_turns = 7
+permission_mode = "review"
+background = true
+isolation = "worktree"
+initial_prompt = "start here"
+omit_instructions = true
+effort = "high"
+skills = ["a", "b"]
+memory = "project"
+"#;
+        let file: SubagentFile = toml::from_str(full).expect("parses");
+        assert_eq!(file.extras.disallowed_tools, Some(vec!["bash".to_string()]));
+        assert_eq!(file.extras.max_turns, Some(7));
+        assert_eq!(file.extras.permission_mode.as_deref(), Some("review"));
+        assert_eq!(file.extras.background, Some(true));
+        assert_eq!(file.extras.isolation.as_deref(), Some("worktree"));
+        assert_eq!(file.extras.initial_prompt.as_deref(), Some("start here"));
+        assert_eq!(file.extras.omit_instructions, Some(true));
+        assert_eq!(file.extras.effort.as_deref(), Some("high"));
+        assert_eq!(file.extras.skills, Some(vec!["a".to_string(), "b".to_string()]));
+        assert_eq!(file.extras.memory.as_deref(), Some("project"));
+        let again: SubagentFile =
+            toml::from_str(&toml::to_string_pretty(&file).expect("serializes")).expect("reparses");
+        assert_eq!(again.extras, file.extras);
+    }
+
+    #[test]
+    fn a_definition_without_the_new_options_loads_and_writes_unchanged() {
+        let old = "name = \"a\"
+description = \"d\"
+system_prompt = \"p\"
+allowed_tools = [\"read\"]
+";
+        let file: SubagentFile = toml::from_str(old).expect("parses");
+        assert_eq!(file.extras, SubagentOptions::default());
+        let out = toml::to_string_pretty(&file).expect("serializes");
+        for key in ["max_turns", "disallowed_tools", "permission_mode", "background"] {
+            assert!(!out.contains(key), "{key} must not be written when absent");
+        }
+        // The DTO the renderer receives leaves absent options out of the JSON.
+        let json = serde_json::to_value(&file.extras).unwrap();
+        assert_eq!(json, serde_json::json!({}));
     }
 
     #[test]
@@ -3528,6 +3673,7 @@ b")] {
             allowed_tools: Some(vec!["read".to_string()]),
             model: None,
             auto_compact_window: None,
+            extras: Default::default(),
             scope: SubagentScope::Project,
         };
         let shadows = reg
@@ -3558,6 +3704,7 @@ b")] {
             allowed_tools: None,
             model: None,
             auto_compact_window: None,
+            extras: Default::default(),
             scope: SubagentScope::Project,
         };
         let err = reg
@@ -3614,6 +3761,7 @@ b")] {
             allowed_tools: None,
             model: None,
             auto_compact_window: None,
+            extras: Default::default(),
             scope: SubagentScope::Project,
         };
         let shadows = reg
@@ -3638,6 +3786,7 @@ b")] {
             allowed_tools: None,
             model: None,
             auto_compact_window: None,
+            extras: Default::default(),
             scope: SubagentScope::Project,
         };
         assert!(reg
@@ -3791,6 +3940,7 @@ b")] {
                 allowed_tools: allowed,
                 model: None,
                 auto_compact_window: None,
+                extras: Default::default(),
                 scope: SubagentScope::Project,
             }],
         }
@@ -5326,6 +5476,17 @@ auto_compact_window = 9000
     }
 
     #[test]
+    fn a_turn_limit_failure_carries_the_childs_last_words_and_others_do_not() {
+        let limit = "The subagent stopped after using all 5 of its turns without finishing, so it returned no answer.".to_string();
+        let with = with_partial_output(limit.clone(), "found the bug in a.rs");
+        assert!(with.contains("found the bug in a.rs") && with.contains("partial"), "{with}");
+        assert_eq!(with_partial_output(limit.clone(), "  "), limit);
+        assert_eq!(with_partial_output("token budget spent".into(), "words"), "token budget spent");
+        let long = "y".repeat(10_000);
+        assert!(with_partial_output(limit, &long).len() < 3_400);
+    }
+
+    #[test]
     fn dispatch_description_does_not_repeat_builtin_roles_as_saved() {
         let root = unique_root("desc-builtin-only");
         let desc = dispatch_description(&SubagentRegistry::load(&root), 3);
@@ -5654,6 +5815,7 @@ auto_compact_window = 9000
             allowed_tools: None,
             model: None,
             auto_compact_window: None,
+            extras: Default::default(),
             scope: SubagentScope::Plugin,
         };
         let dir = project_subagents_dir(&root);
