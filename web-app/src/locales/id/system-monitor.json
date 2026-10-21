@@ -72,5 +72,7 @@
   "graphics": "Grafis",
   "freeVram": "VRAM Bebas",
   "apiVersion": "Versi API",
-  "measuring": "Mengukur…"
+  "measuring": "Mengukur…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }

@@ -126,7 +126,8 @@
     "previousPane": "Khung trước",
     "previousPaneDesc": "Chuyển sang khung trước khi chia màn hình.",
     "findInChat": "Tìm trong cuộc trò chuyện",
-    "findInChatDesc": "Tìm trong cuộc trò chuyện đang hiển thị."
+    "findInChatDesc": "Tìm trong cuộc trò chuyện đang hiển thị.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Giao diện",

@@ -127,7 +127,8 @@
     "previousPane": "Panneau précédent",
     "previousPaneDesc": "Passer au panneau précédent de la vue partagée.",
     "findInChat": "Rechercher dans la discussion",
-    "findInChatDesc": "Cherche dans la conversation affichée à l'écran."
+    "findInChatDesc": "Cherche dans la conversation affichée à l'écran.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Interface",

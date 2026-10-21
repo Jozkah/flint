@@ -128,7 +128,8 @@
     "previousPane": "Poprzedni panel",
     "previousPaneDesc": "Przejdź do poprzedniego panelu widoku podzielonego.",
     "findInChat": "Szukaj w czacie",
-    "findInChatDesc": "Przeszukaj rozmowę widoczną na ekranie."
+    "findInChatDesc": "Przeszukaj rozmowę widoczną na ekranie.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Wygląd",

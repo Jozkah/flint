@@ -2188,6 +2188,7 @@
     "expandSidebar": "Seitenleiste anzeigen",
     "darkMode": "Dunkelmodus",
     "lightMode": "Hellmodus",
+    "skipToContent": "Zum Inhalt springen",
     "deleteGroup": "Gruppe löschen",
     "editGroup": "Gruppe umbenennen",
     "openGroup": "Gruppe öffnen",
@@ -2385,7 +2386,8 @@
     "refresh": "Aktualisieren",
     "suggestion": "Jev schlägt hierfür den Skill /{{skill}} vor",
     "useSkill": "Verwenden",
-    "dismiss": "Schließen"
+    "dismiss": "Schließen",
+    "introSummary": "Was Jev tut und was nicht"
   },
   "pr": {
     "statusUnavailable": "Status nicht verfügbar",

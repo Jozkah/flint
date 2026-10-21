@@ -51,7 +51,7 @@ export const MarkdownImage = memo(function MarkdownImage({
         className={cn(
           // leading-[0] drops the line-box strut that would otherwise leave a gap under the picture.
           'my-2 block w-fit max-w-full overflow-hidden rounded-lg border border-border/60 bg-muted align-top leading-[0]',
-          state === 'loading' && 'h-40 w-28 animate-pulse',
+          state === 'loading' && 'h-40 w-28 motion-safe:animate-pulse',
           className
         )}
         aria-label={alt || 'Image'}
@@ -65,7 +65,7 @@ export const MarkdownImage = memo(function MarkdownImage({
           onLoad={() => setState('ready')}
           onError={() => setState('failed')}
           className={cn(
-            '!block h-auto max-h-72 w-auto max-w-full',
+            'img-outline !block h-auto max-h-72 w-auto max-w-full',
             state === 'loading' && 'opacity-0'
           )}
         />

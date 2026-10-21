@@ -96,7 +96,13 @@ function ShortcutLabel({ action, className = '' }: ShortcutLabelProps) {
  * Renders the key combination for a shortcut spec
  */
 function ShortcutKeys({ spec }: { spec: ShortcutSpec }) {
+  const { t } = useTranslation()
   const parts: React.ReactNode[] = []
+
+  // An action with no key (search ships unbound) reads as not set.
+  if (!spec.key) {
+    return <span className="text-muted-foreground">{t('settings:shortcuts.notSet')}</span>
+  }
 
   // Helper function to format key names consistently
   const formatKey = (key: string) => {

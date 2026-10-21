@@ -196,6 +196,7 @@ export function SettingsPageBody({
       <div className="flex min-w-0 items-start pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))]">
         <div
           data-testid={testId}
+          data-settings-body
           className="@container flex w-full min-w-0 flex-1 flex-col gap-3.5"
         >
           {showSections && <CompactSections />}
@@ -214,7 +215,7 @@ export function SettingsPageBody({
                 )}
               </div>
               {actions && (
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
                   {actions}
                 </div>
               )}

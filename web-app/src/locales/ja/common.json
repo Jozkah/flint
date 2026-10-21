@@ -2191,6 +2191,7 @@
     "expandSidebar": "サイドバーを表示",
     "darkMode": "ダークモード",
     "lightMode": "ライトモード",
+    "skipToContent": "コンテンツへスキップ",
     "deleteGroup": "グループを削除",
     "editGroup": "グループ名を変更",
     "openGroup": "グループを開く",
@@ -2388,7 +2389,8 @@
     "refresh": "更新",
     "suggestion": "Jev はこれにスキル /{{skill}} を提案します",
     "useSkill": "使用",
-    "dismiss": "閉じる"
+    "dismiss": "閉じる",
+    "introSummary": "Jev にできること・できないこと"
   },
   "pr": {
     "statusUnavailable": "ステータスを取得できません",

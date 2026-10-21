@@ -37,7 +37,8 @@
     "objectivePlaceholder": "O czym uczestnicy mają dyskutować lub co rozstrzygnąć?",
     "submit": "Utwórz pokój",
     "cancel": "Anuluj",
-    "titleRequired": "Wpisz tytuł."
+    "titleRequired": "Wpisz tytuł.",
+    "titlePlaceholder": "Nazwij pokój"
   },
   "delete": {
     "title": "Usunąć pokój?",

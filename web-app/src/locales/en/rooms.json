@@ -33,7 +33,8 @@
     "objectivePlaceholder": "What should the participants discuss or decide?",
     "submit": "Create room",
     "cancel": "Cancel",
-    "titleRequired": "Enter a title."
+    "titleRequired": "Enter a title.",
+    "titlePlaceholder": "Name the room"
   },
   "delete": {
     "title": "Delete room?",

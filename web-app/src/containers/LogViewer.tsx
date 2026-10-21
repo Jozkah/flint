@@ -206,17 +206,19 @@ export function LogsDashboard({
             placeholder={t('logs:search')}
             className="w-full sm:w-[220px]"
           />
-          <Segmented<LogLevelFilter>
-            size="sm"
-            className="w-full sm:w-[440px]"
-            aria-label={t('logs:filterLabel')}
-            value={level}
-            onValueChange={setLevel}
-            options={LOG_LEVEL_FILTERS.map((value) => ({
-              value,
-              label: t(LEVEL_LABEL_KEY[value]),
-            }))}
-          />
+          <div className="max-w-full min-w-0 overflow-x-auto max-sm:w-full">
+            <Segmented<LogLevelFilter>
+              size="sm"
+              className="w-full min-w-[26rem] sm:w-[440px]"
+              aria-label={t('logs:filterLabel')}
+              value={level}
+              onValueChange={setLevel}
+              options={LOG_LEVEL_FILTERS.map((value) => ({
+                value,
+                label: t(LEVEL_LABEL_KEY[value]),
+              }))}
+            />
+          </div>
           <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
             {t('logs:shown', { shown: shown.length, total: logs.length })}
           </span>
@@ -228,7 +230,7 @@ export function LogsDashboard({
           tabIndex={0}
           aria-label={title}
           data-testid="log-viewer"
-          className="max-h-[60vh] min-h-[240px] overflow-auto px-3 py-2 font-mono text-xs leading-[1.7] select-text [scrollbar-width:thin]"
+          className="max-h-[max(240px,calc(100dvh-14rem))] min-h-[240px] overflow-auto px-3 py-2 font-mono text-xs leading-[1.7] select-text [scrollbar-width:thin]"
         >
           {newest.length === 0 ? (
             <p className="p-5 font-sans text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">

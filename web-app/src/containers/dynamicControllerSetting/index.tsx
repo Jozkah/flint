@@ -40,13 +40,14 @@ type DynamicControllerProps = {
 }
 
 export function DynamicControllerSetting({
+  title,
   className,
   controllerType,
   controllerProps,
   disabledReason,
   onChange,
 }: DynamicControllerProps) {
-  const control = renderControl(controllerType, controllerProps, className, onChange)
+  const control = renderControl(controllerType, controllerProps, className, onChange, title)
   if (!disabledReason) return control
   return (
     <div
@@ -63,7 +64,8 @@ function renderControl(
   controllerType: DynamicControllerProps['controllerType'],
   controllerProps: DynamicControllerProps['controllerProps'],
   className: string | undefined,
-  onChange: DynamicControllerProps['onChange']
+  onChange: DynamicControllerProps['onChange'],
+  title?: string
 ) {
   if (controllerType === 'input') {
     const isNumeric =
@@ -93,6 +95,7 @@ function renderControl(
         max={controllerProps.max}
         step={controllerProps.step}
         steps={controllerProps.steps}
+        ariaLabel={title}
         onChange={(newValue) => {
           if (!isNumeric || typeof newValue !== 'string') return onChange(newValue)
           const trimmed = newValue.trim()

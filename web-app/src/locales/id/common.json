@@ -2151,6 +2151,7 @@
     "expandSidebar": "Tampilkan bilah samping",
     "darkMode": "Mode gelap",
     "lightMode": "Mode terang",
+    "skipToContent": "Lewati ke konten",
     "deleteGroup": "Hapus grup",
     "editGroup": "Ganti nama grup",
     "openGroup": "Buka grup",
@@ -2345,7 +2346,8 @@
     "refresh": "Segarkan",
     "suggestion": "Jev menyarankan skill /{{skill}} untuk ini",
     "useSkill": "Pakai",
-    "dismiss": "Tutup"
+    "dismiss": "Tutup",
+    "introSummary": "Apa yang dilakukan dan tidak dilakukan Jev"
   },
   "pr": {
     "statusUnavailable": "Status tidak tersedia",

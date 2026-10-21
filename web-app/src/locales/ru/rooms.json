@@ -37,7 +37,8 @@
     "objectivePlaceholder": "Что должны обсудить или решить участники?",
     "submit": "Создать комнату",
     "cancel": "Отмена",
-    "titleRequired": "Введите название."
+    "titleRequired": "Введите название.",
+    "titlePlaceholder": "Назовите комнату"
   },
   "delete": {
     "title": "Удалить комнату?",

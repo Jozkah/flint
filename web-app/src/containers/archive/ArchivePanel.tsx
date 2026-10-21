@@ -234,33 +234,39 @@ export function ArchivePanel() {
       <Card
         title={t('archive:itemsTitle')}
         aside={
-          <span className="text-xs text-muted-foreground" data-testid="archive-usage">
-            {t('archive:usage', { size: formatBytes(usage) })}
+          <span className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground" data-testid="archive-usage">
+              {t('archive:usage', { size: formatBytes(usage) })}
+            </span>
+            {/* Apart from the filters: it deletes everything, whatever the filter. */}
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={busy || visible.length === 0}
+              onClick={() => setConfirm({ type: 'all' })}
+            >
+              {t('archive:empty')}
+            </Button>
           </span>
         }
       >
-        <div className="flex flex-wrap items-center justify-between gap-2 p-3">
-          <Segmented<Filter>
-            aria-label={t('archive:filter')}
-            value={filter}
-            onValueChange={setFilter}
-            size="sm"
-            options={[
-              { value: 'all', label: t('archive:kind.all') },
-              ...KINDS.map((k) => ({
-                value: k as Filter,
-                label: kindLabel(k),
-              })),
-            ]}
-          />
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={busy || visible.length === 0}
-            onClick={() => setConfirm({ type: 'all' })}
-          >
-            {t('archive:empty')}
-          </Button>
+        <div className="flex items-center p-3">
+          <div className="min-w-0 flex-1 overflow-x-auto">
+            <Segmented<Filter>
+              aria-label={t('archive:filter')}
+              className="min-w-[34rem]"
+              value={filter}
+              onValueChange={setFilter}
+              size="sm"
+              options={[
+                { value: 'all', label: t('archive:kind.all') },
+                ...KINDS.map((k) => ({
+                  value: k as Filter,
+                  label: kindLabel(k),
+                })),
+              ]}
+            />
+          </div>
         </div>
         {items !== null && visible.length === 0 ? (
           <EmptyState

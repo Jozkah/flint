@@ -35,7 +35,8 @@
     "objectivePlaceholder": "Que doivent discuter ou décider les participants ?",
     "submit": "Créer la salle",
     "cancel": "Annuler",
-    "titleRequired": "Saisissez un titre."
+    "titleRequired": "Saisissez un titre.",
+    "titlePlaceholder": "Nommez la salle"
   },
   "delete": {
     "title": "Supprimer la salle ?",

@@ -13,6 +13,15 @@
 :root {
   --radius: 0.5rem;
   --expo: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Motion scale (transitions-polish): match a duration to what the motion does,
+     not to the nearest number. Closes and hover-outs use the quicker steps. */
+  --duration-stagger: 40ms; /* per-item stagger offset */
+  --duration-micro: 80ms; /* tooltip intent delay, large stagger */
+  --duration-quick: 150ms; /* menu and dialog close, text swap, tooltip */
+  --duration-fast: 250ms; /* icon swap, menu and dialog open, tab slide */
+  --duration-medium: 350ms; /* panel close, toast close */
+  --duration-slow: 400ms; /* panel open, content reveal */
+  --duration-very-slow: 500ms; /* emphasis: meter and progress fills */
   --background: #F8F8F8;
   --foreground: #1F2937;
   --fg-2: #374151;
@@ -87,6 +96,9 @@
   --chart-3: #059669;
   --chart-4: #B45309;
   --chart-5: #6D4AFF;
+  /* Two series colours that stay apart for colour-blind readers (checked against the card surface). */
+  --series-a: #2F6FEB;
+  --series-b: #C77A0A;
   --diff-add: #067647;
   --diff-add-bg: #ECFDF3;
   --diff-add-ln: #D1FADF;
@@ -173,6 +185,8 @@
   --chart-3: #34D399;
   --chart-4: #FBBF24;
   --chart-5: #A78BFA;
+  --series-a: #4F8CFF;
+  --series-b: #C37A1A;
   --diff-add: #6EE7B7;
   --diff-add-bg: rgba(52, 211, 153, 0.07);
   --diff-add-ln: rgba(52, 211, 153, 0.12);

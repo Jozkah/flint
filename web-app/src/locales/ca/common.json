@@ -2225,6 +2225,7 @@
     "expandSidebar": "Mostra la barra lateral",
     "darkMode": "Mode fosc",
     "lightMode": "Mode clar",
+    "skipToContent": "Salta al contingut",
     "deleteGroup": "Elimina el grup",
     "editGroup": "Canvia el nom del grup",
     "openGroup": "Obre el grup",
@@ -2425,7 +2426,8 @@
     "refresh": "Actualitza",
     "suggestion": "Jev suggereix l'habilitat /{{skill}} per a això",
     "useSkill": "Utilitza",
-    "dismiss": "Descarta"
+    "dismiss": "Descarta",
+    "introSummary": "Què fa i què no fa Jev"
   },
   "pr": {
     "statusUnavailable": "Estat no disponible",

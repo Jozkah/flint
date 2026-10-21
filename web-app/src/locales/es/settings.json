@@ -127,7 +127,8 @@
     "previousPane": "Panel anterior",
     "previousPaneDesc": "Ir al panel anterior de la vista dividida.",
     "findInChat": "Buscar en el chat",
-    "findInChatDesc": "Busca en la conversación que se ve en pantalla."
+    "findInChatDesc": "Busca en la conversación que se ve en pantalla.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Interfaz",

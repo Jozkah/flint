@@ -2224,6 +2224,7 @@
     "expandSidebar": "Mostrar barra lateral",
     "darkMode": "Modo oscuro",
     "lightMode": "Modo claro",
+    "skipToContent": "Saltar al contenido",
     "deleteGroup": "Eliminar grupo",
     "editGroup": "Renombrar grupo",
     "openGroup": "Abrir grupo",
@@ -2424,7 +2425,8 @@
     "refresh": "Actualizar",
     "suggestion": "Jev sugiere la habilidad /{{skill}} para esto",
     "useSkill": "Usar",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "introSummary": "Qué hace y qué no hace Jev"
   },
   "pr": {
     "statusUnavailable": "Estado no disponible",

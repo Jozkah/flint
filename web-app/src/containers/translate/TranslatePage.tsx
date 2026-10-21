@@ -13,7 +13,6 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
-import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
@@ -222,10 +221,6 @@ export function TranslatePage() {
               title={t('common:translate.shortcut')}
             >
               {t('common:translate.translate')}
-              <KbdGroup className="hidden gap-0.5 sm:inline-flex">
-                <Kbd className="bg-transparent">{isMac ? '⌘' : 'Ctrl'}</Kbd>
-                <Kbd className="bg-transparent">↵</Kbd>
-              </KbdGroup>
             </Button>
           )}
         </div>

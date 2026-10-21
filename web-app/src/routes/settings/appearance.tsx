@@ -89,7 +89,7 @@ function ThemeSegmented() {
               if (!pressed) switchTheme(e.currentTarget, value, setTheme)
             }}
             className={cn(
-              'relative z-10 inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] pointer-coarse:h-11',
+              'relative z-10 inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] pointer-coarse:h-11',
               pressed
                 ? 'border-transparent bg-transparent text-on-grad'
                 : 'border-border bg-card text-secondary-foreground hover:bg-hover-row'
@@ -199,6 +199,7 @@ function InterfaceSettings() {
         description={t('settings:interface.coloredUserBubbleDesc')}
         actions={
           <Switch
+            aria-label={t('settings:interface.coloredUserBubble')}
             checked={coloredUserBubble}
             onCheckedChange={setColoredUserBubble}
           />

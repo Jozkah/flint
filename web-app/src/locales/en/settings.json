@@ -126,7 +126,8 @@
     "nextPane": "Next pane",
     "nextPaneDesc": "Move to the next pane in split view.",
     "previousPane": "Previous pane",
-    "previousPaneDesc": "Move to the previous pane in split view."
+    "previousPaneDesc": "Move to the previous pane in split view.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Interface",

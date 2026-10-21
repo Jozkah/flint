@@ -125,7 +125,8 @@
     "previousPane": "Panel sebelumnya",
     "previousPaneDesc": "Pindah ke panel sebelumnya di tampilan terbagi.",
     "findInChat": "Cari di obrolan",
-    "findInChatDesc": "Cari di percakapan yang tampil di layar."
+    "findInChatDesc": "Cari di percakapan yang tampil di layar.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Tampilan",

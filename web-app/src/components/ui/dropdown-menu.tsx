@@ -61,7 +61,7 @@ function DropdownMenuContent({
         collisionPadding={collisionPadding}
         sticky={sticky}
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-[calc(100vw-24px)] min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-xl p-1 shadow-pop",
+          "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-(--duration-quick) z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-[calc(100vw-24px)] min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-xl p-1 shadow-pop",
           className
         )}
         {...props}
@@ -279,7 +279,7 @@ function DropdownMenuSubContent({
       data-slot="dropdown-menu-sub-content"
       collisionPadding={collisionPadding}
       className={cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-[calc(100vw-24px)] min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-xl p-1 shadow-pop",
+        "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-(--duration-quick) z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-[calc(100vw-24px)] min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-xl p-1 shadow-pop",
         className
       )}
       {...props}

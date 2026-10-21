@@ -2277,6 +2277,7 @@
     "expandSidebar": "Pokaż panel boczny",
     "darkMode": "Tryb ciemny",
     "lightMode": "Tryb jasny",
+    "skipToContent": "Przejdź do treści",
     "deleteGroup": "Usuń grupę",
     "editGroup": "Zmień nazwę grupy",
     "openGroup": "Otwórz grupę",
@@ -2480,7 +2481,8 @@
     "refresh": "Odśwież",
     "suggestion": "Jev sugeruje do tego umiejętność /{{skill}}",
     "useSkill": "Użyj",
-    "dismiss": "Zamknij"
+    "dismiss": "Zamknij",
+    "introSummary": "Co Jev robi, a czego nie robi"
   },
   "pr": {
     "statusUnavailable": "Stan niedostępny",

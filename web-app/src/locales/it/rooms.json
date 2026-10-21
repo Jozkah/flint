@@ -35,7 +35,8 @@
     "objectivePlaceholder": "Di cosa devono discutere o cosa devono decidere i partecipanti?",
     "submit": "Crea stanza",
     "cancel": "Annulla",
-    "titleRequired": "Inserisci un titolo."
+    "titleRequired": "Inserisci un titolo.",
+    "titlePlaceholder": "Dai un nome alla stanza"
   },
   "delete": {
     "title": "Eliminare la stanza?",

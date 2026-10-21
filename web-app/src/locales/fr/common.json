@@ -2220,6 +2220,7 @@
     "expandSidebar": "Afficher la barre latérale",
     "darkMode": "Mode sombre",
     "lightMode": "Mode clair",
+    "skipToContent": "Aller au contenu",
     "deleteGroup": "Supprimer le groupe",
     "editGroup": "Renommer le groupe",
     "openGroup": "Ouvrir le groupe",
@@ -2421,7 +2422,8 @@
     "refresh": "Actualiser",
     "suggestion": "Jev suggère la compétence /{{skill}} pour cela",
     "useSkill": "Utiliser",
-    "dismiss": "Ignorer"
+    "dismiss": "Ignorer",
+    "introSummary": "Ce que Jev fait et ne fait pas"
   },
   "pr": {
     "statusUnavailable": "État indisponible",

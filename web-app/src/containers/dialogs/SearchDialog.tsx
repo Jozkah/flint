@@ -50,7 +50,7 @@ interface SearchDialogProps {
  */
 const itemClass = (selected: boolean) =>
   cn(
-    'relative flex h-[34px] w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground active:scale-[.965] pointer-coarse:h-11',
+    'relative flex h-[34px] w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground active:scale-[.96] pointer-coarse:h-11',
     selected && 'bg-accent text-foreground'
   )
 

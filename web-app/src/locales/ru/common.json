@@ -2276,6 +2276,7 @@
     "expandSidebar": "Показать боковую панель",
     "darkMode": "Тёмный режим",
     "lightMode": "Светлый режим",
+    "skipToContent": "Перейти к содержимому",
     "deleteGroup": "Удалить группу",
     "editGroup": "Переименовать группу",
     "openGroup": "Открыть группу",
@@ -2479,7 +2480,8 @@
     "refresh": "Обновить",
     "suggestion": "Jev предлагает для этого навык /{{skill}}",
     "useSkill": "Использовать",
-    "dismiss": "Закрыть"
+    "dismiss": "Закрыть",
+    "introSummary": "Что Jev делает и чего не делает"
   },
   "pr": {
     "statusUnavailable": "Состояние недоступно",

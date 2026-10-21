@@ -6,6 +6,7 @@ import { UnknownWindowDialog } from '@/containers/rooms/UnknownWindowDialog'
 import { Fragment } from 'react/jsx-runtime'
 import { MotionConfig } from 'motion/react'
 import { useEffect, useRef } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useShellMotion } from '@/components/shell/useShellMotion'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { InterfaceProvider } from '@/providers/InterfaceProvider'
@@ -63,6 +64,23 @@ import { ServerOfflineBanner } from '@/containers/ServerOfflineBanner'
  * Pages supply their header controls through HeaderPage and their content
  * through the router outlet.
  */
+/** First tab stop: jumps past the sidebar to the page. Shown only while focused. */
+function SkipToContent() {
+  const { t } = useTranslation()
+  return (
+    <a
+      href="#app-main"
+      onClick={(e) => {
+        e.preventDefault()
+        document.getElementById('app-main')?.focus()
+      }}
+      className="fixed top-2 left-2 z-[100] -translate-y-16 rounded-md bg-card px-3 py-1.5 text-[length:calc(var(--ui-font-base)*0.8125)] font-medium text-foreground shadow-lift outline-none focus-visible:translate-y-0 focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-safe:transition-transform motion-safe:duration-150"
+    >
+      {t('common:shell.skipToContent')}
+    </a>
+  )
+}
+
 const AppLayout = () => {
   // The settings-search query outlives each settings page on purpose; it must
   // not outlive the section. Mounted here because this layout stays put.
@@ -105,10 +123,13 @@ const AppLayout = () => {
               over the page pretending to be one (see lib/titlebar). */}
           {appDrawsChrome && <WindowControls />}
           {appDrawsChrome && <WindowResizeGrips />}
+          <SkipToContent />
           <AppSidebar />
           <main
+            id="app-main"
+            tabIndex={-1}
             data-testid="app-main"
-            className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-card px-3 shadow-[inset_0_0_0_0.8px_var(--border)]"
+            className="relative flex outline-hidden min-w-0 flex-1 flex-col overflow-hidden bg-card px-3 shadow-[inset_0_0_0_0.8px_var(--border)]"
           >
             <TopHeader />
             {/* The browser client says when its server stops answering. */}

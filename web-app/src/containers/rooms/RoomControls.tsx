@@ -142,7 +142,7 @@ function TransportButton({
     <button
       type="button"
       className={cn(
-        'flex h-[42px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[10px] border-[0.8px] border-border bg-card text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-secondary-foreground outline-hidden transition-[transform,background-color,border-color,color] duration-150 ease-expo hover:border-border-strong hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] disabled:pointer-events-none disabled:opacity-45 data-[state=open]:border-border-strong [&_svg]:size-3.5',
+        'flex h-[42px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[10px] border-[0.8px] border-border bg-card text-[length:calc(var(--ui-font-base)*0.6875)] font-medium text-secondary-foreground outline-hidden transition-[transform,background-color,border-color,color] duration-150 ease-expo hover:border-border-strong hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] disabled:pointer-events-none disabled:opacity-45 data-[state=open]:border-border-strong [&_svg]:size-3.5',
         className
       )}
       {...props}
@@ -368,7 +368,7 @@ export function RoomControls({ room }: { room: Room }) {
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
               <i
-                className="block h-full rounded-full bg-grad transition-[width] duration-700 ease-expo motion-safe:animate-draw-x"
+                className="block h-full rounded-full bg-grad transition-[width] duration-(--duration-very-slow) ease-expo motion-safe:animate-draw-x"
                 style={{ width: `${turnShare}%` }}
               />
             </div>
@@ -458,7 +458,7 @@ export function RoomControls({ room }: { room: Room }) {
                         }
                         onClick={() => run(() => c.selectNext(room.id, p.id))}
                         className={cn(
-                          'inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] border-border bg-card pr-2.5 pl-1 text-xs text-secondary-foreground outline-hidden transition-[border-color,color,transform] duration-150 ease-expo hover:border-border-strong hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] disabled:cursor-default disabled:active:scale-100',
+                          'inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] border-border bg-card pr-2.5 pl-1 text-xs text-secondary-foreground outline-hidden transition-[border-color,color,transform] duration-150 ease-expo hover:border-border-strong hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] disabled:cursor-default disabled:active:scale-100',
                           active &&
                             i === 0 &&
                             'border-[color-mix(in_oklab,var(--primary)_45%,var(--border))] font-medium text-foreground',

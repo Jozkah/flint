@@ -2,7 +2,10 @@
   "live": "即時",
   "chart": {
     "peak": "峰值",
-    "avg": "平均"
+    "avg": "平均",
+    "now": "now",
+    "ago": "{{count}} min ago",
+    "calls": "calls"
   },
   "models": {
     "title": "模型",

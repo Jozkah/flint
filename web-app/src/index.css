@@ -23,6 +23,19 @@
 .toaster [data-sonner-toast]:not([data-visible='false']) {
   pointer-events: auto;
 }
+/* A toast with an action puts the action under the message, in line with the
+   text. Beside it, the message was squeezed into a narrow column and wrapped
+   word by word. */
+.toaster [data-sonner-toast]:has([data-button]) {
+  flex-wrap: wrap;
+}
+.toaster [data-sonner-toast]:has([data-button]) [data-content] {
+  flex: 1 1 calc(100% - 2rem);
+  min-width: 0;
+}
+.toaster [data-sonner-toast]:has([data-button]) [data-button] {
+  margin-left: calc(16px + 6px) !important;
+}
 @import '@/styles/font.css';
 @import '@/styles/tokens.css';
 @import '@/styles/markdown.css';
@@ -36,8 +49,9 @@
 @source '../node_modules/streamdown/dist/**/*.js';
 
 @custom-variant dark (&:is(.dark *));
-/* Motion follows the in-app Reduce motion setting (html.reduce-motion), not the
-   OS media query: the app animates unless the user turns it off in Flint. */
+/* Motion follows the in-app Reduce motion setting (html.reduce-motion). A fresh
+   install starts from the OS media query (hooks/useInterfaceSettings); after
+   that the choice is Flint's. */
 @custom-variant motion-safe (&:where(html:not(.reduce-motion) *));
 @custom-variant motion-reduce (&:where(html.reduce-motion *));
 
@@ -121,7 +135,7 @@
   --animate-hue-rotate: hue-rotate 4s infinite;
   /* Motion vocabulary of the design: one expo ease, short entrances. */
   --animate-dd-in: dd-in 0.18s var(--expo) both;
-  --animate-dlg-in: dlg-in 0.38s var(--expo) both;
+  --animate-dlg-in: dlg-in var(--duration-fast, 250ms) var(--expo) both;
   --animate-mi-in: mi-in 0.28s var(--expo) both;
   --animate-rise-in: rise-in 0.52s var(--expo) both;
   --animate-msg-in: msg-in 0.42s var(--expo) both;
@@ -243,6 +257,46 @@
   animation: var(--animate-shim);
 }
 
+/* Photos and generated art get a faint inset edge so they do not blur into the
+   surface: black in light, white in dark, never tinted. */
+@utility img-outline {
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+  &:is(.dark *) {
+    outline-color: oklch(1 0 0 / 0.1);
+  }
+}
+
+/* A 40px-tall hit area for a 28px control, with no sideways growth: neighbours
+   sit 2px apart, so widening the target would make them overlap. */
+/* High-frequency controls (send, stop) opt out of the 0.96 press scale. */
+[data-press='static']:active {
+  scale: none !important;
+  transform: none !important;
+}
+
+/* The same for a control that is already positioned: reaches 40px tall and half
+   the gap sideways, so neighbours do not overlap. --hit-y sets the vertical reach
+   (6px for a 28px control, 9px for 22px, 8px for 24px). */
+@utility hit-box {
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: var(--hit-x, -3px);
+    inset-block: var(--hit-y, -6px);
+  }
+}
+
+@utility hit-y {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block: -6px;
+  }
+}
+
 /* Menu rows cascade in after the surface opens. */
 [data-slot$='menu-content'] > [role^='menuitem'] {
   animation: var(--animate-mi-in);
@@ -338,6 +392,26 @@ html {
 [data-boot] [data-testid='app-sidebar'] > [data-slot='nav-group']:nth-child(5) { animation-delay: 180ms; }
 
 /* Each navigation fades the page in once. */
+/* Settings groups: the heading sits on the page and one panel carries the rows,
+   instead of a framed card around a framed panel. Scoped to settings pages;
+   deleting this block restores the double frame. */
+[data-settings-body] [data-slot='frame'] {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+[data-settings-body] [data-slot='frame'] > [data-slot='frame-header'] {
+  padding-inline: 2px;
+}
+
+/* Settings tab switch: the groups of the new tab settle in 4px and 200ms
+   (SettingsTabs flags the document while it plays). */
+html[data-tab-swap] [data-settings-body] [data-slot='frame'] {
+  animation: tab-in var(--duration-fast, 250ms) var(--expo) both;
+}
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
 .view-in {
   animation: view-in 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -441,6 +515,24 @@ html.reduce-motion *::after {
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
+}
+
+/* What reduced motion keeps: state changes still read, only as a short fade.
+   Surfaces that open (menus, dialogs, tooltips, popovers) fade in 120ms with no
+   travel or scale; hover and selection fade colour and shadow in 120ms with no
+   transform. Closes stay instant. */
+@keyframes rm-fade {
+  from {
+    opacity: 0;
+  }
+}
+html.reduce-motion [data-slot$='-content'][data-state='open'],
+html.reduce-motion [role='dialog'][data-state='open'] {
+  animation: rm-fade 120ms ease-out both !important;
+}
+html.reduce-motion :is(button, a, input, textarea, select, [role='tab'], [role='radio'], [role='switch'], [role='menuitem'], [data-slot]) {
+  transition-property: background-color, color, border-color, box-shadow, opacity !important;
+  transition-duration: 120ms !important;
 }
 
 /* Settings > Appearance > Font size. The design sizes type in pixels, which a

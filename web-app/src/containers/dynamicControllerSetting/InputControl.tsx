@@ -20,6 +20,8 @@ type InputControl = {
   step?: number
   /** Values the +/- buttons move between (ascending), instead of `step`. */
   steps?: number[]
+  /** The setting's name, for the field's accessible name. */
+  ariaLabel?: string
 }
 
 export function InputControl({
@@ -33,6 +35,7 @@ export function InputControl({
   max,
   step = 1,
   steps,
+  ariaLabel,
 }: InputControl) {
   const { t } = useTranslation()
   const [showPassword, setShowPassword] = useState(false)
@@ -69,6 +72,7 @@ export function InputControl({
           min={min}
           max={max}
           placeholder={placeholder}
+          aria-label={ariaLabel}
           onValueChange={(n) => onChange(n === null ? '' : String(n))}
           className="h-8 w-24 shrink-0 font-mono text-center text-sm tabular-nums"
         />
@@ -108,6 +112,7 @@ export function InputControl({
       <Input
         type={inputType}
         placeholder={placeholder}
+        aria-label={ariaLabel}
         value={stringValue}
         onChange={(e) => onChange(e.target.value)}
         // A long URL ends in an ellipsis rather than a hard cut, and the full

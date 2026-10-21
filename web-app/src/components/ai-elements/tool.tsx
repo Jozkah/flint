@@ -498,7 +498,7 @@ export const ToolInput = memo(
                   {key}
                 </dt>
                 <dd className="min-w-0 max-h-24 overflow-auto">
-                  <code className="block rounded-[5px] bg-accent px-[5px] py-px font-mono text-xs whitespace-pre-wrap break-all text-foreground">
+                  <code className="block rounded-[5px] bg-accent px-[5px] py-px font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground">
                     {PATH_PARAMS.has(key) &&
                     typeof value === 'string' &&
                     value.trim() ? (
@@ -780,7 +780,7 @@ export const ToolApprovalActions = memo(() => {
         <pre
           data-testid="approval-subject"
           tabIndex={0}
-          className="max-h-48 min-w-0 overflow-auto rounded-lg bg-code-bg px-3 py-2 font-mono text-[length:calc(var(--ui-font-base)*0.78125)] leading-[1.55] whitespace-pre-wrap break-all text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
+          className="max-h-48 min-w-0 overflow-auto rounded-lg bg-code-bg px-3 py-2 font-mono text-[length:calc(var(--ui-font-base)*0.78125)] leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
         >
           {subject}
         </pre>
@@ -916,7 +916,7 @@ export const ToolApprovalActions = memo(() => {
             </button>
           )}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-8 @max-[30rem]/approval:whitespace-normal">
+        <div className="ml-auto flex shrink-0 items-center gap-2 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:whitespace-normal">
           <Button
             ref={denyRef}
             size="sm"
@@ -924,7 +924,7 @@ export const ToolApprovalActions = memo(() => {
             type="button"
             disabled={!armed || (reasonOpen && reason.trim() === '')}
             data-scope={reasonOpen ? 'deny-with-reason' : 'deny'}
-            className="min-w-20 border-destructive/40 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-8 @max-[30rem]/approval:whitespace-normal"
+            className="min-w-16 border-destructive/40 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-7 @max-[30rem]/approval:whitespace-normal"
             onClick={() =>
               reasonOpen
                 ? resolveApproval(toolCallId, 'deny', pending.requestId, reason)
@@ -942,7 +942,7 @@ export const ToolApprovalActions = memo(() => {
             data-scope="allow-once"
             data-primary="true"
             aria-describedby={once ? `${moreId}-once` : undefined}
-            className="min-w-24 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:flex-1 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-8 @max-[30rem]/approval:whitespace-normal"
+            className="min-w-20 pointer-coarse:h-11 @max-[30rem]/approval:min-w-0 @max-[30rem]/approval:h-auto @max-[30rem]/approval:min-h-7 @max-[30rem]/approval:whitespace-normal"
             onClick={() => decide('allow-once')}
           >
             {pending.secret

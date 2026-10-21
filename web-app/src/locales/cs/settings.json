@@ -128,7 +128,8 @@
     "previousPane": "Předchozí panel",
     "previousPaneDesc": "Přejít na předchozí panel rozděleného zobrazení.",
     "findInChat": "Hledat v chatu",
-    "findInChatDesc": "Prohledá konverzaci na obrazovce."
+    "findInChatDesc": "Prohledá konverzaci na obrazovce.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Rozhraní",

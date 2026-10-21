@@ -2,7 +2,10 @@
   "live": "Trực tiếp",
   "chart": {
     "peak": "đỉnh",
-    "avg": "trung bình"
+    "avg": "trung bình",
+    "now": "now",
+    "ago": "{{count}} min ago",
+    "calls": "calls"
   },
   "models": {
     "title": "Mô hình",

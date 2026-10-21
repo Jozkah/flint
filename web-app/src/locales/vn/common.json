@@ -2190,6 +2190,7 @@
     "expandSidebar": "Hiện thanh bên",
     "darkMode": "Chế độ tối",
     "lightMode": "Chế độ sáng",
+    "skipToContent": "Chuyển đến nội dung",
     "deleteGroup": "Xóa nhóm",
     "editGroup": "Đổi tên nhóm",
     "openGroup": "Mở nhóm",
@@ -2387,7 +2388,8 @@
     "refresh": "Làm mới",
     "suggestion": "Jev gợi ý kỹ năng /{{skill}} cho việc này",
     "useSkill": "Dùng",
-    "dismiss": "Bỏ qua"
+    "dismiss": "Bỏ qua",
+    "introSummary": "Jev làm gì và không làm gì"
   },
   "pr": {
     "statusUnavailable": "Không có trạng thái",

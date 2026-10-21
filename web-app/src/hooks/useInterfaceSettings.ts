@@ -32,6 +32,19 @@ import {
   type AccentSelection,
 } from '@/lib/accent'
 
+/** The OS "reduce motion" preference, the starting point of a fresh install. */
+function osPrefersReducedMotion(): boolean {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    )
+  } catch {
+    return false
+  }
+}
+
 export type FontSize = '14px' | '15px' | '16px' | '18px' | '20px'
 
 /** The left sidebar's width range, in CSS pixels. Dragging stops at either end. */
@@ -94,8 +107,8 @@ interface InterfaceSettingsState {
   /** The chosen accent: a preset or a custom hex. Tokens are derived from it
    * per theme (lib/accent.ts). */
   accent: AccentSelection
-  /** Flint's own Reduce motion setting. Animations follow this, not the OS
-   * preference, so the app animates unless it is turned off here. */
+  /** Flint's own Reduce motion setting. Animations follow this. A fresh
+   * install starts from the OS preference; after that the choice is Flint's. */
   reduceMotion: boolean
   /** Brighter text for easier reading (html.high-contrast in index.css). */
   increaseContrast: boolean
@@ -204,7 +217,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     fontSize: defaultFontSize,
     messageZoom: defaultMessageZoom,
     accent: DEFAULT_ACCENT,
-    reduceMotion: false,
+    reduceMotion: osPrefersReducedMotion(),
     increaseContrast: false,
     performanceMode: 'auto',
     notificationPosition: getDefaultNotificationPosition(),
@@ -244,6 +257,10 @@ const applyAccent = (accent: AccentSelection) => {
   applyAccentToDocument(accent, useTheme.getState().isDark)
 }
 
+// Set once the user flips Reduce motion by hand in this session; from then on
+// the OS switch no longer moves it.
+let reduceMotionChosen = false
+
 export const useInterfaceSettings = create<InterfaceSettingsState>()(
   persist<
     InterfaceSettingsState,
@@ -266,7 +283,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             fontSize: defaultFontSize,
             messageZoom: defaultMessageZoom,
             accent: DEFAULT_ACCENT,
-            reduceMotion: false,
+            reduceMotion: osPrefersReducedMotion(),
             increaseContrast: false,
             performanceMode: 'auto',
             notificationPosition: getDefaultNotificationPosition(),
@@ -311,6 +328,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         },
 
         setReduceMotion: (reduce) => {
+          reduceMotionChosen = true
           set({ reduceMotion: reduce })
         },
 
@@ -589,7 +607,24 @@ const unsubscribeTheme = useTheme.subscribe((state) => {
   }
 })
 
-// Detach the module-level subscription on HMR so reloads don't stack listeners.
+// Follow the OS "reduce motion" switch while the app is open, but only for a
+// user who has not chosen otherwise.
+const osMotionQuery =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : null
+const onOsMotionChange = () => {
+  const next = osPrefersReducedMotion()
+  if (!reduceMotionChosen && next !== useInterfaceSettings.getState().reduceMotion) {
+    useInterfaceSettings.setState({ reduceMotion: next })
+  }
+}
+osMotionQuery?.addEventListener?.('change', onOsMotionChange)
+
+// Detach the module-level subscriptions on HMR so reloads don't stack listeners.
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => unsubscribeTheme?.())
+  import.meta.hot.dispose(() => {
+    unsubscribeTheme?.()
+    osMotionQuery?.removeEventListener?.('change', onOsMotionChange)
+  })
 }

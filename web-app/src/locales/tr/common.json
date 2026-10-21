@@ -2191,6 +2191,7 @@
     "expandSidebar": "Kenar çubuğunu göster",
     "darkMode": "Koyu mod",
     "lightMode": "Açık mod",
+    "skipToContent": "İçeriğe geç",
     "deleteGroup": "Grubu sil",
     "editGroup": "Grubu yeniden adlandır",
     "openGroup": "Grubu aç",
@@ -2388,7 +2389,8 @@
     "refresh": "Yenile",
     "suggestion": "Jev bunun için /{{skill}} becerisini öneriyor",
     "useSkill": "Kullan",
-    "dismiss": "Kapat"
+    "dismiss": "Kapat",
+    "introSummary": "Jev neler yapar, neler yapmaz"
   },
   "pr": {
     "statusUnavailable": "Durum kullanılamıyor",

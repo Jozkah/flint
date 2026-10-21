@@ -66,18 +66,18 @@ function Harness({
   const [summary, setSummary] = useState<NarrowBarsSummary>(EMPTY_SUMMARY)
   return (
     <div>
+      <NarrowBarsSheet open={open} onOpenChange={setOpen} onSummary={setSummary}>
+        <Bars onAct={onAct} trust={trust} />
+      </NarrowBarsSheet>
       <NarrowStatusStrip
         waiting={waiting}
         summary={summary}
         files={{ count: 2, additions: 19, deletions: 4 }}
         branch="flint/radar-retry"
         onWaiting={onWaiting}
-        onOpen={() => setOpen(true)}
+        onOpen={() => setOpen((v) => !v)}
         condensed={condensed}
       />
-      <NarrowBarsSheet open={open} onOpenChange={setOpen} onSummary={setSummary}>
-        <Bars onAct={onAct} trust={trust} />
-      </NarrowBarsSheet>
     </div>
   )
 }

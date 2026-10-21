@@ -35,7 +35,6 @@ import { RoomsNav } from '@/components/shell/nav/RoomsNav'
 import { ChatsNav } from '@/components/shell/nav/ChatsNav'
 import { FlintMark } from '@/components/shell/FlintMark'
 import { Icon, type IconName } from '@/components/ui/icon'
-import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
 import { route } from '@/constants/routes'
 import { tabForPath, type SidebarTab } from '@/lib/sidebarTab'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
@@ -503,7 +502,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             title={t('common:shell.resume')}
             aria-current={pathname === route.overview ? 'page' : undefined}
             className={cn(
-              'grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 [&>svg]:size-4',
+              'hit-box [--hit-y:-8px] relative grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 [&>svg]:size-4',
               pathname === route.overview && 'bg-accent text-foreground'
             )}
           >
@@ -516,7 +515,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
               onClick={toggle}
               aria-label={t('common:shell.collapseSidebar')}
               title={t('common:shell.collapseSidebar')}
-              className="-m-1 grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&>svg]:size-4"
+              className="hit-box [--hit-y:-8px] relative -m-1 grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&>svg]:size-4"
             >
               <Icon name="sidebar-right" />
             </button>
@@ -537,10 +536,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         >
           <Icon name="search" />
           <span className="flex-1 truncate text-[length:calc(var(--ui-font-base)*0.8125)]">{t('common:shell.searchAnything')}</span>
-          <span className="flex items-center gap-1 text-[length:calc(var(--ui-font-base)*0.6875)] font-medium" aria-hidden>
-            <PlatformMetaKey />
-            <span>K</span>
-          </span>
         </button>
 
         {/* Half the column gap (-mt-2 of gap-4): the tabs belong to the search. */}

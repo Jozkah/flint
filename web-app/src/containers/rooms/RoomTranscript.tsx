@@ -1250,7 +1250,7 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
             onClick={scrollToBottom}
             data-testid="room-jump-latest"
             data-placement="above-dock"
-            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] border-border bg-popover px-3 text-xs text-foreground shadow-pop outline-hidden transition-transform duration-150 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] motion-safe:animate-pop"
+            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] border-border bg-popover px-3 text-xs text-foreground shadow-pop outline-hidden transition-transform duration-150 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] motion-safe:animate-pop"
           >
             <ArrowDown className="size-[13px]" aria-hidden />
             {t('rooms:transcript.jumpToLatest')}
