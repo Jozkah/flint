@@ -115,6 +115,20 @@ describe('encodeMcpToolImages', () => {
     ])
   })
 
+  it('accepts a mixed-case data URL from the server', () => {
+    const out = encodeMcpToolImages([
+      mcpTool([{ type: 'image', data: `DATA:image/PNG;base64,${b64}` }]),
+    ])
+    const body = {
+      messages: [{ role: 'tool', tool_call_id: 'c1', content: outputOf(out) }],
+    }
+    decodeToolImageSentinelsInBody(body)
+    expect(body.messages[0].content).toEqual([
+      { type: 'text', text: 'The tool returned 1 image.' },
+      { type: 'image_url', image_url: { url: png, detail: 'auto' } },
+    ])
+  })
+
   it('keeps the text items ahead of the images', () => {
     const out = encodeMcpToolImages([
       mcpTool({

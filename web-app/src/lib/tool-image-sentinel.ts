@@ -111,12 +111,15 @@ function mcpImageDataUrl(item: McpContentItem & { data: string }): string | null
   // The sentinel regex takes a lowercase media type and an unbroken base64
   // run, so normalise both: some servers wrap long base64 across lines.
   const data = item.data.replace(/\s+/g, '')
-  const mime = data.startsWith('data:')
-    ? /^data:([^;,]*)/i.exec(data)?.[1]?.toLowerCase()
+  // The scheme and media type are case-insensitive (`DATA:image/PNG;base64,`).
+  const dataUrl = /^data:([^;,]*)(;base64,)(.*)$/i.exec(data)
+  const mime = dataUrl
+    ? dataUrl[1].toLowerCase()
     : item.mimeType?.toLowerCase().startsWith('image/')
       ? item.mimeType.toLowerCase()
       : 'image/png'
   if (!mime || SENDABLE_IMAGE_TYPES[mime] !== true) return null
+  if (dataUrl) return `data:${mime};base64,${dataUrl[3]}`
   return data.startsWith('data:') ? data : `data:${mime};base64,${data}`
 }
 
