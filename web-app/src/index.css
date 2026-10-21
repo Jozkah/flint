@@ -122,7 +122,7 @@
   --animate-hue-rotate: hue-rotate 4s infinite;
   /* Motion vocabulary of the design: one expo ease, short entrances. */
   --animate-dd-in: dd-in 0.18s var(--expo) both;
-  --animate-dlg-in: dlg-in 0.38s var(--expo) both;
+  --animate-dlg-in: dlg-in var(--duration-fast, 250ms) var(--expo) both;
   --animate-mi-in: mi-in 0.28s var(--expo) both;
   --animate-rise-in: rise-in 0.52s var(--expo) both;
   --animate-msg-in: msg-in 0.42s var(--expo) both;
