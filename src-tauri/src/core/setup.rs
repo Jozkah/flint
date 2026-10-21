@@ -15,6 +15,10 @@ use crate::core::mcp::constants::default_mcp_config;
 
 use super::{mcp::helpers::run_mcp_commands, state::AppState};
 
+#[cfg(all(feature = "desktop", any(target_os = "linux", test)))]
+#[path = "tray_library.rs"]
+mod tray_library;
+
 // Migrate MCP servers configuration
 pub fn migrate_mcp_servers(
     app_handle: tauri::AppHandle,
@@ -403,6 +407,12 @@ pub fn remove_tray<R: Runtime>(app: &AppHandle<R>) {
 
 #[cfg(feature = "desktop")]
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<TrayIcon<R>> {
+    // libappindicator-sys panics when none of its runtime libraries can load.
+    // Probe before entering its lazy initializer; a missing optional tray must
+    // not take the app down.
+    #[cfg(target_os = "linux")]
+    let _indicator_library = tray_library::load_appindicator()?;
+
     let show_i = MenuItem::with_id(app, "open", "Open Flint", true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let separator_i = PredefinedMenuItem::separator(app)?;

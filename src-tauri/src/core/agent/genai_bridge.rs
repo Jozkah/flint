@@ -837,6 +837,48 @@ fn finish_reason_str(reason: Option<&genai::chat::StopReason>) -> Option<&'stati
     })
 }
 
+/// Why one attempt did not produce a completion.
+enum AttemptError {
+    /// `genai` reported the failure.
+    Upstream(genai::Error),
+    /// The connection closed before the provider signalled the end of its
+    /// response. `partial` is whether any answer had arrived by then.
+    Truncated { partial: bool },
+}
+
+impl From<genai::Error> for AttemptError {
+    fn from(err: genai::Error) -> Self {
+        Self::Upstream(err)
+    }
+}
+
+/// The failure for a stream that closed early. Not retried: the provider did
+/// answer (the status was a success), so another attempt would replay output the
+/// consumer has already seen or hide a provider that answers with nothing.
+fn truncated_stream_message(partial: bool) -> String {
+    if partial {
+        "Upstream request failed: the provider closed the stream before it finished its answer, so the response is incomplete".to_string()
+    } else {
+        "Upstream request failed: the provider closed the stream without sending an answer"
+            .to_string()
+    }
+}
+
+/// Whether the endpoint is on this machine. Some local servers close the
+/// connection without `[DONE]`, so a bare EOF after plain text is accepted there.
+fn is_local_endpoint(url: &str) -> bool {
+    let Some(host) = reqwest13::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
+    else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    host == "localhost"
+        || host.ends_with(".localhost")
+        || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
 /// Tracks a streaming tool call so `ToolCallStarted` fires once and
 /// `ToolCallArgsDelta` carries only new bytes.
 #[derive(Default)]
@@ -878,6 +920,7 @@ pub(crate) async fn stream_chat_completions(
     // R13: diagnosed once per call, the first time a failure has no response.
     let mut diagnosed = false;
 
+    let local = is_local_endpoint(upstream_url);
     let started = std::time::Instant::now();
     for (key_index, key) in keys.iter().enumerate() {
         let client = client_for(
@@ -901,11 +944,15 @@ pub(crate) async fn stream_chat_completions(
                 &options,
                 events,
                 &mut progressed,
+                local,
             )
             .await
             {
                 Ok(completion) => return Ok(completion),
-                Err(err) => {
+                Err(AttemptError::Truncated { partial }) => {
+                    return Err(truncated_stream_message(partial));
+                }
+                Err(AttemptError::Upstream(err)) => {
                     let (status, err_body, headers) = http_parts(&err);
                     let described = describe_error(&err);
                     last_err = match status {
@@ -1113,7 +1160,8 @@ async fn run_once(
     options: &ChatOptions,
     events: &mpsc::UnboundedSender<StreamEvent>,
     progressed: &mut bool,
-) -> Result<serde_json::Value, genai::Error> {
+    local: bool,
+) -> Result<serde_json::Value, AttemptError> {
     let response = client
         .exec_chat_stream(model, chat_req, Some(options))
         .await?;
@@ -1125,6 +1173,9 @@ async fn run_once(
     let mut final_calls: Vec<serde_json::Value> = Vec::new();
     let mut finish: Option<&'static str> = None;
     let mut usage: Option<genai::chat::Usage> = None;
+    // Whether the provider sent its own completion signal (`[DONE]`, Anthropic's
+    // `message_stop`). A connection that closes without one has been cut off.
+    let mut ended = false;
 
     let idle_limit = stream_idle_timeout();
     loop {
@@ -1196,6 +1247,7 @@ async fn run_once(
             }
             ChatStreamEvent::ThoughtSignatureChunk(_) => {}
             ChatStreamEvent::End(end) => {
+                ended = true;
                 finish = finish_reason_str(end.captured_stop_reason.as_ref());
                 usage = end.captured_usage.clone();
                 if let Some(tool_calls) = end.captured_tool_calls() {
@@ -1227,6 +1279,17 @@ async fn run_once(
                 }
             }
         }
+    }
+
+    if !ended {
+        let partial = !content.is_empty() || !reasoning.is_empty() || !calls.is_empty();
+        // A local server that drops `[DONE]` after plain text is not a cut-off
+        // provider. Tool calls only come out of the End event, so those still fail.
+        let local_text_only = local && calls.is_empty() && !content.is_empty();
+        if !local_text_only {
+            return Err(AttemptError::Truncated { partial });
+        }
+        log::warn!("genai: local stream closed without a completion signal; keeping its text");
     }
 
     Ok(completion_json(
@@ -1684,6 +1747,61 @@ mod tests {
         events: &mpsc::UnboundedSender<StreamEvent>,
     ) -> Result<serde_json::Value, String> {
         stream_chat_completions(&build_http_client(), url, keys, None, &body(), events, None).await
+    }
+
+    /// An SSE reply with no `[DONE]`: the connection just closes.
+    fn cut_off_response(events: &[&str]) -> String {
+        let body: String = events.iter().map(|e| format!("data: {e}\n\n")).collect();
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+    }
+
+    #[tokio::test]
+    async fn an_empty_successful_stream_fails_instead_of_finishing() {
+        let (url, server) = serve(vec![Some(cut_off_response(&[]))]).await;
+        let (tx, _rx) = sink();
+        let err = run(&url, &[], &tx)
+            .await
+            .expect_err("no answer at all is not a completed one");
+        assert!(err.contains("without sending an answer"), "{err}");
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn a_cut_off_tool_call_fails_even_on_a_local_server() {
+        let (url, server) = serve(vec![Some(cut_off_response(&[
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"f","arguments":"{\"a\""}}]}}]}"#,
+        ]))])
+        .await;
+        let (tx, _rx) = sink();
+        let err = run(&url, &[], &tx)
+            .await
+            .expect_err("a half-sent tool call is not a completed answer");
+        assert!(err.contains("before it finished"), "{err}");
+        server.await.expect("server");
+    }
+
+    #[tokio::test]
+    async fn a_local_server_that_omits_done_keeps_its_text() {
+        let (url, server) = serve(vec![Some(cut_off_response(&[
+            r#"{"choices":[{"delta":{"content":"hello"}}]}"#,
+        ]))])
+        .await;
+        let (tx, _rx) = sink();
+        let completion = run(&url, &[], &tx).await.expect("local text is kept");
+        assert_eq!(completion["choices"][0]["message"]["content"], "hello");
+        server.await.expect("server");
+    }
+
+    #[test]
+    fn local_endpoints_are_loopback_only() {
+        assert!(is_local_endpoint("http://127.0.0.1:8080/v1/chat/completions"));
+        assert!(is_local_endpoint("http://localhost:1337/v1/chat/completions"));
+        assert!(is_local_endpoint("http://[::1]:8080/v1/chat/completions"));
+        assert!(!is_local_endpoint("https://api.openai.com/v1/chat/completions"));
+        assert!(!is_local_endpoint("not a url"));
     }
 
     #[tokio::test]

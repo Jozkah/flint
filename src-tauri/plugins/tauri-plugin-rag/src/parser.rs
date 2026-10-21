@@ -200,7 +200,9 @@ pub fn parse_document(file_path: &str, file_type: &str) -> Result<String, RagErr
         "pptx"
         | "application/vnd.openxmlformats-officedocument.presentationml.presentation" => parse_pptx(file_path),
         // HTML
-        "html" | "htm" | "text/html" => parse_html(file_path),
+        "html" | "htm" | "xhtml" | "text/html" | "application/xhtml+xml" => {
+            parse_html(file_path)
+        }
         "docx"
         | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
             parse_docx(file_path)
@@ -727,6 +729,18 @@ mod tests {
         let dir = TempDir::new("csvbad");
         let path = dir.file("bad.csv", b"a,b\n\xFF\xFE,c\n");
         assert!(matches!(parse_document(&path, "csv"), Err(RagError::ParseError(_))));
+    }
+
+    #[test]
+    fn parse_xhtml_like_html() {
+        let dir = TempDir::new("xhtml");
+        let path = dir.file(
+            "a.xhtml",
+            b"<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>Some <b>bold</b> text.</p></body></html>",
+        );
+        let text = parse_document(&path, "xhtml").unwrap();
+        assert!(text.contains("bold"), "{text}");
+        assert!(!text.contains("<p>"), "{text}");
     }
 
     #[test]

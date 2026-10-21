@@ -81,6 +81,7 @@ import {
   SHELL_TOOL_NAME,
 } from '@/lib/agentTools'
 import { useChatShell } from '@/hooks/useChatShell'
+import { routeRefusedToolCalls } from '@/lib/disabledToolCalls'
 import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
 import { subagentGuide } from '@/lib/coworkPrompt'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
@@ -2249,18 +2250,25 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // dispatch" would race between two sessions streaming at once. The run is
     // this request, so its snapshot can be attributed to it and not merely to
     // "the thread's latest dispatch".
-    const modelPromise = ModelFactory.createModel(modelId, provider, {
-      ...parameters,
-      ...(this.threadId
-        ? {
-            [DISPATCH_PARAM_KEY]: {
-              session: this.threadId,
-              provider: providerId,
-              ...(runId ? { run: runId } : {}),
-            },
-          }
-        : {}),
-    })
+    const modelPromise = ModelFactory.createModel(
+      modelId,
+      provider,
+      {
+        ...parameters,
+        ...(this.threadId
+          ? {
+              [DISPATCH_PARAM_KEY]: {
+                session: this.threadId,
+                provider: providerId,
+                ...(runId ? { run: runId } : {}),
+              },
+            }
+          : {}),
+      },
+      // Live stream stats belong to this conversation, not to whichever one
+      // is current when a chunk arrives.
+      this.threadId || undefined
+    )
     if (!abortSignal) return modelPromise
 
     // Target lib is ES2021 here (see tsconfig.app.json), predating
@@ -4017,9 +4025,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // When continuing a truncated response, inject the partial content as the
     // very first text-delta so the new message immediately shows it and the
     // user sees a seamless continuation rather than an empty box.
-    const finalStream = continueContent
+    const continuedStream = continueContent
       ? prependContinuationToUIStream(uiStream, continueContent)
       : uiStream
+
+    // A call to the shell while the composer has it switched off is not in
+    // `this.tools`, so the SDK would reject it and end the turn. Hand it to the
+    // tool loop instead, which answers it with the "turned off" refusal.
+    const finalStream = routeRefusedToolCalls(
+      continuedStream,
+      (toolName) =>
+        toolName === SHELL_TOOL_NAME &&
+        !(toolName in (this.tools ?? {})) &&
+        this.chatShellWithheld()
+    )
 
     const reasoningGuard = new ReasoningLoopGuard()
     let idle: ReturnType<typeof createIdleWatchdog> | undefined

@@ -111,6 +111,21 @@ describe('agentTools', () => {
     useAgentToolsConfig.setState({ shellEnabled: true })
   })
 
+  it('refuses a shell call in chat while the composer shell switch is off', async () => {
+    const { chatAgentToolRefusal } = await import('../agentTools')
+    const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
+    const { useChatShell } = await import('@/hooks/useChatShell')
+
+    const before = useAgentToolsConfig.getState().agentToolsEnabled
+    useAgentToolsConfig.setState({ agentToolsEnabled: true })
+    useChatShell.setState({ shellEnabled: false })
+    expect(chatAgentToolRefusal('bash')).toMatch(/turned off/i)
+    expect(chatAgentToolRefusal('read')).toBeNull()
+    useChatShell.setState({ shellEnabled: true })
+    expect(chatAgentToolRefusal('bash')).toBeNull()
+    useAgentToolsConfig.setState({ agentToolsEnabled: before })
+  })
+
   it('refuses host and shell tools in chat while Agent Tools is off', async () => {
     const { chatAgentToolRefusal } = await import('../agentTools')
     const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')

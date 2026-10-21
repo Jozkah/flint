@@ -61,8 +61,8 @@ export class JanRpcError extends Error {
 // Distinct from [`JanRpcError`] on purpose - one is an answer, this is the
 // channel.
 export class JanRuntimeError extends Error {
-  constructor(message, { exitCode, signal, stderr } = {}) {
-    super(message)
+  constructor(message, { exitCode, signal, stderr, cause } = {}) {
+    super(message, cause === undefined ? undefined : { cause })
     this.name = 'JanRuntimeError'
     this.exitCode = exitCode
     this.signal = signal
@@ -223,6 +223,9 @@ export class JanSession {
   #calls = new Map();
   #late = new Map();
   #closed = false;
+  // Why the runtime failed this session, once it has: nothing it was still
+  // delivering may start a turn that no one will ever settle.
+  #failure = null;
 
   // Every event the session reports, including the ones raised by a subagent,
   // which arrive wrapped in a `subagent` event. `'*'` hears all of them.
@@ -321,14 +324,19 @@ export class JanSession {
   }
 
   // Attach the handlers a session's declarations carry. Called by the runtime
-  // when the session is created, and by `setTools` when they are replaced.
+  // when the session is created, and by `setTools` when they are replaced. The
+  // runtime trims a declared name, so it is keyed trimmed here: the host is
+  // told the name the runtime holds.
   _declare(tools) {
-    this.#decls = new Map(tools.map((tool) => [tool.name, tool]))
+    this.#decls = new Map(tools.map((tool) => [tool.name.trim(), tool]))
   }
 
   // Called by the runtime on every frame addressed to this session.
   _deliver(tag, { turnId, event }) {
     this.#emit('event', event)
+    // A listener that raised has failed the runtime, and this session with it
+    // (see `JanRuntime._callListener`): no turn is left to push to.
+    if (this.#failure) return
     const turn = this.#turn(turnId, true)
     turn?._push(event)
     if (tag === 'tool_request') this.#answer(event)
@@ -353,6 +361,7 @@ export class JanSession {
 
   // The runtime is gone: every open turn fails rather than hangs.
   _fail(error) {
+    this.#failure = error
     for (const turn of this.#turns.values()) turn._fail(error)
     this.#turns.clear()
     this.#abort(error)
@@ -364,19 +373,27 @@ export class JanSession {
     if (existing) return existing
     if (!create) return null
     const turn = new JanTurn(this, turnId)
-    this.#turns.set(turnId, turn)
+    // A terminal record the runtime already sent is the turn's outcome, whatever
+    // happened to the runtime after it.
     const late = this.#late.get(turnId)
     if (late) {
       this.#late.delete(turnId)
-      this.#turns.delete(turnId)
       turn._finish(late)
+      return turn
     }
+    // The runtime failed while `prompt()` was still waiting for its reply: the
+    // turn it is about to return would never hear a terminal record.
+    if (this.#failure) {
+      turn._fail(this.#failure)
+      return turn
+    }
+    this.#turns.set(turnId, turn)
     return turn
   }
 
   #emit(kind, event) {
-    for (const listener of this.#listeners.get(kind) ?? []) listener(event)
-    for (const listener of this.#listeners.get('*') ?? []) listener(event)
+    for (const listener of this.#listeners.get(kind) ?? []) this.runtime._callListener(listener, event)
+    for (const listener of this.#listeners.get('*') ?? []) this.runtime._callListener(listener, event)
   }
 
   // A host tool was called. The handler runs without holding the reader: two
@@ -618,10 +635,19 @@ export class JanRuntime {
     return sessions
   }
 
-  // Reopen a session of this process from its id. Host tools are not
-  // inherited: re-declare them with `session.setTools`.
+  // Reopen a session of this process from its id. A session this client already
+  // holds is returned as it is, not rebuilt: it keeps its turns, listeners,
+  // host tool handlers and pending calls, so work in flight settles on the
+  // object the caller already has. An id this client has not seen is attached
+  // without handlers: re-declare them with `session.setTools`.
   async resumeSession(sessionId) {
-    return this.#session(await this.request('session/resume', { sessionId }))
+    const view = await this.request('session/resume', { sessionId })
+    const known = this.#sessions.get(sessionId)
+    if (known) {
+      known.model = view.model ?? known.model
+      return known
+    }
+    return this.#session(view)
   }
 
   // A new session with another session's history.
@@ -796,7 +822,37 @@ export class JanRuntime {
   }
 
   #emit(kind, payload) {
-    for (const listener of this.#listeners.get(kind) ?? []) listener(payload)
+    for (const listener of this.#listeners.get(kind) ?? []) this._callListener(listener, payload)
+  }
+
+  // Run one listener. A listener that throws, or returns a promise that
+  // rejects, fails the runtime: every open turn and call settles with a
+  // `JanRuntimeError` naming the cause (`error.cause`), and the process is
+  // stopped. The embedding application is not crashed by it, and is not left
+  // with a runtime that silently stopped delivering to a listener that may have
+  // been the one answering a permission request.
+  _callListener(listener, payload) {
+    try {
+      const returned = listener(payload)
+      if (returned && typeof returned.then === 'function') {
+        returned.then(undefined, (error) => this.#listenerFailed(error))
+      }
+    } catch (error) {
+      this.#listenerFailed(error)
+    }
+  }
+
+  #listenerFailed(error) {
+    // Already failed or exited: the host has been told.
+    if (this.#failure) return
+    let why
+    try {
+      why = String(error instanceof Error ? error.message : error)
+    } catch {
+      why = 'a thrown value that cannot be converted to text'
+    }
+    this.#fail(new JanRuntimeError(`an event listener raised: ${why}`, { stderr: this.#stderr, cause: error }))
+    this.close({ force: true }).catch(() => {})
   }
 
   #fail(error) {
@@ -817,9 +873,11 @@ export class JanRuntime {
 function toDeclaration(tool) {
   if (!tool || typeof tool !== 'object') throw new TypeError('a host tool must be an object')
   const { name, description, parameters, capability, handler } = tool
-  if (typeof name !== 'string' || !name) throw new TypeError('a host tool needs a name')
+  if (typeof name !== 'string' || !name.trim()) throw new TypeError('a host tool needs a name')
   if (typeof handler !== 'function') throw new TypeError(`host tool '${name}' needs a handler`)
-  const declaration = { name }
+  // Trimmed, as the runtime trims it: the handler is found by the name the
+  // runtime reports, so an untrimmed key would advertise a tool nothing can run.
+  const declaration = { name: name.trim() }
   if (description !== undefined) declaration.description = description
   if (parameters !== undefined) declaration.parameters = parameters
   if (capability !== undefined) declaration.capability = capability

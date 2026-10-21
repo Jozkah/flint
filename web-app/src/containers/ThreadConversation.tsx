@@ -420,6 +420,18 @@ export function ThreadConversation({
   const updateMessage = useMessages((state) => state.updateMessage)
   const deleteMessage = useMessages((state) => state.deleteMessage)
   const currentThread = useRef<string | undefined>(undefined)
+  // A history read that failed, with the thread it belongs to: a late failure
+  // from a chat the user has left must not show on this one.
+  const [historyReadError, setHistoryReadError] = useState<{
+    threadId: string
+    message: string
+  } | null>(null)
+  const [historyReadAttempt, setHistoryReadAttempt] = useState(0)
+  const [isReadingHistory, setIsReadingHistory] = useState(false)
+  const currentHistoryError =
+    historyReadError && historyReadError.threadId === threadId
+      ? historyReadError.message
+      : undefined
 
   useTools()
 
@@ -656,7 +668,8 @@ export function ThreadConversation({
     resolveModelSelection: isSplit ? resolvePaneModel : undefined,
     // One UI update per 50 ms of tokens (100 ms in reduced performance mode).
     experimental_throttle: streamingThrottle,
-    onFinish: ({ message, messages: finishedMessages, isAbort, isError, isDisconnect }) => {
+    onFinish: function handleFinish(info, skipContextRecovery = false) {
+      const { message, messages: finishedMessages, isAbort, isError, isDisconnect } = info
       const msgMeta = message.metadata as Record<string, unknown> | undefined
       const finishReason = msgMeta?.finishReason as string | undefined
       // Consume once per generation so a skipped persist (error/empty) can't
@@ -692,7 +705,7 @@ export function ThreadConversation({
           )
         )
 
-        if (isContextLimit) {
+        if (isContextLimit && !skipContextRecovery) {
           // Stash the partial so the manual "Increase Context Size" button can
           // resume from here. Surface the standard banner with the manual
           // button — auto-increase was removed; the user explicitly opts in.
@@ -713,15 +726,20 @@ export function ThreadConversation({
           const recover = recoverContextLimitRef.current
           if (recover) {
             void recover(message, partialText).then((recovered) => {
-              if (!recovered) showBanner()
+              if (recovered) return
+              showBanner()
+              // Nothing carried the reply on, so keep what the model wrote:
+              // finish again as a stopped turn, which persists the partial.
+              continueReplaceIdRef.current = continueReplaceId
+              handleFinish(info, true)
             })
-          } else {
-            showBanner()
+            return
           }
-          return
+          showBanner()
         }
-        // Non-context-limit length truncation: fall through and persist the
-        // partial marked as stopped so the "Continue" button can resume it.
+        // Otherwise (the output-token cap, or a window that could not be
+        // recovered): fall through and persist the partial marked as stopped so
+        // the "Continue" button can resume it.
       }
 
       if (!isAbort && message.parts.length) setPendingContinueMessage(null)
@@ -1537,7 +1555,9 @@ export function ThreadConversation({
               .join('\n\n') ||
             useThreads.getState().threads[threadId]?.title
           if (inputText) {
-            const titleSelection = getModelSelection()
+            // The owning thread's model, not the global picker: switching the
+            // picker mid-reply must not move the title gate to another provider.
+            const titleSelection = resolveThreadModelSelection(threadId)
             const provider = titleSelection.selectedProvider
             const modelId = titleSelection.selectedModel?.id
             beginAutoTitle(threadId, titleSource)
@@ -1797,8 +1817,12 @@ export function ThreadConversation({
     }
 
     // The read may already have started when the pointer reached the row.
+    let cancelled = false
+    setIsReadingHistory(true)
     loadThreadMessages(threadId, (id) => serviceHub.messages().fetchMessages(id))
       .then((fetched) => {
+        if (cancelled) return
+        setHistoryReadError(null)
         // A chat opened straight after it was made (a continued chat's summary
         // seed) may not be on disk yet: its messages are only in the store, and
         // the model must still be sent them.
@@ -1892,11 +1916,25 @@ export function ThreadConversation({
           currentThread.current = threadId
         }
       })
-      .catch((error) =>
+      .catch((error) => {
+        if (cancelled) return
         console.error('Failed to fetch messages for thread:', threadId, error)
-      )
+        setHistoryReadError({
+          threadId,
+          message:
+            error instanceof Error
+              ? error.message || 'History could not be read'
+              : String(error),
+        })
+      })
+      .finally(() => {
+        if (!cancelled) setIsReadingHistory(false)
+      })
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId, serviceHub])
+  }, [threadId, serviceHub, historyReadAttempt])
 
   // X01: in the browser `flint serve` serves, another tab or device may have
   // added to this thread. Read it again when this page comes back into view,
@@ -2395,13 +2433,16 @@ export function ThreadConversation({
       text: string,
       files?: Array<{ type: string; mediaType: string; url: string }>
     ) => {
+      // The saved conversation could not be read: sending now would answer a
+      // chat the model has not been shown and could overwrite what is on disk.
+      if (currentHistoryError) return
       clearBannerErrors()
       // C14: what was sent is shown, even from a view above the end (a fork).
       followSentMessage(stickRef.current)
       followSentRef.current = true
       await processAndSendMessage(text, files)
     },
-    [processAndSendMessage, clearBannerErrors]
+    [processAndSendMessage, clearBannerErrors, currentHistoryError]
   )
 
   // A paired phone's message goes through this same submit, and the reply
@@ -2745,10 +2786,13 @@ export function ThreadConversation({
     if (pending) {
       setContinueFromContentRef.current?.(pending.text)
       setPendingContinueMessage(pending.message)
+      // The partial is stored (see onFinish), so the resumed reply replaces it
+      // in place rather than forking a second version of the same answer.
+      continueReplaceIdRef.current = pending.message.id
     }
 
     setTimeout(() => {
-      handleRegenerate()
+      handleRegenerate(pending?.message.id)
     }, 1000)
   }, [
     selectedModel,
@@ -3376,9 +3420,11 @@ export function ThreadConversation({
                 // A banner error stands in for the failed assistant turn:
                 // regenerate/reload restarts it from scratch, so hide the
                 // partial (tool calls, "Worked for Ns") and show only the banner.
+                // A context-limit stop keeps its partial: that text was generated
+                // and stored, and the banner only offers a bigger window.
                 if (
                   isLastMessage &&
-                  hasBannerError &&
+                  (oomError || backendError) &&
                   message.role === 'assistant'
                 )
                   return null
@@ -3621,6 +3667,25 @@ export function ThreadConversation({
           <FolderTrustBanner folder={chatPathRoots[0] ?? null} />
           <CoworkChildApprovals sessionId={threadId} />
           <ChatTasks threadId={threadId} />
+          {currentHistoryError ? (
+            <div role="alert" className="rounded-lg border p-4">
+              <p>
+                {t('common:historyReadFailed', {
+                  defaultValue: 'Unable to load conversation history.',
+                })}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {currentHistoryError}
+              </p>
+              <Button
+                disabled={isReadingHistory}
+                onClick={() => setHistoryReadAttempt((n) => n + 1)}
+                className="mt-2"
+              >
+                {t('common:run.tryAgain')}
+              </Button>
+            </div>
+          ) : (
           <ChatInput
             model={threadModel}
             // Under the composer, as in Cowork. A phone keeps it in the header.
@@ -3654,6 +3719,7 @@ export function ThreadConversation({
               ) : undefined
             }
           />
+          )}
         </div>
           </FrameBody>
         </Frame>

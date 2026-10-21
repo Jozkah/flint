@@ -147,7 +147,58 @@ const fixEmphasisFlanking = (s: string): string =>
 // escaping currency, and fixing emphasis would corrupt each other unless code and
 // math are first lifted out as opaque tokens. PUA-delimited tokens can't occur in
 // model output and are inert to every transform here.
-const CODE_BLOCK = /(```[\s\S]*?```|`[^`\n]+`)/g
+// A fence owns its contents through a matching (or longer) closing fence, or
+// EOF for an unfinished response; a shorter nested fence is literal code.
+// ~~~ fences, longer fences and multi-backtick spans are all kept verbatim
+// (janhq/jan#9364).
+function maskCode(input: string, store: string[]): string {
+  const save = (code: string) => tok('C', store.push(code) - 1)
+  const inline = (text: string): string => {
+    const runs = /`+/g
+    let result = ''
+    let cursor = 0
+    let open: RegExpExecArray | null
+    while ((open = runs.exec(text)) !== null) {
+      const endOfOpen = runs.lastIndex
+      let close: RegExpExecArray | null
+      while ((close = runs.exec(text)) !== null) {
+        if (close[0].length === open[0].length) break
+      }
+      if (!close) {
+        // An unmatched run is prose; a later run can still open a code span.
+        runs.lastIndex = endOfOpen
+        continue
+      }
+      result += text.slice(cursor, open.index)
+      result += save(text.slice(open.index, runs.lastIndex))
+      cursor = runs.lastIndex
+    }
+    return result + text.slice(cursor)
+  }
+
+  const fences = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)(?:\r?\n|$)/gm
+  let result = ''
+  let cursor = 0
+  let open: RegExpExecArray | null
+  while ((open = fences.exec(input)) !== null) {
+    const marker = open[1]
+    // Backticks in the info string do not form a CommonMark fence.
+    if (marker[0] === '`' && open[2].includes('`')) continue
+    const closing = new RegExp(
+      `^ {0,3}${marker[0]}{${marker.length},}[\\t ]*\\r?$`,
+      'gm'
+    )
+    closing.lastIndex = fences.lastIndex
+    const close = closing.exec(input)
+    const end = close ? closing.lastIndex : input.length
+    result += inline(input.slice(cursor, open.index))
+    result += save(input.slice(open.index, end))
+    cursor = end
+    fences.lastIndex = end
+    if (!close) break
+  }
+  return result + inline(input.slice(cursor))
+}
 const BRACKET_MATH =
   /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\(.*?\\\))/g
 const tok = (kind: 'C' | 'L', n: number) => `\uE000${kind}${n}\uE000`
@@ -231,16 +282,13 @@ export const inlineFractions = (expr: string): string =>
 // Cache for normalized LaTeX content
 const latexCache = new Map<string, string>()
 
-const normalizeLatex = (input: string): string => {
+export const normalizeLatex = (input: string): string => {
   if (latexCache.has(input)) return latexCache.get(input)!
 
   const code: string[] = []
   const math: string[] = []
 
-  let s = maskBracketMath(
-    input.replace(CODE_BLOCK, (m) => tok('C', code.push(m) - 1)),
-    math
-  )
+  let s = maskBracketMath(maskCode(input, code), math)
 
   s = maskInlineMath(s, math)
   s = s.replace(/\$(?=\d)/g, '\\$') // leftover currency renders literally

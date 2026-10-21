@@ -46,7 +46,13 @@ class HostTool:
 
     def declaration(self) -> Dict[str, Any]:
         """The wire form: the handler never crosses the process boundary."""
-        declaration: Dict[str, Any] = {"name": self.name}
+        # Trimmed, as the runtime trims it: the handler is found by the name the
+        # runtime reports, so an untrimmed key would advertise a tool nothing
+        # can run.
+        name = self.name.strip() if isinstance(self.name, str) else ""
+        if not name:
+            raise ValueError("a host tool needs a name")
+        declaration: Dict[str, Any] = {"name": name}
         if self.description is not None:
             declaration["description"] = self.description
         if self.parameters is not None:
@@ -230,7 +236,7 @@ class JanSession:
     # -- the runtime's own calls ------------------------------------------
 
     def _declare(self, tools: Sequence[HostTool]) -> None:
-        self._tools = {tool.name: tool for tool in tools}
+        self._tools = {tool.name.strip(): tool for tool in tools}
 
     def _deliver(self, tag: str, params: Dict[str, Any]) -> None:
         event = params.get("event") or {}

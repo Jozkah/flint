@@ -78,6 +78,9 @@ fn write_config(data_folder: &std::path::Path, cfg: &Value) -> Result<(), String
         .or_insert_with(|| serde_json::json!({}));
 
     let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+    // A fresh install has no data folder until something writes to it.
+    std::fs::create_dir_all(data_folder)
+        .map_err(|e| format!("cannot create {}: {e}", data_folder.display()))?;
     let tmp = path.with_extension("json.tmp");
     // MCP env/header fields can hold keys entered during plugin setup, so the
     // file is owner-only on Unix from the moment it exists.
@@ -88,7 +91,9 @@ fn write_config(data_folder: &std::path::Path, cfg: &Value) -> Result<(), String
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(&tmp).map_err(|e| e.to_string())?;
+    let mut file = options
+        .open(&tmp)
+        .map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -98,7 +103,8 @@ fn write_config(data_folder: &std::path::Path, cfg: &Value) -> Result<(), String
     }
     std::io::Write::write_all(&mut file, body.as_bytes()).map_err(|e| e.to_string())?;
     drop(file);
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path)
+        .map_err(|e| format!("cannot replace {}: {e}", path.display()))?;
     Ok(())
 }
 
@@ -1003,6 +1009,14 @@ mod tests {
         let doc: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert!(doc.get("mcpServers").is_some());
         assert!(doc.get("mcpSettings").is_some());
+    }
+
+    #[test]
+    fn write_config_creates_a_missing_data_folder() {
+        let data = temp_data();
+        let folder = data.path().join("fresh").join("install");
+        write_config(&folder, &serde_json::json!({})).unwrap();
+        assert!(config_path(&folder).is_file());
     }
 
     #[cfg(unix)]

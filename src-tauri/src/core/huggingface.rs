@@ -622,6 +622,23 @@ fn os_error_hint(code: i32) -> Option<&'static str> {
     }
 }
 
+/// An error with its whole `source()` chain. reqwest's `Display` stops at
+/// "error sending request for url (...)"; the part that says why (DNS, refused,
+/// TLS, timeout) is only in the sources.
+fn error_chain(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut out = e.to_string();
+    let mut source = e.source();
+    while let Some(cause) = source {
+        let text = cause.to_string();
+        if !out.ends_with(&text) {
+            out.push_str(": ");
+            out.push_str(&text);
+        }
+        source = cause.source();
+    }
+    out
+}
+
 /// A download file error that says what went wrong, not only the OS text.
 fn io_failure(action: &str, err: &std::io::Error) -> String {
     match err.raw_os_error().and_then(os_error_hint) {
@@ -786,7 +803,7 @@ async fn download_attempt<R: Runtime>(
             Ok(Err(e)) => {
                 return Ok(Attempt::Retry {
                     made_progress: false,
-                    reason: format!("Hugging Face download failed: {e}"),
+                    reason: format!("Hugging Face download failed: {}", error_chain(&e)),
                 })
             }
             // A filtered connection or a server that never sends headers.
@@ -870,7 +887,7 @@ async fn download_attempt<R: Runtime>(
                 let _ = output.flush().await;
                 return Ok(Attempt::Retry {
                     made_progress: downloaded > start,
-                    reason: format!("Hugging Face download interrupted: {e}"),
+                    reason: format!("Hugging Face download interrupted: {}", error_chain(&e)),
                 });
             }
         };
@@ -1093,6 +1110,32 @@ pub async fn huggingface_download_model<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug)]
+    struct Layered(&'static str, Option<Box<dyn std::error::Error + 'static>>);
+
+    impl std::fmt::Display for Layered {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+
+    impl std::error::Error for Layered {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1.as_deref()
+        }
+    }
+
+    #[test]
+    fn error_chain_keeps_the_cause_display_drops() {
+        let io = std::io::Error::other("connection refused (os error 10061)");
+        let connect = Layered("tcp connect error", Some(Box::new(io)));
+        let outer = Layered("error sending request for url (https://huggingface.co/x)", Some(Box::new(connect)));
+        assert_eq!(
+            error_chain(&outer),
+            "error sending request for url (https://huggingface.co/x): tcp connect error: connection refused (os error 10061)"
+        );
+    }
 
     #[test]
     fn throttle_waits_only_when_ahead_of_the_limit() {

@@ -70,6 +70,24 @@ describe('useAttachmentIngestionPrompt', () => {
     expect(useAttachmentIngestionPrompt.getState().isModalOpen).toBe(false)
   })
 
+  it('queues a prompt raised while another is open, in order', async () => {
+    const store = useAttachmentIngestionPrompt
+    const first = store.getState().showPrompt({ name: 'a.pdf', size: 1 }, 10, 0, 2)
+    const second = store.getState().showPrompt({ name: 'b.pdf', size: 2 }, 20, 1, 2)
+
+    expect(store.getState().currentAttachment?.name).toBe('a.pdf')
+
+    act(() => store.getState().choose('inline'))
+    expect(await first).toBe('inline')
+    expect(store.getState().isModalOpen).toBe(true)
+    expect(store.getState().currentAttachment?.name).toBe('b.pdf')
+    expect(store.getState().sizeThreshold).toBe(20)
+
+    act(() => store.getState().choose('embeddings'))
+    expect(await second).toBe('embeddings')
+    expect(store.getState().isModalOpen).toBe(false)
+  })
+
   it('handles sequential prompts for multiple documents', async () => {
     const docs = [
       { name: 'a.pdf', size: 100 },

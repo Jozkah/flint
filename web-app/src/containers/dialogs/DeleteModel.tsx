@@ -62,7 +62,7 @@ export const DialogDeleteModel = ({
     }
 
     removeFavorite(id, provider.provider)
-    deleteModelCache(id)
+    deleteModelCache(id, provider.provider)
     setOpen(false)
     toast.success(t('providers:deleteModel.title', { modelId: id }), {
       id: `delete-model-${id}`,

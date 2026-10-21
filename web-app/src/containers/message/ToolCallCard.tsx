@@ -14,6 +14,8 @@ import { ChangeDiff, diffStat } from '@/components/ChangeDiff'
 import { useToolOrigin } from '@/hooks/useToolOrigin'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useConversationPane } from '@/hooks/conversationPaneContext'
+import { approvalForCall } from '@/lib/toolApprovalScope'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { completedToolLabel } from '@/lib/agentActivity'
 import {
@@ -164,16 +166,16 @@ export const ToolCallCard = memo(
     )
     // Nothing has run yet while the call waits for an answer: the prompt is
     // the card's content, not an empty result.
+    const paneThreadId = useConversationPane()?.threadId
     const awaitingApproval = useToolApprovalRequests((s) =>
-      part.toolCallId ? Boolean(s.pending[part.toolCallId]) : false
+      Boolean(approvalForCall(s, part.toolCallId, paneThreadId))
     )
     // A request of this card's own (not a subagent's that shares its id)
     // turns the whole step into the action panel.
-    const ownApproval = useToolApprovalRequests((s) =>
-      part.toolCallId
-        ? Boolean(s.pending[part.toolCallId] && !s.pending[part.toolCallId].origin)
-        : false
-    )
+    const ownApproval = useToolApprovalRequests((s) => {
+      const entry = approvalForCall(s, part.toolCallId, paneThreadId)
+      return Boolean(entry && !entry.origin)
+    })
 
     // A page shown to the user is a card of its own, not a tool step.
     const browserTarget =

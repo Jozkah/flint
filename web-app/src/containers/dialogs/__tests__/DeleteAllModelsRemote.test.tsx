@@ -58,7 +58,25 @@ describe('DialogDeleteAllModels remote', () => {
       })
     )
     await waitFor(() => expect(mocks.deleteModel).toHaveBeenCalledTimes(2))
-    expect(mocks.deleteModelCache).toHaveBeenCalledWith('a')
-    expect(mocks.deleteModelCache).toHaveBeenCalledWith('b')
+    expect(mocks.deleteModelCache).toHaveBeenCalledWith('a', 'openrouter')
+    expect(mocks.deleteModelCache).toHaveBeenCalledWith('b', 'openrouter')
+  })
+
+  it('keeps a model whose delete failed in the cache and favorites', async () => {
+    mocks.deleteModel.mockImplementation(async (id: string) => {
+      if (id === 'b') throw new Error('file locked')
+    })
+    render(<DialogDeleteAllModels provider={provider} remote />)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'providers:deleteAllModels.clearButton' })
+    )
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'providers:deleteAllModels.confirm',
+      })
+    )
+    await waitFor(() => expect(mocks.setProviders).toHaveBeenCalled())
+    expect(mocks.deleteModelCache.mock.calls.map(([id]) => id)).toEqual(['a'])
+    expect(mocks.removeFavorite.mock.calls.map(([id]) => id)).toEqual(['a'])
   })
 })

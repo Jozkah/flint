@@ -3450,6 +3450,13 @@ async fn resolve_permission_silently(
     registry: &PermissionRegistry,
     duplex: bool,
 ) -> Option<(String, PermissionDecision)> {
+    // A background subagent's prompt arrives wrapped in `Subagent` and waits on
+    // the same registry as the parent's, so it needs the same answer. Left
+    // unanswered it parks the run: the child's loop is waiting on the reply.
+    let ev = match ev {
+        StreamEvent::Subagent { event, .. } => *event,
+        other => other,
+    };
     let StreamEvent::PermissionRequest {
         request_id,
         tool_name,
@@ -3711,7 +3718,45 @@ async fn print_event(
             }
         }
         StreamEvent::Subagent { name, event, .. } => {
-            if let StreamEvent::Compaction { phase, reason, messages } = &*event {
+            if let StreamEvent::PermissionRequest {
+                request_id,
+                tool_name,
+                capability,
+                path,
+                command,
+                diff,
+                prompt_kind,
+                ..
+            } = *event
+            {
+                // The same prompt the parent's request gets: auto-denied with no
+                // terminal, left to the client on stdin when one owns the answer.
+                let detail = command
+                    .map(|c| format!(" ({c})"))
+                    .or_else(|| path.map(|p| format!(" on {p}")))
+                    .unwrap_or_default();
+                let detail = format!("{detail} from subagent '{name}'");
+                if let Some(diff) = diff {
+                    eprintln!("{}", color::paint("2", format_args!("{diff}")));
+                }
+                if duplex {
+                    eprintln!(
+                        "{}",
+                        color::paint(
+                            "33",
+                            format_args!(
+                                "[permission] {capability} via '{tool_name}'{detail} - awaiting '{request_id}' on stdin",
+                            ),
+                        ),
+                    );
+                    return;
+                }
+                let decision =
+                    prompt_permission(&request_id, tool_name, capability, detail, prompt_kind == "secret").await;
+                if let Some(sender) = registry.lock().await.remove(&request_id) {
+                    let _ = sender.send(decision);
+                }
+            } else if let StreamEvent::Compaction { phase, reason, messages } = &*event {
                 eprintln!(
                     "{}",
                     color::paint(
@@ -4191,6 +4236,45 @@ mod tests {
         // Lines after `abort` are not read: the run is already ending.
         assert!(input.take_queued().is_empty());
         input.aborted().await;
+    }
+
+    /// A subagent's prompt arrives wrapped in `Subagent`; it must be answered
+    /// (denied with no terminal) like the parent's own or the child's loop parks.
+    #[tokio::test]
+    async fn a_subagent_permission_prompt_is_denied_when_nobody_can_answer() {
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            return;
+        }
+        let prompt = || StreamEvent::Subagent {
+            run_id: "sub-explore-1".into(),
+            name: "explore".into(),
+            event: Box::new(StreamEvent::PermissionRequest {
+                request_id: "perm-1".into(),
+                tool_name: "write".into(),
+                capability: "write".into(),
+                path: Some("child.txt".into()),
+                command: None,
+                diff: None,
+                patch: None,
+                prompt_kind: "write".into(),
+                offers_always: true,
+                reason: None,
+                args_digest: None,
+                call_id: None,
+            }),
+        };
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let (answer_tx, answer) = tokio::sync::oneshot::channel();
+        registry.lock().await.insert("perm-1".to_string(), answer_tx);
+
+        // A client on stdin owns the decision: nothing is answered here.
+        assert!(resolve_permission_silently(prompt(), &registry, true).await.is_none());
+        assert!(registry.lock().await.contains_key("perm-1"));
+
+        let decided = resolve_permission_silently(prompt(), &registry, false).await;
+        assert_eq!(decided, Some(("perm-1".to_string(), PermissionDecision::Deny)));
+        assert_eq!(answer.await.expect("the child's wait is answered"), PermissionDecision::Deny);
     }
 
     /// A decision is single-use. The second reply has no sender left to take,

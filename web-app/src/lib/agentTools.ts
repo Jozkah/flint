@@ -39,6 +39,7 @@ import {
 
 type AdvertisedTools = Awaited<ReturnType<typeof advertisedToolSchemas>>
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useChatShell } from '@/hooks/useChatShell'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { errorText } from '@/lib/errorText'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
@@ -805,6 +806,11 @@ export type AgentToolOptions = {
 export function chatAgentToolRefusal(toolName: string): string | null {
   if (toolName === 'list_plugins') return null
   if (!AGENT_TOOL_NAMES.has(toolName)) return null
+  // The composer's own Shell switch withholds the tool; a call that still
+  // arrives (the model names it anyway) is answered, not run.
+  if (toolName === SHELL_TOOL_NAME && !useChatShell.getState().shellEnabled) {
+    return 'The shell is turned off for this chat, so this command was not run.'
+  }
   if (useAgentToolsConfig.getState().agentToolsEnabled) return null
   return 'Agent tools are turned off in Settings > Agent tools, so this was not run.'
 }
