@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import '@testing-library/jest-dom'
 import type { ReactNode } from 'react'
 
 // Counts how often each group's row list renders.
@@ -96,5 +97,15 @@ describe('ChatsNav re-renders', () => {
       useChatSessions.setState((s) => ({ sessions: { ...s.sessions } }))
     })
     expect(listRenders.count).toBe(initial)
+  })
+})
+
+describe('ChatsNav group menu', () => {
+  it('opens the group menu, with Delete group, on right-click as well as from the options button', () => {
+    render(<ChatsNav />)
+    const header = screen.getAllByTestId('chat-group-header')[0]
+    expect(screen.queryByText('common:shell.deleteGroup')).toBeNull()
+    fireEvent.contextMenu(header, { clientX: 40, clientY: 50 })
+    expect(screen.getByText('common:shell.deleteGroup')).toBeInTheDocument()
   })
 })
