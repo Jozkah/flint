@@ -30,7 +30,7 @@ const HARDWARE: HardwareData = {
     core_count: 16,
     extensions: ['AVX', 'AVX2', 'AVX512F', 'FMA', 'F16C', 'SSE4.2'],
     instructions: ['AVX', 'AVX2', 'AVX512F', 'FMA', 'F16C', 'SSE4.2'],
-    name: 'AMD Ryzen 7 7700 8-Core Processor',
+    name: 'Example 8-Core Processor',
     usage: 12.3,
   },
   gpus: [
@@ -61,8 +61,8 @@ function usage(): SystemUsage {
   const vram = wave(82, 4, 0.5) / 100
   return {
     cpu: wave(22, 9, 1.3),
-    used_memory: Math.round(63.9 * GB * ram),
-    total_memory: Math.round(63.9 * GB),
+    used_memory: Math.round(31.9 * GB * ram),
+    total_memory: Math.round(31.9 * GB),
     gpus: [{ uuid: 'GPU-4060', used_memory: Math.round(8 * GB * vram), total_memory: 8 * GB }],
   }
 }
@@ -436,13 +436,13 @@ export function patchSettingsServices(hub: Hub) {
     received += 4.4e6
     sent += 4.3e4
     return {
-      host_name: 'DESKTOP-GPBT9JV',
-      os_version: 'Windows 11 IoT Enterprise LTSC 2024',
-      kernel_version: '26100',
+      host_name: 'preview-host',
+      os_version: 'Windows 11 Pro',
+      kernel_version: '22631',
       uptime_secs: 4 * 86400 + 19 * 60,
       timestamp_ms: Date.now(),
       cpu: {
-        name: 'AMD Ryzen 9 9950X3D 16-Core Processor',
+        name: 'Example 16-Core Processor',
         frequency_mhz: 4300,
         physical_cores: 16,
         logical_cores: 32,
@@ -463,7 +463,7 @@ export function patchSettingsServices(hub: Hub) {
         { name: 'Loopback Pseudo-Interface 1', mac_address: '', total_received: 2e6, total_transmitted: 2e6 },
       ],
       sensors: [
-        { label: 'NVIDIA GeForce RTX 5080', kind: 'gpu', source: 'NVML', temperature: 35, max: 93, critical: 93 },
+        { label: 'Example GPU', kind: 'gpu', source: 'NVML', temperature: 35, max: 93, critical: 93 },
       ],
     }
   })
