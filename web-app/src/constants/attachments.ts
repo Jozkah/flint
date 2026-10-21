@@ -16,6 +16,7 @@ export const DOCUMENT_ATTACHMENT_EXTENSIONS = [
   'pptx',
   'html',
   'htm',
+  'xhtml',
   // JavaScript / TypeScript
   'js',
   'mjs',
