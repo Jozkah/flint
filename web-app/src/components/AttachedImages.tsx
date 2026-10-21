@@ -49,7 +49,7 @@ export function AttachedImages({
             loading="lazy"
             draggable={false}
             className={cn(
-              'block',
+              'img-outline block',
               single ? 'max-h-80 w-auto max-w-full object-contain' : 'size-full object-cover'
             )}
           />

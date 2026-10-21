@@ -2389,7 +2389,8 @@
     "refresh": "重新整理",
     "suggestion": "Jev 為此建議使用技能 /{{skill}}",
     "useSkill": "使用",
-    "dismiss": "忽略"
+    "dismiss": "忽略",
+    "introSummary": "Jev 能做什麼、不能做什麼"
   },
   "pr": {
     "statusUnavailable": "狀態無法使用",

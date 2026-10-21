@@ -338,7 +338,7 @@ export function AccentSettings() {
       checked && 'border-border-strong shadow-lift'
     )
   const chipClass =
-    'size-[22px] shrink-0 rounded-[7px] shadow-[inset_0_0_0_1px_rgba(0,0,0,.12)] transition-transform duration-350 ease-expo group-hover/sw:scale-110 group-hover/sw:-rotate-6'
+    'size-[22px] shrink-0 rounded-[7px] shadow-[inset_0_0_0_1px_rgba(0,0,0,.12)] transition-transform duration-(--duration-medium) ease-expo group-hover/sw:scale-110 group-hover/sw:-rotate-6'
   const tick = (
     <span
       aria-hidden

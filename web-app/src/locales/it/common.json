@@ -2422,7 +2422,8 @@
     "refresh": "Aggiorna",
     "suggestion": "Jev suggerisce la skill /{{skill}} per questo",
     "useSkill": "Usa",
-    "dismiss": "Ignora"
+    "dismiss": "Ignora",
+    "introSummary": "Cosa fa e cosa non fa Jev"
   },
   "pr": {
     "statusUnavailable": "Stato non disponibile",

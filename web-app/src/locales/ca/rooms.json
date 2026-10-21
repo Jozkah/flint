@@ -35,7 +35,8 @@
     "objectivePlaceholder": "Què haurien de debatre o decidir els participants?",
     "submit": "Crea la sala",
     "cancel": "Cancel·la",
-    "titleRequired": "Introdueix un títol."
+    "titleRequired": "Introdueix un títol.",
+    "titlePlaceholder": "Posa nom a la sala"
   },
   "delete": {
     "title": "Vols suprimir la sala?",

@@ -14,7 +14,7 @@ const sources = import.meta.glob(['../**/*.{ts,tsx,css}', '!../**/__tests__/**']
 }) as Record<string, string>
 
 const LEGACY =
-  /(?<![\w-])(?:[\w\-[\]&:=.*>~+()]+:)*!?(?:bg|text|border|ring|outline|fill|stroke|from|to|via|divide|decoration|shadow)-(?:sunken|ink-2|line-strong|brand(?:-[a-z]+)*|rail(?:-[a-z]+)*|sidebar(?:-[a-z]+)*|main-view(?:-fg)?|paper|code)(?![\w-])|var\(--(?:sunken|ink-2|line-strong|brand[\w-]*|rail[\w-]*|overlay-shadow|ctx-h|status-h|rail-w)\b|(?<![\w-])font-(?:studio|display)(?![\w-])|(?<![\w-])shadow-overlay(?![\w-])/
+  /(?<![\w-])(?:[\w\-[\]&:=.*>~+()]+:)*!?(?:bg|text|border|ring|outline|fill|stroke|from|to|via|divide|decoration|shadow)-(?:sunken|ink-2|line-strong|brand(?:-[a-z]+)*|rail(?:-[a-z]+)*|sidebar(?:-[a-z]+)*|main-view(?:-fg)?|paper|code)(?![\w-])|var\(--(?:sunken|ink-2|line-strong|brand[\w-]*|rail[\w-]*|overlay-shadow|ctx-h|status-h|rail-w)\b|(?<![\w-])font-(?:studio|display)(?![\w-])(?!\s*:)|(?<![\w-])shadow-overlay(?![\w-])/
 
 describe('design tokens', () => {
   it('uses none of the previous design token names', () => {

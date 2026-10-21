@@ -11,6 +11,7 @@ import { useMCPServers, type MCPServers } from '@/hooks/useMCPServers'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useServiceStore } from '@/hooks/useServiceHub'
 import { sharedFolderPreview } from '@/dev/previewSharedFolder'
+import { surfaceInvoke } from '@/dev/previewSurfaces'
 import {
   useEngineActivity,
   type GenerationSample,
@@ -404,6 +405,8 @@ function previewInvoke(
   args?: Record<string, unknown>
 ): Promise<unknown> | undefined {
   const ok = (v: unknown) => Promise.resolve(v)
+  const surface = surfaceInvoke(command, args)
+  if (surface) return surface
   switch (command) {
     case 'agent_plugin_list':
       return ok(PLUGINS.map(installed))

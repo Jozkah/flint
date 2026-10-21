@@ -368,7 +368,7 @@ export function RoomControls({ room }: { room: Room }) {
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
               <i
-                className="block h-full rounded-full bg-grad transition-[width] duration-700 ease-expo motion-safe:animate-draw-x"
+                className="block h-full rounded-full bg-grad transition-[width] duration-(--duration-very-slow) ease-expo motion-safe:animate-draw-x"
                 style={{ width: `${turnShare}%` }}
               />
             </div>

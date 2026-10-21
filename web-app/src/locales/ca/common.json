@@ -2424,7 +2424,8 @@
     "refresh": "Actualitza",
     "suggestion": "Jev suggereix l'habilitat /{{skill}} per a això",
     "useSkill": "Utilitza",
-    "dismiss": "Descarta"
+    "dismiss": "Descarta",
+    "introSummary": "Què fa i què no fa Jev"
   },
   "pr": {
     "statusUnavailable": "Estat no disponible",

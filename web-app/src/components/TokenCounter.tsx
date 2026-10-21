@@ -347,7 +347,7 @@ export const TokenCounter = memo(function TokenCounter({
             aria-expanded={card.open}
             data-testid="token-counter"
             data-usage-scope={scope}
-            className={cn('relative cursor-pointer', className)}
+            className={cn('hit-y cursor-pointer', className)}
             onClick={() => {
               card.toggle()
               handleCalculateTokens()
@@ -615,7 +615,7 @@ function TokenCountOnly({
             aria-expanded={pinned.open}
             data-testid="token-counter"
             data-usage-scope={scope}
-            className={cn('relative cursor-pointer', className)}
+            className={cn('hit-y cursor-pointer', className)}
             onClick={pinned.toggle}
           >
             {/* No window size is known for this provider, so the ring has no
@@ -709,7 +709,7 @@ function ContextRing({
           stroke={`url(#${gradientId})`}
           strokeDasharray={c}
           strokeDashoffset={c * (1 - usage.fraction)}
-          className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo"
+          className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-(--duration-very-slow) motion-safe:ease-expo"
         />
       )}
     </svg>

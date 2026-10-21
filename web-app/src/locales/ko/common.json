@@ -2387,7 +2387,8 @@
     "refresh": "새로 고침",
     "suggestion": "Jev가 이 작업에 /{{skill}} 스킬을 제안합니다",
     "useSkill": "사용",
-    "dismiss": "닫기"
+    "dismiss": "닫기",
+    "introSummary": "Jev가 하는 일과 하지 않는 일"
   },
   "pr": {
     "statusUnavailable": "상태를 확인할 수 없음",

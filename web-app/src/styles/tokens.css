@@ -13,6 +13,15 @@
 :root {
   --radius: 0.5rem;
   --expo: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Motion scale (transitions-polish): match a duration to what the motion does,
+     not to the nearest number. Closes and hover-outs use the quicker steps. */
+  --duration-stagger: 40ms; /* per-item stagger offset */
+  --duration-micro: 80ms; /* tooltip intent delay, large stagger */
+  --duration-quick: 150ms; /* menu and dialog close, text swap, tooltip */
+  --duration-fast: 250ms; /* icon swap, menu and dialog open, tab slide */
+  --duration-medium: 350ms; /* panel close, toast close */
+  --duration-slow: 400ms; /* panel open, content reveal */
+  --duration-very-slow: 500ms; /* emphasis: meter and progress fills */
   --background: #F8F8F8;
   --foreground: #1F2937;
   --fg-2: #374151;

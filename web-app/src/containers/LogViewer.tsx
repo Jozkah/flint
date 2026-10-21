@@ -230,7 +230,7 @@ export function LogsDashboard({
           tabIndex={0}
           aria-label={title}
           data-testid="log-viewer"
-          className="max-h-[60vh] min-h-[240px] overflow-auto px-3 py-2 font-mono text-xs leading-[1.7] select-text [scrollbar-width:thin]"
+          className="max-h-[max(240px,calc(100dvh-14rem))] min-h-[240px] overflow-auto px-3 py-2 font-mono text-xs leading-[1.7] select-text [scrollbar-width:thin]"
         >
           {newest.length === 0 ? (
             <p className="p-5 font-sans text-[length:calc(var(--ui-font-base)*0.8125)] text-muted-foreground">

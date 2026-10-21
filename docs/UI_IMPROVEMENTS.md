@@ -45,3 +45,42 @@ Effort: S under an hour, M a few hours, L a day or more. Risk is the chance of b
 - Components already follow the make-interfaces rules: `antialiased`, balanced headings, 243 `tabular-nums` uses, no `transition: all` left after this pass, explicit transition properties.
 - Narrow behaviour is mostly deliberate: the sidebar becomes a menu, the section list becomes a dropdown, tables scroll, cards stack. Most pages had no horizontal overflow at 420px.
 - States are thought through: loading skeletons, "needs the desktop app" empty states, approval cards with Why and Arguments, and permission surfaces that explain consequences.
+
+## Status after the fix pass
+
+Branch `ui/fix-all`. Each row was checked in the running preview (Playwright, dark and light, 1280 and 420 wide). Commits are short hashes.
+
+| # | Status | Commit | What was done, or why not |
+|---|---|---|---|
+| 1 | fixed (partly) | 0fc373a8f | A fresh install now starts with Reduce motion from the OS preference (test added). The blanket 0.01ms rule stays: it keeps animationend listeners firing; per-recipe opacity fades were not written. |
+| 2 | fixed | ec8c162eb | Variants render as stacked cards below 640px; the table stays above. Viewed at 420 in both themes. |
+| 3 | fixed | 5c6fa33e8 | Row descriptions show two lines with `text-wrap: pretty`; the clamp test follows (2b4cfb3a6). |
+| 4 | fixed | 320f271f3, a02409ee8 | Data and storage says "Available in the Flint desktop app only." in the browser build. The raw ids on Remote access and Archive only showed in the dev preview (the real browser build already uses the desktop-only page); the preview now answers those commands. |
+| 5 | fixed | 5c6fa33e8, 7e12d83ba | Dialog close is 150ms (`--duration-quick`), open stays 200ms; menu/popover/hover-card closes use the same token. |
+| 6 | fixed (partly) | 7e12d83ba | Seven duration tokens in `tokens.css`; the 700/600/350/120ms outliers map to them by usage. The 150/200/300ms uses (139) have no matching token usage under the transitions-polish rule ("leave it, never nearest number") and were left. |
+| 7 | fixed | 5c6fa33e8 | The log box fills the window height (`max(240px, 100dvh - 14rem)`). |
+| 8 | fixed | 320f271f3, 9a3ccd748 | Measured 28x28; the shared composer icon button, send, token counter and voice pill now have a 38-40px-tall hit area, same width (neighbours sit 2px apart). Measured `::after` 38px. |
+| 9 | fixed (partly) | 6eb2792b7 | Stat tiles are 24px shorter (min height 92 to 68px). Not collapsed to a summary row: that is a Kravio mockup decision. |
+| 10 | fixed (decision) | 020acedf7 | Settings groups lose the outer frame; heading on the page, one panel for the rows. Before/after viewed dark and light. One CSS block, delete it to revert. |
+| 11 | fixed | ec8c162eb | Overview drops Model and Started below a 560px container; Task keeps its name. |
+| 12 | fixed | ec8c162eb | Jev intro folds under "What Jev does and does not do" (new key, 18 locales). |
+| 13 | fixed | 320f271f3 | Exact title and keyword hits rank first (test added). The Network Proxy page was indexed already; the loose Fuse hit just outranked it. |
+| 14 | fixed | 792ce51d1 | The inline plan strip is hidden while the pinned plan shows the same list (`samePlan`, test added). |
+| 15 | fixed | 5c6fa33e8 | New room Title has a placeholder (new key, 18 locales). |
+| 16 | fixed | 5c6fa33e8 | Memory percentage clamps to 0-100 and free RAM never shows below 0. |
+| 17 | verified, no change | - | Tabbed 45 stops on 12 pages: every stop shows a ring, except the sidebar resize separator, which draws a 3px bar on focus-visible instead of a ring (by design). |
+| 18 | verified, no change | - | Measured contrast, light/dark: approvals pill 4.55/6.13, "waiting for you" 5.02/10.95, workflow summary 4.83/5.69, row description 10.31/11.56. All at least 4.5:1. |
+| 19 | fixed | 7e12d83ba | `img-outline` (black 10% in light, white 10% in dark) on attached images, markdown images, Studio art and Library thumbnails. |
+| 20 | verified, no change | - | Composer and menu icons use the shared 16px size at the default stroke (1.33px effective); sidebar and settings use the app's own duotone set. No mismatched weights found. |
+| 21 | fixed (partly) | 5c6fa33e8 | Segmented press scale is .965 like Button. No `static` opt-out added: no high-frequency control was found where the press distracts. |
+| 22 | fixed | 6eb2792b7 | Guide steps rise in sequence (40ms steps, motion-safe). |
+| 23 | fixed (settings tabs) | 6eb2792b7 | Tab switches fade the new groups in (4px, 250ms). Route changes keep `view-in` (260ms). |
+| 24 | not fixed | - | Streamdown's per-word animation is already on once a reply settles; it is switched off while streaming on purpose (commit a2bb0fcb7 "cut streaming overhead", long threads). Turning it on would undo that. |
+| 25 | fixed | a02409ee8 | Preview seeds: `?workflow`, `?held`, `?elicit[=url]`, `?setup`, plus always-on answers for archive, remote access, usage attribution, rule warnings and hooks. All viewed. |
+| 26 | not fixed (decision) | - | No scrolling surface has a header that would use a scroll shadow; adding one would be new decoration. GSAP ScrollTrigger is not warranted. |
+| 27 | not done (decision) | - | `gsap` is not added: no timeline, scroll-scrubbed or SVG-morph animation exists; the app's JS motion is `motion`/`framer-motion` (about 25 files), WAAPI and CSS. Cost would be roughly 70 KB min / 27 KB gzip (GSAP's published size, not measured). |
+| 28 | fixed | ff09f9725 | `tabular-nums` on model downloads and likes; a grep for other numeric cells found none missing. |
+| 29 | fixed (decision) | f1fd1880d | The face (Inter, static 18pt files) is unchanged. All 18 `@font-face` rules said `font-sans: swap`, an invalid descriptor, so swap never applied; now `font-display: swap`. |
+| 30 | fixed (decision) | f9c678000 | The Hugging Face avatar fallback uses `from-muted-foreground to-foreground/70` instead of violet to fuchsia. |
+
+Extra surfaces seeded and viewed: Cowork workflow card (phases, failed and queued rows; the bar now shows failed work in red beside the accent instead of painting all of it red), held-message stack and mail from another session, MCP question card (form and link), setup wizard, usage attribution (names no longer truncate), policy rule warnings, hooks viewer, remote access, archive.

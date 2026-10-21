@@ -36,8 +36,9 @@
 @source '../node_modules/streamdown/dist/**/*.js';
 
 @custom-variant dark (&:is(.dark *));
-/* Motion follows the in-app Reduce motion setting (html.reduce-motion), not the
-   OS media query: the app animates unless the user turns it off in Flint. */
+/* Motion follows the in-app Reduce motion setting (html.reduce-motion). A fresh
+   install starts from the OS media query (hooks/useInterfaceSettings); after
+   that the choice is Flint's. */
 @custom-variant motion-safe (&:where(html:not(.reduce-motion) *));
 @custom-variant motion-reduce (&:where(html.reduce-motion *));
 
@@ -243,6 +244,28 @@
   animation: var(--animate-shim);
 }
 
+/* Photos and generated art get a faint inset edge so they do not blur into the
+   surface: black in light, white in dark, never tinted. */
+@utility img-outline {
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+  &:is(.dark *) {
+    outline-color: oklch(1 0 0 / 0.1);
+  }
+}
+
+/* A 40px-tall hit area for a 28px control, with no sideways growth: neighbours
+   sit 2px apart, so widening the target would make them overlap. */
+@utility hit-y {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block: -6px;
+  }
+}
+
 /* Menu rows cascade in after the surface opens. */
 [data-slot$='menu-content'] > [role^='menuitem'] {
   animation: var(--animate-mi-in);
@@ -338,6 +361,26 @@ html {
 [data-boot] [data-testid='app-sidebar'] > [data-slot='nav-group']:nth-child(5) { animation-delay: 180ms; }
 
 /* Each navigation fades the page in once. */
+/* Settings groups: the heading sits on the page and one panel carries the rows,
+   instead of a framed card around a framed panel. Scoped to settings pages;
+   deleting this block restores the double frame. */
+[data-settings-body] [data-slot='frame'] {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+[data-settings-body] [data-slot='frame'] > [data-slot='frame-header'] {
+  padding-inline: 2px;
+}
+
+/* Settings tab switch: the groups of the new tab settle in 4px and 200ms
+   (SettingsTabs flags the document while it plays). */
+html[data-tab-swap] [data-settings-body] [data-slot='frame'] {
+  animation: tab-in var(--duration-fast, 250ms) var(--expo) both;
+}
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
 .view-in {
   animation: view-in 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }

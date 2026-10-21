@@ -2478,7 +2478,8 @@
     "refresh": "Обновить",
     "suggestion": "Jev предлагает для этого навык /{{skill}}",
     "useSkill": "Использовать",
-    "dismiss": "Закрыть"
+    "dismiss": "Закрыть",
+    "introSummary": "Что Jev делает и чего не делает"
   },
   "pr": {
     "statusUnavailable": "Состояние недоступно",

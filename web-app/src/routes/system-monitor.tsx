@@ -125,7 +125,7 @@ function Meter({
       <div className="flex items-baseline justify-between gap-2 text-[length:calc(var(--ui-font-base)*0.78125)]">
         <span className="text-muted-foreground">{label}</span>
         <b className="font-medium tabular-nums text-foreground">
-          {display ?? formatPercent(percent)}
+          {display ?? formatPercent(clamped)}
         </b>
       </div>
       <div
@@ -138,7 +138,7 @@ function Meter({
       >
         <div
           className={cn(
-            'h-full rounded-full motion-safe:animate-draw-x motion-safe:transition-[width] motion-safe:duration-600 motion-safe:ease-expo',
+            'h-full rounded-full motion-safe:animate-draw-x motion-safe:transition-[width] motion-safe:duration-(--duration-very-slow) motion-safe:ease-expo',
             !color && BAND_FILL[band(clamped)]
           )}
           style={{ width: `${clamped}%`, ...(color ? { background: color } : null) }}
@@ -1107,7 +1107,7 @@ function SystemMonitorContent() {
   const measuring = t('system-monitor:measuring')
 
   // Calculate RAM usage percentage
-  const ramUsagePercentage = toNumber(systemUsage.used_memory / hardwareData.total_memory) * 100
+  const ramUsagePercentage = clampPercent(toNumber(systemUsage.used_memory / hardwareData.total_memory) * 100)
 
   const gpuPercent = (gpu: GPU) => {
     const usage = systemUsage.gpus?.find((u) => u.uuid === gpu.uuid)
@@ -1234,7 +1234,7 @@ function SystemMonitorContent() {
                   {formatMegaBytes(hardwareData.total_memory)}
                 </Stat>
                 <Stat label={t('system-monitor:availableRam')}>
-                  {formatMegaBytes(hardwareData.total_memory - systemUsage.used_memory)}
+                  {formatMegaBytes(Math.max(0, hardwareData.total_memory - systemUsage.used_memory))}
                 </Stat>
                 <Stat label={t('system-monitor:usedRam')}>
                   {formatMegaBytes(systemUsage.used_memory)}

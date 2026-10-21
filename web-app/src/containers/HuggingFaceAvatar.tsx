@@ -25,7 +25,7 @@ const TINTS = [
   'from-emerald-400 to-teal-600',
   'from-rose-400 to-pink-600',
   'from-amber-300 to-orange-500',
-  'from-violet-400 to-fuchsia-600',
+  'from-muted-foreground to-foreground/70',
   'from-lime-400 to-emerald-600',
 ]
 

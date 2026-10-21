@@ -118,7 +118,7 @@ export function KpiTile({
           ) : undefined
         }
       />
-      <FrameBody className="min-h-[92px] items-start justify-between gap-2.5 p-3">
+      <FrameBody className="min-h-[68px] items-start justify-between gap-2 px-3 py-2.5">
         <div className="text-2xl leading-none font-medium text-foreground tabular-nums">
           {typeof value === 'string' ? <CountUp value={value} delayMs={delay + 150} /> : value}
           {unit && (

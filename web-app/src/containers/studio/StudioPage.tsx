@@ -559,7 +559,7 @@ function Thumb({ item, className }: { item: GalleryItem; className?: string }) {
       src={src}
       alt=""
       loading="lazy"
-      className={cn('size-full object-cover', className)}
+      className={cn('img-outline size-full object-cover', className)}
     />
   )
 }
@@ -1402,7 +1402,7 @@ function PromptPanel({
                 src={convertFileSrc(latest.path)}
                 alt={latest.recipe.prompt}
                 className={cn(
-                  'size-full object-contain transition-[filter,transform,opacity] duration-500 ease-expo',
+                  'img-outline size-full object-contain transition-[filter,transform,opacity] duration-500 ease-expo',
                   running ? 'scale-105 opacity-60 blur-xl' : 'motion-safe:animate-rise-in'
                 )}
               />

@@ -41,6 +41,7 @@ import { seedRooms } from './previewRooms'
 import { seedApplyReviewPreview } from './previewApplyReview'
 import { seedBrowserPane } from './previewBrowser'
 import { seedEngine } from './previewSeedEngine'
+import { seedSurfaces } from './previewSurfaces'
 import { seedHuggingFacePreview } from './previewHuggingFace'
 import { seedRichSearch } from './previewRichSearch'
 import {
@@ -1394,7 +1395,8 @@ export function seedPreview() {
   seedBackendAnswers()
   patchServices()
   useModelProvider.setState({
-    providers: providers(),
+    // `?setup` has no usable model, so the setup wizard is what the home page shows.
+    providers: params().has('setup') ? providers().map((p) => ({ ...p, active: false, api_key: '', models: [] })) : providers(),
     selectedProvider: 'llamacpp',
     selectedModel: model('qwen3-8b-instruct', 'Qwen3 8B Instruct', ['tools', 'reasoning']),
   } as never)
@@ -1419,6 +1421,7 @@ export function seedPreview() {
   seedSettingsPreview()
   seedRichSearch()
   seedNestingState()
+  seedSurfaces(params())
   // `?heavy`: a big data folder for performance runs (2,000 chats, one
   // 300-message chat with code and tables), stores exposed on window.
   if (params().has('heavy')) seedHeavy()
@@ -1440,7 +1443,9 @@ export function seedPreview() {
     store?.setState({ folders: FOLDERS })
   })
   try {
-    localStorage.setItem('setup-completed', 'true')
+    // `?setup`: leave the first-run flag unset so the setup wizard shows.
+    if (params().has('setup')) localStorage.removeItem('setup-completed')
+    else localStorage.setItem('setup-completed', 'true')
     localStorage.setItem('recent-searches', JSON.stringify(['forecast cache', 'radar', 'units']))
   } catch {
     // Storage may be unavailable; the providers alone pass the setup gate.

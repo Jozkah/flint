@@ -37,7 +37,8 @@
     "objectivePlaceholder": "O čem mají účastníci diskutovat nebo co mají rozhodnout?",
     "submit": "Vytvořit místnost",
     "cancel": "Zrušit",
-    "titleRequired": "Zadejte název."
+    "titleRequired": "Zadejte název.",
+    "titlePlaceholder": "Pojmenujte místnost"
   },
   "delete": {
     "title": "Smazat místnost?",

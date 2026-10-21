@@ -31,7 +31,8 @@
     "objectivePlaceholder": "Những người tham gia nên thảo luận hoặc quyết định điều gì?",
     "submit": "Tạo phòng",
     "cancel": "Hủy",
-    "titleRequired": "Hãy nhập tiêu đề."
+    "titleRequired": "Hãy nhập tiêu đề.",
+    "titlePlaceholder": "Đặt tên cho phòng"
   },
   "delete": {
     "title": "Xóa phòng?",

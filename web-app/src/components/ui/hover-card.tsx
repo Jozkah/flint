@@ -35,7 +35,7 @@ function HoverCardContent({
         collisionPadding={collisionPadding}
         sticky={sticky}
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 w-64 max-w-[calc(100vw-24px)] max-h-(--radix-hover-card-content-available-height) overflow-y-auto origin-(--radix-hover-card-content-transform-origin) rounded-xl p-4 shadow-pop outline-hidden",
+          "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-(--duration-quick) z-50 w-64 max-w-[calc(100vw-24px)] max-h-(--radix-hover-card-content-available-height) overflow-y-auto origin-(--radix-hover-card-content-transform-origin) rounded-xl p-4 shadow-pop outline-hidden",
           className
         )}
         {...props}

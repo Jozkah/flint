@@ -45,9 +45,9 @@ function Section({
     <div className="space-y-1">
       <div className="text-xs font-medium text-muted-foreground">{title}</div>
       {rows.map((r) => (
-        <div key={r.name} className="flex justify-between gap-3 text-sm">
-          <span className="truncate">{r.name}</span>
-          <span className="shrink-0 tabular-nums text-muted-foreground">
+        <div key={r.name} className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+          <span className="min-w-0 break-words">{r.name}</span>
+          <span className="tabular-nums text-muted-foreground">
             {callsLabel(r.calls)} · ~{r.resultTokens.toLocaleString()} tok
             {r.inputTokens !== undefined && r.outputTokens !== undefined
               ? ` · ${r.inputTokens.toLocaleString()} in / ${r.outputTokens.toLocaleString()} out`
@@ -100,9 +100,9 @@ export function UsageAttributionCard() {
               {t('settings:usageAttribution.unused')}
             </div>
             {data.unused.map((u) => (
-              <div key={`${u.kind}:${u.name}`} className="flex justify-between gap-3 text-sm">
-                <span className="truncate">{u.name}</span>
-                <span className="shrink-0 text-muted-foreground">
+              <div key={`${u.kind}:${u.name}`} className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+                <span className="min-w-0 break-words">{u.name}</span>
+                <span className="text-muted-foreground">
                   {u.kind}
                   {u.contextTokens !== undefined ? ` · ~${u.contextTokens} tok` : ''}
                 </span>
