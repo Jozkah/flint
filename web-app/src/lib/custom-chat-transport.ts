@@ -2250,18 +2250,25 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // dispatch" would race between two sessions streaming at once. The run is
     // this request, so its snapshot can be attributed to it and not merely to
     // "the thread's latest dispatch".
-    const modelPromise = ModelFactory.createModel(modelId, provider, {
-      ...parameters,
-      ...(this.threadId
-        ? {
-            [DISPATCH_PARAM_KEY]: {
-              session: this.threadId,
-              provider: providerId,
-              ...(runId ? { run: runId } : {}),
-            },
-          }
-        : {}),
-    })
+    const modelPromise = ModelFactory.createModel(
+      modelId,
+      provider,
+      {
+        ...parameters,
+        ...(this.threadId
+          ? {
+              [DISPATCH_PARAM_KEY]: {
+                session: this.threadId,
+                provider: providerId,
+                ...(runId ? { run: runId } : {}),
+              },
+            }
+          : {}),
+      },
+      // Live stream stats belong to this conversation, not to whichever one
+      // is current when a chunk arrives.
+      this.threadId || undefined
+    )
     if (!abortSignal) return modelPromise
 
     // Target lib is ES2021 here (see tsconfig.app.json), predating
