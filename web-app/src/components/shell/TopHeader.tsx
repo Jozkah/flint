@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useUsageStats, type ActivityKind } from '@/stores/usage-stats-store'
 import { useShellNav } from '@/components/shell/nav-kit'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
@@ -242,40 +243,50 @@ export function TopHeader() {
 
       <div className="flex shrink-0 items-center gap-1.5">
         <HeaderLiveChips />
-        <button
-          type="button"
-          className={cn(iconBtn, 'max-sm:hidden')}
-          onClick={(e) => switchTheme(e.currentTarget, isDark ? 'light' : 'dark', setTheme)}
-          aria-label={isDark ? t('common:shell.lightMode') : t('common:shell.darkMode')}
-          title={isDark ? t('common:shell.lightMode') : t('common:shell.darkMode')}
-          data-testid="header-theme"
-        >
-          <Icon name={isDark ? 'x-sun' : 'x-moon'} />
-        </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <Tooltip>
+          <TooltipTrigger asChild>
             <button
               type="button"
-              className={cn(iconBtn, 'group/bell relative')}
-              aria-label={t('common:shell.notifications')}
-              title={t('common:shell.notifications')}
-              data-testid="header-activity"
+              className={cn(iconBtn, 'max-sm:hidden')}
+              onClick={(e) => switchTheme(e.currentTarget, isDark ? 'light' : 'dark', setTheme)}
+              aria-label={isDark ? t('common:shell.lightMode') : t('common:shell.darkMode')}
+              data-testid="header-theme"
             >
-              <span className="inline-flex origin-top group-hover/bell:[animation:ring_.6s_ease]">
-                <Icon name="bell" />
-              </span>
-              {(approvals > 0 || heldMail.length > 0 || runs > 0) && (
-                <span
-                  aria-hidden
-                  data-testid="header-activity-dot"
-                  className={cn(
-                    'absolute top-1 right-1 size-1.5 rounded-full',
-                    approvals > 0 || heldMail.length > 0 ? 'bg-warning' : 'bg-info'
-                  )}
-                />
-              )}
+              <Icon name={isDark ? 'x-sun' : 'x-moon'} />
             </button>
-          </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            {isDark ? t('common:shell.lightMode') : t('common:shell.darkMode')}
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(iconBtn, 'group/bell relative')}
+                  aria-label={t('common:shell.notifications')}
+                  data-testid="header-activity"
+                >
+                  <span className="inline-flex origin-top group-hover/bell:[animation:ring_.6s_ease]">
+                    <Icon name="bell" />
+                  </span>
+                  {(approvals > 0 || heldMail.length > 0 || runs > 0) && (
+                    <span
+                      aria-hidden
+                      data-testid="header-activity-dot"
+                      className={cn(
+                        'absolute top-1 right-1 size-1.5 rounded-full',
+                        approvals > 0 || heldMail.length > 0 ? 'bg-warning' : 'bg-info'
+                      )}
+                    />
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{t('common:shell.notifications')}</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel>{t('common:shell.notifications')}</DropdownMenuLabel>
             {approvals === 0 && heldMail.length === 0 && runs === 0 && recent.length === 0 ? (
@@ -313,16 +324,20 @@ export function TopHeader() {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Link
-          to={route.settings.general}
-          className={cn(iconBtn, 'group/set max-sm:hidden')}
-          aria-label={t('common:settings')}
-          title={t('common:settings')}
-        >
-          <span className="inline-flex transition-transform duration-500 ease-expo group-hover/set:rotate-90">
-            <Icon name="hd-settings" />
-          </span>
-        </Link>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to={route.settings.general}
+              className={cn(iconBtn, 'group/set max-sm:hidden')}
+              aria-label={t('common:settings')}
+            >
+              <span className="inline-flex transition-transform duration-500 ease-expo group-hover/set:rotate-90">
+                <Icon name="hd-settings" />
+              </span>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>{t('common:settings')}</TooltipContent>
+        </Tooltip>
         {/* Phones: theme and settings share one overflow menu. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
