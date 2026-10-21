@@ -73,5 +73,7 @@
   "graphics": "Grafik",
   "freeVram": "Boş VRAM",
   "apiVersion": "API sürümü",
-  "measuring": "Ölçülüyor…"
+  "measuring": "Ölçülüyor…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }

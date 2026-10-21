@@ -25,6 +25,7 @@ import { isServedByFlint } from '@/lib/platform/utils'
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { Chip } from '@/components/ui/chip'
+import { ChartTable, ChartTip, useCursor, useSlide } from '@/containers/engine/chartKit'
 import { EngineAddonPanel } from '@/containers/EngineAddon'
 import {
   backendLabel,
@@ -68,16 +69,22 @@ function gpuBackendLabel(gpu: GPU): string {
   return gpu.vendor || 'GPU'
 }
 
+/** Whole percents, one decimal under 10: two decimals read as precision the sample does not have. */
+const formatPercent = (percent: number) =>
+  `${percent < 10 ? percent.toFixed(1) : percent.toFixed(0)}%`
+
 const clampPercent = (percent: number) =>
   Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0))
 
 /** The colour each card plots and badges itself with. */
+// One accent for every single-series chart, and a second one only where two
+// series share a chart (download and upload). Red stays for errors.
 const ACCENT = {
-  cpu: '#4f8cff',
-  memory: '#a76bff',
-  gpu: '#4f8cff',
-  down: '#ff5d6c',
-  up: '#a76bff',
+  cpu: 'var(--series-a)',
+  memory: 'var(--series-a)',
+  gpu: 'var(--series-a)',
+  down: 'var(--series-a)',
+  up: 'var(--series-b)',
 }
 
 /**
@@ -118,7 +125,7 @@ function Meter({
       <div className="flex items-baseline justify-between gap-2 text-[length:calc(var(--ui-font-base)*0.78125)]">
         <span className="text-muted-foreground">{label}</span>
         <b className="font-medium tabular-nums text-foreground">
-          {display ?? `${percent.toFixed(2)}%`}
+          {display ?? formatPercent(percent)}
         </b>
       </div>
       <div
@@ -161,53 +168,151 @@ function UsageLine({
         {label}
       </span>
       <b className="font-semibold tabular-nums text-foreground">
-        {pending ?? `${percent.toFixed(2)}%`}
+        {pending ?? formatPercent(percent)}
       </b>
     </div>
   )
 }
 
+/** The area chart's own coordinates: 120 by 60, padded so the dot and zero line are never clipped. */
+const AREA_W = 120
+const AREA_H = 60
+const AREA_X0 = 2
+const AREA_X1 = 118
+const AREA_TOP = 4
+const AREA_ZERO = 56
+
 /**
- * Recent samples as a filled line on a 0 / 50 / 100 % grid. Drawn to the
- * card's width; the stroke keeps its weight however wide that is.
+ * Recent samples as a 2px line on a 0 / 50 / 100 % scale with solid hairlines.
+ * A new sample slides in; hover or the arrow keys read each point, and the
+ * samples can be listed as a table. Drawn to the card's width; the stroke
+ * keeps its weight however wide that is.
  */
-function AreaChart({ values, color }: { values: number[]; color: string }) {
-  const id = useId()
+function AreaChart({ values, color, label }: { values: number[]; color: string; label?: string }) {
+  const { t } = useTranslation()
   const n = values.length
-  const pts =
+  const step = n > 1 ? (AREA_X1 - AREA_X0) / (n - 1) : 0
+  const pts: Array<[number, number]> =
     n < 2
       ? []
-      : values.map(
-          (v, i) => `${((i / (n - 1)) * 120).toFixed(1)},${(60 - (clampPercent(v) / 100) * 60).toFixed(1)}`
-        )
+      : values.map((v, i) => [
+          AREA_X0 + i * step,
+          AREA_ZERO - (clampPercent(v) / 100) * (AREA_ZERO - AREA_TOP),
+        ])
+  const last = pts[pts.length - 1]
+  const line = pts.length ? `M${pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('L')}` : ''
+  const groupRef = useRef<SVGGElement>(null)
+  const dotRef = useRef<HTMLSpanElement>(null)
+  const pulse = useSlide(values.join(','), {
+    group: groupRef,
+    dot: dotRef,
+    step,
+    width: AREA_W,
+    lastX: last?.[0] ?? AREA_X1,
+  })
+  const cursor = useCursor({ count: n, x0: AREA_X0, step, width: AREA_W })
+  const ago = (c: number) => t('system-monitor:chartAgo', { count: Math.round((c * POLL_MS) / 1000) })
+  const now = t('system-monitor:chartNow')
+  const when = (i: number) => (i === n - 1 ? now : ago(n - 1 - i))
+  const at = cursor.index
+  const readable = pts.length > 0
   return (
-    <div className="mt-2 flex items-stretch gap-2" aria-hidden>
-      <div className="relative h-[84px] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/70 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px)] bg-[length:12.5%_100%] [background-position:-1px_0]">
-        <div className="absolute inset-x-0 top-1/2 border-t border-border/70" />
-        {pts.length > 0 && (
-          <svg viewBox="0 0 120 60" preserveAspectRatio="none" className="absolute inset-0 size-full">
-            <defs>
-              <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" style={{ stopColor: color, stopOpacity: 0.5 }} />
-                <stop offset="1" style={{ stopColor: color, stopOpacity: 0.02 }} />
-              </linearGradient>
-            </defs>
-            <path d={`M0,60L${pts.join('L')}L120,60Z`} fill={`url(#${id})`} />
-            <path
-              d={`M${pts.join('L')}`}
-              fill="none"
-              stroke={color}
-              strokeWidth={1.5}
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-        )}
-      </div>
-      <div className="flex w-9 shrink-0 flex-col justify-between py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
-        <span>100%</span>
-        <span>50%</span>
-        <span>0%</span>
-      </div>
+    <div className="mt-2 flex flex-col gap-1.5" style={{ ['--c' as string]: color }}>
+      {readable && (
+        <ChartTable
+          rows={values
+            .map((v, i): [string, string] => [when(i), formatPercent(clampPercent(v))])
+            .reverse()}
+        />
+      )}
+      {
+        <div className="flex items-stretch gap-2">
+          <div className="relative min-w-0 flex-1">
+            <div
+              {...(readable
+                ? {
+                    role: 'img',
+                    'aria-label': `${label ?? ''} ${formatPercent(clampPercent(values[n - 1]))}`.trim(),
+                    tabIndex: 0,
+                    ...cursor.handlers,
+                  }
+                : { 'aria-hidden': true })}
+              className="relative h-[84px] overflow-hidden rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <svg viewBox={`0 0 ${AREA_W} ${AREA_H}`} preserveAspectRatio="none" aria-hidden className="absolute inset-0 size-full">
+                {[AREA_TOP, (AREA_TOP + AREA_ZERO) / 2, AREA_ZERO].map((y) => (
+                  <line
+                    key={y}
+                    x1="0"
+                    x2={AREA_W}
+                    y1={y}
+                    y2={y}
+                    style={{ stroke: 'var(--border)', strokeWidth: 1 }}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+                <g ref={groupRef} className="transition-transform duration-500 ease-expo motion-reduce:transition-none">
+                  {readable && last && (
+                    <>
+                      <path
+                        d={`${line}L${last[0].toFixed(1)},${AREA_ZERO}L${pts[0][0].toFixed(1)},${AREA_ZERO}Z`}
+                        style={{ fill: 'var(--c)', fillOpacity: 0.12 }}
+                      />
+                      <path
+                        d={line}
+                        fill="none"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        style={{ stroke: 'var(--c)', strokeWidth: 2 }}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </>
+                  )}
+                </g>
+              </svg>
+              {at !== null && pts[at] && (
+                <>
+                  <span aria-hidden className="pointer-events-none absolute inset-y-0 w-px bg-border" style={{ left: `${(pts[at][0] / AREA_W) * 100}%` }} />
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute -mt-1 -ml-1 size-2 rounded-full bg-[var(--c)] shadow-[0_0_0_2px_var(--card)]"
+                    style={{ left: `${(pts[at][0] / AREA_W) * 100}%`, top: `${(pts[at][1] / AREA_H) * 100}%` }}
+                  />
+                </>
+              )}
+              {readable && last && (
+                <span
+                  ref={dotRef}
+                  aria-hidden
+                  className="absolute -mt-1 -ml-1 size-2 rounded-full bg-[var(--c)] shadow-[0_0_0_2px_var(--card)] transition-[left,top] duration-500 ease-expo motion-reduce:transition-none"
+                  style={{ left: `${(last[0] / AREA_W) * 100}%`, top: `${(last[1] / AREA_H) * 100}%` }}
+                >
+                  {pulse > 0 && (
+                    <span key={pulse} className="absolute inset-0 rounded-full bg-[var(--c)] motion-safe:animate-[ping_900ms_cubic-bezier(0,0,0.2,1)_1]" />
+                  )}
+                </span>
+              )}
+            </div>
+            {at !== null && pts[at] && (
+              <ChartTip left={(pts[at][0] / AREA_W) * 100} text={`${when(at)} · ${formatPercent(clampPercent(values[at]))}`} />
+            )}
+          </div>
+          <div aria-hidden className="flex w-9 shrink-0 flex-col justify-between py-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground tabular-nums">
+            <span>100%</span>
+            <span>50%</span>
+            <span>0%</span>
+          </div>
+        </div>
+      }
+      {readable && (
+        <div className="flex gap-2 text-[length:calc(var(--ui-font-base)*0.65625)] text-muted-foreground">
+          <div className="flex min-w-0 flex-1 justify-between">
+            <span>{ago(n - 1)}</span>
+            <span>{now}</span>
+          </div>
+          <span aria-hidden className="w-9 shrink-0" />
+        </div>
+      )}
     </div>
   )
 }
@@ -266,8 +371,8 @@ function Badge({
       aria-valuenow={Math.round(clampPercent(percent))}
       className="inline-flex h-7 items-center gap-1.5 rounded-lg border-[0.8px] px-2.5 text-xs font-medium tabular-nums text-foreground"
       style={{
-        borderColor: `${color}66`,
-        background: `${color}1f`,
+        borderColor: `color-mix(in oklab, ${color} 40%, transparent)`,
+        background: `color-mix(in oklab, ${color} 12%, transparent)`,
       }}
     >
       <span className="size-1.5 rounded-full" style={{ background: color }} aria-hidden />
@@ -876,7 +981,7 @@ function GpuBlock({
       {hasUsage && (
         <>
           <UsageLine label={t('system-monitor:vramUsage')} percent={percent} color={ACCENT.gpu} />
-          <AreaChart values={history} color={ACCENT.gpu} />
+          <AreaChart values={history} color={ACCENT.gpu} label={t('system-monitor:vramUsage')} />
         </>
       )}
     </div>
@@ -1083,7 +1188,7 @@ function SystemMonitorContent() {
               icon={<Icon name="x-cpu" size={16} />}
               delay={60}
               className="xl:col-span-4"
-              badge={<Badge color={ACCENT.cpu} percent={systemUsage.cpu} label={t('system-monitor:cpu')}>{measured ? `${systemUsage.cpu.toFixed(2)}%` : measuring}</Badge>}
+              badge={<Badge color={ACCENT.cpu} percent={systemUsage.cpu} label={t('system-monitor:cpu')}>{measured ? formatPercent(systemUsage.cpu) : measuring}</Badge>}
             >
               <b
                 className="mb-3 block truncate text-[length:calc(var(--ui-font-base)*0.875)] font-medium text-foreground"
@@ -1111,7 +1216,7 @@ function SystemMonitorContent() {
                 color={ACCENT.cpu}
                 pending={measured ? undefined : measuring}
               />
-              <AreaChart values={history.cpu ?? []} color={ACCENT.cpu} />
+              <AreaChart values={history.cpu ?? []} color={ACCENT.cpu} label={t('system-monitor:cpu')} />
               {snapshot && snapshot.cpu.per_core.length > 1 && (
                 <PerCoreUsage values={snapshot.cpu.per_core} />
               )}
@@ -1122,7 +1227,7 @@ function SystemMonitorContent() {
               icon={<Icon name="x-disk" size={16} />}
               delay={120}
               className="xl:col-span-4"
-              badge={<Badge color={ACCENT.memory} percent={ramUsagePercentage} label={t('system-monitor:memory')}>{measured ? `${ramUsagePercentage.toFixed(2)}%` : measuring}</Badge>}
+              badge={<Badge color={ACCENT.memory} percent={ramUsagePercentage} label={t('system-monitor:memory')}>{measured ? formatPercent(ramUsagePercentage) : measuring}</Badge>}
             >
               <Stats>
                 <Stat label={t('system-monitor:totalRam')}>
@@ -1141,7 +1246,7 @@ function SystemMonitorContent() {
                 color={ACCENT.memory}
                 pending={measured ? undefined : measuring}
               />
-              <AreaChart values={history.ram ?? []} color={ACCENT.memory} />
+              <AreaChart values={history.ram ?? []} color={ACCENT.memory} label={t('system-monitor:memory')} />
               {snapshot && snapshot.memory.swap_total > 0 && (
                 <>
                   <div className="mt-4">
@@ -1169,7 +1274,7 @@ function SystemMonitorContent() {
                 className="md:col-span-2 xl:col-span-4"
                 badge={
                   firstGpu?.usage ? (
-                    <Badge color={ACCENT.gpu} percent={firstGpu.percent} label={t('system-monitor:gpu')}>{firstGpu.percent.toFixed(2)}%</Badge>
+                    <Badge color={ACCENT.gpu} percent={firstGpu.percent} label={t('system-monitor:gpu')}>{formatPercent(firstGpu.percent)}</Badge>
                   ) : undefined
                 }
               >

@@ -73,5 +73,7 @@
   "graphics": "그래픽",
   "freeVram": "여유 VRAM",
   "apiVersion": "API 버전",
-  "measuring": "측정 중…"
+  "measuring": "측정 중…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }

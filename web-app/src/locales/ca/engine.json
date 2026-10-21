@@ -2,7 +2,10 @@
   "live": "En directe",
   "chart": {
     "peak": "màx.",
-    "avg": "mitj."
+    "avg": "mitj.",
+    "now": "now",
+    "ago": "{{count}} min ago",
+    "calls": "calls"
   },
   "models": {
     "title": "Models",

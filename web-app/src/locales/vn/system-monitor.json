@@ -73,5 +73,7 @@
   "graphics": "Đồ họa",
   "freeVram": "VRAM trống",
   "apiVersion": "Phiên bản API",
-  "measuring": "Đang đo…"
+  "measuring": "Đang đo…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }

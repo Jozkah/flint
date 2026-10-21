@@ -74,5 +74,7 @@
   "graphics": "Grafica",
   "freeVram": "VRAM libera",
   "apiVersion": "Versione API",
-  "measuring": "Misurazione…"
+  "measuring": "Misurazione…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }

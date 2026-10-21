@@ -74,5 +74,7 @@
   "freeVram": "VRAM libre",
   "apiVersion": "Version de l'API",
   "showVirtual_many": "Afficher {{count}} d'adaptateurs de bouclage ou virtuels",
-  "measuring": "Mesure en cours…"
+  "measuring": "Mesure en cours…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }

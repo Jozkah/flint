@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { LiveChart, chartPoints } from '../LiveChart'
 import { bucketCounts } from '@/stores/engine-activity-store'
@@ -9,17 +9,23 @@ describe('chartPoints', () => {
     const pts = chartPoints([0, 10, 20])
     // Same x step between points, last point at the plot end.
     expect(pts[1][0] - pts[0][0]).toBeCloseTo(pts[2][0] - pts[1][0])
-    expect(pts[2][0]).toBe(192)
-    // Zero sits on the bottom edge; heights above it are proportional.
-    expect(pts[0][1]).toBe(60)
-    const h1 = 60 - pts[1][1]
-    const h2 = 60 - pts[2][1]
+    expect(pts[2][0]).toBe(196)
+    // Zero sits above the bottom edge, so a zero value is never clipped;
+    // heights above it are proportional.
+    expect(pts[0][1]).toBe(54)
+    expect(pts[0][1]).toBeLessThan(60)
+    const h1 = 54 - pts[1][1]
+    const h2 = 54 - pts[2][1]
     expect(h2 / h1).toBeCloseTo(2)
   })
 
-  it('keeps the peak below the top edge', () => {
+  it('keeps the peak below the top edge, on a clean scale maximum', () => {
     const [, peak] = chartPoints([1, 5])
     expect(peak[1]).toBeGreaterThan(0)
+    // 5 is already a clean maximum, so it reaches the top gridline.
+    expect(peak[1]).toBe(6)
+    // 15 rounds up to 20, so the peak stays below the top gridline.
+    expect(chartPoints([15, 3])[0][1]).toBeGreaterThan(6)
   })
 })
 
@@ -54,6 +60,26 @@ describe('LiveChart', () => {
     )
     expect(container.querySelector('[data-slot=live-chart-dot]')).toBeNull()
     expect(screen.getByRole('img')).toHaveTextContent('—')
+  })
+
+  it('reads a point with the keyboard and keeps every sample as hidden text', () => {
+    const readout = {
+      now: 'now',
+      ago: (c: number) => `${c} min ago`,
+      windowStart: '3 min ago',
+      unit: 'calls',
+    }
+    const { container } = render(
+      <LiveChart series={[2, 4, 6]} label="calls / min" readout={readout} />
+    )
+    const plot = container.querySelector('[role=img]') as HTMLElement
+    fireEvent.focus(plot)
+    expect(screen.getByRole('status')).toHaveTextContent('now · 6 calls')
+    fireEvent.keyDown(plot, { key: 'ArrowLeft' })
+    expect(screen.getByRole('status')).toHaveTextContent('1 min ago · 4 calls')
+    // The samples are also there as text for screen readers, with no button.
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByRole('table', { hidden: true })).toHaveTextContent('2 min ago')
   })
 })
 

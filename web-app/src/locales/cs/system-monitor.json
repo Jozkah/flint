@@ -75,5 +75,7 @@
   "graphics": "Grafika",
   "freeVram": "Volná VRAM",
   "apiVersion": "Verze API",
-  "measuring": "Měří se…"
+  "measuring": "Měří se…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }

@@ -2,7 +2,10 @@
   "live": "Live",
   "chart": {
     "peak": "Spitze",
-    "avg": "Ø"
+    "avg": "Ø",
+    "now": "now",
+    "ago": "{{count}} min ago",
+    "calls": "calls"
   },
   "models": {
     "title": "Modelle",

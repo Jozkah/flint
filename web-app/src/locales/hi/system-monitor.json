@@ -73,5 +73,7 @@
   "graphics": "ग्राफ़िक्स",
   "freeVram": "खाली VRAM",
   "apiVersion": "API संस्करण",
-  "measuring": "माप रहे हैं…"
+  "measuring": "माप रहे हैं…",
+  "chartNow": "now",
+  "chartAgo": "{{count}} s ago"
 }
