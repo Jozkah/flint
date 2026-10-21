@@ -244,10 +244,18 @@ class JanRuntime:
     def resume_session(self, session_id: str) -> JanSession:
         """Reopen a session of this process from its id.
 
-        Host tools are not inherited: declare them again with
-        :meth:`JanSession.set_tools`.
+        A session this client already holds is returned as it is, not rebuilt:
+        it keeps its turns, listeners, host tool handlers and pending calls. An
+        id this client has not seen is attached without handlers: declare them
+        with :meth:`JanSession.set_tools`.
         """
-        return self._session(self.request("session/resume", {"sessionId": session_id}))
+        view = self.request("session/resume", {"sessionId": session_id})
+        known = self._sessions.get(session_id)
+        if known is not None:
+            if view.get("model") is not None:
+                known.model = view["model"]
+            return known
+        return self._session(view)
 
     def fork_session(self, session_id: str, tools: Sequence[HostTool] = ()) -> JanSession:
         """A new session with another session's history.

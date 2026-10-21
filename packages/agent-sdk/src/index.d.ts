@@ -83,6 +83,8 @@ export declare class JanRpcError extends Error {
 
 /** The runtime process failed: spawn, handshake, protocol version, or exit. */
 export declare class JanRuntimeError extends Error {
+  /** The listener error that failed the runtime, when one did. */
+  cause?: unknown
   exitCode?: number | null
   signal?: string | null
   stderr?: string

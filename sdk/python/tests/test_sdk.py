@@ -375,12 +375,22 @@ class SdkTest(unittest.TestCase):
             # The runtime rebuilt this session from its own state, so the id it
             # answers for and the model it runs are the ones it had.
             again = runtime.resume_session(first.id)
+            # The session this client already holds, not a rebuilt one.
+            self.assertIs(again, first)
             self.assertEqual(again.id, first.id)
             self.assertEqual(again.model, "stub-model")
             resumed = again.prompt("say something else")
             list(resumed)
             self.assertEqual(resumed.result().stop_reason, "completed")
 
+
+    def test_a_padded_host_tool_name_is_trimmed_and_a_blank_one_refused(self) -> None:
+        from jan_agent_sdk import HostTool
+
+        tool = HostTool(name=" robot_arm_move ", handler=lambda args, call: "ok")
+        self.assertEqual(tool.declaration()["name"], "robot_arm_move")
+        with self.assertRaises(ValueError):
+            HostTool(name="   ", handler=lambda args, call: "ok").declaration()
 
     def test_closing_the_runtime_settles_an_open_turn(self) -> None:
         scratch = self.prepare([holding("still here")])

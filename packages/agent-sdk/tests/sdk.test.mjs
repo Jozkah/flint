@@ -391,6 +391,41 @@ test('a handler that throws answers the call as an error, and the turn goes on',
 
 })
 
+test('a throwing listener fails the runtime instead of crashing the host', { skip: missingRuntime }, async (t) => {
+  const { scratch, runtime } = await connect(t, { replies: [PROSE('one')] })
+  const session = await runtime.createSession({ cwd: scratch.projectPath, model: 'stub-model', ephemeral: true })
+  const boom = new Error('listener bug')
+  session.on('*', () => {
+    throw boom
+  })
+  const turn = await session.prompt('say something')
+  await assert.rejects(turn.result(), (error) => {
+    assert.ok(error instanceof JanRuntimeError)
+    assert.equal(error.cause, boom)
+    return true
+  })
+})
+
+test('a host tool name with padding is declared trimmed and still runs', { skip: missingRuntime }, async (t) => {
+  const calls = []
+  const { scratch, runtime } = await connect(t, {
+    replies: [TOOL_CALL('host__robot_arm_move', { position: 'bin' }), PROSE('done')],
+  })
+  const session = await runtime.createSession({
+    cwd: scratch.projectPath,
+    model: 'stub-model',
+    ephemeral: true,
+    permissions: 'host',
+    tools: [{ name: ' robot_arm_move ', capability: 'actuator', handler: (args) => (calls.push(args), 'ok') }],
+  })
+  await collect(await session.prompt('move the arm'))
+  assert.equal(calls.length, 1)
+  await assert.rejects(
+    runtime.createSession({ cwd: scratch.projectPath, ephemeral: true, tools: [{ name: '  ', handler: () => 'x' }] }),
+    TypeError,
+  )
+})
+
 test('interrupting a turn settles it once, and abandons its parked call', { skip: missingRuntime }, async (t) => {
   let aborted = false
   let answered = 0
@@ -549,6 +584,9 @@ test('a session is reopened by its id', { skip: missingRuntime }, async (t) => {
   // The runtime rebuilt this session from its own state, so the id it answers
   // for and the model it runs are the ones the first session had.
   const again = await runtime.resumeSession(first.id)
+  // The session this client already holds, not a rebuilt one: it keeps its
+  // listeners, handlers and in-flight turns.
+  assert.equal(again, first)
   assert.equal(again.id, first.id)
   assert.equal(again.model, 'stub-model')
   const resumed = await again.prompt('say something else')
