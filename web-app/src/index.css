@@ -36,8 +36,9 @@
 @source '../node_modules/streamdown/dist/**/*.js';
 
 @custom-variant dark (&:is(.dark *));
-/* Motion follows the in-app Reduce motion setting (html.reduce-motion), not the
-   OS media query: the app animates unless the user turns it off in Flint. */
+/* Motion follows the in-app Reduce motion setting (html.reduce-motion). A fresh
+   install starts from the OS media query (hooks/useInterfaceSettings); after
+   that the choice is Flint's. */
 @custom-variant motion-safe (&:where(html:not(.reduce-motion) *));
 @custom-variant motion-reduce (&:where(html.reduce-motion *));
 
