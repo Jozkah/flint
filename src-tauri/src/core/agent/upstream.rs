@@ -1467,7 +1467,7 @@ pub(crate) async fn execute_mcp_tool_calls_spilling(
         spill_dir,
     };
     let data_folder = crate::core::app::commands::resolve_jan_data_folder();
-    let saved = crate::core::mcp::commands::saved_server_configs(&data_folder);
+    let saved = crate::core::mcp::stall::read_server_configs(&data_folder);
     let jobs: Vec<(bool, std::pin::Pin<Box<dyn std::future::Future<Output = (String, String)> + Send + '_>>)> =
         tool_calls
             .iter()
