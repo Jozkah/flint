@@ -95,7 +95,7 @@ export function ToasterProvider() {
           title: 'text-[length:calc(var(--ui-font-base)*0.8125)]! leading-snug! text-foreground! font-medium! select-none',
           description: 'text-xs! leading-relaxed! text-fg-2! select-none',
           closeButton:
-            'bg-card! border-border! text-muted-foreground! hover:text-foreground!',
+            'hit-box [--hit-x:-10px] [--hit-y:-10px] bg-card! border-border! text-muted-foreground! hover:text-foreground!',
           actionButton: 'bg-primary! text-primary-foreground!',
           cancelButton: 'bg-muted! text-foreground!',
           success:
