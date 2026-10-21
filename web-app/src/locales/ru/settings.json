@@ -124,7 +124,8 @@
     "previousPane": "Предыдущая панель",
     "previousPaneDesc": "Перейти к предыдущей панели разделённого вида.",
     "findInChat": "Поиск в чате",
-    "findInChatDesc": "Поиск по открытому на экране разговору."
+    "findInChatDesc": "Поиск по открытому на экране разговору.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Интерфейс",

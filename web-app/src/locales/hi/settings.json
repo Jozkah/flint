@@ -122,7 +122,8 @@
     "previousPane": "पिछला पैन",
     "previousPaneDesc": "स्प्लिट व्यू में पिछले पैन पर जाएँ।",
     "findInChat": "चैट में खोजें",
-    "findInChatDesc": "स्क्रीन पर दिख रही बातचीत में खोजें।"
+    "findInChatDesc": "स्क्रीन पर दिख रही बातचीत में खोजें।",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "इंटरफ़ेस",

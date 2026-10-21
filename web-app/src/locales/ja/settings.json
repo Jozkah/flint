@@ -122,7 +122,8 @@
     "previousPane": "前のペイン",
     "previousPaneDesc": "分割ビューの前のペインへ移動します。",
     "findInChat": "チャット内を検索",
-    "findInChatDesc": "画面上の会話を検索します。"
+    "findInChatDesc": "画面上の会話を検索します。",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "外観",

@@ -122,7 +122,8 @@
     "previousPane": "Önceki bölme",
     "previousPaneDesc": "Bölünmüş görünümde önceki bölmeye geç.",
     "findInChat": "Sohbette bul",
-    "findInChatDesc": "Ekrandaki konuşmada ara."
+    "findInChatDesc": "Ekrandaki konuşmada ara.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Arayüz",

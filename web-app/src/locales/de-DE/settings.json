@@ -122,7 +122,8 @@
     "previousPane": "Vorheriger Bereich",
     "previousPaneDesc": "Zum vorherigen Bereich der geteilten Ansicht wechseln.",
     "findInChat": "Im Chat suchen",
-    "findInChatDesc": "Durchsucht das Gespräch auf dem Bildschirm."
+    "findInChatDesc": "Durchsucht das Gespräch auf dem Bildschirm.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Erscheinungsbild",

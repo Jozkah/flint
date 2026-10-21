@@ -123,7 +123,8 @@
     "previousPane": "Panell anterior",
     "previousPaneDesc": "Passa al panell anterior de la vista dividida.",
     "findInChat": "Cerca al xat",
-    "findInChatDesc": "Cerca a la conversa que es veu a la pantalla."
+    "findInChatDesc": "Cerca a la conversa que es veu a la pantalla.",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "Interfície",

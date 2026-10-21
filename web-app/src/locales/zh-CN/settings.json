@@ -122,7 +122,8 @@
     "previousPane": "上一个窗格",
     "previousPaneDesc": "切换到分屏视图中的上一个窗格。",
     "findInChat": "在聊天中查找",
-    "findInChatDesc": "搜索屏幕上的对话。"
+    "findInChatDesc": "搜索屏幕上的对话。",
+    "notSet": "Not set"
   },
   "interface": {
     "title": "外观",

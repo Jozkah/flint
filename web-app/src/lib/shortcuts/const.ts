@@ -28,8 +28,9 @@ export const PlatformShortcuts: ShortcutMap = {
   // Go to settings - different per platform to avoid browser "preferences" conflict
   [ShortcutAction.GO_TO_SETTINGS]: { key: ',', usePlatformMetaKey: true },
 
-  // Search - opens search dialog
-  [ShortcutAction.SEARCH]: { key: 'k', usePlatformMetaKey: true },
+  // Search - opens the search dialog. No default key: an empty key matches no
+  // key event, so it stays unbound until the user records one in Settings.
+  [ShortcutAction.SEARCH]: { key: '', usePlatformMetaKey: true },
 
   // Find in chat - opens the find bar over the conversation on screen
   [ShortcutAction.FIND_IN_CHAT]: { key: 'f', usePlatformMetaKey: true },
