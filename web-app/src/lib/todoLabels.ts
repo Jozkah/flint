@@ -23,6 +23,13 @@ export function planTasks(todos: TodoList | undefined): TodoItem[] {
   return (todos?.phases ?? []).flatMap((phase) => phase.tasks)
 }
 
+/** Whether two plans list the same steps in the same states. */
+export function samePlan(a: TodoList | undefined, b: TodoList | undefined): boolean {
+  const x = planTasks(a)
+  const y = planTasks(b)
+  return x.length === y.length && x.every((t, i) => t.content === y[i].content && t.status === y[i].status)
+}
+
 /** A step that needs nothing more: done, or given up. */
 export function isResolved(task: TodoItem): boolean {
   return task.status === 'completed' || task.status === 'abandoned'
