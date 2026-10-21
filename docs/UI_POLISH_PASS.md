@@ -61,3 +61,7 @@ The Skill tool could not load the design skills in this session (a different con
 | Model detail `/hub/$modelId` | dark 1280, dark 420, light 420 | impeccable adapt | left: variant table scrolls sideways at 420 so Fit/Size/Download are off screen; the header Download button stays visible |
 | Archive "Empty archive" confirm | not reachable (button disabled with an empty archive) | - | scanned only |
 | Cowork workflow card, held-message stack, onboarding wizard, permission-request dialog | not renderable in `?preview` (no seed) | - | scanned only |
+
+## Fix pass (branch ui/fix-all)
+
+All rows in `UI_IMPROVEMENTS.md` are now marked with a status and commit. The surfaces that could not be rendered before (workflow card, held-message stack, setup wizard, MCP question, usage attribution, rule warnings, hooks, archive, remote access) have preview seeds in `web-app/src/dev/previewSurfaces.ts` (`?workflow`, `?held`, `?elicit`, `?setup`) and were viewed. Still scanned only: the permission-request dialog beyond the approval card, and the review panel.
