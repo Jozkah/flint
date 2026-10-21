@@ -230,6 +230,7 @@ import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
 import { CoworkPlanStrip } from '@/containers/CoworkPlanStrip'
+import { samePlan } from '@/lib/todoLabels'
 import {
   CoworkPinnedProgress,
   CoworkProgressButton,
@@ -6353,7 +6354,12 @@ export function CoworkPage() {
                         />
                         {/* The plan as this run left it, after its prompt. */}
                         {k === segments.length - 1 &&
-                        snapshotByAnchor.has(whole.id) ? (
+                        snapshotByAnchor.has(whole.id) &&
+                        // The pinned plan above already shows this very list.
+                        !(
+                          !session?.progressUi?.unpinned &&
+                          samePlan(snapshotByAnchor.get(whole.id), session?.todos)
+                        ) ? (
                           <CoworkPlanStrip
                             todos={snapshotByAnchor.get(whole.id)}
                             defaultOpen={false}
