@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { startHomeProjectsMirror } from '@/lib/groups/homeMirror'
 import { useConversationGroups } from '@/lib/groups/store'
+import { CursorAnchor, useCursorAnchor } from './CursorAnchor'
 import { chatFolderAdapter } from '@/lib/chatFolders'
 import { useMoveToGroup } from '@/hooks/useMoveToGroup'
 import { GroupFoldersDialog } from '@/components/shell/nav/GroupFoldersDialog'
@@ -160,6 +161,9 @@ const ChatGroupSection = memo(function ChatGroupSection({
   onDelete,
 }: ChatGroupSectionProps) {
   const { t } = useTranslation()
+  // The group's menu opens from the "..." button or by right-click, where the pointer is.
+  const cursor = useCursorAnchor()
+  const [menuOpen, setMenuOpen] = useState(false)
   // A page is counted in top-level rows: a fork listed under its chat comes
   // with it, never cut off from it by "Show more".
   const roots = useMemo(
@@ -189,7 +193,18 @@ const ChatGroupSection = memo(function ChatGroupSection({
     <div className="flex flex-col" data-testid="chat-group">
       <DropTarget id={g.id} label={g.name}>
       {/* The hover group is the header row only: hovering a chat below must not reveal the folder's controls. */}
-      <div className="group/cg flex h-7 items-center gap-0.5" data-testid="chat-group-header">
+      <div className="group/cg flex h-7 items-center gap-0.5" data-testid="chat-group-header"
+        onContextMenu={
+          g.folder
+            ? (e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                cursor.openAt(e)
+                setMenuOpen(true)
+              }
+            : undefined
+        }
+      >
         <button
           type="button"
           aria-expanded={isOpen}
@@ -219,16 +234,30 @@ const ChatGroupSection = memo(function ChatGroupSection({
             >
               <Plus />
             </NavGroupAction>
-            <DropdownMenu>
+            <DropdownMenu
+              open={menuOpen}
+              onOpenChange={(o) => {
+                setMenuOpen(o)
+                if (!o) cursor.release()
+              }}
+            >
               <DropdownMenuTrigger asChild>
-                <NavGroupAction
-                  className="opacity-0 group-hover/cg:opacity-100 group-has-[:focus-visible]/cg:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
-                  aria-label={t('common:shell.groupOptions')}
-                >
-                  <MoreHorizontal />
-                </NavGroupAction>
+                {menuOpen && cursor.point ? (
+                  <CursorAnchor x={cursor.point.x} y={cursor.point.y} />
+                ) : (
+                  <NavGroupAction
+                    className="opacity-0 group-hover/cg:opacity-100 group-has-[:focus-visible]/cg:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
+                    aria-label={t('common:shell.groupOptions')}
+                  >
+                    <MoreHorizontal />
+                  </NavGroupAction>
+                )}
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side={isMobile ? 'bottom' : 'right'} className="w-48">
+              <DropdownMenuContent
+                align="start"
+                side={cursor.point && menuOpen ? 'bottom' : isMobile ? 'bottom' : 'right'}
+                className="w-48"
+              >
                 <DropdownMenuItem
                   onSelect={() => onOpenGroup(g.folder!.id)}
                 >
