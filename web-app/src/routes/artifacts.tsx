@@ -738,7 +738,7 @@ function ThumbBody({
           alt=""
           loading="lazy"
           onError={() => setBroken(true)}
-          className="size-full object-contain"
+          className="img-outline size-full object-contain"
         />
       </div>
     )

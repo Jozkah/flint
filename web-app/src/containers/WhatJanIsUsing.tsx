@@ -281,12 +281,12 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
         {known && tokenCount > 0 && (
           <>
             <div
-              className="h-full bg-grad motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-expo"
+              className="h-full bg-grad motion-safe:transition-[width] motion-safe:duration-(--duration-very-slow) motion-safe:ease-expo"
               style={{ width: `${usedPct}%` }}
             />
             {reservePct > 0 && (
               <div
-                className="h-full bg-warning/80 motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-expo"
+                className="h-full bg-warning/80 motion-safe:transition-[width] motion-safe:duration-(--duration-very-slow) motion-safe:ease-expo"
                 style={{ width: `${reservePct}%` }}
               />
             )}

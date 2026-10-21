@@ -131,7 +131,7 @@ function Meter({
       >
         <div
           className={cn(
-            'h-full rounded-full motion-safe:animate-draw-x motion-safe:transition-[width] motion-safe:duration-600 motion-safe:ease-expo',
+            'h-full rounded-full motion-safe:animate-draw-x motion-safe:transition-[width] motion-safe:duration-(--duration-very-slow) motion-safe:ease-expo',
             !color && BAND_FILL[band(clamped)]
           )}
           style={{ width: `${clamped}%`, ...(color ? { background: color } : null) }}

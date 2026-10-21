@@ -65,7 +65,7 @@ export const MarkdownImage = memo(function MarkdownImage({
           onLoad={() => setState('ready')}
           onError={() => setState('failed')}
           className={cn(
-            '!block h-auto max-h-72 w-auto max-w-full',
+            'img-outline !block h-auto max-h-72 w-auto max-w-full',
             state === 'loading' && 'opacity-0'
           )}
         />
