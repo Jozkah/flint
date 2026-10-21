@@ -275,7 +275,30 @@ function HuggingFaceModelDetail() {
                 {recommended && <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary"><Sparkles className="size-3" /> Flint recommends {recommended.quantization || recommended.primary.name}</span>}
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <ul className="flex flex-col gap-2 sm:hidden" data-testid="variant-cards">
+                {variants.map((group) => {
+                  const fit = fitOfGroup(group, groups, fitContext)
+                  const summary = fitSummary(fit)
+                  const isRecommended = recommended?.id === group.id
+                  return (
+                    <li key={group.id} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs">{group.quantization || group.primary.name}</span>
+                        {isRecommended && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[length:calc(var(--ui-font-base)*0.625)] font-medium text-primary">Recommended</span>}
+                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fit.sizeEstimated ? '≈ ' : ''}{formatModelBytes(group.totalSize ?? fit.required.weights)} · {group.multipart ? `${group.files.length} shards` : '1 file'}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{explainQuantization(group.quantization)}</p>
+                      <div>
+                        <span className="text-xs font-medium" title={fitBasis(fit)}>{summary.title}</span>
+                        <p className="mt-0.5 text-[length:calc(var(--ui-font-base)*0.6875)] text-muted-foreground">{summary.detail}</p>
+                      </div>
+                      <div className="flex justify-end"><HuggingFaceDownloadAction repo={model.id} revision={model.sha} group={group} groups={groups} /></div>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <div className="overflow-x-auto rounded-xl border border-border bg-card max-sm:hidden">
                 <table className="w-full min-w-[760px] text-sm">
                   <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
                     <tr>

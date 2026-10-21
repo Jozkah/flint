@@ -2387,7 +2387,8 @@
     "refresh": "更新",
     "suggestion": "Jev はこれにスキル /{{skill}} を提案します",
     "useSkill": "使用",
-    "dismiss": "閉じる"
+    "dismiss": "閉じる",
+    "introSummary": "Jev にできること・できないこと"
   },
   "pr": {
     "statusUnavailable": "ステータスを取得できません",

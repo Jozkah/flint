@@ -2382,7 +2382,8 @@
     "refresh": "रिफ़्रेश करें",
     "suggestion": "Jev इसके लिए स्किल /{{skill}} सुझाता है",
     "useSkill": "उपयोग करें",
-    "dismiss": "बंद करें"
+    "dismiss": "बंद करें",
+    "introSummary": "Jev क्या करता है और क्या नहीं"
   },
   "pr": {
     "statusUnavailable": "स्थिति उपलब्ध नहीं",

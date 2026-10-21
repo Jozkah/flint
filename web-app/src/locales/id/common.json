@@ -2344,7 +2344,8 @@
     "refresh": "Segarkan",
     "suggestion": "Jev menyarankan skill /{{skill}} untuk ini",
     "useSkill": "Pakai",
-    "dismiss": "Tutup"
+    "dismiss": "Tutup",
+    "introSummary": "Apa yang dilakukan dan tidak dilakukan Jev"
   },
   "pr": {
     "statusUnavailable": "Status tidak tersedia",

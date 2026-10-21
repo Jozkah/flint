@@ -2423,7 +2423,8 @@
     "refresh": "Actualizar",
     "suggestion": "Jev sugiere la habilidad /{{skill}} para esto",
     "useSkill": "Usar",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "introSummary": "Qué hace y qué no hace Jev"
   },
   "pr": {
     "statusUnavailable": "Estado no disponible",

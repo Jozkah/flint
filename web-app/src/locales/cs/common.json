@@ -2473,7 +2473,8 @@
     "refresh": "Obnovit",
     "suggestion": "Jev k tomu navrhuje dovednost /{{skill}}",
     "useSkill": "Použít",
-    "dismiss": "Zavřít"
+    "dismiss": "Zavřít",
+    "introSummary": "Co Jev dělá a nedělá"
   },
   "pr": {
     "statusUnavailable": "Stav není dostupný",

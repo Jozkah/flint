@@ -2389,7 +2389,8 @@
     "refresh": "刷新",
     "suggestion": "Jev 为此建议使用技能 /{{skill}}",
     "useSkill": "使用",
-    "dismiss": "忽略"
+    "dismiss": "忽略",
+    "introSummary": "Jev 能做什么、不能做什么"
   },
   "pr": {
     "statusUnavailable": "状态不可用",
