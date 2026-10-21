@@ -42,6 +42,13 @@
     --vp-size: 44px;
   }
 }
+/* Same 40px-tall hit area as the other 28px composer buttons. */
+.vp-root::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  inset-block: -6px;
+}
 .vp-root:disabled {
   pointer-events: none;
   opacity: 0.45;
