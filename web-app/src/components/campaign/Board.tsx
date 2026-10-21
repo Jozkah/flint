@@ -251,6 +251,16 @@ export function CampaignBoard({
             {t('settings:campaigns.list.retry')}
           </Button>
         )}
+        {!loadError && (
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="campaign-back"
+            onClick={() => void navigate({ to: route.campaigns })}
+          >
+            {t('settings:campaigns.title')}
+          </Button>
+        )}
       </div>
     )
   }
