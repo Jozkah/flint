@@ -58,8 +58,8 @@ describe('DialogDeleteAllModels remote', () => {
       })
     )
     await waitFor(() => expect(mocks.deleteModel).toHaveBeenCalledTimes(2))
-    expect(mocks.deleteModelCache).toHaveBeenCalledWith('a')
-    expect(mocks.deleteModelCache).toHaveBeenCalledWith('b')
+    expect(mocks.deleteModelCache).toHaveBeenCalledWith('a', 'openrouter')
+    expect(mocks.deleteModelCache).toHaveBeenCalledWith('b', 'openrouter')
   })
 
   it('keeps a model whose delete failed in the cache and favorites', async () => {

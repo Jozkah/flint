@@ -133,6 +133,39 @@ describe('useModelProvider - coverage', () => {
   })
 
   describe('deleteModel', () => {
+    it('deletes only the owning provider and leaves another selected model intact', () => {
+      const selected = { id: 'shared' }
+      useModelProvider.setState({ providers: [makeProvider('alpha', [selected]), makeProvider('beta', [selected])], selectedProvider: 'beta', selectedModel: selected as any })
+      useModelProvider.getState().deleteModel('shared', 'alpha')
+      expect(useModelProvider.getState().getProviderByName('beta')?.models).toEqual([selected])
+      expect(useModelProvider.getState().selectedModel).toBe(selected)
+    })
+
+    it('does not hide another provider during a later catalog refresh', () => {
+      const providers = [makeProvider('alpha', [{ id: 'shared' }]), makeProvider('beta', [{ id: 'shared' }])]
+      useModelProvider.setState({ providers })
+      useModelProvider.getState().deleteModel('shared', 'alpha')
+      useModelProvider.getState().setProviders(providers)
+      expect(useModelProvider.getState().getProviderByName('alpha')?.models).toEqual([])
+      expect(useModelProvider.getState().getProviderByName('beta')?.models).toHaveLength(1)
+    })
+
+    it('records refresh removals per provider without duplicates', () => {
+      const store = useModelProvider.getState()
+      store.addDeletedModels(['shared', 'shared'], 'alpha')
+      store.addDeletedModels(['shared'], 'beta')
+      expect(useModelProvider.getState().deletedModels).toEqual([
+        { provider: 'alpha', id: 'shared' },
+        { provider: 'beta', id: 'shared' },
+      ])
+    })
+
+    it('clears the selected model when its owning model is deleted', () => {
+      useModelProvider.setState({ providers: [makeProvider('alpha', [{ id: 'shared' }])], selectedProvider: 'alpha', selectedModel: { id: 'shared' } as any })
+      useModelProvider.getState().deleteModel('shared', 'alpha')
+      expect(useModelProvider.getState().selectedModel).toBeNull()
+    })
+
     it('removes model and tracks in deletedModels', () => {
       const { result } = renderHook(() => useModelProvider())
       act(() => {
@@ -142,9 +175,9 @@ describe('useModelProvider - coverage', () => {
         })
       })
 
-      act(() => { result.current.deleteModel('m1') })
+      act(() => { result.current.deleteModel('m1', 'llamacpp') })
       expect(result.current.getProviderByName('llamacpp')?.models).toHaveLength(1)
-      expect(result.current.deletedModels).toContain('m1')
+      expect(result.current.deletedModels).toContainEqual({ provider: 'llamacpp', id: 'm1' })
     })
 
     it('handles non-array deletedModels gracefully', () => {
@@ -155,8 +188,8 @@ describe('useModelProvider - coverage', () => {
           deletedModels: null as any,
         })
       })
-      act(() => { result.current.deleteModel('m1') })
-      expect(result.current.deletedModels).toContain('m1')
+      act(() => { result.current.deleteModel('m1', 'p1') })
+      expect(result.current.deletedModels).toContainEqual({ provider: 'p1', id: 'm1' })
     })
   })
 

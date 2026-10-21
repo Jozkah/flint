@@ -102,7 +102,7 @@ export const DialogDeleteAllModels = ({
         await serviceHub.models().deleteModel(id, provider.provider)
         deleted.push(id)
         removeFavorite(id, provider.provider)
-        deleteModelCache(id)
+        deleteModelCache(id, provider.provider)
       } catch (err) {
         failed++
         console.error(`Failed to delete model ${id}:`, err)

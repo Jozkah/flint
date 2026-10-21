@@ -54,11 +54,22 @@ function uniqueModelsById(models: Model[]): Model[] {
   })
 }
 
+// Strings are legacy global tombstones (persisted before provider-scoped
+// records, with no way to tell their owner); new deletions always carry the
+// provider that owned the model (janhq/jan#9336).
+type DeletedModel = string | { provider: string; id: string }
+
+function isDeleted(entry: DeletedModel, provider: string, id: string): boolean {
+  return typeof entry === 'string'
+    ? entry === id
+    : entry.provider === provider && entry.id === id
+}
+
 type ModelProviderState = {
   providers: ModelProvider[]
   selectedProvider: string
   selectedModel: Model | null
-  deletedModels: string[]
+  deletedModels: DeletedModel[]
   getModelBy: (modelId: string) => Model | undefined
   setProviders: (providers: ModelProvider[]) => void
   getProviderByName: (providerName: string) => ModelProvider | undefined
@@ -69,8 +80,8 @@ type ModelProviderState = {
   ) => Model | undefined
   addProvider: (provider: ModelProvider) => void
   deleteProvider: (providerName: string) => void
-  deleteModel: (modelId: string) => void
-  addDeletedModels: (modelIds: string[]) => void
+  deleteModel: (modelId: string, provider: string) => void
+  addDeletedModels: (modelIds: string[], provider: string) => void
 }
 
 export const useModelProvider = create<ModelProviderState>()(
@@ -132,16 +143,26 @@ export const useModelProvider = create<ModelProviderState>()(
           // tombstone must be cleared — otherwise the merge below filters it
           // out forever.
           const locallyPresentIds = new Set<string>()
+          const locallyPresentModels = new Set<string>()
           for (const p of providers) {
             if (!isLocalProvider(p.provider)) continue
             for (const m of p.models ?? []) {
-              if (m?.id) locallyPresentIds.add(m.id)
+              if (m?.id) {
+                locallyPresentIds.add(m.id)
+                locallyPresentModels.add(JSON.stringify([p.provider, m.id]))
+              }
             }
           }
           const effectiveDeletedModels =
             locallyPresentIds.size === 0
               ? currentDeletedModels
-              : currentDeletedModels.filter((id) => !locallyPresentIds.has(id))
+              : currentDeletedModels.filter((entry) =>
+                  typeof entry === 'string'
+                    ? !locallyPresentIds.has(entry)
+                    : !locallyPresentModels.has(
+                        JSON.stringify([entry.provider, entry.id])
+                      )
+                )
 
           const updatedProviders = providers.map((provider) => {
             const existingProvider = existingProviders.find(
@@ -158,7 +179,9 @@ export const useModelProvider = create<ModelProviderState>()(
                   ('id' in e || 'model' in e) &&
                   typeof (e.id ?? e.model) === 'string' &&
                   !models.some((m) => m.id === e.id) &&
-                  !effectiveDeletedModels.includes(e.id)
+                  !effectiveDeletedModels.some((entry) =>
+                    isDeleted(entry, provider.provider, e.id)
+                  )
               ),
               ...models,
             ]
@@ -345,7 +368,7 @@ export const useModelProvider = create<ModelProviderState>()(
 
         return modelObject
       },
-      deleteModel: (modelId: string) => {
+      deleteModel: (modelId: string, providerName: string) => {
         set((state) => {
           // Ensure deletedModels is always an array
           const currentDeletedModels = Array.isArray(state.deletedModels)
@@ -354,6 +377,7 @@ export const useModelProvider = create<ModelProviderState>()(
 
           return {
             providers: state.providers.map((provider) => {
+              if (provider.provider !== providerName) return provider
               const models = provider.models.filter(
                 (model) => model.id !== modelId
               )
@@ -362,20 +386,40 @@ export const useModelProvider = create<ModelProviderState>()(
                 models,
               }
             }),
-            deletedModels: [...currentDeletedModels, modelId],
+            deletedModels: currentDeletedModels.some(
+              (entry) =>
+                typeof entry !== 'string' &&
+                isDeleted(entry, providerName, modelId)
+            )
+              ? currentDeletedModels
+              : [...currentDeletedModels, { provider: providerName, id: modelId }],
+            selectedModel:
+              state.selectedProvider === providerName &&
+              state.selectedModel?.id === modelId
+                ? null
+                : state.selectedModel,
           }
         })
       },
-      addDeletedModels: (modelIds: string[]) => {
+      addDeletedModels: (modelIds: string[], provider: string) => {
         if (modelIds.length === 0) return
         set((state) => {
           const current = Array.isArray(state.deletedModels)
             ? state.deletedModels
             : []
-          const next = new Set(current)
-          modelIds.forEach((id) => next.add(id))
-          if (next.size === current.length) return state
-          return { deletedModels: Array.from(next) }
+          const next = [...current]
+          for (const id of modelIds) {
+            if (
+              !next.some(
+                (entry) =>
+                  typeof entry !== 'string' && isDeleted(entry, provider, id)
+              )
+            ) {
+              next.push({ provider, id })
+            }
+          }
+          if (next.length === current.length) return state
+          return { deletedModels: next }
         })
       },
       addProvider: (provider: ModelProvider) => {
@@ -979,9 +1023,25 @@ export const useModelProvider = create<ModelProviderState>()(
           })
         }
 
+        if (version <= 24 && state) {
+          // Deletion records are provider-scoped from here on. Old string
+          // entries cannot be attributed to a provider, so they stay as global
+          // records; anything that is neither a string nor a scoped record is
+          // dropped.
+          state.deletedModels = (
+            Array.isArray(state.deletedModels) ? state.deletedModels : []
+          ).filter(
+            (entry) =>
+              typeof entry === 'string' ||
+              (!!entry &&
+                typeof entry.provider === 'string' &&
+                typeof entry.id === 'string')
+          )
+        }
+
         return state
       },
-      version: 24,
+      version: 25,
     }
   )
 )
