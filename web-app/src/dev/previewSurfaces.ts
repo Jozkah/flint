@@ -141,6 +141,7 @@ function answerCommands() {
       sizeBytes: 18_000 + i * 41_000,
     }))
   )
+  answer('agent_events_list', () => ({ events: [], lastSeq: 0, truncated: false }))
   answer('archive_disk_usage', () => ARCHIVED.reduce((n, _, i) => n + 18_000 + i * 41_000, 0))
   answer('archive_get_settings', () => ({ enabled: true, autoDeleteDays: 30, autoArchiveThreadDays: 0 }))
   answer('archive_preview', (a) => ({
