@@ -2173,6 +2173,7 @@
     "expandSidebar": "サイドバーを表示",
     "darkMode": "ダークモード",
     "lightMode": "ライトモード",
+    "skipToContent": "コンテンツへスキップ",
     "deleteGroup": "グループを削除",
     "editGroup": "グループ名を変更",
     "openGroup": "グループを開く",

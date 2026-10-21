@@ -2173,6 +2173,7 @@
     "expandSidebar": "사이드바 표시",
     "darkMode": "다크 모드",
     "lightMode": "라이트 모드",
+    "skipToContent": "본문으로 건너뛰기",
     "deleteGroup": "그룹 삭제",
     "editGroup": "그룹 이름 바꾸기",
     "openGroup": "그룹 열기",
