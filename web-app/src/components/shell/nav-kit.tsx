@@ -119,7 +119,7 @@ export const NavGroupAction = React.forwardRef<
       type="button"
       data-slot="nav-group-action"
       className={cn(
-        'grid size-[22px] shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-[background-color,color,transform] duration-150 ease-expo outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.94] data-[state=open]:bg-accent data-[pressed=true]:bg-accent data-[pressed=true]:text-foreground pointer-coarse:size-9 [&_svg:not([class*="size-"])]:size-3.5',
+        'hit-box [--hit-y:-9px] relative grid size-[22px] shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-[background-color,color,transform] duration-150 ease-expo outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.94] data-[state=open]:bg-accent data-[pressed=true]:bg-accent data-[pressed=true]:text-foreground pointer-coarse:size-9 [&_svg:not([class*="size-"])]:size-3.5',
         className
       )}
       {...props}
@@ -223,7 +223,7 @@ export const NavAction = React.forwardRef<
       ref={ref}
       data-reveal={showOnHover ? 'hover' : 'always'}
       className={cn(
-        'absolute top-1/2 right-1 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted-foreground transition-[opacity,background-color,color] duration-150 outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 [&>svg]:size-3.5 [&>svg]:shrink-0',
+        'hit-box [--hit-y:-8px] absolute top-1/2 right-1 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted-foreground transition-[opacity,background-color,color] duration-150 outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 [&>svg]:size-3.5 [&>svg]:shrink-0',
         showOnHover &&
           'opacity-0 group-focus-within/nav-item:opacity-100 group-hover/nav-item:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100',
         className

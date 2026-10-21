@@ -256,6 +256,18 @@
 
 /* A 40px-tall hit area for a 28px control, with no sideways growth: neighbours
    sit 2px apart, so widening the target would make them overlap. */
+/* The same for a control that is already positioned: reaches 40px tall and half
+   the gap sideways, so neighbours do not overlap. --hit-y sets the vertical reach
+   (6px for a 28px control, 9px for 22px, 8px for 24px). */
+@utility hit-box {
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: -3px;
+    inset-block: var(--hit-y, -6px);
+  }
+}
+
 @utility hit-y {
   position: relative;
   &::after {
