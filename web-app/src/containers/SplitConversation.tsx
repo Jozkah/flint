@@ -684,7 +684,7 @@ function PanePicker({
         type="button"
         onClick={() => choose(target)}
         data-testid={`split-pick-${target.refId}`}
-        className="flex h-[34px] w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring active:scale-[.965] pointer-coarse:h-11"
+        className="flex h-[34px] w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring active:scale-[.96] pointer-coarse:h-11"
       >
         {icon}
         <span className="min-w-0 truncate" title={title}>

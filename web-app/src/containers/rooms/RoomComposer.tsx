@@ -309,7 +309,7 @@ export function RoomComposer({ room }: { room: Room }) {
                     }
                   }}
                   className={cn(
-                    'inline-flex h-[26px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] pr-2.5 pl-[5px] text-xs outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965]',
+                    'inline-flex h-[26px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] pr-2.5 pl-[5px] text-xs outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96]',
                     on
                       ? 'border-border-strong bg-accent font-medium text-foreground'
                       : 'border-border bg-card text-muted-foreground hover:border-border-strong hover:text-foreground'
@@ -381,7 +381,7 @@ export function RoomComposer({ room }: { room: Room }) {
             aria-label={t('rooms:composer.mention')}
             title={t('rooms:composer.mention')}
             onClick={mention}
-            className="grid size-7 cursor-pointer place-items-center rounded-[7px] text-secondary-foreground outline-hidden transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] [&_svg]:size-[15px]"
+            className="grid size-7 cursor-pointer place-items-center rounded-[7px] text-secondary-foreground outline-hidden transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] [&_svg]:size-[15px]"
           >
             <AtSign aria-hidden />
           </button>
@@ -426,7 +426,7 @@ export function RoomComposer({ room }: { room: Room }) {
                 aria-label={t('rooms:composer.send')}
                 disabled={!ready}
                 data-ready={ready || undefined}
-                className="grid size-7 cursor-pointer place-items-center rounded-lg border border-primary bg-grad text-on-grad outline-hidden transition-[transform,opacity,filter,box-shadow] duration-250 ease-expo hover:brightness-110 focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-95 disabled:cursor-default disabled:opacity-55 data-ready:shadow-pop motion-safe:data-ready:animate-send-ready dark:border-white/80"
+                className="grid size-7 cursor-pointer place-items-center rounded-lg border border-primary bg-grad text-on-grad outline-hidden transition-[transform,opacity,filter,box-shadow] duration-250 ease-expo hover:brightness-110 focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] disabled:cursor-default disabled:opacity-55 data-ready:shadow-pop motion-safe:data-ready:animate-send-ready dark:border-white/80"
               >
                 <ArrowUp aria-hidden className="size-3.5" strokeWidth={2.4} />
               </button>

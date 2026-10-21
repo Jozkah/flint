@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
  * get 44px targets from the call sites that need them (pointer-coarse:).
  */
 const buttonVariants = cva(
-  "relative inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg text-xs font-medium transition-[transform,background-color,border-color,box-shadow,color,filter] duration-150 ease-expo active:scale-[.965] disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-3.5 shrink-0 [&_svg]:shrink-0 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 aria-invalid:border-destructive cursor-pointer",
+  "relative inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg text-xs font-medium transition-[transform,background-color,border-color,box-shadow,color,filter] duration-150 ease-expo active:scale-[.96] disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-3.5 shrink-0 [&_svg]:shrink-0 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 aria-invalid:border-destructive cursor-pointer",
   {
     variants: {
       variant: {

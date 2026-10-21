@@ -96,7 +96,7 @@ function Segmented<T extends string>({
               }
             }}
             className={cn(
-              'relative z-10 flex min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs leading-none font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] disabled:pointer-events-none disabled:opacity-45 [&_svg:not([class*="size-"])]:size-3.5',
+              'relative z-10 flex min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs leading-none font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] disabled:pointer-events-none disabled:opacity-45 [&_svg:not([class*="size-"])]:size-3.5',
               wrap ? 'min-h-6 py-1 text-center leading-tight' : size === 'sm' ? 'h-6' : 'h-7',
               on
                 ? 'border-transparent bg-transparent text-on-grad'

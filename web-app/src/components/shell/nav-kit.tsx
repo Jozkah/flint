@@ -119,7 +119,7 @@ export const NavGroupAction = React.forwardRef<
       type="button"
       data-slot="nav-group-action"
       className={cn(
-        'hit-box [--hit-y:-9px] relative grid size-[22px] shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-[background-color,color,transform] duration-150 ease-expo outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.94] data-[state=open]:bg-accent data-[pressed=true]:bg-accent data-[pressed=true]:text-foreground pointer-coarse:size-9 [&_svg:not([class*="size-"])]:size-3.5',
+        'hit-box [--hit-y:-9px] relative grid size-[22px] shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-[background-color,color,transform] duration-150 ease-expo outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] data-[state=open]:bg-accent data-[pressed=true]:bg-accent data-[pressed=true]:text-foreground pointer-coarse:size-9 [&_svg:not([class*="size-"])]:size-3.5',
         className
       )}
       {...props}

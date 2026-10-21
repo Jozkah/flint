@@ -40,7 +40,7 @@ import {
 } from '@/lib/titlebar'
 
 const iconBtn =
-  'hit-box relative grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.94] data-[state=open]:bg-accent [&>svg]:size-4'
+  'hit-box relative grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] data-[state=open]:bg-accent [&>svg]:size-4'
 
 function useCurrentName(crumb: ReturnType<typeof crumbForPath>) {
   const thread = useThreads((s) =>

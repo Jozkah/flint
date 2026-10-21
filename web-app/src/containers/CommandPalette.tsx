@@ -400,7 +400,7 @@ export function CommandPalette() {
                   onMouseEnter={() => setActive(index)}
                   onClick={() => runAt(index)}
                   className={cn(
-                    'relative flex h-[34px] cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo active:scale-[.965] pointer-coarse:h-11',
+                    'relative flex h-[34px] cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[length:calc(var(--ui-font-base)*0.8125)] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo active:scale-[.96] pointer-coarse:h-11',
                     selected && 'bg-accent text-foreground'
                   )}
                 >
