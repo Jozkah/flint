@@ -498,7 +498,7 @@ export const ToolInput = memo(
                   {key}
                 </dt>
                 <dd className="min-w-0 max-h-24 overflow-auto">
-                  <code className="block rounded-[5px] bg-accent px-[5px] py-px font-mono text-xs whitespace-pre-wrap break-all text-foreground">
+                  <code className="block rounded-[5px] bg-accent px-[5px] py-px font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground">
                     {PATH_PARAMS.has(key) &&
                     typeof value === 'string' &&
                     value.trim() ? (
@@ -780,7 +780,7 @@ export const ToolApprovalActions = memo(() => {
         <pre
           data-testid="approval-subject"
           tabIndex={0}
-          className="max-h-48 min-w-0 overflow-auto rounded-lg bg-code-bg px-3 py-2 font-mono text-[length:calc(var(--ui-font-base)*0.78125)] leading-[1.55] whitespace-pre-wrap break-all text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
+          className="max-h-48 min-w-0 overflow-auto rounded-lg bg-code-bg px-3 py-2 font-mono text-[length:calc(var(--ui-font-base)*0.78125)] leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
         >
           {subject}
         </pre>
