@@ -1555,7 +1555,9 @@ export function ThreadConversation({
               .join('\n\n') ||
             useThreads.getState().threads[threadId]?.title
           if (inputText) {
-            const titleSelection = getModelSelection()
+            // The owning thread's model, not the global picker: switching the
+            // picker mid-reply must not move the title gate to another provider.
+            const titleSelection = resolveThreadModelSelection(threadId)
             const provider = titleSelection.selectedProvider
             const modelId = titleSelection.selectedModel?.id
             beginAutoTitle(threadId, titleSource)
