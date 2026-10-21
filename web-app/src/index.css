@@ -23,6 +23,19 @@
 .toaster [data-sonner-toast]:not([data-visible='false']) {
   pointer-events: auto;
 }
+/* A toast with an action puts the action under the message, in line with the
+   text. Beside it, the message was squeezed into a narrow column and wrapped
+   word by word. */
+.toaster [data-sonner-toast]:has([data-button]) {
+  flex-wrap: wrap;
+}
+.toaster [data-sonner-toast]:has([data-button]) [data-content] {
+  flex: 1 1 calc(100% - 2rem);
+  min-width: 0;
+}
+.toaster [data-sonner-toast]:has([data-button]) [data-button] {
+  margin-left: calc(16px + 6px) !important;
+}
 @import '@/styles/font.css';
 @import '@/styles/tokens.css';
 @import '@/styles/markdown.css';
