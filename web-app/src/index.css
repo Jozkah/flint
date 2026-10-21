@@ -269,7 +269,7 @@
   &::after {
     content: '';
     position: absolute;
-    inset-inline: -3px;
+    inset-inline: var(--hit-x, -3px);
     inset-block: var(--hit-y, -6px);
   }
 }

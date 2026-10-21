@@ -36,3 +36,50 @@ describe('reduce motion default', () => {
     expect(await load(false)).toBe(false)
   })
 })
+
+describe('reduce motion follows the OS while the app is open', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  const boot = async (initial: boolean) => {
+    vi.resetModules()
+    let os = initial
+    let listener: (() => void) | undefined
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      get matches() {
+        return os && q.includes('reduce')
+      },
+      media: q,
+      addEventListener: (_: string, l: () => void) => {
+        listener = l
+      },
+      removeEventListener() {},
+    }))
+    const mod = await import('../useInterfaceSettings')
+    return {
+      store: mod.useInterfaceSettings,
+      flip(next: boolean) {
+        os = next
+        listener?.()
+      },
+    }
+  }
+
+  it('turns on when the OS switch turns on and the user never changed it', async () => {
+    const { store, flip } = await boot(false)
+    flip(true)
+    expect(store.getState().reduceMotion).toBe(true)
+    flip(false)
+    expect(store.getState().reduceMotion).toBe(false)
+  })
+
+  it('leaves a choice the user made by hand', async () => {
+    const { store, flip } = await boot(false)
+    store.getState().setReduceMotion(true)
+    flip(true)
+    flip(false)
+    expect(store.getState().reduceMotion).toBe(true)
+  })
+})
