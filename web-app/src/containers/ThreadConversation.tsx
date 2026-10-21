@@ -420,6 +420,18 @@ export function ThreadConversation({
   const updateMessage = useMessages((state) => state.updateMessage)
   const deleteMessage = useMessages((state) => state.deleteMessage)
   const currentThread = useRef<string | undefined>(undefined)
+  // A history read that failed, with the thread it belongs to: a late failure
+  // from a chat the user has left must not show on this one.
+  const [historyReadError, setHistoryReadError] = useState<{
+    threadId: string
+    message: string
+  } | null>(null)
+  const [historyReadAttempt, setHistoryReadAttempt] = useState(0)
+  const [isReadingHistory, setIsReadingHistory] = useState(false)
+  const currentHistoryError =
+    historyReadError && historyReadError.threadId === threadId
+      ? historyReadError.message
+      : undefined
 
   useTools()
 
@@ -1803,8 +1815,12 @@ export function ThreadConversation({
     }
 
     // The read may already have started when the pointer reached the row.
+    let cancelled = false
+    setIsReadingHistory(true)
     loadThreadMessages(threadId, (id) => serviceHub.messages().fetchMessages(id))
       .then((fetched) => {
+        if (cancelled) return
+        setHistoryReadError(null)
         // A chat opened straight after it was made (a continued chat's summary
         // seed) may not be on disk yet: its messages are only in the store, and
         // the model must still be sent them.
@@ -1898,11 +1914,25 @@ export function ThreadConversation({
           currentThread.current = threadId
         }
       })
-      .catch((error) =>
+      .catch((error) => {
+        if (cancelled) return
         console.error('Failed to fetch messages for thread:', threadId, error)
-      )
+        setHistoryReadError({
+          threadId,
+          message:
+            error instanceof Error
+              ? error.message || 'History could not be read'
+              : String(error),
+        })
+      })
+      .finally(() => {
+        if (!cancelled) setIsReadingHistory(false)
+      })
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId, serviceHub])
+  }, [threadId, serviceHub, historyReadAttempt])
 
   // X01: in the browser `flint serve` serves, another tab or device may have
   // added to this thread. Read it again when this page comes back into view,
@@ -2401,13 +2431,16 @@ export function ThreadConversation({
       text: string,
       files?: Array<{ type: string; mediaType: string; url: string }>
     ) => {
+      // The saved conversation could not be read: sending now would answer a
+      // chat the model has not been shown and could overwrite what is on disk.
+      if (currentHistoryError) return
       clearBannerErrors()
       // C14: what was sent is shown, even from a view above the end (a fork).
       followSentMessage(stickRef.current)
       followSentRef.current = true
       await processAndSendMessage(text, files)
     },
-    [processAndSendMessage, clearBannerErrors]
+    [processAndSendMessage, clearBannerErrors, currentHistoryError]
   )
 
   // A paired phone's message goes through this same submit, and the reply
@@ -3632,6 +3665,25 @@ export function ThreadConversation({
           <FolderTrustBanner folder={chatPathRoots[0] ?? null} />
           <CoworkChildApprovals sessionId={threadId} />
           <ChatTasks threadId={threadId} />
+          {currentHistoryError ? (
+            <div role="alert" className="rounded-lg border p-4">
+              <p>
+                {t('common:historyReadFailed', {
+                  defaultValue: 'Unable to load conversation history.',
+                })}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {currentHistoryError}
+              </p>
+              <Button
+                disabled={isReadingHistory}
+                onClick={() => setHistoryReadAttempt((n) => n + 1)}
+                className="mt-2"
+              >
+                {t('common:run.tryAgain')}
+              </Button>
+            </div>
+          ) : (
           <ChatInput
             model={threadModel}
             // Under the composer, as in Cowork. A phone keeps it in the header.
@@ -3665,6 +3717,7 @@ export function ThreadConversation({
               ) : undefined
             }
           />
+          )}
         </div>
           </FrameBody>
         </Frame>
