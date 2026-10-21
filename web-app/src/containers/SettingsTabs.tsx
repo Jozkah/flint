@@ -27,12 +27,20 @@ export function useSettingsTab<T extends string>(
   tabs: readonly SettingsTab<T>[],
   initial?: T
 ): [T, (tab: T) => void] {
-  const [tab, setTab] = useState<T>(initial ?? tabs[0].id)
+  const [tab, setTabState] = useState<T>(initial ?? tabs[0].id)
+  // A tab switch flags the document for a moment so the groups that mount can
+  // fade in (index.css); opening the page does not play it.
+  const setTab = (next: T) => {
+    const root = document.documentElement
+    root.setAttribute('data-tab-swap', '')
+    window.setTimeout(() => root.removeAttribute('data-tab-swap'), 260)
+    setTabState(next)
+  }
   const pendingTarget = useSettingsSearch((s) => s.pendingTarget)
   useEffect(() => {
     if (!pendingTarget) return
     const owner = tabs.find((t) => holds(t.anchors, pendingTarget))
-    if (owner) setTab(owner.id)
+    if (owner) setTabState(owner.id)
     // `tabs` is rebuilt on every render; the target is what should trigger this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTarget])

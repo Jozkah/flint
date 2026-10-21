@@ -361,6 +361,14 @@ html {
 [data-boot] [data-testid='app-sidebar'] > [data-slot='nav-group']:nth-child(5) { animation-delay: 180ms; }
 
 /* Each navigation fades the page in once. */
+/* Settings tab switch: the groups of the new tab settle in 4px and 200ms
+   (SettingsTabs flags the document while it plays). */
+html[data-tab-swap] [data-settings-body] [data-slot='frame'] {
+  animation: tab-in var(--duration-fast, 250ms) var(--expo) both;
+}
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
 .view-in {
   animation: view-in 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
