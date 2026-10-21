@@ -3866,7 +3866,7 @@ const ChatInput = memo(function ChatInput({
                           variant="ghost"
                           size="icon-xs"
                           aria-label={t('embeddings')}
-                          className="size-7 rounded-[7px] pointer-coarse:size-11"
+                          className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
                         >
                         <CodeXml className="size-4 text-muted-foreground" />
                       </Button>
@@ -3885,7 +3885,7 @@ const ChatInput = memo(function ChatInput({
                             size="icon-xs"
                             aria-label={t('common:modelCapability.enableTools')}
                             data-testid="composer-enable-tools"
-                            className="size-7 rounded-[7px] pointer-coarse:size-11"
+                            className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
                             onClick={() =>
                               requestCapabilities(['tools'], () => {})
                             }
@@ -3937,7 +3937,7 @@ const ChatInput = memo(function ChatInput({
                               size="icon-xs"
                               aria-label={t('tools')}
                               data-testid="composer-tools-trigger"
-                              className="size-7 rounded-[7px] pointer-coarse:size-11"
+                              className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
                             >
                               <Wrench className="size-4 text-muted-foreground" />
                             </Button>
@@ -4042,7 +4042,7 @@ const ChatInput = memo(function ChatInput({
                               <Button
                                 variant="ghost"
                                 size="icon-xs"
-                                className="size-7 rounded-[7px] pointer-coarse:size-11"
+                                className="hit-y size-7 rounded-[7px] pointer-coarse:size-11"
                                 aria-label={`Reasoning: ${label}`}
                               >
                                 <Brain
@@ -4226,7 +4226,7 @@ const ChatInput = memo(function ChatInput({
                     <Button
                       variant="outline"
                       size="icon-sm"
-                      className="size-7 border-destructive/40 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive hover:shadow-none pointer-coarse:size-11"
+                      className="hit-y size-7 border-destructive/40 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive hover:shadow-none pointer-coarse:size-11"
                       data-test-id="stop-button"
                       aria-label={t('common:a11y.stopGenerating')}
                       onClick={() => {
@@ -4260,7 +4260,7 @@ const ChatInput = memo(function ChatInput({
                   aria-label={t('chat:sendMessage')}
                   onClick={() => handleSendMessage(prompt)}
                   className={cn(
-                    'size-7 pointer-coarse:size-11',
+                    'hit-y size-7 pointer-coarse:size-11',
                     // Wakes up with a small pop once there is something to send.
                     (prompt.trim() || hasSendableMedia) &&
                       !ingestingAny &&

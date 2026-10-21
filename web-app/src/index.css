@@ -244,6 +244,18 @@
   animation: var(--animate-shim);
 }
 
+/* A 40px-tall hit area for a 28px control, with no sideways growth: neighbours
+   sit 2px apart, so widening the target would make them overlap. */
+@utility hit-y {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block: -6px;
+  }
+}
+
 /* Menu rows cascade in after the surface opens. */
 [data-slot$='menu-content'] > [role^='menuitem'] {
   animation: var(--animate-mi-in);

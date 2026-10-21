@@ -967,5 +967,11 @@ export function searchSettings(
     threshold: 0.35,
     ignoreLocation: true,
   })
-  return fuse.search(trimmed, { limit }).map((result) => result.item)
+  const found = fuse.search(trimmed, { limit }).map((result) => result.item)
+  // Fuzzy matching can rank a loose hit above a title that contains the words
+  // typed; keep the order otherwise, but put those exact hits first.
+  const q = trimmed.toLowerCase()
+  const exact = (e: SettingsIndexEntry) =>
+    e.title.toLowerCase().includes(q) || (e.keywords ?? []).some((k) => k.toLowerCase().includes(q))
+  return [...found.filter(exact), ...found.filter((e) => !exact(e))]
 }

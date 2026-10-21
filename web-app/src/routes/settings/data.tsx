@@ -475,6 +475,13 @@ function DataSettings() {
           />
           </Card>
         )}
+
+        {/* The storage groups above are desktop-only: say so instead of a blank page. */}
+        {tab === 'storage' && !isPlatformTauri() && (
+          <Card title={t('common:dataFolder')}>
+            <CardItem title={t('permissions:desktopOnly')} />
+          </Card>
+        )}
       </SettingsPageBody>
     </div>
   )
