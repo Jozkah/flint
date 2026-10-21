@@ -256,6 +256,12 @@
 
 /* A 40px-tall hit area for a 28px control, with no sideways growth: neighbours
    sit 2px apart, so widening the target would make them overlap. */
+/* High-frequency controls (send, stop) opt out of the 0.96 press scale. */
+[data-press='static']:active {
+  scale: none !important;
+  transform: none !important;
+}
+
 /* The same for a control that is already positioned: reaches 40px tall and half
    the gap sideways, so neighbours do not overlap. --hit-y sets the vertical reach
    (6px for a 28px control, 9px for 22px, 8px for 24px). */
@@ -496,6 +502,24 @@ html.reduce-motion *::after {
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
+}
+
+/* What reduced motion keeps: state changes still read, only as a short fade.
+   Surfaces that open (menus, dialogs, tooltips, popovers) fade in 120ms with no
+   travel or scale; hover and selection fade colour and shadow in 120ms with no
+   transform. Closes stay instant. */
+@keyframes rm-fade {
+  from {
+    opacity: 0;
+  }
+}
+html.reduce-motion [data-slot$='-content'][data-state='open'],
+html.reduce-motion [role='dialog'][data-state='open'] {
+  animation: rm-fade 120ms ease-out both !important;
+}
+html.reduce-motion :is(button, a, input, textarea, select, [role='tab'], [role='radio'], [role='switch'], [role='menuitem'], [data-slot]) {
+  transition-property: background-color, color, border-color, box-shadow, opacity !important;
+  transition-duration: 120ms !important;
 }
 
 /* Settings > Appearance > Font size. The design sizes type in pixels, which a

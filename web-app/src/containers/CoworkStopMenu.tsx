@@ -160,7 +160,7 @@ export function CoworkStopMenu({
           onClick={() => setOpen((wasOpen) => !wasOpen)}
           // Fixed size so it cannot grow or shift the token and context
           // indicators beside it while a response streams.
-          className="grid size-7 shrink-0 place-items-center rounded-lg border-[0.8px] border-destructive/40 text-destructive outline-none transition-[background-color,transform] duration-150 ease-expo hover:bg-destructive/10 focus-visible:ring-[3px] focus-visible:ring-destructive/30 active:scale-95 data-[state=open]:bg-destructive/10 pointer-coarse:size-11"
+          className="grid size-7 shrink-0 place-items-center rounded-lg border-[0.8px] border-destructive/40 text-destructive outline-none transition-[background-color,transform] duration-150 ease-expo hover:bg-destructive/10 focus-visible:ring-[3px] focus-visible:ring-destructive/30 active:scale-[.96] data-[state=open]:bg-destructive/10 pointer-coarse:size-11"
         >
           <Square className="size-3 fill-current" aria-hidden />
         </button>

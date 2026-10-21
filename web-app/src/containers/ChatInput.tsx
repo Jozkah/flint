@@ -4283,6 +4283,7 @@ const ChatInput = memo(function ChatInput({
                   }
                   aria-busy={sending || undefined}
                   data-test-id="send-message-button"
+                  data-press="static"
                   aria-label={t('chat:sendMessage')}
                   onClick={() => handleSendMessage(prompt)}
                   className={cn(

@@ -137,7 +137,7 @@ export function RoomCard({
             <button
               type="button"
               aria-label={t('rooms:list.moreLabel', { title: name })}
-              className="relative z-10 -mt-1 -mr-1.5 grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-muted-foreground outline-hidden transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] data-[state=open]:bg-accent pointer-coarse:size-11"
+              className="relative z-10 -mt-1 -mr-1.5 grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-muted-foreground outline-hidden transition-[background-color,color,transform] duration-150 ease-expo hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.96] data-[state=open]:bg-accent pointer-coarse:size-11"
             >
               <MoreHorizontal className="size-4" aria-hidden />
             </button>
