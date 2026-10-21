@@ -1,31 +1,15 @@
-import { createContext, useContext, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useThreads } from '@/hooks/useThreads'
-import type { SplitPaneId } from '@/hooks/useSplitConversation'
 
-/**
- * Which conversation pane a component is rendered in.
- *
- * Absent outside the Chat thread view. With the split closed there is one
- * pane and it is always active, so everything reads exactly as it did before
- * split conversations existed.
- */
-export type ConversationPane = {
-  paneId: SplitPaneId
-  threadId: string
-  /** Two panes are on screen. */
-  isSplit: boolean
-  /** The pane the user is working in. Only it drives global selections. */
-  isActive: boolean
-}
+import {
+  ConversationPaneContext,
+  useConversationPane,
+} from '@/hooks/conversationPaneContext'
+import type { ConversationPane } from '@/hooks/conversationPaneContext'
 
-export const ConversationPaneContext = createContext<ConversationPane | null>(
-  null
-)
-
-export function useConversationPane(): ConversationPane | null {
-  return useContext(ConversationPaneContext)
-}
+export { ConversationPaneContext, useConversationPane }
+export type { ConversationPane }
 
 type ProviderState = ReturnType<typeof useModelProvider.getState>
 

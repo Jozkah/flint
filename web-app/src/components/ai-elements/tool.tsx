@@ -37,6 +37,8 @@ import {
   usePendingApprovalCount,
 } from '@/hooks/useToolApprovalRequests'
 import { useArmedAfterChange } from '@/hooks/useArmedAfterChange'
+import { useConversationPane } from '@/hooks/conversationPaneContext'
+import { approvalForCall } from '@/lib/toolApprovalScope'
 import {
   describePermissionRequest,
   requestSubject,
@@ -155,8 +157,9 @@ export const Tool = memo(
     children,
     ...props
   }: ToolProps) => {
+    const paneThreadId = useConversationPane()?.threadId
     const isPending = useToolApprovalRequests((s) =>
-      toolCallId ? Boolean(s.pending[toolCallId]) : false
+      Boolean(approvalForCall(s, toolCallId, paneThreadId))
     )
     const [isOpen, setIsOpen] = useControllableState({
       prop: open,
@@ -295,8 +298,9 @@ export const ToolHeader = memo(
   }: ToolHeaderProps) => {
     const { t } = useTranslation()
     const { isOpen, toolCallId } = useTool()
+    const paneThreadId = useConversationPane()?.threadId
     const awaitingApproval = useToolApprovalRequests((s) =>
-      toolCallId ? Boolean(s.pending[toolCallId]) : false
+      Boolean(approvalForCall(s, toolCallId, paneThreadId))
     )
     const toolName = title ?? type.split('-').slice(1).join('-')
     const summary = useMemo(
@@ -594,8 +598,9 @@ function ApprovalChoiceRadios({
 export const ToolApprovalActions = memo(() => {
   const { t } = useTranslation()
   const { toolCallId } = useTool()
+  const paneThreadId = useConversationPane()?.threadId
   const pending = useToolApprovalRequests((s) =>
-    toolCallId ? s.pending[toolCallId] : undefined
+    approvalForCall(s, toolCallId, paneThreadId)
   )
   const resolveApproval = useToolApprovalRequests((s) => s.resolveApproval)
   const chooseOption = useToolApprovalRequests((s) => s.chooseOption)
