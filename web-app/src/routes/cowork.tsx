@@ -6838,6 +6838,14 @@ export function CoworkPage() {
                 )
                 return (
                   <>
+                    <NarrowBarsSheet
+                      inline={!stripMode}
+                      open={barsSheetOpen && stripMode}
+                      onOpenChange={setBarsSheetOpen}
+                      onSummary={setBarsSummary}
+                    >
+                      {bars}
+                    </NarrowBarsSheet>
                     {stripMode && (
                     <NarrowStatusStrip
                       waiting={waitingIds.length}
@@ -6851,18 +6859,10 @@ export function CoworkPage() {
                       onWaiting={() => {
                         if (waitingIds[0]) void scrollToApproval(waitingIds[0])
                       }}
-                      onOpen={() => setBarsSheetOpen(true)}
+                      onOpen={() => setBarsSheetOpen((v) => !v)}
                       condensed={phoneStrip}
                     />
                     )}
-                    <NarrowBarsSheet
-                      inline={!stripMode}
-                      open={barsSheetOpen && stripMode}
-                      onOpenChange={setBarsSheetOpen}
-                      onSummary={setBarsSummary}
-                    >
-                      {bars}
-                    </NarrowBarsSheet>
                   </>
                 )
               })()}

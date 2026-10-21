@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -9,6 +10,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  ChevronDown,
   ChevronUp,
   FileDiff,
   GitBranch,
@@ -16,13 +18,6 @@ import {
   ShieldQuestionIcon,
   Users,
 } from 'lucide-react'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { BarRowCompact } from '@/components/ui/bar-row'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -322,6 +317,14 @@ export function NarrowBarsSheet({
   })
   const [park, setPark] = useState<HTMLDivElement | null>(null)
   const [host, setHost] = useState<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChange(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onOpenChange])
 
   useLayoutEffect(() => {
     const target = open && host ? host : park
@@ -355,21 +358,27 @@ export function NarrowBarsSheet({
         <BarRowCompact value={open}>{children}</BarRowCompact>,
         el
       )}
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent
-          side="bottom"
+      {open && (
+        <section
           data-testid="narrow-bars-sheet"
-          className="max-h-[60dvh] gap-0 overflow-y-auto rounded-t-xl pb-[max(env(safe-area-inset-bottom),12px)] sm:mx-auto sm:max-w-[780px] sm:border-x"
+          aria-label={t('common:coworkStrip.label')}
+          className="max-h-[50dvh] overflow-y-auto rounded-t-xl border-x border-t border-border bg-card px-3 pt-2 pb-2 motion-safe:animate-fade-in"
         >
-          <SheetHeader className="px-4 pt-3 pb-1.5">
-            <SheetTitle className="text-sm">{t('common:coworkStrip.label')}</SheetTitle>
-            <SheetDescription className="sr-only">
-              {t('common:coworkStrip.open')}
-            </SheetDescription>
-          </SheetHeader>
-          <div ref={setHost} className="px-3" />
-        </SheetContent>
-      </Sheet>
+          <div className="flex items-center justify-between pb-1.5">
+            <span className="text-sm font-medium">{t('common:coworkStrip.label')}</span>
+            <button
+              type="button"
+              data-testid="narrow-bars-close"
+              aria-label={t('common:close')}
+              onClick={() => onOpenChange(false)}
+              className="rounded-md p-1 text-muted-foreground hover:bg-accent"
+            >
+              <ChevronDown className="size-4" aria-hidden />
+            </button>
+          </div>
+          <div ref={setHost} />
+        </section>
+      )}
     </>
   )
 }
