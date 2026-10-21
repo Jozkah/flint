@@ -20,6 +20,39 @@ type AttachmentIngestionState = {
   cancel: () => void
 }
 
+type Choice = 'inline' | 'embeddings' | undefined
+
+type PendingPrompt = {
+  attachment: AttachmentSummary
+  sizeThreshold: number
+  currentIndex: number
+  totalCount: number
+  resolve: (choice: Choice) => void
+}
+
+// Prompts that arrived while another one was on screen. Asked in arrival order
+// so a second caller no longer overwrites (and strands) the first one's
+// resolver (janhq/jan#9337).
+const waiting: PendingPrompt[] = []
+
+const showNext = (
+  set: (partial: Partial<AttachmentIngestionState>) => void
+) => {
+  const next = waiting.shift()
+  if (!next) {
+    set({ isModalOpen: false, currentAttachment: null, resolver: null })
+    return
+  }
+  set({
+    isModalOpen: true,
+    currentAttachment: next.attachment,
+    currentIndex: next.currentIndex,
+    totalCount: next.totalCount,
+    sizeThreshold: next.sizeThreshold,
+    resolver: next.resolve,
+  })
+}
+
 export const useAttachmentIngestionPrompt = create<AttachmentIngestionState>()(
   (set, get) => ({
     isModalOpen: false,
@@ -29,7 +62,17 @@ export const useAttachmentIngestionPrompt = create<AttachmentIngestionState>()(
     sizeThreshold: 0,
     resolver: null,
     showPrompt: async (attachment, sizeThreshold, currentIndex, totalCount) => {
-      return new Promise<'inline' | 'embeddings' | undefined>((resolve) => {
+      return new Promise<Choice>((resolve) => {
+        if (get().resolver) {
+          waiting.push({
+            attachment,
+            sizeThreshold,
+            currentIndex,
+            totalCount,
+            resolve,
+          })
+          return
+        }
         set({
           isModalOpen: true,
           currentAttachment: attachment,
@@ -43,12 +86,12 @@ export const useAttachmentIngestionPrompt = create<AttachmentIngestionState>()(
     choose: (choice) => {
       const { resolver } = get()
       resolver?.(choice)
-      set({ isModalOpen: false, currentAttachment: null, resolver: null })
+      showNext(set)
     },
     cancel: () => {
       const { resolver } = get()
       resolver?.(undefined)
-      set({ isModalOpen: false, currentAttachment: null, resolver: null })
+      showNext(set)
     },
   })
 )
