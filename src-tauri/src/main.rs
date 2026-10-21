@@ -3,13 +3,13 @@
 
 fn main() {
     // WebKitGTK's DMABUF renderer gives a blank window or Wayland "Error 71" on
-    // some NVIDIA setups (Tauri "Linux Graphics Issues"). Only the NVIDIA
-    // proprietary driver is affected, so leave everyone else on the fast path,
-    // and never override a value the user set. Must run before any thread starts.
+    // some NVIDIA setups (Tauri "Linux Graphics Issues"), and on KDE/AMD/Intel
+    // it can freeze the UI and leave a blank grey window after minimize/restore.
+    // Turn it off everywhere on Linux; never override a value the user set (set
+    // WEBKIT_DISABLE_DMABUF_RENDERER=0 to opt back in). Must run before any
+    // thread starts.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
-        && std::path::Path::new("/proc/driver/nvidia").exists()
-    {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
