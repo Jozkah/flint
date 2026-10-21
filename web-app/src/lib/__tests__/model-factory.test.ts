@@ -748,3 +748,46 @@ describe('createCustomFetch — seed', () => {
     expect('seed' in (await sent({ seed: 1.5 }))).toBe(false)
   })
 })
+
+describe('createCustomFetch sampling retry response handling', () => {
+  const progress = 'event: progress\ndata: {"type":"progress","percent":10}\n\n'
+  const completion =
+    'data: {"id":"reply","model":"fixture","created":1,"choices":[{"index":0,"delta":{"content":"Hello"}}]}\n\n'
+  const rejected = () =>
+    new Response(
+      JSON.stringify({ error: { message: 'Unsupported parameter: temperature' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } }
+    )
+  const streamed = () =>
+    new Response(progress + completion, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream', 'x-request-id': 'r1' },
+    })
+
+  it('filters named events on a successful retry and keeps its metadata', async () => {
+    const baseFetch = vi
+      .fn()
+      .mockResolvedValueOnce(rejected())
+      .mockResolvedValueOnce(streamed())
+    const wrapped = createCustomFetch(baseFetch, { temperature: 0.2 }, false, undefined, true)
+    const response = await wrapped('https://example.invalid/v1/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({ model: 'fixture', messages: [], stream: true }),
+    })
+    expect(await response.text()).toBe(completion)
+    expect(response.headers.get('x-request-id')).toBe('r1')
+    expect(baseFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the retry untouched when filtering is disabled', async () => {
+    const baseFetch = vi
+      .fn()
+      .mockResolvedValueOnce(rejected())
+      .mockResolvedValueOnce(streamed())
+    const response = await createCustomFetch(baseFetch, { temperature: 0.2 })(
+      'https://example.invalid/messages',
+      { method: 'POST', body: '{}' }
+    )
+    expect(await response.text()).toBe(progress + completion)
+  })
+})

@@ -740,6 +740,30 @@ export function createCustomFetch(
 
   const dispatch = parameters[DISPATCH_PARAM_KEY] as DispatchIdentity | undefined
 
+  const prepareResponse = (res: Response): Response => {
+    // OpenAI-compatible servers may interleave custom named SSE events (e.g.
+    // tool-progress) with chat.completion.chunk data; the AI SDK validates
+    // every data line against the chunk schema, so strip non-default events.
+    // Opt-in only: Anthropic and the OpenAI Responses API use named SSE
+    // events as their protocol, so filtering there blanks the whole stream.
+    const contentType = res.headers.get('content-type') || ''
+    if (
+      filterNamedSseEvents &&
+      res.body &&
+      contentType.includes('text/event-stream')
+    ) {
+      return new Response(
+        sanitizeOpenAiToolCallSseEvents(filterDefaultSseEvents(res.body)),
+        {
+          status: res.status,
+          statusText: res.statusText,
+          headers: res.headers,
+        }
+      )
+    }
+    return res
+  }
+
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     if (dispatch?.session) {
       // The transport records what it is about to send; without knowing whose
@@ -789,29 +813,7 @@ export function createCustomFetch(
     // Answered at all: whatever was wrong with the endpoint is over. A 4xx is
     // still an answer, so it clears the offline mark too.
     if (origin) useProviderReachability.getState().markReachable(origin)
-    if (res.ok) {
-      // OpenAI-compatible servers may interleave custom named SSE events (e.g.
-      // tool-progress) with chat.completion.chunk data; the AI SDK validates
-      // every data line against the chunk schema, so strip non-default events.
-      // Opt-in only: Anthropic and the OpenAI Responses API use named SSE
-      // events as their protocol, so filtering there blanks the whole stream.
-      const contentType = res.headers.get('content-type') || ''
-      if (
-        filterNamedSseEvents &&
-        res.body &&
-        contentType.includes('text/event-stream')
-      ) {
-        return new Response(
-          sanitizeOpenAiToolCallSseEvents(filterDefaultSseEvents(res.body)),
-          {
-          status: res.status,
-          statusText: res.statusText,
-          headers: res.headers,
-          }
-        )
-      }
-      return res
-    }
+    if (res.ok) return prepareResponse(res)
 
     const isLlamacpp500 = keepLlamacppOnly && res.status === 500
 
@@ -872,7 +874,7 @@ export function createCustomFetch(
       const retry = await baseFetch(input, bareInit)
       if (retry.ok) {
         notifySamplingStripped(innerMessage)
-        return retry
+        return prepareResponse(retry)
       }
       // Retry also failed — fall through to surface the cleaned original error.
     }

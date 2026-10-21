@@ -108,3 +108,28 @@ describe('filterDefaultSseEvents', () => {
     )
   })
 })
+
+describe('mixed SSE line endings', () => {
+  it.each(['\n\n', '\r\n\r\n', '\r\r', '\r\n\n', '\n\r\n', '\r\r\n', '\n\r', '\r\n\r'])(
+    'separates frames using %j at every chunk boundary',
+    (separator) => {
+      const named = `event: progress\r\ndata: {"status":"running"}${separator}`
+      const kept = 'data: {"choices":[{"delta":{"content":"Hello"}}]}\r\n\r\n'
+      const wire = named + kept + 'data: [DONE]\n\n'
+      const expected = kept + 'data: [DONE]\n\n'
+      for (let split = 0; split <= wire.length; split++) {
+        expect(
+          collect(new SseEventTypeFilter(), [wire.slice(0, split), wire.slice(split)]),
+          `split ${split}`
+        ).toBe(expected)
+      }
+      expect(collect(new SseEventTypeFilter(), [...wire])).toBe(expected)
+    }
+  )
+
+  it('keeps earlier default data when a following named event has a different line ending', () => {
+    const kept = 'data: {"choices":[]}\r\n\n'
+    const named = 'event: progress\ndata: {"progress":1}\n\n'
+    expect(collect(new SseEventTypeFilter(), [kept + named])).toBe(kept)
+  })
+})
