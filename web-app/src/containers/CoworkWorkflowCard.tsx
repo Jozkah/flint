@@ -202,17 +202,22 @@ export function CoworkWorkflowCard({
           aria-valuemin={0}
           aria-valuemax={progress.total}
           aria-valuenow={progress.finished}
-          className="block h-1.5 w-full overflow-hidden rounded-full bg-track"
+          className="flex h-1.5 w-full overflow-hidden rounded-full bg-track"
         >
+          {/* Finished work in the accent, failed work in red beside it: one
+              failure does not paint the whole bar red. */}
           <span
-            className={cn(
-              'block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo',
-              progress.error > 0
-                ? 'bg-[linear-gradient(90deg,#ef4444,#dc2626)]'
-                : 'bg-grad'
-            )}
-            style={{ width: `${Math.round(progress.fraction * 100)}%` }}
+            className="block h-full motion-safe:transition-[width] motion-safe:duration-(--duration-very-slow) motion-safe:ease-expo bg-grad"
+            style={{
+              width: `${Math.round(((progress.finished - progress.error) / progress.total) * 100)}%`,
+            }}
           />
+          {progress.error > 0 && (
+            <span
+              className="block h-full bg-[linear-gradient(90deg,#ef4444,#dc2626)] motion-safe:transition-[width] motion-safe:duration-(--duration-very-slow) motion-safe:ease-expo"
+              style={{ width: `${Math.round((progress.error / progress.total) * 100)}%` }}
+            />
+          )}
         </span>
       )}
 
