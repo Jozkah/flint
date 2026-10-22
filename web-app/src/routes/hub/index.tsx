@@ -381,6 +381,9 @@ function ModelDiscoverRoute() {
   const rowVirtualizer = useVirtualizer({
     count: visible.length,
     getScrollElement: () => parentRef.current,
+    // Rows are keyed by repo id; an index key lets a reordered list stop
+    // observing a card, so its expanded variants never push the next one down.
+    getItemKey: (index) => visible[index]?.id ?? index,
     estimateSize: (index) => {
       const model = visible[index]
       const files = filesByRepo[model?.id] ?? model?.files ?? []
