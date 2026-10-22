@@ -91,7 +91,8 @@
     "update": "Atualizar",
     "variant": "Variante",
     "whatToLookFor": "O que procurar",
-    "searchPlaceholderShort": "Pesquise ou cole uma URL…"
+    "searchPlaceholderShort": "Pesquise ou cole uma URL…",
+    "resultLimit": "Mostrar"
   },
   "llamaImport": {
     "description": "Importe um arquivo de modelo GGUF para adicioná-lo à sua coleção. Ative o suporte multimodal para anexar um mmproj (entrada de imagem ou áudio), ou o suporte a modelos rascunho para decodificação especulativa. Modelos de embedding são detectados automaticamente.",

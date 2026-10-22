@@ -62,9 +62,10 @@ async function call<T>(
 export async function searchHuggingFaceModels(
   query: string,
   token?: string,
-  format: HuggingFaceFormat = 'gguf'
+  format: HuggingFaceFormat = 'gguf',
+  limit?: number
 ): Promise<HuggingFaceModel[]> {
-  return call<HuggingFaceModel[]>('search', { query, token, format })
+  return call<HuggingFaceModel[]>('search', { query, token, format, limit })
 }
 
 /**
@@ -75,12 +76,15 @@ export async function searchHuggingFaceModels(
 export async function searchHuggingFaceModelsByWords(
   query: string,
   token?: string,
-  format: HuggingFaceFormat = 'gguf'
+  format: HuggingFaceFormat = 'gguf',
+  limit?: number
 ): Promise<HuggingFaceModel[]> {
   const [typed, ...variants] = searchVariants(query)
-  const first = searchHuggingFaceModels(typed, token, format)
+  const first = searchHuggingFaceModels(typed, token, format, limit)
   const rest = await Promise.allSettled(
-    variants.map((variant) => searchHuggingFaceModels(variant, token, format))
+    variants.map((variant) =>
+      searchHuggingFaceModels(variant, token, format, limit)
+    )
   )
   return mergeById([
     await first,
