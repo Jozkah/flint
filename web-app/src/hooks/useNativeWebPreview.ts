@@ -23,6 +23,10 @@ type NavigatedPayload = {
 }
 
 const isTauri = () => typeof IS_TAURI !== 'undefined' && !!IS_TAURI
+// A second WebKitGTK view inside the main window can take the shared web
+// process down on Linux, leaving the whole window grey. Linux uses the iframe.
+const nativeSupported = () =>
+  isTauri() && !(typeof IS_LINUX !== 'undefined' && IS_LINUX)
 
 /**
  * Drives a native child webview laid over `container` (the preview panel's
@@ -49,7 +53,7 @@ export function useNativeWebPreview({
   const suspendedRef = useRef(suspended)
   suspendedRef.current = suspended
   const [mode, setMode] = useState<NativePreviewMode>(() =>
-    isTauri() ? 'pending' : 'iframe'
+    nativeSupported() ? 'pending' : 'iframe'
   )
   const ctrlRef = useRef<NativeWebPreviewController | null>(null)
   const lastNativeUrl = useRef<string>('')
@@ -64,7 +68,7 @@ export function useNativeWebPreview({
   // every later page in an iframe that most sites refuse to be framed in.
   const failedUrl = useRef<string | null>(null)
   useEffect(() => {
-    if (!isTauri() || mode !== 'iframe') return
+    if (!nativeSupported() || mode !== 'iframe') return
     if (!enabled || (failedUrl.current !== null && url !== failedUrl.current)) {
       failedUrl.current = null
       setMode('pending')

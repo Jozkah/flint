@@ -50,3 +50,12 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 120px;
 }
+
+/* Linux (WebKitGTK): no backdrop blur in any mode; it is the costliest
+   compositing layer there and a suspect in grey-window renderer stalls. */
+[data-linux] *,
+[data-linux] *::before,
+[data-linux] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

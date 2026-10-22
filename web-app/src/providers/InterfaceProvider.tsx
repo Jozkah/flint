@@ -65,6 +65,13 @@ export function InterfaceProvider() {
     else root.removeAttribute('data-perf')
   }, [perfReduced])
 
+  // WebKitGTK: backdrop blur is the heaviest compositing work; styles/perf.css
+  // drops it on Linux whatever the performance mode.
+  useEffect(() => {
+    if (typeof IS_LINUX !== 'undefined' && IS_LINUX)
+      document.documentElement.setAttribute('data-linux', '')
+  }, [])
+
   // Mirror the resolved appearance for index.html's pre-paint script.
   useEffect(() => {
     writeBootAppearance(

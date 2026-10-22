@@ -610,6 +610,23 @@ fn is_proxy_server_running<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool
         .unwrap_or(false)
 }
 
+/// Reload the page when WebKitGTK's web process dies. Without this the window
+/// stays flat grey (GTK's background) with the app still running.
+#[cfg(all(not(feature = "cli"), target_os = "linux"))]
+fn reload_on_web_process_crash(window: &tauri::WebviewWindow) {
+    window
+        .with_webview(|webview| {
+            use webkit2gtk::{WebProcessTerminationReason as Reason, WebViewExt};
+            webview.inner().connect_web_process_terminated(|view, reason| {
+                log::error!("web process terminated ({reason:?})");
+                if matches!(reason, Reason::Crashed | Reason::ExceededMemoryLimit) {
+                    view.reload();
+                }
+            });
+        })
+        .unwrap_or_else(|e| log::warn!("could not watch the web process: {e}"));
+}
+
 /// Auto-accept the WebView2 "Reload site?" beforeunload confirmation so it
 /// never interrupts the user. This desktop app has no page-level form state
 /// worth guarding; the dialog only blocks HMR reloads and extension operations.
@@ -1074,6 +1091,8 @@ pub fn build_app() -> tauri::App {
                     core::window_state::restore_and_show(&window, &data_folder);
                 }
                 core::window_state::install(&window, data_folder);
+                #[cfg(target_os = "linux")]
+                reload_on_web_process_crash(&window);
             }
             // Remote access: off unless the user turned it on; if so the
             // listener starts now, with the settings they left.
