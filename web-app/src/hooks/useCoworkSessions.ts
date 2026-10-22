@@ -112,6 +112,13 @@ export type CoworkSession = {
    * `extraFoldersOf`.
    */
   extraFolders?: string[]
+  /**
+   * Extra folders the user marked read-only. Absent or empty: every extra
+   * folder follows the session's access, as before. The write grant leaves
+   * these out, so the backend refuses writes there. Read through
+   * `writableExtraFoldersOf`.
+   */
+  readOnlyExtraFolders?: string[]
   turns: CoworkTurn[]
   /** The authoritative conversation, sent to the model each turn. */
   messages: UIMessage[]
@@ -350,6 +357,8 @@ type CoworkSessionsState = {
   addExtraFolder: (id: string, folder: string) => void
   /** Detach one of the extra folders. */
   removeExtraFolder: (id: string, folder: string) => void
+  /** Mark one extra folder editable or read-only; the grant is the caller's. */
+  setExtraFolderWritable: (id: string, folder: string, writable: boolean) => void
   /** The session's own provider/model choice (janhq/jan#8905). */
   setModel: (id: string, model: { provider: string; id: string }) => void
   /** Record the input still pending for the session; empty clears it. */
@@ -803,12 +812,29 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ? {
                   ...x,
                   extraFolders: withoutExtraFolder(extraFoldersOf(x), folder),
+                  readOnlyExtraFolders: x.readOnlyExtraFolders
+                    ? withoutExtraFolder(x.readOnlyExtraFolders, folder)
+                    : undefined,
                   access: 'review-only',
                   editConsent: undefined,
                   updated: now(),
                 }
               : x
           ),
+        })),
+
+      // Only the mark changes: the caller re-issues the grant for the new set.
+      setExtraFolderWritable: (id, folder, writable) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) => {
+            if (x.id !== id) return x
+            const rest = withoutExtraFolder(x.readOnlyExtraFolders ?? [], folder)
+            return {
+              ...x,
+              readOnlyExtraFolders: writable ? rest : [...rest, folder],
+              updated: now(),
+            }
+          }),
         })),
 
       setMessages: (id, messages) =>

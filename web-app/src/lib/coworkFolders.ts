@@ -32,6 +32,22 @@ export function extraFoldersOf(session: {
   return out
 }
 
+/**
+ * The extra folders a write grant may cover: every extra folder except those
+ * the user marked read-only. Absent marks keep the old behaviour (all of
+ * them), so sessions saved before per-folder access need no migration.
+ */
+export function writableExtraFoldersOf(session: {
+  folder: string | null
+  extraFolders?: readonly string[]
+  readOnlyExtraFolders?: readonly string[]
+}): string[] {
+  const readOnly = session.readOnlyExtraFolders ?? []
+  return extraFoldersOf(session).filter(
+    (extra) => !readOnly.some((one) => sameFolder(one, extra))
+  )
+}
+
 /** `extras` with `folder` appended, unless it is already attached. */
 export function withExtraFolder(
   primary: string | null,

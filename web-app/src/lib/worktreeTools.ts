@@ -16,6 +16,7 @@
  */
 import { jsonSchema, type Tool } from 'ai'
 import type { ToolOutcome } from '@/lib/coworkRunner'
+import { writableExtraFoldersOf } from '@/lib/coworkFolders'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import {
   ENTER_WORKTREE_TOOL_NAME,
@@ -228,7 +229,7 @@ export async function runEnterWorktree(
 
   const granted = await s.useDirectEditGrants
     .getState()
-    .authorize(sessionId, target.path, dataFolder, session.extraFolders ?? [])
+    .authorize(sessionId, target.path, dataFolder, writableExtraFoldersOf(session))
   if (!granted.ok)
     return undo(`could not give the worktree write access: ${granted.reason}`)
   s.useCoworkSessions.getState().setAccess(sessionId, 'managed-worktree')

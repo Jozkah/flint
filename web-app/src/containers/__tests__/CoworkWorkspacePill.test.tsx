@@ -262,6 +262,54 @@ describe('CoworkWorkspacePill', () => {
     it('defaults to read-only when no access is given', async () => {
       expect(await open({})).toEqual(['read-only', 'read-only'])
     })
+
+    it('shows an extra folder marked read-only as read-only under edits', async () => {
+      expect(
+        await open({
+          access: 'edit-folder',
+          extraFoldersWritable: true,
+          readOnlyExtraFolders: ['c:/repo/b/'],
+        })
+      ).toEqual(['editable', 'read-only'])
+    })
+
+    it('toggles an extra folder from its badge when edits are allowed', async () => {
+      const onToggleExtraWritable = vi.fn()
+      await open({
+        access: 'edit-folder',
+        extraFoldersWritable: true,
+        onToggleExtraWritable,
+      })
+      await userEvent.click(
+        screen.getByRole('button', { name: /makeReadOnly/ })
+      )
+      expect(onToggleExtraWritable).toHaveBeenCalledWith('C:/repo/b', false)
+    })
+
+    it('toggles a read-only extra folder back to editable', async () => {
+      const onToggleExtraWritable = vi.fn()
+      await open({
+        access: 'edit-folder',
+        extraFoldersWritable: true,
+        readOnlyExtraFolders: ['C:/repo/b'],
+        onToggleExtraWritable,
+      })
+      await userEvent.click(
+        screen.getByRole('button', { name: /makeEditable/ })
+      )
+      expect(onToggleExtraWritable).toHaveBeenCalledWith('C:/repo/b', true)
+    })
+
+    it('offers no toggle under Review only', async () => {
+      await open({
+        access: 'review-only',
+        extraFoldersWritable: true,
+        onToggleExtraWritable: vi.fn(),
+      })
+      expect(
+        screen.queryByRole('button', { name: /makeReadOnly|makeEditable/ })
+      ).toBeNull()
+    })
   })
 
   it('offers describing the project from the folder menu, and closes itself', async () => {
