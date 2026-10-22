@@ -1104,6 +1104,8 @@
     "alsoAttached": "함께 첨부됨",
     "addFolder": "폴더 추가",
     "removeFolder": "{{folder}} 제거",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "읽기 전용",
     "editable": "편집 가능",
     "inWorktree": "worktree 사용",

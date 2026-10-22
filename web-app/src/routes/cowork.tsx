@@ -320,7 +320,11 @@ import {
   type CodeRef,
   type CodeTab,
 } from '@/lib/coworkCode'
-import { extraFoldersOf, isInsideAnyFolder } from '@/lib/coworkFolders'
+import {
+  extraFoldersOf,
+  isInsideAnyFolder,
+  writableExtraFoldersOf,
+} from '@/lib/coworkFolders'
 import {
   CoworkRailToolbar,
   type RailMode,
@@ -785,6 +789,17 @@ export function CoworkPage() {
     () => extraFoldersOf({ folder, extraFolders: sessionExtraFolders }),
     [folder, sessionExtraFolders]
   )
+  // The ones a write grant may cover: the rest the user marked read-only.
+  const sessionReadOnlyExtras = session?.readOnlyExtraFolders
+  const writableExtraFolders = useMemo(
+    () =>
+      writableExtraFoldersOf({
+        folder,
+        extraFolders: sessionExtraFolders,
+        readOnlyExtraFolders: sessionReadOnlyExtras,
+      }),
+    [folder, sessionExtraFolders, sessionReadOnlyExtras]
+  )
   // Apply to folder copies into the primary or any extra folder; a sandbox
   // path that starts with an extra folder's name goes to that folder.
   const applyFolders = useMemo(
@@ -977,7 +992,7 @@ export function CoworkPage() {
     sessionId: session?.id ?? null,
     title: session?.title,
     folder,
-    extraFolders,
+    extraFolders: writableExtraFolders,
     access,
     turns: session?.turns.length ?? 0,
     capabilityKnown: capabilityState.known,
@@ -1972,6 +1987,40 @@ export function CoworkPage() {
     [session?.id, folderHeld]
   )
 
+  /**
+   * Mark one extra folder editable or read-only.
+   *
+   * The grant covers exactly the editable ones, so a live grant is re-issued
+   * for the new set (the backend replaces the session's grant). If that fails
+   * the old grant may cover a folder now marked read-only, so it is withdrawn
+   * and the session returns to Review only.
+   */
+  const setExtraFolderWritable = useCallback(
+    async (extra: string, writable: boolean) => {
+      if (!session?.id || folderHeld(session.id)) return
+      const sid = session.id
+      useCoworkSessions.getState().setExtraFolderWritable(sid, extra, writable)
+      const grant = useDirectEditGrants.getState().grantFor(sid)
+      if (!grant) return
+      const updated = useCoworkSessions
+        .getState()
+        .sessions.find((x) => x.id === sid)
+      const dataFolder = await serviceHub.app().getJanDataFolder()
+      const result =
+        updated && dataFolder
+          ? await useDirectEditGrants
+              .getState()
+              .authorize(sid, grant.folder, dataFolder, writableExtraFoldersOf(updated))
+          : { ok: false as const, reason: 'no data folder' }
+      if (!result.ok) {
+        await useDirectEditGrants.getState().revokeSession(sid)
+        useCoworkSessions.getState().setAccess(sid, 'review-only')
+        if (result.reason !== 'superseded') toast.error(result.reason)
+      }
+    },
+    [session?.id, folderHeld, serviceHub]
+  )
+
   // `liveTurns` holds only the rows this run has produced — `commitTurns`
   // appends them — so the committed transcript has to be shown alongside it or
   // the conversation disappears the moment a follow-up run starts.
@@ -2305,7 +2354,7 @@ export function CoworkPage() {
         authorize: (sessionId, target, data) =>
           useDirectEditGrants
             .getState()
-            .authorize(sessionId, target, data, extraFolders),
+            .authorize(sessionId, target, data, writableExtraFolders),
         revokeSession: (sessionId) =>
           useDirectEditGrants.getState().revokeSession(sessionId),
         // Read after the await, so it sees where the user actually is.
@@ -2321,7 +2370,7 @@ export function CoworkPage() {
   }, [
     session?.id,
     folder,
-    extraFolders,
+    writableExtraFolders,
     serviceHub,
     effective.access,
     effective.destination,
@@ -2359,7 +2408,7 @@ export function CoworkPage() {
         if (!dataFolder) return
         const result = await useDirectEditGrants
           .getState()
-          .authorize(sid, folder, dataFolder, extraFolders)
+          .authorize(sid, folder, dataFolder, writableExtraFolders)
         if (!result.ok) {
           // One toast per folder: reopening sessions that share an unreadable
           // folder updated the same message instead of stacking copies, and it
@@ -2396,7 +2445,7 @@ export function CoworkPage() {
     effective.access,
     effective.destination,
     serviceHub,
-    extraFolders,
+    writableExtraFolders,
   ])
 
   /**
@@ -2449,7 +2498,7 @@ export function CoworkPage() {
       // only Flint-owned worktrees can be written).
       const granted = await useDirectEditGrants
         .getState()
-        .authorize(sid, created.record.path, dataFolder, extraFolders)
+        .authorize(sid, created.record.path, dataFolder, writableExtraFolders)
       if (!granted.ok) {
         if (granted.reason !== 'superseded') toast.error(granted.reason)
         return false
@@ -2462,7 +2511,7 @@ export function CoworkPage() {
   }, [
     session?.id,
     folder,
-    extraFolders,
+    writableExtraFolders,
     serviceHub,
     effective.access,
     effective.destination,
@@ -3512,7 +3561,11 @@ export function CoworkPage() {
      * confine a run to a user folder (the grant leaves them out otherwise).
      */
     const runExtraFolders = extraFoldersOf(current ?? { folder: null })
-    const runExtraFoldersWritable = !!runGrant && canEditDirectly
+    // Per folder: the ones the user left editable, and only under the grant.
+    const runWritableExtraFolders =
+      runGrant && canEditDirectly
+        ? writableExtraFoldersOf(current ?? { folder: null })
+        : []
     /**
      * The second gate's inputs, frozen with the first.
      *
@@ -3591,7 +3644,7 @@ export function CoworkPage() {
       workspacePath,
       readOnlyFolder: runReadRoot,
       extraFolders: runExtraFolders,
-      extraFoldersWritable: runExtraFoldersWritable,
+      writableExtraFolders: runWritableExtraFolders,
       // Read from the run's frozen snapshot, not re-derived here: the model
       // must be told exactly what the gate and the ledger will act on.
       folderAccess: promptFolderAccess(origins),
@@ -3861,7 +3914,7 @@ export function CoworkPage() {
             workspacePath,
             readOnlyFolder: childFolder,
             extraFolders: childExtras,
-            extraFoldersWritable: !destination && runExtraFoldersWritable,
+            writableExtraFolders: destination ? [] : runWritableExtraFolders,
             bashAvailable: sandboxEnforces(),
             // The parent's frozen answers, handed down unchanged: a child never
             // resolves its own access or its own instructions.
@@ -6008,6 +6061,10 @@ export function CoworkPage() {
         extraFolders={extraFolders}
         extraFoldersWritable={
           capabilityState.known && capabilityState.directEdit
+        }
+        readOnlyExtraFolders={session?.readOnlyExtraFolders}
+        onToggleExtraWritable={(extra, writable) =>
+          void setExtraFolderWritable(extra, writable)
         }
         onAddExtra={() => void addExtraFolder()}
         onRemoveExtra={(extra) => void removeExtraFolder(extra)}

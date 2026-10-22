@@ -12,6 +12,12 @@ fn main() {
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
+    // Compositing mode on WebKitGTK (Wayland, NVIDIA especially) can stall and
+    // leave the window flat grey. Same rule: off by default, user value wins.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
 
     // Fedora 43's AT-SPI D-Bus stack is incompatible with GTK's accessibility
     // bridge and the app aborts at startup (Jan #7536). Turn the bridge off

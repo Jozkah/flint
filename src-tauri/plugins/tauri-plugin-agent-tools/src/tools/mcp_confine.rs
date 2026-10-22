@@ -127,9 +127,17 @@ impl McpAuthority {
 /// `/home/dev/obs-forwarder-backup` inside `/home/dev/obs-forwarder`, which is
 /// the exact sibling-repository confusion this whole surface exists to stop.
 fn contained(root: &Path, path: &Path) -> bool {
-    let root = super::sandbox::lexical_normalize(root);
-    let path = super::sandbox::lexical_normalize(path);
-    path.starts_with(&root)
+    resolved(path).starts_with(resolved(root))
+}
+
+/// Where `path` really points: symlinks followed as far as it exists, so a root
+/// reached through `/home` (a link to `/var/home` on Fedora Silverblue and
+/// Bazzite) and the same folder spelled `/var/home` compare equal, and a link
+/// that leaves the root does not pass as inside it. Falls back to the lexical
+/// form only when resolution fails.
+fn resolved(path: &Path) -> PathBuf {
+    let lexical = super::sandbox::lexical_normalize(path);
+    super::sandbox::canonicalize_lenient(&lexical).unwrap_or(lexical)
 }
 
 /// Build the policy one MCP server runs under.
@@ -505,6 +513,30 @@ mod tests {
                 dir.display()
             );
         }
+    }
+
+    /// Silverblue/Bazzite: `/home` is a link to `/var/home`. A root spelled one
+    /// way must contain a directory spelled the other, and a link that leaves
+    /// the root must not count as inside it.
+    #[cfg(unix)]
+    #[test]
+    fn containment_sees_through_a_symlinked_root_spelling() {
+        let base = std::env::temp_dir().join(format!("jan-contained-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let real = base.join("var-home");
+        std::fs::create_dir_all(real.join("u/ws/src")).unwrap();
+        std::fs::create_dir_all(base.join("outside")).unwrap();
+        let link = base.join("home");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        std::os::unix::fs::symlink(base.join("outside"), real.join("u/ws/escape")).unwrap();
+
+        assert!(contained(&real.join("u/ws"), &link.join("u/ws/src")));
+        assert!(contained(&link.join("u/ws"), &real.join("u/ws/src")));
+        // not yet existing
+        assert!(contained(&real.join("u/ws"), &link.join("u/ws/new/dir")));
+        assert!(!contained(&real.join("u/ws"), &link.join("u/ws/escape")));
+        assert!(!contained(&real.join("u/ws"), &link.join("u")));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

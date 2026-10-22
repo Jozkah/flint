@@ -1111,6 +1111,8 @@
     "alsoAttached": "Également joints",
     "addFolder": "Ajouter un autre dossier",
     "removeFolder": "Retirer {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "lecture seule",
     "editable": "modifiable",
     "inWorktree": "via un worktree",

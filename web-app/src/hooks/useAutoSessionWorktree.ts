@@ -20,6 +20,7 @@ type Input = {
   sessionId: string | null
   title: string | undefined
   folder: string | null
+  /** The extra folders the grant should cover (the ones left editable). */
   extraFolders: readonly string[]
   access: string
   turns: number

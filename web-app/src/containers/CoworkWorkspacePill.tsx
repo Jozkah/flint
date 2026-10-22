@@ -24,6 +24,7 @@ import { Separator } from '@/components/ui/separator'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { basenameOf } from '@/lib/coworkPreview'
+import { sameFolder } from '@/lib/coworkFolders'
 import { truncateMiddle } from '@/lib/utils'
 import { useComposerCollapsed } from '@/containers/ComposerDensity'
 
@@ -77,8 +78,15 @@ type Props = {
   access?: AccessMode
   /** Folders attached beside `folder`, like a multi-root workspace. */
   extraFolders?: readonly string[]
-  /** Whether the run's grant covers `extraFolders` (attached directly). */
+  /** Whether a grant can cover `extraFolders` at all (attached directly). */
   extraFoldersWritable?: boolean
+  /** Extra folders the user marked read-only; the rest follow `access`. */
+  readOnlyExtraFolders?: readonly string[]
+  /**
+   * Toggle one extra folder between editable and read-only. Offered only
+   * while the session's access allows edits there.
+   */
+  onToggleExtraWritable?: (folder: string, writable: boolean) => void
   /** Pick another folder to attach beside the primary one. */
   onAddExtra?: () => void
   onRemoveExtra?: (folder: string) => void
@@ -113,6 +121,8 @@ export function CoworkWorkspacePill({
   access = 'review-only',
   extraFolders = [],
   extraFoldersWritable = false,
+  readOnlyExtraFolders = [],
+  onToggleExtraWritable,
   onAddExtra,
   onRemoveExtra,
   describeProject,
@@ -126,8 +136,13 @@ export function CoworkWorkspacePill({
   const serviceHub = useServiceHub()
   const folderName = folder ? basenameOf(folder) : null
   const primaryAccess = primaryFolderAccess(access)
-  const extraAccess: FolderAccess =
-    access !== 'review-only' && extraFoldersWritable ? 'editable' : 'read-only'
+  // Whether the session's access lets extra folders be edited at all; each
+  // one is then editable unless the user marked it read-only.
+  const extrasCanEdit = access !== 'review-only' && extraFoldersWritable
+  const extraMarkedReadOnly = (extra: string) =>
+    readOnlyExtraFolders.some((one) => sameFolder(one, extra))
+  const extraAccess = (extra: string): FolderAccess =>
+    extrasCanEdit && !extraMarkedReadOnly(extra) ? 'editable' : 'read-only'
   const TriggerIcon = BADGE[primaryAccess].icon
   const badge = (kind: FolderAccess, size: number) => {
     const Icon = BADGE[kind].icon
@@ -298,7 +313,28 @@ export function CoworkWorkspacePill({
                           >
                             {truncateMiddle(extra, 40)}
                           </span>
-                          {badge(extraAccess, 9)}
+                          {extrasCanEdit && onToggleExtraWritable ? (
+                            <button
+                              type="button"
+                              className="shrink-0 cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                              aria-label={t(
+                                extraMarkedReadOnly(extra)
+                                  ? 'common:workspace.makeEditable'
+                                  : 'common:workspace.makeReadOnly',
+                                { folder: basenameOf(extra) }
+                              )}
+                              onClick={() =>
+                                onToggleExtraWritable(
+                                  extra,
+                                  extraMarkedReadOnly(extra)
+                                )
+                              }
+                            >
+                              {badge(extraAccess(extra), 9)}
+                            </button>
+                          ) : (
+                            badge(extraAccess(extra), 9)
+                          )}
                           {onRemoveExtra ? (
                             <Button
                               variant="ghost"

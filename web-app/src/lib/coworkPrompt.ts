@@ -7,6 +7,7 @@
  * budget runs out.
  */
 
+import { sameFolder } from '@/lib/coworkFolders'
 import { INSPECT_AND_PROPOSE_ADDENDUM } from '@/lib/coworkContinuity'
 import {
   DELEGATE_WHEN,
@@ -170,10 +171,11 @@ export type CoworkPromptOptions = {
    */
   extraFolders?: readonly string[]
   /**
-   * Whether the run's write grant covers `extraFolders`. False (the default)
-   * says they are read-only, which is what the gate does without a grant.
+   * The `extraFolders` the run's write grant covers. Absent or empty (the
+   * default) says every one is read-only, which is what the gate does
+   * without a grant; any not listed is read-only.
    */
-  extraFoldersWritable?: boolean
+  writableExtraFolders?: readonly string[]
   /**
    * Whether this run may write to the attached folder.
    *
@@ -522,20 +524,31 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
     )
     const extras = opts.extraFolders ?? []
     if (extras.length > 0) {
+      const writable = opts.writableExtraFolders ?? []
+      const editable = (folder: string) =>
+        writable.some((one) => sameFolder(one, folder))
+      const anyEditable = extras.some(editable)
+      const anyReadOnly = extras.some((folder) => !editable(folder))
       lines.push(
         '',
         'The user also attached these folders to this session:',
-        ...extras.map((folder) => `- \`${folder}\``),
-        ...(opts.extraFoldersWritable
+        ...extras.map(
+          (folder) =>
+            `- \`${folder}\` (${editable(folder) ? 'editable' : 'READ-ONLY'})`
+        ),
+        ...(anyEditable
           ? [
-              'They are attached directly (never through a worktree): you may read, write',
-              'and edit in them, and changes there are changes to the user’s own files.',
-              'Use absolute paths for them; relative paths do not resolve there.',
+              'The editable ones are attached directly (never through a worktree): you may',
+              'read, write and edit in them, and changes there are changes to the user’s own',
+              'files.',
             ]
-          : [
-              'They are READ-ONLY: read, search and list inside them, but writes there will',
-              'be refused. Use absolute paths for them.',
-            ])
+          : []),
+        ...(anyReadOnly
+          ? [
+              'In the READ-ONLY ones, read, search and list, but writes there will be refused.',
+            ]
+          : []),
+        'Use absolute paths for them; relative paths do not resolve there.'
       )
     }
   } else {

@@ -1104,6 +1104,8 @@
     "alsoAttached": "その他の添付",
     "addFolder": "フォルダーを追加",
     "removeFolder": "{{folder}} を削除",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "読み取り専用",
     "editable": "編集可",
     "inWorktree": "worktree 経由",

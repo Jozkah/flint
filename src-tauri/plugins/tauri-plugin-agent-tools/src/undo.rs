@@ -471,9 +471,10 @@ pub(crate) fn within(path: &Path, roots: &[PathBuf]) -> bool {
 /// link on the way followed (dangling ones included). A path that cannot be
 /// resolved is refused.
 pub(crate) fn really_within(path: &Path, roots: &[PathBuf]) -> bool {
-    if !within(path, roots) {
-        return false;
-    }
+    // The written spelling is not judged on its own: `within` canonicalizes
+    // the roots, so a path spelled through a link (`/home` -> `/var/home` on
+    // Fedora Silverblue) would fail against them. Only the resolved location
+    // decides, and an escaping link resolves outside the roots.
     match crate::tools::sandbox::canonicalize_lenient(&absolute(path)) {
         Ok(real) => within(&real, roots),
         Err(_) => false,
@@ -675,6 +676,28 @@ pub fn collect_blobs(data_folder: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `/home` -> `/var/home` (Silverblue, Bazzite): a file spelled through the
+    /// link is inside a root spelled the real way, and an escaping link is not.
+    #[cfg(unix)]
+    #[test]
+    fn really_within_accepts_a_symlinked_spelling_and_refuses_an_escape() {
+        let base = crate::test_temp_root().join(format!("jan-undo-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let real = base.join("var-home");
+        std::fs::create_dir_all(real.join("u/ws")).unwrap();
+        std::fs::create_dir_all(base.join("outside")).unwrap();
+        let link = base.join("home");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        std::os::unix::fs::symlink(base.join("outside"), real.join("u/ws/escape")).unwrap();
+        let roots = vec![real.join("u/ws")];
+
+        assert!(really_within(&link.join("u/ws/new.txt"), &roots));
+        assert!(really_within(&real.join("u/ws/new.txt"), &roots));
+        assert!(!really_within(&link.join("u/ws/escape/x.txt"), &roots));
+        assert!(!really_within(&link.join("u/other.txt"), &roots));
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     fn dirs(name: &str) -> (PathBuf, PathBuf) {
         let base = crate::test_temp_root().join(format!(

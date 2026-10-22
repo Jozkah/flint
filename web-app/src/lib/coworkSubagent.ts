@@ -577,7 +577,8 @@ export type RunSubagentOptions = {
     readOnlyFolder: string | null
     /** The session's extra attached folders, as the parent was told. */
     extraFolders?: readonly string[]
-    extraFoldersWritable?: boolean
+    /** The extra folders the parent's grant covers. */
+    writableExtraFolders?: readonly string[]
     bashAvailable: boolean
     /**
      * The run's frozen access, so the child is told the same thing the parent
@@ -728,7 +729,7 @@ export async function runSubagent(
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,
       extraFolders: opts.system.extraFolders,
-      extraFoldersWritable: opts.system.extraFoldersWritable,
+      writableExtraFolders: opts.system.writableExtraFolders,
       bashAvailable: opts.system.bashAvailable && 'bash' in tools,
       folderAccess: opts.system.folderAccess,
       projectInstructions: opts.system.projectInstructions,

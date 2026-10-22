@@ -71,8 +71,8 @@ export type CoworkRunConfig = CoworkToolOptions & CoworkEnvironmentOptions & {
   readOnlyFolder: string | null
   /** The session's additional attached folders, frozen with the run. */
   extraFolders?: readonly string[]
-  /** Whether this run's write grant covers `extraFolders`. */
-  extraFoldersWritable?: boolean
+  /** The `extraFolders` this run's write grant covers; the rest are read-only. */
+  writableExtraFolders?: readonly string[]
   /**
    * Whether this run may write to the attached folder.
    *
@@ -586,7 +586,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       workspacePath: this.config.workspacePath,
       readOnlyFolder: this.config.readOnlyFolder,
       extraFolders: this.config.extraFolders,
-      extraFoldersWritable: this.config.extraFoldersWritable,
+      writableExtraFolders: this.config.writableExtraFolders,
       folderAccess: this.config.folderAccess,
       worktreeBranch: this.config.worktreeBranch,
       ...environmentOptions(this.config),

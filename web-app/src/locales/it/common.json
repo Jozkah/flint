@@ -1113,6 +1113,8 @@
     "alsoAttached": "Allegate anche",
     "addFolder": "Aggiungi un'altra cartella",
     "removeFolder": "Rimuovi {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "sola lettura",
     "editable": "modificabile",
     "inWorktree": "tramite worktree",

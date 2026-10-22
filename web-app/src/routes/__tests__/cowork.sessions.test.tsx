@@ -109,6 +109,10 @@ vi.mock('@/hooks/useSkills', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useSkills: () => ({ skills: [], enabled: [], loading: false }),
 }))
+vi.mock('@/lib/savedWorkflows', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  listSaved: vi.fn(async () => []),
+}))
 vi.mock('@/lib/coworkSubagentRegistry', () => ({
   listSubagents: vi.fn(async () => []),
 }))
@@ -116,6 +120,7 @@ vi.mock('@/hooks/useServiceHub', () => {
   const hub = {
     app: () => ({ getJanDataFolder: vi.fn(async () => '/data') }),
     dialog: () => ({ open: vi.fn(async () => '/repo') }),
+    events: () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }),
   }
   return { useServiceHub: () => hub, getServiceHub: () => hub }
 })

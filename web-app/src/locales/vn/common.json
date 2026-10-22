@@ -1103,6 +1103,8 @@
     "alsoAttached": "Cũng được đính kèm",
     "addFolder": "Thêm thư mục khác",
     "removeFolder": "Gỡ {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "chỉ đọc",
     "editable": "có thể sửa",
     "inWorktree": "qua worktree",

@@ -106,10 +106,8 @@ describe('Cowork run crossing the compaction threshold', () => {
     })
 
     expect(outcome.stoppedBy).toBe('done')
-    // 10 tool steps and the answer, plus the two "are you really done?" checks
-    // a long run's text-only reply is answered with (#222): the stubbed model
-    // just repeats 'done'. Not a compaction effect.
-    expect(outcome.steps).toBe(13)
+    // 10 tool steps and the answer.
+    expect(outcome.steps).toBe(11)
     // It compacted, more than once over a long run, and every request after
     // the first compaction carried the summary rather than the whole history.
     expect(records.length).toBeGreaterThanOrEqual(2)

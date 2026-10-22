@@ -1106,6 +1106,8 @@
     "alsoAttached": "其他附加",
     "addFolder": "添加其他文件夹",
     "removeFolder": "移除 {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "只读",
     "editable": "可编辑",
     "inWorktree": "通过 worktree",

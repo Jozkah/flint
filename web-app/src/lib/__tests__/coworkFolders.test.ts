@@ -5,6 +5,7 @@ import {
   sameFolder,
   withExtraFolder,
   withoutExtraFolder,
+  writableExtraFoldersOf,
 } from '../coworkFolders'
 import { buildCoworkSystemPrompt } from '../coworkPrompt'
 
@@ -35,6 +36,14 @@ describe('a session’s extra folders', () => {
     expect(sameFolder('/Repo', '/repo')).toBe(false)
   })
 
+  it('are all writable unless marked read-only, by any spelling', () => {
+    const session = { folder: '/a', extraFolders: ['/b', '/c'] }
+    expect(writableExtraFoldersOf(session)).toEqual(['/b', '/c'])
+    expect(
+      writableExtraFoldersOf({ ...session, readOnlyExtraFolders: ['/c/'] })
+    ).toEqual(['/b'])
+  })
+
   it('contain paths under them, not siblings sharing a prefix', () => {
     const roots = ['C:\\work\\b', '/home/u/c']
     expect(isInsideAnyFolder(roots, 'C:\\work\\b\\src\\x.ts')).toBe(true)
@@ -62,8 +71,8 @@ describe('the prompt with extra folders', () => {
     })
     expect(prompt).toContain('The user also attached these folders')
     expect(prompt).toContain('- `/repo/b`')
-    expect(prompt).toContain('- `/repo/c`')
-    expect(prompt).toContain('They are READ-ONLY')
+    expect(prompt).toContain('- `/repo/c` (READ-ONLY)')
+    expect(prompt).not.toContain('attached directly')
   })
 
   it('says they are writable when the grant covers them', () => {
@@ -71,10 +80,22 @@ describe('the prompt with extra folders', () => {
       ...base,
       folderAccess: 'worktree',
       extraFolders: ['/repo/b'],
-      extraFoldersWritable: true,
+      writableExtraFolders: ['/repo/b'],
     })
+    expect(prompt).toContain('- `/repo/b` (editable)')
     expect(prompt).toContain('attached directly (never through a worktree)')
-    expect(prompt).not.toContain('They are READ-ONLY')
+    expect(prompt).not.toContain('READ-ONLY ones')
+  })
+
+  it('names which folders are editable when only some are', () => {
+    const prompt = buildCoworkSystemPrompt({
+      ...base,
+      extraFolders: ['/repo/b', '/repo/c'],
+      writableExtraFolders: ['/repo/c'],
+    })
+    expect(prompt).toContain('- `/repo/b` (READ-ONLY)')
+    expect(prompt).toContain('- `/repo/c` (editable)')
+    expect(prompt).toContain('READ-ONLY ones')
   })
 
   it('says nothing about extra folders when there are none', () => {

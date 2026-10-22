@@ -1113,6 +1113,8 @@
     "alsoAttached": "Também anexadas",
     "addFolder": "Adicionar outra pasta",
     "removeFolder": "Remover {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "somente leitura",
     "editable": "editável",
     "inWorktree": "via worktree",

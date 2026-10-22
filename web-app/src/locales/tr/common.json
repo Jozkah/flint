@@ -1104,6 +1104,8 @@
     "alsoAttached": "Ayrıca eklenenler",
     "addFolder": "Başka bir klasör ekle",
     "removeFolder": "{{folder}} kaldır",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "salt okunur",
     "editable": "düzenlenebilir",
     "inWorktree": "worktree üzerinden",

@@ -1132,6 +1132,8 @@
     "alsoAttached": "Również dołączone",
     "addFolder": "Dodaj kolejny folder",
     "removeFolder": "Usuń {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "tylko do odczytu",
     "editable": "edytowalny",
     "inWorktree": "przez worktree",
