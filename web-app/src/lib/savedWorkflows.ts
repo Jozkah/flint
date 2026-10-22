@@ -143,6 +143,8 @@ export async function listSaved(io: RunIo): Promise<SavedWorkflow[]> {
     return []
   }
   const out: SavedWorkflow[] = []
+  // A listing that is not an array (no folder yet, a stub backend) lists nothing.
+  if (!Array.isArray(paths)) return []
   for (const path of paths.filter((one) => one.endsWith('.json')).slice(0, MAX_SAVED_WORKFLOWS)) {
     const one = parseSaved(await io.read(path).catch(() => ''))
     if ('saved' in one) out.push(one.saved)
