@@ -1131,6 +1131,8 @@
     "alsoAttached": "Также подключены",
     "addFolder": "Добавить ещё папку",
     "removeFolder": "Убрать {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "только чтение",
     "editable": "редактируемая",
     "inWorktree": "через worktree",

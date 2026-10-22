@@ -1104,6 +1104,8 @@
     "alsoAttached": "साथ में संलग्न",
     "addFolder": "एक और फ़ोल्डर जोड़ें",
     "removeFolder": "{{folder}} हटाएँ",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "केवल पढ़ने के लिए",
     "editable": "संपादन योग्य",
     "inWorktree": "worktree के ज़रिए",

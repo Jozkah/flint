@@ -1131,6 +1131,8 @@
     "alsoAttached": "Také připojeno",
     "addFolder": "Přidat další složku",
     "removeFolder": "Odebrat {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "jen pro čtení",
     "editable": "upravitelné",
     "inWorktree": "přes worktree",

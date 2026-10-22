@@ -1096,6 +1096,8 @@
     "alsoAttached": "Juga dilampirkan",
     "addFolder": "Tambah folder lain",
     "removeFolder": "Hapus {{folder}}",
+    "makeReadOnly": "Make {{folder}} read-only",
+    "makeEditable": "Make {{folder}} editable",
     "readOnly": "hanya-baca",
     "editable": "dapat diedit",
     "inWorktree": "melalui worktree",
