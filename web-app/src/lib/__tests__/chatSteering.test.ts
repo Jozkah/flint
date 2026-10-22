@@ -292,3 +292,47 @@ describe('stopChatTurn (Stop on a running tool call)', () => {
     expect(stopStream).toHaveBeenCalledOnce()
   })
 })
+
+describe('a step that only thought after tool work', () => {
+  const thoughtOnly = (id: string): UIMessage[] => [
+    { id: 'u', role: 'user', parts: [{ type: 'text', text: 'compare' }] },
+    {
+      id,
+      role: 'assistant',
+      parts: [
+        { type: 'step-start' },
+        {
+          type: 'tool-web_search',
+          toolCallId: 'c1',
+          state: 'output-available',
+          input: {},
+          output: 'ok',
+        },
+        { type: 'step-start' },
+        { type: 'reasoning', text: 'Let me search for both in parallel.', state: 'done' },
+      ],
+    } as UIMessage,
+  ]
+  const args = (messages: UIMessage[]) => ({
+    messages,
+    aborted: false,
+    takeSteering: () => [],
+    send: vi.fn(),
+  })
+
+  it('sends one more request, once per reply', () => {
+    const msgs = thoughtOnly('t1')
+    expect(chatFollowUp(args(msgs))).toBe(true)
+    expect(chatFollowUp(args(msgs))).toBe(false)
+  })
+
+  it('does not retry a reply that answered in text', () => {
+    const msgs = thoughtOnly('t2')
+    ;(msgs[1].parts as unknown[]).push({ type: 'text', text: 'Here it is.' })
+    expect(chatFollowUp(args(msgs))).toBe(false)
+  })
+
+  it('does not retry a stopped run', () => {
+    expect(chatFollowUp({ ...args(thoughtOnly('t3')), aborted: true })).toBe(false)
+  })
+})
