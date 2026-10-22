@@ -55,6 +55,12 @@ function ModePicker({
   )
 }
 
+// Module-level so the default is one stable object: an inline default was a new
+// object every render, which re-created `refresh`, re-ran its effect, and every
+// status reply re-rendered -- an endless jev_status loop (a secret-store read
+// each time) that froze Linux desktops on opening this page.
+const DEFAULT_API = { jevStatus, jevReceipts, jevSetKey, jevClearKey }
+
 type JevTab = 'setup' | 'automatic' | 'profiles' | 'receipts'
 
 const TAB_OF_ANCHOR: Record<string, JevTab> = {
@@ -73,7 +79,7 @@ const TAB_OF_ANCHOR: Record<string, JevTab> = {
  * -- with exactly what each one sends, and the recent decision receipts.
  */
 export function JevSettingsCard({
-  api = { jevStatus, jevReceipts, jevSetKey, jevClearKey },
+  api = DEFAULT_API,
   anchors,
 }: {
   /** Search targets for the three settings, named by the page that renders them. */
