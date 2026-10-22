@@ -1809,7 +1809,7 @@ pub async fn preview_change(
     let scratch = workspace::ensure_scratch_dir(&session_id).await?;
     let target = crate::tools::sandbox::resolve_path(&root, Some(&scratch), raw);
     // Canonical when it exists, so a link is judged by where it leads.
-    let judged = target.canonicalize().unwrap_or_else(|_| target.clone());
+    let judged = crate::tools::sandbox::canonicalize_lenient(&target).unwrap_or_else(|_| target.clone());
     if !crate::undo::within(&judged, &roots) {
         return Ok(None);
     }
@@ -1857,7 +1857,7 @@ pub async fn check_write_secrets(
     let root = roots[0].clone();
     let scratch = workspace::ensure_scratch_dir(&session_id).await?;
     let target = crate::tools::sandbox::resolve_path(&root, Some(&scratch), raw);
-    let judged = target.canonicalize().unwrap_or_else(|_| target.clone());
+    let judged = crate::tools::sandbox::canonicalize_lenient(&target).unwrap_or_else(|_| target.clone());
     if !crate::undo::within(&judged, &roots) {
         return Ok(Vec::new());
     }
