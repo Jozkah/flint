@@ -89,7 +89,8 @@
     "update": "Perbarui",
     "variant": "Varian",
     "whatToLookFor": "Yang dicari",
-    "searchPlaceholderShort": "Cari atau tempel URL…"
+    "searchPlaceholderShort": "Cari atau tempel URL…",
+    "resultLimit": "Tampilkan"
   },
   "llamaImport": {
     "description": "Impor file model GGUF untuk menambahkannya ke koleksi Anda. Aktifkan dukungan multimodal untuk melampirkan mmproj bagi input gambar atau audio, atau dukungan model draf untuk speculative decoding. Model embedding terdeteksi otomatis.",

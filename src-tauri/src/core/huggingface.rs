@@ -12,7 +12,10 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use crate::core::hf_endpoint::{endpoint_url, hf_endpoint};
-const MAX_SEARCH_RESULTS: &str = "50";
+/// Results per search when the caller names no limit, and the most it may ask
+/// for (the Hub refuses larger pages).
+const DEFAULT_SEARCH_RESULTS: u32 = 50;
+const MAX_SEARCH_RESULTS: u32 = 1000;
 const MAX_README_BYTES: u64 = 512 * 1024;
 /// How much of a GGUF file's start is read to learn its architecture. The
 /// key/value header sits at the front; a megabyte covers it for every model
@@ -400,8 +403,13 @@ pub async fn huggingface_search_models(
     query: String,
     format: Option<String>,
     token: Option<String>,
+    limit: Option<u32>,
 ) -> Result<Vec<HuggingFaceModel>, String> {
     let query = query.trim();
+    let limit = limit
+        .unwrap_or(DEFAULT_SEARCH_RESULTS)
+        .clamp(1, MAX_SEARCH_RESULTS)
+        .to_string();
     let mut url = api_url(&["api", "models"])?;
     {
         let mut pairs = url.query_pairs_mut();
@@ -431,7 +439,7 @@ pub async fn huggingface_search_models(
             .append_pair("sort", "downloads")
             .append_pair("direction", "-1")
             .append_pair("full", "true")
-            .append_pair("limit", MAX_SEARCH_RESULTS);
+            .append_pair("limit", &limit);
     }
     let response = hf_client(token.as_deref())?
         .get(url)

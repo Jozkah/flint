@@ -88,6 +88,20 @@ export const Route = createFileRoute(route.hub.index as any)({
 type SortMode = 'downloads' | 'likes' | 'updated' | 'newest'
 type ParamFilter = 'all' | 'tiny' | 'small' | 'medium' | 'large'
 
+// How many repos one Hugging Face search returns; the Hub caps a page at 1000.
+const RESULT_LIMITS = [50, 100, 200, 500, 1000]
+const RESULT_LIMIT_KEY = 'flint-hub-result-limit'
+
+function readResultLimit(): number {
+  try {
+    const saved = Number(localStorage.getItem(RESULT_LIMIT_KEY))
+    if (RESULT_LIMITS.includes(saved)) return saved
+  } catch {
+    // Storage unavailable; use the default.
+  }
+  return RESULT_LIMITS[0]
+}
+
 function inParameterBucket(value: number | null, bucket: ParamFilter): boolean {
   if (bucket === 'all') return true
   if (value == null) return false
@@ -138,6 +152,7 @@ function ModelDiscoverRoute() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sort, setSort] = useState<SortMode>('downloads')
+  const [resultLimit, setResultLimit] = useState(readResultLimit)
   const [params, setParams] = useState<ParamFilter>('all')
   const [architecture, setArchitecture] = useState('all')
   const [task, setTask] = useState<HubTaskId>('all')
@@ -181,8 +196,8 @@ function ModelDiscoverRoute() {
         let result: HuggingFaceModel[]
         if (format === 'all' && IS_MACOS) {
           const [gguf, mlx] = await Promise.all([
-            searchHuggingFaceModelsByWords(debouncedQuery, token, 'gguf'),
-            searchHuggingFaceModelsByWords(debouncedQuery, token, 'mlx'),
+            searchHuggingFaceModelsByWords(debouncedQuery, token, 'gguf', resultLimit),
+            searchHuggingFaceModelsByWords(debouncedQuery, token, 'mlx', resultLimit),
           ])
           const byId = new Map<string, HuggingFaceModel>()
           for (const model of [...gguf, ...mlx]) byId.set(model.id, model)
@@ -191,7 +206,8 @@ function ModelDiscoverRoute() {
           result = await searchHuggingFaceModelsByWords(
             debouncedQuery,
             token,
-            format
+            format,
+            resultLimit
           )
         }
         if (cancelled) return
@@ -216,7 +232,7 @@ function ModelDiscoverRoute() {
     return () => {
       cancelled = true
     }
-  }, [debouncedQuery, token, format, source])
+  }, [debouncedQuery, token, format, source, resultLimit])
 
   const installedIds = useMemo(() => {
     const ids = new Set<string>()
@@ -599,6 +615,29 @@ function ModelDiscoverRoute() {
                 <option value="likes">{t('sweep:hub.mostLiked')}</option>
                 <option value="updated">{t('sweep:hub.recentlyUpdated')}</option>
                 <option value="newest">{t('sweep:hub.newest')}</option>
+              </Select>
+            </label>
+            <label className="inline-flex items-center gap-2">
+              {t('sweep:hub.resultLimit')}
+              <Select
+                value={String(resultLimit)}
+                onChange={(event) => {
+                  const next = Number(event.target.value)
+                  setResultLimit(next)
+                  try {
+                    localStorage.setItem(RESULT_LIMIT_KEY, String(next))
+                  } catch {
+                    // Not saved; the choice still applies until restart.
+                  }
+                }}
+                className={SELECT}
+                aria-label={t('sweep:hub.resultLimit')}
+              >
+                {RESULT_LIMITS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
               </Select>
             </label>
             </div>

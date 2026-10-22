@@ -95,7 +95,8 @@
     "update": "Aktualizovat",
     "variant": "Varianta",
     "whatToLookFor": "Co hledat",
-    "searchPlaceholderShort": "Hledat nebo vložit URL…"
+    "searchPlaceholderShort": "Hledat nebo vložit URL…",
+    "resultLimit": "Zobrazit"
   },
   "llamaImport": {
     "description": "Importujte soubor modelu GGUF a přidejte ho do své kolekce. Zapněte multimodální podporu pro připojení mmproj pro vstup obrazu nebo zvuku, případně podporu konceptových modelů pro spekulativní dekódování. Embeddingové modely se rozpoznají automaticky.",

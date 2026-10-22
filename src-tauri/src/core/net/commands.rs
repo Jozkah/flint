@@ -102,8 +102,13 @@ async fn huggingface_bridge<R: Runtime>(
                 .unwrap_or_default()
                 .to_string();
             let format = optional_string(&body, "format");
+            let limit = body
+                .get("limit")
+                .and_then(serde_json::Value::as_u64)
+                .map(|n| n.min(u32::MAX as u64) as u32);
             serde_json::to_value(
-                crate::core::huggingface::huggingface_search_models(query, format, token).await?,
+                crate::core::huggingface::huggingface_search_models(query, format, token, limit)
+                    .await?,
             )
             .map_err(|e| e.to_string())?
         }

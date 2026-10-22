@@ -91,7 +91,8 @@
     "update": "Update",
     "variant": "Variant",
     "whatToLookFor": "What to look for",
-    "searchPlaceholderShort": "Search or paste a URL…"
+    "searchPlaceholderShort": "Search or paste a URL…",
+    "resultLimit": "Show"
   },
   "llamaImport": {
     "description": "Import a GGUF model file to add it to your collection. Enable multimodal support to attach an mmproj for image or audio input, or draft model support for speculative decoding. Embedding models are detected automatically.",

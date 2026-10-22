@@ -91,7 +91,8 @@
     "update": "Actualitza",
     "variant": "Variant",
     "whatToLookFor": "Què cercar",
-    "searchPlaceholderShort": "Cerca o enganxa un URL…"
+    "searchPlaceholderShort": "Cerca o enganxa un URL…",
+    "resultLimit": "Mostra"
   },
   "llamaImport": {
     "description": "Importa un fitxer de model GGUF per afegir-lo a la teva col·lecció. Activa el suport multimodal per adjuntar un mmproj (entrada d’imatge o àudio), o el suport de models esborrany per a la descodificació especulativa. Els models d’embedding es detecten automàticament.",
