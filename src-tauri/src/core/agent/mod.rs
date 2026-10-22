@@ -25,6 +25,8 @@ pub mod cc_links;
 pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
+// Only the TUI asks a side question; the desktop build would see it as dead code.
+#[cfg(any(test, feature = "cli"))]
 pub mod btw;
 pub mod structured_output;
 pub mod compaction;
