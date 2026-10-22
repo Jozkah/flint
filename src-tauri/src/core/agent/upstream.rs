@@ -1414,6 +1414,8 @@ pub(crate) async fn collect_mcp_openai_tools_noted(
     Ok((assemble_tool_array(resolved), notice))
 }
 
+// Only the desktop proxy calls this; the cli build has no proxy module.
+#[cfg(any(test, not(feature = "cli")))]
 pub(crate) async fn execute_mcp_tool_calls(
     tool_calls: &[serde_json::Value],
     tool_to_server: &HashMap<String, String>,

@@ -364,6 +364,7 @@ fn cap_pinned(text: &str, max: usize) -> String {
 /// rather than replaying keeps the request small and sidesteps tool pairing:
 /// the dropped span is a slice, so its trailing assistant `tool_calls` may have
 /// their results in the kept tail, and an upstream rejects that conversation.
+#[cfg(any(test, feature = "cli"))]
 pub(crate) fn snapshot_transcript(messages: &[Value], max_chars: usize) -> String {
     clamp_middle(&render_transcript(messages), max_chars)
 }
