@@ -1140,6 +1140,8 @@
     "footnoteWorktree": "Flint mění git worktree této složky, nikdy složku samotnou.",
     "writesFolder": "Připojené složky",
     "writesFolderNote": "Úpravy se zapisují přímo do složek označených jako upravitelné.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Worktree relace",
     "writesWorktreeNote": "Úpravy se zapisují do git worktree, který si zkontrolujete a sloučíte.",
     "footnote": "Agent tuto složku pouze čte. Nic v ní se nikdy nemění.",

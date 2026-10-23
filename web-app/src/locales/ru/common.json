@@ -1140,6 +1140,8 @@
     "footnoteWorktree": "Flint изменяет git worktree этой папки, но никогда саму папку.",
     "writesFolder": "Подключённые папки",
     "writesFolderNote": "Правки вносятся прямо в папки, отмеченные как редактируемые.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Worktree сеанса",
     "writesWorktreeNote": "Правки вносятся в git worktree, который вы проверяете и сливаете.",
     "footnote": "Агент только читает эту папку. Ничто внутри неё никогда не изменяется.",

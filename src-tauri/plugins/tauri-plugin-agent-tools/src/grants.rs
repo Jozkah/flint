@@ -37,6 +37,11 @@ struct Grant {
     /// primary stays the first write root (the one a managed worktree run's
     /// shell starts in).
     extra_roots: Vec<PathBuf>,
+    /// Whether `root` itself may be written. False when the user marked the
+    /// primary folder read-only and left only some extras editable: `root` is
+    /// still recorded (it is what the grant was issued for), but it is never a
+    /// write root, so writes there are refused.
+    root_writable: bool,
     /// The session workspace the grant was issued against. Its sandbox
     /// container holds the folder ACEs on AppContainer, so withdrawing the
     /// grant withdraws them through it ([`withdraw_folder_aces`]).
@@ -164,6 +169,24 @@ pub fn authorize_with_extras(
     workspace: &Path,
     data_folder: &Path,
 ) -> Result<String, String> {
+    authorize_roots(session_id, folder, extras, true, workspace, data_folder)
+}
+
+/// [`authorize_with_extras`], choosing whether the primary folder is writable.
+///
+/// `main_writable: false` grants the extras alone: `folder` is validated and
+/// recorded, but it is left out of every write root, so a run under this
+/// grant is refused writes to the primary folder. Such a grant must cover at
+/// least one extra folder, or it would authorize nothing.
+#[cfg(any(feature = "tauri", test))]
+pub fn authorize_roots(
+    session_id: &str,
+    folder: &str,
+    extras: &[String],
+    main_writable: bool,
+    workspace: &Path,
+    data_folder: &Path,
+) -> Result<String, String> {
     if !capability() && !worktree_capability() {
         return Err(format!(
             "this platform cannot confine a shell to a project folder ({}), \
@@ -178,7 +201,7 @@ pub fn authorize_with_extras(
     // Where only Jan's own worktrees can be confined, the user's folder cannot
     // be authorized at all: decided on the canonical path, after validation,
     // so no spelling of a user folder passes for a worktree.
-    if !capability() && !is_owned_worktree(&root, data_folder) {
+    if main_writable && !capability() && !is_owned_worktree(&root, data_folder) {
         return Err(format!(
             "this platform can only confine a run to a Jan-managed worktree ({}), \
              so editing {} directly is not available; choose Managed worktree instead",
@@ -197,6 +220,11 @@ pub fn authorize_with_extras(
             extra_roots.push(extra);
         }
     }
+    if !main_writable && extra_roots.is_empty() {
+        return Err("a grant that leaves the main folder read-only must cover \
+                    at least one other folder"
+            .to_string());
+    }
 
     let id = new_id();
     let mut grants = registry().lock().map_err(|_| "grant registry poisoned")?;
@@ -212,6 +240,7 @@ pub fn authorize_with_extras(
             session_id: session_id.to_string(),
             root,
             extra_roots,
+            root_writable: main_writable,
             workspace: workspace.to_path_buf(),
         },
     );
@@ -257,7 +286,8 @@ pub fn workspace_holds_grant(workspace: &Path, folder: &Path) -> bool {
     };
     grants.values().any(|grant| {
         grant.workspace.canonicalize().unwrap_or_else(|_| grant.workspace.clone()) == workspace
-            && (grant.root == folder || grant.extra_roots.contains(&folder))
+            && ((grant.root_writable && grant.root == folder)
+                || grant.extra_roots.contains(&folder))
     })
 }
 
@@ -372,19 +402,34 @@ pub fn revoke_session(session_id: &str) -> usize {
 pub fn resolve(grant_id: &str, session_id: &str) -> Option<PathBuf> {
     let grants = registry().lock().ok()?;
     let grant = grants.get(grant_id)?;
-    (grant.session_id == session_id).then(|| grant.root.clone())
+    (grant.session_id == session_id && grant.root_writable).then(|| grant.root.clone())
 }
 
-/// Every root this grant authorizes -- the primary first, then the session's
-/// additional attached folders -- or nothing when the grant is not live and
-/// ours. Same session check as [`resolve`].
+/// Whether this live grant of `session_id` lets the primary folder be written.
+/// False for an unknown grant, another session's, or one covering extras only.
+#[cfg(any(feature = "tauri", test))]
+pub fn main_writable(grant_id: &str, session_id: &str) -> bool {
+    registry().lock().ok().is_some_and(|grants| {
+        grants
+            .get(grant_id)
+            .is_some_and(|g| g.session_id == session_id && g.root_writable)
+    })
+}
+
+/// Every root this grant authorizes -- the primary first (unless the grant
+/// leaves it read-only), then the session's additional attached folders -- or
+/// nothing when the grant is not live and ours. Same session check as
+/// [`resolve`].
 #[cfg(any(feature = "tauri", test))]
 pub fn resolve_all(grant_id: &str, session_id: &str) -> Vec<PathBuf> {
     let Ok(grants) = registry().lock() else {
         return Vec::new();
     };
     match grants.get(grant_id) {
-        Some(grant) if grant.session_id == session_id => std::iter::once(grant.root.clone())
+        Some(grant) if grant.session_id == session_id => grant
+            .root_writable
+            .then(|| grant.root.clone())
+            .into_iter()
             .chain(grant.extra_roots.iter().cloned())
             .collect(),
         _ => Vec::new(),
@@ -421,7 +466,10 @@ pub fn extend_session(
     let Some(grant) = grants.values_mut().find(|g| g.session_id == session_id) else {
         return Ok(false);
     };
-    let near = std::iter::once(&grant.root).chain(grant.extra_roots.iter()).any(|root| {
+    // Only inside or beside what the grant lets the run write: a read-only
+    // primary does not vouch for folders made in or next to it.
+    let primary = grant.root_writable.then_some(&grant.root);
+    let near = primary.into_iter().chain(grant.extra_roots.iter()).any(|root| {
         folder.starts_with(root) || (folder.parent().is_some() && folder.parent() == root.parent())
     });
     if !near {
@@ -430,7 +478,8 @@ pub fn extend_session(
             folder.display()
         ));
     }
-    if folder != grant.root && !grant.extra_roots.contains(&folder) && !folder.starts_with(&grant.root) {
+    let covered_by_primary = grant.root_writable && folder.starts_with(&grant.root);
+    if folder != grant.root && !grant.extra_roots.contains(&folder) && !covered_by_primary {
         grant.extra_roots.push(folder);
     }
     Ok(true)
@@ -568,6 +617,46 @@ mod tests {
 
         revoke(&id);
         assert!(resolve_all(&id, &session).is_empty());
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn a_grant_with_a_read_only_main_folder_never_writes_it() {
+        require_capability!();
+        let (ws, data, repo, session) = fixture();
+        let other = ws.parent().unwrap().join("editable-extra");
+        std::fs::create_dir_all(&other).unwrap();
+        let extras = [other.to_string_lossy().into_owned()];
+        let id = authorize_roots(&session, &repo.to_string_lossy(), &extras, false, &ws, &data)
+            .unwrap();
+
+        // Only the extra is a write root; the primary is not, by any route.
+        assert_eq!(resolve_all(&id, &session), vec![other.canonicalize().unwrap()]);
+        assert_eq!(resolve(&id, &session), None);
+        assert!(!main_writable(&id, &session));
+        assert!(!workspace_holds_grant(&ws, &repo));
+        assert!(workspace_holds_grant(&ws, &other));
+        // A folder made inside the read-only primary does not join the grant.
+        let inside = repo.join("made-here");
+        std::fs::create_dir_all(&inside).unwrap();
+        assert!(extend_session(&session, &inside, &ws, &data).is_err());
+        assert_eq!(resolve_all(&id, &session).len(), 1);
+
+        // The old callers still get a writable primary.
+        let id2 = authorize_with_extras(&session, &repo.to_string_lossy(), &extras, &ws, &data)
+            .unwrap();
+        assert!(main_writable(&id2, &session));
+        assert_eq!(resolve_all(&id2, &session)[0], repo.canonicalize().unwrap());
+
+        revoke(&id2);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn a_read_only_main_grant_needs_another_folder() {
+        let (ws, data, repo, session) = fixture();
+        assert!(authorize_roots(&session, &repo.to_string_lossy(), &[], false, &ws, &data).is_err());
+        assert_eq!(revoke_session(&session), 0);
         let _ = std::fs::remove_dir_all(ws.parent().unwrap());
     }
 

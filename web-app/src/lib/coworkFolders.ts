@@ -48,6 +48,41 @@ export function writableExtraFoldersOf(session: {
   )
 }
 
+/**
+ * Whether the user marked the main folder read-only. Absent (every session
+ * saved before per-folder access) is derived from the access mode, so old
+ * sessions keep what they had: read-only exactly under Review only. A managed
+ * worktree is never read-only here; its writes go to the worktree.
+ */
+export function mainFolderReadOnlyOf(session: {
+  access?: string
+  mainFolderReadOnly?: boolean
+}): boolean {
+  if (session.access === 'managed-worktree') return false
+  // A session with no access recorded is Review only (see `accessOf`).
+  return (
+    session.mainFolderReadOnly ??
+    (session.access ?? 'review-only') === 'review-only'
+  )
+}
+
+/**
+ * A run's prompt access for the main folder, with the user's read-only mark
+ * applied: an `editable` session whose main folder is marked read-only is
+ * told that folder is read-only (its grant does not cover it).
+ */
+export function withMainFolderMark<T extends string>(
+  access: T | 'read-only',
+  session:
+    | { access?: string; mainFolderReadOnly?: boolean }
+    | null
+    | undefined
+): T | 'read-only' {
+  return access === 'editable' && session && mainFolderReadOnlyOf(session)
+    ? 'read-only'
+    : access
+}
+
 /** `extras` with `folder` appended, unless it is already attached. */
 export function withExtraFolder(
   primary: string | null,

@@ -1122,6 +1122,8 @@
     "footnoteWorktree": "O Flint altera um worktree Git desta pasta, nunca a própria pasta.",
     "writesFolder": "As pastas anexadas",
     "writesFolderNote": "As edições vão direto para as pastas marcadas como editáveis.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Worktree da sessão",
     "writesWorktreeNote": "As edições vão para um worktree Git para você revisar e mesclar.",
     "footnote": "O agente apenas lê esta pasta. Nada dentro dela é modificado.",

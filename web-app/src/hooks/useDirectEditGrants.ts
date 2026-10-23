@@ -68,7 +68,12 @@ type DirectEditGrantsState = {
      * The session's extra attached folders, covered by the same grant. They
      * are attached directly even when `folder` is a managed worktree.
      */
-    extraFolders?: readonly string[]
+    extraFolders?: readonly string[],
+    /**
+     * False grants `extraFolders` alone: `folder` stays read-only and the
+     * backend refuses writes there. Absent or true: `folder` is writable.
+     */
+    mainWritable?: boolean
   ) => Promise<AuthorizeOutcome>
   /** Withdraw this session's grant, backend first. */
   revokeSession: (sessionId: string) => Promise<boolean>
@@ -102,13 +107,21 @@ export const useDirectEditGrants = create<DirectEditGrantsState>()(
       }
     },
 
-    authorize: async (sessionId, folder, dataFolder, extraFolders) => {
+    authorize: async (sessionId, folder, dataFolder, extraFolders, mainWritable) => {
       const generation = (get().generation[sessionId] ?? 0) + 1
       set((s) => ({ generation: { ...s.generation, [sessionId]: generation } }))
       let grantId: string
       try {
         grantId =
-          extraFolders && extraFolders.length > 0
+          mainWritable === false
+            ? await directEditAuthorize(
+                dataFolder,
+                sessionId,
+                folder,
+                [...(extraFolders ?? [])],
+                false
+              )
+            : extraFolders && extraFolders.length > 0
             ? await directEditAuthorize(dataFolder, sessionId, folder, [
                 ...extraFolders,
               ])

@@ -1115,6 +1115,8 @@
     "footnoteWorktree": "Flint 更改的是此文件夹的 git worktree，绝不直接更改文件夹本身。",
     "writesFolder": "附加的文件夹",
     "writesFolderNote": "编辑直接写入标记为可编辑的文件夹。",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "会话 worktree",
     "writesWorktreeNote": "编辑写入 git worktree，供你审阅并合并。",
     "footnote": "Agent 会直接读取和编辑此文件夹。可在 diff 面板中查看更改内容。",

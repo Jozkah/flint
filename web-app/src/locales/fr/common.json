@@ -1120,6 +1120,8 @@
     "footnoteWorktree": "Flint modifie un worktree Git de ce dossier, jamais le dossier lui-même.",
     "writesFolder": "Les dossiers joints",
     "writesFolderNote": "Les modifications sont appliquées directement dans les dossiers marqués modifiables.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Worktree de la session",
     "writesWorktreeNote": "Les modifications sont faites dans un worktree Git que vous pouvez relire et fusionner.",
     "footnote": "L'agent ne fait que lire ce dossier. Rien à l'intérieur n'est jamais modifié.",
