@@ -1113,6 +1113,8 @@
     "footnoteWorktree": "Flint इस फ़ोल्डर का एक git worktree बदलता है, फ़ोल्डर को स्वयं कभी नहीं।",
     "writesFolder": "संलग्न फ़ोल्डर",
     "writesFolderNote": "संपादन सीधे उन फ़ोल्डरों में होते हैं जिन्हें संपादन योग्य चिह्नित किया गया है।",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "सत्र worktree",
     "writesWorktreeNote": "संपादन एक git worktree में होते हैं, जिसे आप समीक्षा करके मर्ज कर सकते हैं।",
     "footnote": "एजेंट इस फ़ोल्डर को केवल पढ़ता है। इसके अंदर कुछ भी कभी नहीं बदला जाता।",

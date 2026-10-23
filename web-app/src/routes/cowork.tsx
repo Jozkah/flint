@@ -323,6 +323,9 @@ import {
 import {
   extraFoldersOf,
   isInsideAnyFolder,
+  mainFolderReadOnlyOf,
+  sameFolder,
+  withMainFolderMark,
   writableExtraFoldersOf,
 } from '@/lib/coworkFolders'
 import {
@@ -800,6 +803,11 @@ export function CoworkPage() {
       }),
     [folder, sessionExtraFolders, sessionReadOnlyExtras]
   )
+  // The main folder's own mark, independent of the extras'. Under Edit this
+  // folder it decides whether the grant covers the main folder at all.
+  const mainFolderReadOnly = session
+    ? mainFolderReadOnlyOf(session)
+    : false
   // Apply to folder copies into the primary or any extra folder; a sandbox
   // path that starts with an extra folder's name goes to that folder.
   const applyFolders = useMemo(
@@ -1988,37 +1996,81 @@ export function CoworkPage() {
   )
 
   /**
-   * Mark one extra folder editable or read-only.
+   * Mark one folder, the main one (`null`) or an extra, editable or
+   * read-only. Every folder has its own mark, in any combination.
    *
-   * The grant covers exactly the editable ones, so a live grant is re-issued
-   * for the new set (the backend replaces the session's grant). If that fails
-   * the old grant may cover a folder now marked read-only, so it is withdrawn
-   * and the session returns to Review only.
+   * The grant covers exactly the editable folders, so it is re-issued for the
+   * new set (the backend replaces the session's grant); a grant that leaves
+   * the main folder out refuses writes there. Making a folder editable from
+   * Review only makes that one folder editable and moves the session to Edit
+   * this folder; marking the last editable folder read-only returns it to
+   * Review only. If re-issuing fails, the old grant may cover a folder now
+   * marked read-only, so it is withdrawn and the session returns to Review
+   * only. In a managed worktree the main folder is edited through the
+   * worktree and only the extras toggle.
    */
-  const setExtraFolderWritable = useCallback(
-    async (extra: string, writable: boolean) => {
-      if (!session?.id || folderHeld(session.id)) return
+  const setFolderWritable = useCallback(
+    async (target: string | null, writable: boolean) => {
+      if (!session?.id || !session.folder || folderHeld(session.id)) return
       const sid = session.id
-      useCoworkSessions.getState().setExtraFolderWritable(sid, extra, writable)
+      const store = useCoworkSessions.getState()
+      const before = store.sessions.find((x) => x.id === sid)
+      if (!before?.folder) return
+      const worktreeMode = accessOf(before) === 'managed-worktree'
+      if (target === null && worktreeMode) return
       const grant = useDirectEditGrants.getState().grantFor(sid)
-      if (!grant) return
+      // No grant: nothing is editable (Review only), or a worktree run whose
+      // grant has not arrived; only the former is left by a toggle.
+      if (!grant && (worktreeMode || !writable)) return
+      if (!grant) {
+        store.setMainFolderReadOnly(sid, target !== null)
+        for (const extra of extraFoldersOf(before)) {
+          store.setExtraFolderWritable(
+            sid,
+            extra,
+            target !== null && sameFolder(extra, target)
+          )
+        }
+      } else if (target === null) {
+        store.setMainFolderReadOnly(sid, !writable)
+      } else {
+        store.setExtraFolderWritable(sid, target, writable)
+      }
       const updated = useCoworkSessions
         .getState()
         .sessions.find((x) => x.id === sid)
-      const dataFolder = await serviceHub.app().getJanDataFolder()
-      const result =
-        updated && dataFolder
-          ? await useDirectEditGrants
-              .getState()
-              .authorize(sid, grant.folder, dataFolder, writableExtraFoldersOf(updated))
-          : { ok: false as const, reason: 'no data folder' }
-      if (!result.ok) {
+      if (!updated) return
+      const mainWritable = worktreeMode || !mainFolderReadOnlyOf(updated)
+      const extras = writableExtraFoldersOf(updated)
+      const fallBack = async () => {
         await useDirectEditGrants.getState().revokeSession(sid)
         useCoworkSessions.getState().setAccess(sid, 'review-only')
-        if (result.reason !== 'superseded') toast.error(result.reason)
       }
+      if (!mainWritable && extras.length === 0) {
+        // No folder is editable any more: the session is Review only.
+        await fallBack()
+        return
+      }
+      const dataFolder = await serviceHub.app().getJanDataFolder()
+      const result = dataFolder
+        ? await useDirectEditGrants
+            .getState()
+            .authorize(
+              sid,
+              grant?.folder ?? before.folder,
+              dataFolder,
+              extras,
+              mainWritable
+            )
+        : { ok: false as const, reason: 'no data folder' }
+      if (!result.ok) {
+        await fallBack()
+        if (result.reason !== 'superseded') toast.error(result.reason)
+        return
+      }
+      if (!grant) useCoworkSessions.getState().setAccess(sid, 'edit-folder')
     },
-    [session?.id, folderHeld, serviceHub]
+    [session?.id, session?.folder, folderHeld, serviceHub]
   )
 
   // `liveTurns` holds only the rows this run has produced — `commitTurns`
@@ -2359,8 +2411,12 @@ export function CoworkPage() {
           useDirectEditGrants.getState().revokeSession(sessionId),
         // Read after the await, so it sees where the user actually is.
         currentBinding: () => bindingRef.current,
-        setAccess: (sessionId) =>
-          useCoworkSessions.getState().setAccess(sessionId, 'edit-folder'),
+        setAccess: (sessionId) => {
+          // Choosing Edit this folder edits the main folder: its read-only
+          // mark goes back to being derived from the access.
+          useCoworkSessions.getState().setMainFolderReadOnly(sessionId, undefined)
+          useCoworkSessions.getState().setAccess(sessionId, 'edit-folder')
+        },
       })
       if (result === 'granted') setConfirmDirectEdit(false)
       return result === 'granted'
@@ -2408,7 +2464,13 @@ export function CoworkPage() {
         if (!dataFolder) return
         const result = await useDirectEditGrants
           .getState()
-          .authorize(sid, folder, dataFolder, writableExtraFolders)
+          .authorize(
+            sid,
+            folder,
+            dataFolder,
+            writableExtraFolders,
+            !mainFolderReadOnly
+          )
         if (!result.ok) {
           // One toast per folder: reopening sessions that share an unreadable
           // folder updated the same message instead of stacking copies, and it
@@ -2446,6 +2508,7 @@ export function CoworkPage() {
     effective.destination,
     serviceHub,
     writableExtraFolders,
+    mainFolderReadOnly,
   ])
 
   /**
@@ -3647,7 +3710,7 @@ export function CoworkPage() {
       writableExtraFolders: runWritableExtraFolders,
       // Read from the run's frozen snapshot, not re-derived here: the model
       // must be told exactly what the gate and the ledger will act on.
-      folderAccess: promptFolderAccess(origins),
+      folderAccess: withMainFolderMark(promptFolderAccess(origins), current),
       worktreeBranch: worktree?.branch ?? null,
       gitBranch,
       projectInstructions,
@@ -3918,7 +3981,9 @@ export function CoworkPage() {
             bashAvailable: sandboxEnforces(),
             // The parent's frozen answers, handed down unchanged: a child never
             // resolves its own access or its own instructions.
-            folderAccess: promptFolderAccess(origins),
+            folderAccess: destination
+              ? promptFolderAccess(origins)
+              : withMainFolderMark(promptFolderAccess(origins), current),
             worktreeBranch: worktree?.branch ?? null,
             projectInstructions,
             compatInstructions: compatInstructionBlocks(runCompat),
@@ -6064,7 +6129,11 @@ export function CoworkPage() {
         }
         readOnlyExtraFolders={session?.readOnlyExtraFolders}
         onToggleExtraWritable={(extra, writable) =>
-          void setExtraFolderWritable(extra, writable)
+          void setFolderWritable(extra, writable)
+        }
+        mainFolderReadOnly={mainFolderReadOnly}
+        onToggleMainWritable={(writable) =>
+          void setFolderWritable(null, writable)
         }
         onAddExtra={() => void addExtraFolder()}
         onRemoveExtra={(extra) => void removeExtraFolder(extra)}

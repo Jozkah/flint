@@ -1124,6 +1124,8 @@
     "footnoteWorktree": "Flint canvia un worktree de Git d'aquesta carpeta, mai la carpeta mateixa.",
     "writesFolder": "Les carpetes adjuntes",
     "writesFolderNote": "Les edicions s'apliquen directament a les carpetes marcades com a editables.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Worktree de la sessió",
     "writesWorktreeNote": "Les edicions es fan en un worktree de Git perquè les revisis i les fusionis.",
     "footnote": "L'agent només llegeix aquesta carpeta. Res del que hi ha dins es modifica mai.",

@@ -468,15 +468,33 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
     lines.push('You have a private writable workspace. Relative paths resolve against it.')
   }
   if (opts.readOnlyFolder) {
+    // Each folder has its own access: the main one can be read-only while an
+    // extra folder is editable, and the session is Review only only when no
+    // folder is editable.
+    const someExtraEditable = (opts.extraFolders ?? []).some((folder) =>
+      (opts.writableExtraFolders ?? []).some((one) => sameFolder(one, folder))
+    )
+    const mainReadOnlyOthersEditable =
+      opts.folderAccess !== 'worktree' &&
+      opts.folderAccess !== 'editable' &&
+      someExtraEditable
     lines.push(
       '',
-      `The user attached a project folder: \`${opts.readOnlyFolder}\`.`,
+      `The user attached a project folder: \`${opts.readOnlyFolder}\` (${
+        opts.folderAccess === 'worktree'
+          ? 'managed worktree'
+          : opts.folderAccess === 'editable'
+            ? 'editable'
+            : 'READ-ONLY'
+      }).`,
       `Access mode: ${
         opts.folderAccess === 'worktree'
           ? 'Managed worktree (writes go to the worktree below).'
           : opts.folderAccess === 'editable'
             ? 'Edit this folder (writes land in the folder).'
-            : 'Review only (writes go to your workspace, the session sandbox).'
+            : mainReadOnlyOthersEditable
+              ? 'Edit some folders (this main folder is READ-ONLY; only the folders marked editable below accept writes).'
+              : 'Review only (writes go to your workspace, the session sandbox).'
       }`,
       ...(opts.projectInstructions?.trim()
         ? [

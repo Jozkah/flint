@@ -160,13 +160,19 @@ export async function directEditAuthorize(
   sessionId: string,
   folder: string,
   /** The session's additional attached folders, covered by the same grant. */
-  extraFolders?: string[]
+  extraFolders?: string[],
+  /**
+   * False grants `extraFolders` alone and leaves `folder` read-only: the
+   * backend refuses writes there. Absent keeps `folder` writable.
+   */
+  mainWritable?: boolean
 ): Promise<string> {
   return await invoke('plugin:agent-tools|direct_edit_authorize', {
     dataFolder,
     sessionId,
     folder,
     extraFolders,
+    ...(mainWritable === false ? { mainWritable } : {}),
   })
 }
 

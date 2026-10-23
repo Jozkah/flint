@@ -119,6 +119,13 @@ export type CoworkSession = {
    * `writableExtraFoldersOf`.
    */
   readOnlyExtraFolders?: string[]
+  /**
+   * Whether the user marked the main folder read-only, independently of the
+   * extra folders. Absent: derived from `access` (read-only exactly under
+   * Review only), so sessions saved before this need no migration. Read
+   * through `mainFolderReadOnlyOf`.
+   */
+  mainFolderReadOnly?: boolean
   turns: CoworkTurn[]
   /** The authoritative conversation, sent to the model each turn. */
   messages: UIMessage[]
@@ -359,6 +366,11 @@ type CoworkSessionsState = {
   removeExtraFolder: (id: string, folder: string) => void
   /** Mark one extra folder editable or read-only; the grant is the caller's. */
   setExtraFolderWritable: (id: string, folder: string, writable: boolean) => void
+  /**
+   * Mark the main folder read-only or editable; undefined goes back to
+   * deriving it from the access mode. The grant is the caller's.
+   */
+  setMainFolderReadOnly: (id: string, readOnly: boolean | undefined) => void
   /** The session's own provider/model choice (janhq/jan#8905). */
   setModel: (id: string, model: { provider: string; id: string }) => void
   /** Record the input still pending for the session; empty clears it. */
@@ -834,6 +846,17 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               readOnlyExtraFolders: writable ? rest : [...rest, folder],
               updated: now(),
             }
+          }),
+        })),
+
+      setMainFolderReadOnly: (id, readOnly) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) => {
+            if (x.id !== id) return x
+            const next = { ...x, updated: now() }
+            if (readOnly === undefined) delete next.mainFolderReadOnly
+            else next.mainFolderReadOnly = readOnly
+            return next
           }),
         })),
 

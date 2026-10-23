@@ -85,6 +85,28 @@ describe('holding a grant', () => {
     ).toBeUndefined()
   })
 
+  it('asks for the extras alone when the main folder is read-only', async () => {
+    const result = await store().authorize(SESSION, FOLDER, DATA, ['/b'], false)
+    expect(result.ok).toBe(true)
+    expect(bindings.directEditAuthorize).toHaveBeenCalledWith(
+      DATA,
+      SESSION,
+      FOLDER,
+      ['/b'],
+      false
+    )
+  })
+
+  it('keeps the old call when the main folder is writable', async () => {
+    await store().authorize(SESSION, FOLDER, DATA, ['/b'], true)
+    expect(bindings.directEditAuthorize).toHaveBeenCalledWith(
+      DATA,
+      SESSION,
+      FOLDER,
+      ['/b']
+    )
+  })
+
   it('keeps a grant under the session it was issued to', async () => {
     const outcome = await store().authorize(SESSION, FOLDER, DATA)
 

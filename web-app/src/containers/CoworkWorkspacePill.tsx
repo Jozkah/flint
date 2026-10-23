@@ -83,10 +83,18 @@ type Props = {
   /** Extra folders the user marked read-only; the rest follow `access`. */
   readOnlyExtraFolders?: readonly string[]
   /**
-   * Toggle one extra folder between editable and read-only. Offered only
-   * while the session's access allows edits there.
+   * Toggle one extra folder between editable and read-only. Offered wherever
+   * a grant can cover extra folders (`extraFoldersWritable`), Review only
+   * included: making one editable there is how a session leaves it.
    */
   onToggleExtraWritable?: (folder: string, writable: boolean) => void
+  /**
+   * Whether the user marked the main folder read-only under Edit this
+   * folder; the other folders keep their own marks. Ignored in a worktree.
+   */
+  mainFolderReadOnly?: boolean
+  /** Toggle the main folder between editable and read-only, like an extra. */
+  onToggleMainWritable?: (writable: boolean) => void
   /** Pick another folder to attach beside the primary one. */
   onAddExtra?: () => void
   onRemoveExtra?: (folder: string) => void
@@ -123,6 +131,8 @@ export function CoworkWorkspacePill({
   extraFoldersWritable = false,
   readOnlyExtraFolders = [],
   onToggleExtraWritable,
+  mainFolderReadOnly = false,
+  onToggleMainWritable,
   onAddExtra,
   onRemoveExtra,
   describeProject,
@@ -135,7 +145,13 @@ export function CoworkWorkspacePill({
   const [open, setOpen] = useState(false)
   const serviceHub = useServiceHub()
   const folderName = folder ? basenameOf(folder) : null
-  const primaryAccess = primaryFolderAccess(access)
+  // Each folder has its own mark. Under Edit this folder the main folder can
+  // be read-only while an extra is editable; the session is Review only
+  // only when no folder is editable.
+  const primaryAccess: FolderAccess =
+    access === 'edit-folder' && mainFolderReadOnly
+      ? 'read-only'
+      : primaryFolderAccess(access)
   // Whether the session's access lets extra folders be edited at all; each
   // one is then editable unless the user marked it read-only.
   const extrasCanEdit = access !== 'review-only' && extraFoldersWritable
@@ -143,6 +159,17 @@ export function CoworkWorkspacePill({
     readOnlyExtraFolders.some((one) => sameFolder(one, extra))
   const extraAccess = (extra: string): FolderAccess =>
     extrasCanEdit && !extraMarkedReadOnly(extra) ? 'editable' : 'read-only'
+  const canToggleExtras = extraFoldersWritable && !!onToggleExtraWritable
+  // A worktree is the main folder's own way of being edited: no toggle there.
+  const canToggleMain =
+    extraFoldersWritable && !!onToggleMainWritable && primaryAccess !== 'worktree'
+  const someExtraEditable = extraFolders.some(
+    (extra) => extraAccess(extra) === 'editable'
+  )
+  // Where writes land: the main folder, its worktree, only the editable
+  // extras, or the sandbox when nothing is editable.
+  const writesKind =
+    primaryAccess === 'read-only' && someExtraEditable ? 'extras' : primaryAccess
   const TriggerIcon = BADGE[primaryAccess].icon
   const badge = (kind: FolderAccess, size: number) => {
     const Icon = BADGE[kind].icon
@@ -277,7 +304,26 @@ export function CoworkWorkspacePill({
                     {truncateMiddle(folder, 40)}
                   </p>
                 </div>
-                {badge(primaryAccess, 10)}
+                {canToggleMain ? (
+                  <button
+                    type="button"
+                    className="shrink-0 cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    aria-label={t(
+                      primaryAccess === 'editable'
+                        ? 'common:workspace.makeReadOnly'
+                        : 'common:workspace.makeEditable',
+                      { folder: folderName }
+                    )}
+                    data-main-toggle
+                    onClick={() =>
+                      onToggleMainWritable?.(primaryAccess !== 'editable')
+                    }
+                  >
+                    {badge(primaryAccess, 10)}
+                  </button>
+                ) : (
+                  badge(primaryAccess, 10)
+                )}
               </div>
               {gitBranch && (
                 <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -313,20 +359,20 @@ export function CoworkWorkspacePill({
                           >
                             {truncateMiddle(extra, 40)}
                           </span>
-                          {extrasCanEdit && onToggleExtraWritable ? (
+                          {canToggleExtras ? (
                             <button
                               type="button"
                               className="shrink-0 cursor-pointer rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                               aria-label={t(
-                                extraMarkedReadOnly(extra)
-                                  ? 'common:workspace.makeEditable'
-                                  : 'common:workspace.makeReadOnly',
+                                extraAccess(extra) === 'editable'
+                                  ? 'common:workspace.makeReadOnly'
+                                  : 'common:workspace.makeEditable',
                                 { folder: basenameOf(extra) }
                               )}
                               onClick={() =>
-                                onToggleExtraWritable(
+                                onToggleExtraWritable?.(
                                   extra,
-                                  extraMarkedReadOnly(extra)
+                                  extraAccess(extra) !== 'editable'
                                 )
                               }
                             >
@@ -383,16 +429,20 @@ export function CoworkWorkspacePill({
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-[length:calc(var(--ui-font-base)*0.8125)] font-semibold">
-                    {primaryAccess === 'editable'
+                    {writesKind === 'editable'
                       ? t('common:workspace.writesFolder')
-                      : primaryAccess === 'worktree'
+                      : writesKind === 'extras'
+                        ? t('common:workspace.writesExtras')
+                        : writesKind === 'worktree'
                         ? t('common:workspace.writesWorktree')
                         : t('common:workspace.sandbox')}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {primaryAccess === 'editable'
+                    {writesKind === 'editable'
                       ? t('common:workspace.writesFolderNote')
-                      : primaryAccess === 'worktree'
+                      : writesKind === 'extras'
+                        ? t('common:workspace.writesExtrasNote')
+                        : writesKind === 'worktree'
                         ? t('common:workspace.writesWorktreeNote')
                         : workspacePath
                           ? t('common:workspace.sandboxNote')

@@ -1115,6 +1115,8 @@
     "footnoteWorktree": "Flint 變更的是此資料夾的 git worktree，絕不直接變更資料夾本身。",
     "writesFolder": "附加的資料夾",
     "writesFolderNote": "編輯會直接寫入標示為可編輯的資料夾。",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "工作階段 worktree",
     "writesWorktreeNote": "編輯會寫入 git worktree，供你檢閱並合併。",
     "footnote": "代理程式只會讀取此資料夾。其中的任何內容都不會被修改。",

@@ -44,6 +44,40 @@ export function finishedToolBatch(
   }
 }
 
+/** Messages already given their one retry after a thought-only step. */
+const retriedThoughtOnly = new Set<string>()
+
+/**
+ * The key of a last step that only thought: the model worked with tools, then
+ * its latest step carried reasoning but no text, file or tool call ("let me
+ * search for both..." and nothing more). The run would end there with no
+ * reply; one more request lets the model act on what it planned.
+ */
+export function thoughtOnlyStep(messages: UIMessage[]): string | null {
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== 'assistant') return null
+  const parts = last.parts as Array<Record<string, unknown>>
+  let from = 0
+  parts.forEach((p, i) => {
+    if (p.type === 'step-start') from = i + 1
+  })
+  const isTool = (p: Record<string, unknown>) =>
+    p.type === 'dynamic-tool' || String(p.type).startsWith('tool-')
+  if (!parts.slice(0, from).some(isTool)) return null
+  const step = parts.slice(from)
+  const acted = step.some(
+    (p) =>
+      isTool(p) ||
+      p.type === 'file' ||
+      (p.type === 'text' && !!String(p.text ?? '').trim())
+  )
+  if (acted) return null
+  const thought = step.some(
+    (p) => p.type === 'reasoning' && !!String(p.text ?? '').trim()
+  )
+  return thought ? `${last.id}:${from}` : null
+}
+
 export function chatFollowUp({
   messages,
   aborted,
@@ -63,6 +97,11 @@ export function chatFollowUp({
   onBatchFinished?: (batch: { key: string; names: string[] }) => void
 }): boolean {
   if (aborted) return false
+  const thoughtOnly = thoughtOnlyStep(messages)
+  if (thoughtOnly && !retriedThoughtOnly.has(thoughtOnly.split(':')[0])) {
+    retriedThoughtOnly.add(thoughtOnly.split(':')[0])
+    return true
+  }
   if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false
   const batch = finishedToolBatch(messages)
   if (batch) onBatchFinished?.(batch)
