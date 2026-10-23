@@ -1112,6 +1112,8 @@
     "footnoteWorktree": "Flint thay đổi một git worktree của thư mục này, không bao giờ thay đổi chính thư mục.",
     "writesFolder": "Các thư mục đính kèm",
     "writesFolderNote": "Các chỉnh sửa được ghi thẳng vào những thư mục được đánh dấu có thể sửa.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Worktree của phiên",
     "writesWorktreeNote": "Các chỉnh sửa được ghi vào một git worktree để bạn xem lại và hợp nhất.",
     "footnote": "Tác tử chỉ đọc thư mục này. Không có gì bên trong bị sửa đổi.",

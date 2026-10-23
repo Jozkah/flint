@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   extraFoldersOf,
   isInsideAnyFolder,
+  mainFolderReadOnlyOf,
   sameFolder,
+  withMainFolderMark,
   withExtraFolder,
   withoutExtraFolder,
   writableExtraFoldersOf,
@@ -54,6 +56,37 @@ describe('a session’s extra folders', () => {
   })
 })
 
+describe('the main folder’s own mark', () => {
+  it('is derived from the access on a session saved before it existed', () => {
+    expect(mainFolderReadOnlyOf({ access: 'review-only' })).toBe(true)
+    expect(mainFolderReadOnlyOf({})).toBe(true)
+    expect(mainFolderReadOnlyOf({ access: 'edit-folder' })).toBe(false)
+    expect(mainFolderReadOnlyOf({ access: 'managed-worktree' })).toBe(false)
+  })
+
+  it('is independent of the access once set, except in a worktree', () => {
+    expect(
+      mainFolderReadOnlyOf({ access: 'edit-folder', mainFolderReadOnly: true })
+    ).toBe(true)
+    expect(
+      mainFolderReadOnlyOf({
+        access: 'managed-worktree',
+        mainFolderReadOnly: true,
+      })
+    ).toBe(false)
+  })
+
+  it('turns an editable prompt access read-only, and nothing else', () => {
+    const marked = { access: 'edit-folder', mainFolderReadOnly: true }
+    expect(withMainFolderMark('editable', marked)).toBe('read-only')
+    expect(withMainFolderMark('editable', { access: 'edit-folder' })).toBe(
+      'editable'
+    )
+    expect(withMainFolderMark('worktree', marked)).toBe('worktree')
+    expect(withMainFolderMark('editable', null)).toBe('editable')
+  })
+})
+
 describe('the prompt with extra folders', () => {
   const base = {
     workspacePath: '/data/sessions/s1',
@@ -96,6 +129,29 @@ describe('the prompt with extra folders', () => {
     expect(prompt).toContain('- `/repo/b` (READ-ONLY)')
     expect(prompt).toContain('- `/repo/c` (editable)')
     expect(prompt).toContain('READ-ONLY ones')
+  })
+
+  it('says the main folder is read-only while an extra is editable', () => {
+    const prompt = buildCoworkSystemPrompt({
+      ...base,
+      folderAccess: 'read-only',
+      extraFolders: ['/repo/b'],
+      writableExtraFolders: ['/repo/b'],
+    })
+    expect(prompt).toContain('project folder: `/repo/a` (READ-ONLY)')
+    expect(prompt).toContain('Edit some folders')
+    expect(prompt).not.toContain('Review only (writes go')
+    expect(prompt).toContain('- `/repo/b` (editable)')
+  })
+
+  it('marks the main folder editable when it is', () => {
+    const prompt = buildCoworkSystemPrompt({
+      ...base,
+      folderAccess: 'editable',
+      extraFolders: ['/repo/b'],
+    })
+    expect(prompt).toContain('project folder: `/repo/a` (editable)')
+    expect(prompt).toContain('- `/repo/b` (READ-ONLY)')
   })
 
   it('says nothing about extra folders when there are none', () => {

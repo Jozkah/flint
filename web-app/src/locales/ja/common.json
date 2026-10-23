@@ -1113,6 +1113,8 @@
     "footnoteWorktree": "Flint はこのフォルダーの git worktree を変更し、フォルダー自体は変更しません。",
     "writesFolder": "添付したフォルダー",
     "writesFolderNote": "編集は「編集可」と表示されたフォルダーに直接反映されます。",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "セッションの worktree",
     "writesWorktreeNote": "編集は git worktree に反映され、レビューしてマージできます。",
     "footnote": "エージェントはこのフォルダーを読み取るだけです。中のものが変更されることはありません。",

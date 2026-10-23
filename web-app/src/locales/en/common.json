@@ -1153,6 +1153,8 @@
     "footnoteWorktree": "Flint changes a git worktree of this folder, never the folder itself.",
     "writesFolder": "The attached folders",
     "writesFolderNote": "Edits land directly in the folders marked editable.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Session worktree",
     "writesWorktreeNote": "Edits land in a git worktree for you to review and merge.",
     "footnote": "The agent only reads this folder. Nothing inside it is ever modified.",

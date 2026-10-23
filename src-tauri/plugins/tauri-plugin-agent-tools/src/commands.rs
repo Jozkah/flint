@@ -242,14 +242,18 @@ pub async fn direct_edit_authorize(
     folder: String,
     // The session's additional attached folders, covered by the same grant.
     extra_folders: Option<Vec<String>>,
+    // False grants the extra folders alone and leaves `folder` read-only.
+    // Absent keeps the old behaviour: `folder` is writable.
+    main_writable: Option<bool>,
 ) -> Result<String, AgentToolsError> {
     // The session's own workspace, which the folder must not overlap.
     let workspace =
         workspace::ensure_session_workspace(Path::new(&data_folder), &session_id).await?;
-    Ok(crate::grants::authorize_with_extras(
+    Ok(crate::grants::authorize_roots(
         &session_id,
         &folder,
         &extra_folders.unwrap_or_default(),
+        main_writable.unwrap_or(true),
         &workspace,
         Path::new(&data_folder),
     )?)
@@ -1162,7 +1166,12 @@ async fn execute_tool_inner(
     );
     // The attached folder the user let this run edit: where a bare relative
     // file path should land, ahead of any `request_access` grants appended below.
-    let edit_folder = write_roots.first().cloned();
+    // None when the grant leaves the primary read-only: its first root is then
+    // an extra folder, which bare relative paths must not silently target.
+    let edit_folder = write_grant
+        .as_deref()
+        .filter(|id| crate::grants::main_writable(id, &thread_id))
+        .and_then(|_| write_roots.first().cloned());
     let mut write_roots = write_roots;
     for root in access_write {
         if !write_roots.contains(&root) {
@@ -3464,6 +3473,7 @@ mod tests {
             sid.into(),
             repo.to_string_lossy().into(),
             Some(vec![extra.to_string_lossy().into()]),
+            None,
         )
         .await
         .expect("the folder is authorized");

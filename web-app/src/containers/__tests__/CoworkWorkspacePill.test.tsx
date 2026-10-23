@@ -300,15 +300,69 @@ describe('CoworkWorkspacePill', () => {
       expect(onToggleExtraWritable).toHaveBeenCalledWith('C:/repo/b', true)
     })
 
-    it('offers no toggle under Review only', async () => {
+    it('lets an extra folder be made editable from Review only', async () => {
+      const onToggleExtraWritable = vi.fn()
       await open({
         access: 'review-only',
         extraFoldersWritable: true,
+        onToggleExtraWritable,
+      })
+      await userEvent.click(
+        screen.getByRole('button', { name: /makeEditable/ })
+      )
+      expect(onToggleExtraWritable).toHaveBeenCalledWith('C:/repo/b', true)
+    })
+
+    it('offers no toggle where the platform cannot grant a folder', async () => {
+      await open({
+        access: 'review-only',
+        extraFoldersWritable: false,
         onToggleExtraWritable: vi.fn(),
+        onToggleMainWritable: vi.fn(),
       })
       expect(
         screen.queryByRole('button', { name: /makeReadOnly|makeEditable/ })
       ).toBeNull()
+    })
+
+    it('toggles the main folder from its badge, like an extra', async () => {
+      const onToggleMainWritable = vi.fn()
+      await open({
+        access: 'edit-folder',
+        extraFoldersWritable: true,
+        readOnlyExtraFolders: ['C:/repo/b'],
+        onToggleMainWritable,
+      })
+      await userEvent.click(
+        screen.getByRole('button', { name: /makeReadOnly/ })
+      )
+      expect(onToggleMainWritable).toHaveBeenCalledWith(false)
+    })
+
+    it('shows a read-only main folder beside an editable extra', async () => {
+      const onToggleMainWritable = vi.fn()
+      expect(
+        await open({
+          access: 'edit-folder',
+          extraFoldersWritable: true,
+          mainFolderReadOnly: true,
+          onToggleMainWritable,
+        })
+      ).toEqual(['read-only', 'editable'])
+      expect(screen.getByText('common:workspace.writesExtras')).toBeInTheDocument()
+      await userEvent.click(
+        screen.getByRole('button', { name: /makeEditable/ })
+      )
+      expect(onToggleMainWritable).toHaveBeenCalledWith(true)
+    })
+
+    it('offers no main-folder toggle in a managed worktree', async () => {
+      await open({
+        access: 'managed-worktree',
+        extraFoldersWritable: true,
+        onToggleMainWritable: vi.fn(),
+      })
+      expect(document.querySelector('[data-main-toggle]')).toBeNull()
     })
   })
 

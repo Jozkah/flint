@@ -1113,6 +1113,8 @@
     "footnoteWorktree": "Flint bu klasörün bir git worktree'sini değiştirir, klasörün kendisini asla.",
     "writesFolder": "Eklenen klasörler",
     "writesFolderNote": "Düzenlemeler doğrudan düzenlenebilir olarak işaretlenen klasörlere yazılır.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Oturum worktree'si",
     "writesWorktreeNote": "Düzenlemeler, inceleyip birleştirmeniz için bir git worktree'sine yazılır.",
     "footnote": "Ajan bu klasörü doğrudan okur ve düzenler. Değişiklikleri fark panelinde inceleyin.",

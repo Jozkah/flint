@@ -1105,6 +1105,8 @@
     "footnoteWorktree": "Flint mengubah git worktree dari folder ini, tidak pernah folder itu sendiri.",
     "writesFolder": "Folder yang dilampirkan",
     "writesFolderNote": "Editan langsung masuk ke folder yang ditandai dapat diedit.",
+    "writesExtras": "The folders marked editable",
+    "writesExtrasNote": "The main folder stays read-only; edits land only in the other folders marked editable.",
     "writesWorktree": "Worktree sesi",
     "writesWorktreeNote": "Editan masuk ke git worktree untuk Anda tinjau dan gabungkan.",
     "footnote": "Agen hanya membaca folder ini. Tidak ada isinya yang pernah diubah.",

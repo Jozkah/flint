@@ -57,6 +57,17 @@ describe('a session’s extra folders', () => {
     expect(get().readOnlyExtraFolders).toEqual([])
   })
 
+  it('leave the main folder’s mark derived until it is set', () => {
+    const store = useCoworkSessions.getState()
+    expect(get().mainFolderReadOnly).toBeUndefined()
+    store.setMainFolderReadOnly('A', true)
+    expect(get().mainFolderReadOnly).toBe(true)
+    store.setMainFolderReadOnly('A', false)
+    expect(get().mainFolderReadOnly).toBe(false)
+    store.setMainFolderReadOnly('A', undefined)
+    expect('mainFolderReadOnly' in get()).toBe(false)
+  })
+
   it('forget a read-only mark when the folder is removed', () => {
     const store = useCoworkSessions.getState()
     store.addExtraFolder('A', '/repo/b')
