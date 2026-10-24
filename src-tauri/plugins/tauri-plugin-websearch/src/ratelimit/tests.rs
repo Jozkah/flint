@@ -310,3 +310,49 @@ fn local_address_refusals_keep_their_url() {
     let m = sanitize_error("refused to fetch http://[::1]/x: ::1 is a local or private address");
     assert!(m.contains("[::1]"), "{m}");
 }
+
+#[test]
+fn limits_from_one_parallel_burst_count_as_one_strike() {
+    let clock = FakeClock::new();
+    let gate = RateGate::new(clock.clone());
+    for _ in 0..3 {
+        gate.record_limit("duckduckgo", None);
+    }
+    assert_eq!(gate.wait_left("duckduckgo"), Some(BASE_COOLDOWN));
+}
+
+#[test]
+fn strikes_are_forgotten_after_a_long_quiet_spell() {
+    let clock = FakeClock::new();
+    let gate = RateGate::new(clock.clone());
+    gate.record_limit("duckduckgo", None);
+    clock.advance(BASE_COOLDOWN + Duration::from_secs(1));
+    assert_eq!(gate.record_limit("duckduckgo", None), backoff(2));
+    // The machine sleeps for hours; the next limit starts over.
+    clock.advance(Duration::from_secs(3 * 60 * 60));
+    assert_eq!(gate.record_limit("duckduckgo", None), BASE_COOLDOWN);
+}
+
+#[tokio::test]
+async fn a_limited_keyless_backend_falls_back_to_the_other() {
+    let limit = || Err::<(), _>(rate_limited_marker("DuckDuckGo", Some(202), None));
+    let (ddg, ddg_calls, _c1) = scripted("DuckDuckGo", false, vec![limit()]);
+    let (exa, exa_calls, _c2) = scripted("Exa", true, vec![Ok(())]);
+    let both = KeylessFallback { primary: Box::new(ddg), secondary: Box::new(exa) };
+    assert_eq!(both.search("q", 1).await.unwrap().len(), 1);
+    assert_eq!(ddg_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(exa_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn when_both_keyless_backends_fail_the_primary_error_is_kept() {
+    let (ddg, _, _c1) = scripted(
+        "DuckDuckGo",
+        false,
+        vec![Err(rate_limited_marker("DuckDuckGo", Some(202), None))],
+    );
+    let (exa, _, _c2) = scripted("Exa", true, vec![Err("Exa request failed: timeout".into())]);
+    let both = KeylessFallback { primary: Box::new(ddg), secondary: Box::new(exa) };
+    let msg = both.search("q", 1).await.unwrap_err();
+    assert!(is_gate_message(&msg) && msg.contains("DuckDuckGo"), "{msg}");
+}

@@ -132,14 +132,43 @@ pub fn create_provider(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "exa".to_string());
     let keyed = normalize_key(api_key.clone()).is_some();
-    let inner = create_raw_provider(&id, api_key, endpoint)?;
-    // Every backend goes through the rate-limit gate. It never switches
-    // provider: the query only ever goes to the one the user configured.
-    let gate_key = if id == "exa" && !keyed { "exa-hosted".to_string() } else { id.clone() };
+    // The keyless backends fall back to each other: the user chose "no key",
+    // not a vendor. A keyed or self-hosted backend never hands a query on.
+    match (id.as_str(), keyed) {
+        ("exa", false) => {
+            return Ok(Box::new(crate::ratelimit::KeylessFallback {
+                primary: gated("exa", None, None)?,
+                secondary: gated("duckduckgo", None, None)?,
+            }))
+        }
+        ("duckduckgo" | "ddg", _) => {
+            return Ok(Box::new(crate::ratelimit::KeylessFallback {
+                primary: gated("duckduckgo", None, None)?,
+                secondary: gated("exa", None, None)?,
+            }))
+        }
+        _ => {}
+    }
+    gated(&id, api_key, endpoint)
+}
+
+/// One backend behind its rate-limit gate.
+fn gated(
+    id: &str,
+    api_key: Option<String>,
+    endpoint: Option<String>,
+) -> Result<Box<dyn SearchProvider>, String> {
+    let keyless_exa = id == "exa" && normalize_key(api_key.clone()).is_none();
+    let inner = create_raw_provider(id, api_key, endpoint)?;
+    let gate_key = match id {
+        "exa" if keyless_exa => "exa-hosted".to_string(),
+        "ddg" => "duckduckgo".to_string(),
+        _ => id.to_string(),
+    };
     Ok(Box::new(crate::ratelimit::Gated::new(
-        display_name(&id),
+        display_name(id),
         gate_key,
-        id == "exa" && !keyed,
+        keyless_exa,
         inner,
         crate::ratelimit::global_gate(),
     )))
@@ -1527,6 +1556,10 @@ impl SearchProvider for DuckDuckGoProvider {
 
 impl DuckDuckGoProvider {
     async fn results_page(&self, form: &[(String, String)]) -> Result<String, String> {
+        // A model often searches several things at once; a burst of parallel
+        // posts is what trips DuckDuckGo's bot check, so they go one at a time.
+        static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let _turn = ONE_AT_A_TIME.lock().await;
         let resp = self
             .client
             .post(DUCKDUCKGO_HTML_URL)
