@@ -115,6 +115,18 @@ pub fn effective_data_folder(saved: &Path, roots: &Roots) -> PathBuf {
         return saved.to_path_buf();
     }
     let flint = flint_paths(roots);
+    // A completed copy or move ends on Flint's folder. The app config is the
+    // `settings.json` JAN also reads and writes, so a running JAN can put its
+    // own folder back there; without this the next start silently ran on
+    // JAN's data again and the migration looked undone.
+    if let Some(dest) = migrated_data_folder(&flint.config_dir) {
+        log::info!(
+            "saved data folder is JAN's {} but a migration completed into {}; using that",
+            legacy.display(),
+            dest.display()
+        );
+        return dest;
+    }
     let isolate = match read_decision(&flint.config_dir) {
         Some(Decision::Fresh | Decision::Undecided) => true,
         Some(Decision::Use) => false,
@@ -141,6 +153,15 @@ pub fn effective_data_folder(saved: &Path, roots: &Roots) -> PathBuf {
         return flint.data_folder;
     }
     saved.to_path_buf()
+}
+
+/// The data folder a completed copy or move migration populated, if it still
+/// exists.
+fn migrated_data_folder(flint_config_dir: &Path) -> Option<PathBuf> {
+    let m = manifest::read(flint_config_dir).ok().flatten()?;
+    let copied = matches!(m.mode, manifest::ModeTag::Copy | manifest::ModeTag::Move);
+    (m.status == manifest::Status::Complete && copied && m.destination.data_folder.is_dir())
+        .then_some(m.destination.data_folder)
 }
 
 /// Whether provider keys must come from a keyring service of Flint's own
@@ -190,6 +211,27 @@ mod tests {
         );
         let r = execute(&p, &ExecuteOpts::with_holder("test"));
         assert_eq!(r.status, manifest::Status::Complete, "{:?}", r.error);
+    }
+
+    /// A running JAN rewriting the shared settings.json back to its own
+    /// folder must not undo a completed copy.
+    #[test]
+    fn a_completed_copy_keeps_flint_on_its_folder_when_the_config_names_jans() {
+        let fx = jan_install();
+        let jan = jan_folder(&fx);
+        run(&fx, Mode::Copy, &[Category::Conversations]);
+        assert_eq!(
+            effective_data_folder(&jan, &fx.roots),
+            flint_paths(&fx.roots).data_folder
+        );
+    }
+
+    #[test]
+    fn a_completed_reuse_still_runs_on_jans_folder() {
+        let fx = jan_install();
+        let jan = jan_folder(&fx);
+        run(&fx, Mode::Reuse, &[]);
+        assert_eq!(effective_data_folder(&jan, &fx.roots), jan);
     }
 
     #[test]

@@ -70,44 +70,42 @@ pub fn canonical_or_lexical(p: &Path) -> std::path::PathBuf {
 /// Total size in bytes of a file or directory tree. Missing paths are 0.
 /// Unreadable entries are skipped rather than aborting the walk.
 pub fn size_of(path: &Path) -> u64 {
-    if path.is_file() {
-        return fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    }
-    if !path.is_dir() {
-        return 0;
-    }
-    let mut total = 0u64;
-    if let Ok(rd) = fs::read_dir(path) {
-        for entry in rd.flatten() {
-            let child = entry.path();
-            if is_linked_dir(&child) {
-                continue;
-            }
-            total = total.saturating_add(size_of(&child));
-        }
-    }
-    total
+    tree_stats(path).0
 }
 
 /// Number of regular files under a file or directory tree (a file counts as 1).
 pub fn count_files(path: &Path) -> usize {
-    if path.is_file() {
-        return 1;
+    tree_stats(path).1
+}
+
+/// Total size in bytes and regular-file count of a tree, in one walk.
+///
+/// Detection reports both for every legacy item; walking a large models or
+/// `.npx` cache twice doubled the time the assistant spent loading.
+pub fn tree_stats(path: &Path) -> (u64, usize) {
+    let meta = match fs::metadata(path) {
+        Ok(m) => m,
+        Err(_) => return (0, 0),
+    };
+    if meta.is_file() {
+        return (meta.len(), 1);
     }
-    if !path.is_dir() {
-        return 0;
+    if !meta.is_dir() {
+        return (0, 0);
     }
-    let mut n = 0usize;
+    let (mut size, mut count) = (0u64, 0usize);
     if let Ok(rd) = fs::read_dir(path) {
         for entry in rd.flatten() {
             let child = entry.path();
             if is_linked_dir(&child) {
                 continue;
             }
-            n += count_files(&child);
+            let (s, c) = tree_stats(&child);
+            size = size.saturating_add(s);
+            count += c;
         }
     }
-    n
+    (size, count)
 }
 
 /// Collect every regular file path under `root` (recursively). `root` itself is
@@ -246,6 +244,16 @@ mod tests {
         let out = tempfile::tempdir().unwrap();
         copy_tree_preserving_mtime(root, &out.path().join("copy")).unwrap();
         assert_eq!(count_files(&out.path().join("copy")), 2);
+    }
+
+    #[test]
+    fn tree_stats_matches_size_and_count() {
+        let td = tempfile::tempdir().unwrap();
+        write(&td.path().join("a/b.bin"), b"12345");
+        write(&td.path().join("a/c/d.bin"), b"123");
+        assert_eq!(tree_stats(td.path()), (8, 2));
+        assert_eq!(tree_stats(&td.path().join("a/b.bin")), (5, 1));
+        assert_eq!(tree_stats(&td.path().join("missing")), (0, 0));
     }
 
     #[test]

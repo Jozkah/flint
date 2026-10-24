@@ -263,7 +263,7 @@ fn data_root_has_known_content(root: &std::path::Path) -> bool {
     }
     // A non-empty dir with unknown contents still counts as "present" so extra
     // dirs get discovered into Agent.
-    fsutil::size_of(root) > 0 && super::paths::is_non_empty_dir(root)
+    super::paths::is_non_empty_dir(root) && fsutil::size_of(root) > 0
 }
 
 /// Resolve every concrete entry for a category against a resolved source. This
@@ -351,8 +351,7 @@ pub fn detect_legacy(roots: &Roots) -> Option<LegacyData> {
         let mut cat_size = 0u64;
         let mut cat_count = 0usize;
         for entry in &entries {
-            let size = fsutil::size_of(&entry.source_path);
-            let count = fsutil::count_files(&entry.source_path);
+            let (size, count) = fsutil::tree_stats(&entry.source_path);
             let status = schema::classify_item(&entry.source_path, schema_version);
             cat_size = cat_size.saturating_add(size);
             cat_count += count;
