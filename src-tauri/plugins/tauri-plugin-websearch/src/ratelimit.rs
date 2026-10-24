@@ -8,9 +8,11 @@
 //! network; each one gets the same short message saying how long to wait, so an
 //! agent loop or a retrying model cannot hammer the provider.
 //!
-//! The gate never switches provider. A query only ever goes to the backend the
-//! user configured (the keyless default included), so a limit is waited out,
-//! not routed around to another vendor.
+//! The gate itself never switches provider. A keyed or self-hosted backend
+//! only ever gets the user's queries, so its limit is waited out. The keyless
+//! backends (hosted Exa and DuckDuckGo) are wrapped in [`KeylessFallback`]: when
+//! one fails or is limited the query goes to the other keyless one, since the
+//! user picked "no key" rather than a vendor.
 //!
 //! Errors leaving the gate are sanitised: provider name, status and wait time,
 //! never a raw response body, an API-key URL or an `Authorization` hint, which
@@ -26,6 +28,8 @@ use std::time::{Duration, Instant, SystemTime};
 pub const BASE_COOLDOWN: Duration = Duration::from_secs(30);
 /// Longest cool-down the backoff grows to.
 pub const MAX_COOLDOWN: Duration = Duration::from_secs(15 * 60);
+/// How long a reopened gate must stay quiet before earlier strikes are forgotten.
+pub const STRIKE_DECAY: Duration = Duration::from_secs(10 * 60);
 /// Longest `Retry-After` honoured; a larger value is clamped to this.
 pub const MAX_RETRY_AFTER: Duration = Duration::from_secs(60 * 60);
 
@@ -87,6 +91,18 @@ impl RateGate {
             open_until: now,
             strikes: 0,
         });
+        if let Some(left) = entry.open_until.checked_duration_since(now).filter(|d| !d.is_zero()) {
+            // Parallel calls that were already in flight when the gate closed
+            // report the same limit; counting each as a new strike would turn
+            // one burst into a 2-minute wait.
+            if retry_after.is_none() {
+                return left;
+            }
+        } else if now.saturating_duration_since(entry.open_until) >= STRIKE_DECAY {
+            // A limit long ago (before the machine slept, say) says nothing
+            // about now: start over at the base cool-down.
+            entry.strikes = 0;
+        }
         entry.strikes = entry.strikes.saturating_add(1);
         let cooldown = match retry_after {
             Some(d) => d.min(MAX_RETRY_AFTER),
@@ -348,6 +364,38 @@ impl SearchProvider for Gated {
         self.check()?;
         let r = self.inner.search_images(query, count).await;
         self.settle(r)
+    }
+}
+
+/// The two keyless backends: a failed or limited `primary` hands the call to
+/// `secondary`. When both fail the primary's error is returned, since it names
+/// the provider the user sees in Settings.
+pub struct KeylessFallback {
+    pub primary: Box<dyn SearchProvider>,
+    pub secondary: Box<dyn SearchProvider>,
+}
+
+#[async_trait]
+impl SearchProvider for KeylessFallback {
+    async fn search(&self, query: &str, count: u32) -> Result<Vec<SearchResult>, String> {
+        match self.primary.search(query, count).await {
+            Ok(v) => Ok(v),
+            Err(e) => self.secondary.search(query, count).await.map_err(|_| e),
+        }
+    }
+
+    async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
+        match self.primary.fetch(url).await {
+            Ok(v) => Ok(v),
+            Err(e) => self.secondary.fetch(url).await.map_err(|_| e),
+        }
+    }
+
+    async fn search_images(&self, query: &str, count: u32) -> Result<Vec<ImageResult>, String> {
+        match self.primary.search_images(query, count).await {
+            Ok(v) => Ok(v),
+            Err(e) => self.secondary.search_images(query, count).await.map_err(|_| e),
+        }
     }
 }
 

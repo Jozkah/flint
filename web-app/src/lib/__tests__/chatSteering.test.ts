@@ -320,9 +320,32 @@ describe('a step that only thought after tool work', () => {
     send: vi.fn(),
   })
 
-  it('sends one more request, once per reply', () => {
+  it('sends another request, at most twice per reply', () => {
     const msgs = thoughtOnly('t1')
     expect(chatFollowUp(args(msgs))).toBe(true)
+    expect(chatFollowUp(args(msgs))).toBe(true)
+    expect(chatFollowUp(args(msgs))).toBe(false)
+  })
+
+  it('retries an empty step after a failed search', () => {
+    const msgs = thoughtOnly('t4')
+    const parts = msgs[1].parts as Array<Record<string, unknown>>
+    parts[1] = {
+      type: 'tool-web_search',
+      toolCallId: 'c1',
+      state: 'output-error',
+      input: {},
+      errorText: 'Error: Web search is rate limited right now (DuckDuckGo)',
+    }
+    parts.pop()
+    expect(chatFollowUp(args(msgs))).toBe(true)
+  })
+
+  it('does not retry a reply with no tool work', () => {
+    const msgs: UIMessage[] = [
+      { id: 'u', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      { id: 't5', role: 'assistant', parts: [{ type: 'step-start' }] } as UIMessage,
+    ]
     expect(chatFollowUp(args(msgs))).toBe(false)
   })
 
