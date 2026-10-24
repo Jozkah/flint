@@ -37,19 +37,36 @@ fn roots() -> Roots {
     Roots::discover()
 }
 
+/// Run blocking migration work on the blocking pool.
+///
+/// Detection and planning walk every legacy tree (models, `.npx`/`.uvx`
+/// caches, logs) to size it. Done inline in an async command that walk held a
+/// runtime worker for as long as it took, which stalled every other IPC call
+/// and left the assistant spinning on a large install.
+async fn blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("migration task failed: {e}"))?
+}
+
 /// Detect a legacy JAN installation and whether the first-launch prompt is due.
 #[tauri::command]
 pub async fn migration_detect() -> Result<DetectDto, String> {
-    let roots = roots();
-    let flint = flint_paths(&roots);
-    let legacy = detect::detect_legacy(&roots);
-    let found = legacy.is_some();
-    let first_launch_pending = manifest::is_first_launch_pending(&flint.config_dir, found);
-    Ok(DetectDto {
-        found,
-        first_launch_pending,
-        legacy,
+    blocking(|| {
+        let roots = roots();
+        let flint = flint_paths(&roots);
+        let legacy = detect::detect_legacy(&roots);
+        let found = legacy.is_some();
+        let first_launch_pending = manifest::is_first_launch_pending(&flint.config_dir, found);
+        Ok(DetectDto {
+            found,
+            first_launch_pending,
+            legacy,
+        })
     })
+    .await
 }
 
 /// Build (but do not run) a migration plan.
@@ -59,17 +76,20 @@ pub async fn migration_plan(
     mode: Mode,
     default_conflict: Conflict,
 ) -> Result<MigrationPlan, String> {
-    let roots = roots();
-    let flint = flint_paths(&roots);
-    let legacy = detect::detect_legacy(&roots)
-        .ok_or_else(|| "no legacy JAN data found to plan".to_string())?;
-    Ok(plan::plan(
-        &legacy,
-        &flint,
-        &selected_categories,
-        mode,
-        default_conflict,
-    ))
+    blocking(move || {
+        let roots = roots();
+        let flint = flint_paths(&roots);
+        let legacy = detect::detect_legacy(&roots)
+            .ok_or_else(|| "no legacy JAN data found to plan".to_string())?;
+        Ok(plan::plan(
+            &legacy,
+            &flint,
+            &selected_categories,
+            mode,
+            default_conflict,
+        ))
+    })
+    .await
 }
 
 /// Rebuild the plan the webview sent from the real roots, keeping only the
@@ -181,16 +201,18 @@ pub async fn migration_execute<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     plan: MigrationPlan,
 ) -> Result<MigrationResult, String> {
-    let plan = trusted_plan(&plan, &roots())?;
-    let opts = ExecuteOpts::with_holder("flint-migration");
-    let was_complete = already_complete(&plan);
-    let target = data_folder_after(&plan);
-    let mode = plan.mode;
     let running = PathBuf::from(app_commands::get_app_configurations(app.clone()).data_folder);
-    // Run the (blocking) filesystem work off the async runtime.
-    let mut result = tauri::async_runtime::spawn_blocking(move || execute::execute(&plan, &opts))
-        .await
-        .map_err(|e| format!("migration task failed: {e}"))?;
+    // Re-planning walks the legacy trees again and execute copies them: all of
+    // it runs off the async runtime.
+    let (was_complete, target, mode, mut result) = blocking(move || {
+        let plan = trusted_plan(&plan, &roots())?;
+        let opts = ExecuteOpts::with_holder("flint-migration");
+        let was_complete = already_complete(&plan);
+        let target = data_folder_after(&plan);
+        let result = execute::execute(&plan, &opts);
+        Ok((was_complete, target, plan.mode, result))
+    })
+    .await?;
     if !was_complete && result.status == manifest::Status::Complete {
         match apply_data_folder(&app, &target, &running, mode) {
             // A copy or move changes the data a running session loaded at boot.
@@ -206,28 +228,20 @@ pub async fn migration_execute<R: tauri::Runtime>(
 /// The current manifest, if any.
 #[tauri::command]
 pub async fn migration_status() -> Result<Option<MigrationManifest>, String> {
-    let roots = roots();
-    let flint = flint_paths(&roots);
-    manifest::read(&flint.config_dir)
+    blocking(|| manifest::read(&flint_paths(&roots()).config_dir)).await
 }
 
 /// Roll back a completed/failed migration (removes Flint copies; restores JAN
 /// for a Move via its backup).
 #[tauri::command]
 pub async fn migration_rollback() -> Result<(), String> {
-    let roots = roots();
-    let flint = flint_paths(&roots);
-    tauri::async_runtime::spawn_blocking(move || execute::rollback_from_manifest(&flint.config_dir))
-        .await
-        .map_err(|e| format!("rollback task failed: {e}"))?
+    blocking(|| execute::rollback_from_manifest(&flint_paths(&roots()).config_dir)).await
 }
 
 /// Dismiss the migration prompt (records a dismissed manifest; never re-offered).
 #[tauri::command]
 pub async fn migration_dismiss() -> Result<(), String> {
-    let roots = roots();
-    let flint = flint_paths(&roots);
-    manifest::mark_dismissed(&flint.config_dir)
+    blocking(|| manifest::mark_dismissed(&flint_paths(&roots()).config_dir)).await
 }
 
 /// The command paths to add to `tauri::generate_handler!` in `lib.rs`.
