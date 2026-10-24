@@ -768,7 +768,14 @@ pub fn build_app() -> tauri::App {
     let builder = if cfg!(debug_assertions) && std::env::var_os("FLINT_ALLOW_MULTI_INSTANCE").is_some() {
         builder
     } else {
-        builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        // Flint keeps Jan's bundle identifier (`jan.ai.app`, so data paths carry
+        // over), and the plugin keys its lock off that identifier: a named mutex
+        // on Windows, a /tmp socket on macOS, a D-Bus name on Linux. With Jan
+        // running, Flint found Jan's lock, forwarded its argv to Jan and exited
+        // -- it "starts launching, then shuts down". The `semver` feature adds
+        // the major version (`_1_x_x`) to the key on every platform, which Jan
+        // (0.x, no semver suffix) never matches; Linux also gets its own D-Bus name.
+        builder.plugin(tauri_plugin_single_instance::Builder::new().dbus_id("app.flint.desktop").callback(|app, _argv, _cwd| {
             // argv can carry deep-link URLs with tokens, so it is not logged.
             log::info!("a second instance was launched; focusing the main window");
             if let Some(window) = app.get_webview_window("main") {
@@ -777,7 +784,7 @@ pub fn build_app() -> tauri::App {
                 let _ = window.set_focus();
             }
             // when defining deep link schemes at runtime, you must also check `argv` here
-        }))
+        }).build())
     };
 
     // #135: HTML previews are served from their own scheme so they carry
