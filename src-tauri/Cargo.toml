@@ -397,7 +397,7 @@ reqwest13 = { package = "reqwest", version = "0.13", default-features = false, f
 # The DevTools protocol client for "Verify in browser" (core::browser_verify):
 # plain `ws://127.0.0.1` to a browser Flint started, so no TLS backend.
 tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake"] }
-tauri-plugin-single-instance = { version = "2", features = ["deep-link"], optional = true }
+tauri-plugin-single-instance = { version = "2", features = ["deep-link", "semver"], optional = true }
 # Process table for the startup sweep of engines orphaned by an in-place update
 # (core/system/orphans.rs). Same version as the hardware and mlx plugins.
 sysinfo = "0.34.2"
