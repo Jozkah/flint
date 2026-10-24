@@ -91,3 +91,39 @@ export function partialWidgetArgs(jsonText: string): {
     ...(loading.length ? { loading_messages: loading } : {}),
   }
 }
+
+/**
+ * Mechanical problems in a finished widget that the model can fix on its next
+ * turn. Cheap string checks only: they catch the mistakes that make a widget
+ * look wrong, not every mistake.
+ */
+export function lintWidgetCode(code: string): string[] {
+  const out: string[] = []
+  for (const m of code.matchAll(/<svg\b[^>]*>/gi)) {
+    const tag = m[0]
+    if (!/\bviewBox\s*=/i.test(tag)) {
+      out.push('an <svg> has no viewBox, so it will not scale to the column')
+      break
+    }
+    if (/\s(?:width|height)\s*=\s*["']?\d/i.test(tag)) {
+      out.push('an <svg> has fixed width/height; keep only the viewBox')
+      break
+    }
+  }
+  for (const m of code.matchAll(/url\(#([\w-]+)\)/g)) {
+    if (!new RegExp(`\\bid\\s*=\\s*["']${m[1]}["']`).test(code)) {
+      out.push(`url(#${m[1]}) points at no element with that id`)
+      break
+    }
+  }
+  if (/\b(?:fill|stroke|color|background)\s*[:=]\s*["']?#[0-9a-f]{3,8}\b/i.test(code)) {
+    out.push('hard-coded hex colours ignore dark mode; use the theme variables')
+  }
+  if (/\bfetch\s*\(|XMLHttpRequest|\bsrc\s*=\s*["']https?:/i.test(code)) {
+    out.push('the frame has no network; external requests and images will fail')
+  }
+  if (/\bNaN\b|="undefined"|>undefined</.test(code)) {
+    out.push('the markup contains NaN or undefined, a sign of a broken computed value')
+  }
+  return out
+}

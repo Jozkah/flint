@@ -1,5 +1,5 @@
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
-import { normalizeWidgetCode, widgetFallbackTitle } from './code'
+import { lintWidgetCode, normalizeWidgetCode, widgetFallbackTitle } from './code'
 import {
   GUIDE_MODULES,
   MAX_LOADING_MESSAGE_CHARS,
@@ -33,7 +33,8 @@ const SHOW_WIDGET_DESCRIPTION =
   'a chart, or a small explainer the user can play with. Use it when seeing or touching it explains more than ' +
   'text, or when the user asks to "see" something. Do NOT use it for a simple answer, a list or code. ' +
   `widget_code is an HTML fragment (no html/head/body tags) styled with the theme variables from ${READ_ME_TOOL}; ` +
-  'it has no network access. Keep it compact and say in your reply what it shows.'
+  'it has no network access. Prefer plain SVG for diagrams and charts, built only from values in the conversation. ' +
+  'Keep it compact and say in your reply what it shows.'
 
 export function visualizeSchemas(): VisualizeToolSchema[] {
   return [
@@ -184,5 +185,9 @@ export function executeVisualizeTool(
   const hint = guideRead.has(conversationId)
     ? ''
     : ` You have not called ${READ_ME_TOOL} in this conversation: call it before the next widget to match the app's look.`
-  return { content: `Widget rendered: ${title}, ${code.length} chars.${hint}` }
+  const issues = lintWidgetCode(code)
+  const check = issues.length
+    ? ` Check found: ${issues.join('; ')}. Fix these in the next widget if the user needs it redrawn.`
+    : ''
+  return { content: `Widget rendered: ${title}, ${code.length} chars.${check}${hint}` }
 }

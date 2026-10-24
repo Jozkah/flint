@@ -14,7 +14,7 @@ import {
   SHOW_WIDGET_TOOL,
 } from '../constants'
 import { buildGuide } from '../guide'
-import { normalizeWidgetCode, partialMarkup } from '../code'
+import { lintWidgetCode, normalizeWidgetCode, partialMarkup } from '../code'
 import {
   buildStandalonePage,
   buildWidgetShell,
@@ -104,6 +104,24 @@ describe('executeVisualizeTool', () => {
       'c1'
     )
     expect(shown.content).toBe('Widget rendered: T, 5011 chars.')
+  })
+  it('teaches data-first charts, planned diagrams and a self-check', () => {
+    const guide = buildGuide(['chart', 'diagram'])
+    expect(guide).toContain('ACCURACY')
+    expect(guide).toContain('never invent data')
+    expect(guide).toContain('Prefer plain static SVG')
+    expect(guide).toContain('proportional to the values')
+    expect(guide).toContain('Plan the layout first')
+  })
+  it('reports mechanical problems back to the model', () => {
+    const r = executeVisualizeTool(
+      SHOW_WIDGET_TOOL,
+      { title: 'T', widget_code: '<svg width="400" viewBox="0 0 10 10"><rect fill="#ff0000"/></svg>' },
+      'c1'
+    )
+    expect(r.content).toContain('Check found:')
+    expect(r.content).toContain('fixed width/height')
+    expect(r.content).toContain('hex colours')
   })
   it('hints at the guide when it was not read', () => {
     const r = executeVisualizeTool(
@@ -246,6 +264,24 @@ describe('frame messages and bridge', () => {
     expect(checkOpenLink('file:///c:/x', { userActive: true }).ok).toBe(false)
     expect(checkOpenLink('javascript:alert(1)', { userActive: true }).ok).toBe(false)
     expect(checkOpenLink('https://u:p@example.com', { userActive: true }).ok).toBe(false)
+  })
+})
+
+describe('lintWidgetCode', () => {
+  it('passes a clean themed svg', () => {
+    const svg =
+      '<svg viewBox="0 0 680 200"><defs><marker id="a"/></defs>' +
+      '<path d="M0 0 L9 9" stroke="var(--border)" marker-end="url(#a)"/></svg>'
+    expect(lintWidgetCode(svg)).toEqual([])
+  })
+  it('flags a missing viewBox, a dangling marker, network use and NaN', () => {
+    const bad =
+      '<svg><path marker-end="url(#arrow)"/><text>NaN</text></svg><img src="https://x/y.png">'
+    const issues = lintWidgetCode(bad).join(' | ')
+    expect(issues).toContain('no viewBox')
+    expect(issues).toContain('url(#arrow)')
+    expect(issues).toContain('no network')
+    expect(issues).toContain('NaN')
   })
 })
 
