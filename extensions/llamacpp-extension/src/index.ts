@@ -988,7 +988,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       presetPath,
       modelsMax,
       this.resolveThreadCacheBudget(),
-      envs
+      envs,
+      this.customServerPath()
     )
     this.enginePort = info.port
     this.engineApiKey = info.api_key
@@ -1043,6 +1044,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     return Math.floor(raw)
   }
 
+  /** The user's own llama-server, or undefined for the bundled engine. */
+  private customServerPath(): string | undefined {
+    const raw = (this.config as { custom_server_path?: unknown }).custom_server_path
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined
+  }
+
   /**
    * `models_max` including the embedding slot bonus.
    *
@@ -1078,6 +1085,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   private async refreshEnginePreset(): Promise<void> {
     if (!(await this.getEngineInfo())) {
       await this.startEngine() // cold start
+      return
+    }
+    // A custom llama-server has no live reload: it reads the preset at start.
+    if (this.customServerPath()) {
+      await this.restartEngineForEnv()
       return
     }
 
@@ -1491,7 +1503,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       this.kvFallbackModels.clear()
     }
 
-    if (key === 'llamacpp_env') {
+    if (key === 'custom_server_path') {
+      // Swapping engines means a new process; same path as an env change.
+      if (this.backgroundInit) this.scheduleEnvRestart()
+    } else if (key === 'llamacpp_env') {
       const next = String(value ?? '')
       const changed = next !== this.llamacpp_env
       this.llamacpp_env = next

@@ -20,6 +20,7 @@ pub mod addon_commands;
 pub mod commands;
 pub mod driver;
 pub mod events;
+pub mod external;
 pub mod http;
 pub mod idle;
 pub mod preset;

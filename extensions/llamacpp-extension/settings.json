@@ -1,5 +1,17 @@
 [
   {
+    "key": "custom_server_path",
+    "title": "Custom llama-server",
+    "description": "Path to your own llama-server build, for quantizations or features the bundled engine does not support yet. Leave empty to use the bundled engine. Saved thread caches and live model-limit changes are unavailable with a custom server.",
+    "controllerType": "input",
+    "controllerProps": {
+      "value": "",
+      "placeholder": "Eg. /path/to/llama.cpp/build/bin/llama-server",
+      "type": "text",
+      "textAlign": "right"
+    }
+  },
+  {
     "key": "llamacpp_env",
     "title": "Environment variables",
     "description": "Environment variables for llama.cpp (KEY=VALUE), separated by ';'",

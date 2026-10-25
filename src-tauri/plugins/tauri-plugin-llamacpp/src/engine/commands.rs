@@ -229,6 +229,7 @@ pub async fn start_engine<R: tauri::Runtime>(
     models_max: u32,
     slot_cache_mib: u64,
     envs: HashMap<String, String>,
+    custom_server_path: Option<String>,
 ) -> Result<EngineInfo, String> {
     let mut guard = state.engine.lock().await;
     if let Some(existing) = guard.as_ref() {
@@ -236,25 +237,53 @@ pub async fn start_engine<R: tauri::Runtime>(
         return Ok(EngineInfo::from(existing));
     }
 
-    let exe = resolve_worker_exe(&app_handle)?;
     let mut envs = envs;
-    let addon = super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
     let api_key = generate_worker_key();
     // Filled from the handshake, after the worker is up; a fault before then
     // is worded without it.
     let versions = Arc::new(EngineVersions::default());
-    let handle = worker::spawn_with_offload(
-        &exe,
-        &PathBuf::from(preset_path),
-        0, // OS-assigned; the handshake reports it back
-        &api_key,
-        models_max,
-        slot_cache_mib,
-        envs,
-        Some(fault_emitter(app_handle.clone(), versions.clone())),
-        Some(offload_emitter(app_handle.clone())),
-    )
-    .await
+    let custom = custom_server_path
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from);
+    // A custom llama-server replaces the bundled worker outright, so the
+    // worker's add-on packs do not apply to it.
+    let (handle, addon) = if let Some(exe) = custom {
+        if !exe.is_file() {
+            return Err(format!(
+                "The custom llama-server path {} is not a file",
+                exe.display()
+            ));
+        }
+        let handle = worker::spawn_external(
+            &exe,
+            &PathBuf::from(preset_path),
+            &api_key,
+            models_max,
+            envs,
+            Some(fault_emitter(app_handle.clone(), versions.clone())),
+            Some(offload_emitter(app_handle.clone())),
+        )
+        .await;
+        (handle, None)
+    } else {
+        let exe = resolve_worker_exe(&app_handle)?;
+        let addon = super::addon_commands::apply_worker_env(&app_handle, &state, &exe, &mut envs);
+        let handle = worker::spawn_with_offload(
+            &exe,
+            &PathBuf::from(preset_path),
+            0, // OS-assigned; the handshake reports it back
+            &api_key,
+            models_max,
+            slot_cache_mib,
+            envs,
+            Some(fault_emitter(app_handle.clone(), versions.clone())),
+            Some(offload_emitter(app_handle.clone())),
+        )
+        .await;
+        (handle, addon)
+    };
+    let handle = handle
     .map_err(|e| match e {
         // Said as structured errors, so the UI shows "this CPU is not
         // supported" or "macOS is too old" instead of a loader's last words.
