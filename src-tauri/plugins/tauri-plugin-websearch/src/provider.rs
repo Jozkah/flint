@@ -152,6 +152,57 @@ pub fn create_provider(
     gated(&id, api_key, endpoint)
 }
 
+/// One entry of the user's ordered search chain.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainEntry {
+    pub provider: String,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+}
+
+/// Build the user's ordered chain: entries are tried top to bottom, and only
+/// the listed ones are used (no implicit keyless pairing). An entry that cannot
+/// be built, such as a keyed provider with no key, is skipped; if none can be
+/// built the first entry's error is returned.
+pub fn create_chain(entries: &[ChainEntry]) -> Result<Box<dyn SearchProvider>, String> {
+    let mut built = Vec::new();
+    let mut first_err = None;
+    for entry in entries {
+        let id = entry.provider.trim().to_ascii_lowercase();
+        match gated(&id, entry.api_key.clone(), entry.endpoint.clone()) {
+            Ok(p) => built.push(p),
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    if built.is_empty() {
+        return Err(first_err.unwrap_or_else(|| {
+            "No web search provider is usable: every entry in Settings > Web Search > \
+             Search order is off, or is keyed and has no API key."
+                .to_string()
+        }));
+    }
+    Ok(Box::new(crate::ratelimit::Chain { entries: built }))
+}
+
+/// The caller's chain when it sent one (even empty: the user's order is final),
+/// else the single-provider path used by older callers.
+pub fn create_backend(
+    chain: Option<Vec<ChainEntry>>,
+    provider: Option<&str>,
+    api_key: Option<String>,
+    endpoint: Option<String>,
+) -> Result<Box<dyn SearchProvider>, String> {
+    match chain {
+        Some(entries) => create_chain(&entries),
+        None => create_provider(provider, api_key, endpoint),
+    }
+}
+
 /// One backend behind its rate-limit gate.
 fn gated(
     id: &str,
