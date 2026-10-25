@@ -286,7 +286,17 @@
     "noSetupDesc": "直接搜尋 {{provider}}，無需 API 金鑰或帳號。短時間內進行大量搜尋後，{{provider}} 可能會要求進行機器人檢查；請等待一分鐘，或選擇同樣無需金鑰的 Exa 或 You.com。",
     "apiKeySearch": "網路搜尋 API 金鑰",
     "endpointSearch": "網路搜尋執行個體 URL",
-    "endpointSearchDesc": "你自行代管的搜尋執行個體的基礎 URL。"
+    "endpointSearchDesc": "你自行代管的搜尋執行個體的基礎 URL。",
+    "searchOrder": "搜尋順序",
+    "searchOrderDesc": "依由上到下的順序嘗試提供者；失敗或被限流的會把搜尋交給下一個。無金鑰項目不傳送任何帳戶識別碼，有金鑰的較快，但可追溯到你的金鑰。",
+    "modeKeyless": "無金鑰",
+    "modeKey": "API 金鑰",
+    "needsSetup": "未設定；已略過",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "removeEntry": "移除",
+    "addEntry": "新增提供者",
+    "emptyChain": "沒有啟用任何提供者，網頁搜尋將會失敗。請新增或啟用一個。"
   },
   "visualize": {
     "title": "視覺化小工具",

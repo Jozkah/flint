@@ -286,7 +286,17 @@
     "noSetupDesc": "API キーやアカウントなしで、{{provider}} を直接検索します。短時間に多数の検索を行うと、{{provider}} がボット確認を求めることがあります。1 分ほど待つか、同じくキー不要の Exa または You.com を選択してください。",
     "apiKeySearch": "Web 検索の API キー",
     "endpointSearch": "Web 検索インスタンスの URL",
-    "endpointSearchDesc": "セルフホストの検索インスタンスのベース URL です。"
+    "endpointSearchDesc": "セルフホストの検索インスタンスのベース URL です。",
+    "searchOrder": "検索順序",
+    "searchOrderDesc": "プロバイダーは上から順に試されます。失敗またはレート制限されたものは次に検索を渡します。キーなしの項目はアカウント識別子を送らず、キーありの項目は速いもののキーにひも付けられます。",
+    "modeKeyless": "キーなし",
+    "modeKey": "API キー",
+    "needsSetup": "未設定のためスキップ",
+    "moveUp": "上へ移動",
+    "moveDown": "下へ移動",
+    "removeEntry": "削除",
+    "addEntry": "プロバイダーを追加",
+    "emptyChain": "有効なプロバイダーがないため、ウェブ検索は失敗します。追加するか有効にしてください。"
   },
   "visualize": {
     "title": "ビジュアルウィジェット",

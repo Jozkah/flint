@@ -288,7 +288,17 @@
     "noSetupDesc": "Przeszukuje {{provider}} bezpośrednio, bez klucza API ani konta. Po wielu wyszukiwaniach w krótkim czasie {{provider}} może poprosić o weryfikację antybotową; poczekaj minutę lub wybierz Exa albo You.com, które także nie potrzebują klucza.",
     "apiKeySearch": "Klucz API wyszukiwania w sieci",
     "endpointSearch": "Adres URL instancji wyszukiwania w sieci",
-    "endpointSearchDesc": "Bazowy adres URL Twojej samodzielnie hostowanej instancji wyszukiwania."
+    "endpointSearchDesc": "Bazowy adres URL Twojej samodzielnie hostowanej instancji wyszukiwania.",
+    "searchOrder": "Kolejność wyszukiwania",
+    "searchOrderDesc": "Dostawcy są próbowani od góry do dołu; nieudany lub ograniczony przekazuje wyszukiwanie następnemu. Wpisy bez klucza nie wysyłają identyfikatora konta, wpisy z kluczem są szybsze, ale powiązane z twoim kluczem.",
+    "modeKeyless": "bez klucza",
+    "modeKey": "klucz API",
+    "needsSetup": "Nieskonfigurowany; pominięty",
+    "moveUp": "Przesuń w górę",
+    "moveDown": "Przesuń w dół",
+    "removeEntry": "Usuń",
+    "addEntry": "Dodaj dostawcę",
+    "emptyChain": "Żaden dostawca nie jest włączony, więc wyszukiwanie w sieci się nie powiedzie. Dodaj lub włącz jednego."
   },
   "visualize": {
     "title": "Widżety wizualne",

@@ -285,7 +285,17 @@
     "noSetupDesc": "Mencari langsung di {{provider}}, tanpa kunci API atau akun. Setelah banyak pencarian dalam waktu singkat {{provider}} dapat meminta pemeriksaan bot; tunggu semenit, atau pilih Exa atau You.com, yang juga tidak butuh kunci.",
     "apiKeySearch": "Kunci API pencarian web",
     "endpointSearch": "URL instans pencarian web",
-    "endpointSearchDesc": "Base URL instans pencarian yang Anda host sendiri."
+    "endpointSearchDesc": "Base URL instans pencarian yang Anda host sendiri.",
+    "searchOrder": "Urutan pencarian",
+    "searchOrderDesc": "Penyedia dicoba dari atas ke bawah; yang gagal atau terkena batas akan menyerahkan pencarian ke berikutnya. Entri tanpa kunci tidak mengirim pengenal akun, entri berkunci lebih cepat tetapi dapat dilacak ke kunci Anda.",
+    "modeKeyless": "tanpa kunci",
+    "modeKey": "kunci API",
+    "needsSetup": "Belum diatur; dilewati",
+    "moveUp": "Pindah ke atas",
+    "moveDown": "Pindah ke bawah",
+    "removeEntry": "Hapus",
+    "addEntry": "Tambah penyedia",
+    "emptyChain": "Tidak ada penyedia yang aktif, jadi pencarian web akan gagal. Tambahkan atau aktifkan satu."
   },
   "visualize": {
     "title": "Widget visual",

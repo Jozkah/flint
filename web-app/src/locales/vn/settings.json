@@ -286,7 +286,17 @@
     "noSetupDesc": "Tìm kiếm trực tiếp trên {{provider}}, không cần khóa API hay tài khoản. Sau nhiều lần tìm kiếm trong thời gian ngắn, {{provider}} có thể yêu cầu kiểm tra bot; hãy đợi một phút, hoặc chọn Exa hay You.com, cũng không cần khóa.",
     "apiKeySearch": "Khóa API tìm kiếm web",
     "endpointSearch": "URL phiên bản tìm kiếm web",
-    "endpointSearchDesc": "URL gốc của phiên bản tìm kiếm tự lưu trữ của bạn."
+    "endpointSearchDesc": "URL gốc của phiên bản tìm kiếm tự lưu trữ của bạn.",
+    "searchOrder": "Thứ tự tìm kiếm",
+    "searchOrderDesc": "Các nhà cung cấp được thử từ trên xuống; nhà cung cấp lỗi hoặc bị giới hạn sẽ chuyển tìm kiếm cho nhà tiếp theo. Mục không cần khóa không gửi định danh tài khoản, mục có khóa nhanh hơn nhưng có thể truy ra khóa của bạn.",
+    "modeKeyless": "không khóa",
+    "modeKey": "khóa API",
+    "needsSetup": "Chưa thiết lập; bỏ qua",
+    "moveUp": "Lên",
+    "moveDown": "Xuống",
+    "removeEntry": "Xóa",
+    "addEntry": "Thêm nhà cung cấp",
+    "emptyChain": "Không có nhà cung cấp nào được bật nên tìm kiếm web sẽ thất bại. Hãy thêm hoặc bật một nhà cung cấp."
   },
   "visualize": {
     "title": "Widget trực quan",

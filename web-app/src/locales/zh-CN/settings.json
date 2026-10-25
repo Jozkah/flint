@@ -286,7 +286,17 @@
     "noSetupDesc": "直接搜索 {{provider}}，无需 API 密钥或账户。短时间内进行大量搜索后，{{provider}} 可能会要求进行机器人检查；请等待一分钟，或选择同样无需密钥的 Exa 或 You.com。",
     "apiKeySearch": "网络搜索 API 密钥",
     "endpointSearch": "网络搜索实例 URL",
-    "endpointSearchDesc": "你自托管的搜索实例的基础 URL。"
+    "endpointSearchDesc": "你自托管的搜索实例的基础 URL。",
+    "searchOrder": "搜索顺序",
+    "searchOrderDesc": "按从上到下的顺序尝试提供商；失败或被限流的会把搜索交给下一个。无密钥条目不发送任何账户标识，有密钥的更快，但可追溯到你的密钥。",
+    "modeKeyless": "无密钥",
+    "modeKey": "API 密钥",
+    "needsSetup": "未设置；已跳过",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "removeEntry": "移除",
+    "addEntry": "添加提供商",
+    "emptyChain": "没有启用任何提供商，网页搜索将会失败。请添加或启用一个。"
   },
   "visualize": {
     "title": "可视化小组件",

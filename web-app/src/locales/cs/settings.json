@@ -288,7 +288,17 @@
     "noSetupDesc": "Vyhledává přímo v {{provider}}, bez klíče API nebo účtu. Po mnoha vyhledáváních za krátkou dobu může {{provider}} požadovat kontrolu proti botům; počkejte minutu, nebo zvolte Exa či You.com, které také klíč nepotřebují.",
     "apiKeySearch": "Klíč API vyhledávání na webu",
     "endpointSearch": "URL instance vyhledávání na webu",
-    "endpointSearchDesc": "Základní URL vaší vlastní hostované instance vyhledávání."
+    "endpointSearchDesc": "Základní URL vaší vlastní hostované instance vyhledávání.",
+    "searchOrder": "Pořadí vyhledávání",
+    "searchOrderDesc": "Poskytovatelé se zkoušejí shora dolů; neúspěšný nebo omezený předá hledání dalšímu. Položky bez klíče neposílají žádný identifikátor účtu, položky s klíčem jsou rychlejší, ale dohledatelné k vašemu klíči.",
+    "modeKeyless": "bez klíče",
+    "modeKey": "API klíč",
+    "needsSetup": "Nenastaveno; přeskočeno",
+    "moveUp": "Posunout nahoru",
+    "moveDown": "Posunout dolů",
+    "removeEntry": "Odebrat",
+    "addEntry": "Přidat poskytovatele",
+    "emptyChain": "Žádný poskytovatel není zapnutý, takže webové vyhledávání selže. Přidejte nebo zapněte nějakého."
   },
   "visualize": {
     "title": "Vizuální widgety",
