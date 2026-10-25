@@ -406,3 +406,45 @@ pub fn is_gate_message(msg: &str) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+/// The user's ordered search chain (Settings > Web Search): each entry is tried
+/// in turn and a failed or limited one hands the call to the next. When every
+/// entry fails the first entry's error is returned, since it names the provider
+/// the user put on top.
+pub struct Chain {
+    pub entries: Vec<Box<dyn SearchProvider>>,
+}
+
+impl Chain {
+    async fn first_ok<'a, T, F, Fut>(&'a self, call: F) -> Result<T, String>
+    where
+        F: Fn(&'a dyn SearchProvider) -> Fut,
+        Fut: std::future::Future<Output = Result<T, String>>,
+    {
+        let mut first_err: Option<String> = None;
+        for entry in &self.entries {
+            match call(entry.as_ref()).await {
+                Ok(v) => return Ok(v),
+                Err(e) => {
+                    first_err.get_or_insert(e);
+                }
+            }
+        }
+        Err(first_err.unwrap_or_else(|| "No web search provider is enabled.".to_string()))
+    }
+}
+
+#[async_trait]
+impl SearchProvider for Chain {
+    async fn search(&self, query: &str, count: u32) -> Result<Vec<SearchResult>, String> {
+        self.first_ok(|p| p.search(query, count)).await
+    }
+
+    async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
+        self.first_ok(|p| p.fetch(url)).await
+    }
+
+    async fn search_images(&self, query: &str, count: u32) -> Result<Vec<ImageResult>, String> {
+        self.first_ok(|p| p.search_images(query, count)).await
+    }
+}

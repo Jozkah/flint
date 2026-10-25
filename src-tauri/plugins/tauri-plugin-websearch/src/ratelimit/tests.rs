@@ -356,3 +356,50 @@ async fn when_both_keyless_backends_fail_the_primary_error_is_kept() {
     let msg = both.search("q", 1).await.unwrap_err();
     assert!(is_gate_message(&msg) && msg.contains("DuckDuckGo"), "{msg}");
 }
+
+#[tokio::test]
+async fn the_chain_tries_entries_in_the_users_order() {
+    let (exa, exa_calls, _c1) =
+        scripted("Exa", true, vec![Err("Exa request failed: 500".into())]);
+    let (ddg, ddg_calls, _c2) = scripted(
+        "DuckDuckGo",
+        false,
+        vec![Err(rate_limited_marker("DuckDuckGo", Some(403), None))],
+    );
+    let (keyed, keyed_calls, _c3) = scripted("Brave", false, vec![Ok(())]);
+    let chain = Chain { entries: vec![Box::new(exa), Box::new(ddg), Box::new(keyed)] };
+    assert_eq!(chain.search("q", 1).await.unwrap().len(), 1);
+    assert_eq!(exa_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(ddg_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(keyed_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn the_chain_stops_at_the_first_success() {
+    let (first, _, _c1) = scripted("DuckDuckGo", false, vec![Ok(())]);
+    let (second, second_calls, _c2) = scripted("Exa", true, vec![Ok(())]);
+    let chain = Chain { entries: vec![Box::new(first), Box::new(second)] };
+    chain.search("q", 1).await.unwrap();
+    assert_eq!(second_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn when_the_whole_chain_fails_the_top_error_is_kept() {
+    let (first, _, _c1) = scripted("Exa", true, vec![Err("Exa request failed: timeout".into())]);
+    let (second, _, _c2) = scripted("DuckDuckGo", false, vec![Err("DuckDuckGo: 403".into())]);
+    let chain = Chain { entries: vec![Box::new(first), Box::new(second)] };
+    assert!(chain.search("q", 1).await.unwrap_err().contains("Exa"));
+}
+
+#[test]
+fn a_chain_skips_entries_missing_their_key() {
+    use crate::provider::{create_chain, ChainEntry};
+    let entry = |provider: &str| ChainEntry {
+        provider: provider.into(),
+        api_key: None,
+        endpoint: None,
+    };
+    assert!(create_chain(&[entry("brave"), entry("duckduckgo")]).is_ok());
+    let err = create_chain(&[entry("brave")]).err().unwrap();
+    assert!(err.contains("API key"), "{err}");
+}
