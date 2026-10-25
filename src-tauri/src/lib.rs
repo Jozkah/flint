@@ -483,6 +483,11 @@ static BUSY_MODELS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::n
 #[cfg(not(feature = "cli"))]
 static EXIT_CANCELLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// How long the startup housekeeping (archive expiry, request-log compaction,
+/// orphan-engine sweep) waits, so it does not compete with the launch itself
+/// for a slow disk.
+const STARTUP_SWEEP_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// Whether the pending exit was cancelled, clearing the request.
 #[cfg(not(feature = "cli"))]
 fn take_exit_cancelled() -> bool {
@@ -977,6 +982,9 @@ pub fn build_app() -> tauri::App {
                     log::info!("archive: {moved} idle thread(s) moved to the archive");
                 }
                 std::thread::spawn(move || {
+                    // Not at launch: startup already loads the window, thread
+                    // list and engine, and a slow disk pinned at 100% then.
+                    std::thread::sleep(STARTUP_SWEEP_DELAY);
                     let report = core::archive::sweep_expired(
                         &data_folder,
                         core::archive::store::now_ms(),
@@ -992,6 +1000,7 @@ pub fn build_app() -> tauri::App {
             {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
                 std::thread::spawn(move || {
+                    std::thread::sleep(STARTUP_SWEEP_DELAY);
                     if let Err(e) =
                         tauri_plugin_agent_tools::retention::compact_default(&data_folder)
                     {
@@ -1003,7 +1012,14 @@ pub fn build_app() -> tauri::App {
             // starting; it just runs without a log file.
             if let Err(e) = app.handle().plugin(
                 tauri_plugin_log::Builder::default()
-                    .level(log::LevelFilter::Debug)
+                    // Debug in dev builds only: in release every Debug line
+                    // also went to the file and the webview, a constant
+                    // stream of small writes on a slow disk.
+                    .level(if cfg!(debug_assertions) {
+                        log::LevelFilter::Debug
+                    } else {
+                        log::LevelFilter::Info
+                    })
                     // keyring logs three Debug lines per credential lookup
                     // (~490 lines, 78 KB on one startup), all also emitted to
                     // the webview.
@@ -1111,6 +1127,7 @@ pub fn build_app() -> tauri::App {
             {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
                 tauri::async_runtime::spawn_blocking(move || {
+                    std::thread::sleep(STARTUP_SWEEP_DELAY);
                     let killed = core::system::orphans::sweep_orphaned_engines(&data_folder);
                     if killed > 0 {
                         log::warn!("Reaped {killed} engine process(es) left by a previous Jan");
