@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "Eigener llama-server",
+    "description": "Pfad zu deinem eigenen llama-server-Build, für Quantisierungen oder Funktionen, die die mitgelieferte Engine noch nicht unterstützt. Leer lassen, um die mitgelieferte Engine zu verwenden. Mit einem eigenen Server sind gespeicherte Thread-Caches und Live-Änderungen am Modelllimit nicht verfügbar.",
+    "placeholder": "Z. B. /pfad/zu/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "Umgebungsvariablen",
     "description": "Umgebungsvariablen für llama.cpp (KEY=VALUE), getrennt durch ';'",

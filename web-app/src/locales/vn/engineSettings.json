@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "llama-server tùy chỉnh",
+    "description": "Đường dẫn tới bản build llama-server của bạn, cho các kiểu lượng tử hóa hoặc tính năng mà engine đi kèm chưa hỗ trợ. Để trống để dùng engine đi kèm. Với máy chủ tùy chỉnh, bộ nhớ đệm hội thoại đã lưu và thay đổi trực tiếp giới hạn mô hình không khả dụng.",
+    "placeholder": "VD: /duong/dan/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "Biến môi trường",
     "description": "Biến môi trường cho llama.cpp (KEY=VALUE), phân tách bằng ';'",

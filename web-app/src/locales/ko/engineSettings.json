@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "사용자 지정 llama-server",
+    "description": "번들 엔진이 아직 지원하지 않는 양자화나 기능을 위한 직접 빌드한 llama-server 경로입니다. 비워 두면 번들 엔진을 사용합니다. 사용자 지정 서버에서는 저장된 스레드 캐시와 모델 한도 실시간 변경을 사용할 수 없습니다.",
+    "placeholder": "예: /path/to/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "환경 변수",
     "description": "llama.cpp용 환경 변수(KEY=VALUE), ';'로 구분",

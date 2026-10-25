@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "llama-server personalitzat",
+    "description": "Ruta a la teva pròpia compilació de llama-server, per a quantitzacions o funcions que el motor inclòs encara no admet. Deixa-ho buit per fer servir el motor inclòs. Amb un servidor personalitzat no hi ha memòria cau de fils desada ni canvis en directe del límit de models.",
+    "placeholder": "P. ex. /ruta/a/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "Variables d'entorn",
     "description": "Variables d'entorn per a llama.cpp (KEY=VALUE), separades per ';'",
