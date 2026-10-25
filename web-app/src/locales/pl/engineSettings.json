@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "Własny llama-server",
+    "description": "Ścieżka do własnej kompilacji llama-server, dla kwantyzacji lub funkcji, których dołączony silnik jeszcze nie obsługuje. Zostaw puste, aby użyć dołączonego silnika. Z własnym serwerem zapisane pamięci podręczne wątków i zmiany limitu modeli na żywo są niedostępne.",
+    "placeholder": "Np. /sciezka/do/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "Zmienne środowiskowe",
     "description": "Zmienne środowiskowe dla llama.cpp (KEY=VALUE), rozdzielone znakiem ';'",

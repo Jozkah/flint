@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "llama-server personnalisé",
+    "description": "Chemin vers votre propre build de llama-server, pour des quantifications ou fonctionnalités que le moteur intégré ne prend pas encore en charge. Laissez vide pour utiliser le moteur intégré. Avec un serveur personnalisé, les caches de fils enregistrés et les changements en direct de la limite de modèles ne sont pas disponibles.",
+    "placeholder": "Ex. /chemin/vers/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "Variables d'environnement",
     "description": "Variables d'environnement pour llama.cpp (KEY=VALUE), séparées par ';'",

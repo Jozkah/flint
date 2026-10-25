@@ -113,13 +113,15 @@ export async function startEngine(
   presetPath: string,
   modelsMax: number,
   slotCacheMib: number = 0,
-  envs: Record<string, string> = {}
+  envs: Record<string, string> = {},
+  customServerPath?: string
 ): Promise<EngineInfo> {
   return await invoke('plugin:llamacpp|start_engine', {
     presetPath,
     modelsMax,
     slotCacheMib: asI32(slotCacheMib),
     envs,
+    customServerPath: customServerPath?.trim() || null,
   })
 }
 

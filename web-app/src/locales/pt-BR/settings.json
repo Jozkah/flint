@@ -287,7 +287,17 @@
     "noSetupDesc": "Pesquisa o {{provider}} diretamente, sem chave de API nem conta. Após muitas pesquisas em pouco tempo, o {{provider}} pode pedir uma verificação de bot; aguarde um minuto ou escolha Exa ou You.com, que também não precisam de chave.",
     "apiKeySearch": "Chave de API da pesquisa na web",
     "endpointSearch": "URL da instância de pesquisa na web",
-    "endpointSearchDesc": "A URL base da sua instância de pesquisa auto-hospedada."
+    "endpointSearchDesc": "A URL base da sua instância de pesquisa auto-hospedada.",
+    "searchOrder": "Ordem de busca",
+    "searchOrderDesc": "Os provedores são tentados de cima para baixo; um que falha ou atinge o limite passa a busca para o próximo. Entradas sem chave não enviam identificador de conta; as com chave são mais rápidas, mas rastreáveis até sua chave.",
+    "modeKeyless": "sem chave",
+    "modeKey": "chave de API",
+    "needsSetup": "Não configurado; ignorado",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "removeEntry": "Remover",
+    "addEntry": "Adicionar provedor",
+    "emptyChain": "Nenhum provedor está ativo, então a busca na web vai falhar. Adicione ou ative um."
   },
   "visualize": {
     "title": "Widgets visuais",

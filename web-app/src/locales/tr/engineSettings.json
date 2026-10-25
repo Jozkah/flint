@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "Özel llama-server",
+    "description": "Paketteki motorun henüz desteklemediği nicemlemeler veya özellikler için kendi llama-server derlemenizin yolu. Paketteki motoru kullanmak için boş bırakın. Özel sunucuda kaydedilmiş sohbet önbellekleri ve model sınırının canlı değişimi kullanılamaz.",
+    "placeholder": "Örn. /yol/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "Ortam değişkenleri",
     "description": "llama.cpp için ortam değişkenleri (KEY=VALUE), ';' ile ayrılır",

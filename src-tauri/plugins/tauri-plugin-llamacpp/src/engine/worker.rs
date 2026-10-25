@@ -777,53 +777,10 @@ pub async fn spawn_with_offload(
     // Drained on its own task: a full stderr pipe would otherwise block the
     // worker mid-generation, which is a hang with no error message.
     let stderr_tail = StderrTail::default();
-    let drain = child.stderr.take().map(|stderr| {
-        let tail = stderr_tail.clone();
-        tokio::spawn(async move {
-            let mut lines = LossyLines::new(stderr);
-            let mut reader = FaultReader::default();
-            let mut last_fault_at: Option<tokio::time::Instant> = None;
-            let mut offload = OffloadTracker::default();
-            let mut report = |fault: RuntimeFault, line: String| {
-                let Some(cb) = on_fault.as_ref() else { return };
-                let now = tokio::time::Instant::now();
-                if last_fault_at.is_some_and(|t| now.duration_since(t) <= FAULT_DEBOUNCE) {
-                    return;
-                }
-                last_fault_at = Some(now);
-                cb(fault, line);
-            };
-            loop {
-                let next = if reader.pending_metal_status.is_some() {
-                    match tokio::time::timeout(METAL_DETAIL_WAIT, lines.next_line()).await {
-                        Ok(next) => next,
-                        Err(_) => {
-                            if let Some((fault, line)) = reader.flush() {
-                                report(fault, line);
-                            }
-                            continue;
-                        }
-                    }
-                } else {
-                    lines.next_line().await
-                };
-                let Ok(Some(line)) = next else { break };
-                log::debug!("flint-llama-worker: {line}");
-                tail.push(&line);
-                if let Some(report_to) = on_offload.as_ref() {
-                    if let Some(offloaded) = offload.feed(&line) {
-                        report_to(offloaded);
-                    }
-                }
-                for (fault, text) in reader.feed(&line) {
-                    report(fault, text);
-                }
-            }
-            if let Some((fault, line)) = reader.flush() {
-                report(fault, line);
-            }
-        })
-    });
+    let drain = child
+        .stderr
+        .take()
+        .map(|stderr| spawn_stderr_drain(stderr, stderr_tail.clone(), on_fault, on_offload));
 
     let mut lines = LossyLines::new(stdout);
     let first = tokio::time::timeout(HANDSHAKE_TIMEOUT, lines.next_line()).await;
@@ -878,6 +835,182 @@ pub async fn spawn_with_offload(
         api_key: api_key.to_string(),
         models: hs.models,
         cuda_toolkit: hs.cuda_toolkit,
+        child,
+        stderr_tail,
+        #[cfg(windows)]
+        _job: job,
+    })
+}
+
+/// Drains the engine's stderr on its own task, keeping the tail for exit
+/// reports and turning fault and offload lines into callbacks. A full stderr
+/// pipe would otherwise block the engine mid-generation, which is a hang with
+/// no error message.
+fn spawn_stderr_drain(
+    stderr: tokio::process::ChildStderr,
+    tail: StderrTail,
+    on_fault: Option<FaultCallback>,
+    on_offload: Option<OffloadCallback>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut lines = LossyLines::new(stderr);
+        let mut reader = FaultReader::default();
+        let mut last_fault_at: Option<tokio::time::Instant> = None;
+        let mut offload = OffloadTracker::default();
+        let mut report = |fault: RuntimeFault, line: String| {
+            let Some(cb) = on_fault.as_ref() else { return };
+            let now = tokio::time::Instant::now();
+            if last_fault_at.is_some_and(|t| now.duration_since(t) <= FAULT_DEBOUNCE) {
+                return;
+            }
+            last_fault_at = Some(now);
+            cb(fault, line);
+        };
+        loop {
+            let next = if reader.pending_metal_status.is_some() {
+                match tokio::time::timeout(METAL_DETAIL_WAIT, lines.next_line()).await {
+                    Ok(next) => next,
+                    Err(_) => {
+                        if let Some((fault, line)) = reader.flush() {
+                            report(fault, line);
+                        }
+                        continue;
+                    }
+                }
+            } else {
+                lines.next_line().await
+            };
+            let Ok(Some(line)) = next else { break };
+            log::debug!("flint-llama-worker: {line}");
+            tail.push(&line);
+            if let Some(report_to) = on_offload.as_ref() {
+                if let Some(offloaded) = offload.feed(&line) {
+                    report_to(offloaded);
+                }
+            }
+            for (fault, text) in reader.feed(&line) {
+                report(fault, text);
+            }
+        }
+        if let Some((fault, line)) = reader.flush() {
+            report(fault, line);
+        }
+    })
+}
+
+/// Starts a user-supplied `llama-server` in router mode in place of the worker.
+///
+/// The router prints no handshake, so the port is chosen here (bind port 0,
+/// read it, release it) and readiness is `/health` answering. Its stdin is
+/// null: the router ignores stdin, so `stop` goes straight to the signal
+/// fallback for it.
+#[allow(clippy::too_many_arguments)]
+pub async fn spawn_external(
+    exe: &Path,
+    preset_path: &Path,
+    api_key: &str,
+    models_max: u32,
+    envs: HashMap<String, String>,
+    on_fault: Option<FaultCallback>,
+    on_offload: Option<OffloadCallback>,
+) -> Result<WorkerHandle, WorkerError> {
+    let original = std::fs::read_to_string(preset_path)
+        .map_err(|e| WorkerError::Spawn(format!("could not read {}: {e}", preset_path.display())))?;
+    let compat = super::external::compat_preset(&original);
+    let compat_path = preset_path.with_extension("external.ini");
+    std::fs::write(&compat_path, &compat.text).map_err(|e| {
+        WorkerError::Spawn(format!("could not write {}: {e}", compat_path.display()))
+    })?;
+
+    let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|l| l.local_addr())
+        .map_err(|e| WorkerError::Spawn(format!("no free loopback port: {e}")))?
+        .port();
+
+    let args = super::external::external_args(&compat_path.to_string_lossy(), models_max);
+    log::info!("starting external {} {}", exe.display(), args.join(" "));
+    let (envs, clear_vk_fallback) = with_engine_env_defaults(envs);
+
+    let mut cmd = Command::new(exe);
+    jan_utils::system::setup_windows_process_flags(&mut cmd);
+    // The user's build loads its ggml backends from its own directory, the
+    // same reason the worker's cwd is pinned to its directory.
+    if let Some(dir) = exe.parent().filter(|_| exe.is_absolute()) {
+        cmd.current_dir(dir);
+    }
+    if clear_vk_fallback {
+        cmd.env_remove(VK_SYSMEM_FALLBACK_ENV);
+    }
+    cmd.args(&args)
+        .envs(envs)
+        .env("LLAMA_ARG_PORT", port.to_string())
+        .env("LLAMA_API_KEY", api_key)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+
+    let mut child = cmd.spawn().map_err(|e| WorkerError::Spawn(e.to_string()))?;
+    #[cfg(windows)]
+    let job = child.raw_handle().and_then(reap::confine);
+    let pid = child.id().unwrap_or_default();
+
+    // The router logs to both pipes depending on build; both are read for faults.
+    let stderr_tail = StderrTail::default();
+    let drain = child
+        .stderr
+        .take()
+        .map(|stderr| spawn_stderr_drain(stderr, stderr_tail.clone(), on_fault, on_offload));
+    if let Some(stdout) = child.stdout.take() {
+        let tail = stderr_tail.clone();
+        tokio::spawn(async move {
+            let mut lines = LossyLines::new(stdout);
+            while let Ok(Some(line)) = lines.next_line().await {
+                log::debug!("llama-server: {line}");
+                tail.push(&line);
+            }
+        });
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .map_err(|e| WorkerError::Spawn(e.to_string()))?;
+    let url = format!("http://127.0.0.1:{port}/health");
+    let deadline = tokio::time::Instant::now() + HANDSHAKE_TIMEOUT;
+    loop {
+        if let Ok(Some(status)) = child.try_wait() {
+            if let Some(drain) = drain {
+                let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
+            }
+            let report = ExitReport {
+                status: describe_status(&status),
+                last_lines: stderr_tail.lines(),
+            };
+            return Err(WorkerError::Exited(report.text()));
+        }
+        let ok = client
+            .get(&url)
+            .bearer_auth(api_key)
+            .send()
+            .await
+            .is_ok_and(|r| r.status().is_success());
+        if ok {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            let _ = child.start_kill();
+            return Err(WorkerError::Timeout(HANDSHAKE_TIMEOUT));
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+
+    Ok(WorkerHandle {
+        port,
+        pid,
+        api_key: api_key.to_string(),
+        models: compat.models,
+        cuda_toolkit: None,
         child,
         stderr_tail,
         #[cfg(windows)]

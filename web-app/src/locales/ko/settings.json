@@ -286,7 +286,17 @@
     "noSetupDesc": "API 키나 계정 없이 {{provider}}을(를) 직접 검색합니다. 짧은 시간에 많이 검색하면 {{provider}}이(가) 봇 확인을 요구할 수 있습니다. 1분 기다리거나 마찬가지로 키가 필요 없는 Exa 또는 You.com을 선택하세요.",
     "apiKeySearch": "웹 검색 API 키",
     "endpointSearch": "웹 검색 인스턴스 URL",
-    "endpointSearchDesc": "직접 호스팅하는 검색 인스턴스의 기본 URL입니다."
+    "endpointSearchDesc": "직접 호스팅하는 검색 인스턴스의 기본 URL입니다.",
+    "searchOrder": "검색 순서",
+    "searchOrderDesc": "제공자는 위에서 아래로 시도됩니다. 실패하거나 사용량 제한에 걸린 제공자는 다음 제공자에게 검색을 넘깁니다. 키 없는 항목은 계정 식별자를 보내지 않고, 키 있는 항목은 더 빠르지만 키로 추적될 수 있습니다.",
+    "modeKeyless": "키 없음",
+    "modeKey": "API 키",
+    "needsSetup": "설정되지 않아 건너뜀",
+    "moveUp": "위로 이동",
+    "moveDown": "아래로 이동",
+    "removeEntry": "제거",
+    "addEntry": "제공자 추가",
+    "emptyChain": "켜진 제공자가 없어 웹 검색이 실패합니다. 하나를 추가하거나 켜세요."
   },
   "visualize": {
     "title": "시각 위젯",

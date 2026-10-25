@@ -289,7 +289,17 @@
     "noSetupDesc": "Cerca directament a {{provider}}, sense clau d'API ni compte. Després de moltes cerques en poc temps, {{provider}} pot demanar una comprovació de bot; espera un minut, o tria Exa o You.com, que tampoc necessiten clau.",
     "apiKeySearch": "Clau d'API de cerca web",
     "endpointSearch": "URL de la instància de cerca web",
-    "endpointSearchDesc": "L'URL base de la teva instància de cerca autoallotjada."
+    "endpointSearchDesc": "L'URL base de la teva instància de cerca autoallotjada.",
+    "searchOrder": "Ordre de cerca",
+    "searchOrderDesc": "Els proveïdors es proven de dalt a baix; si un falla o té límit de peticions, la cerca passa al següent. Les entrades sense clau no envien cap identificador de compte; les que tenen clau són més ràpides però es poden associar a la teva clau.",
+    "modeKeyless": "sense clau",
+    "modeKey": "clau d'API",
+    "needsSetup": "No configurat; s'omet",
+    "moveUp": "Mou amunt",
+    "moveDown": "Mou avall",
+    "removeEntry": "Elimina",
+    "addEntry": "Afegeix proveïdor",
+    "emptyChain": "No hi ha cap proveïdor actiu, així que la cerca web fallarà. Afegeix-ne o activa'n un."
   },
   "visualize": {
     "title": "Ginys visuals",

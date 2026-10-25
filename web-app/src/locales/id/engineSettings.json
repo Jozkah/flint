@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "llama-server kustom",
+    "description": "Path ke build llama-server Anda sendiri, untuk kuantisasi atau fitur yang belum didukung mesin bawaan. Biarkan kosong untuk memakai mesin bawaan. Dengan server kustom, cache thread tersimpan dan perubahan langsung batas model tidak tersedia.",
+    "placeholder": "Mis. /path/ke/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "Variabel lingkungan",
     "description": "Variabel lingkungan untuk llama.cpp (KEY=VALUE), dipisahkan dengan ';'",

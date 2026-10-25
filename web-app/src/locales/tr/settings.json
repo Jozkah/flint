@@ -286,7 +286,17 @@
     "noSetupDesc": "{{provider}} üzerinde doğrudan, API anahtarı veya hesap olmadan arama yapar. Kısa sürede çok sayıda aramadan sonra {{provider}} bot kontrolü isteyebilir; bir dakika bekleyin veya anahtar da gerektirmeyen Exa ya da You.com'u seçin.",
     "apiKeySearch": "Web arama API anahtarı",
     "endpointSearch": "Web arama örneği URL'si",
-    "endpointSearchDesc": "Kendi barındırdığınız arama örneğinin temel URL'si."
+    "endpointSearchDesc": "Kendi barındırdığınız arama örneğinin temel URL'si.",
+    "searchOrder": "Arama sırası",
+    "searchOrderDesc": "Sağlayıcılar yukarıdan aşağıya denenir; başarısız olan veya sınıra takılan aramayı bir sonrakine devreder. Anahtarsız girişler hesap tanımlayıcısı göndermez, anahtarlı olanlar daha hızlıdır ama anahtarınıza bağlanabilir.",
+    "modeKeyless": "anahtarsız",
+    "modeKey": "API anahtarı",
+    "needsSetup": "Ayarlanmadı; atlandı",
+    "moveUp": "Yukarı taşı",
+    "moveDown": "Aşağı taşı",
+    "removeEntry": "Kaldır",
+    "addEntry": "Sağlayıcı ekle",
+    "emptyChain": "Açık sağlayıcı yok, bu yüzden web araması başarısız olacak. Bir tane ekleyin veya açın."
   },
   "visualize": {
     "title": "Görsel widget'lar",

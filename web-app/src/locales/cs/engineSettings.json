@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "Vlastní llama-server",
+    "description": "Cesta k vlastnímu sestavení llama-server pro kvantizace nebo funkce, které přibalený engine zatím nepodporuje. Ponechte prázdné pro přibalený engine. S vlastním serverem nejsou k dispozici uložené mezipaměti vláken ani živé změny limitu modelů.",
+    "placeholder": "Např. /cesta/k/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "Proměnné prostředí",
     "description": "Proměnné prostředí pro llama.cpp (KEY=VALUE), oddělené znakem ';'",

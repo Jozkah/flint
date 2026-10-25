@@ -286,7 +286,17 @@
     "noSetupDesc": "Durchsucht {{provider}} direkt, ohne API-Schlüssel oder Konto. Nach vielen Suchen in kurzer Zeit kann {{provider}} eine Bot-Prüfung verlangen; warte eine Minute oder wähle Exa oder You.com, die ebenfalls keinen Schlüssel brauchen.",
     "apiKeySearch": "API-Schlüssel der Websuche",
     "endpointSearch": "Instanz-URL der Websuche",
-    "endpointSearchDesc": "Die Basis-URL deiner selbst gehosteten Suchinstanz."
+    "endpointSearchDesc": "Die Basis-URL deiner selbst gehosteten Suchinstanz.",
+    "searchOrder": "Suchreihenfolge",
+    "searchOrderDesc": "Anbieter werden von oben nach unten versucht; ein fehlgeschlagener oder gedrosselter gibt die Suche an den nächsten weiter. Einträge ohne Schlüssel senden keine Konto-ID, Einträge mit Schlüssel sind schneller, aber deinem Schlüssel zuordenbar.",
+    "modeKeyless": "ohne Schlüssel",
+    "modeKey": "API-Schlüssel",
+    "needsSetup": "Nicht eingerichtet; übersprungen",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "removeEntry": "Entfernen",
+    "addEntry": "Anbieter hinzufügen",
+    "emptyChain": "Kein Anbieter ist aktiv, daher schlägt die Websuche fehl. Füge einen hinzu oder aktiviere einen."
   },
   "visualize": {
     "title": "Visuelle Widgets",

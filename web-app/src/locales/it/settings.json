@@ -287,7 +287,17 @@
     "noSetupDesc": "Cerca direttamente su {{provider}}, senza chiave API né account. Dopo molte ricerche in poco tempo {{provider}} può richiedere un controllo anti-bot; attendi un minuto, oppure scegli Exa o You.com, che non richiedono nemmeno loro una chiave.",
     "apiKeySearch": "Chiave API della ricerca web",
     "endpointSearch": "URL dell'istanza di ricerca web",
-    "endpointSearchDesc": "L'URL di base della tua istanza di ricerca self-hosted."
+    "endpointSearchDesc": "L'URL di base della tua istanza di ricerca self-hosted.",
+    "searchOrder": "Ordine di ricerca",
+    "searchOrderDesc": "I provider vengono provati dall'alto in basso; uno che fallisce o è limitato passa la ricerca al successivo. Le voci senza chiave non inviano alcun identificativo dell'account, quelle con chiave sono più veloci ma riconducibili alla tua chiave.",
+    "modeKeyless": "senza chiave",
+    "modeKey": "chiave API",
+    "needsSetup": "Non configurato; saltato",
+    "moveUp": "Sposta su",
+    "moveDown": "Sposta giù",
+    "removeEntry": "Rimuovi",
+    "addEntry": "Aggiungi provider",
+    "emptyChain": "Nessun provider è attivo, quindi la ricerca web non funzionerà. Aggiungine o attivane uno."
   },
   "visualize": {
     "title": "Widget visivi",

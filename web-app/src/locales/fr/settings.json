@@ -287,7 +287,17 @@
     "noSetupDesc": "Interroge {{provider}} directement, sans clé API ni compte. Après de nombreuses recherches en peu de temps, {{provider}} peut demander une vérification anti-robot ; attendez une minute, ou choisissez Exa ou You.com, qui n'exigent pas non plus de clé.",
     "apiKeySearch": "Clé API de recherche web",
     "endpointSearch": "URL de l'instance de recherche web",
-    "endpointSearchDesc": "L'URL de base de votre instance de recherche auto-hébergée."
+    "endpointSearchDesc": "L'URL de base de votre instance de recherche auto-hébergée.",
+    "searchOrder": "Ordre de recherche",
+    "searchOrderDesc": "Les fournisseurs sont essayés de haut en bas ; un fournisseur en échec ou limité passe la recherche au suivant. Les entrées sans clé n'envoient aucun identifiant de compte, celles avec clé sont plus rapides mais rattachables à votre clé.",
+    "modeKeyless": "sans clé",
+    "modeKey": "clé API",
+    "needsSetup": "Non configuré ; ignoré",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "removeEntry": "Retirer",
+    "addEntry": "Ajouter un fournisseur",
+    "emptyChain": "Aucun fournisseur n'est activé, la recherche web échouera. Ajoutez-en ou activez-en un."
   },
   "visualize": {
     "title": "Widgets visuels",

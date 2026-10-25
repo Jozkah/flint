@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "自訂 llama-server",
+    "description": "你自己建置的 llama-server 路徑，用於內建引擎尚不支援的量化或功能。留空則使用內建引擎。使用自訂伺服器時，已儲存的對話快取和模型上限的即時調整無法使用。",
+    "placeholder": "例如 /path/to/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "環境變數",
     "description": "llama.cpp 的環境變數（KEY=VALUE），以 ';' 分隔",

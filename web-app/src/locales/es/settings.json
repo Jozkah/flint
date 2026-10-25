@@ -287,7 +287,17 @@
     "noSetupDesc": "Busca directamente en {{provider}}, sin clave de API ni cuenta. Tras muchas búsquedas en poco tiempo, {{provider}} puede pedir una comprobación anti-bots; espera un minuto o elige Exa o You.com, que tampoco necesitan clave.",
     "apiKeySearch": "Clave de API de búsqueda web",
     "endpointSearch": "URL de la instancia de búsqueda web",
-    "endpointSearchDesc": "La URL base de tu instancia de búsqueda autoalojada."
+    "endpointSearchDesc": "La URL base de tu instancia de búsqueda autoalojada.",
+    "searchOrder": "Orden de búsqueda",
+    "searchOrderDesc": "Los proveedores se prueban de arriba abajo; uno que falla o está limitado pasa la búsqueda al siguiente. Las entradas sin clave no envían ningún identificador de cuenta; las que tienen clave son más rápidas pero rastreables hasta tu clave.",
+    "modeKeyless": "sin clave",
+    "modeKey": "clave de API",
+    "needsSetup": "Sin configurar; se omite",
+    "moveUp": "Subir",
+    "moveDown": "Bajar",
+    "removeEntry": "Quitar",
+    "addEntry": "Añadir proveedor",
+    "emptyChain": "No hay ningún proveedor activo, así que la búsqueda web fallará. Añade o activa uno."
   },
   "visualize": {
     "title": "Widgets visuales",

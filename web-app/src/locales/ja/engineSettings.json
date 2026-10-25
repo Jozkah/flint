@@ -1,4 +1,9 @@
 {
+  "custom_server_path": {
+    "title": "カスタム llama-server",
+    "description": "同梱エンジンがまだ対応していない量子化や機能のために使う、独自ビルドの llama-server へのパス。空欄にすると同梱エンジンを使います。カスタムサーバーでは保存済みスレッドキャッシュとモデル上限のライブ変更は使えません。",
+    "placeholder": "例: /path/to/llama.cpp/build/bin/llama-server"
+  },
   "llamacpp_env": {
     "title": "環境変数",
     "description": "llama.cpp 用の環境変数（KEY=VALUE）。';' で区切ります",
