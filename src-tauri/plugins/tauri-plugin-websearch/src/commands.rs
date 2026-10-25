@@ -1,4 +1,4 @@
-use crate::provider::{clamp_count, create_provider, FetchedPage, ImageResult, SearchResult};
+use crate::provider::{clamp_count, create_backend, ChainEntry, FetchedPage, ImageResult, SearchResult};
 use crate::ratelimit::is_gate_message;
 use serde::Serialize;
 
@@ -37,12 +37,13 @@ pub async fn web_search(
     provider: Option<String>,
     api_key: Option<String>,
     endpoint: Option<String>,
+    chain: Option<Vec<ChainEntry>>,
 ) -> Result<Vec<SearchResult>, WebSearchError> {
     let query = query.trim();
     if query.is_empty() {
         return Err(WebSearchError::new("web_search 'query' must not be empty."));
     }
-    let backend = create_provider(provider.as_deref(), api_key, endpoint)?;
+    let backend = create_backend(chain, provider.as_deref(), api_key, endpoint)?;
     let results = backend.search(query, clamp_count(count)).await?;
     Ok(results)
 }
@@ -56,12 +57,13 @@ pub async fn image_search(
     provider: Option<String>,
     api_key: Option<String>,
     endpoint: Option<String>,
+    chain: Option<Vec<ChainEntry>>,
 ) -> Result<Vec<ImageResult>, WebSearchError> {
     let query = query.trim();
     if query.is_empty() {
         return Err(WebSearchError::new("image_search 'query' must not be empty."));
     }
-    let backend = create_provider(provider.as_deref(), api_key, endpoint)?;
+    let backend = create_backend(chain, provider.as_deref(), api_key, endpoint)?;
     Ok(backend.search_images(query, clamp_count(count)).await?)
 }
 
@@ -72,6 +74,7 @@ pub async fn web_fetch(
     provider: Option<String>,
     api_key: Option<String>,
     endpoint: Option<String>,
+    chain: Option<Vec<ChainEntry>>,
 ) -> Result<FetchedPage, WebSearchError> {
     let url = url.trim();
     if url.is_empty() {
@@ -82,7 +85,7 @@ pub async fn web_fetch(
             "web_fetch 'url' must be an http(s) URL, got: {url}"
         )));
     }
-    let backend = create_provider(provider.as_deref(), api_key, endpoint)?;
+    let backend = create_backend(chain, provider.as_deref(), api_key, endpoint)?;
     let page = backend
         .fetch(url)
         .await

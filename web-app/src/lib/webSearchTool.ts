@@ -1,5 +1,5 @@
 import { webSearch, webFetch, imageSearch } from '@janhq/tauri-plugin-websearch-api'
-import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { buildSearchChain, useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 
 export const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch', 'image_search'])
 
@@ -123,14 +123,18 @@ export async function executeWebTool(
   /** Char budget one result may occupy for this model (deriveToolOutputCap). */
   maxOutputChars?: number
 ): Promise<WebToolResult> {
-  const { apiKeys, endpoints, searchProvider } = useWebSearchConfig.getState()
+  const config = useWebSearchConfig.getState()
+  const { apiKeys, endpoints, searchProvider } = config
   const apiKey = apiKeys[searchProvider] || undefined
   const endpoint = endpoints[searchProvider] || undefined
+  // The ordered chain from Settings decides; the backend never adds a provider
+  // the user left out, so an empty chain is an error rather than a default.
+  const chainArg = buildSearchChain(config)
   try {
     if (toolName === 'web_search') {
       const query = typeof input?.query === 'string' ? input.query : ''
       const count = typeof input?.count === 'number' ? input.count : undefined
-      const results = await webSearch(query, count, apiKey, searchProvider, endpoint)
+      const results = await webSearch(query, count, apiKey, searchProvider, endpoint, chainArg)
       return {
         content: {
           kind: 'web',
@@ -147,7 +151,7 @@ export async function executeWebTool(
     if (toolName === 'image_search') {
       const query = typeof input?.query === 'string' ? input.query : ''
       const count = typeof input?.count === 'number' ? input.count : undefined
-      const images = await imageSearch(query, count, apiKey, searchProvider, endpoint)
+      const images = await imageSearch(query, count, apiKey, searchProvider, endpoint, chainArg)
       if (images.length === 0) {
         return { content: `No images found for "${query}". Answer without one.` }
       }
@@ -172,7 +176,7 @@ export async function executeWebTool(
       }
       let page: Awaited<ReturnType<typeof webFetch>>
       try {
-        page = await webFetch(url, apiKey, searchProvider, endpoint)
+        page = await webFetch(url, apiKey, searchProvider, endpoint, chainArg)
       } catch (e) {
         // A provider rate limit says nothing about the URL: the backend's own
         // gate already refuses calls until the cool-down ends, and a retry

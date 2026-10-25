@@ -16,13 +16,18 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
-import { EyeOff, Eye, Search } from 'lucide-react'
+import { EyeOff, Eye, Search, ArrowUp, ArrowDown, X, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   useWebSearchConfig,
   WEB_SEARCH_PROVIDERS,
   getProviderMeta,
+  buildSearchChain,
+  chainEntryId,
+  chainEntryOptions,
+  entryUsesKey,
+  type SearchChainEntry,
   type WebSearchProviderMeta,
 } from '@/hooks/useWebSearchConfig'
 import { Icon } from '@/components/ui/icon'
@@ -58,6 +63,137 @@ const ProviderFavicon = ({ provider }: { provider: WebSearchProviderMeta }) => {
       className="size-4 shrink-0 rounded-sm object-contain"
       onError={() => setFailed(true)}
     />
+  )
+}
+
+const iconButton =
+  'grid size-6 shrink-0 place-items-center rounded-md text-secondary-foreground hover:bg-hover-btn hover:text-foreground disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11'
+
+/**
+ * The ordered search chain: reorder, switch off, remove and add entries. An
+ * entry that cannot run (keyed without a key, SearXNG without a URL) is shown
+ * but marked, since the search skips it.
+ */
+function SearchOrder() {
+  const { t } = useTranslation()
+  const { searchChain, apiKeys, endpoints, setSearchChain } = useWebSearchConfig()
+  const runnable = (entry: SearchChainEntry) =>
+    buildSearchChain({ searchChain: [{ ...entry, enabled: true }], apiKeys, endpoints })
+      .length > 0
+  const label = (e: Pick<SearchChainEntry, 'provider' | 'useKey'>) => {
+    const meta = getProviderMeta(e.provider)
+    const both = meta.keyless && !!meta.secretKey
+    if (!both) return meta.label
+    return `${meta.label} (${t(
+      entryUsesKey(e) ? 'settings:webSearch.modeKey' : 'settings:webSearch.modeKeyless'
+    )})`
+  }
+  const move = (from: number, to: number) => {
+    const next = [...searchChain]
+    const [item] = next.splice(from, 1)
+    next.splice(to, 0, item)
+    setSearchChain(next)
+  }
+  const present = new Set(searchChain.map(chainEntryId))
+  const addable = chainEntryOptions().filter((o) => !present.has(chainEntryId(o)))
+  const noneOn = buildSearchChain({ searchChain, apiKeys, endpoints }).length === 0
+
+  return (
+    <Card title={t('settings:webSearch.searchOrder')}>
+      <CardItem
+        anchor="settings-web-search-order"
+        title={t('settings:webSearch.searchOrder')}
+        description={
+          noneOn
+            ? t('settings:webSearch.emptyChain')
+            : t('settings:webSearch.searchOrderDesc')
+        }
+        actions={
+          addable.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-1 pointer-coarse:h-11">
+                  <Plus size={14} />
+                  {t('settings:webSearch.addEntry')}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {addable.map((o) => (
+                  <DropdownMenuItem
+                    key={chainEntryId(o)}
+                    className="cursor-pointer my-0.5 gap-2"
+                    onClick={() =>
+                      setSearchChain([...searchChain, { ...o, enabled: true }])
+                    }
+                  >
+                    <ProviderFavicon provider={getProviderMeta(o.provider)} />
+                    <span className="truncate">{label(o)}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        }
+      />
+      {searchChain.map((entry, i) => (
+        <CardItem
+          key={chainEntryId(entry)}
+          title={
+            <span className="flex items-center gap-2">
+              <span className="w-4 text-right tabular-nums text-fg-2">{i + 1}</span>
+              <ProviderFavicon provider={getProviderMeta(entry.provider)} />
+              <span className={cn('truncate', !entry.enabled && 'opacity-50')}>
+                {label(entry)}
+              </span>
+            </span>
+          }
+          description={
+            entry.enabled && !runnable(entry)
+              ? t('settings:webSearch.needsSetup')
+              : undefined
+          }
+          actions={
+            <span className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label={t('settings:webSearch.moveUp')}
+                disabled={i === 0}
+                onClick={() => move(i, i - 1)}
+                className={iconButton}
+              >
+                <ArrowUp size={14} />
+              </button>
+              <button
+                type="button"
+                aria-label={t('settings:webSearch.moveDown')}
+                disabled={i === searchChain.length - 1}
+                onClick={() => move(i, i + 1)}
+                className={iconButton}
+              >
+                <ArrowDown size={14} />
+              </button>
+              <Switch
+                aria-label={label(entry)}
+                checked={entry.enabled}
+                onCheckedChange={(enabled) =>
+                  setSearchChain(
+                    searchChain.map((e, j) => (j === i ? { ...e, enabled } : e))
+                  )
+                }
+              />
+              <button
+                type="button"
+                aria-label={t('settings:webSearch.removeEntry')}
+                onClick={() => setSearchChain(searchChain.filter((_, j) => j !== i))}
+                className={iconButton}
+              >
+                <X size={14} />
+              </button>
+            </span>
+          }
+        />
+      ))}
+    </Card>
   )
 }
 
@@ -216,6 +352,7 @@ function WebSearchContent() {
             />
           )}
         </Card>
+        <SearchOrder />
       </SettingsPageBody>
     </div>
   )
