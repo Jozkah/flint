@@ -91,7 +91,34 @@ fn main() {
     // `#[cfg(feature = ...)]` here would silently never fire.
     if std::env::var_os("CARGO_FEATURE_ENGINE").is_some() {
         engine::build();
+        embed_utf8_manifest();
     }
+}
+
+/// Makes the worker's narrow-string file APIs read UTF-8 instead of the ANSI
+/// code page. Upstream llama.cpp opens paths from the preset (`slot-save-path`,
+/// templates, grammar files) with `std::filesystem` and `ifstream` taking a
+/// `std::string`; on Windows that decodes with the ANSI code page, so a path
+/// holding a character outside it -- a Cyrillic or accented user name is
+/// enough -- reads as one that does not exist. With this manifest the same
+/// calls decode UTF-8, which is what the preset holds. The shim already loads
+/// the ini itself through `u8path`. Only the worker needs it: the engine runs
+/// nowhere else. Windows before 1903 ignores the setting. Ported from
+/// janhq/jan#9418.
+fn embed_utf8_manifest() {
+    let target_msvc = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
+    if !target_msvc {
+        return;
+    }
+    let manifest = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap())
+        .join("flint-llama-worker.manifest");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    println!("cargo:rustc-link-arg-bin=flint-llama-worker=/MANIFEST:EMBED");
+    println!(
+        "cargo:rustc-link-arg-bin=flint-llama-worker=/MANIFESTINPUT:{}",
+        manifest.display()
+    );
 }
 
 mod engine {
