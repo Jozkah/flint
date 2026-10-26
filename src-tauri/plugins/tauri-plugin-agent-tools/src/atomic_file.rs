@@ -18,7 +18,7 @@ static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
 /// A temp path next to `path`, unique within this process and across
 /// processes, so two concurrent writers of the same file never share (and
 /// clobber) one temp file.
-fn temp_sibling(path: &Path) -> PathBuf {
+pub(crate) fn temp_sibling(path: &Path) -> PathBuf {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
