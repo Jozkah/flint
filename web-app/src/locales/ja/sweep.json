@@ -3,6 +3,8 @@
     "actionFailed": "この操作を完了できませんでした。もう一度お試しください。",
     "alreadyInList_other": "{{names}} はすでにリストにあります",
     "attachmentsDisabled": "添付ファイルは設定で無効になっています",
+    "docsInPrompt": "ドキュメントはプロンプトに追加されます",
+    "docsInPromptDescription": "このモデルはファイルを検索できないため、各ドキュメントはメッセージと一緒にテキストとして送信されます。",
     "fileTooLarge": "ファイルが大きすぎます",
     "fileTooLargeDesc": "1 つ以上のファイルが {{size}} MB の上限を超えています",
     "filesAlreadyAttached": "すでに添付されているファイル",

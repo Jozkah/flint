@@ -4,6 +4,8 @@
     "alreadyInList_one": "{{names}} ja és a la llista",
     "alreadyInList_other": "{{names}} ja són a la llista",
     "attachmentsDisabled": "Els fitxers adjunts estan desactivats a Configuració",
+    "docsInPrompt": "Els documents s'afegeixen a la indicació",
+    "docsInPromptDescription": "Aquest model no pot cercar fitxers, així que cada document s'envia com a text amb el teu missatge.",
     "fileTooLarge": "Fitxer massa gran",
     "fileTooLargeDesc": "Un o més fitxers superen el límit de {{size}} MB",
     "filesAlreadyAttached": "Fitxers ja adjuntats",

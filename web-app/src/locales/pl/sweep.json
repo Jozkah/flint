@@ -6,6 +6,8 @@
     "alreadyInList_few": "Pliki {{names}} są już na liście",
     "alreadyInList_many": "Pliki {{names}} są już na liście",
     "attachmentsDisabled": "Załączniki są wyłączone w Ustawieniach",
+    "docsInPrompt": "Dokumenty są dodawane do promptu",
+    "docsInPromptDescription": "Ten model nie może przeszukiwać plików, więc każdy dokument jest wysyłany jako tekst razem z wiadomością.",
     "fileTooLarge": "Plik jest za duży",
     "fileTooLargeDesc": "Co najmniej jeden plik przekracza limit {{size}} MB",
     "filesAlreadyAttached": "Pliki są już załączone",

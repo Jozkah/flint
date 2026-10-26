@@ -3,6 +3,8 @@
     "actionFailed": "Tindakan itu tidak dapat diselesaikan. Silakan coba lagi.",
     "alreadyInList_other": "{{names}} sudah ada dalam daftar",
     "attachmentsDisabled": "Lampiran dinonaktifkan di Pengaturan",
+    "docsInPrompt": "Dokumen ditambahkan ke prompt",
+    "docsInPromptDescription": "Model ini tidak dapat mencari file, jadi setiap dokumen dikirim sebagai teks bersama pesan Anda.",
     "fileTooLarge": "File terlalu besar",
     "fileTooLargeDesc": "Satu atau beberapa file melebihi batas {{size}} MB",
     "filesAlreadyAttached": "File sudah dilampirkan",

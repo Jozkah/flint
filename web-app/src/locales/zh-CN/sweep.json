@@ -3,6 +3,8 @@
     "actionFailed": "无法完成该操作，请重试。",
     "alreadyInList_other": "{{names}} 已在列表中",
     "attachmentsDisabled": "附件已在设置中停用",
+    "docsInPrompt": "文档已添加到提示中",
+    "docsInPromptDescription": "此模型无法搜索文件，因此每个文档都会作为文本随消息一起发送。",
     "fileTooLarge": "文件过大",
     "fileTooLargeDesc": "有一个或多个文件超过 {{size}} MB 的限制",
     "filesAlreadyAttached": "文件已附加",
