@@ -4,6 +4,8 @@
     "alreadyInList_one": "{{names}} befindet sich bereits in der Liste",
     "alreadyInList_other": "{{names}} befinden sich bereits in der Liste",
     "attachmentsDisabled": "Anhänge sind in den Einstellungen deaktiviert",
+    "docsInPrompt": "Dokumente werden dem Prompt hinzugefügt",
+    "docsInPromptDescription": "Dieses Modell kann keine Dateien durchsuchen, daher wird jedes Dokument als Text mit deiner Nachricht gesendet.",
     "fileTooLarge": "Datei zu groß",
     "fileTooLargeDesc": "Eine oder mehrere Dateien überschreiten das Limit von {{size}} MB",
     "filesAlreadyAttached": "Dateien bereits angehängt",

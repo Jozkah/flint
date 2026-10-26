@@ -6,6 +6,8 @@
     "alreadyInList_few": "Soubory {{names}} už jsou v seznamu",
     "alreadyInList_many": "Soubory {{names}} už jsou v seznamu",
     "attachmentsDisabled": "Přílohy jsou v Nastavení vypnuté",
+    "docsInPrompt": "Dokumenty se přidají do výzvy",
+    "docsInPromptDescription": "Tento model neumí prohledávat soubory, proto se každý dokument odešle jako text s vaší zprávou.",
     "fileTooLarge": "Soubor je příliš velký",
     "fileTooLargeDesc": "Jeden nebo více souborů překračuje limit {{size}} MB",
     "filesAlreadyAttached": "Soubory jsou už připojené",
