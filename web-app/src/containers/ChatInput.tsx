@@ -3809,13 +3809,16 @@ const ChatInput = memo(function ChatInput({
                     {/* RAG document attachments - desktop-only via dialog; shown when feature enabled */}
                     <DropdownMenuItem
                         onClick={() => {
-                          if (toolsEnabled)
-                            void handleAttachDocsIngest()
-                          else
-                            requestCapabilities(
-                              ['tools'],
-                              handleAttachDocsIngest
-                            )
+                          // A model without tools still takes documents: they
+                          // go into the prompt as text (janhq/jan#9388).
+                          if (!toolsEnabled) {
+                            toast.info(t('sweep:chat.docsInPrompt'), {
+                              description: t(
+                                'sweep:chat.docsInPromptDescription'
+                              ),
+                            })
+                          }
+                          void handleAttachDocsIngest()
                         }}
                     >
                       {ingestingDocs ? (

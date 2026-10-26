@@ -4,6 +4,8 @@
     "alreadyInList_one": "{{names}} is already in the list",
     "alreadyInList_other": "{{names}} are already in the list",
     "attachmentsDisabled": "Attachments are disabled in Settings",
+    "docsInPrompt": "Documents are added to the prompt",
+    "docsInPromptDescription": "This model can't search files, so each document is sent as text with your message.",
     "fileTooLarge": "File too large",
     "fileTooLargeDesc": "One or more files exceed the {{size}}MB limit",
     "filesAlreadyAttached": "Files already attached",

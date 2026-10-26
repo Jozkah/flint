@@ -192,6 +192,79 @@ describe('processAttachmentsForSend', () => {
       expect(result.hasEmbeddedDocuments).toBe(true)
     })
 
+    // janhq/jan#9388: an embedded document is read back through the retrieval
+    // tool, which a model without tool support can never call.
+    describe('for a model without tool support', () => {
+      it('inlines a document whatever the preference', async () => {
+        const hub = createMockServiceHub()
+        const doc = docAttachment({ parseMode: 'embeddings' })
+
+        const result = await processAttachmentsForSend({
+          attachments: [doc],
+          threadId,
+          serviceHub: hub as any,
+          parsePreference: 'embeddings',
+          modelSupportsTools: false,
+        })
+
+        expect(result.processedAttachments[0].injectionMode).toBe('inline')
+        expect(result.processedAttachments[0].inlineContent).toBe('parsed document text')
+        expect(result.hasEmbeddedDocuments).toBe(false)
+      })
+
+      it('inlines an auto document past the inline budget', async () => {
+        const hub = createMockServiceHub()
+        const doc = docAttachment({ parseMode: 'auto' })
+
+        const result = await processAttachmentsForSend({
+          attachments: [doc],
+          threadId,
+          serviceHub: hub as any,
+          parsePreference: 'auto',
+          contextThreshold: 1,
+          estimateTokens: async () => 10_000,
+          modelSupportsTools: false,
+        })
+
+        expect(result.processedAttachments[0].injectionMode).toBe('inline')
+      })
+
+      it('inlines a project document instead of embedding it', async () => {
+        const hub = createMockServiceHub()
+        const doc = docAttachment()
+
+        const result = await processAttachmentsForSend({
+          attachments: [doc],
+          threadId,
+          projectId: 'project-1',
+          serviceHub: hub as any,
+          parsePreference: 'auto',
+          modelSupportsTools: false,
+        })
+
+        expect(result.processedAttachments[0].injectionMode).toBe('inline')
+        expect(result.hasEmbeddedDocuments).toBe(false)
+      })
+
+      it('rejects a document that cannot be read as text', async () => {
+        const failingParse = vi.fn().mockRejectedValue(new Error('parse failed'))
+        const hub = {
+          ...createMockServiceHub(),
+          rag: () => ({ parseDocument: failingParse }),
+        }
+
+        await expect(
+          processAttachmentsForSend({
+            attachments: [docAttachment({ parseMode: 'inline' })],
+            threadId,
+            serviceHub: hub as any,
+            parsePreference: 'auto',
+            modelSupportsTools: false,
+          })
+        ).rejects.toThrow(/can't search files/)
+      })
+    })
+
     it('skips already-processed documents', async () => {
       const hub = createMockServiceHub()
       const doc = docAttachment({
