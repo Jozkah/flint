@@ -2136,8 +2136,10 @@ export function ThreadConversation({
       // The budget can be gone since attach time (model switched, window
       // unknown), so 'auto' documents that would silently fall back to
       // embeddings are put to the user. Project files always embed.
+      // A model that cannot call tools gets every document in its prompt, so
+      // there is nothing to choose (janhq/jan#9388).
       const unrouted =
-        projectId || contextThreshold !== undefined
+        projectId || contextThreshold !== undefined || !toolsEnabled
           ? []
           : combinedAttachments.filter((a) =>
               needsIngestionChoice(a, parsePreference, false)
@@ -2165,7 +2167,8 @@ export function ThreadConversation({
         (a) =>
           a.type === 'document' &&
           !a.processed &&
-          a.parseMode !== 'inline'
+          a.parseMode !== 'inline' &&
+          toolsEnabled
       )
 
       // When there are unprocessed documents (e.g. first-message flow),
@@ -2201,6 +2204,7 @@ export function ThreadConversation({
             projectId,
             serviceHub,
             selectedProvider,
+            modelSupportsTools: toolsEnabled,
             parsePreference,
             contextThreshold,
             estimateTokens: estimateAttachmentTokens,
@@ -2313,6 +2317,7 @@ export function ThreadConversation({
       clearAttachmentsForThread,
       serviceHub,
       selectedProvider,
+      toolsEnabled,
       t,
     ]
   )

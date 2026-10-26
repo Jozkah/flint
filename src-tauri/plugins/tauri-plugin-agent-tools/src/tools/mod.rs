@@ -31,6 +31,7 @@ pub mod docker_tool;
 pub mod host_read;
 pub mod local_http;
 pub mod handlers;
+pub(crate) mod nofollow;
 pub mod syntax_check;
 pub mod host_tools;
 pub mod image;

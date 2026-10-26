@@ -19,6 +19,12 @@ type AttachmentProcessingOptions = {
   projectId?: string
   serviceHub: ServiceHub
   selectedProvider?: string
+  /**
+   * Whether the selected model can call tools. An embedded document is read
+   * back through the retrieval tool, so a model that cannot call it gets every
+   * document in its prompt instead (janhq/jan#9388).
+   */
+  modelSupportsTools?: boolean
   contextThreshold?: number
   estimateTokens?: (text: string) => Promise<number | undefined>
   parsePreference: 'auto' | 'inline' | 'embeddings' | 'prompt'
@@ -339,12 +345,18 @@ export const processAttachmentsForSend = async (
         targetPreference === 'inline' ? 'inline' : 'embeddings'
       let parsedContent: string | undefined
 
-      // Project files always use embeddings, never inline
-      if (projectId) {
+      // A model that cannot call the retrieval tool can only use a document
+      // that is in its prompt, whatever the preference or the document's size.
+      const needsInline = options.modelSupportsTools === false
+
+      // Project files use embeddings, never inline, unless the model cannot
+      // reach an embedded copy.
+      if (projectId && !needsInline) {
         targetMode = 'embeddings'
       }
 
-      const canInline = !projectId && targetPreference !== 'embeddings' && !!doc.path
+      const canInline =
+        (needsInline || (!projectId && targetPreference !== 'embeddings')) && !!doc.path
 
       if (canInline) {
         try {
@@ -356,7 +368,16 @@ export const processAttachmentsForSend = async (
         }
       }
 
-      if (targetPreference === 'auto') {
+      if (needsInline) {
+        // An embedded copy would be unreachable, so a document that could not
+        // be read as text fails the send rather than going without its content.
+        if (!parsedContent) {
+          throw new Error(
+            `Couldn't read ${doc.name} as text. This model can't search files, so the document can't be added.`
+          )
+        }
+        targetMode = 'inline'
+      } else if (targetPreference === 'auto') {
         // Check if user made a per-file choice for this document
         const userChoice = perFileChoices?.get(doc.path || '')
         // Project files always use embeddings

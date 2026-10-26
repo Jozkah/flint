@@ -14,6 +14,7 @@ use tokio::sync::oneshot;
 use crate::memory;
 use crate::skills;
 use crate::tools::jail;
+use crate::tools::nofollow;
 use crate::tools::proc;
 use crate::tools::sandbox::{
     canonicalize_lenient, escapes_write_roots, in_scratch, is_hidden_jan_path_in, lexical_normalize,
@@ -2130,20 +2131,20 @@ async fn write(
         Ok(p) => p,
         Err(e) => return format!("ERROR: refused to write {path}: {e}"),
     };
-    if let Some(parent) = open_at.parent() {
-        if let Err(e) = tokio::fs::create_dir_all(parent).await {
-            return format!("ERROR: {shown}: {e}");
-        }
-    }
     // Existence decides created/overwrote; a non-UTF8 file still exists, so it
-    // must not be read_to_string's error path that answers that question.
-    let existed = tokio::fs::try_exists(&open_at).await.unwrap_or(false);
-    let unchanged = existed
-        && tokio::fs::read_to_string(&open_at)
-            .await
-            .is_ok_and(|prior| prior == content);
+    // must not be a UTF-8 decode that answers that question. Read through the
+    // same no-follow walk as the write, so a swapped link is refused here too.
+    let prior = match read_no_follow(&open_at).await {
+        Ok(prior) => Some(prior),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) if nofollow::is_link_refused(&e) => return swapped_link("write", path),
+        Err(_) => Some(Vec::new()),
+    };
+    let existed = prior.is_some();
+    let unchanged = prior.is_some_and(|prior| prior == content.as_bytes());
     let bytes = content.len();
     match write_no_follow(&open_at, content).await {
+        Err(e) if nofollow::is_link_refused(&e) => swapped_link("write", path),
         Ok(()) if unchanged => format!("No change: {shown} already had these {bytes} bytes"),
         Ok(()) if existed => format!("Overwrote {shown} ({bytes} bytes)"),
         Ok(()) => {
@@ -2223,8 +2224,12 @@ async fn edit(
         Ok(p) => p,
         Err(e) => return format!("ERROR: refused to edit {path}: {e}"),
     };
-    let content = match tokio::fs::read_to_string(&open_at).await {
-        Ok(c) => c,
+    let content = match read_no_follow(&open_at).await {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(c) => c,
+            Err(_) => return format!("ERROR: {shown}: stream did not contain valid UTF-8"),
+        },
+        Err(e) if nofollow::is_link_refused(&e) => return swapped_link("edit", path),
         Err(e) => return format!("ERROR: {shown}: {e}"),
     };
     let content = match apply_edits(&content, edits, &shown) {
@@ -2234,6 +2239,7 @@ async fn edit(
 
     match write_no_follow(&open_at, &content).await {
         Ok(()) => format!("Applied {} edit(s) to {shown}", edits.len()),
+        Err(e) if nofollow::is_link_refused(&e) => swapped_link("edit", path),
         Err(e) => format!("ERROR: {shown}: {e}"),
     }
 }
@@ -2249,17 +2255,31 @@ fn resolved_for_open(target: &Path) -> Result<PathBuf, String> {
 /// Replace `path` with `content` through a sibling temp file and a rename
 /// (Jozkah/jan#39), so a crash or kill mid-write leaves the user's file with
 /// its old content or the full new content, never truncated, and the file's
-/// permission bits survive the replacement. `path` is already resolved; the
-/// rename replaces whatever directory entry sits there now rather than writing
-/// through it, so a symlink planted at `path` after the checks is replaced,
-/// not followed (Jozkah/jan#192).
+/// permission bits survive the replacement. `path` is already resolved and
+/// holds no links; the replace walks it without following one, so a link
+/// swapped into a parent or the leaf after the checks is refused rather than
+/// followed (Jozkah/jan#192, janhq/jan#9424).
 async fn write_no_follow(path: &Path, content: &str) -> std::io::Result<()> {
     let path = path.to_path_buf();
     let bytes = content.as_bytes().to_vec();
-    tokio::task::spawn_blocking(move || crate::atomic_file::write_atomic(&path, &bytes))
+    tokio::task::spawn_blocking(move || nofollow::write_atomic(&path, &bytes))
         .await
         .map_err(std::io::Error::other)?
-        .map_err(std::io::Error::other)
+}
+
+/// Read the resolved `path` without following a link along it.
+async fn read_no_follow(path: &Path) -> std::io::Result<Vec<u8>> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || nofollow::read(&path))
+        .await
+        .map_err(std::io::Error::other)?
+}
+
+/// The answer when a link appeared in the path after it was checked.
+fn swapped_link(verb: &str, path: &str) -> String {
+    format!(
+        "ERROR: refused to {verb} {path}: a part of the path became a symbolic link after it          was checked"
+    )
 }
 
 /// `path` made absolute against this process's working directory, with `.`
