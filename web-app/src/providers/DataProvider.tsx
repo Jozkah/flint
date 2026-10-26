@@ -32,6 +32,8 @@ import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
 import { startKeepAwakeSync } from '@/lib/keepAwake'
 import { isChatWindow } from '@/lib/soloFlag'
+import { restoreInterruptedDownloads } from '@/lib/restoreInterruptedDownloads'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { hostInvoke } from '@/lib/hostInvoke'
 import { grandfatherFolderTrust } from '@/lib/grandfatherFolderTrust'
 import {
@@ -285,6 +287,17 @@ export function DataProvider() {
   const sweptWorkspaces = useRef(false)
   const grandfathered = useRef(false)
   const serviceHub = useServiceHub()
+  // Hugging Face downloads a quit or crash cut off come back as paused rows.
+  // Main window only: a second window restoring them would run them twice.
+  useEffect(() => {
+    if (solo) return
+    try {
+      if (getCurrentWebviewWindow().label !== 'main') return
+    } catch {
+      // Not under Tauri (tests, the browser build): treat as the main window.
+    }
+    restoreInterruptedDownloads(serviceHub)
+  }, [serviceHub])
 
   // Local API Server hooks
   const {

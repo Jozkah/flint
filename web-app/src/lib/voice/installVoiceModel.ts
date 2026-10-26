@@ -2,6 +2,7 @@ import { useServiceStore } from '@/hooks/useServiceHub'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { startHuggingFaceBundle } from '@/hooks/useHuggingFaceDownloads'
 import { recordHuggingFaceInstall } from '@/lib/huggingfaceRegistry'
+import type { ServiceHub } from '@/services'
 import {
   VOICE_BUNDLE_ID,
   VOICE_MMPROJ_BYTES,
@@ -26,40 +27,52 @@ export async function installVoiceModel(): Promise<void> {
   await startHuggingFaceBundle({
     id: VOICE_BUNDLE_ID,
     repo: VOICE_MODEL_REPO,
-    label: 'Voice input model',
-    files: [
-      { name: VOICE_MODEL_FILE, size: VOICE_MODEL_BYTES },
-      { name: VOICE_MMPROJ_FILE, size: VOICE_MMPROJ_BYTES },
-    ],
+    label: VOICE_BUNDLE_LABEL,
+    files: VOICE_BUNDLE_FILES,
     token,
-    onComplete: async (paths) => {
-      const [modelPath, mmprojPath] = paths
-      if (!modelPath || !mmprojPath) {
-        throw new Error('The voice model download finished without all its files.')
-      }
-      await hub
-        .models()
-        .pullModel(
-          VOICE_MODEL_ID,
-          modelPath,
-          undefined,
-          VOICE_MODEL_BYTES,
-          mmprojPath,
-          undefined,
-          VOICE_MMPROJ_BYTES
-        )
-      await hub.models().updateModelSettings(VOICE_MODEL_ID, {
-        chat_template: VOICE_MODEL_SETTINGS.chat_template,
-        ctx_len: VOICE_MODEL_SETTINGS.ctx_len,
-      })
-      recordHuggingFaceInstall({
-        modelId: VOICE_MODEL_ID,
-        repo: VOICE_MODEL_REPO,
-        revision: null,
-        files: [VOICE_MODEL_FILE, VOICE_MMPROJ_FILE],
-        installedAt: Date.now(),
-        provider: 'llamacpp',
-      })
-    },
+    finish: { kind: 'voice' },
+    onComplete: voiceFinish(hub),
   })
+}
+
+export const VOICE_BUNDLE_LABEL = 'Voice input model'
+
+export const VOICE_BUNDLE_FILES = [
+  { name: VOICE_MODEL_FILE, size: VOICE_MODEL_BYTES },
+  { name: VOICE_MMPROJ_FILE, size: VOICE_MMPROJ_BYTES },
+]
+
+/** Import the finished voice model and give it its fixed settings. */
+export function voiceFinish(
+  hub: Pick<ServiceHub, 'models'>
+): (paths: string[]) => Promise<void> {
+  return async (paths) => {
+    const [modelPath, mmprojPath] = paths
+    if (!modelPath || !mmprojPath) {
+      throw new Error('The voice model download finished without all its files.')
+    }
+    await hub
+      .models()
+      .pullModel(
+        VOICE_MODEL_ID,
+        modelPath,
+        undefined,
+        VOICE_MODEL_BYTES,
+        mmprojPath,
+        undefined,
+        VOICE_MMPROJ_BYTES
+      )
+    await hub.models().updateModelSettings(VOICE_MODEL_ID, {
+      chat_template: VOICE_MODEL_SETTINGS.chat_template,
+      ctx_len: VOICE_MODEL_SETTINGS.ctx_len,
+    })
+    recordHuggingFaceInstall({
+      modelId: VOICE_MODEL_ID,
+      repo: VOICE_MODEL_REPO,
+      revision: null,
+      files: [VOICE_MODEL_FILE, VOICE_MMPROJ_FILE],
+      installedAt: Date.now(),
+      provider: 'llamacpp',
+    })
+  }
 }

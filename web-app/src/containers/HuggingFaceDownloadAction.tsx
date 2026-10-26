@@ -1,5 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
-import { join } from '@tauri-apps/api/path'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Check,
@@ -27,7 +25,6 @@ import {
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { ExtensionManager } from '@/lib/extension'
 import {
   formatModelBytes,
   isMlxRuntimeFile,
@@ -38,12 +35,11 @@ import {
 } from '@/lib/huggingface'
 import {
   hasHuggingFaceUpdate,
-  recordHuggingFaceInstall,
 } from '@/lib/huggingfaceRegistry'
 import { cn } from '@/lib/utils'
 import { listedModelId, modelIdKey } from '@/lib/modelIdPath'
 import { formatEta, secondsRemaining } from '@/lib/downloadSpeed'
-import { startGgufBundle } from '@/lib/huggingfaceStart'
+import { mlxFinish, startGgufBundle } from '@/lib/huggingfaceStart'
 
 export type HuggingFaceDownloadActionProps = {
   repo: string
@@ -123,30 +119,25 @@ export function HuggingFaceDownloadAction({
         if (!runtimeFiles.some((file) => file.name.toLowerCase().endsWith('.safetensors'))) {
           throw new Error('This repository does not contain MLX safetensors files.')
         }
+        const finish = {
+          kind: 'mlx' as const,
+          modelId,
+          repo,
+          revision,
+          replace: updateAvailable,
+        }
         await startHuggingFaceBundle({
           id: bundleId,
           repo,
           label: modelId,
           files: runtimeFiles,
           token,
-          onComplete: async () => {
-            if (updateAvailable) {
-              await serviceHub.models().deleteModel(modelId, 'mlx').catch(() => {})
-            }
-            const dataRoot = await invoke<string>('get_jan_data_folder_path')
-            const folder = await join(dataRoot, 'downloads', 'huggingface', ...repo.split('/'))
-            const engine = ExtensionManager.getInstance().getEngine('mlx')
-            if (!engine) throw new Error('MLX engine is not available on this system.')
-            await engine.import(modelId, { modelPath: folder })
-            recordHuggingFaceInstall({
-              modelId,
-              repo,
-              revision,
-              files: runtimeFiles.map((file) => file.name),
-              installedAt: Date.now(),
-              provider: 'mlx',
-            })
-          },
+          finish,
+          onComplete: mlxFinish(
+            finish,
+            runtimeFiles.map((file) => file.name),
+            serviceHub.models()
+          ),
         })
         return
       }

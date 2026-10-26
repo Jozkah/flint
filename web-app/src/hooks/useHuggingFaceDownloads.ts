@@ -11,6 +11,11 @@ import {
   type HuggingFaceDownloadProgress,
   type HuggingFaceFile,
 } from '@/lib/huggingface'
+import {
+  writeInterruptedDownloads,
+  type DownloadFinish,
+  type InterruptedDownload,
+} from '@/lib/interruptedDownloads'
 
 export type HuggingFaceTaskStatus =
   | 'queued'
@@ -71,6 +76,12 @@ type BundleRunner = {
   token?: string
   revision?: string | null
   onComplete?: (paths: string[]) => Promise<void>
+  /**
+   * How to finish this download in plain data. Only a download that has one
+   * is saved and comes back, paused, after a relaunch (see
+   * lib/interruptedDownloads).
+   */
+  finish?: DownloadFinish
 }
 
 const runners = new Map<string, BundleRunner>()
@@ -78,6 +89,49 @@ const running = new Set<string>()
 const pauseIntent = new Set<string>()
 const cancelIntent = new Set<string>()
 let progressListener: Promise<() => void> | null = null
+let persisting = false
+
+// A download a relaunch can bring back: still to finish, or failed with a retry.
+const UNFINISHED: HuggingFaceTaskStatus[] = [
+  'queued',
+  'downloading',
+  'paused',
+  'verifying',
+  'importing',
+  'error',
+]
+
+/**
+ * Keep the saved list in step with the store. Bytes are counted by finished
+ * file, so the list is rewritten when a file or a status changes, not on every
+ * progress event.
+ */
+function persistUnfinished(tasks: Record<string, HuggingFaceDownloadTask>) {
+  const records: InterruptedDownload[] = []
+  for (const task of Object.values(tasks)) {
+    const runner = runners.get(task.id)
+    if (!runner?.finish || !UNFINISHED.includes(task.status)) continue
+    const paths = task.paths.filter((path): path is string => typeof path === 'string')
+    records.push({
+      id: task.id,
+      repo: runner.repo,
+      label: runner.label,
+      files: runner.files,
+      revision: runner.revision ?? null,
+      paths,
+      downloaded: completedBytes(runner.files, paths.length),
+      total: task.total,
+      finish: runner.finish,
+    })
+  }
+  writeInterruptedDownloads(records)
+}
+
+function ensurePersistence() {
+  if (persisting) return
+  persisting = true
+  useHuggingFaceDownloads.subscribe((state) => persistUnfinished(state.tasks))
+}
 
 function totalBytes(files: HuggingFaceFile[]): number | undefined {
   if (!files.length || files.some((file) => typeof file.size !== 'number')) return undefined
@@ -219,6 +273,7 @@ async function runBundle(id: string): Promise<void> {
 }
 
 export function startHuggingFaceBundle(input: BundleRunner): Promise<void> {
+  ensurePersistence()
   runners.set(input.id, input)
   const current = useHuggingFaceDownloads.getState().tasks[input.id]
   if (current?.status === 'complete') {
@@ -244,6 +299,42 @@ export async function cancelHuggingFaceBundle(id: string): Promise<void> {
   } else {
     useHuggingFaceDownloads.getState().patch(id, { status: 'cancelled' })
   }
+}
+
+/**
+ * Bring back a download saved before a relaunch as a paused row. `runner`
+ * carries the finish step rebuilt from the saved description. A download
+ * already known this session is left alone.
+ */
+export function restoreHuggingFaceBundle(
+  runner: BundleRunner,
+  saved: InterruptedDownload
+): void {
+  ensurePersistence()
+  if (runners.has(runner.id) || useHuggingFaceDownloads.getState().tasks[runner.id]) return
+  runners.set(runner.id, runner)
+  const paths = saved.paths.slice(0, runner.files.length)
+  const total = saved.total ?? totalBytes(runner.files)
+  const downloaded = completedBytes(runner.files, paths.length)
+  useHuggingFaceDownloads.getState().upsert({
+    id: runner.id,
+    repo: runner.repo,
+    label: runner.label,
+    status: 'paused',
+    files: runner.files,
+    paths,
+    currentFileIndex: paths.length,
+    downloaded,
+    total,
+    progress: total ? Math.min(1, downloaded / total) : 0,
+  })
+}
+
+/** Drop a stopped download's row; it stops being saved with it. */
+export function dismissHuggingFaceBundle(id: string): void {
+  if (running.has(id)) return
+  runners.delete(id)
+  useHuggingFaceDownloads.getState().remove(id)
 }
 
 export function resumeHuggingFaceBundle(id: string): Promise<void> {
