@@ -78,6 +78,7 @@
     "partialOffload": "Kısmi GPU aktarımı",
     "privateUntilUsed": "Kullanana kadar gizli",
     "recentlyUpdated": "Son güncellenenler",
+    "pausedDownloads": "Duraklatılan indirmeler",
     "resume": "Devam et",
     "retry": "Yeniden dene",
     "searchPlaceholder": "Model, yazar ara veya bir Hugging Face URL'si yapıştır…",

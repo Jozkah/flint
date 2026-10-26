@@ -78,6 +78,7 @@
     "partialOffload": "Descarga parcial a la GPU",
     "privateUntilUsed": "Privado hasta que lo uses",
     "recentlyUpdated": "Actualizados recientemente",
+    "pausedDownloads": "Descargas en pausa",
     "resume": "Reanudar",
     "retry": "Reintentar",
     "searchPlaceholder": "Busca modelos, autores o pega una URL de Hugging Face…",

@@ -76,6 +76,7 @@
     "partialOffload": "一部を GPU にオフロード",
     "privateUntilUsed": "使うまでプライベート",
     "recentlyUpdated": "最近更新順",
+    "pausedDownloads": "一時停止中のダウンロード",
     "resume": "再開",
     "retry": "再試行",
     "searchPlaceholder": "モデル名・作者を検索、または Hugging Face の URL を貼り付け…",

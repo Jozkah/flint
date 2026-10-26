@@ -76,6 +76,7 @@
     "partialOffload": "Chuyển một phần sang GPU",
     "privateUntilUsed": "Riêng tư cho đến khi bạn dùng",
     "recentlyUpdated": "Mới cập nhật",
+    "pausedDownloads": "Tải xuống đã tạm dừng",
     "resume": "Tiếp tục",
     "retry": "Thử lại",
     "searchPlaceholder": "Tìm mô hình, tác giả hoặc dán URL Hugging Face…",

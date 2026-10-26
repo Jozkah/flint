@@ -7,7 +7,11 @@ import type { SpecDraftKind } from '@janhq/core'
 import { startHuggingFaceBundle } from '@/hooks/useHuggingFaceDownloads'
 import { chooseDraft, chooseMmproj, type HuggingFaceFileGroup } from '@/lib/huggingface'
 import { recordHuggingFaceInstall } from '@/lib/huggingfaceRegistry'
+import type { DownloadFinish } from '@/lib/interruptedDownloads'
+import { ExtensionManager } from '@/lib/extension'
 import type { ModelsService } from '@/services/models/types'
+import { invoke } from '@tauri-apps/api/core'
+import { join } from '@tauri-apps/api/path'
 
 export function draftKind(filename?: string): SpecDraftKind | undefined {
   const lower = filename?.toLowerCase() ?? ''
@@ -34,6 +38,16 @@ export async function startGgufBundle(input: {
   const mmproj = chooseMmproj(groups)
   const draft = chooseDraft(groups, group)
   const bundleFiles = [...group.files, ...(mmproj?.files ?? []), ...(draft?.files ?? [])]
+  const finish: GgufFinish = {
+    kind: 'gguf',
+    modelId,
+    repo,
+    revision,
+    group,
+    mmproj: mmproj ?? null,
+    draft: draft ?? null,
+    replace,
+  }
   await startHuggingFaceBundle({
     id: bundleId,
     repo,
@@ -41,35 +55,76 @@ export async function startGgufBundle(input: {
     files: bundleFiles,
     token,
     revision,
-    onComplete: async (paths) => {
-      const mainPath = paths[0]
-      if (!mainPath) throw new Error('The GGUF download finished without a model file.')
-      const mmprojOffset = group.files.length
-      const draftOffset = mmprojOffset + (mmproj?.files.length ?? 0)
-      const mmprojPath = mmproj ? paths[mmprojOffset] : undefined
-      const draftPath = draft ? paths[draftOffset] : undefined
-      if (replace) {
-        await models.deleteModel(modelId, 'llamacpp').catch(() => {})
-      }
-      await models.pullModel(
-        modelId,
-        mainPath,
-        group.primary.sha256 ?? undefined,
-        group.primary.size ?? undefined,
-        mmprojPath,
-        mmproj?.primary.sha256 ?? undefined,
-        mmproj?.primary.size ?? undefined,
-        draftPath,
-        draftKind(draft?.primary.name)
-      )
-      recordHuggingFaceInstall({
-        modelId,
-        repo,
-        revision,
-        files: bundleFiles.map((file) => file.name),
-        installedAt: Date.now(),
-        provider: 'llamacpp',
-      })
-    },
+    finish,
+    onComplete: ggufFinish(finish, models),
   })
+}
+
+type GgufFinish = Extract<DownloadFinish, { kind: 'gguf' }>
+type MlxFinish = Extract<DownloadFinish, { kind: 'mlx' }>
+
+/** Install a finished GGUF bundle (model, vision projector, draft) into llama.cpp. */
+export function ggufFinish(
+  finish: GgufFinish,
+  models: Pick<ModelsService, 'deleteModel' | 'pullModel'>
+): (paths: string[]) => Promise<void> {
+  const { modelId, repo, revision, group, mmproj, draft, replace } = finish
+  const bundleFiles = [...group.files, ...(mmproj?.files ?? []), ...(draft?.files ?? [])]
+  return async (paths) => {
+    const mainPath = paths[0]
+    if (!mainPath) throw new Error('The GGUF download finished without a model file.')
+    const mmprojOffset = group.files.length
+    const draftOffset = mmprojOffset + (mmproj?.files.length ?? 0)
+    const mmprojPath = mmproj ? paths[mmprojOffset] : undefined
+    const draftPath = draft ? paths[draftOffset] : undefined
+    if (replace) {
+      await models.deleteModel(modelId, 'llamacpp').catch(() => {})
+    }
+    await models.pullModel(
+      modelId,
+      mainPath,
+      group.primary.sha256 ?? undefined,
+      group.primary.size ?? undefined,
+      mmprojPath,
+      mmproj?.primary.sha256 ?? undefined,
+      mmproj?.primary.size ?? undefined,
+      draftPath,
+      draftKind(draft?.primary.name)
+    )
+    recordHuggingFaceInstall({
+      modelId,
+      repo,
+      revision,
+      files: bundleFiles.map((file) => file.name),
+      installedAt: Date.now(),
+      provider: 'llamacpp',
+    })
+  }
+}
+
+/** Import a finished MLX repository download into the MLX engine. */
+export function mlxFinish(
+  finish: MlxFinish,
+  files: string[],
+  models: Pick<ModelsService, 'deleteModel'>
+): () => Promise<void> {
+  const { modelId, repo, revision, replace } = finish
+  return async () => {
+    if (replace) {
+      await models.deleteModel(modelId, 'mlx').catch(() => {})
+    }
+    const dataRoot = await invoke<string>('get_jan_data_folder_path')
+    const folder = await join(dataRoot, 'downloads', 'huggingface', ...repo.split('/'))
+    const engine = ExtensionManager.getInstance().getEngine('mlx')
+    if (!engine) throw new Error('MLX engine is not available on this system.')
+    await engine.import(modelId, { modelPath: folder })
+    recordHuggingFaceInstall({
+      modelId,
+      repo,
+      revision,
+      files,
+      installedAt: Date.now(),
+      provider: 'mlx',
+    })
+  }
 }

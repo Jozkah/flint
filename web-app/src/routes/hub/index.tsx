@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils'
 import { useSpotlight } from '@/hooks/useSpotlight'
 import { DialogDeleteAllModels } from '@/containers/dialogs/DeleteAllModels'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
+import { PausedDownloads } from '@/containers/PausedDownloads'
 import { route } from '@/constants/routes'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useFitContext } from '@/hooks/useFitContext'
@@ -565,6 +566,7 @@ function ModelDiscoverRoute() {
       ) : (
       <main ref={parentRef} className="-mr-3 min-h-0 flex-1 overflow-y-auto py-4 pr-8 pl-5">
         <div className="mx-auto w-full max-w-6xl">
+          <PausedDownloads />
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span aria-live="polite">
               {loading

@@ -76,6 +76,7 @@
     "partialOffload": "部分卸载到 GPU",
     "privateUntilUsed": "使用前保持私密",
     "recentlyUpdated": "最近更新",
+    "pausedDownloads": "已暂停的下载",
     "resume": "继续",
     "retry": "重试",
     "searchPlaceholder": "搜索模型、作者，或粘贴 Hugging Face 链接…",

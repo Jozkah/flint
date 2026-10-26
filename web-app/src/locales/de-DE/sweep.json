@@ -78,6 +78,7 @@
     "partialOffload": "Teilweise GPU-Auslagerung",
     "privateUntilUsed": "Privat, bis du es nutzt",
     "recentlyUpdated": "Zuletzt aktualisiert",
+    "pausedDownloads": "Pausierte Downloads",
     "resume": "Fortsetzen",
     "retry": "Erneut versuchen",
     "searchPlaceholder": "Modelle und Autoren suchen oder eine Hugging-Face-URL einfügen …",
