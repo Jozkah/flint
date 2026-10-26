@@ -603,8 +603,8 @@ fn glob_names_jan(project_root: &Path, token: &str) -> bool {
 /// override their approval. An unresolvable path fails closed.
 ///
 /// Still a re-check, not a guarantee: a swap landing between this call and the
-/// open is not covered. That needs descriptor-relative no-follow opens
-/// (`openat2` with `RESOLVE_BENEATH`, reparse-point handling on Windows).
+/// open is caught by the write and edit handlers' no-follow walk
+/// ([`super::nofollow`]), which refuses a link it meets instead of following it.
 pub fn symlink_escapes_root(project_root: &Path, scratch: Option<&Path>, target: &Path) -> bool {
     symlink_escapes_any_root(project_root, scratch, &[], target)
 }
@@ -664,8 +664,8 @@ const MAX_LINK_HOPS: usize = 40;
 /// treat an error as an escape.
 ///
 /// This decides where a path points at the moment it is called; it cannot stop
-/// a link from being planted or swapped afterwards. See the write handler's
-/// `O_NOFOLLOW` open for the part of that window it closes.
+/// a link from being planted or swapped afterwards; [`super::nofollow`] closes
+/// that window for the write and edit handlers.
 pub(crate) fn canonicalize_lenient(path: &Path) -> Result<PathBuf, String> {
     let mut path = path.to_path_buf();
     for _ in 0..=MAX_LINK_HOPS {
