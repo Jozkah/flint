@@ -74,6 +74,7 @@
     "partialOffload": "일부 GPU 오프로드",
     "privateUntilUsed": "사용하기 전까지 비공개",
     "recentlyUpdated": "최근 업데이트순",
+    "pausedDownloads": "일시 중지된 다운로드",
     "resume": "이어서 받기",
     "retry": "다시 시도",
     "searchPlaceholder": "모델·작성자를 검색하거나 Hugging Face URL을 붙여넣으세요…",

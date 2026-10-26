@@ -74,6 +74,7 @@
     "partialOffload": "Offload GPU sebagian",
     "privateUntilUsed": "Privat sampai Anda memakainya",
     "recentlyUpdated": "Baru diperbarui",
+    "pausedDownloads": "Unduhan dijeda",
     "resume": "Lanjutkan",
     "retry": "Coba lagi",
     "searchPlaceholder": "Cari model, penulis, atau tempel URL Hugging Face…",

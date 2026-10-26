@@ -80,6 +80,7 @@
     "partialOffload": "Częściowe przeniesienie na GPU",
     "privateUntilUsed": "Prywatne, dopóki z niego nie korzystasz",
     "recentlyUpdated": "Ostatnio zaktualizowane",
+    "pausedDownloads": "Wstrzymane pobierania",
     "resume": "Wznów",
     "retry": "Ponów",
     "searchPlaceholder": "Szukaj modeli, autorów lub wklej adres URL Hugging Face…",

@@ -80,6 +80,7 @@
     "partialOffload": "Částečné přesunutí na GPU",
     "privateUntilUsed": "Soukromé, dokud ho nepoužijete",
     "recentlyUpdated": "Nedávno aktualizované",
+    "pausedDownloads": "Pozastavená stahování",
     "resume": "Pokračovat",
     "retry": "Zkusit znovu",
     "searchPlaceholder": "Hledejte modely, autory nebo vložte adresu URL Hugging Face…",

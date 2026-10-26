@@ -80,6 +80,7 @@
     "partialOffload": "Частичная выгрузка на GPU",
     "privateUntilUsed": "Приватно, пока вы не пользуетесь",
     "recentlyUpdated": "Недавно обновлённые",
+    "pausedDownloads": "Приостановленные загрузки",
     "resume": "Продолжить",
     "retry": "Повторить",
     "searchPlaceholder": "Ищите модели, авторов или вставьте ссылку Hugging Face…",
