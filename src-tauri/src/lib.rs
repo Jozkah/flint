@@ -486,6 +486,7 @@ static EXIT_CANCELLED: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 /// How long the startup housekeeping (archive expiry, request-log compaction,
 /// orphan-engine sweep) waits, so it does not compete with the launch itself
 /// for a slow disk.
+#[cfg(not(feature = "cli"))]
 const STARTUP_SWEEP_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Whether the pending exit was cancelled, clearing the request.
