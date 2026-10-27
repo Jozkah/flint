@@ -41,12 +41,34 @@ public static class FlintInput {
       if (h != IntPtr.Zero && h != GetForegroundWindow()) { AllowSetForegroundWindow(-1); SetForegroundWindow(h); System.Threading.Thread.Sleep(150); }
     } catch {}
   }
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  public static string[] Allowed = new string[0];
+  // Refuses to act when the window under the point is not one of the allowed
+  // apps. Run again right before the input is sent, after the activation delay.
+  static void Guard(int x, int y) {
+    if (Allowed.Length == 0) return;
+    IntPtr h = WindowFromPoint(new Pt { x = x, y = y });
+    IntPtr root = h == IntPtr.Zero ? IntPtr.Zero : GetAncestor(h, 2);
+    if (root != IntPtr.Zero) h = root;
+    uint pid = 0; if (h != IntPtr.Zero) GetWindowThreadProcessId(h, out pid);
+    string name = "";
+    try { if (pid != 0) name = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant(); } catch {}
+    foreach (string a in Allowed) { if (a == name) return; }
+    throw new Exception("the window at (" + x + ", " + y + ") is not an app the user allowed the computer tool to control. Nothing was sent.");
+  }
+  // Pointer coordinates are clamped to the virtual desktop (all monitors) and
+  // normalised over it with MOUSEEVENTF_VIRTUALDESK, so a second monitor or a
+  // negative origin lands where the caller meant.
   public static bool MoveTo(int x, int y) {
+    int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = Math.Max(GetSystemMetrics(78), 1), vh = Math.Max(GetSystemMetrics(79), 1);
+    x = Math.Min(Math.Max(x, vx), vx + vw - 1); y = Math.Min(Math.Max(y, vy), vy + vh - 1);
+    Guard(x, y);
     Activate(x, y);
+    Guard(x, y);
     if (!SetCursorPos(x, y)) return false;
-    int w = Math.Max(GetSystemMetrics(0) - 1, 1), h = Math.Max(GetSystemMetrics(1) - 1, 1);
-    var i = new Input(); i.type = 0; i.value.mouse.flags = 0x8001;
-    i.value.mouse.x = (int)(((long)x * 65535 + w / 2) / w); i.value.mouse.y = (int)(((long)y * 65535 + h / 2) / h);
+    long dw = Math.Max(vw - 1, 1), dh = Math.Max(vh - 1, 1);
+    var i = new Input(); i.type = 0; i.value.mouse.flags = 0xC001;
+    i.value.mouse.x = (int)(((long)(x - vx) * 65535 + dw / 2) / dw); i.value.mouse.y = (int)(((long)(y - vy) * 65535 + dh / 2) / dh);
     Send(i); return true;
   }
   public static void MouseEvent(uint flags, int data) { var i = new Input(); i.type = 0; i.value.mouse.flags = flags; i.value.mouse.data = unchecked((uint)data); Send(i); }
@@ -54,6 +76,7 @@ public static class FlintInput {
 '@
 [FlintInput]::SetProcessDPIAware() | Out-Null
 $p = $env:FLINT_COMPUTER_INPUT | ConvertFrom-Json
+if ($env:FLINT_COMPUTER_ALLOWED) { [FlintInput]::Allowed = [string[]]@($env:FLINT_COMPUTER_ALLOWED | ConvertFrom-Json) }
 switch ($p.action) {
   'screenshot' {
     Add-Type -AssemblyName System.Windows.Forms

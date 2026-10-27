@@ -187,6 +187,21 @@ pub fn plan(args: &Value) -> Result<Action, String> {
     }
 }
 
+/// Where an absolute pointer move lands: the point clamped to the virtual
+/// desktop `(vx, vy, vw, vh)` and normalised over it to 0..=65535, the same
+/// maths computer_windows.ps1 does for `MOUSEEVENTF_VIRTUALDESK`.
+#[cfg(any(windows, test))]
+#[cfg_attr(not(test), allow(dead_code))]
+fn virtual_desk_point(x: i32, y: i32, vx: i32, vy: i32, vw: i32, vh: i32) -> (i32, i32, i32, i32) {
+    let (vw, vh) = (i64::from(vw.max(1)), i64::from(vh.max(1)));
+    let cx = i64::from(x).clamp(i64::from(vx), i64::from(vx) + vw - 1);
+    let cy = i64::from(y).clamp(i64::from(vy), i64::from(vy) + vh - 1);
+    let (dw, dh) = ((vw - 1).max(1), (vh - 1).max(1));
+    let nx = ((cx - i64::from(vx)) * 65535 + dw / 2) / dw;
+    let ny = ((cy - i64::from(vy)) * 65535 + dh / 2) / dh;
+    (cx as i32, cy as i32, nx as i32, ny as i32)
+}
+
 #[cfg(target_os = "linux")]
 #[path = "computer_wayland.rs"]
 mod wayland;
@@ -197,11 +212,13 @@ pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
     let action = match plan(args) { Ok(p) => p, Err(e) => return (format!("ERROR: {e}"), None) };
     let limits = EXCLUDED.read().map(|g| g.clone()).unwrap_or_default();
     if let Err(e) = check_excluded(&action, &limits.regions) { return (format!("ERROR: {e}"), None); }
-    if let Err(e) = check_app(&action, &limits.allowed_apps).await { return (format!("ERROR: {e}"), None); }
     let _guard = INPUT_LOCK.lock().await;
-    // Let the approval card disappear before a coordinate-based click.
+    // Let the approval card disappear before a coordinate-based click. The
+    // allowed-app check comes after the wait, so a window that moved in
+    // between cannot receive the input; the script checks again before sending.
     tokio::time::sleep(Duration::from_millis(250)).await;
-    match perform(&action).await {
+    if let Err(e) = check_app(&action, &limits.allowed_apps).await { return (format!("ERROR: {e}"), None); }
+    match perform(&action, &limits.allowed_apps).await {
         Ok(Some(bytes)) => {
             if bytes.len() < 24 || bytes.len() > 20 * 1024 * 1024 || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") { return ("ERROR: desktop capture was invalid or exceeded 20 MB".into(), None); }
             use base64::Engine as _;
@@ -222,7 +239,7 @@ pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
 /// A PNG of the desktop for the region picker in Settings.
 pub async fn capture_png() -> Result<Vec<u8>, String> {
     let _guard = INPUT_LOCK.lock().await;
-    perform(&Action::Screenshot).await?.ok_or_else(|| "no capture".to_string())
+    perform(&Action::Screenshot, &[]).await?.ok_or_else(|| "no capture".to_string())
 }
 
 async fn output(mut cmd: tokio::process::Command) -> Result<std::process::Output, String> {
@@ -257,10 +274,12 @@ fn linux_command(action: &Action, capture: &std::path::Path) -> (String, Vec<Str
 }
 
 #[cfg(target_os = "linux")]
-async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
+async fn perform(action: &Action, allowed: &[String]) -> Result<Option<Vec<u8>>, String> {
     if std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland") || std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        let _ = allowed;
         return wayland::perform(action).await;
     }
+    let _ = allowed;
     if std::env::var_os("DISPLAY").is_none() { return Err("no graphical X11 display is available".into()); }
     let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
     let capture = dir.path().join("desktop.png");
@@ -274,7 +293,7 @@ async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
 }
 
 #[cfg(windows)]
-async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
+async fn perform(action: &Action, allowed: &[String]) -> Result<Option<Vec<u8>>, String> {
     let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
     let capture = dir.path().join("desktop.png");
     let payload = match action {
@@ -287,7 +306,8 @@ async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
     };
     let mut cmd = tokio::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-Command", include_str!("computer_windows.ps1")])
-        .env("FLINT_COMPUTER_INPUT", payload.to_string()).env("FLINT_COMPUTER_CAPTURE", &capture).creation_flags(0x0800_0000);
+        .env("FLINT_COMPUTER_INPUT", payload.to_string()).env("FLINT_COMPUTER_CAPTURE", &capture)
+        .env("FLINT_COMPUTER_ALLOWED", serde_json::to_string(&allowed.iter().map(|a| app_key(a)).collect::<Vec<_>>()).unwrap_or_default()).creation_flags(0x0800_0000);
     output(cmd).await?;
     if matches!(action, Action::Screenshot) { Ok(Some(std::fs::read(capture).map_err(|e| e.to_string())?)) } else { Ok(None) }
 }
@@ -296,10 +316,10 @@ async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
 #[path = "computer_macos.rs"]
 mod macos;
 #[cfg(target_os = "macos")]
-async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> { macos::perform(action).await }
+async fn perform(action: &Action, _: &[String]) -> Result<Option<Vec<u8>>, String> { macos::perform(action).await }
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-async fn perform(_: &Action) -> Result<Option<Vec<u8>>, String> { Err("desktop control is unavailable on this platform".into()) }
+async fn perform(_: &Action, _: &[String]) -> Result<Option<Vec<u8>>, String> { Err("desktop control is unavailable on this platform".into()) }
 
 #[cfg(test)]
 mod tests {
@@ -309,6 +329,20 @@ mod tests {
         for args in [json!({"action":"type","text":"x".repeat(12001)}), json!({"action":"key","keys":["ctrl+a;exec"]}), json!({"action":"key","keys":["ctrl","ctrl"]}), json!({"action":"click","x":0.5,"y":2}), json!({"action":"click","x":1,"y":2,"count":3}), json!({"action":"scroll","amount":21})] { assert!(plan(&args).is_err(), "{args}"); }
         assert_eq!(plan(&json!({"action":"key","x":1,"y":2,"keys":["CTRL","a"]})), Ok(Action::Key { x:1, y:2, keys: vec!["ctrl".into(),"a".into()] }));
         assert!(plan(&json!({"action":"type","x":1,"y":2,"text":"Olá 🐧"})).is_ok());
+    }
+    #[test]
+    fn virtual_desk_math_handles_negative_origin_and_clamps() {
+        // Two 1920x1080 monitors, the second to the left: virtual origin -1920.
+        let v = (-1920, 0, 3840, 1080);
+        assert_eq!(virtual_desk_point(-1920, 0, v.0, v.1, v.2, v.3), (-1920, 0, 0, 0));
+        assert_eq!(virtual_desk_point(1919, 1079, v.0, v.1, v.2, v.3), (1919, 1079, 65535, 65535));
+        let (_, _, mid, _) = virtual_desk_point(0, 0, v.0, v.1, v.2, v.3);
+        assert!((32770..=32780).contains(&mid), "{mid}");
+        // Outside the desktop clamps to its edge.
+        assert_eq!(virtual_desk_point(-30000, 5000, v.0, v.1, v.2, v.3), (-1920, 1079, 0, 65535));
+        assert_eq!(virtual_desk_point(30000, -5, v.0, v.1, v.2, v.3), (1919, 0, 65535, 0));
+        // Single primary monitor still maps corner to corner.
+        assert_eq!(virtual_desk_point(1919, 1079, 0, 0, 1920, 1080), (1919, 1079, 65535, 65535));
     }
     #[test]
     fn excluded_regions_refuse_every_pointer_action_but_not_screenshots() {
