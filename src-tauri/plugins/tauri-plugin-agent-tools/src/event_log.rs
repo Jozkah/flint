@@ -219,6 +219,15 @@ pub fn decode_line(line: &str) -> Result<Envelope, LogError> {
     serde_json::from_value(raw).map_err(|_| LogError::Corrupt(line.chars().take(80).collect()))
 }
 
+/// Releases the cross-process lock when the append ends, on every path.
+struct Unlock<'a>(&'a std::fs::File);
+
+impl Drop for Unlock<'_> {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
 /// Per session, what the log already holds: the last sequence number and the
 /// ids written, loaded once per process.
 struct SessionState {
@@ -229,13 +238,17 @@ struct SessionState {
 
 static STATE: Mutex<BTreeMap<String, SessionState>> = Mutex::new(BTreeMap::new());
 
+/// Session states kept in memory. A state is only a cache of the file (it is
+/// reloaded whenever the file's size differs), so dropping one is always safe.
+const MAX_CACHED_SESSIONS: usize = 64;
+
 /// Someone watching events as they are recorded (AH-183).
 ///
 /// The log is the record; this is the same thing arriving live, for a headless
 /// caller that wants to see a run as it happens rather than read it afterwards.
 /// One watcher, set by whoever owns the process: a library with several would
 /// have to decide whose output goes where, and nothing needs that.
-type Watcher = Box<dyn Fn(&Envelope) + Send + Sync>;
+type Watcher = std::sync::Arc<dyn Fn(&Envelope) + Send + Sync>;
 static WATCHER: Mutex<Option<Watcher>> = Mutex::new(None);
 
 /// Hear every event this process records, in the order they are recorded.
@@ -244,7 +257,7 @@ static WATCHER: Mutex<Option<Watcher>> = Mutex::new(None);
 /// disk, and outside the log's own lock -- so it can write, but it must not be
 /// slow: a watcher that blocks blocks the run it is watching.
 pub fn watch(watcher: impl Fn(&Envelope) + Send + Sync + 'static) {
-    *WATCHER.lock().unwrap_or_else(|p| p.into_inner()) = Some(Box::new(watcher));
+    *WATCHER.lock().unwrap_or_else(|p| p.into_inner()) = Some(std::sync::Arc::new(watcher));
 }
 
 /// Stop watching. Idempotent.
@@ -253,10 +266,12 @@ pub fn unwatch() {
 }
 
 fn announce(envelope: &Envelope) {
-    if let Ok(watcher) = WATCHER.lock() {
-        if let Some(watcher) = watcher.as_ref() {
-            watcher(envelope);
-        }
+    // Clone the handle out and drop the guard before calling, so a watcher
+    // that records an event, watches or unwatches does not deadlock on the
+    // mutex it is being called under.
+    let watcher = WATCHER.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    if let Some(watcher) = watcher {
+        watcher(envelope);
     }
 }
 
@@ -301,6 +316,7 @@ fn prune(dir: &Path, keep: &Path, max_sessions: usize) {
     let excess = logs.len() - max_sessions;
     for (_, path) in logs.into_iter().take(excess) {
         if path != keep {
+            let _ = std::fs::remove_file(path.with_extension("lock"));
             let _ = std::fs::remove_file(path);
         }
     }
@@ -358,7 +374,25 @@ pub fn append_within(
 
     let mut states = STATE.lock().unwrap_or_else(|p| p.into_inner());
     let key = path.to_string_lossy().to_string();
-    if !states.contains_key(&key) {
+    // Exclusive across processes (the CLI and the desktop can write one
+    // session): held from the re-read of the tail to the end of the write.
+    // A sidecar file is locked so readers of the log itself are never blocked.
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(path.with_extension("lock"))
+        .map_err(io)?;
+    lock_file.lock().map_err(io)?;
+    let unlock = Unlock(&lock_file);
+    // The cache is trusted only while the file is the size this process left
+    // it; any other writer changes that, and the tail is re-read.
+    let on_disk = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    if states.get(&key).is_none_or(|s| s.bytes != on_disk) {
+        if states.len() >= MAX_CACHED_SESSIONS {
+            states.retain(|k, _| *k == key);
+        }
         let loaded = load(&path)?;
         states.insert(key.clone(), loaded);
     }
@@ -437,6 +471,8 @@ pub fn append_within(
     state.ids.insert(envelope.id.clone());
     state.bytes += line.len() as u64;
     drop(states);
+    // Released before the watcher runs: it may record into this session.
+    drop(unlock);
     if fresh {
         prune(&events_dir(data_folder), &path, limits.max_sessions);
     }
@@ -520,6 +556,9 @@ pub fn read_all_sessions(data_folder: &Path) -> Vec<Envelope> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The watcher is process-global; tests that set one run one at a time.
+    static WATCH_TESTS: Mutex<()> = Mutex::new(());
 
     fn dir(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
@@ -661,6 +700,7 @@ mod tests {
     /// announced once.
     #[test]
     fn a_watcher_hears_every_event_once_in_order() {
+        let _g = WATCH_TESTS.lock().unwrap_or_else(|p| p.into_inner());
         let d = dir("watch");
         let heard = std::sync::Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
         let sink = heard.clone();
@@ -694,6 +734,104 @@ mod tests {
         );
         // Everything was still recorded, whether or not anyone was listening.
         assert_eq!(read_session(&d, "watch-s1").unwrap().len(), 3);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// W21: a watcher may record an event of its own; it is called outside
+    /// both the watcher mutex and the log's locks.
+    #[test]
+    fn watcher_may_record_event_without_deadlock() {
+        let _g = WATCH_TESTS.lock().unwrap_or_else(|p| p.into_inner());
+        let d = dir("wdead");
+        let d2 = d.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            watch(move |e| {
+                if e.session == "wdead-s1" && e.id == "a" {
+                    append(&d2, ev("from-watcher", "wdead-s2", "run.started", json!({}))).unwrap();
+                    unwatch();
+                }
+            });
+            append(&d, ev("a", "wdead-s1", "run.started", json!({}))).unwrap();
+            // Same session, too.
+            let _ = tx.send(read_session(&d, "wdead-s2").unwrap().len());
+            let _ = std::fs::remove_dir_all(&d);
+        });
+        let n = rx.recv_timeout(std::time::Duration::from_secs(20)).expect("deadlocked");
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn watcher_may_reregister() {
+        let _g = WATCH_TESTS.lock().unwrap_or_else(|p| p.into_inner());
+        let d = dir("wrereg");
+        let d2 = d.clone();
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let h = hits.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            watch(move |e| {
+                if e.session == "wrereg-s1" {
+                    let h2 = h.clone();
+                    // Replaces itself from inside the call.
+                    watch(move |e| {
+                        if e.session == "wrereg-s1" {
+                            h2.fetch_add(10, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    });
+                    h.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            });
+            append(&d2, ev("a", "wrereg-s1", "run.started", json!({}))).unwrap();
+            append(&d2, ev("b", "wrereg-s1", "run.ended", json!({}))).unwrap();
+            unwatch();
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(20)).expect("deadlocked");
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 11);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// W21: a second writer (another process's cache) appends to the same
+    /// session; this one must continue the sequence, not reuse it.
+    #[test]
+    fn two_writers_monotonic_seq() {
+        let d = dir("twowriters");
+        append(&d, ev("a", "s1", "run.started", json!({}))).unwrap();
+        // Another process writes behind this one's cache.
+        let other = Envelope {
+            v: ENVELOPE_VERSION,
+            id: "other".into(),
+            session: "s1".into(),
+            run: String::new(),
+            invocation: String::new(),
+            seq: 2,
+            at: "t".into(),
+            kind: "run.ended".into(),
+            payload: json!({}),
+            redactions: vec![],
+        };
+        let mut f = std::fs::OpenOptions::new().append(true).open(log_path(&d, "s1")).unwrap();
+        writeln!(f, "{}", serde_json::to_string(&other).unwrap()).unwrap();
+        drop(f);
+        let c = append(&d, ev("c", "s1", "tool.requested", json!({}))).unwrap();
+        assert_eq!(c.seq, 3);
+        let back = read_session(&d, "s1").unwrap();
+        assert!(back.windows(2).all(|w| w[0].seq < w[1].seq), "{back:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn session_state_cache_is_bounded() {
+        let d = dir("evict");
+        for i in 0..(MAX_CACHED_SESSIONS + 5) {
+            append(&d, ev("a", &format!("evict-{i}"), "run.started", json!({}))).unwrap();
+        }
+        let n = STATE.lock().unwrap_or_else(|p| p.into_inner()).len();
+        assert!(n <= MAX_CACHED_SESSIONS + 5, "{n}");
+        // An evicted session continues its sequence from the file.
+        let e = append(&d, ev("b", "evict-0", "run.ended", json!({}))).unwrap();
+        assert_eq!(e.seq, 2);
         let _ = std::fs::remove_dir_all(&d);
     }
 
