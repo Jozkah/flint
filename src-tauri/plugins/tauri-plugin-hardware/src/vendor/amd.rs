@@ -1,4 +1,90 @@
 use crate::types::{GpuInfo, GpuUsage};
+use crate::vendor::vulkan::PciBusInfo;
+
+/// Parses `PCI_SLOT_NAME=0000:03:00.0` out of a sysfs `uevent` file.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_pci_slot_name(uevent: &str) -> Option<PciBusInfo> {
+    let slot = uevent
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("PCI_SLOT_NAME="))?
+        .trim();
+    // domain:bus:device.function, all hex
+    let mut parts = slot.split(':');
+    let domain = u32::from_str_radix(parts.next()?, 16).ok()?;
+    let bus = u32::from_str_radix(parts.next()?, 16).ok()?;
+    let rest = parts.next()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    let (device, function) = rest.split_once('.')?;
+    Some(PciBusInfo {
+        domain,
+        bus,
+        device: u32::from_str_radix(device, 16).ok()?,
+        function: u32::from_str_radix(function, 16).ok()?,
+    })
+}
+
+/// One distinct amdgpu card found in sysfs.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SysfsCandidate {
+    slot: Option<PciBusInfo>,
+    device_id: Option<u32>,
+}
+
+/// Picks the sysfs card for a Vulkan device. Exact PCI address wins. Without
+/// Vulkan bus info the device id is used only when exactly one card carries
+/// it; identical cards would otherwise all read the first card's usage.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn select_sysfs_candidate(
+    bus: Option<PciBusInfo>,
+    device_id: u32,
+    candidates: &[SysfsCandidate],
+) -> Option<usize> {
+    if let Some(bus) = bus {
+        return candidates.iter().position(|c| c.slot == Some(bus));
+    }
+    let mut matches = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.device_id == Some(device_id));
+    match (matches.next(), matches.next()) {
+        (Some((i, _)), None) => Some(i),
+        _ => None,
+    }
+}
+
+/// One active ADL adapter with its VRAM usage. `used_mb` is None when the
+/// ADL usage call failed.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AdlUsage {
+    bus: u32,
+    device: u32,
+    function: u32,
+    name: String,
+    used_mb: Option<u64>,
+}
+
+/// Finds the ADL adapter for a GPU and returns its used MiB. None means
+/// unknown: no match, an ambiguous name, or a failed ADL call.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn pick_adl_usage(entries: &[AdlUsage], bus: Option<PciBusInfo>, name: &str) -> Option<u64> {
+    let entry = match bus {
+        Some(b) => entries
+            .iter()
+            .find(|e| e.bus == b.bus && e.device == b.device && e.function == b.function)?,
+        None => {
+            let mut by_name = entries.iter().filter(|e| e.name == name);
+            match (by_name.next(), by_name.next()) {
+                (Some(e), None) => e,
+                _ => return None,
+            }
+        }
+    };
+    entry.used_mb
+}
 
 impl GpuInfo {
     #[cfg(not(target_os = "linux"))]
@@ -9,66 +95,82 @@ impl GpuInfo {
 
     #[cfg(target_os = "linux")]
     pub fn get_usage_amd(&self) -> GpuUsage {
+        use std::collections::HashSet;
         use std::fs;
-        use std::path::Path;
+        use std::path::{Path, PathBuf};
 
-        let device_id = match &self.vulkan_info {
-            Some(vulkan_info) => vulkan_info.device_id,
+        let (device_id, bus) = match &self.vulkan_info {
+            Some(v) => (v.device_id, v.pci_bus_info),
             None => {
                 log::error!("get_usage_amd called without Vulkan info");
                 return self.get_usage_unsupported();
             }
         };
 
-        let closure = || -> Result<GpuUsage, Box<dyn std::error::Error>> {
-            for subdir in fs::read_dir("/sys/class/drm")? {
-                let device_path = subdir?.path().join("device");
-
-                // Check if this is an AMD GPU by looking for amdgpu directory
-                if !device_path
-                    .join("driver/module/drivers/pci:amdgpu")
-                    .exists()
-                {
-                    continue;
-                }
-
-                // match device_id from Vulkan info
-                let this_device_id_str = fs::read_to_string(device_path.join("device"))?;
-                let this_device_id = u32::from_str_radix(
-                    this_device_id_str
-                        .strip_prefix("0x")
-                        .unwrap_or(&this_device_id_str)
-                        .trim(),
-                    16,
-                )?;
-                if this_device_id != device_id {
-                    continue;
-                }
-
-                let read_mem = |path: &Path| -> u64 {
-                    fs::read_to_string(path)
-                        .map(|content| content.trim().parse::<u64>().unwrap_or(0))
-                        .unwrap_or(0)
-                        / 1024
-                        / 1024 // Convert bytes to MiB
-                };
-                return Ok(GpuUsage {
-                    uuid: self.uuid.clone(),
-                    total_memory: read_mem(&device_path.join("mem_info_vram_total")),
-                    used_memory: read_mem(&device_path.join("mem_info_vram_used")),
-                });
+        // Collect distinct amdgpu cards, skipping any entry that cannot be
+        // read. card0, renderD128 and connector nodes share one device dir.
+        let mut seen = HashSet::new();
+        let mut paths: Vec<PathBuf> = Vec::new();
+        let mut candidates: Vec<SysfsCandidate> = Vec::new();
+        let entries = match fs::read_dir("/sys/class/drm") {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("Failed to read /sys/class/drm: {e}");
+                return self.get_usage_unsupported();
             }
-            Err("GPU not found".to_string().into())
+        };
+        for entry in entries.flatten() {
+            let device_path = entry.path().join("device");
+            if !device_path
+                .join("driver/module/drivers/pci:amdgpu")
+                .exists()
+            {
+                continue;
+            }
+            let real = fs::canonicalize(&device_path).unwrap_or_else(|_| device_path.clone());
+            if !seen.insert(real) {
+                continue;
+            }
+            let slot = fs::read_to_string(device_path.join("uevent"))
+                .ok()
+                .and_then(|u| parse_pci_slot_name(&u));
+            let dev_id = fs::read_to_string(device_path.join("device"))
+                .ok()
+                .and_then(|s| {
+                    let s = s.trim();
+                    u32::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).ok()
+                });
+            paths.push(device_path);
+            candidates.push(SysfsCandidate {
+                slot,
+                device_id: dev_id,
+            });
+        }
+
+        let Some(idx) = select_sysfs_candidate(bus, device_id, &candidates) else {
+            log::warn!(
+                "AMD GPU {:#x}: no unambiguous sysfs match, usage unknown",
+                device_id
+            );
+            return self.get_usage_unsupported();
         };
 
-        match closure() {
-            Ok(usage) => usage,
-            Err(e) => {
-                log::error!(
-                    "Failed to get memory usage for AMD GPU {:#x}: {}",
-                    device_id,
-                    e
-                );
+        let read_mem = |path: &Path| -> Option<u64> {
+            let bytes = fs::read_to_string(path).ok()?.trim().parse::<u64>().ok()?;
+            Some(bytes / 1024 / 1024) // bytes to MiB
+        };
+        let dir = &paths[idx];
+        match (
+            read_mem(&dir.join("mem_info_vram_total")),
+            read_mem(&dir.join("mem_info_vram_used")),
+        ) {
+            (Some(total_memory), Some(used_memory)) => GpuUsage {
+                uuid: self.uuid.clone(),
+                total_memory,
+                used_memory,
+            },
+            _ => {
+                log::error!("Failed to read VRAM counters for AMD GPU {:#x}", device_id);
                 self.get_usage_unsupported()
             }
         }
@@ -76,17 +178,18 @@ impl GpuInfo {
 
     #[cfg(target_os = "windows")]
     pub fn get_usage_amd(&self) -> GpuUsage {
-        use std::collections::HashMap;
-
-        let memory_usage_map = windows_impl::get_gpu_usage().unwrap_or_else(|e| {
-            log::error!("Failed to get AMD GPU memory usage: {e}");
-            HashMap::new()
-        });
-
-        match memory_usage_map.get(&self.name) {
-            Some(&used_memory) => GpuUsage {
+        let entries = match windows_impl::get_gpu_usage() {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("Failed to get AMD GPU memory usage: {e}");
+                return self.get_usage_unsupported();
+            }
+        };
+        let bus = self.vulkan_info.as_ref().and_then(|v| v.pci_bus_info);
+        match pick_adl_usage(&entries, bus, &self.name) {
+            Some(used_memory) => GpuUsage {
                 uuid: self.uuid.clone(),
-                used_memory: used_memory as u64,
+                used_memory,
                 total_memory: self.total_memory,
             },
             None => self.get_usage_unsupported(),
@@ -97,9 +200,9 @@ impl GpuInfo {
 // TODO: refactor this into a more egonomic API
 #[cfg(target_os = "windows")]
 mod windows_impl {
+    use super::AdlUsage;
     use libc;
     use libloading::{Library, Symbol};
-    use std::collections::HashMap;
     use std::ffi::{c_char, c_int, c_void, CStr};
     use std::mem::{self, MaybeUninit};
     use std::ptr;
@@ -132,6 +235,9 @@ mod windows_impl {
     type AdlAdapterNumberofadaptersGet = unsafe extern "C" fn(*mut c_int) -> c_int;
     type AdlAdapterAdapterinfoGet = unsafe extern "C" fn(*mut AdapterInfo, c_int) -> c_int;
     type AdlAdapterActiveGet = unsafe extern "C" fn(c_int, *mut c_int) -> c_int;
+    type Adl2MainControlCreate =
+        unsafe extern "C" fn(AdlMainMallocCallback, c_int, *mut *mut c_void) -> c_int;
+    type Adl2MainControlDestroy = unsafe extern "C" fn(*mut c_void) -> c_int;
     type AdlGetDedicatedVramUsage =
         unsafe extern "C" fn(*mut c_void, c_int, *mut c_int) -> c_int;
 
@@ -140,7 +246,7 @@ mod windows_impl {
         libc::malloc(i_size as usize)
     }
 
-    pub fn get_gpu_usage() -> Result<HashMap<String, i32>, Box<dyn std::error::Error>> {
+    pub fn get_gpu_usage() -> Result<Vec<AdlUsage>, Box<dyn std::error::Error>> {
         unsafe {
             let lib = Library::new("atiadlxx.dll").or_else(|_| Library::new("atiadlxy.dll"))?;
 
@@ -166,6 +272,10 @@ mod windows_impl {
                 get_sym!(lib, b"ADL_Adapter_AdapterInfo_Get\0", AdlAdapterAdapterinfoGet);
             let adl_adapter_active_get: Symbol<AdlAdapterActiveGet> =
                 get_sym!(lib, b"ADL_Adapter_Active_Get\0", AdlAdapterActiveGet);
+            let adl2_create: Symbol<Adl2MainControlCreate> =
+                get_sym!(lib, b"ADL2_Main_Control_Create\0", Adl2MainControlCreate);
+            let adl2_destroy: Symbol<Adl2MainControlDestroy> =
+                get_sym!(lib, b"ADL2_Main_Control_Destroy\0", Adl2MainControlDestroy);
             let adl_get_dedicated_vram_usage: Symbol<AdlGetDedicatedVramUsage> =
                 get_sym!(lib, b"ADL2_Adapter_DedicatedVRAMUsage_Get\0", AdlGetDedicatedVramUsage);
 
@@ -181,12 +291,21 @@ mod windows_impl {
                 adlmaincontroldestroy();
             });
 
+            // ADL2 calls need a real context; a null one makes them fail.
+            let mut ctx: *mut c_void = ptr::null_mut();
+            if adl2_create(Some(adl_malloc), 1, &mut ctx) != 0 || ctx.is_null() {
+                return Err("ADL2 initialization error!".into());
+            }
+            let _destroy2 = super::CallOnDrop::new(|| {
+                adl2_destroy(ctx);
+            });
+
             let mut num_adapters: c_int = 0;
             if adl_adapter_number_of_adapters_get(&mut num_adapters as *mut _) != 0 {
                 return Err("Cannot get number of adapters".into());
             }
 
-            let mut vram_usages = HashMap::new();
+            let mut vram_usages = Vec::new();
 
             if num_adapters > 0 {
                 let mut adapter_info: Vec<AdapterInfo> =
@@ -201,21 +320,31 @@ mod windows_impl {
 
                 for adapter in adapter_info.iter() {
                     let mut is_active = 0;
-                    adl_adapter_active_get(adapter.iAdapterIndex, &mut is_active);
-
-                    if is_active != 0 {
-                        let mut vram_mb = 0;
-                        let _ = adl_get_dedicated_vram_usage(
-                            ptr::null_mut(),
-                            adapter.iAdapterIndex,
-                            &mut vram_mb,
-                        );
-                        // NOTE: adapter name might not be unique?
-                        let name = CStr::from_ptr(adapter.strAdapterName.as_ptr())
-                            .to_string_lossy()
-                            .into_owned();
-                        vram_usages.insert(name, vram_mb);
+                    if adl_adapter_active_get(adapter.iAdapterIndex, &mut is_active) != 0
+                        || is_active == 0
+                    {
+                        continue;
                     }
+                    let mut vram_mb = 0;
+                    let ret =
+                        adl_get_dedicated_vram_usage(ctx, adapter.iAdapterIndex, &mut vram_mb);
+                    // A failed call is unknown, not 0 MB used.
+                    let used_mb = if ret == 0 && vram_mb >= 0 {
+                        Some(vram_mb as u64)
+                    } else {
+                        log::warn!("ADL VRAM usage call failed (code {ret})");
+                        None
+                    };
+                    let name = CStr::from_ptr(adapter.strAdapterName.as_ptr())
+                        .to_string_lossy()
+                        .into_owned();
+                    vram_usages.push(AdlUsage {
+                        bus: adapter.iBusNumber as u32,
+                        device: adapter.iDeviceNumber as u32,
+                        function: adapter.iFunctionNumber as u32,
+                        name,
+                        used_mb,
+                    });
                 }
             }
 
@@ -269,5 +398,111 @@ mod call_on_drop_tests {
             let _guard = CallOnDrop::new(|| calls.set(calls.get() + 1));
         }
         assert_eq!(calls.get(), 1);
+    }
+}
+
+#[cfg(test)]
+mod amd_match_tests {
+    use super::*;
+
+    fn bus(b: u32) -> PciBusInfo {
+        PciBusInfo {
+            domain: 0,
+            bus: b,
+            device: 0,
+            function: 0,
+        }
+    }
+
+    #[test]
+    fn parse_pci_slot_name_reads_the_address() {
+        let uevent = "DRIVER=amdgpu\nPCI_CLASS=30000\nPCI_SLOT_NAME=0000:0b:00.1\nMODALIAS=x\n";
+        assert_eq!(
+            parse_pci_slot_name(uevent),
+            Some(PciBusInfo {
+                domain: 0,
+                bus: 0x0b,
+                device: 0,
+                function: 1
+            })
+        );
+        assert_eq!(parse_pci_slot_name("DRIVER=amdgpu\n"), None);
+        assert_eq!(parse_pci_slot_name("PCI_SLOT_NAME=garbage\n"), None);
+    }
+
+    #[test]
+    fn match_sysfs_by_bus_picks_second_card() {
+        let cards = vec![
+            SysfsCandidate {
+                slot: Some(bus(3)),
+                device_id: Some(0x744c),
+            },
+            SysfsCandidate {
+                slot: Some(bus(7)),
+                device_id: Some(0x744c),
+            },
+        ];
+        assert_eq!(select_sysfs_candidate(Some(bus(7)), 0x744c, &cards), Some(1));
+        assert_eq!(select_sysfs_candidate(Some(bus(9)), 0x744c, &cards), None);
+    }
+
+    #[test]
+    fn identical_device_ids_without_bus_info_returns_none() {
+        let cards = vec![
+            SysfsCandidate {
+                slot: Some(bus(3)),
+                device_id: Some(0x744c),
+            },
+            SysfsCandidate {
+                slot: Some(bus(7)),
+                device_id: Some(0x744c),
+            },
+        ];
+        assert_eq!(select_sysfs_candidate(None, 0x744c, &cards), None);
+    }
+
+    #[test]
+    fn single_device_id_match_without_bus_info_is_used() {
+        let cards = vec![
+            SysfsCandidate {
+                slot: None,
+                device_id: Some(0x1111),
+            },
+            SysfsCandidate {
+                slot: None,
+                device_id: Some(0x744c),
+            },
+        ];
+        assert_eq!(select_sysfs_candidate(None, 0x744c, &cards), Some(1));
+    }
+
+    fn adl(b: u32, name: &str, used: Option<u64>) -> AdlUsage {
+        AdlUsage {
+            bus: b,
+            device: 0,
+            function: 0,
+            name: name.into(),
+            used_mb: used,
+        }
+    }
+
+    #[test]
+    fn usage_unknown_when_call_fails() {
+        let entries = vec![adl(3, "Radeon", None)];
+        assert_eq!(pick_adl_usage(&entries, Some(bus(3)), "Radeon"), None);
+    }
+
+    #[test]
+    fn adl_matches_by_bus_not_name() {
+        let entries = vec![adl(3, "Radeon", Some(100)), adl(7, "Radeon", Some(900))];
+        assert_eq!(pick_adl_usage(&entries, Some(bus(7)), "Radeon"), Some(900));
+        // same name, no bus info: ambiguous, unknown
+        assert_eq!(pick_adl_usage(&entries, None, "Radeon"), None);
+    }
+
+    #[test]
+    fn adl_unique_name_fallback_and_real_zero() {
+        let entries = vec![adl(3, "Radeon", Some(0))];
+        assert_eq!(pick_adl_usage(&entries, None, "Radeon"), Some(0));
     }
 }
