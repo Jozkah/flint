@@ -16,10 +16,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 import unittest
 from unittest import mock
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -428,6 +430,171 @@ class RuntimeSpawnTest(unittest.TestCase):
                 JanRuntime.start(bin="jan-fake", env=os.environ)
         self.assertEqual(captured.get("encoding"), "utf-8")
         self.assertEqual(captured.get("errors"), "replace")
+
+
+def _bare_runtime(stdin) -> JanRuntime:
+    """A runtime object with no process behind it, for the locking tests."""
+    runtime = object.__new__(JanRuntime)
+    runtime._lock = threading.Lock()
+    runtime._state_lock = threading.Lock()
+    runtime._pending = {}
+    runtime._next_id = 1
+    runtime._sessions = {}
+    runtime._listeners = {}
+    runtime._failure = None
+    runtime._closing = False
+    runtime._dispatch_queue = __import__("queue").Queue()
+    runtime._stderr_tail = __import__("collections").deque(maxlen=4)
+    runtime._on_stderr = None
+    runtime._process = SimpleNamespace(stdin=stdin)
+    return runtime
+
+
+class _Sink:
+    closed = False
+
+    def write(self, _data: str) -> None:
+        pass
+
+    def flush(self) -> None:
+        pass
+
+
+class _BlockedStdin(_Sink):
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def write(self, _data: str) -> None:
+        self.entered.set()
+        self.release.wait(10)
+
+
+class RuntimeLockTest(unittest.TestCase):
+    def test_a_request_issued_while_the_runtime_dies_never_hangs(self) -> None:
+        for _ in range(200):
+            runtime = _bare_runtime(_Sink())
+            outcomes = []
+
+            def spam() -> None:
+                for _ in range(20):
+                    try:
+                        runtime.request("x", timeout=5)
+                    except JanRuntimeError as error:
+                        outcomes.append(str(error))
+                        if "not answered in time" in str(error):
+                            return
+
+            thread = threading.Thread(target=spam)
+            thread.start()
+            runtime._fail(JanRuntimeError("dead"))
+            thread.join(10)
+            self.assertFalse(thread.is_alive())
+            self.assertTrue(outcomes)
+            self.assertFalse(any("not answered in time" in o for o in outcomes))
+
+    def test_fail_does_not_raise_when_requests_pop_concurrently(self) -> None:
+        runtime = _bare_runtime(_Sink())
+        stop = threading.Event()
+        errors = []
+
+        def hammer() -> None:
+            n = 0
+            while not stop.is_set():
+                n += 1
+                with runtime._state_lock:
+                    runtime._pending[n] = SimpleNamespace(reject=lambda _e: None)
+                with runtime._state_lock:
+                    runtime._pending.pop(n, None)
+
+        threads = [threading.Thread(target=hammer) for _ in range(4)]
+        for t in threads:
+            t.start()
+        try:
+            for _ in range(200):
+                runtime._failure = None
+                try:
+                    runtime._fail(JanRuntimeError("dead"))
+                except RuntimeError as error:  # dict changed size during iteration
+                    errors.append(error)
+        finally:
+            stop.set()
+            for t in threads:
+                t.join()
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(runtime._failure)
+
+    def test_fail_is_not_blocked_by_a_request_thread_stuck_in_a_write(self) -> None:
+        stdin = _BlockedStdin()
+        runtime = _bare_runtime(stdin)
+        errors = []
+
+        def stuck() -> None:
+            try:
+                runtime.request("x", timeout=5)
+            except JanRuntimeError as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=stuck)
+        thread.start()
+        self.assertTrue(stdin.entered.wait(5))
+        failer = threading.Thread(target=runtime._fail, args=(JanRuntimeError("dead"),))
+        started = time.monotonic()
+        failer.start()
+        failer.join(1)
+        self.assertFalse(failer.is_alive())
+        self.assertLess(time.monotonic() - started, 1)
+        stdin.release.set()
+        thread.join(10)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(str(errors[0]), "dead")
+
+
+class TurnTest(unittest.TestCase):
+    def _session(self, cap: int = 100):
+        from jan_agent_sdk.session import JanSession
+
+        runtime = SimpleNamespace(max_buffered_events=cap, _notify=lambda *_: None)
+        return JanSession(runtime, {"sessionId": "s"})
+
+    def test_a_draining_reader_never_drops(self) -> None:
+        from jan_agent_sdk.session import JanTurn
+
+        session = self._session(100)
+        turn = JanTurn(session, "t")
+        total = 5000
+        seen = []
+
+        def consume() -> None:
+            for event in turn:
+                seen.append(event)
+
+        reader = threading.Thread(target=consume)
+        reader.start()
+        for i in range(total):
+            turn._push({"i": i})
+            if i % 7 == 0:
+                time.sleep(0.0001)
+        turn._queue.end()
+        reader.join(20)
+        self.assertEqual(turn.dropped, 0)
+        self.assertEqual(len(seen), total)
+
+    def test_a_turn_created_after_the_runtime_failed_fails_immediately(self) -> None:
+        session = self._session()
+        session._fail(JanRuntimeError("dead"))
+        turn = session._turn("t", create=True)
+        with self.assertRaises(JanRuntimeError):
+            turn.result(timeout=1)
+        with self.assertRaises(JanRuntimeError):
+            list(turn)
+        self.assertNotIn("t", session._turns)
+
+    def test_deliver_after_failure_is_a_no_op(self) -> None:
+        session = self._session()
+        session._fail(JanRuntimeError("dead"))
+        session._deliver("message", {"turnId": "t", "event": {"a": 1}})
+        self.assertNotIn("t", session._turns)
 
 
 if __name__ == "__main__":

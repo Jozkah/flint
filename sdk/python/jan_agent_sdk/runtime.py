@@ -89,7 +89,13 @@ class JanRuntime:
         self._shutdown_grace = shutdown_grace
         self._on_stderr = on_stderr
         self._stderr_tail: Deque[str] = deque(maxlen=256)
+        # Lock order is always `_lock` -> `_state_lock`. `_lock` serialises the
+        # stdin write and is held across blocking I/O; `_state_lock` guards
+        # `_pending`, `_failure` and `_sessions`, is never held across I/O or a
+        # call out, and is the only lock `_fail` takes - so a failure reaches
+        # the waiters even while a request thread is stuck in a write.
         self._lock = threading.Lock()
+        self._state_lock = threading.Lock()
         # `queue` here is the standard library's, not `._queue` - the SDK's own
         # event queue - which is why no module of this package shadows it.
         self._dispatch_queue: "queue.Queue[Optional[Any]]" = queue.Queue()
@@ -284,21 +290,31 @@ class JanRuntime:
         if self._closing:
             raise JanRuntimeError("the runtime is closing")
         with self._lock:
-            request_id = self._next_id
-            self._next_id += 1
-            pending = _Pending(method)
-            self._pending[request_id] = pending
+            with self._state_lock:
+                # Registered under the lock `_fail` swaps `_pending` under: a
+                # request either lands in the map `_fail` rejects, or sees the
+                # failure here. It can never be parked with nobody to wake it.
+                if self._failure is not None:
+                    raise self._failure
+                if self._closing:
+                    raise JanRuntimeError("the runtime is closing")
+                request_id = self._next_id
+                self._next_id += 1
+                pending = _Pending(method)
+                self._pending[request_id] = pending
             try:
                 assert self._process.stdin is not None
                 self._process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}) + "\n")
                 self._process.stdin.flush()
             except (BrokenPipeError, ValueError, OSError) as error:
-                self._pending.pop(request_id, None)
+                with self._state_lock:
+                    self._pending.pop(request_id, None)
                 raise JanRuntimeError(f"could not write to the runtime: {error}", stderr=self.stderr) from None
         try:
             return pending.wait(timeout)
         finally:
-            self._pending.pop(request_id, None)
+            with self._state_lock:
+                self._pending.pop(request_id, None)
 
     def close(self, *, force: bool = False) -> Optional[int]:
         """Close the channel, then the process.
@@ -311,9 +327,11 @@ class JanRuntime:
             return self._wait_or_kill()
         self._closing = True
         gone = JanRuntimeError("the runtime was closed")
-        for session in list(self._sessions.values()):
+        with self._state_lock:
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+        for session in sessions:
             session._fail(gone)
-        self._sessions.clear()
         if self._process.stdin is not None and not self._process.stdin.closed:
             try:
                 self._process.stdin.close()
@@ -376,11 +394,13 @@ class JanRuntime:
 
     def _session(self, view: Dict[str, Any]) -> JanSession:
         session = JanSession(self, view)
-        self._sessions[session.id] = session
+        with self._state_lock:
+            self._sessions[session.id] = session
         return session
 
     def _release(self, session: JanSession) -> None:
-        self._sessions.pop(session.id, None)
+        with self._state_lock:
+            self._sessions.pop(session.id, None)
 
     def _read_stdout(self) -> None:
         assert self._process.stdout is not None
@@ -478,16 +498,20 @@ class JanRuntime:
                 return
 
     def _fail(self, error: JanRuntimeError, *, notify_exit: bool = False) -> None:
-        if self._failure is not None:
+        with self._state_lock:
+            already = self._failure is not None
+            if not already:
+                self._failure = error
+                pending_map, self._pending = self._pending, {}
+                sessions = list(self._sessions.values())
+                self._sessions.clear()
+        if already:
             if notify_exit:
                 self._emit("exit", {"code": error.exit_code})
             return
-        self._failure = error
-        for pending in self._pending.values():
+        for pending in pending_map.values():
             pending.reject(error)
-        self._pending.clear()
-        for session in list(self._sessions.values()):
+        for session in sessions:
             session._fail(error)
-        self._sessions.clear()
         if notify_exit:
             self._emit("exit", {"code": error.exit_code})
