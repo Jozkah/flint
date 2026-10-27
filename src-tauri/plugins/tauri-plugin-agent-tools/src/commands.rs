@@ -1265,11 +1265,36 @@ async fn execute_tool_inner(
     // AH-049: every decision is recorded before it is acted on, so a refusal
     // that returns early below is still in the log. Recording never changes
     // the decision -- `append` swallows its own failures.
-    let renderer_approved_git = matches!(decision, Decision::Prompt(PromptKind::Ask))
-        && name == "git"
-        && permissions
-            .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
-            .is_none();
+    let no_ask_rule = permissions
+        .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
+        .is_none();
+    let renderer_approved_git =
+        matches!(decision, Decision::Prompt(PromptKind::Ask)) && name == "git" && no_ask_rule;
+    // F03-005: the verdict is known before the record is written, so the log
+    // never says "approved" for a call the match below then refuses.
+    let backend_enforces = jail::backend().enforces();
+    let mut refusal = match &decision {
+        Decision::Prompt(kind)
+            if !prompt_is_honoured(*kind, &name, approval, no_ask_rule, backend_enforces) =>
+        {
+            Some(Refusal::Prompt)
+        }
+        _ => None,
+    };
+    // A bash call that will run in a project folder directly, outside the
+    // sandbox, is an unsandboxed run: it needs the same user approval a
+    // redeemed retry has. Only an answer a person (or Bypass mode) gave counts.
+    let direct_folder = if name == "bash" && !unsandboxed {
+        handlers::direct_edit_shell_start(&write_roots, Path::new(&data_folder))
+    } else {
+        None
+    };
+    if refusal.is_none()
+        && direct_folder.is_some()
+        && !matches!(approval, Some(ApprovalSource::Prompted | ApprovalSource::Bypass))
+    {
+        refusal = Some(Refusal::DirectEdit);
+    }
     record_permission_decision(
         Path::new(&data_folder),
         &thread_id,
@@ -1285,9 +1310,19 @@ async fn execute_tool_inner(
             unsandboxed,
             approval,
             sandbox_enforces: matches!(decision, Decision::Prompt(PromptKind::Exec))
-                && jail::backend().enforces(),
+                && backend_enforces,
+            refusal,
+            direct_edit: direct_folder.is_some(),
         },
     );
+    if refusal == Some(Refusal::DirectEdit) {
+        return Err(
+            "tool 'bash' needs user approval (Exec): it would run directly in a project folder \
+             outside the sandbox, and none was recorded for this call"
+                .to_string()
+                .into(),
+        );
+    }
 
     match decision {
         Decision::Allow => {}
@@ -1381,22 +1416,10 @@ async fn execute_tool_inner(
         // time, so only an answer a person gave counts for them; acting needs
         // the renderer's approval record (a prompt, or a mode that allows it).
         // A project `ask` rule is the renderer's blind spot, so it still refuses.
-        Decision::Prompt(PromptKind::Ask)
-            if name == "browser"
-                && matches!(approval, Some(ApprovalSource::Prompted | ApprovalSource::Bypass))
-                && permissions
-                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
-                    .is_none() => {}
-        // `host_action` is asked about every time, and only an answer a person
-        // gave counts: the renderer shows the exact target and records the
-        // approval before calling this. A project `ask` rule is the renderer's
-        // blind spot, so it still refuses.
-        Decision::Prompt(PromptKind::Ask)
-            if crate::tools::is_always_ask(&name)
-                && matches!(approval, Some(ApprovalSource::Prompted | ApprovalSource::Bypass))
-                && permissions
-                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
-                    .is_none() => {}
+        // Every arm the renderer's own record can satisfy is decided by
+        // `prompt_is_honoured`, the same function the audit record used.
+        Decision::Prompt(kind)
+            if prompt_is_honoured(kind, &name, approval, no_ask_rule, backend_enforces) => {}
         Decision::Prompt(PromptKind::Write) if name == "browser" && approval.is_none() => {
             return Err(
                 "tool 'browser' needs user approval before it acts on a page, and none was recorded for this call"
@@ -1404,7 +1427,6 @@ async fn execute_tool_inner(
                     .into(),
             );
         }
-        Decision::Prompt(PromptKind::Exec) if jail::backend().enforces() => {}
         // Same reasoning for writes, from the other direction. `root` here is
         // always `ensure_thread_workspace`, never a real project: an ephemeral
         // directory deleted with the conversation, which `escapes_project`
@@ -1418,7 +1440,6 @@ async fn execute_tool_inner(
         // that the ephemeral-root reasoning does not cover. It is gated as
         // `WriteEscape` and refused here outright, since this surface has no
         // prompt round-trip to approve it.
-        Decision::Prompt(PromptKind::Write) => {}
         // The message matters as much as the refusal: told only "refused", a
         // model retries the same write until the step budget runs out.
         Decision::Prompt(PromptKind::WriteEscape) => {
@@ -1450,11 +1471,6 @@ async fn execute_tool_inner(
         // branch, before it calls this (web-app `gitTool.ts`), the same way it
         // answers for `write` above. A project `ask` rule is different: the
         // renderer does not know about it, so that one is still refused here.
-        Decision::Prompt(PromptKind::Ask)
-            if name == "git"
-                && permissions
-                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
-                    .is_none() => {}
         Decision::Prompt(kind) => {
             return Err(format!(
                 "tool '{name}' needs user approval ({kind:?}) and is not available yet"
@@ -1508,15 +1524,12 @@ async fn execute_tool_inner(
     }
     if unsandboxed {
         ctx = ctx.with_unsandboxed_retry();
-    } else if name == "bash" {
+    } else if let Some(folder) = direct_folder {
         // Edit access to a project folder means the shell works in it, as the
         // user's own terminal would. The Windows sandbox cannot even enter such
         // a folder, so the command runs there directly instead of failing.
-        if let Some(folder) =
-            handlers::direct_edit_shell_start(&write_roots, Path::new(&data_folder))
-        {
-            ctx = ctx.with_direct_edit_shell(folder);
-        }
+        // Approval was checked above (it is an unsandboxed run).
+        ctx = ctx.with_direct_edit_shell(folder);
     }
     // A Cowork session is a conversation with a stable id and a messaging
     // identity; bind both so `memory_propose` attributes to it and the mailbox
@@ -2321,6 +2334,39 @@ struct DecisionContext<'a> {
     sandbox_enforces: bool,
     /// How the renderer allowed this call before sending it, when it says.
     approval: Option<ApprovalSource>,
+    /// Set when this call is refused right after the record is written.
+    refusal: Option<Refusal>,
+    /// The shell will run directly in a project folder, outside the sandbox.
+    direct_edit: bool,
+}
+
+/// Why a call is refused after its decision is recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Refusal {
+    /// A prompt this surface cannot satisfy (escape, missing approval).
+    Prompt,
+    /// A direct-edit-folder shell run with no user approval.
+    DirectEdit,
+}
+
+/// Whether the match in `execute_tool_inner` lets a `Prompt` decision through.
+/// Kept as one function so the audit record and the gate cannot disagree.
+fn prompt_is_honoured(
+    kind: PromptKind,
+    name: &str,
+    approval: Option<ApprovalSource>,
+    no_ask_rule: bool,
+    backend_enforces: bool,
+) -> bool {
+    let answered = matches!(approval, Some(ApprovalSource::Prompted | ApprovalSource::Bypass));
+    match kind {
+        PromptKind::Ask if name == "browser" && answered && no_ask_rule => true,
+        PromptKind::Ask if crate::tools::is_always_ask(name) && answered && no_ask_rule => true,
+        PromptKind::Ask => name == "git" && no_ask_rule,
+        PromptKind::Write => !(name == "browser" && approval.is_none()),
+        PromptKind::Exec => backend_enforces,
+        PromptKind::WriteEscape | PromptKind::ReadEscape | PromptKind::Secret => false,
+    }
 }
 
 /// The outcome to record for `decision`, given what already happened before
@@ -2332,6 +2378,29 @@ fn recorded_outcome(
     cx: &DecisionContext<'_>,
 ) -> Option<(crate::audit::Outcome, String)> {
     use crate::audit::Outcome;
+    match cx.refusal {
+        Some(Refusal::Prompt) => {
+            if let Decision::Prompt(kind) = decision {
+                return Some((
+                    Outcome::Deny,
+                    format!("refused: needs user approval ({kind:?}) and none was valid"),
+                ));
+            }
+        }
+        Some(Refusal::DirectEdit) => {
+            return Some((
+                Outcome::Deny,
+                "refused: direct edit folder run outside the sandbox without approval".to_string(),
+            ));
+        }
+        None => {}
+    }
+    if cx.direct_edit && cx.approval.is_some() && matches!(decision, Decision::Prompt(PromptKind::Exec)) {
+        return Some((
+            Outcome::Granted,
+            "ran outside the sandbox (direct edit folder)".to_string(),
+        ));
+    }
     match decision {
         Decision::Prompt(PromptKind::Ask) if cx.renderer_approved_git => {
             Some((Outcome::Granted, "approved in the prompt".to_string()))
@@ -2818,6 +2887,75 @@ mod tests {
         assert_eq!(all.len(), 1, "{all:?}");
         assert_eq!(all[0].decision, crate::audit::Outcome::Granted);
         assert!(all[0].reason.contains("write anyway"), "{}", all[0].reason);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// F03-005: a prompt the backend refuses anyway (an escape) is logged as
+    /// a deny even when the renderer says the user approved it.
+    #[test]
+    fn audit_records_deny_for_refused_prompt() {
+        let data = unique_data_folder();
+        std::fs::create_dir_all(&data).unwrap();
+        let root = data.join("ws");
+        for kind in [PromptKind::WriteEscape, PromptKind::ReadEscape] {
+            let refusal = (!prompt_is_honoured(kind, "write", Some(ApprovalSource::Prompted), true, true))
+                .then_some(Refusal::Prompt);
+            assert!(refusal.is_some(), "{kind:?} is never honoured");
+            record_permission_decision(
+                &data,
+                "s1",
+                lookup("write").unwrap(),
+                &json!({"path": "a.txt", "content": "x"}),
+                &root,
+                &Decision::Prompt(kind),
+                &DecisionContext {
+                    approval: Some(ApprovalSource::Prompted),
+                    refusal,
+                    ..Default::default()
+                },
+            );
+        }
+        // A browser action with no approval at all is refused too.
+        assert!(!prompt_is_honoured(PromptKind::Write, "browser", None, true, true));
+        // ... while an approved ordinary write still is honoured.
+        assert!(prompt_is_honoured(PromptKind::Write, "write", Some(ApprovalSource::Prompted), true, true));
+        let all = crate::audit::read_all(&data);
+        assert_eq!(all.len(), 2, "{all:?}");
+        for r in &all {
+            assert_eq!(r.decision, crate::audit::Outcome::Deny, "{r:?}");
+            assert!(r.reason.starts_with("refused"), "{}", r.reason);
+        }
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// F5a-005: a shell run in a direct edit folder with no approval is
+    /// audited as a refusal; with approval, as running outside the sandbox.
+    #[test]
+    fn direct_edit_bash_without_approval_refused_and_audited_unsandboxed() {
+        let data = unique_data_folder();
+        std::fs::create_dir_all(&data).unwrap();
+        let root = data.join("ws");
+        let bash = lookup("bash").unwrap();
+        let args = json!({"command": "echo hi"});
+        record_permission_decision(
+            &data, "s1", bash, &args, &root,
+            &Decision::Prompt(PromptKind::Exec),
+            &DecisionContext { direct_edit: true, refusal: Some(Refusal::DirectEdit), ..Default::default() },
+        );
+        record_permission_decision(
+            &data, "s1", bash, &args, &root,
+            &Decision::Prompt(PromptKind::Exec),
+            &DecisionContext {
+                direct_edit: true,
+                approval: Some(ApprovalSource::Prompted),
+                ..Default::default()
+            },
+        );
+        let all = crate::audit::read_all(&data);
+        assert_eq!(all.len(), 2, "{all:?}");
+        assert_eq!(all[0].decision, crate::audit::Outcome::Deny);
+        assert_eq!(all[1].decision, crate::audit::Outcome::Granted);
+        assert!(all[1].reason.contains("outside the sandbox"), "{}", all[1].reason);
         let _ = std::fs::remove_dir_all(&data);
     }
 
