@@ -28,6 +28,8 @@ const RULES_JSON: &str = include_str!("../../../../web-app/src/lib/destructiveCo
 #[serde(rename_all = "camelCase")]
 struct Rules {
     wrappers: Vec<String>,
+    wrapper_value_options: HashMap<String, Vec<String>>,
+    wrapper_positional: HashMap<String, usize>,
     inline_shells: Vec<String>,
     powershells: Vec<String>,
     uncertain_commands: HashMap<String, String>,
@@ -137,8 +139,30 @@ fn reason_at_depth(command: &str, workspace: &Scope, depth: usize) -> Option<Str
     if depth > MAX_DEPTH {
         return Some("nests shells too deeply to check".to_string());
     }
-    let parsed = match parse(command) {
+    // A backslash is an escape in POSIX shells and a path separator on
+    // Windows, and the command line does not say which. Read it both ways;
+    // either one finding something is enough.
+    let readings: &[bool] = if command.contains('\\') {
+        &[false, true]
+    } else {
+        &[false]
+    };
+    readings
+        .iter()
+        .find_map(|&posix| reason_for_reading(command, workspace, depth, posix))
+}
+
+fn reason_for_reading(
+    command: &str,
+    workspace: &Scope,
+    depth: usize,
+    posix_escapes: bool,
+) -> Option<String> {
+    let parsed = match parse(command, posix_escapes) {
         Ok(parsed) => parsed,
+        // The plain reading already parsed this, so a failure only here means
+        // a Windows path ending in `\` inside quotes: not a reason to ask.
+        Err(_) if posix_escapes => return None,
         Err(why) => {
             return Some(format!(
                 "could not be parsed ({why}), so it cannot be checked"
@@ -152,11 +176,11 @@ fn reason_at_depth(command: &str, workspace: &Scope, depth: usize) -> Option<Str
     }
     let mut scope = workspace.clone();
     for segment in &parsed.segments {
-        let words = strip_prefixes(segment);
+        let words = strip_prefixes(&segment.words);
         if words.is_empty() {
             continue;
         }
-        if let Some(reason) = check_segment(&words, &scope, depth) {
+        if let Some(reason) = check_segment(&words, &scope, depth, segment.piped) {
             return Some(reason);
         }
         if changes_to_unknown_dir(&words, &scope) {
@@ -178,7 +202,46 @@ fn command_name(word: &str) -> String {
     base.strip_suffix(".exe").unwrap_or(base).to_string()
 }
 
-fn check_segment(words: &[String], workspace: &Scope, depth: usize) -> Option<String> {
+const READS_INPUT: &str = "runs a script read from input, which cannot be checked";
+const PS_UNCHECKABLE: &str = "runs a PowerShell command that cannot be checked";
+const PS_VALUE_OPTIONS: &[&str] = &[
+    "-executionpolicy",
+    "-ep",
+    "-windowstyle",
+    "-workingdirectory",
+    "-wd",
+    "-configurationname",
+    "-version",
+    "-inputformat",
+    "-outputformat",
+    "-psconsolefile",
+];
+const PS_SWITCHES: &[&str] = &[
+    "-noprofile",
+    "-nop",
+    "-noexit",
+    "-noe",
+    "-nologo",
+    "-nol",
+    "-noninteractive",
+    "-noni",
+    "-sta",
+    "-mta",
+];
+
+/// A short-option cluster such as `-fu` that contains `flag`; never `--long`.
+fn short_cluster_has(a: &str, flag: char) -> bool {
+    a.strip_prefix('-').is_some_and(|body| {
+        !body.is_empty() && body.chars().all(|c| c.is_ascii_lowercase()) && body.contains(flag)
+    })
+}
+
+fn check_segment(
+    words: &[String],
+    workspace: &Scope,
+    depth: usize,
+    piped: bool,
+) -> Option<String> {
     let cmd = command_name(&words[0]);
     let args = &words[1..];
     let lower_args: Vec<String> = args.iter().map(|a| a.to_ascii_lowercase()).collect();
@@ -192,15 +255,24 @@ fn check_segment(words: &[String], workspace: &Scope, depth: usize) -> Option<St
     }
     if rules.inline_shells.contains(&cmd) {
         // `bash -c "script"`, `sh -lc '...'`: check the script itself.
-        let at = lower_args
+        let script = lower_args
             .iter()
-            .position(|a| a.starts_with('-') && !a.starts_with("--") && a.contains('c'))?;
-        let script = args.get(at + 1)?;
-        return reason_at_depth(script, workspace, depth + 1);
+            .position(|a| a.starts_with('-') && !a.starts_with("--") && a.contains('c'))
+            .and_then(|at| args.get(at + 1));
+        return match script {
+            Some(script) => reason_at_depth(script, workspace, depth + 1),
+            // The script comes from a pipe, here-doc or here-string, or stdin.
+            None if piped || lower_args.iter().any(|a| a.starts_with("<<") || a == "-s") => {
+                Some(READS_INPUT.into())
+            }
+            None => None,
+        };
     }
     if cmd == "cmd" {
         // `cmd /c <command line>` (or `/k`): check the rest of the line.
-        let at = lower_args.iter().position(|a| a == "/c" || a == "/k")?;
+        let Some(at) = lower_args.iter().position(|a| a == "/c" || a == "/k") else {
+            return piped.then(|| READS_INPUT.to_string());
+        };
         return reason_at_depth(&args[at + 1..].join(" "), workspace, depth + 1);
     }
     if rules.powershells.contains(&cmd) {
@@ -212,10 +284,31 @@ fn check_segment(words: &[String], workspace: &Scope, depth: usize) -> Option<St
         }) {
             return Some("runs an encoded PowerShell command, which cannot be checked".into());
         }
-        let at = lower_args
+        if let Some(at) = lower_args
             .iter()
-            .position(|a| a == "-c" || a.starts_with("-com"))?;
-        return reason_at_depth(&args[at + 1..].join(" "), workspace, depth + 1);
+            .position(|a| a == "-c" || a.starts_with("-com"))
+        {
+            return reason_at_depth(&args[at + 1..].join(" "), workspace, depth + 1);
+        }
+        if lower_args.iter().any(|a| a.len() >= 2 && "-file".starts_with(a.as_str())) {
+            return None;
+        }
+        // `pwsh -NoProfile "Remove-Item ..."`: the first word that is not an
+        // option starts the command, and the rest of the line belongs to it.
+        let mut k = 0;
+        while k < lower_args.len() {
+            let a = lower_args[k].as_str();
+            if !a.starts_with('-') {
+                return reason_at_depth(&args[k..].join(" "), workspace, depth + 1);
+            }
+            if PS_VALUE_OPTIONS.contains(&a) {
+                k += 1;
+            } else if !PS_SWITCHES.contains(&a) {
+                return Some(PS_UNCHECKABLE.into());
+            }
+            k += 1;
+        }
+        return piped.then(|| READS_INPUT.to_string());
     }
 
     match cmd.as_str() {
@@ -326,14 +419,22 @@ fn check_segment(words: &[String], workspace: &Scope, depth: usize) -> Option<St
                 }
                 "push"
                     if has("--force")
-                        || has("-f")
                         || rest.iter().any(|a| {
-                            a.starts_with("--force-with-lease")
+                            short_cluster_has(a, 'f')
+                                || a.starts_with("--force-with-lease")
                                 || a.starts_with("--mirror")
                                 || a.starts_with('+')
                         }) =>
                 {
                     Some("`git push --force` rewrites remote history".into())
+                }
+                "push"
+                    if has("--delete")
+                        || rest.iter().any(|a| {
+                            short_cluster_has(a, 'd') || (a.starts_with(':') && a.len() > 1)
+                        }) =>
+                {
+                    Some("`git push --delete` removes a remote branch".into())
                 }
                 _ => None,
             }
@@ -531,6 +632,10 @@ fn outside_workspace(target: &str, scope: &Scope) -> bool {
     if t.starts_with('~') || t.starts_with('$') || t.starts_with('%') || t.starts_with('`') {
         return true;
     }
+    // A variable, substitution or brace expansion anywhere in the path.
+    if t.contains(['$', '%', '`', '{']) {
+        return true;
+    }
     let norm = t.replace('\\', "/");
     // `C:foo` is relative to that drive's current directory, which is unknown.
     if norm.len() >= 2 && is_drive(&norm[..2]) && !is_absolute_str(&norm) {
@@ -551,11 +656,18 @@ fn outside_workspace(target: &str, scope: &Scope) -> bool {
     }
 }
 
+/// One simple command; `piped` when a single `|` fed it.
+#[derive(Debug)]
+struct Seg {
+    words: Vec<String>,
+    piped: bool,
+}
+
 /// A command line split into simple commands, plus the bodies of any command
 /// substitutions (`$(...)`, `` `...` ``, `<(...)`), which are checked too.
 #[derive(Debug, Default)]
 struct Parsed {
-    segments: Vec<Vec<String>>,
+    segments: Vec<Seg>,
     substitutions: Vec<String>,
 }
 
@@ -564,8 +676,9 @@ struct Parsed {
 /// then into words. Quotes group words and are removed. Not a full shell
 /// parser, only enough to find each command and its arguments; an unclosed
 /// quote or substitution is an error, so the caller asks rather than guesses.
-fn parse(command: &str) -> Result<Parsed, &'static str> {
+fn parse(command: &str, posix_escapes: bool) -> Result<Parsed, &'static str> {
     let mut out = Parsed::default();
+    let mut pending_pipe = false;
     let mut words: Vec<String> = Vec::new();
     let mut cur = String::new();
     let mut quote: Option<char> = None;
@@ -573,6 +686,20 @@ fn parse(command: &str) -> Result<Parsed, &'static str> {
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
+        // POSIX reading: `\x` makes `x` literal, so `\"` neither opens a
+        // quote nor hides what follows. A backslash before anything else
+        // stays literal (a Windows path). Both readings are checked.
+        if posix_escapes
+            && c == '\\'
+            && quote != Some('\'')
+            && chars
+                .get(i + 1)
+                .is_some_and(|n| "\"' ;|&`$\\".contains(*n))
+        {
+            cur.push(chars[i + 1]);
+            i += 2;
+            continue;
+        }
         // Substitutions run even inside double quotes, never inside single.
         if quote != Some('\'') {
             let opens_paren = (c == '$' || (quote.is_none() && (c == '<' || c == '>')))
@@ -621,11 +748,18 @@ fn parse(command: &str) -> Result<Parsed, &'static str> {
                     if !cur.is_empty() {
                         words.push(std::mem::take(&mut cur));
                     }
+                    let is_pipe = c == '|' && chars.get(i + 1) != Some(&'|');
                     if (c == '|' || c == '&') && chars.get(i + 1) == Some(&c) {
                         i += 1;
                     }
                     if !words.is_empty() {
-                        out.segments.push(std::mem::take(&mut words));
+                        out.segments.push(Seg {
+                            words: std::mem::take(&mut words),
+                            piped: pending_pipe,
+                        });
+                        pending_pipe = is_pipe;
+                    } else {
+                        pending_pipe |= is_pipe;
                     }
                 }
                 _ => cur.push(c),
@@ -640,7 +774,10 @@ fn parse(command: &str) -> Result<Parsed, &'static str> {
         words.push(cur);
     }
     if !words.is_empty() {
-        out.segments.push(words);
+        out.segments.push(Seg {
+            words,
+            piped: pending_pipe,
+        });
     }
     Ok(out)
 }
@@ -653,17 +790,24 @@ fn strip_prefixes(words: &[String]) -> Vec<String> {
     while i < words.len() {
         let w = words[i].as_str();
         let is_assignment = w.contains('=') && !w.starts_with('-') && !w.starts_with('=');
-        if rules.wrappers.iter().any(|x| x == w) || is_assignment {
+        if is_assignment {
             i += 1;
             continue;
         }
-        if w.starts_with('-') && i > 0 && rules.wrappers.iter().any(|x| x == &words[i - 1]) {
-            i += 1;
-            continue;
+        if !rules.wrappers.iter().any(|x| x == w) {
+            break;
         }
-        break;
+        i += 1;
+        // Options, and the value of those that take one as a separate word
+        // (`sudo -u root`, `nice -n 10`). `-u=x` and `-ux` are one word.
+        let value_options = rules.wrapper_value_options.get(w);
+        while i < words.len() && words[i].starts_with('-') && words[i] != "-" {
+            let takes_value = value_options.is_some_and(|v| v.iter().any(|o| o == &words[i]));
+            i += if takes_value { 2 } else { 1 };
+        }
+        i += rules.wrapper_positional.get(w).copied().unwrap_or(0);
     }
-    words[i..].to_vec()
+    words[i.min(words.len())..].to_vec()
 }
 
 #[cfg(test)]
