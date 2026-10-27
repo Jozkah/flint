@@ -42,6 +42,8 @@ vi.mock('@/hooks/useWebSearchConfig', async () => {
     useWebSearchConfig: () => ({
       webSearchEnabled: true,
       searchProvider,
+      searchChain: [{ provider: searchProvider, enabled: true }],
+      setSearchChain: vi.fn(),
       apiKeys: {},
       endpoints: {},
       setWebSearchEnabled: vi.fn(),
