@@ -2278,16 +2278,19 @@ mod tests {
             panic!("test needs a HOME");
         };
         let home = home.to_string_lossy();
-        let ro_bind = format!("--ro-bind {home} {home}");
-        let tmpfs = format!("--tmpfs {home}");
+        // The needles end in a space and the argument text is padded with one,
+        // so `--tmpfs $HOME` does not also match `--tmpfs $HOME/.docker` (the
+        // credential directories under the home are masked the same way).
+        let ro_bind = format!("--ro-bind {home} {home} ");
+        let tmpfs = format!("--tmpfs {home} ");
 
         // Default: an empty tmpfs hides the home.
-        let masked = joined(&bwrap_args(&policy(), &cfg()));
+        let masked = format!("{} ", joined(&bwrap_args(&policy(), &cfg())));
         assert!(masked.contains(&tmpfs), "{masked}");
         assert!(!masked.contains(&ro_bind), "{masked}");
 
         // home_readonly: the home is bound read-only instead of hidden.
-        let ro = joined(&bwrap_args(&policy().with_home_readonly(true), &cfg()));
+        let ro = format!("{} ", joined(&bwrap_args(&policy().with_home_readonly(true), &cfg())));
         assert!(!ro.contains(&tmpfs), "{ro}");
         assert!(ro.contains(&ro_bind), "{ro}");
     }
