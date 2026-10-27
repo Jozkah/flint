@@ -49,6 +49,8 @@ pub enum MatchError {
     NotFound { closest: Option<(usize, String, f64)> },
     /// Several equally plausible locations (1-based line numbers).
     Ambiguous { lines: Vec<usize> },
+    /// `old_string` was empty, which matches everywhere.
+    EmptyOld,
 }
 
 impl std::fmt::Display for MatchError {
@@ -60,6 +62,7 @@ impl std::fmt::Display for MatchError {
                 "old_string not found; closest match at line {line} ({:.0}% similar):\n{snippet}",
                 sim * 100.0
             ),
+            MatchError::EmptyOld => write!(f, "old_string must not be empty"),
             MatchError::Ambiguous { lines } => {
                 let list: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
                 write!(
@@ -227,6 +230,9 @@ fn canon(lines: &[&str]) -> String {
 /// fallback chain after exact matching: either a location or the reason
 /// there is none.
 pub fn resolve(content: &str, old: &str, new: &str) -> Result<Resolved, MatchError> {
+    if old.is_empty() {
+        return Err(MatchError::EmptyOld);
+    }
     let eol = line_ending(content);
 
     // 0/1. Exact, then with old/new converted to the file's line ending.
@@ -302,22 +308,36 @@ pub fn resolve(content: &str, old: &str, new: &str) -> Result<Resolved, MatchErr
         Resolved { range, replacement }
     };
 
-    let windows: Vec<String> = (0..=file_lines.len() - n)
-        .map(|s| canon(&file_lines[s..s + n]))
-        .collect();
+    // Canonicalise each line once; windows are slices of this, joined lazily
+    // only for the candidates that survive the length bound and the budget.
+    let canon_lines: Vec<String> = file_lines.iter().map(|l| norm_str(l.trim())).collect();
+    let char_lens: Vec<usize> = canon_lines.iter().map(|l| l.chars().count()).collect();
+    let n_windows = file_lines.len() - n + 1;
+    // Window char length = sum of line lengths + (n - 1) joining newlines.
+    let mut win_len = char_lens[..n].iter().sum::<usize>() + (n - 1);
+    let mut lens: Vec<usize> = Vec::with_capacity(n_windows);
+    for s in 0..n_windows {
+        lens.push(win_len);
+        if s + n < char_lens.len() {
+            win_len = win_len + char_lens[s + n] - char_lens[s];
+        }
+    }
+    let join = |s: usize| canon_lines[s..s + n].join("
+");
 
-    let exact: Vec<usize> = (0..windows.len()).filter(|&s| windows[s] == want).collect();
+    let want_len = want.chars().count();
+    let exact: Vec<usize> = (0..n_windows)
+        .filter(|&s| lens[s] == want_len && join(s) == want)
+        .collect();
     match exact.len() {
         1 => return Ok(resolved_at(exact[0])),
         0 => {}
         _ => return Err(MatchError::Ambiguous { lines: exact.iter().map(|s| s + 1).collect() }),
     }
 
-    let want_len = want.chars().count();
     let mut scored: Vec<(usize, f64)> = Vec::new();
     let mut budget = FUZZY_CELL_BUDGET;
-    for (s, w) in windows.iter().enumerate() {
-        let wl = w.chars().count();
+    for (s, &wl) in lens.iter().enumerate() {
         if wl > MAX_FUZZY_CHARS || want_len > MAX_FUZZY_CHARS {
             continue;
         }
@@ -334,7 +354,7 @@ pub fn resolve(content: &str, old: &str, new: &str) -> Result<Resolved, MatchErr
             return Err(MatchError::NotFound { closest: None });
         }
         budget -= cells;
-        scored.push((s, similarity(w, &want)));
+        scored.push((s, similarity(&join(s), &want)));
     }
     let passing: Vec<&(usize, f64)> =
         scored.iter().filter(|(_, sim)| *sim >= SIMILARITY_THRESHOLD).collect();
@@ -440,6 +460,25 @@ mod tests {
         let old = format!("{}y", "x".repeat(3_999));
         let started = std::time::Instant::now();
         assert!(matches!(resolve(&content, &old, "z"), Err(MatchError::NotFound { .. })));
+        assert!(started.elapsed() < std::time::Duration::from_secs(20));
+    }
+
+    #[test]
+    fn empty_old_string_rejected() {
+        assert_eq!(resolve("abc", "", "x").unwrap_err(), MatchError::EmptyOld);
+    }
+
+    #[test]
+    fn fuzzy_budget_stops_on_huge_file() {
+        // 200k short lines, 3-line wanted text: window strings must not be
+        // materialised up front, and the call must return fast.
+        let content = (0..200_000).map(|i| format!("line number {i} here")).collect::<Vec<_>>().join("
+");
+        let started = std::time::Instant::now();
+        let r = resolve(&content, "line number 5 here
+line numbr 6 here
+line number 7 here", "z");
+        assert!(r.is_ok() || matches!(r, Err(MatchError::NotFound { .. }) | Err(MatchError::Ambiguous { .. })));
         assert!(started.elapsed() < std::time::Duration::from_secs(20));
     }
 
