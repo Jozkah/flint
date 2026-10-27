@@ -774,7 +774,7 @@ pub(crate) async fn execute_text(
         "host_ssh" => crate::tools::host_ssh::run(args).await,
         "notify_user" => crate::tools::notify_user::notify_user(args).await,
         "local_http" => crate::tools::local_http::local_http(args).await,
-        "docker" => crate::tools::docker_tool::docker(args).await,
+        "docker" => crate::tools::docker_tool::docker(args, project_root).await,
         "git_clone" => crate::tools::git_native::git_clone(args, ctx).await,
         "git" => crate::tools::git_tool::run(args, ctx).await,
         // The interactive confined browser; its screenshot image travels only

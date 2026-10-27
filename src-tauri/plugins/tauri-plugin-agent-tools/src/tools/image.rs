@@ -43,8 +43,10 @@ pub fn mime_from_extension(path: &std::path::Path) -> Option<&'static str> {
 /// The MIME type of the image at `path`, decided by file signature first and
 /// extension second. `None` when neither identifies a supported image.
 pub fn detect(path: &std::path::Path) -> Option<&'static str> {
-    let bytes = std::fs::read(path).ok()?;
-    mime_from_signature(&bytes).or_else(|| mime_from_extension(path))
+    use std::io::Read;
+    let mut header = Vec::with_capacity(16);
+    std::fs::File::open(path).ok()?.take(16).read_to_end(&mut header).ok()?;
+    mime_from_signature(&header).or_else(|| mime_from_extension(path))
 }
 
 #[cfg(test)]
@@ -65,6 +67,18 @@ mod tests {
             Some("image/webp")
         );
         assert_eq!(mime_from_signature(b"plain text"), None);
+    }
+
+    #[test]
+    fn image_detect_reads_header_only() {
+        let dir = std::env::temp_dir().join(format!("flint-image-detect-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("big.dat");
+        let mut data = b"\x89PNG\r\n\x1a\n".to_vec();
+        data.resize(8 * 1024 * 1024, 0);
+        std::fs::write(&file, data).unwrap();
+        assert_eq!(detect(&file), Some("image/png"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -170,7 +170,7 @@ pub async fn output_with_timeout(
         Err(e) => return Ok(Err(e)),
     };
     let owner = child.id().and_then(|pid| OwnedChild::own(pid).ok());
-    match tokio::time::timeout(timeout, child.wait_with_output()).await {
+    match tokio::time::timeout(timeout, bounded_output(child)).await {
         Ok(out) => {
             if let Some(owner) = owner {
                 owner.release();
@@ -185,6 +185,41 @@ pub async fn output_with_timeout(
     }
 }
 
+/// Most bytes kept from each output stream (W33). A child that prints more has
+/// the rest read and discarded, so it never blocks on a full pipe and Flint
+/// never holds more than this per stream.
+pub const CAPTURE_CAP: usize = 1024 * 1024;
+
+async fn read_capped<R: tokio::io::AsyncRead + Unpin>(reader: Option<R>, cap: usize) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    let Some(mut reader) = reader else { return Vec::new() };
+    let mut kept = Vec::new();
+    let mut chunk = [0u8; 16 * 1024];
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                let room = cap.saturating_sub(kept.len());
+                kept.extend_from_slice(&chunk[..n.min(room)]);
+            }
+        }
+    }
+    kept
+}
+
+/// `wait_with_output` with each stream capped at `cap` bytes.
+async fn bounded_output_with(mut child: tokio::process::Child, cap: usize) -> std::io::Result<std::process::Output> {
+    let out = read_capped(child.stdout.take(), cap);
+    let err = read_capped(child.stderr.take(), cap);
+    let (stdout, stderr) = tokio::join!(out, err);
+    let status = child.wait().await?;
+    Ok(std::process::Output { status, stdout, stderr })
+}
+
+async fn bounded_output(child: tokio::process::Child) -> std::io::Result<std::process::Output> {
+    bounded_output_with(child, CAPTURE_CAP).await
+}
+
 impl Drop for OwnedChild {
     fn drop(&mut self) {
         self.stop();
@@ -194,6 +229,29 @@ impl Drop for OwnedChild {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A child that prints far more than the cap is read to the end, but only
+    /// the first `cap` bytes per stream are kept.
+    #[tokio::test]
+    async fn capture_bounds_memory() {
+        let mut cmd = if cfg!(windows) {
+            let mut c = tokio::process::Command::new("powershell");
+            c.args(["-NoProfile", "-Command", "$s='x'*1048576; 1..50 | ForEach-Object { [Console]::Out.Write($s) }"]);
+            c
+        } else {
+            let mut c = tokio::process::Command::new("sh");
+            c.args(["-c", "head -c 52428800 /dev/zero | tr '\\0' x"]);
+            c
+        };
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let child = cmd.spawn().expect("spawn");
+        let out = bounded_output_with(child, 64 * 1024).await.expect("output");
+        assert_eq!(out.stdout.len(), 64 * 1024);
+        assert!(out.status.success());
+    }
 
     #[test]
     fn a_program_that_is_not_there_is_reported_missing() {
