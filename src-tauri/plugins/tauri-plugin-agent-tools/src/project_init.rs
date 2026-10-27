@@ -436,11 +436,21 @@ pub fn accept(root: &Path, content: &str, overwrite: bool) -> Result<PathBuf, St
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(format!("FLINT.md could not be checked: {e}")),
     }
-    let temp = root.join(format!(".FLINT.md.flint-{}.tmp", std::process::id()));
-    std::fs::write(&temp, content).map_err(|e| format!("FLINT.md could not be written: {e}"))?;
-    if let Err(e) = std::fs::rename(&temp, &target) {
-        let _ = std::fs::remove_file(&temp);
-        return Err(format!("FLINT.md could not be written: {e}"));
+    if overwrite {
+        crate::atomic_file::write_atomic(&target, content.as_bytes())
+            .map_err(|e| format!("FLINT.md could not be written: {e}"))?;
+    } else {
+        // `create_new` fails if anything (even a planted link) appeared since
+        // the check above, instead of writing through it.
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+            .map_err(|e| format!("FLINT.md could not be written: {e}"))?;
+        file.write_all(content.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|e| format!("FLINT.md could not be written: {e}"))?;
     }
     Ok(target)
 }
@@ -542,6 +552,22 @@ mod tests {
             "{:?}",
             out.not_read
         );
+    }
+
+    #[test]
+    fn accept_does_not_follow_planted_temp() {
+        let root = dir("planted");
+        let outside = dir("planted-outside").join("victim.txt");
+        std::fs::write(&outside, "keep").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            &outside,
+            root.join(format!(".FLINT.md.flint-{}.tmp", std::process::id())),
+        )
+        .unwrap();
+        accept(&root, "# new\n", true).unwrap();
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "keep");
+        assert_eq!(std::fs::read_to_string(root.join("FLINT.md")).unwrap(), "# new\n");
     }
 
     #[test]
