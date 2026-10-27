@@ -859,6 +859,9 @@ fn apply_edits(
             return Err(format!("ERROR: {shown}: edit {}: missing 'new_string'", i + 1));
         };
         let replace_all = e.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
+        if old_string.is_empty() {
+            return Err(format!("ERROR: {shown}: edit {}: old_string must not be empty", i + 1));
+        }
         let count = content.matches(old_string).count();
         if count == 0 {
             // No exact hit: fall back to tolerant matching (line endings,
@@ -1223,7 +1226,15 @@ fn render_edit_diff(edits: &[serde_json::Value], prior: &str) -> String {
             }
             // `edit()` will reject this call, but the arguments are still worth
             // showing; there is no file position to number them against.
-            None => out.push_str(&render_hunk_diff(old, new, 1)),
+            None => match (replace_all, super::fuzzy_edit::resolve(&working, old, new)) {
+                (false, Ok(r)) => {
+                    let found = working[r.range.clone()].to_string();
+                    let (ob, nb, start) = expand_hunk(&working, r.range.start, &found, &r.replacement);
+                    out.push_str(&render_hunk_diff(&ob, &nb, start));
+                    working.replace_range(r.range, &r.replacement);
+                }
+                _ => out.push_str(&render_hunk_diff(old, new, 1)),
+            },
         }
     }
     out.trim_end().to_string()
@@ -6396,6 +6407,29 @@ on_failure = \"warn\"
             "unexpected: {miss}"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn edit_empty_old_string_rejected_with_replace_all() {
+        let e = json!({"old_string": "", "new_string": "x", "replace_all": true});
+        let err = apply_edits("abc", &[e], "f").unwrap_err();
+        assert!(err.contains("old_string must not be empty"), "{err}");
+    }
+
+    #[test]
+    fn preview_matches_applied_hunk_for_fuzzy() {
+        let prior = "fn a() {
+        one();
+}
+";
+        let e = json!({"old_string": "fn a() {
+    one();
+}", "new_string": "fn a() {
+    two();
+}"});
+        let d = render_edit_diff(&[e], prior);
+        assert!(d.contains("two();") && d.contains("one();"), "{d}");
+        assert!(d.contains("        one();"), "real file text shown: {d}");
     }
 
     #[test]
