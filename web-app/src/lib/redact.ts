@@ -133,8 +133,11 @@ export function redactSecrets(text: string): string {
     )
     // KEY="a quoted value" / KEY='a quoted value'
     .replace(
-      /(?<![\w.-])([\w.-]+)=("[^"]*"|'[^']*')/g,
-      (m, key: string) => (namesASecret(key) ? `${key}=${REDACTED}` : m)
+      // The bare-word alternative eats a whole key-ish run first, so a key is
+      // never matched from mid-word (no lookbehind, still linear).
+      /([\w.-]+)=("[^"]*"|'[^']*')|[\w.-]+/g,
+      (m, key?: string) =>
+        key !== undefined && namesASecret(key) ? `${key}=${REDACTED}` : m
     )
     // --password hunter2 / --token "a b": the flag's value is the next token
     .replace(
