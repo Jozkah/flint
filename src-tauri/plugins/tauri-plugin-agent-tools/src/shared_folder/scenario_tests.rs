@@ -74,10 +74,13 @@ async fn a_claims_b_is_held_b_messages_and_the_retry_goes_through() {
     );
     assert_eq!(std::fs::read_to_string(f.repo.path().join("x.txt")).unwrap(), "two\n");
 
-    // B messages A with the existing tool, then retries: it goes through.
+    // B messages A with the existing tool, then retries: it goes through. The
+    // retry rule needs the message to be strictly later than the hold (both are
+    // millisecond timestamps), so wait before sending, not after: on a fast
+    // machine the hold and the message otherwise share a millisecond.
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     let sent = call(&b, "send_message", json!({ "to": "Alpha", "message": "editing x.txt next" })).await;
     assert!(sent.contains("message_id"), "{sent}");
-    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     let out = call(&b, "edit", edit_args("two", "three")).await;
     assert!(out.starts_with("Applied"), "{out}");
     assert_eq!(std::fs::read_to_string(f.repo.path().join("x.txt")).unwrap(), "three\n");
