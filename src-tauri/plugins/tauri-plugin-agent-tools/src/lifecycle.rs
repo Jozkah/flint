@@ -27,7 +27,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::Duration;
 
 /// Why an operation ended before it finished.
@@ -100,6 +100,10 @@ struct Inner {
     scope: Scope,
     /// Child processes this token owns, so stopping it can reap them.
     pids: Mutex<Vec<u32>>,
+    /// Wakes `stopped_signal` waiters when the token stops.
+    notify: tokio::sync::Notify,
+    /// Child tokens, stopped with this one (never the other way round).
+    children: Mutex<Vec<Weak<Inner>>>,
 }
 
 /// A handle to one piece of cancellable work.
@@ -115,7 +119,26 @@ impl Token {
             state: AtomicU8::new(RUNNING),
             scope,
             pids: Mutex::new(Vec::new()),
+            notify: tokio::sync::Notify::new(),
+            children: Mutex::new(Vec::new()),
         }))
+    }
+
+    /// A token that stops when `parent` stops (with the same reason) but whose
+    /// own stop, e.g. a timeout, never reaches the parent.
+    pub fn child(parent: &Token) -> Token {
+        let child = Token::new(parent.0.scope.clone());
+        {
+            let mut kids = parent.0.children.lock().unwrap();
+            kids.retain(|w| w.strong_count() > 0);
+            kids.push(Arc::downgrade(&child.0));
+        }
+        // Register-then-recheck: a parent that stopped before the push never
+        // saw the child.
+        if let Some(reason) = parent.stopped() {
+            child.stop(reason);
+        }
+        child
     }
 
     /// A token that is never stopped, for callers with no scope of their own.
@@ -157,6 +180,18 @@ impl Token {
             .is_ok();
         if won {
             self.reap();
+            self.0.notify.notify_waiters();
+            let kids: Vec<Arc<Inner>> = self
+                .0
+                .children
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(Weak::upgrade)
+                .collect();
+            for kid in kids {
+                Token(kid).stop(reason);
+            }
         }
         won
     }
@@ -167,11 +202,16 @@ impl Token {
     /// race where a command is spawned just after a cancellation would
     /// otherwise leave it running with nobody holding its handle.
     pub fn adopt(&self, pid: u32) {
+        // State is checked under the pids lock: `stop` sets the state first and
+        // `reap` then takes this lock, so either we see it stopped here or
+        // `reap` sees our push.
+        let mut pids = self.0.pids.lock().unwrap();
         if self.is_stopped() {
+            drop(pids);
             let _ = crate::tools::proc::kill_tree(pid);
             return;
         }
-        self.0.pids.lock().unwrap().push(pid);
+        pids.push(pid);
     }
 
     /// Release a child that exited on its own.
@@ -425,21 +465,86 @@ where
 
 /// Resolve once the token stops.
 ///
-/// Polled rather than notified: the token is shared across threads that are not
-/// all async, and a poll at this interval is imperceptible next to the work
-/// being cancelled.
+/// Woken by `stop()` through a `Notify`; register-then-recheck avoids a lost
+/// wakeup.
 async fn wait_until_stopped(token: &Token) {
-    loop {
-        if token.is_stopped() {
-            return;
+    token.stopped_signal().await
+}
+
+impl Token {
+    /// Resolve once the token stops, without polling.
+    pub async fn stopped_signal(&self) {
+        loop {
+            let notified = self.0.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.is_stopped() {
+                return;
+            }
+            notified.await;
         }
-        tokio::time::sleep(Duration::from_millis(25)).await;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn stopped_signal_wakes_without_poll() {
+        let t = Token::detached();
+        let t2 = t.clone();
+        let h = tokio::spawn(async move { t2.stopped_signal().await });
+        tokio::task::yield_now().await;
+        let start = std::time::Instant::now();
+        t.stop(StopReason::Cancelled);
+        tokio::time::timeout(Duration::from_millis(20), h).await.unwrap().unwrap();
+        assert!(start.elapsed() < Duration::from_millis(20));
+    }
+
+    #[tokio::test]
+    async fn child_timeout_does_not_stop_parent_but_parent_stops_child() {
+        let parent = Token::detached();
+        let kid = Token::child(&parent);
+        kid.stop(StopReason::Timeout);
+        assert!(!parent.is_stopped());
+        let kid2 = Token::child(&parent);
+        parent.stop(StopReason::Cancelled);
+        assert_eq!(kid2.stopped(), Some(StopReason::Cancelled));
+        assert_eq!(Token::child(&parent).stopped(), Some(StopReason::Cancelled));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn adopt_after_stop_kills_child() {
+        for _ in 0..1000 {
+            let t = Token::detached();
+            let t2 = t.clone();
+            let mut child = std::process::Command::new("cmd")
+                .args(["/C", "ping -n 30 127.0.0.1 >nul"])
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            let pid = child.id();
+            let h = std::thread::spawn(move || t2.adopt(pid));
+            t.stop(StopReason::Cancelled);
+            h.join().unwrap();
+            // Either adopt saw the stop and killed, or reap killed the push.
+            assert_eq!(t.live_children(), 0);
+            let mut ok = false;
+            for _ in 0..200 {
+                if child.try_wait().unwrap().is_some() {
+                    ok = true;
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            if !ok {
+                let _ = child.kill();
+            }
+            assert!(ok, "child left running");
+        }
+    }
 
     fn scope(session: &str, run: &str, call: &str) -> Scope {
         Scope::new(session, run, call)
