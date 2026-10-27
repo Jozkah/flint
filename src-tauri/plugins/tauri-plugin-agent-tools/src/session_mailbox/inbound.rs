@@ -327,19 +327,20 @@ impl Mailbox {
             .collect()
     }
 
-    fn notice_to_asker(&self, sub: &IdleSub, text: &str) {
+    fn notice_to_asker(&self, sub: &IdleSub, text: &str) -> bool {
         let extras = SendExtras {
             chain: sub.chain.clone(),
             sender_may_be_gone: true,
         };
-        let _ = self.send_with(
+        self.send_with(
             &sub.target,
             &sub.asker,
             text,
             None,
             Origin::Notice,
             extras,
-        );
+        )
+        .is_ok()
     }
 
     /// `target_id` finished a turn (or was deleted): send each asker its one
@@ -361,20 +362,40 @@ impl Mailbox {
                     return;
                 }
             }
-            let (fired, kept): (Vec<IdleSub>, Vec<IdleSub>) =
-                subs.into_iter().partition(|s| s.target == target_id);
-            if self.write_subs(&kept).is_err() {
-                return;
-            }
-            fired
+            // The subscriptions stay on disk until their notice is appended,
+            // so a failed send does not lose them.
+            subs.into_iter()
+                .filter(|s| s.target == target_id)
+                .collect()
         };
         let name = self.name_of(target_id);
         let text = match event {
             IdleEvent::Idle => format!("\"{name}\" finished its turn and is idle with nothing queued."),
             IdleEvent::Deleted => format!("\"{name}\" was deleted."),
         };
+        let mut delivered: Vec<&IdleSub> = Vec::new();
         for sub in &fired {
-            self.notice_to_asker(sub, &text);
+            let gone = self
+                .session(&sub.asker)
+                .map_or(true, |a| a.deleted);
+            // A deleted target never fires again, and a gone asker cannot be
+            // told: both end the subscription. Otherwise it is kept for retry.
+            if self.notice_to_asker(sub, &text) || gone || event == IdleEvent::Deleted {
+                delivered.push(sub);
+            }
+        }
+        if !delivered.is_empty() {
+            let _guard = lock();
+            let mut subs = self.read_subs();
+            let before = subs.len();
+            subs.retain(|s| {
+                !delivered
+                    .iter()
+                    .any(|d| d.asker == s.asker && d.target == s.target && d.created_at == s.created_at)
+            });
+            if subs.len() != before {
+                let _ = self.write_subs(&subs);
+            }
         }
     }
 
