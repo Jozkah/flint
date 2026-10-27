@@ -20,61 +20,96 @@ fn is_safe_to_delete(path: &std::path::Path) -> bool {
     count >= 3
 }
 
-fn remove_dir(data_folder: &std::path::Path, name: &str) {
+fn remove_dir(data_folder: &std::path::Path, name: &str) -> Vec<String> {
     let path = data_folder.join(name);
+    let mut failures = Vec::new();
     if path.is_dir() {
         log::info!("Removing directory: {}", path.display());
         if let Err(e) = fs::remove_dir_all(&path) {
             log::warn!("Failed to remove {}: {e}", path.display());
+            failures.push(format!("{}: {e}", path.display()));
         }
     }
+    failures
 }
 
-fn remove_file(data_folder: &std::path::Path, name: &str) {
+fn remove_file(data_folder: &std::path::Path, name: &str) -> Vec<String> {
     let path = data_folder.join(name);
+    let mut failures = Vec::new();
     if path.is_file() {
         log::info!("Removing file: {}", path.display());
         if let Err(e) = fs::remove_file(&path) {
             log::warn!("Failed to remove {}: {e}", path.display());
+            failures.push(format!("{}: {e}", path.display()));
         }
     }
+    failures
 }
 
-/// Delete conversations and user data (threads, assistants).
-fn delete_conversations(data_folder: &std::path::Path) {
-    log::info!("Deleting conversations (threads, assistants)");
-    for dir in JAN_DATA_DIRS_CONVERSATIONS {
-        remove_dir(data_folder, dir);
-    }
+/// Delete conversations and user content (threads, assistants, archive,
+/// attachments, rooms, schedules, Studio output, vector databases).
+fn delete_conversations(data_folder: &std::path::Path) -> Vec<String> {
+    log::info!("Deleting conversations and user content");
+    JAN_DATA_DIRS_CONVERSATIONS
+        .iter()
+        .flat_map(|dir| remove_dir(data_folder, dir))
+        .collect()
 }
 
 /// Delete downloaded models, engine binaries, and configuration files
 /// (engine settings, MCP config, etc.).
-fn delete_models_and_configs(data_folder: &std::path::Path) {
+fn delete_models_and_configs(data_folder: &std::path::Path) -> Vec<String> {
     log::info!("Deleting models, engines, and configurations");
-    for dir in JAN_DATA_DIRS_MODELS {
-        remove_dir(data_folder, dir);
-    }
+    let mut failures: Vec<String> = JAN_DATA_DIRS_MODELS
+        .iter()
+        .flat_map(|dir| remove_dir(data_folder, dir))
+        .collect();
     for file in JAN_DATA_FILES_CONFIGS {
-        remove_file(data_folder, file);
+        failures.extend(remove_file(data_folder, file));
     }
+    failures
 }
 
-/// Delete extensions, logs, caches — always cleaned during any reset.
-fn delete_common_data(data_folder: &std::path::Path) {
+/// Delete extensions, logs, caches - always cleaned during any reset.
+fn delete_common_data(data_folder: &std::path::Path) -> Vec<String> {
     log::info!("Deleting common data (extensions, logs, caches)");
-    for dir in JAN_DATA_DIRS_COMMON {
-        remove_dir(data_folder, dir);
-    }
+    JAN_DATA_DIRS_COMMON
+        .iter()
+        .flat_map(|dir| remove_dir(data_folder, dir))
+        .collect()
 }
 
-/// Delete cross-category settings (store.json) — only during a full wipe
+/// Delete cross-category settings (store.json) - only during a full wipe
 /// when the user is not keeping any data.
-fn delete_settings(data_folder: &std::path::Path) {
+fn delete_settings(data_folder: &std::path::Path) -> Vec<String> {
     log::info!("Deleting cross-category settings (store.json)");
-    for file in JAN_DATA_FILES_SETTINGS {
-        remove_file(data_folder, file);
+    JAN_DATA_FILES_SETTINGS
+        .iter()
+        .flat_map(|file| remove_file(data_folder, file))
+        .collect()
+}
+
+/// Full wipe only: remove every remaining top-level entry so a feature
+/// directory added later is cleaned by default.
+fn delete_remaining_top_level(data_folder: &std::path::Path) -> Vec<String> {
+    let mut failures = Vec::new();
+    let entries = match fs::read_dir(data_folder) {
+        Ok(e) => e,
+        Err(e) => return vec![format!("{}: {e}", data_folder.display())],
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let res = if path.is_dir() {
+            fs::remove_dir_all(&path)
+        } else {
+            fs::remove_file(&path)
+        };
+        if let Err(e) = res {
+            log::warn!("Failed to remove {}: {e}", path.display());
+            failures.push(format!("{}: {e}", path.display()));
+        }
     }
+    failures
 }
 
 /// Clear the WebKit/WRY webview profile (localStorage, cookies, IndexedDB,
@@ -388,6 +423,29 @@ fn claude_code_env_keys_to_clear(recorded: Vec<String>) -> Vec<String> {
     keys
 }
 
+/// Delete the data-folder categories selected by the keep flags. Returns the
+/// paths that could not be removed. A full wipe also sweeps every remaining
+/// top-level entry and the stored secrets.
+fn wipe_data_folder(
+    data_folder: &std::path::Path,
+    keep_app_data: bool,
+    keep_models_and_configs: bool,
+) -> Vec<String> {
+    let mut failures = delete_common_data(data_folder);
+    if !keep_app_data {
+        failures.extend(delete_conversations(data_folder));
+    }
+    if !keep_models_and_configs {
+        failures.extend(delete_models_and_configs(data_folder));
+    }
+    // store.json spans all categories; only wipe it when nothing is kept
+    if !keep_app_data && !keep_models_and_configs {
+        failures.extend(delete_settings(data_folder));
+        failures.extend(delete_remaining_top_level(data_folder));
+    }
+    failures
+}
+
 #[tauri::command]
 pub fn factory_reset<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
@@ -395,7 +453,7 @@ pub fn factory_reset<R: Runtime>(
     keep_app_data: Option<bool>,
     keep_models_and_configs: Option<bool>,
     clear_web_data: Option<bool>,
-) {
+) -> Result<(), String> {
     let keep_app_data = keep_app_data.unwrap_or(false);
     let keep_models_and_configs = keep_models_and_configs.unwrap_or(false);
     let clear_web_data = clear_web_data.unwrap_or(false);
@@ -419,6 +477,7 @@ pub fn factory_reset<R: Runtime>(
     );
 
     tauri::async_runtime::block_on(async {
+        let mut failures: Vec<String> = Vec::new();
         let _ =
             stop_mcp_servers_with_context(&app_handle, &state, ShutdownContext::FactoryReset).await;
 
@@ -439,30 +498,32 @@ pub fn factory_reset<R: Runtime>(
                     "Refusing factory reset: path is too close to filesystem root: {}",
                     data_folder.display()
                 );
-                return;
+                return Err(format!(
+                    "Refusing factory reset: path is too close to filesystem root: {}",
+                    data_folder.display()
+                ));
             }
 
-            // Always clean common data (extensions, logs, caches)
-            delete_common_data(&data_folder);
-
-            // Delete conversations (threads, assistants) unless user chose to keep it
-            if !keep_app_data {
-                delete_conversations(&data_folder);
-            }
-
-            // Delete models and configs unless user chose to keep them
-            if !keep_models_and_configs {
-                delete_models_and_configs(&data_folder);
-            }
-
-            // store.json spans all categories; only wipe it when nothing is kept
             if !keep_app_data && !keep_models_and_configs {
-                // Secrets live mostly in the OS keyring, not the data folder;
-                // clear them while the index can still name them.
+                // Secrets live mostly in the OS keyring; clear them while the
+                // index can still name them (kept out of wipe_data_folder so
+                // tests never touch the real keyring).
                 let wiped = crate::core::server::provider_secrets::wipe_all_secrets();
                 log::info!("Factory reset: wiped {wiped} stored secret(s)");
-                delete_settings(&data_folder);
             }
+            failures.extend(wipe_data_folder(
+                &data_folder,
+                keep_app_data,
+                keep_models_and_configs,
+            ));
+        }
+
+        if !failures.is_empty() {
+            log::error!("Factory reset incomplete: {}", failures.join("; "));
+            return Err(format!(
+                "Factory reset incomplete, could not remove: {}",
+                failures.join("; ")
+            ));
         }
 
         // Reset app configuration to defaults unless user chose to keep configs
@@ -495,7 +556,7 @@ pub fn factory_reset<R: Runtime>(
         }
 
         app_handle.restart();
-    });
+    })
 }
 
 #[tauri::command]
@@ -1935,6 +1996,74 @@ mod tests {
         assert!(!d.join("settings.json").exists());
         assert!(!exists_any(d, JAN_DATA_SUBDIRS));
         assert!(!exists_any(d, JAN_DATA_FILES));
+    }
+
+    #[test]
+    fn factory_reset_removes_archive_attachments_rooms_schedules_images() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        let failures = wipe_data_folder(d, false, false);
+        assert!(failures.is_empty());
+        for n in [".archive", "attachments", "rooms", "schedules", "images", "videos", "vectordb"] {
+            assert!(!d.join(n).exists(), "{n} survived");
+        }
+    }
+
+    #[test]
+    fn keep_app_data_true_keeps_archive_and_attachments() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        let failures = wipe_data_folder(d, true, false);
+        assert!(failures.is_empty());
+        assert!(d.join(".archive").exists());
+        assert!(d.join("attachments").exists());
+        assert!(d.join("threads").exists());
+        assert!(!d.join("models").exists());
+    }
+
+    #[test]
+    fn keep_models_keeps_models_but_wipes_conversation_extras() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        let failures = wipe_data_folder(d, false, true);
+        assert!(failures.is_empty());
+        assert!(exists_all(d, JAN_DATA_DIRS_MODELS));
+        assert!(!d.join(".archive").exists());
+        assert!(!d.join("rooms").exists());
+        assert!(d.join("settings.json").exists());
+    }
+
+    #[test]
+    fn full_wipe_removes_unknown_top_level_dirs() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        fs::create_dir_all(d.join("some-future-feature")).unwrap();
+        fs::write(d.join("stray.bin"), "x").unwrap();
+        let failures = wipe_data_folder(d, false, false);
+        assert!(failures.is_empty());
+        assert_eq!(fs::read_dir(d).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn keep_flags_never_sweep_unknown_top_level_dirs() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path();
+        create_all_data(d);
+        fs::create_dir_all(d.join("some-future-feature")).unwrap();
+        wipe_data_folder(d, true, false);
+        assert!(d.join("some-future-feature").exists());
+    }
+
+    #[test]
+    fn removal_failures_are_reported() {
+        let tmp = tempdir().unwrap();
+        let not_a_dir = tmp.path().join("f");
+        fs::write(&not_a_dir, "x").unwrap();
+        assert!(!delete_remaining_top_level(&not_a_dir).is_empty());
     }
 
     #[test]
