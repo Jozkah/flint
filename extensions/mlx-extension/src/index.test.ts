@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import mlx_extension from './index'
 import { fs, getJanDataFolderPath, events } from '@janhq/core'
 import { invoke } from '@tauri-apps/api/core'
-import { unloadMlxModel } from '@janhq/tauri-plugin-mlx-api'
+import { unloadMlxModel, loadMlxModel } from '@janhq/tauri-plugin-mlx-api'
 import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
 
 const mockInvoke = vi.mocked(invoke)
@@ -190,6 +190,26 @@ describe('load', () => {
     expect(a).toEqual({ pid: 7 })
     expect(b).toEqual({ pid: 7 })
     expect(ext.performLoad).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('performLoad key handling', () => {
+  it('sends no MLX_API_KEY and returns the plugin SessionInfo', async () => {
+    const ext = newExt()
+    mockJanData.mockResolvedValue('/data')
+    ext.providerPath = '/data/mlx'
+    ext.getRandomPort = vi.fn().mockResolvedValue(5555)
+    mockInvoke.mockImplementation(async (cmd: string) =>
+      cmd === 'read_yaml' ? ({ model_path: '/abs/model' } as any) : ([] as any)
+    )
+    const info = { pid: 1, api_key: 'server-generated' }
+    vi.mocked(loadMlxModel).mockResolvedValue(info as any)
+
+    const out = await ext.performLoad('foo', undefined, false)
+    expect(out.api_key).toBe('server-generated')
+    const envs = vi.mocked(loadMlxModel).mock.calls.at(-1)![4]
+    expect(envs).not.toHaveProperty('MLX_API_KEY')
+    expect(typeof (ext as any).generateApiKey).toBe('undefined')
   })
 })
 
