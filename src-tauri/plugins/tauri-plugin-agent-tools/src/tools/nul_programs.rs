@@ -317,6 +317,6 @@ mod tests {
         assert!(text.starts_with("ERROR"), "{text}");
         assert!(text.contains("was not run in the sandbox"), "{text}");
         assert!(text.contains("being asked to approve"), "{text}");
-        assert!(crate::unsandboxed_retry::qualifies("bash", true, true, &text));
+        assert!(text.contains(super::super::jail::NULL_DEVICE_RETRY_TAG), "{text}");
     }
 }
