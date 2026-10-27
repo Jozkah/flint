@@ -253,6 +253,9 @@ pub fn tick(store: &Store, data_folder: &Path, launcher: &dyn Launcher, now: Dat
     let tasks = match store.load_tasks() {
         Ok(t) => t,
         Err(e) => {
+            if should_log_tick_error(super::store::now_ms()) {
+                log::error!("schedule tick: {}", e.message);
+            }
             report.errors.push(e.message);
             return report;
         }
@@ -299,6 +302,24 @@ pub fn tick(store: &Store, data_folder: &Path, launcher: &dyn Launcher, now: Dat
         }
     }
     report
+}
+
+/// Log a repeating tick error at most once per hour (ticks run every minute).
+const TICK_ERROR_LOG_INTERVAL_MS: u64 = 3_600_000;
+
+fn should_log_tick_error(now_ms: u64) -> bool {
+    static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    should_log_at(&LAST, now_ms, TICK_ERROR_LOG_INTERVAL_MS)
+}
+
+fn should_log_at(last: &std::sync::atomic::AtomicU64, now_ms: u64, interval: u64) -> bool {
+    use std::sync::atomic::Ordering::Relaxed;
+    let prev = last.load(Relaxed);
+    if prev != 0 && now_ms.saturating_sub(prev) < interval {
+        return false;
+    }
+    last.store(now_ms, Relaxed);
+    true
 }
 
 // ---- the child's side, kept free of I/O so it can be tested ----
@@ -444,6 +465,15 @@ pub fn notification_line(status: RunStatus) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tick_error_logged_once_per_interval() {
+        let last = std::sync::atomic::AtomicU64::new(0);
+        assert!(should_log_at(&last, 1000, 3_600_000));
+        assert!(!should_log_at(&last, 60_000, 3_600_000));
+        assert!(!should_log_at(&last, 3_000_000, 3_600_000));
+        assert!(should_log_at(&last, 3_700_000, 3_600_000));
+    }
+
     use super::*;
     use crate::core::agent::events::{StreamEvent, Usage};
     use crate::core::schedule::spec::fixtures::task;
