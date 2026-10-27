@@ -57,6 +57,9 @@ fn canonical_existing_ancestor(path: &Path) -> Result<PathBuf, String> {
 }
 
 /// Copy `relative` from `sandbox` to the same relative path under `project`.
+/// The largest sandbox file that can be applied into the project.
+const MAX_APPLY_BYTES: u64 = 256 * 1024 * 1024;
+
 pub fn apply_sandbox_file(
     sandbox: &Path,
     project: &Path,
@@ -85,7 +88,12 @@ pub fn apply_sandbox_file_to(
     if let Some(parent) = destination.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::copy(&source, &destination).map_err(|e| e.to_string())?;
+    let len = std::fs::metadata(&source).map_err(|e| e.to_string())?.len();
+    if len > MAX_APPLY_BYTES {
+        return Err(format!("the sandbox file is larger than {MAX_APPLY_BYTES} bytes"));
+    }
+    let bytes = std::fs::read(&source).map_err(|e| e.to_string())?;
+    crate::atomic_file::write_atomic(&destination, &bytes)?;
     Ok(if existed {
         SandboxApplyOutcome::Replaced
     } else {
@@ -117,8 +125,16 @@ pub fn probe_sandbox_file_to(
     if !existed {
         return Ok(SandboxApplyProbe::New);
     }
-    let same = std::fs::read(&source).map_err(|e| e.to_string())?
-        == std::fs::read(&destination).map_err(|e| e.to_string())?;
+    let (sm, dm) = (
+        std::fs::metadata(&source).map_err(|e| e.to_string())?,
+        std::fs::metadata(&destination).map_err(|e| e.to_string())?,
+    );
+    if sm.len() > MAX_APPLY_BYTES {
+        return Err(format!("the sandbox file is larger than {MAX_APPLY_BYTES} bytes"));
+    }
+    let same = sm.len() == dm.len()
+        && std::fs::read(&source).map_err(|e| e.to_string())?
+            == std::fs::read(&destination).map_err(|e| e.to_string())?;
     Ok(if same {
         SandboxApplyProbe::Same
     } else {
@@ -157,7 +173,7 @@ pub fn apply_sandbox_hunk_to(
     if current != expected {
         return Ok(SandboxHunkOutcome::Changed);
     }
-    std::fs::write(&destination, content).map_err(|e| e.to_string())?;
+    crate::atomic_file::write_atomic(&destination, content.as_bytes())?;
     Ok(SandboxHunkOutcome::Applied)
 }
 
@@ -248,6 +264,25 @@ mod tests {
         std::fs::create_dir_all(&project).unwrap();
         std::fs::write(sandbox.join("docs/notes.md"), "from the run").unwrap();
         (TempDir(root), sandbox, project)
+    }
+
+    #[test]
+    fn sandbox_apply_hunk_atomic() {
+        let (_root, sandbox, project) = dirs();
+        std::fs::write(project.join("n.md"), "before").unwrap();
+        let out =
+            apply_sandbox_hunk_to(&sandbox, &project, "docs/notes.md", "n.md", "before", "after")
+                .unwrap();
+        assert_eq!(out, SandboxHunkOutcome::Applied);
+        assert_eq!(std::fs::read_to_string(project.join("n.md")).unwrap(), "after");
+        let stray = std::fs::read_dir(&project)
+            .unwrap()
+            .any(|e| e.unwrap().file_name().to_string_lossy().contains(".tmp-"));
+        assert!(!stray);
+        let out =
+            apply_sandbox_hunk_to(&sandbox, &project, "docs/notes.md", "n.md", "before", "x")
+                .unwrap();
+        assert_eq!(out, SandboxHunkOutcome::Changed);
     }
 
     /// A sandbox file is never applied into Git's or Flint's state, under any
