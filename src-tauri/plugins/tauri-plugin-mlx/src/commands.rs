@@ -107,10 +107,10 @@ pub async fn load_mlx_model_impl(
 
     // Validate model path
     let model_path_pb = PathBuf::from(&model_path);
-    if !model_path_pb.exists() {
+    if !model_path_pb.is_dir() {
         return Err(MlxError::new(
             ErrorCode::ModelFileNotFound,
-            format!("Model file not found at: {}", model_path),
+            format!("Model directory not found at: {}", model_path),
             None,
         )
         .into());
@@ -148,34 +148,31 @@ pub async fn load_mlx_model_impl(
         Some(reservation)
     };
 
-    let api_key: String = envs
-        .get("MLX_API_KEY")
-        .map(|s| s.to_string())
-        .unwrap_or_default();
-
-    // Build command arguments
-    let mut args: Vec<String> = vec![
-        "--model".to_string(),
-        model_path.clone(),
-        "--port".to_string(),
-        port.to_string(),
-        "--model-id".to_string(),
-        model_id.clone(),
-    ];
-
-    if config.ctx_size > 0 {
-        args.push("--ctx-size".to_string());
-        args.push(config.ctx_size.to_string());
+    let api_key = crate::hardening::generate_mlx_key();
+    if api_key.is_empty() {
+        return Err(MlxError::new(
+            ErrorCode::ModelLoadFailed,
+            "Refusing to start MLX server without an API key".to_string(),
+            None,
+        )
+        .into());
     }
 
-    // The key travels in the MLX_API_KEY environment variable (already part
-    // of `envs`), never on argv: argv is readable by every local process and
-    // was written to the log below.
-    log::info!(
-        "MLX server arguments: {:?} (api key {})",
-        args,
-        if api_key.is_empty() { "unset" } else { "set via env" }
+    let (args, envs, rejected_envs) = crate::hardening::build_args_and_env(
+        &model_path,
+        &model_id,
+        port,
+        i64::from(config.ctx_size),
+        &api_key,
+        envs,
     );
+    if !rejected_envs.is_empty() {
+        log::warn!("Ignoring disallowed MLX env vars: {:?}", rejected_envs);
+    }
+
+    // The key travels in MLX_API_KEY, never on argv (argv is readable by
+    // every local process).
+    log::info!("MLX server arguments: {:?} (api key set via env)", args);
 
     // Configure the command
     let mut command = Command::new(&bin_path);
@@ -519,7 +516,7 @@ mod load_lock_tests {
         std::fs::write(&bin, "#!/bin/sh\nsleep 5\n").unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         let model = dir.join("model.safetensors");
-        std::fs::write(&model, b"").unwrap();
+        std::fs::create_dir_all(&model).unwrap();
 
         let map: Arc<Mutex<HashMap<i32, MlxBackendSession>>> =
             Arc::new(Mutex::new(HashMap::new()));
@@ -560,7 +557,7 @@ mod load_lock_tests {
         std::fs::write(&bin, "#!/bin/sh\necho 'http server listening'\nsleep 30\n").unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         let model = dir.join("model.safetensors");
-        std::fs::write(&model, b"").unwrap();
+        std::fs::create_dir_all(&model).unwrap();
 
         let map: Arc<Mutex<HashMap<i32, MlxBackendSession>>> =
             Arc::new(Mutex::new(HashMap::new()));

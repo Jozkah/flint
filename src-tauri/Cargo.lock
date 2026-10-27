@@ -8004,6 +8004,7 @@ dependencies = [
  "jan-utils",
  "log",
  "nix 0.30.1",
+ "rand 0.8.7",
  "serde",
  "sysinfo",
  "tauri",
