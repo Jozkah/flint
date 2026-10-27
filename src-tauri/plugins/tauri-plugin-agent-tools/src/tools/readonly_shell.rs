@@ -189,7 +189,21 @@ fn segment_is_read_only(words: &[String]) -> bool {
 /// no absolute path, drive, UNC, home or `..`, and no component (or `rev:path`
 /// tail) that is a known secret file.
 fn path_ok(arg: &str) -> bool {
+    path_ok_inner(arg, false)
+}
+
+/// `allow_tilde` lets a git revision such as `HEAD~1` through; every other
+/// word with a `~` could be a Windows 8.3 short name (`ENV~1`) or home form.
+fn path_ok_inner(arg: &str, allow_tilde: bool) -> bool {
     if arg.starts_with(['/', '\\', '~']) {
+        return false;
+    }
+    // Glob and brace characters expand to names the secret-file check below
+    // never sees (`.env*`, `id_r*`), so the word must be fully literal.
+    if arg.contains(['*', '?', '[', ']', '{', '}']) {
+        return false;
+    }
+    if arg.contains('~') && !(allow_tilde && !arg.contains(['/', '\\', ':'])) {
         return false;
     }
     let bytes = arg.as_bytes();
@@ -512,6 +526,7 @@ fn git(args: &[String]) -> bool {
     match sub.as_str() {
         "status" | "log" | "diff" | "show" | "rev-parse" | "ls-files" | "blame" => {
             let mut positional = Vec::new();
+            let mut revisions = Vec::new();
             let mut after_dd = false;
             for a in rest {
                 if after_dd {
@@ -533,10 +548,10 @@ fn git(args: &[String]) -> bool {
                         return false;
                     }
                 } else {
-                    positional.push(a);
+                    revisions.push(a);
                 }
             }
-            paths_ok(positional)
+            paths_ok(positional) && revisions.into_iter().all(|a| path_ok_inner(a, true))
         }
         "branch" => {
             // Listing only. Any other form creates, moves or deletes a branch.
@@ -627,6 +642,32 @@ mod tests {
         ] {
             assert!(ro(cmd), "should be read-only: {cmd}");
         }
+    }
+
+    #[test]
+    fn globs_and_short_names_in_paths_are_refused() {
+        for cmd in [
+            "cat .env*",
+            "cat .e*",
+            "cat id_r*",
+            "cat ENV~1",
+            "cat {.env,x}",
+            "cat .en?",
+            "cat .en[v]",
+            "head -n 5 .env*",
+            "wc -l id_r*",
+            "grep x .env*",
+            "ls .ssh/id_*",
+            "find .e* -name x",
+            "git show HEAD:.env*",
+            "git diff -- .env*",
+            "git diff -- ENV~1",
+        ] {
+            assert!(!ro(cmd), "must ask: {cmd}");
+        }
+        assert!(ro("ls src"));
+        assert!(ro("git diff HEAD~1"));
+        assert!(ro("find . -name '*.rs'"));
     }
 
     #[test]
