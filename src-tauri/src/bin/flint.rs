@@ -1579,8 +1579,10 @@ enum JobCommands {
         id: String,
         #[arg(long)]
         owner: String,
+        /// Normally absent: the token arrives on stdin so it is not on the
+        /// command line. Kept for callers that still pass it.
         #[arg(long)]
-        token: String,
+        token: Option<String>,
         /// A line the host shell runs
         #[arg(long, conflicts_with = "argv_json")]
         command: Option<String>,
@@ -3126,19 +3128,29 @@ fn handle_job(cmd: JobCommands) {
             token,
             command,
             argv_json,
-        } => match (command, argv_json) {
+        } => {
+            let token = match token {
+                Some(t) => t,
+                None => {
+                    let mut line = String::new();
+                    let _ = std::io::stdin().read_line(&mut line);
+                    line.trim().to_string()
+                }
+            };
+            match (command, argv_json) {
             (_, Some(argv)) => worker::supervise_argv(std::path::Path::new(&data), &id, &owner, &token, &argv),
             (Some(command), None) => worker::supervise(std::path::Path::new(&data), &id, &owner, &token, &command),
             (None, None) => Err(HarnessError::new(
                 tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
                 "a job needs --command or --argv-json",
             )),
-        }
+            }
             .map(|state| {
                 // Nothing is printed on the happy path: the supervisor has no
                 // console, and what it has to say is in the record.
                 let _ = state;
-            }),
+            })
+        }
     };
     if let Err(e) = result {
         eprintln!("Error [{}]: {}", e.kind().tag(), e.message());

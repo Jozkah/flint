@@ -80,6 +80,9 @@ pub struct Claim {
 
 pub const CLAIM_VERSION: u16 = 1;
 
+/// How long a started supervisor may take to write its claim.
+const CLAIM_GRACE_MS: u64 = 15_000;
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -148,6 +151,16 @@ pub fn attach(data_folder: &Path, record: &JobRecord) -> Attachment {
         };
     }
     let Ok(text) = std::fs::read_to_string(claim_path(data_folder, &record.id)) else {
+        // A supervisor just started has not written its claim yet: a live
+        // supervisor pid on a young record is a job that is starting, not one
+        // that was interrupted.
+        let young = now_ms().saturating_sub(record.started_at_ms) < CLAIM_GRACE_MS;
+        if young
+            && record.identity.pid != 0
+            && matches!(crate::job_record::still_running(&record.identity), crate::job_record::Verdict::Alive)
+        {
+            return Attachment::Running;
+        }
         return Attachment::Interrupted;
     };
     let Ok(claim) = serde_json::from_str::<Claim>(&text) else {
@@ -246,8 +259,9 @@ fn start_inner(
     crate::job_record::save(data_folder, &record)
         .map_err(|e| HarnessError::new(ErrorKind::Io, e).at(Stage::Job))?;
 
-    // The supervisor is another process entirely: it takes the job's id and
-    // its token on the command line and does everything else itself.
+    // The supervisor is another process entirely: it takes the job's id on the
+    // command line and its token on stdin (a command line is readable by any
+    // local process), and does everything else itself.
     let mut cmd = std::process::Command::new(supervisor);
     cmd.arg("cli")
         .arg("job")
@@ -257,23 +271,26 @@ fn start_inner(
         .arg("--id")
         .arg(&id)
         .arg("--owner")
-        .arg(owner.as_str())
-        .arg("--token")
-        .arg(&token);
+        .arg(owner.as_str());
     match &launch {
         Launch::Shell(command) => cmd.arg("--command").arg(command),
         Launch::Argv(encoded) => cmd.arg("--argv-json").arg(encoded),
     };
-    cmd.stdin(std::process::Stdio::null())
+    cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    let child = spawn_detached(&mut cmd).map_err(|e| {
+    let mut child = spawn_detached(&mut cmd).map_err(|e| {
         HarnessError::new(
             ErrorKind::Io,
             format!("the job supervisor could not be started: {e}"),
         )
         .at(Stage::Job)
     })?;
+    // One line, then closed. Small enough to sit in the pipe buffer.
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = writeln!(stdin, "{token}");
+    }
     // The record keeps the supervisor's identity too, so a listing can say
     // something even before the supervisor has written its claim.
     record.identity = ProcessIdentity {
@@ -461,13 +478,26 @@ fn supervise_launch(
     // The job is this supervisor's child, so stopping the supervisor's tree
     // stops the work -- which is what cancel does.
     if let Some(mut record) = find(data_folder, owner.as_str(), job.as_str()) {
+        // Cancelled (or otherwise ended) before the claim existed: that ending
+        // stands, and the work that just started is stopped.
+        if record.state.is_ended() {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(claim_path(data_folder, job.as_str()));
+            return Ok(record.state);
+        }
         record.identity = claim.identity;
         record.state = JobState::Running;
         let _ = crate::job_record::save(data_folder, &record);
     }
 
     let out = output_path(data_folder, job.as_str());
-    let mut sink = std::fs::File::create(&out).map_err(|e| {
+    // Truncate once, then open both handles in append mode: with a plain
+    // `create` handle each stream kept its own offset and the stdout writes
+    // overwrote the stderr ones.
+    let mut sink = std::fs::File::create(&out)
+        .and_then(|_| std::fs::OpenOptions::new().append(true).open(&out))
+        .map_err(|e| {
         HarnessError::new(ErrorKind::Io, format!("the job's output file is not usable: {e}"))
             .at(Stage::Job)
     })?;
@@ -838,14 +868,71 @@ mod tests {
         // No claim at all: nobody is running it.
         let mut orphan = JobRecord::started("job-orphan", "s", "sleep", me());
         orphan.token_hash = hash("secret-four");
+        // Old enough that the supervisor's start-up grace has passed.
+        orphan.started_at_ms = 1;
         crate::job_record::save(&d, &orphan).unwrap();
         assert_eq!(attach(&d, &orphan), Attachment::Interrupted);
+
+        // Just started, supervisor alive, claim not written yet: still running.
+        let mut young = JobRecord::started("job-young", "s", "sleep", me());
+        young.token_hash = hash("secret-five");
+        crate::job_record::save(&d, &young).unwrap();
+        assert_eq!(attach(&d, &young), Attachment::Running);
 
         // An ending is final, whatever the claim says.
         let mut ended = mine.clone();
         ended.state = JobState::Completed;
         crate::job_record::save(&d, &ended).unwrap();
         assert_eq!(attach(&d, &ended), Attachment::Ended);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The secret is handed over on stdin, never on the command line.
+    #[test]
+    fn token_not_in_cmdline() {
+        let src = include_str!("worker.rs");
+        let start = src.find("fn start_inner").unwrap();
+        let body = &src[start..src[start..].find("fn spawn_detached").unwrap() + start];
+        assert!(!body.contains("\"--token\""), "the token must not be an argument");
+        assert!(body.contains("Stdio::piped()"));
+    }
+
+    /// Both streams land in the file; neither overwrites the other.
+    #[test]
+    fn stdout_stderr_not_overwritten() {
+        let d = dir("both");
+        let owner = "s";
+        let id = "job-1-both0001";
+        let record = JobRecord::started(id, owner, "x", ProcessIdentity::default());
+        crate::job_record::save(&d, &record).unwrap();
+        let cmd = if cfg!(windows) {
+            "echo out-line& echo err-line 1>&2"
+        } else {
+            "echo out-line; echo err-line >&2"
+        };
+        supervise(&d, id, owner, "t", cmd).unwrap();
+        let text = std::fs::read_to_string(output_path(&d, id)).unwrap();
+        assert!(text.contains("out-line"), "{text:?}");
+        assert!(text.contains("err-line"), "{text:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A job cancelled before the supervisor wrote its claim stays cancelled.
+    #[test]
+    fn cancel_before_claim_stays_cancelled() {
+        let d = dir("cancelfirst");
+        let owner = "s";
+        let id = "job-2-cancel01";
+        let mut record = JobRecord::started(id, owner, "x", ProcessIdentity::default());
+        record.state = JobState::Cancelled;
+        record.ended_at_ms = Some(now_ms());
+        crate::job_record::save(&d, &record).unwrap();
+        let cmd = if cfg!(windows) { "ping -n 20 127.0.0.1 >NUL" } else { "sleep 20" };
+        let t = std::time::Instant::now();
+        let state = supervise(&d, id, owner, "t", cmd).unwrap();
+        assert_eq!(state, JobState::Cancelled);
+        assert!(t.elapsed().as_secs() < 10, "the work was not stopped");
+        assert_eq!(find(&d, owner, id).unwrap().state, JobState::Cancelled);
         let _ = std::fs::remove_dir_all(&d);
     }
 
