@@ -262,6 +262,7 @@ mod default_active_tests {
                 device_type: device_type.to_string(),
                 api_version: "1.3.0".to_string(),
                 device_id: 0,
+                pci_bus_info: None,
             }),
         }
     }
