@@ -29,18 +29,14 @@ use std::process::Command;
 /// Run `git` with literal args (callers pass their own `-C`). Returns trimmed
 /// stdout on success, trimmed stderr (or a generic message) on failure.
 fn git(args: &[&str]) -> Result<String, String> {
-    let mut cmd = Command::new("git");
-    cmd.args(crate::core::agent::vcs::HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .run()
+        .map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if out.success {
+        Ok(out.stdout_lossy().trim().to_string())
     } else {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stderr = out.stderr_lossy().trim().to_string();
         Err(if stderr.is_empty() {
             format!("git {} failed", args.first().copied().unwrap_or(""))
         } else {
@@ -71,64 +67,36 @@ fn exec(
     args: &[&str],
     stdin: Option<&[u8]>,
 ) -> Result<String, String> {
-    use std::io::Write;
-    use std::process::Stdio;
-
-    let mut cmd = Command::new("git");
-    jan_process::HostProcessEnv::host_env(&mut cmd);
-    cmd.arg("-C").arg(repo).args(crate::core::agent::vcs::HARDENED).env("GIT_TERMINAL_PROMPT", "0");
-    // Snapshot and restore must round-trip the working tree byte for byte.
-    // `core.autocrlf` is on by default in Git for Windows, which converts on
-    // the way into the index and back out again -- so a file snapshotted as
-    // "one\n" was restored as "one\r\n", and Flint silently rewrote the line
-    // endings of every file it put back. These are Flint's own private objects,
-    // not the user's commits, so the conversion has nothing to gain here and a
-    // fidelity guarantee to lose.
-    cmd.arg("-c").arg("core.autocrlf=false");
-    cmd.arg("-c").arg("core.eol=lf");
-    cmd.args(args);
-    // The same fidelity argument covers the repository's own `.gitattributes`:
-    // `text`, `eol=crlf` or a filter there converts on the way in and out
-    // regardless of `core.autocrlf`, so a CRLF file under `text=auto` came back
-    // as LF. Reading attributes from the empty tree turns that off for Flint's
-    // private objects. Git older than 2.40 ignores the variable and keeps the
-    // previous behaviour.
-    cmd.env("GIT_ATTR_SOURCE", EMPTY_TREE);
-    cmd.env("GIT_AUTHOR_NAME", "Flint")
-        .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
-        .env("GIT_COMMITTER_NAME", "Flint")
-        .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
+    let mut cmd = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
+        // Snapshot and restore must round-trip the working tree byte for byte.
+        // `core.autocrlf` is on by default in Git for Windows, which converts on
+        // the way into the index and back out again -- so a file snapshotted as
+        // "one\n" was restored as "one\r\n", and Flint silently rewrote the line
+        // endings of every file it put back. These are Flint's own private objects,
+        // not the user's commits, so the conversion has nothing to gain here and a
+        // fidelity guarantee to lose.
+        .pre(["-c", "core.autocrlf=false", "-c", "core.eol=lf"])
+        .args(args)
+        // The same fidelity argument covers the repository's own `.gitattributes`:
+        // `text`, `eol=crlf` or a filter there converts on the way in and out
+        // regardless of `core.autocrlf`, so a CRLF file under `text=auto` came back
+        // as LF. Reading attributes from the empty tree turns that off for Flint's
+        // private objects. Git older than 2.40 ignores the variable and keeps the
+        // previous behaviour.
+        .env("GIT_ATTR_SOURCE", EMPTY_TREE)
+        .flint_identity();
     if let Some(idx) = index {
-        cmd.env("GIT_INDEX_FILE", idx);
+        cmd = cmd.env("GIT_INDEX_FILE", idx);
     }
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = match stdin {
-        None => cmd.output(),
-        Some(input) => cmd
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .and_then(|mut child| {
-                // Written from another thread so a child that fills its output
-                // pipe before reading all of its input cannot deadlock us.
-                let mut pipe = child.stdin.take();
-                let input = input.to_vec();
-                let writer = std::thread::spawn(move || {
-                    if let Some(pipe) = pipe.as_mut() {
-                        let _ = pipe.write_all(&input);
-                    }
-                });
-                let out = child.wait_with_output();
-                let _ = writer.join();
-                out
-            }),
+    if let Some(input) = stdin {
+        cmd = cmd.stdin(input);
     }
-    .map_err(|e| format!("failed to launch git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    let out = cmd.run().map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if out.success {
+        Ok(out.stdout_lossy())
     } else {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stderr = out.stderr_lossy().trim().to_string();
         Err(if stderr.is_empty() {
             format!("git {} failed", args.first().copied().unwrap_or(""))
         } else {
@@ -1413,20 +1381,15 @@ pub fn file_diff(
 
 /// Run a read-only `git -C <dir>` and return stdout exactly as written.
 fn git_read_raw(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(dir)
-        .args(crate::core::agent::vcs::HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(dir)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    if out.status.success() {
+        .run()
+        .map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if out.success {
         Ok(out.stdout)
     } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        Err(out.stderr_lossy().trim().to_string())
     }
 }
 

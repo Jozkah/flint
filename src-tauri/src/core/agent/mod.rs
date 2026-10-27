@@ -50,6 +50,7 @@ pub mod failure_stats;
 pub mod fixtures;
 pub mod genai_bridge;
 pub mod git;
+pub(crate) mod git_exec;
 #[cfg(feature = "cli")]
 pub mod global_config;
 #[cfg(not(feature = "cli"))]

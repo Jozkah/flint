@@ -16,17 +16,16 @@ use super::worktree::{branch_for, repo_slug, worktrees_root};
 use crate::core::agent::git;
 
 fn run_git(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(dir)
         .args(args)
-        .output()
-        .map_err(|e| format!("could not run git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .run()
+        .map_err(|e| e.with_prefix("could not run git: "))?;
+    if out.success {
+        Ok(out.stdout_lossy().trim().to_string())
     } else {
-        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        let err = if err.is_empty() { String::from_utf8_lossy(&out.stdout).trim().to_string() } else { err };
+        let err = out.stderr_lossy().trim().to_string();
+        let err = if err.is_empty() { out.stdout_lossy().trim().to_string() } else { err };
         Err(format!("git {}: {err}", args.join(" ")))
     }
 }
