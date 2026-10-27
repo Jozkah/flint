@@ -150,6 +150,31 @@ impl AuthStore {
         })
     }
 
+    /// Replace the administrator credential and drop every session. Returns
+    /// the new credential, shown once. Only call while no server is running
+    /// on this file, since a running server holds its own copy in memory.
+    pub fn rotate(&mut self) -> io::Result<String> {
+        let admin = token();
+        let next = StoredAuth {
+            admin_hash: hash(&admin),
+            sessions: Vec::new(),
+        };
+        save_private(&self.path, &next)?;
+        self.state = next;
+        Ok(admin)
+    }
+
+    /// Drop every browser session, keeping the administrator credential.
+    pub fn revoke_all(&mut self) -> io::Result<()> {
+        let next = StoredAuth {
+            admin_hash: self.state.admin_hash.clone(),
+            sessions: Vec::new(),
+        };
+        save_private(&self.path, &next)?;
+        self.state = next;
+        Ok(())
+    }
+
     pub fn sign_out(&mut self, session: &str) -> io::Result<()> {
         let digest = hash(session);
         self.state
@@ -180,6 +205,45 @@ mod tests {
         reopened.sign_out(&session).unwrap();
         assert!(!reopened.authorize(&session));
         assert!(reopened.sign_in("wrong credential").unwrap().is_none());
+    }
+
+    #[test]
+    fn auth_rotate_invalidates_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let (mut store, admin) = AuthStore::open(path.clone()).unwrap();
+        let admin = admin.unwrap();
+        let session = store.sign_in(&admin).unwrap().unwrap();
+        assert!(store.authorize(&session));
+        store.rotate().unwrap();
+        assert!(!store.authorize(&session));
+        let (reopened, _) = AuthStore::open(path).unwrap();
+        assert!(!reopened.authorize(&session));
+    }
+
+    #[test]
+    fn auth_rotate_new_credential_signs_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let (mut store, admin) = AuthStore::open(path.clone()).unwrap();
+        let old = admin.unwrap();
+        let new = store.rotate().unwrap();
+        assert_ne!(old, new);
+        assert!(store.sign_in(&old).unwrap().is_none());
+        let (mut reopened, _) = AuthStore::open(path).unwrap();
+        assert!(reopened.sign_in(&old).unwrap().is_none());
+        assert!(reopened.sign_in(&new).unwrap().is_some());
+    }
+
+    #[test]
+    fn auth_revoke_all_keeps_credential() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut store, admin) = AuthStore::open(dir.path().join("auth.json")).unwrap();
+        let admin = admin.unwrap();
+        let session = store.sign_in(&admin).unwrap().unwrap();
+        store.revoke_all().unwrap();
+        assert!(!store.authorize(&session));
+        assert!(store.sign_in(&admin).unwrap().is_some());
     }
 
     #[test]

@@ -322,6 +322,11 @@ enum Commands {
         /// rate-limiting sign-in. Off by default
         #[arg(long)]
         trust_proxy: bool,
+        /// Replace the administrator credential (ending every browser
+        /// session), print the new one and exit. Only while the server is
+        /// stopped
+        #[arg(long)]
+        rotate_credential: bool,
     },
     /// Stop the `flint serve` running on this data folder
     Stop {
@@ -2366,7 +2371,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file, trust_proxy, rotate_credential } => {
             // `--data-dir` was applied in `main`, before any thread started.
             let _ = data_dir;
             let assets = assets_dir.unwrap_or_else(|| {
@@ -2376,6 +2381,29 @@ async fn run() {
                     .unwrap_or_else(|| std::path::PathBuf::from("web"))
             });
             let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+            if rotate_credential {
+                if app_lib::core::web_server::control::running(&data_folder).is_some() {
+                    eprintln!("Error: a Flint server is running on this data folder; stop it with `flint stop`, then rotate the credential.");
+                    std::process::exit(1);
+                }
+                let auth_file = data_folder.join("web-server").join("auth.json");
+                let result = app_lib::core::web_server::auth::AuthStore::open(auth_file)
+                    .and_then(|(mut store, created)| match created {
+                        Some(credential) => Ok(credential),
+                        None => store.rotate(),
+                    });
+                match result {
+                    Ok(credential) => {
+                        println!("New administrator credential: {credential}");
+                        println!("Store this credential securely; it is shown only once. Every browser session was signed out.");
+                        return;
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             if background {
                 // The same command again, without the flag, detached.
                 let args: Vec<String> = std::env::args()
