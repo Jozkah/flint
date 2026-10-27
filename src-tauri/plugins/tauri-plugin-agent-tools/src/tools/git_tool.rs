@@ -1883,6 +1883,9 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
     ) {
         return held;
     }
+    // Only a folder this very call brings into being may later join a grant.
+    #[cfg(feature = "tauri")]
+    let newly_made = created_path(&plan, &cwd).filter(|p| !p.exists());
     let out = execute(&plan, &cwd).await;
     // A folder the call made is reported by absolute path. The file tools
     // resolve a relative path in the sandbox workspace, not in the folder the
@@ -1895,6 +1898,9 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
             #[cfg(feature = "tauri")]
             if !inside(&made, &roots.write()) {
                 if let (Some(session), Some(data)) = (ctx.session_id, ctx.mask_root) {
+                    if newly_made.as_deref() == Some(made.as_path()) {
+                        crate::grants::record_created(session, &made);
+                    }
                     if let Err(e) = crate::grants::extend_session(session, &made, ctx.project_root, data) {
                         return format!("{out}\n\n[not added to your write access: {e}]");
                     }

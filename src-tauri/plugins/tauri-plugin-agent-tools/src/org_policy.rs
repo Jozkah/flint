@@ -263,6 +263,27 @@ fn program_data() -> PathBuf {
     PathBuf::from(path)
 }
 
+/// The strictest reading of a policy that is there but cannot be seen.
+fn strict(path: &Path) -> OrgPolicy {
+    OrgPolicy {
+        source: path.to_path_buf(),
+        max_default: Some(PermissionDefault::ReadOnly),
+        allow_network: Some(false),
+        allow_ca_bundle: Some(false),
+        ..OrgPolicy::default()
+    }
+}
+
+fn unreadable(_path: &Path, why: &str) -> OrgPolicyError {
+    OrgPolicyError::new(
+        OrgPolicyErrorKind::Io,
+        format!(
+            "the machine policy is there and could not be read, so the strictest \
+             reading of it is in force: {why}"
+        ),
+    )
+}
+
 /// Read this machine's policy, if it has one.
 pub fn load() -> (Option<OrgPolicy>, Option<OrgPolicyError>) {
     let fallback = std::env::var_os(FALLBACK_ENV).map(PathBuf::from);
@@ -278,13 +299,17 @@ pub fn load_from(
     system: &Path,
     fallback: Option<&Path>,
 ) -> (Option<OrgPolicy>, Option<OrgPolicyError>) {
-    let path = if system.is_file() {
-        system.to_path_buf()
-    } else {
-        match fallback {
+    // `metadata`, not `is_file()`: `is_file()` is false on any error, so an
+    // installed policy this process cannot stat would have been skipped and
+    // the user-settable fallback used in its place.
+    let path = match std::fs::metadata(system) {
+        Ok(m) if m.is_file() => system.to_path_buf(),
+        Ok(_) => return (Some(strict(system)), Some(unreadable(system, "not a file"))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => match fallback {
             Some(path) if path.is_file() => path.to_path_buf(),
             _ => return (None, None),
-        }
+        },
+        Err(e) => return (Some(strict(system)), Some(unreadable(system, &e.to_string()))),
     };
     let raw = match std::fs::read_to_string(&path) {
         Ok(raw) => raw,
@@ -293,38 +318,15 @@ pub fn load_from(
         // process holding it open -- and reading that as permission is the
         // failure this whole module exists to prevent. Strictest reading, and
         // the administrator is told.
-        Err(e) => {
-            return (
-                Some(OrgPolicy {
-                    source: path,
-                    max_default: Some(PermissionDefault::ReadOnly),
-                    allow_network: Some(false),
-                    allow_ca_bundle: Some(false),
-                    ..OrgPolicy::default()
-                }),
-                Some(OrgPolicyError::new(
-                    OrgPolicyErrorKind::Io,
-                    format!(
-                        "the machine policy is there and could not be read, so the strictest \
-                         reading of it is in force: {e}"
-                    ),
-                )),
-            )
-        }
+        Err(e) => return (Some(strict(&path)), Some(unreadable(&path, &e.to_string()))),
     };
     let parsed: PolicyToml = match toml::from_str(&raw) {
         Ok(parsed) => parsed,
+        // Deliberately not "no policy": a syntax error in an organisation's
+        // deny list must never read as permission.
         Err(e) => {
-            // Deliberately not "no policy": a syntax error in an
-            // organisation's deny list must never read as permission.
             return (
-                Some(OrgPolicy {
-                    source: path,
-                    max_default: Some(PermissionDefault::ReadOnly),
-                    allow_network: Some(false),
-                    allow_ca_bundle: Some(false),
-                    ..OrgPolicy::default()
-                }),
+                Some(strict(&path)),
                 Some(OrgPolicyError::new(
                     OrgPolicyErrorKind::Malformed,
                     format!("the machine policy could not be understood, so the strictest \
@@ -489,6 +491,28 @@ deny_domains = ["evil.example"]
         // With none installed, it is the only way a container gets one.
         let (fallback, _) = load_from(&d.join("absent.toml"), Some(&permissive));
         assert_eq!(fallback.unwrap().source, permissive);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// An installed policy that cannot be statted or read is strict, and the
+    /// user-settable fallback is not consulted in its place.
+    #[test]
+    fn org_policy_unreadable_is_strict() {
+        let d = dir("unreadable");
+        let permissive = write(
+            &d,
+            "mine.toml",
+            "[tools]\nmax_default = \"allow\"\nallow_network = true\n",
+        );
+        // A directory where the installed file should be: present, not a file.
+        let installed = d.join("system.toml");
+        std::fs::create_dir_all(&installed).unwrap();
+        let (policy, error) = load_from(&installed, Some(&permissive));
+        assert_eq!(error.expect("must be reported").kind, OrgPolicyErrorKind::Io);
+        let policy = policy.expect("unreadable is still a policy");
+        assert_ne!(policy.source, permissive);
+        assert_eq!(policy.clamp_default(PermissionDefault::Allow), PermissionDefault::ReadOnly);
+        assert!(!policy.clamp_network(true));
         let _ = std::fs::remove_dir_all(&d);
     }
 

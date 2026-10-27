@@ -635,21 +635,52 @@ fn persisted_path(data_folder: &Path) -> PathBuf {
     data_folder.join(PERSISTED_FILE)
 }
 
+/// Read the kept-grant file. A missing file is "no grants". Unparseable
+/// content is moved aside to `access_grants.json.corrupt-<ts>` (so the next
+/// save cannot wipe it) and reads as empty. Any other read error is returned
+/// and the file is left untouched: callers that rewrite the file must refuse,
+/// callers that only read treat it as "no kept grants" (fail closed).
+fn load_persisted_checked(data_folder: &Path) -> Result<Vec<AccessGrant>, String> {
+    let path = persisted_path(data_folder);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("could not read {}: {e}", path.display())),
+    };
+    match serde_json::from_str::<Vec<AccessGrant>>(&text) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            let aside = path.with_extension(format!("json.corrupt-{}", now_secs()));
+            eprintln!(
+                "agent-tools: {} is unreadable ({e}); moving it to {}",
+                path.display(),
+                aside.display()
+            );
+            if let Err(re) = std::fs::rename(&path, &aside) {
+                return Err(format!("could not move corrupt {} aside: {re}", path.display()));
+            }
+            Ok(Vec::new())
+        }
+    }
+}
+
+/// Kept grants for reading: unreadable file means no grants, expired dropped.
 fn load_persisted(data_folder: &Path) -> Vec<AccessGrant> {
-    std::fs::read_to_string(persisted_path(data_folder))
-        .ok()
-        .and_then(|s| serde_json::from_str::<Vec<AccessGrant>>(&s).ok())
+    let now = now_secs();
+    load_persisted_checked(data_folder)
         .unwrap_or_default()
+        .into_iter()
+        .filter(|g| g.expires_at.is_none_or(|t| t > now))
+        .collect()
 }
 
 fn save_persisted(data_folder: &Path, grants: &[AccessGrant]) -> Result<(), String> {
-    std::fs::create_dir_all(data_folder).map_err(|e| e.to_string())?;
     let body = serde_json::to_string_pretty(grants).map_err(|e| e.to_string())?;
-    let path = persisted_path(data_folder);
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    crate::atomic_file::write_atomic(&persisted_path(data_folder), body.as_bytes())
 }
+
+/// Longest session grant a caller can ask for.
+pub const MAX_SESSION_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 
 /// Who asked, for the audit record of a `request_access` call: the run and
 /// tool call it came from, the agent, and the project the session is bound
@@ -716,6 +747,9 @@ pub fn grant_as(
 ) -> Result<AccessGrant, Refusal> {
     let prepared = prepare(path, mode, env)?;
     let now = now_secs();
+    if !persistent && ttl_secs == Some(0) {
+        return Err(Refusal::new(RefusalCode::InvalidPath, "ttl must be above zero"));
+    }
     let grant = AccessGrant {
         id: new_id(),
         session: session.to_string(),
@@ -728,13 +762,14 @@ pub fn grant_as(
         expires_at: if persistent {
             None
         } else {
-            Some(now + ttl_secs.unwrap_or(DEFAULT_SESSION_TTL_SECS))
+            Some(now.saturating_add(session_ttl(ttl_secs)))
         },
         persistent,
     };
     if persistent {
         let _guard = persist_lock().lock().unwrap_or_else(|e| e.into_inner());
-        let mut all = load_persisted(data_folder);
+        let mut all = load_persisted_checked(data_folder)
+            .map_err(|e| Refusal::new(RefusalCode::InvalidPath, format!("could not save: {e}")))?;
         all.retain(|g| !(key(&g.path) == key(&grant.path) && g.mode == grant.mode));
         all.push(grant.clone());
         save_persisted(data_folder, &all)
@@ -752,6 +787,13 @@ pub fn grant_as(
         ids,
     );
     Ok(grant)
+}
+
+/// Clamp a requested session TTL to `1..=MAX_SESSION_TTL_SECS`.
+fn session_ttl(ttl_secs: Option<u64>) -> u64 {
+    ttl_secs
+        .unwrap_or(DEFAULT_SESSION_TTL_SECS)
+        .min(MAX_SESSION_TTL_SECS)
 }
 
 fn grant_detail(g: &AccessGrant) -> String {
@@ -825,7 +867,9 @@ pub fn revoke(data_folder: &Path, id: &str) -> bool {
         return true;
     }
     let _guard = persist_lock().lock().unwrap_or_else(|e| e.into_inner());
-    let mut all = load_persisted(data_folder);
+    let Ok(mut all) = load_persisted_checked(data_folder) else {
+        return false;
+    };
     let Some(pos) = all.iter().position(|g| g.id == id) else {
         return false;
     };
@@ -1261,6 +1305,62 @@ mod tests {
         assert_eq!(active_roots(&f.data, "c", now_secs()).0.len(), 1);
         assert!(revoke(&f.data, &g.id));
         assert!(active_roots(&f.data, "c", now_secs()).0.is_empty());
+    }
+
+    #[test]
+    fn corrupt_grants_file_moved_aside() {
+        let f = fixture("corrupt");
+        let e = env(&f);
+        let file = f.data.join(PERSISTED_FILE);
+        std::fs::write(&file, "{ not json, held real grants").unwrap();
+        grant(&f.data, &e, "a", &s(&f.outside), AccessMode::Read, "k", true, None).unwrap();
+        let kept: Vec<_> = std::fs::read_dir(&f.data)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".corrupt-"))
+            .collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            std::fs::read_to_string(kept[0].path()).unwrap(),
+            "{ not json, held real grants"
+        );
+    }
+
+    #[test]
+    fn unreadable_grants_file_is_not_overwritten() {
+        let f = fixture("unreadable");
+        let e = env(&f);
+        let file = f.data.join(PERSISTED_FILE);
+        std::fs::create_dir_all(&file).unwrap();
+        assert!(grant(&f.data, &e, "a", &s(&f.outside), AccessMode::Read, "k", true, None).is_err());
+        assert!(file.is_dir());
+        assert!(load_persisted(&f.data).is_empty());
+    }
+
+    #[test]
+    fn grants_save_atomic() {
+        let f = fixture("atomic");
+        let e = env(&f);
+        grant(&f.data, &e, "a", &s(&f.outside), AccessMode::Read, "k", true, None).unwrap();
+        let leftovers: Vec<_> = std::fs::read_dir(&f.data)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+        let text = std::fs::read_to_string(f.data.join(PERSISTED_FILE)).unwrap();
+        assert_eq!(serde_json::from_str::<Vec<AccessGrant>>(&text).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn ttl_overflow_saturates() {
+        let f = fixture("ttl");
+        let e = env(&f);
+        let g = grant(&f.data, &e, "t", &s(&f.outside), AccessMode::Read, "x", false, Some(u64::MAX))
+            .unwrap();
+        assert_eq!(g.expires_at, Some(g.granted_at + MAX_SESSION_TTL_SECS));
+        assert!(grant(&f.data, &e, "t", &s(&f.outside), AccessMode::Read, "x", false, Some(0)).is_err());
     }
 
     #[test]
