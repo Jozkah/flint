@@ -69,7 +69,7 @@ function looksLikeAToken(word: string): boolean {
   }
   // Long, no separators a path or sentence would have, and a mix of
   // character classes a word would not.
-  if (bare.length < 32 || /[\/.:@]/.test(bare)) return false
+  if (bare.length < 32 || /[/.:@]/.test(bare)) return false
   if (!/^[A-Za-z0-9_\-+=]+$/.test(bare)) return false
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].filter((re) => re.test(bare))
   return classes.length >= 3
