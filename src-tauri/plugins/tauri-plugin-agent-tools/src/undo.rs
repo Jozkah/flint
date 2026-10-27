@@ -1191,19 +1191,21 @@ mod tests {
         assert_eq!(load(&data, "s1").turns[0].state, TurnState::Applied);
     }
 
-    /// All or nothing: a write that fails part way puts back the files already
-    /// restored. The second file's parent is replaced by a plain file after
-    /// the turn, so re-creating it cannot succeed.
+    /// Undo of a changed file gives back the content and keeps the exec bit.
     #[cfg(unix)]
     #[test]
     fn restore_keeps_exec_bit() {
         use std::os::unix::fs::PermissionsExt;
         let (data, ws) = dirs("exec");
         let f = ws.join("run.sh");
-        tool_write(&data, "run-1", &f, Some("#!/bin/sh\necho one\n"));
+        // The file exists before the turn, so undo restores it instead of
+        // deleting it (a file the turn created is removed by undo).
+        std::fs::write(&f, "#!/bin/sh\necho one\n").unwrap();
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
         tool_write(&data, "run-1", &f, Some("#!/bin/sh\necho two\n"));
+        std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
         undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).expect("undo");
+        assert_eq!(text(&f).as_deref(), Some("#!/bin/sh\necho one\n"));
         let mode = std::fs::metadata(&f).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o755);
         let _ = std::fs::remove_dir_all(data.parent().unwrap());
