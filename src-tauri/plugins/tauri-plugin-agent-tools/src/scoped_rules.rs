@@ -288,6 +288,50 @@ const DESTRUCTIVE_FLAGS: &[&str] = &[
     "-encodedcommand", "-ec", "--command",
 ];
 
+/// Flags that write to a chosen path or name another program to run, named
+/// bare or as `--flag=value`: a prefix rule approved for the plain command must
+/// not cover them (`git diff --output=<path>`, `npm run build --script-shell=<prog>`).
+const PREFIX_BLOCKED_FLAGS: &[&str] = &[
+    "--output", "-o", "--out", "--script-shell", "--shell", "--exec-path", "--upload-pack",
+    "--receive-pack", "--config", "--config-env", "--git-dir", "--work-tree", "--ext-diff",
+    "--textconv", "--open-files-in-pager", "--pager", "--editor", "--prefix", "--userconfig",
+    "--globalconfig", "--registry", "--cwd", "--require", "-r", "--loader", "--import",
+    "--manifest-path", "--target-dir", "--out-dir", "--ssh-command", "--rsh", "-e",
+];
+
+/// Windows switches (`cmd /c`, `schtasks /create`, `reg /f` ...) that run or
+/// change things; held against the remainder of a covered command.
+const WINDOWS_SWITCHES: &[&str] = &["/c", "/k", "/r", "/tr", "/create", "/f", "/s", "/u", "/v"];
+
+/// Whether `token` (a word after a rule's prefix) is something the rule must not cover.
+fn prefix_remainder_blocked(token: &str) -> bool {
+    let lower = token.to_lowercase();
+    // `-m` is a commit message for git, a module for python (an interpreter prefix
+    // already needs a script name), so it is the one EXEC_FLAG not held here.
+    if DESTRUCTIVE_FLAGS.contains(&lower.as_str()) || (lower != "-m" && EXEC_FLAGS.contains(&lower.as_str())) {
+        return true;
+    }
+    if WINDOWS_SWITCHES.contains(&lower.as_str()) {
+        return true;
+    }
+    let name = lower.split('=').next().unwrap_or(&lower);
+    if PREFIX_BLOCKED_FLAGS.contains(&name) || WINDOWS_SWITCHES.contains(&name) {
+        return true;
+    }
+    // `/c:cmd`, `-ofile`, `-ccode` forms: switch letters glued to a value.
+    if lower.starts_with("--") {
+        return PREFIX_BLOCKED_FLAGS.iter().any(|f| f.starts_with("--") && name.starts_with(f) && lower.contains('='));
+    }
+    if lower.starts_with("-o") && lower.len() > 2 {
+        return true;
+    }
+    if lower.starts_with('/') && lower.len() > 2 {
+        let head = lower[1..].split([':', '=']).next().unwrap_or_default();
+        return WINDOWS_SWITCHES.contains(&format!("/{head}").as_str());
+    }
+    false
+}
+
 fn program_of(token: &str) -> String {
     let base = token.rsplit(['/', '\\']).next().unwrap_or(token).to_lowercase();
     base.strip_suffix(".exe")
@@ -397,10 +441,7 @@ fn prefix_refusal(prefix: &str, command: &str) -> String {
     if have.len() < want.len() || have[..want.len()] != want[..] {
         return format!("this command does not start with `{prefix}`");
     }
-    if let Some(flag) = have[want.len()..]
-        .iter()
-        .find(|t| DESTRUCTIVE_FLAGS.contains(&t.to_lowercase().as_str()))
-    {
+    if let Some(flag) = have[want.len()..].iter().find(|t| prefix_remainder_blocked(t)) {
         return format!("a `{prefix}` rule cannot cover `{flag}`, which deletes or runs other programs; allow this call once instead");
     }
     format!("a `{prefix}` rule cannot cover this command")
@@ -415,9 +456,7 @@ fn prefix_covers(prefix: &str, command: &str) -> bool {
     have.len() >= want.len()
         && have[..want.len()] == want[..]
         // A rule for `find .` was approved for finding, not for what `-delete` does.
-        && !have[want.len()..]
-            .iter()
-            .any(|t| DESTRUCTIVE_FLAGS.contains(&t.to_lowercase().as_str()))
+        && !have[want.len()..].iter().any(|t| prefix_remainder_blocked(t))
 }
 
 // -- the form -----------------------------------------------------------------
@@ -995,6 +1034,28 @@ mod tests {
 
     fn exec_covered(p: &str, command: &str) -> bool {
         prefix_covers(p, command)
+    }
+
+    #[test]
+    fn prefix_rule_rejects_git_diff_output() {
+        assert!(prefix_covers("git diff", "git diff HEAD"));
+        assert!(!prefix_covers("git diff", "git diff --output=C:/x/evil.txt"));
+        assert!(!prefix_covers("git diff", "git diff --output out.txt"));
+        assert!(!prefix_covers("git diff", "git diff -oout.txt"));
+        assert!(prefix_covers("npm run build", "npm run build"));
+        assert!(!prefix_covers("npm run build", "npm run build --script-shell=calc.exe"));
+        assert!(!prefix_covers("npm run build", "npm run build --script-shell calc.exe"));
+        assert!(!prefix_covers("git log", "git log -e foo"));
+    }
+
+    #[test]
+    fn prefix_rule_windows_switches() {
+        assert!(!prefix_covers("tool run", "tool run /c calc"));
+        assert!(!prefix_covers("tool run", "tool run /TR calc"));
+        assert!(!prefix_covers("tool run", "tool run /create"));
+        assert!(!prefix_covers("tool run", "tool run /f"));
+        assert!(!prefix_covers("tool run", "tool run /k:calc"));
+        assert!(prefix_covers("tool run", "tool run src/main.rs"));
     }
 
     #[test]
