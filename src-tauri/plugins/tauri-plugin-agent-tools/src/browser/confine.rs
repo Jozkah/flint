@@ -164,6 +164,10 @@ pub fn browser_args(profile: &Path, as_root: bool, allowed: &[Origin]) -> Vec<St
     let mut args: Vec<String> = [
         "--headless=new",
         "--remote-debugging-port=0",
+        // No page origin may open the DevTools socket (we send none).
+        "--remote-allow-origins=",
+        // The dead proxy does not cover WebRTC UDP: no direct UDP/STUN.
+        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-extensions",
@@ -257,7 +261,15 @@ mod tests {
         assert!(args.contains(&"--proxy-bypass-list=<-loopback>;localhost:5173;[::1]:8080".to_string()));
         assert!(args.contains(&"--disable-extensions".to_string()));
         assert!(!args.contains(&"--no-sandbox".to_string()));
+        assert!(args.contains(&"--remote-allow-origins=".to_string()));
         assert!(browser_args(Path::new("/p"), true, &[o]).contains(&"--no-sandbox".to_string()));
+    }
+
+    #[test]
+    fn confine_args_include_webrtc_policy() {
+        let (_, o) = local_origin("http://localhost:5173/").unwrap();
+        let args = browser_args(Path::new("/p"), false, &[o]);
+        assert!(args.contains(&"--force-webrtc-ip-handling-policy=disable_non_proxied_udp".to_string()));
     }
 
     #[test]
