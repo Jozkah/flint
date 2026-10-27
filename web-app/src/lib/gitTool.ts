@@ -82,6 +82,11 @@ const DENIED_GIT_OPTIONS = [
   '--reference',
   '--reference-if-able',
   '--ext-diff',
+  // Options that make a Read-class call print a host file.
+  '--contents',
+  '--ignore-revs-file',
+  '--exclude-from',
+  '--pathspec-from-file',
 ]
 
 function denyCommonGit(sub: string, rest: string[]): string | null {
@@ -90,6 +95,9 @@ function denyCommonGit(sub: string, rest: string[]): string | null {
     // git accepts any unambiguous prefix of a long option (`--upload`,
     // `--exe`), so a prefix of a denied option is refused too.
     const name = lower.split('=')[0]
+    // Real options that are a prefix of a denied one (git prefers the exact
+    // match): `blame --ignore-rev <rev>`, `log --exclude=<glob>`.
+    if (name === '--ignore-rev' || name === '--exclude') continue
     for (const opt of DENIED_GIT_OPTIONS) {
       if (name.length >= 3 && name.startsWith('--') && opt.startsWith(name)) {
         return `the option \`${a}\` is not allowed`
@@ -98,6 +106,23 @@ function denyCommonGit(sub: string, rest: string[]): string | null {
     if (lower.startsWith('ext::') || lower.startsWith('fd::')) {
       return `the transport in \`${a}\` is not allowed`
     }
+  }
+  // `-O<orderfile>` reads a file named by the call (diff family, log, show).
+  if (
+    [
+      'diff',
+      'log',
+      'show',
+      'diff-tree',
+      'diff-index',
+      'diff-files',
+      'range-diff',
+    ].includes(sub)
+  ) {
+    const dd = rest.indexOf('--')
+    const end = dd === -1 ? rest.length : dd
+    if (rest.slice(0, end).some((a) => a.startsWith('-O')))
+      return '`-O<orderfile>` reads a file and is not allowed'
   }
   // Short flags bundle (`-qucalc`), so every letter is checked.
   if ((sub === 'clone' || sub === 'ls-remote') && hasShort(rest, 'u')) {
@@ -109,6 +134,15 @@ function denyCommonGit(sub: string, rest: string[]): string | null {
   }
   if (sub === 'grep' && hasShort(rest, 'O')) {
     return '`grep -O` is not allowed'
+  }
+  if (sub === 'grep' && (hasShort(rest, 'f') || hasOpt(rest, ['--file']))) {
+    return '`grep -f/--file` reads patterns from a file and is not allowed'
+  }
+  if (sub === 'blame' && hasShort(rest, 'S')) {
+    return '`blame -S` reads revisions from a file and is not allowed'
+  }
+  if (sub === 'ls-files' && rest.some((a) => a.startsWith('-X'))) {
+    return '`ls-files -X` reads patterns from a file and is not allowed'
   }
   if (sub === 'merge' || sub === 'pull') {
     const ok = ['ort', 'recursive', 'resolve', 'octopus', 'ours', 'subtree']
@@ -131,7 +165,8 @@ function denyCommonGit(sub: string, rest: string[]): string | null {
  * A message file (`-F`, `--file`, commit `-t`) is read by git outside the
  * sandbox, so it must be a relative path that stays inside the folder.
  */
-function messageFileError(rest: string[]): string | null {
+function messageFileValues(sub: string, rest: string[]): string[] {
+  const out: string[] = []
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i]
     if (a === '--') break
@@ -143,9 +178,60 @@ function messageFileError(rest: string[]): string | null {
     else if (a.startsWith('--file=')) v = a.slice('--file='.length)
     else if ((a.startsWith('-F') || a.startsWith('-t')) && a.length > 2)
       v = a.slice(2)
-    if (v === undefined || v === '-') continue
+    if (v !== undefined) out.push(v)
+  }
+  if (sub === 'am' || sub === 'apply') {
+    out.push(
+      ...positionals(rest, [
+        '-p',
+        '-C',
+        '--directory',
+        '--include',
+        '--exclude',
+        '--whitespace',
+        '--reject',
+      ])
+    )
+  }
+  return out
+}
+
+function messageFileError(sub: string, rest: string[]): string | null {
+  for (const v of messageFileValues(sub, rest)) {
+    if (v === '-') continue
     if (/^[\\/]/.test(v) || v.includes(':') || v.split(/[\\/]/).includes('..'))
       return `the message file \`${v}\` must be a relative path inside the folder`
+  }
+  return null
+}
+
+/**
+ * `git diff` falls back to `--no-index` when a path points outside the work
+ * tree, printing any host file: positionals of the diff family must be
+ * in-tree spellings.
+ */
+function diffPathError(rest: string[]): string | null {
+  const values = [
+    '-U',
+    '-S',
+    '-G',
+    '--diff-filter',
+    '--relative',
+    '--src-prefix',
+    '--dst-prefix',
+    '-l',
+    '--stat-width',
+  ]
+  for (const v of positionals(rest, values)) {
+    const drive = /^[A-Za-z]:([\\/]|$)/.test(v)
+    const stem = v.split('.')[0].toLowerCase()
+    const device = ['nul', 'con', 'prn', 'aux', 'conin$', 'conout$'].includes(
+      stem
+    )
+    const dotdot = v.split(/[\\/]/).includes('..')
+    if (/^[\\/]/.test(v) || drive || device || dotdot) {
+      return `\`${v}\` points outside the work tree; git would diff it as a plain file (--no-index) and print any host file. Use paths inside the repository`
+    }
   }
   return null
 }
@@ -222,6 +308,14 @@ function gitPlan(input: string[]): GitPlanResult {
     case 'diff-files':
     case 'range-diff':
       plan.class = 'read'
+      if (
+        ['diff', 'diff-tree', 'diff-index', 'diff-files', 'range-diff'].includes(
+          sub
+        )
+      ) {
+        const bad = diffPathError(rest)
+        if (bad) return fail(bad)
+      }
       break
     case 'merge-tree':
       if (rest.length !== 3 || rest[0] !== '--write-tree' ||
@@ -292,6 +386,8 @@ function gitPlan(input: string[]): GitPlanResult {
       break
     }
     case 'tag': {
+      const badMsg = messageFileError(sub, rest)
+      if (badMsg) return fail(badMsg)
       const listing = hasOpt(rest, [
         '-l',
         '--list',
@@ -474,19 +570,19 @@ function gitPlan(input: string[]): GitPlanResult {
         plan.destructive = 'removes files with uncommitted changes'
       break
     case 'commit':
-    case 'notes': {
-      const bad = messageFileError(rest)
+    case 'notes':
+    case 'merge':
+    case 'am':
+    case 'apply': {
+      const bad = messageFileError(sub, rest)
       if (bad) return fail(bad)
       break
     }
     case 'add':
     case 'mv':
-    case 'merge':
     case 'rebase':
     case 'cherry-pick':
     case 'revert':
-    case 'am':
-    case 'apply':
     case 'init':
     case 'sparse-checkout':
     case 'update-index':
@@ -704,6 +800,16 @@ function ghPlan(input: string[]): GitPlanResult {
     return { ok: false, error: '`gh auth status --show-token` is not allowed' }
   }
   const action = args[1] ?? ''
+  // gh forwards everything after `--` to `git clone`, unchecked.
+  if (group === 'repo' && (action === 'clone' || action === 'fork')) {
+    const i = args.indexOf('--')
+    if (i !== -1 && (action === 'clone' || hasOpt(args, ['--clone']))) {
+      return {
+        ok: false,
+        error: `\`gh repo ${action}\` does not accept git flags after \`--\` (${args.slice(i + 1).join(' ')}); they are passed straight to git clone`,
+      }
+    }
+  }
   const shape = ghShapeError(group, action, args)
   if (shape) return { ok: false, error: shape }
   const plan: GitPlan = {
