@@ -2324,6 +2324,12 @@ fn run_split_read_only<'a>(
                         Ok(c) => c,
                         Err(e) => return format!("ERROR: git: {e}"),
                     };
+                    if let Err(e) = crate::tools::git_tool::check_repo_config(&cwd).await {
+                        return format!("ERROR: git: {e}");
+                    }
+                    if let Err(e) = crate::tools::git_tool::check_diff_in_work_tree(&plan, &cwd).await {
+                        return format!("ERROR: git: {e}");
+                    }
                     crate::tools::git_tool::execute(&plan, &cwd).await
                 }
             };

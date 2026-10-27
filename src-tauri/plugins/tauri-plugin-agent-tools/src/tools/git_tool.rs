@@ -172,6 +172,11 @@ const DENIED_GIT_OPTIONS: &[&str] = &[
     "--reference",
     "--reference-if-able",
     "--ext-diff",
+    // Options that make a Read-class call print a host file (P2B-001).
+    "--contents",
+    "--ignore-revs-file",
+    "--exclude-from",
+    "--pathspec-from-file",
 ];
 
 fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
@@ -180,6 +185,11 @@ fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
         // git accepts any unambiguous prefix of a long option (`--upload`,
         // `--exe`), so a prefix of a denied option is refused too.
         let name = lower.split('=').next().unwrap_or("");
+        // Real options that are a prefix of a denied one (git prefers the exact
+        // match): `blame --ignore-rev <rev>`, `log --exclude=<glob>`.
+        if name == "--ignore-rev" || name == "--exclude" {
+            continue;
+        }
         for opt in DENIED_GIT_OPTIONS {
             if name.len() >= 3 && name.starts_with("--") && opt.starts_with(name) {
                 return Err(format!(
@@ -189,6 +199,16 @@ fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
         }
         if lower.starts_with("ext::") || lower.starts_with("fd::") {
             return Err(format!("the transport in `{a}` is not allowed"));
+        }
+    }
+    // `-O<orderfile>` reads a file named by the call (diff family, log, show).
+    if matches!(
+        sub,
+        "diff" | "log" | "show" | "diff-tree" | "diff-index" | "diff-files" | "range-diff"
+    ) {
+        let end = rest.iter().position(|a| a == "--").unwrap_or(rest.len());
+        if rest[..end].iter().any(|a| a.starts_with("-O")) {
+            return Err("`-O<orderfile>` reads a file and is not allowed".into());
         }
     }
     // Short spellings of the options above, per subcommand.
@@ -213,6 +233,19 @@ fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
             if has_short(rest, 'O') {
                 return Err("`grep -O` opens a pager program and is not allowed".into());
             }
+            if has_short(rest, 'f') || has_opt(rest, &["--file"]) {
+                return Err("`grep -f/--file` reads patterns from a file and is not allowed".into());
+            }
+        }
+        "blame" => {
+            if has_short(rest, 'S') {
+                return Err("`blame -S` reads revisions from a file and is not allowed".into());
+            }
+        }
+        "ls-files" => {
+            if rest.iter().any(|a| a.starts_with("-X")) {
+                return Err("`ls-files -X` reads patterns from a file and is not allowed".into());
+            }
         }
         "merge" | "pull" => {
             let strategies = ["ort", "recursive", "resolve", "octopus", "ours", "subtree"];
@@ -235,9 +268,10 @@ fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// A message file (`-F`, `--file`, commit `-t`) is read by git outside the
-/// sandbox, so it must be a relative path that stays inside the folder.
-fn check_message_files(rest: &[String]) -> Result<(), String> {
+/// The files a call makes git read (`-F`, `--file`, commit `-t`; patch files
+/// of `am`/`apply`), as the model wrote them.
+fn message_file_values(sub: &str, rest: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         if a == "--" {
@@ -254,20 +288,126 @@ fn check_message_files(rest: &[String]) -> Result<(), String> {
                 .or_else(|| a.strip_prefix("-F").filter(|v| !v.is_empty()))
                 .or_else(|| a.strip_prefix("-t").filter(|v| !v.is_empty())),
         };
-        let Some(v) = value else { continue };
-        let p = std::path::Path::new(v);
-        if v != "-"
-            && (p.is_absolute()
-                || v.starts_with(['/', '\\'])
-                || v.contains(':')
-                || p.components().any(|c| matches!(c, std::path::Component::ParentDir)))
-        {
+        if let Some(v) = value {
+            out.push(v.to_string());
+        }
+    }
+    if matches!(sub, "am" | "apply") {
+        let values = ["-p", "-C", "--directory", "--include", "--exclude", "--whitespace", "--reject"];
+        out.extend(positionals(rest, &values).into_iter().map(str::to_string));
+    }
+    out
+}
+
+/// Whether `v` names a path outside the folder, by its spelling alone.
+fn escapes_by_spelling(v: &str) -> bool {
+    let p = std::path::Path::new(v);
+    v != "-"
+        && (p.is_absolute()
+            || v.starts_with(['/', '\\'])
+            || v.contains(':')
+            || p.components().any(|c| matches!(c, std::path::Component::ParentDir)))
+}
+
+/// A message file (`-F`, `--file`, commit `-t`) is read by git outside the
+/// sandbox, so it must be a relative path that stays inside the folder.
+fn check_message_files(sub: &str, rest: &[String]) -> Result<(), String> {
+    for v in message_file_values(sub, rest) {
+        if escapes_by_spelling(&v) {
             return Err(format!(
                 "the message file `{v}` must be a relative path inside the folder"
             ));
         }
     }
     Ok(())
+}
+
+/// The run-time half of `check_message_files`: a relative name can still be a
+/// link to a file outside the writable folders (the model can make one with
+/// `bash`), so each file is resolved against `cwd` and refused when it is a
+/// symlink or lands outside `roots.write()`. A missing file is left to git.
+pub fn check_message_file_paths(plan: &GitPlan, cwd: &Path, roots: &Roots) -> Result<(), String> {
+    if plan.program != Program::Git {
+        return Ok(());
+    }
+    let Some(sub) = plan.args.first() else {
+        return Ok(());
+    };
+    if !matches!(sub.as_str(), "commit" | "notes" | "tag" | "merge" | "am" | "apply") {
+        return Ok(());
+    }
+    for v in message_file_values(sub, &plan.args[1..]) {
+        if v == "-" {
+            continue;
+        }
+        let full = cwd.join(&v);
+        let Ok(meta) = std::fs::symlink_metadata(&full) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() {
+            return Err(format!("the message file `{v}` is a symbolic link and is not allowed"));
+        }
+        let real = canon(&full).ok_or_else(|| format!("the message file `{v}` cannot be resolved"))?;
+        if !inside(&real, &roots.write()) {
+            return Err(format!(
+                "the message file `{v}` resolves outside the folders this run may write"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// `git diff` falls back to `--no-index` when a path points outside the work
+/// tree, printing any host file. Positionals (and everything after `--`) of
+/// the diff family must therefore be in-tree spellings: not absolute, no
+/// `..` component, no drive letter, no Windows device name.
+fn check_diff_paths(rest: &[String]) -> Result<(), String> {
+    let values = ["-U", "-S", "-G", "--diff-filter", "--relative", "--src-prefix", "--dst-prefix", "-l", "--stat-width"];
+    for v in positionals(rest, &values) {
+        let bytes = v.as_bytes();
+        let drive = bytes.len() >= 2
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes.len() == 2 || matches!(bytes[2], b'/' | b'\\'));
+        let device = {
+            let stem = v.split('.').next().unwrap_or("").to_ascii_lowercase();
+            matches!(stem.as_str(), "nul" | "con" | "prn" | "aux" | "conin$" | "conout$")
+        };
+        let dotdot = v.split(['/', '\\']).any(|c| c == "..");
+        if v.starts_with(['/', '\\']) || drive || device || dotdot {
+            return Err(format!(
+                "`{v}` points outside the work tree; git would diff it as a plain file (--no-index) and print any host file. Use paths inside the repository"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// `git diff` in a folder that is not a work tree runs in `--no-index` mode
+/// for plain paths. Refuse it there.
+pub async fn check_diff_in_work_tree(plan: &GitPlan, cwd: &Path) -> Result<(), String> {
+    if plan.program != Program::Git || plan.args.first().map(String::as_str) != Some("diff") {
+        return Ok(());
+    }
+    let Some(git) = crate::tools::git_native::discover_git() else {
+        return Ok(());
+    };
+    let mut cmd = tokio::process::Command::new(&git);
+    jan_process::HostProcessEnv::host_env(&mut cmd);
+    cmd.args(["rev-parse", "--is-inside-work-tree"])
+        .current_dir(cwd)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    match crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(30)).await {
+        Ok(Ok(out)) if out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "true" => Ok(()),
+        _ => Err("`git diff` only runs inside a Git work tree (outside one it would compare plain files, including files outside the allowed folders)".into()),
+    }
 }
 
 /// Only network URLs can be cloned: a local path or `file://` would read a
@@ -333,6 +473,9 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
         | "name-rev" | "show-ref" | "for-each-ref" | "whatchanged" | "count-objects"
         | "check-ignore" | "version" | "diff-tree" | "diff-index" | "diff-files" | "range-diff" => {
             plan.class = GitClass::Read;
+            if matches!(sub.as_str(), "diff" | "diff-tree" | "diff-index" | "diff-files" | "range-diff") {
+                check_diff_paths(&rest)?;
+            }
         }
         "merge-tree" => {
             if rest.len() != 3 || rest[0] != "--write-tree"
@@ -377,6 +520,7 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
             plan.branch = positionals(&rest, &values).first().map(|s| s.to_string());
         }
         "tag" => {
+            check_message_files(&sub, &rest)?;
             let listing = has_opt(&rest, &["-l", "--list", "--contains", "--points-at", "--merged", "--no-merged", "-n", "-v", "--verify"]);
             let values = ["--contains", "--points-at", "--merged", "--no-merged", "-m", "--message", "-F", "--file", "--sort", "--format"];
             if !has_opt(&rest, &["-d", "--delete", "-a", "-s", "-f", "--force", "-m", "--message"])
@@ -485,9 +629,9 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
                 plan.destructive = Some("removes files with uncommitted changes".into());
             }
         }
-        "commit" | "notes" => check_message_files(&rest)?,
-        "add" | "mv" | "merge" | "rebase" | "cherry-pick" | "revert" | "am"
-        | "apply" | "init" | "sparse-checkout" | "update-index" => {}
+        "commit" | "notes" | "merge" | "am" | "apply" => check_message_files(&sub, &rest)?,
+        "add" | "mv" | "rebase" | "cherry-pick" | "revert" | "init" | "sparse-checkout"
+        | "update-index" => {}
         "clone" => {
             plan.reaches_remote = true;
             let values = ["-b", "--branch", "--depth", "-o", "--origin", "-j", "--jobs", "--filter", "--shallow-since", "--shallow-exclude", "--bundle-uri"];
@@ -815,6 +959,18 @@ fn gh_plan(args: Vec<String>) -> Result<GitPlan, String> {
                 Some(prev) => format!("{prev} {a} {v}"),
                 None => format!("{a} {v}"),
             });
+        }
+    }
+    // gh forwards everything after `--` to `git clone`, unchecked
+    // (`-c credential.helper=!cmd`, `--separate-git-dir`): refuse it.
+    if group == "repo" && matches!(action, "clone" | "fork") {
+        if let Some(i) = args.iter().position(|a| a == "--") {
+            if action == "clone" || has_opt(&args, &["--clone"]) {
+                return Err(format!(
+                    "`gh repo {action}` does not accept git flags after `--` ({}); they are passed straight to git clone",
+                    args[i + 1..].join(" ")
+                ));
+            }
         }
     }
     if group == "repo" && action == "clone" {
@@ -1248,6 +1404,9 @@ pub const CONFIG_OVERRIDES: &[(&str, &str)] = &[
     ("core.hooksPath", "/dev/null"),
     ("core.fsmonitor", "false"),
     ("core.pager", "cat"),
+    // A repository must not turn certificate checks off for pushes that carry
+    // the user's GitHub login.
+    ("http.sslVerify", "true"),
 ];
 
 /// The argv actually run: the plan's, plus `--no-ext-diff --no-textconv`
@@ -1320,6 +1479,22 @@ pub fn risky_config(key: &str, value: &str) -> Option<String> {
         {
             return why("rewrites remotes to a transport that runs commands or reads local files");
         }
+        // Anything else that is not GitHub could send the login to another host.
+        if !["https://github.com/", "git@github.com:", "ssh://git@github.com/"]
+            .iter()
+            .any(|p| base.starts_with(p))
+        {
+            return why("rewrites remotes to a host other than GitHub");
+        }
+    }
+    // Proxy and TLS settings let a repository intercept the token a push carries.
+    if section == "http"
+        && !matches!(last, "postbuffer" | "version" | "lowspeedlimit" | "lowspeedtime" | "maxrequests")
+    {
+        return why("redirects or weakens the network connection git uses");
+    }
+    if section == "remote" && sub && matches!(last, "proxy" | "proxyauthmethod") {
+        return why("routes this remote through a proxy the repository chose");
     }
     if section == "credential" && last == "helper" {
         let program = v.starts_with('!') || v.contains('/') || v.contains('\\');
@@ -1872,6 +2047,12 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
         return format!("ERROR: git: {e}");
     }
     if let Err(e) = check_repo_config(&cwd).await {
+        return format!("ERROR: git: {e}");
+    }
+    if let Err(e) = check_message_file_paths(&plan, &cwd, &roots) {
+        return format!("ERROR: git: {e}");
+    }
+    if let Err(e) = check_diff_in_work_tree(&plan, &cwd).await {
         return format!("ERROR: git: {e}");
     }
     // A tree-changing command while another live session shares this folder.
@@ -2595,5 +2776,170 @@ mod tests {
         let sha = "0123456789abcdef0123456789abcdef01234567";
         let out = format!("$ git ls-remote https://github.com/o/r.git main\n{sha}\trefs/heads/main\n");
         assert_eq!(sha_in(&out).as_deref(), Some(sha));
+    }
+
+    #[test]
+    fn gh_repo_clone_dashdash_flags_refused() {
+        for args in [
+            &["repo", "clone", "o/r", "d", "--", "-c", "credential.helper=!calc"][..],
+            &["repo", "clone", "o/r", "d", "--", "-c", "core.sshCommand=calc"],
+            &["repo", "clone", "o/r", "d", "--", "--separate-git-dir=/anywhere"],
+            &["repo", "fork", "o/r", "--clone", "--", "--template=/x"],
+        ] {
+            assert!(p("gh", args).is_err(), "{args:?}");
+        }
+        assert!(p("gh", &["repo", "clone", "o/r", "d"]).is_ok());
+        assert!(p("gh", &["repo", "fork", "o/r"]).is_ok());
+    }
+
+    #[test]
+    fn diff_two_absolute_paths_refused() {
+        for args in [
+            &["diff", "/dev/null", "/home/u/.aws/credentials"][..],
+            &["diff", "C:/Users/u/.ssh/id_rsa", "NUL"],
+            &["diff", "--", "/etc/passwd"],
+            &["diff", "..\\secret", "x"],
+            &["diff", "../outside", "a"],
+            &["diff", "\\\\?\\C:\\x", "a"],
+            &["diff-tree", "/etc/passwd"],
+            &["range-diff", "../a", "b"],
+        ] {
+            assert!(p("git", args).is_err(), "{args:?}");
+        }
+        for args in [
+            &["diff", "a.txt", "b.txt"][..],
+            &["diff", "HEAD~1", "HEAD", "--", "src/main.rs"],
+            &["diff", "main..feature"],
+            &["diff", "--stat", "HEAD^"],
+        ] {
+            assert_eq!(p("git", args).unwrap().class, GitClass::Read, "{args:?}");
+        }
+    }
+
+    #[test]
+    fn blame_contents_refused() {
+        for args in [
+            &["blame", "--contents", "/home/u/.ssh/id_rsa", "--", "a.rs"][..],
+            &["blame", "--contents=/etc/passwd", "a.rs"],
+            &["blame", "--ignore-revs-file", "/etc/passwd", "a.rs"],
+            &["blame", "--ignore-revs-f=/etc/passwd", "a.rs"],
+            &["blame", "-S", "/etc/passwd", "a.rs"],
+            &["log", "-O/etc/passwd"],
+            &["diff", "-O/etc/passwd"],
+            &["grep", "-f", "/etc/passwd"],
+            &["grep", "--file=/etc/passwd"],
+            &["ls-files", "--exclude-from=/etc/passwd"],
+            &["ls-files", "-X", "/etc/passwd"],
+            &["add", "--pathspec-from-file=/etc/passwd"],
+        ] {
+            assert!(p("git", args).is_err(), "{args:?}");
+        }
+        // Real options that merely share a prefix keep working.
+        assert!(p("git", &["blame", "--ignore-rev", "HEAD~1", "a.rs"]).is_ok());
+        assert!(p("git", &["log", "--exclude=refs/tags/*", "--all"]).is_ok());
+        assert!(p("git", &["log", "-SOrder"]).is_ok());
+        assert!(p("git", &["grep", "-n", "-F", "x"]).is_ok());
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn tag_F_outside_roots_refused() {
+        for args in [
+            &["tag", "-a", "-F", "/home/u/.ssh/id_rsa", "v1"][..],
+            &["tag", "-a", "-F", "C:/x/y", "v1"],
+            &["tag", "-a", "--file=../x", "v1"],
+            &["merge", "-F", "/etc/passwd", "feature"],
+            &["merge", "--file=../x", "feature"],
+            &["am", "/tmp/x.patch"],
+            &["apply", "../x.patch"],
+        ] {
+            assert!(p("git", args).is_err(), "{args:?}");
+        }
+        assert!(p("git", &["tag", "-a", "-F", "msg.txt", "v1"]).is_ok());
+        assert!(p("git", &["tag", "-a", "-m", "msg", "v1"]).is_ok());
+        assert!(p("git", &["apply", "fix.patch"]).is_ok());
+        assert!(p("git", &["merge", "-m", "x", "feature"]).is_ok());
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn merge_F_symlink_refused() {
+        let repo = scratch_dir("msg_link_repo");
+        let ws = scratch_dir("msg_link_ws");
+        let outside = scratch_dir("msg_link_out");
+        std::fs::write(outside.join("secret.txt"), "secret").unwrap();
+        std::fs::write(repo.join("ok.txt"), "fine").unwrap();
+        let link = repo.join("msg.txt");
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(outside.join("secret.txt"), &link).is_ok();
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(outside.join("secret.txt"), &link).is_ok();
+        let roots = roots_with(&repo, &ws);
+        let ok = p("git", &["merge", "-F", "ok.txt", "feature"]).unwrap();
+        assert!(check_message_file_paths(&ok, &repo, &roots).is_ok());
+        if made {
+            for args in [
+                &["merge", "-F", "msg.txt", "feature"][..],
+                &["tag", "-a", "-F", "msg.txt", "v1"],
+                &["commit", "-F", "msg.txt"],
+            ] {
+                let plan = p("git", args).unwrap();
+                let err = check_message_file_paths(&plan, &repo, &roots).unwrap_err();
+                assert!(err.contains("symbolic link"), "{err}");
+            }
+        }
+        for d in [&repo, &ws, &outside] {
+            let _ = std::fs::remove_dir_all(d);
+        }
+    }
+
+    #[test]
+    fn http_proxy_config_risky() {
+        for (k, v) in [
+            ("http.proxy", "https://attacker"),
+            ("http.sslVerify", "false"),
+            ("http.sslCAInfo", "/tmp/ca.pem"),
+            ("http.extraHeader", "X: y"),
+            ("http.https://github.com/.proxy", "https://attacker"),
+            ("remote.origin.proxy", "https://attacker"),
+            ("url.https://evil.example/.insteadOf", "https://github.com/"),
+        ] {
+            assert!(risky_config(k, v).is_some(), "{k}={v}");
+        }
+        for (k, v) in [
+            ("http.postBuffer", "524288000"),
+            ("url.git@github.com:.insteadOf", "https://github.com/"),
+            ("remote.origin.url", "https://github.com/o/r"),
+        ] {
+            assert!(risky_config(k, v).is_none(), "{k}={v}");
+        }
+        assert!(CONFIG_OVERRIDES.contains(&("http.sslVerify", "true")));
+    }
+
+    #[tokio::test]
+    async fn split_git_piece_checks_repo_config() {
+        // The null-device split path in handlers.rs must call the same check.
+        let src = include_str!("handlers.rs");
+        let at = src.find("Piece::Git(argv) =>").expect("split git arm");
+        assert!(src[at..at + 1500].contains("check_repo_config"));
+        // And that check refuses a planted filter driver in a real repository.
+        let Some(bin) = crate::tools::git_native::discover_git() else { return };
+        let repo = scratch_dir("split_cfg");
+        let ok = std::process::Command::new(&bin)
+            .arg("init")
+            .arg("-q")
+            .arg(&repo)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            assert!(check_repo_config(&repo).await.is_ok());
+            let cfg = repo.join(".git").join("config");
+            let mut text = std::fs::read_to_string(&cfg).unwrap();
+            text.push_str("[filter \"x\"]\n\tclean = calc\n");
+            std::fs::write(&cfg, text).unwrap();
+            assert!(check_repo_config(&repo).await.is_err());
+        }
+        let _ = std::fs::remove_dir_all(&repo);
     }
 }
