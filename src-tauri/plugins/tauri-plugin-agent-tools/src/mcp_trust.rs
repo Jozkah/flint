@@ -172,6 +172,9 @@ struct State {
     /// revocation made there is seen here and not saved over.
     loaded_stamp: Option<(SystemTime, u64)>,
     stored: Stored,
+    /// The last read of the file failed for a reason other than "missing" or
+    /// "not parseable"; saving would overwrite grants that were never seen.
+    read_failed: bool,
     tickets: HashMap<String, Ticket>,
     sequence: u64,
 }
@@ -250,22 +253,43 @@ impl State {
         if self.loaded_from.as_deref() == Some(path.as_path()) && self.loaded_stamp == stamp_of(&path) {
             return;
         }
-        let parsed = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|text| parse(&text));
-        // A file that is there and cannot be read still holds the user's
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => Some(text),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => {
+                // A transient read error (AV scan, share violation) says
+                // nothing about the content. Trust nothing for now, leave the
+                // file where it is, refuse to save over it, and read it again
+                // on the next look.
+                eprintln!(
+                    "mcp trust: {} could not be read, nothing is trusted until it can: {e}",
+                    path.display()
+                );
+                self.read_failed = true;
+                self.loaded_from = None;
+                self.loaded_stamp = None;
+                self.stored = Stored {
+                    schema_version: SCHEMA_VERSION,
+                    ..Stored::default()
+                };
+                return;
+            }
+        };
+        self.read_failed = false;
+        let parsed = text.as_deref().and_then(parse);
+        // A file that is there and does not parse still holds the user's
         // grants. Starting from nothing is the safe answer, but the next
         // decision would save over it (Jozkah/jan#267), so it is moved aside,
         // whole, for the user or a later version to recover.
-        if parsed.is_none() && path.exists() {
+        if parsed.is_none() && text.is_some() {
             let aside = path.with_extension(format!("json.corrupt-{}", audit::now().replace(':', "-")));
             match std::fs::rename(&path, &aside) {
                 Ok(()) => eprintln!(
-                    "mcp trust: {} could not be read; kept as {} and starting with nothing trusted",
+                    "mcp trust: {} could not be parsed; kept as {} and starting with nothing trusted",
                     path.display(),
                     aside.display()
                 ),
-                Err(e) => eprintln!("mcp trust: {} could not be read or kept aside: {e}", path.display()),
+                Err(e) => eprintln!("mcp trust: {} could not be parsed or kept aside: {e}", path.display()),
             }
         }
         self.loaded_stamp = stamp_of(&path);
@@ -309,6 +333,9 @@ impl State {
     }
 
     fn save(&mut self, data_folder: &Path) -> Result<(), String> {
+        if self.read_failed {
+            return Err("the trust file could not be read, so it was not overwritten".to_string());
+        }
         let path = path_for(data_folder);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -330,6 +357,7 @@ impl State {
 
 /// Every standing grant, for the settings surface.
 pub fn trusted(data_folder: &Path) -> Vec<TrustGrant> {
+    let _held = hold(data_folder);
     let mut state = state().lock().expect("mcp trust");
     state.ensure_loaded(data_folder);
     state.stored.trusted.clone()
@@ -337,6 +365,7 @@ pub fn trusted(data_folder: &Path) -> Vec<TrustGrant> {
 
 /// Approvals that stopped applying and need renewing, for the settings surface.
 pub fn invalidated(data_folder: &Path) -> Vec<Invalidated> {
+    let _held = hold(data_folder);
     let mut state = state().lock().expect("mcp trust");
     state.ensure_loaded(data_folder);
     state.stored.invalidated.clone()
@@ -344,6 +373,7 @@ pub fn invalidated(data_folder: &Path) -> Vec<Invalidated> {
 
 /// Whether `server`, as currently defined by `fingerprint`, is trusted.
 pub fn is_trusted(data_folder: &Path, server: &str, fingerprint: &str) -> bool {
+    let _held = hold(data_folder);
     let mut state = state().lock().expect("mcp trust");
     state.ensure_loaded(data_folder);
     state
@@ -987,6 +1017,25 @@ mod tests {
         assert_eq!(kept.len(), 1, "the unreadable file was not kept aside");
         assert_eq!(std::fs::read_to_string(kept[0].path()).unwrap(), original);
         assert!(is_trusted(&dir, "files", &files_v1()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mcp_trust_io_error_keeps_file() {
+        let _g = lock();
+        let dir = root("ioerr");
+        let file = path_for(&dir);
+        // A directory where the file should be: reading it fails with an
+        // error that is neither "missing" nor a parse problem.
+        std::fs::create_dir_all(&file).unwrap();
+        assert!(!is_trusted(&dir, "files", &files_v1()));
+        assert!(trust(&dir, "files", &files_v1()).is_err());
+        assert!(file.is_dir(), "the unreadable entry was moved or replaced");
+        let moved = std::fs::read_dir(file.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().contains(".corrupt-"));
+        assert!(!moved, "an io error must not move the file aside");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -115,6 +115,34 @@ pub fn load_under(
     load_under_trust(project_root, network_default, org, trusted)
 }
 
+/// Read-only, offline policy for a project whose `agent.toml` is there but
+/// cannot be read or parsed. Until it is fixed nothing is granted.
+fn closed_policy(
+    root: &Path,
+    org: &crate::org_policy::OrgPolicy,
+    why: &str,
+) -> ProjectPolicy {
+    eprintln!("agent.toml: could not read the tool policy, running read-only: {why}");
+    ProjectPolicy {
+        permissions: ToolPermissions::new(
+            org.clamp_default(PermissionDefault::ReadOnly),
+            &[],
+            &org.clamp_deny(&[]),
+            &[],
+        ),
+        network: NetworkPolicy {
+            allowed: false,
+            allow_domains: Vec::new(),
+            deny_domains: Vec::new(),
+        },
+        nul_programs: Vec::new(),
+        load_error: Some(format!(
+            "{} could not be read, so this project runs read-only and offline until it is fixed: {why}",
+            agent_toml_path(root).display()
+        )),
+    }
+}
+
 /// [`load_under`] with the folder's trust given: an untrusted folder's file
 /// may only tighten the policy.
 pub fn load_under_trust(
@@ -133,35 +161,17 @@ pub fn load_under_trust(
         // all, which is the case a bypass would otherwise live in.
         return clamp(policy, &org);
     };
-    let Ok(raw) = std::fs::read_to_string(agent_toml_path(root)) else {
-        return clamp(policy, &org);
+    let raw = match std::fs::read_to_string(agent_toml_path(root)) {
+        Ok(raw) => raw,
+        // No file is no policy. Anything else (a permission error, a
+        // directory in its place, a locked file) is a policy this process
+        // could not see: fail closed like a parse error.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return clamp(policy, &org),
+        Err(e) => return closed_policy(root, &org, &e.to_string()),
     };
     let parsed: AgentToml = match toml::from_str(&raw) {
         Ok(parsed) => parsed,
-        Err(e) => {
-            // Fail closed: a file that says something about the policy and
-            // cannot be read must not grant everything with the network on.
-            // Read-only, offline, until the file is fixed.
-            eprintln!("agent.toml: could not read the tool policy, running read-only: {e}");
-            return ProjectPolicy {
-                permissions: ToolPermissions::new(
-                    org.clamp_default(PermissionDefault::ReadOnly),
-                    &[],
-                    &org.clamp_deny(&[]),
-                    &[],
-                ),
-                network: NetworkPolicy {
-                    allowed: false,
-                    allow_domains: Vec::new(),
-                    deny_domains: Vec::new(),
-                },
-                nul_programs: Vec::new(),
-                load_error: Some(format!(
-                    "{} could not be read, so this project runs read-only and offline until it is fixed: {e}",
-                    agent_toml_path(root).display()
-                )),
-            };
-        }
+        Err(e) => return closed_policy(root, &org, &e.to_string()),
     };
 
     let mut tools = parsed.tools;
@@ -306,6 +316,24 @@ deny = [\"web_fetch\"]
         assert!(!untrusted.network.allowed, "the surface default stands");
         // Tightening still applies.
         assert!(untrusted.permissions.is_denied("web_fetch", &crate::subject::Subject::MainAgent));
+    }
+
+    #[test]
+    fn agent_toml_unreadable_closed() {
+        let root = project_with("");
+        let path = agent_toml_path(&root);
+        std::fs::remove_file(&path).unwrap();
+        // A directory where the file should be: exists, cannot be read.
+        std::fs::create_dir_all(&path).unwrap();
+        let policy = load_under_trust(Some(&root), None, &Default::default(), true);
+        assert!(!policy.network.allowed, "unreadable agent.toml must not leave the network on");
+        assert!(policy.load_error.is_some());
+        // Absent entirely is still "no policy".
+        std::fs::remove_dir_all(&path).unwrap();
+        let policy = load_under_trust(Some(&root), None, &Default::default(), true);
+        assert!(policy.network.allowed);
+        assert!(policy.load_error.is_none());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
