@@ -23,13 +23,13 @@ const SECRET_KEY_PARTS = [
   'token',
   'apikey',
   'api_key',
-  'api-key',
-  'auth',
   'authorization',
+  'auth',
   'credential',
   'private_key',
   'access_key',
   'session_key',
+  'cookie',
 ]
 
 const TOKEN_PREFIXES = [
@@ -38,23 +38,38 @@ const TOKEN_PREFIXES = [
   'pk_live_',
   'ghp_',
   'gho_',
+  'github_pat_',
   'xoxb-',
+  'xoxp-',
+  'xoxa-',
+  'xoxs-',
+  'glpat-',
+  'AIza',
+  'hf_',
+  'npm_',
   'AKIA',
 ]
 
-function namesASecret(key: string): boolean {
-  const k = key.replace(/^-+/, '').toLowerCase()
+/** Whether a key, flag or field name marks its value as a credential. */
+export function namesASecret(key: string): boolean {
+  const k = key
+    .replace(/^-+/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/-/g, '_')
+    .toLowerCase()
   return SECRET_KEY_PARTS.some((needle) => k.includes(needle))
 }
 
 function looksLikeAToken(word: string): boolean {
   const bare = word.replace(/^["'(]+|["'),;]+$/g, '')
-  if (TOKEN_PREFIXES.some((p) => bare.startsWith(p) && bare.length > p.length + 7)) {
+  if (
+    TOKEN_PREFIXES.some((p) => bare.startsWith(p) && bare.length >= p.length + 8)
+  ) {
     return true
   }
   // Long, no separators a path or sentence would have, and a mix of
   // character classes a word would not.
-  if (bare.length < 32 || /[\\/.:@]/.test(bare)) return false
+  if (bare.length < 32 || /[\/.:@]/.test(bare)) return false
   if (!/^[A-Za-z0-9_\-+=]+$/.test(bare)) return false
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].filter((re) => re.test(bare))
   return classes.length >= 3
@@ -62,25 +77,80 @@ function looksLikeAToken(word: string): boolean {
 
 function redactWord(word: string): string {
   const eq = word.indexOf('=')
-  if (eq > 0) {
-    const key = word.slice(0, eq)
+  if (eq > 0 && !word.includes('://')) {
+    const key = word.slice(0, eq).replace(/^["']/, '')
     const value = word.slice(eq + 1)
-    if (value.length > 0 && namesASecret(key)) return `${key}=${REDACTED}`
+    if (value.length > 0 && !value.startsWith(REDACTED) && namesASecret(key)) {
+      return `${word.slice(0, eq)}=${REDACTED}`
+    }
   }
   if (looksLikeAToken(word)) return REDACTED
-  return word
+  // A token inside a URL or `a:b@c` shape: test each separator-split piece.
+  return word.replace(/[^:/@?=&]+/g, (piece) =>
+    looksLikeAToken(piece) ? REDACTED : piece
+  )
 }
 
-/** Redact every credential-shaped word, keeping the whitespace between them. */
+const FLAG_VALUE = String.raw`("[^"]*"|'[^']*'|[^\s"'][^\s]*)`
+
+/**
+ * Redact every credential-shaped piece of text, keeping the whitespace
+ * between words. Synchronous on purpose: callers use it inline. The corpus in
+ * `__tests__/fixtures/secretCorpus.json` pins its behaviour so the Rust
+ * redactor can be compared against the same cases.
+ */
 export function redactSecrets(text: string): string {
   if (!text) return text
-  // `Authorization: Bearer <token>` and `Bearer <token>` carry the secret in the
-  // word after the scheme, which on its own need not look like a token.
-  const schemes = text.replace(
-    /\b(Bearer|Basic|Token)\s+([^\s"']+)/gi,
-    (_m, scheme: string) => `${scheme} ${REDACTED}`
-  )
-  return schemes
+  let out = text
+    // user:password@ and token@ in a URL
+    .replace(
+      /(\b[a-z][a-z0-9+.-]*:\/\/)([^/\s:@]+):([^/\s@]+)@/gi,
+      (_m, scheme: string, user: string) => `${scheme}${user}:${REDACTED}@`
+    )
+    .replace(
+      /(\b[a-z][a-z0-9+.-]*:\/\/)([^/\s:@]+)@/gi,
+      (m, scheme: string, user: string) =>
+        looksLikeAToken(user) ? `${scheme}${REDACTED}@` : m
+    )
+    // secret-named query parameters
+    .replace(
+      /([?&][^=&\s#]*(?:token|key|secret|password|auth|sig|signature)[^=&\s#]*=)[^&\s#]+/gi,
+      `$1${REDACTED}`
+    )
+    // `Authorization: Bearer <token>`: the secret is the word after the scheme.
+    .replace(/\b(Bearer|Basic|Token)\s+([^\s"']+)/gi, (_m, scheme: string) => {
+      return `${scheme} ${REDACTED}`
+    })
+    // JWTs
+    .replace(/\beyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*/g, REDACTED)
+    // JSON-style `"accessToken": "value"`
+    .replace(
+      /("[\w.-]+"\s*:\s*)("(?:[^"\\]|\\.)*")/g,
+      (m, head: string) => {
+        const key = head.slice(1, head.indexOf('"', 1))
+        return namesASecret(key) ? `${head}"${REDACTED}"` : m
+      }
+    )
+    // KEY="a quoted value" / KEY='a quoted value'
+    .replace(
+      /(?<![\w.-])([\w.-]+)=("[^"]*"|'[^']*')/g,
+      (m, key: string) => (namesASecret(key) ? `${key}=${REDACTED}` : m)
+    )
+    // --password hunter2 / --token "a b": the flag's value is the next token
+    .replace(
+      new RegExp(String.raw`(--[\w-]+)(\s+)` + FLAG_VALUE, 'g'),
+      (m, flag: string, ws: string, value: string) =>
+        namesASecret(flag) && value !== REDACTED ? `${flag}${ws}${REDACTED}` : m
+    )
+  // `-p` is only a password for these tools (psql's is a port).
+  if (/\b(mysql|mysqldump|sshpass)\b/.test(out)) {
+    out = out.replace(
+      new RegExp(String.raw`(\s-p)(\s+)` + FLAG_VALUE, 'g'),
+      (m, flag: string, ws: string, value: string) =>
+        value === REDACTED ? m : `${flag}${ws}${REDACTED}`
+    )
+  }
+  return out
     .split(/(\s+)/)
     .map((part) => (/^\s+$/.test(part) ? part : redactWord(part)))
     .join('')
