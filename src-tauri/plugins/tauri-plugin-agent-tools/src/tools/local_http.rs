@@ -84,10 +84,10 @@ pub fn parse(args: &Value) -> Result<Request, String> {
 }
 
 /// The one address a request may use: every resolved address must be loopback.
-fn loopback_only(addrs: &[SocketAddr]) -> Result<SocketAddr, String> {
-    let first = addrs.first().ok_or("ERROR: that name did not resolve.")?;
+fn loopback_only(addrs: &[SocketAddr]) -> Result<Vec<SocketAddr>, String> {
+    addrs.first().ok_or("ERROR: that name did not resolve.")?;
     if addrs.iter().all(|a| ip_is_loopback(a.ip())) {
-        Ok(*first)
+        Ok(addrs.to_vec())
     } else {
         Err("ERROR: local_http only reaches this computer (localhost, 127.0.0.1, [::1]). Use web_fetch for anything else.".into())
     }
@@ -137,19 +137,31 @@ pub async fn local_http(args: &Value) -> String {
         Ok(addrs) => addrs.collect(),
         Err(e) => return format!("ERROR: could not resolve {}: {e}", req.host),
     };
-    let addr = match loopback_only(&resolved) {
-        Ok(addr) => addr,
+    let addrs = match loopback_only(&resolved) {
+        Ok(addrs) => addrs,
         Err(message) => return message,
     };
     let exchange = async {
-        let mut stream = tokio::net::TcpStream::connect(addr)
-            .await
-            .map_err(|e| format!("ERROR: could not connect to {addr}: {e}"))?;
+        // `localhost` often resolves to ::1 first while the server listens on
+        // 127.0.0.1 only: try every validated address in turn.
+        let mut connected = None;
+        let mut last = String::new();
+        for addr in &addrs {
+            match tokio::net::TcpStream::connect(addr).await {
+                Ok(s) => {
+                    connected = Some(s);
+                    break;
+                }
+                Err(e) => last = format!("ERROR: could not connect to {addr}: {e}"),
+            }
+        }
+        let mut stream = connected.ok_or(last)?;
+        let host = if req.host.contains(':') { format!("[{}]", req.host) } else { req.host.clone() };
         let method = if req.head { "HEAD" } else { "GET" };
         // HTTP/1.0 with a closed connection: the body is not chunked.
         let request = format!(
             "{method} {} HTTP/1.0\r\nHost: {}:{}\r\nUser-Agent: Flint\r\nAccept: */*\r\nConnection: close\r\n\r\n",
-            req.target, req.host, req.port
+            req.target, host, req.port
         );
         stream
             .write_all(request.as_bytes())
@@ -249,6 +261,21 @@ mod tests {
             s.write_all(b"HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\npong").await.unwrap();
         });
         let out = local_http(&json!({ "url": format!("http://127.0.0.1:{port}/ping") })).await;
+        assert!(out.contains("200 OK") && out.ends_with("pong"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn local_http_localhost_falls_back_to_ipv4() {
+        // Listens on IPv4 only; `localhost` may resolve to ::1 first.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf).await;
+            s.write_all(b"HTTP/1.0 200 OK\r\n\r\npong").await.unwrap();
+        });
+        let out = local_http(&json!({ "url": format!("http://localhost:{port}/") })).await;
         assert!(out.contains("200 OK") && out.ends_with("pong"), "{out}");
     }
 
