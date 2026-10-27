@@ -195,8 +195,10 @@ pub fn decide(host: &str, port: u16, answers: Vec<SocketAddr>) -> Resolution {
         });
     }
 
-    let has_local = candidates.iter().any(|c| c.class.is_local());
-    let suppressed_public = local_name && has_local;
+    // A local-looking name never sends a request (and its API key) to a public
+    // address, whether or not a local answer exists alongside it. A name that
+    // resolves only publicly ends up with an empty order and is refused.
+    let suppressed_public = local_name && candidates.iter().any(|c| c.class == AddrClass::Public);
     if suppressed_public {
         for c in candidates.iter_mut() {
             if c.class == AddrClass::Public {
@@ -265,9 +267,8 @@ impl ResolverCache {
         }
         let resolution = decide(host, port, answers);
         if resolution.order.is_empty() {
-            // Every answer was suppressed. Cannot happen while suppression
-            // requires a local candidate to exist, but say so rather than
-            // handing the connector an empty list.
+            // Every answer was suppressed: a local-looking name that resolved
+            // only to public addresses. Refuse rather than dial it with a key.
             return Err(format!(
                 "{host} resolved only to public addresses, which are not used for a local endpoint"
             ));
@@ -436,12 +437,44 @@ mod tests {
 
     #[test]
     fn a_local_name_that_only_resolves_publicly_is_refused_rather_than_dialled() {
-        // Nothing local came back, so there is no suppression -- but this is
-        // the case worth watching, and the candidate list says what happened.
         let r = decide("llm-host", 8080, vec![sock("104.16.133.229", 8080)]);
         assert!(r.local_name);
-        assert!(!r.suppressed_public);
+        assert!(r.order.is_empty());
+        assert!(r.suppressed_public);
         assert_eq!(r.candidates[0].class, AddrClass::Public);
+        assert!(!r.candidates[0].eligible);
+
+        struct P;
+        impl DnsProbe for P {
+            fn lookup(&self, _: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+                Ok(vec![SocketAddr::new(
+                    "104.16.133.229".parse().unwrap(),
+                    port,
+                )])
+            }
+        }
+        let err = ResolverCache::new()
+            .resolve(&P, "llm-host", 8080)
+            .unwrap_err();
+        assert!(err.contains("only to public addresses"));
+    }
+
+    #[test]
+    fn local_name_with_local_and_public_dials_local_only() {
+        let r = decide(
+            "llm-host",
+            8080,
+            vec![sock("104.16.133.229", 8080), sock("192.168.1.9", 8080)],
+        );
+        assert_eq!(r.order, vec![sock("192.168.1.9", 8080)]);
+    }
+
+    #[test]
+    fn fqdn_public_still_dialled() {
+        let r = decide("api.example.com", 443, vec![sock("104.16.133.229", 443)]);
+        assert!(!r.local_name);
+        assert!(!r.suppressed_public);
+        assert_eq!(r.order, vec![sock("104.16.133.229", 443)]);
     }
 
     #[test]
