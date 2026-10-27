@@ -15,6 +15,77 @@ pub struct VulkanInfo {
     pub device_type: String,
     pub api_version: String,
     pub device_id: u32,
+    /// PCI location from VK_EXT_pci_bus_info. None when the driver does not
+    /// report it; cards are then not told apart by device id.
+    #[serde(default)]
+    pub pci_bus_info: Option<PciBusInfo>,
+}
+
+/// PCI address of a GPU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct PciBusInfo {
+    pub domain: u32,
+    pub bus: u32,
+    pub device: u32,
+    pub function: u32,
+}
+
+/// Reads VK_EXT_pci_bus_info for a physical device. None if the instance is
+/// older than Vulkan 1.1, the extension is missing, or any call fails.
+#[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
+fn query_pci_bus_info(
+    instance: &Instance,
+    physical_device: &vulkano::device::physical::PhysicalDevice,
+) -> Option<PciBusInfo> {
+    use ash::vk;
+    use std::ffi::{c_void, CStr};
+    use vulkano::VulkanObject;
+
+    if instance.api_version() < vulkano::Version::V1_1 {
+        return None;
+    }
+    let fns = instance.fns();
+    let handle = physical_device.handle();
+    unsafe {
+        let mut count = 0u32;
+        let r = (fns.v1_0.enumerate_device_extension_properties)(
+            handle,
+            std::ptr::null(),
+            &mut count,
+            std::ptr::null_mut(),
+        );
+        if r != vk::Result::SUCCESS || count == 0 {
+            return None;
+        }
+        let mut exts = vec![vk::ExtensionProperties::default(); count as usize];
+        let r = (fns.v1_0.enumerate_device_extension_properties)(
+            handle,
+            std::ptr::null(),
+            &mut count,
+            exts.as_mut_ptr(),
+        );
+        if r != vk::Result::SUCCESS && r != vk::Result::INCOMPLETE {
+            return None;
+        }
+        exts.truncate(count as usize);
+        let has_ext = exts.iter().any(|e| {
+            CStr::from_ptr(e.extension_name.as_ptr()).to_bytes() == b"VK_EXT_pci_bus_info"
+        });
+        if !has_ext {
+            return None;
+        }
+
+        let mut pci = vk::PhysicalDevicePCIBusInfoPropertiesEXT::default();
+        let mut props2 = vk::PhysicalDeviceProperties2::default();
+        props2.p_next = &mut pci as *mut _ as *mut c_void;
+        (fns.v1_1.get_physical_device_properties2)(handle, &mut props2);
+        Some(PciBusInfo {
+            domain: pci.pci_domain,
+            bus: pci.pci_bus,
+            device: pci.pci_device,
+            function: pci.pci_function,
+        })
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
@@ -141,6 +212,7 @@ fn get_vulkan_gpus_internal() -> Result<Vec<GpuInfo>, Box<dyn std::error::Error>
                     properties.api_version.patch
                 ),
                 device_id: properties.device_id,
+                pci_bus_info: query_pci_bus_info(&instance, &physical_device),
             }),
         };
         device_info_list.push(device_info);

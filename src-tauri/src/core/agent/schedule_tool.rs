@@ -121,11 +121,52 @@ fn parse_schedule(value: &Value) -> Result<Schedule, String> {
     }
 }
 
-/// `path` is `root` or inside it, by lexical comparison of absolute paths (the
-/// folder need not exist yet to be refused).
-fn inside(root: &Path, path: &Path) -> bool {
-    let norm = |p: &Path| p.components().collect::<PathBuf>();
-    path.is_absolute() && norm(path).starts_with(norm(root))
+/// Drop the verbatim prefix `canonicalize` adds on Windows so the stored path
+/// reads like the one the user typed.
+fn strip_verbatim(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\?\UNC\") {
+        PathBuf::from(format!(r"\{rest}"))
+    } else if let Some(rest) = s.strip_prefix(r"\?\") {
+        PathBuf::from(rest)
+    } else {
+        p
+    }
+}
+
+/// Absolute, `..`-free form of `path`: the deepest existing ancestor is
+/// canonicalised (so junctions and symlinks resolve) and the not-yet-existing
+/// tail is appended. `None` for relative or drive-relative paths and for any
+/// `..` segment, which is refused before the filesystem is consulted.
+fn resolve(path: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+    if !path.is_absolute() || path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return None;
+    }
+    let clean: PathBuf = path.components().filter(|c| !matches!(c, Component::CurDir)).collect();
+    let mut tail = Vec::new();
+    let mut base = clean.as_path();
+    loop {
+        if let Ok(real) = std::fs::canonicalize(base) {
+            let mut out = strip_verbatim(real);
+            out.extend(tail.iter().rev());
+            return Some(out);
+        }
+        match (base.parent(), base.file_name()) {
+            (Some(parent), Some(name)) => {
+                tail.push(name.to_owned());
+                base = parent;
+            }
+            _ => return Some(clean),
+        }
+    }
+}
+
+/// The resolved `path` when it is `root` or inside it, else `None` (the folder
+/// need not exist yet to be accepted or refused).
+fn inside(root: &Path, path: &Path) -> Option<PathBuf> {
+    let (root, path) = (resolve(root)?, resolve(path)?);
+    path.starts_with(&root).then_some(path)
 }
 
 /// Turn the model's arguments into a plan, refusing anything the session could
@@ -179,14 +220,13 @@ fn create(args: &Value, creator: &Creator) -> Result<Task, String> {
 
     let project = match text(args, "project") {
         "" => creator.project_root.clone(),
-        p => PathBuf::from(p),
+        p => inside(&creator.project_root, Path::new(p)).ok_or_else(|| {
+            format!(
+                "a task can only run in this session's folder ({}) or inside it, with no '..' in the path",
+                creator.project_root.display()
+            )
+        })?,
     };
-    if !inside(&creator.project_root, &project) {
-        return Err(format!(
-            "a task can only run in this session's folder ({}) or inside it",
-            creator.project_root.display()
-        ));
-    }
 
     let clamp = |key: &str, default: u64, max: u64| {
         args.get(key).and_then(Value::as_u64).unwrap_or(default).clamp(1, max)
@@ -314,6 +354,55 @@ mod tests {
         assert!(plan(&args(json!({"project": other.to_string_lossy()})), &creator()).is_err());
         let inside = creator().project_root.join("sub");
         assert!(plan(&args(json!({"project": inside.to_string_lossy()})), &creator()).is_ok());
+    }
+
+    #[test]
+    fn schedule_rejects_dotdot_escape() {
+        let c = creator();
+        let escape = c.project_root.join("..").join("x");
+        assert!(plan(&args(json!({"project": escape.to_string_lossy()})), &c).is_err());
+        let sneaky = c.project_root.join("sub").join("..").join("sub");
+        assert!(plan(&args(json!({"project": sneaky.to_string_lossy()})), &c).is_err());
+        assert!(plan(&args(json!({"project": "relative/dir"})), &c).is_err());
+        #[cfg(windows)]
+        {
+            assert!(plan(&args(json!({"project": "C:foo"})), &c).is_err());
+            assert!(plan(&args(json!({"project": r"\server\share\x"})), &c).is_err());
+        }
+    }
+
+    #[test]
+    fn schedule_accepts_nested_subfolder() {
+        let c = creator();
+        let nested = c.project_root.join("a").join(".").join("b");
+        let Plan::Create(t) = plan(&args(json!({"project": nested.to_string_lossy()})), &c).unwrap() else {
+            panic!()
+        };
+        assert!(PathBuf::from(&t.project).ends_with(Path::new("a").join("b")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn schedule_rejects_junction_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let link = root.join("link");
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&outside)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !made {
+            return;
+        }
+        let mut c = creator();
+        c.project_root = root;
+        assert!(plan(&args(json!({"project": link.to_string_lossy()})), &c).is_err());
     }
 
     #[test]
