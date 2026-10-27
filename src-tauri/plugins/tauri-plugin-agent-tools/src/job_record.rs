@@ -238,7 +238,7 @@ fn write(data_folder: &Path, record: &JobRecord, keep_ended: bool) -> Result<Opt
     // supervisor at once. Without a lock the later rename drops what an
     // overlapping save wrote (Jozkah/jan#55). The mailbox's lock file works
     // across processes and cannot wedge on a stale lock.
-    let _held = crate::mailbox::Held::take(&path);
+    let _held = crate::mailbox::Held::take(&path)?;
     let stored = read_owner(data_folder, &record.owner);
     if keep_ended {
         if let Some(ended) = stored.iter().find(|r| r.id == record.id && r.state.is_ended()) {

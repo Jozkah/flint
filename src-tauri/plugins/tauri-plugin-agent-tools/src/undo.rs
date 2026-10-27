@@ -341,8 +341,8 @@ pub fn load(data_folder: &Path, session: &str) -> Journal {
 /// Held across a journal's load-change-save. Parallel subagents in one run, or
 /// two runs of one session, record at once; without it the later save drops
 /// the other's change and undo restores only part of the turn.
-fn hold(data_folder: &Path, session: &str) -> crate::mailbox::Held {
-    crate::mailbox::Held::take(&journal_path(data_folder, session))
+fn hold(data_folder: &Path, session: &str) -> Option<crate::mailbox::Held> {
+    crate::mailbox::Held::take(&journal_path(data_folder, session)).ok()
 }
 
 fn save(data_folder: &Path, journal: &Journal) -> Result<(), String> {
