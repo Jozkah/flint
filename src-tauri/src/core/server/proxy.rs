@@ -200,29 +200,110 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
 /// caching and leaks CLI metadata to the model. Handles both observed shapes:
 ///   inline:  "x-anthropic-billing-header: cc_version=…;\n<prompt>"
 ///   wrapped: "x-anthropic-billing-header:\n   cc_version=…;\n<prompt>"
-/// Whether an inbound header is copied onto the request sent upstream.
+/// Whether an inbound header is copied onto the upstream request.
 ///
-/// - `Host` and `Authorization` are set for the upstream, not inherited.
-/// - `Content-Length` and `Transfer-Encoding` go stale when the body is
-///   re-buffered or rewritten; reqwest derives them again.
-/// - `Origin` and `Referer` describe the page that called Flint's local API, not
-///   Flint. Forwarding them made a CORS-strict backend -- Ollama behind nginx, or
-///   with `OLLAMA_ORIGINS` set -- answer 403 to a request it would otherwise
-///   serve (janhq/jan#8792, adapted from janhq/jan#8849).
-///
-/// Whether an inbound header is copied onto the upstream request. Both headers
-/// that authenticate the caller to this local server (`Authorization` and
-/// `X-Api-Key`) are consumed here: forwarding them handed the local server's
-/// secret to the remote provider, and on an Anthropic upstream collided with
-/// the real `x-api-key` the converter adds.
+/// An allow-list: a browser sends `Cookie` for `localhost` (cookies are not
+/// port-scoped) and proxies add `Forwarded`/`X-Forwarded-*`, none of which
+/// belong at a remote provider. `Host`, `Authorization` and `X-Api-Key` (the
+/// caller's credentials for this local server) are consumed here, and
+/// `Content-Length`/`Transfer-Encoding` go stale when the body is rewritten.
+/// `Origin`/`Referer` describe the calling page, not Flint (janhq/jan#8792).
 pub(crate) fn forwards_to_upstream(name: &hyper::header::HeaderName) -> bool {
-    name != hyper::header::HOST
-        && name != hyper::header::AUTHORIZATION
-        && name != "x-api-key"
-        && name != hyper::header::CONTENT_LENGTH
-        && name != hyper::header::TRANSFER_ENCODING
-        && name != hyper::header::ORIGIN
-        && name != hyper::header::REFERER
+    let n = name.as_str();
+    matches!(n, "content-type" | "accept" | "accept-encoding" | "user-agent")
+        || n.starts_with("openai-")
+        || n.starts_with("anthropic-")
+        || n.starts_with("x-stainless-")
+}
+
+/// Largest request body the API server buffers (bytes). 64 MiB by default,
+/// `FLINT_API_MAX_BODY_MB` overrides it for very large inline images.
+fn max_api_body() -> usize {
+    std::env::var("FLINT_API_MAX_BODY_MB")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|mb| *mb > 0)
+        .unwrap_or(64)
+        .saturating_mul(1024 * 1024)
+}
+
+const BODY_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const HEADER_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+const MAX_CONNECTIONS: usize = 256;
+
+/// Why a request body was not buffered.
+#[derive(Debug, PartialEq)]
+pub(crate) enum BodyReadError {
+    TooLarge,
+    TimedOut,
+    Failed,
+}
+
+/// Buffer a request body, refusing more than `cap` bytes. A declared
+/// `Content-Length` over the cap is refused before any byte is read; a chunked
+/// body is cut off at the cap. The whole read is bounded in time.
+pub(crate) async fn read_limited<B>(body: B, cap: usize) -> Result<Bytes, BodyReadError>
+where
+    B: hyper::body::Body,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    if body.size_hint().lower() > cap as u64 {
+        return Err(BodyReadError::TooLarge);
+    }
+    let limited = http_body_util::Limited::new(body, cap);
+    match tokio::time::timeout(BODY_READ_TIMEOUT, limited.collect()).await {
+        Err(_) => Err(BodyReadError::TimedOut),
+        Ok(Ok(c)) => Ok(c.to_bytes()),
+        Ok(Err(e)) if e.downcast_ref::<http_body_util::LengthLimitError>().is_some() => {
+            Err(BodyReadError::TooLarge)
+        }
+        Ok(Err(_)) => Err(BodyReadError::Failed),
+    }
+}
+
+fn body_error_response(
+    err: BodyReadError,
+    host: &str,
+    origin: &str,
+    trusted_hosts: &[Vec<String>],
+) -> Response<ResBody> {
+    let (status, msg) = match err {
+        BodyReadError::TooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large"),
+        BodyReadError::TimedOut => (StatusCode::REQUEST_TIMEOUT, "Timed out reading request body"),
+        BodyReadError::Failed => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read request body"),
+    };
+    add_cors_headers_with_host_and_origin(
+        Response::builder().status(status),
+        host,
+        origin,
+        trusted_hosts,
+    )
+    .body(full(msg))
+    .unwrap()
+}
+
+/// 502 for a /messages -> /chat/completions fallback that could not reach the
+/// provider (instead of echoing the first, unrelated failure).
+fn fallback_failure_response(
+    detail: &str,
+    host: &str,
+    origin: &str,
+    trusted_hosts: &[Vec<String>],
+) -> Response<ResBody> {
+    let body = serde_json::json!({
+        "type": "error",
+        "error": {"type": "api_error", "message": format!("Fallback to chat completions failed: {detail}")}
+    });
+    add_cors_headers_with_host_and_origin(
+        Response::builder()
+            .status(StatusCode::BAD_GATEWAY)
+            .header("Content-Type", "application/json"),
+        host,
+        origin,
+        trusted_hosts,
+    )
+    .body(full(body.to_string()))
+    .unwrap()
 }
 
 /// A provider's configured headers that form a valid header, so one bad
@@ -1011,8 +1092,7 @@ async fn proxy_request(
             );
 
         if !origin.is_empty() {
-            let origin_host = extract_host_from_origin(origin);
-            if is_valid_host(&origin_host, &config.trusted_hosts) {
+            if origin_is_trusted(origin, &config.trusted_hosts) {
                 response = response
                     .header("Access-Control-Allow-Origin", origin)
                     .header("Access-Control-Allow-Credentials", "true");
@@ -1213,18 +1293,14 @@ async fn proxy_request(
         // OpenAI Responses API: rewritten to a chat/completions call on this
         // same server and the answer rewritten back (see `responses_route`).
         (hyper::Method::POST, "/responses") => {
-            let Ok(collected) = body.collect().await else {
-                let mut error_response = Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR);
-                error_response = add_cors_headers_with_host_and_origin(
-                    error_response,
-                    &host_header,
-                    &origin_header,
-                    &config.trusted_hosts,
-                );
-                return Ok(error_response.body(full("Failed to read request body")).unwrap());
+            let collected = match read_limited(body, max_api_body()).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return Ok(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts));
+                }
             };
             let url = super::responses_route::loopback_url(&config.host, config.port, &config.prefix);
-            let handled = super::responses_route::handle(&collected.to_bytes(), &headers, &url, &local_client).await;
+            let handled = super::responses_route::handle(&collected, &headers, &url, &local_client).await;
             let mut response = Response::builder()
                 .status(handled.status)
                 .header("Content-Type", handled.content_type);
@@ -1245,20 +1321,15 @@ async fn proxy_request(
             log::info!(
                 "Handling POST request to /messages with chat/completions fallback on error",
             );
-            let body_bytes = match body.collect().await {
-                Ok(c) => c.to_bytes(),
-                Err(_) => {
-                    let mut error_response =
-                        Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
+            let body_bytes = match read_limited(body, max_api_body()).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return Ok(body_error_response(
+                        e,
                         &host_header,
                         &origin_header,
                         &config.trusted_hosts,
-                    );
-                    return Ok(error_response
-                        .body(full("Failed to read request body"))
-                        .unwrap());
+                    ));
                 }
             };
             buffered_body = Some(body_bytes.clone());
@@ -1449,20 +1520,15 @@ async fn proxy_request(
                 "Handling POST request to {destination_path} for assistant tool orchestration"
             );
 
-            let body_bytes = match body.collect().await {
-                Ok(c) => c.to_bytes(),
-                Err(_) => {
-                    let mut error_response =
-                        Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
+            let body_bytes = match read_limited(body, max_api_body()).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return Ok(body_error_response(
+                        e,
                         &host_header,
                         &origin_header,
                         &config.trusted_hosts,
-                    );
-                    return Ok(error_response
-                        .body(full("Failed to read request body"))
-                        .unwrap());
+                    ));
                 }
             };
 
@@ -1790,20 +1856,15 @@ async fn proxy_request(
             log::info!(
                 "Handling POST request to {destination_path} requiring model lookup in body",
             );
-            let body_bytes = match body.collect().await {
-                Ok(c) => c.to_bytes(),
-                Err(_) => {
-                    let mut error_response =
-                        Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR);
-                    error_response = add_cors_headers_with_host_and_origin(
-                        error_response,
+            let body_bytes = match read_limited(body, max_api_body()).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return Ok(body_error_response(
+                        e,
                         &host_header,
                         &origin_header,
                         &config.trusted_hosts,
-                    );
-                    return Ok(error_response
-                        .body(full("Failed to read request body"))
-                        .unwrap());
+                    ));
                 }
             };
             buffered_body = Some(body_bytes.clone());
@@ -2034,9 +2095,11 @@ async fn proxy_request(
             }
         }
         (hyper::Method::POST, "/images/generations") => {
-            let body_bytes = match body.collect().await {
-                Ok(c) => c.to_bytes(),
-                Err(_) => Bytes::new(),
+            let body_bytes = match read_limited(body, max_api_body()).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return Ok(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts));
+                }
             };
             let (status, payload) = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
                 Ok(json) => match super::images_route::generate(&json).await {
@@ -2070,9 +2133,11 @@ async fn proxy_request(
         }
 
         (hyper::Method::POST, "/videos") => {
-            let body_bytes = match body.collect().await {
-                Ok(c) => c.to_bytes(),
-                Err(_) => Bytes::new(),
+            let body_bytes = match read_limited(body, max_api_body()).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return Ok(body_error_response(e, &host_header, &origin_header, &config.trusted_hosts));
+                }
             };
             let outcome = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
                 Ok(json) => super::images_route::create_video(&json).await,
@@ -2501,7 +2566,12 @@ async fn proxy_request(
                     match transform_anthropic_to_openai(&json_body) {
                         Some(transformed) => Some((url, transformed)),
                         None => {
-                            log::error!("transform_anthropic_to_openai returned None for body: {json_body}");
+                            log::error!(
+                                "transform_anthropic_to_openai returned None (keys: {:?}, messages: {}, bytes: {})",
+                                json_body.as_object().map(|o| o.keys().collect::<Vec<_>>()),
+                                json_body.get("messages").and_then(|m| m.as_array()).map_or(0, |m| m.len()),
+                                body.len()
+                            );
                             None
                         }
                     }
@@ -2509,13 +2579,8 @@ async fn proxy_request(
                     let chat_url = format!("{}/chat/completions", url);
                     log::info!("Fallback to chat completions: {chat_url}");
 
-                    // Create a fresh client for the fallback to avoid connection pool issues
-                    let fallback_client = if is_local_url(&chat_url) {
-                        local_upstream_client(None)
-                    } else {
-                        upstream_client(None)
-                    }
-                    .expect("Failed to create fallback client");
+                    // The shared clients carry the connect and read timeouts.
+                    let fallback_client = if is_local_url(&chat_url) { &local_client } else { &client };
 
                     let mut fallback_req = fallback_client.post(&chat_url);
 
@@ -2610,6 +2675,12 @@ async fn proxy_request(
                         return Ok(builder.body(body).unwrap());
                     } else if let Err(ref err) = fallback_response {
                         log::error!("Chat completions fallback failed: {}", err);
+                        return Ok(fallback_failure_response(
+                            &err.to_string(),
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        ));
                     }
                 }
 
@@ -2909,7 +2980,24 @@ fn keys_equal(presented: &str, expected: &str) -> bool {
 
 /// Whether the host of a request's `Origin` is one the server trusts.
 fn origin_is_trusted(origin: &str, trusted_hosts: &[Vec<String>]) -> bool {
-    is_valid_host(&extract_host_from_origin(origin), trusted_hosts)
+    let host = extract_host_from_origin(origin);
+    let bare = if host.starts_with('[') {
+        host.split(']').next().unwrap_or(&host).trim_start_matches('[').to_string()
+    } else {
+        host.split(':').next().unwrap_or(&host).to_string()
+    };
+    // A page served from a private LAN address is some other machine's (or
+    // process's) page: the Host header may be a LAN IP, an Origin may not,
+    // unless the user listed it.
+    if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
+        if !ip.is_loopback() {
+            return trusted_hosts.iter().flatten().any(|v| {
+                let v = v.trim();
+                v == "*" || extract_host_from_origin(v).split(':').next() == Some(bare.as_str())
+            });
+        }
+    }
+    is_valid_host(&host, trusted_hosts)
 }
 
 /// Convert a TCP bind failure into a user-facing message. Address-in-use
@@ -3008,8 +3096,7 @@ pub(crate) fn add_cors_headers_with_host_and_origin(
     let mut builder = builder;
 
     let origin_trusted = if !origin.is_empty() {
-        let origin_host = extract_host_from_origin(origin);
-        is_valid_host(&origin_host, trusted_hosts)
+        origin_is_trusted(origin, trusted_hosts)
     } else {
         false
     };
@@ -3159,63 +3246,32 @@ async fn start_server_internal(
     };
 
     let server_task = tokio::spawn(async move {
-        loop {
-            let (stream, _) = match listener.accept().await {
-                Ok(c) => c,
-                Err(e) => {
-                    log::error!("Accept error: {e}");
-                    // Out of file handles fails every accept at once; without a
-                    // pause the loop spins a core and floods the log.
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                    continue;
+        let handler = move |req| {
+            let cors_enabled = config.cors_enabled;
+            let response = proxy_request(
+                req,
+                client.clone(),
+                local_client.clone(),
+                config.clone(),
+                llama_state.clone(),
+                mlx_sessions.clone(),
+                provider_configs.clone(),
+                model_param_defaults.clone(),
+                mcp_servers.clone(),
+                mcp_settings.clone(),
+                jan_data_folder.clone(),
+            );
+            // One choke point for the CORS switch rather than a check at
+            // each of the many places a response is built.
+            async move {
+                let mut response = response.await?;
+                if !cors_enabled {
+                    strip_cors_headers(&mut response);
                 }
-            };
-            let io = TokioIo::new(stream);
-
-            let client = client.clone();
-            let local_client = local_client.clone();
-            let config = config.clone();
-            let llama_state = llama_state.clone();
-            let mlx_sessions = mlx_sessions.clone();
-            let provider_configs = provider_configs.clone();
-            let model_param_defaults = model_param_defaults.clone();
-            let mcp_servers = mcp_servers.clone();
-            let mcp_settings = mcp_settings.clone();
-            let jan_data_folder = jan_data_folder.clone();
-
-            let svc = service_fn(move |req| {
-                let cors_enabled = config.cors_enabled;
-                let response = proxy_request(
-                    req,
-                    client.clone(),
-                    local_client.clone(),
-                    config.clone(),
-                    llama_state.clone(),
-                    mlx_sessions.clone(),
-                    provider_configs.clone(),
-                    model_param_defaults.clone(),
-                    mcp_servers.clone(),
-                    mcp_settings.clone(),
-                    jan_data_folder.clone(),
-                );
-                // One choke point for the CORS switch rather than a check at
-                // each of the many places a response is built.
-                async move {
-                    let mut response = response.await?;
-                    if !cors_enabled {
-                        strip_cors_headers(&mut response);
-                    }
-                    Ok::<_, hyper::Error>(response)
-                }
-            });
-
-            tokio::spawn(async move {
-                if let Err(e) = http1::Builder::new().serve_connection(io, svc).await {
-                    log::debug!("Error serving connection: {e}");
-                }
-            });
-        }
-        #[allow(unreachable_code)]
+                Ok::<_, hyper::Error>(response)
+            }
+        };
+        accept_loop(listener, handler, MAX_CONNECTIONS, HEADER_READ_TIMEOUT).await;
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     });
 
@@ -3223,6 +3279,54 @@ async fn start_server_internal(
     let actual_port = bound_addr.port();
     log::info!("Flint API server started successfully on port {actual_port}");
     Ok(actual_port)
+}
+
+/// Accept connections until the task is aborted. Connections live in a
+/// `JoinSet` owned by this future, so aborting the accept task (stop_server)
+/// drops the set and aborts every open connection, keep-alive ones included.
+/// At most `max_conns` are served at once; `header_timeout` bounds how long a
+/// connection may take to send a request head (slowloris, idle keep-alive).
+async fn accept_loop<F, Fut>(
+    listener: tokio::net::TcpListener,
+    handler: F,
+    max_conns: usize,
+    header_timeout: std::time::Duration,
+) where
+    F: Fn(Request<Incoming>) -> Fut + Clone + Send + 'static,
+    Fut: std::future::Future<Output = Result<Response<ResBody>, hyper::Error>> + Send + 'static,
+{
+    let permits = Arc::new(tokio::sync::Semaphore::new(max_conns));
+    let mut conns = tokio::task::JoinSet::new();
+    loop {
+        // Wait for a free slot before accepting: past the cap, new peers queue
+        // in the kernel backlog instead of each holding a task and a socket.
+        let Ok(permit) = permits.clone().acquire_owned().await else {
+            return;
+        };
+        let (stream, _) = match listener.accept().await {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Accept error: {e}");
+                // Out of file handles fails every accept at once; without a
+                // pause the loop spins a core and floods the log.
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                continue;
+            }
+        };
+        while conns.try_join_next().is_some() {}
+        let io = TokioIo::new(stream);
+        let svc = service_fn(handler.clone());
+        conns.spawn(async move {
+            let _permit = permit;
+            let mut builder = http1::Builder::new();
+            builder
+                .timer(hyper_util::rt::TokioTimer::new())
+                .header_read_timeout(header_timeout);
+            if let Err(e) = builder.serve_connection(io, svc).await {
+                log::debug!("Error serving connection: {e}");
+            }
+        });
+    }
 }
 
 pub async fn stop_server(
@@ -3992,5 +4096,148 @@ mod tests {
         assert!(is_local_url("http://[::1]:5000/v1"));
         assert!(!is_local_url("https://api.openai.com/v1"));
         assert!(!is_local_url("not a url"));
+    }
+}
+
+#[cfg(test)]
+mod api_limits_tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    async fn echo(req: Request<Incoming>) -> Result<Response<ResBody>, hyper::Error> {
+        Ok(match read_limited(req.into_body(), 10).await {
+            Ok(b) => Response::new(full(b)),
+            Err(e) => body_error_response(e, "", "", &[]),
+        })
+    }
+
+    async fn start(max: usize, header: Duration) -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        (addr, tokio::spawn(accept_loop(listener, echo, max, header)))
+    }
+
+    async fn read_some(s: &mut TcpStream) -> String {
+        let mut buf = vec![0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(5), s.read(&mut buf))
+            .await
+            .expect("read timed out")
+            .unwrap_or(0);
+        String::from_utf8_lossy(&buf[..n]).to_string()
+    }
+
+    #[tokio::test]
+    async fn api_rejects_oversize_content_length_with_413() {
+        let (addr, task) = start(8, Duration::from_secs(5)).await;
+        let mut s = TcpStream::connect(addr).await.unwrap();
+        // Declares 100 bytes, sends none: refused before any read.
+        s.write_all(b"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n").await.unwrap();
+        assert!(read_some(&mut s).await.starts_with("HTTP/1.1 413"));
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn api_rejects_chunked_body_over_cap() {
+        let (addr, task) = start(8, Duration::from_secs(5)).await;
+        let mut s = TcpStream::connect(addr).await.unwrap();
+        s.write_all(
+            b"POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n20\r\n01234567890123456789012345678901\r\n0\r\n\r\n",
+        )
+        .await
+        .unwrap();
+        assert!(read_some(&mut s).await.starts_with("HTTP/1.1 413"));
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn api_slow_header_connection_is_closed() {
+        let (addr, task) = start(8, Duration::from_millis(300)).await;
+        let mut s = TcpStream::connect(addr).await.unwrap();
+        s.write_all(b"POST / HTTP/1.1\r\nHost: x\r\n").await.unwrap(); // never finishes
+        // The server drops the connection (optionally after a 408): EOF follows.
+        let mut buf = Vec::new();
+        tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut buf))
+            .await
+            .expect("slow-header connection was not closed")
+            .ok();
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn api_stop_closes_keepalive_connections() {
+        let (addr, task) = start(8, Duration::from_secs(30)).await;
+        let mut s = TcpStream::connect(addr).await.unwrap();
+        s.write_all(b"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nhi").await.unwrap();
+        assert!(read_some(&mut s).await.starts_with("HTTP/1.1 200"));
+        task.abort(); // what stop_server does
+        let _ = task.await;
+        let mut buf = [0u8; 16];
+        let n = tokio::time::timeout(Duration::from_secs(5), s.read(&mut buf))
+            .await
+            .expect("keep-alive connection survived stop")
+            .unwrap_or(0);
+        assert_eq!(n, 0);
+    }
+
+    #[tokio::test]
+    async fn api_connection_cap_queues_extra_clients() {
+        let (addr, task) = start(1, Duration::from_secs(30)).await;
+        let mut first = TcpStream::connect(addr).await.unwrap();
+        first.write_all(b"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nhi").await.unwrap();
+        assert!(read_some(&mut first).await.starts_with("HTTP/1.1 200"));
+        let mut second = TcpStream::connect(addr).await.unwrap();
+        second.write_all(b"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nhi").await.unwrap();
+        let mut buf = [0u8; 16];
+        // The only slot is held by `first`: no answer for `second` yet.
+        assert!(tokio::time::timeout(Duration::from_millis(300), second.read(&mut buf)).await.is_err());
+        drop(first);
+        assert!(read_some(&mut second).await.starts_with("HTTP/1.1 200"));
+        task.abort();
+    }
+
+    fn hn(s: &str) -> hyper::header::HeaderName {
+        hyper::header::HeaderName::from_bytes(s.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn forwards_to_upstream_drops_cookie_and_proxy_headers() {
+        for h in [
+            "cookie", "set-cookie", "proxy-authorization", "forwarded", "x-forwarded-for",
+            "x-forwarded-host", "sec-fetch-site", "sec-ch-ua", "authorization", "x-api-key",
+            "host", "origin", "referer", "content-length", "transfer-encoding",
+        ] {
+            assert!(!forwards_to_upstream(&hn(h)), "{h} must not be forwarded");
+        }
+    }
+
+    #[test]
+    fn forwards_to_upstream_keeps_anthropic_beta() {
+        for h in [
+            "anthropic-beta", "anthropic-version", "openai-organization", "openai-project",
+            "x-stainless-lang", "content-type", "accept", "user-agent",
+        ] {
+            assert!(forwards_to_upstream(&hn(h)), "{h} must be forwarded");
+        }
+    }
+
+    #[tokio::test]
+    async fn anthropic_fallback_failure_returns_502() {
+        let resp = fallback_failure_response("connection refused", "", "", &[]);
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["error"]["type"], "api_error");
+    }
+
+    #[test]
+    fn origin_on_private_lan_ip_is_not_trusted() {
+        let none: Vec<Vec<String>> = vec![];
+        assert!(origin_is_trusted("http://localhost:3000", &none));
+        assert!(origin_is_trusted("http://127.0.0.1:5173", &none));
+        assert!(!origin_is_trusted("http://192.168.1.5:3000", &none));
+        assert!(!origin_is_trusted("http://10.0.0.2", &none));
+        assert!(origin_is_trusted("http://192.168.1.5:3000", &[vec!["192.168.1.5".into()]]));
     }
 }
