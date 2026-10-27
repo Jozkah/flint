@@ -2067,7 +2067,7 @@ mod probe_cache_tests {
 mod tests {
     use super::*;
 
-    fn cfg() -> ShellConfig {
+    pub(super) fn cfg() -> ShellConfig {
         ShellConfig {
             program: PathBuf::from("/bin/bash"),
             args: vec!["-c".to_string()],
@@ -2077,11 +2077,11 @@ mod tests {
         }
     }
 
-    fn policy() -> Policy {
+    pub(super) fn policy() -> Policy {
         Policy::new(Path::new("/data/agent-workspace/threads/t1"), false)
     }
 
-    fn joined(args: &[String]) -> String {
+    pub(super) fn joined(args: &[String]) -> String {
         args.join(" ")
     }
 
@@ -3050,6 +3050,7 @@ mod tests {
 /// not that we generated the right flags. Skipped when no backend is available.
 #[cfg(all(test, unix))]
 mod enforcement_tests {
+    use super::tests::{cfg, joined, policy};
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
