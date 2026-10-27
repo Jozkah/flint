@@ -77,6 +77,27 @@ fn resolve_program(project_root: &Path, program: &str) -> Option<PathBuf> {
     None
 }
 
+/// Whether `rust-toolchain` / `rust-toolchain.toml` exists in the project or
+/// any parent folder, which rustup would honour.
+fn has_toolchain_override(project_root: &Path) -> bool {
+    let start = std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    start.ancestors().any(|dir| {
+        dir.join("rust-toolchain").exists() || dir.join("rust-toolchain.toml").exists()
+    })
+}
+
+/// Where the formatter runs: the folder of the program itself, never the
+/// project, so neither a cwd lookup (`cmd.exe` finding a planted `node.exe`)
+/// nor a cwd-keyed toolchain override can pick the binary. The file is passed
+/// as an absolute path.
+fn formatter_cwd(program: &Path) -> PathBuf {
+    program
+        .parent()
+        .filter(|p| p.is_dir())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir)
+}
+
 fn read(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
@@ -147,6 +168,13 @@ pub fn detect(project_root: &Path, file: &Path) -> Option<Formatter> {
             // An edition is required, and is evidence in itself: a directory
             // with a .rs file and no manifest is not a crate anybody formats.
             let edition = rust_edition(project_root)?;
+            // The rustup proxy obeys a repository's toolchain file (a `path`
+            // key execs a binary the repo supplies; a `channel` downloads one),
+            // and this runs unsandboxed: so a project that overrides the
+            // toolchain gets no automatic formatting.
+            if has_toolchain_override(project_root) {
+                return None;
+            }
             let config = first_existing(project_root, &["rustfmt.toml", ".rustfmt.toml"]);
             let program = resolve_program(project_root, "rustfmt")?;
             Some(Formatter {
@@ -272,7 +300,7 @@ pub enum Formatted {
 /// Blocking, and deliberately so: it is called from the edit path, which has
 /// just written the file and must not show a diff of something the formatter
 /// is still rewriting.
-pub fn run(formatter: &Formatter, project_root: &Path, file: &Path) -> Formatted {
+pub fn run(formatter: &Formatter, _project_root: &Path, file: &Path) -> Formatted {
     let before = match std::fs::read_to_string(file) {
         Ok(text) => text,
         // A file that is not text is not a file a formatter reads.
@@ -281,8 +309,10 @@ pub fn run(formatter: &Formatter, project_root: &Path, file: &Path) -> Formatted
     let mut command = std::process::Command::new(&formatter.program);
     command
         .args(&formatter.args)
-        .arg(file)
-        .current_dir(project_root)
+        .arg(std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf()))
+        .current_dir(formatter_cwd(&formatter.program))
+        .env("NoDefaultCurrentDirectoryInExePath", "1")
+        .env("RUSTUP_AUTO_INSTALL", "0")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
@@ -495,6 +525,32 @@ mod tests {
         // Running it again changes nothing, and says so rather than claiming a
         // change it did not make.
         assert_eq!(run(&formatter, &root, &file), Formatted::Unchanged);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rustfmt_refused_with_toolchain_override() {
+        let root = temp_root("toolchain");
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"x\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("a.rs"), "fn  main(){}\n").unwrap();
+        std::fs::write(root.join("rust-toolchain.toml"), "[toolchain]\npath = \"./evil\"\n").unwrap();
+        assert_eq!(detect(&root, &root.join("a.rs")), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn formatter_cwd_is_not_project() {
+        let root = temp_root("cwd");
+        // A program that is not in an existing folder does not make the
+        // project the cwd.
+        let cwd = formatter_cwd(&root.join("missing").join("prettier.cmd"));
+        assert_ne!(cwd, root);
+        let real = std::env::current_exe().unwrap();
+        assert_eq!(formatter_cwd(&real), real.parent().unwrap());
         let _ = std::fs::remove_dir_all(&root);
     }
 
