@@ -20,14 +20,45 @@ pub const MAX_WRITE_CHARS: usize = 12_000;
 pub const MAX_READ_BYTES: usize = 32 * 1024;
 const TIMEOUT_SECS: u64 = 15;
 
+/// Saved clipboard images older than this are deleted on the next read.
+const IMAGE_MAX_AGE: Duration = Duration::from_secs(3600);
+
+fn image_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("flint-clipboard")
+}
+
+/// Deletes `*.png` files in `dir` last modified more than `max_age` ago;
+/// returns how many went. Best effort: a file that cannot be removed stays.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn sweep_old_images(dir: &std::path::Path, max_age: Duration) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("png") {
+            continue;
+        }
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if old && std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     Read,
     Write { text: String },
 }
 
-// Text first. With no text, an image is saved as a PNG in the temp folder and
-// its path reported (the model can open it with its file tools); copied files
+// Text first. With no text, an image is saved as a PNG in the temp folder (swept
+// after an hour) and its path reported (the model can open it with its file tools); copied files
 // are listed. Asking for the text of an image is what used to fail.
 const READ: &str = r#"
 $ErrorActionPreference='Stop'
@@ -35,11 +66,12 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 if ([System.Windows.Forms.Clipboard]::ContainsText()) {
   $t = [System.Windows.Forms.Clipboard]::GetText()
+  if ($t.Length -gt $env:CB_MAX) { $t = $t.Substring(0, [int]$env:CB_MAX) }
   if ($t.Length -gt 0) { $t; return }
 }
 if ([System.Windows.Forms.Clipboard]::ContainsImage()) {
   $img = [System.Windows.Forms.Clipboard]::GetImage()
-  $dir = Join-Path $env:TEMP 'flint-clipboard'
+  $dir = $env:CB_DIR
   New-Item -ItemType Directory -Force $dir | Out-Null
   $file = Join-Path $dir ("clipboard-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".png")
   $img.Save($file, [System.Drawing.Imaging.ImageFormat]::Png)
@@ -116,7 +148,9 @@ pub async fn clipboard(args: &Value) -> String {
     cmd.arg("-NoProfile").arg("-NonInteractive").arg("-STA").arg("-Command");
     match &action {
         Action::Read => {
-            cmd.arg(crate::tools::host_read::utf8_script(READ));
+            let dir = image_dir();
+            sweep_old_images(&dir, IMAGE_MAX_AGE);
+            cmd.arg(crate::tools::host_read::utf8_script(READ)).env("CB_DIR", &dir).env("CB_MAX", MAX_READ_BYTES.to_string());
         }
         Action::Write { text } => {
             cmd.arg(crate::tools::host_read::utf8_script(WRITE)).env("CB_TEXT", text);
@@ -179,6 +213,24 @@ mod tests {
         let text = format!("line one\nline two {}DANGEROUS_TAIL", "x".repeat(100));
         let long = summary(&Action::Write { text: text.clone() });
         assert!(long.starts_with("Replace the clipboard with ") && long.contains(&text));
+    }
+
+    #[test]
+    fn clipboard_image_cleanup() {
+        let dir = std::env::temp_dir().join(format!("flint-clip-clean-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = dir.join("old.png");
+        let fresh = dir.join("fresh.png");
+        let other = dir.join("keep.txt");
+        for f in [&old, &fresh, &other] {
+            std::fs::write(f, "x").unwrap();
+        }
+        let two_hours_ago = std::time::SystemTime::now() - Duration::from_secs(7200);
+        std::fs::File::options().write(true).open(&old).unwrap().set_modified(two_hours_ago).unwrap();
+        assert_eq!(sweep_old_images(&dir, IMAGE_MAX_AGE), 1);
+        assert!(!old.exists() && fresh.exists() && other.exists());
+        assert_eq!(sweep_old_images(&dir.join("missing"), IMAGE_MAX_AGE), 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

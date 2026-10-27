@@ -20,12 +20,13 @@ use crate::tools::git_tool::{canon, in_jan_dir, inside, Roots};
 const TIMEOUT_SECS: u64 = 15;
 
 /// Document, image, media and text types that open in a viewer. Anything else
-/// (a program, a script, a disk image, a help file, a macro document) can
-/// only be revealed: a list of what runs is never complete. Lower case.
+/// (a program, a script, a disk image, a help file, a macro document, and
+/// html, htm, svg and rtf, which run script or fetch remote content in a
+/// browser or word processor) can only be revealed: a list of what runs is never complete. Lower case.
 pub const OPENABLE: &[&str] = &[
-    "pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "tif", "tiff", "txt", "md", "markdown", "log",
-    "html", "htm", "csv", "tsv", "json", "xml", "yaml", "yml", "toml", "docx", "xlsx", "pptx", "odt", "ods", "odp",
-    "rtf", "mp3", "wav", "ogg", "flac", "m4a", "mp4", "webm", "mkv", "mov", "avi",
+    "pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "txt", "md", "markdown", "log",
+    "csv", "tsv", "json", "xml", "yaml", "yml", "toml", "docx", "xlsx", "pptx", "odt", "ods", "odp",
+    "mp3", "wav", "ogg", "flac", "m4a", "mp4", "webm", "mkv", "mov", "avi",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,23 +182,22 @@ mod tests {
     }
 
     #[test]
-    fn only_documents_open_and_anything_can_be_shown() {
+    fn open_path_refuses_html_and_only_documents_open() {
         let dir = std::env::temp_dir().join(format!("flint-open-path-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         for name in [
-            "report.pdf", "tool.exe", "run.BAT", "setup.msi", "noext", "page.html", "x.ps1", "link.lnk", "help.chm",
-            "disk.iso", "a.settingcontent-ms", "book.xlsm",
+            "report.pdf", "tool.exe", "run.BAT", "setup.msi", "noext", "x.ps1", "link.lnk", "help.chm",
+            "disk.iso", "a.settingcontent-ms", "book.xlsm", "page.html", "a.htm", "i.svg", "t.rtf",
         ] {
             std::fs::write(dir.join(name), "x").unwrap();
         }
         let roots = roots_in(&dir);
         let open = |p: &str, reveal: bool| resolve(&Plan { path: p.into(), reveal }, &roots);
         assert!(open("report.pdf", false).is_ok());
-        assert!(open("page.html", false).is_ok());
         assert!(open("sub", false).is_ok());
         for runnable in [
             "tool.exe", "run.BAT", "setup.msi", "noext", "x.ps1", "link.lnk", "help.chm", "disk.iso",
-            "a.settingcontent-ms", "book.xlsm",
+            "a.settingcontent-ms", "book.xlsm", "page.html", "a.htm", "i.svg", "t.rtf",
         ] {
             assert!(open(runnable, false).is_err(), "{runnable}");
             assert!(open(runnable, true).is_ok(), "{runnable} revealed");
