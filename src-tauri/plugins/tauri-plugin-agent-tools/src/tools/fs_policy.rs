@@ -76,6 +76,16 @@ pub fn credential_dirs(home: &Path) -> Vec<PathBuf> {
         ".config/gcloud",
         ".azure",
         ".kube",
+        ".docker",
+        // Windows locations.
+        "AppData/Roaming/gcloud",
+        "AppData/Roaming/Mozilla/Firefox",
+        "AppData/Local/Google/Chrome/User Data",
+        "AppData/Local/Microsoft/Edge/User Data",
+        "AppData/Local/BraveSoftware/Brave-Browser/User Data",
+        "AppData/Local/Vivaldi/User Data",
+        "AppData/Local/Chromium/User Data",
+        "AppData/Roaming/Opera Software",
         // Browser profiles hold cookies and saved logins.
         ".mozilla",
         ".config/google-chrome",
@@ -304,6 +314,17 @@ mod tests {
             std::fs::create_dir_all(home.join(sub)).unwrap();
         }
         Fx { _dir: dir, home, ws }
+    }
+
+    #[test]
+    fn fs_policy_default_denies_chrome_user_data() {
+        let f = fx();
+        for sub in ["AppData/Local/Google/Chrome/User Data", ".docker"] {
+            std::fs::create_dir_all(f.home.join(sub)).unwrap();
+        }
+        let r = rules(&f, FsConfig::default(), true);
+        assert!(r.read_denied(&f.home.join("AppData/Local/Google/Chrome/User Data/Default/Login Data")));
+        assert!(r.read_denied(&f.home.join(".docker/config.json")));
     }
 
     fn rules(f: &Fx, cfg: FsConfig, creds: bool) -> FsRules {

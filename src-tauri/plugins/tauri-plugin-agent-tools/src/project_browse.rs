@@ -96,11 +96,26 @@ pub struct ProjectFile {
 /// Name-based, deliberately conservative: `.env` and variants, private keys,
 /// keystores, and the classic credential files.
 pub fn is_sensitive_name(name: &str) -> bool {
-    let lower = name.to_lowercase();
+    let mut lower = name.to_lowercase();
+    // Windows alternate data streams and trailing dots/spaces name the same file.
+    if let Some(i) = lower.find(':') {
+        lower.truncate(i);
+    }
+    let lower = lower.trim_end_matches(['.', ' ']).to_string();
     if lower == ".env" || lower.starts_with(".env.") {
         return true;
     }
-    if lower == ".npmrc" || lower == ".netrc" || lower == ".pgpass" {
+    if lower == ".npmrc" || lower == ".netrc"
+        || lower == ".pgpass"
+        || lower == ".pypirc"
+        || lower == ".git-credentials"
+        || lower == ".dockercfg"
+        || lower == ".vault-token"
+        || lower == ".htpasswd"
+        || lower == "kubeconfig"
+        || lower == "credentials.tfrc.json"
+        || lower == "_netrc"
+    {
         return true;
     }
     if lower == "credentials" || lower == "credentials.json" || lower == "service-account.json" {
@@ -161,7 +176,15 @@ fn resolve_rel(root_canon: &Path, rel: &str) -> Result<PathBuf, String> {
     }
     for component in rel_path.components() {
         match component {
-            Component::Normal(_) => {}
+            Component::Normal(part) => {
+                // Alternate data streams / DOS-name tricks on Windows.
+                if cfg!(windows) {
+                    let part = part.to_string_lossy();
+                    if part.contains(':') || part.ends_with('.') || part.ends_with(' ') {
+                        return Err(format!("path component is not allowed: {rel}"));
+                    }
+                }
+            }
             Component::CurDir => {}
             _ => return Err(format!("path escapes the project root: {rel}")),
         }
@@ -635,6 +658,37 @@ mod tests {
         assert_eq!(over.size, MAX_READ_BYTES + 1);
         assert_eq!(over.preview.as_deref().map(str::len), Some(PREVIEW_BYTES));
         assert!(bin.preview.is_none());
+    }
+
+    #[test]
+    fn sensitive_names_flagged() {
+        for name in [
+            ".pypirc",
+            ".git-credentials",
+            ".dockercfg",
+            "credentials.tfrc.json",
+            "kubeconfig",
+            ".ENV",
+            ".env::$DATA",
+            ".env.",
+            "id_rsa:stream",
+        ] {
+            assert!(is_sensitive_name(name), "{name} should be sensitive");
+        }
+        assert!(!is_sensitive_name("credentials.rs"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_rel_rejects_ads() {
+        let d = std::env::temp_dir().join("w12-ads");
+        std::fs::create_dir_all(&d).unwrap();
+        let root = d.canonicalize().unwrap();
+        std::fs::write(root.join(".env"), "x").unwrap();
+        assert!(resolve_rel(&root, ".env::$DATA").is_err());
+        assert!(resolve_rel(&root, ".env:s").is_err());
+        assert!(resolve_rel(&root, ".env.").is_err());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

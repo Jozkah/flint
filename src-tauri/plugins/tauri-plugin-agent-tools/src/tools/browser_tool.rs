@@ -147,10 +147,21 @@ pub fn resolve_upload(args: &Value, ctx: &ToolContext<'_>) -> Result<std::path::
     let mut roots: Vec<std::path::PathBuf> = vec![ctx.project_root.to_path_buf()];
     roots.extend(ctx.scratch_root.map(|p| p.to_path_buf()));
     roots.extend(ctx.write_roots.iter().cloned());
-    let inside = roots
+    let matched = roots
         .iter()
         .filter_map(|r| std::fs::canonicalize(r).ok())
-        .any(|r| canon.starts_with(&r));
+        .find(|r| canon.starts_with(r));
+    let inside = matched.is_some();
+    if let Some(root) = &matched {
+        let secret = canon
+            .strip_prefix(root)
+            .unwrap_or(&canon)
+            .components()
+            .any(|c| crate::project_browse::is_sensitive_name(&c.as_os_str().to_string_lossy()));
+        if secret {
+            return Err(format!("ERROR: {raw} may hold credentials, so it was not uploaded."));
+        }
+    }
     if !inside {
         return Err(format!(
             "ERROR: {raw} is outside your working folder, so it was not uploaded. Copy the file into the workspace first, or ask the user for access."
@@ -226,6 +237,18 @@ mod tests {
         assert_eq!(class_of(&json!({ "action": "download" })), Class::Download);
         assert_eq!(class_of(&json!({ "action": "open" })), Class::Open);
         assert_eq!(class_of(&json!({ "action": "Evaluate" })), Class::Evaluate);
+    }
+
+    #[test]
+    fn upload_refuses_env_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("store");
+        std::fs::write(dir.path().join(".env"), "K=v").unwrap();
+        std::fs::write(dir.path().join("ok.txt"), "hi").unwrap();
+        let ctx = crate::tools::ToolContext::new(dir.path(), &store, &[]);
+        let err = resolve_upload(&json!({ "path": ".env" }), &ctx).unwrap_err();
+        assert!(err.contains("credentials"), "{err}");
+        assert!(resolve_upload(&json!({ "path": "ok.txt" }), &ctx).is_ok());
     }
 
     #[test]
