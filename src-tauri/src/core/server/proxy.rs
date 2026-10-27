@@ -7,7 +7,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use jan_utils::{extract_host_from_origin, is_cors_header, is_valid_host, remove_prefix};
+use jan_utils::{is_cors_header, is_trusted_origin, is_valid_host, remove_prefix};
 use reqwest::Client;
 use serde_json;
 use std::collections::HashMap;
@@ -2980,24 +2980,8 @@ fn keys_equal(presented: &str, expected: &str) -> bool {
 
 /// Whether the host of a request's `Origin` is one the server trusts.
 fn origin_is_trusted(origin: &str, trusted_hosts: &[Vec<String>]) -> bool {
-    let host = extract_host_from_origin(origin);
-    let bare = if host.starts_with('[') {
-        host.split(']').next().unwrap_or(&host).trim_start_matches('[').to_string()
-    } else {
-        host.split(':').next().unwrap_or(&host).to_string()
-    };
-    // A page served from a private LAN address is some other machine's (or
-    // process's) page: the Host header may be a LAN IP, an Origin may not,
-    // unless the user listed it.
-    if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
-        if !ip.is_loopback() {
-            return trusted_hosts.iter().flatten().any(|v| {
-                let v = v.trim();
-                v == "*" || extract_host_from_origin(v).split(':').next() == Some(bare.as_str())
-            });
-        }
-    }
-    is_valid_host(&host, trusted_hosts)
+    // The Host header may be a LAN IP; an Origin may not, unless the user listed it.
+    is_trusted_origin(origin, trusted_hosts)
 }
 
 /// Convert a TCP bind failure into a user-facing message. Address-in-use

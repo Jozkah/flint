@@ -100,9 +100,117 @@ pub fn is_valid_host(host: &str, trusted_hosts: &[Vec<String>]) -> bool {
     })
 }
 
+/// Bare host (no port, no brackets, lowercased) of an Origin value or allowlist entry.
+fn bare_host(value: &str) -> String {
+    let host = extract_host_from_origin(value.trim());
+    let bare = if host.starts_with('[') {
+        host.split(']').next().unwrap_or(&host).trim_start_matches('[').to_string()
+    } else {
+        host.split(':').next().unwrap_or(&host).to_string()
+    };
+    bare.to_lowercase()
+}
+
+/// Whether a request `Origin` may read API responses cross-origin. Stricter than
+/// `is_valid_host` (which also accepts LAN IP literals for the Host header): a page
+/// served from a LAN address, `0.0.0.0` or `host.docker.internal` is another
+/// machine's page and is trusted only when the user listed it. Always trusted:
+/// loopback on any port (`localhost`, `127.0.0.1`, `[::1]`) and the webview
+/// origins (`tauri://localhost`, `http(s)://tauri.localhost`).
+pub fn is_trusted_origin(origin: &str, trusted_hosts: &[Vec<String>]) -> bool {
+    let origin = origin.trim();
+    if origin.is_empty() {
+        return false;
+    }
+    let host = bare_host(origin);
+    if host.is_empty() {
+        return false;
+    }
+    let scheme = origin.split("://").next().filter(|_| origin.contains("://"));
+    let web_scheme = matches!(scheme, Some("http" | "https" | "tauri"));
+    if web_scheme && (host == "localhost" || host == "tauri.localhost") {
+        return true;
+    }
+    if web_scheme {
+        if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+            if ip.is_loopback() {
+                return true;
+            }
+        }
+    }
+    trusted_hosts.iter().flatten().any(|v| {
+        let v = v.trim();
+        v == "*" || bare_host(v) == host
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn origin_192_168_rejected() {
+        let none: Vec<Vec<String>> = vec![];
+        assert!(!is_trusted_origin("http://192.168.1.50", &none));
+        assert!(!is_trusted_origin("http://10.0.0.2:3000", &none));
+        assert!(!is_trusted_origin("http://169.254.1.1", &none));
+        assert!(!is_trusted_origin("http://172.16.0.9", &none));
+        assert!(!is_trusted_origin("http://host.docker.internal:3000", &none));
+        assert!(!is_trusted_origin("https://evil.com", &none));
+        assert!(!is_trusted_origin("", &none));
+    }
+
+    #[test]
+    fn origin_localhost_any_port_accepted() {
+        let none: Vec<Vec<String>> = vec![];
+        assert!(is_trusted_origin("http://localhost:3000", &none));
+        assert!(is_trusted_origin("http://localhost", &none));
+        assert!(is_trusted_origin("http://127.0.0.1:5173", &none));
+        assert!(is_trusted_origin("http://[::1]:8080", &none));
+        assert!(!is_trusted_origin("http://localhost.evil.com", &none));
+    }
+
+    #[test]
+    fn origin_0_0_0_0_rejected() {
+        let none: Vec<Vec<String>> = vec![];
+        assert!(!is_trusted_origin("http://0.0.0.0:1337", &none));
+    }
+
+    #[test]
+    fn origin_explicit_trusted_host_accepted() {
+        assert!(is_trusted_origin(
+            "http://192.168.1.50:3000",
+            &[vec!["192.168.1.50".into()]]
+        ));
+        assert!(is_trusted_origin(
+            "http://host.docker.internal:3000",
+            &[vec!["http://host.docker.internal".into()]]
+        ));
+        assert!(is_trusted_origin(
+            "chrome-extension://abcd",
+            &[vec!["chrome-extension://abcd".into()]]
+        ));
+        assert!(!is_trusted_origin(
+            "http://192.168.1.51",
+            &[vec!["192.168.1.50".into()]]
+        ));
+    }
+
+    #[test]
+    fn host_header_lan_ip_still_accepted() {
+        let none: Vec<Vec<String>> = vec![vec![]];
+        assert!(is_valid_host("192.168.1.50:1337", &none));
+        assert!(!is_trusted_origin("http://192.168.1.50:1337", &none));
+    }
+
+    #[test]
+    fn tauri_origin_accepted() {
+        let none: Vec<Vec<String>> = vec![];
+        assert!(is_trusted_origin("tauri://localhost", &none));
+        assert!(is_trusted_origin("http://tauri.localhost", &none));
+        assert!(is_trusted_origin("https://tauri.localhost", &none));
+        assert!(!is_trusted_origin("ftp://localhost", &none));
+    }
 
     // Scenario A from GHSA-x6p8-7cp8-c3p6: default bind, empty allowlist stays safe.
     #[test]

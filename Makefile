@@ -6,6 +6,14 @@ REPORT_PORTAL_PROJECT_NAME ?= ""
 REPORT_PORTAL_LAUNCH_NAME ?= "Jan App"
 REPORT_PORTAL_DESCRIPTION ?= "Jan App report"
 
+# Debug-build async tests (the agent loop, the approval flow) hold large futures
+# on the test thread, and the default 2 MiB test thread stack overflows with
+# SIGABRT on linux (approval_loop_tests::a_flagged_write_raises_the_secret_prompt_...).
+# Rust reads this for every thread it spawns; it is virtual memory, committed on
+# use. A .cargo/config.toml [env] entry would not reach CI: cargo only reads the
+# config of the directory it is run from, and the rust targets run from the root.
+export RUST_MIN_STACK ?= 16777216
+
 # Detect OS
 ifeq ($(OS),Windows_NT)
     DETECTED_OS := Windows
