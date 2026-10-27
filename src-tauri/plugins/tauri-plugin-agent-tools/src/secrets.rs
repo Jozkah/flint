@@ -72,9 +72,7 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     if trimmed.is_empty() {
         return None;
     }
-    let lower = trimmed.to_ascii_lowercase();
-
-    if lower.contains("begin") && lower.contains("private key") {
+    if is_pem_begin(trimmed) {
         return Some((
             SecretKind::PrivateKey,
             "-----BEGIN … PRIVATE KEY-----".into(),
@@ -82,15 +80,8 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     }
 
     // scheme://user:password@host
-    if let Some(at) = trimmed.find('@') {
-        let head = &trimmed[..at];
-        if let Some(userinfo) = head.rsplit("://").next().filter(|_| head.contains("://")) {
-            if let Some((_, password)) = userinfo.split_once(':') {
-                if !is_stand_in_password(password) {
-                    return Some((SecretKind::ConnectionString, mask_after(trimmed, "://")));
-                }
-            }
-        }
+    if !url_password_spans(trimmed).is_empty() {
+        return Some((SecretKind::ConnectionString, mask_after(trimmed, "://")));
     }
 
     // A credential written into a sentence.
@@ -189,10 +180,91 @@ fn is_stand_in_value(lower: &str) -> bool {
         || lower.starts_with('<')
 }
 
+/// A PEM / OpenSSH / PGP private-key header line: `-----BEGIN ... PRIVATE KEY...-----`.
+/// Needs the dashes, so a sentence mentioning "begin" and "private key" is not one.
+fn is_pem_begin(trimmed: &str) -> bool {
+    let Some(at) = trimmed.find("----BEGIN ") else {
+        return false;
+    };
+    let after = &trimmed[at + 10..];
+    after.contains("PRIVATE KEY") && trimmed.ends_with("-----")
+}
+
+fn is_pem_end(trimmed: &str) -> bool {
+    trimmed.contains("-----END ") && trimmed.contains("PRIVATE KEY")
+}
+
+/// Most lines of one key block that are redacted when no END line shows up.
+const PEM_LINE_CAP: usize = 200;
+
+/// Byte ranges of the password in every `scheme://user:password@host` on the
+/// line. The authority ends at whitespace, `/`, `?`, `#` or a quote; an
+/// all-digit "password" is a port (`host:8080@...`); stand-ins are skipped.
+fn url_password_spans(line: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = line[from..].find("://") {
+        let start = from + rel + 3;
+        let rest = &line[start..];
+        let end = rest
+            .find(|c: char| c.is_whitespace() || matches!(c, '/' | '?' | '#' | '"' | '\'' | '<' | '>'))
+            .unwrap_or(rest.len());
+        let authority = &rest[..end];
+        if let Some(at) = authority.rfind('@') {
+            let userinfo = &authority[..at];
+            if let Some(colon) = userinfo.find(':') {
+                let password = &userinfo[colon + 1..];
+                if !password.is_empty()
+                    && !password.bytes().all(|b| b.is_ascii_digit())
+                    && !is_stand_in_password(password)
+                {
+                    spans.push((start + colon + 1, start + at));
+                }
+            }
+        }
+        from = start + end;
+    }
+    spans
+}
+
+/// Replace just the password of every URL userinfo on the line.
+fn redact_url_passwords(line: &str) -> Option<String> {
+    let spans = url_password_spans(line);
+    if spans.is_empty() {
+        return None;
+    }
+    let mut out = String::with_capacity(line.len());
+    let mut copied = 0;
+    for (s, e) in spans {
+        out.push_str(&line[copied..s]);
+        out.push_str(REDACTED);
+        copied = e;
+    }
+    out.push_str(&line[copied..]);
+    Some(out)
+}
+
+/// A whole-value shell reference: `$VAR`, `${VAR}` or `$(...)`.
+fn is_variable_reference(value: &str) -> bool {
+    let ident = |s: &str| {
+        let mut c = s.chars();
+        matches!(c.next(), Some(f) if f.is_ascii_alphabetic() || f == '_')
+            && c.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    };
+    if let Some(rest) = value.strip_prefix("${") {
+        return rest.strip_suffix('}').is_some_and(ident);
+    }
+    if let Some(rest) = value.strip_prefix("$(") {
+        return rest.strip_suffix(')').is_some_and(|r| !r.is_empty());
+    }
+    value.strip_prefix('$').is_some_and(ident)
+}
+
 /// The password half of `user:password@host`, when it is a stand-in.
 fn is_stand_in_password(password: &str) -> bool {
     let lower = password.to_ascii_lowercase();
-    is_stand_in_value(&lower)
+    lower.contains(REDACTED)
+        || is_stand_in_value(&lower)
         || lower.is_empty()
         || lower.starts_with('$')
         || lower.starts_with('%')
@@ -424,6 +496,10 @@ const ISSUED_PREFIXES: &[(&str, usize, SecretKind)] = &[
     ("sk-ant-", 30, SecretKind::ApiKey),
 ];
 
+/// Markup a value can be wrapped in: stripped before matching, kept in output.
+const LEAD_PUNCT: [char; 7] = ['(', '[', '{', '<', '`', '*', '_'];
+const TRAIL_PUNCT: [char; 9] = ['.', ';', ':', ')', ']', '}', '`', '*', '>'];
+
 /// A credential recognisable by its own shape, anywhere in a line.
 fn token_like(line: &str) -> Option<(SecretKind, String)> {
     // `Bearer <token>` and `Basic <token>` carry no variable name at all, and
@@ -447,7 +523,9 @@ fn token_like(line: &str) -> Option<(SecretKind, String)> {
 
     for word in line.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ',' | '=')) {
         // Punctuation a sentence puts after a value, not part of it.
-        let word = word.trim_end_matches(['.', ';', ':', ')', ']', '}']);
+        let word = word
+            .trim_start_matches(LEAD_PUNCT)
+            .trim_end_matches(TRAIL_PUNCT);
         if word.len() < 16 {
             continue;
         }
@@ -605,6 +683,8 @@ fn hunk_start(header: &str) -> Option<usize> {
 /// "could not be checked for credentials").
 pub fn redact_secrets(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
+    // Lines of a private-key block seen so far; `None` outside one.
+    let mut pem: Option<usize> = None;
     for piece in text.split_inclusive('\n') {
         let (line, ending) = if let Some(line) = piece.strip_suffix("\r\n") {
             (line, "\r\n")
@@ -613,7 +693,28 @@ pub fn redact_secrets(text: &str) -> String {
         } else {
             (piece, "")
         };
-        out.push_str(&redact_one_line(line));
+        let mut in_block = false;
+        if let Some(n) = pem {
+            in_block = true;
+            pem = if is_pem_end(line.trim()) || n + 1 >= PEM_LINE_CAP {
+                None
+            } else {
+                Some(n + 1)
+            };
+        } else {
+            let body = line.strip_prefix(['+', '-']).unwrap_or(line);
+            if is_pem_begin(body.trim()) {
+                in_block = true;
+                if !is_pem_end(body.trim()) {
+                    pem = Some(1);
+                }
+            }
+        }
+        if in_block {
+            out.push_str(REDACTED);
+        } else {
+            out.push_str(&redact_one_line(line));
+        }
         out.push_str(ending);
     }
     out
@@ -649,7 +750,7 @@ fn redact_assignment_patterns(line: &str) -> Option<String> {
             let label = caps.get(1).map_or("", |m| m.as_str());
             let value = &whole[label.len()..];
             // Already taken, or a reference to a value rather than the value.
-            if value.contains("redacted") || value.starts_with('$') || value.starts_with('[') {
+            if value.starts_with(REDACTED) || is_variable_reference(value) {
                 whole.to_string()
             } else {
                 format!("{label}{REDACTED}")
@@ -663,7 +764,10 @@ fn redact_assignment_patterns(line: &str) -> Option<String> {
 
 /// [`redact_secrets`] for a single line without its terminator.
 fn redact_one_line(line: &str) -> String {
-    let base = redact_one_line_core(line);
+    // URL passwords first and on every line, so one sharing its line with
+    // another secret is still taken (the core pass keeps only one finding).
+    let pre = redact_url_passwords(line);
+    let base = redact_one_line_core(pre.as_deref().unwrap_or(line));
     redact_assignment_patterns(&base).unwrap_or(base)
 }
 
@@ -754,23 +858,25 @@ fn redact_tokens_in_line(line: &str) -> Option<String> {
 /// Sentence punctuation after the value is kept, so a redacted line still reads
 /// as a line; the value itself never survives.
 fn redacted_word(word: &str, after_scheme: bool) -> Option<String> {
-    let trimmed = word.trim_end_matches(['.', ';', ':', ')', ']', '}']);
-    let tail = &word[trimmed.len()..];
+    let body = word.trim_start_matches(LEAD_PUNCT);
+    let head = &word[..word.len() - body.len()];
+    let trimmed = body.trim_end_matches(TRAIL_PUNCT);
+    let tail = &word[head.len() + trimmed.len()..];
     // Sixteen characters is the shortest of the issued formats below. Shorter
     // than that and a match would be a coincidence, not a credential.
     if trimmed.len() < 16 {
         return None;
     }
     if after_scheme {
-        return Some(format!("{REDACTED}{tail}"));
+        return Some(format!("{head}{REDACTED}{tail}"));
     }
     // A JWT: three base64url segments, and the header always starts `eyJ`.
     if trimmed.starts_with("eyJ") && trimmed.matches('.').count() == 2 {
-        return Some(format!("{REDACTED}{tail}"));
+        return Some(format!("{head}{REDACTED}{tail}"));
     }
     for (prefix, min_len, _) in ISSUED_PREFIXES {
         if trimmed.len() >= *min_len && trimmed.starts_with(prefix) {
-            return Some(format!("{prefix}{REDACTED}{tail}"));
+            return Some(format!("{head}{prefix}{REDACTED}{tail}"));
         }
     }
     None
@@ -1154,6 +1260,83 @@ git clone https://user:hunter2hunter2@github.com/octocat/Hello-World\n";
         ] {
             assert_eq!(redact_secrets(clean), clean);
         }
+    }
+
+    #[test]
+    fn pem_multiline_body_redacted() {
+        let text = "before\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\nQyNTUxOQAAACD=\n-----END OPENSSH PRIVATE KEY-----\nafter\n";
+        let out = redact_secrets(text);
+        assert!(!out.contains("b3BlbnNz") && !out.contains("QyNTUx") && !out.contains("BEGIN"), "{out}");
+        assert!(out.starts_with("before\n") && out.ends_with("\nafter\n"), "{out}");
+        for kind in ["RSA ", "ENCRYPTED ", "EC ", ""] {
+            let t = format!("-----BEGIN {kind}PRIVATE KEY-----\nAAAABBBB\n-----END {kind}PRIVATE KEY-----");
+            assert!(!redact_secrets(&t).contains("AAAABBBB"));
+        }
+        let pgp = "-----BEGIN PGP PRIVATE KEY BLOCK-----\nxjMEAAAA\n-----END PGP PRIVATE KEY BLOCK-----";
+        assert!(!redact_secrets(pgp).contains("xjMEAAAA"));
+    }
+
+    #[test]
+    fn pem_unterminated_capped() {
+        let mut text = String::from("-----BEGIN RSA PRIVATE KEY-----\n");
+        for i in 0..300 {
+            text.push_str(&format!("bodyline{i:04}\n"));
+        }
+        let out = redact_secrets(&text);
+        assert!(!out.contains("bodyline0000") && !out.contains("bodyline0197"), "{out}");
+        assert!(out.contains("bodyline0299"), "cap must end the block");
+        assert_eq!(out.lines().filter(|l| *l == REDACTED).count(), PEM_LINE_CAP);
+        // A sentence is not a header.
+        let prose = "begin by rotating the private key weekly";
+        assert!(scan_text(prose).is_empty());
+        assert_eq!(redact_secrets(prose), prose);
+    }
+
+    #[test]
+    fn assignment_dollar_secret_redacted() {
+        let out = redact_secrets("API_KEY=$up3r$ecret!value");
+        assert!(!out.contains("up3r"), "{out}");
+        let out = redact_secrets("API_KEY=[abcdefgh1234]");
+        assert!(!out.contains("abcdefgh1234"), "{out}");
+    }
+
+    #[test]
+    fn assignment_reference_kept() {
+        for l in ["PROD_KEY=$VAULT_KEY", "PROD_KEY=${VAULT_KEY}", "PROD_KEY=$(vault_read)", "API_KEY=[redacted]"] {
+            assert_eq!(redact_secrets(l), l);
+        }
+    }
+
+    #[test]
+    fn url_port_plus_email_unchanged() {
+        let t = "see http://localhost:8080/ and mail bob@example.com\n";
+        assert!(scan_text(t).is_empty());
+        assert_eq!(redact_secrets(t), t);
+        let t = "ssh://host:22 user@example.com";
+        assert_eq!(redact_secrets(t), t);
+    }
+
+    #[test]
+    fn url_password_redacted_with_other_secret_on_line() {
+        let line = "clone https://bob:hunter2hunter2@git.example.org/r.git token ghp_abcdefghijklmnopqrstuvwxyz0123";
+        let out = redact_secrets(line);
+        assert!(!out.contains("hunter2hunter2") && !out.contains("abcdefghijklmnopqrstuvwxyz"), "{out}");
+        assert!(out.contains("https://bob:[redacted]@git.example.org"), "{out}");
+    }
+
+    #[test]
+    fn bracketed_token_redacted() {
+        let out = redact_secrets("key [ghp_abcdefghijklmnopqrstuvwxyz0123] and (AKIAIOSFODNN7EXAMPLE)");
+        assert!(!out.contains("abcdefghijklmnopqrstuvwxyz") && !out.contains("IOSFODNN7"), "{out}");
+        assert!(out.contains("[ghp_") && out.contains("(AKIA"), "{out}");
+        assert!(!scan_text("[ghp_abcdefghijklmnopqrstuvwxyz0123]").is_empty());
+    }
+
+    #[test]
+    fn backticked_token_redacted() {
+        let out = redact_secrets("use `ghp_abcdefghijklmnopqrstuvwxyz0123` or **sk-live-abcdefghijklmnopqrstuvwxyz**");
+        assert!(!out.contains("abcdefghijklmnopqrstuvwxyz"), "{out}");
+        assert!(out.contains('`') && out.contains("**"), "{out}");
     }
 
     #[test]
