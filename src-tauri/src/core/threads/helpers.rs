@@ -60,55 +60,8 @@ pub fn write_messages_to_file(
     write_file_atomically(path, &contents)
 }
 
-/// Replace `path` with `contents` so that a reader, or the next launch after a
-/// crash, sees either the old file or the new one and never a torn mixture:
-/// write a staging file beside it, flush it to disk, rename it over.
-///
-/// Used for every thread file. `thread.json` had the same truncate-then-write
-/// shape as `messages.jsonl`, and a torn one is skipped by `list_threads` --
-/// the conversation simply vanishes from the sidebar.
-pub fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<(), String> {
-    // A name of its own for every write: two writers sharing one staging file
-    // (two browsers editing a chat, or the desktop app and the server) would
-    // truncate each other's content and fail each other's rename.
-    static STAGING_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let mut staging_name = path
-        .file_name()
-        .ok_or_else(|| format!("not a file path: {}", path.display()))?
-        .to_os_string();
-    staging_name.push(format!(
-        ".{}-{}.tmp",
-        std::process::id(),
-        STAGING_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    let staging = path.with_file_name(staging_name);
-    let result = (|| {
-        let mut file = File::create(&staging).map_err(|e| e.to_string())?;
-        file.write_all(contents).map_err(|e| e.to_string())?;
-        file.sync_all().map_err(|e| e.to_string())?;
-        drop(file);
-        rename_over(&staging, path)
-    })();
-    if result.is_err() && staging.is_file() {
-        let _ = fs::remove_file(&staging);
-    }
-    result
-}
-
-/// Rename `from` over `to`. On Windows the rename fails while another process
-/// or thread has the destination open for an instant, so a few short retries
-/// turn a transient sharing violation into a success.
-fn rename_over(from: &Path, to: &Path) -> Result<(), String> {
-    let mut last = String::new();
-    for attempt in 0..8u64 {
-        match fs::rename(from, to) {
-            Ok(()) => return Ok(()),
-            Err(error) => last = error.to_string(),
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5 * (attempt + 1)));
-    }
-    Err(last)
-}
+/// Kept under its old name for the thread stores; see `atomic_io`.
+pub use crate::core::atomic_io::write_atomic_durable as write_file_atomically;
 
 /// Append one message as a line of a thread's messages.jsonl file.
 ///
