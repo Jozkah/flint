@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod atomic_io;
 pub mod automation;
 // Archive instead of delete; desktop-only like rooms.
 #[cfg(not(feature = "cli"))]

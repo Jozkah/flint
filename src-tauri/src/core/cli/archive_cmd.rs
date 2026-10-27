@@ -143,7 +143,13 @@ pub fn empty(kind: Option<&str>, yes: bool) -> Result<(), String> {
 /// `archive settings [--enabled B] [--auto-delete-days N] [--auto-archive-days N]`
 pub fn settings(enabled: Option<bool>, auto_delete_days: Option<u32>, auto_archive_days: Option<u32>) -> Result<(), String> {
     let data = data_folder();
-    let mut s = store::read_settings(&data);
+    let mut s = match store::read_settings_checked(&data) {
+        store::SettingsRead::Ok(s) => s,
+        store::SettingsRead::Absent => store::ArchiveSettings::default(),
+        store::SettingsRead::Unreadable(e) => {
+            return Err(format!("archive settings file is damaged, not touching it: {e}"));
+        }
+    };
     if enabled.is_some() || auto_delete_days.is_some() || auto_archive_days.is_some() {
         if let Some(v) = enabled {
             s.enabled = v;
@@ -257,6 +263,16 @@ mod tests {
             assert!(!rt.block_on(delete_thread(&id2, true)).unwrap(), "permanent skips the archive");
             assert!(store::list(data).is_empty());
             assert!(!data.join("threads").join(&id2).exists());
+        });
+    }
+
+    #[test]
+    fn cli_settings_edit_refuses_damaged_file() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            let p = data.join("archive-settings.json");
+            std::fs::write(&p, b"garbage").unwrap();
+            assert!(settings(Some(true), Some(5), None).is_err());
+            assert_eq!(std::fs::read(&p).unwrap(), b"garbage");
         });
     }
 
