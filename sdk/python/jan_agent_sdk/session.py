@@ -86,7 +86,6 @@ class JanTurn:
         #: A reader that iterates the turn never drops any.
         self.dropped = 0
         self._queue = EventQueue()
-        self._buffered = 0
         self._terminal = threading.Event()
         self._result: Optional[TurnResult] = None
         self._failure: Optional[BaseException] = None
@@ -114,13 +113,7 @@ class JanTurn:
     # -- the session's own calls ------------------------------------------
 
     def _push(self, event: Dict[str, Any]) -> None:
-        if not self._queue.push(event):
-            return
-        self._buffered += 1
-        if self._buffered <= self.session.max_buffered_events:
-            return
-        if self._queue.drop_oldest():
-            self._buffered -= 1
+        if self._queue.push_bounded(event, self.session.max_buffered_events):
             self.dropped += 1
 
     def _finish(self, result: TurnResult) -> None:
@@ -152,6 +145,10 @@ class JanSession:
         self._calls: Dict[str, threading.Event] = {}
         self._late: "OrderedDict[str, TurnResult]" = OrderedDict()
         self._closed = False
+        self._failure: Optional[BaseException] = None
+        # Guards `_turns` and `_failure` for the check-and-register only; turns
+        # are failed outside it.
+        self._turn_lock = threading.Lock()
 
     # -- the surface ------------------------------------------------------
 
@@ -241,6 +238,8 @@ class JanSession:
     def _deliver(self, tag: str, params: Dict[str, Any]) -> None:
         event = params.get("event") or {}
         self._emit("event", event)
+        if self._failure is not None:
+            return
         turn = self._turn(params.get("turnId"), create=True)
         if turn is not None:
             turn._push(event)
@@ -255,7 +254,8 @@ class JanSession:
             usage=params.get("usage"),
             error=params.get("error"),
         )
-        turn = self._turns.pop(params.get("turnId"), None)
+        with self._turn_lock:
+            turn = self._turns.pop(params.get("turnId"), None)
         if turn is None:
             # The runtime may close a turn before the client asked for it - a
             # run that ends with no events, or an immediate refusal. The record
@@ -268,9 +268,12 @@ class JanSession:
         turn._finish(record)
 
     def _fail(self, error: BaseException) -> None:
-        for turn in self._turns.values():
+        with self._turn_lock:
+            self._failure = error
+            turns = list(self._turns.values())
+            self._turns.clear()
+        for turn in turns:
             turn._fail(error)
-        self._turns.clear()
         self._abort(error)
 
     # -- internals ---------------------------------------------------------
@@ -278,17 +281,24 @@ class JanSession:
     def _turn(self, turn_id: Optional[str], *, create: bool = False) -> Optional[JanTurn]:
         if not turn_id:
             return None
-        existing = self._turns.get(turn_id)
-        if existing is not None:
-            return existing
-        if not create:
-            return None
-        turn = JanTurn(self, turn_id)
-        late = self._late.pop(turn_id, None)
-        if late is None:
-            self._turns[turn_id] = turn
-        else:
+        failure: Optional[BaseException] = None
+        late: Optional[TurnResult] = None
+        with self._turn_lock:
+            existing = self._turns.get(turn_id)
+            if existing is not None:
+                return existing
+            if not create:
+                return None
+            turn = JanTurn(self, turn_id)
+            late = self._late.pop(turn_id, None)
+            failure = self._failure
+            if late is None and failure is None:
+                self._turns[turn_id] = turn
+        # Settled outside the lock, as `_fail` does.
+        if late is not None:
             turn._finish(late)
+        elif failure is not None:
+            turn._fail(failure)
         return turn
 
     def _emit(self, kind: str, event: Dict[str, Any]) -> None:
