@@ -262,6 +262,8 @@ pub struct StreamState {
     /// native item/call id -> chat tool_calls array index.
     pub tool_index: HashMap<String, usize>,
     pub next_tool_index: usize,
+    /// Random per-stream prefix for invented Gemini call ids (Gemini sends none).
+    pub call_prefix: String,
     pub finished: bool,
     /// Prompt tokens captured early (Anthropic sends them in `message_start`).
     pub input_tokens: i64,
@@ -756,33 +758,25 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
 
     fn convert_request(&self, body: &Value) -> Value {
         // tool_call_id -> function name, so tool results become functionResponse
-        // parts (Gemini keys them by name, not call id).
+        // parts (Gemini keys them by name, not call id). Rebuilt in message
+        // order and overwritten at each assistant turn: ids from older replies
+        // (`call_0` from a pre-fix history) must resolve to the nearest
+        // preceding call, not the last one in the whole history.
         let mut call_names: HashMap<String, String> = HashMap::new();
-        if let Some(messages) = body.get("messages").and_then(|m| m.as_array()) {
-            for msg in messages {
-                if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
-                    for call in calls {
-                        if let (Some(id), Some(name)) = (
-                            call.get("id").and_then(|v| v.as_str()),
-                            call.get("function")
-                                .and_then(|f| f.get("name"))
-                                .and_then(|n| n.as_str()),
-                        ) {
-                            call_names.insert(id.to_string(), name.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
+        // True while the last pushed content is a run of tool results, so the
+        // next tool result joins it (Gemini wants all responses to one model
+        // turn's calls in a single user content).
+        let mut last_is_tool_results = false;
         let mut contents: Vec<Value> = Vec::new();
         let mut system_parts: Vec<Value> = Vec::new();
         if let Some(messages) = body.get("messages").and_then(|m| m.as_array()) {
             for msg in messages {
                 let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
                 let content = msg.get("content").cloned().unwrap_or(Value::Null);
+                let was_tool_results = std::mem::take(&mut last_is_tool_results);
                 match role {
                     "system" | "developer" => {
+                        last_is_tool_results = was_tool_results;
                         system_parts.push(json!({"text": message_text(&content)}));
                     }
                     "assistant" => {
@@ -794,6 +788,12 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                         if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
                             for call in calls {
                                 let func = call.get("function");
+                                if let (Some(id), Some(n)) = (
+                                    call.get("id").and_then(|v| v.as_str()),
+                                    func.and_then(|f| f.get("name")).and_then(|n| n.as_str()),
+                                ) {
+                                    call_names.insert(id.to_string(), n.to_string());
+                                }
                                 let name = func
                                     .and_then(|f| f.get("name"))
                                     .cloned()
@@ -849,7 +849,30 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                         if !nested {
                             parts.extend(images);
                         }
-                        contents.push(json!({"role": "user", "parts": parts}));
+                        let joined = was_tool_results
+                            && contents.last_mut().is_some_and(|last| {
+                                let Some(existing) =
+                                    last.get_mut("parts").and_then(|p| p.as_array_mut())
+                                else {
+                                    return false;
+                                };
+                                // Keep every functionResponse ahead of the
+                                // sibling image parts of earlier results.
+                                let at = existing
+                                    .iter()
+                                    .rposition(|p| p.get("functionResponse").is_some())
+                                    .map_or(existing.len(), |i| i + 1);
+                                let mut tail = parts.clone().into_iter();
+                                if let Some(fr) = tail.next() {
+                                    existing.insert(at, fr);
+                                }
+                                existing.extend(tail);
+                                true
+                            });
+                        if !joined {
+                            contents.push(json!({"role": "user", "parts": parts}));
+                        }
+                        last_is_tool_results = true;
                     }
                     _ => {
                         let mut parts: Vec<Value> = Vec::new();
@@ -932,6 +955,11 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
     }
 
     fn convert_response(&self, upstream: &Value) -> Value {
+        // Same conditions the stream path ends as an error (#184).
+        if let Some(message) = gemini_stream_error(upstream) {
+            return json!({"error": {"message": message, "type": "upstream_error"}});
+        }
+        let call_prefix = new_gemini_call_prefix();
         let candidate = upstream
             .get("candidates")
             .and_then(|c| c.as_array())
@@ -949,7 +977,7 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                 if let Some(fc) = part.get("functionCall") {
                     let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
                     tool_calls.push(json!({
-                        "id": format!("call_{}", tool_calls.len()),
+                        "id": format!("call_{call_prefix}_{}", tool_calls.len()),
                         "type": "function",
                         "function": {
                             "name": fc.get("name").cloned().unwrap_or(Value::Null),
@@ -983,13 +1011,14 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
         if saw_tool {
             message["tool_calls"] = json!(tool_calls);
         }
-        let finish_reason = map_gemini_finish(
-            candidate
-                .and_then(|c| c.get("finishReason"))
-                .and_then(|r| r.as_str())
-                .unwrap_or("STOP"),
-            saw_tool,
-        );
+        let raw_finish = candidate
+            .and_then(|c| c.get("finishReason"))
+            .and_then(|r| r.as_str())
+            .unwrap_or("STOP");
+        let finish_reason = map_gemini_finish(raw_finish, saw_tool);
+        if raw_finish == "SAFETY" && content.is_empty() && !saw_tool {
+            message["content"] = json!("The response was blocked by the provider's safety filter.");
+        }
 
         json!({
             "id": upstream.get("responseId").cloned().unwrap_or_else(|| json!("chatcmpl-proxy")),
@@ -1048,13 +1077,16 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
                     let idx = state.next_tool_index;
                     state.next_tool_index += 1;
                     state.saw_tool_call = true;
+                    if state.call_prefix.is_empty() {
+                        state.call_prefix = new_gemini_call_prefix();
+                    }
                     push_role_chunk(state, &mut out);
                     let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
                     out.push(chunk_str(
                         state,
                         json!({"tool_calls": [{
                             "index": idx,
-                            "id": format!("call_{idx}"),
+                            "id": format!("call_{}_{idx}", state.call_prefix),
                             "type": "function",
                             "function": {
                                 "name": fc.get("name").cloned().unwrap_or(Value::Null),
@@ -1673,6 +1705,12 @@ fn stream_error(state: &mut StreamState, message: &str) -> Vec<String> {
 
 /// The error a Gemini stream chunk reports, if any: a top-level `error`
 /// object, or a prompt blocked before any candidate was produced.
+/// Gemini returns no call ids, so ids are invented. A random prefix per
+/// response keeps them unique across turns of one history.
+fn new_gemini_call_prefix() -> String {
+    uuid::Uuid::new_v4().simple().to_string()[..8].to_string()
+}
+
 fn gemini_stream_error(data: &Value) -> Option<String> {
     if let Some(error) = data.get("error") {
         let message = error
@@ -2441,6 +2479,92 @@ mod google_generate_content_tests {
     }
 
     #[test]
+    fn gemini_ids_unique_across_turns() {
+        let upstream = json!({"candidates": [{
+            "content": {"parts": [{"functionCall": {"name": "a", "args": {}}}]},
+            "finishReason": "STOP"
+        }]});
+        let c = conv();
+        let one = c.convert_response(&upstream);
+        let two = c.convert_response(&upstream);
+        assert_ne!(
+            one["choices"][0]["message"]["tool_calls"][0]["id"],
+            two["choices"][0]["message"]["tool_calls"][0]["id"]
+        );
+        let mut state = StreamState::default();
+        let event = ev(json!({"candidates": [{"content": {"parts": [
+            {"functionCall": {"name": "a", "args": {}}},
+            {"functionCall": {"name": "b", "args": {}}}
+        ]}}]}));
+        let out = c.convert_stream_event(&event, &mut state);
+        let ids: Vec<String> = out
+            .iter()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter_map(|v| {
+                v["choices"][0]["delta"]["tool_calls"][0]["id"]
+                    .as_str()
+                    .map(String::from)
+            })
+            .collect();
+        assert_eq!(ids.len(), 2);
+        assert_ne!(ids[0], ids[1]);
+        assert_eq!(ids[0].rsplit_once('_').unwrap().0, ids[1].rsplit_once('_').unwrap().0);
+    }
+
+    #[test]
+    fn gemini_two_turns_both_call_0_resolve_names_positionally() {
+        let body = json!({
+            "model": "g",
+            "messages": [
+                {"role": "assistant", "content": null, "tool_calls": [
+                    {"id": "call_0", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "call_0", "content": "{\"a\":1}"},
+                {"role": "assistant", "content": null, "tool_calls": [
+                    {"id": "call_0", "type": "function", "function": {"name": "bash", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "call_0", "content": "{\"b\":2}"}
+            ]
+        });
+        let out = conv().convert_request(&body);
+        let c = out["contents"].as_array().unwrap();
+        assert_eq!(c[1]["parts"][0]["functionResponse"]["name"], json!("read_file"));
+        assert_eq!(c[3]["parts"][0]["functionResponse"]["name"], json!("bash"));
+    }
+
+    #[test]
+    fn gemini_parallel_tool_results_merge_into_one_user_content() {
+        let body = json!({
+            "model": "g",
+            "messages": [
+                {"role": "assistant", "content": null, "tool_calls": [
+                    {"id": "x1", "type": "function", "function": {"name": "a", "arguments": "{}"}},
+                    {"id": "x2", "type": "function", "function": {"name": "b", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "x1", "content": "{}"},
+                {"role": "tool", "tool_call_id": "x2", "content": "{}"},
+                {"role": "user", "content": "thanks"}
+            ]
+        });
+        let out = conv().convert_request(&body);
+        let c = out["contents"].as_array().unwrap();
+        assert_eq!(c.len(), 3, "{c:?}");
+        let parts = c[1]["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0]["functionResponse"]["name"], json!("a"));
+        assert_eq!(parts[1]["functionResponse"]["name"], json!("b"));
+        // The plain-text user message stays its own content.
+        assert_eq!(c[2]["parts"][0]["text"], json!("thanks"));
+    }
+
+    #[test]
+    fn gemini_nonstream_blocked_prompt_returns_error() {
+        let out = conv().convert_response(&json!({"promptFeedback": {"blockReason": "SAFETY"}}));
+        assert!(out["error"]["message"].as_str().unwrap().contains("SAFETY"));
+        assert!(out.get("choices").is_none());
+        let safety = conv().convert_response(&json!({"candidates": [{"finishReason": "SAFETY"}]}));
+        assert_eq!(safety["choices"][0]["finish_reason"], json!("content_filter"));
+        assert!(!safety["choices"][0]["message"]["content"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
     fn response_maps_function_call() {
         let upstream = json!({
             "candidates": [{
@@ -2453,7 +2577,8 @@ mod google_generate_content_tests {
         assert_eq!(choice["finish_reason"], json!("tool_calls"));
         assert_eq!(choice["message"]["content"], Value::Null);
         let tc = &choice["message"]["tool_calls"][0];
-        assert_eq!(tc["id"], json!("call_0"));
+        assert!(tc["id"].as_str().unwrap().starts_with("call_"));
+        assert!(tc["id"].as_str().unwrap().ends_with("_0"));
         assert_eq!(tc["function"]["name"], json!("getw"));
         assert_eq!(tc["function"]["arguments"], json!("{\"city\":\"NYC\"}"));
     }
@@ -2554,7 +2679,8 @@ mod google_generate_content_tests {
         let tool: Value = serde_json::from_str(&out[1]).unwrap();
         let tc = &tool["choices"][0]["delta"]["tool_calls"][0];
         assert_eq!(tc["index"], json!(0));
-        assert_eq!(tc["id"], json!("call_0"));
+        assert!(tc["id"].as_str().unwrap().starts_with("call_"));
+        assert!(tc["id"].as_str().unwrap().ends_with("_0"));
         assert_eq!(tc["function"]["name"], json!("getw"));
         assert_eq!(tc["function"]["arguments"], json!("{\"x\":1}"));
         let finish: Value = serde_json::from_str(&out[2]).unwrap();
