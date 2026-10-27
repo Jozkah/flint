@@ -197,6 +197,10 @@ pub struct ToolContext<'a> {
     /// shell instead made `Push-Location` "command not found" in Git Bash and
     /// turned `cd .\dir` into `cd .dir`.
     pub sandbox_shell_parity: bool,
+    /// Set by the bash handler where it appends the null-device refusal note:
+    /// the trusted signal that the call may be offered unsandboxed. Text in a
+    /// command's output never sets it.
+    pub null_refusal: crate::unsandboxed_retry::RefusalSignal,
     /// The person waived approval prompts (Bypass), so a `write`/`edit` whose
     /// diff the credential scan flags goes through, as every other answerable
     /// prompt does.
@@ -331,6 +335,7 @@ impl<'a> ToolContext<'a> {
             temporary: false,
             sandbox: true,
             sandbox_shell_parity: false,
+            null_refusal: Default::default(),
             credential_override: false,
             direct_shell_start: None,
             nul_programs: &[],
@@ -547,6 +552,13 @@ impl<'a> ToolContext<'a> {
         let mut ctx = self.with_sandbox(false);
         ctx.sandbox_shell_parity = true;
         ctx
+    }
+
+    /// Share a caller-held signal so it can read whether this call ended in the
+    /// null-device refusal.
+    pub fn with_refusal_signal(mut self, signal: crate::unsandboxed_retry::RefusalSignal) -> Self {
+        self.null_refusal = signal;
+        self
     }
 
     /// Run `bash` directly in a folder the user granted edit access to, in the

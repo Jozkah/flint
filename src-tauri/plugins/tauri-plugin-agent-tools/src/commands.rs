@@ -1598,7 +1598,9 @@ async fn execute_tool_inner(
         _ => None,
     };
     let unsandboxed_retry = retry_call
-        .filter(|_| crate::unsandboxed_retry::qualifies(&name, !unsandboxed, is_error, &content))
+        .filter(|_| {
+            crate::unsandboxed_retry::qualifies(&name, !unsandboxed, is_error, ctx.null_refusal.is_set())
+        })
         .map(|call| retry_offers().offer(&thread_id, call));
     Ok(ToolResult {
         content,

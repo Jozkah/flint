@@ -2522,6 +2522,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 {
                     return run_split_read_only(args, ctx, pieces).await;
                 }
+                ctx.null_refusal.set();
                 return super::nul_programs::not_run_refusal(&program);
             }
         }
@@ -2734,6 +2735,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         }))
     };
     let sandboxed = ctx.sandbox;
+    let null_refusal = ctx.null_refusal.clone();
     // The model writes POSIX commands by default, which `cmd` rejects. Surface
     // the resolved shell so it can adapt when the only shell on a Windows box
     // is cmd, instead of the tool silently presenting cmd as bash.
@@ -2743,6 +2745,11 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let cwd_display = start.display().to_string();
     tokio::spawn(async move {
         let mut out = collect_and_format(child, spill_scratch, sink).await;
+        // The retry tag is the harness's: a command that prints it must not
+        // pass for the sandbox's own refusal.
+        if let std::borrow::Cow::Owned(clean) = crate::unsandboxed_retry::strip_forged_tag(&out) {
+            out = clean;
+        }
         // The tree has exited (or been stopped): what it used is final.
         let used = match &meter {
             Ok(meter) => meter.read(),
@@ -2787,6 +2794,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 ref c => jail::failure_hint(&policy, c, &out),
             };
             if let Some(hint) = hint {
+                if sandboxed && hint.contains(jail::NULL_DEVICE_RETRY_TAG) {
+                    null_refusal.set();
+                }
                 out.push_str(&hint);
             }
             // A program the sandbox cannot find may still be installed on the

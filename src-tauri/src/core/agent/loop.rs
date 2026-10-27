@@ -5570,6 +5570,9 @@ impl CompositeToolInvoker {
                 ));
                 continue;
             }
+            // The harness's own word that this call ended in the null-device
+            // refusal; text in the output never counts.
+            let null_refusal = tauri_plugin_agent_tools::unsandboxed_retry::RefusalSignal::default();
             let (text, diff, images) = match decision {
                 Decision::Allow => {
                     // The token lives as long as the call: the guard is held
@@ -5583,6 +5586,7 @@ impl CompositeToolInvoker {
                     let ctx = self
                         .streaming_tool_context(&id)
                         .with_cancel(registered.token().clone())
+                        .with_refusal_signal(null_refusal.clone())
                         .with_credential_override(!secret_findings.is_empty());
                     execute_builtin_with_diff(tool, &args, &ctx).await
                 }
@@ -5819,6 +5823,7 @@ impl CompositeToolInvoker {
                                 let ctx = self
                                     .streaming_tool_context(&id)
                                     .with_cancel(registered.token().clone())
+                                    .with_refusal_signal(null_refusal.clone())
                                     .with_credential_override(secret);
                                 execute_builtin_with_diff(tool, &args, &ctx).await
                             }
@@ -5851,7 +5856,8 @@ impl CompositeToolInvoker {
                                 }
                                 let ctx = self
                                     .streaming_tool_context(&id)
-                                    .with_cancel(registered.token().clone());
+                                    .with_cancel(registered.token().clone())
+                                    .with_refusal_signal(null_refusal.clone());
                                 execute_builtin_with_diff(tool, &args, &ctx).await
                             }
                             PermissionDecision::Deny => {
@@ -5899,7 +5905,7 @@ impl CompositeToolInvoker {
                     // program opens NUL (`tools::nul_programs`).
                     tauri_plugin_agent_tools::tools::handlers::bash_result_failed(&text)
                         || text.trim_start().starts_with("ERROR"),
-                    &text,
+                    null_refusal.is_set(),
                 ) {
                 self.settle_null_device_refusal(&id, &args, text).await
             } else {

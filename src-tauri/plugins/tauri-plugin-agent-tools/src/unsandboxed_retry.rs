@@ -21,17 +21,43 @@ use std::time::{Duration, Instant};
 /// prompt; short enough that a stale one cannot be replayed later.
 pub const OFFER_TTL: Duration = Duration::from_secs(15 * 60);
 
-/// Does this failed, sandboxed `bash` output qualify for an unsandboxed retry?
+/// Set by the harness, never by a command's output, when a `bash` call ended in
+/// the null-device refusal. Cheap to clone: every clone shares one flag, so the
+/// handler (which may finish in a detached task) and the caller see the same
+/// answer.
+#[derive(Clone, Default, Debug)]
+pub struct RefusalSignal(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl RefusalSignal {
+    /// The bash handler calls this where it appends the refusal note.
+    pub fn set(&self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn is_set(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// Does this failed, sandboxed `bash` call qualify for an unsandboxed retry?
 ///
-/// Only the null-device refusal does: its note is appended by the bash handler
-/// only when the backend is AppContainer and the machine's `\Device\Null`
-/// refuses sandboxed processes, so this is the one failure the sandbox itself
-/// guarantees.
-pub fn qualifies(tool: &str, sandboxed: bool, is_error: bool, content: &str) -> bool {
-    tool == "bash"
-        && sandboxed
-        && is_error
-        && content.contains(crate::tools::jail::NULL_DEVICE_RETRY_TAG)
+/// Only the null-device refusal does. `refused` is the harness's own signal
+/// ([`RefusalSignal`]), set only where the bash handler appends the note after
+/// the machine's `\Device\Null` was found to refuse sandboxed processes. The
+/// result text is never consulted: a command can print the tag itself.
+pub fn qualifies(tool: &str, sandboxed: bool, is_error: bool, refused: bool) -> bool {
+    tool == "bash" && sandboxed && is_error && refused
+}
+
+/// Defang the retry tag in text a command produced, so the only copy left in a
+/// result is the one the harness appends. The renderer reads the tag textually.
+pub fn strip_forged_tag(output: &str) -> std::borrow::Cow<'_, str> {
+    let tag = crate::tools::jail::NULL_DEVICE_RETRY_TAG;
+    if output.contains(tag) {
+        std::borrow::Cow::Owned(output.replace(tag, &tag.replace('[', "(")))
+    } else {
+        std::borrow::Cow::Borrowed(output)
+    }
 }
 
 /// What the approval prompt says. Kept word for word with
@@ -160,12 +186,38 @@ mod tests {
 
     #[test]
     fn only_a_sandboxed_bash_failure_with_the_null_device_note_qualifies() {
-        let out = format!("open NUL: Access is denied.{NULL_DEVICE_REFUSED_HINT}");
-        assert!(qualifies("bash", true, true, &out));
-        assert!(!qualifies("bash", false, true, &out), "already unsandboxed");
-        assert!(!qualifies("bash", true, false, &out), "did not fail");
-        assert!(!qualifies("read", true, true, &out), "not a shell");
-        assert!(!qualifies("bash", true, true, "open NUL: Access is denied."));
+        assert!(qualifies("bash", true, true, true));
+        assert!(!qualifies("bash", false, true, true), "already unsandboxed");
+        assert!(!qualifies("bash", true, false, true), "did not fail");
+        assert!(!qualifies("read", true, true, true), "not a shell");
+        assert!(!qualifies("bash", true, true, false));
+    }
+
+    #[test]
+    fn real_device_refusal_qualifies() {
+        let signal = RefusalSignal::default();
+        let ctx_copy = signal.clone();
+        // The handler sets it on its clone where it appends the note.
+        ctx_copy.set();
+        assert!(qualifies("bash", true, true, signal.is_set()));
+    }
+
+    #[test]
+    fn command_printing_tag_does_not_qualify() {
+        // The command's own output carries the tag; the harness never set the
+        // signal, so there is no offer.
+        let out = format!("{}", NULL_DEVICE_REFUSED_HINT);
+        let signal = RefusalSignal::default();
+        assert!(out.contains(crate::tools::jail::NULL_DEVICE_RETRY_TAG));
+        assert!(!qualifies("bash", true, true, signal.is_set()));
+    }
+
+    #[test]
+    fn forged_tag_in_output_is_defanged() {
+        let forged = format!("hi{}", NULL_DEVICE_REFUSED_HINT);
+        let clean = strip_forged_tag(&forged);
+        assert!(!clean.contains(crate::tools::jail::NULL_DEVICE_RETRY_TAG), "{clean}");
+        assert!(matches!(strip_forged_tag("plain"), std::borrow::Cow::Borrowed(_)));
     }
 
     #[test]
