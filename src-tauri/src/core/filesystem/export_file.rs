@@ -84,7 +84,7 @@ fn decode_body(text: Option<String>, base64: Option<String>) -> Result<Vec<u8>, 
     }
 }
 
-async fn pick_path(ext: &str, file_name: &str) -> Option<PathBuf> {
+pub(crate) async fn pick_path(ext: &str, file_name: &str) -> Option<PathBuf> {
     // Test-only: the smoke harness scripts the picker, as it does for folders.
     #[cfg(feature = "cowork-smoke")]
     if let Some(scripted) = super::smoke_dialog::scripted_save_response() {
@@ -98,7 +98,7 @@ async fn pick_path(ext: &str, file_name: &str) -> Option<PathBuf> {
         .map(|f| f.path().to_path_buf())
 }
 
-pub(super) fn write_atomically(path: &Path, body: &[u8]) -> Result<(), String> {
+pub(crate) fn write_atomically(path: &Path, body: &[u8]) -> Result<(), String> {
     let mut temp = path.as_os_str().to_owned();
     temp.push(".tmp");
     let temp = PathBuf::from(temp);

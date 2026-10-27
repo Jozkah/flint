@@ -145,8 +145,8 @@ export class TauriAppService extends DefaultAppService {
     await invoke('set_download_speed_limit', { bytesPerSec })
   }
 
-  async exportRedactedLogs(destination: string): Promise<string> {
-    return await invoke<string>('export_redacted_logs', { destination })
+  async exportRedactedLogs(): Promise<string | null> {
+    return await invoke<string | null>('export_redacted_logs')
   }
 
   async readYaml<T = unknown>(path: string): Promise<T> {

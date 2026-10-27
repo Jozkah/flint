@@ -63,8 +63,7 @@ export class DefaultAppService implements AppService {
     void bytesPerSec
   }
 
-  async exportRedactedLogs(destination: string): Promise<string> {
-    void destination
+  async exportRedactedLogs(): Promise<string | null> {
     throw new Error('Log export is only available in the desktop app')
   }
 
