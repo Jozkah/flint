@@ -299,7 +299,8 @@ fn deletes_home_or_root(command: &str) -> bool {
                 // Brace-group braces (`{ rm -rf ~; }`, `{rm`), not `${HOME}`.
                 let w = if w.starts_with('{') { w.trim_start_matches('{') } else { w };
                 let w = if w.contains('{') { w } else { w.trim_end_matches('}') };
-                w.trim_matches(|c| c == '"' || c == '\'').to_string()
+                // Quotes are dropped anywhere in the word: `"$HOME"/`, `$HO""ME`.
+                w.chars().filter(|c| !matches!(c, '"' | '\'')).collect::<String>()
             })
             .filter(|w| !w.is_empty())
             .collect();
@@ -310,7 +311,7 @@ fn deletes_home_or_root(command: &str) -> bool {
                 || lower == "/c"
                 || lower == "/k"
                 || w.chars().next().is_some_and(|c| c.is_ascii_digit())
-                || (w.contains('=') && !w.starts_with('=') && !w.contains('/'));
+                || (w.contains('=') && !w.starts_with('='));
             !wrapper
         });
         let Some(start) = start else {
@@ -347,6 +348,11 @@ fn deletes_home_or_root(command: &str) -> bool {
 /// root, however spelled, and not something inside one.
 pub(crate) fn names_home_or_root(target: &str) -> bool {
     let mut t = target.replace('\\', "/");
+    // A `..` hop can climb out of anywhere into a home or root (`~/..`), so a
+    // recursive delete naming one is never judged safe.
+    if t.split('/').any(|c| c == "..") {
+        return true;
+    }
     loop {
         let before = t.len();
         for suffix in ["/*", "/.*", "/."] {
@@ -2943,6 +2949,15 @@ mod security_corpus {
             "rd /s /q C:\\",
             "rmdir /s /q C:\\Users\\Jozkah",
             "del /s /q C:/",
+            "rm -rf \"$HOME\"/",
+            "rm -rf ~/..",
+            "rm -rf $HOME/..",
+            "rm -rf $HO\"\"ME",
+            "X=1 rm -rf ~",
+            "X=/tmp/y rm -rf ~",
+            "rm -rf ../x",
+            // A quoted literal '~' is still judged as home: asking is the safe side.
+            "rm -rf '~'",
         ] {
             let d = decide("bash", json!({ "command": command }), &root, &perms, &NetworkPolicy::open());
             assert_eq!(d, Decision::Prompt(PromptKind::Ask), "{command}");
