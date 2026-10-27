@@ -259,6 +259,18 @@ const CLONE_VALUES = [
   '--bundle-uri',
 ]
 
+/** A configured remote name, as opposed to a URL, scp address or path. */
+function isRemoteName(s: string): boolean {
+  return s !== '' && !/[:/\\@]/.test(s) && !/^[.\-~]/.test(s)
+}
+
+/** A remote spelled out in a network call gets the same check as a clone. */
+function remoteArgError(remote: string | undefined): string | undefined {
+  if (remote === undefined || isRemoteName(remote) || cloneUrlOk(remote))
+    return undefined
+  return `only https://, ssh:// and git@host: URLs can be cloned, not \`${remote}\``
+}
+
 function gitPlan(input: string[]): GitPlanResult {
   const args = [...input]
   while (args[0] === '--no-pager') args.shift()
@@ -326,7 +338,17 @@ function gitPlan(input: string[]): GitPlanResult {
     case 'ls-remote':
       plan.class = 'read'
       plan.reachesRemote = true
-      plan.remote = positionals(rest)[0]
+      plan.remote = positionals(rest, [
+        '--upload-pack',
+        '--exec',
+        '-o',
+        '--server-option',
+        '--sort',
+      ])[0]
+      {
+        const bad = remoteArgError(plan.remote)
+        if (bad) return fail(bad)
+      }
       break
     case 'branch': {
       const deleting = hasOpt(rest, ['-d', '--delete', '-D'])
@@ -436,7 +458,12 @@ function gitPlan(input: string[]): GitPlanResult {
         ['-v', '--verbose', 'show', 'get-url'].includes(first)
       ) {
         plan.class = 'read'
-        if (first === 'show') plan.reachesRemote = true
+        if (first === 'show') {
+          plan.reachesRemote = true
+          plan.remote = positionals(rest.slice(1))[0]
+          const bad = remoteArgError(plan.remote)
+          if (bad) return fail(bad)
+        }
       } else if (
         [
           'add',
@@ -612,6 +639,10 @@ function gitPlan(input: string[]): GitPlanResult {
       ])
       plan.remote = pos[0]
       plan.branch = pos[1]
+      {
+        const bad = remoteArgError(plan.remote)
+        if (bad) return fail(bad)
+      }
       break
     }
     case 'push': {
@@ -624,7 +655,18 @@ function gitPlan(input: string[]): GitPlanResult {
         '--receive-pack',
         '--exec',
       ])
-      plan.remote = pos[0]
+      // `--repo=<url>` names the destination as a positional would.
+      let repoOpt: string | undefined
+      for (let i = 0; i < rest.length && repoOpt === undefined; i++) {
+        if (rest[i] === '--repo') repoOpt = rest[i + 1]
+        else if (rest[i].startsWith('--repo='))
+          repoOpt = rest[i].slice('--repo='.length)
+      }
+      plan.remote = repoOpt ?? pos[0]
+      {
+        const bad = remoteArgError(plan.remote)
+        if (bad) return fail(bad)
+      }
       const refs = pos.slice(1)
       if (refs.length) plan.branch = refs.join(' ')
       const force =

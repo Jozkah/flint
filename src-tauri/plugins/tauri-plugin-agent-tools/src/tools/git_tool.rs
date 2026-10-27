@@ -426,6 +426,185 @@ fn check_clone_url(url: &str) -> Result<(), String> {
     }
 }
 
+/// Whether a remote argument names a configured remote (`origin`) rather than
+/// spelling out where to go: a URL, an scp-style address or a path.
+fn is_remote_name(s: &str) -> bool {
+    !s.is_empty()
+        && !s.contains([':', '/', '\\', '@'])
+        && !s.starts_with(['.', '-', '~'])
+}
+
+/// A remote spelled out in a network call gets the same URL check as a clone:
+/// `git ls-remote /etc` or `file://` would read a repository outside the
+/// allowed folders, and the host of any other form is what the network rules
+/// are matched against.
+fn check_remote_arg(remote: &str) -> Result<(), String> {
+    if is_remote_name(remote) {
+        Ok(())
+    } else {
+        check_clone_url(remote)
+    }
+}
+
+/// The host of a remote URL: `https://h/p`, `ssh://u@h:22/p` or `u@h:p`.
+fn url_host(url: &str) -> Option<String> {
+    let url = url.trim();
+    let host = if url.contains("://") {
+        url::Url::parse(url).ok()?.host_str()?.to_string()
+    } else {
+        let (_, rest) = url.split_once('@').unwrap_or(("", url));
+        rest.split_once(':')?.0.to_string()
+    };
+    let host = host.trim_matches(['[', ']']).trim_end_matches('.').to_ascii_lowercase();
+    (!host.is_empty()).then_some(host)
+}
+
+/// The `url` (and, for a push, `pushurl`) values of `remote.<name>` in the
+/// repository's own config file, read without running git. Follows a linked
+/// worktree's `.git` file to the shared config. Empty when there is none.
+fn configured_remote_urls(cwd: &Path, name: &str, push: bool) -> Vec<String> {
+    let mut dir = Some(cwd);
+    let mut git_dir: Option<PathBuf> = None;
+    while let Some(d) = dir {
+        let dot = d.join(".git");
+        if dot.is_dir() {
+            git_dir = Some(dot);
+            break;
+        }
+        if dot.is_file() {
+            let text = std::fs::read_to_string(&dot).unwrap_or_default();
+            if let Some(p) = text.trim().strip_prefix("gitdir:") {
+                let p = Path::new(p.trim());
+                let p = if p.is_absolute() { p.to_path_buf() } else { d.join(p) };
+                let common = std::fs::read_to_string(p.join("commondir")).ok();
+                git_dir = Some(match common {
+                    Some(c) => p.join(c.trim()),
+                    None => p,
+                });
+            }
+            break;
+        }
+        dir = d.parent();
+    }
+    let Some(git_dir) = git_dir else { return Vec::new() };
+    let text = std::fs::read_to_string(git_dir.join("config")).unwrap_or_default();
+    let mut out = Vec::new();
+    let mut inside = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(header) = line.strip_prefix('[') {
+            let header = header.trim_end_matches(']').trim();
+            inside = header
+                .split_once(char::is_whitespace)
+                .is_some_and(|(sec, sub)| {
+                    sec.eq_ignore_ascii_case("remote") && sub.trim().trim_matches('"') == name
+                });
+        } else if inside {
+            if let Some((k, v)) = line.split_once('=') {
+                let k = k.trim().to_ascii_lowercase();
+                if k == "url" || (push && k == "pushurl") {
+                    out.push(v.trim().trim_matches('"').to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Every remote name configured in the repository's config.
+fn configured_remote_names(cwd: &Path) -> Vec<String> {
+    let mut dir = Some(cwd);
+    while let Some(d) = dir {
+        let cfg = d.join(".git").join("config");
+        if let Ok(text) = std::fs::read_to_string(cfg) {
+            return text
+                .lines()
+                .filter_map(|l| {
+                    let l = l.trim().strip_prefix('[')?.trim_end_matches(']');
+                    let (sec, sub) = l.split_once(char::is_whitespace)?;
+                    sec.eq_ignore_ascii_case("remote")
+                        .then(|| sub.trim().trim_matches('"').to_string())
+                })
+                .collect();
+        }
+        dir = d.parent();
+    }
+    Vec::new()
+}
+
+impl GitPlan {
+    /// The hosts this call reaches, for the network rules (W10). A URL names
+    /// its own host; a remote name is looked up in the repository config; `gh`
+    /// talks to GitHub unless `--hostname` or a `HOST/owner/repo` says
+    /// otherwise. A name the config does not resolve yields no host, so only
+    /// the all-network switch applies to it.
+    pub fn net_hosts(&self, cwd: &Path) -> Vec<String> {
+        if !self.reaches_remote {
+            return Vec::new();
+        }
+        let mut hosts: Vec<String> = Vec::new();
+        let mut add = |h: Option<String>| {
+            if let Some(h) = h {
+                if !hosts.contains(&h) {
+                    hosts.push(h);
+                }
+            }
+        };
+        match self.program {
+            Program::Gh => {
+                fn opt_value<'a>(args: &'a [String], flags: &[&str]) -> Option<&'a str> {
+                    args.iter().enumerate().find_map(|(i, a)| {
+                        if flags.contains(&a.as_str()) {
+                            args.get(i + 1).map(String::as_str)
+                        } else {
+                            flags
+                                .iter()
+                                .find_map(|f| a.strip_prefix(format!("{f}=").as_str()))
+                        }
+                    })
+                }
+                if let Some(h) = opt_value(&self.args, &["--hostname"]) {
+                    add(Some(h.trim().trim_end_matches('.').to_ascii_lowercase()));
+                } else if let Some(r) = opt_value(&self.args, &["--repo", "-R"]) {
+                    if r.contains("://") || r.contains('@') {
+                        add(url_host(r));
+                    } else if r.split('/').count() == 3 {
+                        add(r.split('/').next().map(|h| h.to_ascii_lowercase()));
+                    } else {
+                        add(Some("github.com".into()));
+                    }
+                } else {
+                    add(Some("github.com".into()));
+                }
+            }
+            Program::Git => {
+                let sub = self.args.first().map(String::as_str).unwrap_or("");
+                let push = sub == "push";
+                let names = |name: &str, add: &mut dyn FnMut(Option<String>)| {
+                    for u in configured_remote_urls(cwd, name, push) {
+                        add(url_host(&u));
+                    }
+                };
+                let all = self.args.iter().any(|a| a == "--all" || a == "--multiple")
+                    && matches!(sub, "fetch" | "push");
+                if all {
+                    for n in configured_remote_names(cwd) {
+                        names(&n, &mut add);
+                    }
+                } else {
+                    let remote = self.remote.as_deref().unwrap_or("origin");
+                    if is_remote_name(remote) {
+                        names(remote, &mut add);
+                    } else {
+                        add(url_host(remote));
+                    }
+                }
+            }
+        }
+        hosts
+    }
+}
+
 fn plan_of(program: Program, args: Vec<String>, class: GitClass) -> GitPlan {
     GitPlan {
         program,
@@ -487,7 +666,12 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
         "ls-remote" => {
             plan.class = GitClass::Read;
             plan.reaches_remote = true;
-            plan.remote = positionals(&rest, &[]).first().map(|s| s.to_string());
+            plan.remote = positionals(&rest, &["--upload-pack", "--exec", "-o", "--server-option", "--sort"])
+                .first()
+                .map(|s| s.to_string());
+            if let Some(r) = &plan.remote {
+                check_remote_arg(r)?;
+            }
         }
         "branch" => {
             let deleting = has_opt(&rest, &["-d", "--delete", "-D"]);
@@ -537,6 +721,10 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
                 plan.class = GitClass::Read;
                 if first == Some("show") {
                     plan.reaches_remote = true;
+                    plan.remote = positionals(&rest[1..], &[]).first().map(|s| s.to_string());
+                    if let Some(r) = &plan.remote {
+                        check_remote_arg(r)?;
+                    }
                 }
             }
             Some("add") | Some("rename") | Some("remove") | Some("rm") | Some("set-url")
@@ -647,12 +835,23 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
             let pos = positionals(&rest, &["--depth", "-j", "--jobs", "-s", "--strategy", "-X", "--strategy-option"]);
             plan.remote = pos.first().map(|s| s.to_string());
             plan.branch = pos.get(1).map(|s| s.to_string());
+            if let Some(r) = &plan.remote {
+                check_remote_arg(r)?;
+            }
         }
         "push" => {
             plan.class = GitClass::Remote;
             plan.reaches_remote = true;
             let pos = positionals(&rest, &["-o", "--push-option", "--repo", "--receive-pack", "--exec"]);
-            plan.remote = pos.first().map(|s| s.to_string());
+            // `--repo=<url>` names the destination as a positional would.
+            let repo_opt = rest.iter().enumerate().find_map(|(i, a)| match a.as_str() {
+                "--repo" => rest.get(i + 1).cloned(),
+                _ => a.strip_prefix("--repo=").map(str::to_string),
+            });
+            plan.remote = repo_opt.or_else(|| pos.first().map(|s| s.to_string()));
+            if let Some(r) = &plan.remote {
+                check_remote_arg(r)?;
+            }
             let refs: Vec<&str> = pos.iter().skip(1).copied().collect();
             if !refs.is_empty() {
                 plan.branch = Some(refs.join(" "));

@@ -336,7 +336,7 @@ fn git_output(repo: &Path, args: &[&str]) -> Option<String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
-    let out = cmd.output().ok()?;
+    let out = crate::tools::owned::output_blocking(&mut cmd, std::time::Duration::from_secs(15)).ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 

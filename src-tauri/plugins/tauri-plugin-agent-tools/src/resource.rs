@@ -485,6 +485,23 @@ impl Resource {
             }
         }
 
+        // The git tool reaches a host through fetch, pull, push, ls-remote,
+        // clone and every gh call. Each host is a network resource, so
+        // allow/deny rules and the domain lists apply to it like a web_fetch.
+        if tool_name == "git" {
+            if let Ok(plan) = crate::tools::git_tool::plan_from_args(args) {
+                let cwd = match (args.get("cwd").and_then(|v| v.as_str()), root) {
+                    (Some(c), Some(r)) => r.join(c),
+                    (Some(c), None) => PathBuf::from(c),
+                    (None, Some(r)) => r.to_path_buf(),
+                    (None, None) => PathBuf::new(),
+                };
+                for host in plan.net_hosts(&cwd) {
+                    out.push(Resource::Net { host, port: None });
+                }
+            }
+        }
+
         if capability_is_net {
             match args.get("url") {
                 Some(serde_json::Value::String(url)) if !url.trim().is_empty() => {

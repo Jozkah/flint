@@ -580,6 +580,15 @@ pub fn resolve_decision(
     if tool.capability == Capability::Net && !network.allowed {
         return Decision::HardDeny(DenyReason::NetworkOff);
     }
+    // The git tool leaves the machine for fetch, pull, push, ls-remote, clone
+    // and every gh call (W10): the same switch applies, and each host in
+    // `resources` goes through the domain lists below.
+    if tool.name == "git"
+        && !network.allowed
+        && crate::tools::git_tool::plan_from_args(args).is_ok_and(|p| p.reaches_remote)
+    {
+        return Decision::HardDeny(DenyReason::NetworkOff);
+    }
     for resource in &resources {
         if let crate::resource::Resource::Net { host, .. } = resource {
             if let Some(refused) = network.refuses(host) {
@@ -3338,6 +3347,109 @@ mod security_corpus {
                 "{tool} left the machine with the network off"
             );
         }
+    }
+
+    /// A repo folder whose `origin` points at `url`.
+    fn repo_with_origin(url: &str) -> PathBuf {
+        let root = root();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(
+            root.join(".git").join("config"),
+            format!("[core]\n\tbare = false\n[remote \"origin\"]\n\turl = {url}\n"),
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn git_fetch_denied_when_network_off() {
+        let root = repo_with_origin("https://github.com/o/r.git");
+        let perms = ToolPermissions::allow_all();
+        let off = NetworkPolicy { allowed: false, ..NetworkPolicy::default() };
+        for args in [
+            json!({"args": ["fetch"]}),
+            json!({"args": ["pull", "origin", "main"]}),
+            json!({"args": ["ls-remote", "https://example.com/x.git"]}),
+            json!({"program": "gh", "args": ["pr", "list"]}),
+        ] {
+            assert_eq!(
+                decide("git", args.clone(), &root, &perms, &off),
+                Decision::HardDeny(DenyReason::NetworkOff),
+                "{args}"
+            );
+        }
+        // A local read is not network.
+        assert_eq!(
+            decide("git", json!({"args": ["status"]}), &root, &perms, &off),
+            Decision::Allow
+        );
+    }
+
+    #[test]
+    fn git_push_denied_host_in_deny_list() {
+        let root = repo_with_origin("git@evil.test:o/r.git");
+        let perms = ToolPermissions::allow_all();
+        let policy = NetworkPolicy {
+            allowed: true,
+            allow_domains: Vec::new(),
+            deny_domains: vec!["evil.test".into()],
+        };
+        // By remote name (resolved through the config), by URL, by --repo.
+        for args in [
+            json!({"args": ["push", "origin", "main"]}),
+            json!({"args": ["push"]}),
+            json!({"args": ["ls-remote", "https://EVIL.test/x.git"]}),
+            json!({"args": ["push", "--repo=ssh://git@evil.test/o/r.git", "main"]}),
+        ] {
+            assert_eq!(
+                decide("git", args.clone(), &root, &perms, &policy),
+                Decision::HardDeny(DenyReason::Domain("evil.test".into())),
+                "{args}"
+            );
+        }
+        // An allow list that omits the host refuses it too.
+        let only = NetworkPolicy {
+            allowed: true,
+            allow_domains: vec!["github.com".into()],
+            deny_domains: Vec::new(),
+        };
+        assert!(matches!(
+            decide("git", json!({"args": ["fetch", "https://other.test/x.git"]}), &root, &perms, &only),
+            Decision::HardDeny(DenyReason::Domain(_))
+        ));
+        // A local path or file:// remote is refused by the planner, not run.
+        assert!(crate::tools::git_tool::plan_from_args(&json!({"args": ["ls-remote", "/etc"]})).is_err());
+        assert!(crate::tools::git_tool::plan_from_args(&json!({"args": ["fetch", "file:///x"]})).is_err());
+    }
+
+    #[test]
+    fn gh_uses_github_host_for_policy() {
+        let root = root();
+        let perms = ToolPermissions::allow_all();
+        let deny_gh = NetworkPolicy {
+            allowed: true,
+            allow_domains: Vec::new(),
+            deny_domains: vec!["github.com".into()],
+        };
+        assert_eq!(
+            decide("git", json!({"program": "gh", "args": ["issue", "list"]}), &root, &perms, &deny_gh),
+            Decision::HardDeny(DenyReason::Domain("github.com".into()))
+        );
+        let ghe = json!({"program": "gh", "args": ["issue", "list", "--repo", "ghe.corp.test/o/r"]});
+        assert_eq!(
+            decide("git", ghe.clone(), &root, &perms, &deny_gh),
+            decide("git", ghe.clone(), &root, &perms, &NetworkPolicy::open()),
+            "an enterprise host is not github.com"
+        );
+        let deny_ghe = NetworkPolicy {
+            allowed: true,
+            allow_domains: Vec::new(),
+            deny_domains: vec!["ghe.corp.test".into()],
+        };
+        assert_eq!(
+            decide("git", ghe, &root, &perms, &deny_ghe),
+            Decision::HardDeny(DenyReason::Domain("ghe.corp.test".into()))
+        );
     }
 
     #[test]
