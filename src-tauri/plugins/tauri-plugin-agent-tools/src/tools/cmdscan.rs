@@ -101,6 +101,12 @@ const RESOLUTION_VARS: &[&str] = &[
     "ps4", "prompt_command", "ifs", "execignore", "bash_loadables_path",
     "psdefaultparametervalues", "psmoduleautoloadingpreference",
 ];
+/// Inline `NAME=value` assignments that cannot change what a granted program
+/// runs. Every other leading assignment (`GIT_SSH_COMMAND`, `NODE_OPTIONS`,
+/// `PERL5OPT`, `PAGER`, `HOME`, ...) can turn the program into a loader for
+/// agent-written code, so it is non-plain in [`simple_commands`] (still listed,
+/// so deny rules see the program).
+const INERT_ENV_VARS: &[&str] = &["RUST_LOG", "CI", "NO_COLOR", "DEBUG", "FORCE_COLOR"];
 /// Prefixes of [`RESOLUTION_VARS`]: the dynamic loaders' variables and bash's
 /// exported functions.
 const RESOLUTION_VAR_PREFIXES: &[&str] = &["ld_", "dyld_", "bash_func_"];
@@ -118,6 +124,13 @@ fn canon(base: &str) -> String {
         }
     }
     lower
+}
+
+/// Whether a `NAME=value` token is an inline assignment that is not on the
+/// [`INERT_ENV_VARS`] allow-list (or is a resolution variable).
+fn assignment_is_unplain(token: &str) -> bool {
+    assigns_resolution_var(token)
+        || token.split_once('=').is_some_and(|(name, _)| !INERT_ENV_VARS.contains(&name))
 }
 
 /// Whether assigning `name` (optionally `+=`-suffixed, `env:`-prefixed, or
@@ -443,7 +456,10 @@ fn scan_into(command: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool 
     if command.contains("BASH_ARGV0") {
         return false;
     }
-    let (outer, subs) = extract_substitutions(command);
+    let (outer, subs, unbalanced) = extract_substitutions(command);
+    if unbalanced {
+        return false;
+    }
     for sub in subs {
         if !scan_into(&sub, bases, depth + 1) {
             return false;
@@ -461,10 +477,15 @@ fn scan_into(command: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool 
 /// separate scanning, replacing each with a space. `$((...))` arithmetic runs
 /// no command and is dropped. Substitutions inside single quotes are literal
 /// and left in place.
-fn extract_substitutions(s: &str) -> (String, Vec<String>) {
+///
+/// The third value is `true` when a substitution never closes (an unbalanced
+/// quote or paren), so what it holds cannot be bounded: callers treat the line
+/// as opaque.
+fn extract_substitutions(s: &str) -> (String, Vec<String>, bool) {
     let chars: Vec<char> = s.chars().collect();
     let mut outer = String::with_capacity(s.len());
     let mut subs = Vec::new();
+    let mut unbalanced = false;
     let mut i = 0;
     let mut quote: Option<char> = None;
     while i < chars.len() {
@@ -505,14 +526,16 @@ fn extract_substitutions(s: &str) -> (String, Vec<String>) {
                     i = skip_balanced(&chars, i + 2);
                     outer.push(' ');
                 } else {
-                    let (inner, next) = capture_balanced(&chars, i + 1);
+                    let (inner, next, closed) = capture_balanced(&chars, i + 1);
+                    unbalanced |= !closed;
                     subs.push(inner);
                     outer.push(' ');
                     i = next;
                 }
             }
             '<' | '>' if i + 1 < chars.len() && chars[i + 1] == '(' => {
-                let (inner, next) = capture_balanced(&chars, i + 1);
+                let (inner, next, closed) = capture_balanced(&chars, i + 1);
+                unbalanced |= !closed;
                 subs.push(inner);
                 outer.push(' ');
                 i = next;
@@ -523,46 +546,77 @@ fn extract_substitutions(s: &str) -> (String, Vec<String>) {
             }
         }
     }
-    (outer, subs)
+    (outer, subs, unbalanced)
 }
 
-/// From an opening `(` at `open`, return (inner-without-parens, index-after-`)`).
-fn capture_balanced(chars: &[char], open: usize) -> (String, usize) {
+/// From an opening `(` at `open`, return the index just past its matching `)`
+/// and whether it was found. Quotes and backslashes are tracked as the shell
+/// does, so a `)` inside `"..."` or `'...'` does not end the group; a `$(`
+/// inside double quotes nests. An unterminated group runs to the end.
+fn scan_paren(chars: &[char], open: usize) -> (usize, bool) {
     let mut depth = 1;
-    let mut inner = String::new();
     let mut j = open + 1;
-    while j < chars.len() && depth > 0 {
-        match chars[j] {
-            '(' => {
-                depth += 1;
-                inner.push('(');
+    let mut quote: Option<char> = None;
+    while j < chars.len() {
+        let c = chars[j];
+        match quote {
+            Some('\'') => {
+                if c == '\'' {
+                    quote = None;
+                }
+                j += 1;
             }
-            ')' => {
-                depth -= 1;
-                if depth > 0 {
-                    inner.push(')');
+            Some(_) => {
+                if c == '\\' {
+                    j += 2;
+                } else if c == '"' {
+                    quote = None;
+                    j += 1;
+                } else if c == '$' && chars.get(j + 1) == Some(&'(') {
+                    let (end, closed) = scan_paren(chars, j + 1);
+                    if !closed {
+                        return (end, false);
+                    }
+                    j = end;
+                } else {
+                    j += 1;
                 }
             }
-            c => inner.push(c),
+            None => match c {
+                '\\' => j += 2,
+                '\'' | '"' => {
+                    quote = Some(c);
+                    j += 1;
+                }
+                '(' => {
+                    depth += 1;
+                    j += 1;
+                }
+                ')' => {
+                    depth -= 1;
+                    j += 1;
+                    if depth == 0 {
+                        return (j, true);
+                    }
+                }
+                _ => j += 1,
+            },
         }
-        j += 1;
     }
-    (inner, j)
+    (chars.len(), false)
+}
+
+/// From an opening `(` at `open`, return (inner-without-parens,
+/// index-after-`)`, whether the `)` was found).
+fn capture_balanced(chars: &[char], open: usize) -> (String, usize, bool) {
+    let (end, closed) = scan_paren(chars, open);
+    let stop = if closed { end - 1 } else { end };
+    (chars[open + 1..stop].iter().collect(), end, closed)
 }
 
 /// From an opening `(` at `open`, return the index just past its matching `)`.
 fn skip_balanced(chars: &[char], open: usize) -> usize {
-    let mut depth = 1;
-    let mut j = open + 1;
-    while j < chars.len() && depth > 0 {
-        match chars[j] {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            _ => {}
-        }
-        j += 1;
-    }
-    j
+    scan_paren(chars, open).0
 }
 
 fn capture_backtick(chars: &[char], tick: usize) -> (String, usize) {
@@ -619,6 +673,22 @@ fn split_segments(s: &str) -> Vec<String> {
             {
                 cur.push(c);
                 i += 1;
+            }
+            // PowerShell `& (expr)` / `. (expr)` run the value of a
+            // sub-expression, not a subshell. Keep the call operator and its
+            // parenthesised group in one segment so the scan can see that the
+            // program is computed (the scanners treat it as opaque).
+            '&' if shell_is_powershell()
+                && chars[i + 1..].iter().find(|ch| **ch != ' ' && **ch != '\t') == Some(&'(') =>
+            {
+                segs.push(std::mem::take(&mut cur));
+                cur.push(c);
+                i += 1;
+            }
+            '(' if shell_is_powershell() && matches!(cur.trim(), "&" | ".") => {
+                let (end, _) = scan_paren(&chars, i);
+                cur.extend(&chars[i..end]);
+                i = end;
             }
             ';' | '\n' | '|' | '&' | '(' | ')' => {
                 segs.push(std::mem::take(&mut cur));
@@ -691,6 +761,9 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
         if idx >= tokens.len() {
             return true; // only assignments / empty: runs nothing
         }
+        if is_ps_call_of_expression(&tokens, idx) {
+            return false;
+        }
         let base = strip_base(&tokens[idx]);
         if base.is_empty() {
             return true;
@@ -728,12 +801,15 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
             continue;
         }
         if SHELLS.contains(&base.as_str()) {
-            if let Some(p) = tokens[idx + 1..].iter().position(|t| t == "-c") {
-                let c_arg = idx + 1 + p + 1;
-                return match tokens.get(c_arg) {
-                    Some(cmd) => scan_into(cmd, bases, depth + 1),
-                    None => false,
-                };
+            match shell_mode(&tokens, idx) {
+                ShellMode::Inline(c_arg) => {
+                    return match tokens.get(c_arg) {
+                        Some(cmd) => scan_into(cmd, bases, depth + 1),
+                        None => false,
+                    };
+                }
+                ShellMode::Ambiguous => return false,
+                ShellMode::NoCommand | ShellMode::ScriptThenC => {}
             }
             bases.insert(base);
             return true;
@@ -769,6 +845,65 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
         bases.insert(base);
         return true;
     }
+}
+
+/// Whether the command at `idx` is a PowerShell call operator (`&`, `.`)
+/// applied to a parenthesised expression, which runs a program that is only
+/// known at run time.
+fn is_ps_call_of_expression(tokens: &[String], idx: usize) -> bool {
+    let t = tokens[idx].as_str();
+    (t.starts_with("&(")
+        || t.starts_with(".(")
+        || (matches!(t, "&" | ".") && tokens.get(idx + 1).is_some_and(|n| n.starts_with('('))))
+        && shell_is_powershell()
+}
+
+/// How a POSIX shell invocation (`tokens[shell_idx]` is the shell) takes its
+/// command.
+enum ShellMode {
+    /// No `-c`: a plain shell, or a script path with nothing after it to read
+    /// as `-c`.
+    NoCommand,
+    /// `-c` among the leading options; the command word is at this index (it
+    /// may be past the end).
+    Inline(usize),
+    /// A script path comes first and a `-c` follows: bash runs the script and
+    /// `-c` is just a positional argument.
+    ScriptThenC,
+    /// An option cluster holding `c` beside a value-taking `o`/`O`: which word
+    /// is the command is unclear.
+    Ambiguous,
+}
+
+/// `-c` counts only while options are still being parsed: stop at the first
+/// non-option word or `--`. A short cluster holding `c` (`-lc`, `-ec`) is `-c`.
+fn shell_mode(tokens: &[String], shell_idx: usize) -> ShellMode {
+    let mut j = shell_idx + 1;
+    while let Some(t) = tokens.get(j) {
+        let is_option = t.len() > 1 && (t.starts_with('-') || t.starts_with('+'));
+        if t == "--" || !is_option {
+            return if tokens[j + 1..].iter().any(|x| x == "-c") {
+                ShellMode::ScriptThenC
+            } else {
+                ShellMode::NoCommand
+            };
+        }
+        if t.starts_with("--") {
+            j += if matches!(t.as_str(), "--rcfile" | "--init-file") { 2 } else { 1 };
+            continue;
+        }
+        let flags = &t[1..];
+        let takes_value = flags.contains(['o', 'O']);
+        if flags.contains('c') {
+            return if takes_value || t.starts_with('+') {
+                ShellMode::Ambiguous
+            } else {
+                ShellMode::Inline(j + 1)
+            };
+        }
+        j += if takes_value { 2 } else { 1 };
+    }
+    ShellMode::NoCommand
 }
 
 /// GNU `time`'s getopt spec is `+af:o:pqvV`: only `-f`/`--format` and
@@ -917,7 +1052,10 @@ fn collect_commands(command: &str, out: &mut Vec<String>, depth: usize) {
     if line_evaluates_text(command) {
         out.push(non_plain(command));
     }
-    let (outer, subs) = extract_substitutions(command);
+    let (outer, subs, unbalanced) = extract_substitutions(command);
+    if unbalanced {
+        out.push(non_plain(command));
+    }
     for sub in subs {
         collect_commands(&sub, out, depth + 1);
     }
@@ -944,7 +1082,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
     let mut idx = 0;
     for _ in 0..64 {
         while idx < tokens.len() && is_assignment(&tokens[idx]) {
-            *unplain |= assigns_resolution_var(&tokens[idx]);
+            *unplain |= assignment_is_unplain(&tokens[idx]);
             idx += 1;
         }
         let Some(first) = tokens.get(idx) else {
@@ -953,6 +1091,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
         let base = strip_base(first);
         let name = canon(&base);
         if tokens.iter().any(|t| is_drive_ref(t))
+            || is_ps_call_of_expression(&tokens, idx)
             || command_word_is_dynamic(first)
             || OPAQUE.contains(&name.as_str()) && !matches!(base.as_str(), "sudo" | "doas")
             || is_redefining(&name)
@@ -966,7 +1105,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
             idx += 1;
             while let Some(t) = tokens.get(idx) {
                 if is_assignment(t) {
-                    *unplain |= assigns_resolution_var(t);
+                    *unplain |= assignment_is_unplain(t);
                     idx += 1;
                 } else if t.starts_with('-') {
                     // `env -S` splits its argument into a command we cannot see.
@@ -985,11 +1124,16 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
             continue;
         }
         if SHELLS.contains(&base.as_str()) {
-            if let Some(p) = tokens[idx + 1..].iter().position(|t| t == "-c") {
-                if let Some(cmd) = tokens.get(idx + 1 + p + 1) {
-                    collect_commands(cmd, out, depth + 1);
-                    return;
+            match shell_mode(&tokens, idx) {
+                ShellMode::Inline(c_arg) => {
+                    if let Some(cmd) = tokens.get(c_arg) {
+                        collect_commands(cmd, out, depth + 1);
+                        return;
+                    }
+                    *unplain = true;
                 }
+                ShellMode::ScriptThenC | ShellMode::Ambiguous => *unplain = true,
+                ShellMode::NoCommand => {}
             }
         }
         if WRAPPERS.contains(&base.as_str()) {
@@ -1008,7 +1152,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
                     continue;
                 }
                 if is_assignment(t) {
-                    *unplain |= assigns_resolution_var(t);
+                    *unplain |= assignment_is_unplain(t);
                     idx += 1;
                 } else if t.starts_with('-') || numeric {
                     idx += 1;
@@ -1046,7 +1190,10 @@ mod simple_command_tests {
     fn each_command_in_a_line_starts_at_its_program() {
         assert_eq!(simple_commands("true; git push"), vec!["true", "git push"]);
         assert_eq!(simple_commands("cd . && git reset --hard"), vec!["cd .", "git reset --hard"]);
-        assert_eq!(simple_commands("GIT_DIR=.git env -u X timeout 60 git push -f"), vec!["git push -f"]);
+        assert_eq!(
+            simple_commands("RUST_LOG=debug env -u X timeout 60 git push -f"),
+            vec!["git push -f"]
+        );
         assert_eq!(simple_commands("sudo -u bob git status"), vec!["git status"]);
         assert_eq!(simple_commands("bash -c 'git reset --hard'"), vec!["git reset --hard"]);
         assert_eq!(simple_commands("echo $(git reset --hard)"), vec!["git reset --hard", "echo"]);
@@ -1260,6 +1407,17 @@ mod plain_invocation_tests {
         simple_commands(command).iter().any(|c| c.starts_with(NON_PLAIN_MARK))
     }
 
+    fn set(items: &[&str]) -> BTreeSet<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn bases(command: &str) -> BTreeSet<String> {
+        match scan_command(command) {
+            CommandScan::Bases(b) => b,
+            CommandScan::Opaque => panic!("expected Bases for {command:?}, got Opaque"),
+        }
+    }
+
     #[test]
     fn powershell_typographic_quotes_are_never_plain() {
         assert!(marked("git status '\u{2018}; calc; #'"));
@@ -1409,7 +1567,7 @@ mod plain_invocation_tests {
             ("ls -la", &["ls"][..]),
             ("git status && cargo test -- --nocapture", &["cargo", "git"][..]),
             ("export RUST_LOG=debug; echo $HOME", &["echo", "export"][..]),
-            ("FOO=1 npm run build", &["npm"][..]),
+            ("RUST_LOG=1 npm run build", &["npm"][..]),
             ("echo $((1 + 2))", &["echo"][..]),
             ("echo \"((x))\" '$((x))'", &["echo"][..]),
             ("echo ${a[0]} ${a[@]} ${#a[*]} ${x:1} ${x: -2:1}", &["echo"][..]),
@@ -1483,6 +1641,106 @@ mod plain_invocation_tests {
                 assert!(!marked(command), "{command} must stay plain under bash");
                 assert!(matches!(scan_command(command), CommandScan::Bases(_)), "{command}");
             });
+        }
+    }
+
+    #[test]
+    fn substitution_quoted_paren_not_early_end() {
+        for command in [
+            "echo $(echo \")\"; rm x)",
+            "echo $(echo ')'; rm x)",
+            "echo <(echo \")\"; rm x)",
+            "echo $(echo \"$(echo \")\")\"; rm x)",
+        ] {
+            assert_eq!(bases(command), set(&["echo", "rm"]), "{command}");
+            let cmds = simple_commands(command);
+            assert!(cmds.iter().any(|c| c.starts_with("rm")), "{command}: {cmds:?}");
+        }
+        // An unterminated substitution cannot be bounded.
+        assert_eq!(scan_command("echo $(echo \"x)"), CommandScan::Opaque);
+        assert!(marked("echo $(echo \"x)"));
+    }
+
+    #[test]
+    fn shell_script_then_dash_c_records_shell() {
+        assert_eq!(bases("bash evil.sh -c ls"), set(&["bash"]));
+        let cmds = simple_commands("bash evil.sh -c ls");
+        assert!(cmds.iter().any(|c| c.starts_with("bash evil.sh")), "{cmds:?}");
+        assert!(marked("bash evil.sh -c ls"));
+        assert!(!cmds.iter().any(|c| c == "ls"), "{cmds:?}");
+        // A leading `-c` is still the inline command.
+        assert_eq!(bases("bash -c 'git status'"), set(&["git"]));
+        assert_eq!(bases("bash --norc -x -c 'git status'"), set(&["git"]));
+        assert_eq!(bases("bash -o pipefail -c 'git status'"), set(&["git"]));
+        assert!(!marked("bash script.sh"));
+    }
+
+    #[test]
+    fn shell_lc_cluster_is_inline() {
+        for command in ["bash -lc 'rm -rf x'", "sh -ec 'rm -rf x'", "zsh -xc 'rm -rf x'"] {
+            assert_eq!(bases(command), set(&["rm"]), "{command}");
+            assert!(
+                simple_commands(command).iter().any(|c| c == "rm -rf x"),
+                "{command}: {:?}",
+                simple_commands(command)
+            );
+        }
+        // `-c` cluster beside a value-taking `o` is ambiguous.
+        assert_eq!(scan_command("bash -oc pipefail 'ls'"), CommandScan::Opaque);
+    }
+
+    #[test]
+    fn ps_call_operator_on_subexpression_opaque() {
+        as_powershell(true, || {
+            for command in [
+                "& (gcm calc)",
+                "&(gcm calc)",
+                ". (gi x.ps1)",
+                "echo hi; & (Get-Item C:\\t\\evil.exe) a",
+            ] {
+                assert_eq!(scan_command(command), CommandScan::Opaque, "{command}");
+                assert!(marked(command), "{command}: {:?}", simple_commands(command));
+            }
+            // Call operator on a plain word and `&&` are unaffected.
+            assert_eq!(bases("& calc"), set(&["calc"]));
+            assert_eq!(bases("a && b"), set(&["a", "b"]));
+        });
+        // Under bash `&` backgrounds and `(...)` is a subshell.
+        as_powershell(false, || {
+            assert_eq!(bases("sleep 1 & (ls)"), set(&["ls", "sleep"]));
+        });
+    }
+
+    #[test]
+    fn git_exec_env_nonplain() {
+        for command in [
+            "GIT_SSH_COMMAND='sh evil' git fetch",
+            "GIT_EXTERNAL_DIFF=./evil git diff",
+            "PAGER='sh evil' git log",
+            "NODE_OPTIONS=--require=./evil.js node app.js",
+            "PERL5OPT=-Mevil perl x",
+            "HOME=/tmp/x git status",
+            "env GIT_EDITOR=./evil git commit",
+            "nice PYTHONPATH=./evil python x",
+        ] {
+            assert!(marked(command), "{command} -> {:?}", simple_commands(command));
+            // Still listed for deny rules.
+            let cmds = simple_commands(command);
+            assert!(
+                cmds.iter().any(|c| !c.starts_with(NON_PLAIN_MARK) && !c.contains('=')),
+                "{cmds:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn inert_env_stays_plain() {
+        for command in [
+            "RUST_LOG=debug cargo test",
+            "CI=1 npm test",
+            "NO_COLOR=1 FORCE_COLOR=0 DEBUG=x node app.js",
+        ] {
+            assert!(!marked(command), "{command} -> {:?}", simple_commands(command));
         }
     }
 }
