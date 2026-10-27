@@ -295,7 +295,17 @@ mod tests {
         std::fs::set_permissions(&target, perms.clone()).unwrap();
         write_atomic(&target, b"new").unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
-        assert_eq!(std::fs::metadata(&target).unwrap().permissions(), perms);
+        let after = std::fs::metadata(&target).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            // `Permissions` equality compares the raw st_mode, which for a file
+            // read back includes the file-type bits (0o100000); only the
+            // permission bits are the point here.
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(after.mode() & 0o777, perms.mode() & 0o777);
+        }
+        #[cfg(not(unix))]
+        assert_eq!(after, perms);
     }
 
     #[test]
