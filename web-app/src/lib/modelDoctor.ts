@@ -24,6 +24,7 @@
  * change to any setting that shapes the request (see `modelFingerprint`)
  * invalidates it.
  */
+import { redactSecrets } from '@/lib/redact'
 import { generateText, jsonSchema, type LanguageModel, type ModelMessage } from 'ai'
 
 export const PROBE_VERSION = 1
@@ -238,10 +239,7 @@ export function describeProbeError(error: unknown): string {
   const status = e?.statusCode ? `HTTP ${e.statusCode}: ` : ''
   const text = (e?.message ?? String(error)).replace(/\s+/g, ' ')
   // Bearer tokens and API-key-shaped strings never reach the report.
-  return (status + text)
-    .replace(/(bearer\s+)[^\s"']+/gi, '$1<redacted>')
-    .replace(/\b(sk|pk|ghp|gho|xox[abp]|AIza)[-_A-Za-z0-9]{12,}/g, '<redacted>')
-    .slice(0, 400)
+  return redactSecrets(status + text).slice(0, 400)
 }
 
 /**
