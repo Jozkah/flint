@@ -23,6 +23,7 @@ vi.mock('@/lib/backendStorage', () => ({
 import { consumeStep, runTurn, turnsFor, type ToolOutcome } from '../coworkRunner'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { localStorageKey } from '@/constants/localStorage'
+import { flushDeferredStores } from '@/lib/deferredPersistStorage'
 import { fromCoworkUsage } from '@/lib/tokenUsage'
 import type { SubagentRun } from '@/types/coworkSession'
 
@@ -127,9 +128,12 @@ describe('Cowork runner', () => {
 })
 
 describe('Cowork session persistence', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     disk.clear()
     useCoworkSessions.setState({ sessions: [], currentId: null })
+    // A restart loses memory: land the deferred write of that reset first, so
+    // rehydrate reads what the test put on disk, not a pending value.
+    await flushDeferredStores()
   })
 
   const subagent = (usage: SubagentRun['usage']): SubagentRun => ({
@@ -167,6 +171,7 @@ describe('Cowork session persistence', () => {
     )
     const saved = disk.get(localStorageKey.coworkSessions)!
     useCoworkSessions.setState({ sessions: [], currentId: null })
+    await flushDeferredStores()
     disk.set(localStorageKey.coworkSessions, saved)
 
     await useCoworkSessions.persist.rehydrate()
