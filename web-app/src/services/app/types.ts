@@ -43,6 +43,6 @@ export interface AppService {
   /** Cap model downloads at this many bytes per second; 0 is unlimited. */
   setDownloadSpeedLimit(bytesPerSec: number): Promise<void>
   /** Write the redacted app log to `destination`; returns the path written. */
-  exportRedactedLogs(destination: string): Promise<string>
+  exportRedactedLogs(): Promise<string | null>
   readYaml<T = unknown>(path: string): Promise<T>
 }

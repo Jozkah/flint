@@ -65,6 +65,7 @@ const dataFolderMocks = vi.hoisted(() => ({
   open: vi.fn(),
   stopAllModels: vi.fn(),
   emit: vi.fn(),
+  exportLogs: vi.fn(),
 }))
 
 vi.mock('@/containers/dialogs/ChangeDataFolderLocation', () => ({
@@ -212,6 +213,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
   useServiceHub: () => ({
     app: () => ({
       factoryReset: vi.fn(),
+      exportRedactedLogs: dataFolderMocks.exportLogs,
       getJanDataFolder: vi.fn().mockResolvedValue('/test/data/folder'),
       getUnavailableJanDataFolder: mockGetUnavailableJanDataFolder,
       relocateJanDataFolder: vi.fn(),
@@ -371,6 +373,28 @@ describe('Data Settings Route', () => {
       )
     }
   )
+
+  it('exports logs without choosing a path and treats null as cancel', async () => {
+    const { toast } = await import('sonner')
+    global.IS_TAURI = true
+    dataFolderMocks.exportLogs.mockResolvedValueOnce(null)
+    const Component = DataRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('settings:general.exportLogsDesc'))
+    })
+    expect(dataFolderMocks.exportLogs).toHaveBeenCalledWith()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
+
+    dataFolderMocks.exportLogs.mockResolvedValueOnce('/x/flint-logs.txt')
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('settings:general.exportLogsDesc'))
+    })
+    expect(toast.success).toHaveBeenCalled()
+  })
 
   it('leaves the data folder and update check out of the browser client', async () => {
     platform.tauri = false

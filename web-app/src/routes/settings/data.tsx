@@ -150,12 +150,8 @@ function DataSettings() {
 
   const handleExportLogs = async () => {
     try {
-      const destination = await serviceHub.dialog().save({
-        defaultPath: 'flint-logs-redacted.txt',
-        filters: [{ name: 'Text', extensions: ['txt'] }],
-      })
-      if (!destination) return
-      const path = await serviceHub.app().exportRedactedLogs(destination)
+      const path = await serviceHub.app().exportRedactedLogs()
+      if (!path) return
       toast.success(t('settings:general.exportLogsSaved', { path }))
     } catch (error) {
       toast.error(t('settings:general.exportLogsFailed'), {
