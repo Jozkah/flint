@@ -88,7 +88,7 @@ class EventQueue {
     if (this.#ended) return false
     const waiter = this.#waiters.shift()
     if (waiter) {
-      waiter({ value: item, done: false })
+      waiter.resolve({ value: item, done: false })
       return false
     }
     this.#items.push(item)
@@ -103,23 +103,23 @@ class EventQueue {
   end() {
     if (this.#ended) return
     this.#ended = true
-    for (const waiter of this.#waiters.splice(0)) waiter({ value: undefined, done: true })
+    for (const waiter of this.#waiters.splice(0)) waiter.resolve({ value: undefined, done: true })
   }
 
+  // A parked reader hears the failure, not a clean end: a crash must not look
+  // like a turn that finished.
   fail(error) {
     if (this.#ended) return
     this.#failure = error
     this.#ended = true
-    for (const waiter of this.#waiters.splice(0)) waiter({ value: undefined, done: true })
+    for (const waiter of this.#waiters.splice(0)) waiter.reject(error)
   }
 
   next() {
-    const waiter = this.#waiters.shift()
-    if (waiter) return waiter
     if (this.#items.length) return Promise.resolve({ value: this.#items.shift(), done: false })
     if (this.#failure) return Promise.reject(this.#failure)
     if (this.#ended) return Promise.resolve({ value: undefined, done: true })
-    return new Promise((resolve) => this.#waiters.push(resolve))
+    return new Promise((resolve, reject) => this.#waiters.push({ resolve, reject }))
   }
 
   [Symbol.asyncIterator]() {
@@ -156,7 +156,6 @@ export class JanTurn {
   #settle;
   #reject;
   #terminal;
-  #buffered = 0;
 
   // The events of this turn, in the order the runtime emitted them.
   [Symbol.asyncIterator]() {
@@ -177,16 +176,13 @@ export class JanTurn {
   }
 
   // Called by the session. A turn nobody reads keeps at most the session's
-  // `maxBufferedEvents`, then loses its oldest events - a run that streams
-  // tokens into an unread turn must not grow the client without limit.
+  // `maxBufferedEvents` live in its queue, then loses its oldest events - a run
+  // that streams tokens into an unread turn must not grow the client without
+  // limit. The cap is on the live queue length, so a reader that keeps draining
+  // never drops anything.
   _push(event) {
     if (!this.#queue.push(event)) return
-    this.#buffered += 1
-    if (this.#buffered <= this.session.maxBufferedEvents) return
-    if (this.#queue.dropOldest()) {
-      this.#buffered -= 1
-      this.dropped += 1
-    }
+    if (this.#queue.length > this.session.maxBufferedEvents && this.#queue.dropOldest()) this.dropped += 1
   }
 
   _finish(record) {
@@ -231,7 +227,9 @@ export class JanSession {
   // which arrive wrapped in a `subagent` event. `'*'` hears all of them.
   ///
   // `on('tool_request', fn)` observes host tool calls; the call is answered
-  // from the declaration's `handler` either way.
+  // from the declaration's `handler` either way. `kind` is `'event'`, `'*'`, or
+  // a wire tag name (`tool_request`, `permission_request`, `token`, ...): a tag
+  // listener hears only events of that tag.
   on(kind, listener) {
     const list = this.#listeners.get(kind) ?? []
     list.push(listener)
@@ -337,6 +335,10 @@ export class JanSession {
     // A listener that raised has failed the runtime, and this session with it
     // (see `JanRuntime._callListener`): no turn is left to push to.
     if (this.#failure) return
+    if (tag && tag !== 'event') {
+      this.#emit(tag, event, { wildcard: false })
+      if (this.#failure) return
+    }
     const turn = this.#turn(turnId, true)
     turn?._push(event)
     if (tag === 'tool_request') this.#answer(event)
@@ -391,8 +393,9 @@ export class JanSession {
     return turn
   }
 
-  #emit(kind, event) {
+  #emit(kind, event, { wildcard = true } = {}) {
     for (const listener of this.#listeners.get(kind) ?? []) this.runtime._callListener(listener, event)
+    if (!wildcard) return
     for (const listener of this.#listeners.get('*') ?? []) this.runtime._callListener(listener, event)
   }
 
@@ -532,6 +535,19 @@ export class JanRuntime {
     })
     this.#child = child
     this.#stdin = child.stdin
+
+    // A runtime that dies while a write is in flight raises EPIPE (or
+    // ERR_STREAM_DESTROYED) on these streams; with no listener that is an
+    // uncaught exception in the caller's process. `#fail` is idempotent, so
+    // racing with `exit` is fine, and a graceful close() is not a failure.
+    const channelBroke = (error) => {
+      if (this.#closing) return
+      this.#fail(
+        new JanRuntimeError(`the runtime channel broke: ${error.message}`, { stderr: this.#stderr, cause: error }),
+      )
+    }
+    child.stdin.on('error', channelBroke)
+    child.stdout.on('error', channelBroke)
 
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk) => {
