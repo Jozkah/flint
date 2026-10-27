@@ -153,13 +153,8 @@ impl CrossProcessLock {
             {
                 Ok(_) => return Self { path: Some(path) },
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    let stale = fs::metadata(&path)
-                        .and_then(|m| m.modified())
-                        .ok()
-                        .and_then(|t| t.elapsed().ok())
-                        .is_some_and(|age| age >= XLOCK_STALE);
-                    if stale {
-                        let _ = fs::remove_file(&path);
+                    if lock_is_stale(&path) {
+                        reclaim_stale_lock(&path);
                         continue;
                     }
                 }
@@ -179,6 +174,49 @@ impl CrossProcessLock {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
+}
+
+/// Whether the lock file at `path` is old enough to be from a dead writer.
+fn lock_is_stale(path: &std::path::Path) -> bool {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age >= XLOCK_STALE)
+}
+
+/// Remove a stale lock without letting two reclaimers both win.
+///
+/// Two waiters that both saw the same stale file used to race: A removed it
+/// and created a fresh lock, then B removed A's fresh lock and created its
+/// own, so both held the lock. The removal now happens under a short-lived
+/// `.reclaim` guard (itself a `create_new` file) and staleness is re-checked
+/// while holding it, so a lock another waiter just replaced is left alone.
+fn reclaim_stale_lock(path: &std::path::Path) {
+    let guard_path = path.with_extension("lock.reclaim");
+    let got = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&guard_path)
+        .is_ok();
+    if !got {
+        // Another waiter is reclaiming. A guard that outlived any plausible
+        // critical section belonged to a crashed reclaimer: clear it so the
+        // next pass can proceed.
+        let old = fs::metadata(&guard_path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age >= XLOCK_STALE * 3);
+        if old {
+            let _ = fs::remove_file(&guard_path);
+        }
+        return;
+    }
+    if lock_is_stale(path) {
+        let _ = fs::remove_file(path);
+    }
+    let _ = fs::remove_file(&guard_path);
 }
 
 impl Drop for CrossProcessLock {
@@ -356,6 +394,24 @@ fn install_key_path() -> Option<PathBuf> {
         .map(|home| home.join(".jan").join(INSTALL_KEY_FILE_NAME))
 }
 
+/// Create `path` (which must not exist) and write `bytes`, with mode 0600 from
+/// the first instant on unix so there is no world-readable window under a
+/// 022 umask. Windows has no mode bits; the file inherits the owner-only ACL
+/// of the per-user profile directories these files live under.
+fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut file = opts.open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
 /// Read the random per-install key, creating it on first use.
 fn load_or_create_install_key(path: &PathBuf) -> Result<[u8; 32], String> {
     if let Ok(bytes) = fs::read(path) {
@@ -372,9 +428,8 @@ fn load_or_create_install_key(path: &PathBuf) -> Result<[u8; 32], String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let tmp = path.with_extension(format!("key.{}.tmp", std::process::id()));
-    fs::write(&tmp, key).map_err(|e| e.to_string())?;
-    restrict_permissions(&tmp);
+    let tmp = unique_tmp(path, "key");
+    write_private(&tmp, &key).map_err(|e| e.to_string())?;
     fs::rename(&tmp, path).map_err(|e| e.to_string())?;
     restrict_permissions(path);
     Ok(key)
@@ -493,8 +548,7 @@ fn write_file_map_atomic(
     blob.extend_from_slice(&ciphertext);
 
     let tmp = unique_tmp(path, "enc");
-    fs::write(&tmp, &blob).map_err(|e| e.to_string())?;
-    restrict_permissions(&tmp);
+    write_private(&tmp, &blob).map_err(|e| e.to_string())?;
     fs::rename(&tmp, path).map_err(|e| e.to_string())?;
     restrict_permissions(path);
     Ok(())
@@ -532,7 +586,7 @@ fn write_index(names: &BTreeSet<String>) -> Result<(), String> {
     }
     let body = serde_json::to_vec(names).map_err(|e| e.to_string())?;
     let tmp = unique_tmp(&path, "json");
-    fs::write(&tmp, &body).map_err(|e| e.to_string())?;
+    write_private(&tmp, &body).map_err(|e| e.to_string())?;
     fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
@@ -1131,6 +1185,92 @@ mod tests {
         writer.join().unwrap();
         assert!(read_index().contains("anthropic"));
         assert!(!lock.exists(), "the writer releases its own lock");
+    }
+
+    /// The staging file is born 0600, not chmod-ed after the fact (H-001).
+    #[cfg(unix)]
+    #[test]
+    fn install_key_tmp_created_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("flint-wp-key-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("k.tmp");
+        write_private(&p, &[7u8; 32]).unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secrets_blob_created_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let _tmp = TempDataFolder::new();
+        file_store("openai", &["sk-x".to_string()]).unwrap();
+        let mode = fs::metadata(secrets_file_path()).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    /// Platform-neutral: staging never overwrites an existing file.
+    #[test]
+    fn write_private_refuses_existing_file_and_writes_bytes() {
+        let dir = std::env::temp_dir().join(format!("flint-wp-neutral-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("f.tmp");
+        write_private(&p, b"abc").unwrap();
+        assert_eq!(fs::read(&p).unwrap(), b"abc");
+        assert!(write_private(&p, b"zzz").is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A stale lock is reclaimed, and a fresh one (another waiter just
+    /// replaced it) is never removed by a late reclaimer (NET-035).
+    #[test]
+    fn reclaim_leaves_a_fresh_lock_alone_and_removes_a_stale_one() {
+        let dir = std::env::temp_dir().join(format!("flint-wp-lock-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let lock = dir.join("x.lock");
+        fs::write(&lock, b"fresh").unwrap();
+        reclaim_stale_lock(&lock);
+        assert!(lock.exists(), "a fresh lock must survive a reclaim attempt");
+        assert!(!dir.join("x.lock.reclaim").exists(), "guard released");
+        let old = std::time::SystemTime::now() - XLOCK_STALE * 2;
+        fs::File::options().write(true).open(&lock).unwrap().set_modified(old).unwrap();
+        reclaim_stale_lock(&lock);
+        assert!(!lock.exists(), "a stale lock is removed");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Many threads contending on one stale lock: never two holders at once.
+    #[test]
+    fn stale_lock_reclaim_never_yields_two_holders() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::Arc;
+        let _tmp = TempDataFolder::new();
+        let lock = resolve_jan_data_folder().join("provider_secrets.race.lock");
+        fs::write(&lock, b"dead").unwrap();
+        let old = std::time::SystemTime::now() - XLOCK_STALE * 2;
+        fs::File::options().write(true).open(&lock).unwrap().set_modified(old).unwrap();
+        let holders = Arc::new(AtomicUsize::new(0));
+        let overlap = Arc::new(AtomicBool::new(false));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let (h, o) = (holders.clone(), overlap.clone());
+                std::thread::spawn(move || {
+                    let g = CrossProcessLock::acquire("provider_secrets.race.lock");
+                    if g.path.is_some() {
+                        if h.fetch_add(1, Ordering::SeqCst) != 0 {
+                            o.store(true, Ordering::SeqCst);
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        h.fetch_sub(1, Ordering::SeqCst);
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert!(!overlap.load(Ordering::SeqCst), "two holders at once");
     }
 
     #[test]
