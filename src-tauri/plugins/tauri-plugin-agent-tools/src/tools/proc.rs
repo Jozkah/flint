@@ -586,24 +586,15 @@ pub fn chaining_unavailable_error(operator: &str, available: &ShellConfig) -> St
     )
 }
 
-/// Locate an executable on PATH via the platform's own resolver. Also used by
-/// [`super::jail`] to find `bwrap` on distros with no FHS paths (NixOS keeps it
-/// only at a Nix-store path).
+/// Locate an executable on PATH, in this process, so the current directory is
+/// never searched (`where.exe` looks there first, so a cloned repository could
+/// plant the shell the agent runs in). Relative and empty PATH entries are
+/// skipped. Also used by [`super::jail`] to find `bwrap` on distros with no FHS
+/// paths (NixOS keeps it only at a Nix-store path).
 pub(crate) fn which(name: &str) -> Option<PathBuf> {
-    #[cfg(unix)]
-    let finder = "which";
-    #[cfg(windows)]
-    let finder = "where";
-    // A one-shot lookup from a process with no console (the desktop app, or the
-    // job supervisor it starts) would otherwise open a console window per call.
-    use jan_process::CommandConsole;
-    let out = std::process::Command::new(finder).arg(name).background().output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let first = text.lines().map(str::trim).find(|l| !l.is_empty())?;
-    Some(PathBuf::from(first))
+    let path = std::env::var_os("PATH")?;
+    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+    super::host_tools::locate_on_host(name, &path, &pathext)
 }
 
 /// Spawn `command` in `cwd` using the resolved shell, as a new process group,
@@ -2889,5 +2880,44 @@ mod descendant_tests {
         assert!(kill_descendants(shell.id()) >= 1);
         // The shell's `wait` returns once its child is gone.
         let _ = shell.wait().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod which_tests {
+    use super::*;
+
+    // Both tests change the process cwd.
+    static CWD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[cfg(windows)]
+    #[test]
+    fn which_ignores_cwd_planted_exe() {
+        let _guard = CWD.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("jan_which_cwd_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("jan_planted_tool.exe"), b"MZ").unwrap();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let found = which("jan_planted_tool");
+        std::env::set_current_dir(prev).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn which_skips_relative_path_entries() {
+        let _guard = CWD.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("jan_which_rel_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let name = if cfg!(windows) { "jan_rel_tool.exe" } else { "jan_rel_tool" };
+        std::fs::write(dir.join(name), b"x").unwrap();
+        let joined = std::env::join_paths([PathBuf::from("."), PathBuf::new()]).unwrap();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let found = super::super::host_tools::locate_on_host("jan_rel_tool", &joined, ".EXE");
+        std::env::set_current_dir(prev).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(found, None);
     }
 }
