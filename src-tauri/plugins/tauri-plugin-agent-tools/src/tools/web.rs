@@ -12,11 +12,14 @@
 //! selecting the keyless-vs-keyed Exa path from the process environment, and
 //! rendering normalized results as compact, model-friendly text.
 
+use futures_util::future::join_all;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri_plugin_websearch::provider::{clamp_count, create_provider, FetchedPage, SearchResult};
+use tauri_plugin_websearch::provider::{
+    clamp_count, create_provider, FetchedPage, SearchProvider, SearchResult,
+};
 
 /// Characters of a page `web_fetch` returns per call; the model reads the rest
 /// with `offset`.
@@ -85,59 +88,236 @@ fn exa_api_key() -> Option<String> {
     None
 }
 
+/// Most queries / URLs one `web_search` / `web_fetch` call may carry.
+const MAX_BATCH: usize = 5;
+/// How many of a batch run at once.
+const BATCH_CONCURRENCY: usize = 4;
+/// Longest one query or URL may take inside a batch before it is reported as
+/// failed (the other entries are unaffected).
+const BATCH_ITEM_TIMEOUT: Duration = Duration::from_secs(30);
+/// Characters a multi-query `web_search` result may hold in total.
+const MULTI_SEARCH_MAX_CHARS: usize = 24_000;
+
+/// Read `single` and the `plural` string array from `args` into one trimmed,
+/// de-duplicated, ordered list. `Ok(empty)` means neither was given.
+fn collect_batch(args: &Value, single: &str, plural: &str, tool: &str) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |raw: &str, key: &str| -> Result<(), String> {
+        let v = raw.trim();
+        if v.is_empty() {
+            return Err(format!("ERROR: {tool} '{key}' must not be empty."));
+        }
+        if !out.iter().any(|x| x == v) {
+            out.push(v.to_string());
+        }
+        Ok(())
+    };
+    match args.get(single) {
+        None | Some(Value::Null) => {}
+        Some(Value::String(s)) => push(s, single)?,
+        Some(_) => return Err(format!("ERROR: {tool} requires a '{single}' string argument.")),
+    }
+    match args.get(plural) {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(items)) => {
+            for it in items {
+                let Some(s) = it.as_str() else {
+                    return Err(format!("ERROR: {tool} '{plural}' must be an array of strings."));
+                };
+                push(s, plural)?;
+            }
+        }
+        Some(_) => return Err(format!("ERROR: {tool} '{plural}' must be an array of strings.")),
+    }
+    if out.len() > MAX_BATCH {
+        return Err(format!(
+            "ERROR: {tool} accepts at most {MAX_BATCH} entries in '{plural}', got {}.",
+            out.len()
+        ));
+    }
+    Ok(out)
+}
+
 /// Execute the `web_search` built-in. Returns the tool-result text; errors are
 /// returned as a `String` starting with "ERROR" to match the other handlers.
+/// `query` searches once; `queries` (up to 5) searches concurrently and groups
+/// the results per query.
 pub async fn web_search(args: &Value) -> String {
-    let Some(query) = args.get("query").and_then(|v| v.as_str()).map(str::trim) else {
-        return "ERROR: web_search requires a 'query' string argument.".to_string();
+    let queries = match collect_batch(args, "query", "queries", "web_search") {
+        Ok(q) => q,
+        Err(e) => return e,
     };
-    if query.is_empty() {
-        return "ERROR: web_search 'query' must not be empty.".to_string();
+    if queries.is_empty() {
+        return if args.get("query").is_some() || args.get("queries").is_some() {
+            "ERROR: web_search needs at least one non-empty query.".to_string()
+        } else {
+            "ERROR: web_search requires a 'query' string argument.".to_string()
+        };
     }
     let count = clamp_count(args.get("count").and_then(|v| v.as_u64()));
     let provider = match create_provider(None, exa_api_key(), None) {
         Ok(p) => p,
         Err(e) => return e,
     };
-    match provider.search(query, count).await {
-        Ok(results) if results.is_empty() => {
-            format!("No web search results found for query: {query}")
-        }
-        Ok(results) => render_search_results(&results),
-        Err(e) => format!("ERROR: {e}"),
+    search_with(provider.as_ref(), &queries, count).await
+}
+
+async fn search_with(provider: &dyn SearchProvider, queries: &[String], count: u32) -> String {
+    if let [query] = queries {
+        return match provider.search(query, count).await {
+            Ok(results) if results.is_empty() => {
+                format!("No web search results found for query: {query}")
+            }
+            Ok(results) => render_search_results(&results),
+            Err(e) => format!("ERROR: {e}"),
+        };
     }
+    // Entries run through the same (rate-limited) provider, at most
+    // BATCH_CONCURRENCY at a time, results kept in the model's order.
+    let mut outcomes: Vec<Result<Vec<SearchResult>, String>> = Vec::new();
+    for chunk in queries.chunks(BATCH_CONCURRENCY) {
+        outcomes.extend(
+            join_all(chunk.iter().map(|q| async move {
+                match tokio::time::timeout(BATCH_ITEM_TIMEOUT, provider.search(q, count)).await {
+                    Ok(r) => r,
+                    Err(_) => Err(format!("timed out after {}s", BATCH_ITEM_TIMEOUT.as_secs())),
+                }
+            }))
+            .await,
+        );
+    }
+    render_multi_search(queries, outcomes)
+}
+
+fn render_multi_search(
+    queries: &[String],
+    outcomes: Vec<Result<Vec<SearchResult>, String>>,
+) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let failed = outcomes.iter().filter(|o| o.is_err()).count();
+    let mut out = String::new();
+    if failed == queries.len() {
+        out.push_str(&format!("ERROR: all {failed} searches failed.\n\n"));
+    }
+    for (q, outcome) in queries.iter().zip(outcomes) {
+        out.push_str(&format!("## Query: {q}\n"));
+        match outcome {
+            Err(e) => out.push_str(&format!("ERROR: {e}\n\n")),
+            Ok(results) if results.is_empty() => out.push_str("No results.\n\n"),
+            Ok(results) => {
+                let fresh: Vec<SearchResult> = results
+                    .into_iter()
+                    .filter(|r| seen.insert(r.url.trim_end_matches('/').to_string()))
+                    .collect();
+                if fresh.is_empty() {
+                    out.push_str("(all results were already listed under an earlier query)\n\n");
+                } else {
+                    out.push_str(&render_search_results(&fresh));
+                    out.push_str("\n\n");
+                }
+            }
+        }
+    }
+    let out = out.trim_end().to_string();
+    if out.chars().count() > MULTI_SEARCH_MAX_CHARS {
+        let cut: String = out.chars().take(MULTI_SEARCH_MAX_CHARS).collect();
+        return format!("{cut}\n\n[output cut at {MULTI_SEARCH_MAX_CHARS} characters; search again with fewer queries or a smaller count to see the rest]");
+    }
+    out
 }
 
 /// Execute the `web_fetch` built-in. Returns bounded readable content with its
-/// source URL/title; errors start with "ERROR".
+/// source URL/title; errors start with "ERROR". `urls` (up to 5) fetches
+/// concurrently and shares one character budget between the pages.
 pub async fn web_fetch(args: &Value, read_roots: &[std::path::PathBuf]) -> String {
-    let Some(url) = args.get("url").and_then(|v| v.as_str()).map(str::trim) else {
-        return "ERROR: web_fetch requires a 'url' string argument.".to_string();
+    let urls = match collect_batch(args, "url", "urls", "web_fetch") {
+        Ok(u) => u,
+        Err(e) => return e,
     };
-    if url.is_empty() {
-        return "ERROR: web_fetch 'url' must not be empty.".to_string();
-    }
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return format!("ERROR: web_fetch 'url' must be an http(s) URL, got: {url}");
+    if urls.is_empty() {
+        return if args.get("url").is_some() || args.get("urls").is_some() {
+            "ERROR: web_fetch needs at least one non-empty url.".to_string()
+        } else {
+            "ERROR: web_fetch requires a 'url' string argument.".to_string()
+        };
     }
     let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-    let cached = fetch_cache()
-        .lock()
-        .ok()
-        .and_then(|mut c| c.get(url, Instant::now()));
-    if let Some(page) = cached {
-        return render_fetched_page(&page, offset);
+    if urls.len() > 1 && offset > 0 {
+        return "ERROR: web_fetch 'offset' only works with a single 'url'; fetch the page on its own to read further.".to_string();
+    }
+    if let [url] = urls.as_slice() {
+        if !is_http(url) {
+            return format!("ERROR: web_fetch 'url' must be an http(s) URL, got: {url}");
+        }
     }
     let provider = match create_provider(None, exa_api_key(), None) {
         Ok(p) => p,
         Err(e) => return e,
     };
+    fetch_with(provider.as_ref(), &urls, offset, read_roots).await
+}
+
+fn is_http(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+async fn fetch_with(
+    provider: &dyn SearchProvider,
+    urls: &[String],
+    offset: usize,
+    read_roots: &[std::path::PathBuf],
+) -> String {
+    if let [url] = urls {
+        return fetch_one(provider, url, offset, FETCH_PAGE_CHARS, read_roots).await;
+    }
+    let window = FETCH_PAGE_CHARS / urls.len();
+    let mut pages: Vec<String> = Vec::new();
+    for chunk in urls.chunks(BATCH_CONCURRENCY) {
+        pages.extend(
+            join_all(chunk.iter().map(|u| async move {
+                if !is_http(u) {
+                    return format!("ERROR: web_fetch url must be an http(s) URL, got: {u}");
+                }
+                match tokio::time::timeout(
+                    BATCH_ITEM_TIMEOUT,
+                    fetch_one(provider, u, 0, window, read_roots),
+                )
+                .await
+                {
+                    Ok(s) => s,
+                    Err(_) => format!("ERROR: timed out after {}s", BATCH_ITEM_TIMEOUT.as_secs()),
+                }
+            }))
+            .await,
+        );
+    }
+    urls.iter()
+        .zip(pages)
+        .map(|(u, p)| format!("## {u}\n{p}"))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+async fn fetch_one(
+    provider: &dyn SearchProvider,
+    url: &str,
+    offset: usize,
+    window: usize,
+    read_roots: &[std::path::PathBuf],
+) -> String {
+    let cached = fetch_cache()
+        .lock()
+        .ok()
+        .and_then(|mut c| c.get(url, Instant::now()));
+    if let Some(page) = cached {
+        return render_fetched_window(&page, offset, window);
+    }
     match provider.fetch(url).await {
         Ok(page) => {
             if let Ok(mut c) = fetch_cache().lock() {
                 c.put(url, page.clone(), Instant::now());
             }
-            render_fetched_page(&page, offset)
+            render_fetched_window(&page, offset, window)
         }
         Err(e) => {
             // A private GitHub repo returns a not-found/auth failure to the
@@ -175,7 +355,12 @@ fn render_search_results(results: &[SearchResult]) -> String {
 /// Render one window of a fetched page (`FETCH_PAGE_CHARS` from `offset`, in
 /// characters) headed by its source URL/title, with a note saying how much is
 /// left and which offset reads it.
+#[cfg(test)]
 fn render_fetched_page(page: &FetchedPage, offset: usize) -> String {
+    render_fetched_window(page, offset, FETCH_PAGE_CHARS)
+}
+
+fn render_fetched_window(page: &FetchedPage, offset: usize, window_chars: usize) -> String {
     let total = page.content.chars().count();
     let mut out = String::new();
     if !page.title.is_empty() {
@@ -192,7 +377,7 @@ fn render_fetched_page(page: &FetchedPage, offset: usize) -> String {
         .content
         .chars()
         .skip(offset)
-        .take(FETCH_PAGE_CHARS)
+        .take(window_chars)
         .collect();
     let end = offset + window.chars().count();
     out.push_str(&window);
@@ -306,6 +491,152 @@ mod tests {
         let now = t0 + Duration::from_secs(100);
         assert!(c.get("u0", now).is_none());
         assert!(c.get(&format!("u{}", FETCH_CACHE_MAX_ENTRIES + 2), now).is_some());
+    }
+
+    // ---- batch (parallel) behaviour, against a fake backend ----
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[derive(Default)]
+    struct Fake {
+        in_flight: AtomicUsize,
+        peak: AtomicUsize,
+        delay_ms: u64,
+    }
+
+    #[async_trait::async_trait]
+    impl SearchProvider for Fake {
+        async fn search(&self, query: &str, _count: u32) -> Result<Vec<SearchResult>, String> {
+            let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(now, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            if query.starts_with("fail") {
+                return Err(format!("backend down for {query}"));
+            }
+            let shared = SearchResult {
+                title: "Shared".into(),
+                url: "https://shared.example/".into(),
+                snippet: "s".into(),
+                published_at: None,
+            };
+            let own = SearchResult {
+                title: format!("Own {query}"),
+                url: format!("https://own.example/{query}"),
+                snippet: "x".repeat(if query.starts_with("big") { 20_000 } else { 3 }),
+                published_at: None,
+            };
+            Ok(vec![shared, own])
+        }
+        async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
+            let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(now, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            if url.contains("broken") {
+                return Err("503".into());
+            }
+            Ok(FetchedPage {
+                url: url.into(),
+                title: "T".into(),
+                content: "p".repeat(30_000),
+                truncated: false,
+            })
+        }
+    }
+
+    fn strings(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn batch_args_are_validated() {
+        let ok = collect_batch(&json!({"query": "a", "queries": ["b", "a", " c "]}), "query", "queries", "web_search").unwrap();
+        assert_eq!(ok, strings(&["a", "b", "c"]));
+        let too_many = json!({"queries": ["1", "2", "3", "4", "5", "6"]});
+        assert!(collect_batch(&too_many, "query", "queries", "web_search").unwrap_err().contains("at most 5"));
+        assert!(collect_batch(&json!({"queries": ["a", ""]}), "query", "queries", "web_search").is_err());
+        assert!(collect_batch(&json!({"queries": [1]}), "query", "queries", "web_search").is_err());
+        assert!(collect_batch(&json!({"queries": "a"}), "query", "queries", "web_search").is_err());
+        assert!(collect_batch(&json!({}), "query", "queries", "web_search").unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn batch_entry_points_reject_bad_args() {
+        assert!(web_search(&json!({"queries": []})).await.starts_with("ERROR"));
+        assert!(web_search(&json!({"queries": ["a","b","c","d","e","f"]})).await.contains("at most 5"));
+        assert!(web_fetch(&json!({"urls": ["https://a.example", "https://b.example"], "offset": 5}), &[])
+            .await
+            .contains("offset"));
+        assert!(web_fetch(&json!({"urls": []}), &[]).await.starts_with("ERROR"));
+    }
+
+    #[tokio::test]
+    async fn single_query_output_is_unchanged() {
+        let out = search_with(&Fake::default(), &strings(&["q"]), 5).await;
+        assert!(out.starts_with("1. Shared"), "{out}");
+        assert!(!out.contains("## Query"));
+    }
+
+    #[tokio::test]
+    async fn multi_search_groups_dedupes_and_keeps_order() {
+        let out = search_with(&Fake::default(), &strings(&["one", "two"]), 5).await;
+        let (a, b) = (out.find("## Query: one").unwrap(), out.find("## Query: two").unwrap());
+        assert!(a < b);
+        assert_eq!(out.matches("https://shared.example/").count(), 1, "{out}");
+        assert!(out.contains("https://own.example/one") && out.contains("https://own.example/two"));
+    }
+
+    #[tokio::test]
+    async fn partial_failure_keeps_good_results() {
+        let out = search_with(&Fake::default(), &strings(&["one", "fail1"]), 5).await;
+        assert!(!out.starts_with("ERROR"), "{out}");
+        assert!(out.contains("https://own.example/one"));
+        assert!(out.contains("backend down for fail1"));
+        let all = search_with(&Fake::default(), &strings(&["fail1", "fail2"]), 5).await;
+        assert!(all.starts_with("ERROR: all 2 searches failed"), "{all}");
+    }
+
+    #[tokio::test]
+    async fn multi_search_total_is_capped() {
+        let out = search_with(&Fake::default(), &strings(&["big1", "big2", "big3"]), 5).await;
+        assert!(out.contains("[output cut at"), "len {}", out.len());
+        assert!(out.chars().count() < MULTI_SEARCH_MAX_CHARS + 300);
+    }
+
+    #[tokio::test]
+    async fn concurrency_is_bounded() {
+        let fake = Arc::new(Fake { delay_ms: 40, ..Default::default() });
+        let qs = strings(&["a", "b", "c", "d", "e"]);
+        search_with(fake.as_ref(), &qs, 5).await;
+        let peak = fake.peak.load(Ordering::SeqCst);
+        assert!(peak > 1, "no parallelism, peak {peak}");
+        assert!(peak <= BATCH_CONCURRENCY, "peak {peak}");
+    }
+
+    #[tokio::test]
+    async fn multi_fetch_shares_budget_and_reports_per_url_errors() {
+        let urls = strings(&[
+            "https://batch-a.example/p",
+            "https://batch-a.example/broken",
+            "ftp://nope",
+        ]);
+        let out = fetch_with(&Fake::default(), &urls, 0, &[]).await;
+        assert!(out.contains("## https://batch-a.example/p\nTitle: T"), "{out}");
+        assert!(out.contains("ERROR: 503"));
+        assert!(out.contains("must be an http(s) URL"));
+        // 40k shared across 3 pages: each window is a third of it.
+        assert!(out.contains(&format!("showing characters 0-{}", FETCH_PAGE_CHARS / 3)), "{out}");
+    }
+
+    #[tokio::test]
+    async fn multi_fetch_concurrency_is_bounded() {
+        let fake = Fake { delay_ms: 40, ..Default::default() };
+        let urls: Vec<String> = (0..5).map(|i| format!("https://batch-c.example/{i}")).collect();
+        fetch_with(&fake, &urls, 0, &[]).await;
+        let peak = fake.peak.load(Ordering::SeqCst);
+        assert!(peak > 1 && peak <= BATCH_CONCURRENCY, "peak {peak}");
     }
 
     /// Live smoke test against the keyless hosted endpoint. Ignored by default

@@ -473,6 +473,28 @@ impl Resource {
                 }),
                 None => {}
             }
+            // `urls` (web_fetch batches): every entry is its own network
+            // resource so allow/deny rules and the audit log see each host.
+            match args.get("urls") {
+                Some(serde_json::Value::Array(items)) => {
+                    for it in items {
+                        match it {
+                            serde_json::Value::String(u) if !u.trim().is_empty() => {
+                                out.push(Resource::net(u))
+                            }
+                            _ => out.push(Resource::Unknown {
+                                tool: tool_name.to_string(),
+                                why: "`urls` holds an entry that is not a non-empty string".into(),
+                            }),
+                        }
+                    }
+                }
+                Some(serde_json::Value::Null) | None => {}
+                Some(_) => out.push(Resource::Unknown {
+                    tool: tool_name.to_string(),
+                    why: "`urls` is not an array".into(),
+                }),
+            }
         }
 
         out
@@ -1169,6 +1191,27 @@ mod tests {
             &[unbalanced],
             &crate::subject::Subject::MainAgent
         ));
+    }
+
+    #[test]
+    fn web_fetch_urls_batch_yields_one_net_resource_per_url() {
+        let r = Resource::for_builtin(
+            "web_fetch",
+            &[],
+            true,
+            &json!({"urls": ["https://a.example/x", "https://b.example/y"]}),
+            None,
+        );
+        let hosts: Vec<String> = r
+            .iter()
+            .filter_map(|x| match x {
+                Resource::Net { host, .. } => Some(host.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(hosts, vec!["a.example", "b.example"]);
+        let bad = Resource::for_builtin("web_fetch", &[], true, &json!({"urls": ["https://a.example", 3]}), None);
+        assert!(bad.iter().any(|x| matches!(x, Resource::Unknown { .. })));
     }
 
     #[test]
