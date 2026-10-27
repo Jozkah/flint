@@ -1097,7 +1097,10 @@ async fn execute(
         }
     };
 
-    let token = ctx.cancel.clone().unwrap_or_else(crate::lifecycle::Token::detached);
+    // The hook's own timeout stops this child token only; a parent stop
+    // (user cancel, run stop) still reaches the hook through it.
+    let parent = ctx.cancel.clone().unwrap_or_else(crate::lifecycle::Token::detached);
+    let token = crate::lifecycle::Token::child(&parent);
     let limit = Duration::from_secs(hook.timeout_secs.min(MAX_TIMEOUT_SECS));
     match crate::lifecycle::run_with_deadline(&token, limit, work).await {
         Ok(result) => result,
@@ -1963,6 +1966,60 @@ json_output = true
         let blocked = decision.blocked.expect("a cancelled block hook blocks");
         assert_eq!(blocked.kind, HookErrorKind::Cancelled);
         assert_ne!(blocked.kind, HookErrorKind::TimedOut, "a person stopping it is not a timeout");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn hook_timeout_does_not_cancel_tool_token() {
+        use crate::lifecycle::{Scope, Token};
+        let root = dir("timeout-parent");
+        write_config(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"sleep 30\"
+on_failure = \"warn\"
+timeout_secs = 1
+",
+        );
+        let hooks = load(&root).unwrap();
+        let token = Token::new(Scope::new("s", "r", "c"));
+        let decision = run(
+            &hooks,
+            Event::PreTool,
+            Some("write"),
+            &Context {
+                project_root: &root,
+                allow_network: false,
+                home_readonly: true,
+                sandbox: false,
+                mask_root: None,
+                cancel: Some(token.clone()),
+            },
+        )
+        .await;
+        assert!(!token.is_stopped(), "a hook timeout must not stop the tool token");
+        assert!(decision.allowed());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn warn_hook_timeout_lets_tool_run() {
+        let root = dir("warn-timeout");
+        write_config(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"sleep 30\"
+on_failure = \"warn\"
+timeout_secs = 1
+",
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run(&hooks, Event::PreTool, Some("write"), &ctx(&root)).await;
+        assert!(decision.allowed());
+        assert_eq!(decision.warnings.len(), 1);
+        assert_eq!(decision.warnings[0].kind, HookErrorKind::TimedOut);
         let _ = std::fs::remove_dir_all(&root);
     }
 
