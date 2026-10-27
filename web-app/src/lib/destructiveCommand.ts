@@ -18,6 +18,8 @@ import rules from './destructiveCommandRules.json'
 
 type Rules = {
   wrappers: string[]
+  wrapperValueOptions: Record<string, string[]>
+  wrapperPositional: Record<string, number>
   inlineShells: string[]
   powershells: string[]
   uncertainCommands: Record<string, string>
@@ -33,15 +35,18 @@ const MAX_DEPTH = 4
 
 const isDrive = (a: string) => /^[a-zA-Z]:$/.test(a)
 
-type Parsed = { segments: string[][]; substitutions: string[] }
+/** One simple command; `piped` when a single `|` fed it. */
+type Seg = { words: string[]; piped: boolean }
+type Parsed = { segments: Seg[]; substitutions: string[] }
 
 /**
  * Split into simple commands on `;`, `&`, `&&`, `||`, `|`, newlines (POSIX
  * shells, PowerShell, cmd.exe), then words; collect `$(...)`, `` `...` `` and
  * `<(...)` bodies. Throws on an unclosed quote or substitution.
  */
-function parse(command: string): Parsed {
+function parse(command: string, posixEscapes: boolean): Parsed {
   const out: Parsed = { segments: [], substitutions: [] }
+  let pendingPipe = false
   let words: string[] = []
   let cur = ''
   let quote: string | null = null
@@ -54,6 +59,20 @@ function parse(command: string): Parsed {
   let i = 0
   while (i < command.length) {
     const c = command[i]
+    // POSIX reading: `\x` makes `x` literal, so `\"` neither opens a quote nor
+    // hides what follows. Backslashes before anything else stay literal (a
+    // Windows path). Both readings are checked; see `reasonAtDepth`.
+    if (
+      posixEscapes &&
+      c === '\\' &&
+      quote !== "'" &&
+      i + 1 < command.length &&
+      '"\'; |&`$\\'.includes(command[i + 1])
+    ) {
+      cur += command[i + 1]
+      i += 2
+      continue
+    }
     if (quote !== "'") {
       const opensParen =
         (c === '$' || (quote === null && (c === '<' || c === '>'))) &&
@@ -90,17 +109,19 @@ function parse(command: string): Parsed {
     else if (c === ' ' || c === '\t' || c === '\r') flush()
     else if (c === ';' || c === '\n' || c === '|' || c === '&') {
       flush()
+      const isPipe = c === '|' && command[i + 1] !== '|'
       if ((c === '|' || c === '&') && command[i + 1] === c) i++
       if (words.length) {
-        out.segments.push(words)
+        out.segments.push({ words, piped: pendingPipe })
         words = []
-      }
+        pendingPipe = isPipe
+      } else pendingPipe ||= isPipe
     } else cur += c
     i++
   }
   if (quote) throw new Error('unbalanced quote')
   flush()
-  if (words.length) out.segments.push(words)
+  if (words.length) out.segments.push({ words, piped: pendingPipe })
   return out
 }
 
@@ -110,17 +131,21 @@ function stripPrefixes(words: string[]): string[] {
     const w = words[i]
     const assignment =
       w.includes('=') && !w.startsWith('-') && !w.startsWith('=')
-    if (RULES.wrappers.includes(w) || assignment) {
+    if (assignment) {
       i++
       continue
     }
-    if (w.startsWith('-') && i > 0 && RULES.wrappers.includes(words[i - 1])) {
-      i++
-      continue
+    if (!RULES.wrappers.includes(w)) break
+    i++
+    // Options, and the value of those that take one as a separate word
+    // (`sudo -u root`, `nice -n 10`). `-u=x` and `-ux` are one word.
+    const valueOptions = RULES.wrapperValueOptions[w] ?? []
+    while (i < words.length && words[i].startsWith('-') && words[i] !== '-') {
+      i += valueOptions.includes(words[i]) ? 2 : 1
     }
-    break
+    i += RULES.wrapperPositional[w] ?? 0
   }
-  return words.slice(i)
+  return words.slice(Math.min(i, words.length))
 }
 
 /** The command name a word invokes: no directory, no `.exe`, lowercase. */
@@ -196,6 +221,8 @@ export function outsideWorkspace(
   const t = target.replace(/^["']+|["']+$/g, '')
   if (!t) return false
   if (/^[~$%`]/.test(t)) return true
+  // A variable, substitution or brace expansion anywhere in the path.
+  if (/[$%`{]/.test(t)) return true
   const norm = t.replace(/\\/g, '/')
   // `C:foo` is relative to that drive's current directory, which is unknown.
   if (isDrive(norm.slice(0, 2)) && !isAbsolutePath(norm)) return true
@@ -312,10 +339,38 @@ function changesToUnknownDir(words: string[], scope: Scope): boolean {
   }
 }
 
+const READS_INPUT = 'runs a script read from input, which cannot be checked'
+const PS_UNCHECKABLE = 'runs a PowerShell command that cannot be checked'
+const PS_VALUE_OPTIONS = [
+  '-executionpolicy',
+  '-ep',
+  '-windowstyle',
+  '-workingdirectory',
+  '-wd',
+  '-configurationname',
+  '-version',
+  '-inputformat',
+  '-outputformat',
+  '-psconsolefile',
+]
+const PS_SWITCHES = [
+  '-noprofile',
+  '-nop',
+  '-noexit',
+  '-noe',
+  '-nologo',
+  '-nol',
+  '-noninteractive',
+  '-noni',
+  '-sta',
+  '-mta',
+]
+
 function checkSegment(
   words: string[],
   workspace: Scope,
-  depth: number
+  depth: number,
+  piped: boolean
 ): string | null {
   const cmd = commandName(words[0])
   const args = words.slice(1)
@@ -331,12 +386,17 @@ function checkSegment(
     const at = lower.findIndex(
       (a) => a.startsWith('-') && !a.startsWith('--') && a.includes('c')
     )
-    if (at === -1 || args[at + 1] === undefined) return null
+    if (at === -1 || args[at + 1] === undefined) {
+      // The script comes from a pipe, here-doc or here-string, or stdin.
+      return piped || lower.some((a) => a.startsWith('<<') || a === '-s')
+        ? READS_INPUT
+        : null
+    }
     return reasonAtDepth(args[at + 1], workspace, depth + 1)
   }
   if (cmd === 'cmd') {
     const at = lower.findIndex((a) => a === '/c' || a === '/k')
-    if (at === -1) return null
+    if (at === -1) return piped ? READS_INPUT : null
     return reasonAtDepth(args.slice(at + 1).join(' '), workspace, depth + 1)
   }
   if (RULES.powershells.includes(cmd)) {
@@ -350,8 +410,21 @@ function checkSegment(
       return 'runs an encoded PowerShell command, which cannot be checked'
     }
     const at = lower.findIndex((a) => a === '-c' || a.startsWith('-com'))
-    if (at === -1) return null
-    return reasonAtDepth(args.slice(at + 1).join(' '), workspace, depth + 1)
+    if (at !== -1) {
+      return reasonAtDepth(args.slice(at + 1).join(' '), workspace, depth + 1)
+    }
+    if (lower.some((a) => a.length >= 2 && '-file'.startsWith(a))) return null
+    // `pwsh -NoProfile "Remove-Item ..."`: the first word that is not an option
+    // starts the command, and the rest of the line belongs to it.
+    for (let k = 0; k < lower.length; k++) {
+      const a = lower[k]
+      if (!a.startsWith('-')) {
+        return reasonAtDepth(args.slice(k).join(' '), workspace, depth + 1)
+      }
+      if (PS_VALUE_OPTIONS.includes(a)) k++
+      else if (!PS_SWITCHES.includes(a)) return PS_UNCHECKABLE
+    }
+    return piped ? READS_INPUT : null
   }
 
   switch (cmd) {
@@ -427,15 +500,22 @@ function checkSegment(
       if (
         name === 'push' &&
         (has('--force') ||
-          has('-f') ||
           rest.some(
             (a) =>
+              /^-[a-z]*f[a-z]*$/.test(a) ||
               a.startsWith('--force-with-lease') ||
               a.startsWith('--mirror') ||
               a.startsWith('+')
           ))
       ) {
         return '`git push --force` rewrites remote history'
+      }
+      if (
+        name === 'push' &&
+        (has('--delete') ||
+          rest.some((a) => /^-[a-z]*d[a-z]*$/.test(a) || /^:./.test(a)))
+      ) {
+        return '`git push --delete` removes a remote branch'
       }
       return null
     }
@@ -459,10 +539,30 @@ function reasonAtDepth(
   depth: number
 ): string | null {
   if (depth > MAX_DEPTH) return 'nests shells too deeply to check'
+  // A backslash is an escape in POSIX shells and a path separator on Windows,
+  // and the command line does not say which. Read it both ways; either one
+  // finding something is enough.
+  const readings = command.includes('\\') ? [false, true] : [false]
+  for (const posix of readings) {
+    const reason = reasonForReading(command, workspace, depth, posix)
+    if (reason) return reason
+  }
+  return null
+}
+
+function reasonForReading(
+  command: string,
+  workspace: Scope,
+  depth: number,
+  posixEscapes: boolean
+): string | null {
   let parsed: Parsed
   try {
-    parsed = parse(command)
+    parsed = parse(command, posixEscapes)
   } catch (error) {
+    // The plain reading already parsed this, so a failure only here means a
+    // Windows path ending in `\` inside quotes: not a reason to ask.
+    if (posixEscapes) return null
     return `could not be parsed (${(error as Error).message}), so it cannot be checked`
   }
   for (const body of parsed.substitutions) {
@@ -471,9 +571,9 @@ function reasonAtDepth(
   }
   const scope = { ...workspace }
   for (const segment of parsed.segments) {
-    const words = stripPrefixes(segment)
+    const words = stripPrefixes(segment.words)
     if (!words.length) continue
-    const reason = checkSegment(words, scope, depth)
+    const reason = checkSegment(words, scope, depth, segment.piped)
     if (reason) return reason
     if (changesToUnknownDir(words, scope)) scope.cwdUnknown = true
   }
