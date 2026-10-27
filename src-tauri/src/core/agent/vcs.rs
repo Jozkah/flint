@@ -31,6 +31,7 @@
 //! the branch exactly to its backup and checks that it did.
 
 use std::path::Path;
+#[cfg(test)]
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
@@ -159,19 +160,18 @@ fn is_git_lfs_filter(key: &str, value: &str) -> bool {
 /// followed. A listing git cannot produce is refused rather than read as
 /// "nothing set".
 fn repository_config(repo: &Path) -> Result<Vec<(String, String)>, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(["config", "--show-scope", "--includes", "--list", "-z"]);
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd.output().map_err(|e| format!("git would not run: {e}"))?;
-    if !out.status.success() {
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
+        .args(["config", "--show-scope", "--includes", "--list", "-z"])
+        .run()
+        .map_err(|e| e.with_prefix("git would not run: "))?;
+    if !out.success {
         return Err(format!(
             "git could not list this repository's config: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
+            out.stderr_lossy().trim()
         ));
     }
-    let listed = String::from_utf8_lossy(&out.stdout);
+    let listed = out.stdout_lossy();
     // With `-z`, each entry is its scope, a NUL, then `key\nvalue`, a NUL.
     let mut fields = listed.split('\0');
     let mut entries = Vec::new();
@@ -221,23 +221,25 @@ pub(crate) fn refuse_program_config(repo: &Path) -> Result<(), VcsError> {
 }
 
 fn git(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+        .run()
+        .map_err(vcs_launch_error)?;
+    if out.success {
+        Ok(out.stdout_lossy().trim_end().to_string())
     } else {
-        Err(VcsError::new(
-            VcsErrorKind::GitFailed,
-            String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        ))
+        Err(VcsError::new(VcsErrorKind::GitFailed, out.stderr_lossy().trim().to_string()))
+    }
+}
+
+/// A git that did not start is unavailable; one that was killed at its
+/// deadline failed, and says so.
+fn vcs_launch_error(e: crate::core::agent::git_exec::GitError) -> VcsError {
+    if e.timed_out {
+        VcsError::new(VcsErrorKind::GitFailed, e.message)
+    } else {
+        VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {}", e.message))
     }
 }
 
@@ -1243,26 +1245,18 @@ fn parse_backup(backup: &str) -> Result<(&'static str, String), VcsError> {
 
 /// git with no editor: continuing a rebase or a cherry-pick never opens one.
 fn git_no_editor(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(HARDENED)
-        .args(["-c", "core.editor=true"])
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
+        .pre(["-c", "core.editor=true"])
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
-        .env("GIT_SEQUENCE_EDITOR", "true");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+        .env("GIT_SEQUENCE_EDITOR", "true")
+        .run()
+        .map_err(vcs_launch_error)?;
+    if out.success {
+        Ok(out.stdout_lossy().trim_end().to_string())
     } else {
-        Err(VcsError::new(
-            VcsErrorKind::GitFailed,
-            String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        ))
+        Err(VcsError::new(VcsErrorKind::GitFailed, out.stderr_lossy().trim().to_string()))
     }
 }
 

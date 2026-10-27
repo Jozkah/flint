@@ -37,24 +37,16 @@ use std::process::Command;
 /// works on a fresh machine rather than failing with a message about
 /// configuring an identity the user has no reason to care about.
 pub(crate) fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(crate::core::agent::vcs::HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_AUTHOR_NAME", "Flint")
-        .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
-        .env("GIT_COMMITTER_NAME", "Flint")
-        .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .flint_identity()
+        .run()
+        .map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if out.success {
+        Ok(out.stdout_lossy().trim().to_string())
     } else {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stderr = out.stderr_lossy().trim().to_string();
         Err(if stderr.is_empty() {
             format!("git {} failed", args.first().copied().unwrap_or(""))
         } else {
@@ -591,23 +583,21 @@ fn fetch_pull_request(repo: &Path, number: u64, repo_hint: Option<&str>) -> Resu
         }
     }
     let refspec = format!("pull/{number}/head:refs/flint/pr/{number}");
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(crate::core::agent::vcs::HARDENED)
-        .args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=20"])
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
+        .pre(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=20"])
         .args(["fetch", "--no-tags", "--force", "origin", &refspec])
-        .env("GIT_TERMINAL_PROMPT", "0")
         .env("GCM_INTERACTIVE", "never")
         .env("GIT_ASKPASS", "")
         .env("SSH_ASKPASS", "")
-        .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    if !out.status.success() {
-        let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
+        // A network fetch may legitimately outlast the default; the low-speed
+        // limits above still end a stalled one sooner.
+        .timeout(std::time::Duration::from_secs(300))
+        .run()
+        .map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if !out.success {
+        let why = out.stderr_lossy().trim().to_string();
         return Err(format!("could not fetch pull request #{number} from origin: {why}"));
     }
     run(repo, &["rev-parse", "--verify", &format!("refs/flint/pr/{number}^{{commit}}")])
@@ -936,26 +926,18 @@ pub(crate) fn current_branch(repo: &Path) -> Option<String> {
 /// commands whose non-zero exit carries an answer (`merge-tree`,
 /// `merge-base --is-ancestor`).
 pub(crate) fn run_status(repo: &Path, args: &[&str]) -> Result<(bool, String), String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(crate::core::agent::vcs::HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_AUTHOR_NAME", "Flint")
-        .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
-        .env("GIT_COMMITTER_NAME", "Flint")
-        .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if !out.status.success() && text.is_empty() {
+        .flint_identity()
+        .run()
+        .map_err(|e| e.with_prefix("failed to launch git: "))?;
+    let mut text = out.stdout_lossy().trim().to_string();
+    if !out.success && text.is_empty() {
         // A failure that printed nothing to stdout said why on stderr.
-        text = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        text = out.stderr_lossy().trim().to_string();
     }
-    Ok((out.status.success(), text))
+    Ok((out.success, text))
 }
 
 /// Run `git` as the user: their configured identity when they have one, and
@@ -969,20 +951,15 @@ fn run_as_user(repo: &Path, args: &[&str]) -> Result<String, String> {
     if !configured {
         return run(repo, args);
     }
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(crate::core::agent::vcs::HARDENED)
+    let out = crate::core::agent::git_exec::GitCmd::new()
+        .dir(repo)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .run()
+        .map_err(|e| e.with_prefix("failed to launch git: "))?;
+    if out.success {
+        Ok(out.stdout_lossy().trim().to_string())
     } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        Err(out.stderr_lossy().trim().to_string())
     }
 }
 
