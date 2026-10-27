@@ -289,23 +289,31 @@ fn blob_path(data_folder: &Path, id: &str) -> PathBuf {
     root_dir(data_folder).join("blobs").join(id)
 }
 
+/// Newest turns the journal keeps per session; older ones (and, once no
+/// journal refers to them, their blobs) are dropped.
+const MAX_TURNS: usize = 50;
+
+/// A file larger than this on either side of a change is not journaled: the
+/// copy would bloat the journal store and every undo would read it back.
+const MAX_JOURNALED_BYTES: usize = 16 * 1024 * 1024;
+
+/// Journal and blob writes go through the shared atomic helper: a unique temp
+/// name per write (no two writers share one), and the replaced file's mode.
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let temp = path.with_extension(format!("undo-tmp-{}", std::process::id()));
-    std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&temp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&temp);
-        e.to_string()
-    })
+    crate::atomic_file::write_atomic(path, bytes)
 }
 
 fn store_blob(data_folder: &Path, bytes: &[u8]) -> Result<String, String> {
     let id = hex(bytes);
     let path = blob_path(data_folder, &id);
     if !path.exists() {
-        write_atomic(&path, bytes)?;
+        if let Err(e) = write_atomic(&path, bytes) {
+            // Content-addressed: a concurrent writer that stored the same
+            // bytes first is as good as this write succeeding.
+            if !path.exists() {
+                return Err(e);
+            }
+        }
     }
     Ok(id)
 }
@@ -338,7 +346,7 @@ fn hold(data_folder: &Path, session: &str) -> crate::mailbox::Held {
 }
 
 fn save(data_folder: &Path, journal: &Journal) -> Result<(), String> {
-    let body = serde_json::to_vec_pretty(journal).map_err(|e| e.to_string())?;
+    let body = serde_json::to_vec(journal).map_err(|e| e.to_string())?;
     write_atomic(&journal_path(data_folder, &journal.session), &body)
 }
 
@@ -360,6 +368,18 @@ pub fn record(
     if session.is_empty() || run.is_empty() {
         return Ok(());
     }
+    if before.is_some_and(|b| b.len() > MAX_JOURNALED_BYTES)
+        || after.is_some_and(|b| b.len() > MAX_JOURNALED_BYTES)
+    {
+        return Err(format!(
+            "not undoable: {} is larger than {} MiB",
+            path.display(),
+            MAX_JOURNALED_BYTES / (1024 * 1024)
+        ));
+    }
+    // Journal lock first, so a concurrent collect/prune cannot remove a blob
+    // between its store and the journal entry that refers to it.
+    let _held = hold(data_folder, session);
     let before_id = before.map(|b| store_blob(data_folder, b)).transpose()?;
     let after_id = after.map(|b| store_blob(data_folder, b)).transpose()?;
     // Absolute, so the journal names the same file whatever the working
@@ -367,7 +387,6 @@ pub fn record(
     // like with like. A relative data folder (the configured default is
     // `./data`) recorded relative paths that no root could ever contain.
     let key = absolute(path).to_string_lossy().to_string();
-    let _held = hold(data_folder, session);
     let mut journal = load(data_folder, session);
     let idx = match journal.turns.iter().position(|t| t.run == run) {
         Some(i) => i,
@@ -406,7 +425,38 @@ pub fn record(
     if turn.files.is_empty() {
         journal.turns.remove(idx);
     }
-    save(data_folder, &journal)
+    let pruned = prune_turns(&mut journal);
+    save(data_folder, &journal)?;
+    if pruned {
+        collect_blobs_rate_limited(data_folder);
+    }
+    Ok(())
+}
+
+/// Keep the newest [`MAX_TURNS`] turns. True when any were dropped.
+fn prune_turns(journal: &mut Journal) -> bool {
+    if journal.turns.len() <= MAX_TURNS {
+        return false;
+    }
+    let excess = journal.turns.len() - MAX_TURNS;
+    journal.turns.drain(..excess);
+    true
+}
+
+/// `collect_blobs` reads every journal, so after a prune it runs at most once
+/// per interval; the orphans it misses are caught by the next run.
+fn collect_blobs_rate_limited(data_folder: &Path) {
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    static LAST: Mutex<Option<Instant>> = Mutex::new(None);
+    let now = Instant::now();
+    if let Ok(mut last) = LAST.lock() {
+        if last.is_some_and(|t| now.duration_since(t) < Duration::from_secs(60)) {
+            return;
+        }
+        *last = Some(now);
+    }
+    collect_blobs(data_folder);
 }
 
 fn same_path(a: &str, b: &str) -> bool {
@@ -491,7 +541,17 @@ fn current(path: &Path) -> Result<Option<Vec<u8>>, String> {
 
 fn put(path: &Path, bytes: Option<&[u8]>) -> Result<(), String> {
     match bytes {
-        Some(b) => write_atomic(path, b),
+        Some(b) => {
+            // Write through a symlink to the file it points at, so the link
+            // survives; the caller has already judged the resolved location.
+            // `write_atomic` keeps the replaced file's permission bits.
+            let target = if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+                std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+            } else {
+                path.to_path_buf()
+            };
+            write_atomic(&target, b)
+        }
         None => match std::fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -1134,6 +1194,88 @@ mod tests {
     /// All or nothing: a write that fails part way puts back the files already
     /// restored. The second file's parent is replaced by a plain file after
     /// the turn, so re-creating it cannot succeed.
+    #[cfg(unix)]
+    #[test]
+    fn restore_keeps_exec_bit() {
+        use std::os::unix::fs::PermissionsExt;
+        let (data, ws) = dirs("exec");
+        let f = ws.join("run.sh");
+        tool_write(&data, "run-1", &f, Some("#!/bin/sh\necho one\n"));
+        std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+        tool_write(&data, "run-1", &f, Some("#!/bin/sh\necho two\n"));
+        undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).expect("undo");
+        let mode = std::fs::metadata(&f).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755);
+        let _ = std::fs::remove_dir_all(data.parent().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restore_through_symlink_stays_in_roots() {
+        let (data, ws) = dirs("symlink");
+        let real = ws.join("real.txt");
+        let link = ws.join("link.txt");
+        std::fs::write(&real, "start").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        tool_write(&data, "run-1", &link, Some("changed"));
+        undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).expect("undo");
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(text(&real).as_deref(), Some("start"));
+        // A link that leaves the roots is refused and nothing is written.
+        let outside = ws.parent().unwrap().join("outside.txt");
+        std::fs::write(&outside, "secret").unwrap();
+        let esc = ws.join("esc.txt");
+        std::fs::write(&esc, "a").unwrap();
+        tool_write(&data, "run-2", &esc, Some("b"));
+        std::fs::remove_file(&esc).unwrap();
+        std::os::unix::fs::symlink(&outside, &esc).unwrap();
+        assert!(undo(&data, "s1", "run-2", std::slice::from_ref(&ws)).is_err());
+        assert_eq!(text(&outside).as_deref(), Some("secret"));
+        let _ = std::fs::remove_dir_all(data.parent().unwrap());
+    }
+
+    #[test]
+    fn concurrent_store_blob_same_content() {
+        let (data, _ws) = dirs("blob-race");
+        let data = std::sync::Arc::new(data);
+        let bytes = vec![7u8; 256 * 1024];
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let (d, b) = (data.clone(), bytes.clone());
+                std::thread::spawn(move || store_blob(&d, &b))
+            })
+            .collect();
+        let ids: Vec<String> = handles.into_iter().map(|h| h.join().unwrap().expect("store")).collect();
+        assert!(ids.iter().all(|i| *i == ids[0]));
+        assert_eq!(read_blob(&data, &ids[0]).unwrap(), bytes);
+        let _ = std::fs::remove_dir_all(data.parent().unwrap());
+    }
+
+    #[test]
+    fn journal_prunes_to_n_turns() {
+        let (data, ws) = dirs("prune");
+        for i in 0..(MAX_TURNS + 5) {
+            let f = ws.join(format!("f{i}.txt"));
+            tool_write(&data, &format!("run-{i}"), &f, Some(&format!("content {i}")));
+        }
+        let journal = load(&data, "s1");
+        assert_eq!(journal.turns.len(), MAX_TURNS);
+        assert_eq!(journal.turns[0].run, "run-5");
+        assert_eq!(journal.turns.last().unwrap().run, format!("run-{}", MAX_TURNS + 4));
+        let _ = std::fs::remove_dir_all(data.parent().unwrap());
+    }
+
+    #[test]
+    fn huge_file_marked_not_undoable() {
+        let (data, ws) = dirs("huge");
+        let f = ws.join("big.bin");
+        let big = vec![0u8; MAX_JOURNALED_BYTES + 1];
+        let err = record(&data, "s1", "run-1", &f, None, Some(&big), None).unwrap_err();
+        assert!(err.contains("not undoable"), "{err}");
+        assert!(load(&data, "s1").turns.is_empty());
+        let _ = std::fs::remove_dir_all(data.parent().unwrap());
+    }
+
     #[test]
     fn a_failed_write_rolls_back_the_files_already_restored() {
         let (data, ws) = dirs("rollback");
