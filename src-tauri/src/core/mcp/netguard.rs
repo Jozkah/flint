@@ -67,40 +67,20 @@ pub(crate) fn check_url(url: &str, allow: &[String]) -> Result<(), String> {
     ))
 }
 
-/// The `[mcp].allow_hosts` list of the agent.toml text `raw`, read loosely so a
-/// mistake in an unrelated section cannot switch the restriction off.
-pub(crate) fn allow_hosts_from_toml(raw: &str) -> Vec<String> {
-    let Ok(doc) = raw.parse::<toml::Value>() else {
-        return Vec::new();
-    };
-    doc.get("mcp")
-        .and_then(|m| m.get("allow_hosts"))
-        .and_then(|v| v.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|v| v.as_str())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
+/// The `[mcp].allow_hosts` list of the agent.toml text `raw`. A wrong type or
+/// non-TOML text that mentions the key is an error, never "no restriction".
+pub(crate) fn allow_hosts_from_toml(raw: &str) -> Result<Vec<String>, String> {
+    super::allowlist::mcp_string_list(raw, "allow_hosts")
 }
 
 /// [`check_url`] against the allowlist in the agent.toml at `path`.
 pub(crate) fn enforce_url_at(url: &str, path: &Path) -> Result<(), String> {
-    let Ok(raw) = std::fs::read_to_string(path) else {
+    let cannot = |e: String| format!("MCP server URL {url:?} cannot be checked: {e} ({})", path.display());
+    let Some(raw) = super::allowlist::read_agent_toml(path).map_err(cannot)? else {
         return Ok(());
     };
-    // A restriction the user wrote but that cannot be read is a refusal, not a
-    // quiet "anything goes".
-    if raw.contains("allow_hosts") && raw.parse::<toml::Value>().is_err() {
-        return Err(format!(
-            "MCP server URL {url:?} cannot be checked: {} mentions allow_hosts but is not valid TOML",
-            path.display()
-        ));
-    }
-    check_url(url, &allow_hosts_from_toml(&raw)).map_err(|e| format!("{e} ({})", path.display()))
+    let allow = allow_hosts_from_toml(&raw).map_err(cannot)?;
+    check_url(url, &allow).map_err(|e| format!("{e} ({})", path.display()))
 }
 
 /// The launch-time check: the URL against the global agent.toml.
@@ -256,7 +236,7 @@ mod tests {
     #[test]
     fn the_section_parses_and_a_broken_file_that_mentions_it_refuses() {
         assert_eq!(
-            allow_hosts_from_toml("[mcp]\nallow_hosts = [\"a.com\", \" b.com \", \"\"]\nlater = 1\n"),
+            allow_hosts_from_toml("[mcp]\nallow_hosts = [\"a.com\", \" b.com \", \"\"]\nlater = 1\n").unwrap(),
             ["a.com", "b.com"]
         );
         let dir = std::env::temp_dir().join(format!("flint_mcp_hosts_{}", std::process::id()));
@@ -270,6 +250,43 @@ mod tests {
         std::fs::write(&file, "[mcp]\nallow_hosts = [\"a.com\"]\n").unwrap();
         assert!(enforce_url_at("https://a.com/m", &file).is_ok());
         assert!(enforce_url_at("https://b.com/m", &file).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn temp_toml(tag: &str, body: Option<&str>) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("flint_mcp_hosts_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("agent.toml");
+        if let Some(b) = body {
+            std::fs::write(&file, b).unwrap();
+        }
+        (dir, file)
+    }
+
+    #[test]
+    fn allow_hosts_string_type_errors() {
+        let (dir, file) = temp_toml("str", Some("[mcp]\nallow_hosts = \"a.com\"\n"));
+        assert!(enforce_url_at("https://evil.test", &file).is_err());
+        std::fs::write(&file, "[mcp]\nallow_hosts = [\"a.com\", 5]\n").unwrap();
+        assert!(enforce_url_at("https://a.com", &file).is_err(), "non-string element");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn allow_hosts_unreadable_file_errors() {
+        // A directory at the path: exists, cannot be read as a file.
+        let (dir, file) = temp_toml("unread", None);
+        std::fs::create_dir_all(&file).unwrap();
+        let err = enforce_url_at("https://a.com", &file).unwrap_err();
+        assert!(err.contains("cannot be"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn allow_hosts_missing_file_ok() {
+        let (dir, file) = temp_toml("missing", None);
+        assert!(enforce_url_at("https://a.com", &file).is_ok());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
