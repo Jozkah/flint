@@ -454,7 +454,13 @@ impl UpstreamConverter for OpenAIResponsesConverter {
             out["tools"] = json!(flattened);
         }
         if let Some(tc) = body.get("tool_choice") {
-            out["tool_choice"] = tc.clone();
+            // Chat nests the name under `function`; Responses wants it flat.
+            out["tool_choice"] = match tc.pointer("/function/name").and_then(|n| n.as_str()) {
+                Some(name) if tc.get("type").and_then(|t| t.as_str()) == Some("function") => {
+                    json!({"type": "function", "name": name})
+                }
+                _ => tc.clone(),
+            };
         }
 
         out
@@ -510,12 +516,11 @@ impl UpstreamConverter for OpenAIResponsesConverter {
         if !reasoning.is_empty() {
             message["reasoning_content"] = json!(reasoning);
         }
-        let finish_reason = if !tool_calls.is_empty() {
+        let saw_tool = !tool_calls.is_empty();
+        if saw_tool {
             message["tool_calls"] = json!(tool_calls);
-            "tool_calls"
-        } else {
-            "stop"
-        };
+        }
+        let finish_reason = responses_finish(upstream, saw_tool);
 
         json!({
             "id": upstream.get("id").cloned().unwrap_or_else(|| json!("chatcmpl-proxy")),
@@ -621,10 +626,10 @@ impl UpstreamConverter for OpenAIResponsesConverter {
                 }
             }
             "response.completed" | "response.incomplete" => {
-                let finish = if state.saw_tool_call {
-                    "tool_calls"
-                } else {
-                    "stop"
+                let finish = match data.get("response") {
+                    Some(resp) => responses_finish(resp, state.saw_tool_call),
+                    None if state.saw_tool_call => "tool_calls",
+                    None => "stop",
                 };
                 let usage = data
                     .get("response")
@@ -658,6 +663,24 @@ impl UpstreamConverter for OpenAIResponsesConverter {
     }
 }
 
+/// Chat `finish_reason` for a Responses object (or its stream `response`):
+/// an incomplete response reports why, and a cut-off or filtered turn beats a
+/// tool call because the call's arguments may be truncated.
+fn responses_finish(resp: &Value, saw_tool: bool) -> &'static str {
+    let reason = resp
+        .pointer("/incomplete_details/reason")
+        .and_then(|r| r.as_str())
+        .unwrap_or("");
+    let incomplete = resp.get("status").and_then(|s| s.as_str()) == Some("incomplete");
+    match reason {
+        "max_output_tokens" => "length",
+        "content_filter" => "content_filter",
+        _ if incomplete && !saw_tool => "length",
+        _ if saw_tool => "tool_calls",
+        _ => "stop",
+    }
+}
+
 /// Fronts Google's Gemini `generateContent` API. The model and action are
 /// encoded in the URL and streaming uses `?alt=sse`; auth is `x-goog-api-key`.
 /// The registered provider `base_url` must include the API version, e.g.
@@ -673,6 +696,10 @@ impl GoogleGenerateContentConverter {
 
 /// Map a Gemini `finishReason` to a chat/completions `finish_reason`.
 fn map_gemini_finish(reason: &str, saw_tool: bool) -> &'static str {
+    // A cut-off turn beats a tool call: the call's arguments may be truncated.
+    if reason == "MAX_TOKENS" {
+        return "length";
+    }
     if saw_tool {
         return "tool_calls";
     }
@@ -1149,6 +1176,10 @@ impl AnthropicMessagesConverter {
 }
 
 fn map_anthropic_finish(reason: &str, saw_tool: bool) -> &'static str {
+    // A cut-off turn beats a tool call: the call's arguments may be truncated.
+    if reason == "max_tokens" {
+        return "length";
+    }
     if saw_tool {
         return "tool_calls";
     }
@@ -2192,6 +2223,42 @@ mod openai_responses_tests {
     }
 
     #[test]
+    fn responses_incomplete_max_tokens_is_length() {
+        let upstream = json!({
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "output": [{"type": "function_call", "call_id": "c1", "name": "f", "arguments": "{\"a\""}]
+        });
+        let out = conv().convert_response(&upstream);
+        assert_eq!(out["choices"][0]["finish_reason"], json!("length"));
+    }
+
+    #[test]
+    fn responses_stream_incomplete_content_filter() {
+        let c = conv();
+        let mut state = StreamState::default();
+        let out = c.convert_stream_event(
+            &ev(
+                "response.incomplete",
+                json!({"response": {"status": "incomplete", "incomplete_details": {"reason": "content_filter"}}}),
+            ),
+            &mut state,
+        );
+        let finish: Value = serde_json::from_str(&out[0]).unwrap();
+        assert_eq!(finish["choices"][0]["finish_reason"], json!("content_filter"));
+    }
+
+    #[test]
+    fn responses_tool_choice_flattened() {
+        let body = json!({
+            "model": "m", "messages": [],
+            "tool_choice": {"type": "function", "function": {"name": "pick"}}
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(out["tool_choice"], json!({"type": "function", "name": "pick"}));
+    }
+
+    #[test]
     fn stream_completed_emits_finish_usage_and_done() {
         let c = conv();
         let mut state = StreamState {
@@ -2562,6 +2629,18 @@ mod google_generate_content_tests {
         let safety = conv().convert_response(&json!({"candidates": [{"finishReason": "SAFETY"}]}));
         assert_eq!(safety["choices"][0]["finish_reason"], json!("content_filter"));
         assert!(!safety["choices"][0]["message"]["content"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
+    fn gemini_max_tokens_with_tool_call_is_length() {
+        let upstream = json!({
+            "candidates": [{
+                "content": {"parts": [{"functionCall": {"name": "getw", "args": {}}}]},
+                "finishReason": "MAX_TOKENS"
+            }]
+        });
+        let out = conv().convert_response(&upstream);
+        assert_eq!(out["choices"][0]["finish_reason"], json!("length"));
     }
 
     #[test]
@@ -3065,6 +3144,19 @@ mod anthropic_messages_tests {
             let body = json!({"model": "claude-opus-5-5", "messages": [], "tool_choice": tc});
             assert_eq!(conv().convert_request(&body)["tool_choice"], json!({"type": "auto"}));
         }
+    }
+
+    #[test]
+    fn anthropic_max_tokens_with_tool_use_is_length() {
+        let upstream = json!({
+            "id": "msg_1",
+            "model": "claude-sonnet-4",
+            "content": [{"type": "tool_use", "id": "tu_1", "name": "f", "input": {}}],
+            "stop_reason": "max_tokens",
+            "usage": {"input_tokens": 1, "output_tokens": 1}
+        });
+        let out = conv().convert_response(&upstream);
+        assert_eq!(out["choices"][0]["finish_reason"], json!("length"));
     }
 
     #[test]
