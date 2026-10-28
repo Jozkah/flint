@@ -3419,6 +3419,26 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * model is "the" embedding model.
    */
   private async ensureEmbeddingModelLoaded(): Promise<SessionInfo> {
+    // Hot path: a configured, installed embedding model needs one yml read
+    // (get() runs the same embedding resolution list() does), not a full
+    // relisting of every model on disk per embed/tokenize call.
+    const configured = await getDefaultEmbeddingModelId('llamacpp')
+    if (configured) {
+      let configuredInfo: modelInfo | undefined
+      try {
+        configuredInfo = await this.get(configured)
+      } catch (e) {
+        logger.warn(`Could not read embedding model "${configured}":`, e)
+      }
+      if (configuredInfo && (configuredInfo as any).embedding === true) {
+        let fast = await this.findSessionByModel(configured)
+        if (!fast) {
+          fast = await this.load(configured, undefined, true)
+        }
+        return fast as SessionInfo
+      }
+    }
+
     const downloadedModelList = await this.list()
     const installedEmbedding = downloadedModelList.filter(
       (m) => (m as any).embedding === true
