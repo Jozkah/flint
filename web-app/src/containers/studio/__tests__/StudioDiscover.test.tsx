@@ -7,6 +7,9 @@ const h = vi.hoisted(() => ({
   guessFamily: vi.fn(),
   search: vi.fn(),
   files: vi.fn(),
+  refresh: vi.fn(),
+  // One object, so the component's effects do not see a new store value each render.
+  status: { supported: true, models: [] },
 }))
 
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
@@ -16,7 +19,7 @@ vi.mock('@/containers/HuggingFaceAvatar', () => ({
 }))
 vi.mock('@/hooks/useStudio', () => ({
   useStudio: (select: (s: unknown) => unknown) =>
-    select({ status: { supported: true, models: [] }, refresh: vi.fn() }),
+    select({ status: h.status, refresh: h.refresh }),
 }))
 vi.mock('@/lib/studio/studio', () => ({
   studioApi: {
