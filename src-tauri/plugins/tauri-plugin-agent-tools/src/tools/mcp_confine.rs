@@ -36,6 +36,9 @@ pub enum McpAuthority {
         /// Extra folders attached to the session, readable only. The same set
         /// the built-in tools' sandbox is given.
         read_roots: Vec<PathBuf>,
+        /// Outbound network. Off for a server a repository imported, unless the
+        /// session or the user said it needs it.
+        allow_network: bool,
     },
     /// One repository root is writable, because a live grant says so.
     EditFolder {
@@ -43,6 +46,8 @@ pub enum McpAuthority {
         repository: PathBuf,
         /// Extra folders attached to the session, readable only.
         read_roots: Vec<PathBuf>,
+        /// Outbound network; see [`Self::ReviewOnly`].
+        allow_network: bool,
     },
 }
 
@@ -94,6 +99,14 @@ impl McpAuthority {
     fn workspace(&self) -> &Path {
         match self {
             Self::ReviewOnly { workspace, .. } | Self::EditFolder { workspace, .. } => workspace,
+        }
+    }
+
+    fn allow_network(&self) -> bool {
+        match self {
+            Self::ReviewOnly { allow_network, .. } | Self::EditFolder { allow_network, .. } => {
+                *allow_network
+            }
         }
     }
 
@@ -157,11 +170,11 @@ fn resolved(path: &Path) -> PathBuf {
 /// could still read `note-py` from `obs-forwarder`, which is exfiltration
 /// even though it never wrote a byte.
 pub fn policy_for(authority: &McpAuthority, jan_data: Option<&Path>) -> Policy {
-    // Network stays available: a remote-fetching MCP server is an ordinary
-    // thing to run, and the filesystem is what this is confining.
+    // Network follows the authority (on by default at the app layer, since
+    // package-fetching servers need it; `allowNetwork: false` turns it off).
     // A server outlives any one shell command in its session and shares its
     // container, so it holds its folder grants under its own process.
-    let mut policy = Policy::new(authority.workspace(), true).with_own_grant_holder();
+    let mut policy = Policy::new(authority.workspace(), authority.allow_network()).with_own_grant_holder();
 
     let repository = match authority {
         McpAuthority::ReviewOnly { repository, .. } => repository.clone(),
@@ -206,7 +219,7 @@ pub fn policy_for(authority: &McpAuthority, jan_data: Option<&Path>) -> Policy {
         let workspace = authority.workspace();
         if !workspace.starts_with(data) {
             policy = policy.with_hide_root(data);
-        } else if policy.mask_root.is_none() {
+        } else {
             policy = policy.with_mask_root(data);
         }
     }
@@ -336,6 +349,7 @@ mod tests {
             workspace,
             repository: Some(repo),
             read_roots: vec![],
+            allow_network: true,
         }
     }
 
@@ -345,6 +359,7 @@ mod tests {
             workspace,
             repository: repo,
             read_roots: vec![],
+            allow_network: true,
         }
     }
 
@@ -355,7 +370,7 @@ mod tests {
 
         assert_eq!(policy.read_roots, vec![repo.clone()]);
         assert_eq!(
-            policy.mask_root.as_deref(),
+            policy.mask_roots.first().map(PathBuf::as_path),
             repo.parent(),
             "the repositories beside the selected one must be masked"
         );
@@ -378,6 +393,7 @@ mod tests {
                 workspace: workspace.clone(),
                 repository: Some(repo.clone()),
                 read_roots: vec![attached.clone()],
+                allow_network: true,
             },
             None,
         );
@@ -391,6 +407,7 @@ mod tests {
                 workspace,
                 repository: repo.clone(),
                 read_roots: vec![attached.clone()],
+                allow_network: true,
             },
             None,
         );
@@ -434,11 +451,12 @@ mod tests {
                 workspace: PathBuf::from("/jan/sessions/session-a"),
                 repository: None,
                 read_roots: vec![],
+                allow_network: true,
             },
             Some(&data),
         );
         assert!(reviewing.hide_roots.is_empty());
-        assert_eq!(reviewing.mask_root.as_deref(), Some(data.as_path()));
+        assert_eq!(reviewing.mask_roots, vec![data.clone()]);
         let editing = policy_for(&editing(), Some(&data));
         assert!(editing.hide_roots.is_empty());
     }
@@ -451,10 +469,76 @@ mod tests {
                 workspace: PathBuf::from("/tmp/ws"),
                 repository: Some(PathBuf::from("/repo")),
                 read_roots: vec![],
+                allow_network: true,
             },
             None,
         );
-        assert_eq!(policy.mask_root, None);
+        assert!(policy.mask_roots.is_empty());
+    }
+
+    /// An imported server is offline unless the authority says it needs the
+    /// network (F07-002).
+    #[test]
+    fn mcp_server_offline_when_disabled() {
+        let (repo, _, _, workspace) = roots();
+        let offline = policy_for(
+            &McpAuthority::ReviewOnly {
+                workspace: workspace.clone(),
+                repository: Some(repo.clone()),
+                read_roots: vec![],
+                allow_network: false,
+            },
+            None,
+        );
+        assert!(!offline.allow_network);
+        let online = policy_for(
+            &McpAuthority::ReviewOnly {
+                workspace,
+                repository: Some(repo),
+                read_roots: vec![],
+                allow_network: true,
+            },
+            None,
+        );
+        assert!(online.allow_network);
+    }
+
+    /// The repository's parent and the data folder are both masked: the data
+    /// folder (provider keys, the permanent store) must not stay readable just
+    /// because the one-slot mask was spent on the repository's neighbours.
+    #[test]
+    fn mask_both_data_and_repo_parent() {
+        let data = PathBuf::from("/jan");
+        let policy = policy_for(
+            &McpAuthority::ReviewOnly {
+                workspace: PathBuf::from("/jan/sessions/session-a"),
+                repository: Some(PathBuf::from("/work/repos/app")),
+                read_roots: vec![],
+                allow_network: true,
+            },
+            Some(&data),
+        );
+        assert_eq!(
+            policy.mask_roots,
+            vec![PathBuf::from("/work/repos"), data.clone()]
+        );
+        let args = jail::bwrap_args(
+            &policy,
+            &ShellConfig {
+                program: PathBuf::from("/bin/bash"),
+                args: vec!["-c".to_string()],
+                via_stdin: false,
+                description: "bash",
+                flavor: proc::ShellFlavor::Posix,
+            },
+        );
+        let masked: Vec<&str> = args
+            .windows(2)
+            .filter(|w| w[0] == "--tmpfs")
+            .map(|w| w[1].as_str())
+            .collect();
+        assert!(masked.contains(&"/work/repos"), "{masked:?}");
+        assert!(masked.contains(&"/jan"), "{masked:?}");
     }
 
     #[test]
@@ -761,6 +845,7 @@ mod runtime_tests {
                 workspace,
                 repository: Some(repo.clone()),
                 read_roots: vec![],
+                allow_network: true,
             },
             repo,
             sibling,
@@ -823,6 +908,7 @@ mod runtime_tests {
             workspace: review.workspace().to_path_buf(),
             repository: repo.clone(),
             read_roots: vec![],
+            allow_network: true,
         };
 
         let (repo_ok, out) =

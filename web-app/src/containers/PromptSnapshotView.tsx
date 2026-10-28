@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
 import {
   diffContext,
@@ -71,15 +72,6 @@ export type PromptSnapshotViewProps = {
   summary?: string
 }
 
-const STATE_LABEL: Record<ReplayView['state'], string> = {
-  running: 'Replaying…',
-  interrupted: 'Interrupted: Flint stopped while it ran',
-  completed: 'Completed',
-  failed: 'Failed',
-  cancelled: 'Stopped',
-  refused: 'Refused',
-}
-
 /**
  * What changed since the request sent just before this one, in the same
  * session (AH-086): each message, system block and tool that entered or left
@@ -95,6 +87,7 @@ function ContextDiffSection({
   sessionId?: string
   onList?: (session: string) => Promise<PromptSnapshot[]>
 }) {
+  const { t } = useTranslation()
   const [state, setState] = useState<
     | { kind: 'idle' }
     | { kind: 'loading' }
@@ -149,12 +142,14 @@ function ContextDiffSection({
         onClick={() => void compare()}
         data-testid="context-diff-run"
       >
-        Compare with the previous request
+        {t('context:promptSnapshot.diff.run')}
       </Button>
-      {state.kind === 'loading' && <p>Comparing…</p>}
+      {state.kind === 'loading' && (
+        <p>{t('context:promptSnapshot.diff.loading')}</p>
+      )}
       {state.kind === 'first' && (
         <p data-testid="context-diff-first">
-          This is the session's first stored request; there is nothing earlier to compare it with.
+          {t('context:promptSnapshot.diff.first')}
         </p>
       )}
       {state.kind === 'error' && (
@@ -165,15 +160,43 @@ function ContextDiffSection({
       {state.kind === 'ready' && (
         <div className="flex flex-col gap-1.5" data-testid="context-diff-result" data-previous={state.previous.id}>
           <p className="text-muted-foreground" data-testid="context-diff-summary">
-            Against {state.previous.id}: {state.diff.entered.length} entered,{' '}
-            {state.diff.left.length} left, {state.diff.keptMessages} message(s) kept,{' '}
-            {state.diff.keptTools} tool(s) kept
-            {state.diff.systemChanged ? ', system prompt changed' : ''}.
+            {t('context:promptSnapshot.diff.summary', {
+              id: state.previous.id,
+              details: [
+                t('context:promptSnapshot.diff.entered', {
+                  count: state.diff.entered.length,
+                }),
+                t('context:promptSnapshot.diff.left', {
+                  count: state.diff.left.length,
+                }),
+                t('context:promptSnapshot.diff.keptMessages', {
+                  count: state.diff.keptMessages,
+                }),
+                t('context:promptSnapshot.diff.keptTools', {
+                  count: state.diff.keptTools,
+                }),
+                ...(state.diff.systemChanged
+                  ? [t('context:promptSnapshot.diff.systemChanged')]
+                  : []),
+              ].join(t('context:promptSnapshot.diff.separator')),
+            })}
           </p>
-          <div className="font-medium">Entered</div>
-          {list(state.diff.entered, 'context-diff-entered', 'Nothing new.')}
-          <div className="font-medium">Left</div>
-          {list(state.diff.left, 'context-diff-left', 'Nothing left the window.')}
+          <div className="font-medium">
+            {t('context:promptSnapshot.diff.enteredHeading')}
+          </div>
+          {list(
+            state.diff.entered,
+            'context-diff-entered',
+            t('context:promptSnapshot.diff.nothingNew')
+          )}
+          <div className="font-medium">
+            {t('context:promptSnapshot.diff.leftHeading')}
+          </div>
+          {list(
+            state.diff.left,
+            'context-diff-left',
+            t('context:promptSnapshot.diff.nothingLeft')
+          )}
         </div>
       )}
     </div>
@@ -194,6 +217,7 @@ function ReplaySection({
   sessionId?: string
   deps?: ReplayDeps
 }) {
+  const { t } = useTranslation()
   const [replays, setReplays] = useState<ReplayView[]>([])
   const [refusal, setRefusal] = useState<ReplayError | null>(null)
   const [starting, setStarting] = useState(false)
@@ -211,9 +235,11 @@ function ReplaySection({
   }, [deps, sessionId, snapshot.id, version])
 
   const blocked = !sessionId
-    ? 'Replay needs the session this turn belongs to.'
+    ? t('context:promptSnapshot.replay.needsSession')
     : snapshot.redactions.length > 0
-      ? `It cannot be replayed: ${snapshot.redactions.length} field(s) were redacted before it was stored, so the model would not receive what it received then.`
+      ? t('context:promptSnapshot.replay.redactedBlock', {
+          count: snapshot.redactions.length,
+        })
       : null
   const running = replays.some((r) => r.state === 'running' && isReplaying(r.id))
 
@@ -232,7 +258,7 @@ function ReplaySection({
   return (
     <section
       className="flex flex-col gap-2 border-t border-border pt-2"
-      aria-label="Replays of this context"
+      aria-label={t('context:promptSnapshot.replay.label')}
       data-testid="prompt-replays"
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -244,10 +270,10 @@ function ReplaySection({
           onClick={() => void replay()}
           data-testid="prompt-snapshot-replay"
         >
-          Replay this context
+          {t('context:promptSnapshot.replay.run')}
         </Button>
         <span className="text-muted-foreground">
-          Sends exactly this request again. Tools the model asks for are not run.
+          {t('context:promptSnapshot.replay.hint')}
         </span>
       </div>
       {blocked && (
@@ -274,21 +300,23 @@ function ReplaySection({
               data-kind={r.error?.kind ?? ''}
             >
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{STATE_LABEL[r.state]}</span>
+                <span className="font-medium">{t(`context:promptSnapshot.replay.state.${r.state}`)}</span>
                 <span className="text-muted-foreground">{r.startedAt}</span>
                 {r.matched === true && (
                   <span data-testid="prompt-replay-matched">
-                    Same context as the turn (hashes match)
+                    {t('context:promptSnapshot.replay.matched')}
                   </span>
                 )}
                 {r.matched === false && (
                   <span className="text-destructive">
-                    The request sent differed from the turn&apos;s
+                    {t('context:promptSnapshot.replay.differed')}
                   </span>
                 )}
                 {r.finishReason && (
                   <span className="text-muted-foreground">
-                    finish: {r.finishReason}
+                    {t('context:promptSnapshot.replay.finish', {
+                      reason: r.finishReason,
+                    })}
                   </span>
                 )}
                 {r.state === 'running' && isReplaying(r.id) && (
@@ -299,13 +327,15 @@ function ReplaySection({
                     onClick={() => cancelReplay(r.id)}
                     data-testid="prompt-replay-cancel"
                   >
-                    Stop
+                    {t('context:promptSnapshot.replay.stop')}
                   </Button>
                 )}
               </div>
               {r.toolCalls.length > 0 && (
                 <p className="text-muted-foreground">
-                  Asked for {r.toolCalls.join(', ')} (not run)
+                  {t('context:promptSnapshot.replay.asked', {
+                    tools: r.toolCalls.join(', '),
+                  })}
                 </p>
               )}
               {r.text && (
@@ -330,12 +360,7 @@ function ReplaySection({
   )
 }
 
-const UNAVAILABLE_REASON: Record<string, string> = {
-  'not-serializable':
-    'The request could not be serialised, so nothing was stored.',
-  disabled: 'Snapshots are switched off for this run.',
-  'too-large': 'The request was too large to store whole.',
-}
+const UNAVAILABLE_REASONS = ['not-serializable', 'disabled', 'too-large']
 
 /** A readable tree of a JSON value, without pulling in a viewer library. */
 function Tree({ value, path = '' }: { value: unknown; path?: string }) {
@@ -382,6 +407,7 @@ function Tree({ value, path = '' }: { value: unknown; path?: string }) {
 }
 
 export function PromptSnapshotView(props: PromptSnapshotViewProps) {
+  const { t } = useTranslation()
   const [snapshot, setSnapshot] = useState<PromptSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -409,14 +435,14 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
       })
       setSnapshot(found[0] ?? null)
       if (found.length === 0) {
-        setError('That snapshot is no longer on disk.')
+        setError(t('context:promptSnapshot.gone'))
       }
     } catch (e) {
       setError(errorText(e))
     } finally {
       setLoading(false)
     }
-  }, [loading, props, snapshot])
+  }, [loading, props, snapshot, t])
 
   /** Copies exactly what is shown, which is already the redacted record. */
   const copy = useCallback(async () => {
@@ -448,7 +474,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
         data-testid="prompt-snapshot-toggle"
       >
         <span className="min-w-0 flex-1">
-          {props.summary ?? 'What the model received'}
+          {props.summary ?? t('context:promptSnapshot.summary')}
         </span>
         <ChevronDown
           aria-hidden
@@ -457,7 +483,9 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
       </summary>
 
       <div id={panelId} className="mt-2 flex flex-col gap-2">
-        {loading && <p data-testid="prompt-snapshot-loading">Loading…</p>}
+        {loading && <p data-testid="prompt-snapshot-loading">
+            {t('context:promptSnapshot.loading')}
+          </p>}
 
         {error && (
           <p className="text-destructive" data-testid="prompt-snapshot-error">
@@ -467,8 +495,11 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
 
         {snapshot?.unavailable && (
           <p data-testid="prompt-snapshot-unavailable">
-            No payload was stored.{' '}
-            {UNAVAILABLE_REASON[snapshot.unavailable] ?? snapshot.unavailable}
+            {t('context:promptSnapshot.unavailable', {
+              reason: UNAVAILABLE_REASONS.includes(snapshot.unavailable)
+                ? t(`context:promptSnapshot.reason.${snapshot.unavailable}`)
+                : snapshot.unavailable,
+            })}
           </p>
         )}
 
@@ -478,35 +509,56 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
               className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1"
               data-testid="prompt-snapshot-meta"
             >
-              <dt className="text-muted-foreground">Provider</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.provider')}
+              </dt>
               <dd className="min-w-0 truncate">{snapshot.provider || '—'}</dd>
-              <dt className="text-muted-foreground">Model</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.model')}
+              </dt>
               <dd className="min-w-0 truncate">{snapshot.model || '—'}</dd>
-              <dt className="text-muted-foreground">Reasoning</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.reasoning')}
+              </dt>
               <dd className="min-w-0 truncate">
                 {snapshot.reasoning ? JSON.stringify(snapshot.reasoning) : '—'}
               </dd>
-              <dt className="text-muted-foreground">Session</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.session')}
+              </dt>
               <dd className="min-w-0 truncate font-mono">
                 {snapshot.session || '—'}
               </dd>
-              <dt className="text-muted-foreground">Run</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.run')}
+              </dt>
               <dd className="min-w-0 truncate font-mono">
                 {snapshot.run || '—'}
               </dd>
-              <dt className="text-muted-foreground">Agent</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.agent')}
+              </dt>
               <dd className="min-w-0 truncate">{snapshot.agent || '—'}</dd>
-              <dt className="text-muted-foreground">Sent</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.sent')}
+              </dt>
               <dd className="min-w-0 truncate">{snapshot.at}</dd>
-              <dt className="text-muted-foreground">Hash</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.hash')}
+              </dt>
               <dd className="min-w-0 truncate font-mono">{snapshot.hash}</dd>
-              <dt className="text-muted-foreground">Redacted</dt>
+              <dt className="text-muted-foreground">
+                {t('context:promptSnapshot.meta.redacted')}
+              </dt>
               <dd className="min-w-0" data-testid="prompt-snapshot-redactions">
                 {snapshot.redactions.length === 0
-                  ? 'nothing'
-                  : `${snapshot.redactions.length} field(s): ${snapshot.redactions
-                      .map((r) => `${r.path} (${r.why})`)
-                      .join(', ')}`}
+                  ? t('context:promptSnapshot.meta.nothing')
+                  : t('context:promptSnapshot.meta.redactedList', {
+                      count: snapshot.redactions.length,
+                      list: snapshot.redactions
+                        .map((r) => `${r.path} (${r.why})`)
+                        .join(', '),
+                    })}
               </dd>
             </dl>
 
@@ -517,7 +569,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
             />
 
             <div className="flex items-center gap-2">
-              <div role="group" aria-label="View as" className="flex gap-1">
+              <div role="group" aria-label={t('context:promptSnapshot.view.label')} className="flex gap-1">
                 <Button
                   type="button"
                   size="sm"
@@ -526,7 +578,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
                   onClick={() => setView('tree')}
                   data-testid="prompt-snapshot-view-tree"
                 >
-                  Tree
+                  {t('context:promptSnapshot.view.tree')}
                 </Button>
                 <Button
                   type="button"
@@ -536,7 +588,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
                   onClick={() => setView('json')}
                   data-testid="prompt-snapshot-view-json"
                 >
-                  JSON
+                  {t('context:promptSnapshot.view.json')}
                 </Button>
               </div>
               <Button
@@ -546,7 +598,9 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
                 onClick={copy}
                 data-testid="prompt-snapshot-copy"
               >
-                {copied ? 'Copied' : 'Copy redacted payload'}
+                {copied
+                  ? t('context:promptSnapshot.copied')
+                  : t('context:promptSnapshot.copy')}
               </Button>
             </div>
 

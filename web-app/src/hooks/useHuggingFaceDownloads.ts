@@ -60,12 +60,14 @@ export const useHuggingFaceDownloads = create<DownloadStore>((set) => ({
       if (!current) return state
       return { tasks: { ...state.tasks, [id]: { ...current, ...patch } } }
     }),
-  remove: (id) =>
+  remove: (id) => {
+    forgetBundle(id)
     set((state) => {
       const tasks = { ...state.tasks }
       delete tasks[id]
       return { tasks }
-    }),
+    })
+  },
 }))
 
 type BundleRunner = {
@@ -90,6 +92,25 @@ const pauseIntent = new Set<string>()
 const cancelIntent = new Set<string>()
 let progressListener: Promise<() => void> | null = null
 let persisting = false
+
+/** Thrown inside the download loop when a pause or cancel was asked for. */
+class BundleStop extends Error {
+  constructor(readonly kind: 'paused' | 'cancelled') {
+    super(kind)
+  }
+}
+
+/**
+ * Drop everything kept for a bundle: its runner (and token), speed sample and
+ * stop intents. Only for a bundle that cannot be resumed any more; a paused or
+ * failed one keeps its runner so resume and retry still work.
+ */
+function forgetBundle(id: string) {
+  runners.delete(id)
+  speedSamples.delete(id)
+  pauseIntent.delete(id)
+  cancelIntent.delete(id)
+}
 
 // A download a relaunch can bring back: still to finish, or failed with a retry.
 const UNFINISHED: HuggingFaceTaskStatus[] = [
@@ -175,7 +196,12 @@ function ensureProgressListener() {
         bytesPerSecond: sample.bytesPerSecond > 0 ? sample.bytesPerSecond : undefined,
       })
     }
-  ).catch(() => () => {})
+  ).catch((error) => {
+    // Do not cache the failure, so the next run tries to listen again.
+    console.warn('Could not listen for Hugging Face download progress', error)
+    progressListener = null
+    return () => {}
+  })
   return progressListener
 }
 
@@ -211,8 +237,14 @@ async function runBundle(id: string): Promise<void> {
     store.patch(id, { status: 'queued', error: undefined, total })
   }
 
+  const stopIfAsked = () => {
+    if (cancelIntent.has(id)) throw new BundleStop('cancelled')
+    if (pauseIntent.has(id)) throw new BundleStop('paused')
+  }
+
   try {
     for (let index = startAt; index < runner.files.length; index++) {
+      stopIfAsked()
       const file = runner.files[index]
       const nativeTaskId = `${id}:${index}`
       store.patch(id, {
@@ -243,6 +275,7 @@ async function runBundle(id: string): Promise<void> {
       })
     }
 
+    stopIfAsked()
     store.patch(id, {
       status: 'verifying',
       currentTaskId: undefined,
@@ -254,14 +287,14 @@ async function runBundle(id: string): Promise<void> {
       await runner.onComplete(paths)
     }
     store.patch(id, { status: 'complete', currentTaskId: undefined, progress: 1 })
+    forgetBundle(id)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    if (pauseIntent.has(id) || /paused|cancelled/i.test(message)) {
-      store.patch(id, {
-        status: cancelIntent.has(id) ? 'cancelled' : 'paused',
-        currentTaskId: undefined,
-        error: undefined,
-      })
+    if (error instanceof BundleStop || pauseIntent.has(id) || /paused|cancelled/i.test(message)) {
+      const status =
+        error instanceof BundleStop ? error.kind : cancelIntent.has(id) ? 'cancelled' : 'paused'
+      store.patch(id, { status, currentTaskId: undefined, error: undefined })
+      if (status === 'cancelled') forgetBundle(id)
     } else {
       store.patch(id, { status: 'error', currentTaskId: undefined, error: message })
     }
@@ -274,31 +307,44 @@ async function runBundle(id: string): Promise<void> {
 
 export function startHuggingFaceBundle(input: BundleRunner): Promise<void> {
   ensurePersistence()
-  runners.set(input.id, input)
   const current = useHuggingFaceDownloads.getState().tasks[input.id]
   if (current?.status === 'complete') {
     useHuggingFaceDownloads.getState().remove(input.id)
   }
+  // After the remove above: removing a task also forgets its runner.
+  runners.set(input.id, input)
   return runBundle(input.id)
 }
 
 export async function pauseHuggingFaceBundle(id: string): Promise<void> {
   const task = useHuggingFaceDownloads.getState().tasks[id]
-  if (!task?.currentTaskId) return
+  if (!task) return
+  // Nothing to pause when it is not running (a stale intent would pause the
+  // next run), and the verify/import step cannot be paused.
+  if (!running.has(id) && !task.currentTaskId) return
+  if (task.status === 'verifying' || task.status === 'importing') return
   pauseIntent.add(id)
-  await cancelHuggingFaceDownload(task.currentTaskId).catch(() => {})
+  // Between two files there is no native task; the loop honours the intent
+  // at its next iteration.
+  if (task.currentTaskId) await cancelHuggingFaceDownload(task.currentTaskId).catch(() => {})
 }
 
 export async function cancelHuggingFaceBundle(id: string): Promise<void> {
   const task = useHuggingFaceDownloads.getState().tasks[id]
   if (!task) return
-  cancelIntent.add(id)
-  pauseIntent.add(id)
-  if (task.currentTaskId) {
-    await cancelHuggingFaceDownload(task.currentTaskId).catch(() => {})
-  } else {
-    useHuggingFaceDownloads.getState().patch(id, { status: 'cancelled' })
+  // The import cannot be undone, so a cancel there is ignored.
+  if (task.status === 'verifying' || task.status === 'importing') return
+  if (running.has(id)) {
+    cancelIntent.add(id)
+    pauseIntent.add(id)
+    if (task.currentTaskId) await cancelHuggingFaceDownload(task.currentTaskId).catch(() => {})
+    return
   }
+  useHuggingFaceDownloads.getState().patch(id, {
+    status: 'cancelled',
+    currentTaskId: undefined,
+  })
+  forgetBundle(id)
 }
 
 /**
@@ -333,7 +379,6 @@ export function restoreHuggingFaceBundle(
 /** Drop a stopped download's row; it stops being saved with it. */
 export function dismissHuggingFaceBundle(id: string): void {
   if (running.has(id)) return
-  runners.delete(id)
   useHuggingFaceDownloads.getState().remove(id)
 }
 

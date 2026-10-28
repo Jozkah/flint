@@ -366,5 +366,33 @@
     "none": "此資料夾未宣告鉤子。",
     "error": "無法讀取鉤子檔案",
     "loadFailed": "無法讀取鉤子"
+  },
+  "accessRequest": {
+    "title": {
+      "write": {
+        "folder": "允許代理程式變更此資料夾中的檔案嗎？",
+        "file": "允許代理程式變更此檔案嗎？"
+      },
+      "read": {
+        "folder": "允許代理程式讀取此資料夾嗎？",
+        "file": "允許代理程式讀取此檔案嗎？"
+      }
+    },
+    "asking": "{{task}} 要求存取其工作區以外的內容。",
+    "askingFrom": "{{task}} 中的 {{origin}} 要求存取其工作區以外的內容。",
+    "thisConversation": "此對話",
+    "folderLabel": "資料夾（及其中的所有內容）",
+    "fileLabel": "檔案",
+    "requestedAs": "要求的路徑為 {{requested}}，解析為上方的路徑。",
+    "reason": "提供的理由",
+    "access": "存取：",
+    "readWrite": "讀取與寫入",
+    "readOnly": "唯讀",
+    "grantNote": "「在此對話中允許」會在對話結束時或 8 小時後失效。「一律允許」對所有對話有效，直到你在 設定 > 權限 > 資料夾存取 中撤銷。",
+    "moreWaiting_one": "還有 {{count}} 個要求在等待。",
+    "moreWaiting_other": "還有 {{count}} 個要求在等待。",
+    "deny": "拒絕",
+    "always": "一律允許",
+    "session": "在此對話中允許"
   }
 }

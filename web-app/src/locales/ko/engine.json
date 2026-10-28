@@ -181,7 +181,7 @@
     "kpiArtifacts": "아티팩트",
     "kpiArtifactsSub": "이번 주 새로 {{count}}개",
     "kpiSessions": "Cowork에서",
-    "kpiSessionsSub": "세션 {{count}}개에 걸쳐",
+    "kpiSessionsSub": "저장된 아티팩트 포함",
     "kpiDisk": "디스크 사용",
     "kpiDiskSub": "세션 샌드박스 내",
     "kindCode": "코드",

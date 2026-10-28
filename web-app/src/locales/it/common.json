@@ -3026,5 +3026,49 @@
       "medium": "Media",
       "low": "Bassa"
     }
+  },
+  "emergencyStop": {
+    "trigger": "Ferma",
+    "title": "Ferma il lavoro in corso",
+    "description": "Scegli fin dove arriva. Non si può annullare: il lavoro fermato non riprende, nemmeno dopo un riavvio.",
+    "legend": "Cosa fermare",
+    "stopping": "Arresto in corso. Chiusura dei processi propri…",
+    "report": {
+      "clean": "Fermato. {{stopped}} fermati, {{already}} già fermati, nulla è più in esecuzione.",
+      "partial_one": "{{stopped}} fermati, ma {{count}} processo è ancora in esecuzione. La pulizia non è terminata.",
+      "partial_other": "{{stopped}} fermati, ma {{count}} processi sono ancora in esecuzione. La pulizia non è terminata."
+    },
+    "error": "Impossibile fermare: {{error}}",
+    "cancel": "Annulla",
+    "close": "Chiudi",
+    "confirmBusy": "Arresto in corso…",
+    "scope": {
+      "call": {
+        "name": "Questa chiamata dello strumento",
+        "desc": "Solo questa chiamata dello strumento ({{id}}). Tutto il resto dell'esecuzione continua.",
+        "confirm": "Ferma la chiamata"
+      },
+      "run": {
+        "name": "Questa esecuzione",
+        "desc": "Questa esecuzione ({{id}}), con chiamate di strumenti, comandi shell, chiamate MCP e subagenti. Le altre esecuzioni non vengono toccate.",
+        "confirm": "Ferma l'esecuzione"
+      },
+      "session": {
+        "name": "Questa sessione",
+        "desc": "Ogni esecuzione di questa sessione ({{id}}). Le altre sessioni non vengono toccate.",
+        "confirm": "Ferma la sessione"
+      },
+      "application": {
+        "name": "Tutto in Flint",
+        "desc": "Tutto il lavoro ovunque in Flint, in ogni sessione. Nulla di ciò che è in esecuzione viene risparmiato.",
+        "confirm": "Ferma tutto"
+      }
+    }
+  },
+  "apiKey": {
+    "show": "Mostra la chiave API",
+    "hide": "Nascondi la chiave API",
+    "copy": "Copia la chiave API",
+    "copied": "Copiato"
   }
 }
