@@ -142,139 +142,70 @@ pub(super) fn load_host_tools(path: &str) -> Result<crate::core::agent::host_too
         .map_err(|e| format!("--host-tools file '{path}': {e}"))
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn run_agent_loop(
-    project: &str,
-    task: &str,
-    model_override: Option<String>,
-    single_turn: bool,
-    overrides: ProviderOverrides,
-    flags: SessionFlags,
-    resume: Option<ResumeRequest>,
-    format: OutputFormat,
+/// Check how the run was asked to start and load the host tools it declared.
+///
+/// Every refusal here is a setup failure like any other, so the caller reports
+/// it the way `prepare_agent_run`'s is: one `result` record with
+/// `error.code: "setup_error"`. Returning early instead would leave a machine
+/// consumer an empty stdout and a human string on stderr, which is the one
+/// thing this channel promises never to do -- and a mistyped `--host-tools`
+/// path is the first failure a host is likely to hit.
+fn setup_host_tools(
     input_format: InputFormat,
+    format: OutputFormat,
     host_tools: Option<&str>,
     host_gate: bool,
-) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
-    // A duplex run switches off both of the CLI's own answer paths, so the
-    // client is the only thing that can resolve a permission request -- and it
-    // can only do that if it is being told the request ids. `text` prints them
-    // to stderr and `json` prints nothing at all until the run ends, so either
-    // pairing leaves a gated call unanswerable. Rejected rather than silently
-    // upgraded: a caller parsing plain text should not have the format changed
-    // under it.
-    let started = std::time::Instant::now();
-    // Read before the flags are handed on: this is the run's own answer about
-    // how much to say, and it is wanted after the run as well as during it.
-    let asked_density = flags.density;
-    // Every refusal below is a setup failure like any other, so it is reported
-    // the way `prepare_agent_run`'s is: one `result` record with
-    // `error.code: "setup_error"`. Returning early instead would leave a
-    // machine consumer an empty stdout and a human string on stderr, which is
-    // the one thing this channel promises never to do -- and a mistyped
-    // `--host-tools` path is the first failure a host is likely to hit.
-    let setup = (|| {
-        if input_format.is_stream_json() && !format.is_stream_json() {
-            return Err(
-                "--input-format stream-json requires --output-format stream-json (the client \
-                 answers permission requests, so it must be reading them)"
-                    .to_string(),
-            );
-        }
-        // Declared before anything is spent: a malformed or unacceptable tool
-        // set is the host's own mistake, and finding out at the first call --
-        // mid-task, after paid requests -- is worse than refusing to start.
-        // Handing the gate to a host that declared no tools would be a no-op
-        // the caller probably did not mean; say so rather than ignore it.
-        if host_gate && host_tools.is_none() {
-            return Err("--host-gate requires --host-tools".to_string());
-        }
-        match host_tools {
-            Some(path) => {
-                if !input_format.is_stream_json() {
-                    return Err(
-                        "--host-tools requires --input-format stream-json (a host tool call is \
-                         answered with a tool_result message on stdin)"
-                            .to_string(),
-                    );
-                }
-                load_host_tools(path)
-            }
-            None => Ok(crate::core::agent::host_tools::HostToolSet::new()),
-        }
-    })();
-    let host_tools = match setup {
-        Ok(host_tools) => host_tools,
-        Err(e) => {
-            if format.is_machine() {
-                print_report(
-                    format,
-                    RunReport::setup_failure(&e).finish(
-                        None,
-                        "",
-                        started.elapsed().as_millis(),
-                        None,
-                    ),
+) -> Result<crate::core::agent::host_tools::HostToolSet, String> {
+    if input_format.is_stream_json() && !format.is_stream_json() {
+        return Err(
+            "--input-format stream-json requires --output-format stream-json (the client \
+             answers permission requests, so it must be reading them)"
+                .to_string(),
+        );
+    }
+    // Declared before anything is spent: a malformed or unacceptable tool
+    // set is the host's own mistake, and finding out at the first call --
+    // mid-task, after paid requests -- is worse than refusing to start.
+    // Handing the gate to a host that declared no tools would be a no-op
+    // the caller probably did not mean; say so rather than ignore it.
+    if host_gate && host_tools.is_none() {
+        return Err("--host-gate requires --host-tools".to_string());
+    }
+    match host_tools {
+        Some(path) => {
+            if !input_format.is_stream_json() {
+                return Err(
+                    "--host-tools requires --input-format stream-json (a host tool call is \
+                     answered with a tool_result message on stdin)"
+                        .to_string(),
                 );
             }
-            return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
-                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                e,
-            )
-            .at(tauri_plugin_agent_tools::harness_error::Stage::Startup));
+            load_host_tools(path)
         }
-    };
-    let prepared = prepare_agent_run(
-        project,
-        task,
-        model_override,
-        single_turn,
-        overrides,
-        flags,
-        resume,
-    );
-    // A setup failure never reaches the event stream, so a JSON consumer would
-    // otherwise get an empty stdout and have to parse the human error off stderr.
-    let PreparedRun {
-        mut args,
-        body,
-        limits,
-        permission_requests,
-        mcp_task,
-        persist,
-    } = match prepared {
-        Ok(prepared) => prepared,
-        Err(e) => {
-            if format.is_machine() {
-                print_report(
-                    format,
-                    RunReport::setup_failure(&e).finish(
-                        None,
-                        "",
-                        started.elapsed().as_millis(),
-                        None,
-                    ),
-                );
-            }
-            // Setup failed before a provider was ever reached: the run never
-            // started, which is a startup failure and not the model's.
-            return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
-                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-                e,
-            )
-            .at(tauri_plugin_agent_tools::harness_error::Stage::Startup));
-        }
-    };
-    // Installed after the session is built, since host tools are declared per
-    // run rather than per project: the same session config serves a run with
-    // them and one without.
-    args.host_tools = host_tools;
-    // `--host-gate`: the host's own callback is the approval step, so Jan
-    // raises no `permission_request` for a host tool of any class.
-    args.host_owns_gate = host_gate;
+        None => Ok(crate::core::agent::host_tools::HostToolSet::new()),
+    }
+}
 
-    // Block until active MCP servers connect, so tools (collected once per run)
-    // are present on the first turn.
+/// Turn a setup failure into the error a run returns. A machine format also
+/// gets its `result` record first: a setup failure never reaches the event
+/// stream, so a JSON consumer would otherwise get an empty stdout and have to
+/// parse the human error off stderr.
+fn setup_failure(format: OutputFormat, started: std::time::Instant, message: String) -> tauri_plugin_agent_tools::harness_error::HarnessError {
+    if format.is_machine() {
+        print_report(
+            format,
+            RunReport::setup_failure(&message).finish(None, "", started.elapsed().as_millis(), None),
+        );
+    }
+    // Setup failed before a provider was ever reached: the run never started,
+    // which is a startup failure and not the model's.
+    tauri_plugin_agent_tools::harness_error::HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput, message)
+        .at(tauri_plugin_agent_tools::harness_error::Stage::Startup)
+}
+
+/// Block until the active MCP servers connect, so tools (collected once per run)
+/// are present on the first turn.
+async fn await_mcp_connect(mcp_task: Option<tokio::task::JoinHandle<mcp::ConnectOutcome>>) {
     if let Some(task) = mcp_task {
         match task.await {
             Ok(outcome) => {
@@ -297,71 +228,14 @@ pub(super) async fn run_agent_loop(
             Err(e) => log::warn!("MCP connect task failed: {e}"),
         }
     }
+}
 
-    // AH-077: the headless run warns as the window fills, once per approach,
-    // with the same words the TUI uses.
-    let pressure_window = limits.context_window;
-    let pressure_reserve = limits.reserve_tokens;
-    // AH-185/AH-184: who to tell, checked before the run rather than when it
-    // ends and nobody is told. A project that declares nothing costs nothing.
-    let notify = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
-        .ok()
-        .map(|cfg| cfg.notify)
-        .unwrap_or_default();
-    let notify = crate::core::agent::notify::check(&notify)?;
-    let notify_root = std::path::PathBuf::from(project);
-    let notify_session = args.session_id.clone().unwrap_or_default();
-    // The session this run saves under, decided here rather than at save time
-    // so the `init` record can name it: a client learns the id it can `--resume`
-    // from the first line of the stream, and a run killed mid-flight still told
-    // it which id to look for.
-    let session_id = persist
-        .thread_id
-        .clone()
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    // The run's own id becomes the session id, so the one a client is handed,
-    // the one its requests are correlated under, and the one a provenance
-    // record names are the same id: three spellings of a session would only
-    // ever be a way to lose the thread between them.
-    args.session_id = Some(session_id.clone());
-
-    // The handshake, before anything else can reach stdout. Printed here rather
-    // than from the printer task for exactly that reason: nothing has been
-    // spawned yet, so "first line" is a property of the code's order rather than
-    // a race against the run's own events.
-    if format.is_stream_json() {
-        print_json_line(&init_record(&args, &session_id, &persist.model, input_format).await);
-    }
-
-    // The client on stdin, when there is one: it owns every permission decision
-    // and can steer or stop the run while it is in flight.
-    let input = input_format
-        .is_stream_json()
-        .then(|| Arc::new(StreamInput::default()));
-    // Created before the reader so it can report the host requests it releases
-    // on the same channel as the run's events: the printer then orders those
-    // records before the final result, which it prints only once every sender
-    // (the reader's included) has dropped.
-    let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
-    let reader = input.as_ref().map(|input| {
-        spawn_input_reader(
-            Arc::clone(input),
-            Arc::clone(&permission_requests),
-            Arc::clone(&args.host_tool_requests),
-            tx.clone(),
-            format,
-        )
-    });
-    let client = input.clone();
-    let host_tool_requests = Arc::clone(&args.host_tool_requests);
-
-    // The report is folded in both formats from the same stream the printer
-    // reads, so the JSON envelope can never disagree with the text output.
-    // AH-181: how much this run says about itself. The flag outranks the
-    // project's declaration, and an unreadable declaration refuses the run
-    // rather than quietly printing a different amount than was asked for.
-    let density = match asked_density {
-        Some(density) => density,
+/// AH-181: how much this run says about itself. The flag outranks the
+/// project's declaration, and an unreadable declaration refuses the run
+/// rather than quietly printing a different amount than was asked for.
+fn resolve_density(asked: Option<Density>, project: &str) -> Result<Density, tauri_plugin_agent_tools::harness_error::HarnessError> {
+    match asked {
+        Some(density) => Ok(density),
         None => {
             let declared = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
                 .ok()
@@ -373,14 +247,18 @@ pub(super) async fn run_agent_loop(
                     format!("[output].density: {e}"),
                 )
                 .at(tauri_plugin_agent_tools::harness_error::Stage::Startup)
-            })?
+            })
         }
-    };
-    let notify_for_prompts = notify.clone();
-    let prompt_root = notify_root.clone();
-    let prompt_session = notify_session.clone();
-    // AH-026: the turn in flight is on disk as it happens, so a run killed
-    // mid-turn can be resumed without losing it.
+    }
+}
+
+/// AH-026: put the turn in flight on disk, so a run killed mid-turn can be
+/// resumed without losing it.
+fn begin_checkpoint(
+    persist: &PersistTarget,
+    format: OutputFormat,
+    started: std::time::Instant,
+) -> Result<std::sync::Arc<std::sync::Mutex<Option<inflight::Writer>>>, tauri_plugin_agent_tools::harness_error::HarnessError> {
     // The thread is written when the run starts, not only when it ends: a run
     // killed mid-turn otherwise leaves a checkpoint in a thread that no
     // listing knows, and `--resume` cannot name it.
@@ -416,157 +294,175 @@ pub(super) async fn run_agent_loop(
         },
         None => None,
     };
-    let checkpoint = std::sync::Arc::new(std::sync::Mutex::new(writer));
-    let checkpoint_for_printer = checkpoint.clone();
-    let printer = tokio::spawn(async move {
-        // The last conversation the loop published, kept for the save below.
-        let mut conversation: Option<Vec<serde_json::Value>> = None;
-        let mut report = RunReport::default();
-        let mut warned_about_context = false;
-        while let Some(ev) = rx.recv().await {
-            report.observe(&ev);
-            // Said before the reply that would overflow, not after: the point
-            // of the warning is that there is still a choice to make.
-            if let StreamEvent::TurnUsage { usage, .. } = &ev {
-                let used = usage.total_tokens.or(usage.prompt_tokens).unwrap_or(0);
-                match crate::core::agent::context_pressure::pressure(
-                    used,
-                    pressure_window,
-                    pressure_reserve,
-                    // The headless path reports the provider's own numbers.
-                    true,
-                ) {
-                    Some(found) if !warned_about_context => {
-                        warned_about_context = true;
-                        eprintln!(
-                            "\n{}",
-                            color::paint(
-                                "33",
-                                format_args!(
-                                    "[context] {}",
-                                    crate::core::agent::context_pressure::line(&found),
-                                ),
+    Ok(std::sync::Arc::new(std::sync::Mutex::new(writer)))
+}
+
+/// What the event consumer needs from the run that spawned it.
+struct EventConsumer {
+    pressure_window: u64,
+    pressure_reserve: u64,
+    notify: Option<crate::core::agent::notify::Notify>,
+    session: String,
+    root: std::path::PathBuf,
+    checkpoint: std::sync::Arc<std::sync::Mutex<Option<inflight::Writer>>>,
+    client: Option<Arc<StreamInput>>,
+    host_tool_requests: crate::core::agent::host_tools::HostToolRegistry,
+    permission_requests: PermissionRegistry,
+    density: Density,
+    format: OutputFormat,
+}
+
+/// Drain the run's events: fold them into the report, mirror them into the
+/// checkpoint, warn as the window fills, notify on a permission wait, and print
+/// or answer each one in the run's output format. Returns the report and the
+/// last conversation the loop published.
+async fn consume_events(
+    mut rx: mpsc::UnboundedReceiver<StreamEvent>,
+    ctx: EventConsumer,
+) -> (RunReport, Option<Vec<serde_json::Value>>) {
+    let EventConsumer {
+        pressure_window,
+        pressure_reserve,
+        notify: notify_for_prompts,
+        session: prompt_session,
+        root: prompt_root,
+        checkpoint: checkpoint_for_printer,
+        client,
+        host_tool_requests,
+        permission_requests,
+        density,
+        format,
+    } = ctx;
+    // The last conversation the loop published, kept for the save below.
+    let mut conversation: Option<Vec<serde_json::Value>> = None;
+    let mut report = RunReport::default();
+    let mut warned_about_context = false;
+    while let Some(ev) = rx.recv().await {
+        report.observe(&ev);
+        // Said before the reply that would overflow, not after: the point
+        // of the warning is that there is still a choice to make.
+        if let StreamEvent::TurnUsage { usage, .. } = &ev {
+            let used = usage.total_tokens.or(usage.prompt_tokens).unwrap_or(0);
+            match crate::core::agent::context_pressure::pressure(
+                used,
+                pressure_window,
+                pressure_reserve,
+                // The headless path reports the provider's own numbers.
+                true,
+            ) {
+                Some(found) if !warned_about_context => {
+                    warned_about_context = true;
+                    eprintln!(
+                        "\n{}",
+                        color::paint(
+                            "33",
+                            format_args!(
+                                "[context] {}",
+                                crate::core::agent::context_pressure::line(&found),
                             ),
-                        );
-                    }
-                    Some(_) => {}
-                    None => warned_about_context = false,
+                        ),
+                    );
                 }
+                Some(_) => {}
+                None => warned_about_context = false,
             }
-            // The run's own conversation, as the loop last published it. A
-            // headless run used to save only the prompt and the final answer,
-            // so a `--resume` turn handed the model a transcript in which it
-            // had *described* work and never called a tool -- which is an
-            // example of exactly the wrong behaviour, and the model imitates
-            // it. Keeping the calls and their results is what makes a resumed
-            // turn continue the same run rather than re-enact a summary of it.
-            if let StreamEvent::MessagesUpdated { messages } = &ev {
-                conversation = Some(messages.clone());
-            }
-            if let Ok(mut guard) = checkpoint_for_printer.lock() {
-                if let Some(writer) = guard.as_mut() {
-                    match &ev {
-                        StreamEvent::MessagesUpdated { messages } => writer.conversation(messages),
-                        StreamEvent::Token { text } => writer.text(text),
-                        _ => {}
-                    }
-                }
-            }
-            // A run that has stopped to wait for a person is the moment
-            // worth interrupting somebody for: nothing else happens until
-            // they answer.
-            if let (Some(notify), StreamEvent::PermissionRequest { tool_name, .. }) =
-                (notify_for_prompts.as_ref(), &ev)
-            {
-                let note = crate::core::agent::notify::Notification::new(
-                    crate::core::agent::notify::Moment::NeedsAttention,
-                    &prompt_session,
-                    None,
-                    format!("waiting for approval of a {tool_name} call"),
-                );
-                for outcome in crate::core::agent::notify::deliver(
-                    notify,
-                    &note,
-                    &prompt_root,
-                    crate::core::agent::notify::Moment::NeedsAttention,
-                )
-                .await
-                {
-                    if let crate::core::agent::notify::Delivered::Failed(why) = outcome {
-                        log::warn!("notify: {why}");
-                    }
-                }
-            }
-            // Asked per event, not once per run: the client owns the decision
-            // only while it is still reading. Once stdin has closed, the CLI
-            // takes its own path back, which on a pipe is an auto-deny.
-            let duplex = client.as_ref().is_some_and(|c| !c.client_gone());
-            // Only the client can answer a host tool call. If it has already
-            // left, the call is failed here: `strand_all` fired when stdin
-            // closed, so nothing else will ever release this one and the turn
-            // would park forever.
-            if let StreamEvent::ToolRequest { request_id, .. } = &ev {
-                if !duplex {
-                    // The request is already on stdout, so its withdrawal is
-                    // too; printed here because this task is the stream's order.
-                    if crate::core::agent::host_tools::strand(&host_tool_requests, request_id)
-                        .await
-                    {
-                        let cancelled = request_cancelled(request_id, CANCEL_CLIENT_GONE);
-                        report.observe(&cancelled);
-                        if format.is_stream_json() {
-                            print_json_line(&cancelled);
-                        }
-                    }
-                    continue;
-                }
-            }
-            match format {
-                OutputFormat::Text => {
-                    print_event(ev, &permission_requests, density, duplex).await
-                }
-                OutputFormat::Json => {
-                    resolve_permission_silently(ev, &permission_requests, duplex).await;
-                }
-                OutputFormat::StreamJson => {
-                    print_json_line(&ev);
-                    if let Some((request_id, decision)) =
-                        resolve_permission_silently(ev, &permission_requests, duplex).await
-                    {
-                        print_json_line(&PermissionDecisionRecord::new(&request_id, decision));
-                    }
+        }
+        // The run's own conversation, as the loop last published it. A
+        // headless run used to save only the prompt and the final answer,
+        // so a `--resume` turn handed the model a transcript in which it
+        // had *described* work and never called a tool -- which is an
+        // example of exactly the wrong behaviour, and the model imitates
+        // it. Keeping the calls and their results is what makes a resumed
+        // turn continue the same run rather than re-enact a summary of it.
+        if let StreamEvent::MessagesUpdated { messages } = &ev {
+            conversation = Some(messages.clone());
+        }
+        if let Ok(mut guard) = checkpoint_for_printer.lock() {
+            if let Some(writer) = guard.as_mut() {
+                match &ev {
+                    StreamEvent::MessagesUpdated { messages } => writer.conversation(messages),
+                    StreamEvent::Token { text } => writer.text(text),
+                    _ => {}
                 }
             }
         }
-        (report, conversation)
-    });
+        // A run that has stopped to wait for a person is the moment
+        // worth interrupting somebody for: nothing else happens until
+        // they answer.
+        if let (Some(notify), StreamEvent::PermissionRequest { tool_name, .. }) =
+            (notify_for_prompts.as_ref(), &ev)
+        {
+            let note = crate::core::agent::notify::Notification::new(
+                crate::core::agent::notify::Moment::NeedsAttention,
+                &prompt_session,
+                None,
+                format!("waiting for approval of a {tool_name} call"),
+            );
+            for outcome in crate::core::agent::notify::deliver(
+                notify,
+                &note,
+                &prompt_root,
+                crate::core::agent::notify::Moment::NeedsAttention,
+            )
+            .await
+            {
+                if let crate::core::agent::notify::Delivered::Failed(why) = outcome {
+                    log::warn!("notify: {why}");
+                }
+            }
+        }
+        // Asked per event, not once per run: the client owns the decision
+        // only while it is still reading. Once stdin has closed, the CLI
+        // takes its own path back, which on a pipe is an auto-deny.
+        let duplex = client.as_ref().is_some_and(|c| !c.client_gone());
+        // Only the client can answer a host tool call. If it has already
+        // left, the call is failed here: `strand_all` fired when stdin
+        // closed, so nothing else will ever release this one and the turn
+        // would park forever.
+        if let StreamEvent::ToolRequest { request_id, .. } = &ev {
+            if !duplex {
+                // The request is already on stdout, so its withdrawal is
+                // too; printed here because this task is the stream's order.
+                if crate::core::agent::host_tools::strand(&host_tool_requests, request_id)
+                    .await
+                {
+                    let cancelled = request_cancelled(request_id, CANCEL_CLIENT_GONE);
+                    report.observe(&cancelled);
+                    if format.is_stream_json() {
+                        print_json_line(&cancelled);
+                    }
+                }
+                continue;
+            }
+        }
+        match format {
+            OutputFormat::Text => {
+                print_event(ev, &permission_requests, density, duplex).await
+            }
+            OutputFormat::Json => {
+                resolve_permission_silently(ev, &permission_requests, duplex).await;
+            }
+            OutputFormat::StreamJson => {
+                print_json_line(&ev);
+                if let Some((request_id, decision)) =
+                    resolve_permission_silently(ev, &permission_requests, duplex).await
+                {
+                    print_json_line(&PermissionDecisionRecord::new(&request_id, decision));
+                }
+            }
+        }
+    }
+    (report, conversation)
+}
 
-    // `None` when the client aborted: the run produced no completion, but a
-    // deliberate stop is an outcome rather than a failure, so it is reported on
-    // the stream and the process still exits 0.
-    let outcome = match input.as_ref() {
-        Some(input) => run_steered(&tx, &body, &args, input).await,
-        None => Some(run_orchestration_streamed(&tx, &body, &args).await),
-    };
-    if let Some(reader) = reader {
-        reader.abort();
-    }
-    // A request still registered now belongs to a call the run dropped (it
-    // failed or stopped mid-batch); nothing will await its answer, so the host
-    // is told to stop working on it before the result record closes the stream.
-    for id in crate::core::agent::host_tools::cancel_all(&args.host_tool_requests).await {
-        let _ = tx.send(request_cancelled(&id, CANCEL_ABORTED));
-    }
-    let aborted = outcome.is_none();
-    let result = outcome.unwrap_or_else(|| Err(ABORTED_BY_CLIENT.into()));
-    drop(tx);
-    let (mut report, conversation) = printer.await.unwrap_or_default();
-    if let Some(input) = input.as_ref() {
-        report_dropped_follow_ups(input, format);
-    }
-
-    // AH-185/AH-184: the run is over, whoever started it has moved on, and
-    // this says so. How it ended, and nothing of what it did.
+/// AH-185/AH-184: the run is over, whoever started it has moved on, and this
+/// says so. How it ended, and nothing of what it did.
+async fn notify_run_ended(
+    notify: &Option<crate::core::agent::notify::Notify>,
+    session: &str,
+    root: &std::path::Path,
+    result: &Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
+) {
     if let Some(notify) = notify.as_ref() {
         let summary = match result.as_ref() {
             Ok(_) => "the run ended: completed".to_string(),
@@ -574,14 +470,14 @@ pub(super) async fn run_agent_loop(
         };
         let note = crate::core::agent::notify::Notification::new(
             crate::core::agent::notify::Moment::RunEnded,
-            &notify_session,
+            session,
             None,
             summary,
         );
         for outcome in crate::core::agent::notify::deliver(
             notify,
             &note,
-            &notify_root,
+            root,
             crate::core::agent::notify::Moment::RunEnded,
         )
         .await
@@ -591,7 +487,24 @@ pub(super) async fn run_agent_loop(
             }
         }
     }
+}
 
+/// Everything after the run: save the turn back so the session stays
+/// continuable with --resume, close the checkpoint, print the result in the
+/// run's format and clean up.
+#[allow(clippy::too_many_arguments)]
+async fn finish_run(
+    persist: PersistTarget,
+    result: Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
+    conversation: Option<Vec<serde_json::Value>>,
+    mut report: RunReport,
+    session_id: &str,
+    checkpoint: &std::sync::Mutex<Option<inflight::Writer>>,
+    format: OutputFormat,
+    started: std::time::Instant,
+    scratch_session: Option<&str>,
+    aborted: bool,
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     // Write the turn back so the session stays continuable with --resume.
     let model = persist.model.clone();
     let structured = result.as_ref().ok().and_then(|c| c.get("structured_output").cloned());
@@ -601,7 +514,7 @@ pub(super) async fn run_agent_loop(
         .and_then(|c| c.get("structured_output_error"))
         .and_then(|v| v.as_str().map(str::to_string));
     report.set_structured(structured.clone(), structured_error.clone());
-    let persisted = persist_headless_run(persist, &result, conversation, Some(&session_id));
+    let persisted = persist_headless_run(persist, &result, conversation, Some(session_id));
     let (session_id, final_text) = (persisted.session_id, persisted.final_text);
     // Saved, so nothing is in flight any more. A run that failed before its
     // thread could be written keeps its checkpoint: its completed steps are
@@ -652,7 +565,7 @@ pub(super) async fn run_agent_loop(
     tauri_plugin_agent_tools::event_log::unwatch();
     // The one-shot CLI runs exactly one turn, so its session ends here: wipe
     // the persistent bash `/tmp` scratch this run used.
-    if let Some(session) = args.session_id.as_deref() {
+    if let Some(session) = scratch_session {
         let _ = workspace::remove_scratch_dir(session).await;
     }
     if aborted {
@@ -665,6 +578,190 @@ pub(super) async fn run_agent_loop(
         ));
     }
     result.map(|_| ())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn run_agent_loop(
+    project: &str,
+    task: &str,
+    model_override: Option<String>,
+    single_turn: bool,
+    overrides: ProviderOverrides,
+    flags: SessionFlags,
+    resume: Option<ResumeRequest>,
+    format: OutputFormat,
+    input_format: InputFormat,
+    host_tools: Option<&str>,
+    host_gate: bool,
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
+    // A duplex run switches off both of the CLI's own answer paths, so the
+    // client is the only thing that can resolve a permission request -- and it
+    // can only do that if it is being told the request ids. `text` prints them
+    // to stderr and `json` prints nothing at all until the run ends, so either
+    // pairing leaves a gated call unanswerable. Rejected rather than silently
+    // upgraded: a caller parsing plain text should not have the format changed
+    // under it.
+    let started = std::time::Instant::now();
+    // Read before the flags are handed on: this is the run's own answer about
+    // how much to say, and it is wanted after the run as well as during it.
+    let asked_density = flags.density;
+    // Every refusal below is a setup failure like any other, so it is reported
+    // the way `prepare_agent_run`'s is: one `result` record with
+    // `error.code: "setup_error"`. Returning early instead would leave a
+    // machine consumer an empty stdout and a human string on stderr, which is
+    // the one thing this channel promises never to do -- and a mistyped
+    // `--host-tools` path is the first failure a host is likely to hit.
+    let host_tools = match setup_host_tools(input_format, format, host_tools, host_gate) {
+        Ok(host_tools) => host_tools,
+        Err(e) => return Err(setup_failure(format, started, e)),
+    };
+    let prepared = prepare_agent_run(
+        project,
+        task,
+        model_override,
+        single_turn,
+        overrides,
+        flags,
+        resume,
+    );
+    let PreparedRun {
+        mut args,
+        body,
+        limits,
+        permission_requests,
+        mcp_task,
+        persist,
+    } = match prepared {
+        Ok(prepared) => prepared,
+        Err(e) => return Err(setup_failure(format, started, e)),
+    };
+    // Installed after the session is built, since host tools are declared per
+    // run rather than per project: the same session config serves a run with
+    // them and one without.
+    args.host_tools = host_tools;
+    // `--host-gate`: the host's own callback is the approval step, so Jan
+    // raises no `permission_request` for a host tool of any class.
+    args.host_owns_gate = host_gate;
+
+    await_mcp_connect(mcp_task).await;
+
+    // AH-077: the headless run warns as the window fills, once per approach,
+    // with the same words the TUI uses.
+    let pressure_window = limits.context_window;
+    let pressure_reserve = limits.reserve_tokens;
+    // AH-185/AH-184: who to tell, checked before the run rather than when it
+    // ends and nobody is told. A project that declares nothing costs nothing.
+    let notify = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
+        .ok()
+        .map(|cfg| cfg.notify)
+        .unwrap_or_default();
+    let notify = crate::core::agent::notify::check(&notify)?;
+    let notify_root = std::path::PathBuf::from(project);
+    let notify_session = args.session_id.clone().unwrap_or_default();
+    // The session this run saves under, decided here rather than at save time
+    // so the `init` record can name it: a client learns the id it can `--resume`
+    // from the first line of the stream, and a run killed mid-flight still told
+    // it which id to look for.
+    let session_id = persist
+        .thread_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    // The run's own id becomes the session id, so the one a client is handed,
+    // the one its requests are correlated under, and the one a provenance
+    // record names are the same id: three spellings of a session would only
+    // ever be a way to lose the thread between them.
+    args.session_id = Some(session_id.clone());
+
+    // The handshake, before anything else can reach stdout. Printed here rather
+    // than from the printer task for exactly that reason: nothing has been
+    // spawned yet, so "first line" is a property of the code's order rather than
+    // a race against the run's own events.
+    if format.is_stream_json() {
+        print_json_line(&init_record(&args, &session_id, &persist.model, input_format).await);
+    }
+
+    // The client on stdin, when there is one: it owns every permission decision
+    // and can steer or stop the run while it is in flight.
+    let input = input_format
+        .is_stream_json()
+        .then(|| Arc::new(StreamInput::default()));
+    // Created before the reader so it can report the host requests it releases
+    // on the same channel as the run's events: the printer then orders those
+    // records before the final result, which it prints only once every sender
+    // (the reader's included) has dropped.
+    let (tx, rx) = mpsc::unbounded_channel::<StreamEvent>();
+    let reader = input.as_ref().map(|input| {
+        spawn_input_reader(
+            Arc::clone(input),
+            Arc::clone(&permission_requests),
+            Arc::clone(&args.host_tool_requests),
+            tx.clone(),
+            format,
+        )
+    });
+    let client = input.clone();
+    let host_tool_requests = Arc::clone(&args.host_tool_requests);
+
+    // The report is folded in both formats from the same stream the printer
+    // reads, so the JSON envelope can never disagree with the text output.
+    let density = resolve_density(asked_density, project)?;
+    let checkpoint = begin_checkpoint(&persist, format, started)?;
+    let printer = tokio::spawn(consume_events(
+        rx,
+        EventConsumer {
+            pressure_window,
+            pressure_reserve,
+            notify: notify.clone(),
+            session: notify_session.clone(),
+            root: notify_root.clone(),
+            checkpoint: checkpoint.clone(),
+            client,
+            host_tool_requests,
+            permission_requests,
+            density,
+            format,
+        },
+    ));
+
+    // `None` when the client aborted: the run produced no completion, but a
+    // deliberate stop is an outcome rather than a failure, so it is reported on
+    // the stream and the process still exits 0.
+    let outcome = match input.as_ref() {
+        Some(input) => run_steered(&tx, &body, &args, input).await,
+        None => Some(run_orchestration_streamed(&tx, &body, &args).await),
+    };
+    if let Some(reader) = reader {
+        reader.abort();
+    }
+    // A request still registered now belongs to a call the run dropped (it
+    // failed or stopped mid-batch); nothing will await its answer, so the host
+    // is told to stop working on it before the result record closes the stream.
+    for id in crate::core::agent::host_tools::cancel_all(&args.host_tool_requests).await {
+        let _ = tx.send(request_cancelled(&id, CANCEL_ABORTED));
+    }
+    let aborted = outcome.is_none();
+    let result = outcome.unwrap_or_else(|| Err(ABORTED_BY_CLIENT.into()));
+    drop(tx);
+    let (report, conversation) = printer.await.unwrap_or_default();
+    if let Some(input) = input.as_ref() {
+        report_dropped_follow_ups(input, format);
+    }
+
+    notify_run_ended(&notify, &notify_session, &notify_root, &result).await;
+
+    finish_run(
+        persist,
+        result,
+        conversation,
+        report,
+        &session_id,
+        &checkpoint,
+        format,
+        started,
+        args.session_id.as_deref(),
+        aborted,
+    )
+    .await
 }
 
 /// What writing a finished headless run back produced.
