@@ -343,6 +343,11 @@ pub struct ProviderRequest {
     /// the body to finish waits forever.
     #[serde(default)]
     pub stream_id: Option<String>,
+    /// The consumer takes body bytes as raw binary messages instead of base64
+    /// JSON. Honoured only by a sink that supports it (the desktop channel);
+    /// the web ndjson path always stays base64.
+    #[serde(default)]
+    pub raw_chunks: bool,
 }
 
 /// How often a stalled read looks at the cancellation flag.
@@ -525,6 +530,12 @@ pub enum StreamChunk {
     /// Base64 so a chunk that splits a multi-byte character survives the trip.
     Data {
         b64: String,
+    },
+    /// Body bytes sent as a raw binary message (no base64, no JSON). Only
+    /// produced for a sink that asked for it; never serialized.
+    #[serde(skip)]
+    Raw {
+        bytes: Vec<u8>,
     },
     End,
     Error {
@@ -728,6 +739,53 @@ pub async fn send(mut req: ProviderRequest) -> Result<ProviderResponse, String> 
 /// exercised without a webview.
 pub trait ChunkSink: Send + 'static {
     fn send(&self, chunk: StreamChunk);
+
+    /// Whether this sink can carry [`StreamChunk::Raw`]. Off unless it says so.
+    fn supports_raw(&self) -> bool {
+        false
+    }
+}
+
+/// Largest body slice joined into one message when several pieces are already
+/// waiting, so a fast stream costs one message instead of one per network read.
+const COALESCE_MAX: usize = 64 * 1024;
+
+/// One body piece in the form the consumer asked for.
+fn data_chunk(raw: bool, bytes: Vec<u8>) -> StreamChunk {
+    if raw {
+        StreamChunk::Raw { bytes }
+    } else {
+        StreamChunk::Data {
+            b64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+        }
+    }
+}
+
+/// What followed the pieces that were joined, when it was not another piece.
+enum Followed<E> {
+    Error(E),
+    Ended,
+}
+
+/// Join `first` with every piece that is already available without waiting,
+/// up to [`COALESCE_MAX`]. Bytes are concatenated before any decoding, so a
+/// multi-byte character split across network reads is whole again.
+fn coalesce_ready<S, B, E>(stream: &mut S, first: &[u8]) -> (Vec<u8>, Option<Followed<E>>)
+where
+    S: futures_util::Stream<Item = Result<B, E>> + Unpin,
+    B: AsRef<[u8]>,
+{
+    use futures_util::FutureExt;
+    let mut joined = first.to_vec();
+    while joined.len() < COALESCE_MAX {
+        match stream.next().now_or_never() {
+            Some(Some(Ok(more))) => joined.extend_from_slice(more.as_ref()),
+            Some(Some(Err(e))) => return (joined, Some(Followed::Error(e))),
+            Some(None) => return (joined, Some(Followed::Ended)),
+            None => break,
+        }
+    }
+    (joined, None)
 }
 
 /// Send a provider request and hand the body back a chunk at a time.
@@ -765,6 +823,7 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
         }
     };
 
+    let raw = req.raw_chunks && sink.supports_raw();
     let peer = note_peer(&host, port, &response);
     let status = response.status();
     sink.send(StreamChunk::Head {
@@ -797,9 +856,7 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
                 return Err(message);
             }
         };
-        sink.send(StreamChunk::Data {
-            b64: base64::engine::general_purpose::STANDARD.encode(body.as_bytes()),
-        });
+        sink.send(data_chunk(raw, body.into_bytes()));
         sink.send(StreamChunk::End);
         return Ok(());
     }
@@ -827,9 +884,24 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
             }
         };
         match next {
-            Ok(bytes) => sink.send(StreamChunk::Data {
-                b64: base64::engine::general_purpose::STANDARD.encode(&bytes),
-            }),
+            Ok(bytes) => {
+                let (joined, followed) = coalesce_ready(&mut stream, &bytes);
+                sink.send(data_chunk(raw, joined));
+                match followed {
+                    None => {}
+                    Some(Followed::Ended) => {
+                        sink.send(StreamChunk::End);
+                        return Ok(());
+                    }
+                    Some(Followed::Error(e)) => {
+                        let message = transport_failed(&host, port, &e);
+                        sink.send(StreamChunk::Error {
+                            message: message.clone(),
+                        });
+                        return Err(message);
+                    }
+                }
+            }
             Err(e) => {
                 // A stream that dies mid-body is a transport failure like any
                 // other; the next attempt should re-resolve.
@@ -1762,5 +1834,67 @@ mod tests {
         assert!(!same_origin(&u("https://api.x.com/v1"), &u("https://evil.com/v1")));
         assert!(!same_origin(&u("https://api.x.com/v1"), &u("https://api.x.com:8443/v1")));
         assert!(!same_origin(&u("http://h:8080/"), &u("https://h:8443/")));
+    }
+}
+
+#[cfg(test)]
+mod raw_chunk_tests {
+    use super::*;
+
+    fn ok(bytes: &[u8]) -> Result<Vec<u8>, String> {
+        Ok(bytes.to_vec())
+    }
+
+    #[test]
+    fn stream_chunk_coalescing() {
+        let mut rest = futures_util::stream::iter(vec![ok(b"bc"), ok(b"def")]);
+        let (joined, followed) = coalesce_ready(&mut rest, b"a");
+        assert_eq!(joined, b"abcdef");
+        assert!(matches!(followed, Some(Followed::Ended)));
+    }
+
+    #[test]
+    fn coalescing_stops_at_the_cap_and_keeps_the_rest() {
+        let big = vec![b'x'; COALESCE_MAX];
+        let mut rest = futures_util::stream::iter(vec![ok(&big), ok(b"tail")]);
+        let (joined, followed) = coalesce_ready(&mut rest, b"head");
+        assert_eq!(joined.len(), 4 + COALESCE_MAX);
+        assert!(followed.is_none());
+        // The next piece is still on the stream, not lost.
+        assert!(matches!(
+            futures_util::FutureExt::now_or_never(rest.next()),
+            Some(Some(Ok(_)))
+        ));
+    }
+
+    #[test]
+    fn coalescing_reports_an_error_after_the_data_before_it() {
+        let mut rest = futures_util::stream::iter(vec![ok(b"b"), Err("boom".to_string())]);
+        let (joined, followed) = coalesce_ready(&mut rest, b"a");
+        assert_eq!(joined, b"ab");
+        assert!(matches!(followed, Some(Followed::Error(ref e)) if e == "boom"));
+    }
+
+    #[test]
+    fn utf8_split_across_chunks_reassembled() {
+        // "e with acute" is two bytes; the network read cut it in half.
+        let word = "caf\u{e9}".as_bytes().to_vec();
+        let (a, b) = word.split_at(word.len() - 1);
+        assert!(std::str::from_utf8(a).is_err());
+        let mut rest = futures_util::stream::iter(vec![ok(b)]);
+        let (joined, _) = coalesce_ready(&mut rest, a);
+        assert_eq!(String::from_utf8(joined).unwrap(), "caf\u{e9}");
+    }
+
+    #[test]
+    fn data_chunk_is_base64_unless_raw_was_asked_for() {
+        match data_chunk(false, b"hi".to_vec()) {
+            StreamChunk::Data { b64 } => assert_eq!(b64, "aGk="),
+            other => panic!("expected base64 data, got {other:?}"),
+        }
+        match data_chunk(true, b"hi".to_vec()) {
+            StreamChunk::Raw { bytes } => assert_eq!(bytes, b"hi"),
+            other => panic!("expected raw data, got {other:?}"),
+        }
     }
 }
