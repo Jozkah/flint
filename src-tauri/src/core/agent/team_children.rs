@@ -458,26 +458,103 @@ pub fn settle(
         ));
     }
     let owner_id = tauri_plugin_agent_tools::child_session_id(parent_session, task_id);
-    // Held from the read to the write, so the check below sees any ending
-    // written by a settle racing this one.
-    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
-    let mut record = load(data_folder, &owner_id)?;
     // The first ending wins. A late "cancelled" from tearing down a run whose
     // child had already finished must not relabel a completed child, and a
     // settle that races another is not a second ending.
-    if record.status != ChildStatus::Running {
-        return Ok(record);
+    let mut record = {
+        let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+        let record = load(data_folder, &owner_id)?;
+        if record.status != ChildStatus::Running {
+            return Ok(record);
+        }
+        record
+    };
+    // Git runs with the lock released, so a slow worktree cannot stall every
+    // other child's begin or settle. A worktree that cannot be read now has no
+    // fingerprint, and a later review of it is refused for that reason rather
+    // than trusted.
+    #[cfg(test)]
+    settle_test_pause(task_id);
+    let print = verify(&record, roots)
+        .and_then(|wt| current_fingerprint(&wt))
+        .ok();
+    // Re-read under the lock: a settle that landed meanwhile already holds the
+    // ending, and this one is not a second ending.
+    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    let current = load(data_folder, &owner_id)?;
+    if current.status != ChildStatus::Running {
+        return Ok(current);
     }
     record.status = status;
     record.detail = detail.chars().take(2000).collect();
     record.ended_at = Some(now());
-    // A worktree that cannot be read now has no fingerprint, and a later
-    // review of it is refused for that reason rather than trusted.
-    record.fingerprint = verify(&record, roots)
-        .and_then(|wt| current_fingerprint(&wt))
-        .ok();
+    record.fingerprint = print;
     save(data_folder, &record)?;
     Ok(record)
+}
+
+/// Test hook: hold a settle of this task between its two lock sections.
+#[cfg(test)]
+static SETTLE_PAUSE: std::sync::Mutex<Option<(String, bool)>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+fn settle_test_pause(task_id: &str) {
+    let hold = |entered: Option<bool>| {
+        let mut g = SETTLE_PAUSE.lock().unwrap_or_else(|p| p.into_inner());
+        match g.as_mut() {
+            Some((t, e)) if t == task_id => {
+                if let Some(v) = entered {
+                    *e = v;
+                }
+                true
+            }
+            _ => false,
+        }
+    };
+    if !hold(Some(true)) {
+        return;
+    }
+    while hold(None) {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// Delete the records of children that failed or were cancelled more than
+/// `retention_days` ago. Completed children are kept: their work may still be
+/// waiting for review. Returns how many records went.
+pub fn prune(data_folder: &Path, retention_days: i64) -> usize {
+    prune_at(data_folder, retention_days, chrono::Utc::now())
+}
+
+fn prune_at(data_folder: &Path, retention_days: i64, at: chrono::DateTime<chrono::Utc>) -> usize {
+    let Ok(entries) = std::fs::read_dir(store_dir(data_folder)) else {
+        return 0;
+    };
+    let cutoff = at - chrono::Duration::days(retention_days);
+    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|x| x != "json") {
+            continue;
+        }
+        let Some(record) = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|t| serde_json::from_str::<ChildRecord>(&t).ok())
+        else {
+            continue;
+        };
+        let old = record
+            .ended_at
+            .as_deref()
+            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+            .is_some_and(|t| t < cutoff);
+        let unfinished_ending = matches!(record.status, ChildStatus::Failed | ChildStatus::Cancelled);
+        if old && unfinished_ending && std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 fn state_of(record: &ChildRecord) -> ChildState {
@@ -514,6 +591,7 @@ pub fn list(
     project: &str,
     session: Option<&str>,
 ) -> Vec<ChildView> {
+    prune(data_folder, 30);
     let Ok(entries) = std::fs::read_dir(store_dir(data_folder)) else {
         return Vec::new();
     };
@@ -807,6 +885,57 @@ mod tests {
         let owner = tauri_plugin_agent_tools::child_session_id("sess", "alpha");
         let kept = load(&f.data, &owner).unwrap().status;
         assert!(seen.iter().all(|s| *s == kept), "callers saw {seen:?}, disk holds {kept:?}");
+    }
+
+    /// A settle runs git with the records lock released, so a second child can
+    /// begin while the first is still being read.
+    #[test]
+    fn settle_does_not_hold_global_lock_during_git() {
+        let f = fixture("lock");
+        start(&f, "slow");
+        *SETTLE_PAUSE.lock().unwrap() = Some(("slow".to_string(), false));
+        let (data, roots) = (f.data.clone(), f.roots.clone());
+        let slow = std::thread::spawn(move || {
+            settle(&data, &roots, "sess", "slow", ChildStatus::Completed, "").unwrap()
+        });
+        // Wait until the first settle is parked between its lock sections.
+        for _ in 0..2000 {
+            if SETTLE_PAUSE.lock().unwrap().as_ref().is_some_and(|(_, e)| *e) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        // Another child starts and settles while the first is parked.
+        start(&f, "quick");
+        settle(&f.data, &f.roots, "sess", "quick", ChildStatus::Completed, "").unwrap();
+        *SETTLE_PAUSE.lock().unwrap() = None;
+        assert_eq!(slow.join().unwrap().status, ChildStatus::Completed);
+    }
+
+    #[test]
+    fn prune_removes_old_failed_and_cancelled_records_only() {
+        let f = fixture("prune");
+        for (task, status) in [
+            ("old-cancelled", ChildStatus::Cancelled),
+            ("old-done", ChildStatus::Completed),
+            ("new-cancelled", ChildStatus::Cancelled),
+        ] {
+            start(&f, task);
+            settle(&f.data, &f.roots, "sess", task, status, "").unwrap();
+        }
+        for task in ["old-cancelled", "old-done"] {
+            let owner = tauri_plugin_agent_tools::child_session_id("sess", task);
+            let mut r = load(&f.data, &owner).unwrap();
+            r.ended_at = Some("2000-01-01T00:00:00Z".to_string());
+            save(&f.data, &r).unwrap();
+        }
+        assert_eq!(prune(&f.data, 30), 1);
+        let has = |task: &str| {
+            load(&f.data, &tauri_plugin_agent_tools::child_session_id("sess", task)).is_ok()
+        };
+        assert!(!has("old-cancelled"));
+        assert!(has("old-done"));
+        assert!(has("new-cancelled"));
     }
 
     /// Failed and cancelled children are refused as clean proposals; the
