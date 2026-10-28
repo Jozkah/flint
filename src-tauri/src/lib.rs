@@ -949,12 +949,25 @@ pub fn build_app() -> tauri::App {
                     &get_jan_data_folder_path(app.handle().clone()),
                 ),
             );
-            // Anything a killed run left mid-flight is settled before the
-            // window opens, so a timeline restored from disk never shows a
-            // call as still running when nothing is left to finish it.
-            tauri_plugin_agent_tools::activity::settle_unfinished(&get_jan_data_folder_path(
-                app.handle().clone(),
-            ));
+            // Anything a killed run left mid-flight is settled, off the setup
+            // thread: it parses every session's event log, which must not hold
+            // the window back. Calls first requested after boot belong to a
+            // live run and are left alone.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                let boot_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let _ = std::thread::Builder::new()
+                    .name("settle-unfinished-activity".into())
+                    .spawn(move || {
+                        tauri_plugin_agent_tools::activity::settle_unfinished_before(
+                            &data_folder,
+                            boot_ms,
+                        );
+                    });
+            }
             // AH-101/AH-102: and what became of the background jobs the last
             // process left. A job whose process is gone is interrupted, never
             // "still running"; one whose pid now belongs to something else is

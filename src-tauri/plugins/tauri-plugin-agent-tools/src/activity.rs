@@ -1009,6 +1009,14 @@ fn adopt_invocations(events: &mut [ToolActivityEvent]) {
 /// process that owned them, so a call still `running` in the log is finished
 /// in the only honest way available.
 pub fn settle_unfinished(data_folder: &Path) -> usize {
+    settle_unfinished_before(data_folder, u64::MAX)
+}
+
+/// Like [`settle_unfinished`], but only settles calls first requested before
+/// `boot_ms` (epoch milliseconds). Startup runs this off the setup thread, so a
+/// run started after launch may already have calls in flight; those belong to a
+/// live run and are left alone. A call with no recorded time counts as old.
+pub fn settle_unfinished_before(data_folder: &Path, boot_ms: u64) -> usize {
     let all = items(data_folder, None);
     // A call that already reached a terminal phase is finished, whatever a
     // stray invocation-less event of it says: only its own unfinished items
@@ -1021,6 +1029,7 @@ pub fn settle_unfinished(data_folder: &Path) -> usize {
     let stuck: Vec<ToolActivityItem> = all
         .iter()
         .filter(|i| !i.phase.is_terminal())
+        .filter(|i| i.requested_at_ms.unwrap_or(0) < boot_ms)
         .filter(|i| {
             !(i.invocation.is_empty() && finished.contains(&(i.session.as_str(), i.call.as_str())))
         })
@@ -1263,6 +1272,25 @@ mod tests {
         assert_eq!(items[1].phase, Phase::Succeeded);
         // And settling twice does not invent more work.
         assert_eq!(settle_unfinished(&dir), 0);
+    }
+
+    #[test]
+    fn settle_skips_events_newer_than_boot() {
+        let dir = scratch();
+        let mut old = ev("old", "bash", Phase::Requested);
+        old.at_ms = Some(1_000);
+        append(&dir, &old);
+        let mut live = ev("live", "bash", Phase::Requested);
+        live.at_ms = Some(9_000);
+        append(&dir, &live);
+
+        // Only the call requested before boot is settled.
+        assert_eq!(settle_unfinished_before(&dir, 5_000), 1);
+        let found = items(&dir, None);
+        let by = |call: &str| found.iter().find(|i| i.call == call).expect("the item");
+        assert_eq!(by("old").phase, Phase::Stale);
+        assert_eq!(by("live").phase, Phase::Requested, "a live run's call was settled");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
