@@ -59,6 +59,7 @@ pub async fn delete_thread_in(root: &Path, id: &str, permanent: bool) -> Result<
         // recreate the folder right after it is removed, leaving an orphan.
         let lock = get_lock_for_thread(id).await;
         let _guard = lock.lock().await;
+        super::helpers::invalidate_append_cache(&get_messages_path(root, id));
         let thread_dir = get_thread_dir(root, id);
         if thread_dir.exists() {
             let _ = fs::remove_dir_all(thread_dir);
