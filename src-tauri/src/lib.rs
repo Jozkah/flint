@@ -471,6 +471,13 @@ macro_rules! invoke_commands_with_extras {
 
 #[cfg(not(feature = "cli"))]
 static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Mark the app as exiting so the exit handlers let it go without a graceful
+/// engine stop (factory reset restarts right after its own cleanup).
+#[cfg(not(feature = "cli"))]
+pub(crate) fn mark_shutting_down() {
+    SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+}
 /// Set once the webview has flushed its deferred writes for this close, so the
 /// close that follows goes through.
 #[cfg(not(feature = "cli"))]

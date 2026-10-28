@@ -495,6 +495,7 @@
     "failedToRelocateDataFolder": "Impossibile spostare la cartella dati",
     "couldNotRelocateToRoot": "Impossibile spostare la cartella dati nella directory principale (root). Scegli un'altra posizione.",
     "couldNotResetRootDirectory": "Impossibile ripristinare la cartella dati quando è impostata su una directory principale. Elimina manualmente la cartella dati.",
+    "factoryResetFailed": "Ripristino delle impostazioni di fabbrica non riuscito: {{error}}",
     "failedToRelocateDataFolderDesc": "Impossibile spostare la cartella dati. Riprova.",
     "devVersion": "Rilevata versione di sviluppo",
     "noUpdateAvailable": "Stai utilizzando l'ultima versione",

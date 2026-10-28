@@ -493,6 +493,7 @@
     "failedToRelocateDataFolder": "Không thể di chuyển thư mục dữ liệu",
     "couldNotRelocateToRoot": "Không thể di chuyển thư mục dữ liệu đến thư mục gốc. Vui lòng chọn vị trí khác.",
     "couldNotResetRootDirectory": "Không thể đặt lại thư mục dữ liệu khi nó được đặt thành thư mục gốc. Vui lòng xóa thư mục dữ liệu thủ công.",
+    "factoryResetFailed": "Khôi phục cài đặt gốc thất bại: {{error}}",
     "failedToRelocateDataFolderDesc": "Không thể di chuyển thư mục dữ liệu. Vui lòng thử lại.",
     "devVersion": "Đã phát hiện phiên bản phát triển",
     "noUpdateAvailable": "Bạn đang chạy phiên bản mới nhất",

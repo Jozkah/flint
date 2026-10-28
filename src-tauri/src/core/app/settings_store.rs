@@ -58,12 +58,16 @@ struct SettingsMap {
     /// key another writer (the agent's `apply_settings`) changed in between is
     /// not overwritten with this process's stale copy (#240).
     changes: BTreeMap<String, Option<String>>,
+    /// Set once a factory reset has deleted `settings.json`. From then on the
+    /// store refuses writes and never flushes, so neither a debounced write
+    /// nor the exit flush can bring the file back before the restart.
+    discarded: bool,
 }
 
 impl SettingsMap {
     /// Returns true if the value changed (i.e. a flush is warranted).
     fn set(&mut self, key: String, value: String) -> bool {
-        if self.map.get(&key).is_some_and(|v| *v == value) {
+        if self.discarded || self.map.get(&key).is_some_and(|v| *v == value) {
             return false;
         }
         #[cfg(debug_assertions)]
@@ -75,13 +79,24 @@ impl SettingsMap {
 
     /// Returns true if a key was actually removed.
     fn remove(&mut self, key: &str) -> bool {
-        if self.map.remove(key).is_none() {
+        if self.discarded || self.map.remove(key).is_none() {
             return false;
         }
         #[cfg(debug_assertions)]
         self.pending_keys.insert(key.to_string());
         self.changes.insert(key.to_string(), None);
         true
+    }
+
+    /// Drop everything, pending writes included, and refuse further changes.
+    fn discard(&mut self) {
+        self.map.clear();
+        self.pending_keys.clear();
+        self.changes.clear();
+        self.dirty = false;
+        self.flush_at = None;
+        self.dirty_since = None;
+        self.discarded = true;
     }
 
     fn mark_dirty(&mut self) {
@@ -392,6 +407,7 @@ fn store() -> &'static Store {
             dirty_since: None,
             pending_keys: BTreeSet::new(),
             changes: BTreeMap::new(),
+            discarded: false,
         };
         std::thread::Builder::new()
             .name("settings-flush".into())
@@ -402,7 +418,52 @@ fn store() -> &'static Store {
 }
 
 fn lock(store: &Store) -> std::sync::MutexGuard<'_, SettingsMap> {
-    store.0.lock().unwrap_or_else(|e| e.into_inner())
+    lock_map(&store.0)
+}
+
+fn lock_map(map: &Mutex<SettingsMap>) -> std::sync::MutexGuard<'_, SettingsMap> {
+    map.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Serializes disk writes against [`discard_settings`]. Writers drop the map
+/// lock during I/O so `settings_set` never waits on the disk; this lock lets a
+/// discard wait out a write already in flight.
+static WRITE: Mutex<()> = Mutex::new(());
+
+/// Write a flush batch unless the store was discarded after the batch was
+/// taken, then adopt the result (or re-arm on failure). Returns whether it
+/// wrote.
+fn persist(state: &Mutex<SettingsMap>, path: &PathBuf, batch: FlushBatch) -> Result<bool, String> {
+    let _write = WRITE.lock().unwrap_or_else(|e| e.into_inner());
+    if lock_map(state).discarded {
+        return Ok(false);
+    }
+    match write_batch(path, &batch) {
+        Err(e) => {
+            // Re-arm so a later write (or exit flush) retries.
+            let mut guard = lock_map(state);
+            if !guard.discarded {
+                guard.restore_changes(batch.changes);
+                guard.dirty = true;
+            }
+            Err(e)
+        }
+        Ok(written) => {
+            lock_map(state).adopt_disk(written);
+            Ok(true)
+        }
+    }
+}
+
+/// Forget the in-memory settings and stop persisting them for the rest of
+/// this process. Factory reset calls this before deleting `settings.json`;
+/// without it a pending debounced write or the exit flush would write the
+/// pre-reset settings straight back.
+pub fn discard_settings() {
+    let store = store();
+    // Wait out a write already in flight; any later one sees `discarded`.
+    let _write = WRITE.lock().unwrap_or_else(|e| e.into_inner());
+    lock(store).discard();
 }
 
 /// Background thread: waits for dirty state, honors the debounce deadline
@@ -429,18 +490,10 @@ fn flush_loop() {
         }
         let (batch, keys) = guard.take_flush_batch_with_changes();
         drop(guard);
-        match write_batch(&settings_file_path(), &batch) {
-            Err(e) => {
-                log::warn!("settings flush failed: {}", e);
-                // Re-arm so a later write (or exit flush) retries.
-                let mut guard = lock(store);
-                guard.restore_changes(batch.changes);
-                guard.dirty = true;
-            }
-            Ok(written) => {
-                lock(store).adopt_disk(written);
-                log_flushed_keys(&keys);
-            }
+        match persist(&store.0, &settings_file_path(), batch) {
+            Ok(true) => log_flushed_keys(&keys),
+            Ok(false) => {}
+            Err(e) => log::warn!("settings flush failed: {}", e),
         }
     }
 }
@@ -456,17 +509,10 @@ pub fn flush_settings() {
     }
     let (batch, keys) = guard.take_flush_batch_with_changes();
     drop(guard);
-    match write_batch(&settings_file_path(), &batch) {
-        Err(e) => {
-            log::warn!("settings exit flush failed: {}", e);
-            let mut guard = lock(store);
-            guard.restore_changes(batch.changes);
-            guard.dirty = true;
-        }
-        Ok(written) => {
-            lock(store).adopt_disk(written);
-            log_flushed_keys(&keys);
-        }
+    match persist(&store.0, &settings_file_path(), batch) {
+        Ok(true) => log_flushed_keys(&keys),
+        Ok(false) => {}
+        Err(e) => log::warn!("settings exit flush failed: {}", e),
     }
 }
 
@@ -510,6 +556,7 @@ mod tests {
             dirty_since: None,
             pending_keys: BTreeSet::new(),
             changes: BTreeMap::new(),
+            discarded: false,
         }
     }
 
@@ -544,6 +591,50 @@ mod tests {
         assert_eq!(on_disk.get("theme"), Some(&"\"dark\"".to_string()));
         // The store now serves the other writer's value too.
         assert_eq!(m.map.get("editor.fontSize"), Some(&"16".to_string()));
+    }
+
+    #[test]
+    fn discard_empties_the_map_and_ignores_later_writes() {
+        let mut m = new_map();
+        m.set("a".into(), "1".into());
+        m.mark_dirty();
+        m.discard();
+        assert!(m.map.is_empty());
+        assert!(!m.dirty);
+        assert!(m.flush_at.is_none());
+        assert!(m.changes.is_empty());
+        // A webview write racing the factory-reset restart must not bring a
+        // wiped settings.json back.
+        assert!(!m.set("b".into(), "2".into()));
+        assert!(!m.remove("a"));
+        assert!(m.map.is_empty());
+    }
+
+    #[test]
+    fn a_flush_taken_before_discard_does_not_recreate_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let state = Mutex::new(new_map());
+        {
+            let mut m = state.lock().unwrap();
+            m.set("theme".into(), "\"dark\"".into());
+            m.mark_dirty();
+        }
+        let (batch, _) = state.lock().unwrap().take_flush_batch_with_changes();
+        assert_eq!(persist(&state, &path, batch), Ok(true));
+        assert!(path.is_file());
+
+        // Reset deletes the file, then a flush that snapshotted earlier runs.
+        {
+            let mut m = state.lock().unwrap();
+            m.set("theme".into(), "\"light\"".into());
+            m.mark_dirty();
+        }
+        let (batch, _) = state.lock().unwrap().take_flush_batch_with_changes();
+        fs::remove_file(&path).unwrap();
+        state.lock().unwrap().discard();
+        assert_eq!(persist(&state, &path, batch), Ok(false));
+        assert!(!path.exists());
     }
 
     #[test]

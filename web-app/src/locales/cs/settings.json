@@ -497,6 +497,7 @@
     "failedToRelocateDataFolder": "Nepodařilo se přemístit složku s daty",
     "couldNotRelocateToRoot": "Složku s daty nelze přemístit do kořenového adresáře. Zvolte prosím jiné umístění.",
     "couldNotResetRootDirectory": "Složku s daty nelze obnovit, pokud je nastavena v kořenovém adresáři. Smažte prosím složku s daty ručně.",
+    "factoryResetFailed": "Obnovení továrního nastavení selhalo: {{error}}",
     "failedToRelocateDataFolderDesc": "Nepodařilo se přemístit složku s daty. Zkuste to prosím znovu.",
     "devVersion": "Detekována vývojová verze",
     "noUpdateAvailable": "Používáte nejnovější verzi",

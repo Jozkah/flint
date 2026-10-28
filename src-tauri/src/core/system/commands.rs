@@ -544,26 +544,32 @@ fn wipe_data_folder(
 }
 
 #[tauri::command]
-pub fn factory_reset<R: Runtime>(
+pub async fn factory_reset<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     state: State<'_, AppState>,
     keep_app_data: Option<bool>,
     keep_models_and_configs: Option<bool>,
     clear_web_data: Option<bool>,
 ) -> Result<(), String> {
-    // Ok in every case that reaches the restart: the windows are closed by
-    // now, so an error would leave the app running with no window.
+    // Async so the slow stops and deletes run off the main thread: a sync
+    // command blocked the event loop, the window froze and never closed.
+    // Ok in every case that reaches the restart: the windows are hidden by
+    // now, so an error would leave the app running with no visible window.
     let keep_app_data = keep_app_data.unwrap_or(false);
     let keep_models_and_configs = keep_models_and_configs.unwrap_or(false);
     let clear_web_data = clear_web_data.unwrap_or(false);
+    let full_wipe = !keep_app_data && !keep_models_and_configs;
 
+    // The exit handler must not hold the restart for a graceful engine stop.
+    #[cfg(not(feature = "cli"))]
+    crate::mark_shutting_down();
+
+    // Hide instead of close: the restart tears the windows down anyway, and
+    // the user sees the app go away at once instead of a frozen window.
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    {
-        let windows = app_handle.webview_windows();
-        for (label, window) in windows.iter() {
-            window.close().unwrap_or_else(|_| {
-                log::warn!("Failed to close window: {label:?}");
-            });
+    for (label, window) in app_handle.webview_windows().iter() {
+        if window.hide().is_err() {
+            log::warn!("Failed to hide window: {label:?}");
         }
     }
     let data_folder = get_jan_data_folder_path(app_handle.clone());
@@ -575,82 +581,92 @@ pub fn factory_reset<R: Runtime>(
         data_folder
     );
 
-    tauri::async_runtime::block_on(async {
-        let mut failures: Vec<String> = Vec::new();
-        let _ =
-            stop_mcp_servers_with_context(&app_handle, &state, ShutdownContext::FactoryReset).await;
+    let mut failures: Vec<String> = Vec::new();
+    let _ = stop_mcp_servers_with_context(&app_handle, &state, ShutdownContext::FactoryReset).await;
 
-        {
-            let mut active_servers = state.mcp_active_servers.lock().await;
-            active_servers.clear();
+    {
+        let mut active_servers = state.mcp_active_servers.lock().await;
+        active_servers.clear();
+    }
+
+    use crate::core::mcp::lockfile::cleanup_own_locks;
+    if let Err(e) = cleanup_own_locks(&app_handle) {
+        log::warn!("Failed to cleanup lock files: {}", e);
+    }
+    let _ = cleanup_llama_processes(app_handle.clone()).await;
+
+    if data_folder.exists() {
+        if !is_safe_to_delete(&data_folder) {
+            let msg = format!(
+                "Refusing factory reset: path is too close to filesystem root: {}",
+                data_folder.display()
+            );
+            report_failures(&app_handle, &[msg]);
+            // Nothing was removed; just bring the window back.
+            app_handle.restart();
         }
 
-        use crate::core::mcp::lockfile::cleanup_own_locks;
-        if let Err(e) = cleanup_own_locks(&app_handle) {
-            log::warn!("Failed to cleanup lock files: {}", e);
-        }
-        let _ = cleanup_llama_processes(app_handle.clone()).await;
-
-        if data_folder.exists() {
-            if !is_safe_to_delete(&data_folder) {
-                let msg = format!(
-                    "Refusing factory reset: path is too close to filesystem root: {}",
-                    data_folder.display()
-                );
-                report_failures(&app_handle, &[msg]);
-                // Nothing was removed; just bring the window back.
-                app_handle.restart();
-            }
-
-            if !keep_app_data && !keep_models_and_configs {
+        let folder = data_folder.clone();
+        let wiped = tauri::async_runtime::spawn_blocking(move || {
+            use crate::core::app::settings_store::{discard_settings, flush_settings};
+            if full_wipe {
+                // settings.json goes with the full wipe: stop the in-memory
+                // store first so no debounced or exit flush writes it back.
+                discard_settings();
                 // Secrets live mostly in the OS keyring; clear them while the
                 // index can still name them (kept out of wipe_data_folder so
                 // tests never touch the real keyring).
                 let wiped = crate::core::server::provider_secrets::wipe_all_secrets();
                 log::info!("Factory reset: wiped {wiped} stored secret(s)");
+            } else {
+                // settings.json is kept: write pending changes now.
+                flush_settings();
             }
-            failures.extend(wipe_data_folder(
-                &data_folder,
-                keep_app_data,
-                keep_models_and_configs,
-            ));
+            wipe_data_folder(&folder, keep_app_data, keep_models_and_configs)
+        })
+        .await;
+        match wiped {
+            Ok(f) => failures.extend(f),
+            Err(e) => failures.push(format!("Factory reset task failed: {e}")),
         }
+    }
 
-        // Restart even when something could not be removed (the windows are
-        // already closed); the next start shows the list once.
-        report_failures(&app_handle, &failures);
+    // Restart even when something could not be removed (the windows are
+    // already hidden); the next start shows the list once.
+    report_failures(&app_handle, &failures);
 
-        // Reset app configuration to defaults unless user chose to keep configs
-        if !keep_models_and_configs {
-            let default_config = AppConfiguration {
-                data_folder: default_data_folder_path(app_handle.clone()),
-                unavailable_data_folder: None,
-            };
-            let _ = update_app_configuration(app_handle.clone(), default_config);
-        }
+    // Reset app configuration to defaults unless user chose to keep configs
+    if !keep_models_and_configs {
+        let default_config = AppConfiguration {
+            data_folder: default_data_folder_path(app_handle.clone()),
+            unavailable_data_folder: None,
+        };
+        let _ = update_app_configuration(app_handle.clone(), default_config);
+    }
 
-        // Persisted UI state (model-provider, setup flag) lives in webview
-        // localStorage, not the data folder. Renderer-side removal races the
-        // restart flush, and the on-disk localStorage location is
-        // platform-specific (esp. macOS WKWebView), so instead drop a sentinel
-        // that the frontend consumes on next startup to clear localStorage via
-        // the webview API before stores hydrate. File-level profile deletion
-        // (Linux cookies/cache) stays as a best-effort supplement.
-        let full_wipe = !keep_app_data && !keep_models_and_configs;
-        if !keep_app_data || !keep_models_and_configs || clear_web_data {
-            write_webdata_reset_sentinel(
-                &app_handle,
-                keep_app_data,
-                keep_models_and_configs,
-                clear_web_data,
-            );
-        }
-        if clear_web_data || full_wipe {
-            clear_webview_profile(&app_handle, &data_folder);
-        }
+    // Persisted UI state (model-provider, setup flag) lives in webview
+    // localStorage, not the data folder. Renderer-side removal races the
+    // restart flush, and the on-disk localStorage location is
+    // platform-specific (esp. macOS WKWebView), so instead drop a sentinel
+    // that the frontend consumes on next startup to clear localStorage via
+    // the webview API before stores hydrate. File-level profile deletion
+    // (Linux cookies/cache) stays as a best-effort supplement.
+    if !keep_app_data || !keep_models_and_configs || clear_web_data {
+        write_webdata_reset_sentinel(
+            &app_handle,
+            keep_app_data,
+            keep_models_and_configs,
+            clear_web_data,
+        );
+    }
+    if clear_web_data || full_wipe {
+        let app = app_handle.clone();
+        let folder = data_folder.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || clear_webview_profile(&app, &folder))
+            .await;
+    }
 
-        app_handle.restart();
-    })
+    app_handle.restart();
 }
 
 #[tauri::command]
@@ -2273,6 +2289,20 @@ mod tests {
         assert!(!path.exists());
         fs::write(&path, "not json").unwrap();
         assert!(take_report_at(&path).is_none());
+    }
+
+    /// The reset must not block the main thread: a sync command with
+    /// `block_on` froze the window for up to 30 s and its close never landed.
+    #[test]
+    fn factory_reset_is_async_and_never_blocks_on() {
+        let src = include_str!("commands.rs");
+        let start = src
+            .find("pub async fn factory_reset<")
+            .expect("factory_reset must be an async command");
+        let body = &src[start..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(!body.contains(concat!("block", "_on")));
+        assert!(body.contains("spawn_blocking"));
     }
 
     #[test]

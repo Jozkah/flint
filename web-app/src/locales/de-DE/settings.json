@@ -493,6 +493,7 @@
     "failedToRelocateDataFolder": "Datenordner konnte nicht verschoben werden",
     "couldNotRelocateToRoot": "Datenordner kann nicht in das Root-Verzeichnis verschoben werden. Bitte wähle einen anderen Speicherort.",
     "couldNotResetRootDirectory": "Datenordner kann nicht zurückgesetzt werden, wenn er auf ein Root-Verzeichnis gesetzt ist. Bitte lösche den Datenordner manuell.",
+    "factoryResetFailed": "Zurücksetzen auf Werkseinstellungen fehlgeschlagen: {{error}}",
     "failedToRelocateDataFolderDesc": "Der Datenordner konnte nicht verschoben werden. Bitte versuche es erneut.",
     "devVersion": "Entwicklungsversion erkannt",
     "noUpdateAvailable": "Du verwendest die neueste Version",

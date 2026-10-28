@@ -493,6 +493,7 @@
     "failedToRelocateDataFolder": "データフォルダの移動に失敗しました",
     "couldNotRelocateToRoot": "データフォルダをルートディレクトリに移動できません。別の場所を選択してください。",
     "couldNotResetRootDirectory": "データフォルダがルートディレクトリに設定されている場合、リセットできません。データフォルダを手動で削除してください。",
+    "factoryResetFailed": "初期化に失敗しました: {{error}}",
     "failedToRelocateDataFolderDesc": "データフォルダの移動に失敗しました。もう一度お試しください。",
     "devVersion": "開発バージョンが検出されました",
     "noUpdateAvailable": "最新バージョンを実行しています",

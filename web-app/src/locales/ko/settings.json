@@ -493,6 +493,7 @@
     "failedToRelocateDataFolder": "데이터 폴더 재배치 실패",
     "couldNotRelocateToRoot": "데이터 폴더를 루트 디렉터리로 재배치할 수 없습니다. 다른 위치를 선택해 주세요.",
     "couldNotResetRootDirectory": "루트 디렉터리로 설정된 경우 데이터 폴더를 재설정할 수 없습니다. 데이터 폴더를 수동으로 삭제해 주세요.",
+    "factoryResetFailed": "초기화에 실패했습니다: {{error}}",
     "failedToRelocateDataFolderDesc": "데이터 폴더를 재배치하지 못했습니다. 다시 시도해 주세요.",
     "devVersion": "개발 버전이 감지되었습니다",
     "noUpdateAvailable": "최신 버전을 사용 중입니다",
