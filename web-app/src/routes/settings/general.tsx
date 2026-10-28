@@ -26,8 +26,8 @@ import {
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
 import { isForeignBundledCli } from '@/utils/path'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.general as any)({
+ 
+export const Route = createFileRoute(route.settings.general)({
   component: General,
 })
 

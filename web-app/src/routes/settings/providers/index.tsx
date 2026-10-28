@@ -73,8 +73,8 @@ import { cn } from '@/lib/utils'
 import { SettingsTabStrip, useSettingsTab } from '@/containers/SettingsTabs'
 import { ModelDefaultsCard } from '@/containers/ModelDefaultsCard'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const Route = createFileRoute(route.settings.model_providers as any)({
+ 
+export const Route = createFileRoute('/settings/providers/')({
   component: ModelProviders,
 })
 
