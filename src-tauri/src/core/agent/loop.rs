@@ -9260,7 +9260,7 @@ async fn run_turn_cycle(
     // results as they land, and announced once at the next turn boundary after
     // the job finishes, so the model need not poll for them.
     let mut shells_owed: Vec<String> = Vec::new();
-    let mut monitored: Vec<String> = Vec::new();
+    let mut monitored = crate::core::agent::monitor::Tracked::default();
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
@@ -9275,13 +9275,12 @@ async fn run_turn_cycle(
         let started_now = background_jobs_started(unscanned(&conversation_messages, shells_scanned));
         // Watchers are claimed before the doorbell can drop a job that
         // finished at once.
-        monitored.extend(
-            started_now
-                .iter()
-                .filter(|j| crate::core::agent::monitor::is_watched(j) && !monitored.contains(j))
-                .cloned()
-                .collect::<Vec<_>>(),
-        );
+        let fresh: Vec<_> = started_now
+            .iter()
+            .filter(|j| crate::core::agent::monitor::is_watched(j) && !monitored.contains(j))
+            .cloned()
+            .collect();
+        monitored.extend(fresh);
         shells_owed.extend(started_now);
         shells_scanned = conversation_messages.len();
         if let Some(text) = finished_background_jobs(&mut shells_owed) {
