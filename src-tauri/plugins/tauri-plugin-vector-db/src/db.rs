@@ -1005,9 +1005,21 @@ pub fn list_attachments(
 
 pub fn delete_chunks(conn: &Connection, ids: Vec<String>) -> Result<(), VectorDBError> {
     let tx = conn.unchecked_transaction()?;
+    let mut touched: std::collections::HashSet<String> = std::collections::HashSet::new();
     for id in ids {
+        let file_id: Option<String> = tx
+            .query_row("SELECT file_id FROM chunks WHERE id = ?1", params![id], |r| r.get(0))
+            .ok();
         delete_vec_rows(&tx, "id = ?1", &id);
         tx.execute("DELETE FROM chunks WHERE id = ?1", params![id])?;
+        touched.extend(file_id);
+    }
+    // Keep `files.chunk_count` in step with the rows actually left.
+    for file_id in touched {
+        tx.execute(
+            "UPDATE files SET chunk_count = (SELECT COUNT(*) FROM chunks WHERE file_id = ?1) WHERE id = ?1",
+            params![file_id],
+        )?;
     }
     tx.commit()?;
     Ok(())
@@ -1404,6 +1416,34 @@ mod tests {
         assert_eq!(second.chunk_count, 0);
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 0, "the stale chunks must be gone");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// DAT-010: deleting chunks keeps the file's chunk_count accurate.
+    #[test]
+    fn delete_chunks_updates_the_file_chunk_count() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        let path = temp_file("delcount", b"hello");
+        let file = create_file(&conn, path.to_str().unwrap(), Some("a"), None, None).unwrap();
+        let chunk = || MinimalChunkInput { text: "x".to_string(), embedding: vec![0.1, 0.2, 0.3] };
+        insert_chunks(&conn, &file.id, vec![chunk(), chunk()], false).unwrap();
+        let ids: Vec<String> = conn
+            .prepare("SELECT id FROM chunks")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        let count = |conn: &Connection| -> i64 {
+            conn.query_row("SELECT chunk_count FROM files WHERE id = ?1", params![file.id], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(count(&conn), 2);
+        delete_chunks(&conn, vec![ids[0].clone()]).unwrap();
+        assert_eq!(count(&conn), 1);
+        delete_chunks(&conn, vec![ids[1].clone()]).unwrap();
+        assert_eq!(count(&conn), 0);
         let _ = std::fs::remove_file(&path);
     }
 

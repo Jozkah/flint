@@ -14,7 +14,14 @@ const NEWLINE: u8 = 10;
 const NEWLINE_BYTES: &[u8] = &[NEWLINE];
 
 // Global per-thread locks for message file writes
-pub static MESSAGE_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+// The map itself sits behind a std mutex: it is never held across an await,
+// so lookups need no async scheduling.
+pub static MESSAGE_LOCKS: OnceLock<std::sync::Mutex<HashMap<String, Arc<Mutex<()>>>>> =
+    OnceLock::new();
+
+/// Idle locks are only swept once the map grows past this, so a lookup is
+/// O(1) in the common case instead of scanning every entry.
+const LOCK_SWEEP_AT: usize = 256;
 
 /// Check if the platform should use SQLite (mobile platforms)
 pub fn should_use_sqlite() -> bool {
@@ -29,9 +36,11 @@ pub fn should_use_sqlite() -> bool {
 /// Without this the map kept an entry for every thread ever touched, deleted
 /// threads included, for the life of the process.
 pub async fn get_lock_for_thread(thread_id: &str) -> Arc<Mutex<()>> {
-    let locks = MESSAGE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut locks = locks.lock().await;
-    locks.retain(|id, lock| id == thread_id || Arc::strong_count(lock) > 1);
+    let locks = MESSAGE_LOCKS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut locks = locks.lock().unwrap_or_else(|p| p.into_inner());
+    if locks.len() >= LOCK_SWEEP_AT {
+        locks.retain(|id, lock| id == thread_id || Arc::strong_count(lock) > 1);
+    }
     let lock = locks
         .entry(thread_id.to_string())
         .or_insert_with(|| Arc::new(Mutex::new(())))

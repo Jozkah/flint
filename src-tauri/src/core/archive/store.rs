@@ -269,9 +269,16 @@ fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
             copy_dir(&from, &to)?;
         } else if ty.is_file() {
             fs::copy(&from, &to)?;
+        } else {
+            // Links are not followed or recreated (an archive must not reach
+            // outside the directory it was given), and silently skipping one
+            // would lose it when the source is removed: fail the copy so the
+            // source stays.
+            return Err(io::Error::other(format!(
+                "{} is a link or special file and cannot be copied",
+                from.display()
+            )));
         }
-        // Links are not followed or recreated: an archive must not reach
-        // outside the directory it was given.
     }
     Ok(())
 }
@@ -1161,5 +1168,19 @@ mod tests {
         let dst = d.path().join("dst");
         copy_dir(&src, &dst).unwrap();
         assert_eq!(fs::read_to_string(dst.join("sub/f.txt")).unwrap(), "x");
+    }
+
+    /// A link cannot be copied, so the copy fails instead of skipping it and
+    /// letting the caller delete a source that still held it (DAT-039).
+    #[cfg(unix)]
+    #[test]
+    fn copy_fallback_refuses_a_tree_with_a_link() {
+        let d = data();
+        let src = d.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("f.txt"), "x").unwrap();
+        std::os::unix::fs::symlink(src.join("f.txt"), src.join("link")).unwrap();
+        assert!(copy_dir(&src, &d.path().join("dst")).is_err());
+        assert!(src.join("link").exists());
     }
 }
