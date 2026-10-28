@@ -659,6 +659,8 @@ struct Slot {
     restarts: u32,
     starts: u32,
     last_failure: Option<String>,
+    /// Set once the restart cap is hit; the server is never started again.
+    failing: bool,
 }
 
 /// The language servers one run has started.
@@ -755,17 +757,21 @@ impl LspPool {
                 // It was started and is no longer usable: that is a restart.
                 dead.stop();
                 if slot.restarts >= MAX_RESTARTS {
-                    return Err(LspError::new(
-                        LspErrorKind::ServerFailing,
-                        format!(
-                            "{} stopped working {} times in this run and is not started again{}",
-                            spec.program,
-                            slot.restarts + 1,
-                            slot.last_failure.as_ref().map(|f| format!(" (last: {f})")).unwrap_or_default()
-                        ),
-                    ));
+                    slot.failing = true;
+                } else {
+                    slot.restarts += 1;
                 }
-                slot.restarts += 1;
+            }
+            if slot.failing {
+                return Err(LspError::new(
+                    LspErrorKind::ServerFailing,
+                    format!(
+                        "{} stopped working {} times in this run and is not started again{}",
+                        spec.program,
+                        slot.restarts + 1,
+                        slot.last_failure.as_ref().map(|f| format!(" (last: {f})")).unwrap_or_default()
+                    ),
+                ));
             }
             let program = tauri_plugin_agent_tools::tools::owned::find_on_path(spec.program).ok_or_else(|| {
                 LspError::new(
@@ -777,7 +783,20 @@ impl LspPool {
                 )
             })?;
             slot.starts += 1;
-            slot.connection = Some(Connection::start(spec, &program, &self.project, token, cancel)?);
+            match Connection::start(spec, &program, &self.project, token, cancel) {
+                Ok(connection) => slot.connection = Some(connection),
+                Err(e) => {
+                    // A start that fails counts against the same cap, so a
+                    // server that cannot come up is not retried forever.
+                    if slot.restarts >= MAX_RESTARTS {
+                        slot.failing = true;
+                    } else {
+                        slot.restarts += 1;
+                    }
+                    slot.last_failure = Some(e.message.clone());
+                    return Err(e);
+                }
+            }
         }
         Ok(slot.connection.as_ref().expect("started above"))
     }
@@ -1299,6 +1318,45 @@ two
         let refused = ask(&pool).unwrap_err();
         assert_eq!(refused.kind, LspErrorKind::ServerFailing, "{refused}");
         assert!(pool.running_pid("go").is_none());
+        // A second question stays refused; it must not start a fresh server.
+        let again = ask(&pool).unwrap_err();
+        assert_eq!(again.kind, LspErrorKind::ServerFailing, "{again}");
+        assert!(pool.running_pid("go").is_none());
+    }
+
+    /// A server that exits at once is bounded: after MAX_RESTARTS failed
+    /// starts the pool refuses instead of spawning again.
+    #[test]
+    fn start_failure_is_bounded() {
+        #[cfg(windows)]
+        const BROKEN: &[ServerSpec] = &[ServerSpec {
+            language: "go",
+            program: "cmd",
+            args: &["/c", "exit", "1"],
+            extensions: &["go"],
+            language_id: "go",
+        }];
+        #[cfg(not(windows))]
+        const BROKEN: &[ServerSpec] = &[ServerSpec {
+            language: "go",
+            program: "false",
+            args: &[],
+            extensions: &["go"],
+            language_id: "go",
+        }];
+        let dir = go_project();
+        let pool = LspPool::with_servers(dir.path(), true, BROKEN);
+        let ask = || pool.run(&query(Action::Hover, dir.path(), "probe.go", 17, 11), None, &|| false);
+        let mut refused = false;
+        for _ in 0..(MAX_RESTARTS + 3) {
+            if ask().unwrap_err().kind == LspErrorKind::ServerFailing {
+                refused = true;
+                break;
+            }
+        }
+        assert!(refused, "a server that never starts was retried without bound");
+        assert_eq!(ask().unwrap_err().kind, LspErrorKind::ServerFailing);
+        assert!(pool.restarts("go") <= MAX_RESTARTS);
     }
 
     /// Cancellation: a waiting request stops at once, and a stopped run token
