@@ -264,7 +264,13 @@
     "caBundleNone": "Yalnızca platformun sertifika yetkililerine güvenilir.",
     "caBundleInUse": "Platformunkilerin yanı sıra bu paketteki {{count}} sertifikaya güveniliyor.",
     "caBundleBroken": "Bu paket kullanılamıyor ({{kind}}): düzeltilene veya kaldırılana kadar giden HTTPS hiçbir şeye güvenmez.",
-    "ignoreSslScope": "Proxy üzerinden geçen tüm trafiğe uygulanır. Tek bir sağlayıcı da kendi adresi için geçersiz sertifikalara izin verebilir; bunu Sağlayıcılar altındaki sayfasında yapabilirsiniz."
+    "ignoreSslScope": "Proxy üzerinden geçen tüm trafiğe uygulanır. Tek bir sağlayıcı da kendi adresi için geçersiz sertifikalara izin verebilir; bunu Sağlayıcılar altındaki sayfasında yapabilirsiniz.",
+    "proxyUrlInvalid": "Bu bir proxy adresine benzemiyor. host:port veya http://host:port kullanın.",
+    "proxyUrlScheme": "Yalnızca http ve https proxy'leri desteklenir.",
+    "ignoreSslConfirmTitle": "SSL sertifikaları yok sayılsın mı?",
+    "ignoreSslConfirmBody": "Flint, proxy üzerinden geçen tüm trafik için kendinden imzalı, süresi dolmuş veya uyuşmayan sertifikaları kabul edecek; bu yüzden yoldaki herkes trafiği okuyabilir veya değiştirebilir. Yalnızca proxy'ye ve ağa güveniyorsanız devam edin.",
+    "ignoreSslConfirm": "Sertifikaları yok say",
+    "ignoreSslActiveWarning": "Proxy üzerinden geçen tüm trafik için sertifika denetimleri kapalı."
   },
   "webSearch": {
     "showKey": "Anahtarı göster",
@@ -432,6 +438,7 @@
     "serverHostDesc": "Sunucu için ağ adresi.",
     "serverHostLanWarning": "0.0.0.0, sunucuya ağınızdaki diğer cihazlardan erişilmesini sağlar. Bir API anahtarı belirleyin ve diğer cihazdan bu makinenin LAN adresini (localhost değil) kullanın.",
     "serverHostLanNoTrusted": "Güvenilen Ana Bilgisayarlar boş: diğer cihazların bu makineye ulaşmak için kullanacağı adresi ekleyin, aksi halde istekleri reddedilebilir.",
+    "apiKeyRequiredLan": "Sunucuyu 0.0.0.0 üzerinde açmadan önce bir API anahtarı belirleyin veya ana makineyi 127.0.0.1 olarak değiştirin.",
     "serverPort": "Sunucu Bağlantı Noktası",
     "serverPortDesc": "API sunucusu için bağlantı noktası numarası.",
     "apiPrefix": "API Öneki",

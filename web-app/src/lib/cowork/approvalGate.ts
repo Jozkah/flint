@@ -188,6 +188,7 @@ export async function gateMutation(
       }
     }
     const git = toolName === GIT_TOOL_NAME ? gitApproval(call.input) : null
+    gitPlan = git
 
     // Every mutating call goes through the one policy, so the run mode and the
     // access mode cannot be answered differently in different places.

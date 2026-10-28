@@ -463,7 +463,7 @@ describe('TauriProvidersService', () => {
     it('adds default anthropic-version header for anthropic-shaped custom providers', async () => {
       const provider = {
         ...baseProvider,
-        provider: 'anthropic_proxy',
+        provider: 'anthropic',
         base_url: 'https://anthropic.example.com/v1',
       }
       vi.mocked(fetchTauri).mockResolvedValueOnce({

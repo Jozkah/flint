@@ -265,7 +265,13 @@
     "caBundleNone": "Seules les autorités de certification de la plateforme sont approuvées.",
     "caBundleInUse": "{{count}} certificat(s) de ce bundle sont approuvés, en plus de ceux de la plateforme.",
     "caBundleBroken": "Ce bundle est inutilisable ({{kind}}) : le HTTPS sortant n'approuve rien tant qu'il n'est pas corrigé ou retiré.",
-    "ignoreSslScope": "S'applique à tout le trafic via le proxy. Un fournisseur peut aussi autoriser les certificats non valides pour sa propre adresse, sur sa page dans Fournisseurs de Modèles."
+    "ignoreSslScope": "S'applique à tout le trafic via le proxy. Un fournisseur peut aussi autoriser les certificats non valides pour sa propre adresse, sur sa page dans Fournisseurs de Modèles.",
+    "proxyUrlInvalid": "Cela ne ressemble pas à une adresse de proxy. Utilisez hôte:port ou http://hôte:port.",
+    "proxyUrlScheme": "Seuls les proxys http et https sont pris en charge.",
+    "ignoreSslConfirmTitle": "Ignorer les certificats SSL ?",
+    "ignoreSslConfirmBody": "Flint acceptera les certificats auto-signés, expirés ou non concordants pour tout le trafic passant par le proxy, si bien que n'importe qui sur le trajet pourrait le lire ou le modifier. Ne continuez que si vous faites confiance au proxy et au réseau.",
+    "ignoreSslConfirm": "Ignorer les certificats",
+    "ignoreSslActiveWarning": "La vérification des certificats est désactivée pour tout le trafic passant par le proxy."
   },
   "webSearch": {
     "showKey": "Afficher la clé",
@@ -434,6 +440,7 @@
     "serverHostDesc": "Adresse réseau pour le serveur.",
     "serverHostLanWarning": "0.0.0.0 rend le serveur accessible depuis les autres appareils de votre réseau. Définissez une clé d'API et utilisez l'adresse LAN de la machine (et non localhost) depuis l'autre appareil.",
     "serverHostLanNoTrusted": "Hôtes de confiance est vide : ajoutez l'adresse que les autres appareils utiliseront pour joindre cette machine, sinon leurs requêtes risquent d'être rejetées.",
+    "apiKeyRequiredLan": "Définissez une clé d'API avant d'exposer le serveur sur 0.0.0.0, ou passez l'hôte sur 127.0.0.1.",
     "serverPort": "Port du serveur",
     "serverPortDesc": "Numéro de port pour le serveur d'API.",
     "apiPrefix": "Préfixe de l'API",

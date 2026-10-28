@@ -264,7 +264,13 @@
     "caBundleNone": "플랫폼의 인증 기관만 신뢰합니다.",
     "caBundleInUse": "플랫폼 인증서와 함께 이 번들의 인증서 {{count}}개를 신뢰합니다.",
     "caBundleBroken": "이 번들을 사용할 수 없습니다({{kind}}): 수정하거나 제거할 때까지 외부 HTTPS는 아무것도 신뢰하지 않습니다.",
-    "ignoreSslScope": "프록시를 거치는 모든 트래픽에 적용됩니다. 개별 제공자도 모델 제공자의 해당 페이지에서 자신의 주소에 한해 잘못된 인증서를 허용할 수 있습니다."
+    "ignoreSslScope": "프록시를 거치는 모든 트래픽에 적용됩니다. 개별 제공자도 모델 제공자의 해당 페이지에서 자신의 주소에 한해 잘못된 인증서를 허용할 수 있습니다.",
+    "proxyUrlInvalid": "프록시 주소처럼 보이지 않습니다. host:port 또는 http://host:port 형식을 사용하세요.",
+    "proxyUrlScheme": "http 및 https 프록시만 지원됩니다.",
+    "ignoreSslConfirmTitle": "SSL 인증서를 무시할까요?",
+    "ignoreSslConfirmBody": "Flint는 프록시를 거치는 모든 트래픽에 대해 자체 서명, 만료 또는 불일치 인증서를 허용하므로 경로상의 누구나 트래픽을 읽거나 변조할 수 있습니다. 프록시와 네트워크를 신뢰하는 경우에만 계속하세요.",
+    "ignoreSslConfirm": "인증서 무시",
+    "ignoreSslActiveWarning": "프록시를 거치는 모든 트래픽에 대해 인증서 확인이 꺼져 있습니다."
   },
   "webSearch": {
     "showKey": "키 표시",
@@ -432,6 +438,7 @@
     "serverHostDesc": "서버의 네트워크 주소입니다.",
     "serverHostLanWarning": "0.0.0.0을 사용하면 네트워크의 다른 기기에서 서버에 접근할 수 있습니다. API 키를 설정하고, 다른 기기에서는 localhost가 아닌 이 컴퓨터의 LAN 주소를 사용하세요.",
     "serverHostLanNoTrusted": "신뢰할 수 있는 호스트가 비어 있습니다. 다른 기기가 이 컴퓨터에 접속할 때 사용할 주소를 추가하세요. 그렇지 않으면 요청이 거부될 수 있습니다.",
+    "apiKeyRequiredLan": "서버를 0.0.0.0에 공개하기 전에 API 키를 설정하거나 호스트를 127.0.0.1로 바꾸세요.",
     "serverPort": "서버 포트",
     "serverPortDesc": "API 서버의 포트 번호입니다.",
     "apiPrefix": "API 접두사",
