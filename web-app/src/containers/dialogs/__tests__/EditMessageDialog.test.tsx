@@ -26,7 +26,7 @@ describe('EditMessageDialog', () => {
       />
     )
     fireEvent.click(screen.getByRole('button', { name: 'common:editMessage' }))
-    expect(screen.getByAltText('Attached image 1')).toBeInTheDocument()
+    expect(screen.getByAltText('common:attachedImage')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'common:dismiss' })
     ).toBeNull()
