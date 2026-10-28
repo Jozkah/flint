@@ -29,12 +29,12 @@ pub fn create_thread(root: &Path, thread: Value) -> Result<Value, String> {
     storage::create_thread_in(root, thread)
 }
 
-pub fn update_thread(root: &Path, id: &str, thread: Value) -> Result<(), String> {
+pub async fn update_thread(root: &Path, id: &str, thread: Value) -> Result<(), String> {
     validate_thread_id(id)?;
     if thread.get("id").and_then(Value::as_str) != Some(id) {
         return Err("Thread id does not match URL".into());
     }
-    storage::modify_thread_in(root, thread)
+    storage::modify_thread_in(root, thread).await
 }
 
 pub async fn delete_thread(root: &Path, id: &str, permanent: bool) -> Result<(), String> {
@@ -105,8 +105,8 @@ mod tests {
         assert_eq!(threads(dir.path()).unwrap().len(), 1);
         assert_eq!(thread(dir.path(), id).unwrap()["title"], "First");
 
-        assert!(update_thread(dir.path(), id, json!({"id":"another","title":"Wrong"})).is_err());
-        update_thread(dir.path(), id, json!({"id":id,"title":"Updated"})).unwrap();
+        assert!(update_thread(dir.path(), id, json!({"id":"another","title":"Wrong"})).await.is_err());
+        update_thread(dir.path(), id, json!({"id":id,"title":"Updated"})).await.unwrap();
         assert_eq!(thread(dir.path(), id).unwrap()["title"], "Updated");
 
         assert!(create_message(dir.path(), id, json!({"thread_id":"another"})).await.is_err());

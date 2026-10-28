@@ -1371,10 +1371,9 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
                 }
                 let root = state.data_folder.clone();
                 let id = (*id).to_owned();
-                return match tokio::task::spawn_blocking(move || data::update_thread(&root, &id, thread)).await {
-                    Ok(Ok(())) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
-                    Ok(Err(_)) => text(StatusCode::NOT_FOUND, "Thread not found"),
-                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not update thread"),
+                return match data::update_thread(&root, &id, thread).await {
+                    Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
+                    Err(_) => text(StatusCode::NOT_FOUND, "Thread not found"),
                 };
             }
             (Method::DELETE, [id]) => {
