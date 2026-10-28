@@ -144,6 +144,35 @@ type AccessRequestsState = {
 
 let nextId = 0
 
+// Timeout timers, one per request that has reached the head of the queue.
+const headTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function clearHeadTimer(id: string): void {
+  const timer = headTimers.get(id)
+  if (timer === undefined) return
+  clearTimeout(timer)
+  headTimers.delete(id)
+}
+
+/** Start the clock on whichever request is now shown to the user. */
+function armHead(): void {
+  const head = useAccessRequests.getState().queue[0]
+  if (!head || headTimers.has(head.id)) return
+  headTimers.set(
+    head.id,
+    setTimeout(() => {
+      headTimers.delete(head.id)
+      const state = useAccessRequests.getState()
+      if (!state.queue.some((e) => e.id === head.id)) return
+      useAccessRequests.setState({
+        queue: state.queue.filter((e) => e.id !== head.id),
+      })
+      head.resolve('timed-out')
+      armHead()
+    }, ACCESS_REQUEST_TIMEOUT_MS)
+  )
+}
+
 export const useAccessRequests = create<AccessRequestsState>()((set, get) => ({
   queue: [],
   presenters: 0,
@@ -153,22 +182,18 @@ export const useAccessRequests = create<AccessRequestsState>()((set, get) => ({
     if (signal?.aborted) return Promise.resolve('cancelled' as const)
     return new Promise((settle) => {
       const id = `access-${Date.now().toString(36)}-${++nextId}`
-      // Unanswered for too long: taken off the queue and answered as timed
-      // out. Cleared by whichever answer comes first.
-      const timer = setTimeout(() => {
-        if (!get().queue.some((e) => e.id === id)) return
-        set((s) => ({ queue: s.queue.filter((e) => e.id !== id) }))
-        settle('timed-out')
-      }, ACCESS_REQUEST_TIMEOUT_MS)
+      // The timeout is armed by `armHead` once this request is the one shown,
+      // so a request waiting its turn does not time out unseen.
+      const onAbort = () => get().withdraw(id)
       const resolve: PendingAccessRequest['resolve'] = (decision) => {
-        clearTimeout(timer)
+        clearHeadTimer(id)
+        signal?.removeEventListener('abort', onAbort)
         settle(decision)
       }
       const entry: PendingAccessRequest = { ...request, id, resolve }
       set((s) => ({ queue: [...s.queue, entry] }))
-      signal?.addEventListener('abort', () => get().withdraw(id), {
-        once: true,
-      })
+      signal?.addEventListener('abort', onAbort, { once: true })
+      armHead()
     })
   },
 
@@ -177,6 +202,7 @@ export const useAccessRequests = create<AccessRequestsState>()((set, get) => ({
     if (!entry) return
     set((s) => ({ queue: s.queue.filter((e) => e.id !== id) }))
     entry.resolve(decision)
+    armHead()
   },
 
   withdraw: (id) => {
@@ -184,6 +210,7 @@ export const useAccessRequests = create<AccessRequestsState>()((set, get) => ({
     if (!entry) return
     set((s) => ({ queue: s.queue.filter((e) => e.id !== id) }))
     entry.resolve('cancelled')
+    armHead()
   },
 
   withdrawThread: (threadId) => {
