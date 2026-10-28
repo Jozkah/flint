@@ -5,15 +5,17 @@
 
 import { useMemo } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { Play, RotateCcw, X } from 'lucide-react'
+import { Pause, Play, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   cancelHuggingFaceBundle,
+  pauseHuggingFaceBundle,
   resumeHuggingFaceBundle,
   retryHuggingFaceBundle,
   useHuggingFaceDownloads,
 } from '@/hooks/useHuggingFaceDownloads'
 import { formatModelBytes } from '@/lib/huggingface'
+import { RetryCountdown } from '@/containers/RetryCountdown'
 
 export function PausedDownloads() {
   const { t } = useTranslation()
@@ -21,7 +23,13 @@ export function PausedDownloads() {
   const stopped = useMemo(
     () =>
       Object.values(tasks)
-        .filter((task) => task.status === 'paused' || task.status === 'error')
+        .filter(
+          (task) =>
+            task.status === 'paused' ||
+            task.status === 'error' ||
+            // Waiting out a dropped connection: stuck until it comes back.
+            (task.status === 'downloading' && task.retryAt !== undefined)
+        )
         .sort((a, b) => a.label.localeCompare(b.label)),
     [tasks]
   )
@@ -46,7 +54,9 @@ export function PausedDownloads() {
                 className="truncate text-xs text-muted-foreground"
                 title={task.error}
               >
-                {task.status === 'error'
+                {task.status === 'downloading' && task.retryAt !== undefined
+                  ? <RetryCountdown retryAt={task.retryAt} />
+                  : task.status === 'error'
                   ? task.error
                     ? t('sweep:hub.downloadFailedWith', { error: task.error })
                     : t('sweep:hub.downloadFailed')
@@ -55,7 +65,15 @@ export function PausedDownloads() {
                     }`}
               </div>
             </div>
-            {task.status === 'error' ? (
+            {task.status === 'downloading' ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void pauseHuggingFaceBundle(task.id)}
+              >
+                <Pause className="size-3.5" /> {t('common:a11y.pauseDownload')}
+              </Button>
+            ) : task.status === 'error' ? (
               <Button
                 variant="outline"
                 size="sm"

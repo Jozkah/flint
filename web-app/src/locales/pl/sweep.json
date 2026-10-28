@@ -83,6 +83,8 @@
     "privateUntilUsed": "Prywatne, dopóki z niego nie korzystasz",
     "recentlyUpdated": "Ostatnio zaktualizowane",
     "pausedDownloads": "Wstrzymane pobierania",
+    "retryingIn": "Ponowna próba za {{seconds}} s",
+    "retryingNow": "Ponawianie…",
     "resume": "Wznów",
     "retry": "Ponów",
     "searchPlaceholder": "Szukaj modeli, autorów lub wklej adres URL Hugging Face…",

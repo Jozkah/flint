@@ -35,6 +35,8 @@ beforeEach(() => {
   hoisted.download.mockReset()
   hoisted.cancelNative.mockReset().mockResolvedValue(undefined)
   hoisted.listen.mockReset().mockResolvedValue(() => {})
+  // Rows left by earlier tests share a repo and files; a new start would join them.
+  useHuggingFaceDownloads.setState({ tasks: {}, aliases: {} })
   localStorage.clear()
   resetInterruptedDownloadsCache()
 })

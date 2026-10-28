@@ -83,6 +83,8 @@
     "privateUntilUsed": "Soukromé, dokud ho nepoužijete",
     "recentlyUpdated": "Nedávno aktualizované",
     "pausedDownloads": "Pozastavená stahování",
+    "retryingIn": "Nový pokus za {{seconds}} s",
+    "retryingNow": "Zkouším znovu…",
     "resume": "Pokračovat",
     "retry": "Zkusit znovu",
     "searchPlaceholder": "Hledejte modely, autory nebo vložte adresu URL Hugging Face…",

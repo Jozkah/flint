@@ -32,6 +32,10 @@ export type HuggingFaceDownloadProgress = {
   taskId: string
   downloaded: number
   total?: number | null
+  /** Set while the download waits to retry: milliseconds to the next attempt. */
+  retryInMs?: number | null
+  /** The failed attempt count behind `retryInMs`. */
+  attempt?: number | null
 }
 
 type NativeResponse = {

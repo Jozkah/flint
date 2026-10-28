@@ -79,6 +79,8 @@
     "privateUntilUsed": "इस्तेमाल करने तक निजी",
     "recentlyUpdated": "हाल में अपडेट किए गए",
     "pausedDownloads": "रोके गए डाउनलोड",
+    "retryingIn": "{{seconds}} सेकंड में फिर से प्रयास",
+    "retryingNow": "फिर से प्रयास हो रहा है…",
     "resume": "फिर शुरू करें",
     "retry": "दोबारा आज़माएँ",
     "searchPlaceholder": "मॉडल, लेखक खोजें या Hugging Face URL चिपकाएँ…",

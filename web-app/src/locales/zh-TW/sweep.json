@@ -77,6 +77,8 @@
     "privateUntilUsed": "使用前保持私密",
     "recentlyUpdated": "最近更新",
     "pausedDownloads": "已暫停的下載",
+    "retryingIn": "{{seconds}} 秒後重試",
+    "retryingNow": "正在重試…",
     "resume": "繼續",
     "retry": "重試",
     "searchPlaceholder": "搜尋模型、作者，或貼上 Hugging Face 網址…",
