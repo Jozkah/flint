@@ -18,9 +18,10 @@ export function SkippedLinkedModelsNotice() {
 
   useEffect(() => {
     let cancelled = false
-    serviceHub
-      .models()
-      .getSkippedLinkedModels()
+    // A notice must never break the page: a service without the method (an
+    // older or mocked hub) or one that throws just shows nothing.
+    Promise.resolve()
+      .then(() => serviceHub.models().getSkippedLinkedModels?.() ?? [])
       .then((list) => {
         if (!cancelled) setSkipped(list)
       })
