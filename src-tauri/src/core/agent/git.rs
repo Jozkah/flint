@@ -1288,10 +1288,11 @@ fn cap_diff(diff: String, max_bytes: usize, binary: bool) -> GitFileDiff {
             truncated: false,
         };
     }
-    let cut = diff[..max_bytes]
-        .rfind('\n')
-        .map(|n| n + 1)
-        .unwrap_or(max_bytes);
+    let mut end = max_bytes;
+    while !diff.is_char_boundary(end) {
+        end -= 1;
+    }
+    let cut = diff[..end].rfind('\n').map(|n| n + 1).unwrap_or(end);
     let mut head = diff[..cut].to_string();
     head.push_str("\n… diff truncated (too large to display in full) …\n");
     GitFileDiff {
@@ -1643,6 +1644,17 @@ mod review_tests {
         assert!(out.truncated);
         assert!(out.diff.starts_with("line one\n"));
         assert!(out.diff.contains("truncated"));
+    }
+
+    #[test]
+    fn cap_diff_does_not_panic_when_cap_splits_a_multibyte_char() {
+        for ch in ["é", "中", "😀"] {
+            let big = ch.repeat(10);
+            // cap lands inside a char for every width > 1 byte
+            let out = cap_diff(big, 3, false);
+            assert!(out.truncated);
+            assert!(out.diff.contains("truncated"));
+        }
     }
 
     #[test]
