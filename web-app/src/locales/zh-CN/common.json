@@ -1627,7 +1627,8 @@
       "empty": "此文件为空",
       "needs-file-dialog": "文档请使用“附加文件” — 拖放的副本没有供读取器使用的路径",
       "sensitive": "看起来像凭据或密钥，因此未被读取",
-      "binary": "这不是文本文件，无论其扩展名如何"
+      "binary": "这不是文本文件，无论其扩展名如何",
+      "unreadable": "无法读取此文件"
     },
     "addFiles": "添加文件",
     "addFilesOrImages": "添加文件或图片",

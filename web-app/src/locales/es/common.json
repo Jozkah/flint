@@ -1650,7 +1650,8 @@
       "empty": "Este archivo está vacío",
       "needs-file-dialog": "Usa “Adjuntar archivo” para los documentos: una copia arrastrada no tiene ruta para el lector",
       "sensitive": "Parece contener credenciales o una clave, así que no se leyó",
-      "binary": "No es un archivo de texto, diga lo que diga su extensión"
+      "binary": "No es un archivo de texto, diga lo que diga su extensión",
+      "unreadable": "No se pudo leer este archivo"
     },
     "addFiles": "Añadir archivos",
     "addFilesOrImages": "Añadir archivos o imágenes",

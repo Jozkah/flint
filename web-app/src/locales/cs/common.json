@@ -1682,7 +1682,8 @@
       "empty": "Tento soubor je prázdný",
       "needs-file-dialog": "Pro dokumenty použijte „Přiložit soubor“ — přetažená kopie nemá pro čtečku cestu",
       "sensitive": "Vypadá jako přihlašovací údaje nebo klíč, proto nebyl přečten",
-      "binary": "Toto není textový soubor, ať už jeho přípona říká cokoli"
+      "binary": "Toto není textový soubor, ať už jeho přípona říká cokoli",
+      "unreadable": "Tento soubor se nepodařilo přečíst"
     },
     "addFiles": "Přidat soubory",
     "addFilesOrImages": "Přidat soubory nebo obrázky",
