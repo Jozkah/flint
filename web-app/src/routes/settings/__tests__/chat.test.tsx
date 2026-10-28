@@ -69,6 +69,7 @@ describe('Chat settings page', () => {
       'settings-chat-reply-language',
       'settings-chat-auto-title',
       'settings-chat-strip-reasoning',
+      'settings-chat-reasoning-default',
       'settings-chat-web-preview',
     ])
     expect(screen.getByTestId('reply-language-switcher')).toBeInTheDocument()
@@ -84,6 +85,21 @@ describe('Chat settings page', () => {
       .find((el) => el.dataset.anchor === 'settings-chat-enter-newline')!
     fireEvent.click(row.querySelector('[role="switch"]')!)
     expect(useGeneralSetting.getState().enterKeyInsertsNewline).toBe(true)
+  })
+
+  it('binds Reasoning for new chats to the general setting, model default first', () => {
+    useGeneralSetting.setState({ reasoningDefault: 'model' })
+    const Component = ChatRoute.component as React.ComponentType
+    render(<Component />)
+
+    const picker = screen.getByTestId('reasoning-default-picker')
+    expect(
+      picker.querySelector('#reasoning-default-model')
+    ).toHaveAttribute('data-state', 'checked')
+    fireEvent.click(picker.querySelector('#reasoning-default-off')!)
+    expect(useGeneralSetting.getState().reasoningDefault).toBe('off')
+    fireEvent.click(picker.querySelector('#reasoning-default-on')!)
+    expect(useGeneralSetting.getState().reasoningDefault).toBe('on')
   })
 
   it('shows transcript, artifacts, widgets and reset on the Display tab', () => {

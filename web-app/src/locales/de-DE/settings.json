@@ -1484,7 +1484,12 @@
     "composerGroup": "Eingabefeld",
     "repliesGroup": "Antworten",
     "linksGroup": "Links",
-    "artifactsGroup": "Artefakte und Widgets"
+    "artifactsGroup": "Artefakte und Widgets",
+    "reasoningDefault": "Reasoning für neue Chats",
+    "reasoningDefaultDesc": "Ob das Nachdenken in einem neuen Chat ein- oder ausgeschaltet beginnt. Die eigene Reasoning-Einstellung des Modells und der Schalter im Eingabefeld haben weiterhin Vorrang. Modelle, die das Nachdenken nicht umschalten können, bleiben unverändert.",
+    "reasoningDefaultModel": "Modellstandard",
+    "reasoningDefaultOn": "An",
+    "reasoningDefaultOff": "Aus"
   },
   "data": {
     "tabStorage": "Speicher",

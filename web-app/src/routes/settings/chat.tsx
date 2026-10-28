@@ -21,6 +21,11 @@ import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { TRANSCRIPT_VIEWS } from '@/lib/transcriptView'
+import {
+  REASONING_DEFAULTS,
+  isReasoningDefault,
+  type ReasoningDefault,
+} from '@/lib/reasoningDefault'
 import { toast } from 'sonner'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,6 +48,7 @@ function ChatSettings() {
         'settings-chat-reply-language',
         'settings-chat-auto-title',
         'settings-chat-strip-reasoning',
+        'settings-chat-reasoning-default',
         'settings-chat-web-preview',
       ],
     },
@@ -213,7 +219,47 @@ function RepliesCard() {
           />
         }
       />
+      <CardItem
+        anchor="settings-chat-reasoning-default"
+        title={t('settings:chat.reasoningDefault')}
+        description={t('settings:chat.reasoningDefaultDesc')}
+        actions={<ReasoningDefaultPicker />}
+      />
     </Card>
+  )
+}
+
+function ReasoningDefaultPicker() {
+  const { t } = useTranslation()
+  const value = useGeneralSetting((s) => s.reasoningDefault)
+  const setValue = useGeneralSetting((s) => s.setReasoningDefault)
+  const label: Record<ReasoningDefault, string> = {
+    model: t('settings:chat.reasoningDefaultModel'),
+    on: t('settings:chat.reasoningDefaultOn'),
+    off: t('settings:chat.reasoningDefaultOff'),
+  }
+  return (
+    <RadioGroup
+      value={value ?? 'model'}
+      onValueChange={(v) => isReasoningDefault(v) && setValue(v)}
+      aria-label={t('settings:chat.reasoningDefault')}
+      data-testid="reasoning-default-picker"
+      className="flex flex-wrap gap-3"
+    >
+      {REASONING_DEFAULTS.map((mode) => {
+        const id = `reasoning-default-${mode}`
+        return (
+          <label
+            key={mode}
+            htmlFor={id}
+            className="flex cursor-pointer items-center gap-1.5 text-sm"
+          >
+            <RadioGroupItem id={id} value={mode} />
+            {label[mode]}
+          </label>
+        )
+      })}
+    </RadioGroup>
   )
 }
 

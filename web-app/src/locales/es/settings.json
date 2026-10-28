@@ -1660,7 +1660,12 @@
     "composerGroup": "Compositor",
     "repliesGroup": "Respuestas",
     "linksGroup": "Enlaces",
-    "artifactsGroup": "Artefactos y widgets"
+    "artifactsGroup": "Artefactos y widgets",
+    "reasoningDefault": "Razonamiento en chats nuevos",
+    "reasoningDefaultDesc": "Si el razonamiento empieza activado o desactivado en un chat nuevo. El ajuste de razonamiento propio del modelo y el interruptor del editor siguen teniendo prioridad. Los modelos que no pueden cambiar el razonamiento no se modifican.",
+    "reasoningDefaultModel": "Predeterminado del modelo",
+    "reasoningDefaultOn": "Activado",
+    "reasoningDefaultOff": "Desactivado"
   },
   "data": {
     "tabStorage": "Almacenamiento",

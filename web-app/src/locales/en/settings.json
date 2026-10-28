@@ -1484,7 +1484,12 @@
     "composerGroup": "Composer",
     "repliesGroup": "Replies",
     "linksGroup": "Links",
-    "artifactsGroup": "Artifacts and widgets"
+    "artifactsGroup": "Artifacts and widgets",
+    "reasoningDefault": "Reasoning for new chats",
+    "reasoningDefaultDesc": "Whether thinking starts on or off in a new chat. A model's own Reasoning setting and the composer toggle still win. Models that cannot switch thinking are left alone.",
+    "reasoningDefaultModel": "Model default",
+    "reasoningDefaultOn": "On",
+    "reasoningDefaultOff": "Off"
   },
   "data": {
     "tabStorage": "Storage",

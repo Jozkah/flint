@@ -1484,7 +1484,12 @@
     "composerGroup": "Mesaj alanı",
     "repliesGroup": "Yanıtlar",
     "linksGroup": "Bağlantılar",
-    "artifactsGroup": "Yapıtlar ve widget'lar"
+    "artifactsGroup": "Yapıtlar ve widget'lar",
+    "reasoningDefault": "Yeni sohbetlerde akıl yürütme",
+    "reasoningDefaultDesc": "Yeni bir sohbette düşünmenin açık mı kapalı mı başlayacağı. Modelin kendi akıl yürütme ayarı ve yazma alanındaki anahtar yine önceliklidir. Düşünmeyi değiştiremeyen modellere dokunulmaz.",
+    "reasoningDefaultModel": "Model varsayılanı",
+    "reasoningDefaultOn": "Açık",
+    "reasoningDefaultOff": "Kapalı"
   },
   "data": {
     "tabStorage": "Depolama",

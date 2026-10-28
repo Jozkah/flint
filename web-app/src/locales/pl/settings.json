@@ -1530,7 +1530,12 @@
     "composerGroup": "Pole wiadomości",
     "repliesGroup": "Odpowiedzi",
     "linksGroup": "Linki",
-    "artifactsGroup": "Artefakty i widżety"
+    "artifactsGroup": "Artefakty i widżety",
+    "reasoningDefault": "Rozumowanie w nowych czatach",
+    "reasoningDefaultDesc": "Czy myślenie w nowym czacie zaczyna się włączone, czy wyłączone. Własne ustawienie rozumowania modelu i przełącznik w polu wiadomości nadal mają pierwszeństwo. Modele, które nie mogą przełączać myślenia, pozostają bez zmian.",
+    "reasoningDefaultModel": "Domyślne modelu",
+    "reasoningDefaultOn": "Włączone",
+    "reasoningDefaultOff": "Wyłączone"
   },
   "data": {
     "tabStorage": "Pamięć",

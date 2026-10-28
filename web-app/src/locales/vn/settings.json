@@ -1481,7 +1481,12 @@
     "composerGroup": "Khung soạn thảo",
     "repliesGroup": "Phản hồi",
     "linksGroup": "Liên kết",
-    "artifactsGroup": "Artifact và widget"
+    "artifactsGroup": "Artifact và widget",
+    "reasoningDefault": "Suy luận cho cuộc trò chuyện mới",
+    "reasoningDefaultDesc": "Suy luận bắt đầu ở trạng thái bật hay tắt trong cuộc trò chuyện mới. Cài đặt suy luận riêng của mô hình và nút gạt ở khung soạn thảo vẫn được ưu tiên. Các mô hình không thể chuyển đổi suy luận sẽ được giữ nguyên.",
+    "reasoningDefaultModel": "Mặc định của mô hình",
+    "reasoningDefaultOn": "Bật",
+    "reasoningDefaultOff": "Tắt"
   },
   "data": {
     "tabStorage": "Lưu trữ",

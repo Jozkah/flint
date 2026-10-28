@@ -1487,7 +1487,12 @@
     "composerGroup": "Compositore",
     "repliesGroup": "Risposte",
     "linksGroup": "Link",
-    "artifactsGroup": "Artefatti e widget"
+    "artifactsGroup": "Artefatti e widget",
+    "reasoningDefault": "Ragionamento per le nuove chat",
+    "reasoningDefaultDesc": "Se il ragionamento parte attivo o disattivo in una nuova chat. L'impostazione di ragionamento del modello e l'interruttore del compositore hanno comunque la precedenza. I modelli che non possono cambiare il ragionamento non vengono toccati.",
+    "reasoningDefaultModel": "Predefinito del modello",
+    "reasoningDefaultOn": "Attivo",
+    "reasoningDefaultOff": "Disattivo"
   },
   "data": {
     "tabStorage": "Archiviazione",
