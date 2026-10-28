@@ -101,10 +101,15 @@ export function diffLiveReply(
   if (!next) return out
   const base = prev && prev.messageId === next.messageId ? prev : null
   const extends_ = (a: string, b: string) => b.startsWith(a)
-  const textFrom = base && extends_(base.text, next.text) ? base.text.length : 0
-  const reasonFrom = base && extends_(base.reasoning, next.reasoning) ? base.reasoning.length : 0
-  const textChanged = !base || next.text.length !== textFrom
-  const reasonChanged = next.reasoning.length !== reasonFrom
+  const textExtends = !!base && extends_(base.text, next.text)
+  const reasonExtends = !!base && extends_(base.reasoning, next.reasoning)
+  const textFrom = base && textExtends ? base.text.length : 0
+  const reasonFrom = base && reasonExtends ? base.reasoning.length : 0
+  // A rewrite that does not extend the old value (including a shrink to '')
+  // is a change even when nothing is appended.
+  const textChanged = !textExtends || next.text.length !== textFrom
+  const reasonChanged =
+    next.reasoning.length !== reasonFrom || (!!base && !reasonExtends)
   if (textChanged || reasonChanged) {
     out.push({
       type: 'stream.delta',

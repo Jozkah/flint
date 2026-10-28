@@ -1028,8 +1028,12 @@ async fn test_get_lock_for_thread_distinct_ids_distinct_locks() {
 async fn test_idle_thread_locks_are_evicted() {
     let held = get_lock_for_thread("evict-held").await;
     drop(get_lock_for_thread("evict-idle").await);
+    // Sweeps run once the map is large; fill it past that point.
+    for i in 0..300 {
+        drop(get_lock_for_thread(&format!("evict-filler-{i}")).await);
+    }
     let _other = get_lock_for_thread("evict-trigger").await;
-    let map = super::helpers::MESSAGE_LOCKS.get().unwrap().lock().await;
+    let map = super::helpers::MESSAGE_LOCKS.get().unwrap().lock().unwrap();
     assert!(!map.contains_key("evict-idle"), "an idle lock was kept");
     assert!(map.contains_key("evict-held"), "a held lock was evicted");
     drop(map);
