@@ -1353,6 +1353,7 @@ pub fn uninstall_jan_cli() -> Result<(), String> {
             std::fs::remove_file(&dest)
                 .map_err(|e| format!("Failed to remove Flint CLI from {}: {}", dest.display(), e))?;
         }
+        super::cli_provenance::forget(&dest);
         Ok(())
     }
 }
@@ -1518,8 +1519,22 @@ try {{ $kind = $k.GetValueKind('Path') }} catch {{}}; \
 $k.SetValue('Path', '{}', $kind); \
 [Environment]::SetEnvironmentVariable('FLINT_ENV_REFRESH', '1', 'User'); \
 [Environment]::SetEnvironmentVariable('FLINT_ENV_REFRESH', $null, 'User')",
-        path.replace('\'', "''")
+        ps_single_quote_escape(path)
     )
+}
+
+/// The body of a PowerShell single-quoted string. PowerShell treats the
+/// typographic quotes U+2018 to U+201B as single quotes too, so a folder name
+/// holding one would end the string early; each quote character is doubled.
+fn ps_single_quote_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        out.push(c);
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Add a directory to the Windows user PATH.
@@ -1687,6 +1702,7 @@ mod user_path_tests {
         assert!(!READ_USER_PATH_RAW_SCRIPT.contains("GetEnvironmentVariable('Path'"));
         let write = write_user_path_raw_script("%USERPROFILE%\\bin;C:\\it's");
         assert!(write.contains("SetValue('Path', '%USERPROFILE%\\bin;C:\\it''s', $kind)"));
+        assert_eq!(ps_single_quote_escape("a\u{2019}b'c"), "a\u{2019}\u{2019}b''c");
         assert!(write.contains("ExpandString"));
         assert!(write.contains("GetValueKind('Path')"));
         assert!(!write.contains("SetEnvironmentVariable('Path'"));

@@ -129,6 +129,17 @@ v2 {size} {hash}
     fs::write(marker_path(dest), content).map_err(|e| e.to_string())
 }
 
+/// Drop the marker for `dest`, after the CLI there was uninstalled. Left
+/// behind, a later install of someone else's binary at the same path could be
+/// mistaken for ours. A missing marker is fine.
+pub fn forget(dest: &Path) {
+    match fs::remove_file(marker_path(dest)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => log::warn!("could not remove the CLI marker for {}: {e}", dest.display()),
+    }
+}
+
 /// What the automatic, on-launch install should do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AutoAction {
@@ -236,6 +247,20 @@ mod tests {
         fs::write(&dest, b"desktop build 0.8.3").unwrap();
         record_ours(&dest).unwrap();
         assert_eq!(ownership(&dest, &bundled), Ownership::Ours);
+    }
+
+    #[test]
+    fn forgetting_drops_the_claim_on_a_reinstalled_file() {
+        let (_tmp, bundled, dest) = fixture();
+        fs::write(&dest, b"desktop build 0.8.3").unwrap();
+        record_ours(&dest).unwrap();
+        fs::remove_file(&dest).unwrap();
+        forget(&dest);
+        forget(&dest); // a second call finds nothing and is fine
+        assert!(!marker_path(&dest).exists());
+        // A file put back at the same path, byte for byte, is not claimed.
+        fs::write(&dest, b"desktop build 0.8.3").unwrap();
+        assert_eq!(ownership(&dest, &bundled), Ownership::Foreign);
     }
 
     #[test]

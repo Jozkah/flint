@@ -59,7 +59,7 @@ pub(crate) struct Found {
     row: Value,
 }
 
-fn inside(roots: &[PathBuf], raw: &str) -> bool {
+pub(super) fn inside(roots: &[PathBuf], raw: &str) -> bool {
     if raw.is_empty() || raw.contains('\0') {
         return false;
     }
