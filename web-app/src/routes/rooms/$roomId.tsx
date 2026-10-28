@@ -28,7 +28,7 @@ import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import { RoomControls } from '@/containers/rooms/RoomControls'
 import { RoomEditor } from '@/containers/rooms/RoomEditor'
 
- 
+
 export const Route = createFileRoute(route.roomDetail)({
   component: RoomPage,
 })

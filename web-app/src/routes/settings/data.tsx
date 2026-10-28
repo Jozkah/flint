@@ -34,7 +34,7 @@ import {
   parseChatGptExport,
 } from '@/lib/chatgptImport'
 
- 
+
 export const Route = createFileRoute(route.settings.data)({
   component: DataSettings,
 })

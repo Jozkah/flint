@@ -37,7 +37,7 @@ import {
   type PerformanceMode,
 } from '@/lib/perfMode'
 
- 
+
 export const Route = createFileRoute(route.settings.appearance)({
   component: InterfaceSettings,
 })

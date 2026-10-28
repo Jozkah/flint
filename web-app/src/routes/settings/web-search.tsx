@@ -33,7 +33,7 @@ import {
 } from '@/hooks/useWebSearchConfig'
 import { Icon } from '@/components/ui/icon'
 
- 
+
 export const Route = createFileRoute(route.settings.web_search)({
   component: WebSearchContent,
 })

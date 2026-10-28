@@ -641,4 +641,3 @@ export const ToolApprovalActions = memo(() => {
 })
 
 ToolApprovalActions.displayName = 'ToolApprovalActions'
-

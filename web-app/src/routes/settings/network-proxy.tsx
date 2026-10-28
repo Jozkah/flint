@@ -26,7 +26,7 @@ import { CaBundleStatus, type CaBundleState } from '@/containers/CaBundleStatus'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { isPlatformTauri } from '@/lib/platform/utils'
 
- 
+
 export const Route = createFileRoute(route.settings.network_proxy)({
   component: desktopOnlyRoute(HTTPSProxyContent, 'common:network_proxy'),
 })

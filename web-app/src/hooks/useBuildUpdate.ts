@@ -2,7 +2,13 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { toast } from 'sonner'
-import { checkForNewerBuild, type BuildCheck } from '@/lib/buildUpdate'
+import {
+  checkChannel,
+  fetchReleases,
+  type BuildCheck,
+  type Channel,
+  type ChannelRelease,
+} from '@/lib/buildUpdate'
 import i18n from '@/i18n/setup'
 import { getServiceHub } from '@/hooks/useServiceHub'
 
@@ -16,7 +22,12 @@ type State = {
   /** The latest stable version the person was last told about, so a notice is not repeated. */
   notifiedFor: string
   last: BuildCheck | null
+  /** Which line of releases to follow; persisted. */
+  channel: Channel
+  /** Recent releases from the last check; kept in memory only. */
+  releases: ChannelRelease[] | null
   setEnabled: (on: boolean) => void
+  setChannel: (channel: Channel) => void
   run: (opts?: { manual?: boolean }) => Promise<BuildCheck>
 }
 
@@ -27,9 +38,19 @@ export const useBuildUpdate = create<State>()(
       checkedAt: 0,
       notifiedFor: '',
       last: null,
+      channel: 'release',
+      releases: null,
       setEnabled: (enabled) => set({ enabled }),
+      // The list already in hand is re-read for the new channel; nothing is fetched.
+      setChannel: (channel) =>
+        set((s) => ({
+          channel,
+          last: s.releases ? checkChannel(s.releases, channel, VERSION, BUILD_COMMIT) : null,
+        })),
       run: async ({ manual = false } = {}) => {
-        const result = await checkForNewerBuild(VERSION)
+        const releases = await fetchReleases()
+        const result = checkChannel(releases, get().channel, VERSION, BUILD_COMMIT)
+        if (releases) set({ releases })
         const remembered = get().notifiedFor
         set({ last: result, ...(result.state === 'unknown' ? {} : { checkedAt: Date.now() }) })
         if (result.state === 'newer' && (manual || result.latest !== remembered)) {
@@ -50,7 +71,13 @@ export const useBuildUpdate = create<State>()(
     {
       name: 'flint-build-update',
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ enabled: s.enabled, checkedAt: s.checkedAt, notifiedFor: s.notifiedFor }) as State,
+      partialize: (s) =>
+        ({
+          enabled: s.enabled,
+          checkedAt: s.checkedAt,
+          notifiedFor: s.notifiedFor,
+          channel: s.channel,
+        }) as State,
     }
   )
 )

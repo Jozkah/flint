@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu'
 
- 
+
 export const Route = createFileRoute(route.settings.assistant)({
   component: AssistantContent,
 })
