@@ -867,7 +867,7 @@ pub(crate) fn copy_worktreeinclude(repo: &Path, worktree: &Path) -> Vec<String> 
         return notes;
     };
     let mut copied = 0usize;
-    for rel in listing.split(' ').filter(|r| !r.is_empty()) {
+    for rel in listing.split('\0').filter(|r| !r.is_empty()) {
         if validate_repo_rel(rel).is_err()
             || !matcher.matched_path_or_any_parents(rel, false).is_ignore()
         {
@@ -1539,6 +1539,11 @@ pub fn validate_repo_rel(p: &str) -> Result<(), String> {
             "{p} is absolute; only paths inside the worktree are allowed"
         ));
     }
+    if p.starts_with('-') {
+        return Err(format!(
+            "{p} starts with `-`; it would be read as a git option"
+        ));
+    }
     let bytes = p.as_bytes();
     if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
         return Err(format!(
@@ -1637,7 +1642,7 @@ pub fn apply_optimizations(
 
     if !sparse_paths.is_empty() {
         run(worktree, &["sparse-checkout", "init", "--cone"])?;
-        let mut args: Vec<&str> = vec!["sparse-checkout", "set"];
+        let mut args: Vec<&str> = vec!["sparse-checkout", "set", "--"];
         args.extend(sparse_paths.iter().map(String::as_str));
         run(worktree, &args)?;
     }
@@ -2931,6 +2936,13 @@ a.txt
         assert!(validate_repo_rel(".git/config").is_err());
         // Case-insensitive: a Windows filesystem would still reach .git.
         assert!(validate_repo_rel(".GIT/hooks").is_err());
+    }
+
+    #[test]
+    fn sparse_path_starting_with_dash_is_rejected() {
+        assert!(validate_repo_rel("-rf").is_err());
+        assert!(validate_repo_rel("--help").is_err());
+        assert!(validate_repo_rel("src/-ok").is_ok());
     }
 
     #[test]
