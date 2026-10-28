@@ -24,6 +24,23 @@ pub struct StartServerConfig {
     pub verbose_logs: Option<bool>,
 }
 
+/// A server reachable beyond this machine must not run without an API key.
+/// Loopback binds may stay keyless (the default).
+fn validate_bind(host: &str, api_key: &str) -> Result<(), String> {
+    let bare = host.trim().trim_start_matches('[').trim_end_matches(']');
+    let loopback = bare.eq_ignore_ascii_case("localhost")
+        || bare
+            .parse::<std::net::IpAddr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false);
+    if !loopback && api_key.trim().is_empty() {
+        return Err(format!(
+            "Set an API key before binding the server to {host}, or use 127.0.0.1."
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn start_server<R: Runtime>(
     app_handle: AppHandle<R>,
@@ -41,6 +58,7 @@ pub async fn start_server<R: Runtime>(
         cors_enabled,
         verbose_logs,
     } = config;
+    validate_bind(&host, &api_key)?;
     proxy::set_verbose_logs(verbose_logs.unwrap_or(false));
     let server_handle = state.server_handle.clone();
     let llama_state: State<Arc<LlamacppState>> = app_handle.state();
@@ -179,4 +197,32 @@ pub fn set_usage_ceilings<R: Runtime>(
     quota::write_quotas(&data, &declared).map_err(|e| e.to_string())?;
     super::usage_meter::forget();
     usage_ceilings_at(&data)
+}
+
+#[cfg(test)]
+mod bind_tests {
+    use super::validate_bind;
+
+    #[test]
+    fn rejects_empty_key_on_non_loopback() {
+        assert!(validate_bind("0.0.0.0", "").is_err());
+        assert!(validate_bind("192.168.1.5", "").is_err());
+    }
+
+    #[test]
+    fn allows_empty_key_on_loopback() {
+        assert!(validate_bind("127.0.0.1", "").is_ok());
+        assert!(validate_bind("localhost", "").is_ok());
+        assert!(validate_bind("::1", "").is_ok());
+    }
+
+    #[test]
+    fn allows_key_on_any_host() {
+        assert!(validate_bind("0.0.0.0", "secret").is_ok());
+    }
+
+    #[test]
+    fn whitespace_key_is_empty() {
+        assert!(validate_bind("0.0.0.0", "   ").is_err());
+    }
 }
