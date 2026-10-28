@@ -436,15 +436,28 @@ pub(crate) fn secret_denied_message(
     )
 }
 
-/// The tool result for a prompt the user refused, with their reason when they
-/// gave one. Consumes the recorded reason.
-fn denied_by_user_message(name: &str, request_id: &str) -> String {
-    let reason = DENY_REASONS
+/// Remove and return the reason recorded for `request_id`, if any. Every
+/// prompt calls this when it settles, so the table never outlives a prompt.
+fn take_deny_reason(request_id: &str) -> Option<String> {
+    DENY_REASONS
         .lock()
         .unwrap()
         .as_mut()
-        .and_then(|table| table.remove(request_id));
-    match reason {
+        .and_then(|table| table.remove(request_id))
+}
+
+/// ` Their reason: ...` for appending to a refusal, empty when none was given.
+/// Consumes the recorded reason.
+fn deny_suffix(request_id: &str) -> String {
+    take_deny_reason(request_id)
+        .map(|reason| format!(" Their reason: {reason}"))
+        .unwrap_or_default()
+}
+
+/// The tool result for a prompt the user refused, with their reason when they
+/// gave one. Consumes the recorded reason.
+fn denied_by_user_message(name: &str, request_id: &str) -> String {
+    match take_deny_reason(request_id) {
         Some(reason) => format!("ERROR: tool '{name}' denied by user. Their reason: {reason}"),
         None => format!("ERROR: tool '{name}' denied by user"),
     }
@@ -2279,20 +2292,24 @@ async fn blocking_with_cancel<T: Send + 'static>(
     result.ok()
 }
 
+fn stopped_message(name: &str, reason: tauri_plugin_agent_tools::lifecycle::StopReason) -> String {
+    use tauri_plugin_agent_tools::lifecycle::StopReason;
+    let why = match reason {
+        StopReason::Timeout => "its time limit passed while it waited",
+        StopReason::Cancelled => "the run was cancelled while it waited",
+    };
+    format!("ERROR: tool '{name}' was not run: {why}.")
+}
+
 fn return_cancelled_outcome(
     out: &mut Vec<ToolOutcome>,
     id: &str,
     name: &str,
     reason: tauri_plugin_agent_tools::lifecycle::StopReason,
 ) {
-    use tauri_plugin_agent_tools::lifecycle::StopReason;
-    let why = match reason {
-        StopReason::Timeout => "its time limit passed while it waited",
-        StopReason::Cancelled => "the run was cancelled while it waited",
-    };
     out.push(ToolOutcome {
         id: id.to_string(),
-        content: format!("ERROR: tool '{name}' was not run: {why}."),
+        content: stopped_message(name, reason),
         diff: None,
         images: Vec::new(),
         parts: None,
@@ -2608,18 +2625,25 @@ impl CompositeToolInvoker {
 
     /// Ask the user about a host tool call, honoring a thread-scoped "allow
     /// always" the user already gave for it.
-    async fn approve_host_tool(&self, name: &str) -> bool {
+    ///
+    /// `Ok(Err(message))` is a refusal, ready to hand the model.
+    async fn approve_host_tool(
+        &self,
+        call_id: &str,
+        name: &str,
+    ) -> Result<Result<(), String>, tauri_plugin_agent_tools::lifecycle::StopReason> {
         if self.grants.lock().unwrap().covers_mcp("host", name) {
-            return true;
+            return Ok(Ok(()));
         }
-        match self.prompt_mcp_permission(name).await {
-            PermissionDecision::AllowOnce => true,
+        let (decision, request_id) = self.prompt_mcp_permission(call_id, name).await?;
+        Ok(match decision {
+            PermissionDecision::AllowOnce => Ok(()),
             PermissionDecision::AllowAlways => {
                 self.grants.lock().unwrap().grant_mcp("host", name);
-                true
+                Ok(())
             }
-            PermissionDecision::Deny => false,
-        }
+            PermissionDecision::Deny => Err(denied_by_user_message(name, &request_id)),
+        })
     }
 
     /// Hand a host tool call to the client and wait for its answer.
@@ -2696,8 +2720,63 @@ impl CompositeToolInvoker {
         (content, parts, details)
     }
 
+    /// Wait for the answer to the open permission request `request_id`, or for
+    /// the run (or this call) to be stopped, whichever comes first (AH-049).
+    /// `Ok(None)` is a responder that went away. The pending request is always
+    /// removed. A stop leaves a `cancelled` audit record under `call_id` and
+    /// discards any deny reason recorded for the request, so a stopped run
+    /// leaves neither a parked task nor a table entry behind.
+    async fn await_answer(
+        &self,
+        call_id: &str,
+        name: &str,
+        request_id: &str,
+        rx: tokio::sync::oneshot::Receiver<PermissionDecision>,
+    ) -> Result<Option<PermissionDecision>, tauri_plugin_agent_tools::lifecycle::StopReason> {
+        use tauri_plugin_agent_tools::lifecycle::StopReason;
+        let registered = self.call_token(call_id);
+        let waiting = registered.token().clone();
+        let outcome: Result<Option<PermissionDecision>, StopReason> = tokio::select! {
+            answer = rx => Ok(answer.ok()),
+            _ = async {
+                while !waiting.is_stopped() {
+                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                }
+            } => Err(waiting.stopped().unwrap_or(StopReason::Cancelled)),
+        };
+        self.permission_requests.lock().await.remove(request_id);
+        if let Err(reason) = outcome {
+            let _ = take_deny_reason(request_id);
+            record_cancelled_call(
+                &crate::core::app::commands::resolve_jan_data_folder(),
+                &self.cancel_scope,
+                &self.project_root,
+                call_id,
+                name,
+                reason,
+            );
+        }
+        outcome
+    }
+
+    /// [`Self::await_answer`] where a responder that went away is a Deny.
+    async fn await_decision(
+        &self,
+        call_id: &str,
+        name: &str,
+        request_id: &str,
+        rx: tokio::sync::oneshot::Receiver<PermissionDecision>,
+    ) -> Result<PermissionDecision, tauri_plugin_agent_tools::lifecycle::StopReason> {
+        Ok(self
+            .await_answer(call_id, name, request_id, rx)
+            .await?
+            .unwrap_or(PermissionDecision::Deny))
+    }
+
     /// Prompt the user to approve an MCP tool call, mirroring the built-in gate.
-    /// A dropped responder (client gone / run cancelled) resolves to Deny.
+    /// A dropped responder (client gone) resolves to Deny; a stopped run ends
+    /// the wait. Returns the request id with the decision so a refusal can
+    /// carry the user's reason (`denied_by_user_message`).
     ///
     /// Plugin and host tools are prompted through here too: `prompt_kind` is
     /// `"mcp"` for all three because it names the *class* a consumer renders --
@@ -2706,7 +2785,11 @@ impl CompositeToolInvoker {
     /// which is what a user needs to see; note that the matching `tool_request`
     /// carries the host's bare name (`move`) instead, since the host dispatches
     /// on the name it declared.
-    async fn prompt_mcp_permission(&self, tool_name: &str) -> PermissionDecision {
+    async fn prompt_mcp_permission(
+        &self,
+        call_id: &str,
+        tool_name: &str,
+    ) -> Result<(PermissionDecision, String), tauri_plugin_agent_tools::lifecycle::StopReason> {
         let request_id = next_permission_id();
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.permission_requests
@@ -2727,9 +2810,8 @@ impl CompositeToolInvoker {
             args_digest: None,
             call_id: None,
         });
-        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
-        self.permission_requests.lock().await.remove(&request_id);
-        decision
+        let decision = self.await_decision(call_id, tool_name, &request_id, rx).await?;
+        Ok((decision, request_id))
     }
 
     /// Whether anyone can answer a permission prompt in this run: an attached
@@ -2855,12 +2937,15 @@ impl CompositeToolInvoker {
             args_digest: None,
             call_id: None,
         });
-        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
-        self.permission_requests.lock().await.remove(&request_id);
+        let decision = match self.await_decision(&request_id, "pull_request", &request_id, rx).await {
+            Ok(decision) => decision,
+            Err(reason) => return Err(stopped_message("pull_request", reason)),
+        };
         match decision {
             PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => Ok(()),
             PermissionDecision::Deny => Err(format!(
-                "ERROR [approval_refused]: {action} a pull request through {api} was not approved. It changes a service outside this machine, so it needs a person's approval, or `allow = [\"pull_request\"]` in the project's agent.toml; nothing was sent."
+                "ERROR [approval_refused]: {action} a pull request through {api} was not approved. It changes a service outside this machine, so it needs a person's approval, or `allow = [\"pull_request\"]` in the project's agent.toml; nothing was sent.{}",
+                deny_suffix(&request_id)
             )),
         }
     }
@@ -2963,11 +3048,14 @@ impl CompositeToolInvoker {
             args_digest: None,
             call_id: None,
         });
-        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
-        self.permission_requests.lock().await.remove(&request_id);
+        let decision = match self.await_decision(&request_id, name, &request_id, rx).await {
+            Ok(decision) => decision,
+            Err(reason) => return Err(stopped_message(name, reason)),
+        };
         match decision {
             PermissionDecision::Deny => Err(format!(
-                "ERROR [approval_refused]: {name} was not approved by a person, so nothing was changed."
+                "ERROR [approval_refused]: {name} was not approved by a person, so nothing was changed.{}",
+                deny_suffix(&request_id)
             )),
             // `offers_always` is false, so a grant is only ever this once.
             _ => Ok(()),
@@ -3033,21 +3121,26 @@ impl CompositeToolInvoker {
             args_digest: None,
             call_id: None,
         });
-        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
-        self.permission_requests.lock().await.remove(&request_id);
+        let decision = match self.await_decision(&request_id, name, &request_id, rx).await {
+            Ok(decision) => decision,
+            Err(reason) => return Err(stopped_message(name, reason)),
+        };
         match decision {
             PermissionDecision::AllowOnce => Ok(()),
             PermissionDecision::AllowAlways => {
                 self.grants.lock().unwrap().grant_mcp("repo", name);
                 Ok(())
             }
-            PermissionDecision::Deny => Err(refused()),
+            PermissionDecision::Deny => Err(format!("{}{}", refused(), deny_suffix(&request_id))),
         }
     }
 
     /// Prompt the user to approve a `user`-scope subagent write (it persists
     /// outside the current project). Project-scope writes are not prompted.
-    async fn prompt_subagent_create(&self, name: &str) -> PermissionDecision {
+    async fn prompt_subagent_create(
+        &self,
+        name: &str,
+    ) -> Result<(PermissionDecision, String), tauri_plugin_agent_tools::lifecycle::StopReason> {
         let request_id = next_permission_id();
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.permission_requests
@@ -3068,9 +3161,28 @@ impl CompositeToolInvoker {
             args_digest: None,
             call_id: None,
         });
-        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
-        self.permission_requests.lock().await.remove(&request_id);
-        decision
+        let decision = self.await_decision(&request_id, "create_subagent", &request_id, rx).await?;
+        Ok((decision, request_id))
+    }
+
+    /// Whether a `user`-scope subagent may be written (it persists outside the
+    /// project). Under `bypass` the run has already decided, so nobody is
+    /// asked; a run nobody can answer is refused with a typed reason instead
+    /// of a prompt that would be auto-denied as if the user had said no.
+    async fn approve_user_subagent(&self, name: &str) -> Result<(), String> {
+        if self.bypass {
+            return Ok(());
+        }
+        if !self.can_prompt() {
+            return Err(format!(
+                "ERROR [approval_refused]: creating the user-scope subagent '{name}' writes outside this project, so it needs a person's approval, and nobody can be asked in this run. Use project scope, or start the run with permission mode bypass."
+            ));
+        }
+        match self.prompt_subagent_create(name).await {
+            Ok((PermissionDecision::AllowOnce | PermissionDecision::AllowAlways, _)) => Ok(()),
+            Ok((PermissionDecision::Deny, request_id)) => Err(denied_by_user_message("create_subagent", &request_id)),
+            Err(reason) => Err(stopped_message("create_subagent", reason)),
+        }
     }
 
     /// `lsp`: one question for the language server that covers a file
@@ -3995,11 +4107,8 @@ impl CompositeToolInvoker {
                     Err(e) => return format!("ERROR: {e}"),
                 };
                 if scope == SubagentScope::User {
-                    match self.prompt_subagent_create(&def.name).await {
-                        PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {}
-                        PermissionDecision::Deny => {
-                            return "ERROR: user-scope subagent creation denied by user".to_string()
-                        }
+                    if let Err(refused) = self.approve_user_subagent(&def.name).await {
+                        return refused;
                     }
                 }
                 let dir = match subagent_dir_for(&self.project_root, scope) {
@@ -4748,11 +4857,13 @@ impl ToolInvoker for CompositeToolInvoker {
         }
         // A dropped responder is nobody answering, not a "no": the run goes on
         // as it would with no pause set.
-        let answer = rx.await;
-        self.permission_requests.lock().await.remove(&request_id);
-        let Ok(decision) = answer else {
-            return SpendPause::Unavailable;
+        let decision = match self.await_answer(&request_id, "spend_pause", &request_id, rx).await {
+            Ok(Some(decision)) => decision,
+            Ok(None) => return SpendPause::Unavailable,
+            // The run was stopped while the question was open: end it.
+            Err(_) => return SpendPause::Stop,
         };
+        let _ = take_deny_reason(&request_id);
         match decision {
             PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => SpendPause::Continue,
             PermissionDecision::Deny => SpendPause::Stop,
@@ -5235,17 +5346,26 @@ impl CompositeToolInvoker {
                         host_read_calls.push((id, name.to_string(), args));
                         continue;
                     }
-                    let approved = match gate {
-                        HostGate::Read | HostGate::Host => true,
+                    let needs_prompt = match gate {
+                        HostGate::Read | HostGate::Host => false,
                         // An actuator is prompted even under `auto_approve`: that
                         // is the whole point of declaring one. A session grant
                         // still covers it, since the user said so explicitly.
-                        HostGate::Actuator => self.bypass || self.approve_host_tool(name).await,
-                        HostGate::Opaque => self.auto_approve || self.bypass || self.approve_host_tool(name).await,
+                        HostGate::Actuator => !self.bypass,
+                        HostGate::Opaque => !(self.auto_approve || self.bypass),
                     };
-                    if !approved {
-                        out.push(ToolOutcome::plain(id, format!("ERROR: tool '{name}' denied by user")));
-                        continue;
+                    if needs_prompt {
+                        match self.approve_host_tool(&id, name).await {
+                            Ok(Ok(())) => {}
+                            Ok(Err(denied)) => {
+                                out.push(ToolOutcome::plain(id, denied));
+                                continue;
+                            }
+                            Err(reason) => {
+                                return_cancelled_outcome(&mut out, &id, name, reason);
+                                continue;
+                            }
+                        }
                     }
                     #[cfg(feature = "cli")]
                     {
@@ -5303,17 +5423,18 @@ impl CompositeToolInvoker {
                     mcp_calls.push(tc.clone());
                     continue;
                 }
-                match self.prompt_mcp_permission(name).await {
-                    PermissionDecision::AllowOnce => mcp_calls.push(tc.clone()),
-                    PermissionDecision::AllowAlways if self_approval => mcp_calls.push(tc.clone()),
-                    PermissionDecision::AllowAlways => {
+                match self.prompt_mcp_permission(&id, name).await {
+                    Ok((PermissionDecision::AllowOnce, _)) => mcp_calls.push(tc.clone()),
+                    Ok((PermissionDecision::AllowAlways, _)) if self_approval => mcp_calls.push(tc.clone()),
+                    Ok((PermissionDecision::AllowAlways, _)) => {
                         self.grants.lock().unwrap().grant_mcp(&server, name);
                         mcp_calls.push(tc.clone());
                     }
-                    PermissionDecision::Deny => out.push(ToolOutcome::plain(
+                    Ok((PermissionDecision::Deny, request_id)) => out.push(ToolOutcome::plain(
                         id,
-                        format!("ERROR: tool '{name}' denied by user"),
+                        denied_by_user_message(name, &request_id),
                     )),
+                    Err(reason) => return_cancelled_outcome(&mut out, &id, name, reason),
                 }
                 continue;
             }
@@ -5821,6 +5942,8 @@ impl CompositeToolInvoker {
                     // An answer that arrives for a call that has already been
                     // stopped is stale: recorded, never acted on.
                     if let Some(reason) = waiting.stopped() {
+                        // A reason typed for a prompt that was stopped is never read.
+                        let _ = take_deny_reason(&request_id);
                         self.cancelled(&mut out, &id, name, reason);
                         continue;
                     }
@@ -19347,6 +19470,167 @@ profile = \"tiny\"
             "reached the 3-turn limit while the model was still calling tools",
         ));
         assert_eq!(ended(&turn_limit).1, 53);
+    }
+
+    /// AH-049: stopping the run ends the wait on an open MCP/host permission
+    /// prompt, removes the pending request and leaves it unanswerable.
+    #[tokio::test]
+    async fn cancelled_run_unblocks_mcp_permission_prompt() {
+        use tauri_plugin_agent_tools::lifecycle::{stop_scope, Scope, StopReason};
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(dir.path().to_path_buf(), tx, registry.clone());
+        invoker.cancel_scope = Scope::new("sess-mcp-stop", "run-mcp-stop", "");
+        let scope = invoker.cancel_scope.clone();
+        let stopper = tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                if matches!(event, StreamEvent::PermissionRequest { .. }) {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    stop_scope(&scope, StopReason::Cancelled);
+                    return;
+                }
+            }
+        });
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            invoker.prompt_mcp_permission("call-mcp-stop", "srv__tool"),
+        )
+        .await
+        .expect("a stopped run stayed parked on its permission prompt");
+        assert!(matches!(result, Err(StopReason::Cancelled)));
+        assert!(registry.lock().await.is_empty(), "the pending request outlived the stopped call");
+        let _ = stopper.await;
+    }
+
+    /// A reason the user typed with a refusal reaches the model for an MCP
+    /// tool, as it already did for built-ins.
+    #[tokio::test]
+    async fn deny_reason_reaches_model_for_mcp_tool() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let invoker = build_prompting_invoker(dir.path().to_path_buf(), tx, registry.clone());
+        let answering = registry.clone();
+        let person = tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest { request_id, .. } = event {
+                    record_deny_reason(&request_id, "use the staging server");
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::Deny);
+                    }
+                    return;
+                }
+            }
+        });
+        let Ok((decision, request_id)) = invoker.prompt_mcp_permission("call-mcp-deny", "srv__tool").await else {
+            panic!("the prompt was stopped");
+        };
+        assert_eq!(decision, PermissionDecision::Deny);
+        assert_eq!(
+            denied_by_user_message("srv__tool", &request_id),
+            "ERROR: tool 'srv__tool' denied by user. Their reason: use the staging server"
+        );
+        let _ = person.await;
+    }
+
+    /// A prompt that settles, by an answer or by a stop, leaves nothing in the
+    /// deny-reason table or the pending-request registry.
+    #[tokio::test]
+    async fn deny_reasons_table_empty_after_prompt_settles() {
+        use tauri_plugin_agent_tools::lifecycle::{stop_scope, Scope, StopReason};
+        let pending = |id: &str| DENY_REASONS.lock().unwrap().as_ref().is_some_and(|t| t.contains_key(id));
+        let dir = tempfile::tempdir().unwrap();
+
+        // Answered with a reason, which the refusal message consumes.
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let invoker = build_prompting_invoker(dir.path().to_path_buf(), tx, registry.clone());
+        let answering = registry.clone();
+        let person = tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest { request_id, .. } = event {
+                    record_deny_reason(&request_id, "not now");
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::Deny);
+                    }
+                    return;
+                }
+            }
+        });
+        let Ok((_, request_id)) = invoker.prompt_mcp_permission("call-settle-1", "srv__tool").await else {
+            panic!("the prompt was stopped");
+        };
+        let _ = denied_by_user_message("srv__tool", &request_id);
+        assert!(!pending(&request_id));
+        assert!(registry.lock().await.is_empty());
+        let _ = person.await;
+
+        // Stopped after a reason was recorded: the reason is dropped.
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(dir.path().to_path_buf(), tx, registry.clone());
+        invoker.cancel_scope = Scope::new("sess-settle-stop", "run-settle-stop", "");
+        let scope = invoker.cancel_scope.clone();
+        let stopper = tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest { request_id, .. } = event {
+                    record_deny_reason(&request_id, "typed just before the stop");
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    stop_scope(&scope, StopReason::Cancelled);
+                    return Some(request_id);
+                }
+            }
+            None
+        });
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            invoker.prompt_mcp_permission("call-settle-2", "srv__tool"),
+        )
+        .await
+        .expect("a stopped run stayed parked on its permission prompt");
+        assert!(result.is_err());
+        let stopped_id = stopper.await.unwrap().expect("a request was raised");
+        assert!(!pending(&stopped_id), "a stopped prompt left its deny reason behind");
+        assert!(registry.lock().await.is_empty());
+    }
+
+    /// Under `bypass` the run already decided: a user-scope subagent write
+    /// raises no prompt.
+    #[tokio::test]
+    async fn create_subagent_user_scope_under_bypass_does_not_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(dir.path().to_path_buf(), tx, registry.clone());
+        invoker.bypass = true;
+        assert!(invoker.approve_user_subagent("helper").await.is_ok());
+        drop(invoker);
+        while let Some(event) = rx.recv().await {
+            assert!(!matches!(event, StreamEvent::PermissionRequest { .. }), "bypass still prompted");
+        }
+        assert!(registry.lock().await.is_empty());
+    }
+
+    /// With nobody to ask, a user-scope subagent write is refused with a typed
+    /// reason, not prompted into an auto-deny.
+    #[tokio::test]
+    async fn create_subagent_user_scope_without_prompter_refuses() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(dir.path().to_path_buf(), tx, registry.clone());
+        invoker.bypass = false;
+        if invoker.can_prompt() {
+            // Run from a terminal: stdin can be asked, so this case cannot be set up.
+            return;
+        }
+        let refused = invoker.approve_user_subagent("helper").await.unwrap_err();
+        assert!(refused.starts_with("ERROR [approval_refused]"), "{refused}");
+        drop(invoker);
+        while let Some(event) = rx.recv().await {
+            assert!(!matches!(event, StreamEvent::PermissionRequest { .. }), "a prompt was raised with nobody to answer");
+        }
     }
 
     #[test]
