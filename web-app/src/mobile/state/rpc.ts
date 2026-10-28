@@ -23,6 +23,17 @@ const notify = () => {
   listeners.forEach((l) => l())
 }
 
+/** Reads kept at once; the oldest idle ones are dropped past this. */
+export const CACHE_LIMIT = 200
+
+function trim() {
+  if (cache.size <= CACHE_LIMIT) return
+  for (const [key, entry] of cache) {
+    if (cache.size <= CACHE_LIMIT) break
+    if (!entry.promise && !entry.loading) cache.delete(key)
+  }
+}
+
 const keyOf = (method: string, params: unknown) => `${method} ${JSON.stringify(params ?? {})}`
 
 function load(method: RemoteMethod, params: unknown, key: string) {
@@ -34,7 +45,9 @@ function load(method: RemoteMethod, params: unknown, key: string) {
     .rpc(method, params as never)
     .then(
       (data) => {
+        cache.delete(key) // re-insert so the newest read is last in line to go
         cache.set(key, { data, loading: false, stale: false })
+        trim()
       },
       (error: Error) => {
         cache.set(key, { data: prev?.data, error, loading: false, stale: false })
@@ -97,6 +110,7 @@ export function primeRpc<M extends RemoteMethod>(
   data: RemoteMethods[M]['result']
 ) {
   cache.set(keyOf(method, params), { data, loading: false, stale: false })
+  trim()
   notify()
 }
 

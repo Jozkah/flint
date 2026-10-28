@@ -11,6 +11,7 @@ import { useRpc } from '../state/rpc'
 import { routeFor, useSessions } from '../state/sessions'
 import { accessLabel, modeLabel } from '../shell/labels'
 import { t } from '../i18n'
+import { activate } from '../ui/a11y'
 
 const CHAT_SUGGESTIONS = [
   t('home.chatSuggestions.error'),
@@ -124,7 +125,7 @@ export default function Home() {
     <TopMain crumb={t('common.workspace')} title={t('home.title')} />
     <div className="scroll">
       <div className="hero"><h2>{greet()}</h2><p>{t('home.hero')}</p><div className="segm" role="group" aria-label={t('home.start')}><button type="button" aria-pressed={mode === 'chat'} onClick={() => setMode('chat')}><I n="pen" />{t('home.modes.chat')}</button><button type="button" aria-pressed={mode === 'cowork'} onClick={() => setMode('cowork')}><I n="cowork" />{t('home.modes.cowork')}</button><button type="button" aria-pressed={mode === 'room'} onClick={() => setMode('room')}><I n="rooms" />{t('home.modes.room')}</button></div></div>
-      {mode === 'chat' && <><WaitCards /><Suggestions label={t('home.suggestions')} items={CHAT_SUGGESTIONS} onPick={fill} /><div className="tempbar"><I n="eye" size={14} />{t('home.tempNote')} · <u style={{ cursor: 'pointer' }} onClick={() => openSheet('temp')}>{t('home.tempChat')}</u></div></>}
+      {mode === 'chat' && <><WaitCards /><Suggestions label={t('home.suggestions')} items={CHAT_SUGGESTIONS} onPick={fill} /><div className="tempbar"><I n="eye" size={14} />{t('home.tempNote')} · <u role="button" style={{ cursor: 'pointer' }} {...activate(() => openSheet('temp'))}>{t('home.tempChat')}</u></div></>}
       {mode === 'cowork' && <><div className="frame" style={{ padding: '10px 12px', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}><div className="kv"><span>{t('home.folder')}</span><span>{folder ? folder.split(/[\\/]/).pop() : t('home.noRecentFolder')}</span></div>{folders.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{folders.map((f) => <button key={f} type="button" className={`chip${folder === f ? ' on' : ''}`} aria-pressed={folder === f} onClick={() => setFolder(f)}><I n="folder" size={12} />{f.split(/[\\/]/).pop()}</button>)}</div>}<div className="kv"><span>{t('home.mayDo')}</span><span>{modeLabel(composer.cwMode)?.label}</span></div><div className="kv"><span>{t('home.changesGo')}</span><span>{accessLabel(composer.access)?.label}</span></div></div><Suggestions label={t('home.try')} items={COWORK_SUGGESTIONS} onPick={fill} /></>}
       {mode === 'room' && <><div className="ssec" style={{ paddingTop: 18 }}>{t('home.template')}</div><div className="sugg">{[['Architecture review', t('home.templates.architecture.name'), t('home.templates.architecture.sub')], ['Naming', t('home.templates.naming.name'), t('home.templates.naming.sub')], ['Cross-check', t('home.templates.crossCheck.name'), t('home.templates.crossCheck.sub')], ['Debate', t('home.templates.debate.name'), t('home.templates.debate.sub')]].map(([id, name, sub]) => <button key={id} type="button" onClick={() => openSheet('roomnew', { template: id })}><I n="rooms" /><span style={{ flex: 1 }}>{name}<br /><small className="muted">{sub}</small></span></button>)}</div></>}
     </div>

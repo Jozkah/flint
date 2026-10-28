@@ -6,6 +6,7 @@ import { go, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { byKind, useSessions } from '../state/sessions'
 import { t } from '../i18n'
+import { activate } from '../ui/a11y'
 
 const NOTICE_ICON: Record<string, [IconId, string]> = {
   approval: ['shield', 'var(--tk-appr)'],
@@ -60,7 +61,7 @@ export default function Overview() {
           {notices.slice(0, 6).map((n) => {
             const [icon, color] = NOTICE_ICON[n.kind]
             return (
-              <div key={n.id} className="act2" role={n.route ? 'button' : undefined} onClick={() => n.route && go(n.route)}>
+              <div key={n.id} className="act2" role={n.route ? 'button' : undefined} {...(n.route ? activate(() => go(n.route!)) : {})}>
                 <I n={icon} style={{ color, marginTop: 2 }} />
                 <span className="tx">
                   <b style={{ fontWeight: 500 }}>{n.title}</b>
