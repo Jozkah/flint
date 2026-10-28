@@ -62,7 +62,7 @@ export function decideDrop(target: DropTarget, files: File[]): DropIntent {
  * An absolute file-system path, if that is all `text` is.
  *
  * Pasted text is only a path when it is one line and unmistakably absolute: a
- * drive or UNC path, or a POSIX path with at least two segments (so `/clear`
+ * drive path (never UNC), or a POSIX path with at least two segments (so `/clear`
  * stays a command). A URL is never a path. Surrounding quotes, which a shell
  * "copy as path" adds, are stripped. Whether it exists is the caller's check.
  */
@@ -73,9 +73,11 @@ export function pastedPath(text: string): string | null {
   if (quoted) s = quoted[2].trim()
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return null
   const windows = /^[A-Za-z]:[\\/][^\\/]/.test(s)
-  const unc = /^\\\\[^\\/]+[\\/][^\\/]+/.test(s)
   const posix = /^\/[^/\s][^/]*\/[^/]/.test(s)
-  return windows || unc || posix ? s : null
+  // A UNC path (backslash pair or `//host/x`) is never offered: stat'ing it
+  // makes Windows connect to that host and offer NTLM credentials.
+  if (!isSafeLocalPath(s)) return null
+  return windows || posix ? s : null
 }
 
 /**
