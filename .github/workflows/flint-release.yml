@@ -262,11 +262,79 @@ jobs:
       #   which runs build:icon, copy:assets:tauri, download:bin (bun, uv,
       #   sqlite-vec from their public GitHub releases), build:cli (flint),
       #   build-mlx-server on macOS, check:sidecars and `tauri build`.
-      # Unsigned: createUpdaterArtifacts is false in tauri.conf.json, no
-      # TAURI_SIGNING_*/APPLE_* variables are set, and
-      # JAN_ENGINE_REQUIRE_SIGNING is left unset so sign-engine.sh skips.
+      # Windows Authenticode signing, off until the secrets exist. With Azure
+      # Trusted Signing secrets (preferred) or a PFX certificate it sets
+      # FLINT_SIGN_MODE, and TAURI_CONFIG adds tauri's signCommand (app exe,
+      # sidecars, NSIS installer and uninstaller) and a beforeBundleCommand that
+      # signs every .exe/.dll staged in resources/bin before it is packed.
+      # src-tauri/sign.ps1 does the signing; docs/code-signing.md lists the
+      # secrets. No secrets: a notice, and the build stays unsigned and green.
+      - name: Configure Windows code signing
+        id: winsign
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TRUSTED_SIGNING_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $trusted = $env:AZURE_TENANT_ID -and $env:AZURE_CLIENT_ID -and $env:AZURE_CLIENT_SECRET -and `
+            $env:TRUSTED_SIGNING_ENDPOINT -and $env:TRUSTED_SIGNING_ACCOUNT -and $env:TRUSTED_SIGNING_PROFILE
+          $pfx = $env:WINDOWS_CERTIFICATE -and $env:WINDOWS_CERTIFICATE_PASSWORD
+          $work = Join-Path $env:RUNNER_TEMP 'winsign'
+          New-Item -ItemType Directory -Force $work | Out-Null
+          if ($trusted) {
+            # The Trusted Signing dlib for signtool, from Microsoft's NuGet feed.
+            nuget install Microsoft.Trusted.Signing.Client -Version 1.0.95 -ExcludeVersion -OutputDirectory $work -NonInteractive
+            if ($LASTEXITCODE -ne 0) { throw 'could not install Microsoft.Trusted.Signing.Client' }
+            $dlib = Join-Path $work 'Microsoft.Trusted.Signing.Client/bin/x64/Azure.CodeSigning.Dlib.dll'
+            if (-not (Test-Path $dlib)) { throw "Trusted Signing dlib not found at $dlib" }
+            $meta = Join-Path $work 'metadata.json'
+            @{ Endpoint = $env:TRUSTED_SIGNING_ENDPOINT; CodeSigningAccountName = $env:TRUSTED_SIGNING_ACCOUNT; CertificateProfileName = $env:TRUSTED_SIGNING_PROFILE } |
+              ConvertTo-Json | Set-Content -Encoding utf8 $meta
+            "FLINT_SIGN_MODE=trusted" >> $env:GITHUB_ENV
+            "TRUSTED_SIGNING_DLIB=$dlib" >> $env:GITHUB_ENV
+            "TRUSTED_SIGNING_METADATA=$meta" >> $env:GITHUB_ENV
+            Write-Host 'Windows binaries will be signed with Azure Trusted Signing.'
+          } elseif ($pfx) {
+            $cert = Join-Path $work 'cert.pfx'
+            [IO.File]::WriteAllBytes($cert, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            "FLINT_SIGN_MODE=pfx" >> $env:GITHUB_ENV
+            "WINDOWS_CERTIFICATE_PATH=$cert" >> $env:GITHUB_ENV
+            Write-Host 'Windows binaries will be signed with the PFX certificate.'
+          } else {
+            Write-Host '::notice::Windows code signing secrets are not set; building unsigned Windows binaries. See docs/code-signing.md.'
+            "enabled=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          "enabled=true" >> $env:GITHUB_OUTPUT
+          $root = $env:GITHUB_WORKSPACE -replace '\\', '/'
+          $sign = "$root/src-tauri/sign.ps1"
+          $ps = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $sign)
+          $config = @{
+            build = @{
+              beforeBundleCommand = "powershell $($ps -join ' ') -Dir `"$root/src-tauri/resources/bin`" `"$root/src-tauri/target/release/resources`""
+            }
+            bundle = @{ windows = @{ signCommand = @{ cmd = 'powershell'; args = $ps + '%1' } } }
+          } | ConvertTo-Json -Depth 6 -Compress
+          "TAURI_CONFIG=$config" >> $env:GITHUB_ENV
+
+      # Unsigned unless the step above found signing secrets: createUpdaterArtifacts
+      # is false in tauri.conf.json, no TAURI_SIGNING_*/APPLE_* variables are set,
+      # and JAN_ENGINE_REQUIRE_SIGNING is left unset so sign-engine.sh skips
+      # anything it cannot sign.
       - name: Build Flint
         env:
+          # Read by src-tauri/sign.ps1 in trusted mode (Windows only).
+          AZURE_TENANT_ID: ${{ matrix.name == 'windows-x64' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ matrix.name == 'windows-x64' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ matrix.name == 'windows-x64' && secrets.AZURE_CLIENT_SECRET || '' }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ matrix.name == 'windows-x64' && secrets.WINDOWS_CERTIFICATE_PASSWORD || '' }}
           # Read by the Makefile and package.json: build one macOS slice.
           FLINT_MAC_ARCH: ${{ matrix.mac_arch }}
           FLINT_MAC_TARGET: ${{ matrix.mac_arch == 'arm64' && 'aarch64-apple-darwin' || '' }}
@@ -280,6 +348,29 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: node scripts/check-main-thread-stack.mjs src-tauri/target/release/Flint-Desktop.exe
+
+      # Fails the job if signing was configured but anything Flint ships is
+      # unsigned: the staged binaries, the app exe and sidecars, the installers,
+      # and every PE inside the NSIS installer (the uninstaller included; NSIS
+      # plugin DLLs under $PLUGINSDIR are build-time helpers and skipped).
+      - name: Verify Windows signatures
+        if: runner.os == 'Windows' && steps.winsign.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $bundle = 'src-tauri/target/release/bundle'
+          $installers = @(Get-ChildItem -Recurse $bundle -Include *-setup.exe, *.msi | ForEach-Object FullName)
+          $inside = Join-Path $env:RUNNER_TEMP 'nsis-contents'
+          foreach ($i in $installers | Where-Object { $_ -like '*-setup.exe' }) {
+            7z x -y "-o$inside" $i | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "could not unpack $i" }
+          }
+          $packed = @(Get-ChildItem -Recurse -File $inside -Include *.exe, *.dll |
+            Where-Object { $_.FullName -notlike '*$PLUGINSDIR*' } | ForEach-Object FullName)
+          if (-not ($packed | Where-Object { $_ -match 'uninst' })) {
+            Write-Host '::warning::no uninstaller found inside the NSIS installer to verify'
+          }
+          $sidecars = @(Get-ChildItem src-tauri/target/release -File -Filter *.exe | ForEach-Object FullName)
+          ./src-tauri/sign.ps1 -Verify src-tauri/resources/bin @sidecars @installers @packed
 
       - name: Report ccache statistics
         if: success() || failure()

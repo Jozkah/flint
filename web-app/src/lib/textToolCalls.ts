@@ -73,7 +73,7 @@ function asCall(value: unknown): TextToolCall | null {
   const name = fn.name
   if (typeof name !== 'string' || name.length === 0) return null
   let args: unknown = fn.arguments ?? fn.parameters ?? fn.args ?? {}
-  if (typeof args === 'string') args = parseJson(args)
+  if (typeof args === 'string') args = args.trim() ? parseJson(args) : {}
   if (!args || typeof args !== 'object' || Array.isArray(args)) return null
   return { name, args: args as Record<string, unknown> }
 }
@@ -175,10 +175,10 @@ function pythonLiteral(raw: string): unknown {
       const json = parseJson(text)
       if (typeof json === 'string') return json
     }
-    return inner
-      .replace(/\\n/g, '\n')
-      .replace(/\\t/g, '\t')
-      .replace(/\\(["'\\])/g, '$1')
+    // One pass, so `\\n` stays a backslash and an n, not a newline.
+    return inner.replace(/\\(.)/g, (_m, c: string) =>
+      c === 'n' ? '\n' : c === 't' ? '\t' : c === 'r' ? '\r' : /["'\\]/.test(c) ? c : _m
+    )
   }
   const direct = parseJson(text)
   if (direct !== undefined) return direct

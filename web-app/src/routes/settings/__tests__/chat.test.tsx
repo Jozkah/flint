@@ -68,6 +68,8 @@ describe('Chat settings page', () => {
       'settings-chat-composer-rail-buttons',
       'settings-chat-reply-language',
       'settings-chat-auto-title',
+      'settings-chat-title-model',
+      'settings-chat-title-prompt',
       'settings-chat-strip-reasoning',
       'settings-chat-web-preview',
     ])
