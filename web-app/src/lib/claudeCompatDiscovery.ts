@@ -104,7 +104,11 @@ export function parseFrontmatter(text: string): {
   // The key of a `key:` line with no value, which a YAML block list
   // (`tools:` then `  - Read` lines) fills in.
   let listKey: string | null = null
-  for (const line of match[1].split(/\r?\n/)) {
+  const lines = match[1].split(/\r?\n/)
+  let idx = 0
+  while (idx < lines.length) {
+    const line = lines[idx]
+    idx++
     if (!line.trim() || line.trimStart().startsWith('#')) continue
     const item = /^\s*-\s+(.*)$/.exec(line)
     if (item && listKey) {
@@ -114,12 +118,38 @@ export function parseFrontmatter(text: string): {
       data[listKey] = list
       continue
     }
+    // An indented line that is neither a list item nor part of a block scalar
+    // is structure this parser does not understand: malformed, not a new key.
+    if (/^[ \t]/.test(line)) return { data: null, body: text }
     listKey = null
     const at = line.indexOf(':')
     if (at < 0) continue
     const key = line.slice(0, at).trim()
     const raw = line.slice(at + 1).trim()
     if (!key) continue
+    if (/^[|>][+-]?\d*$/.test(raw)) {
+      // Block scalar: every following blank or indented line is its text, so
+      // an injected `  name: evil` inside it never becomes a key.
+      const block: string[] = []
+      while (
+        idx < lines.length &&
+        (lines[idx].trim() === '' || /^[ \t]/.test(lines[idx]))
+      ) {
+        block.push(lines[idx])
+        idx++
+      }
+      while (block.length && block[block.length - 1].trim() === '') block.pop()
+      const indents = block
+        .filter((one) => one.trim() !== '')
+        .map((one) => /^[ \t]*/.exec(one)![0].length)
+      const strip = indents.length ? Math.min(...indents) : 0
+      const texts = block.map((one) => one.slice(strip))
+      data[key] =
+        raw[0] === '|'
+          ? texts.join('\n')
+          : texts.filter((one) => one.trim() !== '').join(' ')
+      continue
+    }
     if (raw.startsWith('[') && raw.endsWith(']')) {
       data[key] = raw
         .slice(1, -1)
