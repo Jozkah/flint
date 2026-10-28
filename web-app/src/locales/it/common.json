@@ -379,8 +379,10 @@
   "sharedFolder": {
     "others_one": "{{count}} altra sessione lavora in questa cartella",
     "others_other": "{{count}} altre sessioni lavorano in questa cartella",
+    "others_many": "{{count}} altre sessioni lavorano in questa cartella",
     "waitingApproval_one": "{{count}} altra sessione attende l’approvazione",
     "waitingApproval_other": "{{count}} altre sessioni attendono l’approvazione",
+    "waitingApproval_many": "{{count}} altre sessioni attendono l’approvazione",
     "waitingApprovalOne": "In attesa di approvazione",
     "holdEdit": "{{owner}} sta modificando {{target}}: a {{session}} è stato detto di scriverle",
     "holdGit": "{{owner}} lavora in questa cartella: {{session}} è stata fermata prima di git {{target}} e deve scriverle",
@@ -410,7 +412,8 @@
     "sharedWarning": "Cartella condivisa: le modifiche git di un’altra sessione possono spostare il branch e i file di questa. Flint trattiene i comandi git rischiosi e avvisa quando due sessioni modificano lo stesso file.",
     "gotIt": "Capito",
     "sidebarMark_one": "Condivide una cartella con {{count}} altra sessione",
-    "sidebarMark_other": "Condivide una cartella con {{count}} altre sessioni"
+    "sidebarMark_other": "Condivide una cartella con {{count}} altre sessioni",
+    "sidebarMark_many": "Condivide una cartella con {{count}} altre sessioni"
   },
   "coworkLayout": {
     "views": "Vista di Cowork",
@@ -787,6 +790,14 @@
     "filesDescription": "Aggiungi PDF, documenti o altro testo da usare come riferimento in questo progetto.",
     "uploadingFiles": "Caricamento file in corso…",
     "processButton": "Aggiungi",
+    "fileChangedOnDisk": "Modificato sul disco",
+    "fileMissing": "Mancante",
+    "reindexFile": "Reindicizza",
+    "reindexAllChanged": "Reindicizza tutti i modificati",
+    "filesChangedOnDisk": "File modificati sul disco dall'indicizzazione: {{count}}",
+    "reindexed": "File reindicizzati: {{count}}",
+    "reindexFailed": "Impossibile reindicizzare il file",
+    "staleFilesNotice": "File della raccolta modificati o mancanti sul disco: {{count}}. Reindicizzali dall'elenco dei file della raccolta.",
     "deleteFileDialog": {
       "title": "Elimina file",
       "description": "\"{{fileName}}\" e il suo contenuto indicizzato verranno rimossi da questa raccolta. L'operazione non può essere annullata."
@@ -854,6 +865,14 @@
     "openCodeFolder": "Apri la cartella del codice",
     "openCodeFolderDescription": "Scegli una cartella del tuo computer in cui Flint possa lavorare.",
     "setUpEmbeddingModel": "Configura un modello di embedding",
+    "mcpServers": {
+      "title": "Server MCP",
+      "useAll": "Usa tutti i server attivi (predefinito)",
+      "onlyThese": "Solo questi server",
+      "noneConfigured": "Nessun server MCP configurato.",
+      "filterActive": "Questo progetto usa solo: {{servers}}",
+      "filterNone": "Questo progetto non usa server MCP"
+    },
     "webPage": {
       "open": "Aggiungi pagina web",
       "title": "Aggiungi una pagina web",
@@ -1110,6 +1129,7 @@
     "pullRequests": "Pull request",
     "morePrs_one": "+{{count}} altra",
     "morePrs_other": "+{{count}} altre",
+    "morePrs_many": "+{{count}} altre",
     "noChecks": "Nessun controllo",
     "empty": "Ancora nulla qui.",
     "noMessages": "Ancora nessun messaggio",
@@ -2063,6 +2083,7 @@
     "hideCompletedToolsDescription": "Nascondi l'attività degli strumenti terminata con successo. L'attività in esecuzione, non riuscita, rifiutata, annullata e obsoleta viene sempre mostrata, e nulla viene eliminato.",
     "hiddenCount": "{{count}} attività degli strumenti completate nascoste",
     "hiddenCount_one": "1 attività dello strumento completata nascosta",
+    "hiddenCount_many": "{{count}} attività degli strumenti completate nascoste",
     "showAgain": "Mostrale di nuovo",
     "showModelReceived": "Mostra «Cosa ha ricevuto il modello»",
     "showModelReceivedDescription": "Il registro per turno della richiesta e il conteggio dei token. Viene registrato comunque e resta nei dettagli della sessione e nella cronologia."
@@ -2806,6 +2827,7 @@
     "showingFirst": "Visualizzati i primi {{loaded}} di {{total}}",
     "lines_one": "{{count}} riga",
     "lines_other": "{{count}} righe",
+    "lines_many": "{{count}} righe",
     "wrap": "A capo automatico",
     "copy": "Copia",
     "copied": "Copiato",
@@ -2887,6 +2909,7 @@
     "export": "Esporta",
     "imported_one": "Aggiunto {{count}} prompt",
     "imported_other": "Aggiunti {{count}} prompt",
+    "imported_many": "Aggiunti {{count}} prompt",
     "importedNone": "Nessun nuovo prompt trovato",
     "search": "Cerca prompt",
     "empty": "Ancora nessun prompt.",
@@ -3050,14 +3073,19 @@
   "nesting": {
     "more_one": "{{count}} altro annidato",
     "more_other": "{{count}} altri annidati",
+    "more_many": "{{count}} altri annidati",
     "new_one": "{{count}} nuovo",
     "new_other": "{{count}} nuovi",
+    "new_many": "{{count}} nuovi",
     "working_one": "{{count}} in corso",
     "working_other": "{{count}} in corso",
+    "working_many": "{{count}} in corso",
     "waiting_one": "{{count}} in attesa",
     "waiting_other": "{{count}} in attesa",
+    "waiting_many": "{{count}} in attesa",
     "count_one": "{{count}} annidato",
     "count_other": "{{count}} annidati",
+    "count_many": "{{count}} annidati",
     "fewer": "Mostra meno annidati"
   },
   "diffReview": {
@@ -3090,7 +3118,8 @@
     "report": {
       "clean": "Fermato. {{stopped}} fermati, {{already}} già fermati, nulla è più in esecuzione.",
       "partial_one": "{{stopped}} fermati, ma {{count}} processo è ancora in esecuzione. La pulizia non è terminata.",
-      "partial_other": "{{stopped}} fermati, ma {{count}} processi sono ancora in esecuzione. La pulizia non è terminata."
+      "partial_other": "{{stopped}} fermati, ma {{count}} processi sono ancora in esecuzione. La pulizia non è terminata.",
+      "partial_many": "{{stopped}} fermati, ma {{count}} processi sono ancora in esecuzione. La pulizia non è terminata."
     },
     "error": "Impossibile fermare: {{error}}",
     "cancel": "Annulla",
@@ -3136,6 +3165,7 @@
     "reviewed": "Ho esaminato cosa cambia",
     "moreLines_one": "… altra {{count}} riga",
     "moreLines_other": "… altre {{count}} righe",
+    "moreLines_many": "… altre {{count}} righe",
     "lines": "Righe {{from}}–{{to}}",
     "sensitive": "Sembra contenere una credenziale, quindi non viene mai applicato.",
     "wholeBinary": "Binario: applicato o lasciato intero.",
@@ -3144,8 +3174,10 @@
     "nothingSelected": "Nulla è selezionato. Rifiuta la proposta per scartarla.",
     "applied_one": "{{count}} file applicato.",
     "applied_other": "{{count}} file applicati.",
+    "applied_many": "{{count}} file applicati.",
     "appliedPartial_one": "{{count}} file applicato; il resto è stato escluso.",
     "appliedPartial_other": "{{count}} file applicati; il resto è stato escluso.",
+    "appliedPartial_many": "{{count}} file applicati; il resto è stato escluso.",
     "rejected": "Rifiutata. Nella tua cartella non è cambiato nulla.",
     "heading": "{{title}} in {{root}}",
     "defaultTitle": "Modifiche proposte",
@@ -3162,6 +3194,8 @@
     "applying": "Applicazione…",
     "applySelected": "Applica selezione"
   },
+  "chatRules": "Regole",
+  "chatRuleForThisChat": "Usa questa regola in questa chat",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
@@ -3216,8 +3250,10 @@
     "toggleSnippet": "Toggle snippet",
     "documents_one": "{{count}} document citation",
     "documents_other": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
     "web_one": "{{count}} web source",
     "web_other": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
   },
   "coworkRun": {

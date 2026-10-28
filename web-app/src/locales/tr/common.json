@@ -782,6 +782,14 @@
     "filesDescription": "Bu projede kaynak olarak kullanmak üzere PDF, belge veya başka metinler ekleyin.",
     "uploadingFiles": "Dosyalar işleniyor…",
     "processButton": "Ekle",
+    "fileChangedOnDisk": "Diskte değişti",
+    "fileMissing": "Bulunamadı",
+    "reindexFile": "Yeniden dizinle",
+    "reindexAllChanged": "Değişenlerin tümünü yeniden dizinle",
+    "filesChangedOnDisk": "Dizinlendikten sonra diskte değişen dosyalar: {{count}}",
+    "reindexed": "Yeniden dizinlenen dosyalar: {{count}}",
+    "reindexFailed": "Dosya yeniden dizinlenemedi",
+    "staleFilesNotice": "Diskte değişen veya kaybolan koleksiyon dosyaları: {{count}}. Bunları koleksiyonun Dosyalar listesinden yeniden dizinleyin.",
     "deleteFileDialog": {
       "title": "Dosyayı sil",
       "description": "\"{{fileName}}\" ve dizinlenmiş içeriği bu koleksiyondan kaldırılacak. Bu geri alınamaz."
@@ -849,6 +857,14 @@
     "openCodeFolder": "Kod klasörünü aç",
     "openCodeFolderDescription": "Flint'in çalışacağı, bilgisayarınızdaki bir klasörü seçin.",
     "setUpEmbeddingModel": "Gömme modeli kur",
+    "mcpServers": {
+      "title": "MCP sunucuları",
+      "useAll": "Tüm etkin sunucuları kullan (varsayılan)",
+      "onlyThese": "Yalnızca bu sunucular",
+      "noneConfigured": "Yapılandırılmış MCP sunucusu yok.",
+      "filterActive": "Bu proje yalnızca şunları kullanır: {{servers}}",
+      "filterNone": "Bu proje MCP sunucusu kullanmıyor"
+    },
     "webPage": {
       "open": "Web sayfası ekle",
       "title": "Web sayfası ekle",
@@ -3111,6 +3127,8 @@
     "applying": "Uygulanıyor…",
     "applySelected": "Seçileni uygula"
   },
+  "chatRules": "Kurallar",
+  "chatRuleForThisChat": "Bu kuralı bu sohbette kullan",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",

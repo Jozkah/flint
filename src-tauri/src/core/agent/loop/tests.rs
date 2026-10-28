@@ -9107,3 +9107,19 @@ fn a_window_too_small_to_compact_refuses_when_configured_and_is_forgiven_when_le
     assert!(thresholds_for(&policy, Some(0), None).is_err());
     assert!(thresholds_for(&policy, None, Some(0)).unwrap().is_none());
 }
+
+#[test]
+fn thresholds_for_honours_the_chosen_compaction_percentage() {
+    let mut policy = tauri_plugin_agent_tools::compaction_policy::Policy::default();
+    let auto = thresholds_for(&policy, Some(100_000), None).unwrap().unwrap();
+    policy.compact_at_percent = 60;
+    let sixty = thresholds_for(&policy, Some(100_000), None).unwrap().unwrap();
+    assert_eq!(sixty.compact_at, 60_000);
+    assert!(sixty.compact_at < auto.compact_at);
+    // Out of range is clamped, and never past the effective window.
+    policy.compact_at_percent = 99;
+    let high = thresholds_for(&policy, Some(100_000), None).unwrap().unwrap();
+    assert_eq!(high.compact_at, 95_000.min(high.effective_window));
+    policy.compact_at_percent = 10;
+    assert_eq!(thresholds_for(&policy, Some(100_000), None).unwrap().unwrap().compact_at, 50_000);
+}

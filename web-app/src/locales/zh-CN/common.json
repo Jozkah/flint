@@ -782,6 +782,14 @@
     "filesDescription": "添加 PDF、文档或其他文本，供此项目引用。",
     "uploadingFiles": "正在处理文件…",
     "processButton": "添加",
+    "fileChangedOnDisk": "磁盘上已更改",
+    "fileMissing": "缺失",
+    "reindexFile": "重新索引",
+    "reindexAllChanged": "重新索引所有已更改文件",
+    "filesChangedOnDisk": "索引后在磁盘上已更改的文件：{{count}}",
+    "reindexed": "已重新索引的文件：{{count}}",
+    "reindexFailed": "无法重新索引该文件",
+    "staleFilesNotice": "磁盘上已更改或缺失的集合文件：{{count}}。请在集合的文件列表中重新索引。",
     "deleteFileDialog": {
       "title": "删除文件",
       "description": "“{{fileName}}”及其已索引的内容将从此集合中移除。此操作无法撤销。"
@@ -851,6 +859,14 @@
     "openCodeFolderDescription": "选择你电脑上供 Flint 工作的文件夹。",
     "deleteProjectConfirm": "您确定要删除此项目吗？此操作无法撤销。",
     "setUpEmbeddingModel": "设置嵌入模型",
+    "mcpServers": {
+      "title": "MCP 服务器",
+      "useAll": "使用所有已启用的服务器（默认）",
+      "onlyThese": "仅使用这些服务器",
+      "noneConfigured": "尚未配置 MCP 服务器。",
+      "filterActive": "此项目仅使用：{{servers}}",
+      "filterNone": "此项目不使用任何 MCP 服务器"
+    },
     "webPage": {
       "open": "添加网页",
       "title": "添加网页",
@@ -3099,6 +3115,8 @@
     "applying": "正在应用…",
     "applySelected": "应用所选"
   },
+  "chatRules": "规则",
+  "chatRuleForThisChat": "在此对话中使用此规则",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",

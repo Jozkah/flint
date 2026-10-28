@@ -782,6 +782,14 @@
     "filesDescription": "इस प्रोजेक्ट में संदर्भ के रूप में उपयोग के लिए PDF, दस्तावेज़ या अन्य टेक्स्ट जोड़ें।",
     "uploadingFiles": "फाइलें प्रोसेस हो रही हैं…",
     "processButton": "जोड़ें",
+    "fileChangedOnDisk": "डिस्क पर बदला गया",
+    "fileMissing": "मौजूद नहीं",
+    "reindexFile": "फिर से इंडेक्स करें",
+    "reindexAllChanged": "सभी बदली फ़ाइलें फिर से इंडेक्स करें",
+    "filesChangedOnDisk": "इंडेक्स होने के बाद डिस्क पर बदली फ़ाइलें: {{count}}",
+    "reindexed": "फिर से इंडेक्स की गई फ़ाइलें: {{count}}",
+    "reindexFailed": "फ़ाइल फिर से इंडेक्स नहीं हो सकी",
+    "staleFilesNotice": "संग्रह की फ़ाइलें जो डिस्क पर बदली या गायब हैं: {{count}}। उन्हें संग्रह की फ़ाइल सूची से फिर से इंडेक्स करें।",
     "deleteFileDialog": {
       "title": "फ़ाइल हटाएँ",
       "description": "\"{{fileName}}\" और उसकी इंडेक्स की गई सामग्री इस कलेक्शन से हटा दी जाएगी। इसे वापस नहीं किया जा सकता।"
@@ -849,6 +857,14 @@
     "openCodeFolder": "कोड फ़ोल्डर खोलें",
     "openCodeFolderDescription": "अपने कंप्यूटर पर वह फ़ोल्डर चुनें जिसमें Flint काम करे।",
     "setUpEmbeddingModel": "एम्बेडिंग मॉडल सेट करें",
+    "mcpServers": {
+      "title": "MCP सर्वर",
+      "useAll": "सभी सक्षम सर्वर इस्तेमाल करें (डिफ़ॉल्ट)",
+      "onlyThese": "केवल ये सर्वर",
+      "noneConfigured": "कोई MCP सर्वर कॉन्फ़िगर नहीं है।",
+      "filterActive": "यह प्रोजेक्ट केवल इनका इस्तेमाल करता है: {{servers}}",
+      "filterNone": "यह प्रोजेक्ट किसी MCP सर्वर का इस्तेमाल नहीं करता"
+    },
     "webPage": {
       "open": "वेब पेज जोड़ें",
       "title": "वेब पेज जोड़ें",
@@ -3113,6 +3129,8 @@
     "applying": "लागू हो रहा है…",
     "applySelected": "चुने हुए लागू करें"
   },
+  "chatRules": "नियम",
+  "chatRuleForThisChat": "इस चैट में यह नियम उपयोग करें",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",

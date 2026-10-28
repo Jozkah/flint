@@ -121,10 +121,16 @@ pub fn file_stat<R: Runtime>(
     let is_symlink = fs::symlink_metadata(&path)
         .map(|m| m.file_type().is_symlink())
         .unwrap_or(false);
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|d| i64::try_from(d.as_secs()).ok());
     let file_stat = FileStat {
         is_directory,
         size,
         is_symlink,
+        modified,
     };
     Ok(file_stat)
 }

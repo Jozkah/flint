@@ -5,6 +5,8 @@ describe('validateProxyUrl', () => {
   it('accepts the schemes the backend supports', () => {
     expect(validateProxyUrl('http://h:8080')).toBe('ok')
     expect(validateProxyUrl('https://h')).toBe('ok')
+    expect(validateProxyUrl('socks5://h:1080')).toBe('ok')
+    expect(validateProxyUrl('socks5h://h:1080')).toBe('ok')
   })
 
   it('accepts a bare host:port, which the backend reads as http', () => {
@@ -19,7 +21,7 @@ describe('validateProxyUrl', () => {
 
   it('flags a scheme the backend does not support', () => {
     expect(validateProxyUrl('ftp://h')).toBe('scheme')
-    expect(validateProxyUrl('socks5://h:1080')).toBe('scheme')
+    expect(validateProxyUrl('socks4://h:1080')).toBe('scheme')
   })
 
   it('flags a missing host or stray whitespace', () => {

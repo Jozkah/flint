@@ -211,6 +211,9 @@ pub async fn set_compaction_policy(
     if layer.keep_recent.is_some() {
         current.keep_recent = layer.keep_recent;
     }
+    if layer.compact_at_percent.is_some() {
+        current.compact_at_percent = layer.compact_at_percent;
+    }
     if layer.strategy.is_some() {
         current.strategy = layer.strategy;
     }

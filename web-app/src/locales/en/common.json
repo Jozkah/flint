@@ -871,6 +871,14 @@
     "filesDescription": "Add PDFs, documents, or other text for these conversations to reference.",
     "uploadingFiles": "Processing files…",
     "processButton": "Add",
+    "fileChangedOnDisk": "Changed on disk",
+    "fileMissing": "Missing",
+    "reindexFile": "Re-index",
+    "reindexAllChanged": "Re-index all changed",
+    "filesChangedOnDisk": "Files changed on disk since they were indexed: {{count}}",
+    "reindexed": "Files re-indexed: {{count}}",
+    "reindexFailed": "Couldn't re-index the file",
+    "staleFilesNotice": "Collection files changed or missing on disk: {{count}}. Re-index them from the collection's Files list.",
     "deleteFileDialog": {
       "title": "Delete file",
       "description": "\"{{fileName}}\" and its indexed content will be removed from this collection. This can't be undone."
@@ -938,6 +946,14 @@
     "openCodeFolder": "Open code folder",
     "openCodeFolderDescription": "Choose a folder on your computer for Flint to work in.",
     "setUpEmbeddingModel": "Set up an embedding model",
+    "mcpServers": {
+      "title": "MCP servers",
+      "useAll": "Use all enabled servers (default)",
+      "onlyThese": "Only these servers",
+      "noneConfigured": "No MCP servers are configured.",
+      "filterActive": "This project only uses: {{servers}}",
+      "filterNone": "This project uses no MCP servers"
+    },
     "webPage": {
       "open": "Add web page",
       "title": "Add a web page",
@@ -3156,6 +3172,8 @@
     "applying": "Applying…",
     "applySelected": "Apply selected"
   },
+  "chatRules": "Rules",
+  "chatRuleForThisChat": "Use this rule in this chat",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",

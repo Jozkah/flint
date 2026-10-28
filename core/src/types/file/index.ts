@@ -3,6 +3,8 @@ export type FileStat = {
   size: number
   /** The path itself is a symbolic link (the other fields describe its target). */
   isSymlink?: boolean
+  /** Last modification time, whole seconds since the epoch (desktop only). */
+  modified?: number
 }
 
 export type DownloadState = {
