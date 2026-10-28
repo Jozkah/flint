@@ -977,60 +977,68 @@ async fn accept_callback(
     use hyper::body::Bytes;
     use hyper::server::conn::http1;
     use hyper::service::service_fn;
-    use hyper_util::rt::TokioIo;
+    use hyper_util::rt::{TokioIo, TokioTimer};
 
+    // Every connection is served on its own task, so a socket that connects
+    // and then stalls (a speculative browser connection, a drive-by client)
+    // cannot hold the listener while the real redirect waits behind it. All
+    // tasks report into one channel and are aborted when this returns.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut conns = tokio::task::JoinSet::new();
     loop {
-        let (stream, _) = listener
-            .accept()
-            .await
-            .map_err(|e| format!("callback connection failed: {e}"))?;
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let expected = expected_state.to_string();
-
-        let serve = http1::Builder::new().serve_connection(
-            TokioIo::new(stream),
-            service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
-                let tx = tx.clone();
-                let expected = expected.clone();
-                async move {
-                    let outcome = parse_callback_query(req.uri().query().unwrap_or(""), &expected);
-                    let body = callback_page(&outcome);
-                    let status = match &outcome {
-                        Some(_) => 200,
-                        None => 404,
-                    };
-                    if let Some(outcome) = outcome {
-                        let _ = tx.send(outcome);
-                    }
-                    Ok::<_, std::convert::Infallible>(
-                        hyper::Response::builder()
-                            .status(status)
-                            .header("content-type", "text/html; charset=utf-8")
-                            .body(Full::new(Bytes::from(body)))
-                            .expect("static response builds"),
-                    )
-                }
-            }),
-        );
-        // A browser keeps the connection alive after the redirect, so the
-        // connection future would not resolve until it times out. The response
-        // has already been written by the time the result lands in `rx`, so
-        // finishing on that instead of on the connection is what keeps the flow
-        // from stalling for the whole keep-alive window.
-        let outcome = tokio::select! {
-            served = serve => {
-                served.map_err(|e| format!("callback request failed: {e}"))?;
-                rx.try_recv().ok()
-            }
-            Some(outcome) = rx.recv() => Some(outcome),
+        let stream = tokio::select! {
+            Some(outcome) = rx.recv() => match outcome {
+                Ok(callback) => return Ok(callback),
+                Err(e) => return Err(e),
+            },
+            accepted = listener.accept() => match accepted {
+                Ok((stream, _)) => stream,
+                Err(e) => return Err(format!("callback connection failed: {e}")),
+            },
         };
-
-        match outcome {
-            Some(Ok(callback)) => return Ok(callback),
-            Some(Err(e)) => return Err(e),
-            // Not the redirect (a favicon probe, say): keep listening.
-            None => continue,
-        }
+        // Reap finished connections so a probe-heavy browser does not grow
+        // the set for the whole sign-in.
+        while conns.try_join_next().is_some() {}
+        let tx = tx.clone();
+        let expected = expected_state.to_string();
+        conns.spawn(async move {
+            let served = http1::Builder::new()
+                .timer(TokioTimer::new())
+                .header_read_timeout(std::time::Duration::from_secs(5))
+                .serve_connection(
+                    TokioIo::new(stream),
+                    service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+                        let tx = tx.clone();
+                        let expected = expected.clone();
+                        async move {
+                            let outcome =
+                                parse_callback_query(req.uri().query().unwrap_or(""), &expected);
+                            let body = callback_page(&outcome);
+                            let status = match &outcome {
+                                Some(_) => 200,
+                                None => 404,
+                            };
+                            // Not the redirect (a favicon probe, say): answer
+                            // 404 and keep listening.
+                            if let Some(outcome) = outcome {
+                                let _ = tx.send(outcome);
+                            }
+                            Ok::<_, std::convert::Infallible>(
+                                hyper::Response::builder()
+                                    .status(status)
+                                    .header("content-type", "text/html; charset=utf-8")
+                                    .body(Full::new(Bytes::from(body)))
+                                    .expect("static response builds"),
+                            )
+                        }
+                    }),
+                )
+                .await;
+            // A reset or timed-out probe is not the sign-in failing.
+            if let Err(e) = served {
+                log::debug!("OAuth callback connection ended: {e}");
+            }
+        });
     }
 }
 
@@ -2222,6 +2230,40 @@ mod tests {
             let got = waiter.await.unwrap().unwrap();
             assert_eq!(got.code, "c1");
             assert_eq!(got.state, "s1");
+        });
+    }
+
+    /// A socket that connects and never sends a request must not hold the
+    /// listener while the real redirect waits (NET-023).
+    #[test]
+    fn a_stalled_connection_does_not_block_the_redirect() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let listener =
+                tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+                    .await
+                    .unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let waiter = tokio::spawn(async move { accept_callback(&listener, "s1").await });
+
+            let _stalled = tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .unwrap();
+            let hit = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                reqwest::Client::new()
+                    .get(format!("http://127.0.0.1:{port}/callback?code=c1&state=s1"))
+                    .send(),
+            )
+            .await
+            .expect("redirect was blocked behind the stalled socket")
+            .unwrap();
+            assert_eq!(hit.status(), 200);
+            assert_eq!(waiter.await.unwrap().unwrap().code, "c1");
         });
     }
 }
