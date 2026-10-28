@@ -170,5 +170,84 @@
     "toolOk": "v pořádku",
     "toolFailed": "selhalo",
     "chatStarted": "Chat zahájen"
+  },
+  "promptSnapshot": {
+    "summary": "Co model obdržel",
+    "loading": "Načítání…",
+    "gone": "Tento snímek už na disku není.",
+    "unavailable": "Nebyla uložena žádná data. {{reason}}",
+    "reason": {
+      "not-serializable": "Požadavek nebylo možné serializovat, proto nebylo nic uloženo.",
+      "disabled": "Snímky jsou pro tento běh vypnuty.",
+      "too-large": "Požadavek byl příliš velký na uložení vcelku."
+    },
+    "meta": {
+      "provider": "Poskytovatel",
+      "model": "Model",
+      "reasoning": "Uvažování",
+      "session": "Relace",
+      "run": "Běh",
+      "agent": "Agent",
+      "sent": "Odesláno",
+      "hash": "Hash",
+      "redacted": "Začerněno",
+      "nothing": "nic",
+      "redactedList_one": "{{count}} pole: {{list}}",
+      "redactedList_few": "{{count}} pole: {{list}}",
+      "redactedList_many": "{{count}} pole: {{list}}",
+      "redactedList_other": "{{count}} polí: {{list}}"
+    },
+    "view": {
+      "label": "Zobrazit jako",
+      "tree": "Strom",
+      "json": "JSON"
+    },
+    "copy": "Kopírovat začerněná data",
+    "copied": "Zkopírováno",
+    "diff": {
+      "run": "Porovnat s předchozím požadavkem",
+      "loading": "Porovnávám…",
+      "first": "Toto je první uložený požadavek relace; není s čím porovnávat.",
+      "summary": "Oproti {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} přibylo",
+      "left": "{{count}} ubylo",
+      "keptMessages_one": "{{count}} zpráva zachována",
+      "keptMessages_few": "{{count}} zprávy zachovány",
+      "keptMessages_many": "{{count}} zprávy zachovány",
+      "keptMessages_other": "{{count}} zpráv zachováno",
+      "keptTools_one": "{{count}} nástroj zachován",
+      "keptTools_few": "{{count}} nástroje zachovány",
+      "keptTools_many": "{{count}} nástroje zachovány",
+      "keptTools_other": "{{count}} nástrojů zachováno",
+      "systemChanged": "změněn systémový prompt",
+      "enteredHeading": "Přibylo",
+      "leftHeading": "Ubylo",
+      "nothingNew": "Nic nového.",
+      "nothingLeft": "Z okna nic neodešlo."
+    },
+    "replay": {
+      "label": "Přehrání tohoto kontextu",
+      "run": "Přehrát tento kontext",
+      "hint": "Odešle přesně tento požadavek znovu. Nástroje, které model požaduje, se nespouštějí.",
+      "needsSession": "Přehrání potřebuje relaci, ke které tento tah patří.",
+      "redactedBlock_one": "Nelze přehrát: {{count}} pole bylo před uložením začerněno, model by tedy nedostal to, co tehdy.",
+      "redactedBlock_few": "Nelze přehrát: {{count}} pole bylo před uložením začerněno, model by tedy nedostal to, co tehdy.",
+      "redactedBlock_many": "Nelze přehrát: {{count}} pole bylo před uložením začerněno, model by tedy nedostal to, co tehdy.",
+      "redactedBlock_other": "Nelze přehrát: {{count}} polí bylo před uložením začerněno, model by tedy nedostal to, co tehdy.",
+      "state": {
+        "running": "Přehrávám…",
+        "interrupted": "Přerušeno: Flint se zastavil během běhu",
+        "completed": "Dokončeno",
+        "failed": "Selhalo",
+        "cancelled": "Zastaveno",
+        "refused": "Odmítnuto"
+      },
+      "matched": "Stejný kontext jako tah (hashe se shodují)",
+      "differed": "Odeslaný požadavek se lišil od požadavku tahu",
+      "finish": "konec: {{reason}}",
+      "stop": "Zastavit",
+      "asked": "Požádal o {{tools}} (nespuštěno)"
+    }
   }
 }
