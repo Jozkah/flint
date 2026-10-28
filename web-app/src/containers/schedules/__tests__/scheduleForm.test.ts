@@ -79,6 +79,21 @@ describe('form to schedule and back', () => {
     }
   })
 
+  it('keeps a one-time schedule one-time when its schedule fields are untouched', () => {
+    const spec = { kind: 'once', at: '2026-03-04T05:06' } as const
+    const f = scheduleToForm(spec)
+    expect(f.cron).toBe('6 5 4 3 *')
+    expect(formToSchedule(f)).toEqual(spec)
+    // An unusual `at` that the editor cannot parse still round-trips.
+    const odd = { kind: 'once', at: '2026-03-04T05:06:07Z' } as const
+    expect(formToSchedule(scheduleToForm(odd))).toEqual(odd)
+  })
+
+  it('turns a one-time schedule into cron only once the user edits it', () => {
+    const f = scheduleToForm({ kind: 'once', at: '2026-03-04T05:06' })
+    expect(formToSchedule({ ...f, cron: '0 9 * * *' })).toEqual({ kind: 'cron', expr: '0 9 * * *' })
+  })
+
   it('stores times as hour and minute numbers, earliest first', () => {
     expect(formToSchedule(form({ times: ['17:05', '09:00'] }))).toEqual({
       kind: 'daily',

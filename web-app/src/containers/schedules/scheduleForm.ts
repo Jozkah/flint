@@ -25,6 +25,12 @@ export type ScheduleForm = {
   /** 0 = Sunday .. 6 = Saturday. */
   days: number[]
   cron: string
+  /**
+   * Set for a stored one-time schedule. While the schedule fields still match
+   * the snapshot, saving returns this spec untouched instead of turning the
+   * one-time run into a yearly cron.
+   */
+  once?: { spec: ScheduleSpec; snapshot: string }
 }
 
 export type TaskForm = {
@@ -111,8 +117,13 @@ export function formToCron(form: ScheduleForm): string[] {
     })
 }
 
+function scheduleKey(form: ScheduleForm): string {
+  return JSON.stringify([form.preset, form.times, form.days, form.cron])
+}
+
 /** The stored schedule for a form, or `null` while the form cannot make one. */
 export function formToSchedule(form: ScheduleForm): ScheduleSpec | null {
+  if (form.once && form.once.snapshot === scheduleKey(form)) return form.once.spec
   if (form.preset === 'cron') {
     const expr = form.cron.trim()
     return expr ? { kind: 'cron', expr } : null
@@ -130,7 +141,8 @@ export function scheduleToForm(spec: ScheduleSpec): ScheduleForm {
     // The editor has no one-time preset; show the cron the time compiles to.
     const m = /^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(spec.at)
     const expr = m ? `${+m[4]} ${+m[3]} ${+m[2]} ${+m[1]} *` : ''
-    return { preset: 'cron', times: ['09:00'], days: [1, 2, 3, 4, 5], cron: expr }
+    const base: ScheduleForm = { preset: 'cron', times: ['09:00'], days: [1, 2, 3, 4, 5], cron: expr }
+    return { ...base, once: { spec, snapshot: scheduleKey(base) } }
   }
   if (spec.kind === 'cron') {
     return { preset: 'cron', times: ['09:00'], days: [1, 2, 3, 4, 5], cron: spec.expr }
