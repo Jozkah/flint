@@ -462,7 +462,10 @@
     "usageWeekAria": "प्रति सप्ताह टोकन",
     "usageWindow": "अवधि",
     "usageLimit": "सीमा",
-    "usageUnsaved": "सहेजे नहीं गए बदलाव"
+    "usageUnsaved": "सहेजे नहीं गए बदलाव",
+    "stopServerToEdit": "संपादित करने के लिए सर्वर बंद करें",
+    "trustedHostsInvalid": "मान्य होस्ट नहीं: {{hosts}}. होस्ट या होस्ट:पोर्ट लिखें, जैसे example.com या 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "सहेजा नहीं गया। सहेजने के लिए Enter, पूर्ववत करने के लिए Escape दबाएँ।"
   },
   "privacy": {
     "analytics": "विश्लेषण",

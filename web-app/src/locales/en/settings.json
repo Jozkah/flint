@@ -462,7 +462,10 @@
     "usageWeekAria": "Tokens per week",
     "usageWindow": "Window",
     "usageLimit": "Limit",
-    "usageUnsaved": "Unsaved changes"
+    "usageUnsaved": "Unsaved changes",
+    "stopServerToEdit": "Stop the server to edit",
+    "trustedHostsInvalid": "Not a valid host: {{hosts}}. Use a host or host:port, like example.com or 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Unsaved. Press Enter to save, Escape to undo."
   },
   "privacy": {
     "analytics": "Analytics",

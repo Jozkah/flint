@@ -460,7 +460,10 @@
     "usageWeekAria": "Token per minggu",
     "usageWindow": "Jendela",
     "usageLimit": "Batas",
-    "usageUnsaved": "Perubahan belum disimpan"
+    "usageUnsaved": "Perubahan belum disimpan",
+    "stopServerToEdit": "Hentikan server untuk mengedit",
+    "trustedHostsInvalid": "Host tidak valid: {{hosts}}. Gunakan host atau host:port, seperti example.com atau 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Belum disimpan. Tekan Enter untuk menyimpan, Escape untuk membatalkan."
   },
   "privacy": {
     "analytics": "Analitik",

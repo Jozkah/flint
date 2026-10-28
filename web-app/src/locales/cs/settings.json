@@ -466,7 +466,10 @@
     "usageWeekAria": "Tokeny za týden",
     "usageWindow": "Okno",
     "usageLimit": "Limit",
-    "usageUnsaved": "Neuložené změny"
+    "usageUnsaved": "Neuložené změny",
+    "stopServerToEdit": "Pro úpravu zastavte server",
+    "trustedHostsInvalid": "Neplatný hostitel: {{hosts}}. Použijte hostitele nebo hostitel:port, např. example.com nebo 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Neuloženo. Enter uloží, Escape vrátí změnu."
   },
   "privacy": {
     "analytics": "Analytika",

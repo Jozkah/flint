@@ -466,7 +466,10 @@
     "usageWeekAria": "Токенов в неделю",
     "usageWindow": "Окно",
     "usageLimit": "Лимит",
-    "usageUnsaved": "Несохранённые изменения"
+    "usageUnsaved": "Несохранённые изменения",
+    "stopServerToEdit": "Остановите сервер, чтобы изменить",
+    "trustedHostsInvalid": "Недопустимый хост: {{hosts}}. Укажите хост или хост:порт, например example.com или 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Не сохранено. Enter — сохранить, Escape — отменить."
   },
   "privacy": {
     "analytics": "Аналитика",

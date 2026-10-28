@@ -464,7 +464,10 @@
     "usageWeekAria": "Tokens por semana",
     "usageWindow": "Ventana",
     "usageLimit": "Límite",
-    "usageUnsaved": "Cambios sin guardar"
+    "usageUnsaved": "Cambios sin guardar",
+    "stopServerToEdit": "Detén el servidor para editar",
+    "trustedHostsInvalid": "Host no válido: {{hosts}}. Usa un host o host:puerto, como example.com o 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Sin guardar. Pulsa Intro para guardar, Escape para deshacer."
   },
   "privacy": {
     "analytics": "Analíticas",

@@ -462,7 +462,10 @@
     "usageWeekAria": "Token mỗi tuần",
     "usageWindow": "Khoảng thời gian",
     "usageLimit": "Giới hạn",
-    "usageUnsaved": "Thay đổi chưa lưu"
+    "usageUnsaved": "Thay đổi chưa lưu",
+    "stopServerToEdit": "Dừng máy chủ để chỉnh sửa",
+    "trustedHostsInvalid": "Máy chủ không hợp lệ: {{hosts}}. Dùng máy chủ hoặc máy chủ:cổng, ví dụ example.com hoặc 192.168.1.5:3000.",
+    "trustedHostsUnsaved": "Chưa lưu. Nhấn Enter để lưu, Escape để hoàn tác."
   },
   "privacy": {
     "analytics": "Phân tích",
