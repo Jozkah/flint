@@ -215,7 +215,7 @@ function ModelProviders() {
       if (
         providers.some((e) => e.provider.toLowerCase() === name.toLowerCase())
       ) {
-        toast.error(t('providerAlreadyExists', { name }))
+        toast.error(t('common:providerAlreadyExists', { name }))
         return
       }
       const template =

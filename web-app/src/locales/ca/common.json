@@ -3220,5 +3220,10 @@
     "web_one": "{{count}} web source",
     "web_other": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   }
 }

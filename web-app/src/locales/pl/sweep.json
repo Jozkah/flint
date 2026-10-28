@@ -101,7 +101,12 @@
     "variant": "Wariant",
     "whatToLookFor": "Czego szukać",
     "searchPlaceholderShort": "Szukaj lub wklej URL…",
-    "resultLimit": "Pokaż"
+    "resultLimit": "Pokaż",
+    "recommendedHere": "Recommended for this computer",
+    "shards_one": "{{count}} shard",
+    "shards_few": "{{count}} shards",
+    "shards_many": "{{count}} shards",
+    "shards_other": "{{count}} shards"
   },
   "llamaImport": {
     "description": "Zaimportuj plik modelu GGUF, aby dodać go do swojej kolekcji. Włącz obsługę multimodalną, aby dołączyć mmproj dla wejścia obrazu lub dźwięku, albo obsługę modeli roboczych dla dekodowania spekulatywnego. Modele embeddingów są wykrywane automatycznie.",

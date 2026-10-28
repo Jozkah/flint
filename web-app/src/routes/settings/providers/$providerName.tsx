@@ -1507,7 +1507,7 @@ function ProviderDetail() {
             role="status"
             className="flex min-h-11 items-center gap-2 border-t border-dashed border-border px-2 py-3"
           >
-            <Chip live>Importing...</Chip>
+            <Chip live>{t('sweep:modelImport.importing')}</Chip>
             <span className="min-w-0 truncate font-medium text-foreground">
               {importingModel}
             </span>
