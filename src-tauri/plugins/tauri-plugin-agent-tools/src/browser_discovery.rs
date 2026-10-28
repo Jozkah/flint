@@ -313,7 +313,6 @@ pub fn candidates() -> Vec<PathBuf> {
         "/usr/bin/opera",
         "/usr/bin/opera-stable",
         "/usr/bin/vivaldi",
-        "/usr/bin/arc",
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
     ]
@@ -454,7 +453,6 @@ mod tests {
             "/usr/bin/brave-browser",
             "/usr/bin/opera",
             "/usr/bin/vivaldi",
-            "/usr/bin/arc",
             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             "/usr/bin/chromium",
         ] {
