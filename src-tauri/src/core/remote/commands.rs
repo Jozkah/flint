@@ -421,7 +421,12 @@ pub fn remote_confirm_pairing(
     state
         .hub
         .confirm_pairing(&request_id, approve)
-        .map_err(|_| "This pairing request has expired".to_string())
+        .map_err(|e| match e {
+            super::auth::PairError::TooManyDevices => {
+                "Too many phones are paired; unpair one first".to_string()
+            }
+            _ => "This pairing request has expired".to_string(),
+        })
 }
 
 #[tauri::command]
