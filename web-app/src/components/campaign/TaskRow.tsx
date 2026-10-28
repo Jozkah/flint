@@ -43,6 +43,7 @@ import {
 } from '@/lib/campaignView'
 import { RecheckNotice, StrandedNotice } from '@/components/campaign/TaskNotices'
 import { NEEDS_HELP_HINT, isNeedsHelp } from '@/lib/campaignHelp'
+import { groupTextOf, headlineTextOf, wordTextOf } from '@/lib/campaignTaskText'
 import type { CampaignTask } from '@/lib/campaignModel'
 import { cn } from '@/lib/utils'
 
@@ -193,77 +194,11 @@ export function TaskRow({
     counted: totals !== null,
     steps,
   })
-  const wordText =
-    word === 'waiting' || word === 'waitingSkipped'
-      ? t(`settings:campaigns.board.word.${word}`, {
-          tasks: waitingFor.join(', '),
-        })
-      : t(`settings:campaigns.board.word.${word}`)
-
-  const stopClause = (failures: number) =>
-    failures <= 0
-      ? t('settings:campaigns.board.story.stop.none')
-      : failures === 1
-        ? t('settings:campaigns.board.story.stop.one')
-        : t('settings:campaigns.board.story.stop.many', { count: failures })
-  const wroteText = () =>
-    t(
-      `settings:campaigns.board.story.${
-        headline.params.counted ? 'wrote' : 'wroteUncounted'
-      }`,
-      {
-        count: headline.params.count,
-        added: headline.params.added,
-        removed: headline.params.removed,
-      }
-    )
-  const headlineText = (kind: HeadlineKind): string => {
-    switch (kind) {
-      case 'wrote':
-        return wroteText()
-      case 'wroteStopped':
-        return `${wroteText()}. ${stopClause(headline.params.failures)}`
-      case 'stoppedFailing':
-        return `${t('settings:campaigns.board.story.headline.noOutput')} ${stopClause(headline.params.failures)}`
-      case 'working':
-        return t('settings:campaigns.board.story.headline.working', {
-          count: headline.params.steps,
-        })
-      case 'waiting':
-        return t('settings:campaigns.board.story.headline.waiting', {
-          tasks: headline.params.tasks,
-        })
-      default:
-        return t(`settings:campaigns.board.story.headline.${kind}`)
-    }
-  }
-
+  const wordText = wordTextOf(t, word, waitingFor)
+  const headlineText = (kind: HeadlineKind): string =>
+    headlineTextOf(t, kind, headline.params)
   const groups = groupSteps(steps)
-  const groupText = (g: StepGroup): { main: string; sub?: string } => {
-    const first = g.steps[0]
-    const n = g.steps.length
-    const names = g.steps.map((s) => s.label)
-    const sub =
-      n > 1
-        ? names.slice(0, 3).join(', ') + (n > 3 ? `, +${n - 3}` : '')
-        : undefined
-    switch (g.kind) {
-      case 'read':
-        return n > 1
-          ? { main: t('settings:campaigns.board.story.step.readMany', { count: n }), sub }
-          : { main: t('settings:campaigns.board.story.step.read', { label: first.label }) }
-      case 'search':
-        return { main: t('settings:campaigns.board.story.step.search', { count: n }) }
-      case 'write':
-        return n > 1
-          ? { main: t('settings:campaigns.board.story.step.writeMany', { count: n }), sub }
-          : { main: t('settings:campaigns.board.story.step.write', { label: first.label }) }
-      default:
-        return g.ok
-          ? { main: t('settings:campaigns.board.story.step.ran', { label: first.label }) }
-          : { main: t('settings:campaigns.board.story.step.ranFailed', { label: first.label }) }
-    }
-  }
+  const groupText = (g: StepGroup): { main: string; sub?: string } => groupTextOf(t, g)
   const stepIcon = (kind: StepGroup['kind'], ok: boolean) => {
     const cls = cn('mt-0.5 size-3.5 shrink-0', ok ? 'text-muted-foreground' : 'text-destructive')
     if (kind === 'read') return <FileText aria-hidden className={cls} />
