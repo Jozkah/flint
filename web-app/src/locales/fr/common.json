@@ -1372,7 +1372,8 @@
     "binaryRefused": "{{name}} n'est pas un fichier texte, quelle que soit son extension",
     "chooseAgainAction": "Choisir à nouveau",
     "externalGone": "Ce fichier a été ouvert depuis l'extérieur du projet, et cet accès n'a pas été conservé. Choisissez-le à nouveau pour le rouvrir.",
-    "oneFolderAtATime": "Un seul dossier à la fois. « {{name}} » n'a pas été ajouté."
+    "oneFolderAtATime": "Un seul dossier à la fois. « {{name}} » n'a pas été ajouté.",
+    "openFailed": "Could not open {{name}}."
   },
   "settingsSearch": {
     "label": "Rechercher dans les paramètres",
@@ -3166,5 +3167,9 @@
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
     "failed": "The handoff could not be saved: {{message}}"
-  }
+  },
+  "imageLoadFailed": "This image could not be loaded.",
+  "attachedImage": "Attached image {{n}}",
+  "saveChanges": "Save changes",
+  "savingEllipsis": "Saving…"
 }
