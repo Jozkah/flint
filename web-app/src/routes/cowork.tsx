@@ -146,6 +146,7 @@ import { createLiveLane } from '@/lib/cowork/run/liveLane'
 import { createStepHandlers } from '@/lib/cowork/run/stepHandlers'
 import { createToolHandlers } from '@/lib/cowork/run/toolHandlers'
 import { createTeamTool } from '@/lib/cowork/run/teamTool'
+import { createApprovalHooks } from '@/lib/cowork/run/approvalHooks'
 import { withToolTiming } from '@/hooks/useToolCallRuntime'
 import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
@@ -294,11 +295,7 @@ import { janAuthoredPaths } from '@/lib/coworkOrigins'
 import {
   deriveRunOutcome,
   } from '@/lib/coworkRunOutcome'
-import {
-  executeCampaignTool,
-  isCoordinatorEligible,
-} from '@/lib/campaignTools'
-import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
+import { isCoordinatorEligible } from '@/lib/campaignTools'
 import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
 import { groupsToOffer } from '@/lib/coworkToolGroups'
@@ -3584,6 +3581,21 @@ export function CoworkPage() {
       // way every other ending is: the user's own message is committed, the
       // run is closed and nothing is left running.
       if (overflow) throw overflow
+      const approvalHooks = createApprovalHooks({
+        rs,
+        sid,
+        runId,
+        folder: current?.folder,
+        campaign: current?.campaign,
+        storedMode,
+        selectedProvider,
+        modelId: selectedModel?.id,
+        pickFolder: () => serviceHub.dialog().open({ directory: true }),
+        holdFolder: (picked) => {
+          restartAfterFolderRef.current[sid] = true
+          setPendingFolder((pending) => ({ ...pending, [sid]: picked }))
+        },
+      })
       const teamTool = createTeamTool({
         sid,
         runId,
@@ -3704,66 +3716,7 @@ export function CoworkPage() {
                 // through the same prompt, with its server named so the user's
                 // trust choices for that server apply.
                 mcpServerFor: (name) => transport.mcpServerFor(name),
-                onApproveMcp: (callId, toolName, input, server, signal) =>
-                  useToolApprovalRequests
-                    .getState()
-                    .requestApproval(callId, toolName, sid, server, {
-                      input,
-                      workspaceLabel: current?.folder ?? undefined,
-                      autoApproveStreak: sid,
-                      signal,
-                    }),
-                // A refusal for a path outside the sandbox, with no folder
-                // attached: ask once per run whether to attach one. A run's
-                // folder is fixed once it starts, so on yes the pick is held
-                // and the run ends; it restarts when the folder is applied.
-                onNeedFolder: async ({ signal }) => {
-                  if (rs.folderOffered) return 'declined'
-                  rs.folderOffered = true
-                  const ok = await useToolApprovalRequests
-                    .getState()
-                    .requestApproval(
-                      `${runId}:attach-folder`,
-                      'attach_folder',
-                      sid,
-                      undefined,
-                      {
-                        input: {},
-                        alwaysAsk: true,
-                        taskContext:
-                          'This run needs files outside its sandbox, but no project folder is attached. Attach one so the run can continue?',
-                        signal,
-                      }
-                    )
-                  if (!ok) return 'declined'
-                  const picked = await serviceHub
-                    .dialog()
-                    .open({ directory: true })
-                  if (typeof picked !== 'string') return 'declined'
-                  restartAfterFolderRef.current[sid] = true
-                  setPendingFolder((pending) => ({ ...pending, [sid]: picked }))
-                  return 'attached'
-                },
-                // The prompt the chat surface already uses for tool approval,
-                // not a second one: it honours grants the user has already made
-                // and renders in the tool card the call is reported in.
-                onApprove: (callId, toolName, input, preview, signal, forced) =>
-                  useToolApprovalRequests
-                    .getState()
-                    .requestApproval(callId, toolName, sid, undefined, {
-                      input,
-                      ...(forced
-                        ? {
-                          alwaysAsk: true,
-                          taskContext: forced.reason,
-                          conversationProgram: forced.conversationProgram,
-                          onDecision: forced.onDecision,
-                        }
-                        : {}),
-                      workspaceLabel: current?.folder ?? undefined,
-                      preview,
-                      signal,
-                    }),
+                ...approvalHooks,
                 // A shell handed to the backend outlives a cancelled run, so it
                 // holds the authority it started with until the process is done.
                 trackShell: () =>
@@ -3786,61 +3739,6 @@ export function CoworkPage() {
                 cancelChild: (callId) =>
                   abortSubagent(sid, taskIdFor(sid, runId, callId)),
                 agentDefaults: (name) => runAgents.find((d) => d.name === name),
-                // Campaign tools exist only here, on the main run of a session
-                // that may coordinate: a task's, a subagent's and chat's
-                // contexts have no handler, so a call to one is refused.
-                onCampaign:
-                  isCoordinatorEligible(current?.campaign) && current?.folder
-                    ? (call, campaignSignal) =>
-                        executeCampaignTool(
-                          call,
-                          {
-                            sessionId: sid,
-                            // The session's own mode: an opening turn's
-                            // forced review must not cap the tasks at review.
-                            mode: storedMode,
-                            sourceRoot: current?.folder ?? null,
-                            model: selectedModel
-                              ? {
-                                  provider: selectedProvider,
-                                  id: selectedModel.id,
-                                }
-                              : undefined,
-                            signal: campaignSignal,
-                            onApprove: (
-                              callId,
-                              toolName,
-                              input,
-                              _preview,
-                              approveSignal,
-                              forced
-                            ) =>
-                              useToolApprovalRequests
-                                .getState()
-                                .requestApproval(
-                                  callId,
-                                  toolName,
-                                  sid,
-                                  undefined,
-                                  {
-                                    input,
-                                    alwaysAsk: true,
-                                    taskContext: forced?.reason,
-                                    workspaceLabel: current?.folder ?? undefined,
-                                    signal: approveSignal,
-                                    // The plan card's "how should tasks work".
-                                    choice: forced?.choice,
-                                    onDecision: (decision, chosenId) => {
-                                      if (decision !== 'deny' && chosenId) {
-                                        forced?.onChoice?.(chosenId)
-                                      }
-                                    },
-                                  }
-                                ),
-                          },
-                          createToolDeps(getCampaignRunner())
-                        )
-                    : undefined,
                 onEnableTools: toolHandlers.onEnableTools,
                 onTodo: toolHandlers.onTodo,
                 onAsk: toolHandlers.onAsk,
