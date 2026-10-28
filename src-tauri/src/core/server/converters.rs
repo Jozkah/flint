@@ -860,6 +860,24 @@ fn gemini_reads_function_response_parts(body: &Value) -> bool {
         .is_some_and(|major| major >= 3)
 }
 
+/// A model name as one safe URL path segment: anything outside `[A-Za-z0-9._-]`
+/// is percent-encoded, and a bare dot-segment is neutralised, so a crafted
+/// name cannot add path, query or fragment parts to the upstream URL.
+fn escape_model_segment(model: &str) -> String {
+    let mut out = String::with_capacity(model.len());
+    for b in model.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    if out == "." || out == ".." {
+        out = out.replace('.', "%2E");
+    }
+    out
+}
+
 impl UpstreamConverter for GoogleGenerateContentConverter {
     fn cache_capability(&self) -> CacheCapability {
         CacheCapability::for_api_type(Some("google"))
@@ -867,6 +885,7 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
 
     fn upstream_path(&self, body: &Value) -> String {
         let model = body.get("model").and_then(|m| m.as_str()).unwrap_or("");
+        let model = escape_model_segment(model.strip_prefix("models/").unwrap_or(model));
         let streaming = body
             .get("stream")
             .and_then(|s| s.as_bool())
@@ -2504,6 +2523,18 @@ mod google_generate_content_tests {
             "promptTokenCount": 3, "candidatesTokenCount": 2, "totalTokenCount": 5
         })));
         assert!(without.get("prompt_tokens_details").is_none());
+    }
+
+    #[test]
+    fn path_escapes_a_hostile_model_name() {
+        let c = conv();
+        let path = c.upstream_path(&json!({"model": "../x?key=1"}));
+        assert_eq!(path, "/models/..%2Fx%3Fkey%3D1:generateContent");
+        assert_eq!(c.upstream_path(&json!({"model": ".."})), "/models/%2E%2E:generateContent");
+        assert_eq!(
+            c.upstream_path(&json!({"model": "models/gemini-2.5-pro"})),
+            "/models/gemini-2.5-pro:generateContent"
+        );
     }
 
     #[test]

@@ -493,10 +493,10 @@ export const DialogEditModel = ({
             {isLoading ? (
               <>
                 <LoaderCircle className="motion-safe:animate-spin" aria-hidden />
-                Saving...
+                {t('common:savingEllipsis')}
               </>
             ) : (
-              'Save Changes'
+              t('common:saveChanges')
             )}
           </Button>
         </div>
