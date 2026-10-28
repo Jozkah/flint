@@ -59,6 +59,25 @@ describe('ApplyReviewDialog', () => {
     expect(document.querySelectorAll('[data-kind="add"]').length).toBe(2)
   })
 
+  it('does not reload or reset the selection when only `load` changes identity', async () => {
+    const load = vi.fn(() => Promise.resolve(preview()))
+    const props = {
+      open: true,
+      onOpenChange: vi.fn(),
+      onApply: vi.fn(async () => {}),
+      source: { name: 'Sonnet', round: 2 },
+      t,
+    }
+    const { rerender } = render(<ApplyReviewDialog {...props} load={load} />)
+    await screen.findByTestId('apply-summary')
+    const box = screen.getAllByRole('checkbox')[1] as HTMLInputElement
+    fireEvent.click(box)
+    const before = screen.getByTestId('apply-summary').textContent
+    rerender(<ApplyReviewDialog {...props} load={() => load()} />)
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1))
+    expect(screen.getByTestId('apply-summary').textContent).toBe(before)
+  })
+
   it('lands focus on Cancel, not Apply', async () => {
     setup(preview())
     await screen.findByTestId('apply-summary')
