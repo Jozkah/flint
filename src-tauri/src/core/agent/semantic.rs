@@ -287,6 +287,12 @@ pub struct Store {
     pub chunks: Vec<Chunk>,
     /// Set when a bound stopped the build: not every file is searchable.
     pub truncated: bool,
+    /// How many ranges each stored file has. A store only ever holds whole
+    /// files; a store written before this field existed (empty here) may hold
+    /// half a file, so none of its ranges are reused and it is embedded once
+    /// more.
+    #[serde(default)]
+    pub file_chunks: BTreeMap<String, usize>,
 }
 
 /// What a refresh did, so "incremental" is checkable.
@@ -314,10 +320,22 @@ fn save(data_folder: &Path, project: &Path, store: &Store) -> Result<(), Harness
     let path = store_path(data_folder, project);
     let io = |e: std::io::Error| refuse(ErrorKind::Io, format!("the semantic index could not be written: {e}"));
     std::fs::create_dir_all(path.parent().unwrap_or(Path::new("."))).map_err(io)?;
-    let tmp = path.with_extension("json.tmp");
     let body = serde_json::to_vec(store).map_err(|e| refuse(ErrorKind::Internal, e.to_string()))?;
-    std::fs::write(&tmp, body).map_err(io)?;
-    std::fs::rename(&tmp, &path).map_err(io)
+    // Each writer gets its own temp file, so two refreshes of one project
+    // cannot interleave writes or lose each other's rename. A rename that
+    // loses a race on Windows is retried briefly: either complete store is a
+    // correct result (same approach as index.rs).
+    let mut attempt = 0;
+    loop {
+        match tauri_plugin_agent_tools::workspace::write_atomic(&path, &body) {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt < 5 && e.kind() == std::io::ErrorKind::PermissionDenied => {
+                attempt += 1;
+                std::thread::sleep(Duration::from_millis(20 * attempt));
+            }
+            Err(e) => return Err(io(e)),
+        }
+    }
 }
 
 /// Files that exist to hold secrets are never read, let alone sent.
@@ -390,30 +408,47 @@ fn normalized(mut v: Vec<f32>) -> Vec<f32> {
     v
 }
 
-/// Bring the store up to date with the project: embed what changed, reuse the
-/// rest, and write it once everything is answered.
-pub async fn refresh<E: Embed>(
-    data_folder: &Path,
+/// One file whose ranges still need embedding.
+struct PendingFile {
+    path: String,
+    hash: String,
+    modified_ms: u64,
+    chunks: Vec<(usize, usize, String)>,
+}
+
+type PendingRange = (String, String, usize, usize, String);
+
+/// What to reuse and what to embed. Only whole files are ever reused, and only
+/// whole files are ever queued: when the budget cannot hold a file it waits
+/// for a later refresh instead of being stored in part.
+fn build_plan(
+    index: &crate::core::agent::index::Index,
     project: &Path,
-    embedder_id: &str,
-    embedder: &E,
-    cancelled: &(dyn Fn() -> bool + Sync),
-) -> Result<(Store, Update), HarnessError> {
-    let stop = AtomicBool::new(false);
-    let (index, _) = crate::core::agent::index::refresh(data_folder, project, &stop).map_err(|e| HarnessError::from(&e))?;
-    let previous = load(data_folder, project).filter(|s| s.model == embedder_id);
+    previous: Option<&Store>,
+    cap: usize,
+) -> (Vec<Chunk>, Vec<PendingRange>, Update, bool) {
     let mut reusable: BTreeMap<(String, String), Vec<Chunk>> = BTreeMap::new();
     // The same content under another path: a moved or renamed file keeps its
     // vectors, re-labelled with where it is now.
     let mut by_content: BTreeMap<String, Vec<Chunk>> = BTreeMap::new();
-    if let Some(previous) = &previous {
+    if let Some(previous) = previous {
+        let mut counts: BTreeMap<(String, String), usize> = BTreeMap::new();
         for chunk in &previous.chunks {
+            *counts.entry((chunk.path.clone(), chunk.file_hash.clone())).or_default() += 1;
+        }
+        for chunk in &previous.chunks {
+            let whole = previous.file_chunks.get(&chunk.path).is_some_and(|n| {
+                counts.get(&(chunk.path.clone(), chunk.file_hash.clone())) == Some(n)
+            });
+            if !whole {
+                continue;
+            }
             reusable.entry((chunk.path.clone(), chunk.file_hash.clone())).or_default().push(chunk.clone());
             by_content.entry(chunk.file_hash.clone()).or_default().push(chunk.clone());
         }
     }
     let mut kept: Vec<Chunk> = Vec::new();
-    let mut pending: Vec<(String, String, usize, usize, String)> = Vec::new();
+    let mut files: Vec<PendingFile> = Vec::new();
     let mut update = Update::default();
     let mut truncated = index.truncated;
     for (path, entry) in &index.files {
@@ -442,14 +477,57 @@ pub async fn refresh<E: Embed>(
         }
         let Ok(text) = std::fs::read_to_string(project.join(path)) else { continue };
         let symbol_lines: Vec<usize> = entry.symbols.iter().map(|s| s.line).collect();
-        for (start, end, body) in chunks_at_symbols(&text, &symbol_lines) {
-            pending.push((path.clone(), entry.hash.clone(), start, end, scrub(&body)));
+        let chunks: Vec<(usize, usize, String)> = chunks_at_symbols(&text, &symbol_lines)
+            .into_iter()
+            .map(|(start, end, body)| (start, end, scrub(&body)))
+            .collect();
+        if !chunks.is_empty() {
+            files.push(PendingFile { path: path.clone(), hash: entry.hash.clone(), modified_ms: entry.modified_ms, chunks });
         }
     }
-    if kept.len() + pending.len() > MAX_CHUNKS {
-        pending.truncate(MAX_CHUNKS.saturating_sub(kept.len()));
-        truncated = true;
+    // Most recently changed files first, then by path, and each file whole or
+    // not at all.
+    files.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms).then_with(|| a.path.cmp(&b.path)));
+    let budget = cap.saturating_sub(kept.len());
+    let mut used = 0;
+    let mut pending: Vec<PendingRange> = Vec::new();
+    for file in files {
+        if used + file.chunks.len() > budget {
+            truncated = true;
+            break;
+        }
+        used += file.chunks.len();
+        for (start, end, body) in file.chunks {
+            pending.push((file.path.clone(), file.hash.clone(), start, end, body));
+        }
     }
+    (kept, pending, update, truncated)
+}
+
+/// Bring the store up to date with the project: embed what changed, reuse the
+/// rest, and write it once everything is answered.
+pub async fn refresh<E: Embed>(
+    data_folder: &Path,
+    project: &Path,
+    embedder_id: &str,
+    embedder: &E,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Result<(Store, Update), HarnessError> {
+    refresh_with_cap(data_folder, project, embedder_id, embedder, cancelled, MAX_CHUNKS).await
+}
+
+async fn refresh_with_cap<E: Embed>(
+    data_folder: &Path,
+    project: &Path,
+    embedder_id: &str,
+    embedder: &E,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    cap: usize,
+) -> Result<(Store, Update), HarnessError> {
+    let stop = AtomicBool::new(false);
+    let (index, _) = crate::core::agent::index::refresh(data_folder, project, &stop).map_err(|e| HarnessError::from(&e))?;
+    let previous = load(data_folder, project).filter(|s| s.model == embedder_id);
+    let (mut kept, mut pending, mut update, mut truncated) = build_plan(&index, project, previous.as_ref(), cap);
     let mut dim = previous.as_ref().filter(|_| !kept.is_empty()).map(|s| s.dim).unwrap_or(0);
     if !pending.is_empty() {
         if cancelled() {
@@ -461,12 +539,10 @@ pub async fn refresh<E: Embed>(
             return Err(refuse(ErrorKind::InvalidResponse, "the embedding model did not return one vector for one text"));
         }
         if dim != 0 && dim != length {
-            // The model behind the name changed length: nothing old is comparable.
-            kept.clear();
-            return Err(refuse(
-                ErrorKind::InvalidResponse,
-                format!("the embedding model now returns {length}-dimensional vectors and the index holds {dim}; it changed behind the same name, so nothing was saved"),
-            ));
+            // The model behind the name changed length: nothing old is
+            // comparable, so the old vectors are dropped and every file is
+            // embedded afresh.
+            (kept, pending, update, truncated) = build_plan(&index, project, None, cap);
         }
         dim = length;
     }
@@ -502,6 +578,10 @@ pub async fn refresh<E: Embed>(
         return Err(refuse(ErrorKind::Cancelled, "semantic indexing was cancelled; the previous index was left as it was"));
     }
     kept.sort_by(|a, b| (&a.path, a.start).cmp(&(&b.path, b.start)));
+    let mut file_chunks: BTreeMap<String, usize> = BTreeMap::new();
+    for chunk in &kept {
+        *file_chunks.entry(chunk.path.clone()).or_default() += 1;
+    }
     let store = Store {
         version: STORE_VERSION,
         project: project.to_string_lossy().to_string(),
@@ -509,6 +589,7 @@ pub async fn refresh<E: Embed>(
         dim,
         chunks: kept,
         truncated,
+        file_chunks,
     };
     save(data_folder, project, &store)?;
     Ok((store, update))
@@ -913,5 +994,109 @@ mod tests {
         let err = http.embed(&["x".to_string()]).await.unwrap_err();
         assert_eq!(err.kind(), ErrorKind::ToolUnavailable);
         assert!(err.message().contains("does not serve embeddings") && err.message().contains("--embeddings"), "{}", err.message());
+    }
+
+    /// Many refreshes of one project saving at once all succeed, and what is
+    /// left on disk is one whole store.
+    #[test]
+    fn concurrent_semantic_saves_do_not_corrupt() {
+        let data = std::env::temp_dir().join(format!("jan_semantic_race_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let project = data.join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let store = Store {
+            version: STORE_VERSION,
+            project: project.to_string_lossy().into_owned(),
+            model: "emb/e".into(),
+            dim: 2,
+            chunks: vec![Chunk { path: "a.py".into(), start: 1, end: 1, file_hash: "h".into(), vector: vec![1.0, 0.0] }],
+            truncated: false,
+            file_chunks: BTreeMap::from([("a.py".to_string(), 1)]),
+        };
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let (data, project, store) = (data.clone(), project.clone(), store.clone());
+                std::thread::spawn(move || (0..25).map(|_| save(&data, &project, &store)).collect::<Vec<_>>())
+            })
+            .collect();
+        for h in handles {
+            for r in h.join().unwrap() {
+                assert!(r.is_ok(), "{:?}", r.err().map(|e| e.message().to_string()));
+            }
+        }
+        assert_eq!(load(&data, &project), Some(store));
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    fn two_big_files(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let (base, root, data) = project(tag);
+        for small in ["net/client.py", "auth/login.py", "rank.py"] {
+            std::fs::remove_file(root.join(small)).unwrap();
+        }
+        // 100 plain lines cut into three ranges each.
+        let text: String = (1..=100).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(root.join("one.py"), &text).unwrap();
+        std::fs::write(root.join("two.py"), text.replace("line", "row")).unwrap();
+        (base, root, data)
+    }
+
+    #[tokio::test]
+    async fn chunk_cap_never_stores_a_partial_file() {
+        let (base, root, data) = two_big_files("cap");
+        let fake = Fake::new();
+        // Room for one file of three ranges but not two, and not one and a half.
+        let (store, _) = refresh_with_cap(&data, &root, "emb/e", &fake, &|| false, 4).await.unwrap();
+        assert!(store.truncated);
+        let paths: std::collections::BTreeSet<&str> = store.chunks.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(paths.len(), 1, "{paths:?}");
+        assert_eq!(store.chunks.len(), 3, "a file was stored in part");
+        assert_eq!(store.file_chunks.values().copied().collect::<Vec<_>>(), vec![3]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn files_after_cap_are_indexed_on_next_refresh_after_budget_frees() {
+        let (base, root, data) = two_big_files("cap-frees");
+        let fake = Fake::new();
+        let (first, _) = refresh_with_cap(&data, &root, "emb/e", &fake, &|| false, 4).await.unwrap();
+        let indexed = first.chunks[0].path.clone();
+        let deferred = if indexed == "one.py" { "two.py" } else { "one.py" };
+        std::fs::remove_file(root.join(&indexed)).unwrap();
+        let (second, update) = refresh_with_cap(&data, &root, "emb/e", &fake, &|| false, 4).await.unwrap();
+        assert!(!second.truncated, "{update:?}");
+        assert_eq!(second.chunks.len(), 3);
+        assert!(second.chunks.iter().all(|c| c.path == deferred), "the deferred file was not indexed");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn dimension_change_rebuilds_instead_of_failing() {
+        let (base, root, data) = project("dim");
+        let first = Fake::new();
+        let (before, _) = refresh(&data, &root, "emb/e", &first, &|| false).await.unwrap();
+        assert_eq!(before.dim, 16);
+        std::fs::write(root.join("extra.py"), "def extra():\n    return 1\n").unwrap();
+        let mut longer = Fake::new();
+        longer.dim = 20;
+        let (after, update) = refresh(&data, &root, "emb/e", &longer, &|| false).await.unwrap();
+        assert_eq!(after.dim, 20);
+        assert!(after.chunks.iter().all(|c| c.vector.len() == 20), "old vectors survived the model change");
+        assert_eq!(update.reused, 0, "{update:?}");
+        assert_eq!(update.embedded, after.chunks.len());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn a_store_without_chunk_counts_is_embedded_once_more() {
+        let (base, root, data) = project("legacy");
+        let fake = Fake::new();
+        let (mut store, _) = refresh(&data, &root, "emb/e", &fake, &|| false).await.unwrap();
+        store.file_chunks.clear();
+        save(&data, &root, &store).unwrap();
+        let (_, update) = refresh(&data, &root, "emb/e", &fake, &|| false).await.unwrap();
+        assert_eq!((update.embedded, update.reused), (3, 0), "{update:?}");
+        let (_, again) = refresh(&data, &root, "emb/e", &fake, &|| false).await.unwrap();
+        assert_eq!((again.embedded, again.reused), (0, 3), "{again:?}");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
