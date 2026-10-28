@@ -32,7 +32,17 @@ export type RootCheck =
 
 /** Normalize for comparison: forward slashes, no trailing separator. */
 const normalize = (path: string): string =>
-  path.replace(/\\/g, '/').replace(/\/+$/, '')
+  path
+    .replace(/\\/g, '/')
+    // Verbatim prefixes: `\\?\UNC\host\share` is `\\host\share`, and
+    // `\\?\C:\x` is `C:\x`.
+    .replace(/^\/\/\?\/UNC\//i, '//')
+    .replace(/^\/\/\?\//, '')
+    .replace(/\/+$/, '')
+
+/** Drive-letter and UNC paths live on case-insensitive filesystems. */
+const isWindowsLike = (path: string): boolean =>
+  /^[a-z]:/i.test(path) || /^[\\/]{2}/.test(path)
 
 /**
  * Component-wise containment.
@@ -41,15 +51,25 @@ const normalize = (path: string): string =>
  * prefix test says it is. Same failure as everywhere else in this surface.
  */
 const inside = (parent: string, child: string): boolean => {
-  const p = normalize(parent)
-  const c = normalize(child)
+  let p = normalize(parent)
+  let c = normalize(child)
+  if (isWindowsLike(p) || isWindowsLike(c)) {
+    p = p.toLowerCase()
+    c = c.toLowerCase()
+  }
   return c === p || c.startsWith(`${p}/`)
 }
 
 /** A path with no directory component left to scan. */
 const isFilesystemRoot = (path: string): boolean => {
   const p = normalize(path)
-  return p === '' || p === '/' || /^[a-z]:$/i.test(p)
+  return (
+    p === '' ||
+    p === '/' ||
+    /^[a-z]:$/i.test(p) ||
+    // A bare UNC host or share: `//host` or `//host/share`.
+    /^\/\/[^/]+(\/[^/]+)?$/.test(p)
+  )
 }
 
 /**
