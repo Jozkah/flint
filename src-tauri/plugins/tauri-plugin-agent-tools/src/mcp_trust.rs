@@ -361,7 +361,7 @@ impl State {
 /// Every standing grant, for the settings surface.
 pub fn trusted(data_folder: &Path) -> Vec<TrustGrant> {
     let _held = hold(data_folder);
-    let mut state = state().lock().expect("mcp trust");
+    let mut state = state().lock().unwrap_or_else(|e| e.into_inner());
     state.ensure_loaded(data_folder);
     state.stored.trusted.clone()
 }
@@ -369,7 +369,7 @@ pub fn trusted(data_folder: &Path) -> Vec<TrustGrant> {
 /// Approvals that stopped applying and need renewing, for the settings surface.
 pub fn invalidated(data_folder: &Path) -> Vec<Invalidated> {
     let _held = hold(data_folder);
-    let mut state = state().lock().expect("mcp trust");
+    let mut state = state().lock().unwrap_or_else(|e| e.into_inner());
     state.ensure_loaded(data_folder);
     state.stored.invalidated.clone()
 }
@@ -377,7 +377,7 @@ pub fn invalidated(data_folder: &Path) -> Vec<Invalidated> {
 /// Whether `server`, as currently defined by `fingerprint`, is trusted.
 pub fn is_trusted(data_folder: &Path, server: &str, fingerprint: &str) -> bool {
     let _held = hold(data_folder);
-    let mut state = state().lock().expect("mcp trust");
+    let mut state = state().lock().unwrap_or_else(|e| e.into_inner());
     state.ensure_loaded(data_folder);
     state
         .grant_for(server)
@@ -398,7 +398,7 @@ pub fn trust(data_folder: &Path, server: &str, fingerprint: &str) -> Result<(), 
         ));
     }
     let _held = hold(data_folder);
-    let mut state = state().lock().expect("mcp trust");
+    let mut state = state().lock().unwrap_or_else(|e| e.into_inner());
     state.ensure_loaded(data_folder);
     if state
         .grant_for(server)
@@ -431,7 +431,7 @@ pub fn trust(data_folder: &Path, server: &str, fingerprint: &str) -> Result<(), 
 /// Returns whether a live grant was removed. Audited only when one was.
 pub fn revoke(data_folder: &Path, server: &str, reason: RevokeReason) -> Result<bool, String> {
     let _held = hold(data_folder);
-    let mut state = state().lock().expect("mcp trust");
+    let mut state = state().lock().unwrap_or_else(|e| e.into_inner());
     state.ensure_loaded(data_folder);
     let before_trusted = state.stored.trusted.len();
     let before_invalidated = state.stored.invalidated.len();
@@ -490,7 +490,7 @@ pub fn allow_once(
             .message());
         }
     }
-    let mut state = state().lock().expect("mcp trust");
+    let mut state = state().lock().unwrap_or_else(|e| e.into_inner());
     state.sequence += 1;
     let id = format!(
         "mcp-{}-{}-{}",
@@ -580,7 +580,7 @@ pub fn permits(
     ticket: Option<&str>,
 ) -> Result<(), Refusal> {
     let _held = hold(data_folder);
-    let mut state = state().lock().expect("mcp trust");
+    let mut state = state().lock().unwrap_or_else(|e| e.into_inner());
     state.ensure_loaded(data_folder);
 
     let mut changed = false;
@@ -775,12 +775,12 @@ mod tests {
                 .unwrap_or(0)
         ));
         std::fs::create_dir_all(&dir).expect("root");
-        state().lock().expect("mcp trust").loaded_from = None;
+        state().lock().unwrap_or_else(|e| e.into_inner()).loaded_from = None;
         dir
     }
 
     fn restart() {
-        state().lock().expect("mcp trust").loaded_from = None;
+        state().lock().unwrap_or_else(|e| e.into_inner()).loaded_from = None;
     }
 
     fn files_v1() -> String {
