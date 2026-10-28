@@ -135,35 +135,45 @@ export type DiffLine = { kind: 'same' | 'add' | 'del'; text: string }
 export function lineDiff(a: string | null, b: string | null): DiffLine[] {
   const x = a === null ? [] : a.split(/\r?\n/)
   const y = b === null ? [] : b.split(/\r?\n/)
-  // LCS table; files over the limit fall back to "all removed, all added".
-  if (x.length * y.length > 4_000_000) {
-    return [
-      ...x.map((text) => ({ kind: 'del' as const, text })),
-      ...y.map((text) => ({ kind: 'add' as const, text })),
-    ]
-  }
-  const n = x.length
-  const m = y.length
-  const t: number[][] = Array.from({ length: n + 1 }, () =>
-    new Array<number>(m + 1).fill(0)
-  )
-  for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--)
-      t[i][j] =
-        x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1])
+  // Lines both sides share at the start and at the end need no table: the
+  // common case (a few edits in a big file) shrinks to the changed middle.
+  let head = 0
+  const most = Math.min(x.length, y.length)
+  while (head < most && x[head] === y[head]) head++
+  let tail = 0
+  while (tail < most - head && x[x.length - 1 - tail] === y[y.length - 1 - tail]) tail++
+  const n = x.length - head - tail
+  const m = y.length - head - tail
   const out: DiffLine[] = []
-  let i = 0
-  let j = 0
-  while (i < n && j < m) {
-    if (x[i] === y[j]) {
-      out.push({ kind: 'same', text: x[i] })
-      i++
-      j++
-    } else if (t[i + 1][j] >= t[i][j + 1]) out.push({ kind: 'del', text: x[i++] })
-    else out.push({ kind: 'add', text: y[j++] })
+  for (let k = 0; k < head; k++) out.push({ kind: 'same', text: x[k] })
+  // LCS table over the middle; past the limit it falls back to "all removed,
+  // all added".
+  if (n * m > 4_000_000) {
+    for (let k = 0; k < n; k++) out.push({ kind: 'del', text: x[head + k] })
+    for (let k = 0; k < m; k++) out.push({ kind: 'add', text: y[head + k] })
+  } else {
+    const w = m + 1
+    const t = new Uint32Array((n + 1) * w)
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        t[i * w + j] =
+          x[head + i] === y[head + j]
+            ? t[(i + 1) * w + j + 1] + 1
+            : Math.max(t[(i + 1) * w + j], t[i * w + j + 1])
+    let i = 0
+    let j = 0
+    while (i < n && j < m) {
+      if (x[head + i] === y[head + j]) {
+        out.push({ kind: 'same', text: x[head + i] })
+        i++
+        j++
+      } else if (t[(i + 1) * w + j] >= t[i * w + j + 1]) out.push({ kind: 'del', text: x[head + i++] })
+      else out.push({ kind: 'add', text: y[head + j++] })
+    }
+    while (i < n) out.push({ kind: 'del', text: x[head + i++] })
+    while (j < m) out.push({ kind: 'add', text: y[head + j++] })
   }
-  while (i < n) out.push({ kind: 'del', text: x[i++] })
-  while (j < m) out.push({ kind: 'add', text: y[j++] })
+  for (let k = 0; k < tail; k++) out.push({ kind: 'same', text: x[x.length - tail + k] })
   return out
 }
 

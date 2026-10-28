@@ -102,6 +102,8 @@ pub struct Removed {
     pub diff_sessions: usize,
     /// Permission decisions removed from `audit/permissions.jsonl`.
     pub permissions: usize,
+    /// Settled change proposals removed, with their unreferenced blobs.
+    pub proposals: usize,
 }
 
 /// The folder holding one session's stored diffs.
@@ -281,6 +283,7 @@ pub fn compact(data_folder: &Path, policy: &Retention, now: i64) -> Result<Remov
     // The diff store and the permission log grew for the life of the install
     // (Jozkah/jan#234): both are held to the same age limit.
     let cutoff = now - policy.max_age_secs;
+    removed.proposals = crate::proposal::prune_settled(data_folder, cutoff);
     removed.permissions = filter_permissions(data_folder, |v| {
         v.get("at")
             .and_then(|a| a.as_str())

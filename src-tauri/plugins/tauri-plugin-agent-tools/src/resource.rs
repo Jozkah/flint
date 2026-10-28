@@ -945,6 +945,18 @@ fn matches_resource_text(pattern: &str, resource: &Resource) -> bool {
     if !is_path {
         return false;
     }
+    // The same file under its real spelling: an 8.3 short name
+    // (`C:\PROGRA~1`) or a link above it must not walk around a rule written
+    // for the long name. The deepest existing ancestor is resolved; the rest
+    // is kept as written.
+    if let Resource::Path(p) = resource {
+        let real = crate::shared_folder::path_key::strip_verbatim(
+            &crate::shared_folder::path_key::canonical_lenient(p).to_string_lossy(),
+        );
+        if real != text && Pattern::new(pattern).is_ok_and(|pat| pat.matches_with(&real, options)) {
+            return true;
+        }
+    }
     // Already absolute or already anchored: nothing further to try.
     if pattern.starts_with('/') || pattern.starts_with("**") {
         return false;

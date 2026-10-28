@@ -1,4 +1,4 @@
- 
+
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useAssetUrl } from '@/lib/assetPath'
 import {

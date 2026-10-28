@@ -16,7 +16,7 @@
 //! conventions start being applied to another.
 
 use super::record::{
-    content_hash, detect_conflicts, normalise, Conflict, Creator, MemoryId, MemoryRecord, Origin,
+    conflicts_with, content_hash, normalise, Conflict, Creator, MemoryId, MemoryRecord, Origin,
     Scope, Status,
 };
 use super::store;
@@ -175,17 +175,13 @@ pub fn propose(
         .collect();
 
     // Conflicts are looked for against the records this one would sit beside.
-    let mut together: Vec<MemoryRecord> = existing
+    let beside: Vec<MemoryRecord> = existing
         .iter()
         .filter(visible)
         .filter(|r| matches!(r.status, Status::Active))
         .cloned()
         .collect();
-    together.push(record.clone());
-    let conflicts = detect_conflicts(&together)
-        .into_iter()
-        .filter(|c| c.left == record.id || c.right == record.id)
-        .collect();
+    let conflicts = conflicts_with(&record, &beside);
 
     Ok(Proposal {
         record,

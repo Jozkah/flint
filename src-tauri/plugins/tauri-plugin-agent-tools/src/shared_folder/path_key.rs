@@ -44,7 +44,7 @@ pub fn normalize_text(text: &str, fold: bool) -> String {
 /// Canonical form of `path` even when its tail does not exist yet: the nearest
 /// existing ancestor is canonicalized (symlinks resolved, 8.3 names expanded)
 /// and the rest is appended as written.
-fn canonical_lenient(path: &Path) -> PathBuf {
+pub(crate) fn canonical_lenient(path: &Path) -> PathBuf {
     if let Ok(real) = path.canonicalize() {
         return real;
     }

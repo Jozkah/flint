@@ -114,3 +114,142 @@ export async function checkForNewerBuild(
 ): Promise<BuildCheck> {
   return compareRelease(installed, await fetchLatestStable(fetchFn, signal))
 }
+
+/**
+ * Update channels. Release is the stable line above. Beta is any non-nightly
+ * prerelease or semver pre-release tag (v1.2.0-beta.1); the picker hides it
+ * until one exists. Nightly is the `nightly-YYYYMMDD-HH` prerelease the release
+ * workflow publishes. Flint installs nothing itself: every choice opens the
+ * release page, where the person downloads the installer.
+ */
+export type Channel = 'release' | 'beta' | 'nightly'
+export const CHANNELS: Channel[] = ['release', 'beta', 'nightly']
+
+export type ChannelRelease = {
+  tag: string
+  /** Semver for release and beta; the tag for nightlies, which carry no version of their own. */
+  version: string
+  channel: Channel
+  url: string
+  publishedAt: number
+  /** The commit a nightly was built from (its target), used to tell which nightly is installed. */
+  commit: string
+}
+
+/** Where a release sits relative to the installed build. */
+export type Direction = 'newer' | 'older' | 'installed' | 'unknown'
+
+const RELEASES_API = 'https://api.github.com/repos/Jozkah/flint/releases?per_page=60'
+
+export function channelOf(tag: string, prerelease: boolean): Channel | null {
+  if (/^nightly-/i.test(tag)) return 'nightly'
+  const parsed = parseVersion(tag)
+  if (!parsed) return null
+  return prerelease || parsed.pre.length ? 'beta' : 'release'
+}
+
+/** Every published release in a GitHub releases payload, newest first. Drafts and odd tags are skipped. */
+export function parseReleases(payload: unknown): ChannelRelease[] {
+  const items = Array.isArray(payload) ? payload : [payload]
+  const out: ChannelRelease[] = []
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    if (r.draft === true || typeof r.tag_name !== 'string') continue
+    const tag = r.tag_name.trim()
+    const channel = channelOf(tag, r.prerelease === true)
+    if (!channel) continue
+    const version = channel === 'nightly' ? tag : tag.replace(/^v/, '')
+    const url =
+      typeof r.html_url === 'string' && r.html_url.startsWith('https://github.com/Jozkah/flint/')
+        ? r.html_url
+        : `${RELEASES_URL}/${tag}`
+    const published = Date.parse(typeof r.published_at === 'string' ? r.published_at : '')
+    out.push({
+      tag,
+      version,
+      channel,
+      url,
+      publishedAt: Number.isNaN(published) ? 0 : published,
+      commit: typeof r.target_commitish === 'string' ? r.target_commitish : '',
+    })
+  }
+  return out.sort((a, b) => b.publishedAt - a.publishedAt)
+}
+
+/** All recent releases, or null when they cannot be read. */
+export async function fetchReleases(
+  fetchFn: typeof fetch = fetch,
+  signal?: AbortSignal
+): Promise<ChannelRelease[] | null> {
+  try {
+    const res = await fetchFn(RELEASES_API, {
+      headers: { Accept: 'application/vnd.github+json' },
+      signal,
+    })
+    if (!res.ok) return null
+    return parseReleases(await res.json())
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The release the running build came from: a nightly whose target commit is
+ * the build commit, else the release or beta with the same version.
+ */
+export function findInstalled(
+  list: ChannelRelease[],
+  version: string,
+  commit: string
+): ChannelRelease | null {
+  const sha = commit.trim().toLowerCase()
+  if (sha.length >= 7) {
+    const nightly = list.find(
+      (r) => r.channel === 'nightly' && /^[0-9a-f]{7,40}$/i.test(r.commit) && sha.startsWith(r.commit.toLowerCase())
+    )
+    if (nightly) return nightly
+  }
+  return list.find((r) => r.channel !== 'nightly' && compareVersions(r.version, version) === 0) ?? null
+}
+
+/**
+ * Release and beta builds compare by version. Anything involving a nightly
+ * compares by publish date against the installed release, which has to be
+ * found in the list; otherwise the direction is unknown.
+ */
+export function directionOf(
+  entry: ChannelRelease,
+  list: ChannelRelease[],
+  version: string,
+  commit: string
+): Direction {
+  const installed = findInstalled(list, version, commit)
+  if (installed?.tag === entry.tag) return 'installed'
+  if (entry.channel !== 'nightly' && installed?.channel !== 'nightly') {
+    const order = compareVersions(entry.version, version)
+    if (order === null) return 'unknown'
+    return order > 0 ? 'newer' : order < 0 ? 'older' : 'installed'
+  }
+  if (!installed || !installed.publishedAt || !entry.publishedAt) return 'unknown'
+  return entry.publishedAt > installed.publishedAt ? 'newer' : 'older'
+}
+
+/** Whether the newest release on a channel is newer than the installed build. */
+export function checkChannel(
+  list: ChannelRelease[] | null,
+  channel: Channel,
+  version: string,
+  commit: string
+): BuildCheck {
+  if (!list) return { state: 'unknown' }
+  const latest = list.find((r) => r.channel === channel)
+  if (!latest) return { state: 'unknown' }
+  const direction = directionOf(latest, list, version, commit)
+  if (direction === 'unknown') return { state: 'unknown', latest: latest.version, url: latest.url }
+  return {
+    state: direction === 'newer' ? 'newer' : 'current',
+    latest: latest.version,
+    url: latest.url,
+  }
+}

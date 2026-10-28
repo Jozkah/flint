@@ -323,7 +323,9 @@ fn is_unc_or_device_text(raw: &str) -> Option<RefusalCode> {
 /// would cover. Every refusal is structured, so the model can be told exactly
 /// why and offered something else instead of retrying the same request.
 pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refusal> {
-    let requested = raw.trim();
+    // `/C:\x` and `file:///C:/x` name `C:\x` on Windows.
+    let normalized = crate::tools::sandbox::normalize_drive_path(raw.trim());
+    let requested: &str = &normalized;
     // Transcript audit #5: `"C:\tmp"` in JSON arrives as `C:<TAB>mp`.
     let repaired;
     let requested = match crate::tools::path_repair::repair("path", requested, &|p| {

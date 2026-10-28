@@ -1,4 +1,32 @@
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
+
+/// On Windows, `/C:\Users\...` (or `/C:/...`, `\C:\...`, `file:///C:/...`)
+/// names the drive path `C:\Users\...`. Models and some UIs write it that
+/// way; taken literally it has a root but no drive, so it is not absolute and
+/// would be joined onto the project. Every resolver and containment check
+/// goes through this first, so they all judge the same path. Elsewhere the
+/// input is returned unchanged: `/C:` is an ordinary Unix path component.
+pub fn normalize_drive_path(raw: &str) -> Cow<'_, str> {
+    if !cfg!(windows) {
+        return Cow::Borrowed(raw);
+    }
+    // `X:` followed by a separator: a fully qualified drive path. A bare
+    // `X:` or `X:foo` is drive-relative and is left as written.
+    fn drive_at(s: &str) -> bool {
+        let b = s.as_bytes();
+        b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'/' || b[2] == b'\\')
+    }
+    if raw.len() >= 7 && raw[..7].eq_ignore_ascii_case("file://") {
+        let rest = &raw[7..];
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        return if drive_at(rest) { Cow::Owned(rest.to_string()) } else { Cow::Borrowed(raw) };
+    }
+    match raw.strip_prefix('/').or_else(|| raw.strip_prefix('\\')) {
+        Some(rest) if drive_at(rest) => Cow::Owned(rest.to_string()),
+        _ => Cow::Borrowed(raw),
+    }
+}
 
 /// True iff `raw` resolves to a path outside `project_root` and outside the
 /// session scratch. Relative paths are resolved against `project_root`.
@@ -10,6 +38,7 @@ pub fn escapes_project(
     scratch: Option<&Path>,
     raw: &str,
 ) -> Result<bool, String> {
+    let raw = &*normalize_drive_path(raw);
     // Absolute `/tmp` paths map into the session scratch (see [`resolve_path`]),
     // which is the agent's own area -- but only once the mapped path is checked
     // against it. Clamping `..` happens lexically, so a symlink planted in the
@@ -69,6 +98,7 @@ pub fn escapes_read_roots(
     read_roots: &[PathBuf],
     raw: &str,
 ) -> Result<bool, String> {
+    let raw = &*normalize_drive_path(raw);
     if !escapes_project(project_root, scratch, raw)? {
         return Ok(false);
     }
@@ -111,6 +141,7 @@ pub fn escapes_write_roots(
     write_roots: &[PathBuf],
     raw: &str,
 ) -> Result<bool, String> {
+    let raw = &*normalize_drive_path(raw);
     if !escapes_project(project_root, scratch, raw)? {
         return Ok(false);
     }
@@ -148,6 +179,7 @@ pub fn escapes_write_roots(
 /// scratch root, matching how the sandbox's `/tmp` mount behaves (it is a mount
 /// point, so `..` above it stays inside `/tmp`).
 pub fn resolve_path(project_root: &Path, scratch: Option<&Path>, raw: &str) -> PathBuf {
+    let raw = &*normalize_drive_path(raw);
     if cfg!(target_os = "linux") {
         if let Some(rel) = tmp_relative(raw) {
             if let Some(scratch) = scratch {
@@ -1016,6 +1048,40 @@ mod tests {
         assert!(g.dirs.is_empty());
         assert_eq!(g.files, vec![wt.join(".git")]);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// `/C:\x`, `/C:/x`, `\C:\x` and `file:///C:/x` are drive paths on
+    /// Windows; drive-relative and plain rooted paths are left alone.
+    #[test]
+    #[cfg(windows)]
+    fn slash_drive_spellings_normalize_to_the_drive_path() {
+        for raw in ["/C:\\x", "/C:/x", "\\C:\\x", "file:///C:/x", "FILE://C:/x"] {
+            let n = normalize_drive_path(raw);
+            assert!(n.eq_ignore_ascii_case("C:\\x") || n.eq_ignore_ascii_case("C:/x"), "{raw} -> {n}");
+        }
+        for raw in ["/C:x", "/C:", "/tmp/x", "C:\\x", "src/C:/x", "file:///etc/x"] {
+            assert_eq!(normalize_drive_path(raw), raw);
+        }
+        let project = std::env::temp_dir().join(format!("jan-slashdrive-{}", std::process::id()));
+        std::fs::create_dir_all(&project).unwrap();
+        assert_eq!(resolve_path(&project, None, "/C:\\x"), PathBuf::from("C:\\x"));
+        // In-project spelled with the slash is inside; an escape is still refused.
+        let inside = format!("/{}", project.join("a.txt").display());
+        assert!(!escapes_project(&project, None, &inside).unwrap(), "{inside}");
+        assert!(!escapes_write_roots(&project, None, &[], &inside).unwrap(), "{inside}");
+        for raw in ["/C:\\Windows", "/C:/Windows/System32", "file:///C:/Windows"] {
+            assert!(escapes_project(&project, None, raw).unwrap(), "{raw}");
+            assert!(escapes_write_roots(&project, None, &[], raw).unwrap(), "{raw}");
+            assert!(escapes_read_roots(&project, None, &[], raw).unwrap(), "{raw}");
+        }
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn slash_drive_spelling_is_left_alone_off_windows() {
+        assert_eq!(normalize_drive_path("/C:\\x"), "/C:\\x");
+        assert_eq!(normalize_drive_path("file:///C:/x"), "file:///C:/x");
     }
 
     /// R21: on Windows a path with a root but no drive names the root of the

@@ -87,5 +87,8 @@
     "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
     "features": "Features",
     "notAvailable": "N/A"
-  }
+  },
+  "etaLeft": "{{eta}} left",
+  "downloadInstalling": "Installing…",
+  "downloadVerifying": "Verifying…"
 }

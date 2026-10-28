@@ -157,7 +157,7 @@ const maskSensitiveUrl = (url: string) => {
   }
 }
 
- 
+
 export const Route = createFileRoute(route.settings.mcp_servers)({
   component: MCPServersDesktop,
 })

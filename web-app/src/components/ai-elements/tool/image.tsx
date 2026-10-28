@@ -57,4 +57,3 @@ export const ToolImage = memo(({ data, index }: ToolImageProps) => {
     </div>
   )
 })
-

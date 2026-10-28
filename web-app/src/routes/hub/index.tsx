@@ -1,4 +1,4 @@
- 
+
 import { isServedByFlint } from '@/lib/platform/utils'
 import { DesktopOnlyPage } from '@/containers/DesktopOnlyPage'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'

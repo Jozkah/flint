@@ -129,3 +129,65 @@ describe('isGitRepo', () => {
     expect(await isGitRepo('/a')).toBeNull()
   })
 })
+
+describe('lineDiff parity with the plain LCS diff', () => {
+  // The original full-table implementation, kept as the reference.
+  const reference = (a: string | null, b: string | null) => {
+    const x = a === null ? [] : a.split(/\r?\n/)
+    const y = b === null ? [] : b.split(/\r?\n/)
+    const n = x.length
+    const m = y.length
+    const t: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        t[i][j] = x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1])
+    const out: { kind: string; text: string }[] = []
+    let i = 0
+    let j = 0
+    while (i < n && j < m) {
+      if (x[i] === y[j]) {
+        out.push({ kind: 'same', text: x[i] })
+        i++
+        j++
+      } else if (t[i + 1][j] >= t[i][j + 1]) out.push({ kind: 'del', text: x[i++] })
+      else out.push({ kind: 'add', text: y[j++] })
+    }
+    while (i < n) out.push({ kind: 'del', text: x[i++] })
+    while (j < m) out.push({ kind: 'add', text: y[j++] })
+    return out
+  }
+
+  it('is a valid diff with as many shared lines as the reference on many small random pairs', () => {
+    let seed = 12345
+    const rand = (k: number) => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed % k
+    }
+    const make = () =>
+      Array.from({ length: rand(10) }, () => 'abc'[rand(3)]).join('\n')
+    for (let k = 0; k < 400; k++) {
+      const a = make()
+      const b = make()
+      const got = lineDiff(a, b)
+      const ref = reference(a, b)
+      // Equally long common subsequences can pair the lines up differently, so
+      // compare what a diff must guarantee rather than the exact alignment.
+      const side = (kinds: string[]) => got.filter((l) => kinds.includes(l.kind)).map((l) => l.text)
+      expect(side(['same', 'del']), JSON.stringify([a, b])).toEqual(a.split(/\r?\n/))
+      expect(side(['same', 'add'])).toEqual(b.split(/\r?\n/))
+      expect(got.filter((l) => l.kind === 'same').length).toBe(ref.filter((l) => l.kind === 'same').length)
+    }
+  })
+
+  it('still shows a real diff for a long file with one changed line', () => {
+    const lines = Array.from({ length: 3000 }, (_, i) => `line ${i}`)
+    const edited = [...lines]
+    edited[1500] = 'changed'
+    const diff = lineDiff(lines.join('\n'), edited.join('\n'))
+    expect(diff.filter((d) => d.kind !== 'same')).toEqual([
+      { kind: 'del', text: 'line 1500' },
+      { kind: 'add', text: 'changed' },
+    ])
+    expect(diff).toHaveLength(3001)
+  })
+})

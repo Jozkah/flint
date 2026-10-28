@@ -16,7 +16,7 @@ import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { EnginePage, PageHead } from '@/containers/engine/EngineKit'
 import { ExtensionManager } from '@/lib/extension'
 
- 
+
 export const Route = createFileRoute(route.extensions)({
   component: desktopOnlyRoute(ExtensionsPage, 'common:appRail.extensions'),
 })

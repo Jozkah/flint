@@ -95,7 +95,6 @@ import {
   finishedJobPatch,
 } from '@/lib/coworkTasks'
 import {
-  INTERRUPTED_BY_RUN_END,
   findTaskByJob,
   backgroundTasksOf,
   sessionTotals,
@@ -124,7 +123,6 @@ import {
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { currentDescriber, describeRunAttachments } from '@/lib/imageDescription'
 import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
 import {
@@ -217,7 +215,6 @@ import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
 import { createDecodeClock, generationSpeed, speedStats } from '@/lib/tokenSpeed'
 import {
   prepareCoworkAttachments,
-  submittedToRunAttachments,
   type CoworkAttachmentInput,
   type SubmittedFile,
 } from '@/lib/coworkAttachments'
@@ -232,7 +229,6 @@ import {
 } from '@/hooks/useCoworkView'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import {
-  deriveFromSubagent,
   deriveFromTurns,
   isChange,
   type FileActivityEvent,
@@ -324,9 +320,7 @@ import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
 import { groupsToOffer, parseEnableRequest } from '@/lib/coworkToolGroups'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 import {
-  answerMail,
   createMailLedger,
-  finalAnswerText,
 } from '@/lib/mailAutoReply'
 import { holdQueueThenStop } from '@/lib/chatSteering'
 import {
@@ -387,6 +381,8 @@ import {
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { createCompactRun } from '@/lib/cowork/run/compactRun'
+import { sendRemoteRequest } from '@/lib/cowork/run/remoteRequest'
+import { settleRun } from '@/lib/cowork/run/settleRun'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -468,7 +464,6 @@ import {
   allowedRemoteModes,
   isRemoteSession,
   modeToAccess,
-  sendRemoteTurn,
   serverPageMode,
   setRemoteMode,
   startRemoteSession,
@@ -478,8 +473,6 @@ import {
 import { setRunModel } from '@/lib/remoteRunner'
 import { isServerTransport } from '@/lib/serverTransportFlag'
 import { pickServerFolder } from '@/lib/serverFolderPicker'
-import { MAX_RUN_ATTACHMENTS, type RunAttachment } from '@/lib/remoteRunner'
-import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
   type SubagentDefinition,
@@ -2723,54 +2716,7 @@ export function CoworkPage() {
     // A session the server runs is driven there: this page only sends the
     // message and mirrors the events (lib/remoteCowork.ts).
     if (isRemoteSession(sid)) {
-      const refused = (message: string) => {
-        toast.error(message)
-        onRefused?.()
-      }
-      if (text === null) return refused('A server session cannot resume from here. Send a message instead.')
-      let outgoing = text
-      let sentFiles: RunAttachment[] | undefined
-      if (attachmentInput && (attachmentInput.docs.length > 0 || (attachmentInput.files?.length ?? 0) > 0)) {
-        // Documents become text of the message and images travel as files;
-        // the server stores them with the session and checks every one.
-        try {
-          const prepared = await prepareCoworkAttachments(attachmentInput, {
-            sessionId: sid,
-            serviceHub: serviceHub,
-          })
-          for (const f of prepared.failed) toast.error(t('common:coworkRun.readFailed', { name: f.name, error: f.error }))
-          outgoing = text + prepared.modelSuffix
-          const media = submittedToRunAttachments(prepared.parts)
-          if (media.unsupported > 0) {
-            return refused(t('common:coworkRun.remoteImagesOnly'))
-          }
-          if (media.attachments.length > MAX_RUN_ATTACHMENTS) {
-            return refused(`A message can carry at most ${MAX_RUN_ATTACHMENTS} files.`)
-          }
-          sentFiles = media.attachments
-          // The server runs the session's model, which may not see. Its images
-          // are described here, by a model that can, and travel as text.
-          const sessionModel = resolveCoworkModel(
-            useCoworkSessions.getState().sessions.find((s) => s.id === sid)?.model,
-            useModelProvider.getState()
-          ).model
-          const describer =
-            sentFiles.length > 0 && sessionModel && !sessionModel.capabilities?.includes('vision')
-              ? currentDescriber()
-              : null
-          if (describer) {
-            const described = await describeRunAttachments(sentFiles, describer, { session: sid })
-            outgoing += described.text
-            sentFiles = undefined
-          }
-        } catch (e) {
-          return refused(e instanceof Error ? e.message : String(e))
-        }
-      }
-      void sendRemoteTurn(sid, outgoing, {}, sentFiles).catch((e) =>
-        refused(e instanceof Error ? e.message : String(e))
-      )
-      return
+      return sendRemoteRequest({ sid, text, attachmentInput, onRefused, t, serviceHub })
     }
     // The mail this run takes in (the message that woke it, and anything that
     // reaches it at a step boundary), so the run's final answer can go back to
@@ -5018,90 +4964,23 @@ export function CoworkPage() {
               errorText: e instanceof Error ? e.message : String(e),
             }
     } finally {
-      // The load card is shared by every Cowork run: only the last one to
-      // finish takes it down, so this run ending does not hide another's load.
-      const othersRunning = Object.keys(useCoworkRun.getState().runs).some(
-        (id) => id !== sid
-      )
-      if (!othersRunning) useAppState.getState().updateLoadingModel(false)
-      endRun(sid, runId)
-      // The run's agent browser (the `browser` tool) ends with it.
-      void closeBrowserSession(sid)
-      // The run is over, so its budget is not outstanding any more. Left
-      // behind, it would tell the next run it was resuming this one.
-      useCoworkSessions.getState().setRunBudget(sid, null)
-      // Nothing can still be running once the turn is over: the streams are
-      // closed and the dispatch loop has stopped awaiting them. Settle before
-      // closing the workflow, so its status is derived from settled children.
-      // This run's orphans only — scoped to its own workflow, and leaving a
-      // backgrounded shell job alone: the process is still running, and
-      // marking it cancelled would be false at the moment it was written and
-      // unrepairable afterwards.
-      useCoworkActivity.getState().settleRun(runId, INTERRUPTED_BY_RUN_END)
-      useCoworkActivity.getState().finishWorkflow(runId)
-      useCoworkSessions
-        .getState()
-        .commitTurns(
-          sid,
-          runTurns,
-          outcome?.messages ?? messages,
-          useCoworkRun.getState().subagents[sid] ?? [],
-          outcome?.usage ?? undefined
-        )
-      // The transcript's tool rows are structured: name, arguments, error
-      // flag, diff. That is the only thing the file record is built from.
-      // A final sweep: anything the steps missed, plus every subagent's own
-      // file work, which only exists on the runs themselves.
-      const settledAt = Date.now()
-      const subagentRuns = useCoworkRun.getState().subagents[sid] ?? []
-      const fileEvents = [
-        ...deriveFromTurns(runTurns, originOfPath, settledAt),
-        ...subagentRuns.flatMap((run) =>
-          deriveFromSubagent(run.name, run.turns, originOfPath, settledAt)
-        ),
-      ]
-      useFileActivity.getState().record(sid, fileEvents)
-      // The run's own account of what changed, generated from evidence rather
-      // than written by the model that did the changing.
-      void recordOrigins({ sessionId: sid, origins, events: fileEvents })
-      runWorkDone()
-      // Unanswered questions end with the run that asked them.
-      for (const resolve of handle.pendingAsks.values()) resolve(null)
-      handle.pendingAsks.clear()
-      const stop = thrown?.stoppedBy ?? outcome?.stoppedBy ?? null
-      // Refused if this run no longer owns the session -- stopped and
-      // replaced, or the session deleted -- so a late ending lands nowhere.
-      const ending: RunEnding | null = stop
-        ? {
-            stoppedBy: stop,
-            errorText: thrown?.errorText ?? outcome?.errorText,
-          }
-        : null
-      useCoworkRun.getState().finishRun(sid, runId, ending)
-      recordRunEnded(ending)
-      // The answer to a session that asked this one something: sent after the
-      // run is recorded as over, and only for a run that finished on its own.
-      if (stop === 'done') {
-        const asked = mailLedger.unanswered()
-        if (asked.length > 0) {
-          void answerMail(sid, asked, finalAnswerText(outcome?.messages ?? []))
-        }
-      }
-      // Only a run that finished on its own, and not one about to go on with
-      // what was queued behind it: that one sounds when it ends.
-      if (stop === 'done' && !continueWith) notifyAnswerFinished()
-      // A finished run lets what was typed after its last boundary go as the
-      // next request, from the effect watching the session in view. Any other
-      // ending -- a failure, Stop, a cap -- holds it for the user to send or
-      // discard: it was typed for a run that did not see it, and neither
-      // dropping it silently nor sending it on its own is right.
-      // janhq/jan#8864.
-      if (stop && stop !== 'done') useMessageQueue.getState().holdQueue(sid)
-      // Only after a clean finish: a stopped or failed opening run must not
-      // start work on its own.
-      if (continueWith && stop === 'done') {
-        void runRequestRef.current(continueWith)
-      }
+      settleRun({
+        sid,
+        runId,
+        handle,
+        runTurns,
+        messages,
+        outcome,
+        thrown,
+        origins,
+        originOfPath,
+        recordOrigins,
+        runWorkDone,
+        recordRunEnded,
+        mailLedger,
+        continueWith,
+        runAgain: (next) => runRequestRef.current(next),
+      })
     }
   }
 

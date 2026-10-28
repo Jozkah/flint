@@ -29,6 +29,10 @@ import { SkippedLinkedModelsNotice } from '@/containers/SkippedLinkedModelsNotic
 import DeleteProvider from '@/containers/dialogs/DeleteProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
+  SubscriptionConnect,
+  isSubscriptionProvider,
+} from '@/containers/SubscriptionConnect'
+import {
   ChevronDown,
   Info,
   } from 'lucide-react'
@@ -1353,6 +1357,9 @@ function ProviderDetail() {
       <SettingsPageHeader title={title} />
       <SettingsWithSections>
       <EnginePage testId="provider-page">
+        {isSubscriptionProvider(providerName) && (
+          <SubscriptionConnect providerName={providerName} />
+        )}
         <ProviderHero
           provider={provider}
           providerName={providerName}
