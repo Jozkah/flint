@@ -1,3 +1,5 @@
+import { AZURE_BASE_URL_PLACEHOLDER } from '@/constants/providers'
+
 /** Pure helpers of the provider detail page. Nothing here reads state. */
 
 /** Shortens an API key for display. Never returns more than 8 of its characters. */
@@ -48,4 +50,32 @@ export function isMemorySetting(key: string): boolean {
   return /cache|mmap|mlock|kv|rope|batch|defrag|flash|offload|split|tensor|memory/i.test(
     key
   )
+}
+
+/**
+ * Built-in providers whose endpoint depends on the account, so it stays
+ * editable: OpenAI for proxies and gateways that speak its API, Azure on the
+ * resource name, Alibaba Qwen on the region its keys were created in.
+ */
+export const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: string }> = {
+  openai: {
+    description: 'providers:baseUrl.openaiDescription',
+    placeholder: 'https://api.openai.com/v1',
+  },
+  azure: {
+    description: 'providers:baseUrl.azureDescription',
+    placeholder: AZURE_BASE_URL_PLACEHOLDER,
+  },
+  bedrock: {
+    description: 'providers:baseUrl.bedrockDescription',
+    placeholder: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+  },
+  litellm: {
+    description: 'providers:baseUrl.litellmDescription',
+    placeholder: 'http://localhost:4000/v1',
+  },
+  qwen: {
+    description: 'providers:baseUrl.qwenDescription',
+    placeholder: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  },
 }
