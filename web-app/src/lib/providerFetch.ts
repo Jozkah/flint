@@ -28,8 +28,36 @@ type StreamChunk =
       snapshot: PromptSnapshotRef | null
     }
   | { kind: 'data'; b64: string }
+  // Body bytes that arrived as a raw binary channel message (no base64).
+  | { kind: 'raw'; bytes: Uint8Array }
   | { kind: 'end' }
   | { kind: 'error'; message: string }
+
+/**
+ * One message from the desktop stream channel. The backend sends JSON for the
+ * head, errors and the end, and a binary message for body bytes when the
+ * request asked for `rawChunks`. Depending on the runtime a binary message
+ * arrives as an ArrayBuffer, a typed array or a plain array of byte values.
+ */
+export function decodeStreamMessage(message: unknown): StreamChunk {
+  if (Object.prototype.toString.call(message) === '[object ArrayBuffer]') {
+    return { kind: 'raw', bytes: new Uint8Array(message as ArrayBuffer) }
+  }
+  if (ArrayBuffer.isView(message)) {
+    return {
+      kind: 'raw',
+      bytes: new Uint8Array(
+        message.buffer,
+        message.byteOffset,
+        message.byteLength
+      ),
+    }
+  }
+  if (Array.isArray(message)) {
+    return { kind: 'raw', bytes: Uint8Array.from(message as number[]) }
+  }
+  return message as StreamChunk
+}
 
 /** What the transport recorded about a dispatched request. */
 export type PromptSnapshotRef = {
@@ -494,6 +522,10 @@ export const providerFetch: typeof globalThis.fetch = async (
           pending.push(bytesOf(chunk.b64))
           drain()
           break
+        case 'raw':
+          pending.push(chunk.bytes)
+          drain()
+          break
         case 'end':
           ended = true
           stopped = true
@@ -544,9 +576,13 @@ export const providerFetch: typeof globalThis.fetch = async (
       return
     }
 
-    const channel = new Channel<StreamChunk>()
-    channel.onmessage = onChunk
-    invoke('provider_http_stream', { request: payload, channel }).catch(fail)
+    const channel = new Channel<unknown>()
+    channel.onmessage = (message) => onChunk(decodeStreamMessage(message))
+    // `rawChunks`: body bytes come back as binary messages, not base64 JSON.
+    invoke('provider_http_stream', {
+      request: { ...payload, rawChunks: true },
+      channel,
+    }).catch(fail)
   })
 }
 
