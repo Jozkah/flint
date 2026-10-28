@@ -32,6 +32,18 @@ type SessionsState = { sessions: unknown[] }
 
 const shardKey = (name: string, id: string) => `${name}:${id}`
 
+// A session object the store has not replaced has the text it had last time,
+// so a flush stringifies only the sessions that changed.
+const shardTexts = new WeakMap<object, string>()
+function shardText(session: unknown): string {
+  const isObject = typeof session === 'object' && session !== null
+  const known = isObject ? shardTexts.get(session) : undefined
+  if (known !== undefined) return known
+  const text = JSON.stringify({ state: { sessions: [session] } })
+  if (isObject) shardTexts.set(session, text)
+  return text
+}
+
 function idsOf(sessions: unknown[]): string[] | null {
   const ids: string[] = []
   const seen = new Set<string>()
@@ -125,7 +137,7 @@ export function shardedSessionStorage<S = unknown>(
       const written: Array<[string, string]> = []
       sessions.forEach((session, i) => {
         const key = shardKey(name, ids[i])
-        const text = JSON.stringify({ state: { sessions: [session] } })
+        const text = shardText(session)
         if (lastShard.get(key) === text) return
         written.push([key, text])
         writes.push(Promise.resolve(inner.setItem(key, text)))
