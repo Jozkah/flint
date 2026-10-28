@@ -383,6 +383,7 @@ import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { createCompactRun } from '@/lib/cowork/run/compactRun'
 import { sendRemoteRequest } from '@/lib/cowork/run/remoteRequest'
 import { settleRun } from '@/lib/cowork/run/settleRun'
+import { createRunState } from '@/lib/cowork/run/runState'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -2940,7 +2941,7 @@ export function CoworkPage() {
     // This run's live lane. Every write names the run, so once the run is
     // stopped, replaced or its session deleted, a late write is refused
     // rather than drawn under whatever session is in view.
-    let runTurns: CoworkTurn[] = text
+    const initialTurns: CoworkTurn[] = text
       ? [
           {
             role: 'user',
@@ -2952,6 +2953,7 @@ export function CoworkPage() {
           },
         ]
       : []
+    const rs = createRunState(initialTurns)
     // The transcript row of this run's prompt (the id coworkTurnsToUIMessages
     // gives it), where a plan the run writes is recorded. A run without a
     // prompt of its own records it at the last one.
@@ -2967,16 +2969,15 @@ export function CoworkPage() {
     // so a run the app is killed under comes back as an interrupted turn.
     const runStartedAt = Date.now()
     const runBaseCount = current?.messages?.length ?? 0
-    let lastCheckpointAt: number | undefined
     const saveInFlight = (step = false) => {
       const at = Date.now()
-      if (!checkpointDue(lastCheckpointAt, at, step)) return
-      lastCheckpointAt = at
+      if (!checkpointDue(rs.lastCheckpointAt, at, step)) return
+      rs.lastCheckpointAt = at
       // Only while this run still owns the session's live lane.
       if (useCoworkRun.getState().runs[sid]?.runId !== runId) return
       useCoworkSessions
         .getState()
-        .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, runTurns, at))
+        .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, rs.runTurns, at))
     }
     // Text deltas publish at most once per frame: a set per token woke every
     // `useCoworkRun` subscriber and re-rendered this route per token, which is
@@ -2985,7 +2986,7 @@ export function CoworkPage() {
     const textFrame = createFrameBatch(() => publish())
     const publish = () => {
       textFrame.cancel()
-      useCoworkRun.getState().setRunTurns(sid, runId, [...runTurns])
+      useCoworkRun.getState().setRunTurns(sid, runId, [...rs.runTurns])
       saveInFlight()
     }
     const pushLive = (
@@ -3003,7 +3004,7 @@ export function CoworkPage() {
           ? { ...turn, promptSnapshot: snapshot }
           : turn
       )
-      runTurns = [...runTurns, ...stamped]
+      rs.runTurns = [...rs.runTurns, ...stamped]
       publish()
       // AH-083: the memories this row's request carried now know the turn and
       // the exact snapshot they went out in. Here for the same reason as the
@@ -3023,9 +3024,9 @@ export function CoworkPage() {
       }
     }
     const mutateLive = (apply: (turns: CoworkTurn[]) => CoworkTurn[]) => {
-      const next = apply(runTurns)
-      if (next === runTurns) return
-      runTurns = next
+      const next = apply(rs.runTurns)
+      if (next === rs.runTurns) return
+      rs.runTurns = next
       publish()
     }
     publish()
@@ -3067,7 +3068,7 @@ export function CoworkPage() {
       const prior = current?.messages ?? []
       useCoworkSessions.getState().commitTurns(
         sid,
-        runTurns,
+        rs.runTurns,
         text
           ? [
               ...prior,
@@ -3142,7 +3143,6 @@ export function CoworkPage() {
       folder: current?.folder ?? null,
       grantId: liveGrant?.grantId ?? null,
     })
-    let runBaseline: GitBaseline | null = null
     if (carried.readRoot) {
       let captured: GitBaseline
       try {
@@ -3159,7 +3159,7 @@ export function CoworkPage() {
         captured = unavailableBaseline(baselineBinding)
       }
       if (controller.signal.aborted) return abandon({ stoppedBy: 'aborted' })
-      runBaseline = acceptBaseline(captured, bindingRef.current)
+      rs.runBaseline = acceptBaseline(captured, bindingRef.current)
     }
 
     /**
@@ -3177,7 +3177,7 @@ export function CoworkPage() {
       // The tree the changes land in, frozen with the rest: every surface that
       // reports what happened reads this one answer.
       tree: carried.readRoot,
-      baseline: runBaseline,
+      baseline: rs.runBaseline,
     }
     useCoworkOrigins.getState().begin(sid, origins)
 
@@ -3357,13 +3357,12 @@ export function CoworkPage() {
     // The same facts the readiness card shows when the run reads the folder
     // on screen; read afresh for any other root (a managed worktree). Given up
     // on Stop like the rest of preparation, and never a reason not to run.
-    let runTooling: string | null = null
     if (runReadRoot) {
       const cached =
         tooling?.folder === runReadRoot ? tooling.loaded : null
       const loaded = cached ?? (await prepared(loadProjectTooling(runReadRoot)))
       if (loaded === STOPPED) return
-      runTooling = loaded.prompt
+      rs.runTooling = loaded.prompt
     }
     // A campaign coordinator or task on a window of 32K or less gets the
     // slim tool set: the full one alone would fill most of it.
@@ -3425,7 +3424,7 @@ export function CoworkPage() {
       // switched on, oversized, or pointing outside the folder contributes
       // nothing here.
       compatInstructions: compatInstructionBlocks(runCompat),
-      projectTooling: runTooling,
+      projectTooling: rs.runTooling,
       openingInspection: inspecting,
       // What the shell can and cannot do, stated up front. Without it the
       // model learned by failing: probing the disk for runtimes, trying POSIX
@@ -3467,7 +3466,6 @@ export function CoworkPage() {
      * shared by its snapshot, its usage, its memory uses and the execution
      * events of the calls it asked for.
      */
-    let stepSnapshot: PromptSnapshotRef | undefined
     // Per-step generation timing, so a provider that reports no llama.cpp
     // `timings` (every remote model) still gets a tokens/sec figure -- the
     // provider's output tokens over the time any output (text, reasoning, tool
@@ -3489,20 +3487,20 @@ export function CoworkPage() {
     const streamedAssistantTurns = new Set<CoworkTurn>()
     const clearStreamedTurns = () => {
       if (streamedAssistantTurns.size === 0) return
-      runTurns = runTurns.filter((turn) => !streamedAssistantTurns.has(turn))
+      rs.runTurns = rs.runTurns.filter((turn) => !streamedAssistantTurns.has(turn))
       streamedAssistantTurns.clear()
       publish()
     }
     const sink: StreamSink = {
       onOutput: (chars) => decodeClock.tick(chars),
       onText: (delta) => {
-        const last = runTurns[runTurns.length - 1]
+        const last = rs.runTurns[rs.runTurns.length - 1]
         if (last && last.role === 'assistant' && streamedAssistantTurns.has(last)) {
           last.content += delta
           textFrame.schedule()
         } else {
           pushLive([{ role: 'assistant', content: delta }])
-          const added = runTurns[runTurns.length - 1]
+          const added = rs.runTurns[rs.runTurns.length - 1]
           if (added?.role === 'assistant') streamedAssistantTurns.add(added)
         }
       },
@@ -3513,13 +3511,13 @@ export function CoworkPage() {
       // Only a widget's arguments are kept as they stream: it is the one call
       // whose card draws from them before the call is complete.
       onToolArgsDelta: (callId, delta) => {
-        const row = runTurns.find((turn) => turn.callId === callId)
+        const row = rs.runTurns.find((turn) => turn.callId === callId)
         if (row?.name !== SHOW_WIDGET_TOOL) return
         row.argsLive = (row.argsLive ?? '') + delta
         textFrame.schedule()
       },
       onToolCall: (call) => {
-        const row = runTurns.find((turn) => turn.callId === call.toolCallId)
+        const row = rs.runTurns.find((turn) => turn.callId === call.toolCallId)
         if (row) {
           row.args = call.input
           row.argsLive = undefined
@@ -3562,7 +3560,7 @@ export function CoworkPage() {
         [
           ...(useCoworkSessions.getState().sessions.find((s) => s.id === sid)
             ?.turns ?? []),
-          ...runTurns,
+          ...rs.runTurns,
         ],
         sid
       )
@@ -3871,13 +3869,12 @@ export function CoworkPage() {
     // A model with no configured window is unmeasurable until a server refuses a
     // request and names it; that number is used for the rest of this run, and
     // remembered so the next run plans against it from the start.
-    let learnedWindow: number | null = null
     const summarizeRun = modelSummarizer({
       provider: selectedProvider,
       modelId: selectedModel.id,
       session: sid,
       maxOutputTokens: compactionPolicy.summaryMaxTokens,
-      window: () => runWindow ?? learnedWindow,
+      window: () => runWindow ?? rs.learnedWindow,
       model: () => transport.model,
     })
     const compactRun = createCompactRun({
@@ -3890,9 +3887,9 @@ export function CoworkPage() {
       selectedModelId: selectedModel.id,
       transport,
       summarize: summarizeRun,
-      getLearnedWindow: () => learnedWindow,
+      getLearnedWindow: () => rs.learnedWindow,
       setLearnedWindow: (tokens) => {
-        learnedWindow = tokens
+        rs.learnedWindow = tokens
       },
       setCompacting,
       pushLive: (turns) => pushLive(turns),
@@ -3958,19 +3955,15 @@ export function CoworkPage() {
      * construction and its tools are frozen, so the accepted step cannot run
      * here: it runs in a new request under the session's stored mode.
      */
-    let continueWith: string | null = null
     // The folder offer is made once per run, so a declined one is not repeated.
-    let folderOffered = false
     // Subagents this run started with `task background:true`.
     const backgroundTasks = new BackgroundTasks(SUBAGENT_RESULT_HEAD_CHARS)
-    let outcome: RunOutcome | null = null
-    let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
       // Raised here rather than returned earlier so the turn is torn down the
       // way every other ending is: the user's own message is committed, the
       // run is closed and nothing is left running.
       if (overflow) throw overflow
-      outcome = await runTurn({
+      rs.outcome = await runTurn({
         messages,
         signal: controller.signal,
         /**
@@ -4018,7 +4011,7 @@ export function CoworkPage() {
                   session: sid,
                   run: runId,
                   agent: 'main',
-                  invocation: stepSnapshot?.invocation,
+                  invocation: rs.stepSnapshot?.invocation,
                 },
                 sessionId: sid,
                 modelId: selectedModel?.id,
@@ -4064,8 +4057,8 @@ export function CoworkPage() {
                 // folder is fixed once it starts, so on yes the pick is held
                 // and the run ends; it restarts when the folder is applied.
                 onNeedFolder: async ({ signal }) => {
-                  if (folderOffered) return 'declined'
-                  folderOffered = true
+                  if (rs.folderOffered) return 'declined'
+                  rs.folderOffered = true
                   const ok = await useToolApprovalRequests
                     .getState()
                     .requestApproval(
@@ -4279,7 +4272,7 @@ export function CoworkPage() {
                         answers &&
                         acceptsProposal(parsed, answers)
                       ) {
-                        continueWith = continuationInstruction(
+                        rs.continueWith = continuationInstruction(
                           proposal.question,
                           answers
                         )
@@ -4312,7 +4305,7 @@ export function CoworkPage() {
                             duration: 12000,
                           })
                         }
-                        continueWith = PLAN_EXECUTE_INSTRUCTION
+                        rs.continueWith = PLAN_EXECUTE_INSTRUCTION
                       }
                       resolve(
                         review === 'none'
@@ -4491,7 +4484,7 @@ export function CoworkPage() {
                         })
                       : fn
                   try {
-                    const outcome = await runTeam(tasks, {
+                    const teamOutcome = await runTeam(tasks, {
                       // The turn's controller: stopping the run stops the team,
                       // and every child hangs off a signal chained to this one.
                       signal: teamSignal,
@@ -4660,29 +4653,29 @@ export function CoworkPage() {
                       })),
                     })
                     await runLog?.settled()
-                    if (!outcome.ok) {
+                    if (!teamOutcome.ok) {
                       useCoworkActivity.getState().patchTask(teamTaskId, {
                         status: 'error',
-                        output: outcome.refusal,
+                        output: teamOutcome.refusal,
                         endedAt: Date.now(),
                       })
                       return {
-                        output: `ERROR: ${outcome.refusal}`,
+                        output: `ERROR: ${teamOutcome.refusal}`,
                         isError: true,
                       }
                     }
                     const where = describeDestinations(plan.byTask)
                     const rendered = [
-                      renderTeamReport(outcome.report) +
-                        (outcome.decision === 'window-elapsed' ||
-                        outcome.decision === 'not-retried'
-                          ? `\n\n${renderNotRetried(outcome.report)}`
+                      renderTeamReport(teamOutcome.report) +
+                        (teamOutcome.decision === 'window-elapsed' ||
+                        teamOutcome.decision === 'not-retried'
+                          ? `\n\n${renderNotRetried(teamOutcome.report)}`
                           : ''),
                       where
                         ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
                         : '',
                       runLog?.summary() ?? '',
-                      runLog && !outcome.report.allDone
+                      runLog && !teamOutcome.report.allDone
                         ? `This run's run_id is ${runLog.runId}. Relaunch it with \`workflow {resume_run_id: "${runLog.runId}"}\`: finished agents return their saved results; the failed one and everything after it runs again.`
                         : '',
                       decided.length
@@ -4696,18 +4689,18 @@ export function CoworkPage() {
                       // partial run cannot read as a finished one at a glance.
                       status: teamSignal.aborted
                         ? ('cancelled' as const)
-                        : outcome.report.allDone
+                        : teamOutcome.report.allDone
                           ? ('done' as const)
                           : ('error' as const),
                       output: rendered,
-                      detail: teamProgress(outcome.state),
+                      detail: teamProgress(teamOutcome.state),
                       endedAt: Date.now(),
                     })
                     return {
                       output: rendered,
                       // A team where something failed is an error result, so the
                       // agent cannot read a partial run as a finished one.
-                      isError: !outcome.report.allDone,
+                      isError: !teamOutcome.report.allDone,
                     }
                   } finally {
                     useTeamControls.getState().unregister(teamTaskId)
@@ -4747,7 +4740,7 @@ export function CoworkPage() {
             // to its invocation -- its usage (counts only) and what the
             // response was made of (sizes only; the words stay in the
             // transcript). One id per invocation, so a retried record is one.
-            const stepInvocation = (stepSnapshot ?? lastSnapshotRef.current[sid])?.invocation
+            const stepInvocation = (rs.stepSnapshot ?? lastSnapshotRef.current[sid])?.invocation
             if (stepInvocation) {
               const stepUsage = fromCoworkUsage(result.usage)
               recordEvents([
@@ -4780,14 +4773,14 @@ export function CoworkPage() {
               void recordPayloadUsage({
                 session: sid,
                 run: runId,
-                snapshot: stepSnapshot ?? lastSnapshotRef.current[sid] ?? null,
+                snapshot: rs.stepSnapshot ?? lastSnapshotRef.current[sid] ?? null,
                 model: selectedModel?.id,
                 usage: result.usage,
               })
             }
             // Replace the optimistic running rows with the settled ones so the
             // transcript shows results, not spinners.
-            runTurns = runTurns.filter(
+            rs.runTurns = rs.runTurns.filter(
               (turn) =>
                 !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
                 !streamedAssistantTurns.has(turn)
@@ -4831,7 +4824,7 @@ export function CoworkPage() {
             })
             // Reset the generation span so the next step measures its own.
             decodeClock.reset()
-            pushLive(settledTurns, stepSnapshot ?? lastSnapshotRef.current[sid])
+            pushLive(settledTurns, rs.stepSnapshot ?? lastSnapshotRef.current[sid])
             // Record this step's file work now. Ids are keyed on the tool
             // call, so the commit below re-recording the same rows is a
             // no-op rather than a duplicate.
@@ -4863,13 +4856,13 @@ export function CoworkPage() {
             }
           },
           onResponse: () => {
-            stepSnapshot = lastSnapshotRef.current[sid]
+            rs.stepSnapshot = lastSnapshotRef.current[sid]
           },
           activity: () => ({
             session: sid,
             run: runId,
             agent: 'main',
-            invocation: stepSnapshot?.invocation,
+            invocation: rs.stepSnapshot?.invocation,
           }),
           compact: compactRun,
           nextMessageId: (() => {
@@ -4952,7 +4945,7 @@ export function CoworkPage() {
       // The runner turns a failed step into an outcome, so this is the last
       // resort — a fault in the loop itself. Either way it is not a tool call,
       // and rendering it as one claimed the agent had run something.
-      thrown = isAbortLike(e, controller.signal)
+      rs.thrown = isAbortLike(e, controller.signal)
         ? { stoppedBy: 'aborted' }
         : isContextOverflow(e)
           ? // Not an error in the loop: the request was measured, found not to
@@ -4968,17 +4961,17 @@ export function CoworkPage() {
         sid,
         runId,
         handle,
-        runTurns,
+        runTurns: rs.runTurns,
         messages,
-        outcome,
-        thrown,
+        outcome: rs.outcome,
+        thrown: rs.thrown,
         origins,
         originOfPath,
         recordOrigins,
         runWorkDone,
         recordRunEnded,
         mailLedger,
-        continueWith,
+        continueWith: rs.continueWith,
         runAgain: (next) => runRequestRef.current(next),
       })
     }
