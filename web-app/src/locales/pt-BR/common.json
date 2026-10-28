@@ -3069,5 +3069,42 @@
     "hide": "Ocultar a chave de API",
     "copy": "Copiar a chave de API",
     "copied": "Copiado"
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Mudança de dependências",
+      "lockfile": "Arquivo de bloqueio",
+      "migration": "Migração irreversível",
+      "binary": "Arquivo binário",
+      "deletion": "Exclusão"
+    },
+    "reviewed": "Revisei o que isso altera",
+    "moreLines_one": "… mais {{count}} linha",
+    "moreLines_other": "… mais {{count}} linhas",
+    "lines": "Linhas {{from}}–{{to}}",
+    "sensitive": "Parece conter uma credencial, então nunca é aplicado.",
+    "wholeBinary": "Binário: aplicado ou deixado inteiro.",
+    "wholeLarge": "Grande demais para dividir: aplicado ou deixado inteiro.",
+    "noWorktree": "não há registro de worktree a partir do qual propor",
+    "nothingSelected": "Nada selecionado. Rejeite a proposta para descartá-la.",
+    "applied_one": "{{count}} arquivo aplicado.",
+    "applied_other": "{{count}} arquivos aplicados.",
+    "appliedPartial_one": "{{count}} arquivo aplicado; o restante ficou de fora.",
+    "appliedPartial_other": "{{count}} arquivos aplicados; o restante ficou de fora.",
+    "rejected": "Rejeitada. Nada mudou na sua pasta.",
+    "heading": "{{title}} em {{root}}",
+    "defaultTitle": "Alterações propostas",
+    "ownCopy": "Esta execução trabalha em uma cópia própria. Nada chega à sua pasta até você aplicar.",
+    "collecting": "Coletando…",
+    "review": "Revisar alterações",
+    "exporting": "Exportando…",
+    "exportPatch": "Exportar como patch",
+    "exported": "Pacote de patch gravado em {{path}}",
+    "lockFiles": "Arquivos de bloqueio ({{count}}), separados das alterações de código acima",
+    "needsAck": "Para aplicar, marque como revisados ou deixe de fora: {{files}}",
+    "selectedCount": "{{chosen}} de {{total}} alterações selecionadas",
+    "reject": "Rejeitar",
+    "applying": "Aplicando…",
+    "applySelected": "Aplicar seleção"
   }
 }

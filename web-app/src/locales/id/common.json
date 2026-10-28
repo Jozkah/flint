@@ -2965,5 +2965,39 @@
     "hide": "Sembunyikan kunci API",
     "copy": "Salin kunci API",
     "copied": "Disalin"
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Perubahan dependensi",
+      "lockfile": "Berkas kunci",
+      "migration": "Migrasi yang tidak dapat dibatalkan",
+      "binary": "Berkas biner",
+      "deletion": "Penghapusan"
+    },
+    "reviewed": "Saya sudah meninjau apa yang berubah",
+    "moreLines_other": "… {{count}} baris lagi",
+    "lines": "Baris {{from}}–{{to}}",
+    "sensitive": "Tampaknya berisi kredensial, jadi tidak pernah diterapkan.",
+    "wholeBinary": "Biner: diterapkan utuh atau dilewati.",
+    "wholeLarge": "Terlalu besar untuk dipecah: diterapkan utuh atau dilewati.",
+    "noWorktree": "tidak ada catatan worktree untuk dijadikan usulan",
+    "nothingSelected": "Tidak ada yang dipilih. Tolak usulan untuk membuangnya.",
+    "applied_other": "{{count}} berkas diterapkan.",
+    "appliedPartial_other": "{{count}} berkas diterapkan; sisanya dilewati.",
+    "rejected": "Ditolak. Tidak ada yang berubah di folder Anda.",
+    "heading": "{{title}} ke {{root}}",
+    "defaultTitle": "Perubahan yang diusulkan",
+    "ownCopy": "Proses ini bekerja pada salinannya sendiri. Tidak ada yang masuk ke folder Anda sampai Anda menerapkannya.",
+    "collecting": "Mengumpulkan…",
+    "review": "Tinjau perubahan",
+    "exporting": "Mengekspor…",
+    "exportPatch": "Ekspor sebagai patch",
+    "exported": "Paket patch ditulis ke {{path}}",
+    "lockFiles": "Berkas kunci ({{count}}), dipisahkan dari perubahan sumber di atas",
+    "needsAck": "Untuk menerapkan, tandai sebagai sudah ditinjau atau lewati: {{files}}",
+    "selectedCount": "{{chosen}} dari {{total}} perubahan dipilih",
+    "reject": "Tolak",
+    "applying": "Menerapkan…",
+    "applySelected": "Terapkan pilihan"
   }
 }

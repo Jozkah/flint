@@ -3011,5 +3011,39 @@
     "hide": "隐藏 API 密钥",
     "copy": "复制 API 密钥",
     "copied": "已复制"
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "依赖变更",
+      "lockfile": "锁定文件",
+      "migration": "不可逆迁移",
+      "binary": "二进制文件",
+      "deletion": "删除"
+    },
+    "reviewed": "我已确认这会改变什么",
+    "moreLines_other": "… 另有 {{count}} 行",
+    "lines": "第 {{from}}–{{to}} 行",
+    "sensitive": "看起来包含凭据，因此不会被应用。",
+    "wholeBinary": "二进制：整体应用或整体不应用。",
+    "wholeLarge": "太大无法拆分：整体应用或整体不应用。",
+    "noWorktree": "没有可用于生成提案的工作树记录",
+    "nothingSelected": "未选择任何内容。如需丢弃，请拒绝该提案。",
+    "applied_other": "已应用 {{count}} 个文件。",
+    "appliedPartial_other": "已应用 {{count}} 个文件；其余已排除。",
+    "rejected": "已拒绝。你的文件夹没有任何变化。",
+    "heading": "{{title}}，目标 {{root}}",
+    "defaultTitle": "建议的更改",
+    "ownCopy": "此次运行在自己的副本中工作。在你应用之前，不会有任何内容进入你的文件夹。",
+    "collecting": "正在收集…",
+    "review": "查看更改",
+    "exporting": "正在导出…",
+    "exportPatch": "导出为补丁",
+    "exported": "补丁包已写入 {{path}}",
+    "lockFiles": "锁定文件（{{count}} 个），与上方源码更改分开显示",
+    "needsAck": "要应用，请将它们标记为已查看或排除：{{files}}",
+    "selectedCount": "已选择 {{chosen}} / {{total}} 项更改",
+    "reject": "拒绝",
+    "applying": "正在应用…",
+    "applySelected": "应用所选"
   }
 }

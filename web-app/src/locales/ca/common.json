@@ -3072,5 +3072,42 @@
     "hide": "Amaga la clau d'API",
     "copy": "Copia la clau d'API",
     "copied": "Copiat"
+  },
+  "proposal": {
+    "flag": {
+      "dependency": "Canvi de dependències",
+      "lockfile": "Fitxer de bloqueig",
+      "migration": "Migració irreversible",
+      "binary": "Fitxer binari",
+      "deletion": "Eliminació"
+    },
+    "reviewed": "He revisat què canvia això",
+    "moreLines_one": "… {{count}} línia més",
+    "moreLines_other": "… {{count}} línies més",
+    "lines": "Línies {{from}}–{{to}}",
+    "sensitive": "Sembla que conté una credencial, així que mai s'aplica.",
+    "wholeBinary": "Binari: s'aplica o es deixa sencer.",
+    "wholeLarge": "Massa gran per dividir: s'aplica o es deixa sencer.",
+    "noWorktree": "no hi ha cap registre de worktree des del qual proposar",
+    "nothingSelected": "No hi ha res seleccionat. Rebutja la proposta per descartar-la.",
+    "applied_one": "{{count}} fitxer aplicat.",
+    "applied_other": "{{count}} fitxers aplicats.",
+    "appliedPartial_one": "{{count}} fitxer aplicat; la resta s'ha deixat fora.",
+    "appliedPartial_other": "{{count}} fitxers aplicats; la resta s'ha deixat fora.",
+    "rejected": "Rebutjada. No ha canviat res a la teva carpeta.",
+    "heading": "{{title}} a {{root}}",
+    "defaultTitle": "Canvis proposats",
+    "ownCopy": "Aquesta execució treballa en una còpia pròpia. Res no arriba a la teva carpeta fins que ho apliquis.",
+    "collecting": "Recopilant…",
+    "review": "Revisa els canvis",
+    "exporting": "Exportant…",
+    "exportPatch": "Exporta com a pedaç",
+    "exported": "Paquet de pedaç escrit a {{path}}",
+    "lockFiles": "Fitxers de bloqueig ({{count}}), separats dels canvis de codi de dalt",
+    "needsAck": "Per aplicar, marca'ls com a revisats o deixa'ls fora: {{files}}",
+    "selectedCount": "{{chosen}} de {{total}} canvis seleccionats",
+    "reject": "Rebutja",
+    "applying": "Aplicant…",
+    "applySelected": "Aplica la selecció"
   }
 }
