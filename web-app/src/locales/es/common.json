@@ -790,6 +790,14 @@
     "filesDescription": "Agrega PDFs, documentos u otros textos para usar como referencia en este proyecto.",
     "uploadingFiles": "Procesando archivos…",
     "processButton": "Añadir",
+    "fileChangedOnDisk": "Cambiado en el disco",
+    "fileMissing": "No encontrado",
+    "reindexFile": "Volver a indexar",
+    "reindexAllChanged": "Volver a indexar todos los cambiados",
+    "filesChangedOnDisk": "Archivos cambiados en el disco desde que se indexaron: {{count}}",
+    "reindexed": "Archivos indexados de nuevo: {{count}}",
+    "reindexFailed": "No se pudo volver a indexar el archivo",
+    "staleFilesNotice": "Archivos de la colección cambiados o ausentes en el disco: {{count}}. Vuelve a indexarlos desde la lista de archivos de la colección.",
     "deleteFileDialog": {
       "title": "Eliminar archivo",
       "description": "\"{{fileName}}\" y su contenido indexado se quitarán de esta colección. Esta acción no se puede deshacer."

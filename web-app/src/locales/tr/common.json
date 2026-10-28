@@ -782,6 +782,14 @@
     "filesDescription": "Bu projede kaynak olarak kullanmak üzere PDF, belge veya başka metinler ekleyin.",
     "uploadingFiles": "Dosyalar işleniyor…",
     "processButton": "Ekle",
+    "fileChangedOnDisk": "Diskte değişti",
+    "fileMissing": "Bulunamadı",
+    "reindexFile": "Yeniden dizinle",
+    "reindexAllChanged": "Değişenlerin tümünü yeniden dizinle",
+    "filesChangedOnDisk": "Dizinlendikten sonra diskte değişen dosyalar: {{count}}",
+    "reindexed": "Yeniden dizinlenen dosyalar: {{count}}",
+    "reindexFailed": "Dosya yeniden dizinlenemedi",
+    "staleFilesNotice": "Diskte değişen veya kaybolan koleksiyon dosyaları: {{count}}. Bunları koleksiyonun Dosyalar listesinden yeniden dizinleyin.",
     "deleteFileDialog": {
       "title": "Dosyayı sil",
       "description": "\"{{fileName}}\" ve dizinlenmiş içeriği bu koleksiyondan kaldırılacak. Bu geri alınamaz."

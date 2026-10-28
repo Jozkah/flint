@@ -790,6 +790,14 @@
     "filesDescription": "Aggiungi PDF, documenti o altro testo da usare come riferimento in questo progetto.",
     "uploadingFiles": "Caricamento file in corso…",
     "processButton": "Aggiungi",
+    "fileChangedOnDisk": "Modificato sul disco",
+    "fileMissing": "Mancante",
+    "reindexFile": "Reindicizza",
+    "reindexAllChanged": "Reindicizza tutti i modificati",
+    "filesChangedOnDisk": "File modificati sul disco dall'indicizzazione: {{count}}",
+    "reindexed": "File reindicizzati: {{count}}",
+    "reindexFailed": "Impossibile reindicizzare il file",
+    "staleFilesNotice": "File della raccolta modificati o mancanti sul disco: {{count}}. Reindicizzali dall'elenco dei file della raccolta.",
     "deleteFileDialog": {
       "title": "Elimina file",
       "description": "\"{{fileName}}\" e il suo contenuto indicizzato verranno rimossi da questa raccolta. L'operazione non può essere annullata."

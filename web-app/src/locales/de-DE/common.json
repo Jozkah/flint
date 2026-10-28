@@ -782,6 +782,14 @@
     "filesDescription": "Füge PDFs, Dokumente oder anderen Text hinzu, auf die sich diese Unterhaltungen beziehen können.",
     "uploadingFiles": "Dateien werden verarbeitet…",
     "processButton": "Hinzufügen",
+    "fileChangedOnDisk": "Auf dem Datenträger geändert",
+    "fileMissing": "Fehlt",
+    "reindexFile": "Neu indizieren",
+    "reindexAllChanged": "Alle geänderten neu indizieren",
+    "filesChangedOnDisk": "Seit der Indizierung geänderte Dateien: {{count}}",
+    "reindexed": "Neu indizierte Dateien: {{count}}",
+    "reindexFailed": "Die Datei konnte nicht neu indiziert werden",
+    "staleFilesNotice": "Geänderte oder fehlende Dateien der Sammlung: {{count}}. Indiziere sie in der Dateiliste der Sammlung neu.",
     "deleteFileDialog": {
       "title": "Datei löschen",
       "description": "„{{fileName}}“ und der zugehörige indexierte Inhalt werden aus dieser Sammlung entfernt. Das kann nicht rückgängig gemacht werden."

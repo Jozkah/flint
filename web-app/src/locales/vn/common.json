@@ -790,6 +790,14 @@
     "filesDescription": "Thêm PDF, tài liệu hoặc văn bản khác để các cuộc trò chuyện này tham chiếu.",
     "uploadingFiles": "Đang xử lý tệp…",
     "processButton": "Thêm",
+    "fileChangedOnDisk": "Đã thay đổi trên đĩa",
+    "fileMissing": "Không tìm thấy",
+    "reindexFile": "Lập chỉ mục lại",
+    "reindexAllChanged": "Lập chỉ mục lại tất cả tệp đã đổi",
+    "filesChangedOnDisk": "Tệp đã thay đổi trên đĩa kể từ khi lập chỉ mục: {{count}}",
+    "reindexed": "Tệp đã lập chỉ mục lại: {{count}}",
+    "reindexFailed": "Không thể lập chỉ mục lại tệp",
+    "staleFilesNotice": "Tệp của bộ sưu tập đã thay đổi hoặc bị mất trên đĩa: {{count}}. Hãy lập chỉ mục lại từ danh sách Tệp của bộ sưu tập.",
     "deleteFileDialog": {
       "title": "Xóa tệp",
       "description": "\"{{fileName}}\" và nội dung đã lập chỉ mục của nó sẽ bị gỡ khỏi bộ sưu tập này. Không thể hoàn tác."

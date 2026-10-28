@@ -790,6 +790,14 @@
     "filesDescription": "Afegeix PDF, documents o altres textos perquè aquestes converses els puguin consultar.",
     "uploadingFiles": "S’estan processant els fitxers…",
     "processButton": "Afegeix",
+    "fileChangedOnDisk": "Canviat al disc",
+    "fileMissing": "No trobat",
+    "reindexFile": "Torna a indexar",
+    "reindexAllChanged": "Torna a indexar tots els canviats",
+    "filesChangedOnDisk": "Fitxers canviats al disc des que es van indexar: {{count}}",
+    "reindexed": "Fitxers indexats de nou: {{count}}",
+    "reindexFailed": "No s'ha pogut tornar a indexar el fitxer",
+    "staleFilesNotice": "Fitxers de la col·lecció canviats o absents al disc: {{count}}. Torna'ls a indexar des de la llista de fitxers de la col·lecció.",
     "deleteFileDialog": {
       "title": "Elimina el fitxer",
       "description": "«{{fileName}}» i el seu contingut indexat s'eliminaran d'aquesta col·lecció. Aquesta acció no es pot desfer."
