@@ -58,7 +58,14 @@ pub fn set_data_folder(new_folder: &str, copy: bool) -> Result<Value, String> {
         return Err("give the new data folder as an absolute path".to_string());
     }
     let current = resolve_jan_data_folder();
+    let existed = new_path.exists();
     std::fs::create_dir_all(&new_path).map_err(|e| format!("create {}: {e}", new_path.display()))?;
+    // A folder this call made is removed again when the call fails.
+    let undo = |dir: &Path| {
+        if !existed {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    };
     // Compared after resolving, so `..`, links and (on Windows) letter case
     // cannot hide that one folder is inside the other.
     let key = |p: &Path| {
@@ -67,6 +74,7 @@ pub fn set_data_folder(new_folder: &str, copy: bool) -> Result<Value, String> {
     };
     let (cur_key, new_key) = (key(&current), key(&new_path));
     if new_key != cur_key && (new_key.starts_with(&cur_key) || cur_key.starts_with(&new_key)) {
+        undo(&new_path);
         return Err("the new data folder cannot be inside the current one, or contain it".to_string());
     }
     let mut copied = 0;
@@ -77,13 +85,19 @@ pub fn set_data_folder(new_folder: &str, copy: bool) -> Result<Value, String> {
             return Err("the new folder is not empty; pick an empty one, or pass --no-copy to switch to it as it is".to_string());
         }
         copied = copy_recursive(&current, &new_path, &[".uvx", ".npx", "openclaw"])
-            .map_err(|e| format!("copy to the new folder failed: {e}"))?;
+            .map_err(|e| {
+                undo(&new_path);
+                format!("copy to the new folder failed: {e}")
+            })?;
     }
     let configuration = AppConfiguration {
         data_folder: new_path.to_string_lossy().to_string(),
         unavailable_data_folder: None,
     };
-    write_configuration_atomic(&resolve_config_file_path(), &configuration)?;
+    if let Err(e) = write_configuration_atomic(&resolve_config_file_path(), &configuration) {
+        undo(&new_path);
+        return Err(e);
+    }
     Ok(json!({
         "dataFolder": new_path,
         "filesCopied": copied,

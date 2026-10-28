@@ -14,12 +14,23 @@ pub struct McpLockFile {
     pub hostname: String,
 }
 
-fn get_lock_file_path<R: Runtime>(app: &AppHandle<R>, port: u16) -> PathBuf {
-    let app_data_dir = app
-        .path()
+fn lock_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    app.path()
         .app_data_dir()
-        .expect("Failed to get app data dir");
-    app_data_dir.join(format!("mcp_lock_{}.json", port))
+        .map_err(|e| format!("Failed to get app data dir: {e}"))
+}
+
+fn get_lock_file_path<R: Runtime>(app: &AppHandle<R>, port: u16) -> Result<PathBuf, String> {
+    Ok(lock_dir(app)?.join(format!("mcp_lock_{}.json", port)))
+}
+
+/// Writes through a temp file and a rename, so a reader never sees half a record.
+fn write_atomic(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension(format!("json.tmp{}", std::process::id()));
+    fs::write(&tmp, contents)?;
+    fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = fs::remove_file(&tmp);
+    })
 }
 
 pub fn create_lock_file<R: Runtime>(
@@ -28,7 +39,7 @@ pub fn create_lock_file<R: Runtime>(
     server_name: &str,
     pid: u32,
 ) -> Result<(), String> {
-    let lock_path = get_lock_file_path(app, port);
+    let lock_path = get_lock_file_path(app, port)?;
 
     // Ensure parent directory exists
     if let Some(parent) = lock_path.parent() {
@@ -50,14 +61,14 @@ pub fn create_lock_file<R: Runtime>(
     let lock_json = serde_json::to_string_pretty(&lock)
         .map_err(|e| format!("Failed to serialize lock: {}", e))?;
 
-    fs::write(&lock_path, lock_json).map_err(|e| format!("Failed to write lock file: {}", e))?;
+    write_atomic(&lock_path, &lock_json).map_err(|e| format!("Failed to write lock file: {}", e))?;
 
     log::debug!("Created lock file for port {} at {:?}", port, lock_path);
     Ok(())
 }
 
 pub fn read_lock_file<R: Runtime>(app: &AppHandle<R>, port: u16) -> Option<McpLockFile> {
-    let lock_path = get_lock_file_path(app, port);
+    let lock_path = get_lock_file_path(app, port).ok()?;
 
     if !lock_path.exists() {
         return None;
@@ -68,7 +79,7 @@ pub fn read_lock_file<R: Runtime>(app: &AppHandle<R>, port: u16) -> Option<McpLo
 }
 
 pub fn delete_lock_file<R: Runtime>(app: &AppHandle<R>, port: u16) -> Result<(), String> {
-    let lock_path = get_lock_file_path(app, port);
+    let lock_path = get_lock_file_path(app, port)?;
 
     if lock_path.exists() {
         fs::remove_file(&lock_path).map_err(|e| format!("Failed to delete lock file: {}", e))?;
@@ -155,10 +166,7 @@ pub async fn check_and_cleanup_stale_lock<R: Runtime>(
 }
 
 pub async fn cleanup_all_stale_locks<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .expect("Failed to get app data dir");
+    let app_data_dir = lock_dir(app)?;
 
     let pattern = app_data_dir.join("mcp_lock_*.json");
     let pattern_str = pattern.to_string_lossy();
@@ -188,10 +196,7 @@ pub async fn cleanup_all_stale_locks<R: Runtime>(app: &AppHandle<R>) -> Result<(
 }
 
 pub fn cleanup_own_locks<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .expect("Failed to get app data dir");
+    let app_data_dir = lock_dir(app)?;
 
     let pattern = app_data_dir.join("mcp_lock_*.json");
     let pattern_str = pattern.to_string_lossy();
