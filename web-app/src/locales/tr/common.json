@@ -2771,6 +2771,10 @@
   "threadSaveFailed": "Bu konudaki değişiklik kaydedilemedi. Geri alındı.",
   "attachmentsProcessFailed": "Ekler hazırlanamadı, bu yüzden mesaj gönderilmedi",
   "attachmentMissingFile": "Eklenen bir dosya artık mevcut değil. Kaldırıp yeniden ekleyin; mesajınız kutuda duruyor.",
+  "factoryResetIncomplete": {
+    "title": "Sıfırlama tamamlanmadı",
+    "description": "{{count}} öğe silinemedi ve hâlâ diskte duruyor:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Ayar dosyası okunamadı",
     "withBackup": "{{file}} bozulmuştu, bu yüzden Flint varsayılan ayarlarla başladı. Bozuk dosya {{backup}} olarak saklandı.",

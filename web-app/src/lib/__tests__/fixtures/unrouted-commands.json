@@ -2353,6 +2353,9 @@
   "stop_mcp_server_now": [
     "web-app/src/services/mcp/tauri.ts"
   ],
+  "take_factory_reset_report": [
+    "web-app/src/lib/factoryResetReport.ts"
+  ],
   "take_pending_webdata_reset": [
     "web-app/src/main.tsx"
   ],

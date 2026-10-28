@@ -175,6 +175,9 @@ const boot = async () => {
       void import('@/lib/settingsRecoveryNotice').then((m) =>
         m.showSettingsRecoveryNotice()
       )
+      void import('@/lib/factoryResetReport').then((m) =>
+        m.showFactoryResetReport()
+      )
     }, 1500)
   }
 }

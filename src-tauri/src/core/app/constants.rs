@@ -9,9 +9,40 @@ pub const TAURI_BUNDLE_IDENTIFIER: &str = "jan.ai.app";
 // The factory-reset logic selectively deletes by category based on user choices.
 // Add new entries to the appropriate category so they are picked up automatically.
 
-/// Conversations & user data — chat threads and assistant profiles.
+/// Conversations & user data - chat threads, assistant profiles, attachments,
+/// rooms, schedules, Studio output, and every agent session store (event logs,
+/// mailbox, campaigns, team children, replays, reviews, pull requests, gates,
+/// semantic index, undo, proposals, bundle imports, exports, deferred approvals,
+/// tool audit, background jobs, agent workspace and memory).
 /// Gated by the `keep_app_data` flag during factory reset.
-pub const JAN_DATA_DIRS_CONVERSATIONS: &[&str] = &["threads", "assistants", "vectordb"];
+pub const JAN_DATA_DIRS_CONVERSATIONS: &[&str] = &[
+    "threads",
+    "assistants",
+    ".archive",
+    "attachments",
+    "rooms",
+    "schedules",
+    "images",
+    "videos",
+    "events",
+    "mailbox",
+    "campaigns",
+    "team-children",
+    "replays",
+    "reviews",
+    "pull_requests",
+    "consensus",
+    "semantic",
+    "undo",
+    "proposals",
+    "imports",
+    "exports",
+    "approvals",
+    "audit",
+    "jobs",
+    "agent-workspace",
+    "vectordb",
+];
 
 /// Downloaded models and engine binaries.
 /// Gated by the `keep_models_and_configs` flag during factory reset.
@@ -44,6 +75,29 @@ pub const JAN_DATA_FILES_SETTINGS: &[&str] = &[
 pub const JAN_DATA_SUBDIRS: &[&str] = &[
     "threads",
     "assistants",
+    ".archive",
+    "attachments",
+    "rooms",
+    "schedules",
+    "images",
+    "videos",
+    "events",
+    "mailbox",
+    "campaigns",
+    "team-children",
+    "replays",
+    "reviews",
+    "pull_requests",
+    "consensus",
+    "semantic",
+    "undo",
+    "proposals",
+    "imports",
+    "exports",
+    "approvals",
+    "audit",
+    "jobs",
+    "agent-workspace",
     "vectordb",
     "extensions",
     "logs",

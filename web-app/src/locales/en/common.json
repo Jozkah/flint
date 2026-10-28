@@ -2810,6 +2810,10 @@
   "threadSaveFailed": "Could not save the change to this thread. It was reverted.",
   "attachmentsProcessFailed": "Couldn't prepare the attachments, so the message was not sent",
   "attachmentMissingFile": "An attached file is no longer available. Remove it and attach it again; your message is still in the box.",
+  "factoryResetIncomplete": {
+    "title": "Factory reset was incomplete",
+    "description": "{{count}} item(s) could not be removed and are still on disk:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Settings file could not be read",
     "withBackup": "{{file}} was damaged, so Flint started with default settings. The damaged file was kept as {{backup}}.",

@@ -2725,6 +2725,10 @@
   "threadSaveFailed": "Perubahan pada utas ini tidak dapat disimpan. Perubahan dibatalkan.",
   "attachmentsProcessFailed": "Lampiran tidak dapat disiapkan, jadi pesan tidak terkirim",
   "attachmentMissingFile": "Satu file lampiran tidak tersedia lagi. Hapus lalu lampirkan lagi; pesan Anda masih ada di kotak.",
+  "factoryResetIncomplete": {
+    "title": "Reset belum selesai",
+    "description": "{{count}} item tidak dapat dihapus dan masih ada di disk:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "File pengaturan tidak dapat dibaca",
     "withBackup": "{{file}} rusak, jadi Flint dimulai dengan pengaturan default. File yang rusak disimpan sebagai {{backup}}.",

@@ -2768,6 +2768,10 @@
   "threadSaveFailed": "Không thể lưu thay đổi cho cuộc trò chuyện này. Đã hoàn tác.",
   "attachmentsProcessFailed": "Không thể chuẩn bị tệp đính kèm nên tin nhắn chưa được gửi",
   "attachmentMissingFile": "Một tệp đính kèm không còn khả dụng. Hãy xóa và đính kèm lại; tin nhắn của bạn vẫn còn trong ô nhập.",
+  "factoryResetIncomplete": {
+    "title": "Đặt lại chưa hoàn tất",
+    "description": "Không thể xóa {{count}} mục, chúng vẫn còn trên đĩa:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Không thể đọc tệp cài đặt",
     "withBackup": "{{file}} bị hỏng nên Flint khởi động với cài đặt mặc định. Tệp hỏng được giữ lại với tên {{backup}}.",

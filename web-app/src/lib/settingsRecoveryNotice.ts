@@ -12,14 +12,19 @@ interface SettingsRecovery {
 // and the user is never told. Remember how to show it, and show it again when
 // the Toaster arrives.
 let toasterMounted = false
-let shownBeforeToaster: (() => void) | null = null
+const shownBeforeToaster = new Map<string, () => void>()
 
 /** Called by the Toaster once it is on screen. */
 export function notifyToasterMounted(): void {
   toasterMounted = true
-  const again = shownBeforeToaster
-  shownBeforeToaster = null
-  again?.()
+  const again = [...shownBeforeToaster.values()]
+  shownBeforeToaster.clear()
+  again.forEach((show) => show())
+}
+
+/** Re-show a one-shot toast if the Toaster has not mounted yet. */
+export function onToasterMounted(key: string, show: () => void): void {
+  if (!toasterMounted) shownBeforeToaster.set(key, show)
 }
 
 /** Show one separator style: Windows paths often arrive half `/`, half `\`. */
@@ -49,7 +54,7 @@ export async function showSettingsRecoveryNotice(): Promise<void> {
         closeButton: true,
       })
     show()
-    if (!toasterMounted) shownBeforeToaster = show
+    onToasterMounted('settings-recovery', show)
   } catch {
     // Non-Tauri (web) build or an older backend: nothing to show.
   }
