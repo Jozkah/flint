@@ -213,6 +213,34 @@ describe('ingestFile (thread)', () => {
     ).rejects.toThrow('already been attached to this thread')
   })
 
+  it('ingest_twice_concurrently_indexes_once', async () => {
+    mockRag.parseDocument.mockResolvedValue('')
+    mockVecdb.chunkText.mockResolvedValue([])
+    mockVecdb.createFile.mockImplementation(
+      () => new Promise((r) => setTimeout(() => r({ id: 'f1' }), 20))
+    )
+    const file = { name: 'a', path: '/a', type: 'text/plain' } as any
+    const opts = { chunkSize: 100, chunkOverlap: 10 } as any
+    const first = ext.ingestFile('t1', file, opts)
+    await expect(ext.ingestFile('t1', file, opts)).rejects.toThrow('already being attached')
+    await expect(first).resolves.toEqual({ id: 'f1' })
+    expect(mockVecdb.createFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('edited_file_reingests', async () => {
+    mockVecdb.listAttachments.mockResolvedValue([{ id: 'old', name: 'a', path: '/a', size: 5 }])
+    mockRag.parseDocument.mockResolvedValue('')
+    mockVecdb.chunkText.mockResolvedValue([])
+    mockVecdb.createFile.mockResolvedValue({ id: 'new' })
+    const res = await ext.ingestFile(
+      't1',
+      { name: 'a', path: '/a', type: 'text/plain', size: 9 } as any,
+      { chunkSize: 100, chunkOverlap: 10 } as any
+    )
+    expect(mockVecdb.deleteFile).toHaveBeenCalledWith('attachments_t1', 'old')
+    expect(res).toEqual({ id: 'new' })
+  })
+
   it('creates only a file record when the document yields no chunks', async () => {
     mockRag.parseDocument.mockResolvedValue('')
     mockVecdb.chunkText.mockResolvedValue([])

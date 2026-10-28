@@ -35,6 +35,10 @@ pub struct AttachmentFileInfo {
     pub file_type: Option<String>,
     pub size: Option<i64>,
     pub chunk_count: i64,
+    /// Set by `create_file` when an existing row for the same path was reset
+    /// because the file on disk changed; its old chunks are gone.
+    #[serde(default)]
+    pub replaced: bool,
 }
 
 // New minimal chunk input (no id/metadata) for file-scoped insertion
@@ -366,6 +370,25 @@ pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
 // Schema Creation
 // ============================================================================
 
+/// Idempotent `ALTER TABLE files ADD COLUMN mtime` for databases made before
+/// the column existed.
+fn ensure_files_mtime(conn: &Connection) -> Result<(), VectorDBError> {
+    let has_mtime = conn
+        .prepare("SELECT 1 FROM pragma_table_info('files') WHERE name = 'mtime'")?
+        .exists([])?;
+    if !has_mtime {
+        conn.execute("ALTER TABLE files ADD COLUMN mtime INTEGER", [])?;
+    }
+    Ok(())
+}
+
+/// Modification time of `path` in whole seconds since the epoch, if readable.
+fn file_mtime(path: &str) -> Option<i64> {
+    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+    let secs = modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    i64::try_from(secs).ok()
+}
+
 pub fn create_schema(conn: &Connection, dimension: usize) -> Result<bool, VectorDBError> {
     // Files table
     conn.execute(
@@ -375,10 +398,12 @@ pub fn create_schema(conn: &Connection, dimension: usize) -> Result<bool, Vector
             name TEXT,
             type TEXT,
             size INTEGER,
-            chunk_count INTEGER DEFAULT 0
+            chunk_count INTEGER DEFAULT 0,
+            mtime INTEGER
         )",
         [],
     )?;
+    ensure_files_mtime(conn)?;
 
     // Chunks table
     conn.execute(
@@ -413,53 +438,21 @@ pub fn create_file(
     file_type: Option<&str>,
     size: Option<i64>,
 ) -> Result<AttachmentFileInfo, VectorDBError> {
+    ensure_files_mtime(conn)?;
     let tx = conn.unchecked_transaction()?;
 
-    // Try get existing by path
-    if let Ok(Some(id)) = tx
-        .prepare("SELECT id FROM files WHERE path = ?1")
-        .and_then(|mut s| s.query_row(params![path], |r| r.get::<_, String>(0)).optional())
-    {
-        let row: AttachmentFileInfo = {
-            let mut stmt = tx.prepare(
-                "SELECT id, path, name, type, size, chunk_count FROM files WHERE id = ?1",
-            )?;
-            stmt.query_row(params![id.as_str()], |r| {
-                Ok(AttachmentFileInfo {
-                    id: r.get(0)?,
-                    path: r.get(1)?,
-                    name: r.get(2)?,
-                    file_type: r.get(3)?,
-                    size: r.get(4)?,
-                    chunk_count: r.get(5)?,
-                })
-            })?
-        };
-        tx.commit()?;
-        return Ok(row);
-    }
-
-    let new_id = Uuid::new_v4().to_string();
     // Determine file size if not provided
     let computed_size: Option<i64> = match size {
         Some(s) if s > 0 => Some(s),
-        _ => {
-            match std::fs::metadata(path) {
-                Ok(meta) => Some(meta.len() as i64),
-                Err(_) => None,
-            }
-        }
+        _ => std::fs::metadata(path).ok().map(|meta| meta.len() as i64),
     };
-    tx.execute(
-        "INSERT INTO files (id, path, name, type, size, chunk_count) VALUES (?1, ?2, ?3, ?4, ?5, 0)",
-        params![new_id, path, name, file_type, computed_size],
-    )?;
+    let mtime = file_mtime(path);
 
-    let row: AttachmentFileInfo = {
+    let read_row = |tx: &Connection, id: &str, replaced: bool| -> Result<AttachmentFileInfo, VectorDBError> {
         let mut stmt = tx.prepare(
-            "SELECT id, path, name, type, size, chunk_count FROM files WHERE path = ?1",
+            "SELECT id, path, name, type, size, chunk_count FROM files WHERE id = ?1",
         )?;
-        stmt.query_row(params![path], |r| {
+        Ok(stmt.query_row(params![id], |r| {
             Ok(AttachmentFileInfo {
                 id: r.get(0)?,
                 path: r.get(1)?,
@@ -467,10 +460,45 @@ pub fn create_file(
                 file_type: r.get(3)?,
                 size: r.get(4)?,
                 chunk_count: r.get(5)?,
+                replaced,
             })
-        })?
+        })?)
     };
 
+    // An existing row for this path: keep it when the file is unchanged (or
+    // cannot be checked); otherwise drop its chunks so stale text cannot be
+    // served, and reuse the row. A NULL stored mtime is unknown and replaced.
+    let existing: Option<(String, Option<i64>, Option<i64>)> = tx
+        .prepare("SELECT id, size, mtime FROM files WHERE path = ?1")?
+        .query_row(params![path], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .optional()?;
+    if let Some((id, old_size, old_mtime)) = existing {
+        let unchanged = match mtime {
+            None => true,
+            Some(m) => old_mtime == Some(m) && (computed_size.is_none() || old_size == computed_size),
+        };
+        if unchanged {
+            let row = read_row(&tx, &id, false)?;
+            tx.commit()?;
+            return Ok(row);
+        }
+        delete_vec_rows(&tx, "file_id = ?1", &id);
+        tx.execute("DELETE FROM chunks WHERE file_id = ?1", params![id])?;
+        tx.execute(
+            "UPDATE files SET name = ?2, type = ?3, size = ?4, mtime = ?5, chunk_count = 0 WHERE id = ?1",
+            params![id, name, file_type, computed_size, mtime],
+        )?;
+        let row = read_row(&tx, &id, true)?;
+        tx.commit()?;
+        return Ok(row);
+    }
+
+    let new_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO files (id, path, name, type, size, chunk_count, mtime) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6)",
+        params![new_id, path, name, file_type, computed_size, mtime],
+    )?;
+    let row = read_row(&tx, &new_id, false)?;
     tx.commit()?;
     Ok(row)
 }
@@ -878,6 +906,7 @@ pub fn list_attachments(
             file_type,
             size,
             chunk_count,
+            replaced: false,
         });
     }
 
@@ -1206,6 +1235,77 @@ mod tests {
             .expect("one bad chunk must not fail the search");
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].text, "good");
+    }
+
+    fn temp_file(tag: &str, body: &[u8]) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("flint-vdb-cf-{tag}-{}", std::process::id()));
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    #[test]
+    fn create_file_same_size_mtime_returns_existing() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        let path = temp_file("same", b"hello");
+        let p = path.to_str().unwrap();
+        let first = create_file(&conn, p, Some("a"), None, None).unwrap();
+        insert_chunks(
+            &conn,
+            &first.id,
+            vec![MinimalChunkInput { text: "x".to_string(), embedding: vec![0.1, 0.2, 0.3] }],
+            false,
+        )
+        .unwrap();
+        let second = create_file(&conn, p, Some("a"), None, None).unwrap();
+        assert_eq!(second.id, first.id);
+        assert!(!second.replaced);
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn create_file_changed_replaces_chunks() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        let path = temp_file("changed", b"hello");
+        let p = path.to_str().unwrap();
+        let first = create_file(&conn, p, Some("a"), None, None).unwrap();
+        insert_chunks(
+            &conn,
+            &first.id,
+            vec![MinimalChunkInput { text: "x".to_string(), embedding: vec![0.1, 0.2, 0.3] }],
+            false,
+        )
+        .unwrap();
+        std::fs::write(&path, b"hello, much longer now").unwrap();
+        let second = create_file(&conn, p, Some("a"), None, None).unwrap();
+        assert_eq!(second.id, first.id);
+        assert!(second.replaced);
+        assert_eq!(second.chunk_count, 0);
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0, "the stale chunks must be gone");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn schema_migration_adds_mtime_to_old_db() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE files (id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT, type TEXT, size INTEGER, chunk_count INTEGER DEFAULT 0)",
+            [],
+        )
+        .unwrap();
+        create_schema(&conn, 3).unwrap();
+        // Running it again must not fail on the existing column.
+        create_schema(&conn, 3).unwrap();
+        let has: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('files') WHERE name = 'mtime'")
+            .unwrap()
+            .exists([])
+            .unwrap();
+        assert!(has);
     }
 
     #[test]
