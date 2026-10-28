@@ -1212,6 +1212,7 @@
     "btwFailed": "Impossibile rispondere alla domanda a margine."
   },
   "autoCompactNeedsWindow": "L'auto-compattazione richiede una dimensione del contesto, e {{model}} non ne ha una che Flint riesca a trovare. Imposta Max Context Tokens per questo modello così le chat lunghe vengono compattate prima di riempirlo. Se il provider rifiuta una richiesta per la sua lunghezza, Flint compatta e riprova una volta.",
+  "ollamaWindowTruncating": "Ollama esegue {{model}} con un contesto di {{tokens}} token e scarta silenziosamente i messaggi più vecchi oltre questo limite. Flint ora compatta in base a questa dimensione. Per conservare più cronologia, aumentala sul server Ollama: imposta OLLAMA_CONTEXT_LENGTH o aggiungi PARAMETER num_ctx al Modelfile del modello.",
   "compaction": {
     "working": "Compattazione della conversazione…",
     "divider_one": "Contesto compattato — {{count}} messaggio precedente riassunto",

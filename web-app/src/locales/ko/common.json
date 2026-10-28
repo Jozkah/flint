@@ -1203,6 +1203,7 @@
     "btwFailed": "곁다리 질문에 답하지 못했습니다."
   },
   "autoCompactNeedsWindow": "자동 압축에는 컨텍스트 크기가 필요한데, {{model}}에서 Flint가 찾을 수 있는 값이 없습니다. 긴 채팅이 가득 차기 전에 압축되도록 이 모델의 최대 컨텍스트 토큰을 설정하세요. 공급자가 길이 때문에 요청을 거부하면 Flint가 압축한 뒤 한 번 다시 시도합니다.",
+  "ollamaWindowTruncating": "Ollama는 {{model}}을(를) {{tokens}} 토큰 컨텍스트로 실행하며, 이를 넘는 오래된 메시지를 알림 없이 버립니다. 이제 Flint는 이 크기에 맞춰 압축합니다. 더 많은 기록을 유지하려면 Ollama 서버에서 OLLAMA_CONTEXT_LENGTH를 설정하거나 모델의 Modelfile에 PARAMETER num_ctx를 추가하세요.",
   "compaction": {
     "working": "대화를 압축하는 중…",
     "divider_one": "컨텍스트 압축됨 — 이전 메시지 {{count}}개 요약",

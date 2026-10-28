@@ -1195,6 +1195,7 @@
     "btwFailed": "Tidak dapat menjawab pertanyaan sampingan."
   },
   "autoCompactNeedsWindow": "Auto-compact membutuhkan ukuran konteks, dan {{model}} tidak memilikinya yang dapat ditemukan Flint. Atur Max Context Tokens untuk model ini agar obrolan panjang dipadatkan sebelum penuh. Jika provider menolak permintaan karena panjangnya, Flint memadatkan dan mencoba sekali lagi.",
+  "ollamaWindowTruncating": "Ollama menjalankan {{model}} dengan konteks {{tokens}} token dan diam-diam membuang pesan terlama yang melebihinya. Flint kini memadatkan berdasarkan ukuran itu. Untuk menyimpan lebih banyak riwayat, naikkan di server Ollama: atur OLLAMA_CONTEXT_LENGTH, atau tambahkan PARAMETER num_ctx ke Modelfile model.",
   "compaction": {
     "working": "Memadatkan percakapan…",
     "divider_one": "Konteks dipadatkan — {{count}} pesan sebelumnya diringkas",

@@ -36,6 +36,7 @@ import {
   withPromptContext,
 } from '@/lib/ccContextHooks'
 import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
+import { fetchOllamaWindow, isOllamaProvider, shouldNoticeOllamaTruncation } from '@/lib/ollamaWindow'
 import { knownContextWindowDetail } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -2280,12 +2281,23 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // has a best available one: what the provider describes, what its model
     // list named, the last one this chat showed, or what the server says now.
     const providerWindow = knownContextWindowDetail(selectedModel, provider)
+    // Ollama keeps only its loaded `num_ctx` of a prompt (janhq/jan#9476).
+    const ollama = isOllamaProvider(provider)
+    let ollamaWindow: number | null = null
     const resolvedWindow = await resolveCompactionWindow({
       known: effectiveContextWindow(
         configuredContextTokens,
         liveContextTokens,
         providerId === 'llamacpp'
       ),
+      fetchLoaded: ollama
+        ? async () =>
+            (ollamaWindow = await fetchOllamaWindow(
+              provider?.base_url,
+              modelId,
+              serverWindowHeaders(provider)
+            ))
+        : undefined,
       provider: providerWindow.bundled ? null : providerWindow.tokens,
       bundled: providerWindow.bundled ? providerWindow.tokens : null,
       listed: listedWindow(provider?.base_url, modelId),
@@ -2327,6 +2339,19 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // it look like it is working. A refused request still compacts and retries.
     if (autoCompact && resolvedWindow.source === 'none') {
       this.noticeUnknownWindow(threadId, modelId)
+    }
+    if (
+      ollamaWindow != null &&
+      shouldNoticeOllamaTruncation(
+        `${threadId}|${modelId}`,
+        estimateHistoryTokens(messagesToConvert),
+        ollamaWindow
+      )
+    ) {
+      toast.warning(
+        i18n.t('common:ollamaWindowTruncating', { model: modelId, tokens: ollamaWindow }),
+        { duration: 15000 }
+      )
     }
 
     // A small window is not spent on tools a small model rarely needs (the

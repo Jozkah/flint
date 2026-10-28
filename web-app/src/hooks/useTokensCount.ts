@@ -11,6 +11,7 @@ import {
   type LlamacppModelProps,
 } from '@/lib/llamacppRouterProps'
 import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
+import { fetchOllamaWindow, isOllamaProvider } from '@/lib/ollamaWindow'
 import { listedWindow } from '@/lib/listedWindows'
 import { useContextBreakdown } from './useContextBreakdown'
 import { useModelProvider } from './useModelProvider'
@@ -316,7 +317,14 @@ export const useTokensCount = (
   useEffect(() => {
     if (!threadId || !remoteBaseUrl) return
     let current = true
-    fetchServerWindow(remoteBaseUrl, selectedModel?.id, remoteHeaders).then((tokens) => {
+    // Ollama runs a model at its loaded `num_ctx`, which `/props` and
+    // `/v1/models` do not name (janhq/jan#9476).
+    const ollama = isOllamaProvider(remoteProvider)
+      ? fetchOllamaWindow(remoteBaseUrl, selectedModel?.id, remoteHeaders)
+      : Promise.resolve(null)
+    ollama.then((loaded) =>
+      loaded ?? fetchServerWindow(remoteBaseUrl, selectedModel?.id, remoteHeaders)
+    ).then((tokens) => {
       if (current && tokens) setLearnedWindow(threadId, tokens, selectedModel?.id)
     })
     return () => {

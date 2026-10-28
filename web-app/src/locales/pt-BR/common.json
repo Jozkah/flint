@@ -1212,6 +1212,7 @@
     "btwFailed": "Não foi possível responder à pergunta paralela."
   },
   "autoCompactNeedsWindow": "A compactação automática precisa de um tamanho de contexto, e o {{model}} não tem nenhum que o Flint consiga encontrar. Defina Máx. de tokens de contexto para este modelo para que chats longos sejam compactados antes de enchê-lo. Se o provedor recusar uma requisição por causa do tamanho, o Flint compacta e tenta uma vez mais.",
+  "ollamaWindowTruncating": "O Ollama executa {{model}} com um contexto de {{tokens}} tokens e descarta silenciosamente as mensagens mais antigas além disso. O Flint agora compacta com base nesse tamanho. Para manter mais histórico, aumente-o no servidor Ollama: defina OLLAMA_CONTEXT_LENGTH ou adicione PARAMETER num_ctx ao Modelfile do modelo.",
   "compaction": {
     "working": "Compactando a conversa…",
     "divider_one": "Contexto compactado — {{count}} mensagem anterior resumida",
