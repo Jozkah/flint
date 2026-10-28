@@ -92,7 +92,6 @@ import {
   backgroundTasksOf,
   sessionTotals,
   sessionWorkflows,
-  taskIdFor,
   type ActivityTask,
   type WorkflowView,
 } from '@/lib/coworkActivity'
@@ -147,7 +146,7 @@ import { createStepHandlers } from '@/lib/cowork/run/stepHandlers'
 import { createToolHandlers } from '@/lib/cowork/run/toolHandlers'
 import { createTeamTool } from '@/lib/cowork/run/teamTool'
 import { createApprovalHooks } from '@/lib/cowork/run/approvalHooks'
-import { withToolTiming } from '@/hooks/useToolCallRuntime'
+import { createMainDispatch } from '@/lib/cowork/run/mainDispatch'
 import { useAppState } from '@/hooks/useAppState'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
@@ -364,7 +363,6 @@ import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { useSavedWorkflowBuiltins } from '@/hooks/useSavedWorkflowBuiltins'
 import { recordEvents } from '@/lib/eventLog'
-import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import {
   getSandboxStatus,
   getSandboxToolchains,
@@ -382,7 +380,6 @@ import {
   beginRun,
   endRun,
   hasSubagent,
-  abortSubagent,
   isAbortLike,
   answerAsk,
   runTurn,
@@ -408,7 +405,6 @@ import {
   type SubagentDefinition,
 } from '@/lib/coworkSubagentRegistry'
 import {
-  parseSubagentRequest,
   SUBAGENT_RESULT_HEAD_CHARS,
 } from '@/lib/coworkSubagent'
 import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
@@ -3620,6 +3616,35 @@ export function CoworkPage() {
         mutateLive,
         t,
       })
+      const mainDispatch = createMainDispatch({
+        rs,
+        sid,
+        runId,
+        modelId: selectedModel?.id,
+        folder: current?.folder,
+        readOnlyFolder: runReadRoot,
+        extraFolders: runExtraFolders,
+        mode: runMode,
+        liveMode: () => liveSessionMode(sid),
+        readFailures: runReadFailures,
+        writeGrant: runGrant,
+        access: effective.access,
+        accessCapability: runCapability,
+        editConsent: runConsent,
+        worktreePath: runWorktreePath,
+        unresolvedSkills: unresolvedSkills(runSkills),
+        webSearch,
+        transport,
+        ...approvalHooks,
+        runAuthority,
+        scopedInstructions: scopedInstructionsFor,
+        tasks: backgroundTasks,
+        agents: runAgents,
+        ...toolHandlers,
+        nudge: delegationNudge,
+        dispatchChild,
+        onTeam: teamTool,
+      })
       const stepHandlers = createStepHandlers({
         rs,
         sid,
@@ -3677,82 +3702,7 @@ export function CoworkPage() {
               messageId: undefined,
             } as any)
           },
-          dispatch: (call, toolSignal) =>
-            withToolTiming(call.toolCallId, () =>
-              dispatchCoworkTool(call, {
-                activity: {
-                  session: sid,
-                  run: runId,
-                  agent: 'main',
-                  invocation: rs.stepSnapshot?.invocation,
-                },
-                sessionId: sid,
-                modelId: selectedModel?.id,
-                readOnlyFolder: runReadRoot,
-                extraFolders: runExtraFolders,
-                mode: runMode,
-                liveMode: () => liveSessionMode(sid),
-                readFailures: runReadFailures,
-                writeGrant: runGrant,
-                // The same frozen answers the first gate used, so the two cannot
-                // disagree about what this run may change.
-                access: effective.access,
-                accessCapability: runCapability,
-                editConsent: runConsent,
-                worktreePath: runWorktreePath,
-                // Snapshotted with the run: a skill the user asked for and did
-                // not get stops changes. Inspection still proceeds.
-                unresolvedSkills: unresolvedSkills(runSkills),
-                // The root this run is bound to, re-checked before every
-                // filesystem call: detaching or switching folders mid-run must
-                // not leave the run reading the folder that was taken away.
-                bindingIntact: () =>
-                  (useCoworkSessions
-                    .getState()
-                    .sessions.find((one) => one.id === sid)?.folder ?? null) ===
-                  (current?.folder ?? null),
-                webSearch,
-                // The servers' tools this request advertised; a call to one goes
-                // through the same prompt, with its server named so the user's
-                // trust choices for that server apply.
-                mcpServerFor: (name) => transport.mcpServerFor(name),
-                ...approvalHooks,
-                // A shell handed to the backend outlives a cancelled run, so it
-                // holds the authority it started with until the process is done.
-                trackShell: () =>
-                  useCoworkActiveWork.getState().acquire({
-                    sessionId: sid,
-                    kind: 'shell',
-                    authority: runAuthority,
-                  }),
-                // The child inherits this run's frozen authority and holds it
-                // for as long as it runs. It cannot widen it: this is the only
-                // authority handed down.
-                trackSubagent: () =>
-                  useCoworkActiveWork.getState().acquire({
-                    sessionId: sid,
-                    kind: 'subagent',
-                    authority: runAuthority,
-                  }),
-                scopedInstructions: scopedInstructionsFor,
-                tasks: backgroundTasks,
-                cancelChild: (callId) =>
-                  abortSubagent(sid, taskIdFor(sid, runId, callId)),
-                agentDefaults: (name) => runAgents.find((d) => d.name === name),
-                onEnableTools: toolHandlers.onEnableTools,
-                onTodo: toolHandlers.onTodo,
-                onAsk: toolHandlers.onAsk,
-                nudge: delegationNudge,
-                onTask: async (callId, input) => {
-                  const req = parseSubagentRequest(input)
-                  if (typeof req === 'string') {
-                    return { output: `ERROR: ${req}`, isError: true }
-                  }
-                  return dispatchChild(callId, req)
-                },
-                onTeam: teamTool,
-              }, toolSignal)
-            ),
+          dispatch: mainDispatch,
           sink,
           onStep: stepHandlers.onStep,
           onResponse: stepHandlers.onResponse,
