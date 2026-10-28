@@ -94,6 +94,32 @@ struct Collectors {
 
 static COLLECTORS: Mutex<Option<Collectors>> = Mutex::new(None);
 
+/// How long a volume list is reused before the disks are listed again.
+const DISK_REFRESH: std::time::Duration = std::time::Duration::from_secs(30);
+
+type DiskCache = Mutex<Option<(std::time::Instant, Vec<DiskDetails>)>>;
+
+static DISK_CACHE: DiskCache = Mutex::new(None);
+
+/// The volume list from `cache` while it is younger than `ttl`, else a fresh
+/// one from `fetch`. `fetch` runs without the cache lock held, so a slow drive
+/// never blocks a caller that only wants the cached list.
+fn cached_disks(
+    cache: &DiskCache,
+    now: std::time::Instant,
+    ttl: std::time::Duration,
+    fetch: impl FnOnce() -> Vec<DiskDetails>,
+) -> Vec<DiskDetails> {
+    if let Some((at, disks)) = cache.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        if now.saturating_duration_since(*at) < ttl {
+            return disks.clone();
+        }
+    }
+    let fresh = fetch();
+    *cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((now, fresh.clone()));
+    fresh
+}
+
 fn sensor_kind(label: &str) -> &'static str {
     let l = label.to_ascii_lowercase();
     if l.contains("gpu") || l.contains("amdgpu") || l.contains("nouveau") {
@@ -293,25 +319,30 @@ pub fn get_system_snapshot() -> SystemSnapshot {
         )
     };
 
-    let disks = Disks::new_with_refreshed_list_specifics(DiskRefreshKind::nothing().with_storage())
-        .list()
-        .iter()
-        .map(|d| DiskDetails {
-            name: d.name().to_string_lossy().into_owned(),
-            mount_point: d.mount_point().to_string_lossy().into_owned(),
-            file_system: d.file_system().to_string_lossy().into_owned(),
-            kind: match d.kind() {
-                sysinfo::DiskKind::SSD => "SSD".into(),
-                sysinfo::DiskKind::HDD => "HDD".into(),
-                _ => "Unknown".into(),
-            },
-            total: d.total_space(),
-            available: d.available_space(),
-            removable: d.is_removable(),
-        })
-        .collect();
-    #[cfg(target_os = "macos")]
-    let disks = hide_apple_system_volumes(disks);
+    // Listing volumes stats every mount (a sleeping or network drive can take
+    // seconds), so the page's poll reuses the last list for a while.
+    let disks = cached_disks(&DISK_CACHE, std::time::Instant::now(), DISK_REFRESH, || {
+        let disks = Disks::new_with_refreshed_list_specifics(DiskRefreshKind::nothing().with_storage())
+            .list()
+            .iter()
+            .map(|d| DiskDetails {
+                name: d.name().to_string_lossy().into_owned(),
+                mount_point: d.mount_point().to_string_lossy().into_owned(),
+                file_system: d.file_system().to_string_lossy().into_owned(),
+                kind: match d.kind() {
+                    sysinfo::DiskKind::SSD => "SSD".into(),
+                    sysinfo::DiskKind::HDD => "HDD".into(),
+                    _ => "Unknown".into(),
+                },
+                total: d.total_space(),
+                available: d.available_space(),
+                removable: d.is_removable(),
+            })
+            .collect();
+        #[cfg(target_os = "macos")]
+        let disks = hide_apple_system_volumes(disks);
+        disks
+    });
 
     let mut sensors = sensors;
     sensors.extend(crate::windows_sensors::sensors());
@@ -355,6 +386,51 @@ pub fn get_system_snapshot() -> SystemSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn disk(name: &str) -> DiskDetails {
+        DiskDetails {
+            name: name.into(),
+            mount_point: "/".into(),
+            file_system: "ext4".into(),
+            kind: "SSD".into(),
+            total: 1,
+            available: 1,
+            removable: false,
+        }
+    }
+
+    #[test]
+    fn disk_refresh_is_throttled() {
+        use std::time::{Duration, Instant};
+        let cache: DiskCache = Mutex::new(None);
+        let t0 = Instant::now();
+        let ttl = Duration::from_secs(30);
+        let calls = std::cell::Cell::new(0);
+        let fetch = |name: &'static str| {
+            let calls = &calls;
+            move || {
+                calls.set(calls.get() + 1);
+                vec![disk(name)]
+            }
+        };
+        assert_eq!(cached_disks(&cache, t0, ttl, fetch("a"))[0].name, "a");
+        // Within the window the first list is reused and nothing is fetched.
+        assert_eq!(cached_disks(&cache, t0 + Duration::from_secs(10), ttl, fetch("b"))[0].name, "a");
+        assert_eq!(calls.get(), 1);
+        // Past it the list is read again.
+        assert_eq!(cached_disks(&cache, t0 + Duration::from_secs(31), ttl, fetch("c"))[0].name, "c");
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn disk_fetch_runs_without_the_cache_lock() {
+        let cache: DiskCache = Mutex::new(None);
+        let listed = cached_disks(&cache, std::time::Instant::now(), std::time::Duration::from_secs(30), || {
+            assert!(cache.try_lock().is_ok(), "a slow drive must not block other readers of the cache");
+            vec![disk("a")]
+        });
+        assert_eq!(listed.len(), 1);
+    }
 
     #[test]
     fn snapshot_has_expected_shape() {

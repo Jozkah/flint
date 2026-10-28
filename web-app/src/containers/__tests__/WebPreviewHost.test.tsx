@@ -82,4 +82,20 @@ describe('WebPreviewHost', () => {
     // The preview itself is unchanged.
     expect(useWebPreview.getState().url()).toBe('http://localhost:5173/')
   })
+
+  it('measures the pane on demand, not on every frame', async () => {
+    const raf = vi.spyOn(window, 'requestAnimationFrame')
+    useWebPreview.getState().openUrl('https://a.com')
+    render(<WebPreviewHost />)
+    // Initial measure is synchronous; an idle pane then schedules nothing.
+    const initial = raf.mock.calls.length
+    await new Promise((r) => setTimeout(r, 80))
+    expect(raf.mock.calls.length).toBe(initial)
+    expect(useWebPreview.getState().paneRect).not.toBeNull()
+    // Something that can move the pane schedules exactly one measure.
+    window.dispatchEvent(new Event('resize'))
+    window.dispatchEvent(new Event('resize'))
+    expect(raf.mock.calls.length).toBe(initial + 1)
+    raf.mockRestore()
+  })
 })

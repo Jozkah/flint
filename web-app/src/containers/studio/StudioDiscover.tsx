@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Check,
@@ -57,6 +57,8 @@ export function StudioDiscover({
   const refresh = useStudio((s) => s.refresh)
   const [models, setModels] = useState<HuggingFaceModel[]>([])
   const [families, setFamilies] = useState<StudioFamily[]>([])
+  const [familiesError, setFamiliesError] = useState<string | null>(null)
+  const [filesError, setFilesError] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
@@ -64,13 +66,20 @@ export function StudioDiscover({
   const [family, setFamily] = useState<Record<string, string>>({})
   const [adding, setAdding] = useState<string | null>(null)
 
-  useEffect(() => {
-    void studioApi
+  const loadFamilies = useCallback(() => {
+    setFamiliesError(null)
+    return studioApi
       .families()
       .then(setFamilies)
-      .catch(() => undefined)
+      .catch((err) =>
+        setFamiliesError(err instanceof Error ? err.message : String(err))
+      )
+  }, [])
+
+  useEffect(() => {
+    void loadFamilies()
     void refresh()
-  }, [refresh])
+  }, [refresh, loadFamilies])
 
   useEffect(() => {
     let cancelled = false
@@ -108,18 +117,24 @@ export function StudioDiscover({
     [status]
   )
 
-  const toggle = async (repo: string) => {
-    const opening = open !== repo
-    setOpen(opening ? repo : null)
-    if (!opening) return
+  const loadFiles = async (repo: string) => {
     let known = files[repo] ?? []
     // The search lists file names only; sizes (and the order they give) come from the file listing.
     if (!known.length || known.some((f) => f.size == null)) {
       try {
         known = await getHuggingFaceFiles(repo, token)
         setFiles((current) => ({ ...current, [repo]: known }))
+        setFilesError((current) => {
+          const next = { ...current }
+          delete next[repo]
+          return next
+        })
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err))
+        setFilesError((current) => ({
+          ...current,
+          [repo]: err instanceof Error ? err.message : String(err),
+        }))
+        return
       }
     }
     const first = weightsFiles(known)[0]
@@ -128,6 +143,13 @@ export function StudioDiscover({
       // A choice made while the guess was on its way wins over it.
       if (guess) setFamily((current) => (current[repo] ? current : { ...current, [repo]: guess }))
     }
+  }
+
+  const toggle = async (repo: string) => {
+    const opening = open !== repo
+    setOpen(opening ? repo : null)
+    if (!opening) return
+    await loadFiles(repo)
   }
 
   const add = async (model: HuggingFaceModel, file: HuggingFaceFile) => {
@@ -175,6 +197,23 @@ export function StudioDiscover({
           file and what kind of model it is; the text encoder and VAE it needs
           are downloaded with it and checked like every other download.
         </p>
+
+        {familiesError && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            <span>Could not load the model kinds: {familiesError}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="studio-families-retry"
+              onClick={() => void loadFamilies()}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -300,7 +339,22 @@ export function StudioDiscover({
                       </span>
                     )}
                   </label>
-                  {list.length === 0 ? (
+                  {filesError[model.id] && list.length === 0 ? (
+                    <div
+                      role="alert"
+                      className="flex flex-wrap items-center gap-2 text-xs text-destructive"
+                    >
+                      <span>Could not list the files: {filesError[model.id]}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="studio-files-retry"
+                        onClick={() => void loadFiles(model.id)}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  ) : list.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
                       No weights files (.gguf) in this repository.
                     </p>
