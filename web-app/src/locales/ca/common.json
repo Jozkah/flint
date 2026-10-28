@@ -853,7 +853,28 @@
     "openCodeFolderInCowork": "Obre la carpeta de codi a Cowork",
     "openCodeFolder": "Obre la carpeta de codi",
     "openCodeFolderDescription": "Tria una carpeta del teu ordinador perquè Flint hi treballi.",
-    "setUpEmbeddingModel": "Configura un model d'incrustació"
+    "setUpEmbeddingModel": "Configura un model d'incrustació",
+    "webPage": {
+      "open": "Afegeix una pàgina web",
+      "title": "Afegeix una pàgina web",
+      "description": "Obté una pàgina i en desa el text llegible com a fitxer del projecte. Només funcionen adreces públiques http i https.",
+      "urlLabel": "Adreça de la pàgina",
+      "add": "Afegeix la pàgina",
+      "refresh": "Actualitza",
+      "added": "S'ha afegit \"{{name}}\"",
+      "refreshed": "S'ha actualitzat \"{{name}}\"",
+      "truncated": "La pàgina superava el límit de mida; només se n'ha desat la primera part.",
+      "refreshFailed": "No s'ha pogut actualitzar la pàgina",
+      "errors": {
+        "invalidUrl": "Introdueix una adreça web completa que comenci per http:// o https://.",
+        "blocked": "Aquesta adreça apunta a aquest ordinador o a una xarxa privada, així que no s'ha obtingut.",
+        "timeout": "La pàgina ha trigat massa a respondre. Torna-ho a provar més tard.",
+        "notHtml": "Aquesta adreça no és una pàgina web amb text llegible (per exemple un PDF, una imatge o una descàrrega).",
+        "tooLarge": "La pàgina és massa gran per obtenir-la.",
+        "httpError": "El lloc ha retornat un error: {{message}}",
+        "failed": "No s'ha pogut obtenir la pàgina: {{message}}"
+      }
+    }
   },
   "attachmentsIngestion": {
     "title": "Tria com ingerir els adjunts",

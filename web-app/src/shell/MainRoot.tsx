@@ -40,6 +40,7 @@ import { HeaderSlotProvider } from '@/components/shell/HeaderSlot'
 import { WindowResizeGrips } from '@/components/WindowResizeGrips'
 import ErrorDialog from '@/containers/dialogs/ErrorDialog'
 import BypassConfirmDialog from '@/containers/dialogs/BypassConfirmDialog'
+import GpuCrashCpuFallbackDialog from '@/containers/dialogs/GpuCrashCpuFallbackDialog'
 import LlamacppBusyOnExitDialog from '@/containers/dialogs/LlamacppBusyOnExitDialog'
 import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
 import { EngineAddonOffer } from '@/containers/EngineAddon'
@@ -214,6 +215,7 @@ export default function MainRootLayout() {
           <OutOfContextPromiseModal />
           <AccessRequestDialog />
           <BypassConfirmDialog />
+          <GpuCrashCpuFallbackDialog />
           <ModelReplaceDialog />
           <UnknownWindowDialog />
           <FlintServerAutoConnect />

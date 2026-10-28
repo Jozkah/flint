@@ -1540,7 +1540,12 @@
     "composerGroup": "Editor zpráv",
     "repliesGroup": "Odpovědi",
     "linksGroup": "Odkazy",
-    "artifactsGroup": "Artefakty a widgety"
+    "artifactsGroup": "Artefakty a widgety",
+    "reasoningDefault": "Uvažování pro nové chaty",
+    "reasoningDefaultDesc": "Zda je přemýšlení v novém chatu zapnuté, nebo vypnuté. Vlastní nastavení uvažování modelu a přepínač v editoru mají stále přednost. Modely, které přemýšlení přepnout nemohou, zůstanou beze změny.",
+    "reasoningDefaultModel": "Výchozí podle modelu",
+    "reasoningDefaultOn": "Zapnuto",
+    "reasoningDefaultOff": "Vypnuto"
   },
   "data": {
     "tabStorage": "Úložiště",

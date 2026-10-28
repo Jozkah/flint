@@ -62,6 +62,7 @@ import {
   type PartEntry,
 } from './message/types'
 import { CopyButton } from './CopyButton'
+import { ReadAloudButton } from './ReadAloudButton'
 import { thoughtSecondsFromMetadata } from '@/lib/reasoningClock'
 import { ExportSubmenu } from '@/components/ExportMenu'
 import { docFromUIMessage } from '@/lib/exportDoc'
@@ -1064,6 +1065,10 @@ export const MessageItem = memo(
                 <span className="inline-flex pointer-coarse:[&_button]:size-11">
                   <CopyButton text={getFullTextContent()} />
                 </span>
+                <ReadAloudButton
+                  messageId={message.id}
+                  text={getFullTextContent()}
+                />
 
                 {onEdit && !isStreaming && (
                   <EditMessageDialog

@@ -38,5 +38,8 @@
   "serverStartModelFailed": "Không thể khởi động mô hình",
   "serverStartFailed": "Không thể khởi động máy chủ",
   "azureEndpointMissing": "Chưa cấu hình endpoint cho {{provider}}. Hãy đặt Base URL trong Cài đặt > Nhà cung cấp mô hình.",
-  "emptyReply": "Mô hình đã kết thúc mà không trả về phản hồi. Hãy thử tạo lại hoặc kiểm tra cài đặt nhà cung cấp."
+  "emptyReply": "Mô hình đã kết thúc mà không trả về phản hồi. Hãy thử tạo lại hoặc kiểm tra cài đặt nhà cung cấp.",
+  "gpuCrashCpuFallbackTitle": "Trình điều khiển GPU bị lỗi",
+  "gpuCrashCpuFallbackQuestion": "Trình điều khiển GPU bị lỗi khi tải mô hình này. Tải trên CPU thay thế? Sẽ chạy chậm hơn.",
+  "gpuCrashCpuFallbackConfirm": "Tải trên CPU"
 }

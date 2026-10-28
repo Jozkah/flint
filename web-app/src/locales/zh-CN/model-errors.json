@@ -38,5 +38,8 @@
   "serverStartModelFailed": "启动模型失败",
   "serverStartFailed": "启动服务器失败",
   "azureEndpointMissing": "尚未为 {{provider}} 配置端点。请在 设置 > 模型提供商 中设置基础 URL。",
-  "emptyReply": "模型结束时没有返回回复。请尝试重新生成，或检查提供商设置。"
+  "emptyReply": "模型结束时没有返回回复。请尝试重新生成，或检查提供商设置。",
+  "gpuCrashCpuFallbackTitle": "GPU 驱动程序崩溃",
+  "gpuCrashCpuFallbackQuestion": "加载此模型时 GPU 驱动程序崩溃。改为在 CPU 上加载？速度会变慢。",
+  "gpuCrashCpuFallbackConfirm": "在 CPU 上加载"
 }

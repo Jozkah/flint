@@ -38,5 +38,8 @@
   "serverStartModelFailed": "No s'ha pogut iniciar el model",
   "serverStartFailed": "No s'ha pogut iniciar el servidor",
   "azureEndpointMissing": "No hi ha cap punt final configurat per a {{provider}}. Defineix l'URL base a Configuració > Proveïdors de models.",
-  "emptyReply": "El model ha acabat sense retornar cap resposta. Prova de regenerar-la o revisa la configuració del proveïdor."
+  "emptyReply": "El model ha acabat sense retornar cap resposta. Prova de regenerar-la o revisa la configuració del proveïdor.",
+  "gpuCrashCpuFallbackTitle": "El controlador de la GPU ha fallat",
+  "gpuCrashCpuFallbackQuestion": "El controlador de la GPU ha fallat mentre carregava aquest model. Voleu carregar-lo a la CPU? Anirà més lent.",
+  "gpuCrashCpuFallbackConfirm": "Carrega a la CPU"
 }
