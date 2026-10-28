@@ -551,6 +551,7 @@
   "callingTool": "Calling tool",
   "completed": "Completed",
   "image": "Image",
+  "imageLoadFailed": "This image could not be loaded.",
   "vision": "Vision",
   "multimodal": "Multimodal",
   "embeddings": "Embeddings",
