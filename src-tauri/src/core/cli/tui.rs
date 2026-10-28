@@ -3714,7 +3714,7 @@ impl App {
         // IME bursts can desync crossterm so an SGR mouse report arrives as
         // characters. Drop a completed (or prefix-truncated) report at the
         // caret rather than leaving `65;50;42M` in the composer.
-        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor);
+        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor, true);
         self.reset_slash_hint();
         // Refresh path hints on any character edit
         self.refresh_path_hints();
@@ -3728,7 +3728,7 @@ impl App {
         }
         self.input.insert_str(self.cursor, text);
         self.cursor += text.len();
-        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor);
+        drain_trailing_sgr_mouse_reports(&mut self.input, &mut self.cursor, false);
         self.reset_slash_hint();
         self.refresh_path_hints();
     }
@@ -8528,11 +8528,29 @@ fn strip_system_xml_tags(text: &str) -> String {
 /// same leak shows up with a truncated CSI prefix (`[<...`, `<...`, or 8-bit
 /// CSI `0x9b<...`). Match the full form and every truncated prefix so none of
 /// them type into the composer.
+///
+/// The `<` marker is required. Without it `1;2;3m` and `38;5;196m` -- ordinary
+/// text, and the shape of an SGR colour sequence in a pasted log -- were deleted
+/// from whatever was pasted or typed.
 fn sgr_mouse_report_re() -> &'static regex::Regex {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
-        regex::Regex::new(r"(?:\x1b\[<|\x9b<|\[<|<)?\d{1,3};\d{1,4};\d{1,4}[Mm]").unwrap()
+        regex::Regex::new(r"(?:\x1b\[<|\x9b<|\[<|<)\d{1,3};\d{1,4};\d{1,4}[Mm]").unwrap()
     })
+}
+
+/// A report that lost its whole prefix to a desynced parser: `65;50;42M`. Only
+/// the uppercase terminator and a button code a mouse can send (wheel, drag,
+/// press, with or without modifier bits) count, and only where text is typed a
+/// character at a time -- never in a paste, where it is far likelier to be text.
+fn bare_sgr_mouse_report_re() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"(\d{1,3});\d{1,4};\d{1,4}M$").unwrap())
+}
+
+fn is_mouse_button_code(code: u32) -> bool {
+    // Modifier bits (shift 4, alt 8, ctrl 16) ride on top of the button.
+    matches!(code & !(4 | 8 | 16), 0..=3 | 32..=35 | 64..=67)
 }
 
 fn strip_sgr_mouse_reports(text: &str) -> String {
@@ -8540,16 +8558,22 @@ fn strip_sgr_mouse_reports(text: &str) -> String {
 }
 
 /// Byte length of one SGR mouse report occupying the end of `text`, if any.
-fn trailing_sgr_mouse_report_len(text: &str) -> Option<usize> {
-    sgr_mouse_report_re()
+fn trailing_sgr_mouse_report_len(text: &str, allow_bare: bool) -> Option<usize> {
+    let marked = sgr_mouse_report_re()
         .find_iter(text)
         .last()
         .filter(|m| m.end() == text.len())
-        .map(|m| m.len())
+        .map(|m| m.len());
+    if marked.is_some() || !allow_bare {
+        return marked;
+    }
+    let caps = bare_sgr_mouse_report_re().captures(text)?;
+    let code: u32 = caps[1].parse().ok()?;
+    is_mouse_button_code(code).then(|| caps[0].len())
 }
 
-fn drain_trailing_sgr_mouse_reports(buf: &mut String, cursor: &mut usize) {
-    while let Some(n) = trailing_sgr_mouse_report_len(&buf[..*cursor]) {
+fn drain_trailing_sgr_mouse_reports(buf: &mut String, cursor: &mut usize, allow_bare: bool) {
+    while let Some(n) = trailing_sgr_mouse_report_len(&buf[..*cursor], allow_bare) {
         let start = *cursor - n;
         buf.drain(start..*cursor);
         *cursor = start;
@@ -9548,8 +9572,20 @@ async fn chat_loop<B: Backend>(
                 // Animate the working-title spinner on the same cadence; the
                 // OSC 9999 payload is not re-sent, only the title frame.
                 app.agent_status.animate();
+                let mut queued = Vec::new();
                 while event::poll(Duration::ZERO).unwrap_or(false) {
                     match event::read() {
+                        Ok(event) => queued.push(event),
+                        Err(_) => break,
+                    }
+                }
+                // The legacy Windows console has no bracketed paste: a paste
+                // arrives as one key event per character. Everything queued
+                // since the last tick that reads as one paste is handed over as
+                // one, so its newlines are text and not a submit per line.
+                let queued = if cfg!(windows) { coalesce_burst(queued) } else { queued };
+                for event in queued {
+                    match Ok::<Event, ()>(event) {
                         Ok(Event::Key(key)) => {
                             // Typing moves the content under a highlight, and the
                             // copy already happened on release.
@@ -10315,6 +10351,64 @@ fn route_paste_event(app: &mut App, event: Event) {
     // a character at a time; strip before the composer sees it.
     let text = normalize_paste(&strip_sgr_mouse_reports(&text));
     app.input_insert_str(&text);
+}
+
+/// The plain character a key event types, for burst detection: no Ctrl/Alt/Super,
+/// a character, Enter (as a newline) or Tab. Releases and repeats do not count.
+fn burst_char(key: &KeyEvent) -> Option<char> {
+    if key.kind != KeyEventKind::Press
+        || key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+    {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char(c) => Some(c),
+        KeyCode::Enter => Some('\n'),
+        KeyCode::Tab => Some('\t'),
+        _ => None,
+    }
+}
+
+/// Whether a run of plain keys that arrived together is a paste and not fast
+/// typing: eight or more characters, or at least three with a newline that is
+/// not just the last one (a quick `ok` + Enter still submits).
+fn burst_is_paste(chars: &[char]) -> bool {
+    chars.len() >= 8
+        || (chars.len() >= 3 && chars[..chars.len() - 1].contains(&'\n'))
+}
+
+/// Fold the plain key presses in `events` that read as one paste into a single
+/// `Event::Paste`; everything else, and runs too short to be a paste, pass
+/// through unchanged and in order. Pure, so the heuristic is testable without a
+/// terminal. Key releases inside a run are dropped with it.
+fn coalesce_burst(events: Vec<Event>) -> Vec<Event> {
+    fn flush(run: &mut Vec<(char, Event)>, out: &mut Vec<Event>) {
+        let chars: Vec<char> = run.iter().map(|(c, _)| *c).collect();
+        if burst_is_paste(&chars) {
+            out.push(Event::Paste(chars.into_iter().collect()));
+        } else {
+            out.extend(run.drain(..).map(|(_, e)| e));
+        }
+        run.clear();
+    }
+    let mut out = Vec::with_capacity(events.len());
+    let mut run: Vec<(char, Event)> = Vec::new();
+    for event in events {
+        if let Event::Key(key) = &event {
+            if let Some(c) = burst_char(key) {
+                run.push((c, event));
+                continue;
+            }
+            // A release between the presses of a run belongs to the run.
+            if key.kind == KeyEventKind::Release && !run.is_empty() {
+                continue;
+            }
+        }
+        flush(&mut run, &mut out);
+        out.push(event);
+    }
+    flush(&mut run, &mut out);
+    out
 }
 
 /// Clean pasted text for the composer: `\r\n` and lone `\r` become `\n`, tabs
@@ -29661,17 +29755,16 @@ mod tests {
     /// other real typing) is unchanged.
     #[test]
     fn sgr_mouse_reports_are_stripped_from_text() {
-        assert_eq!(super::strip_sgr_mouse_reports("65;50;42M"), "");
-        assert_eq!(super::strip_sgr_mouse_reports("0;10;20m"), "");
+        assert_eq!(super::strip_sgr_mouse_reports("<0;10;20m"), "");
         assert_eq!(super::strip_sgr_mouse_reports("\x1b[<65;50;42M"), "");
         assert_eq!(super::strip_sgr_mouse_reports("\u{9b}<32;8;12M"), "");
         assert_eq!(super::strip_sgr_mouse_reports("[<65;59;29M"), "");
         assert_eq!(super::strip_sgr_mouse_reports("<64;1;1M"), "");
         assert_eq!(
-            super::strip_sgr_mouse_reports("hello65;50;42Mworld"),
+            super::strip_sgr_mouse_reports("hello<65;50;42Mworld"),
             "helloworld"
         );
-        assert_eq!(super::strip_sgr_mouse_reports("65;50;42M65;59;29M"), "");
+        assert_eq!(super::strip_sgr_mouse_reports("<65;50;42M<65;59;29M"), "");
         assert_eq!(
             super::strip_sgr_mouse_reports("xin chào Nguyễn"),
             "xin chào Nguyễn"
@@ -29733,9 +29826,69 @@ mod tests {
     }
 
     #[test]
-    fn paste_of_sgr_mouse_reports_is_dropped() {
+    fn bare_sgr_lookalike_text_survives() {
+        for text in ["1;2;3m", "38;5;196m", "1;31;40m", "10;20;30m", "build 65;50;42m done"] {
+            assert_eq!(super::strip_sgr_mouse_reports(text), text);
+            let mut app = test_app();
+            for c in text.chars() {
+                app.input_insert(c);
+            }
+            assert_eq!(app.input, text, "typed text was eaten");
+        }
+        // A pasted bare report is text, not a leak: only a marker makes it one.
         let mut app = test_app();
         route_paste_event(&mut app, Event::Paste("65;50;42M".into()));
+        assert_eq!(app.input, "65;50;42M");
+    }
+
+    fn bkey(code: KeyCode) -> Event {
+        Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    fn brelease(code: KeyCode) -> Event {
+        Event::Key(KeyEvent::new_with_kind(code, KeyModifiers::NONE, KeyEventKind::Release))
+    }
+
+    #[test]
+    fn windows_burst_with_newlines_is_one_paste() {
+        let mut events = Vec::new();
+        for c in "fn a() {".chars() {
+            events.push(bkey(KeyCode::Char(c)));
+            events.push(brelease(KeyCode::Char(c)));
+        }
+        events.push(bkey(KeyCode::Enter));
+        events.push(brelease(KeyCode::Enter));
+        for c in "}".chars() {
+            events.push(bkey(KeyCode::Char(c)));
+        }
+        let out = super::coalesce_burst(events);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert!(matches!(&out[0], Event::Paste(t) if t == "fn a() {\n}"), "{out:?}");
+    }
+
+    #[test]
+    fn quick_typing_and_submit_is_not_a_paste() {
+        let events: Vec<Event> = "ok".chars().map(|c| bkey(KeyCode::Char(c))).chain([bkey(KeyCode::Enter)]).collect();
+        let out = super::coalesce_burst(events.clone());
+        assert_eq!(out, events, "two characters then Enter still submit");
+    }
+
+    #[test]
+    fn chords_split_a_burst_and_pass_through() {
+        let ctrl_c = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        let mut events: Vec<Event> = "abcdefghij".chars().map(|c| bkey(KeyCode::Char(c))).collect();
+        events.push(ctrl_c.clone());
+        events.push(bkey(KeyCode::Char('x')));
+        let out = super::coalesce_burst(events);
+        assert_eq!(out.len(), 3, "{out:?}");
+        assert!(matches!(&out[0], Event::Paste(t) if t == "abcdefghij"));
+        assert_eq!(out[1], ctrl_c);
+    }
+
+    #[test]
+    fn paste_of_sgr_mouse_reports_is_dropped() {
+        let mut app = test_app();
+        route_paste_event(&mut app, Event::Paste("<65;50;42M".into()));
         assert!(app.input.is_empty(), "got {:?}", app.input);
 
         route_paste_event(
