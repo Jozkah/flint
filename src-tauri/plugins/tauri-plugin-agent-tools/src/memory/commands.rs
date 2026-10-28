@@ -566,7 +566,7 @@ pub async fn memory_proposal_resolve(
     // proposal was on screen is not dropped by this rewrite.
     enum Outcome {
         Dismissed,
-        Discarded,
+        Discarded(String),
         Approved,
     }
     let outcome = super::store::update(&store_root, scope, |records| {
@@ -593,9 +593,11 @@ pub async fn memory_proposal_resolve(
         // Re-checked at the moment of the decision, not at the moment of the
         // proposal: the refusals are what stop a credential being stored, and a
         // proposal can sit on screen for a long time.
-        if !crate::secrets::scan_text(&records[index].content).is_empty() {
+        // Every content gate, not the credential scan alone: length and an
+        // instruction posing as a fact are refused here as at creation.
+        if let Err(refusal) = super::create::check_content(&records[index].content) {
             records.remove(index);
-            return Ok((true, Outcome::Discarded));
+            return Ok((true, Outcome::Discarded(refusal.message())));
         }
         records[index].status = Status::Active;
         records[index].updated_at = now();
@@ -604,10 +606,8 @@ pub async fn memory_proposal_resolve(
     .map_err(AgentToolsError::from)?;
     match outcome {
         Outcome::Dismissed => return Ok(None),
-        Outcome::Discarded => {
-            return Err(AgentToolsError::from(
-                "that looks like a credential, so it was discarded rather than saved".to_string(),
-            ))
+        Outcome::Discarded(why) => {
+            return Err(AgentToolsError::from(format!("{why}; it was discarded rather than saved")))
         }
         Outcome::Approved => {}
     }

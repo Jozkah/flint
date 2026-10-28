@@ -2,6 +2,15 @@
  * App Service Types
  */
 
+/** The Hugging Face endpoint chosen in Settings ('' is huggingface.co). */
+export interface HfEndpointSetting {
+  endpoint: string
+  /** Send the Hugging Face token to a mirror too; off by default. */
+  sendTokenToMirror: boolean
+  /** The HF_ENDPOINT environment value, which wins over the setting. */
+  envOverride: string | null
+}
+
 export interface LogEntry {
   timestamp: string | number
   level: 'info' | 'warn' | 'error' | 'debug'
@@ -42,6 +51,13 @@ export interface AppService {
   setCloseToTray(enabled: boolean): Promise<void>
   /** Cap model downloads at this many bytes per second; 0 is unlimited. */
   setDownloadSpeedLimit(bytesPerSec: number): Promise<void>
+  /** The Hugging Face endpoint chosen in Settings, and any HF_ENDPOINT override. */
+  getHfEndpointSetting(): Promise<HfEndpointSetting>
+  /** Save the endpoint ('' is huggingface.co); rejects an invalid URL. */
+  setHfEndpointSetting(
+    endpoint: string,
+    sendTokenToMirror: boolean
+  ): Promise<void>
   /** Write the redacted app log to `destination`; returns the path written. */
   exportRedactedLogs(): Promise<string | null>
   readYaml<T = unknown>(path: string): Promise<T>

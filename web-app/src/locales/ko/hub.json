@@ -60,5 +60,32 @@
       "unknownTitle": "적합도 알 수 없음",
       "unknownDetail": "로컬 하드웨어 또는 파일 크기 정보가 충분하지 않습니다"
     }
+  },
+  "fit": {
+    "green": {
+      "label": "Fits",
+      "detail": "Should run comfortably on your device"
+    },
+    "yellow": {
+      "label": "May be slow",
+      "detail": "Will run but leaves little memory headroom"
+    },
+    "red": {
+      "label": "Won't fit",
+      "detail": "Likely exceeds your available memory"
+    },
+    "unknown": {
+      "label": "Fit unknown",
+      "detail": "Could not estimate memory requirements"
+    },
+    "ariaLabel": "Device compatibility: {{label}}",
+    "variantInfo": "Model Variant Information",
+    "modelInfo": "Model Information",
+    "defaultQuantization": "Default Quantization",
+    "quantization": "Quantization",
+    "deviceCompatibility": "Device compatibility",
+    "estimateNote": "Estimated from file size and your hardware. Actual performance depends on quantization and context length.",
+    "features": "Features",
+    "notAvailable": "N/A"
   }
 }

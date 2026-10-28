@@ -912,8 +912,19 @@ impl Runner {
                 return Err(error);
             }
         };
-        self.write_stub(&session)?;
-        let info = self.admit(session)?;
+        // A refusal here (the session cap, a stub that cannot be written)
+        // must not leave the checkout and its branch behind.
+        let info = match self.write_stub(&session).and_then(|()| self.admit(session)) {
+            Ok(info) => info,
+            Err(error) => {
+                if let Some(record) = worktree {
+                    if let Ok(owned) = wt::owned_root(&self.data_folder) {
+                        let _ = worktree::discard_owned(&record, &owned, true);
+                    }
+                }
+                return Err(error);
+            }
+        };
         self.bus.publish("agent-session-changed", &json!({ "id": id, "status": "idle" }));
         Ok(info)
     }
@@ -1242,8 +1253,14 @@ impl Runner {
                 return Err(error);
             }
         };
-        self.write_stub(&session)?;
-        self.admit(session)?;
+        if let Err(error) = self.write_stub(&session).and_then(|()| self.admit(session).map(|_| ())) {
+            if created {
+                if let Ok(owned) = wt::owned_root(&self.data_folder) {
+                    let _ = worktree::discard_owned(&record, &owned, true);
+                }
+            }
+            return Err(error);
+        }
         self.bus.publish("agent-session-changed", &json!({ "id": id, "status": "idle" }));
         Ok(TaskSession { id, worktree: record })
     }
@@ -1981,8 +1998,7 @@ impl SessionActor {
         self.session.agent.permission_requests.lock().await.clear();
         cancel_asks(&self.session).await;
         let _ = reply.send(Ok(json!({})));
-        return Flow::Stop;
-        Flow::Continue
+        Flow::Stop
     }
 
     async fn on_delete(&mut self, force: bool, reply: Reply) -> Flow {
@@ -2007,8 +2023,7 @@ impl SessionActor {
         self.shared.publish("session.deleted", json!({}));
         self.ping("deleted");
         let _ = reply.send(outcome);
-        return Flow::Gone;
-        Flow::Continue
+        Flow::Gone
     }
 
     async fn on_turn_message(&mut self, message: Option<TurnMessage>) -> Flow {

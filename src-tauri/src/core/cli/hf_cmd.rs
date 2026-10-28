@@ -2,8 +2,9 @@
 //! discovery and download, from the terminal.
 //!
 //! Nothing here runs unless asked, and the only host contacted is
-//! huggingface.co (or the `HF_ENDPOINT` mirror, when set). A download goes to `<data>/downloads/huggingface/<repo>/<file>`
-//! as a `.part` file that is resumed after an interruption, checked against the
+//! huggingface.co, or the mirror from `HF_ENDPOINT` or the app's Settings
+//! (`hf_endpoint::load_setting` reads `<data>/hf_endpoint.json`). A download
+//! goes to `<data>/downloads/huggingface/<repo>/<file>` as a `.part` file that is resumed after an interruption, checked against the
 //! SHA-256 Hugging Face lists, and only then renamed into place. `import` copies
 //! a GGUF into `llamacpp/models/<id>/model.gguf`, where `models list-local`
 //! and the local server find it.
@@ -22,7 +23,8 @@ fn client(token: Option<&str>) -> Result<reqwest::Client, String> {
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("Flint/explicit-huggingface"),
     );
-    if let Some(token) = token.map(str::trim).filter(|t| !t.is_empty()) {
+    // A mirror only gets the token when the user opted in.
+    if let Some(token) = crate::core::hf_endpoint::hub_token(token)? {
         let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| "Invalid Hugging Face token".to_string())?;
         headers.insert(reqwest::header::AUTHORIZATION, value);

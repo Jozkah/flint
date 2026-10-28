@@ -146,7 +146,13 @@ impl Plan {
     /// The command as the user is shown it.
     pub fn display(&self) -> String {
         std::iter::once(self.program.name().to_string())
-            .chain(self.args.iter().map(|a| if a.contains(' ') { format!("\"{a}\"") } else { a.clone() }))
+            .chain(self.args.iter().map(|a| {
+                if a.chars().any(|c| c.is_whitespace() || c == '"') {
+                    format!("\"{}\"", a.replace('"', "\\\""))
+                } else {
+                    a.clone()
+                }
+            }))
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -279,7 +285,7 @@ async fn execute(plan: &Plan, cwd: &Path) -> String {
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
     let shown = plan.display();
-    match crate::tools::owned::output_with_timeout(&mut cmd, plan.timeout).await {
+    match crate::tools::owned::output_with_timeout_head_tail(&mut cmd, plan.timeout).await {
         Err(_) => format!(
             "ERROR: `{shown}` had not finished after {} seconds and was stopped. Run a smaller task, or raise timeout_secs (up to {MAX_TIMEOUT_SECS}).",
             plan.timeout.as_secs()
@@ -340,6 +346,12 @@ mod tests {
         assert_eq!(plan(&json!({ "program": "mvn" })).unwrap().timeout, Duration::from_secs(600));
         assert_eq!(plan(&json!({ "program": "mvn", "timeout_secs": 999999 })).unwrap().timeout, Duration::from_secs(1800));
         assert_eq!(plan(&json!({ "program": "mvn", "timeout_secs": 1 })).unwrap().timeout, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn display_quotes_spaces_and_quotes() {
+        let p = plan(&serde_json::json!({ "program": "cargo", "args": ["build", "a b\" c"] })).unwrap();
+        assert_eq!(p.display(), r#"cargo build "a b\" c""#);
     }
 
     #[test]

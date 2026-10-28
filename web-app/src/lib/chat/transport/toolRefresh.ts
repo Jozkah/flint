@@ -28,6 +28,7 @@ import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { announceMcpChange, announceMcpWithheld, mcpAvailability, diffMcpSnapshots, enabledMcpServers, getMcpGeneration, loadLiveMcpTools, mcpChangeNote, mcpStartingNote, readMcpBaseline, snapshotMcpTools, syncMcpStore, writeMcpBaseline } from '@/lib/mcpLiveTools'
 import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
+import { filterToolsByServers, threadMcpAllowList } from '@/lib/projectMcpServers'
 import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
 import type { ServiceHub } from '@/lib/custom-chat-transport'
 
@@ -136,8 +137,11 @@ export async function refreshTools(
     mcpNames instanceof Set || Array.isArray(mcpNames)
       ? [...(mcpNames as Iterable<string>)].sort()
       : []
+  // A project may limit its chats to some MCP servers (null = all).
+  const mcpAllow = threadMcpAllowList(host.threadId)
   const cacheKey = JSON.stringify({
     mcpFingerprint,
+    mcpAllow: mcpAllow ? [...mcpAllow].sort() : null,
     routedQuery: useMCPServers.getState().settings.enableSmartToolRouting
       ? host.lastUserMessage
       : undefined,
@@ -253,6 +257,10 @@ export async function refreshTools(
         mcpStarting = live.starting
         fullListing = true
       }
+      if (mcpAllow) {
+        mcpTools = filterToolsByServers(mcpTools ?? [], mcpAllow)
+        mcpStarting = mcpStarting.filter((s) => mcpAllow.has(s))
+      }
       host.mcpStartingText = mcpStartingNote(mcpStarting)
 
       if (Array.isArray(mcpTools) && mcpTools.length > 0) {
@@ -298,7 +306,10 @@ export async function refreshTools(
             [...toolServers].map(([name, server]) => ({ name, server }))
           ),
           mcpStarting,
-          isToolDisabled
+          isToolDisabled,
+          mcpAllow
+            ? enabledMcpServers().filter((s) => mcpAllow.has(s))
+            : enabledMcpServers()
         )
         host.mcpStartingText =
           [host.mcpStartingText, availability.note]

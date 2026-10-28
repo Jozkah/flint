@@ -1,7 +1,7 @@
 # Real-provider lane (llm-host:8555) — batch 3
 
 Not an upstream item: the end-to-end gate the batch had to pass, and what it
-found. Driven through the real app by `src-tauri/examples/cowork_smoke.rs` in
+found. Driven through the real app by `src-tauri/examples/cowork_smoke/main.rs` in
 lane mode:
 
 ```bash

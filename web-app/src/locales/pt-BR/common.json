@@ -333,7 +333,8 @@
       "settings": "Configurações",
       "threads": "Conversas"
     },
-    "openItem": "Abrir {{item}}"
+    "openItem": "Abrir {{item}}",
+    "openStudio": "Open Studio"
   },
   "searchGroup": {
     "pages": "Páginas",
@@ -379,8 +380,10 @@
   "sharedFolder": {
     "others_one": "{{count}} outra sessão está trabalhando nesta pasta",
     "others_other": "{{count}} outras sessões estão trabalhando nesta pasta",
+    "others_many": "{{count}} outras sessões estão trabalhando nesta pasta",
     "waitingApproval_one": "{{count}} outra sessão aguarda aprovação",
     "waitingApproval_other": "{{count}} outras sessões aguardam aprovação",
+    "waitingApproval_many": "{{count}} outras sessões aguardam aprovação",
     "waitingApprovalOne": "Aguardando aprovação",
     "holdEdit": "{{owner}} está editando {{target}}: {{session}} foi orientada a lhe enviar uma mensagem",
     "holdGit": "{{owner}} trabalha nesta pasta: {{session}} foi retida antes de git {{target}} e deve lhe enviar uma mensagem",
@@ -410,7 +413,8 @@
     "sharedWarning": "Pasta compartilhada: as mudanças de git de outra sessão podem mover a branch e os arquivos desta. O Flint retém comandos git arriscados e avisa quando duas sessões editam o mesmo arquivo.",
     "gotIt": "Entendi",
     "sidebarMark_one": "Compartilha uma pasta com {{count}} outra sessão",
-    "sidebarMark_other": "Compartilha uma pasta com {{count}} outras sessões"
+    "sidebarMark_other": "Compartilha uma pasta com {{count}} outras sessões",
+    "sidebarMark_many": "Compartilha uma pasta com {{count}} outras sessões"
   },
   "coworkLayout": {
     "views": "Visualização do Cowork",
@@ -469,6 +473,7 @@
     },
     "truncated": "Mais {{count}} linha não mostrada",
     "truncated_other": "Mais {{count}} linhas não mostradas",
+    "truncated_many": "Mais {{count}} linhas não mostradas",
     "openFile": "Abrir",
     "applyToFolder": "Aplicar à pasta",
     "applyHint": "Copiar este arquivo da sandbox da sessão para {{folder}} como {{path}}",
@@ -786,6 +791,14 @@
     "filesDescription": "Adicione PDFs, documentos ou outros textos para estas conversas consultarem.",
     "uploadingFiles": "Processando arquivos…",
     "processButton": "Adicionar",
+    "fileChangedOnDisk": "Alterado no disco",
+    "fileMissing": "Ausente",
+    "reindexFile": "Reindexar",
+    "reindexAllChanged": "Reindexar todos os alterados",
+    "filesChangedOnDisk": "Arquivos alterados no disco desde a indexação: {{count}}",
+    "reindexed": "Arquivos reindexados: {{count}}",
+    "reindexFailed": "Não foi possível reindexar o arquivo",
+    "staleFilesNotice": "Arquivos da coleção alterados ou ausentes no disco: {{count}}. Reindexe-os na lista de arquivos da coleção.",
     "deleteFileDialog": {
       "title": "Excluir arquivo",
       "description": "\"{{fileName}}\" e seu conteúdo indexado serão removidos desta coleção. Isso não pode ser desfeito."
@@ -854,6 +867,14 @@
     "openCodeFolder": "Abrir pasta de código",
     "openCodeFolderDescription": "Escolha uma pasta no seu computador para o Flint trabalhar.",
     "setUpEmbeddingModel": "Configurar um modelo de embedding",
+    "mcpServers": {
+      "title": "Servidores MCP",
+      "useAll": "Usar todos os servidores ativados (padrão)",
+      "onlyThese": "Somente estes servidores",
+      "noneConfigured": "Nenhum servidor MCP configurado.",
+      "filterActive": "Este projeto usa somente: {{servers}}",
+      "filterNone": "Este projeto não usa servidores MCP"
+    },
     "webPage": {
       "open": "Adicionar página web",
       "title": "Adicionar uma página web",
@@ -874,7 +895,9 @@
         "httpError": "O site retornou um erro: {{message}}",
         "failed": "Não foi possível buscar a página: {{message}}"
       }
-    }
+    },
+    "filesLoadFailed": "Could not load this project's files.",
+    "retryLoad": "Try again"
   },
   "attachmentsIngestion": {
     "title": "Escolha como ingerir os anexos",
@@ -1110,6 +1133,7 @@
     "pullRequests": "Pull requests",
     "morePrs_one": "+{{count}} mais",
     "morePrs_other": "+{{count}} mais",
+    "morePrs_many": "+{{count}} mais",
     "noChecks": "Sem verificações",
     "empty": "Nada aqui ainda.",
     "noMessages": "Nenhuma mensagem ainda",
@@ -1615,6 +1639,7 @@
     "failed": "falhou",
     "eventCount": "{{count}} evento",
     "eventCount_other": "{{count}} eventos",
+    "eventCount_many": "{{count}} eventos",
     "filter": {
       "all": "Todos",
       "read": "Lidos",
@@ -2067,6 +2092,7 @@
     "hideCompletedToolsDescription": "Oculta a atividade de ferramentas concluída com sucesso. Atividade em execução, com falha, recusada, cancelada e obsoleta é sempre mostrada, e nada é excluído.",
     "hiddenCount": "{{count}} atividades de ferramentas concluídas ocultas",
     "hiddenCount_one": "1 atividade de ferramenta concluída oculta",
+    "hiddenCount_many": "{{count}} atividades de ferramentas concluídas ocultas",
     "showAgain": "Mostrar novamente",
     "showModelReceived": "Mostrar “O que o modelo recebeu”",
     "showModelReceivedDescription": "O registro por turno da solicitação e sua contagem de tokens. É registrado de qualquer forma e fica nos detalhes da sessão e na linha do tempo."
@@ -2589,7 +2615,15 @@
     "noMatches": "Nenhum parâmetro corresponde",
     "noneForProvider": "Nenhum parâmetro ajustável para este provedor.",
     "maybeUnsupported": "Pode não ser compatível com {{providers}}",
-    "modelReports": "Modelo: {{value}}"
+    "modelReports": "Modelo: {{value}}",
+    "noOverrides": "No overrides — using model defaults.",
+    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
+    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "notSupportedStripped": "Not supported — will be stripped on send",
+    "mayBeIgnored": "May be ignored by this provider",
+    "notSupportedSkipped": "Not supported — will be skipped.",
+    "removeParam": "Remove {{name}}"
   },
   "progressPin": {
     "pin": "Fixar o progresso acima da conversa",
@@ -2607,7 +2641,76 @@
     "restartManually": "Reinicie o Flint para começar a usar os dados migrados.",
     "chooseNote": "Nada é copiado até você confirmar. Os dados do JAN nunca são modificados nem apagados.",
     "copyDescription": "Copia suas conversas, configurações e chaves de provedores do JAN para o Flint, nos itens marcados abaixo. O JAN em si nunca é alterado nem apagado.",
-    "freshDescription": "Inicia o Flint vazio. Nada é lido nem copiado do JAN, incluindo as chaves de provedores, agora ou em inicializações futuras. Você ainda pode importar em Configurações, Pasta de dados."
+    "freshDescription": "Inicia o Flint vazio. Nada é lido nem copiado do JAN, incluindo as chaves de provedores, agora ou em inicializações futuras. Você ainda pode importar em Configurações, Pasta de dados.",
+    "title": "Migrate from JAN",
+    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
+    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
+    "detecting": "Looking for an existing JAN installation…",
+    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
+    "foundAt": "Found JAN data at {{path}} ({{size}}).",
+    "whatToBring": "What to bring across",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "fileCount_many": "{{count}} files",
+    "existsInFlint": "If an item already exists in Flint",
+    "conflictAria": "Conflict resolution",
+    "resolveAria": "Resolve conflicts",
+    "modes": {
+      "copy": {
+        "label": "Copy to Flint"
+      },
+      "reuse": {
+        "label": "Reuse JAN data",
+        "description": "Point Flint at your existing JAN data in place, without copying it."
+      },
+      "move": {
+        "label": "Move to Flint",
+        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+      },
+      "fresh": {
+        "label": "Start fresh"
+      }
+    },
+    "categories": {
+      "conversations": "Conversations & assistants",
+      "models": "Downloaded models & engines",
+      "configs": "Configuration files",
+      "settings": "Settings & provider credentials",
+      "common": "Extensions, logs & caches",
+      "agent": "Agent workspace & rooms"
+    },
+    "conflicts": {
+      "keep_flint": "Keep the existing Flint item",
+      "use_jan": "Overwrite with the JAN item",
+      "keep_both": "Keep both (JAN copy is suffixed)"
+    },
+    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "mode": "Mode",
+    "items": "Items",
+    "estimatedSize": "Estimated size",
+    "reusePath": "Reuse path",
+    "conflictCount_one": "{{count}} conflict",
+    "conflictCount_other": "{{count}} conflicts",
+    "conflictCount_many": "{{count}} conflicts",
+    "flintIsNewer": "Flint copy is newer (kept)",
+    "running": "Migrating your data… do not close Flint.",
+    "complete": "Migration complete.",
+    "categoryOk": "{{name}}: {{count}} ok",
+    "categorySkipped": "{{count}} skipped",
+    "categoryFailed": "{{count}} failed",
+    "backupKept": "A backup of your JAN data was kept at {{path}}.",
+    "restartNeeded": "Restart Flint to start using this data.",
+    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
+    "failed": "Migration did not complete.",
+    "unknownError": "An unknown error occurred.",
+    "rolledBackNote": "Your data was rolled back to its previous state.",
+    "quarantined": "Partial data was quarantined at {{path}}.",
+    "notNow": "Not now",
+    "dontAskAgain": "Don't ask again",
+    "back": "Back",
+    "close": "Close",
+    "startFresh": "Start fresh",
+    "continue": "Continue"
   },
   "imageViewer": {
     "imageN": "Imagem {{n}}",
@@ -2804,6 +2907,7 @@
     "showingFirst": "Mostrando os primeiros {{loaded}} de {{total}}",
     "lines_one": "{{count}} linha",
     "lines_other": "{{count}} linhas",
+    "lines_many": "{{count}} linhas",
     "wrap": "Quebrar linhas",
     "copy": "Copiar",
     "copied": "Copiado",
@@ -2863,6 +2967,21 @@
     "load": "Carregar imagem de {{host}}"
   },
   "messageSaveFailed": "Não foi possível salvar a mensagem. Ela pode ser perdida após reiniciar.",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida.",
   "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada",
   "attachmentMissingFile": "Um arquivo anexado não está mais disponível. Remova e anexe de novo; sua mensagem continua na caixa.",
@@ -2885,6 +3004,7 @@
     "export": "Exportar",
     "imported_one": "{{count}} prompt adicionado",
     "imported_other": "{{count}} prompts adicionados",
+    "imported_many": "{{count}} prompts adicionados",
     "importedNone": "Nenhum prompt novo encontrado",
     "search": "Buscar prompts",
     "empty": "Nenhum prompt ainda.",
@@ -3048,14 +3168,19 @@
   "nesting": {
     "more_one": "mais {{count}} aninhado",
     "more_other": "mais {{count}} aninhados",
+    "more_many": "mais {{count}} aninhados",
     "new_one": "{{count}} novo",
     "new_other": "{{count}} novos",
+    "new_many": "{{count}} novos",
     "working_one": "{{count}} em andamento",
     "working_other": "{{count}} em andamento",
+    "working_many": "{{count}} em andamento",
     "waiting_one": "{{count}} aguardando",
     "waiting_other": "{{count}} aguardando",
+    "waiting_many": "{{count}} aguardando",
     "count_one": "{{count}} aninhado",
     "count_other": "{{count}} aninhados",
+    "count_many": "{{count}} aninhados",
     "fewer": "Mostrar menos aninhados"
   },
   "diffReview": {
@@ -3088,7 +3213,8 @@
     "report": {
       "clean": "Parado. {{stopped}} parados, {{already}} já parados, nada mais em execução.",
       "partial_one": "{{stopped}} parados, mas {{count}} processo ainda está em execução. A limpeza não terminou.",
-      "partial_other": "{{stopped}} parados, mas {{count}} processos ainda estão em execução. A limpeza não terminou."
+      "partial_other": "{{stopped}} parados, mas {{count}} processos ainda estão em execução. A limpeza não terminou.",
+      "partial_many": "{{stopped}} parados, mas {{count}} processos ainda estão em execução. A limpeza não terminou."
     },
     "error": "Não foi possível parar: {{error}}",
     "cancel": "Cancelar",
@@ -3134,6 +3260,7 @@
     "reviewed": "Revisei o que isso altera",
     "moreLines_one": "… mais {{count}} linha",
     "moreLines_other": "… mais {{count}} linhas",
+    "moreLines_many": "… mais {{count}} linhas",
     "lines": "Linhas {{from}}–{{to}}",
     "sensitive": "Parece conter uma credencial, então nunca é aplicado.",
     "wholeBinary": "Binário: aplicado ou deixado inteiro.",
@@ -3142,8 +3269,10 @@
     "nothingSelected": "Nada selecionado. Rejeite a proposta para descartá-la.",
     "applied_one": "{{count}} arquivo aplicado.",
     "applied_other": "{{count}} arquivos aplicados.",
+    "applied_many": "{{count}} arquivos aplicados.",
     "appliedPartial_one": "{{count}} arquivo aplicado; o restante ficou de fora.",
     "appliedPartial_other": "{{count}} arquivos aplicados; o restante ficou de fora.",
+    "appliedPartial_many": "{{count}} arquivos aplicados; o restante ficou de fora.",
     "rejected": "Rejeitada. Nada mudou na sua pasta.",
     "heading": "{{title}} em {{root}}",
     "defaultTitle": "Alterações propostas",
@@ -3160,10 +3289,18 @@
     "applying": "Aplicando…",
     "applySelected": "Aplicar seleção"
   },
+  "chatRules": "Regras",
+  "chatRuleForThisChat": "Usar esta regra nesta conversa",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}"
+    "failed": "The handoff could not be saved: {{message}}",
+    "label": "Handed off from another computer",
+    "title": "This session was handed off from another computer.",
+    "checkFailed": "The attached folder could not be checked: {{error}}",
+    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
+    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "dismiss": "Dismiss"
   },
   "imageLoadFailed": "This image could not be loaded.",
   "attachedImage": "Attached image {{n}}",
@@ -3189,12 +3326,40 @@
     "reverse-engineer": "Reverse-engineer",
     "explain": "Explain"
   },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
   "citations": {
     "toggleSnippet": "Toggle snippet",
     "documents_one": "{{count}} document citation",
     "documents_other": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
     "web_one": "{{count}} web source",
     "web_other": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   }
 }

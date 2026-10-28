@@ -12,6 +12,9 @@ const matchesZoomKey = (event: KeyboardEvent, spec: ShortcutSpec) => {
   return [spec.key, ...(spec.aliasKeys ?? [])].some((key) => key === event.key)
 }
 
+/** Wheel distance that makes one zoom step (a mouse notch is about 100). */
+const WHEEL_STEP = 100
+
 /**
  * Binds the zoom shortcuts and Ctrl/Cmd + wheel to the chat message scale.
  *
@@ -23,6 +26,8 @@ export function useMessageZoom() {
   useEffect(() => {
     const zoomIn = PlatformShortcuts[ShortcutAction.ZOOM_IN]
     const zoomOut = PlatformShortcuts[ShortcutAction.ZOOM_OUT]
+
+    let wheelDelta = 0
 
     const handleKeyDown = (event: KeyboardEvent) => {
       // A shortcut is being rebound; the chord is not a zoom (AH-207).
@@ -42,10 +47,18 @@ export function useMessageZoom() {
       if (!event.ctrlKey && !event.metaKey) return
       if (event.deltaY === 0) return
       event.preventDefault()
+      // A trackpad pinch sends dozens of tiny deltas; a step per event would
+      // jump the whole scale. Deltas add up and one step is taken per notch.
+      if (wheelDelta !== 0 && Math.sign(wheelDelta) !== Math.sign(event.deltaY)) {
+        wheelDelta = 0
+      }
+      wheelDelta += event.deltaY
+      if (Math.abs(wheelDelta) < WHEEL_STEP) return
       const { zoomInMessages, zoomOutMessages } =
         useInterfaceSettings.getState()
-      if (event.deltaY < 0) zoomInMessages()
+      if (wheelDelta < 0) zoomInMessages()
       else zoomOutMessages()
+      wheelDelta = 0
     }
 
     window.addEventListener('keydown', handleKeyDown)

@@ -12,10 +12,11 @@
 //!   direct, so a local engine keeps working behind a corporate proxy.
 //! * `noProxy` (comma separated, same wildcard rules as the rest of the app)
 //!   and the `NO_PROXY` environment variable bypass the proxy.
-//! * Clients that deliberately resolve names themselves to keep a public-only
-//!   rule (the web-fetch client in the web search plugin) are not given the
-//!   proxy: a proxy resolves the name on its side, which would bypass that
-//!   rule.
+//! * The web-fetch client in the web search plugin, which resolves names
+//!   itself to keep a public-only rule, gets the proxy too; since the proxy
+//!   resolves the name on its side, that client vets the name locally first.
+//! * `socks5://` (names resolved here) and `socks5h://` (names resolved by the
+//!   proxy) are accepted besides `http://` and `https://`.
 //!
 //! Desktop only: the CLI keeps reqwest's own `HTTPS_PROXY` / `NO_PROXY`
 //! handling.
@@ -48,7 +49,7 @@ impl std::fmt::Debug for ProxySettings {
 }
 
 /// Whether `host` is this machine.
-fn is_loopback_host(host: &str) -> bool {
+pub(crate) fn is_loopback_host(host: &str) -> bool {
     let host = host.trim_matches(|c| c == '[' || c == ']');
     host.eq_ignore_ascii_case("localhost")
         || host
@@ -60,7 +61,7 @@ impl ProxySettings {
     /// Read the stored settings blob (a Zustand `persist` object:
     /// `{"state": {...}, "version": 1}`). `password` is asked for only when a
     /// username is set. `None` when the proxy is off, empty or not a usable
-    /// `http`/`https` URL.
+    /// `http`/`https`/`socks5`/`socks5h` URL.
     pub fn parse(stored: Option<&str>, password: impl FnOnce() -> Option<String>) -> Option<Self> {
         let value: serde_json::Value = serde_json::from_str(stored?).ok()?;
         let state = value.get("state")?;
@@ -74,7 +75,7 @@ impl ProxySettings {
         // "proxy.corp:8080" is how people type it.
         let with_scheme = if raw.contains("://") { raw.to_string() } else { format!("http://{raw}") };
         let mut url = Url::parse(&with_scheme).ok()?;
-        if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        if !matches!(url.scheme(), "http" | "https" | "socks5" | "socks5h") || url.host_str().is_none() {
             return None;
         }
         let user = state
@@ -221,6 +222,26 @@ mod tests {
         assert!(settings(r#"{"state":{"proxyEnabled":true,"proxyUrl":"ftp://p:1"}}"#, None).is_none());
         assert!(settings("not json", None).is_none());
         assert!(ProxySettings::parse(None, || None).is_none());
+    }
+
+    #[test]
+    fn socks_and_http_schemes_are_accepted_others_rejected() {
+        for scheme in ["http", "https", "socks5", "socks5h"] {
+            let blob = format!(r#"{{"state":{{"proxyEnabled":true,"proxyUrl":"{scheme}://p:1080"}}}}"#);
+            let p = settings(&blob, None).unwrap_or_else(|| panic!("{scheme} rejected"));
+            let via = p.proxy_for_with_env(&u("https://example.com/"), &[]).unwrap();
+            assert_eq!(via.scheme(), scheme);
+        }
+        for scheme in ["ftp", "socks4", "socks", "file"] {
+            let blob = format!(r#"{{"state":{{"proxyEnabled":true,"proxyUrl":"{scheme}://p:1080"}}}}"#);
+            assert!(settings(&blob, None).is_none(), "{scheme} accepted");
+        }
+    }
+
+    #[test]
+    fn a_socks5_proxy_builds_a_client() {
+        let proxy = reqwest::Proxy::all("socks5h://127.0.0.1:1080").unwrap();
+        reqwest::Client::builder().proxy(proxy).build().unwrap();
     }
 
     #[test]

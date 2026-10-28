@@ -335,7 +335,8 @@
       "settings": "Ustawienia",
       "threads": "Rozmowy"
     },
-    "openItem": "Otwórz: {{item}}"
+    "openItem": "Otwórz: {{item}}",
+    "openStudio": "Open Studio"
   },
   "searchGroup": {
     "pages": "Strony",
@@ -798,6 +799,14 @@
     "filesDescription": "Dodaj pliki PDF, dokumenty lub inny tekst, do których te rozmowy będą się odwoływać.",
     "uploadingFiles": "Przetwarzanie plików…",
     "processButton": "Dodaj",
+    "fileChangedOnDisk": "Zmieniony na dysku",
+    "fileMissing": "Brak pliku",
+    "reindexFile": "Indeksuj ponownie",
+    "reindexAllChanged": "Indeksuj ponownie wszystkie zmienione",
+    "filesChangedOnDisk": "Pliki zmienione na dysku od indeksowania: {{count}}",
+    "reindexed": "Ponownie zindeksowane pliki: {{count}}",
+    "reindexFailed": "Nie udało się ponownie zindeksować pliku",
+    "staleFilesNotice": "Pliki kolekcji zmienione lub brakujące na dysku: {{count}}. Zindeksuj je ponownie z listy plików kolekcji.",
     "deleteFileDialog": {
       "title": "Usuń plik",
       "description": "„{{fileName}}” i jego zindeksowana zawartość zostaną usunięte z tej kolekcji. Tej operacji nie można cofnąć."
@@ -867,6 +876,14 @@
     "openCodeFolder": "Otwórz folder z kodem",
     "openCodeFolderDescription": "Wybierz folder na komputerze, w którym Flint ma pracować.",
     "setUpEmbeddingModel": "Skonfiguruj model embeddingów",
+    "mcpServers": {
+      "title": "Serwery MCP",
+      "useAll": "Używaj wszystkich włączonych serwerów (domyślnie)",
+      "onlyThese": "Tylko te serwery",
+      "noneConfigured": "Nie skonfigurowano żadnych serwerów MCP.",
+      "filterActive": "Ten projekt używa tylko: {{servers}}",
+      "filterNone": "Ten projekt nie używa serwerów MCP"
+    },
     "webPage": {
       "open": "Dodaj stronę internetową",
       "title": "Dodaj stronę internetową",
@@ -887,7 +904,9 @@
         "httpError": "Witryna zwróciła błąd: {{message}}",
         "failed": "Nie udało się pobrać strony: {{message}}"
       }
-    }
+    },
+    "filesLoadFailed": "Could not load this project's files.",
+    "retryLoad": "Try again"
   },
   "attachmentsIngestion": {
     "title": "Wybierz sposób wczytania załączników",
@@ -2645,7 +2664,16 @@
     "noMatches": "Brak pasujących parametrów",
     "noneForProvider": "Ten dostawca nie ma parametrów do dostrojenia.",
     "maybeUnsupported": "Może nie być obsługiwane przez {{providers}}",
-    "modelReports": "Model: {{value}}"
+    "modelReports": "Model: {{value}}",
+    "noOverrides": "No overrides — using model defaults.",
+    "unrecognized_one": "{{count}} unrecognized parameter hidden: {{keys}}",
+    "unrecognized_other": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "unrecognized_few": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "unrecognized_many": "{{count}} unrecognized parameters hidden: {{keys}}",
+    "notSupportedStripped": "Not supported — will be stripped on send",
+    "mayBeIgnored": "May be ignored by this provider",
+    "notSupportedSkipped": "Not supported — will be skipped.",
+    "removeParam": "Remove {{name}}"
   },
   "progressPin": {
     "pin": "Przypnij postęp nad rozmową",
@@ -2663,7 +2691,78 @@
     "restartManually": "Uruchom Flint ponownie, aby zacząć używać zmigrowanych danych.",
     "chooseNote": "Nic nie jest kopiowane, dopóki nie potwierdzisz. Dane JAN nigdy nie są zmieniane ani usuwane.",
     "copyDescription": "Kopiuje do Flint Twoje rozmowy, ustawienia i klucze dostawców z JAN, dla pozycji zaznaczonych poniżej. Sam JAN nigdy nie jest zmieniany ani usuwany.",
-    "freshDescription": "Uruchamia Flint z pustymi danymi. Nic nie jest odczytywane ani kopiowane z JAN, łącznie z kluczami dostawców, teraz ani przy kolejnych uruchomieniach. Importować można zawsze w Ustawieniach, Folder danych."
+    "freshDescription": "Uruchamia Flint z pustymi danymi. Nic nie jest odczytywane ani kopiowane z JAN, łącznie z kluczami dostawców, teraz ani przy kolejnych uruchomieniach. Importować można zawsze w Ustawieniach, Folder danych.",
+    "title": "Migrate from JAN",
+    "descriptionNoLegacy": "Bring your existing JAN data into Flint.",
+    "descriptionFound": "Flint found an existing JAN installation. Choose how to bring your data across.",
+    "detecting": "Looking for an existing JAN installation…",
+    "noData": "No JAN data was found on this machine. There is nothing to migrate — you can start using Flint right away.",
+    "foundAt": "Found JAN data at {{path}} ({{size}}).",
+    "whatToBring": "What to bring across",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "fileCount_few": "{{count}} files",
+    "fileCount_many": "{{count}} files",
+    "existsInFlint": "If an item already exists in Flint",
+    "conflictAria": "Conflict resolution",
+    "resolveAria": "Resolve conflicts",
+    "modes": {
+      "copy": {
+        "label": "Copy to Flint"
+      },
+      "reuse": {
+        "label": "Reuse JAN data",
+        "description": "Point Flint at your existing JAN data in place, without copying it."
+      },
+      "move": {
+        "label": "Move to Flint",
+        "description": "Copy into Flint, then remove the JAN source once every item succeeds. A backup is kept so you can roll back."
+      },
+      "fresh": {
+        "label": "Start fresh"
+      }
+    },
+    "categories": {
+      "conversations": "Conversations & assistants",
+      "models": "Downloaded models & engines",
+      "configs": "Configuration files",
+      "settings": "Settings & provider credentials",
+      "common": "Extensions, logs & caches",
+      "agent": "Agent workspace & rooms"
+    },
+    "conflicts": {
+      "keep_flint": "Keep the existing Flint item",
+      "use_jan": "Overwrite with the JAN item",
+      "keep_both": "Keep both (JAN copy is suffixed)"
+    },
+    "incompatible": "The JAN data reports a schema this Flint build does not fully support. Review the warnings before continuing.",
+    "mode": "Mode",
+    "items": "Items",
+    "estimatedSize": "Estimated size",
+    "reusePath": "Reuse path",
+    "conflictCount_one": "{{count}} conflict",
+    "conflictCount_other": "{{count}} conflicts",
+    "conflictCount_few": "{{count}} conflicts",
+    "conflictCount_many": "{{count}} conflicts",
+    "flintIsNewer": "Flint copy is newer (kept)",
+    "running": "Migrating your data… do not close Flint.",
+    "complete": "Migration complete.",
+    "categoryOk": "{{name}}: {{count}} ok",
+    "categorySkipped": "{{count}} skipped",
+    "categoryFailed": "{{count}} failed",
+    "backupKept": "A backup of your JAN data was kept at {{path}}.",
+    "restartNeeded": "Restart Flint to start using this data.",
+    "reuseInPlace": "Flint is now using your JAN data in place at {{path}}.",
+    "failed": "Migration did not complete.",
+    "unknownError": "An unknown error occurred.",
+    "rolledBackNote": "Your data was rolled back to its previous state.",
+    "quarantined": "Partial data was quarantined at {{path}}.",
+    "notNow": "Not now",
+    "dontAskAgain": "Don't ask again",
+    "back": "Back",
+    "close": "Close",
+    "startFresh": "Start fresh",
+    "continue": "Continue"
   },
   "imageViewer": {
     "imageN": "Obraz {{n}}",
@@ -2925,6 +3024,21 @@
     "load": "Wczytaj obraz z {{host}}"
   },
   "messageSaveFailed": "Nie udało się zapisać wiadomości. Może zostać utracona po restarcie.",
+  "keyringSaveFailed": "Could not save the secret to the system keyring. The change was reverted.",
+  "keptChat": "Kept chat",
+  "studioToast": {
+    "modelDownloaded": "{{name}} is downloaded",
+    "videoReady": "Your video is ready",
+    "imageReady": "Your image is ready",
+    "stoppedWaiting": "Stopped waiting. {{provider}} may keep rendering, and a new request can be refused until it finishes.",
+    "providerFallback": "The provider",
+    "pictureInChat": "That picture is used in a chat. The chat can no longer view or edit it."
+  },
+  "windowTitles": {
+    "appLogs": "App Logs - Flint",
+    "systemMonitor": "System Monitor - Flint",
+    "localApiServerLogs": "Local API Server Logs - Flint"
+  },
   "threadSaveFailed": "Nie udało się zapisać zmiany w tym wątku. Została cofnięta.",
   "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana",
   "attachmentMissingFile": "Załączony plik nie jest już dostępny. Usuń go i załącz ponownie; wiadomość nadal jest w polu.",
@@ -3245,10 +3359,18 @@
     "applying": "Stosowanie…",
     "applySelected": "Zastosuj wybrane"
   },
+  "chatRules": "Reguły",
+  "chatRuleForThisChat": "Używaj tej reguły w tym czacie",
   "handoff": {
     "menu": "Hand off to another computer…",
     "saved": "Handoff saved. {{count}} credential(s) were left out, and the folder is named rather than located.",
-    "failed": "The handoff could not be saved: {{message}}"
+    "failed": "The handoff could not be saved: {{message}}",
+    "label": "Handed off from another computer",
+    "title": "This session was handed off from another computer.",
+    "checkFailed": "The attached folder could not be checked: {{error}}",
+    "folderMatches": "The attached folder matches the one the session worked in ({{name}}).",
+    "folderDiffers": "The attached folder is not the one the session worked in: {{differences}}.",
+    "dismiss": "Dismiss"
   },
   "imageLoadFailed": "This image could not be loaded.",
   "attachedImage": "Attached image {{n}}",
@@ -3274,12 +3396,42 @@
     "reverse-engineer": "Reverse-engineer",
     "explain": "Explain"
   },
+  "teamConflicts": {
+    "kind": {
+      "same-file": "same file",
+      "nested": "a folder and something inside it",
+      "rename": "a move",
+      "delete": "a delete",
+      "generated": "a regenerated file"
+    },
+    "scopeLabel": "What {{id}} may change (comma-separated)",
+    "bothChange": "{{a}} and {{b}} would both change:",
+    "legend": "What to do about {{a}} and {{b}}",
+    "serializeAb": "Run {{a}} first, then {{b}}",
+    "serializeBa": "Run {{b}} first, then {{a}}",
+    "revise": "Change what {{id}} may change",
+    "parallel": "Run them side by side anyway (recorded; each change is still reviewed and checked before it is applied)",
+    "region": "Overlapping team tasks",
+    "headline": "These tasks would change the same paths with nothing ordering them. Nothing has run yet.",
+    "caveat": "Compared by the paths each task declared, not by reading the code: no overlap here does not mean the changes fit together.",
+    "continue": "Continue",
+    "cancel": "Don’t run these tasks"
+  },
   "citations": {
     "toggleSnippet": "Toggle snippet",
     "documents_one": "{{count}} document citation",
     "documents_other": "{{count}} document citations",
+    "documents_few": "{{count}} document citations",
+    "documents_many": "{{count}} document citations",
     "web_one": "{{count}} web source",
     "web_other": "{{count}} web sources",
+    "web_few": "{{count}} web sources",
+    "web_many": "{{count}} web sources",
     "forQuery": "for “{{query}}”"
+  },
+  "coworkRun": {
+    "partFits": "Only part of {{files}} fits in one message.",
+    "readFailed": "Could not read {{name}}: {{error}}",
+    "remoteImagesOnly": "Only images can be sent to a server session; remove the other media files."
   }
 }

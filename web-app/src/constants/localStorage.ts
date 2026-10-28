@@ -13,6 +13,7 @@ export const localStorageKey = {
   settingChatShell: 'setting-chat-shell',
   settingWebPreview: 'setting-web-preview',
   settingThreadTitle: 'setting-thread-title',
+  settingChatRules: 'setting-chat-rules',
   settingAgentTools: 'setting-agent-tools',
   settingVisualize: 'setting-visualize',
   settingLeanTools: 'setting-lean-tools',

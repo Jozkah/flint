@@ -9,7 +9,11 @@ const MOBILE_BREAKPOINT = 768
 export const NARROW_SHELL_BREAKPOINT = 1024
 
 function useBelow(breakpoint: number) {
-  const [below, setBelow] = React.useState<boolean | undefined>(undefined)
+  // Read on the first render so a phone does not paint the desktop layout
+  // for a frame before the effect corrects it.
+  const [below, setBelow] = React.useState<boolean | undefined>(() =>
+    typeof window === "undefined" ? undefined : window.innerWidth < breakpoint
+  )
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`)

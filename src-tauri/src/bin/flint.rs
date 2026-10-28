@@ -3699,6 +3699,10 @@ async fn handle_threads(cmd: ThreadsCommands) {
 // ── Models handlers ────────────────────────────────────────────────────────
 
 async fn handle_models(cmd: ModelsCommands) {
+    if matches!(cmd, ModelsCommands::Search { .. } | ModelsCommands::Files { .. } | ModelsCommands::Download { .. }) {
+        // The Hugging Face endpoint the app's Settings chose (HF_ENDPOINT still wins).
+        app_lib::core::hf_endpoint::load_setting(&app_lib::core::app::commands::resolve_jan_data_folder());
+    }
     match cmd {
         ModelsCommands::List { provider, project, filter } => {
             let configs = match load_provider_configs(

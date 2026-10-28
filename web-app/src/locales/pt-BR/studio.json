@@ -1,4 +1,28 @@
 {
+  "discover": {
+    "unsupportedArch": "Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.",
+    "intro": "Picture models in the GGUF format that Studio can run. Pick a weights file and what kind of model it is; the text encoder and VAE it needs are downloaded with it and checked like every other download.",
+    "familiesError": "Could not load the model kinds: {{error}}",
+    "retry": "Retry",
+    "emptyTitle": "No picture models found",
+    "emptyDescription": "Try a broader search, for example qwen image, flux or z-image.",
+    "gated": "Gated",
+    "hideFiles": "Hide files",
+    "chooseFile": "Choose a file",
+    "whatKind": "What kind of model is this?",
+    "modelFamily": "Model family",
+    "pickOne": "Pick one…",
+    "filesError": "Could not list the files: {{error}}",
+    "noWeights": "No weights files (.gguf) in this repository.",
+    "unsupportedSystem": "Unsupported system",
+    "inStudio": "In Studio",
+    "adding": "Adding…",
+    "addToStudio": "Add to Studio",
+    "unsupportedToast": "Local image generation needs Windows x64 or Linux x64.",
+    "pickKindFirst": "Pick what kind of model this is first.",
+    "added": "{{name}} added to Studio",
+    "openStudio": "Open Studio"
+  },
   "page": {
     "title": "Estúdio",
     "descriptionLocal": "Crie imagens e vídeos localmente neste computador. Nada sai do seu dispositivo.",
@@ -68,8 +92,10 @@
   "video": {
     "steps_one": "{{count}} passo",
     "steps_other": "{{count}} passos",
+    "steps_many": "{{count}} passos",
     "frames_one": "{{count}} quadro",
     "frames_other": "{{count}} quadros",
+    "frames_many": "{{count}} quadros",
     "seed": "seed {{seed}}",
     "avoid": "Evitar: {{prompt}}",
     "copyPrompt": "Copiar prompt"
@@ -94,6 +120,7 @@
     "hostedNote": "Seu prompt é enviado a {{provider}}, usa sua chave de API de Provedores e é cobrado por ele.",
     "localNote_one": "Roda neste computador. Começa em {{width}} × {{height}}, {{count}} passo.",
     "localNote_other": "Roda neste computador. Começa em {{width}} × {{height}}, {{count}} passos.",
+    "localNote_many": "Roda neste computador. Começa em {{width}} × {{height}}, {{count}} passos.",
     "unload": "Descarregar",
     "loading": "Carregando…",
     "load": "Carregar",
@@ -218,5 +245,29 @@
     "filter": "Filtro",
     "all": "Todos",
     "empty": "Nada aqui ainda. O que você criar aparece aqui."
+  },
+  "discover": {
+    "unsupportedArch": "Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.",
+    "intro": "Picture models in the GGUF format that Studio can run. Pick a weights file and what kind of model it is; the text encoder and VAE it needs are downloaded with it and checked like every other download.",
+    "familiesError": "Could not load the model kinds: {{error}}",
+    "retry": "Retry",
+    "emptyTitle": "No picture models found",
+    "emptyDescription": "Try a broader search, for example qwen image, flux or z-image.",
+    "gated": "Gated",
+    "hideFiles": "Hide files",
+    "chooseFile": "Choose a file",
+    "whatKind": "What kind of model is this?",
+    "modelFamily": "Model family",
+    "pickOne": "Pick one…",
+    "filesError": "Could not list the files: {{error}}",
+    "noWeights": "No weights files (.gguf) in this repository.",
+    "unsupportedSystem": "Unsupported system",
+    "inStudio": "In Studio",
+    "adding": "Adding…",
+    "addToStudio": "Add to Studio",
+    "unsupportedToast": "Local image generation needs Windows x64 or Linux x64.",
+    "pickKindFirst": "Pick what kind of model this is first.",
+    "added": "{{name}} added to Studio",
+    "openStudio": "Open Studio"
   }
 }

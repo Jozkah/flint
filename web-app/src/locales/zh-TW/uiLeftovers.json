@@ -47,7 +47,8 @@
     "memoriesSent": "已傳送的記憶",
     "withheld": "因衝突而擱置:{{ids}}",
     "perSec": "{{n}} token/秒",
-    "count": "{{n}} 個 token"
+    "count": "{{n}} 個 token",
+    "tps": "{{n}} tps"
   },
   "serverHost": {
     "edit": "編輯伺服器主機"

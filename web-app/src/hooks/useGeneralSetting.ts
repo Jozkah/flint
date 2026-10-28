@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { toast } from 'sonner'
+import i18n from '@/i18n/setup'
 import {
   isReasoningDefault,
   type ReasoningDefault,
@@ -97,9 +99,15 @@ type GeneralSettingState = {
   setFallbackModels: (value: string[]) => void
 }
 
+// Keyring writes for the token, in order. `tokenPersisted` is the last value
+// the keyring accepted (undefined until the first write succeeds).
+let tokenWriteChain: Promise<void> = Promise.resolve()
+let tokenWriteSeq = 0
+let tokenPersisted: string | undefined
+
 export const useGeneralSetting = create<GeneralSettingState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       currentLanguage: 'en',
       replyLanguage: '',
       fallbackModels: [],
@@ -132,27 +140,37 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       setReplyLanguage: (value) => set({ replyLanguage: value }),
       setFallbackModels: (value) => set({ fallbackModels: value }),
       setHuggingfaceToken: (token) => {
+        const previous = get().huggingfaceToken
         set({ huggingfaceToken: token })
         // Canonical secret store is the OS keyring, not settings storage.
-        getServiceHub()
-          .core()
-          .invoke('set_secret', {
-            key: HUGGINGFACE_TOKEN_SECRET_KEY,
-            value: token,
-          })
-          .catch((err) =>
-            console.warn('Failed to persist huggingface token to keyring:', err)
-          )
-        if (!token) {
-          // A cleared token stays cleared: never re-copy the legacy entry.
-          getServiceHub()
-            .core()
-            .invoke('set_secret', {
-              key: HUGGINGFACE_TOKEN_MIGRATED_SECRET_KEY,
-              value: '1',
+        // Writes are chained so the last keystroke is the last one stored,
+        // and a failed write puts the field back to what is really stored.
+        const seq = ++tokenWriteSeq
+        tokenWriteChain = tokenWriteChain.then(async () => {
+          try {
+            await getServiceHub().core().invoke('set_secret', {
+              key: HUGGINGFACE_TOKEN_SECRET_KEY,
+              value: token,
             })
-            .catch(() => {})
-        }
+            tokenPersisted = token
+            if (!token) {
+              // A cleared token stays cleared: never re-copy the legacy entry.
+              await getServiceHub()
+                .core()
+                .invoke('set_secret', {
+                  key: HUGGINGFACE_TOKEN_MIGRATED_SECRET_KEY,
+                  value: '1',
+                })
+                .catch(() => {})
+            }
+          } catch (err) {
+            console.warn('Failed to persist huggingface token to keyring:', err)
+            if (seq === tokenWriteSeq) {
+              set({ huggingfaceToken: tokenPersisted ?? previous })
+              toast.error(i18n.t('common:keyringSaveFailed'))
+            }
+          }
+        })
       },
     }),
     {

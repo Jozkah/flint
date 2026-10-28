@@ -276,7 +276,7 @@
     "caBundleBroken": "Questo bundle non può essere usato ({{kind}}): l'HTTPS in uscita non considera attendibile nulla finché non viene corretto o rimosso.",
     "ignoreSslScope": "Vale per tutto il traffico tramite proxy. Un singolo fornitore può anche consentire certificati non validi per il proprio indirizzo, nella sua pagina in Fornitori di modelli.",
     "proxyUrlInvalid": "Non sembra un indirizzo proxy. Usa host:porta o http://host:porta.",
-    "proxyUrlScheme": "Sono supportati solo i proxy http e https.",
+    "proxyUrlScheme": "Sono supportati solo proxy http, https, socks5 e socks5h.",
     "ignoreSslConfirmTitle": "Ignorare i certificati SSL?",
     "ignoreSslConfirmBody": "Flint accetterà certificati autofirmati, scaduti o non corrispondenti per tutto il traffico del proxy, quindi chiunque sul percorso potrebbe leggerlo o alterarlo. Continua solo se ti fidi del proxy e della rete.",
     "ignoreSslConfirm": "Ignora i certificati",
@@ -476,7 +476,9 @@
     "usageUnsaved": "Modifiche non salvate",
     "stopServerToEdit": "Arresta il server per modificare",
     "trustedHostsInvalid": "Host non valido: {{hosts}}. Usa un host o host:porta, come example.com o 192.168.1.5:3000.",
-    "trustedHostsUnsaved": "Non salvato. Premi Invio per salvare, Esc per annullare."
+    "trustedHostsUnsaved": "Non salvato. Premi Invio per salvare, Esc per annullare.",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "Analisi dati",
@@ -550,6 +552,15 @@
     "closeToTrayDesc": "Chiudendo la finestra Flint si nasconde nell'area di notifica invece di uscire. Esci dal menu dell'area di notifica.",
     "downloadLimit": "Limite di velocità di download",
     "downloadLimitDesc": "Limita i download dei modelli a questi MB al secondo. 0 significa illimitato.",
+    "hfEndpoint": "Endpoint di Hugging Face",
+    "hfEndpointDesc": "Dove vanno ricerche e download dei modelli. Scegli un mirror se huggingface.co è bloccato o lento dove ti trovi.",
+    "hfEndpointDefault": "Predefinito (huggingface.co)",
+    "hfEndpointCustom": "URL personalizzato",
+    "hfEndpointSave": "Salva",
+    "hfEndpointSaved": "Endpoint di Hugging Face salvato",
+    "hfEndpointEnvOverride": "La variabile d'ambiente HF_ENDPOINT vale {{value}} e ha la precedenza su questa impostazione.",
+    "hfEndpointSendToken": "Invia il mio token a questo mirror",
+    "hfEndpointSendTokenDesc": "Disattivato per impostazione predefinita: il token di Hugging Face va solo a huggingface.co. Attivalo solo se ti fidi di questo mirror.",
     "exportLogs": "Esporta i log (oscurati)",
     "exportLogsDesc": "Salva il log dell'app senza le chiavi API e i token noti, da allegare a una segnalazione di bug. Controllalo prima di condividerlo.",
     "importChatGpt": "Importa esportazione di ChatGPT",
@@ -590,7 +601,11 @@
       "installing": "Installazione…",
       "uninstall": "Disinstalla",
       "uninstalling": "Disinstallazione…",
-      "foreignDesc": "Trovata in {{path}}, installata da un'altra copia di Flint. Installa qui per usare la CLI di questa copia."
+      "foreignDesc": "Trovata in {{path}}, installata da un'altra copia di Flint. Installa qui per usare la CLI di questa copia.",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "Avvio e area di notifica",
     "cliGroup": "Riga di comando",
@@ -692,6 +707,9 @@
     "title": "Compattazione del contesto",
     "auto": "Compatta automaticamente",
     "autoDescription": "Fa spazio prima che una conversazione superi la finestra di contesto del modello. Condiviso da Chat, Cowork e CLI.",
+    "compactAt": "Compatta al",
+    "compactAtDescription": "Quando la conversazione raggiunge questa quota della finestra di contesto, i messaggi più vecchi vengono prima riassunti. Automatico mantiene il punto predefinito. Viene eseguito prima che lo spostamento del contesto di llama.cpp scarti qualcosa.",
+    "compactAtAuto": "Automatico",
     "reserveTokens": "Token riservati",
     "reserveDescription": "Margine tenuto libero: la compattazione inizia quando una conversazione usa più della finestra meno questo valore.",
     "keepRecent": "Messaggi recenti conservati",
@@ -922,6 +940,7 @@
         "working": "In corso: {{done}} di {{total}} attività completate",
         "attention_one": "Serve la tua attenzione: {{count}} attività è in attesa di te",
         "attention_other": "Serve la tua attenzione: {{count}} attività sono in attesa di te",
+        "attention_many": "Serve la tua attenzione: {{count}} attività sono in attesa di te",
         "review": "Pronta per la tua revisione",
         "merging": "Messa insieme dei risultati",
         "paused": "In pausa: {{done}} di {{total}} attività completate",
@@ -985,8 +1004,10 @@
       "story": {
         "wrote_one": "Scritto {{count}} file, +{{added}} −{{removed}} righe",
         "wrote_other": "Scritti {{count}} file, +{{added}} −{{removed}} righe",
+        "wrote_many": "Scritti {{count}} file, +{{added}} −{{removed}} righe",
         "wroteUncounted_one": "Scritto {{count}} file",
         "wroteUncounted_other": "Scritti {{count}} file",
+        "wroteUncounted_many": "Scritti {{count}} file",
         "stop": {
           "none": "Si è fermata prima di finire.",
           "one": "Si è fermata dopo il fallimento di un comando.",
@@ -998,6 +1019,7 @@
           "finishedNoFiles": "Terminata senza modificare alcun file.",
           "working_one": "In corso: {{count}} passaggio finora.",
           "working_other": "In corso: {{count}} passaggi finora.",
+          "working_many": "In corso: {{count}} passaggi finora.",
           "starting": "Appena iniziata.",
           "conflict": "Terminata, ma le sue modifiche sono in conflitto con quelle scritte da altre attività.",
           "waiting": "In attesa che {{tasks}} finisca prima.",
@@ -1016,15 +1038,19 @@
         "noRecord": "Per questa attività non è disponibile alcuna registrazione passo per passo.",
         "more_one": "e {{count}} altro passaggio",
         "more_other": "e altri {{count}} passaggi",
+        "more_many": "e altri {{count}} passaggi",
         "step": {
           "read": "Letto {{label}}",
           "readMany_one": "Letto {{count}} file",
           "readMany_other": "Letti {{count}} file",
+          "readMany_many": "Letti {{count}} file",
           "search_one": "Cercato nel progetto",
           "search_other": "Cercato nel progetto {{count}} volte",
+          "search_many": "Cercato nel progetto {{count}} volte",
           "write": "Scritto {{label}}",
           "writeMany_one": "Scritto {{count}} file",
           "writeMany_other": "Scritti {{count}} file",
+          "writeMany_many": "Scritti {{count}} file",
           "ran": "Eseguito {{label}}",
           "ranFailed": "Eseguito {{label}} ed è fallito"
         },
@@ -1046,6 +1072,7 @@
         "plan": "Come è stata suddivisa",
         "sideBySide_one": "{{count}} attività è stata eseguita da sola",
         "sideBySide_other": "Queste {{count}} attività sono state eseguite in parallelo",
+        "sideBySide_many": "Queste {{count}} attività sono state eseguite in parallelo",
         "waitsFor": "{{task}} attende {{tasks}}",
         "time": "Tempo",
         "timeSoFar": "{{time}} finora",
@@ -1116,8 +1143,10 @@
         "title": "Saltare \"{{task}}\"?",
         "body_one": "{{count}} altra attività la attende. Saltare anche quella, o lasciarla eseguire senza questa?",
         "body_other": "Altre {{count}} attività la attendono. Saltarle tutte, o lasciarle eseguire senza questa?",
+        "body_many": "Altre {{count}} attività la attendono. Saltarle tutte, o lasciarle eseguire senza questa?",
         "cascade_one": "Salta questa e l'attività che la attende",
         "cascade_other": "Salta questa e le {{count}} attività che la attendono",
+        "cascade_many": "Salta questa e le {{count}} attività che la attendono",
         "release": "Salta questa, esegui le altre senza"
       },
       "gate": {
@@ -1147,6 +1176,7 @@
       "none": "Questa attività non ha modificato alcun file.",
       "files_one": "{{count}} file",
       "files_other": "{{count}} file",
+      "files_many": "{{count}} file",
       "namesOnly": "Per questa attività si conoscono solo i nomi dei file.",
       "uncommitted": "Parte di questo lavoro non è ancora salvata nel branch dell'attività.",
       "cut": "Un lungo elenco è stato abbreviato.",
@@ -1161,6 +1191,7 @@
       "renamedFrom": "Rinominato da {{from}}",
       "showMore_one": "Mostra {{count}} riga in più",
       "showMore_other": "Mostra altre {{count}} righe",
+      "showMore_many": "Mostra altre {{count}} righe",
       "fileCut": "Questa modifica è lunga, quindi ne viene mostrato solo l'inizio.",
       "noPatch": "Per questo file non c'è una vista riga per riga."
     },
@@ -1378,6 +1409,7 @@
       "pinned": "fissato",
       "used_one": "usato {{count}} volta",
       "used_other": "usato {{count}} volte",
+      "used_many": "usato {{count}} volte",
       "lastUsed": "ultimo uso {{when}}",
       "never": "mai"
     },
@@ -1417,12 +1449,15 @@
       "saveFailed": "Impossibile salvare il ricordo",
       "forgotCount_one": "{{count}} ricordo dimenticato",
       "forgotCount_other": "{{count}} ricordi dimenticati",
+      "forgotCount_many": "{{count}} ricordi dimenticati",
       "forgetManyFailed": "Impossibile dimenticare quei ricordi",
       "exportedCount_one": "{{count}} ricordo esportato",
       "exportedCount_other": "{{count}} ricordi esportati",
+      "exportedCount_many": "{{count}} ricordi esportati",
       "exportFailed": "Impossibile esportare i ricordi",
       "importedCount_one": "{{count}} ricordo importato",
       "importedCount_other": "{{count}} ricordi importati",
+      "importedCount_many": "{{count}} ricordi importati",
       "importFailed": "Impossibile importare i ricordi"
     },
     "fileActionsAria": "Esporta o importa ricordi",
@@ -1430,7 +1465,19 @@
     "emptyHint": "Scrivine uno qui sopra, o lascia che Flint ricordi mentre chatti.",
     "footerCount_one": "1 ricordo in questo ambito",
     "footerCount_other": "{{count}} ricordi in questo ambito",
-    "agentNotes": "Note dell'agente"
+    "footerCount_many": "{{count}} ricordi in questo ambito",
+    "agentNotes": "Note dell'agente",
+    "report": {
+      "summary_one": "Importato {{count}} ricordo dall'esportazione",
+      "summary_many": "Importati {{count}} ricordi dall'esportazione",
+      "summary_other": "Importati {{count}} ricordi dall'esportazione",
+      "duplicates_one": "{{count}} duplicato saltato",
+      "duplicates_many": "{{count}} duplicati saltati",
+      "duplicates_other": "{{count}} duplicati saltati",
+      "refused_one": "{{count}} rifiutato",
+      "refused_many": "{{count}} rifiutati",
+      "refused_other": "{{count}} rifiutati"
+    }
   },
   "chatMentions": {
     "title": "Menzioni di conversazioni",
@@ -1488,8 +1535,10 @@
     "doneTitle": "Completato",
     "archived_one": "{{count}} elemento archiviato.",
     "archived_other": "{{count}} elementi archiviati.",
+    "archived_many": "{{count}} elementi archiviati.",
     "deleted_one": "{{count}} elemento eliminato.",
     "deleted_other": "{{count}} elementi eliminati.",
+    "deleted_many": "{{count}} elementi eliminati.",
     "stoppedEarly": "Interrotto prima della fine. {{n}} lasciati intatti.",
     "inArchive": "Li trovi nella pagina Archivio.",
     "problems": "Non è stato possibile completare {{n}}:",
@@ -1514,7 +1563,16 @@
     "reasoningDefaultDesc": "Se il ragionamento parte attivo o disattivo in una nuova chat. L'impostazione di ragionamento del modello e l'interruttore del compositore hanno comunque la precedenza. I modelli che non possono cambiare il ragionamento non vengono toccati.",
     "reasoningDefaultModel": "Predefinito del modello",
     "reasoningDefaultOn": "Attivo",
-    "reasoningDefaultOff": "Disattivo"
+    "reasoningDefaultOff": "Disattivo",
+    "rulesGroup": "Regole",
+    "rulesDesc": "Istruzioni permanenti aggiunte alle chat dopo le istruzioni dell'assistente. Disattivane una per una sola chat dal pannello opzioni di quella chat.",
+    "rulesEnabled": "Regola attiva",
+    "rulesRemove": "Rimuovi regola",
+    "rulesAllChats": "Tutte le chat",
+    "rulesNoGroups": "Ancora nessun gruppo",
+    "rulesPlaceholder": "Aggiungi una regola, ad es. \"Rispondi in unità metriche\"",
+    "rulesAdd": "Aggiungi",
+    "rulesTooLong": "Le regole attive occupano circa {{tokens}} token, oltre i {{budget}} consigliati. Le regole lunghe consumano contesto in ogni chat."
   },
   "data": {
     "tabStorage": "Archiviazione",
@@ -1533,6 +1591,8 @@
     "skills": "Skills",
     "mcp": "MCP servers",
     "plugins": "Plugins",
-    "unused": "Configured but never used"
+    "unused": "Configured but never used",
+    "approxTokens": "~{{n}} tok",
+    "inOut": "{{in}} in / {{out}} out"
   }
 }

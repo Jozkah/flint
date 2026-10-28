@@ -106,6 +106,14 @@ impl VapidKey {
         {
             return Ok(key);
         }
+        // A file that exists but does not parse is never overwritten: a new
+        // key would silently orphan every phone's push subscription.
+        if path.exists() {
+            return Err(format!(
+                "VAPID key file {} exists but is not a valid key; fix or delete it",
+                path.display()
+            ));
+        }
         let key = Self::generate()?;
         write_private_json(
             path,

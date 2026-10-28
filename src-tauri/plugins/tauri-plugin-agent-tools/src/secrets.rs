@@ -731,33 +731,66 @@ pub const QUOTED_KEY_VALUE_RE: &str = r#"(?i)((?:\\?["'])[A-Za-z0-9_\-]*(?:api[_
 /// Case-sensitive so prose ("the key = ...") is left. Shared with the CLI.
 pub const ENV_KEY_ASSIGNMENT_RE: &str = r#"(\b(?:[A-Z0-9_]*(?:_|API))?KEY\s*=\s*)[^\s"'<;&|]{4,}"#;
 
+/// An upper-case variable named for a password, secret or token, for
+/// redaction only: its value is taken however short (`PASSWORD=ab`).
+const ENV_SECRET_NAME_RE: &str = r#"(\b[A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN)\s*=\s*)[^\s"'<;&|]+"#;
+
+/// Names ending in KEY that hold no secret: a public key, a database key.
+fn is_non_secret_key_name(label: &str) -> bool {
+    let name = label.trim_end().trim_end_matches('=').trim_end();
+    ["PUBLIC_KEY", "PUBKEY", "PRIMARY_KEY", "SORT_KEY", "PARTITION_KEY", "FOREIGN_KEY", "CACHE_KEY"]
+        .iter()
+        .any(|safe| name.ends_with(safe))
+}
+
+/// A value that is a file path, not key material: `SSH_KEY=~/.ssh/id_ed25519`.
+fn is_path_value(value: &str) -> bool {
+    let b = value.as_bytes();
+    value.starts_with('/')
+        || value.starts_with("./")
+        || value.starts_with("../")
+        || value.starts_with("~/")
+        || (b.len() > 2 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/'))
+}
+
 /// Take the value of a quoted-key or env-key assignment, keeping the label.
 /// `None` when nothing matched, so the caller keeps its original string.
 fn redact_assignment_patterns(line: &str) -> Option<String> {
     use regex::{Captures, Regex};
     use std::sync::OnceLock;
-    static RULES: OnceLock<[Regex; 2]> = OnceLock::new();
+    static RULES: OnceLock<[Regex; 3]> = OnceLock::new();
     let rules = RULES.get_or_init(|| {
         [
             Regex::new(QUOTED_KEY_VALUE_RE).expect("quoted key regex"),
             Regex::new(ENV_KEY_ASSIGNMENT_RE).expect("env key regex"),
+            Regex::new(ENV_SECRET_NAME_RE).expect("env secret name regex"),
         ]
     });
+    // Most lines match nothing: answer those without allocating.
+    if !rules.iter().any(|re| re.is_match(line)) {
+        return None;
+    }
     let mut current = line.to_string();
-    for re in rules.iter() {
+    for (i, re) in rules.iter().enumerate() {
         let replaced = re.replace_all(&current, |caps: &Captures| {
             let whole = &caps[0];
             let label = caps.get(1).map_or("", |m| m.as_str());
             let value = &whole[label.len()..];
             // Already taken, or a reference to a value rather than the value.
-            if value.starts_with(REDACTED) || is_variable_reference(value) {
+            let env = i > 0;
+            if value.starts_with(REDACTED)
+                || is_variable_reference(value)
+                || (env && is_path_value(value))
+                || (i == 1 && is_non_secret_key_name(label))
+            {
                 whole.to_string()
             } else {
                 format!("{label}{REDACTED}")
             }
         });
-        let replaced = replaced.into_owned();
-        current = replaced;
+        if let std::borrow::Cow::Owned(replaced) = replaced {
+            current = replaced;
+        }
     }
     (current != line).then_some(current)
 }
@@ -768,7 +801,59 @@ fn redact_one_line(line: &str) -> String {
     // another secret is still taken (the core pass keeps only one finding).
     let pre = redact_url_passwords(line);
     let base = redact_one_line_core(pre.as_deref().unwrap_or(line));
-    redact_assignment_patterns(&base).unwrap_or(base)
+    let base = redact_assignment_patterns(&base).unwrap_or(base);
+    redact_authorization_header(&base).unwrap_or(base)
+}
+
+/// `Authorization: Bearer <value>` (also `Proxy-Authorization`): the value of
+/// an authorization header is a credential whatever its length. The shape rules
+/// above need 8 or 16 characters, which lets a short token through; the
+/// renderer's `redactSecrets` redacts the header value at any length too.
+fn redact_authorization_header(line: &str) -> Option<String> {
+    const HEAD: &str = "authorization:";
+    let lower = line.to_ascii_lowercase();
+    let mut out = String::with_capacity(line.len());
+    let mut copied = 0;
+    let mut search = 0;
+    let mut changed = false;
+    while let Some(found) = lower[search..].find(HEAD) {
+        let after = search + found + HEAD.len();
+        search = after;
+        let rest = &line[after..];
+        let gap = rest.len() - rest.trim_start().len();
+        let rest = &rest[gap..];
+        let scheme_len = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        if !matches!(
+            rest[..scheme_len].to_ascii_lowercase().as_str(),
+            "bearer" | "basic" | "token"
+        ) {
+            continue;
+        }
+        let tail = &rest[scheme_len..];
+        let spaces = tail.len() - tail.trim_start().len();
+        if spaces == 0 {
+            continue;
+        }
+        let start = after + gap + scheme_len + spaces;
+        let value_rest = &line[start..];
+        let value_len = value_rest
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+            .unwrap_or(value_rest.len());
+        let value = &value_rest[..value_len];
+        if value.is_empty() || value.contains(REDACTED) {
+            continue;
+        }
+        out.push_str(&line[copied..start]);
+        out.push_str(REDACTED);
+        copied = start + value_len;
+        search = copied;
+        changed = true;
+    }
+    if !changed {
+        return None;
+    }
+    out.push_str(&line[copied..]);
+    Some(out)
 }
 
 fn redact_one_line_core(line: &str) -> String {
@@ -862,13 +947,23 @@ fn redacted_word(word: &str, after_scheme: bool) -> Option<String> {
     let head = &word[..word.len() - body.len()];
     let trimmed = body.trim_end_matches(TRAIL_PUNCT);
     let tail = &word[head.len() + trimmed.len()..];
+    // After `Bearer` / `Basic` the scheme word is the evidence, so a shorter
+    // word counts when it is shaped like a credential: 8 or more characters
+    // with a digit or a token separator in them. A plain word ("setup",
+    // "authentication") is prose. The renderer's `schemeCredential` agrees.
+    if after_scheme
+        && (trimmed.len() >= 16
+            || (trimmed.len() >= 8
+                && trimmed
+                    .chars()
+                    .any(|c| c.is_ascii_digit() || "-._~+/=".contains(c))))
+    {
+        return Some(format!("{head}{REDACTED}{tail}"));
+    }
     // Sixteen characters is the shortest of the issued formats below. Shorter
     // than that and a match would be a coincidence, not a credential.
     if trimmed.len() < 16 {
         return None;
-    }
-    if after_scheme {
-        return Some(format!("{head}{REDACTED}{tail}"));
     }
     // A JWT: three base64url segments, and the header always starts `eyJ`.
     if trimmed.starts_with("eyJ") && trimmed.matches('.').count() == 2 {
@@ -1178,6 +1273,23 @@ git clone https://user:hunter2hunter2@github.com/octocat/Hello-World\n";
     }
 
     #[test]
+    fn a_short_authorization_header_value_is_redacted() {
+        for (text, secret) in [
+            ("Authorization: Bearer abc123def456", "abc123def456"),
+            ("Proxy-Authorization: Basic dXNlcjpwYXNz", "dXNlcjpwYXNz"),
+            ("curl -H \"Authorization: Bearer abc.def.ghi\" x", "abc.def.ghi"),
+        ] {
+            let out = redact_secrets(text);
+            assert!(!out.contains(secret), "{out}");
+            assert!(out.contains("[redacted]"), "{out}");
+            // A second pass changes nothing.
+            assert_eq!(redact_secrets(&out), out);
+        }
+        // Prose that merely contains the words is left alone.
+        assert_eq!(redact_secrets("Basic setup is done"), "Basic setup is done");
+    }
+
+    #[test]
     fn a_jwt_in_output_is_redacted() {
         let jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1rXwW1gFWFOEjXk";
         let out = redact_secrets(&format!("the response carried {jwt} in the body"));
@@ -1238,6 +1350,8 @@ git clone https://user:hunter2hunter2@github.com/octocat/Hello-World\n";
             ("curl -d '{\"token\":\"abc\"}' https://x.test", "abc"),
             ("curl -d '{\"password\": \"pw\"}' https://x.test", "pw"),
             ("SECRET_KEY=hunter2hunter2", "hunter2hunter2"),
+            ("PASSWORD=ab", "=ab"),
+            ("export GITHUB_TOKEN=xyz", "xyz"),
         ] {
             let out = redact_secrets(line);
             assert!(!out.contains(secret), "{secret} survived: {out}");
@@ -1255,6 +1369,9 @@ git clone https://user:hunter2hunter2@github.com/octocat/Hello-World\n";
             r#"{"max_tokens": "10"}"#,
             "tokens: 5",
             "MONKEY=ab",
+            "PUBLIC_KEY=abcdef123456",
+            "SSH_KEY=~/.ssh/id_ed25519",
+            "MAX_TOKENS=4096",
             "PATH=/usr/bin",
             "HOME=/home/user",
         ] {

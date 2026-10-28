@@ -40,10 +40,11 @@ export class DefaultProjectsService implements ProjectsService {
   async addProject(
     name: string,
     assistantId?: string,
-    model?: ProjectModel
+    model?: ProjectModel,
+    id?: string
   ): Promise<ThreadFolder> {
     const newProject: ThreadFolder = {
-      id: ulid(),
+      id: id ?? ulid(),
       name,
       updated_at: Date.now(),
       assistantId,
@@ -51,7 +52,10 @@ export class DefaultProjectsService implements ProjectsService {
     }
 
     const projects = this.loadFromStorage()
-    const updatedProjects = [...projects, newProject]
+    const updatedProjects = [
+      ...projects.filter((p) => p.id !== newProject.id),
+      newProject,
+    ]
     this.saveToStorage(updatedProjects)
 
     return newProject

@@ -311,8 +311,8 @@ describe('useProxyConfig', () => {
 
   // #82: the proxy password is a secret -- never in the settings.json blob.
   describe('password persistence', () => {
-    it('keeps the password out of the persisted blob and in the keyring', () => {
-      act(() => {
+    it('keeps the password out of the persisted blob and in the keyring', async () => {
+      await act(async () => {
         useProxyConfig.getState().setProxyUsername('alice')
         useProxyConfig.getState().setProxyPassword('s3cret')
       })

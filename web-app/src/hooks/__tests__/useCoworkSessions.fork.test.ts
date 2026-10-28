@@ -51,6 +51,17 @@ beforeEach(() => {
 })
 
 describe('what a fork carries', () => {
+  it('never carries bypass mode, which is saved to disk as ask', () => {
+    const parent = seed([turn('one')])
+    useCoworkSessions.setState((s) => ({
+      sessions: s.sessions.map((x) =>
+        x.id === parent ? { ...x, mode: 'bypass' as never } : x
+      ),
+    }))
+    const fork = sessionById(useCoworkSessions.getState().forkSession(parent))
+    expect(fork?.mode).toBe('ask')
+  })
+
   it('copies the conversation up to the turn it was forked at', () => {
     const parent = seed([turn('one'), turn('two', 'assistant'), turn('three')])
     const forkId = useCoworkSessions.getState().forkSession(parent, 2)

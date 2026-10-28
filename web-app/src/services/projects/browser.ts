@@ -23,10 +23,11 @@ export class BrowserProjectsService implements ProjectsService {
   addProject(
     name: string,
     assistantId?: string,
-    model?: ProjectModel
+    model?: ProjectModel,
+    id?: string
   ): Promise<ThreadFolder> {
     const project: ThreadFolder = {
-      id: ulid(),
+      id: id ?? ulid(),
       name,
       updated_at: Date.now(),
       assistantId,
