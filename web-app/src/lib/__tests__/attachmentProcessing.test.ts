@@ -4,6 +4,7 @@ import {
   MissingAttachmentError,
   isMissingFileError,
   describeAttachmentFailure,
+  resolveDocumentMode,
   type AttachmentProcessingResult,
 } from '../attachmentProcessing'
 import type { Attachment } from '@/types/attachment'
@@ -492,5 +493,24 @@ describe("attachment failure wording", () => {
   it("never describes a failure as raw JSON", () => {
     expect(describeAttachmentFailure({ weird: 1 })).toBe("Unknown error")
     expect(describeAttachmentFailure(new Error("disk full"))).toBe("disk full")
+  })
+})
+
+describe('resolveDocumentMode', () => {
+  const base = { needsInline: false } as const
+  it.each([
+    ['inline preference', { ...base, preference: 'inline' as const }, 'inline'],
+    ['embeddings preference', { ...base, preference: 'embeddings' as const }, 'embeddings'],
+    ['auto, small document', { ...base, preference: 'auto' as const, tokenCount: 100, contextThreshold: 1000 }, 'inline'],
+    ['auto, large document', { ...base, preference: 'auto' as const, tokenCount: 5000, contextThreshold: 1000 }, 'embeddings'],
+    ['auto, no estimate falls back to embeddings', { ...base, preference: 'auto' as const, contextThreshold: 1000 }, 'embeddings'],
+    ['auto, no estimate uses the fallback mode', { ...base, preference: 'auto' as const, autoFallbackMode: 'inline' as const }, 'inline'],
+    ['auto, user override beats size', { ...base, preference: 'auto' as const, userChoice: 'embeddings' as const, tokenCount: 1, contextThreshold: 1000 }, 'embeddings'],
+    ['prompt takes the user choice', { ...base, preference: 'prompt' as const, userChoice: 'inline' as const }, 'inline'],
+    ['prompt without a choice is embeddings', { ...base, preference: 'prompt' as const }, 'embeddings'],
+    ['project files are embedded', { ...base, preference: 'inline' as const, projectId: 'p1' }, 'embeddings'],
+    ['a model without tools gets it inline, even in a project', { preference: 'embeddings' as const, projectId: 'p1', needsInline: true }, 'inline'],
+  ])('%s', (_name, input, expected) => {
+    expect(resolveDocumentMode(input)).toBe(expected)
   })
 })
