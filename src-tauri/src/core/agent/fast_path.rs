@@ -186,9 +186,13 @@ pub(crate) fn asks_for_tool(completion: &Value) -> bool {
         .is_some_and(|calls| !calls.is_empty())
 }
 
-/// Wraps the run's model for the fast attempt: forwards each request, hides the
-/// model's tool-call stream from the UI, and abandons the attempt when the
-/// reply asks for a tool.
+/// Wraps the run's model for the fast attempt: hides the model's tool-call
+/// stream from the UI, and abandons the attempt when the reply asks for a tool.
+///
+/// Non-tool events are held until the reply is known: forwarded in order when
+/// the attempt stands, dropped when it is abandoned, so the full path's rerun
+/// does not show the abandoned attempt's text a second time. The trade-off is
+/// that tokens appear once the (short) fast reply completes rather than live.
 pub(crate) struct FastProbe<'a> {
     inner: &'a dyn ModelInvoker,
     missed: AtomicBool,
@@ -213,26 +217,33 @@ impl ModelInvoker for FastProbe<'_> {
         events: &mpsc::UnboundedSender<StreamEvent>,
     ) -> Result<Value, HarnessError> {
         let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
-        let out = events.clone();
         let relay = tokio::spawn(async move {
+            let mut held = Vec::new();
             while let Some(event) = rx.recv().await {
                 if !is_tool_event(&event) {
-                    let _ = out.send(event);
+                    held.push(event);
                 }
             }
+            held
         });
         let result = self.inner.invoke(request, &tx).await;
         drop(tx);
-        let _ = relay.await;
+        let held = relay.await.unwrap_or_default();
         match result {
             Ok(completion) if asks_for_tool(&completion) => {
+                // Abandoned: the held events belong to a reply nobody will see.
                 self.missed.store(true, Ordering::SeqCst);
                 Err(HarnessError::new(
                     ErrorKind::Internal,
                     "fast path: the model asked for a tool; running the full path",
                 ))
             }
-            other => other,
+            other => {
+                for event in held {
+                    let _ = events.send(event);
+                }
+                other
+            }
         }
     }
 }
@@ -378,6 +389,45 @@ mod tests {
         }
         assert!(seen.iter().any(|e| matches!(e, StreamEvent::Token { .. })), "text still streams");
         assert!(!seen.iter().any(is_tool_event), "a tool-call stream never reaches the UI from the fast attempt");
+    }
+
+    #[tokio::test]
+    async fn abandoned_attempt_events_are_not_forwarded() {
+        let call = serde_json::json!({ "id": "c1", "type": "function", "function": { "name": "read", "arguments": "{}" } });
+        let model = Scripted(Mutex::new(vec![reply(serde_json::json!({ "role": "assistant", "content": null, "tool_calls": [call] }))]));
+        let probe = FastProbe::new(&model);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        assert!(probe.invoke(&serde_json::json!({}), &tx).await.is_err());
+        assert!(probe.missed());
+        drop(tx);
+        assert!(rx.recv().await.is_none(), "the abandoned attempt's tokens leaked to the UI");
+    }
+
+    struct Chatty;
+
+    #[async_trait]
+    impl ModelInvoker for Chatty {
+        async fn invoke(&self, _request: &Value, events: &mpsc::UnboundedSender<StreamEvent>) -> Result<Value, HarnessError> {
+            for t in ["a", "b", "c"] {
+                let _ = events.send(StreamEvent::Token { text: t.to_string() });
+            }
+            Ok(reply(serde_json::json!({ "role": "assistant", "content": "abc" })))
+        }
+    }
+
+    #[tokio::test]
+    async fn plain_answer_events_flushed_in_order() {
+        let probe = FastProbe::new(&Chatty);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        probe.invoke(&serde_json::json!({}), &tx).await.expect("answer");
+        drop(tx);
+        let mut text = String::new();
+        while let Some(e) = rx.recv().await {
+            if let StreamEvent::Token { text: t } = e {
+                text.push_str(&t);
+            }
+        }
+        assert_eq!(text, "abc");
     }
 
     #[tokio::test]
