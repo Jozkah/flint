@@ -23,5 +23,42 @@
   "openingNotice": "{{host}} será aberto em instantes. Pressione Esc para ficar neste dispositivo.",
   "useDevice": "Usar este dispositivo",
   "limitsTitle": "O que roda onde",
-  "limits": "Chat, salas, modelos e ferramentas rodam no servidor. Sessões do Cowork e Campanhas precisam de um agente que rode em um computador com o Flint aberto: acesse esse computador pelo Acesso remoto e pelo app do celular. Um servidor sem tela pode listar campanhas e revisar propostas, mas não executa sessões."
+  "limits": "Chat, salas, modelos e ferramentas rodam no servidor. Sessões do Cowork e Campanhas precisam de um agente que rode em um computador com o Flint aberto: acesse esse computador pelo Acesso remoto e pelo app do celular. Um servidor sem tela pode listar campanhas e revisar propostas, mas não executa sessões.",
+  "planApproval": {
+    "title": "Approve this plan to start it",
+    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "after": "after {{deps}}",
+    "accessLabel": "How tasks work",
+    "accessWorktree": "Work on their own inside their own folder",
+    "accessAsk": "Ask for each action",
+    "approve": "Approve and start",
+    "reject": "Reject",
+    "rejectReason": "the plan was not approved"
+  },
+  "worktree": {
+    "state": {
+      "ready": "ready",
+      "missing": "folder missing",
+      "corrupt": "not a worktree any more",
+      "branchMoved": "branch moved",
+      "identityChanged": "repository changed"
+    },
+    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "alreadyIn": "Already in {{target}}.",
+    "mergedFast": "Merged into {{target}} (fast-forward).",
+    "merged": "Merged into {{target}}.",
+    "discarded": "Discarded. This session cannot continue without its worktree.",
+    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "merging": "Merging...",
+    "mergeInto": "Merge into {{base}}",
+    "baseFallback": "base",
+    "discard": "Discard",
+    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
+    "discardAnyway": "Discard anyway",
+    "keep": "Keep",
+    "notProposed": "Changes were not proposed: {{error}}",
+    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+  }
 }

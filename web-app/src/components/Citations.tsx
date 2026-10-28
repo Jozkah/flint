@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react'
 import { FileTextIcon, GlobeIcon, ChevronRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   useAttachmentName,
   useEnsureAttachmentNames,
@@ -94,6 +95,7 @@ const RagCitationItem = memo(
 RagCitationItem.displayName = 'RagCitationItem'
 
 const WebCitationItem = memo(({ c }: { c: WebCitation }) => {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   let host = ''
   try {
@@ -135,7 +137,7 @@ const WebCitationItem = memo(({ c }: { c: WebCitation }) => {
             type="button"
             onClick={() => setExpanded((v) => !v)}
             className="text-muted-foreground"
-            aria-label="toggle snippet"
+            aria-label={t('common:citations.toggleSnippet')}
           >
             <ChevronRightIcon
               className={cn(
@@ -168,6 +170,7 @@ export const Citations = memo(
     // share one continuous numbering that matches the inline superscripts.
     indexOffset?: number
   }) => {
+  const { t } = useTranslation()
   useEnsureAttachmentNames(
     payload.kind === 'rag' ? payload.scope : undefined,
     payload.kind === 'rag'
@@ -200,12 +203,8 @@ export const Citations = memo(
 
   const heading =
     payload.kind === 'rag'
-      ? `${payload.citations.length} document ${
-          payload.citations.length === 1 ? 'citation' : 'citations'
-        }`
-      : `${payload.citations.length} web ${
-          payload.citations.length === 1 ? 'source' : 'sources'
-        }`
+      ? t('common:citations.documents', { count: payload.citations.length })
+      : t('common:citations.web', { count: payload.citations.length })
 
   return (
     <div className="mt-4 space-y-2">
@@ -213,7 +212,7 @@ export const Citations = memo(
         {heading}
         {payload.query && (
           <span className="ml-2 normal-case font-normal text-muted-foreground">
-            for &ldquo;{payload.query}&rdquo;
+            {t('common:citations.forQuery', { query: payload.query })}
           </span>
         )}
       </h4>

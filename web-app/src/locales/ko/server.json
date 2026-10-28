@@ -23,5 +23,42 @@
   "openingNotice": "곧 {{host}}을(를) 엽니다. 이 기기에 머물려면 Esc를 누르세요.",
   "useDevice": "이 기기 사용",
   "limitsTitle": "실행 위치",
-  "limits": "채팅, 룸, 모델, 도구는 서버에서 실행됩니다. Cowork 세션과 캠페인은 Flint가 켜져 있는 컴퓨터에서 실행되는 에이전트가 필요합니다. 원격 접속과 휴대폰 앱으로 해당 컴퓨터에 연결하세요. 헤드리스 서버는 캠페인을 나열하고 제안을 검토할 수 있지만 세션은 실행하지 않습니다."
+  "limits": "채팅, 룸, 모델, 도구는 서버에서 실행됩니다. Cowork 세션과 캠페인은 Flint가 켜져 있는 컴퓨터에서 실행되는 에이전트가 필요합니다. 원격 접속과 휴대폰 앱으로 해당 컴퓨터에 연결하세요. 헤드리스 서버는 캠페인을 나열하고 제안을 검토할 수 있지만 세션은 실행하지 않습니다.",
+  "planApproval": {
+    "title": "Approve this plan to start it",
+    "summary_one": "{{count}} task. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "summary_other": "{{count}} tasks. The server runs them on its own, with no client attached, and asks again before anything reaches your folder.",
+    "cost": "Rough cost: {{low}} to {{high}} tokens.",
+    "after": "after {{deps}}",
+    "accessLabel": "How tasks work",
+    "accessWorktree": "Work on their own inside their own folder",
+    "accessAsk": "Ask for each action",
+    "approve": "Approve and start",
+    "reject": "Reject",
+    "rejectReason": "the plan was not approved"
+  },
+  "worktree": {
+    "state": {
+      "ready": "ready",
+      "missing": "folder missing",
+      "corrupt": "not a worktree any more",
+      "branchMoved": "branch moved",
+      "identityChanged": "repository changed"
+    },
+    "conflicts": "Not merged: conflicts in {{files}}. Nothing was changed.",
+    "alreadyIn": "Already in {{target}}.",
+    "mergedFast": "Merged into {{target}} (fast-forward).",
+    "merged": "Merged into {{target}}.",
+    "discarded": "Discarded. This session cannot continue without its worktree.",
+    "counts": "{{pending}} uncommitted, {{unmerged}} to merge",
+    "merging": "Merging...",
+    "mergeInto": "Merge into {{base}}",
+    "baseFallback": "base",
+    "discard": "Discard",
+    "discardWarning": "Removes the checkout and its branch, with {{pending}} uncommitted file(s) and {{unmerged}} unmerged commit(s).",
+    "discardAnyway": "Discard anyway",
+    "keep": "Keep",
+    "notProposed": "Changes were not proposed: {{error}}",
+    "filesChanged": "{{count}} file(s) changed: {{files}}{{more}}"
+  }
 }

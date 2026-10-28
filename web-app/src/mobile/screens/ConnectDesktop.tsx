@@ -1,6 +1,7 @@
 // First screen of the iOS app: which computer to talk to. Takes the address
 // shown by Flint's Remote access settings, or the pairing link in its QR code.
 import { useState } from 'react'
+import { t } from '../i18n'
 
 type Props = {
   initial?: string
@@ -17,13 +18,12 @@ export function ConnectDesktop({ initial = '', error, pinChanged, onConnect, onF
   return (
     <div className="app">
       <div className="pair" data-testid="connect-desktop">
-        <h1 style={{ margin: 0 }}>Connect to your computer</h1>
+        <h1 style={{ margin: 0 }}>{t('connect.title')}</h1>
         <p className="muted" style={{ margin: '6px 0 0', fontSize: 13.5 }}>
-          Turn on Remote access in Flint on your computer, then enter its address or paste the
-          pairing link.
+          {t('connect.intro')}
         </p>
         <label className="field">
-          <span>Computer address</span>
+          <span>{t('connect.address')}</span>
           <input
             value={value}
             inputMode="url"
@@ -48,11 +48,11 @@ export function ConnectDesktop({ initial = '', error, pinChanged, onConnect, onF
           disabled={busy || !value.trim()}
           onClick={() => onConnect(value)}
         >
-          {busy ? 'Connecting…' : 'Connect'}
+          {busy ? t('connect.connecting') : t('connect.connect')}
         </button>
         {pinChanged && onForgetPin ? (
           <button type="button" className="btn big" onClick={onForgetPin}>
-            Trust this computer&apos;s new certificate
+            {t('connect.trustNew')}
           </button>
         ) : null}
       </div>

@@ -6,6 +6,8 @@
   },
   "ca/common.json": {
     "plurals": [
+      "citations.documents",
+      "citations.web",
       "coworkDisplay.hiddenCount",
       "emergencyStop.report.partial",
       "fileViewer.lines",
@@ -64,6 +66,11 @@
       "transcript.catchUp"
     ]
   },
+  "ca/server.json": {
+    "plurals": [
+      "planApproval.summary"
+    ]
+  },
   "ca/settings.json": {
     "plurals": [
       "bulk.archived",
@@ -105,8 +112,17 @@
     ]
   },
   "cs/common.json": {
+    "plurals": [
+      "citations.documents",
+      "citations.web"
+    ],
     "extra": [
       "projects.addProjectDialog.renameSuccess"
+    ]
+  },
+  "cs/server.json": {
+    "plurals": [
+      "planApproval.summary"
     ]
   },
   "cs/setup.json": {
@@ -157,6 +173,8 @@
   },
   "es/common.json": {
     "plurals": [
+      "citations.documents",
+      "citations.web",
       "coworkDisplay.hiddenCount",
       "emergencyStop.report.partial",
       "fileViewer.lines",
@@ -210,6 +228,11 @@
       "transcript.catchUp"
     ]
   },
+  "es/server.json": {
+    "plurals": [
+      "planApproval.summary"
+    ]
+  },
   "es/settings.json": {
     "plurals": [
       "bulk.archived",
@@ -256,6 +279,8 @@
   },
   "fr/common.json": {
     "plurals": [
+      "citations.documents",
+      "citations.web",
       "coworkDisplay.hiddenCount",
       "emergencyStop.report.partial",
       "fileViewer.lines",
@@ -306,6 +331,11 @@
     "plurals": [
       "apply.*",
       "transcript.catchUp"
+    ]
+  },
+  "fr/server.json": {
+    "plurals": [
+      "planApproval.summary"
     ]
   },
   "fr/settings.json": {
@@ -398,6 +428,8 @@
   },
   "it/common.json": {
     "plurals": [
+      "citations.documents",
+      "citations.web",
       "coworkDisplay.hiddenCount",
       "emergencyStop.report.partial",
       "fileViewer.lines",
@@ -449,6 +481,11 @@
     "plurals": [
       "apply.*",
       "transcript.catchUp"
+    ]
+  },
+  "it/server.json": {
+    "plurals": [
+      "planApproval.summary"
     ]
   },
   "it/settings.json": {
@@ -529,9 +566,18 @@
     ]
   },
   "pl/common.json": {
+    "plurals": [
+      "citations.documents",
+      "citations.web"
+    ],
     "extra": [
       "projects.addProjectDialog.renameSuccess",
       "projects.deleteProjectDialog.description"
+    ]
+  },
+  "pl/server.json": {
+    "plurals": [
+      "planApproval.summary"
     ]
   },
   "pl/setup.json": {
@@ -557,6 +603,8 @@
   "pt-BR/common.json": {
     "plurals": [
       "changes.truncated",
+      "citations.documents",
+      "citations.web",
       "coworkDisplay.hiddenCount",
       "emergencyStop.report.partial",
       "fileActivity.eventCount",
@@ -611,6 +659,11 @@
       "transcript.catchUp"
     ]
   },
+  "pt-BR/server.json": {
+    "plurals": [
+      "planApproval.summary"
+    ]
+  },
   "pt-BR/settings.json": {
     "plurals": [
       "bulk.archived",
@@ -651,8 +704,17 @@
     ]
   },
   "ru/common.json": {
+    "plurals": [
+      "citations.documents",
+      "citations.web"
+    ],
     "extra": [
       "projects.addProjectDialog.renameSuccess"
+    ]
+  },
+  "ru/server.json": {
+    "plurals": [
+      "planApproval.summary"
     ]
   },
   "ru/setup.json": {
@@ -686,6 +748,8 @@
       "browserVerify.consoleErrors",
       "changes.applyAllConfirm",
       "changes.truncated",
+      "citations.documents",
+      "citations.web",
       "compaction.divider",
       "coworkDisplay.hiddenCount",
       "coworkOrigins.checks",
@@ -827,6 +891,11 @@
       "list.turns",
       "stage.draftHint",
       "transcript.catchUp"
+    ]
+  },
+  "vn/server.json": {
+    "plurals": [
+      "planApproval.summary"
     ]
   },
   "vn/settings.json": {
