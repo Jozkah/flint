@@ -80,11 +80,14 @@ export async function approvalScopeOptions(
   input: unknown
 ): Promise<ApprovalScopeWire[]> {
   try {
-    return await invoke<ApprovalScopeWire[]>('agent_approval_scope_options', {
+    const options = await invoke<ApprovalScopeWire[]>('agent_approval_scope_options', {
       root,
       tool,
       args: asArgs(input),
     })
+    // A host without the command (a test mock, an older backend) answers
+    // nothing; that is no standing scope, not a crash in the card.
+    return Array.isArray(options) ? options : []
   } catch {
     return []
   }
