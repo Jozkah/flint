@@ -71,6 +71,9 @@ type GeneralSettingState = {
   closeToTray: boolean
   /** Hold off system sleep while an agent run is live (Windows). */
   keepAwakeDuringRuns: boolean
+  /** Fetch each cited site's own favicon; off shows a letter and contacts nobody. */
+  loadSiteIcons: boolean
+  setLoadSiteIcons: (value: boolean) => void
   setKeepAwakeDuringRuns: (value: boolean) => void
   setCloseToTray: (value: boolean) => void
   /** Cap on model download speed in MB/s; 0 is unlimited. */
@@ -100,6 +103,8 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       closeToTray: false,
       setCloseToTray: (value) => set({ closeToTray: value }),
       keepAwakeDuringRuns: true,
+      loadSiteIcons: true,
+      setLoadSiteIcons: (value) => set({ loadSiteIcons: value }),
       setKeepAwakeDuringRuns: (value) => set({ keepAwakeDuringRuns: value }),
       downloadLimitMBps: 0,
       setDownloadLimitMBps: (value) =>
@@ -155,6 +160,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
         stripReasoningFromContext: state.stripReasoningFromContext,
         closeToTray: state.closeToTray,
         keepAwakeDuringRuns: state.keepAwakeDuringRuns,
+        loadSiteIcons: state.loadSiteIcons,
         downloadLimitMBps: state.downloadLimitMBps,
       }),
     }
