@@ -119,6 +119,13 @@ fn embed_utf8_manifest() {
         "cargo:rustc-link-arg-bin=flint-llama-worker=/MANIFESTINPUT:{}",
         manifest.display()
     );
+    // Resolve the worker's DLL imports from System32 and its own folder only
+    // (LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR),
+    // never the current directory or PATH. The folder is needed: ggml is built
+    // shared and ggml.dll / ggml-base.dll ship beside the worker. Backends
+    // loaded at runtime by full path are not affected, and neither is the PATH
+    // entry load_addon_modules adds for the CUDA runtime DLLs.
+    println!("cargo:rustc-link-arg-bin=flint-llama-worker=/DEPENDENTLOADFLAG:0xA00");
 }
 
 mod engine {

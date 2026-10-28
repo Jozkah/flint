@@ -68,6 +68,20 @@ fn main() {
         println!("cargo:rustc-link-arg-bins=/STACK:8388608");
     }
 
+    // Resolve the binaries' own DLL imports from System32 only
+    // (LOAD_LIBRARY_SEARCH_SYSTEM32). Without it the loader also searches the
+    // current directory and PATH, so a DLL with an imported name planted in
+    // either is loaded before `main`. Every import of these binaries is a
+    // System32 or API-set DLL (checked with `dumpbin /imports`): webview2-com
+    // embeds the WebView2 loader, and the VC runtime (VCRUNTIME140*.dll) is
+    // the one the installer's VC++ redistributable puts in System32. Runtime
+    // LoadLibrary calls are restricted separately in main.rs.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        println!("cargo:rustc-link-arg-bins=/DEPENDENTLOADFLAG:0x800");
+    }
+
     // Give test and example binaries the manifest `tauri_build` embeds only in
     // the application binary.
     //
