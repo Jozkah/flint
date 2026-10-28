@@ -86,6 +86,19 @@ describe('repairToolArgs', () => {
     })
   })
 
+  it('keeps real newlines in content when a path elsewhere needs repair', () => {
+    const raw = '{"path":"C:\\Users\\x\\a.txt","content":"line1\\nline2"}'
+    expect(repairToolArgs(raw)).toEqual({
+      path: 'C:\\Users\\x\\a.txt',
+      content: 'line1\nline2',
+    })
+  })
+
+  it('doubles an invalid escape in prose but keeps its valid ones', () => {
+    const raw = '{"text":"see C:\\Users\\x then\\nstop"}'
+    expect(repairToolArgs(raw)).toEqual({ text: 'see C:\\Users\\x then\nstop' })
+  })
+
   it('parses plain valid JSON', () => {
     expect(repairToolArgs('{"n":42}')).toEqual({ n: 42 })
   })
