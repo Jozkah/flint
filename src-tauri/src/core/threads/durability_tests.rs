@@ -8,7 +8,8 @@
 //! janhq/jan#8019.
 
 use super::helpers::{
-    append_message_line, append_message_line_if_new, read_messages_from_file, update_thread_metadata, write_messages_to_file,
+    append_message_line, append_message_line_if_new, read_messages_from_file, read_messages_lossy, update_thread_metadata,
+    write_messages_to_file,
 };
 use super::utils::{ensure_thread_dir_exists, get_messages_path, get_thread_metadata_path};
 use serde_json::json;
@@ -183,4 +184,57 @@ fn a_successful_rewrite_leaves_no_staging_file_behind() {
     write_messages_to_file(&[json!({"id": "a"}), json!({"id": "b"})], &path).unwrap();
     assert!(staging_files(path.parent().unwrap()).is_empty());
     assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 2);
+}
+
+#[test]
+fn middle_corrupt_line_is_skipped_and_reported() {
+    let (tmp, path) = thread("lossy");
+    fs::write(&path, "{\"id\":\"m1\"}
+not json
+{\"id\":\"m3\"}
+").unwrap();
+    let read = read_messages_lossy(tmp.path(), "lossy").unwrap();
+    let ids: Vec<_> = read.messages.iter().map(|m| m["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["m1", "m3"]);
+    assert_eq!(read.bad_lines, vec!["not json".to_string()]);
+}
+
+#[test]
+fn lossy_reader_ignores_a_torn_tail_without_reporting_it() {
+    let (tmp, path) = thread("lossy-torn");
+    fs::write(&path, "{\"id\":\"m1\"}
+{\"id\":\"m2\",\"ro").unwrap();
+    let read = read_messages_lossy(tmp.path(), "lossy-torn").unwrap();
+    assert_eq!(read.messages.len(), 1);
+    assert!(read.bad_lines.is_empty());
+}
+
+#[tokio::test]
+async fn delete_message_works_on_thread_with_bad_line_and_keeps_it_in_the_sidecar() {
+    let (tmp, path) = thread("lossy-delete");
+    fs::write(&path, "{\"id\":\"m1\"}
+not json
+{\"id\":\"m3\"}
+").unwrap();
+    super::storage::delete_message_in(tmp.path(), "lossy-delete", "m1").await.unwrap();
+    super::storage::delete_message_in(tmp.path(), "lossy-delete", "zzz").await.unwrap();
+    let read = read_messages_lossy(tmp.path(), "lossy-delete").unwrap();
+    assert_eq!(read.messages.len(), 1);
+    assert!(read.bad_lines.is_empty());
+    let sidecar = fs::read_to_string(tmp.path().join("threads/lossy-delete/messages.jsonl.corrupt")).unwrap();
+    assert_eq!(sidecar, "not json
+", "kept once, not duplicated");
+}
+
+#[tokio::test]
+async fn modify_thread_keeps_the_backend_owned_active_root() {
+    let (tmp, _path) = thread("keep-root");
+    update_thread_metadata(tmp.path(), "keep-root", &json!({"id":"keep-root","metadata":{"activeRootId":"r2"}})).unwrap();
+    super::storage::modify_thread_in(tmp.path(), json!({"id":"keep-root","title":"T","metadata":{"activeRootId":"stale"}}))
+        .await
+        .unwrap();
+    let raw = fs::read_to_string(get_thread_metadata_path(tmp.path(), "keep-root")).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(v["metadata"]["activeRootId"], "r2");
+    assert_eq!(v["title"], "T");
 }

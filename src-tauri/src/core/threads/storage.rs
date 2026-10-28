@@ -6,7 +6,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::helpers::{
-    append_message_line_if_new, get_lock_for_thread, read_messages_from_file,
+    append_message_line_if_new, get_lock_for_thread, preserve_bad_lines, read_messages_lossy,
     update_thread_metadata, write_file_atomically, write_messages_to_file,
 };
 use super::utils::{
@@ -24,11 +24,41 @@ pub fn create_thread_in(root: &Path, mut thread: Value) -> Result<Value, String>
     Ok(thread)
 }
 
-pub fn modify_thread_in(root: &Path, thread: Value) -> Result<(), String> {
-    let id = thread.get("id").and_then(Value::as_str).ok_or("Missing thread id")?;
+/// Write a thread's `thread.json` under its lock, so it cannot interleave with
+/// the assistant commands that read-modify-write the same file.
+pub async fn modify_thread_in(root: &Path, thread: Value) -> Result<(), String> {
+    let id = thread.get("id").and_then(Value::as_str).ok_or("Missing thread id")?.to_owned();
+    validate_thread_id(&id)?;
+    let lock = get_lock_for_thread(&id).await;
+    let _guard = lock.lock().await;
+    modify_thread_unlocked(root, thread)
+}
+
+/// `modify_thread_in` without the in-process lock, for callers with no async
+/// runtime (the CLI). The backend-owned `metadata.activeRootId` is taken from
+/// disk, not from the caller's possibly stale copy.
+pub fn modify_thread_unlocked(root: &Path, mut thread: Value) -> Result<(), String> {
+    let id = thread.get("id").and_then(Value::as_str).ok_or("Missing thread id")?.to_owned();
+    let id = id.as_str();
     validate_thread_id(id)?;
     if !get_thread_dir(root, id).exists() {
         return Err("Thread directory does not exist".into());
+    }
+    let on_disk = fs::read(get_thread_metadata_path(root, id))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+    if let Some(disk) = on_disk {
+        match super::branching::thread_active_root(&disk) {
+            Some(root_id) if thread.get("metadata").map_or(true, |m| m.is_object() || m.is_null()) => {
+                thread["metadata"]["activeRootId"] = Value::String(root_id);
+            }
+            Some(_) => {}
+            None => {
+                if let Some(meta) = thread.get_mut("metadata").and_then(Value::as_object_mut) {
+                    meta.remove("activeRootId");
+                }
+            }
+        }
     }
     let data = serde_json::to_vec_pretty(&thread).map_err(|e| e.to_string())?;
     write_file_atomically(&get_thread_metadata_path(root, id), &data)
@@ -100,7 +130,9 @@ pub async fn modify_message_in(root: &Path, message: Value) -> Result<Value, Str
         .ok_or("Missing message id")?;
     let lock = get_lock_for_thread(thread_id).await;
     let _guard = lock.lock().await;
-    let mut messages = read_messages_from_file(root, thread_id)?;
+    let read = read_messages_lossy(root, thread_id)?;
+    let mut messages = read.messages;
+    preserve_bad_lines(root, thread_id, &read.bad_lines)?;
     if let Some(index) = messages.iter().position(|item| item.get("id").and_then(Value::as_str) == Some(message_id)) {
         messages[index] = message.clone();
     } else {
@@ -115,7 +147,9 @@ pub async fn delete_message_in(root: &Path, thread_id: &str, message_id: &str) -
     validate_thread_id(thread_id)?;
     let lock = get_lock_for_thread(thread_id).await;
     let _guard = lock.lock().await;
-    let messages = read_messages_from_file(root, thread_id)?;
+    let read = read_messages_lossy(root, thread_id)?;
+    let messages = read.messages;
+    preserve_bad_lines(root, thread_id, &read.bad_lines)?;
     let meta_path = get_thread_metadata_path(root, thread_id);
     if let Ok(raw) = fs::read_to_string(&meta_path) {
         if let Ok(mut thread) = serde_json::from_str::<Value>(&raw) {

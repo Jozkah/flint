@@ -192,7 +192,7 @@ fn modify(id: &str, change: impl FnOnce(&mut Value)) -> Result<Value, String> {
     let mut thread = read_thread(&data, id)?;
     change(&mut thread);
     thread["updated"] = json!(chrono::Utc::now().timestamp() as f64);
-    thread_store::modify_thread_in(&data, thread.clone())?;
+    thread_store::modify_thread_unlocked(&data, thread.clone())?;
     Ok(thread)
 }
 

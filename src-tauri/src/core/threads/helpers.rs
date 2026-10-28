@@ -211,6 +211,73 @@ pub fn read_messages_from_file(
     Ok(messages)
 }
 
+/// What a tolerant read of `messages.jsonl` found.
+#[derive(Debug, Default)]
+pub struct LossyRead {
+    pub messages: Vec<serde_json::Value>,
+    /// Non-empty lines that did not parse, in file order. A torn final line
+    /// (no newline) is not counted: a crash leaves that and it is dropped.
+    pub bad_lines: Vec<String>,
+}
+
+/// Like `read_messages_from_file`, but a line that does not parse at any
+/// position is skipped and reported in `bad_lines` instead of failing the
+/// whole thread.
+pub fn read_messages_lossy(data_folder: &Path, thread_id: &str) -> Result<LossyRead, String> {
+    let path = get_messages_path(data_folder, thread_id);
+    let bytes = read_if_present(&path)?;
+    let terminated = bytes.is_empty() || bytes.ends_with(NEWLINE_BYTES);
+    let lines: Vec<&[u8]> = bytes.split(|b| *b == NEWLINE).collect();
+    // `split` yields an empty piece after a final newline.
+    let count = if terminated { lines.len().saturating_sub(1) } else { lines.len() };
+    let mut out = LossyRead::default();
+    for (index, line) in lines.iter().take(count).enumerate() {
+        let trimmed = line.strip_suffix(b"\r").unwrap_or(line);
+        if trimmed.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        match serde_json::from_slice::<serde_json::Value>(trimmed) {
+            Ok(message) => out.messages.push(message),
+            Err(_) if index + 1 == count && !terminated => {}
+            Err(_) => out.bad_lines.push(String::from_utf8_lossy(trimmed).into_owned()),
+        }
+    }
+    if !out.bad_lines.is_empty() {
+        log::warn!(
+            "messages: skipped {} unreadable line(s) in {}",
+            out.bad_lines.len(),
+            path.display()
+        );
+    }
+    Ok(out)
+}
+
+/// Keep lines a rewrite is about to drop in `messages.jsonl.corrupt` beside
+/// it, each line once.
+pub fn preserve_bad_lines(data_folder: &Path, thread_id: &str, bad: &[String]) -> Result<(), String> {
+    if bad.is_empty() {
+        return Ok(());
+    }
+    let mut path = get_messages_path(data_folder, thread_id).into_os_string();
+    path.push(".corrupt");
+    let path = std::path::PathBuf::from(path);
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let known: std::collections::HashSet<&str> = existing.lines().collect();
+    let fresh: Vec<&String> = bad.iter().filter(|l| !known.contains(l.as_str())).collect();
+    if fresh.is_empty() {
+        return Ok(());
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    for line in fresh {
+        writeln!(file, "{line}").map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Update thread metadata by writing to thread.json
 pub fn update_thread_metadata(
     data_folder: &Path,

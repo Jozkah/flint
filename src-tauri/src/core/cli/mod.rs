@@ -271,7 +271,7 @@ pub fn cli_list_messages_in(
     base: &std::path::Path,
     thread_id: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
-    read_messages_from_file(base, thread_id)
+    crate::core::threads::helpers::read_messages_lossy(base, thread_id).map(|r| r.messages)
 }
 
 /// A thread's messages as the conversation shows them: the active version at
