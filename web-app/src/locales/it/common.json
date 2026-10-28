@@ -2771,7 +2771,11 @@
     "noVision": "Questo modello non può leggere le immagini",
     "details": "Dettagli di {{name}}",
     "previewLoading": "Caricamento anteprima…",
-    "previewNone": "Nessuna anteprima disponibile"
+    "previewNone": "Nessuna anteprima disponibile",
+    "pagesAsImages": "Invia le pagine come immagini",
+    "pagesAsImagesHint": "Invia le pagine di questo PDF come immagini, così il modello vede scansioni, grafici e impaginazione",
+    "pdfPagesCut": "Sono state inviate come immagini le prime {{sent}} pagine su {{total}} di {{name}}",
+    "pdfScannedAsImages": "{{name}} non contiene testo, quindi le sue pagine sono state inviate come immagini"
   },
   "fileViewer": {
     "openFull": "Apri anteprima completa",

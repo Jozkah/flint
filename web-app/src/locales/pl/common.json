@@ -2828,7 +2828,11 @@
     "noVision": "Ten model nie czyta obrazów",
     "details": "Szczegóły: {{name}}",
     "previewLoading": "Wczytywanie podglądu…",
-    "previewNone": "Podgląd niedostępny"
+    "previewNone": "Podgląd niedostępny",
+    "pagesAsImages": "Wyślij strony jako obrazy",
+    "pagesAsImagesHint": "Wyślij strony tego PDF jako obrazy, aby model widział skany, wykresy i układ",
+    "pdfPagesCut": "Wysłano jako obrazy pierwsze {{sent}} z {{total}} stron pliku {{name}}",
+    "pdfScannedAsImages": "{{name}} nie zawiera tekstu, więc jego strony wysłano jako obrazy"
   },
   "fileViewer": {
     "openFull": "Otwórz pełny podgląd",

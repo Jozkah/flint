@@ -2723,7 +2723,11 @@
     "noVision": "Mô hình này không đọc được ảnh",
     "details": "Chi tiết về {{name}}",
     "previewLoading": "Đang tải bản xem trước…",
-    "previewNone": "Không có bản xem trước"
+    "previewNone": "Không có bản xem trước",
+    "pagesAsImages": "Gửi các trang dưới dạng hình ảnh",
+    "pagesAsImagesHint": "Gửi các trang của PDF này dưới dạng hình ảnh để mô hình thấy bản quét, biểu đồ và bố cục",
+    "pdfPagesCut": "Đã gửi {{sent}} trên {{total}} trang đầu của {{name}} dưới dạng hình ảnh",
+    "pdfScannedAsImages": "{{name}} không có văn bản nên các trang đã được gửi dưới dạng hình ảnh"
   },
   "fileViewer": {
     "openFull": "Mở bản xem trước đầy đủ",

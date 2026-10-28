@@ -2772,7 +2772,11 @@
     "noVision": "Ce modèle ne peut pas lire les images",
     "details": "Détails de {{name}}",
     "previewLoading": "Chargement de l'aperçu…",
-    "previewNone": "Aucun aperçu disponible"
+    "previewNone": "Aucun aperçu disponible",
+    "pagesAsImages": "Envoyer les pages en images",
+    "pagesAsImagesHint": "Envoyer les pages de ce PDF en images pour que le modèle voie les scans, graphiques et la mise en page",
+    "pdfPagesCut": "Les {{sent}} premières pages sur {{total}} de {{name}} ont été envoyées en images",
+    "pdfScannedAsImages": "{{name}} ne contient pas de texte, ses pages ont donc été envoyées en images"
   },
   "fileViewer": {
     "openFull": "Ouvrir l’aperçu complet",

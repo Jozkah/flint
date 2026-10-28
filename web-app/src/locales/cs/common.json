@@ -2827,7 +2827,11 @@
     "noVision": "Tento model neumí číst obrázky",
     "details": "Podrobnosti o {{name}}",
     "previewLoading": "Načítání náhledu…",
-    "previewNone": "Náhled není k dispozici"
+    "previewNone": "Náhled není k dispozici",
+    "pagesAsImages": "Odeslat stránky jako obrázky",
+    "pagesAsImagesHint": "Odeslat stránky tohoto PDF jako obrázky, aby model viděl skeny, grafy a rozvržení",
+    "pdfPagesCut": "Jako obrázky bylo odesláno prvních {{sent}} z {{total}} stránek souboru {{name}}",
+    "pdfScannedAsImages": "{{name}} neobsahuje text, proto byly jeho stránky odeslány jako obrázky"
   },
   "fileViewer": {
     "openFull": "Otevřít celý náhled",

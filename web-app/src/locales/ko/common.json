@@ -2723,7 +2723,11 @@
     "noVision": "이 모델은 이미지를 읽을 수 없습니다",
     "details": "{{name}} 상세 정보",
     "previewLoading": "미리 보기를 불러오는 중…",
-    "previewNone": "미리 볼 수 없습니다"
+    "previewNone": "미리 볼 수 없습니다",
+    "pagesAsImages": "페이지를 이미지로 보내기",
+    "pagesAsImagesHint": "이 PDF의 페이지를 이미지로 보내 모델이 스캔, 차트, 레이아웃을 볼 수 있게 합니다",
+    "pdfPagesCut": "{{name}}의 전체 {{total}}페이지 중 처음 {{sent}}페이지를 이미지로 보냈습니다",
+    "pdfScannedAsImages": "{{name}}에 텍스트가 없어 페이지를 이미지로 보냈습니다"
   },
   "fileViewer": {
     "openFull": "전체 미리보기 열기",

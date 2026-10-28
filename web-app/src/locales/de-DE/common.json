@@ -2726,7 +2726,11 @@
     "noVision": "Dieses Modell kann keine Bilder lesen",
     "details": "Details zu {{name}}",
     "previewLoading": "Vorschau wird geladen…",
-    "previewNone": "Keine Vorschau verfügbar"
+    "previewNone": "Keine Vorschau verfügbar",
+    "pagesAsImages": "Seiten als Bilder senden",
+    "pagesAsImagesHint": "Die Seiten dieses PDFs als Bilder senden, damit das Modell Scans, Diagramme und Layout sieht",
+    "pdfPagesCut": "Die ersten {{sent}} von {{total}} Seiten von {{name}} wurden als Bilder gesendet",
+    "pdfScannedAsImages": "{{name}} enthält keinen Text, daher wurden die Seiten als Bilder gesendet"
   },
   "fileViewer": {
     "openFull": "Vollständige Vorschau öffnen",

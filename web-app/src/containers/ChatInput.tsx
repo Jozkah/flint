@@ -3270,6 +3270,11 @@ const ChatInput = memo(function ChatInput({
               attachments={attachments}
               canSeeImages={visionSupported}
               onRemove={(i) => void handleRemoveAttachment(i)}
+              onTogglePdfImages={(i) =>
+                setAttachmentsForThread(attachmentsKey, (prev) =>
+                  prev.map((a, j) => (j === i ? { ...a, sendAsImages: !a.sendAsImages } : a))
+                )
+              }
               onOpenImage={(url) =>
                 setViewerAt(
                   Math.max(0, composerImages.findIndex((i) => i.url === url))
