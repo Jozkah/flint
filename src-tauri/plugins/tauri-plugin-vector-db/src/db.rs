@@ -346,20 +346,65 @@ fn build_sqlite_vec_paths(override_path: Option<String>, exe: Option<PathBuf>) -
     paths
 }
 
+/// Column options of `chunks_vec`. Cosine distance makes the ANN score
+/// (`1 - distance`) the same quantity the linear path computes.
+const VEC_METRIC: &str = "distance_metric=cosine";
+
+/// The `CREATE` text of `chunks_vec`, if the table exists.
+fn vec_table_sql(conn: &Connection) -> Option<String> {
+    conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='chunks_vec'",
+        [],
+        |r| r.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .flatten()
+}
+
+/// Whether `chunks_vec` exists and ranks by cosine distance. A table made by an
+/// earlier build ranks by L2, which is not comparable with the linear score.
+fn cosine_vec_table_exists(conn: &Connection) -> bool {
+    vec_table_sql(conn).is_some_and(|sql| sql.contains(VEC_METRIC))
+}
+
+/// Create `chunks_vec` for `dimension`, rebuilding it from `chunks` when the
+/// existing table is an L2 one or was built for another dimension (the
+/// embedding model changed). Returns false when ANN is unavailable, so callers
+/// fall back to linear search.
 pub fn ensure_vec_table(conn: &Connection, dimension: usize) -> bool {
-    if try_load_sqlite_vec(conn) {
-        let create = format!(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(embedding float[{}])",
-            dimension
-        );
-        match conn.execute(&create, []) {
-            Ok(_) => return true,
-            Err(e) => {
-                println!("[VectorDB] ✗ Failed to create chunks_vec: {}", e);
-            }
+    if !try_load_sqlite_vec(conn) {
+        return false;
+    }
+    let rebuild = vec_table_sql(conn)
+        .is_some_and(|sql| !sql.contains(VEC_METRIC) || !sql.contains(&format!("float[{dimension}]")));
+    if rebuild {
+        if let Err(e) = conn.execute("DROP TABLE chunks_vec", []) {
+            println!("[VectorDB] ✗ Failed to drop stale chunks_vec: {}", e);
+            return false;
         }
     }
-    false
+    let create = format!(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(embedding float[{dimension}] {VEC_METRIC})"
+    );
+    if let Err(e) = conn.execute(&create, []) {
+        println!("[VectorDB] ✗ Failed to create chunks_vec: {}", e);
+        return false;
+    }
+    if rebuild {
+        // Stored embeddings are little-endian f32 blobs, the layout vec0 takes.
+        let filled = conn.execute(
+            "INSERT INTO chunks_vec(rowid, embedding) SELECT rowid, embedding FROM chunks WHERE length(embedding) = ?1",
+            params![(dimension * 4) as i64],
+        );
+        if let Err(e) = filled {
+            println!("[VectorDB] ✗ Failed to rebuild chunks_vec: {}", e);
+            let _ = conn.execute("DROP TABLE IF EXISTS chunks_vec", []);
+            return false;
+        }
+    }
+    true
 }
 
 // ============================================================================
@@ -483,17 +528,9 @@ pub fn insert_chunks(
 ) -> Result<(), VectorDBError> {
     let tx = conn.unchecked_transaction()?;
 
-    // Check if vec table exists
-    let has_vec = if vec_loaded {
-        conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chunks_vec'")
-            .and_then(|mut s| s.query_row([], |r| r.get::<_, String>(0)).optional())
-            .ok()
-            .flatten()
-            .is_some()
-    } else {
-        false
-    };
+    // A table that is not a cosine one is left alone: search ignores it and
+    // `create_schema` rebuilds it from `chunks`.
+    let has_vec = vec_loaded && cosine_vec_table_exists(conn);
 
     // Determine current max order
     let mut current_order: i64 = tx
@@ -522,14 +559,18 @@ pub fn insert_chunks(
                 .prepare("SELECT rowid FROM chunks WHERE id=?1")?
                 .query_row(params![chunk_id], |r| r.get(0))?;
             let json_vec = embedding_to_json(&ch.embedding)?;
-            // Tolerated, not propagated: an existing chunks_vec built for a
-            // different dimension (the embedding model changed) rejects the
-            // row, and linear search still serves it.
+            // Propagated: a row that is stored but missing from the index would
+            // make ANN search silently incomplete. The usual cause is a
+            // chunks_vec built for another dimension, which `create_schema`
+            // rebuilds.
             if let Err(e) = tx.execute(
                 "INSERT OR REPLACE INTO chunks_vec(rowid, embedding) VALUES (?1, ?2)",
                 params![rowid, json_vec],
             ) {
-                println!("[VectorDB] ✗ Failed to index chunk in chunks_vec: {}", e);
+                return Err(VectorDBError::DimensionMismatch(format!(
+                    "could not index a {}-value embedding in chunks_vec: {e}",
+                    ch.embedding.len()
+                )));
             }
         }
     }
@@ -620,6 +661,8 @@ const MAX_SEARCH_LIMIT: usize = 1000;
 /// Upper bound on the `file_ids` filter, well under SQLite's variable limit.
 const MAX_FILE_IDS: usize = 500;
 
+/// Scores are cosine similarity, higher is better, and `threshold` is a floor
+/// on that score on both the ANN and the linear path.
 pub fn search_collection(
     conn: &Connection,
     query_embedding: &[f32],
@@ -643,16 +686,8 @@ pub fn search_collection(
         )));
     }
 
-    let has_vec = if vec_loaded {
-        conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chunks_vec'")
-            .and_then(|mut s| s.query_row([], |r| r.get::<_, String>(0)).optional())
-            .ok()
-            .flatten()
-            .is_some()
-    } else {
-        false
-    };
+    // An L2 table left by an earlier build scores on another scale: linear.
+    let has_vec = vec_loaded && cosine_vec_table_exists(conn);
 
     let prefer_ann = match mode.as_deref() {
         Some("ann") => true,
@@ -664,7 +699,7 @@ pub fn search_collection(
     // returns only those of the k global nearest that belong to the files --
     // often none. A scoped search covers few chunks; scan them exactly.
     if has_vec && prefer_ann && file_ids.is_none() {
-        search_ann(conn, query_embedding, limit, file_ids)
+        search_ann(conn, query_embedding, limit, threshold, file_ids)
     } else {
         search_linear(conn, query_embedding, limit, threshold, file_ids)
     }
@@ -674,6 +709,7 @@ fn search_ann(
     conn: &Connection,
     query_embedding: &[f32],
     limit: usize,
+    threshold: f32,
     file_ids: Option<Vec<String>>,
 ) -> Result<Vec<SearchResult>, VectorDBError> {
     let json_vec = embedding_to_json(query_embedding)?;
@@ -738,11 +774,16 @@ fn search_ann(
         let file_id: String = row.get(2)?;
         let chunk_file_order: i64 = row.get(3)?;
         let distance: f32 = row.get(4)?;
+        // Cosine distance to similarity: higher is better, as on the linear path.
+        let score = 1.0 - distance;
+        if score < threshold {
+            continue;
+        }
 
         results.push(SearchResult {
             id,
             text,
-            score: Some(distance),
+            score: Some(score),
             file_id,
             chunk_file_order,
         });
@@ -1621,5 +1662,118 @@ mod memory_tests {
 
         memory_clear(&conn, None).unwrap();
         assert!(memory_search(&conn, "p2", "content", 5).unwrap().is_empty());
+    }
+
+    /// An in-memory collection with sqlite-vec, or None when it is unavailable.
+    fn ann_conn(dim: usize) -> Option<Connection> {
+        if !register_static_vec() {
+            return None;
+        }
+        let conn = Connection::open_in_memory().unwrap();
+        if !create_schema(&conn, dim).unwrap() {
+            return None;
+        }
+        conn.execute("INSERT INTO files (id, path) VALUES ('f1', '/f1')", []).unwrap();
+        Some(conn)
+    }
+
+    fn sample_vectors(n: usize) -> Vec<Vec<f32>> {
+        (0..n)
+            .map(|i| {
+                let t = i as f32 * 0.37 + 0.1;
+                vec![t.sin(), t.cos(), (t * 0.5).sin() + 1.5]
+            })
+            .collect()
+    }
+
+    fn add(conn: &Connection, vectors: &[Vec<f32>]) -> Result<(), VectorDBError> {
+        let chunks = vectors
+            .iter()
+            .enumerate()
+            .map(|(i, v)| MinimalChunkInput { text: format!("c{i}"), embedding: v.clone() })
+            .collect();
+        insert_chunks(conn, "f1", chunks, true)
+    }
+
+    #[test]
+    fn ann_and_linear_same_order_and_score_range() {
+        let Some(conn) = ann_conn(3) else { return };
+        let vectors = sample_vectors(20);
+        add(&conn, &vectors).unwrap();
+        let q = [0.3f32, 0.9, 1.2];
+        let ann = search_collection(&conn, &q, 5, -1.0, Some("ann".into()), true, None).unwrap();
+        let lin = search_collection(&conn, &q, 5, -1.0, Some("linear".into()), true, None).unwrap();
+        assert_eq!(ann.len(), 5);
+        let ids = |r: &[SearchResult]| r.iter().map(|x| x.text.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&ann), ids(&lin));
+        for (a, l) in ann.iter().zip(lin.iter()) {
+            assert!((a.score.unwrap() - l.score.unwrap()).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn ann_applies_threshold() {
+        let Some(conn) = ann_conn(3) else { return };
+        add(&conn, &[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]]).unwrap();
+        let found =
+            search_collection(&conn, &[1.0, 0.0, 0.0], 5, 0.5, Some("ann".into()), true, None).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "c0");
+        assert!(found[0].score.unwrap() > 0.99);
+    }
+
+    #[test]
+    fn ann_insert_failure_is_error_not_silent() {
+        let Some(conn) = ann_conn(3) else { return };
+        let err = add(&conn, &[vec![1.0, 0.0]]).unwrap_err();
+        assert!(matches!(err, VectorDBError::DimensionMismatch(_)), "{err}");
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn dimension_change_rebuilds_vec_table() {
+        let Some(conn) = ann_conn(3) else { return };
+        add(&conn, &[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]]).unwrap();
+        // The model changed to 2 dimensions: the 3-d chunks stay in `chunks`
+        // but cannot be indexed, and new 2-d chunks can.
+        assert!(create_schema(&conn, 2).unwrap());
+        assert!(vec_table_sql(&conn).unwrap().contains("float[2]"));
+        let two = vec![MinimalChunkInput { text: "two".into(), embedding: vec![1.0, 0.0] }];
+        insert_chunks(&conn, "f1", two, true).unwrap();
+        let found =
+            search_collection(&conn, &[1.0, 0.0], 5, 0.5, Some("ann".into()), true, None).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "two");
+    }
+
+    #[test]
+    fn legacy_l2_table_rebuilt_or_linear() {
+        if !register_static_vec() {
+            return;
+        }
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(try_load_sqlite_vec(&conn));
+        // Collection as an earlier build left it: L2 vec table, chunks present.
+        create_schema(&conn, 3).unwrap();
+        conn.execute("DROP TABLE chunks_vec", []).unwrap();
+        conn.execute("CREATE VIRTUAL TABLE chunks_vec USING vec0(embedding float[3])", []).unwrap();
+        conn.execute("INSERT INTO files (id, path) VALUES ('f1', '/f1')", []).unwrap();
+        let blob = to_le_bytes_vec(&[1.0f32, 0.0, 0.0]);
+        conn.execute(
+            "INSERT INTO chunks (id, text, embedding, file_id, chunk_file_order) VALUES ('x', 'x', ?1, 'f1', 0)",
+            [blob],
+        )
+        .unwrap();
+        assert!(!cosine_vec_table_exists(&conn));
+        // Searching before the rebuild takes the linear path.
+        let found = search_collection(&conn, &[1.0, 0.0, 0.0], 5, 0.5, None, true, None).unwrap();
+        assert_eq!(found.len(), 1);
+        // Reopening the collection rebuilds the index as cosine from `chunks`.
+        assert!(create_schema(&conn, 3).unwrap());
+        assert!(cosine_vec_table_exists(&conn));
+        let found =
+            search_collection(&conn, &[1.0, 0.0, 0.0], 5, 0.5, Some("ann".into()), true, None).unwrap();
+        assert_eq!(found.len(), 1);
     }
 }
