@@ -39,6 +39,7 @@ pub mod ocr;
 pub mod fs_policy;
 pub mod jail;
 pub mod sandbox_integrity;
+pub(crate) mod sandbox_shell;
 pub mod mcp_confine;
 pub mod owned;
 /// Paths whose backslashes JSON turned into control characters.
