@@ -888,23 +888,20 @@ async fn execute(
 ) -> (bool, String, Option<HookError>) {
     use crate::tools::{jail, proc};
 
-    let mut policy = jail::Policy::new(ctx.project_root, ctx.allow_network)
-        .with_home_readonly(ctx.home_readonly);
-    if let Some(mask) = ctx.mask_root {
-        policy = policy.with_mask_root(mask);
-    }
-    if ctx.sandbox {
-        // The project's own `.jan` is hidden from a confined hook for the same
-        // reason it is hidden from a confined shell: it is where the harness
-        // keeps what it was told to do.
-        policy = policy.with_hide_root(&ctx.project_root.join(".jan"));
-    }
+    // The same base policy the bash tool starts from.
+    let policy = crate::tools::sandbox_shell::base_policy(
+        ctx.project_root,
+        ctx.allow_network,
+        ctx.home_readonly,
+        ctx.sandbox,
+        ctx.mask_root,
+    );
     // Which shell can be confined is probed, not assumed -- the same decision
     // `bash` makes, for the same reason: on Windows the MSYS runtime cannot
     // start inside an AppContainer, and running the hook unconfined instead
     // would hand it the whole machine.
     let shell = if ctx.sandbox {
-        let mut selected = match jail::select_shell(&policy) {
+        let selected = match jail::select_shell(&policy) {
             Ok(selected) => selected,
             Err(detail) => {
                 return (
@@ -920,9 +917,11 @@ async fn execute(
         // A hook written for a POSIX shell is refused rather than handed to
         // PowerShell or cmd, which would run *something* -- just not what the
         // file asked for, and a policy hook that silently runs something else
-        // is worse than one that does not run.
-        if selected.report.cfg.flavor != proc::ShellFlavor::Posix {
-            if let Some(construct) = proc::requires_posix_shell_for(&hook.command, selected.report.cfg.flavor) {
+        // is worse than one that does not run. A hook that chains with
+        // `&&`/`||` is moved onto a shell that can, as the bash tool's is.
+        match crate::tools::sandbox_shell::fit_to_command(&policy, selected, &hook.command) {
+            Ok(fitted) => fitted.wrapped,
+            Err(crate::tools::sandbox_shell::Unfit::PosixOnly { construct, .. }) => {
                 return (
                     false,
                     String::new(),
@@ -935,31 +934,17 @@ async fn execute(
                     )),
                 );
             }
-        }
-        // `&&`/`||` are a parse error in Windows PowerShell 5.1. A hook that
-        // chains is re-selected onto a shell that keeps their short-circuit
-        // semantics (cmd), the same way the bash tool is, and only refused when
-        // no usable shell can chain. Safe because a POSIX-only hook was already
-        // refused just above.
-        if proc::requires_and_or_chaining(&hook.command).is_some()
-            && !proc::supports_and_or_chaining(&selected.report.cfg)
-        {
-            match jail::select_chaining_capable(&policy) {
-                Some(capable) => selected = capable,
-                None => {
-                    let operator = proc::requires_and_or_chaining(&hook.command).unwrap_or("&&");
-                    return (
-                        false,
-                        String::new(),
-                        Some(HookError::new(
-                            HookErrorKind::ShellUnavailable,
-                            proc::chaining_unavailable_error(operator, &selected.report.cfg),
-                        )),
-                    );
-                }
+            Err(crate::tools::sandbox_shell::Unfit::NoChaining { operator, selected }) => {
+                return (
+                    false,
+                    String::new(),
+                    Some(HookError::new(
+                        HookErrorKind::ShellUnavailable,
+                        proc::chaining_unavailable_error(operator, &selected.report.cfg),
+                    )),
+                );
             }
         }
-        selected.wrapped
     } else {
         proc::shell().clone()
     };

@@ -130,20 +130,17 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
         );
     }
 
-    let mut policy =
-        jail::Policy::new(root, ctx.allow_network).with_home_readonly(ctx.home_readonly);
+    // The base hooks share (see `sandbox_shell::base_policy`), plus what only
+    // the bash tool has.
+    let mut policy = crate::tools::sandbox_shell::base_policy(
+        root,
+        ctx.allow_network,
+        ctx.home_readonly,
+        ctx.sandbox,
+        mask_abs.as_deref(),
+    );
     if let Some(fs) = ctx.fs {
         policy = policy.with_fs_config(fs.clone());
-    }
-    // While the shell is sandboxed, hide the project's own `.jan` state directory
-    // from it (see [`Policy::with_hide_root`]). When the shell runs unconfined the
-    // hide is both pointless (there is no OS mount to layer it on) and wrong
-    // (the agent should see its own state), so it is only applied when sandboxed.
-    if ctx.sandbox {
-        policy = policy.with_hide_root(&root.join(crate::tools::sandbox::JAN_DIR));
-    }
-    if let Some(mask) = mask_abs.as_deref() {
-        policy = policy.with_mask_root(mask);
     }
     if let Some(scratch) = scratch_abs.as_deref() {
         policy = policy.with_scratch_root(scratch);
@@ -275,9 +272,22 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
         }
         // A command written for bash is refused rather than handed to PowerShell
         // or cmd, which would not fail cleanly: `cmd` given `foo $(bar)` runs
-        // something, just not what was asked for.
-        if selected.report.cfg.flavor != proc::ShellFlavor::Posix {
-            if let Some(construct) = proc::requires_posix_shell_for(command, selected.report.cfg.flavor) {
+        // something, just not what was asked for. A command that chains with
+        // `&&`/`||` is moved onto a shell that keeps their short-circuit
+        // semantics (see `sandbox_shell::fit_to_command`, shared with hooks).
+        let fit_policy = policy.clone();
+        let fit_command = command.to_string();
+        let fitted = tokio::task::spawn_blocking(move || {
+            crate::tools::sandbox_shell::fit_to_command(&fit_policy, selected, &fit_command)
+        })
+        .await;
+        let fitted = match fitted {
+            Ok(fitted) => fitted,
+            Err(e) => return format!("ERROR: the shell probe failed: {e}"),
+        };
+        selected = match fitted {
+            Ok(fitted) => fitted,
+            Err(crate::tools::sandbox_shell::Unfit::PosixOnly { construct, selected }) => {
                 let mut refusal = proc::posix_unavailable_error(
                     construct,
                     &selected.report.cfg,
@@ -292,38 +302,13 @@ pub(super) async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Str
                 }
                 return refusal;
             }
-        }
-        // `&&`/`||` reach Windows PowerShell 5.1 as a parse error, not a clean
-        // failure. A chaining command that would land on it is not refused
-        // outright: it is re-selected onto a shell that keeps `&&`/`||`
-        // short-circuit semantics and exit codes -- `cmd.exe` on a Windows host
-        // with no bash or `pwsh`, which is always present and, unlike Windows
-        // PowerShell 5.1, chains. Safe here because a POSIX-only command was
-        // already refused above, so nothing `cmd` would misread reaches this
-        // point. Only when no usable shell can chain is the actionable refusal
-        // the last resort. Capability is read from the unwrapped program name,
-        // which tells Windows PowerShell (no chaining) from `pwsh` 7+.
-        if proc::requires_and_or_chaining(command).is_some()
-            && !proc::supports_and_or_chaining(&selected.report.cfg)
-        {
-            let probe_policy = policy.clone();
-            let capable = tokio::task::spawn_blocking(move || {
-                jail::select_chaining_capable(&probe_policy)
-            })
-            .await
-            .ok()
-            .flatten();
-            match capable {
-                Some(capable) => selected = capable,
-                None => {
-                    // Unreachable in practice on Windows -- `cmd.exe` is always a
-                    // candidate -- but if even it cannot be confined, refuse
-                    // clearly rather than run a shell that cannot parse the command.
-                    let operator = proc::requires_and_or_chaining(command).unwrap_or("&&");
-                    return proc::chaining_unavailable_error(operator, &selected.report.cfg);
-                }
+            // Unreachable in practice on Windows -- `cmd.exe` is always a
+            // candidate -- but if even it cannot be confined, refuse clearly
+            // rather than run a shell that cannot parse the command.
+            Err(crate::tools::sandbox_shell::Unfit::NoChaining { operator, selected }) => {
+                return proc::chaining_unavailable_error(operator, &selected.report.cfg);
             }
-        }
+        };
         selected.wrapped
     } else {
         // An approved null-device rerun keeps the shell the sandbox chose, so
