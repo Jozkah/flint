@@ -190,8 +190,11 @@ fn stamp_of(path: &Path) -> Option<(SystemTime, u64)> {
 
 /// Held across a read-modify-write of the trust file, so two processes
 /// deciding at once cannot drop each other's change.
-fn hold(data_folder: &Path) -> crate::mailbox::Held {
-    crate::mailbox::Held::take(&path_for(data_folder))
+///
+/// A lock a live process still holds after the wait is not stolen; the caller
+/// then proceeds unlocked, as it did before there was a lock to wait for.
+fn hold(data_folder: &Path) -> Option<crate::mailbox::Held> {
+    crate::mailbox::Held::take(&path_for(data_folder)).ok()
 }
 
 /// Record one trust decision. A witness only: never fails the caller.
