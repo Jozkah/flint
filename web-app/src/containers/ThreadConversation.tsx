@@ -211,7 +211,7 @@ import {
   useThreadStatus,
 } from '@/containers/ThreadStatusMark'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
-import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
+import { executeWebTool, isNativeWebToolInRun } from '@/lib/webSearchTool'
 import { isImageTool, runImageTool } from '@/lib/chatImageTools'
 import {
   countOutputImages,
@@ -1032,11 +1032,11 @@ export function ThreadConversation({
                     .filter(Boolean)
                     .join(' '),
                 }
-              : isAutoAllowedTool(toolName) && !git
+              : isAutoAllowedTool(toolName, threadId) && !git
                 ? await chatForcedPrompt(toolName, toolCall.input, threadId)
                 : null
             const needsApproval =
-              !isAutoAllowedTool(toolName) || forced !== null || git !== null
+              !isAutoAllowedTool(toolName, threadId) || forced !== null || git !== null
             if (needsApproval) {
               openPermission = { ...permissionEvent, phase: 'failed' }
               void recordToolActivity({
@@ -1142,7 +1142,7 @@ export function ThreadConversation({
             const deadRefusal = deadToolRefusal(threadId, toolName)
             if (deadRefusal) return { error: deadRefusal }
 
-            if (isNativeWebTool(toolName)) {
+            if (isNativeWebToolInRun(toolName, threadId)) {
               // Bound a fetched page to the window this model has, as for MCP
               // results below, so a small-context model is not flooded.
               const webSelection = getModelSelection()
@@ -1543,7 +1543,7 @@ export function ThreadConversation({
       // never prompt (see isAutoAllowedTool).
       sessionData.tools.push(toolCall)
       if (
-        !isAutoAllowedTool(toolCall.toolName) &&
+        !isAutoAllowedTool(toolCall.toolName, threadId) &&
         !toolApprovalPromises.current.has(toolCall.toolCallId)
       ) {
         toolApprovalPromises.current.set(
