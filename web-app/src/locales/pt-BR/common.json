@@ -2834,6 +2834,10 @@
   "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida.",
   "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada",
   "attachmentMissingFile": "Um arquivo anexado não está mais disponível. Remova e anexe de novo; sua mensagem continua na caixa.",
+  "factoryResetIncomplete": {
+    "title": "Redefinição incompleta",
+    "description": "{{count}} item(ns) não puderam ser removidos e continuam no disco:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Não foi possível ler o arquivo de configurações",
     "withBackup": "{{file}} estava danificado, então o Flint iniciou com as configurações padrão. O arquivo danificado foi mantido como {{backup}}.",

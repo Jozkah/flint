@@ -111,6 +111,7 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::open_app_directory,
         core::system::commands::factory_reset,
         core::system::commands::take_pending_webdata_reset,
+        core::system::commands::take_factory_reset_report,
         core::system::commands::read_logs,
         core::system::commands::read_logs_since,
         core::system::commands::export_redacted_logs,

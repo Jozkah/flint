@@ -2790,6 +2790,10 @@
   "threadSaveFailed": "Die Änderung an diesem Thread konnte nicht gespeichert werden. Sie wurde zurückgesetzt.",
   "attachmentsProcessFailed": "Die Anhänge konnten nicht vorbereitet werden, daher wurde die Nachricht nicht gesendet",
   "attachmentMissingFile": "Eine angehängte Datei ist nicht mehr verfügbar. Entferne sie und hänge sie erneut an; deine Nachricht steht noch im Eingabefeld.",
+  "factoryResetIncomplete": {
+    "title": "Zurücksetzen unvollständig",
+    "description": "{{count}} Element(e) konnten nicht entfernt werden und liegen noch auf dem Datenträger:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Einstellungsdatei konnte nicht gelesen werden",
     "withBackup": "{{file}} war beschädigt, daher hat Flint mit den Standardeinstellungen gestartet. Die beschädigte Datei wurde als {{backup}} aufbewahrt.",

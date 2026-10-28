@@ -2788,6 +2788,10 @@
   "threadSaveFailed": "無法儲存對此對話的變更，已還原。",
   "attachmentsProcessFailed": "無法準備附件，因此訊息未傳送",
   "attachmentMissingFile": "某個附件已無法使用。請移除後重新附加；訊息仍保留在輸入框中。",
+  "factoryResetIncomplete": {
+    "title": "重設未完成",
+    "description": "有 {{count}} 項無法刪除，仍留在磁碟上：\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "無法讀取設定檔",
     "withBackup": "{{file}} 已損毀，因此 Flint 以預設設定啟動。損毀的檔案已保留為 {{backup}}。",

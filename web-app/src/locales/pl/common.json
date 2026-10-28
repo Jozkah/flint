@@ -2896,6 +2896,10 @@
   "threadSaveFailed": "Nie udało się zapisać zmiany w tym wątku. Została cofnięta.",
   "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana",
   "attachmentMissingFile": "Załączony plik nie jest już dostępny. Usuń go i załącz ponownie; wiadomość nadal jest w polu.",
+  "factoryResetIncomplete": {
+    "title": "Reset nie został ukończony",
+    "description": "Nie udało się usunąć elementów: {{count}}. Nadal są na dysku:\n{{list}}"
+  },
   "settingsRecovered": {
     "title": "Nie udało się odczytać pliku ustawień",
     "withBackup": "Plik {{file}} był uszkodzony, więc Flint uruchomił się z ustawieniami domyślnymi. Uszkodzony plik zachowano jako {{backup}}.",
