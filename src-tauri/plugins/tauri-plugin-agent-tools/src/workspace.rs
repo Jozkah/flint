@@ -97,11 +97,34 @@ pub fn thread_workspace(jan_data_folder: &Path, thread_id: &str) -> Result<PathB
 /// Case-folded on Windows, where two spellings of one path are the same path
 /// and a raw `starts_with` would let a rename past the check.
 fn containment_key(path: &Path) -> String {
-    let raw = path.to_string_lossy().replace('\\', "/");
+    // `canonicalize` spells Windows paths `\\?\C:\...`; a path that could
+    // not be canonicalised does not. Compared without it, or a workspace not
+    // created yet would never overlap anything.
+    let raw = crate::shared_folder::path_key::strip_verbatim(&path.to_string_lossy()).replace('\\', "/");
     if cfg!(windows) {
         raw.to_lowercase()
     } else {
         raw
+    }
+}
+
+/// `path` canonicalised through its deepest existing ancestor, with the
+/// missing rest appended: a link or short name above a folder that does not
+/// exist yet still resolves.
+fn canonical_via_ancestor(path: &Path) -> PathBuf {
+    let mut rest = Vec::new();
+    let mut current = path.to_path_buf();
+    loop {
+        if let Ok(real) = current.canonicalize() {
+            return rest.iter().rev().fold(real, |acc: PathBuf, part| acc.join(part));
+        }
+        match (current.file_name().map(|n| n.to_os_string()), current.parent()) {
+            (Some(name), Some(parent)) => {
+                rest.push(name);
+                current = parent.to_path_buf();
+            }
+            _ => return path.to_path_buf(),
+        }
     }
 }
 
@@ -141,9 +164,7 @@ pub fn validate_read_root(
     }
     // The workspace may not exist yet on the first call; compare lexically
     // against whatever form we have rather than failing the attach for it.
-    let workspace_key = workspace
-        .canonicalize()
-        .unwrap_or_else(|_| workspace.to_path_buf());
+    let workspace_key = canonical_via_ancestor(workspace);
     if is_within(&workspace_key, &canonical) || is_within(&canonical, &workspace_key) {
         return Err(format!(
             "{} overlaps the agent workspace and cannot be mounted read-only",
@@ -203,6 +224,15 @@ pub fn scratch_dir(session: &str) -> PathBuf {
         .chars()
         .map(|c| if matches!(c, '/' | '\\' | ':') || c.is_control() { '_' } else { c })
         .collect();
+    // Two ids that sanitise alike (`a/b`, `a:b`) must not share a scratch
+    // that one session's cleanup deletes under the other. An id that needed
+    // no change keeps its plain name.
+    if safe != session {
+        use sha2::Digest as _;
+        let digest = sha2::Sha256::digest(session.as_bytes());
+        let tag: String = digest.iter().take(4).map(|b| format!("{b:02x}")).collect();
+        return scratch_base().join(format!("jan-agent-{safe}-{tag}"));
+    }
     scratch_base().join(format!("jan-agent-{safe}"))
 }
 
@@ -373,16 +403,46 @@ async fn sweep_scratch_older_than(root: &Path, max_age: std::time::Duration) -> 
         if meta.file_type().is_symlink() || !meta.is_dir() {
             continue;
         }
-        let stale = meta
-            .modified()
+        // Aged by the newest thing inside: a long session writing into an
+        // existing file never moves the folder's own time.
+        let path = entry.path();
+        let newest = tokio::task::spawn_blocking(move || newest_modified(&path, meta.modified().ok()))
+            .await
             .ok()
-            .and_then(|m| m.elapsed().ok())
-            .is_some_and(|age| age >= max_age);
+            .flatten();
+        let stale = newest.and_then(|m| m.elapsed().ok()).is_some_and(|age| age >= max_age);
         if stale && tokio::fs::remove_dir_all(entry.path()).await.is_ok() {
             removed += 1;
         }
     }
     removed
+}
+
+/// The newest modification time under `dir`, starting from `own`. Bounded in
+/// depth and entries; an unreadable entry is skipped.
+fn newest_modified(dir: &Path, own: Option<std::time::SystemTime>) -> Option<std::time::SystemTime> {
+    let mut newest = own;
+    let mut stack = vec![(dir.to_path_buf(), 0usize)];
+    let mut seen = 0usize;
+    while let Some((d, depth)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else { continue };
+        for entry in entries.flatten() {
+            seen += 1;
+            if seen > 20_000 {
+                return newest;
+            }
+            let Ok(meta) = entry.metadata() else { continue };
+            if let Ok(t) = meta.modified() {
+                if newest.is_none_or(|n| t > n) {
+                    newest = Some(t);
+                }
+            }
+            if meta.is_dir() && !meta.file_type().is_symlink() && depth < 8 {
+                stack.push((entry.path(), depth + 1));
+            }
+        }
+    }
+    newest
 }
 
 /// Delete a session's scratch directory. Idempotent: a missing scratch is Ok.
@@ -621,6 +681,21 @@ mod tests {
     fn unique_data_folder() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         std::env::temp_dir().join(format!("jan_ws_test_{}_{}", std::process::id(), n))
+    }
+
+    #[test]
+    fn scratch_names_stay_apart_and_plain_ids_keep_theirs() {
+        assert_ne!(scratch_dir("a/b"), scratch_dir("a:b"));
+        assert_eq!(scratch_dir("s1"), scratch_base().join("jan-agent-s1"));
+    }
+
+    #[test]
+    fn an_uncreated_workspace_still_overlaps_its_parent() {
+        let base = std::env::temp_dir().join(format!("jan-ws-overlap-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let workspace = base.join("not-yet").join("ws");
+        assert!(validate_read_root(&base, &workspace, None).is_err());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

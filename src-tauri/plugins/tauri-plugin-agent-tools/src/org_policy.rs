@@ -48,7 +48,17 @@ pub enum OrgPolicyErrorKind {
     Malformed,
     /// The file could not be read, though something is there.
     Io,
+    /// The file names keys this version does not know. The rest is in force;
+    /// a typo must not read as permission, nor lock the machine.
+    UnknownKey,
 }
+
+/// The allow list that allows nothing: an organisation list and a project
+/// list that share no domain. An empty list means "anywhere not denied", so
+/// "nowhere" needs a value of its own. `.invalid` never resolves (RFC 2606),
+/// so a consumer that only suffix-matches still matches nothing, and the gate
+/// refuses it by name.
+pub const DENY_ALL_DOMAINS: &str = "deny-all.invalid";
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -68,7 +78,7 @@ impl From<&OrgPolicyError> for crate::harness_error::HarnessError {
     fn from(error: &OrgPolicyError) -> Self {
         use crate::harness_error::{ErrorKind, HarnessError, Stage};
         let kind = match error.kind {
-            OrgPolicyErrorKind::Malformed => ErrorKind::InvalidInput,
+            OrgPolicyErrorKind::Malformed | OrgPolicyErrorKind::UnknownKey => ErrorKind::InvalidInput,
             OrgPolicyErrorKind::Io => ErrorKind::Io,
         };
         HarnessError::new(kind, error.message.clone()).at(Stage::Tool)
@@ -172,12 +182,10 @@ impl OrgPolicy {
             return self.allow_domains.clone();
         }
         // Subsumption, not string equality: a project that narrows
-        // `docs.internal` to `api.docs.internal` has narrowed, and dropping it
-        // for not matching exactly would be the wrong answer twice over --
-        // because an *empty* result reads as "anywhere not denied" at the
-        // gate. So a project list that shares nothing with the machine's
-        // leaves the machine's list standing, which is the narrowest thing
-        // that is true.
+        // `docs.internal` to `api.docs.internal` has narrowed. A project list
+        // that shares nothing with the machine's allows nothing: neither list
+        // permits any destination the other does. Not an empty list -- that
+        // reads as "anywhere not denied" -- but the explicit deny-all value.
         let kept: Vec<String> = project
             .iter()
             .filter(|d| {
@@ -190,7 +198,10 @@ impl OrgPolicy {
             .cloned()
             .collect();
         if kept.is_empty() {
-            return self.allow_domains.clone();
+            eprintln!(
+                "machine policy: none of the project's allowed domains is on the machine's list, so no destination is allowed"
+            );
+            return vec![DENY_ALL_DOMAINS.to_string()];
         }
         kept
     }
@@ -335,6 +346,16 @@ pub fn load_from(
             );
         }
     };
+    let unknown = unknown_keys(&raw);
+    let warning = (!unknown.is_empty()).then(|| {
+        OrgPolicyError::new(
+            OrgPolicyErrorKind::UnknownKey,
+            format!(
+                "the machine policy names keys this version does not know, which were ignored: {}",
+                unknown.join(", ")
+            ),
+        )
+    });
     let tools = parsed.tools;
     (
         Some(OrgPolicy {
@@ -346,13 +367,62 @@ pub fn load_from(
             deny_domains: tools.deny_domains,
             allow_ca_bundle: tools.allow_ca_bundle,
         }),
-        None,
+        warning,
     )
+}
+
+/// Keys in a policy file that [`PolicyToml`] does not read.
+fn unknown_keys(raw: &str) -> Vec<String> {
+    const TOOLS: &[&str] =
+        &["max_default", "deny", "allow_network", "allow_domains", "deny_domains", "allow_ca_bundle"];
+    let Ok(toml::Value::Table(top)) = raw.parse::<toml::Value>() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (key, value) in &top {
+        if key != "tools" {
+            out.push(key.clone());
+            continue;
+        }
+        if let toml::Value::Table(tools) = value {
+            out.extend(tools.keys().filter(|k| !TOOLS.contains(&k.as_str())).map(|k| format!("tools.{k}")));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_deny_all_value_refuses_every_host_at_the_gate() {
+        let policy = crate::tools::gate::NetworkPolicy {
+            allowed: true,
+            allow_domains: vec![DENY_ALL_DOMAINS.to_string()],
+            deny_domains: Vec::new(),
+        };
+        for host in ["example.com", "deny-all.invalid", "x.deny-all.invalid"] {
+            assert!(policy.refuses(host).is_some(), "{host}");
+        }
+    }
+
+    #[test]
+    fn unknown_keys_warn_and_the_rest_stays_in_force() {
+        let d = dir("unknown");
+        let (policy, error) = load_from(
+            &write(&d, "policy.toml", "[tools]\nmax_defualt = \"allow\"\ndeny = [\"bash\"]\n[extra]\nx = 1\n"),
+            None,
+        );
+        let policy = policy.unwrap();
+        assert_eq!(policy.deny, ["bash"]);
+        let error = error.expect("a warning");
+        assert_eq!(error.kind, OrgPolicyErrorKind::UnknownKey);
+        assert!(error.message.contains("tools.max_defualt") && error.message.contains("extra"), "{}", error.message);
+        let (_, none) = load_from(&write(&d, "ok.toml", "[tools]\ndeny = [\"bash\"]\n"), None);
+        assert!(none.is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn dir(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
@@ -447,12 +517,9 @@ deny_domains = ["evil.example"]
         // Fewer: allowed.
         assert_eq!(policy.clamp_allow_domains(&["docs.internal".to_string()]), ["docs.internal"]);
         // Others: not reachable, however the project lists them -- and the
-        // answer is the machine's list rather than an empty one, because an
-        // empty allow list reads as "anywhere not denied" at the gate.
-        assert_eq!(
-            policy.clamp_allow_domains(&["evil.example".to_string()]),
-            ["docs.internal", "registry.internal"]
-        );
+        // answer is the explicit deny-all value rather than an empty list,
+        // because an empty allow list reads as "anywhere not denied".
+        assert_eq!(policy.clamp_allow_domains(&["evil.example".to_string()]), [DENY_ALL_DOMAINS]);
         // A project narrowing to a subdomain has narrowed, and keeps it.
         assert_eq!(
             policy.clamp_allow_domains(&["api.docs.internal".to_string()]),
