@@ -39,6 +39,35 @@ pub fn set_download_speed_limit(bytes_per_sec: u64) {
     DOWNLOAD_LIMIT_BPS.store(bytes_per_sec, Ordering::Relaxed);
 }
 
+/// The Hugging Face endpoint chosen in Settings, and the `HF_ENDPOINT`
+/// override when one is set (it wins over the setting).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HfEndpointState {
+    endpoint: String,
+    send_token_to_mirror: bool,
+    env_override: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_hf_endpoint_setting() -> HfEndpointState {
+    let (setting, env_override) = crate::core::hf_endpoint::current_setting_and_env();
+    HfEndpointState { endpoint: setting.endpoint, send_token_to_mirror: setting.send_token_to_mirror, env_override }
+}
+
+#[tauri::command]
+pub fn set_hf_endpoint_setting<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    endpoint: String,
+    send_token_to_mirror: bool,
+) -> Result<(), String> {
+    let data = crate::core::app::commands::get_jan_data_folder_path(app);
+    crate::core::hf_endpoint::save_setting(
+        &data,
+        crate::core::hf_endpoint::HfEndpointSetting { endpoint, send_token_to_mirror },
+    )
+}
+
 /// How long to wait so `bytes` received over `elapsed` stay within `limit`
 /// bytes per second. Zero when unlimited or already behind the pace.
 fn throttle_delay(bytes: u64, elapsed: std::time::Duration, limit: u64) -> std::time::Duration {
@@ -205,7 +234,8 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("Flint/explicit-huggingface"),
     );
-    if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
+    // A mirror only gets the token when the user opted in.
+    if let Some(token) = crate::core::hf_endpoint::hub_token(token)? {
         let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| "Invalid Hugging Face token".to_string())?;
         headers.insert(reqwest::header::AUTHORIZATION, value);

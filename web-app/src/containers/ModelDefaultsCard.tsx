@@ -7,6 +7,7 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import FallbackModelsPicker from '@/containers/FallbackModelsPicker'
+import { HfEndpointSetting } from '@/containers/HfEndpointSetting'
 
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
 
@@ -109,6 +110,7 @@ export function ModelDefaultsCard() {
           </div>
         }
       />
+      {IS_TAURI && <HfEndpointSetting />}
       {IS_TAURI && (
         <CardItem
           anchor="settings-model-providers-download-limit"

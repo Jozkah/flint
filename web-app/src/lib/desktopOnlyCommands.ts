@@ -53,6 +53,8 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'plugin:mlx|unload_mlx_model',
       'scan_local_models',
       'set_download_speed_limit',
+      'get_hf_endpoint_setting',
+      'set_hf_endpoint_setting',
       'set_model_param_defaults',
     ],
   },
