@@ -558,7 +558,10 @@ async fn schedule_mcp_start_task<R: Runtime>(
         let base = crate::core::net::tls::apply13(
             super::netguard::guard13(reqwest13::Client::builder())
                 .default_headers(header_map(&name, &config_params.headers)?)
-                .connect_timeout(config_params.timeout.unwrap_or(Duration::MAX)),
+                .connect_timeout(config_params.timeout.unwrap_or(Duration::from_secs(15)))
+                // Per-read inactivity, so a long-lived stream stays up as long
+                // as the server keeps sending (keepalives) but a dead peer ends.
+                .read_timeout(Duration::from_secs(300)),
         )
         .build()
             .map_err(|e| format!("Failed to build HTTP client for {name}: {e}"))?;

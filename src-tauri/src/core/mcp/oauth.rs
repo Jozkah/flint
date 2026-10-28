@@ -721,7 +721,17 @@ fn spawn_refresher(
                     Err(e) => log::warn!("could not use the stored tokens for '{name}': {e}; refreshing instead"),
                 }
             }
-            let outcome = guard.refresh_token().await;
+            // A provider that accepts the request and never answers must not
+            // hold the manager lock (and with it every MCP call) forever.
+            let outcome = match tokio::time::timeout(Duration::from_secs(30), guard.refresh_token()).await {
+                Ok(outcome) => outcome,
+                Err(_) => {
+                    log::warn!(
+                        "refreshing the access token for '{name}' timed out after 30s; the server will ask to re-authenticate"
+                    );
+                    return;
+                }
+            };
             match outcome {
                 Ok(tokens) => {
                     // AH-135: a refresh may not widen what was granted. The

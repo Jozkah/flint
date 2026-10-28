@@ -640,7 +640,10 @@ fn http_client(headers: &serde_json::Map<String, Value>) -> Result<reqwest13::Cl
         }
     }
     crate::core::net::tls::apply13(
-        crate::core::mcp::netguard::guard13(reqwest13::Client::builder()).default_headers(map),
+        crate::core::mcp::netguard::guard13(reqwest13::Client::builder())
+            .default_headers(map)
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .read_timeout(std::time::Duration::from_secs(300)),
     )
         .build()
         .map_err(|e| e.to_string())
