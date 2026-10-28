@@ -5,7 +5,6 @@ import { useMessages } from '@/hooks/useMessages'
 import { useThreads } from '@/hooks/useThreads'
 import { activePathOf } from '@/lib/message-branching'
 import { i18n } from '@/i18n/react-i18next-compat'
-import { i18n } from '@/i18n/react-i18next-compat'
 
 /**
  * Fork a chat: a new conversation that starts as a copy of this one, up to a
@@ -29,7 +28,6 @@ export function forkParentOf(thread: Pick<Thread, 'metadata'> | undefined): stri
   return typeof from === 'string' && from ? from : null
 }
 
-/** The English suffix, kept so titles forked before it was translated still count as forks. */
 /** The English suffix, kept so titles forked before it was translated still count as forks. */
 export const FORK_TITLE_SUFFIX = ' (fork)'
 
