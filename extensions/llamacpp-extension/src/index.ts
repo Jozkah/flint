@@ -53,6 +53,8 @@ import {
   setDefaultEmbeddingModelId,
   isValidModelId,
   isSafeModelRef,
+  legacyAutoUnload,
+  modelsMaxFromAutoUnload,
   type EmbedBatchResult,
 } from './util'
 import {
@@ -524,6 +526,14 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // check_for_updates, auto_update_engine, verify_backend_deps) from the
     // persisted set on its own.
     const settings = structuredClone(SETTINGS)
+    // registerSettings rewrites the persisted set without `auto_unload`, so
+    // the legacy value has to be read first.
+    let legacyAutoUnloadValue: boolean | undefined
+    try {
+      legacyAutoUnloadValue = legacyAutoUnload(await readSettingsFile())
+    } catch (e) {
+      logger.warn('Could not read legacy auto_unload:', e)
+    }
     await this.registerSettings(settings)
 
     this.config = (await this.loadConfig(settings)) as LlamacppConfig
@@ -533,7 +543,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // back on for users the old force-off migration left with it disabled.
     await this.migrateFitOn()
 
-    await this.migrateAutoUnloadToModelsMax()
+    await this.migrateAutoUnloadToModelsMax(legacyAutoUnloadValue)
 
     await this.migrateUbatchAuto()
 
@@ -1253,17 +1263,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
   }
 
-  private async migrateAutoUnloadToModelsMax(): Promise<void> {
+  private async migrateAutoUnloadToModelsMax(
+    old: boolean | undefined
+  ): Promise<void> {
     const MIGRATION_KEY = 'llamacpp_models_max_migrated_v1'
     if (await getBackendSetting(MIGRATION_KEY)) return
 
     try {
-      const old = await this.getSetting<boolean | undefined>(
-        'auto_unload',
-        undefined
-      )
       if (old !== undefined) {
-        const targetValue = old ? '1' : '0'
+        const targetValue = modelsMaxFromAutoUnload(old)
         const settings = await this.getSettings()
         await this.updateSettings(
           settings.map((item) => {
