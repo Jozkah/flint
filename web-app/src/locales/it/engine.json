@@ -187,7 +187,7 @@
     "kpiArtifacts": "Artefatti",
     "kpiArtifactsSub": "{{count}} nuovi questa settimana",
     "kpiSessions": "Da Cowork",
-    "kpiSessionsSub": "in {{count}} sessioni",
+    "kpiSessionsSub": "con artefatti salvati",
     "kpiDisk": "Su disco",
     "kpiDiskSub": "nelle sandbox delle sessioni",
     "kindCode": "Codice",

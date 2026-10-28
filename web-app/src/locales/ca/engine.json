@@ -187,7 +187,7 @@
     "kpiArtifacts": "Artefactes",
     "kpiArtifactsSub": "{{count}} de nous aquesta setmana",
     "kpiSessions": "De Cowork",
-    "kpiSessionsSub": "en {{count}} sessions",
+    "kpiSessionsSub": "amb artefactes desats",
     "kpiDisk": "Al disc",
     "kpiDiskSub": "als entorns aïllats de les sessions",
     "kindCode": "Codi",

@@ -216,11 +216,13 @@ pub(super) fn confined_mcp_command(
             workspace: confinement.workspace.clone(),
             repository,
             read_roots: confinement.read_roots.clone(),
+            allow_network: confinement.allow_network,
         },
         None => McpAuthority::ReviewOnly {
             workspace: confinement.workspace.clone(),
             repository: confinement.repository.clone(),
             read_roots: confinement.read_roots.clone(),
+            allow_network: confinement.allow_network,
         },
     };
 
@@ -352,6 +354,7 @@ mod tests {
             read_roots: vec![],
             jan_data: None,
             allowed_env: vec![],
+            allow_network: true,
         }
     }
 

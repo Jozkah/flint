@@ -16,8 +16,9 @@
 //! rmcp `ServerHandler` that speaks the wire protocol is a thin adapter over
 //! [`DesktopBridge::dispatch`]; it does no validation of its own.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde_json::{json, Value};
 
@@ -90,24 +91,82 @@ pub fn redact_setting(mut change: SettingChange) -> SettingChange {
     change
 }
 
+/// Most diff ids kept at once; the oldest is dropped past this.
+const MAX_ISSUED_DIFFS: usize = 256;
+
+/// Diff ids handed out, each bound to the session that created it. Shared by
+/// every bridge built over it, so an id issued by one call is still known to
+/// the next, and bounded so a session cannot grow it without limit.
+#[derive(Default)]
+pub struct DiffRegistry {
+    owners: HashMap<String, String>, // diff_id -> session_id
+    order: VecDeque<String>,
+}
+
+impl DiffRegistry {
+    fn insert(&mut self, diff_id: String, session_id: String) {
+        if self.owners.insert(diff_id.clone(), session_id).is_none() {
+            self.order.push_back(diff_id);
+        }
+        while self.order.len() > MAX_ISSUED_DIFFS {
+            if let Some(oldest) = self.order.pop_front() {
+                self.owners.remove(&oldest);
+            }
+        }
+    }
+
+    fn owner(&self, diff_id: &str) -> Option<&String> {
+        self.owners.get(diff_id)
+    }
+
+    fn remove(&mut self, diff_id: &str) {
+        if self.owners.remove(diff_id).is_some() {
+            self.order.retain(|id| id != diff_id);
+        }
+    }
+
+    /// Forget every id a session was issued (when the session ends).
+    pub fn forget_session(&mut self, session_id: &str) {
+        self.owners.retain(|_, owner| owner != session_id);
+        let owners = &self.owners;
+        self.order.retain(|id| owners.contains_key(id));
+    }
+}
+
+/// The process-wide registry the desktop command routes through, so a diff
+/// issued by one `jan-desktop` call can be accepted by a later one.
+pub fn shared_diff_registry() -> Arc<Mutex<DiffRegistry>> {
+    static SHARED: OnceLock<Arc<Mutex<DiffRegistry>>> = OnceLock::new();
+    SHARED.get_or_init(Default::default).clone()
+}
+
 /// The diff-id registry and the bridge's dispatch entry point.
 pub struct DesktopBridge<U: DesktopUi> {
     ui: U,
     /// Diff ids the bridge has handed out, each bound to the session that
     /// created it. A `diff_accepted` for an id not in here — unknown, stale, or
     /// from another session — is refused.
-    issued_diffs: HashMap<String, String>, // diff_id -> session_id
+    issued_diffs: Arc<Mutex<DiffRegistry>>,
     /// Upper bound on terminal lines returned, whatever the request asks for.
     max_terminal_lines: usize,
 }
 
 impl<U: DesktopUi> DesktopBridge<U> {
     pub fn new(ui: U) -> Self {
+        Self::with_registry(ui, Arc::default())
+    }
+
+    /// A bridge whose diff ids live in `registry`, outliving this value.
+    pub fn with_registry(ui: U, registry: Arc<Mutex<DiffRegistry>>) -> Self {
         Self {
             ui,
-            issued_diffs: HashMap::new(),
+            issued_diffs: registry,
             max_terminal_lines: 1_000,
         }
+    }
+
+    fn registry(&self) -> std::sync::MutexGuard<'_, DiffRegistry> {
+        self.issued_diffs.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// The five tools' MCP schemas, advertised under [`SERVER_NAME`].
@@ -211,20 +270,20 @@ impl<U: DesktopUi> DesktopBridge<U> {
         let target = resolve_in_workspace(&ctx.workspace_root, rel)?;
         let diff = arg_str(args, "diff")?;
         let diff_id = self.ui.show_diff(&target, diff)?;
-        self.issued_diffs.insert(diff_id.clone(), ctx.session_id.clone());
+        self.registry().insert(diff_id.clone(), ctx.session_id.clone());
         Ok(json!({ "diff_id": diff_id }))
     }
 
     fn diff_accepted(&mut self, ctx: &RequestContext, args: &Value) -> Result<Value, String> {
         let diff_id = arg_str(args, "diff_id")?;
-        match self.issued_diffs.get(diff_id) {
+        match self.registry().owner(diff_id) {
             Some(owner) if owner == &ctx.session_id => {}
             Some(_) => return Err("diff id belongs to another session".to_string()),
             None => return Err("unknown or stale diff id".to_string()),
         }
         self.ui.diff_accepted(diff_id)?;
         // One acceptance per id: consume it so a replay is refused.
-        self.issued_diffs.remove(diff_id);
+        self.registry().remove(diff_id);
         Ok(json!({ "accepted": diff_id }))
     }
 
@@ -521,6 +580,37 @@ mod tests {
             .unwrap();
         // Clamped to the server cap (1000), not the requested 100000.
         assert_eq!(out["max_lines"], 1000);
+    }
+
+    #[test]
+    fn diff_id_issued_by_show_diff_is_accepted_by_a_later_bridge_of_the_same_session() {
+        let registry = Arc::new(Mutex::new(DiffRegistry::default()));
+        let mut first = DesktopBridge::with_registry(FakeUi::default(), registry.clone());
+        let c = ctx("s1");
+        let id = first.dispatch(&c, "show_diff", &json!({ "path": "a.txt", "diff": "@@" })).unwrap()["diff_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        drop(first);
+        let mut second = DesktopBridge::with_registry(FakeUi::default(), registry.clone());
+        assert!(second.dispatch(&ctx("s2"), "diff_accepted", &json!({ "diff_id": id })).is_err());
+        second.dispatch(&c, "diff_accepted", &json!({ "diff_id": id })).expect("same session accepts");
+        // An id minted by an unshared bridge is unknown here.
+        assert!(bridge().dispatch(&c, "diff_accepted", &json!({ "diff_id": id })).is_err());
+    }
+
+    #[test]
+    fn registry_is_bounded_and_forgets_ended_sessions() {
+        let mut r = DiffRegistry::default();
+        for i in 0..(MAX_ISSUED_DIFFS + 10) {
+            r.insert(format!("d{i}"), "s1".into());
+        }
+        assert_eq!(r.owners.len(), MAX_ISSUED_DIFFS);
+        assert!(r.owner("d0").is_none() && r.owner(&format!("d{}", MAX_ISSUED_DIFFS + 9)).is_some());
+        r.insert("other".into(), "s2".into());
+        r.forget_session("s1");
+        assert_eq!(r.owners.len(), 1);
+        assert_eq!(r.order.len(), 1);
     }
 
     #[test]
