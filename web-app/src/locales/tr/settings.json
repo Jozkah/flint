@@ -352,7 +352,11 @@
       "confirmBody": "Bu, {{program}} programının yüklü olduğu aşağıdaki klasörün ve yalnızca o klasörün ve içindekilerin izinlerini değiştirir: korumalı her Windows uygulamasının (ALL APPLICATION PACKAGES) içindeki dosyaları okumasına ve çalıştırmasına izin veren bir girdi ekler. Kullanıcı profilinizdeki başka hiçbir şey açılmaz. Bunu istediğiniz zaman buradan geri alabilirsiniz; bu tam olarak o girdiyi kaldırır.",
       "confirm": "İzin ver",
       "needsAdmin": "Yalnızca bir yöneticinin değiştirebildiği {{folder}} içinde yüklü. Yönetici gerekli: bunu yükseltilmiş bir terminalde çalıştırın:",
-      "copyCommand": "Komutu kopyala"
+      "copyCommand": "Komutu kopyala",
+      "loadError": "Sandbox araç zincirleri okunamadı.",
+      "retry": "Yeniden dene",
+      "revokeTitle": "Sandbox'ın {{program}} kullanmasına izin verilmesin mi?",
+      "revokeBody": "Aşağıdaki klasöre eklenen izin girdisi kaldırılır. Sandbox komutları artık buradan {{program}} çalıştıramaz."
     },
     "title": "Ajan araçları",
     "description": "Modellere her konuşma için özel bir geçici çalışma alanı ve Flint veri klasörünüzde kalıcı olarak tutulan anılar ile beceriler verin.",

@@ -171,6 +171,10 @@ export function ApplyReviewDialog({
   const [busy, setBusy] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  // `load` is read through a ref so a new function identity on re-render does
+  // not reload the preview and wipe the user's file selection.
+  const loadRef = useRef(load)
+  loadRef.current = load
 
   const files = useMemo(() => (preview ? splitPatch(preview.patch) : []), [preview])
 
@@ -180,7 +184,7 @@ export function ApplyReviewDialog({
     setPreview(null)
     setLoadError(null)
     setApplyError(null)
-    load().then(
+    loadRef.current().then(
       (p) => {
         if (!live) return
         const parsed = splitPatch(p.patch)
@@ -194,7 +198,7 @@ export function ApplyReviewDialog({
     return () => {
       live = false
     }
-  }, [open, load])
+  }, [open])
 
   const chosen = files.filter((f) => selected.has(f.path))
   const total = summarize(files)
