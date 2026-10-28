@@ -474,7 +474,9 @@
     "usageUnsaved": "未保存の変更",
     "stopServerToEdit": "編集するにはサーバーを停止してください",
     "trustedHostsInvalid": "無効なホスト: {{hosts}}。example.com や 192.168.1.5:3000 のようにホストまたはホスト:ポートで入力してください。",
-    "trustedHostsUnsaved": "未保存です。Enter で保存、Escape で元に戻します。"
+    "trustedHostsUnsaved": "未保存です。Enter で保存、Escape で元に戻します。",
+    "serverTools": "Execute tools on server",
+    "serverToolsDesc": "Run tools server-side for chat endpoints."
   },
   "privacy": {
     "analytics": "分析",
@@ -588,7 +590,11 @@
       "installing": "インストール中…",
       "uninstall": "アンインストール",
       "uninstalling": "アンインストール中…",
-      "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。"
+      "foreignDesc": "{{path}} で見つかりました。Flint の別のコピーがインストールしたものです。このコピーの CLI を使うにはここにインストールしてください。",
+      "installedToast": "Flint CLI installed to {{path}}",
+      "installFailed": "Install failed",
+      "uninstalledToast": "Flint CLI uninstalled",
+      "uninstallFailed": "Uninstall failed"
     },
     "startupGroup": "起動とトレイ",
     "cliGroup": "コマンドライン",
