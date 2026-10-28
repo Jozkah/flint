@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SmilePlus } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
-import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react'
+import type { EmojiClickData, Theme } from 'emoji-picker-react'
+
+// The picker is a large dependency used only after the user opens it.
+const EmojiPicker = lazy(() => import('emoji-picker-react'))
 
 import { Textarea } from '@/components/ui/textarea'
 import { type ParamDef } from '@/lib/predefinedParams'
@@ -198,6 +201,8 @@ export default function AddEditAssistant({
                 )}
               </div>
               <div className="relative" ref={emojiPickerRef}>
+                {showEmojiPicker && (
+                <Suspense fallback={null}>
                 <EmojiPicker
                   open={showEmojiPicker}
                   theme={isDark ? ('dark' as Theme) : ('light' as Theme)}
@@ -215,6 +220,8 @@ export default function AddEditAssistant({
                     setShowEmojiPicker(false)
                   }}
                 />
+                </Suspense>
+                )}
               </div>
             </div>
 

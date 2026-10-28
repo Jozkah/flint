@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type {
   CampaignActionWire,
   CampaignDetailResult,
@@ -15,6 +15,7 @@ import { invalidate, useRpc } from '../state/rpc'
 import { RemoteCallError } from '../api/client'
 import { headlineOf, headlineText, modelOf, primaryActionOf, taskModel } from '../state/campaigns'
 import { t } from '../i18n'
+import { usePollWhileVisible } from '../ui/hooks'
 import { Checkbox } from '@/components/ui/checkbox'
 
 const POLL_MS = 4_000
@@ -165,10 +166,7 @@ export default function Campaign({ id }: { id: string }) {
   const approvals = useRpc('approvals.list', {}, waiting)
   const [busy, setBusy] = useState(false)
   const { reload } = detail
-  useEffect(() => {
-    const timer = setInterval(reload, POLL_MS)
-    return () => clearInterval(timer)
-  }, [reload])
+  usePollWhileVisible(reload, POLL_MS)
 
   const d = detail.data
   const c = d?.campaign
