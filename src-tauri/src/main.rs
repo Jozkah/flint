@@ -32,6 +32,15 @@ fn main() {
         }
     }
 
+    // Restrict where LoadLibrary looks for DLLs to System32 and the folder
+    // holding this exe. The default search also tries the current directory
+    // and every PATH entry, so a DLL planted in either (a downloads folder the
+    // app was started from, a writable PATH directory) would be loaded into
+    // the app. Static imports get the same rule from the linker flag set in
+    // build.rs. Must run before any thread starts or any library is loaded.
+    #[cfg(windows)]
+    harden_dll_search();
+
     // WebView2's native occlusion tracker can leave the window white until it
     // is resized; see core::webview_paint. Must run before any webview starts.
     #[cfg(windows)]
@@ -45,6 +54,23 @@ fn main() {
     tauri_plugin_agent_tools::run_sandbox_helper_if_requested();
 
     app_lib::run();
+}
+
+#[cfg(windows)]
+fn harden_dll_search() {
+    use windows_sys::Win32::System::LibraryLoader::{
+        SetDefaultDllDirectories, LOAD_LIBRARY_SEARCH_APPLICATION_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
+    };
+    // SAFETY: takes only flags; it changes this process's search order.
+    let ok = unsafe {
+        SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR)
+    };
+    if ok == 0 {
+        eprintln!(
+            "SetDefaultDllDirectories failed: {}",
+            std::io::Error::last_os_error()
+        );
+    }
 }
 
 /// True when /etc/os-release names Fedora (ID=fedora).
