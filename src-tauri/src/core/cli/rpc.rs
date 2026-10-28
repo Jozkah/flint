@@ -16,7 +16,7 @@ use super::rpc_schema::{
 };
 use super::stream_input::{parse_input_line, MAX_LINE_BYTES};
 use super::turn_host::{
-    begin_turn, parse_decision, release_requests, settle_turn, spawn_turn, Persist, TurnMessage,
+    begin_turn, neutralize_user_content, parse_decision, release_requests, settle_turn, spawn_turn, Persist, TurnMessage,
 };
 use super::{agent_dir_for, prepare_agent_session, AgentSession, SessionFlags};
 use crate::core::agent::events::{StreamEvent, PROTOCOL_VERSION};
@@ -320,13 +320,30 @@ async fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentS
 /// (and the `session/start` tool list) already has their tools.
 pub(super) async fn await_mcp(agent: &mut AgentSession) {
     if let Some(task) = agent.mcp_task.take() {
-        match task.await {
-            Ok(outcome) => {
-                for failure in &outcome.failed {
-                    log::warn!("MCP: {failure}");
-                }
+        if let Some(outcome) = wait_for_task(task, MCP_START_TIMEOUT).await {
+            for failure in &outcome.failed {
+                log::warn!("MCP: {failure}");
             }
-            Err(e) => log::warn!("MCP connect task failed: {e}"),
+        }
+    }
+}
+
+/// How long a session start waits for its MCP servers before going on without
+/// the ones still connecting, so one slow server cannot hold the session back.
+const MCP_START_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The task's result, or `None` when it fails or outlasts `limit` (the task is
+/// left running detached).
+async fn wait_for_task<T>(task: JoinHandle<T>, limit: std::time::Duration) -> Option<T> {
+    match tokio::time::timeout(limit, task).await {
+        Ok(Ok(value)) => Some(value),
+        Ok(Err(e)) => {
+            log::warn!("MCP connect task failed: {e}");
+            None
+        }
+        Err(_) => {
+            log::warn!("MCP servers still connecting after {}s; starting without them", limit.as_secs());
+            None
         }
     }
 }
@@ -681,7 +698,7 @@ pub async fn serve() -> Result<(), String> {
                         Err(_) => error(&id, -32602, "turn/steer requires an active session and nonempty input"),
                         Ok(TurnSteerParams { session_id: sid, input: text }) => match active.as_ref() {
                             Some(turn) if turn.session_id == sid && !text.trim().is_empty() => {
-                                turn.pending.lock().await.push(json!({"role":"user","content":text}));
+                                turn.pending.lock().await.push(json!({"role":"user","content":neutralize_user_content(json!(text))}));
                                 response(&id, json!({}))
                             }
                             _ => error(&id, -32602, "turn/steer requires an active session and nonempty input"),
@@ -779,6 +796,15 @@ mod tests {
     use super::*;
     use crate::core::cli::stream_input::{MAX_IMAGES, MAX_IMAGE_BYTES};
     use crate::core::cli::turn_host::{forward_events, host_names, pump_turn};
+
+    #[tokio::test]
+    async fn slow_task_times_out_and_finished_task_returns() {
+        let slow: JoinHandle<u8> = tokio::spawn(std::future::pending());
+        let limit = std::time::Duration::from_millis(30);
+        assert_eq!(wait_for_task(slow, limit).await, None);
+        let quick: JoinHandle<u8> = tokio::spawn(async { 7 });
+        assert_eq!(wait_for_task(quick, std::time::Duration::from_secs(5)).await, Some(7));
+    }
 
     /// What the runner does: pump while the engine runs, then drain the rest.
     async fn relay(burst: usize, events: mpsc::Sender<TurnMessage>) -> Result<Value, String> {

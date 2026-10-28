@@ -4055,7 +4055,18 @@ impl App {
             let marker = "@";
             let path = &selected.path;
             let trailing = if selected.is_dir { "/" } else { "" };
-            let replacement = format!("{marker}{path}{trailing}");
+            // A path with whitespace or a character the unquoted form stops at
+            // would be cut short, so it goes in quotes. A directory keeps the
+            // quote open so the user can keep drilling in.
+            let needs_quotes = path
+                .chars()
+                .any(|c| c.is_whitespace() || ",;:!?'\"`[](){}<>".contains(c));
+            let replacement = if needs_quotes {
+                let close = if selected.is_dir { "" } else { "\"" };
+                format!("{marker}\"{path}{trailing}{close}")
+            } else {
+                format!("{marker}{path}{trailing}")
+            };
             let new_input = format!("{}{}{}", &self.input[..at_idx], replacement, after);
             self.input = new_input;
             self.cursor = at_idx + replacement.len();
@@ -9883,7 +9894,7 @@ async fn handle_ask_key(
     if key.kind == KeyEventKind::Release {
         return true;
     }
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = key_is_ctrl(&key);
     // A docked ask runs before `handle_key`, so the repaint key is honoured
     // here too -- otherwise a broadcast landing during a question stays on
     // screen until it is answered. Consumed, never typed into the answer.
@@ -10384,6 +10395,20 @@ fn resume_hint(thread_id: &str) -> String {
     let id: String = thread_id.chars().take(8).collect();
     format!("\x1b[2m[session {id} - resume with `flint --resume={id}`]\x1b[0m")
 }
+/// True when the key is a Ctrl chord. On Windows, AltGr arrives as Ctrl+Alt, so
+/// Ctrl+Alt with a character that is not an ASCII letter or digit is text
+/// (`@`, `{`, a non-ASCII letter), not a chord.
+fn key_is_ctrl(key: &KeyEvent) -> bool {
+    let mods = key.modifiers;
+    if !mods.contains(KeyModifiers::CONTROL) {
+        return false;
+    }
+    let altgr_text = cfg!(windows)
+        && mods.contains(KeyModifiers::ALT)
+        && matches!(key.code, KeyCode::Char(c) if !c.is_ascii_alphanumeric() && !c.is_ascii_control());
+    !altgr_text
+}
+
 async fn handle_key(
     app: &mut App,
     key: KeyEvent,
@@ -10395,7 +10420,7 @@ async fn handle_key(
         return;
     }
 
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = key_is_ctrl(&key);
     // Ctrl-L is the readline/less spelling of "redraw". It sits ahead of every
     // mode guard below because the screen can be damaged at any moment,
     // including while a prompt or picker owns the keyboard. It changes only
@@ -11033,6 +11058,8 @@ async fn handle_key(
                     open_rewind_picker(app);
                 } else {
                     app.last_esc = Some(Instant::now());
+                    // Keep what was typed so Up brings it back.
+                    app.record_draft();
                     app.input_clear();
                 }
             }
@@ -12608,7 +12635,7 @@ impl McpPrompt {
     fn paste(&mut self, text: &str) {
         let text = super::secret_input::pasted(text);
         match self.field {
-            McpField::Name => self.name.push_str(text),
+            McpField::Name if self.editing.is_none() => self.name.push_str(text),
             McpField::Command => self.command.push_str(text),
             McpField::Args => self.args.push_str(text),
             McpField::Env => self.env.push_str(text),
@@ -13258,7 +13285,9 @@ async fn handle_mcp_prompt_key(
             }
         }
         KeyCode::Backspace => match prompt.field {
-            McpField::Name => {
+            // Renaming an entry on edit would leave the old one behind, so the
+            // name is fixed while editing.
+            McpField::Name if prompt.editing.is_none() => {
                 prompt.name.pop();
             }
             McpField::Command => {
@@ -13279,7 +13308,7 @@ async fn handle_mcp_prompt_key(
             _ => {}
         },
         KeyCode::Char(ch) if !ctrl => match prompt.field {
-            McpField::Name => prompt.name.push(ch),
+            McpField::Name if prompt.editing.is_none() => prompt.name.push(ch),
             McpField::Command => prompt.command.push(ch),
             McpField::Args => prompt.args.push(ch),
             McpField::Env => prompt.env.push(ch),
@@ -22838,6 +22867,35 @@ mod tests {
         s
     }
 
+    #[test]
+    fn ctrl_a_still_command() {
+        assert!(super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)));
+        assert!(super::key_is_ctrl(&KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT
+        )));
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT)));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn altgr_at_sign_inserted_on_windows_style_event() {
+        let both = KeyModifiers::CONTROL | KeyModifiers::ALT;
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char('@'), both)));
+        let accented = char::from_u32(0x105).unwrap();
+        assert!(!super::key_is_ctrl(&KeyEvent::new(KeyCode::Char(accented), both)));
+    }
+
+    #[tokio::test]
+    async fn esc_records_draft_for_recall() {
+        let mut app = test_app();
+        composer(&mut app, "half written|");
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        assert!(app.input.is_empty());
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE).await;
+        assert_eq!(app.input, "half written");
+    }
+
     #[tokio::test]
     async fn word_deletion_covers_every_spelling() {
         // Alt+Backspace (Option+Delete on macOS), Ctrl+Backspace and Ctrl-W all
@@ -25123,6 +25181,34 @@ mod tests {
         assert_eq!(p.field, McpField::Name);
         p.prev_field();
         assert_eq!(p.field, McpField::Active);
+    }
+
+    #[test]
+    fn edit_cannot_change_name() {
+        let mut app = test_app();
+        app.mcp_prompt = Some(McpPrompt {
+            editing: Some("old".to_string()),
+            field: McpField::Name,
+            name: "old".to_string(),
+            transport: "stdio".to_string(),
+            command: String::new(),
+            args: String::new(),
+            env: String::new(),
+            url: String::new(),
+            headers: String::new(),
+            active: false,
+            error: None,
+        });
+        let servers: crate::core::state::SharedMcpServers =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            super::handle_mcp_prompt_key(&mut app, key(KeyCode::Char('x')), false, &servers).await;
+            super::handle_mcp_prompt_key(&mut app, key(KeyCode::Backspace), false, &servers).await;
+        });
+        app.mcp_prompt.as_mut().unwrap().paste("zzz");
+        assert_eq!(app.mcp_prompt.as_ref().unwrap().name, "old");
     }
 
     /// `k`/`j` are ordinary characters in MCP text fields (URLs, paths), so
@@ -34582,6 +34668,21 @@ mod tests {
         }];
         app.accept_path_hint();
         assert_eq!(app.input, r#"use @"notes/report.md""#);
+    }
+
+    #[test]
+    fn accept_completion_with_space_quotes() {
+        let mut app = test_app();
+        app.input = "use @rep".into();
+        app.cursor = app.input.len();
+        app.path_hints = vec![super::PathHintItem {
+            path: "my docs/report.md".into(),
+            name: "report.md".into(),
+            is_dir: false,
+        }];
+        app.accept_path_hint();
+        assert_eq!(app.input, "use @\"my docs/report.md\"");
+        assert_eq!(app.cursor, app.input.len());
     }
 
     #[test]
