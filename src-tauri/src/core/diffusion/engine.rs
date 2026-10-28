@@ -83,6 +83,7 @@ async fn download_asset<R: Runtime>(
     let mut hasher = Sha256::new();
     let mut downloaded: u64 = 0;
     let mut stream = response.bytes_stream();
+    let mut throttle = crate::core::huggingface::ProgressThrottle::new();
     while let Some(chunk) = tokio::time::timeout(std::time::Duration::from_secs(60), stream.next())
         .await
         .map_err(|_| "The image engine download stalled.".to_string())?
@@ -93,9 +94,13 @@ async fn download_asset<R: Runtime>(
             .await
             .map_err(|e| format!("Could not write the image engine: {e}"))?;
         downloaded += chunk.len() as u64;
-        emit(app, "download", downloaded, asset.size);
+        if throttle.should_emit(std::time::Instant::now(), downloaded, Some(asset.size)) {
+            emit(app, "download", downloaded, asset.size);
+        }
     }
     file.flush().await.map_err(|e| e.to_string())?;
+    // The last chunks may have been throttled away; end on the true count.
+    emit(app, "download", downloaded, asset.size);
     if downloaded != asset.size {
         return Err(format!(
             "The image engine download is {downloaded} bytes, expected {}.",

@@ -27,9 +27,9 @@ describe('useHardware persistence', () => {
     setItem.mockClear()
   })
 
-  it('updateSystemUsage does not write to storage', async () => {
-    await Promise.resolve()
-    setItem.mockClear()
+  it('updateSystemUsage leaves the persisted blob unchanged', async () => {
+    useHardware.getState().pausePolling()
+    const before = store.get('hw-key')
     useHardware.getState().updateSystemUsage({
       total_memory: 1,
       used_memory: 1,
@@ -38,7 +38,8 @@ describe('useHardware persistence', () => {
       used_swap: 0,
     } as never)
     await Promise.resolve()
-    expect(setItem).not.toHaveBeenCalled()
+    // The real backendStorage skips an unchanged blob; this one must see the same text.
+    expect(store.get('hw-key')).toBe(before)
   })
 
   it('persists only hardwareData', () => {
@@ -50,6 +51,7 @@ describe('useHardware persistence', () => {
   })
 
   it('rehydrate ignores persisted transient values and keeps hardwareData', async () => {
+    useHardware.setState({ pollingPaused: false })
     store.set(
       'hw-key',
       JSON.stringify({
@@ -61,7 +63,6 @@ describe('useHardware persistence', () => {
         version: 0,
       })
     )
-    useHardware.setState({ pollingPaused: false })
     await useHardware.persist.rehydrate()
     expect(useHardware.getState().pollingPaused).toBe(false)
     expect(useHardware.getState().systemUsage.cpu).not.toBe(99)

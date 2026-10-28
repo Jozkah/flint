@@ -81,7 +81,7 @@ export function commandProgram(input: unknown): string | undefined {
   if (typeof command !== 'string') return undefined
   if (/[;&|`$()<>\r\n]/.test(command)) return undefined
   // Skip leading `VAR=value` assignments; take the first real word.
-  const words = command.trim().split(/\s+/)
+  const words = commandWords(command)
   const first = words.find((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w))
   if (!first) return undefined
   const bare = first.replace(/^["']|["']$/g, '').split(/[\\/]/).pop() ?? ''

@@ -3,8 +3,8 @@ import {
   hasToolImageSentinel,
   stripToolImageSentinels,
 } from '@/lib/tool-image-sentinel'
-import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
-import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
+import { pluginInventoryLine } from '@/lib/pluginInventory'
+import { skillCatalogBlock } from '@/lib/skillCatalog'
 import {
   encodeAudioAttachments,
   encodeVideoAttachments,
@@ -49,18 +49,7 @@ import { toast } from 'sonner'
 import { replyCost, resolvePricing } from '@/lib/modelPricing'
 import { type UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
-import {
-  convertToModelMessages,
-  streamText,
-  type ChatRequestOptions,
-  type ChatTransport,
-  type LanguageModel,
-  type UIMessageChunk,
-  type Tool,
-  type LanguageModelUsage,
-  jsonSchema,
-  InvalidToolInputError,
-} from 'ai'
+import { convertToModelMessages, streamText, type ChatRequestOptions, type ChatTransport, type LanguageModel, type UIMessageChunk, type Tool, type LanguageModelUsage, InvalidToolInputError } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
 import { streamCutOff } from './streamFinish'
 import {
@@ -71,40 +60,16 @@ import {
 import { ReasoningLoopGuard } from './reasoningLoopGuard'
 import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
-import { useToolAvailable } from '@/hooks/useToolAvailable'
-import { deadTools } from '@/lib/deadTools'
 import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
-import { useAttachments } from '@/hooks/useAttachments'
-import { useMCPServers } from '@/hooks/useMCPServers'
-import { webSearchOnFor } from '@/hooks/useWebSearchChoice'
-import {
-  WEB_SEARCH_DESCRIPTION,
-  WEB_SEARCH_INPUT_SCHEMA,
-  WEB_FETCH_DESCRIPTION,
-  WEB_FETCH_INPUT_SCHEMA,
-  IMAGE_SEARCH_DESCRIPTION,
-  IMAGE_SEARCH_INPUT_SCHEMA,
-} from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
-import {
-  getAgentToolSchemas,
-  SHELL_TOOL_NAME,
-} from '@/lib/agentTools'
+import { SHELL_TOOL_NAME } from '@/lib/agentTools'
 import { useChatShell } from '@/hooks/useChatShell'
 import { routeRefusedToolCalls } from '@/lib/disabledToolCalls'
-import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
 import { subagentGuide } from '@/lib/coworkPrompt'
-import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
-import { isImageTool } from '@/lib/chatImageTools'
-import { studioApi } from '@/lib/studio/studio'
-import { visualizeSchemas } from '@/lib/visualize/tools'
-import { chatReadSchema } from '@/lib/chatReadTool'
-import { chatReadWanted } from '@/lib/chatMentionSources'
 import { truncateStaleWidgetCode } from '@/lib/visualize/history'
-import { SESSION_MESSAGING_TOOLS } from '@/lib/sessionMessagingTools'
 import { errorText } from '@/lib/errorText'
 import {
   memoryRetrieve,
@@ -135,7 +100,6 @@ import {
 import { engineFailure } from '@/lib/engineError'
 import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
 import { replyLanguageLine } from '@/lib/replyLanguage'
-import { ExtensionManager } from '@/lib/extension'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
 import { clampThinkingBudget } from '@/lib/thinkingBudget'
 import {
@@ -153,59 +117,37 @@ import {
 import { resolveModel } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { threadToolsGranted } from '@/hooks/useThreadToolGrants'
-import {
-  ExtensionTypeEnum,
-  VectorDBExtension,
-  type MCPTool,
-} from '@janhq/core'
+import { type MCPTool } from '@janhq/core'
 import {
   trimMessages,
   estimateTokens,
   estimateToolTokens,
   estimateToolSchemaTokens,
   contextSafetyMargin,
-  clearStaleToolResults,
   type ContextManagerConfig,
 } from './context-manager'
+import { estimateHistoryTokens, resolveAutoCompact, ASSUMED_WINDOW_TOKENS, DEFAULT_KEEP_RECENT, type CompactionRecord } from '@/lib/compaction'
 import {
-  compactHistory,
-  estimateHistoryTokens,
-  planCompaction,
-  resolveAutoCompact,
-  compactionTriggerTokens,
-  clipToolResultsToFit,
-  isContextLengthError,
-  ASSUMED_WINDOW_TOKENS,
-  TRIM_HEADROOM_SHARE,
-  DEFAULT_KEEP_RECENT,
-  type CompactionRecord,
-  type CompactResult,
-} from '@/lib/compaction'
-import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
-import { isContextOverflowMessage } from '@/utils/error'
-import {
-  CompactionLoopError,
-  PRECOMPUTE_FRACTION,
-  cancelPrecompute,
-  isCompactionLooping,
-  recordCompaction,
   resetCompactionBreaker,
-  startPrecompute,
-  takePrecomputedPrefix,
 } from '@/lib/compactionGuard'
 import {
   acceptsSystemRole,
   foldSummaryIntoSystem,
 } from '@/lib/compactionSystemRole'
-import { manualSummarizer, modelSummarizer } from '@/lib/compactionSummarizer'
 import { askSideQuestion } from '@/lib/sideQuestion'
 import {
   applyChatCompaction,
   readChatCompaction,
-  stateAfter,
   writeChatCompaction,
 } from '@/lib/chatCompaction'
 import { recordLifecycle } from '@/lib/toolActivity'
+import {
+  compactAtThreshold,
+  runCompaction,
+  type CompactAtThresholdOptions,
+  type CompactionHost,
+  type RunCompactionOptions,
+} from '@/lib/chat/transport/compaction'
 import { getCompactionPolicy, replyReserve, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
 import { toolsForConversation, toolsForWindow } from '@/lib/leanTools'
 import {
@@ -215,23 +157,6 @@ import {
 import { useLeanToolsConfig } from '@/hooks/useLeanToolsConfig'
 import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
 import { usageEventPayload } from '@/lib/executionTimeline'
-import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
-import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
-import {
-  announceMcpChange,
-  announceMcpWithheld,
-  mcpAvailability,
-  diffMcpSnapshots,
-  enabledMcpServers,
-  getMcpGeneration,
-  loadLiveMcpTools,
-  mcpChangeNote,
-  mcpStartingNote,
-  readMcpBaseline,
-  snapshotMcpTools,
-  syncMcpStore,
-  writeMcpBaseline,
-} from '@/lib/mcpLiveTools'
 import { hasAudioSentinel } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import {
@@ -254,10 +179,12 @@ import { OPENROUTER_PARAM_KEYS, paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { recordGeneration } from '@/stores/engine-activity-store'
-import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
+import { sendMessagesCore } from '@/lib/chat/transport/overflowRecovery'
+import { isValidToolName, normalizeToolInputSchema } from '@/lib/chat/transport/toolSchema'
+import { BUILTIN_WEB_TOOLS, recordMcpSet, refreshTools, type ToolRefreshHost } from '@/lib/chat/transport/toolRefresh'
+export { isValidToolName, normalizeToolInputSchema }
 
 // Built-ins advertised through the websearch plugin.
-const BUILTIN_WEB_TOOLS = new Set(['web_search', 'web_fetch', 'image_search'])
 /** Flint's own chat tools that only read or render: none can change anything. */
 const READ_ONLY_CHAT_TOOLS = new Set([
   ...BUILTIN_WEB_TOOLS,
@@ -316,19 +243,6 @@ export type ServiceHub = {
     >
   }
 }
-
-const SCHEMA_PRIMITIVE_TYPES =new Set([
-  'string',
-  'number',
-  'integer',
-  'boolean',
-  'null',
-  'array',
-  'object',
-])
-
-const SCHEMA_NODE_MAP_KEYS = new Set(['properties', 'patternProperties', 'definitions', '$defs'])
-const SCHEMA_NODE_LIST_KEYS = new Set(['anyOf', 'oneOf', 'allOf', 'prefixItems'])
 
 // Per-model sidebar keys forwarded into each chat-completion request body as
 // defaults. These *are* also written into the model's own preset section, so
@@ -458,120 +372,6 @@ export function effectiveContextWindow(
   return cappedContextWindow(configured, live) ?? 0
 }
 
-
-/**
- * Coerce a schema-node slot into a valid sub-schema. Some tool generators
- * emit shorthand like `{ "properties": { "foo": "string" } }` instead of
- * `{ "properties": { "foo": { "type": "string" } } }`. llama.cpp's
- * json-schema-to-grammar rejects the former with
- * `Unrecognized schema: "string"`. We expand the shorthand here so the
- * grammar generator sees a well-formed schema.
- */
-function coerceSchemaNode(value: unknown): unknown {
-  if (typeof value === 'string' && SCHEMA_PRIMITIVE_TYPES.has(value)) {
-    return normalizeToolInputSchemaValue({ type: value })
-  }
-  return normalizeToolInputSchemaValue(value)
-}
-
-function normalizeToolInputSchemaValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(normalizeToolInputSchemaValue)
-  }
-
-  if (!value || typeof value !== 'object') {
-    return value
-  }
-
-  const normalized = Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, childValue]) => {
-      // Schema-node containers: their direct children are sub-schemas, so a
-      // bare-string primitive type name should expand to `{ type: <name> }`.
-      if (
-        SCHEMA_NODE_MAP_KEYS.has(key) &&
-        childValue &&
-        typeof childValue === 'object' &&
-        !Array.isArray(childValue)
-      ) {
-        return [
-          key,
-          Object.fromEntries(
-            Object.entries(childValue as Record<string, unknown>).map(
-              ([propKey, propVal]) => [propKey, coerceSchemaNode(propVal)]
-            )
-          ),
-        ]
-      }
-      if (SCHEMA_NODE_LIST_KEYS.has(key) && Array.isArray(childValue)) {
-        return [key, childValue.map(coerceSchemaNode)]
-      }
-      if (key === 'items') {
-        if (Array.isArray(childValue)) return [key, childValue.map(coerceSchemaNode)]
-        return [key, coerceSchemaNode(childValue)]
-      }
-      // Literal data, not sub-schemas: leave untouched.
-      if (SCHEMA_LITERAL_KEYS.has(key)) return [key, childValue]
-      return [key, normalizeToolInputSchemaValue(childValue)]
-    })
-  )
-
-  const hasDescription = Object.prototype.hasOwnProperty.call(normalized, 'description')
-  const hasType = Object.prototype.hasOwnProperty.call(normalized, 'type')
-  const hasNestedSchemaKeywords =
-    Object.prototype.hasOwnProperty.call(normalized, 'properties') ||
-    Object.prototype.hasOwnProperty.call(normalized, 'items') ||
-    Object.prototype.hasOwnProperty.call(normalized, 'anyOf') ||
-    Object.prototype.hasOwnProperty.call(normalized, 'oneOf') ||
-    Object.prototype.hasOwnProperty.call(normalized, 'allOf') ||
-    Object.prototype.hasOwnProperty.call(normalized, '$ref')
-
-  if (normalized.type === 'object' && !Object.prototype.hasOwnProperty.call(normalized, 'properties')) {
-    normalized.properties = {}
-  }
-
-  if (hasDescription && !hasType && !hasNestedSchemaKeywords) {
-    normalized.type = 'string'
-  }
-
-  // Bounded repetition (`char{0,10000}`, 100-item arrays) explodes llama.cpp's
-  // grammar compiler; the model keeps `type` and `description`.
-  for (const keyword of LLAMACPP_BOUNDED_KEYWORDS) delete normalized[keyword]
-
-  // llama.cpp's json-schema-to-grammar emits PCRE `\d` for these formats,
-  // which GBNF rejects; the failed grammar silently disables tool-call JSON.
-  if (
-    typeof normalized.format === 'string' &&
-    LLAMACPP_BROKEN_STRING_FORMATS.has(normalized.format as string)
-  ) {
-    delete normalized.format
-  }
-
-  // `pattern` is the same PCRE-to-GBNF trap as `format`: any pattern that
-  // uses `\d`, `\w`, or `\s` (extremely common in date/time/uuid regexes)
-  // fails GBNF compilation. The model still has `type` and `description`.
-  if (
-    typeof normalized.pattern === 'string' &&
-    PCRE_SHORTHAND.test(normalized.pattern as string)
-  ) {
-    delete normalized.pattern
-  }
-
-  return normalized
-}
-
-const LLAMACPP_BROKEN_STRING_FORMATS = new Set(['date', 'time', 'date-time'])
-const LLAMACPP_BOUNDED_KEYWORDS = [
-  'minLength',
-  'maxLength',
-  'minItems',
-  'maxItems',
-  'minProperties',
-  'maxProperties',
-  'minContains',
-  'maxContains',
-]
-const SCHEMA_LITERAL_KEYS = new Set(['examples', 'example', 'default', 'enum', 'const'])
-const PCRE_SHORTHAND = /\\[dDwWsS]/
 
 /**
  * Returns true when an assistant message carries no content the model would
@@ -977,20 +777,6 @@ export function hasGenuineUserQuery(messages: UIMessage[]): boolean {
       .trim()
     return text.length > 0 && !TOOL_RESPONSE_ONLY.test(text)
   })
-}
-
-type ToolInputSchema = Record<string, unknown>
-
-// Keep this behavior aligned with `normalize_openai_tool_parameters_schema` in Rust.
-export function normalizeToolInputSchema(
-  schema: ToolInputSchema
-): ToolInputSchema {
-  return normalizeToolInputSchemaValue(schema) as ToolInputSchema
-}
-
-/** Provider tool names must be non-empty strings; reject malformed discovery data. */
-export function isValidToolName(name: unknown): name is string {
-  return typeof name === 'string' && name.trim().length > 0
 }
 
 /** Text from the most recent user message (for MCP server routing). */
@@ -1736,371 +1522,47 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   }
 
   async refreshTools(abortSignal?: AbortSignal, useCache = false) {
-    if (!this.serviceHub) {
-      this.tools = {}
-      this.toolsCacheKey = null
-      return
+    return refreshTools(this.toolRefreshHost(), abortSignal, useCache)
+  }
+
+  /** The class state tool listing reads and writes; see `chat/transport/toolRefresh.ts`. */
+  private toolRefreshHost(): ToolRefreshHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
+    return {
+      get serviceHub() { return self.serviceHub },
+      get threadId() { return self.threadId },
+      get lastUserMessage() { return self.lastUserMessage },
+      get hasDocuments() { return self.hasDocuments },
+      get ragFeatureAvailable() { return self.ragFeatureAvailable },
+      get modelSupportsTools() { return self.modelSupportsTools },
+      get model() { return self.model },
+      get routerModel() { return self.routerModel },
+      set routerModel(v) { self.routerModel = v },
+      get routerModelKey() { return self.routerModelKey },
+      set routerModelKey(v) { self.routerModelKey = v },
+      get tools() { return self.tools },
+      set tools(v) { self.tools = v },
+      get loadedTools() { return self.loadedTools },
+      set loadedTools(v) { self.loadedTools = v },
+      get toolsCacheKey() { return self.toolsCacheKey },
+      set toolsCacheKey(v) { self.toolsCacheKey = v },
+      get toolServers() { return self.toolServers },
+      set toolServers(v) { self.toolServers = v },
+      get delegationNames() { return self.delegationNames },
+      set delegationNames(v) { self.delegationNames = v },
+      get frozenRoutedTools() { return self.frozenRoutedTools },
+      set frozenRoutedTools(v) { self.frozenRoutedTools = v },
+      get frozenRoutedSig() { return self.frozenRoutedSig },
+      set frozenRoutedSig(v) { self.frozenRoutedSig = v },
+      get mcpStartingText() { return self.mcpStartingText },
+      set mcpStartingText(v) { self.mcpStartingText = v },
+      get mcpChangeText() { return self.mcpChangeText },
+      set mcpChangeText(v) { self.mcpChangeText = v },
+      getModelSelection: () => self.getModelSelection(),
+      chatShellWithheld: () => self.chatShellWithheld(),
+      recordMcpSet: (advertised, listed) => self.recordMcpSet(advertised, listed),
     }
-
-    const toolsRecord: Record<string, Tool> = {}
-    const toolServers = new Map<string, string>()
-    // A failed MCP listing is not kept: the next send asks again.
-    let mcpLoadFailed = false
-
-    // Tool availability is global (shared across all chats).
-    const disabledToolKeys = useToolAvailable.getState().getDisabledTools()
-    const isToolDisabled = (serverName: string, toolName: string): boolean => {
-      const toolKey = `${serverName}::${toolName}`
-      return disabledToolKeys.includes(toolKey)
-    }
-
-    const selectedModel = this.getModelSelection().selectedModel
-    const modelSupportsTools =
-      (selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools) ||
-      threadToolsGranted(this.threadId)
-    // Whether there are documents is read live, before the cache check: a
-    // file attached to the thread's project mid-thread changes nothing else
-    // in the key, and `this.hasDocuments` is only refreshed by the thread
-    // view, so a key built from it kept the RAG tools away (#128).
-    let hasDocuments = this.hasDocuments
-    let ragFeatureAvailable = this.ragFeatureAvailable
-    if (modelSupportsTools) {
-      if (!hasDocuments && this.threadId) {
-        const thread = useThreads.getState().threads[this.threadId]
-        const hasThreadDocuments = Boolean(thread?.metadata?.hasDocuments)
-
-        const projectId = thread?.metadata?.project?.id
-        if (projectId) {
-          try {
-            const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
-              ExtensionTypeEnum.VectorDB
-            )
-            if (ext?.listAttachmentsForProject) {
-              const projectFiles = await ext.listAttachmentsForProject(projectId)
-              hasDocuments = hasThreadDocuments || projectFiles.length > 0
-            }
-          } catch (error) {
-            console.warn('Failed to check project files:', error)
-            hasDocuments = hasThreadDocuments
-          }
-        } else {
-          hasDocuments = hasThreadDocuments
-        }
-      }
-
-      if (!ragFeatureAvailable) {
-        ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
-      }
-    }
-    // The MCP tools that exist right now. Without it a server installed or
-    // activated after the chat opened never reached the chat: every send
-    // found the old key and kept the old tool list, so it took a new chat.
-    const mcpNames: unknown = useAppState.getState?.()?.mcpToolNames
-    const mcpFingerprint =
-      mcpNames instanceof Set || Array.isArray(mcpNames)
-        ? [...(mcpNames as Iterable<string>)].sort()
-        : []
-    const cacheKey = JSON.stringify({
-      mcpFingerprint,
-      routedQuery: useMCPServers.getState().settings.enableSmartToolRouting
-        ? this.lastUserMessage
-        : undefined,
-      // A server switched on after the chat began has no tools until it is
-      // started, so the fingerprint alone cannot see it.
-      mcpGeneration: getMcpGeneration(),
-      mcpEnabled: enabledMcpServers(),
-      model: selectedModel?.id ?? '',
-      modelSupportsTools,
-      hasDocuments,
-      ragFeatureAvailable,
-      disabledToolKeys,
-      deadTools: deadTools(this.threadId),
-      webSearchEnabled: webSearchOnFor(this.threadId),
-      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
-      chatShellWithheld: this.chatShellWithheld(),
-      chatDelegation: chatDelegationEnabled(),
-      visualizeEnabled: useVisualizeConfig.getState().enabled,
-    })
-    if (useCache && this.toolsCacheKey === cacheKey) {
-      if (this.loadedTools) this.tools = this.loadedTools
-      return
-    }
-
-    // Only load tools if model supports them
-    if (modelSupportsTools) {
-      // Load RAG tools if documents are available
-      if (hasDocuments && ragFeatureAvailable) {
-        try {
-          const ragTools = await this.serviceHub.rag().getTools()
-          if (Array.isArray(ragTools) && ragTools.length > 0) {
-            // Convert RAG tools to AI SDK format, filtering out disabled tools
-            ragTools.forEach((tool) => {
-              if (!isValidToolName(tool.name)) return
-              // RAG tools use MCPTool interface with server field
-              const serverName =
-                (tool as { server?: string }).server || 'unknown'
-              if (!isToolDisabled(serverName, tool.name)) {
-                toolsRecord[tool.name] = {
-                  description: tool.description,
-                  inputSchema: jsonSchema(
-                    normalizeToolInputSchema(tool.inputSchema as Record<string, unknown>)
-                  ),
-                } as Tool
-              }
-            })
-          }
-        } catch (error) {
-          console.warn('Failed to load RAG tools:', error)
-        }
-      }
-
-      // Load MCP tools — route through the orchestrator when available so only
-      // relevant servers are queried instead of all of them.
-      try {
-        const mcpService = this.serviceHub.mcp()
-        let mcpTools: MCPTool[]
-        let mcpStarting: string[] = []
-        // Smart routing lists a subset; only a full listing may refresh the
-        // store the tool picker and the call dispatcher read.
-        let fullListing = false
-        const mcpSettings = useMCPServers.getState().settings
-        const routingEnabled = mcpSettings.enableSmartToolRouting
-
-        if (
-          routingEnabled &&
-          mcpService.getToolsForServers &&
-          mcpService.getServerSummaries
-        ) {
-          const summaries = await mcpService.getServerSummaries!()
-          const routedSig = JSON.stringify({
-            // Tool identities, not only server names: a server that gains
-            // tools must re-route rather than keep the frozen subset.
-            tools: mcpFingerprint,
-            servers: summaries.map((s) => s.name).sort(),
-            disabled: [...disabledToolKeys].sort(),
-            query: this.lastUserMessage,
-          })
-          if (this.frozenRoutedTools && this.frozenRoutedSig === routedSig) {
-            mcpTools = this.frozenRoutedTools
-          } else {
-            const routerModel =
-              mcpSettings.useLightweightRouterModel &&
-              mcpSettings.routerModelProvider.trim() &&
-              mcpSettings.routerModelId.trim()
-                ? (await this.resolveRouterModel(mcpSettings)) ?? this.model
-                : this.model
-            mcpTools = await mcpOrchestrator.getRelevantTools(
-              this.lastUserMessage,
-              {
-                // The router decides from server summaries, then only the
-                // servers it selects are started (on demand).
-                getTools: () => mcpService.getTools({ start: true }),
-                getToolsForServers: (names) =>
-                  mcpService.getToolsForServers!(names, { start: true }),
-                getServerSummaries: () => Promise.resolve(summaries),
-              },
-              disabledToolKeys,
-              {
-                routerModel,
-                abortSignal,
-              }
-            )
-            this.frozenRoutedTools = mcpTools
-            this.frozenRoutedSig = routedSig
-          }
-        } else {
-          // A send that uses tools starts enabled servers on demand, waiting
-          // a bounded time for ones still starting.
-          const live = await loadLiveMcpTools(mcpService)
-          mcpTools = live.tools
-          mcpStarting = live.starting
-          fullListing = true
-        }
-        this.mcpStartingText = mcpStartingNote(mcpStarting)
-
-        if (Array.isArray(mcpTools) && mcpTools.length > 0) {
-          const seenBy = new Map<string, string>()
-          mcpTools.forEach((tool) => {
-            if (!isValidToolName(tool.name)) return
-            const serverName = tool.server || 'unknown'
-            if (isToolDisabled(serverName, tool.name)) return
-            // A tool that approves the server's own held commands is never
-            // offered: Flint's prompt is the only approval, and the model
-            // looped on approve/execute pairs when it had one.
-            if (isSelfApprovalTool(tool.name)) return
-            // A server must not shadow a built-in: its tool would be routed to
-            // the server instead of the app's own implementation.
-            if (BUILTIN_WEB_TOOLS.has(tool.name)) {
-              console.warn(
-                `[tools] MCP tool "${tool.name}" from "${serverName}" ignored: the name belongs to a built-in web tool.`
-              )
-              return
-            }
-            const prevServer = seenBy.get(tool.name)
-            if (prevServer && prevServer !== serverName) {
-              console.warn(
-                `[tools] MCP tool name collision: "${tool.name}" exposed by both "${prevServer}" and "${serverName}". Using "${serverName}".`
-              )
-            }
-            seenBy.set(tool.name, serverName)
-            toolServers.set(tool.name, serverName)
-            toolsRecord[tool.name] = {
-              description: tool.description,
-              inputSchema: jsonSchema(
-                normalizeToolInputSchema(tool.inputSchema as Record<string, unknown>)
-              ),
-            } as Tool
-          })
-        }
-        if (fullListing) {
-          // Enabled servers that offered nothing are said so, to the model and
-          // to the person, instead of being left out without a word.
-          const availability = mcpAvailability(
-            mcpTools,
-            snapshotMcpTools(
-              [...toolServers].map(([name, server]) => ({ name, server }))
-            ),
-            mcpStarting,
-            isToolDisabled
-          )
-          this.mcpStartingText =
-            [this.mcpStartingText, availability.note]
-              .filter((s): s is string => Boolean(s))
-              .join(' ') || null
-          announceMcpWithheld(availability.withheld)
-        }
-        this.recordMcpSet(
-          [...toolServers].map(([name, server]) => ({ name, server })),
-          fullListing ? mcpTools : undefined
-        )
-      } catch (error) {
-        console.warn('Failed to load MCP tools:', error)
-        mcpLoadFailed = true
-      }
-
-      // Native web tools, provided by the websearch plugin (not an MCP server).
-      // Advertised whenever the user has web search enabled.
-      if (webSearchOnFor(this.threadId)) {
-        toolsRecord['web_search'] = {
-          description: WEB_SEARCH_DESCRIPTION,
-          inputSchema: jsonSchema(WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
-        } as Tool
-        toolsRecord['web_fetch'] = {
-          description: WEB_FETCH_DESCRIPTION,
-          inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
-        } as Tool
-        toolsRecord['image_search'] = {
-          description: IMAGE_SEARCH_DESCRIPTION,
-          inputSchema: jsonSchema(IMAGE_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
-        } as Tool
-      }
-
-      // Inline widgets are the renderer's own and need no workspace, so they
-      // are offered whether or not the agent tools are on.
-      if (useVisualizeConfig.getState().enabled) {
-        for (const schema of visualizeSchemas()) {
-          toolsRecord[schema.function.name] = {
-            description: schema.function.description,
-            inputSchema: jsonSchema(schema.function.parameters),
-          } as Tool
-        }
-      }
-
-      // Read more of a conversation the user mentioned (docs/CHAT_MENTIONS.md).
-      // Offered only once this chat has a mention (or the user allows reading
-      // any conversation), so an ordinary chat's tool list is unchanged.
-      if (this.threadId && chatReadWanted(this.threadId)) {
-        const schema = chatReadSchema()
-        toolsRecord[schema.function.name] = {
-          description: schema.function.description,
-          inputSchema: jsonSchema(schema.function.parameters),
-        } as Tool
-      }
-
-      // Picture tools, offered only while Studio has an image model loaded: they
-      // never load one, so without it every call would just fail.
-      try {
-        const studio = await studioApi.status()
-        if (studio.supported && studio.resident?.kind === 'image') {
-          for (const schema of await getAgentToolSchemas()) {
-            if (!isImageTool(schema.function?.name)) continue
-            toolsRecord[schema.function.name] = {
-              description: schema.function.description,
-              inputSchema: jsonSchema(schema.function.parameters),
-            } as Tool
-          }
-        }
-      } catch {
-        // Studio is not available here (no desktop engine): no picture tools.
-      }
-
-      // Built-in agent tools (filesystem reads plus skills/memory), provided by
-      // the agent-tools plugin. Schemas come from Rust so they are never
-      // re-typed here.
-      // Plugin state is Flint's own, not a workspace tool, so it is read and
-      // `list_plugins` offered whether or not the agent tools are on: without
-      // it a model asked "is <plugin> enabled?" goes digging through shells.
-      // Read before the system prompt is assembled, which names the enabled
-      // plugins from this cache.
-      await refreshPluginInventory()
-      await refreshSkillCatalog()
-      if (!useAgentToolsConfig.getState().agentToolsEnabled) {
-        try {
-          const listPlugins = (await getAgentToolSchemas()).find(
-            (s) => s.function?.name === 'list_plugins'
-          )
-          if (listPlugins) {
-            toolsRecord.list_plugins = {
-              description: listPlugins.function.description,
-              inputSchema: jsonSchema(listPlugins.function.parameters),
-            } as Tool
-          }
-        } catch (error) {
-          console.warn('Failed to load list_plugins:', error)
-        }
-      }
-      if (useAgentToolsConfig.getState().agentToolsEnabled) {
-        try {
-          for (const schema of await getAgentToolSchemas()) {
-            if (!isValidToolName(schema.function?.name)) continue
-            // Session-scope tools: a chat thread has no mailbox identity.
-            if (SESSION_MESSAGING_TOOLS.has(schema.function.name)) continue
-            toolsRecord[schema.function.name] = {
-              description: schema.function.description,
-              inputSchema: jsonSchema(schema.function.parameters),
-            } as Tool
-          }
-        } catch (error) {
-          console.warn('Failed to load agent tools:', error)
-        }
-        // A job handed to a subagent: the Cowork `task` family on the chat's
-        // own footing, behind its own setting.
-        try {
-          const offered = await chatDelegationTools()
-          Object.assign(toolsRecord, offered.tools)
-          this.delegationNames = offered.names
-        } catch (error) {
-          console.warn('Failed to load delegation tools:', error)
-        }
-      }
-    }
-
-    // A tool its server does not implement is no longer offered in this
-    // conversation (transcript audit #11).
-    for (const name of deadTools(this.threadId)) delete toolsRecord[name]
-    // Chat's own shell switch (Cowork does not read it).
-    if (this.chatShellWithheld()) delete toolsRecord[SHELL_TOOL_NAME]
-    // Sorted by name: the tool list is part of the prompt, and a server that
-    // reconnects in a different order would otherwise change the prefix and
-    // throw away the model's prompt cache.
-    this.tools = Object.fromEntries(
-      Object.entries(toolsRecord).sort(([a], [b]) =>
-        a < b ? -1 : a > b ? 1 : 0
-      )
-    )
-    this.toolServers = toolServers
-    this.loadedTools = this.tools
-    this.toolsCacheKey = mcpLoadFailed ? null : cacheKey
   }
 
   /**
@@ -2112,74 +1574,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     advertised: { name: string; server?: string }[],
     listed?: MCPTool[]
   ): void {
-    const next = snapshotMcpTools(advertised)
-    const key = this.threadId ?? ''
-    const before = readMcpBaseline(key)
-    let note = before?.note ?? null
-    if (listed) syncMcpStore(listed)
-    if (before) {
-      const change = diffMcpSnapshots(before.snapshot, next)
-      const changed = mcpChangeNote(change)
-      if (changed) {
-        note = changed
-        announceMcpChange(change)
-      }
-    }
-    writeMcpBaseline(key, next, note)
-    this.mcpChangeText = note
+    recordMcpSet(this.toolRefreshHost(), advertised, listed)
   }
 
   protected mcpPromptNotes(): string[] {
     return [this.mcpChangeText, this.mcpStartingText].filter(
       (s): s is string => typeof s === 'string' && s.length > 0
     )
-  }
-
-  private async resolveRouterModel(settings: {
-    useLightweightRouterModel: boolean
-    routerModelProvider: string
-    routerModelId: string
-  }): Promise<LanguageModel | null> {
-    if (!settings.useLightweightRouterModel) return null
-    const providerName = settings.routerModelProvider.trim()
-    const modelId = settings.routerModelId.trim()
-    if (!providerName || !modelId) return null
-
-    const key = `${providerName}::${modelId}`
-    if (this.routerModel && this.routerModelKey === key) {
-      return this.routerModel
-    }
-
-    const provider = useModelProvider.getState().getProviderByName(providerName)
-    if (!provider) {
-      console.warn(
-        `[MCP] Router model provider '${providerName}' not found; using chat model for routing.`
-      )
-      return null
-    }
-
-    const catalogModel = provider.models.find((m) => m.id === modelId)
-    if (!catalogModel || !isRouterModelSelectable(provider, catalogModel)) {
-      console.warn(
-        `[MCP] Router model '${key}' is not allowed for routing (use a lightweight model with API access); using chat model for routing.`
-      )
-      return null
-    }
-
-    try {
-      const model = await ModelFactory.createModel(modelId, provider, {})
-      this.routerModel = model
-      this.routerModelKey = key
-      return model
-    } catch (error) {
-      console.warn(
-        `[MCP] Failed to create router model '${key}'; using chat model for routing.`,
-        error
-      )
-      this.routerModel = null
-      this.routerModelKey = ''
-      return null
-    }
   }
 
   /**
@@ -2291,313 +1692,31 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return 'auto'
   }
 
-  /**
-   * Chat's automatic compaction (`lib/compaction.ts`).
-   *
-   * The summary in force is applied first: everything before its boundary is
-   * replaced by it. When the request is still past the threshold of the
-   * window, the older part is summarized again (the earlier summary folded
-   * in) and the new boundary remembered, so the next request reuses it.
-   */
-  private async compactAtThreshold(
+  /** Chat's automatic compaction; see `chat/transport/compaction.ts`. */
+  private compactAtThreshold(
     threadId: string,
     messages: UIMessage[],
-    opts: {
-      window: number
-      /** What the trimmer keeps free of the window; compaction starts before it acts. */
-      trimReserveTokens?: number
-      systemPromptTokens: number
-      keepRecent: number
-      summaryMaxTokens: number
-      provider: string
-      modelId: string
-      session: string
-      signal?: AbortSignal
-      /** The provider refused the request for its length: compact regardless. */
-      force?: boolean
-    }
+    opts: CompactAtThresholdOptions
   ): Promise<UIMessage[]> {
-    const inForce = readChatCompaction(threadId)
-    const applied = applyChatCompaction(messages, inForce)
-    const stale = applied.stale
-    let history = applied.history
-    // The boundary message was edited or deleted: the summary no longer
-    // describes what precedes it.
-    if (stale) {
-      writeChatCompaction(threadId, null)
-      cancelPrecompute(threadId)
-    }
-
-    const fullTrigger = compactionTriggerTokens(
-      opts.window,
-      opts.trimReserveTokens
-    )
-    // The next request grows by about what the last assistant turns did (tool
-    // output rides in them), so compact before that growth crosses the window
-    // rather than after. At most a tenth of the window, so a compaction that
-    // keeps a large recent turn cannot leave the request still over the trigger.
-    const recentAssistant = history
-      .filter((m) => m.role === 'assistant')
-      .slice(-4)
-      .map((m) => estimateHistoryTokens([m]))
-    const headroom = Math.min(
-      Math.floor(opts.window * 0.1),
-      Math.ceil(Math.max(0, ...recentAssistant) * 1.25)
-    )
-    let trigger = Math.max(
-      Math.floor(opts.window * 0.1),
-      fullTrigger - headroom
-    )
-    let projected = opts.systemPromptTokens + estimateHistoryTokens(history)
-    // The provider just refused this request: whatever the estimate says, it
-    // did not fit, so aim well under what it measured.
-    const forced = opts.force === true
-    if (forced) trigger = Math.min(trigger, Math.floor(projected * 0.6))
-    if (!forced && projected < trigger) {
-      if (projected >= trigger * PRECOMPUTE_FRACTION) {
-        // When clearing old tool output alone will keep the request well under
-        // the trigger, the summary would never be used: don't write it.
-        const afterClearing =
-          opts.systemPromptTokens +
-          estimateHistoryTokens(clearStaleToolResults(history).messages)
-        if (afterClearing >= trigger * PRECOMPUTE_FRACTION) {
-          this.precomputeSummary(threadId, history, opts)
-        }
-      }
-      return history
-    }
-
-    // Old tool output is the cheapest thing to give up: clear it first and
-    // summarize only if the request is still over.
-    const cleared = clearStaleToolResults(history)
-    if (cleared.clearedCount > 0) {
-      history = cleared.messages
-      projected = opts.systemPromptTokens + estimateHistoryTokens(history)
-      if (projected < trigger) return history
-    }
-
-    // A conversation that refills right after a compaction is not helped by
-    // the same compaction again, so it starts at a harder cut instead of
-    // stopping: more of the recent turns, then the middle of the current one,
-    // are folded.
-    const looping = !forced && isCompactionLooping(threadId, history.length)
-    const result = await this.compactToFit(threadId, history, {
-      ...opts,
-      trigger,
-      reason: forced ? 'context-error' : 'threshold',
-      startLevel: looping ? 1 : 0,
-    })
-    let out = result?.messages ?? history
-    // What no summary can shrink is the newest thing in the conversation: a
-    // single tool result that alone fills the window. It keeps its head and
-    // tail and loses the middle, rather than the request being refused.
-    const ceiling = Math.floor(
-      (opts.window - (opts.trimReserveTokens ?? 0)) * TRIM_HEADROOM_SHARE
-    )
-    const room = Math.max(
-      1000,
-      (forced ? Math.min(ceiling, trigger) : ceiling) - opts.systemPromptTokens
-    )
-    let clippedCount = 0
-    if (estimateHistoryTokens(out) > room) {
-      const clipped = clipToolResultsToFit(out, room)
-      out = clipped.messages
-      clippedCount = clipped.clippedCount
-    }
-    if (!result && clippedCount === 0) {
-      // Nothing could be folded or shrunk and the breaker had already seen
-      // this loop: say so rather than send a request that will be refused.
-      if (looping) throw new CompactionLoopError()
-      return history
-    }
-    // Still over the window itself after every cut: the refill loop is real.
-    if (
-      looping &&
-      opts.systemPromptTokens + estimateHistoryTokens(out) >= opts.window
-    ) {
-      throw new CompactionLoopError()
-    }
-    if (result) {
-      recordCompaction(threadId, history.length, result.messages.length)
-      this.announcedCompaction = result.record
-    }
-    return out
-  }
-
-  /**
-   * Compact until the request is under `trigger`, cutting harder each time it
-   * is not: the configured share of recent turns, then half of it with the cut
-   * allowed inside the current user turn (a long tool loop is one turn), then
-   * only the newest message. A cut whose kept part alone is over is skipped
-   * without a model call. Null when nothing could be folded.
-   */
-  private async compactToFit(
-    threadId: string,
-    history: UIMessage[],
-    opts: {
-      window: number
-      systemPromptTokens: number
-      keepRecent: number
-      summaryMaxTokens: number
-      provider: string
-      modelId: string
-      session: string
-      signal?: AbortSignal
-      trigger: number
-      reason: CompactionRecord['reason']
-      startLevel: number
-    }
-  ): Promise<CompactResult | null> {
-    const levels = [
-      { keepRecent: opts.keepRecent, splitTurn: false },
-      {
-        keepRecent: Math.max(2, Math.floor(opts.keepRecent / 2)),
-        splitTurn: true,
-      },
-      { keepRecent: 1, splitTurn: true },
-    ]
-    // What the summary itself will add to the request.
-    const summaryAllowance = opts.summaryMaxTokens + 200
-    let current = history
-    let last: CompactResult | null = null
-    for (
-      let i = Math.min(opts.startLevel, levels.length - 1);
-      i < levels.length;
-      i++
-    ) {
-      const level = levels[i]
-      const isLast = i === levels.length - 1
-      const plan = planCompaction(current, level)
-      if (!plan) continue
-      // Summarizing everything older cannot make this cut fit when what it
-      // keeps is already over: cut deeper instead of paying for a summary
-      // that would not help. The deepest cut always runs; what it keeps is
-      // then shrunk by the caller.
-      const kept =
-        opts.systemPromptTokens +
-        estimateHistoryTokens([...plan.pinned, ...plan.keep]) +
-        summaryAllowance
-      if (kept >= opts.trigger && !isLast) continue
-      const result = await this.runCompaction(threadId, current, {
-        window: opts.window,
-        keepRecent: level.keepRecent,
-        splitTurn: level.splitTurn,
-        summaryMaxTokens: opts.summaryMaxTokens,
-        provider: opts.provider,
-        modelId: opts.modelId,
-        session: opts.session,
-        reason: opts.reason,
-        signal: opts.signal,
-      })
-      if (!result) continue
-      last = result
-      current = result.messages
-      if (
-        opts.systemPromptTokens + estimateHistoryTokens(current) <
-        opts.trigger
-      ) {
-        break
-      }
-    }
-    return last
-  }
-
-  /** Start the summary a coming compaction will need, without waiting for it. */
-  private precomputeSummary(
-    threadId: string,
-    history: UIMessage[],
-    opts: {
-      window: number
-      keepRecent: number
-      summaryMaxTokens: number
-      provider: string
-      modelId: string
-      session: string
-    }
-  ): void {
-    const plan = planCompaction(history, { keepRecent: opts.keepRecent })
-    if (!plan) return
-    startPrecompute(
-      threadId,
-      plan.summarize,
-      modelSummarizer({
-        provider: opts.provider,
-        modelId: opts.modelId,
-        session: opts.session,
-        maxOutputTokens: opts.summaryMaxTokens,
-        window: opts.window,
-        model: () => this.model,
-      })
-    )
+    return compactAtThreshold(this.compactionHost(), threadId, messages, opts)
   }
 
   /** Compact, keep the result with the thread, and record it. */
-  private async runCompaction(
+  private runCompaction(
     threadId: string,
     history: UIMessage[],
-    opts: {
-      window: number | null
-      keepRecent: number
-      splitTurn?: boolean
-      summaryMaxTokens: number
-      provider: string
-      modelId: string
-      session: string
-      reason: CompactionRecord['reason']
-      signal?: AbortSignal
-      focus?: string
-    }
+    opts: RunCompactionOptions
   ) {
-    // Asked for by the user: a model that cannot summarize is an error they
-    // are told about, never a digest in place of their conversation.
-    const manual = opts.reason === 'manual'
-    const chosen = manual
-      ? manualSummarizer({
-          provider: opts.provider,
-          modelId: opts.modelId,
-          session: opts.session,
-          focus: opts.focus,
-          maxOutputTokens: opts.summaryMaxTokens,
-          window: opts.window,
-          model: () => this.model,
-        })
-      : null
-    const result = await compactHistory(history, {
-      summarize:
-        chosen?.summarize ??
-        modelSummarizer({
-          provider: opts.provider,
-          modelId: opts.modelId,
-          session: opts.session,
-          maxOutputTokens: opts.summaryMaxTokens,
-          window: opts.window,
-          model: () => this.model,
-        }),
-      ...(manual ? { fallback: false, summarizedBy: chosen?.usedBy } : {}),
-      keepRecent: opts.keepRecent,
-      splitTurn: opts.splitTurn,
-      reason: opts.reason,
-      signal: opts.signal,
-      reusePrefix: (covered) => takePrecomputedPrefix(threadId, covered),
-    })
-    cancelPrecompute(threadId)
-    if (!result) return null
-    // Kept with the thread, so a restart reuses it rather than summarizing
-    // the same messages again.
-    const state = stateAfter(result.messages, result.record, result.latestRequest)
-    if (state) writeChatCompaction(threadId, state)
-    // A compaction changes what the model sees from here on, so it is part of
-    // what the conversation did and goes in its record.
-    void recordLifecycle(
-      { session: opts.session, run: '', source: 'chat' },
-      {
-        id: `compaction:${result.record.at}`,
-        lifecycle: 'compaction',
-        phase: 'succeeded',
-        summary: `Compacted ${result.record.summarizedCount} messages into a summary`,
-      }
-    )
-    return result
+    return runCompaction(this.compactionHost(), threadId, history, opts)
+  }
+
+  private compactionHost(): CompactionHost {
+    return {
+      model: () => this.model,
+      announce: (record) => {
+        this.announcedCompaction = record
+      },
+    }
   }
 
   /**
@@ -2724,143 +1843,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     )
   }
 
-  private async sendMessagesCore(
+  private sendMessagesCore(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
-    // Cowork compacts and retries in its own run loop.
-    if (!this.compactsAtThreshold) return this.sendWithFallback(options)
-
-    // The provider refusing a request for its length is not the end of a run
-    // the window could still hold: compact, harder than the estimate asked
-    // for, and send it once more. Only before any reply content, so nothing
-    // the chat already showed is taken back.
-    const refusedForLength = async (failure: unknown): Promise<boolean> => {
-      const message =
-        failure instanceof Error ? failure.message : String(failure ?? '')
-      return (
-        !options.abortSignal?.aborted &&
-        (isContextLengthError(failure) || isContextOverflowMessage(message)) &&
-        (await this.canRecoverFromOverflow())
-      )
-    }
-    const resend = async (
-      failure: unknown
-    ): Promise<ReadableStream<UIMessageChunk>> => {
-      const message =
-        failure instanceof Error ? failure.message : String(failure ?? '')
-      const learned = parseServerContextLimit(
-        (failure as { data?: unknown } | null)?.data ?? null,
-        message
-      )
-      this.overflowRetry = { learnedWindow: learned?.contextTokens ?? null }
-      try {
-        return await this.sendWithFallback(options)
-      } finally {
-        this.overflowRetry = null
-      }
-    }
-
-    let first: ReadableStream<UIMessageChunk>
-    try {
-      first = await this.sendWithFallback(options)
-    } catch (error) {
-      if (!(await refusedForLength(error))) throw error
-      first = await resend(error)
-      return first
-    }
-
-    let source = first.getReader()
-    let retried = false
-    // Chunks pass straight through. An error before any reply content that is
-    // a length refusal is swallowed instead, and the resent request's stream
-    // continues in its place (its opening chunks were already delivered).
-    let sawContent = false
-    let sentStart = false
-    let sentStep = false
-    return new ReadableStream<UIMessageChunk>({
-      async pull(controller) {
-        for (;;) {
-          let next: ReadableStreamReadResult<UIMessageChunk>
-          try {
-            next = await source.read()
-          } catch (error) {
-            // Some providers reject the reader instead of emitting an error
-            // chunk. Use the same one-time recovery for either representation.
-            if (sawContent || retried || !(await refusedForLength(error))) {
-              controller.error(error)
-              return
-            }
-            retried = true
-            try {
-              source = (await resend(error)).getReader()
-            } catch (retryError) {
-              controller.error(retryError)
-              return
-            }
-            continue
-          }
-          const { done, value } = next
-          if (done) {
-            controller.close()
-            return
-          }
-          if (
-            !sawContent &&
-            !retried &&
-            value.type === 'error' &&
-            (await refusedForLength(value.errorText))
-          ) {
-            retried = true
-            void source.cancel().catch(() => {})
-            try {
-              source = (await resend(value.errorText)).getReader()
-            } catch (error) {
-              controller.error(error)
-              return
-            }
-            continue
-          }
-          if (retried && value.type === 'start' && sentStart) {
-            // Already delivered; its metadata (a compaction the resend made)
-            // still has to reach the message.
-            const metadata = (value as { messageMetadata?: unknown })
-              .messageMetadata
-            if (metadata === undefined) continue
-            controller.enqueue({
-              type: 'message-metadata',
-              messageMetadata: metadata,
-            } as UIMessageChunk)
-            return
-          }
-          if (retried && value.type === 'start-step' && sentStep) continue
-          if (value.type === 'start') sentStart = true
-          if (value.type === 'start-step') sentStep = true
-          if (!/^(start|start-step|message-metadata)$/.test(value.type)) {
-            sawContent = true
-          }
-          controller.enqueue(value)
-          return
-        }
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
+    return sendMessagesCore<SendOptions>(
+      {
+        get compactsAtThreshold() { return self.compactsAtThreshold },
+        get overflowRetry() { return self.overflowRetry },
+        set overflowRetry(v) { self.overflowRetry = v },
+        sendWithFallback: (o) => self.sendWithFallback(o),
+        getActiveInferenceParams: () => self.getActiveInferenceParams(),
       },
-      cancel: (reason) => source.cancel(reason),
-    })
-  }
-
-  /**
-   * Whether a request the provider refused for its length can be compacted
-   * and sent again: automatic compaction is on, by summary, and the model does
-   * not shift its own context.
-   */
-  private async canRecoverFromOverflow(): Promise<boolean> {
-    try {
-      const params = this.getActiveInferenceParams()
-      const policy = await getCompactionPolicy()
-      return (
-        resolveAutoCompact(params, policy.auto) && policy.strategy === 'summarize'
-      )
-    } catch {
-      return false
-    }
+      options
+    )
   }
 
   private async sendWithFallback(

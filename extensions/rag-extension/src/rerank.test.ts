@@ -122,3 +122,35 @@ describe('helpers', () => {
     expect(applyOrder(corpus.slice(0, 2), ['c-7'], 2)).toBeNull()
   })
 })
+
+describe('retrieveWithRerank with an open decision model', () => {
+  function openBridge(order: string[] | null): JevBridge & { rerank: ReturnType<typeof vi.fn> } {
+    return {
+      status: vi.fn(async () => ({ rerank_mode: 'on' as const })),
+      rerank: vi.fn(async () => ({
+        order,
+        fallback: order ? null : 'bad_response',
+        model: 'open:llamacpp/kev-4b',
+      })),
+    }
+  }
+
+  it('uses an exact permutation from an open model, same objects', async () => {
+    const r = await retrieveWithRerank('refund', 2, search, openBridge(['305', '101', 'c-7', 'c-9', '412']))
+    expect(r.reranked).toBe(true)
+    expect(r.citations[0]).toBe(corpus[2])
+    expect(r.citations[1]).toBe(corpus[0])
+  })
+
+  it('ignores a forged, duplicated or partial order and keeps the search order', async () => {
+    for (const order of [
+      ['305', '101', 'c-7', 'c-9', 'injected-id'],
+      ['305', '305', 'c-7', 'c-9', '412'],
+      ['305', '101'],
+      null,
+    ]) {
+      const r = await retrieveWithRerank('refund', 2, search, openBridge(order))
+      expect(r).toEqual({ citations: corpus.slice(0, 2), reranked: false, mode: 'on' })
+    }
+  })
+})

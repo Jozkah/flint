@@ -264,7 +264,13 @@
     "caBundleNone": "僅信任平台的憑證授權單位。",
     "caBundleInUse": "除平台的憑證外，還信任此套件中的 {{count}} 個憑證。",
     "caBundleBroken": "此套件無法使用（{{kind}}）：在修復或移除之前，對外的 HTTPS 不信任任何內容。",
-    "ignoreSslScope": "適用於所有經代理的流量。個別提供者也可以只對自己的位址允許無效憑證，設定在模型提供者中該提供者的頁面上。"
+    "ignoreSslScope": "適用於所有經代理的流量。個別提供者也可以只對自己的位址允許無效憑證，設定在模型提供者中該提供者的頁面上。",
+    "proxyUrlInvalid": "這看起來不像代理位址。請使用 host:port 或 http://host:port。",
+    "proxyUrlScheme": "僅支援 http 與 https 代理。",
+    "ignoreSslConfirmTitle": "忽略 SSL 憑證？",
+    "ignoreSslConfirmBody": "Flint 將對所有代理流量接受自簽、已過期或不相符的憑證，因此路徑上的任何人都可能讀取或竄改這些流量。僅在你信任該代理與網路時繼續。",
+    "ignoreSslConfirm": "忽略憑證",
+    "ignoreSslActiveWarning": "所有代理流量的憑證檢查已關閉。"
   },
   "webSearch": {
     "showKey": "顯示金鑰",
@@ -432,6 +438,7 @@
     "serverHostDesc": "伺服器的網路位址。",
     "serverHostLanWarning": "0.0.0.0 會讓網路上的其他裝置可以連到此伺服器。請設定 API 金鑰，並在其他裝置上使用這部機器的區域網路位址（而非 localhost）。",
     "serverHostLanNoTrusted": "受信任的主機為空：請新增其他裝置連到這部機器時所用的位址，否則它們的請求可能被拒絕。",
+    "apiKeyRequiredLan": "在 0.0.0.0 上公開伺服器之前請先設定 API 金鑰，或將主機切換為 127.0.0.1。",
     "serverPort": "伺服器連接埠",
     "serverPortDesc": "API 伺服器的連接埠號碼。",
     "apiPrefix": "API 前置詞",

@@ -8,6 +8,7 @@
  * makes no request.
  */
 import type { SlashCatalogEntry } from '@/lib/slashCommands'
+import type { DecisionBackend } from '@/lib/decisionBackends'
 import { isWorkProfileId, WORK_PROFILE_IDS } from '@/lib/workProfiles'
 
 export type JevMode = 'off' | 'shadow' | 'on'
@@ -30,6 +31,8 @@ export type JevStatus = {
   rerank_mode: JevMode
   key_configured: boolean
   model: string
+  /** The decision backend the backend read from settings. */
+  backend?: DecisionBackend
   tokens_used_today: number
   daily_token_budget: number
 }
@@ -38,6 +41,8 @@ export type JevReceipt = {
   at: string
   feature: 'skill' | 'rerank' | 'model'
   mode: JevMode
+  /** `jev` or `open_model`; absent in receipts from older builds. */
+  backend?: 'jev' | 'open_model'
   model: string | null
   decision: string
   latency_ms: number

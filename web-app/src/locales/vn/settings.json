@@ -264,7 +264,13 @@
     "caBundleNone": "Chỉ tin cậy các tổ chức phát hành chứng chỉ của nền tảng.",
     "caBundleInUse": "Đang tin cậy {{count}} chứng chỉ từ gói này cùng với của nền tảng.",
     "caBundleBroken": "Không thể dùng gói này ({{kind}}): HTTPS đi ra không tin cậy gì cho đến khi nó được sửa hoặc gỡ.",
-    "ignoreSslScope": "Áp dụng cho toàn bộ lưu lượng qua proxy. Từng nhà cung cấp cũng có thể cho phép chứng chỉ không hợp lệ cho địa chỉ riêng của mình, trên trang của nhà cung cấp đó trong Nhà cung cấp Mô hình."
+    "ignoreSslScope": "Áp dụng cho toàn bộ lưu lượng qua proxy. Từng nhà cung cấp cũng có thể cho phép chứng chỉ không hợp lệ cho địa chỉ riêng của mình, trên trang của nhà cung cấp đó trong Nhà cung cấp Mô hình.",
+    "proxyUrlInvalid": "Đây không giống địa chỉ proxy. Hãy dùng host:port hoặc http://host:port.",
+    "proxyUrlScheme": "Chỉ hỗ trợ proxy http và https.",
+    "ignoreSslConfirmTitle": "Bỏ qua chứng chỉ SSL?",
+    "ignoreSslConfirmBody": "Flint sẽ chấp nhận chứng chỉ tự ký, hết hạn hoặc không khớp cho toàn bộ lưu lượng qua proxy, nên bất kỳ ai trên đường truyền đều có thể đọc hoặc sửa nó. Chỉ tiếp tục nếu bạn tin tưởng proxy và mạng.",
+    "ignoreSslConfirm": "Bỏ qua chứng chỉ",
+    "ignoreSslActiveWarning": "Việc kiểm tra chứng chỉ đang tắt cho toàn bộ lưu lượng qua proxy."
   },
   "webSearch": {
     "showKey": "Hiện khóa",
@@ -432,6 +438,7 @@
     "serverHostDesc": "Địa chỉ mạng cho máy chủ.",
     "serverHostLanWarning": "0.0.0.0 cho phép các thiết bị khác trong mạng của bạn truy cập máy chủ. Hãy đặt khóa API và dùng địa chỉ LAN của máy này (không phải localhost) từ thiết bị còn lại.",
     "serverHostLanNoTrusted": "Máy chủ đáng tin cậy đang trống: hãy thêm địa chỉ mà các thiết bị khác sẽ dùng để truy cập máy này, nếu không yêu cầu của chúng có thể bị từ chối.",
+    "apiKeyRequiredLan": "Hãy đặt khóa API trước khi mở máy chủ trên 0.0.0.0, hoặc chuyển máy chủ sang 127.0.0.1.",
     "serverPort": "Cổng máy chủ",
     "serverPortDesc": "Số cổng cho máy chủ API.",
     "apiPrefix": "Tiền tố API",

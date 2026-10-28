@@ -8,7 +8,7 @@
   ],
   "agent_approval_rule_check": [
     "web-app/src/lib/approvalScopes.ts",
-    "web-app/src/lib/coworkDispatch.ts (via checkScopedRule)"
+    "web-app/src/lib/cowork/approvalGate.ts (via checkScopedRule)"
   ],
   "agent_approval_rule_revoke": [
     "web-app/src/containers/ApprovalRulesCard.tsx (via revokeScopedRule)",
@@ -369,8 +369,8 @@
     "web-app/src/lib/hooksReport.ts"
   ],
   "agent_plugin_details": [
-    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via getPluginDetails)",
     "web-app/src/containers/extensions/PluginsTab.tsx (via getPluginDetails)",
+    "web-app/src/hooks/usePluginManager.ts (via getPluginDetails)",
     "web-app/src/lib/pluginInventory.ts (via getPluginDetails)",
     "web-app/src/lib/pluginStore.ts"
   ],
@@ -385,14 +385,12 @@
   ],
   "agent_plugin_list": [
     "web-app/src/containers/ExtensionsSettings.tsx (via listPlugins)",
-    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via listPlugins)",
-    "web-app/src/containers/extensions/PluginsTab.tsx (via listPlugins)",
+    "web-app/src/hooks/usePluginManager.ts (via listPlugins)",
     "web-app/src/lib/pluginInventory.ts (via listPlugins)",
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_remove": [
-    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via removePlugin)",
-    "web-app/src/containers/extensions/PluginsTab.tsx (via removePlugin)",
+    "web-app/src/hooks/usePluginManager.ts (via removePlugin)",
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_search": [
@@ -401,18 +399,15 @@
   ],
   "agent_plugin_set_enabled": [
     "web-app/src/containers/ExtensionsSettings.tsx (via setPluginEnabled)",
-    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via setPluginEnabled)",
-    "web-app/src/containers/extensions/PluginsTab.tsx (via setPluginEnabled)",
+    "web-app/src/hooks/usePluginManager.ts (via setPluginEnabled)",
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_sources": [
-    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via getPluginSources)",
-    "web-app/src/containers/extensions/PluginsTab.tsx (via getPluginSources)",
+    "web-app/src/hooks/usePluginManager.ts (via getPluginSources)",
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_plugin_update": [
-    "web-app/src/containers/dialogs/PluginsManagerDialog.tsx (via updatePlugin)",
-    "web-app/src/containers/extensions/PluginsTab.tsx (via updatePlugin)",
+    "web-app/src/hooks/usePluginManager.ts (via updatePlugin)",
     "web-app/src/lib/pluginStore.ts"
   ],
   "agent_policy_rule_warnings": [
@@ -735,7 +730,7 @@
   ],
   "attribute_git_call": [
     "web-app/src/containers/ThreadConversation.tsx (via attributeGitInput)",
-    "web-app/src/lib/coworkDispatch.ts (via attributeGitInput)",
+    "web-app/src/lib/cowork/approvalGate.ts (via attributeGitInput)",
     "web-app/src/lib/gitAttribution.ts"
   ],
   "audit_export": [
@@ -878,7 +873,8 @@
   ],
   "diffusion_add_custom_model": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -889,7 +885,8 @@
   ],
   "diffusion_cancel": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -900,7 +897,8 @@
   ],
   "diffusion_delete": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -911,7 +909,8 @@
   ],
   "diffusion_download_model": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -922,7 +921,8 @@
   ],
   "diffusion_families": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -933,7 +933,8 @@
   ],
   "diffusion_gallery": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -944,7 +945,8 @@
   ],
   "diffusion_generate_image": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -955,7 +957,8 @@
   ],
   "diffusion_generate_video": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -966,7 +969,8 @@
   ],
   "diffusion_guess_family": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -977,7 +981,8 @@
   ],
   "diffusion_import_lora": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -988,7 +993,8 @@
   ],
   "diffusion_install_engine": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -999,7 +1005,8 @@
   ],
   "diffusion_list_loras": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -1010,7 +1017,8 @@
   ],
   "diffusion_load": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -1021,7 +1029,8 @@
   ],
   "diffusion_media": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -1032,7 +1041,8 @@
   ],
   "diffusion_remove_custom_model": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -1043,7 +1053,8 @@
   ],
   "diffusion_save_external_images": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -1054,7 +1065,8 @@
   ],
   "diffusion_status": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -1065,7 +1077,8 @@
   ],
   "diffusion_unload": [
     "web-app/src/containers/studio/StudioDiscover.tsx (via studioApi)",
-    "web-app/src/containers/studio/StudioPage.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/PromptPanel.tsx (via studioApi)",
+    "web-app/src/containers/studio/panels/SettingsPanel.tsx (via studioApi)",
     "web-app/src/hooks/useStudio.ts (via studioApi)",
     "web-app/src/lib/chatImageTools.ts (via studioApi)",
     "web-app/src/lib/custom-chat-transport.ts (via studioApi)",
@@ -1075,6 +1088,9 @@
     "web-app/src/lib/studio/cloud.ts (via studioApi)",
     "web-app/src/lib/studio/studio.ts",
     "web-app/src/services/models/default.ts (via releaseImageModelForChat)"
+  ],
+  "export_provider_keys_for_backup": [
+    "web-app/src/containers/SettingsBackupCard.tsx"
   ],
   "export_redacted_logs": [
     "web-app/src/services/app/tauri.ts"
@@ -1138,7 +1154,6 @@
     "web-app/src/services/mcp/tauri.ts"
   ],
   "get_provider_keys": [
-    "web-app/src/containers/SettingsBackupCard.tsx",
     "web-app/src/providers/DataProvider.tsx"
   ],
   "get_server_status": [
@@ -2386,6 +2401,7 @@
   ],
   "tool_activity_record": [
     "web-app/src/containers/ThreadConversation.tsx (via recordToolActivity)",
+    "web-app/src/lib/cowork/approvalGate.ts (via recordToolActivity)",
     "web-app/src/lib/coworkChildRunner.ts (via recordToolActivity)",
     "web-app/src/lib/coworkDispatch.ts (via recordToolActivity)",
     "web-app/src/lib/coworkRunner.ts (via recordToolActivity)",

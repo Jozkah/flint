@@ -108,3 +108,45 @@ pub async fn post(endpoint: &str, key: &str, body: &Value, timeout: Duration) ->
     // The client's own timeout covers the request; this covers everything.
     tokio::time::timeout(timeout, work).await.unwrap_or(Err(CallError::Timeout))
 }
+
+/// POST a chat-completions `body` to an open model's `url`, under the same
+/// bounds as [`post`]: one timeout for everything, redirects refused, at most
+/// [`MAX_RESPONSE_BYTES`] read. Returns the raw completion JSON.
+pub async fn post_chat(
+    url: &str,
+    key: Option<&str>,
+    headers: &[(String, String)],
+    body: &Value,
+    timeout: Duration,
+) -> Result<Value, CallError> {
+    let client = shared_client()?;
+    let work = async {
+        let mut req = client.post(url).timeout(timeout).json(body);
+        if let Some(k) = key.filter(|k| !k.is_empty()) {
+            req = req.bearer_auth(k);
+        }
+        for (h, v) in headers {
+            req = req.header(h.as_str(), v.as_str());
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| if e.is_timeout() { CallError::Timeout } else { CallError::Http(e.without_url().to_string()) })?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(CallError::Http(format!("HTTP {}", status.as_u16())));
+        }
+        if resp.content_length().is_some_and(|n| n as usize > MAX_RESPONSE_BYTES) {
+            return Err(CallError::Decode("response too large".into()));
+        }
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| if e.is_timeout() { CallError::Timeout } else { CallError::Http(e.without_url().to_string()) })?;
+        if bytes.len() > MAX_RESPONSE_BYTES {
+            return Err(CallError::Decode("response too large".into()));
+        }
+        serde_json::from_slice(&bytes).map_err(|e| CallError::Decode(e.to_string()))
+    };
+    tokio::time::timeout(timeout, work).await.unwrap_or(Err(CallError::Timeout))
+}

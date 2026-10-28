@@ -267,7 +267,13 @@
     "caBundleNone": "Només es confia en les autoritats de certificació de la plataforma.",
     "caBundleInUse": "Es confia en {{count}} certificat(s) d'aquest paquet, a més dels de la plataforma.",
     "caBundleBroken": "Aquest paquet no es pot usar ({{kind}}): l'HTTPS de sortida no confia en res fins que es corregeixi o s'elimini.",
-    "ignoreSslScope": "S'aplica a tot el trànsit passat pel proxy. Un sol proveïdor també pot permetre certificats no vàlids per a la seva pròpia adreça, a la seva pàgina a Proveïdors de models."
+    "ignoreSslScope": "S'aplica a tot el trànsit passat pel proxy. Un sol proveïdor també pot permetre certificats no vàlids per a la seva pròpia adreça, a la seva pàgina a Proveïdors de models.",
+    "proxyUrlInvalid": "Això no sembla una adreça de servidor intermediari. Utilitza amfitrió:port o http://amfitrió:port.",
+    "proxyUrlScheme": "Només es admeten servidors intermediaris http i https.",
+    "ignoreSslConfirmTitle": "Ignorar els certificats SSL?",
+    "ignoreSslConfirmBody": "Flint acceptarà certificats autofirmats, caducats o que no coincideixin per a tot el trànsit passat pel servidor intermediari, de manera que qualsevol persona al camí podria llegir-lo o alterar-lo. Continua només si confies en el servidor intermediari i en la xarxa.",
+    "ignoreSslConfirm": "Ignora els certificats",
+    "ignoreSslActiveWarning": "Les comprovacions de certificats estan desactivades per a tot el trànsit passat pel servidor intermediari."
   },
   "webSearch": {
     "showKey": "Mostra la clau",
@@ -436,6 +442,7 @@
     "serverHostDesc": "Adreça de xarxa del servidor.",
     "serverHostLanWarning": "0.0.0.0 fa que el servidor sigui accessible des d'altres dispositius de la teva xarxa. Defineix una clau d'API i usa l'adreça LAN de la màquina (no localhost) des de l'altre dispositiu.",
     "serverHostLanNoTrusted": "Amfitrions de confiança està buit: afegeix l'adreça que usaran els altres dispositius per arribar a aquesta màquina, o les seves sol·licituds podrien ser rebutjades.",
+    "apiKeyRequiredLan": "Defineix una clau d'API abans d'exposar el servidor a 0.0.0.0, o canvia l'amfitrió a 127.0.0.1.",
     "serverPort": "Port del servidor",
     "serverPortDesc": "Número de port del servidor API.",
     "apiPrefix": "Prefix de l’API",
