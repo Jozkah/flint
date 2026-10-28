@@ -1218,6 +1218,7 @@
       "updated": "Zaktualizowano {{when}}",
       "loading": "Wczytywanie kampanii",
       "loadFailed": "Nie udało się wczytać kampanii.",
+      "skipped": "Skipped {{count}} unreadable campaign record. The files were left in place.",
       "skipped_one": "Pominięto {{count}} nieczytelny wpis kampanii. Pliki zostały na miejscu.",
       "skipped_few": "Pominięto {{count}} nieczytelne wpisy kampanii. Pliki zostały na miejscu.",
       "skipped_other": "Pominięto {{count}} nieczytelnych wpisów kampanii. Pliki zostały na miejscu.",

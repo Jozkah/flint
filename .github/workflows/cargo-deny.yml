@@ -18,7 +18,6 @@ jobs:
     name: advisories
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -27,10 +26,15 @@ jobs:
 
       - name: cargo deny check advisories
         run: |
+          status=0
           for m in src-tauri/Cargo.toml src-tauri/utils/Cargo.toml \
             src-tauri/plugins/tauri-plugin-hardware/Cargo.toml \
             src-tauri/plugins/tauri-plugin-llamacpp/Cargo.toml; do
             echo "### $m" >> "$GITHUB_STEP_SUMMARY"
             cargo deny --manifest-path "$m" --config deny.toml check advisories 2>&1 \
-              | tee -a "$GITHUB_STEP_SUMMARY" || true
+              | tee -a "$GITHUB_STEP_SUMMARY"
+            # The pipeline's own status is tee's; the scan's is in PIPESTATUS.
+            [ "${PIPESTATUS[0]}" -eq 0 ] || status=1
           done
+          # Fail the scheduled run so a new advisory shows up as a red run.
+          exit "$status"
