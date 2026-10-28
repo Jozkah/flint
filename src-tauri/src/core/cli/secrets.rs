@@ -47,7 +47,7 @@ impl Redactor {
                     // `\\?` before each quote: inside a JSON string (every
                     // messages.jsonl message and tool argument) the quotes are
                     // escaped (Jozkah/jan#276).
-                    r#"(?i)((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?(?:bearer|basic)\s+)[A-Za-z0-9._~+/\-=]+"#,
+                    r#"(?i)((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?(?:bearer|basic|token|apikey|api-key|digest|negotiate|ntlm)\s+)[A-Za-z0-9._~+/\-=]+"#,
                 )
                 .expect("auth header regex"),
             },
@@ -55,7 +55,7 @@ impl Redactor {
                 label: "api key / token value",
                 // Both `api_key="..."` and JSON `"api_key":"..."`.
                 re: Regex::new(
-                    r#"(?i)((?:\\?["'])?(?:api[_-]?key|apikey|secret|token|access[_-]?token|refresh[_-]?token)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[A-Za-z0-9._~+/\-=]{8,}"#,
+                    r#"(?i)((?:\\?["'])?(?:api[_-]?key|apikey|secret|token|access[_-]?token|refresh[_-]?token)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[^\s"'\\,;}]{8,}"#,
                 )
                 .expect("key regex"),
             },
@@ -75,6 +75,23 @@ impl Redactor {
                 // for a key. Case-sensitive so prose ("the key = ...") is left.
                 re: Regex::new(tauri_plugin_agent_tools::secrets::ENV_KEY_ASSIGNMENT_RE)
                     .expect("env key regex"),
+            },
+            Rule {
+                label: "quoted password value",
+                // `"password": "correct horse battery"`: a quoted value runs to
+                // its closing quote, spaces included. Before the unquoted
+                // rule below, which would stop at the first space.
+                re: Regex::new(
+                    r#"(?i)("[A-Za-z0-9_]*(?:password|passwd|pwd)"\s*:\s*")[^"\\]+"#,
+                )
+                .expect("quoted password regex"),
+            },
+            Rule {
+                label: "single-quoted password value",
+                re: Regex::new(
+                    r#"(?i)('[A-Za-z0-9_]*(?:password|passwd|pwd)'\s*:\s*')[^'\\]+"#,
+                )
+                .expect("single-quoted password regex"),
             },
             Rule {
                 label: "password value",
@@ -377,5 +394,27 @@ mod tests {
         let line = format!("prefix {} api_key=sk-live-99998888777766665555", "x".repeat(4000));
         let out = SHARED.scrub(&line);
         assert!(!out.contains("sk-live-99998888777766665555"), "leaked past the budget");
+    }
+
+    /// Gaps the first set of rules left: other auth schemes, key values with
+    /// punctuation, and a quoted password with spaces.
+    #[test]
+    fn scrub_strips_other_schemes_punctuated_keys_and_spaced_passwords() {
+        for (line, secret) in [
+            ("Authorization: Token abcdef1234567890", "abcdef1234567890"),
+            ("Authorization: ApiKey abcdef1234567890", "abcdef1234567890"),
+            ("api_key=abc12345$xyz!", "$xyz!"),
+            (r#"{"password": "correct horse battery"}"#, "horse battery"),
+            ("{'password': 'correct horse battery'}", "horse battery"),
+        ] {
+            let out = SHARED.scrub(line);
+            assert!(!out.contains(secret), "leaked {secret}: {out}");
+            assert!(out.contains("<redacted>"), "not marked: {out}");
+        }
+        let quoted = SHARED.scrub(r#"{"password": "correct horse battery"}"#);
+        serde_json::from_str::<serde_json::Value>(&quoted).expect("still valid JSON");
+        for prose in ["token count: 5", "the authorization: pending review", "set a password later"] {
+            assert_eq!(SHARED.scrub(prose), prose);
+        }
     }
 }
