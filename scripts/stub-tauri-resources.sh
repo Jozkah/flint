@@ -38,6 +38,8 @@ for bin in flint jan-cli flint-llama-worker; do
   [ -f "src-tauri/resources/bin/${bin}${EXE}" ] || touch "src-tauri/resources/bin/${bin}${EXE}"
 done
 ls src-tauri/resources/bin/*ggml*."${LIB##*.}"* >/dev/null 2>&1 || touch "src-tauri/resources/bin/$LIB"
+# sqlite-vec, bundled under the same extension as the ggml libraries.
+[ -f "src-tauri/resources/bin/sqlite-vec.${LIB##*.}" ] || touch "src-tauri/resources/bin/sqlite-vec.${LIB##*.}"
 # Icons are gitignored; generate_context!() requires them at compile time
 for icon in 32x32.png 128x128.png 128x128@2x.png icon.icns icon.ico; do
   [ -f "src-tauri/icons/$icon" ] || cp src-tauri/icons/icon.png "src-tauri/icons/$icon"

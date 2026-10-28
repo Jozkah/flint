@@ -5,7 +5,7 @@ import os from 'os'
 import path from 'path'
 import unzipper from 'unzipper'
 import tar from 'tar'
-import { installSidecar } from './download-bin-install.mjs'
+import { installSidecar, pickSqliteVecLibrary, sqliteVecLibName } from './download-bin-install.mjs'
 import { assertSafeTarEntry, assertSafeZipEntry } from './archive-extract-guard.mjs'
 import { execFileSync } from 'child_process'
 import crypto from 'crypto'
@@ -276,59 +276,59 @@ async function main() {
   console.log('UV downloaded.')
 
   // ----- sqlite-vec (optional, ANN acceleration) -----
+  // The bundle configs list resources/bin/sqlite-vec.<ext>, so the file must
+  // exist even when there is no library for this platform: an empty placeholder
+  // fails to load and the app falls back to linear search.
+  const sqlvecDir = 'src-tauri/resources/bin'
+  const targetLibPath = path.join(sqlvecDir, sqliteVecLibName(os.platform()))
   try {
-    const binDir = 'src-tauri/resources/bin'
-    const platform = os.platform()
-    const ext = platform === 'darwin' ? 'dylib' : platform === 'win32' ? 'dll' : 'so'
-    const targetLibPath = path.join(binDir, `sqlite-vec.${ext}`)
-
-    if (fs.existsSync(targetLibPath)) {
+    if (fs.existsSync(targetLibPath) && fs.statSync(targetLibPath).size > 0) {
       console.log(`sqlite-vec already present at ${targetLibPath}`)
     } else {
-      const pinned = resolveSqliteVec(platform, os.arch())
+      const pinned = resolveSqliteVec(os.platform(), os.arch())
       const sqlvecUrl = pinned?.url
       if (!sqlvecUrl) {
-        console.log('Could not determine sqlite-vec download URL; skipping (linear fallback will be used).')
+        console.log('No sqlite-vec build for this platform; skipping (linear fallback will be used).')
+      } else if (!sqlvecUrl.endsWith('.tar.gz') && !sqlvecUrl.endsWith('.zip')) {
+        console.log('Unknown archive type for sqlite-vec; expecting .zip or .tar.gz')
       } else {
         console.log(`Downloading sqlite-vec from ${sqlvecUrl}...`)
-        const sqlvecArchive = path.join(tempBinDir, `sqlite-vec-download`)
-        const guessedExt = sqlvecUrl.endsWith('.zip') ? '.zip' : sqlvecUrl.endsWith('.tar.gz') ? '.tar.gz' : ''
-        const archivePath = sqlvecArchive + guessedExt
+        const archivePath = path.join(
+          tempBinDir,
+          'sqlite-vec-download' + (sqlvecUrl.endsWith('.zip') ? '.zip' : '.tar.gz')
+        )
         await download(sqlvecUrl, archivePath)
         assertSha256(archivePath, pinned.sha256)
-        if (!guessedExt) {
-          console.log('Unknown archive type for sqlite-vec; expecting .zip or .tar.gz')
+        // Own folder, so the pick below cannot see bun/uv/llama files.
+        const extractDir = path.join(tempBinDir, 'sqlite-vec')
+        fs.rmSync(extractDir, { recursive: true, force: true })
+        mkdirSync(extractDir, { recursive: true })
+        await decompress(archivePath, extractDir)
+        const files = []
+        const walk = (dir) => {
+          for (const entry of fs.readdirSync(dir)) {
+            const full = path.join(dir, entry)
+            if (fs.statSync(full).isDirectory()) walk(full)
+            else files.push(full)
+          }
+        }
+        walk(extractDir)
+        const libSrc = pickSqliteVecLibrary(files, os.platform())
+        if (!libSrc) {
+          console.log(`No vec0 library in the sqlite-vec archive (found: ${files.join(', ')}); skipping copy.`)
         } else {
-          await decompress(archivePath, tempBinDir)
-          // Try to find a shared library in the extracted files
-          const candidates = []
-          function walk(dir) {
-            for (const entry of fs.readdirSync(dir)) {
-              const full = path.join(dir, entry)
-              const stat = fs.statSync(full)
-              if (stat.isDirectory()) walk(full)
-              else if (full.endsWith(`.${ext}`)) candidates.push(full)
-            }
-          }
-          walk(tempBinDir)
-          if (candidates.length === 0) {
-            console.log('No sqlite-vec shared library found in archive; skipping copy.')
-          } else {
-            // Pick the first match and copy/rename to sqlite-vec.<ext>
-            const libSrc = candidates[0]
-            // Ensure we copy the FILE, not a directory (fs-extra copySync can copy dirs)
-            if (fs.statSync(libSrc).isFile()) {
-              fs.copyFileSync(libSrc, targetLibPath)
-              console.log(`sqlite-vec installed at ${targetLibPath}`)
-            } else {
-              console.log(`Found non-file at ${libSrc}; skipping.`)
-            }
-          }
+          fs.copyFileSync(libSrc, targetLibPath)
+          console.log(`sqlite-vec installed at ${targetLibPath} (from ${path.basename(libSrc)})`)
         }
       }
     }
   } catch (err) {
     console.log('sqlite-vec download step failed (non-fatal):', err)
+  }
+  if (!fs.existsSync(targetLibPath)) {
+    mkdirSync(sqlvecDir, { recursive: true })
+    fs.writeFileSync(targetLibPath, '')
+    console.log(`Wrote empty ${targetLibPath} so the bundle config still resolves.`)
   }
 
   console.log('Downloads completed.')

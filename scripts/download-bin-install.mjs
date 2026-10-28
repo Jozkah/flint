@@ -52,3 +52,22 @@ export function installSidecar({
     if (platform !== 'win32') chmodSync(target, 0o755)
   }
 }
+
+// File name download-bin installs sqlite-vec under, in src-tauri/resources/bin.
+// The tauri.<os>.conf.json bundles list exactly this name.
+export function sqliteVecLibName(platform) {
+  const ext = platform === 'darwin' ? 'dylib' : platform === 'win32' ? 'dll' : 'so'
+  return `sqlite-vec.${ext}`
+}
+
+// The loadable library inside a sqlite-vec release archive. Only the exact
+// `vec0.<ext>` counts: the old "first file ending in .<ext>" walk could copy
+// any other library sitting in the extraction folder (H02-006).
+export function pickSqliteVecLibrary(files, platform) {
+  const want = `vec0.${sqliteVecLibName(platform).split('.').pop()}`
+  const matches = files.filter((f) => f.split(/[\\/]/).pop() === want)
+  if (matches.length > 1) {
+    throw new Error(`sqlite-vec archive holds ${matches.length} copies of ${want}: ${matches.join(', ')}`)
+  }
+  return matches[0] ?? null
+}

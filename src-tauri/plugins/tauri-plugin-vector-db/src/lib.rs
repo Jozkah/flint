@@ -16,6 +16,10 @@ pub use state::{migrate_legacy_vector_db, VectorDBState};
 pub fn manage_state<R: tauri::Runtime>(app: &tauri::AppHandle<R>, base: std::path::PathBuf) {
     use tauri::Manager;
 
+    match app.path().resource_dir() {
+        Ok(dir) => db::set_resource_dir(dir),
+        Err(e) => log::warn!("vector-db: no resource folder for sqlite-vec lookup: {e}"),
+    }
     let state = state::VectorDBState::at(base.clone());
     // A test or portable run (its own data folder) copies, so it never takes
     // the real install's databases.
