@@ -2830,7 +2830,11 @@
     "noVision": "This model can't read images",
     "details": "Details for {{name}}",
     "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "previewNone": "No preview available",
+    "pagesAsImages": "Send pages as images",
+    "pagesAsImagesHint": "Send this PDF's pages as images, so the model sees scans, charts and layout",
+    "pdfPagesCut": "Sent the first {{sent}} of {{total}} pages of {{name}} as images",
+    "pdfScannedAsImages": "{{name}} has no text, so its pages were sent as images"
   },
   "fileViewer": {
     "openFull": "Open full preview",

@@ -2742,7 +2742,11 @@
     "noVision": "このモデルは画像を読み取れません",
     "details": "{{name}} の詳細",
     "previewLoading": "プレビューを読み込んでいます…",
-    "previewNone": "プレビューはありません"
+    "previewNone": "プレビューはありません",
+    "pagesAsImages": "ページを画像として送信",
+    "pagesAsImagesHint": "この PDF のページを画像として送信し、モデルがスキャン・グラフ・レイアウトを読めるようにします",
+    "pdfPagesCut": "{{name}} の全 {{total}} ページのうち最初の {{sent}} ページを画像として送信しました",
+    "pdfScannedAsImages": "{{name}} にはテキストがないため、ページを画像として送信しました"
   },
   "fileViewer": {
     "openFull": "完全なプレビューを開く",

@@ -2747,7 +2747,11 @@
     "noVision": "此模型无法读取图片",
     "details": "{{name}} 的详情",
     "previewLoading": "正在加载预览…",
-    "previewNone": "没有可用的预览"
+    "previewNone": "没有可用的预览",
+    "pagesAsImages": "将页面作为图片发送",
+    "pagesAsImagesHint": "将此 PDF 的页面作为图片发送，让模型能看到扫描件、图表和版式",
+    "pdfPagesCut": "已将 {{name}} 共 {{total}} 页中的前 {{sent}} 页作为图片发送",
+    "pdfScannedAsImages": "{{name}} 没有文本，因此已将其页面作为图片发送"
   },
   "fileViewer": {
     "openFull": "打开完整预览",

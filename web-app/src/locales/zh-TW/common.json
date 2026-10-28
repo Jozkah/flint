@@ -2747,7 +2747,11 @@
     "noVision": "此模型無法讀取圖片",
     "details": "{{name}} 的詳細資料",
     "previewLoading": "正在載入預覽…",
-    "previewNone": "沒有可用的預覽"
+    "previewNone": "沒有可用的預覽",
+    "pagesAsImages": "將頁面以圖片傳送",
+    "pagesAsImagesHint": "將此 PDF 的頁面以圖片傳送，讓模型能看到掃描檔、圖表與版面",
+    "pdfPagesCut": "已將 {{name}} 共 {{total}} 頁中的前 {{sent}} 頁以圖片傳送",
+    "pdfScannedAsImages": "{{name}} 沒有文字，因此已將其頁面以圖片傳送"
   },
   "fileViewer": {
     "openFull": "開啟完整預覽",
