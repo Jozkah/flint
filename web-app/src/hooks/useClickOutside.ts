@@ -9,34 +9,41 @@ export function useClickOutside<T extends HTMLElement = any>(
   nodes?: (HTMLElement | null)[]
 ) {
   const ref = useRef<T>(null)
+  // Latest values, read when the event fires: an inline handler or a new
+  // `nodes` array each render must not re-register the document listeners.
+  const handlerRef = useRef(handler)
+  const nodesRef = useRef(nodes)
+  useEffect(() => {
+    handlerRef.current = handler
+    nodesRef.current = nodes
+  })
+  const eventsKey = (events || DEFAULT_EVENTS).join(',')
 
   useEffect(() => {
     const listener = (event: any) => {
-      const { target } = event ?? {}
-      if (Array.isArray(nodes)) {
+      const target = event?.target
+      const currentNodes = nodesRef.current
+      if (Array.isArray(currentNodes)) {
         const shouldIgnore =
-          target?.hasAttribute('data-ignore-outside-clicks') ||
+          !target ||
+          target.hasAttribute?.('data-ignore-outside-clicks') ||
           (!document.body.contains(target) && target.tagName !== 'HTML')
-        const shouldTrigger = nodes.every(
+        const shouldTrigger = currentNodes.every(
           (node) => !!node && !event.composedPath().includes(node)
         )
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        shouldTrigger && !shouldIgnore && handler()
+        if (shouldTrigger && !shouldIgnore) handlerRef.current()
       } else if (ref.current && !ref.current.contains(target)) {
-        handler()
+        handlerRef.current()
       }
     }
 
-    ;(events || DEFAULT_EVENTS).forEach((fn) =>
-      document.addEventListener(fn, listener)
-    )
+    const names = eventsKey.split(',')
+    names.forEach((fn) => document.addEventListener(fn, listener))
 
     return () => {
-      (events || DEFAULT_EVENTS).forEach((fn) =>
-        document.removeEventListener(fn, listener)
-      )
+      names.forEach((fn) => document.removeEventListener(fn, listener))
     }
-  }, [ref, handler, nodes, events])
+  }, [ref, eventsKey])
 
   return ref
 }

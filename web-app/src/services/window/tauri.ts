@@ -5,6 +5,7 @@
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { WindowConfig, WebviewWindowInstance } from './types'
 import { DefaultWindowService } from './default'
+import i18n from '@/i18n/setup'
 import { listen } from '@tauri-apps/api/event'
 
 /**
@@ -102,7 +103,7 @@ export class TauriWindowService extends DefaultWindowService {
       await this.openWindow({
         url: '/logs',
         label: 'logs-app-window',
-        title: 'App Logs - Flint',
+        title: i18n.t('common:windowTitles.appLogs'),
         width: 800,
         height: 600,
         resizable: true,
@@ -119,7 +120,7 @@ export class TauriWindowService extends DefaultWindowService {
       await this.openWindow({
         url: '/system-monitor',
         label: 'system-monitor-window',
-        title: 'System Monitor - Flint',
+        title: i18n.t('common:windowTitles.systemMonitor'),
         width: 1000,
         height: 700,
         resizable: true,
@@ -136,7 +137,7 @@ export class TauriWindowService extends DefaultWindowService {
       await this.openWindow({
         url: '/local-api-server/logs',
         label: 'logs-window-local-api-server',
-        title: 'Local API Server Logs - Flint',
+        title: i18n.t('common:windowTitles.localApiServerLogs'),
         width: 800,
         height: 600,
         resizable: true,

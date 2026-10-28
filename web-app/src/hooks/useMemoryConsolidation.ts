@@ -62,6 +62,8 @@ export function useMemoryConsolidation(
   const lastActivityRef = useRef<number>(Date.now())
   // Guards against overlapping calls without forcing a re-render mid-flight.
   const inFlightRef = useRef<boolean>(false)
+  // The activity stamp an automatic run was last started for.
+  const ranForActivityRef = useRef<number>(0)
 
   const run = useCallback(
     async (manual: boolean): Promise<ConsolidationOutcome | null> => {
@@ -117,7 +119,14 @@ export function useMemoryConsolidation(
     if (!enabled) return
     const tick = () => {
       const idleForMs = Date.now() - lastActivityRef.current
-      if (idleForMs >= idleSecs * 1000 && !inFlightRef.current) {
+      // One automatic run per idle stretch: the same quiet period must not
+      // start another run every poll once the first has finished.
+      if (
+        idleForMs >= idleSecs * 1000 &&
+        !inFlightRef.current &&
+        ranForActivityRef.current !== lastActivityRef.current
+      ) {
+        ranForActivityRef.current = lastActivityRef.current
         void run(false)
       }
     }

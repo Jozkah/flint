@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 /** Default for {@link useAutoApproveLimit}'s `limit`. */
 export const DEFAULT_AUTO_APPROVE_LIMIT = 50
@@ -80,5 +81,5 @@ export function resetAutoApproveStreak(sessionId: string): void {
  * reached. One wording for Chat and Cowork.
  */
 export function autoApprovePauseReason(limit: number): string {
-  return `${limit} tool calls ran without asking. Continue?`
+  return i18n.t('permissions:approvalText.autoPause', { count: limit })
 }

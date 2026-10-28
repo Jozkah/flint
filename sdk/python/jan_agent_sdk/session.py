@@ -143,6 +143,9 @@ class JanSession:
         self._tools: Dict[str, HostTool] = {}
         self._listeners: Dict[str, List[Callable[[Dict[str, Any]], None]]] = {}
         self._calls: Dict[str, threading.Event] = {}
+        # `_calls` is touched by the dispatch thread, every tool-handler thread
+        # and whoever aborts the session.
+        self._calls_lock = threading.Lock()
         self._late: "OrderedDict[str, TurnResult]" = OrderedDict()
         self._closed = False
         self._failure: Optional[BaseException] = None
@@ -155,10 +158,10 @@ class JanSession:
     def on(self, kind: str, listener: Callable[[Dict[str, Any]], None]) -> Callable[[], None]:
         """Observe every event of the session, or one kind, or ``'*'``.
 
-        The listener runs on the reader thread that owns the channel: it must
-        not block, or it holds the client's reader. Tool handlers do not run
-        there - each has its own thread - and a turn being iterated does not
-        either.
+        The listener runs on the runtime's dispatch thread, in the order events
+        were read: a slow listener delays the listeners after it, though never
+        the reader. Tool handlers do not run there - each has its own thread -
+        and a turn being iterated does not either.
         """
         self._listeners.setdefault(kind, []).append(listener)
 
@@ -318,7 +321,8 @@ class JanSession:
         request_id = event.get("request_id") or ""
         tool = self._tools.get(event.get("tool_name") or "")
         aborted = threading.Event()
-        self._calls[request_id] = aborted
+        with self._calls_lock:
+            self._calls[request_id] = aborted
         call = HostToolCall(
             request_id=request_id,
             tool_name=event.get("tool_name") or "",
@@ -351,25 +355,28 @@ class JanSession:
 
     def _abandon(self, event: Dict[str, Any]) -> None:
         request_id = event.get("request_id") or ""
-        flag = self._calls.pop(request_id, None)
+        with self._calls_lock:
+            flag = self._calls.pop(request_id, None)
         if flag is not None:
             flag.set()
 
     def _respond(self, request_id: str, params: Dict[str, Any]) -> None:
-        flag = self._calls.get(request_id)
-        if flag is None or flag.is_set():
+        with self._calls_lock:
+            flag = self._calls.get(request_id)
             self._calls.pop(request_id, None)
+        if flag is None or flag.is_set():
             return
-        self._calls.pop(request_id, None)
         try:
             self.runtime.request("tool/respond", {"requestId": request_id, **params})
         except Exception:  # noqa: BLE001 - the turn was interrupted or the channel closed
             pass
 
     def _abort(self, error: BaseException) -> None:
-        for flag in self._calls.values():
+        with self._calls_lock:
+            flags = list(self._calls.values())
+            self._calls.clear()
+        for flag in flags:
             flag.set()
-        self._calls.clear()
 
 
 def normalize_input(content: Union[str, List[Dict[str, Any]], Dict[str, Any]]) -> Any:

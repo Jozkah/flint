@@ -121,7 +121,8 @@ export class TauriMCPService extends DefaultMCPService {
     // Plain listings stay on the existing bridge; a listing that may start
     // servers on demand passes the flag through.
     if (options?.start) return invoke('get_tools', { start: true })
-    return window.core?.api?.getTools()
+    // No bridge (a page outside the app): an empty list, not `undefined`.
+    return (await window.core?.api?.getTools()) ?? []
   }
 
   async getToolsForServers(
@@ -143,7 +144,7 @@ export class TauriMCPService extends DefaultMCPService {
   }
 
   async getConnectedServers(): Promise<string[]> {
-    return window.core?.api?.getConnectedServers()
+    return (await window.core?.api?.getConnectedServers()) ?? []
   }
 
   async callTool(args: {
@@ -211,7 +212,11 @@ export class TauriMCPService extends DefaultMCPService {
       window.core?.api?.callTool({
         ...args,
         cancellationToken: token
-      })
+      }) ??
+        Promise.resolve({
+          error: 'MCP bridge unavailable',
+          content: [] as { text: string }[],
+        })
     )
 
     // Create cancel function

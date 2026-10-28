@@ -60,7 +60,13 @@ export function useBuildUpdateCheck() {
   const enabled = useBuildUpdate((s) => s.enabled)
   useEffect(() => {
     if (!enabled) return
-    if (Date.now() - useBuildUpdate.getState().checkedAt < CHECK_EVERY_MS) return
-    void useBuildUpdate.getState().run()
+    const check = () => {
+      if (Date.now() - useBuildUpdate.getState().checkedAt < CHECK_EVERY_MS) return
+      void useBuildUpdate.getState().run()
+    }
+    check()
+    // An app left open for days looks again; `check` still holds to the 12 h gap.
+    const id = setInterval(check, 60 * 60 * 1000)
+    return () => clearInterval(id)
   }, [enabled])
 }

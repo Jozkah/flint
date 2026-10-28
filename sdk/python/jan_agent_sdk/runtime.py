@@ -199,7 +199,10 @@ class JanRuntime:
 
     def on(self, kind: str, listener: Callable[[Any], None]) -> Callable[[], None]:
         """Observe ``'exit'``, a frame's ``'notification'``, or an ``'event'``
-        for a session this runtime does not know."""
+        for a session this runtime does not know.
+
+        Listeners run on the dispatch thread, not the caller's. One that raises
+        fails the runtime and stops the process, as in the JavaScript client."""
         self._listeners.setdefault(kind, []).append(listener)
 
         def off() -> None:
@@ -412,6 +415,9 @@ class JanRuntime:
                 frame = json.loads(line)
             except ValueError:
                 self._fail(JanRuntimeError(f"the runtime wrote a line that is not JSON: {line[:200]}", stderr=self.stderr))
+                # The stream is out of step and nobody reads it any more: end the
+                # child instead of leaving it running against a dead client.
+                self._kill()
                 return
             try:
                 self._dispatch(frame)
@@ -495,6 +501,10 @@ class JanRuntime:
                 listener(payload)
             except Exception as error:  # noqa: BLE001 - a listener chose to raise
                 self._fail(JanRuntimeError(f"an event listener raised: {error}", stderr=self.stderr))
+                # Mirrors the JavaScript client: a failed runtime is stopped, not
+                # left running against a listener that may have been the one
+                # answering a permission request.
+                self._kill()
                 return
 
     def _fail(self, error: JanRuntimeError, *, notify_exit: bool = False) -> None:

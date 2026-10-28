@@ -50,9 +50,9 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
     const id = await useConversationGroups.getState().createGroup('home', name)
     if (!id) throw new Error('Could not create the project')
     const group = useConversationGroups.getState().state.surfaces.home.groups.find((g) => g.id === id)!
-    const folder: ThreadFolder = { id, name: group.name, updated_at: group.updatedAt, assistantId, ...(model ? { model } : {}) }
-    const others = (await projectsService.getProjects()).filter((f) => f.id !== id)
-    await projectsService.setProjects([...others, folder])
+    // One add per project instead of read-all/write-all, so a concurrent add
+    // elsewhere is not overwritten.
+    const folder = await projectsService.addProject(group.name, assistantId, model, id)
     set({ folders: await projectsService.getProjects() })
     return folder
   },

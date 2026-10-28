@@ -481,9 +481,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         let taskContext =
           context?.taskContext ??
           (destructive
-            ? `Destructive command: ${destructive}. Asked even though this tool is otherwise allowed.`
+            ? i18n.t('permissions:approvalText.destructive', {
+                reason: destructive,
+              })
             : selfApproval
-              ? `${toolName} approves commands on ${serverName} itself. Only you can approve them, so it is asked about every time.`
+              ? i18n.t('permissions:approvalText.selfApproval', {
+                tool: toolName,
+                server: serverName,
+              })
               : undefined)
 
         if (
@@ -491,8 +496,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           sensitiveCall(toolName, serverName, context?.input)
         ) {
           alwaysAsk = true
-          taskContext ??=
-            'Sensitive tool call: review its action before allowing it.'
+          taskContext ??= i18n.t('permissions:approvalText.sensitive')
         }
 
         if (permissionMode === 'bypass') {

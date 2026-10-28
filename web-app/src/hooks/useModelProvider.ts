@@ -69,13 +69,18 @@ export const useModelProvider = create<ModelProviderState>()(
 
           let legacyModels: Model[] | undefined = []
           /// Cortex Migration
-          if (
-            localStorage.getItem('cortex_model_settings_migrated') !== 'true'
-          ) {
-            legacyModels = state.providers.find(
-              (e) => e.provider === 'llama.cpp'
-            )?.models
-            localStorage.setItem('cortex_model_settings_migrated', 'true')
+          try {
+            if (
+              localStorage.getItem('cortex_model_settings_migrated') !== 'true'
+            ) {
+              legacyModels = state.providers.find(
+                (e) => e.provider === 'llama.cpp'
+              )?.models
+              localStorage.setItem('cortex_model_settings_migrated', 'true')
+            }
+          } catch {
+            // Storage blocked or full: treated as already migrated, so the
+            // provider list still loads.
           }
           // Ensure deletedModels is always an array
           const currentDeletedModels = Array.isArray(state.deletedModels)
@@ -229,11 +234,24 @@ export const useModelProvider = create<ModelProviderState>()(
             ),
           ]
 
+          // The picker holds its own copy of the model; a refreshed list has
+          // new copies, so re-point it or it keeps stale capabilities.
+          const freshSelected = state.selectedModel
+            ? nextProviders
+                .find((p) => p.provider === state.selectedProvider)
+                ?.models.find((m) => m.id === state.selectedModel?.id)
+            : undefined
+          const selection =
+            freshSelected && freshSelected !== state.selectedModel
+              ? { selectedModel: freshSelected }
+              : {}
+
           return effectiveDeletedModels === currentDeletedModels
-            ? { providers: nextProviders }
+            ? { providers: nextProviders, ...selection }
             : {
                 providers: nextProviders,
                 deletedModels: effectiveDeletedModels,
+                ...selection,
               }
         }),
       updateProvider: (providerName, data) => {

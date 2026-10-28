@@ -959,7 +959,7 @@ describe('engine: secret redaction in stored errors', () => {
     const p = await setup(makeRoom({ participants: threeParticipants(), limits: { maxTurns: 2 } }))
     const { fn } = scriptedStream((input) =>
       speakerOf(input) === 'Alice'
-        ? { error: new RoomCallError('load-failed', 'load-failed', cleanErrorMessage(new Error('could not start: api_key=hunter2hunter2 Bearer abc123'))) }
+        ? { error: new RoomCallError('load-failed', 'load-failed', cleanErrorMessage(new Error('could not start: api_key=hunter2hunter2 Bearer abc123def456'))) }
         : { text: uniqueText() }
     )
     await runRoom('room-1', engineDeps(p, fn), signal())
@@ -967,7 +967,7 @@ describe('engine: secret redaction in stored errors', () => {
     const note = messagesOf(p).find((m) => m.kind === 'system' && m.text.startsWith('Alice is unavailable'))!
     expect(note.text).toContain('[redacted]')
     expect(texts.join('\n')).not.toContain('hunter2hunter2')
-    expect(texts.join('\n')).not.toContain('abc123')
+    expect(texts.join('\n')).not.toContain('abc123def456')
   })
 
   it('redacts the internal-error message', async () => {
