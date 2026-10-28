@@ -1,5 +1,40 @@
-import { describe, expect, it } from 'vitest'
-import { approvalNotice, prNotice, runEndNotice } from '../push'
+import { describe, expect, it, vi } from 'vitest'
+import { useContextSizeApproval } from '@/hooks/useModelContextApproval'
+import {
+  approvalNotice,
+  prNotice,
+  runEndNotice,
+  startPushForwarding,
+} from '../push'
+
+describe('context size prompt push', () => {
+  const props = { onApprove: () => {}, onDeny: () => {} }
+
+  it('notifies once when a model needs a context decision, and stops on cleanup', () => {
+    useContextSizeApproval.setState({ modalProps: null, isModalOpen: false })
+    const emit = vi.fn()
+    const stop = startPushForwarding(emit)
+
+    useContextSizeApproval.setState({ modalProps: props, isModalOpen: true })
+    expect(emit).toHaveBeenCalledTimes(1)
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'push.notify',
+        title: 'A model needs your decision',
+      })
+    )
+
+    // Same prompt again: already announced, not sent twice.
+    useContextSizeApproval.setState({ modalProps: { ...props } })
+    expect(emit).toHaveBeenCalledTimes(1)
+
+    stop()
+    useContextSizeApproval.setState({ modalProps: null })
+    useContextSizeApproval.setState({ modalProps: props })
+    expect(emit).toHaveBeenCalledTimes(1)
+    useContextSizeApproval.setState({ modalProps: null, isModalOpen: false })
+  })
+})
 
 describe('push notices', () => {
   it('approvals carry the request id and a deep link, no arguments', () => {
