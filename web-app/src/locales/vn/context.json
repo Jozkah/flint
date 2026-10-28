@@ -170,5 +170,76 @@
     "toolOk": "ok",
     "toolFailed": "thất bại",
     "chatStarted": "Đã bắt đầu chat"
+  },
+  "promptSnapshot": {
+    "summary": "Những gì mô hình đã nhận",
+    "loading": "Đang tải…",
+    "gone": "Ảnh chụp đó không còn trên đĩa.",
+    "unavailable": "Không có dữ liệu nào được lưu. {{reason}}",
+    "reason": {
+      "not-serializable": "Không thể tuần tự hóa yêu cầu, nên không có gì được lưu.",
+      "disabled": "Ảnh chụp bị tắt cho lượt chạy này.",
+      "too-large": "Yêu cầu quá lớn để lưu nguyên vẹn."
+    },
+    "meta": {
+      "provider": "Nhà cung cấp",
+      "model": "Mô hình",
+      "reasoning": "Suy luận",
+      "session": "Phiên",
+      "run": "Lượt chạy",
+      "agent": "Tác tử",
+      "sent": "Đã gửi",
+      "hash": "Mã băm",
+      "redacted": "Đã che",
+      "nothing": "không có",
+      "redactedList_one": "{{count}} trường: {{list}}",
+      "redactedList_other": "{{count}} trường: {{list}}"
+    },
+    "view": {
+      "label": "Xem dạng",
+      "tree": "Cây",
+      "json": "JSON"
+    },
+    "copy": "Sao chép dữ liệu đã che",
+    "copied": "Đã sao chép",
+    "diff": {
+      "run": "So sánh với yêu cầu trước",
+      "loading": "Đang so sánh…",
+      "first": "Đây là yêu cầu được lưu đầu tiên của phiên; không có gì trước đó để so sánh.",
+      "summary": "So với {{id}}: {{details}}.",
+      "separator": ", ",
+      "entered": "{{count}} vào",
+      "left": "{{count}} ra",
+      "keptMessages_one": "giữ lại {{count}} tin nhắn",
+      "keptMessages_other": "giữ lại {{count}} tin nhắn",
+      "keptTools_one": "giữ lại {{count}} công cụ",
+      "keptTools_other": "giữ lại {{count}} công cụ",
+      "systemChanged": "lời nhắc hệ thống đã đổi",
+      "enteredHeading": "Đã vào",
+      "leftHeading": "Đã ra",
+      "nothingNew": "Không có gì mới.",
+      "nothingLeft": "Không có gì rời khỏi cửa sổ."
+    },
+    "replay": {
+      "label": "Các lần phát lại của ngữ cảnh này",
+      "run": "Phát lại ngữ cảnh này",
+      "hint": "Gửi lại đúng yêu cầu này. Các công cụ mô hình yêu cầu sẽ không được chạy.",
+      "needsSession": "Phát lại cần phiên mà lượt này thuộc về.",
+      "redactedBlock_one": "Không thể phát lại: {{count}} trường đã bị che trước khi lưu, nên mô hình sẽ không nhận được những gì đã nhận khi đó.",
+      "redactedBlock_other": "Không thể phát lại: {{count}} trường đã bị che trước khi lưu, nên mô hình sẽ không nhận được những gì đã nhận khi đó.",
+      "state": {
+        "running": "Đang phát lại…",
+        "interrupted": "Bị gián đoạn: Flint đã dừng khi đang chạy",
+        "completed": "Hoàn tất",
+        "failed": "Thất bại",
+        "cancelled": "Đã dừng",
+        "refused": "Bị từ chối"
+      },
+      "matched": "Cùng ngữ cảnh với lượt (mã băm khớp)",
+      "differed": "Yêu cầu đã gửi khác với lượt",
+      "finish": "kết thúc: {{reason}}",
+      "stop": "Dừng",
+      "asked": "Đã yêu cầu {{tools}} (không chạy)"
+    }
   }
 }

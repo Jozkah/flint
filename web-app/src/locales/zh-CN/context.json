@@ -170,5 +170,76 @@
     "toolOk": "成功",
     "toolFailed": "失败",
     "chatStarted": "聊天已开始"
+  },
+  "promptSnapshot": {
+    "summary": "模型收到的内容",
+    "loading": "加载中…",
+    "gone": "该快照已不在磁盘上。",
+    "unavailable": "未存储任何载荷。{{reason}}",
+    "reason": {
+      "not-serializable": "请求无法序列化，因此未存储任何内容。",
+      "disabled": "此次运行已关闭快照。",
+      "too-large": "请求太大，无法完整存储。"
+    },
+    "meta": {
+      "provider": "提供商",
+      "model": "模型",
+      "reasoning": "推理",
+      "session": "会话",
+      "run": "运行",
+      "agent": "代理",
+      "sent": "发送时间",
+      "hash": "哈希",
+      "redacted": "已涂黑",
+      "nothing": "无",
+      "redactedList_one": "{{count}} 个字段：{{list}}",
+      "redactedList_other": "{{count}} 个字段：{{list}}"
+    },
+    "view": {
+      "label": "查看方式",
+      "tree": "树",
+      "json": "JSON"
+    },
+    "copy": "复制已涂黑的载荷",
+    "copied": "已复制",
+    "diff": {
+      "run": "与上一个请求比较",
+      "loading": "正在比较…",
+      "first": "这是会话中存储的第一个请求，没有更早的可比较。",
+      "summary": "相对于 {{id}}：{{details}}。",
+      "separator": "，",
+      "entered": "{{count}} 项进入",
+      "left": "{{count}} 项移出",
+      "keptMessages_one": "保留 {{count}} 条消息",
+      "keptMessages_other": "保留 {{count}} 条消息",
+      "keptTools_one": "保留 {{count}} 个工具",
+      "keptTools_other": "保留 {{count}} 个工具",
+      "systemChanged": "系统提示已更改",
+      "enteredHeading": "进入",
+      "leftHeading": "移出",
+      "nothingNew": "没有新内容。",
+      "nothingLeft": "没有内容离开窗口。"
+    },
+    "replay": {
+      "label": "此上下文的重放",
+      "run": "重放此上下文",
+      "hint": "原样再次发送此请求。模型请求的工具不会运行。",
+      "needsSession": "重放需要此轮所属的会话。",
+      "redactedBlock_one": "无法重放：有 {{count}} 个字段在存储前已被涂黑，模型将无法收到当时收到的内容。",
+      "redactedBlock_other": "无法重放：有 {{count}} 个字段在存储前已被涂黑，模型将无法收到当时收到的内容。",
+      "state": {
+        "running": "正在重放…",
+        "interrupted": "已中断：运行期间 Flint 停止了",
+        "completed": "已完成",
+        "failed": "失败",
+        "cancelled": "已停止",
+        "refused": "已拒绝"
+      },
+      "matched": "与该轮上下文相同（哈希一致）",
+      "differed": "发送的请求与该轮不同",
+      "finish": "结束：{{reason}}",
+      "stop": "停止",
+      "asked": "请求了 {{tools}}（未运行）"
+    }
   }
 }
