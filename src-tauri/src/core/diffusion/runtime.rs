@@ -30,7 +30,27 @@ use tokio::sync::Mutex;
 /// memory back to chat.
 const IDLE_UNLOAD: Duration = Duration::from_secs(10 * 60);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(600);
-const JOB_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
+/// Bounds of how long a generation may run before the wait gives up.
+const JOB_TIMEOUT_FLOOR: Duration = Duration::from_secs(10 * 60);
+const JOB_TIMEOUT_CAP: Duration = Duration::from_secs(6 * 60 * 60);
+
+/// How long to wait for a job, scaled by its size so a quick 512px image on a
+/// GPU is not held for six hours when the engine hangs, and a long video on a
+/// CPU is not cut off. Generous per unit (30 s per step * megapixel * frame
+/// covers CPU-only runs), floored at ten minutes and capped at six hours.
+fn job_timeout(steps: u32, batch: u32, width: u32, height: u32, frames: u32) -> Duration {
+    let megapixels = (f64::from(width) * f64::from(height) / 1_000_000.0).max(0.25);
+    let units = f64::from(steps.max(1)) * f64::from(batch.max(1)) * f64::from(frames.max(1)) * megapixels;
+    let secs = 600.0 + units * 30.0;
+    Duration::from_secs_f64(secs).clamp(JOB_TIMEOUT_FLOOR, JOB_TIMEOUT_CAP)
+}
+
+/// The timeout for a request body, read from the fields the builders write.
+fn job_timeout_for(body: &Value, steps: u32, batch: u32) -> Duration {
+    let dim = |key: &str| body[key].as_u64().unwrap_or(1024).min(u64::from(u32::MAX)) as u32;
+    let frames = body["video_frames"].as_u64().unwrap_or(1).min(u64::from(u32::MAX)) as u32;
+    job_timeout(steps, batch, dim("width"), dim("height"), frames)
+}
 const LOG_TAIL_LINES: usize = 60;
 
 /// What the log reader shares with the job that is running.
@@ -50,12 +70,23 @@ struct Resident {
     last_used: Instant,
     busy: bool,
     current_job: Option<String>,
+    /// Kills the engine if the app dies without unloading it.
+    #[cfg(windows)]
+    _job: Option<jan_process::confine::Job>,
 }
 
 static RESIDENT: OnceLock<Mutex<Option<Resident>>> = OnceLock::new();
 
 fn resident() -> &'static Mutex<Option<Resident>> {
     RESIDENT.get_or_init(|| Mutex::new(None))
+}
+
+/// Set while a load waits for the engine to answer, so `unload` (a shutdown, a
+/// user stop) can interrupt the wait instead of letting it run to its timeout.
+static LOAD_CANCEL: OnceLock<StdMutex<Option<tokio::sync::watch::Sender<bool>>>> = OnceLock::new();
+
+fn load_cancel() -> &'static StdMutex<Option<tokio::sync::watch::Sender<bool>>> {
+    LOAD_CANCEL.get_or_init(|| StdMutex::new(None))
 }
 
 /// How the last load was asked for, so a server that was stopped (a cancel, an
@@ -271,6 +302,13 @@ async fn check_can_replace(model_id: &str) -> Result<(), String> {
 }
 
 pub async fn unload<R: Runtime>(app: &tauri::AppHandle<R>) {
+    // A load that is still waiting for its engine is stopped first; it kills
+    // its own child.
+    if let Ok(slot) = load_cancel().lock() {
+        if let Some(tx) = slot.as_ref() {
+            let _ = tx.send(true);
+        }
+    }
     let taken = resident().lock().await.take();
     if let Some(mut r) = taken {
         let _ = r.child.start_kill();
@@ -330,9 +368,12 @@ pub async fn load<R: Runtime>(
     engine::configure_library_path(&mut command, &dir);
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    jan_process::confine::die_with_parent(&mut command);
     let mut child = command
         .spawn()
         .map_err(|e| format!("Could not start the image engine: {e}"))?;
+    #[cfg(windows)]
+    let job = child.raw_handle().and_then(jan_process::confine::confine);
     let live = Arc::new(StdMutex::new(Live::default()));
     if let Some(out) = child.stdout.take() {
         watch_output(out, live.clone());
@@ -343,29 +384,17 @@ pub async fn load<R: Runtime>(
 
     // Ready when /v1/models answers: the model is loaded before the port opens.
     let client = http()?;
-    let started = Instant::now();
-    loop {
-        if let Ok(Some(status)) = child.try_wait() {
-            let why = diagnose(&live);
-            emit_state(app, "unloaded", None);
-            return Err(format!("The image engine stopped while loading ({status}). {why}"));
-        }
-        let answered = client
-            .get(format!("http://127.0.0.1:{port}/v1/models"))
-            .timeout(Duration::from_secs(2))
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false);
-        if answered {
-            break;
-        }
-        if started.elapsed() > LOAD_TIMEOUT {
-            let _ = child.start_kill();
-            emit_state(app, "unloaded", None);
-            return Err("The image engine took too long to load the model.".to_string());
-        }
-        tokio::time::sleep(Duration::from_millis(300)).await;
+    let (cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);
+    if let Ok(mut slot) = load_cancel().lock() {
+        *slot = Some(cancel_tx);
+    }
+    let ready = await_ready(&client, &mut child, port, &live, &mut cancel_rx, LOAD_TIMEOUT).await;
+    if let Ok(mut slot) = load_cancel().lock() {
+        *slot = None;
+    }
+    if let Err(e) = ready {
+        emit_state(app, "unloaded", None);
+        return Err(e.message());
     }
 
     *resident().lock().await = Some(Resident {
@@ -377,6 +406,8 @@ pub async fn load<R: Runtime>(
         last_used: Instant::now(),
         busy: false,
         current_job: None,
+        #[cfg(windows)]
+        _job: job,
     });
     if let Ok(mut last) = last_load().lock() {
         *last = Some((def.id.to_string(), offload));
@@ -384,6 +415,89 @@ pub async fn load<R: Runtime>(
     spawn_idle_watch(app.clone());
     emit_state(app, "loaded", Some(def.id));
     Ok(ResidentInfo { model_id: def.id.to_string(), kind: def.kind, busy: false })
+}
+
+/// Why waiting for the engine to come up ended without it answering.
+#[derive(Debug, PartialEq, Eq)]
+enum ReadyError {
+    /// The process ended; carries its status and the reason read from its log.
+    Exited(String),
+    TimedOut,
+    /// `unload` asked the load to stop.
+    Cancelled,
+}
+
+impl ReadyError {
+    fn message(&self) -> String {
+        match self {
+            Self::Exited(why) => why.clone(),
+            Self::TimedOut => "The image engine took too long to load the model.".to_string(),
+            Self::Cancelled => "The image engine load was cancelled.".to_string(),
+        }
+    }
+}
+
+/// Resolves once `unload` has asked the load to stop. Written with
+/// `borrow_and_update` because the `Ref` that `wait_for` returns is not `Send`
+/// and this runs inside a spawned task.
+async fn cancelled(rx: &mut tokio::sync::watch::Receiver<bool>) {
+    loop {
+        if *rx.borrow_and_update() {
+            return;
+        }
+        if rx.changed().await.is_err() {
+            // The sender is gone without asking: nobody will cancel.
+            std::future::pending::<()>().await;
+        }
+    }
+}
+
+/// Polls `/v1/models` until the engine answers. A timeout or a cancel kills
+/// `child`, so a caller that gets `Err` never leaves a process behind.
+async fn await_ready(
+    client: &reqwest::Client,
+    child: &mut Child,
+    port: u16,
+    live: &Arc<StdMutex<Live>>,
+    cancel: &mut tokio::sync::watch::Receiver<bool>,
+    limit: Duration,
+) -> Result<(), ReadyError> {
+    let started = Instant::now();
+    loop {
+        if let Ok(Some(status)) = child.try_wait() {
+            let why = diagnose(live);
+            return Err(ReadyError::Exited(format!(
+                "The image engine stopped while loading ({status}). {why}"
+            )));
+        }
+        let probe = client
+            .get(format!("http://127.0.0.1:{port}/v1/models"))
+            .timeout(Duration::from_secs(2))
+            .send();
+        let answered = tokio::select! {
+            r = probe => r.map(|r| r.status().is_success()).unwrap_or(false),
+            _ = cancelled(cancel) => {
+                let _ = child.start_kill();
+                let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+                return Err(ReadyError::Cancelled);
+            }
+        };
+        if answered {
+            return Ok(());
+        }
+        if started.elapsed() > limit {
+            let _ = child.start_kill();
+            return Err(ReadyError::TimedOut);
+        }
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+            _ = cancelled(cancel) => {
+                let _ = child.start_kill();
+                let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+                return Err(ReadyError::Cancelled);
+            }
+        }
+    }
 }
 
 fn spawn_idle_watch<R: Runtime>(app: tauri::AppHandle<R>) {
@@ -550,7 +664,8 @@ async fn run_job<R: Runtime>(
     // If the caller's future is dropped (an HTTP client that went away) the
     // guard frees the engine and asks it to cancel the job.
     let mut guard = JobGuard { live: live.clone(), armed: true };
-    let outcome = poll_job(app, port, &live, path, body, cancel_key).await;
+    let timeout = job_timeout_for(&body, steps, batch);
+    let outcome = poll_job(app, port, &live, path, body, cancel_key, timeout).await;
     guard.armed = false;
     // A job abandoned because the wait gave up, or because its status could not
     // be read, may still be running on the engine: it is told to stop, or it
@@ -641,6 +756,7 @@ async fn poll_job<R: Runtime>(
     path: &str,
     body: Value,
     _cancel_key: &str,
+    timeout: Duration,
 ) -> Result<(String, Value), PollError> {
     let client = http()?;
     let base = format!("http://127.0.0.1:{port}");
@@ -672,7 +788,7 @@ async fn poll_job<R: Runtime>(
 
     let started = Instant::now();
     loop {
-        if started.elapsed() > JOB_TIMEOUT {
+        if started.elapsed() > timeout {
             return Err(PollError::abandoned("The generation took too long and was stopped."));
         }
         tokio::time::sleep(Duration::from_millis(400)).await;
@@ -1067,6 +1183,8 @@ mod guard_tests {
             last_used: Instant::now(),
             busy: true,
             current_job: Some("job-1".to_string()),
+            #[cfg(windows)]
+            _job: None,
         });
         {
             let _guard = JobGuard { live: live.clone(), armed: true };
@@ -1098,6 +1216,8 @@ mod guard_tests {
             last_used: Instant::now(),
             busy: true,
             current_job: None,
+            #[cfg(windows)]
+            _job: None,
         });
         let refused = check_can_replace("model-b").await;
         let same = check_can_replace("model-a").await;
@@ -1125,5 +1245,111 @@ mod poll_error_tests {
     fn the_message_is_kept_as_written() {
         assert_eq!(PollError::abandoned("x").message, "x");
         assert_eq!(PollError::from("y").message, "y");
+    }
+}
+
+#[cfg(test)]
+mod load_and_timeout_tests {
+    use super::*;
+
+    #[test]
+    fn job_timeout_is_floored_scaled_and_capped() {
+        // Tiny job: close to the floor.
+        let tiny = job_timeout(4, 1, 256, 256, 1);
+        assert!(tiny >= JOB_TIMEOUT_FLOOR && tiny < Duration::from_secs(12 * 60));
+        // A normal SDXL-size image sits between the bounds and grows with steps.
+        let a = job_timeout(30, 1, 1024, 1024, 1);
+        let b = job_timeout(60, 1, 1024, 1024, 1);
+        assert!(a > JOB_TIMEOUT_FLOOR && b > a && b < JOB_TIMEOUT_CAP);
+        // A huge video is capped, never unbounded.
+        assert_eq!(job_timeout(50, 4, 2048, 2048, 120), JOB_TIMEOUT_CAP);
+    }
+
+    #[test]
+    fn job_timeout_reads_the_request_body() {
+        let image = serde_json::json!({ "width": 1024, "height": 1024 });
+        let video = serde_json::json!({ "width": 1024, "height": 1024, "video_frames": 33 });
+        assert!(job_timeout_for(&video, 20, 1) > job_timeout_for(&image, 20, 1));
+        // A body without sizes still gets a bounded timeout.
+        let t = job_timeout_for(&serde_json::json!({}), 20, 1);
+        assert!(t >= JOB_TIMEOUT_FLOOR && t <= JOB_TIMEOUT_CAP);
+    }
+
+    fn sleeper() -> Child {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "ping -n 60 127.0.0.1 >nul"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut c = Command::new("sleep");
+            c.arg("60");
+            c
+        };
+        cmd.stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        cmd.spawn().expect("spawn a stub long-running process")
+    }
+
+    fn free_tcp_port() -> u16 {
+        std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
+    }
+
+    #[tokio::test]
+    async fn unload_during_loading_kills_child() {
+        let mut child = sleeper();
+        let live = Arc::new(StdMutex::new(Live::default()));
+        let client = http().unwrap();
+        let (tx, mut rx) = tokio::sync::watch::channel(false);
+        let port = free_tcp_port();
+        let waiter = tokio::spawn(async move {
+            let out = await_ready(&client, &mut child, port, &live, &mut rx, Duration::from_secs(60)).await;
+            (out, child)
+        });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        tx.send(true).unwrap();
+        let (out, mut child) = tokio::time::timeout(Duration::from_secs(10), waiter)
+            .await
+            .expect("the cancelled load kept waiting")
+            .unwrap();
+        assert_eq!(out, Err(ReadyError::Cancelled));
+        assert!(child.try_wait().unwrap().is_some(), "the stub child is still running");
+    }
+
+    #[tokio::test]
+    async fn a_load_that_never_answers_times_out_and_kills_the_child() {
+        let mut child = sleeper();
+        let live = Arc::new(StdMutex::new(Live::default()));
+        let client = http().unwrap();
+        let (_tx, mut rx) = tokio::sync::watch::channel(false);
+        let out = await_ready(&client, &mut child, free_tcp_port(), &live, &mut rx, Duration::from_millis(500)).await;
+        assert_eq!(out, Err(ReadyError::TimedOut));
+        let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+        assert!(child.try_wait().unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn an_engine_that_exits_early_reports_it() {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "exit 3"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut c = Command::new("false");
+            c
+        };
+        let mut child = cmd.spawn().unwrap();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let live = Arc::new(StdMutex::new(Live::default()));
+        let client = http().unwrap();
+        let (_tx, mut rx) = tokio::sync::watch::channel(false);
+        let out = await_ready(&client, &mut child, free_tcp_port(), &live, &mut rx, Duration::from_secs(5)).await;
+        assert!(matches!(out, Err(ReadyError::Exited(m)) if m.contains("stopped while loading")));
     }
 }

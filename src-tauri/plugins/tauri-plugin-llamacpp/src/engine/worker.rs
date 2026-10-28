@@ -497,55 +497,10 @@ impl std::fmt::Debug for WorkerHandle {
     }
 }
 
+// The kill-on-close Job Object lives in `jan-process` so the diffusion engine
+// can share it; the worker keeps calling it as `reap::confine`.
 #[cfg(windows)]
-mod reap {
-    use std::os::windows::io::RawHandle;
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    };
-
-    pub struct Job(HANDLE);
-
-    unsafe impl Send for Job {}
-    unsafe impl Sync for Job {}
-
-    impl Drop for Job {
-        fn drop(&mut self) {
-            unsafe { CloseHandle(self.0) };
-        }
-    }
-
-    pub fn confine(child: RawHandle) -> Option<Job> {
-        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        if job.is_null() {
-            log::warn!("could not create a job object for the Flint worker");
-            return None;
-        }
-        let job = Job(job);
-        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let configured = unsafe {
-            SetInformationJobObject(
-                job.0,
-                JobObjectExtendedLimitInformation,
-                &limits as *const _ as *const std::ffi::c_void,
-                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            )
-        };
-        if configured == 0 {
-            log::warn!("could not set kill-on-close on the Flint worker job object");
-            return None;
-        }
-        if unsafe { AssignProcessToJobObject(job.0, child as HANDLE) } == 0 {
-            log::warn!("could not put the Flint worker in its job object");
-            return None;
-        }
-        Some(job)
-    }
-}
+use jan_process::confine as reap;
 
 pub struct WorkerHandle {
     pub port: u16,

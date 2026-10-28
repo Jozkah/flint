@@ -12,9 +12,14 @@ tokio = { version = "1", features = ["process"] }
 windows-sys = { version = "0.60.2", features = [
     "Win32_Foundation",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
+    "Win32_System_JobObjects",
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["process", "macros", "rt-multi-thread", "time", "io-util"] }
